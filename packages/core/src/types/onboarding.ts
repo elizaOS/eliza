@@ -101,7 +101,7 @@ export interface SkillsSettings {
 	/** Homebrew installation preference */
 	useHomebrew?: boolean;
 	/** Node package manager preference */
-	nodeManager?: "npm" | "pnpm" | "bun";
+	nodeManager?: "npm" | "bun";
 }
 
 /**
@@ -235,7 +235,7 @@ export interface SkillsInput {
 	/** Installation preferences */
 	preferences?: {
 		useHomebrew?: boolean;
-		nodeManager?: "npm" | "pnpm" | "bun";
+		nodeManager?: "npm" | "bun";
 	};
 	/** Skip skills configuration */
 	skip?: boolean;

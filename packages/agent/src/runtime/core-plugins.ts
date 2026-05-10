@@ -17,7 +17,7 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = [
 /**
  * Mobile-safe core plugins. Used when `ELIZA_PLATFORM=android` (or `ios`).
  *
- * Phones cannot host the n8n sidecar, the Signal CLI, the swarm orchestrator,
+ * Phones cannot host the workflow runtime, the Signal CLI, the swarm orchestrator,
  * the sandbox engine, the desktop launch hooks, or the autonomous PTY tools.
  * They also have no `/usr/bin/open`, `osascript`, `xdg-open`, `ffmpeg`,
  * `wmctrl`, etc., so plugins that bind to those at init crash the runtime.
@@ -92,7 +92,6 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-cua", // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration
   "@elizaos/plugin-repoprompt", // RepoPrompt CLI integration and workflow orchestration
-  "@elizaos/plugin-claude-code-workbench", // Claude Code companion workflows for this monorepo
   "@elizaos/plugin-computeruse", // computer use automation (requires platform-specific binaries)
   "@elizaos/plugin-browser", // browser automation (requires stagehand-server)
   "@elizaos/plugin-vision", // vision/image understanding (feature-gated)
@@ -105,8 +104,7 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-twitch", // Twitch integration
   "@elizaos/plugin-edge-tts", // text-to-speech (Microsoft Edge TTS)
   "@elizaos/plugin-elevenlabs", // ElevenLabs text-to-speech
-  "@elizaos/plugin-music-library", // music metadata, library, playlists, YouTube search
-  "@elizaos/plugin-music-player", // music playback engine + streaming routes
+  "@elizaos/plugin-music", // library + playback + streaming routes (unified MUSIC action)
   // "@elizaos/plugin-directives", // directive processing - not yet ready
   // "@elizaos/plugin-mcp", // MCP protocol support - not yet ready
   // "@elizaos/plugin-scheduling", // scheduling - not yet ready

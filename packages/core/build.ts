@@ -124,9 +124,6 @@ export async function createElizaBuildConfig(
 	// Filter out the package being built to avoid self-referential imports
 	const elizaExternals = [
 		"@elizaos/core",
-		"@elizaos/server",
-		"@elizaos/client",
-		"@elizaos/api-client",
 		"@elizaos/shared",
 		"@elizaos/plugin-*",
 	].filter((pkg) => pkg !== selfPackageName);
@@ -481,6 +478,10 @@ export async function runBuild(
 	// Clean previous build
 	await cleanBuild(buildOptions.outdir);
 
+	// Bun.build does not always recreate an emptied outdir; ensure it exists after clean.
+	const resolvedOutdir = buildOptions.outdir ?? "dist";
+	mkdirSync(resolvedOutdir, { recursive: true });
+
 	// Create build configuration
 	const configTimer = getTimer();
 	const config = await createElizaBuildConfig(buildOptions);
@@ -625,6 +626,23 @@ const browserExternals = [
 	"async_hooks", // Node.js built-in module
 	"node:diagnostics_channel", // Node.js built-in module
 	"node:async_hooks", // Node.js built-in module
+	"fs-extra", // Node-only fs library; host bundlers stub this for browser/Capacitor
+	// Document extractors are Node-only (mammoth uses fs.readFile.bind, unpdf
+	// pulls in Node fs/util internals). Reachable from
+	// features/documents/utils.ts; with `target: "node"` Bun inlines these
+	// even when only used inside Node-side flows. Mark as external so the
+	// host bundler resolves them only on the Node side.
+	"mammoth",
+	"unpdf",
+	// Vercel AI SDK gateway has a transitive `@vercel/oidc` import that
+	// touches `os.platform()`/`os.arch()`/`os.hostname()` at module-load
+	// to build a User-Agent string. That throws in the browser even when
+	// host bundlers stub `os`, because the call site uses
+	// `(0, os.platform)()` after a destructured re-binding, which loses the
+	// Proxy chaining. Externalise the gateway and its transitive sentinel
+	// so the browser bundle never invokes the call.
+	"@ai-sdk/gateway",
+	"@vercel/oidc",
 ];
 
 // Node-specific externals (native modules and node-specific packages)
@@ -648,10 +666,7 @@ async function buildNode() {
 	const runNode = createBuildRunner({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [
-				`${TS_SRC}/index.node.ts`,
-				`${TS_SRC}/roles.ts`,
-			],
+			entrypoints: [`${TS_SRC}/index.node.ts`, `${TS_SRC}/roles.ts`],
 			outdir: "dist/node",
 			target: "node",
 			format: "esm",
@@ -760,7 +775,10 @@ async function buildNodeOnly() {
 	console.log("🚀 Starting Node-only build process for @elizaos/core");
 	const totalStart = Date.now();
 
-	await Promise.all([buildNode(), buildTesting()]);
+	const skipTesting = process.argv.includes("--skip-testing");
+	const tasks: Array<Promise<void>> = [buildNode()];
+	if (!skipTesting) tasks.push(buildTesting());
+	await Promise.all(tasks);
 	await generateTypeScriptDeclarations();
 
 	const totalDuration = ((Date.now() - totalStart) / 1000).toFixed(2);

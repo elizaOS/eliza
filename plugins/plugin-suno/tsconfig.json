@@ -8,6 +8,7 @@
         "strict": false,
         "esModuleInterop": true,
         "skipLibCheck": true,
+        "ignoreDeprecations": "6.0",
         "forceConsistentCasingInFileNames": false,
         "allowImportingTsExtensions": true,
         "declaration": true,
@@ -20,5 +21,6 @@
         "moduleDetection": "force",
         "allowArbitraryExtensions": true
     },
-    "include": ["src/**/*.ts"]
+    "include": ["src/**/*.ts"],
+    "exclude": ["**/__tests__/**", "**/*.test.ts", "**/*.test.tsx", "**/*.e2e.test.ts"]
 }

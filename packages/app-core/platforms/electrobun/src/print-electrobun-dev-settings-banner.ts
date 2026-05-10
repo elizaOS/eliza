@@ -3,9 +3,9 @@ import {
 	type DevSettingsRow,
 	firstWinningEnvString,
 	formatDevSettingsTable,
+	prependDevSubsystemFigletHeading,
 	resolveDesktopApiPortPreference,
 } from "@elizaos/shared";
-import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
 import { resolveDesktopRuntimeMode } from "./api-base";
 import { resolveMainWindowPartition } from "./main-window-session";
 

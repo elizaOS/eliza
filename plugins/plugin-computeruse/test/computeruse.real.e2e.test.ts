@@ -40,7 +40,7 @@ function createMockRuntime(): IAgentRuntime {
     character: {},
     getSetting: (k: string) => settings[k],
     getService: () => null,
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 interface ToolUseBlock {

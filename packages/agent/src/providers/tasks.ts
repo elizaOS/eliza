@@ -16,8 +16,8 @@ import type {
 import {
   isWorkbenchTodoTask,
   readTaskCompleted,
-} from "../api/workbench-helpers.js";
-import { listTriggerTasks, readTriggerConfig } from "../triggers/runtime.js";
+} from "../api/workbench-helpers.ts";
+import { listTriggerTasks, readTriggerConfig } from "../triggers/runtime.ts";
 
 const MAX_TASKS_IN_CONTEXT = 20;
 const MAX_TRIGGERS_IN_CONTEXT = 10;

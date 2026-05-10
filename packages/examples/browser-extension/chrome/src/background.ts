@@ -32,6 +32,22 @@ type ChatEvent =
 
 const portsByUrl = new Map<string, chrome.runtime.Port>();
 
+type OffscreenApi = {
+  createDocument: (options: {
+    url: string;
+    reasons: string[];
+    justification: string;
+  }) => Promise<void>;
+};
+
+function isOffscreenApi(value: unknown): value is OffscreenApi {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    typeof Reflect.get(value, "createDocument") === "function"
+  );
+}
+
 function newId(): string {
   if (
     typeof crypto !== "undefined" &&
@@ -55,13 +71,8 @@ async function ensureOffscreenDocument(): Promise<boolean> {
   }
 
   try {
-    const offscreenApi = chrome.offscreen as unknown as {
-      createDocument: (options: {
-        url: string;
-        reasons: string[];
-        justification: string;
-      }) => Promise<void>;
-    };
+    const offscreenApi: unknown = chrome.offscreen;
+    if (!isOffscreenApi(offscreenApi)) return false;
     await offscreenApi.createDocument({
       url: "offscreen.html",
       reasons: ["DOM_SCRAPING"],

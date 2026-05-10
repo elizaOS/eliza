@@ -69,11 +69,7 @@ export async function endAutonomousTick(
 ): Promise<void> {
 	// Flush pending fire-and-forget writes (logLLMCall, completeStep) before
 	// endTrajectory reads the trajectory so recorded LLM calls are persisted.
-	const flush = (trajectoryLogger as unknown as Record<string, unknown>)
-		.flushWriteQueue;
-	if (typeof flush === "function") {
-		await (flush as (id: string) => Promise<void>)(trajectoryId);
-	}
+	await trajectoryLogger.flushWriteQueue(trajectoryId);
 
 	await trajectoryLogger.endTrajectory(trajectoryId, status, finalMetrics);
 

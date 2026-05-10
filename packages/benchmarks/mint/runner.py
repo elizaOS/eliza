@@ -82,8 +82,7 @@ class MINTRunner:
         self._trajectory_ids: list[str] = []
 
         # MINT uses the canonical Eliza runtime via message_service.handle_message().
-        # The MINT plugin (EXECUTE_CODE action + MINT_CONTEXT provider) is registered
-        # at runtime creation time. Core runtime logs providers + LLM calls automatically.
+        # Core runtime logs providers + LLM calls automatically.
 
         # Initialize components
         self.dataset = MINTDataset(config.data_path)

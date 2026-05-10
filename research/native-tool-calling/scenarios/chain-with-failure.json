@@ -1,9 +1,0 @@
-{
-  "message": "Run BROKEN_ACTION and then tell me what happened.",
-  "expect": {
-    "tools": ["BROKEN_ACTION"],
-    "stages": ["planner", "tool"],
-    "contexts": ["broken_action"],
-    "rationale": "Tests the failure recovery path — BROKEN_ACTION always returns success=false, verifying the evaluator handles tool failures gracefully."
-  }
-}

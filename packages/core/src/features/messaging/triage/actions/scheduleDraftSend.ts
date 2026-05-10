@@ -17,7 +17,7 @@ import {
 } from "./_shared.ts";
 
 export const scheduleDraftSendAction: Action = {
-	name: "SCHEDULE_DRAFT_SEND",
+	name: "MESSAGE",
 	contexts: ["messaging", "email", "calendar", "automation"],
 	roleGate: { minRole: "ADMIN" },
 	description:
@@ -45,7 +45,7 @@ export const scheduleDraftSendAction: Action = {
 				name: "Agent",
 				content: {
 					text: "Scheduled.",
-					action: "SCHEDULE_DRAFT_SEND",
+					action: "MESSAGE",
 				},
 			},
 		],
@@ -95,7 +95,7 @@ export const scheduleDraftSendAction: Action = {
 			`[ScheduleDraftSend] draftId=${parsed.draftId} sendAtMs=${parsed.sendAtMs} scheduledId=${updated.scheduledId ?? "unknown"}`,
 		);
 		if (callback) {
-			await callback({ text, action: "SCHEDULE_DRAFT_SEND" });
+			await callback({ text, action: "MESSAGE" });
 		}
 		return {
 			success: true,

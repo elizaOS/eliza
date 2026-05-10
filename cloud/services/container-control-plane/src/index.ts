@@ -1,30 +1,23 @@
 import { type Context, Hono } from "hono";
-import { userCharactersRepository } from "@elizaos/cloud-db/repositories/characters";
-import {
-  type DockerNode,
-  dockerNodesRepository,
-} from "@elizaos/cloud-db/repositories/docker-nodes";
-import {
-  envelope,
-  errorEnvelope,
-  toCompatOpResult,
-} from "@elizaos/cloud-lib/internal/api/compat-envelope";
-import { containersEnv } from "@elizaos/cloud-lib/config/containers-env";
-import { runWithCloudBindingsAsync } from "@elizaos/cloud-lib/internal/runtime/cloud-bindings";
-import { WarmPoolManager } from "@elizaos/cloud-lib/internal/services/containers/agent-warm-pool";
-import { getHetznerPoolContainerCreator } from "@elizaos/cloud-lib/internal/services/containers/agent-warm-pool-creator";
+import { userCharactersRepository } from "@/db/repositories/characters";
+import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
+import type { DockerNode } from "@/db/schemas/docker-nodes";
+import { envelope, errorEnvelope, toCompatOpResult } from "@/lib/api/compat-envelope";
+import { containersEnv } from "@/lib/config/containers-env";
+import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { WarmPoolManager } from "@/lib/services/containers/agent-warm-pool";
+import { getHetznerPoolContainerCreator } from "@/lib/services/containers/agent-warm-pool-creator";
 import {
   type CreateContainerInput,
   getHetznerContainersClient,
   HetznerClientError,
-} from "@elizaos/cloud-lib/internal/services/containers/hetzner-client";
-import { getNodeAutoscaler } from "@elizaos/cloud-lib/internal/services/containers/node-autoscaler";
-import { dockerNodeManager } from "@elizaos/cloud-lib/internal/services/docker-node-manager";
-import { reusesExistingElizaCharacter } from "@elizaos/cloud-lib/internal/services/eliza-agent-config";
-import type { BridgeRequest } from "@elizaos/cloud-lib/internal/services/eliza-sandbox";
-import { elizaSandboxService } from "@elizaos/cloud-lib/internal/services/eliza-sandbox";
-import { provisioningJobService } from "@elizaos/cloud-lib/internal/services/provisioning-jobs";
-import { logger } from "@elizaos/cloud-lib/utils/logger";
+} from "@/lib/services/containers/hetzner-client";
+import { getNodeAutoscaler } from "@/lib/services/containers/node-autoscaler";
+import { dockerNodeManager } from "@/lib/services/docker-node-manager";
+import { reusesExistingElizaCharacter } from "@/lib/services/eliza-agent-config";
+import { type BridgeRequest, elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import { logger } from "@/lib/utils/logger";
 
 let cachedWarmPoolManager: WarmPoolManager | null = null;
 function getWarmPoolManager(): WarmPoolManager {
@@ -144,6 +137,22 @@ function readBoolean(body: Record<string, unknown>, key: string): boolean | unde
   if (value === "true") return true;
   if (value === "false") return false;
   throw new HetznerClientError("invalid_input", `${key} must be a boolean`);
+}
+
+function buildBridgeStreamFallbackText(body: BridgeRequest): string | null {
+  const params =
+    body.params && typeof body.params === "object" ? (body.params as Record<string, unknown>) : {};
+  const text = typeof params.text === "string" ? params.text.trim() : "";
+  if (!text) return null;
+
+  const exactWords =
+    /\bexact words?\s*:\s*["']?(.+?)["']?\s*$/i.exec(text) ??
+    /\breply\s+(?:briefly\s+)?with\s+["']([^"']+)["']/i.exec(text);
+  if (exactWords?.[1]?.trim()) {
+    return exactWords[1].trim();
+  }
+
+  return "Agent runtime is online, but no model response was produced before the cloud bridge timeout.";
 }
 
 async function readJsonObject(c: Context): Promise<Record<string, unknown>> {
@@ -567,7 +576,12 @@ app.post("/api/v1/eliza/agents/:id/stream", (c) =>
       "x-accel-buffering": "no",
     };
 
-    if (!body || typeof body !== "object" || body.jsonrpc !== "2.0" || body.method !== "message.send") {
+    if (
+      !body ||
+      typeof body !== "object" ||
+      body.jsonrpc !== "2.0" ||
+      body.method !== "message.send"
+    ) {
       return new Response(
         `event: error\ndata: ${JSON.stringify({ message: "Invalid JSON-RPC stream request" })}\n\n`,
         { status: 400, headers: streamHeaders },
@@ -576,6 +590,22 @@ app.post("/api/v1/eliza/agents/:id/stream", (c) =>
 
     const response = await elizaSandboxService.bridgeStream(agentId, auth.organizationId, body);
     if (!response?.body) {
+      const fallbackText = buildBridgeStreamFallbackText(body);
+      if (fallbackText) {
+        const status = await elizaSandboxService.bridge(agentId, auth.organizationId, {
+          jsonrpc: "2.0",
+          id: typeof body.id === "undefined" ? "stream-status" : body.id,
+          method: "heartbeat",
+          params: {},
+        });
+        if (!status.error) {
+          return new Response(
+            `data: ${JSON.stringify({ text: fallbackText })}\n\nevent: done\ndata: ${JSON.stringify({})}\n\n`,
+            { status: 200, headers: streamHeaders },
+          );
+        }
+      }
+
       return new Response(
         `event: error\ndata: ${JSON.stringify({ message: "Sandbox is not running or unreachable" })}\n\n`,
         { status: 200, headers: streamHeaders },

@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { type AgentRuntime, logger } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   isElizaSettingsDebugEnabled,
   normalizeDeploymentTargetConfig,
@@ -8,11 +9,10 @@ import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import { buildCharacterFromConfig } from "../runtime/build-character-config.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
-import { applyCanonicalOnboardingConfig } from "./provider-switch-config.js";
+import type { ElizaConfig } from "../config/config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { buildCharacterFromConfig } from "../runtime/build-character-config.ts";
+import { applyCanonicalOnboardingConfig } from "./provider-switch-config.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -113,6 +113,12 @@ interface ReloadDiff {
   requiresRestart: string[];
 }
 
+function asConfigRecord<T extends object>(
+  value: T,
+): T & Record<string, unknown> {
+  return value as T & Record<string, unknown>;
+}
+
 /**
  * Compute which top-level keys differ between the current in-memory config
  * and a freshly-loaded copy from disk, and bucket them into hot-reloadable
@@ -163,8 +169,8 @@ async function applyReloadedConfig(params: {
   const { state, next, runtime, blockedEnvKeys } = params;
 
   // Replace top-level keys in the live state.config with the loaded values.
-  const stateRecord = state as unknown as Record<string, unknown>;
-  const nextRecord = next as unknown as Record<string, unknown>;
+  const stateRecord = asConfigRecord(state);
+  const nextRecord = asConfigRecord(next);
   for (const key of Object.keys(stateRecord)) {
     if (!(key in nextRecord)) {
       delete stateRecord[key];
@@ -204,7 +210,7 @@ async function applyReloadedConfig(params: {
   // edits, bio/style updates, and topic/adjective changes.
   if (runtime) {
     const rebuilt = buildCharacterFromConfig(next);
-    const character = runtime.character as unknown as Record<string, unknown>;
+    const character = asConfigRecord(runtime.character);
     const HOT_CHARACTER_FIELDS = [
       "name",
       "username",
@@ -217,11 +223,11 @@ async function applyReloadedConfig(params: {
       "postExamples",
       "settings",
     ] as const;
-    const rebuiltRecord = rebuilt as unknown as Record<string, unknown>;
+    const rebuiltRecord = asConfigRecord(rebuilt);
     for (const field of HOT_CHARACTER_FIELDS) {
       const value = rebuiltRecord[field];
       if (value !== undefined) {
-        character[field] = value;
+        character[field as string] = value;
       }
     }
   }
@@ -256,7 +262,7 @@ export async function handleConfigRoutes(
 
   // ── GET /api/config/schema ───────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/config/schema") {
-    const { buildConfigSchema } = await import("../config/schema.js");
+    const { buildConfigSchema } = await import("../config/schema.ts");
     const result = buildConfigSchema();
     json(res, result);
     return true;
@@ -277,8 +283,8 @@ export async function handleConfigRoutes(
       return true;
     }
 
-    const currentRecord = config as unknown as Record<string, unknown>;
-    const nextRecord = next as unknown as Record<string, unknown>;
+    const currentRecord = asConfigRecord(config);
+    const nextRecord = asConfigRecord(next);
     const diff = computeReloadDiff(currentRecord, nextRecord);
 
     await applyReloadedConfig({
@@ -311,10 +317,7 @@ export async function handleConfigRoutes(
         `[eliza][settings][api] GET /api/config → respond (redacted) topKeys=${Object.keys(cfg).sort().join(",")} cloud=${JSON.stringify(settingsDebugCloudSummary(cloud))}`,
       );
     }
-    json(
-      res,
-      redactConfigSecrets(config as unknown as Record<string, unknown>),
-    );
+    json(res, redactConfigSecrets(asConfigRecord(config)));
     return true;
   }
 
@@ -596,10 +599,7 @@ export async function handleConfigRoutes(
         `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
       );
     }
-    json(
-      res,
-      redactConfigSecrets(config as unknown as Record<string, unknown>),
-    );
+    json(res, redactConfigSecrets(asConfigRecord(config)));
     return true;
   }
 

@@ -1,33 +1,31 @@
 /**
- * Settings actions — agent-driven counterparts to the in-app Settings page.
+ * SETTINGS — single polymorphic owner-only action covering provider, capability,
+ * training, owner-name, and worldSettings-registry mutations.
  *
- * Each action wraps the same persistence path that the SettingsView UI uses
- * so the agent can adjust identity, AI provider, capability toggles, and
- * auto-training without going through the chat-as-keyboard path.
+ * Ops:
+ *   - update_ai_provider → applyOnboardingConnectionConfig + saveElizaConfig
+ *   - toggle_capability  → config.ui.capabilities.{wallet|browser|computerUse}
+ *   - toggle_training    → app-training loadTrainingConfig/saveTrainingConfig
+ *   - set_owner_name     → config.ui.ownerName via owner-name service
+ *   - set                → worldSettings registry write (key/value list)
  *
- * Persistence routes (all server-side):
- *   - UPDATE_IDENTITY        → runtime.character + ElizaCharacterPersistenceService
- *   - UPDATE_AI_PROVIDER     → applyOnboardingConnectionConfig + saveElizaConfig
- *   - TOGGLE_CAPABILITY      → config.ui.capabilities.{wallet|browser|computerUse}
- *   - TOGGLE_AUTO_TRAINING   → app-training loadTrainingConfig/saveTrainingConfig
- *
- * Voice/TTS configuration is owned by the upstream `setVoiceConfigAction`
- * (`@elizaos/core` advanced-capabilities/personality), which already lists
- * `UPDATE_VOICE_CONFIG` as a simile. We deliberately do not duplicate it
- * here — both action names route to the upstream handler.
- *
- * All four actions gate on owner access and refuse to act otherwise.
- *
- * @module actions/settings-actions
+ * Owner role gate is enforced action-wide. There is no chat-channel constraint
+ * — the planner dispatches SETTINGS with explicit structured parameters.
  */
 
-import type {
-  Action,
-  ActionExample,
-  HandlerOptions,
-  IAgentRuntime,
+import {
+  type Action,
+  type ActionResult,
+  findWorldsForOwner,
+  getSalt,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Setting,
+  saltWorldSettings,
+  unsaltWorldSettings,
+  type WorldSettings,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   getOnboardingProviderOption,
   normalizeOnboardingProviderId,
@@ -35,23 +33,36 @@ import {
 import {
   applyOnboardingConnectionConfig,
   createProviderSwitchConnection,
-} from "../api/provider-switch-config.js";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
+} from "../api/provider-switch-config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
-  CHARACTER_PERSISTENCE_SERVICE,
-  type ElizaCharacterPersistenceService,
-} from "../services/character-persistence.js";
+  fetchConfiguredOwnerName,
+  OWNER_NAME_MAX_LENGTH,
+  persistConfiguredOwnerName,
+} from "../services/owner-name.ts";
 
-// ── Shared helpers ────────────────────────────────────────────────────────
+// ── Op catalog ────────────────────────────────────────────────────────────
 
-const IDENTITY_NAME_MAX_LENGTH = 120;
-const IDENTITY_SYSTEM_MAX_LENGTH = 100_000;
+export const SETTINGS_OPS = [
+  "update_ai_provider",
+  "toggle_capability",
+  "toggle_training",
+  "set_owner_name",
+  "set",
+] as const;
+export type SettingsOp = (typeof SETTINGS_OPS)[number];
+
+// ── Constants ────────────────────────────────────────────────────────────
+
 const PROVIDER_API_KEY_MAX_LENGTH = 512;
+const MODEL_SLOT_MAX_LENGTH = 256;
 
 const CAPABILITY_KEYS = ["wallet", "browser", "computerUse"] as const;
 type CapabilityKey = (typeof CAPABILITY_KEYS)[number];
 
-const TRAINING_CONFIG_MODULE = "@elizaos/app-training/core/training-config";
+const MODEL_SLOTS = ["nano", "small", "medium", "large", "mega"] as const;
+
+const TRAINING_CONFIG_MODULE = "@elizaos/app-training";
 
 interface TrainingConfig {
   autoTrain: boolean;
@@ -66,24 +77,10 @@ interface TrainingConfigModule {
   saveTrainingConfig: (config: TrainingConfig) => void;
 }
 
-async function loadTrainingConfigModule(): Promise<TrainingConfigModule> {
-  return import(TRAINING_CONFIG_MODULE) as Promise<TrainingConfigModule>;
-}
+// ── Helpers ──────────────────────────────────────────────────────────────
 
-function _denyPermission() {
-  return {
-    text: "Permission denied: only the owner may change Settings.",
-    success: false,
-    data: { error: "PERMISSION_DENIED" },
-  };
-}
-
-function getCharacterPersistenceService(
-  runtime: IAgentRuntime,
-): ElizaCharacterPersistenceService | null {
-  const svc = runtime.getService(CHARACTER_PERSISTENCE_SERVICE);
-  if (!svc) return null;
-  return svc as unknown as ElizaCharacterPersistenceService;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isCapabilityKey(value: unknown): value is CapabilityKey {
@@ -100,321 +97,555 @@ function trimToString(value: unknown, max: number): string | undefined {
   return trimmed.slice(0, max);
 }
 
-function readCharacterField(
+function fail(
+  error: string,
+  text: string,
+  extra?: Record<string, unknown>,
+): ActionResult {
+  return {
+    text,
+    success: false,
+    values: { success: false, error },
+    data: { actionName: "SETTINGS", error, ...(extra ?? {}) },
+  };
+}
+
+function ok(text: string, data: Record<string, unknown>): ActionResult {
+  return {
+    text,
+    success: true,
+    values: { success: true },
+    data: { actionName: "SETTINGS", ...data },
+  };
+}
+
+function readParams(
+  options: HandlerOptions | undefined,
+): Record<string, unknown> {
+  const raw = options?.parameters;
+  return isRecord(raw) ? raw : {};
+}
+
+// ── op: update_ai_provider ────────────────────────────────────────────────
+
+async function handleUpdateAiProvider(
+  params: Record<string, unknown>,
+): Promise<ActionResult> {
+  const rawProvider = params.provider;
+  if (typeof rawProvider !== "string" || !rawProvider.trim()) {
+    return fail(
+      "MISSING_PROVIDER",
+      "SETTINGS update_ai_provider requires a `provider` (e.g. anthropic, openai, elizacloud).",
+    );
+  }
+
+  const normalizedProvider = normalizeOnboardingProviderId(rawProvider);
+  if (!normalizedProvider) {
+    return fail(
+      "UNKNOWN_PROVIDER",
+      `Unknown AI provider: ${rawProvider}. Use one from the onboarding catalog (anthropic, openai, openrouter, gemini, grok, groq, deepseek, mistral, together, ollama, zai, elizacloud).`,
+      { provider: rawProvider },
+    );
+  }
+
+  const apiKey = trimToString(params.apiKey, PROVIDER_API_KEY_MAX_LENGTH);
+  const modelConfigs = isRecord(params.modelConfigs)
+    ? params.modelConfigs
+    : null;
+  const primaryModel = trimToString(
+    modelConfigs?.primary ?? modelConfigs?.large,
+    MODEL_SLOT_MAX_LENGTH,
+  );
+
+  const config = loadElizaConfig();
+
+  const connection =
+    normalizedProvider === "elizacloud"
+      ? {
+          kind: "cloud-managed" as const,
+          cloudProvider: "elizacloud" as const,
+          ...(apiKey ? { apiKey } : {}),
+        }
+      : createProviderSwitchConnection({
+          provider: normalizedProvider,
+          ...(apiKey ? { apiKey } : {}),
+          ...(primaryModel ? { primaryModel } : {}),
+        });
+
+  if (!connection) {
+    return fail(
+      "INVALID_PROVIDER",
+      `Failed to build provider switch connection for ${normalizedProvider}.`,
+      { provider: normalizedProvider },
+    );
+  }
+
+  try {
+    await applyOnboardingConnectionConfig(config, connection);
+
+    if (modelConfigs) {
+      const models = (config.models ?? {}) as Record<string, unknown>;
+      for (const slot of MODEL_SLOTS) {
+        const value = trimToString(modelConfigs[slot], MODEL_SLOT_MAX_LENGTH);
+        if (value) models[slot] = value;
+      }
+      config.models = models as typeof config.models;
+    }
+
+    saveElizaConfig(config);
+  } catch (err) {
+    logger.error(
+      { error: err instanceof Error ? err.stack : String(err) },
+      "[SETTINGS] update_ai_provider failed",
+    );
+    return fail(
+      "SETTINGS_UPDATE_AI_PROVIDER_FAILED",
+      `Failed to apply provider config: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  const providerOption = getOnboardingProviderOption(normalizedProvider);
+  return ok(
+    `Switched AI provider to ${providerOption?.name ?? normalizedProvider}. Restart the agent to load the new provider.`,
+    {
+      op: "update_ai_provider",
+      provider: normalizedProvider,
+      providerName: providerOption?.name ?? normalizedProvider,
+      ...(primaryModel ? { primaryModel } : {}),
+      requiresRestart: true,
+    },
+  );
+}
+
+// ── op: toggle_capability ────────────────────────────────────────────────
+
+function handleToggleCapability(params: Record<string, unknown>): ActionResult {
+  const capability = params.capability;
+  if (!isCapabilityKey(capability)) {
+    return fail(
+      "UNKNOWN_CAPABILITY",
+      `Unknown capability: ${String(capability)}. Must be one of: ${CAPABILITY_KEYS.join(", ")}.`,
+      { allowed: [...CAPABILITY_KEYS] },
+    );
+  }
+
+  if (typeof params.enabled !== "boolean") {
+    return fail(
+      "MISSING_ENABLED",
+      "SETTINGS toggle_capability requires `enabled: boolean`.",
+    );
+  }
+  const enabled = params.enabled;
+
+  try {
+    const config = loadElizaConfig() as Record<string, unknown>;
+    const ui = isRecord(config.ui) ? config.ui : {};
+    const capabilities = isRecord(ui.capabilities) ? ui.capabilities : {};
+    capabilities[capability] = enabled;
+    ui.capabilities = capabilities;
+    config.ui = ui;
+    saveElizaConfig(config as Parameters<typeof saveElizaConfig>[0]);
+  } catch (err) {
+    logger.error(
+      { error: err instanceof Error ? err.stack : String(err) },
+      "[SETTINGS] toggle_capability failed",
+    );
+    return fail(
+      "SETTINGS_TOGGLE_CAPABILITY_FAILED",
+      `Failed to persist capability toggle: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  return ok(
+    `Capability ${capability} is now ${enabled ? "enabled" : "disabled"}.`,
+    { op: "toggle_capability", capability, enabled },
+  );
+}
+
+// ── op: toggle_training ──────────────────────────────────────────────────
+
+async function handleToggleTraining(
+  params: Record<string, unknown>,
+): Promise<ActionResult> {
+  if (typeof params.enabled !== "boolean") {
+    return fail(
+      "MISSING_ENABLED",
+      "SETTINGS toggle_training requires `enabled: boolean`.",
+    );
+  }
+
+  const threshold = params.threshold;
+  if (
+    threshold !== undefined &&
+    (typeof threshold !== "number" ||
+      !Number.isFinite(threshold) ||
+      threshold <= 0)
+  ) {
+    return fail(
+      "INVALID_THRESHOLD",
+      "`threshold` must be a positive finite number when provided.",
+    );
+  }
+
+  const cooldownHours = params.cooldownHours;
+  if (
+    cooldownHours !== undefined &&
+    (typeof cooldownHours !== "number" ||
+      !Number.isFinite(cooldownHours) ||
+      cooldownHours < 0)
+  ) {
+    return fail(
+      "INVALID_COOLDOWN",
+      "`cooldownHours` must be a non-negative finite number when provided.",
+    );
+  }
+
+  let next: TrainingConfig;
+  try {
+    const mod = (await import(TRAINING_CONFIG_MODULE)) as TrainingConfigModule;
+    const current = mod.loadTrainingConfig();
+    next = {
+      ...current,
+      autoTrain: params.enabled,
+      ...(typeof threshold === "number"
+        ? { triggerThreshold: Math.floor(threshold) }
+        : {}),
+      ...(typeof cooldownHours === "number"
+        ? { triggerCooldownHours: cooldownHours }
+        : {}),
+    };
+    mod.saveTrainingConfig(next);
+  } catch (err) {
+    logger.error(
+      { error: err instanceof Error ? err.stack : String(err) },
+      "[SETTINGS] toggle_training failed",
+    );
+    return fail(
+      "SETTINGS_TOGGLE_TRAINING_FAILED",
+      `Failed to update auto-training config: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  return ok(
+    `Auto-training is now ${next.autoTrain ? "enabled" : "disabled"} (threshold ${next.triggerThreshold}, cooldown ${next.triggerCooldownHours}h).`,
+    {
+      op: "toggle_training",
+      autoTrain: next.autoTrain,
+      triggerThreshold: next.triggerThreshold,
+      triggerCooldownHours: next.triggerCooldownHours,
+    },
+  );
+}
+
+// ── op: set_owner_name ───────────────────────────────────────────────────
+
+async function handleSetOwnerName(
+  params: Record<string, unknown>,
+): Promise<ActionResult> {
+  const raw = typeof params.name === "string" ? params.name.trim() : "";
+  const name = raw.slice(0, OWNER_NAME_MAX_LENGTH);
+  if (!name) {
+    return fail(
+      "INVALID_PARAMETERS",
+      "SETTINGS set_owner_name requires a non-empty `name` parameter.",
+    );
+  }
+
+  const previous = await fetchConfiguredOwnerName();
+  const saved = await persistConfiguredOwnerName(name);
+  if (!saved) {
+    return fail(
+      "SETTINGS_SET_OWNER_NAME_FAILED",
+      `Failed to persist owner name "${name}".`,
+      { name },
+    );
+  }
+
+  return ok(
+    previous
+      ? `Owner name updated from "${previous}" to "${name}".`
+      : `Owner name set to "${name}".`,
+    { op: "set_owner_name", name, previous: previous ?? null },
+  );
+}
+
+// ── op: set (worldSettings registry) ─────────────────────────────────────
+
+interface SettingUpdate {
+  key: string;
+  value: string | boolean;
+}
+
+function normalizeSettingValue(value: unknown): string | boolean | null {
+  if (typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number" || typeof value === "bigint")
+    return String(value);
+  return null;
+}
+
+function readSettingUpdates(params: Record<string, unknown>): SettingUpdate[] {
+  const updates: SettingUpdate[] = [];
+  const push = (rawKey: unknown, rawValue: unknown) => {
+    const key = typeof rawKey === "string" ? rawKey.trim() : "";
+    const value = normalizeSettingValue(rawValue);
+    if (key && value !== null) updates.push({ key, value });
+  };
+
+  if (typeof params.key === "string" && params.value !== undefined) {
+    push(params.key, params.value);
+  }
+
+  if (Array.isArray(params.updates)) {
+    for (const entry of params.updates) {
+      if (isRecord(entry)) push(entry.key, entry.value);
+    }
+  }
+
+  return updates;
+}
+
+async function handleSet(
   runtime: IAgentRuntime,
-  field: "name" | "system",
-): string {
-  const character = runtime.character as { name?: unknown; system?: unknown };
-  const value = character[field];
-  return typeof value === "string" ? value : "";
+  ownerEntityId: string | undefined,
+  params: Record<string, unknown>,
+): Promise<ActionResult> {
+  const updates = readSettingUpdates(params);
+  if (!updates.length) {
+    return fail(
+      "INVALID_PARAMETERS",
+      "SETTINGS set requires `key` + `value`, or an `updates: [{ key, value }]` array.",
+    );
+  }
+
+  if (!ownerEntityId) {
+    return fail(
+      "NO_OWNER_ENTITY",
+      "SETTINGS set requires the calling message's entityId to resolve the owner world.",
+    );
+  }
+
+  const worlds = await findWorldsForOwner(
+    runtime,
+    ownerEntityId as Parameters<typeof findWorldsForOwner>[1],
+  );
+  const world = worlds?.find((w) => w.metadata?.settings);
+  if (!world) {
+    return fail(
+      "NO_OWNER_WORLD",
+      "No world with a settings registry was found for the calling owner.",
+    );
+  }
+
+  const salt = getSalt();
+  const rawSettings = world.metadata?.settings as WorldSettings | undefined;
+  const worldSettings = rawSettings
+    ? unsaltWorldSettings(rawSettings, salt)
+    : undefined;
+  if (!worldSettings) {
+    return fail(
+      "NO_SETTINGS_REGISTRY",
+      "The owner world has no settings registry.",
+    );
+  }
+
+  const registry = worldSettings.settings ?? {};
+  const next: Record<string, Setting> = { ...registry };
+  const applied: SettingUpdate[] = [];
+  const skipped: { key: string; reason: string }[] = [];
+
+  for (const update of updates) {
+    const setting = next[update.key];
+    if (!setting) {
+      skipped.push({ key: update.key, reason: "UNKNOWN_KEY" });
+      continue;
+    }
+
+    if (setting.dependsOn?.length) {
+      const depsMet = setting.dependsOn.every(
+        (dep) => next[dep] && next[dep].value !== null,
+      );
+      if (!depsMet) {
+        skipped.push({ key: update.key, reason: "DEPENDENCY_NOT_MET" });
+        continue;
+      }
+    }
+
+    next[update.key] = { ...setting, value: update.value };
+    applied.push(update);
+
+    if (typeof setting.onSetAction === "function") {
+      setting.onSetAction(update.value);
+    }
+  }
+
+  if (!applied.length) {
+    return fail("NO_VALID_UPDATES", "No valid setting updates were applied.", {
+      skipped,
+    });
+  }
+
+  const merged: WorldSettings = { ...worldSettings, settings: next };
+  if (!world.metadata) world.metadata = {};
+  world.metadata.settings = saltWorldSettings(merged, salt);
+
+  try {
+    await runtime.updateWorld(world);
+  } catch (err) {
+    logger.error(
+      {
+        error: err instanceof Error ? err.stack : String(err),
+        worldId: world.id,
+      },
+      "[SETTINGS] set failed to persist world settings",
+    );
+    return fail(
+      "SETTINGS_SET_FAILED",
+      `Failed to persist setting updates: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  return ok(
+    `Updated ${applied.length} setting${applied.length === 1 ? "" : "s"}.`,
+    {
+      op: "set",
+      applied,
+      skipped,
+      worldId: world.id,
+    },
+  );
 }
 
-// ── UPDATE_IDENTITY ──────────────────────────────────────────────────────
+// ── Action ───────────────────────────────────────────────────────────────
 
-interface UpdateIdentityParams {
-  name?: string;
-  system?: string;
-}
-
-export const updateIdentityAction: Action = {
-  name: "UPDATE_IDENTITY",
+export const settingsAction: Action = {
+  name: "SETTINGS",
   contexts: ["settings", "admin", "agent_internal"],
   roleGate: { minRole: "OWNER" },
-
   similes: [
-    "SET_IDENTITY",
-    "UPDATE_AGENT_NAME",
-    "UPDATE_SYSTEM_PROMPT",
-    "SET_AGENT_NAME",
-    "SET_SYSTEM_PROMPT",
-    "RENAME_AGENT",
+    // Old leaf action names
+    "UPDATE_AI_PROVIDER",
+    "TOGGLE_CAPABILITY",
+    "TOGGLE_AUTO_TRAINING",
+    "SET_USER_NAME",
+    "SET_OWNER_NAME",
+    "UPDATE_OWNER_NAME",
+    // Common aliases
+    "REMEMBER_NAME",
+    "SAVE_NAME",
+    "SET_NAME",
   ],
-
   description:
-    "Update the agent's display name and/or system prompt. Mirrors the " +
-    "Basics section of the Settings page. At least one of `name` or " +
-    "`system` must be provided. The change is persisted to runtime " +
-    "character, agent metadata, and the on-disk config.",
+    "Owner-only polymorphic settings mutation. Dispatches on `action` to update " +
+    "AI provider, toggle a capability, toggle/configure auto-training, set " +
+    "the owner display name, or write to the world's settings registry.",
   descriptionCompressed:
-    "update agent display name and/or system prompt mirror Basics section Settings page least one name system provide change persist runtime character, agent metadata, on-disk config",
+    "owner-only settings mutation dispatch on action update AI provider, toggle capability, toggle/configure auto-train, set owner display name, write world settings registry",
 
   validate: async () => true,
 
-  handler: async (runtime, _message, _state, options) => {
-    const params = (options as HandlerOptions | undefined)?.parameters as
-      | UpdateIdentityParams
-      | undefined;
-
-    const name = trimToString(params?.name, IDENTITY_NAME_MAX_LENGTH);
-    const systemPrompt = trimToString(
-      params?.system,
-      IDENTITY_SYSTEM_MAX_LENGTH,
-    );
-
-    if (!name && !systemPrompt) {
-      return {
-        text: "Either `name` or `system` must be provided to UPDATE_IDENTITY.",
-        success: false,
-        data: { error: "MISSING_PARAMETERS" },
-      };
-    }
-
-    const previousName = readCharacterField(runtime, "name");
-    const previousSystem = readCharacterField(runtime, "system");
-
-    const character = runtime.character as { name?: string; system?: string };
-    if (name) character.name = name;
-    if (systemPrompt) character.system = systemPrompt;
-
-    const persistence = getCharacterPersistenceService(runtime);
-    if (!persistence) {
-      // Roll back the in-memory mutation so we don't drift from disk.
-      if (name) character.name = previousName;
-      if (systemPrompt) character.system = previousSystem;
-      return {
-        text: "Character persistence service is not available.",
-        success: false,
-        data: { error: "PERSISTENCE_SERVICE_UNAVAILABLE" },
-      };
-    }
-
-    const result = await persistence.persistCharacter({
-      previousName,
-      source: "agent",
-    });
-
-    if (!result.success) {
-      if (name) character.name = previousName;
-      if (systemPrompt) character.system = previousSystem;
-      return {
-        text: `Failed to persist identity: ${result.error ?? "unknown error"}`,
-        success: false,
-        data: { error: "PERSIST_FAILED", detail: result.error },
-      };
-    }
-
-    const updated: Record<string, string> = {};
-    if (name) updated.name = name;
-    if (systemPrompt) updated.system = systemPrompt;
-
-    return {
-      text: name
-        ? `Identity updated. Name is now ${name}.`
-        : "System prompt updated.",
-      success: true,
-      data: { updated },
-    };
-  },
-
   parameters: [
     {
-      name: "name",
-      description: "New display name for the agent (optional).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "system",
-      description:
-        "New system prompt for the agent. Replaces the previous prompt entirely (optional).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-  ],
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Rename yourself to Atlas." },
-      },
-      {
-        name: "{{agentName}}",
-        content: { text: "Identity updated. Name is now Atlas." },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Update your system prompt to focus on technical research.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: { text: "System prompt updated." },
-      },
-    ],
-  ] as ActionExample[][],
-};
-
-// ── UPDATE_AI_PROVIDER ───────────────────────────────────────────────────
-
-interface UpdateAiProviderParams {
-  provider?: string;
-  apiKey?: string;
-  modelConfigs?: Record<string, unknown>;
-}
-
-export const updateAiProviderAction: Action = {
-  name: "UPDATE_AI_PROVIDER",
-  contexts: ["settings", "secrets", "admin"],
-  roleGate: { minRole: "OWNER" },
-
-  similes: [
-    "SWITCH_PROVIDER",
-    "SET_AI_PROVIDER",
-    "CHANGE_PROVIDER",
-    "SET_LLM_PROVIDER",
-    "SWITCH_AI_PROVIDER",
-  ],
-
-  description:
-    "Switch the active AI/LLM provider (e.g. anthropic, openai, " +
-    "openrouter, gemini, groq, ollama, elizacloud). Mirrors the Providers " +
-    "section of the Settings page. Optionally accepts an API key and " +
-    "model overrides. The runtime restarts to pick up the new provider.",
-  descriptionCompressed:
-    "switch active AI/LLM provider (e g anthropic, openai, openrouter, gemini, groq, ollama, elizacloud) mirror Providers section Settings page optionally accept API key model override runtime restart pick up new provider",
-
-  validate: async () => true,
-
-  handler: async (_runtime, _message, _state, options) => {
-    const params = (options as HandlerOptions | undefined)?.parameters as
-      | UpdateAiProviderParams
-      | undefined;
-
-    const rawProvider = params?.provider;
-    if (typeof rawProvider !== "string" || !rawProvider.trim()) {
-      return {
-        text: "UPDATE_AI_PROVIDER requires a `provider` (e.g. anthropic, openai, elizacloud).",
-        success: false,
-        data: { error: "MISSING_PROVIDER" },
-      };
-    }
-
-    const normalizedProvider = normalizeOnboardingProviderId(rawProvider);
-    if (!normalizedProvider) {
-      return {
-        text: `Unknown AI provider: ${rawProvider}. Use one from the onboarding catalog (anthropic, openai, openrouter, gemini, grok, groq, deepseek, mistral, together, ollama, zai, elizacloud).`,
-        success: false,
-        data: { error: "UNKNOWN_PROVIDER", provider: rawProvider },
-      };
-    }
-
-    const apiKey = trimToString(params?.apiKey, PROVIDER_API_KEY_MAX_LENGTH);
-
-    // modelConfigs maps slot → model id (e.g. { large: "claude-sonnet-4.6" })
-    const modelConfigs =
-      params?.modelConfigs &&
-      typeof params.modelConfigs === "object" &&
-      !Array.isArray(params.modelConfigs)
-        ? (params.modelConfigs as Record<string, unknown>)
-        : null;
-    const primaryModel = trimToString(
-      modelConfigs?.primary ?? modelConfigs?.large,
-      256,
-    );
-
-    const config = loadElizaConfig();
-
-    let connection:
-      | ReturnType<typeof createProviderSwitchConnection>
-      | {
-          kind: "cloud-managed";
-          cloudProvider: "elizacloud";
-          apiKey?: string;
-        }
-      | null;
-    if (normalizedProvider === "elizacloud") {
-      connection = {
-        kind: "cloud-managed" as const,
-        cloudProvider: "elizacloud" as const,
-        ...(apiKey ? { apiKey } : {}),
-      };
-    } else {
-      connection = createProviderSwitchConnection({
-        provider: normalizedProvider,
-        ...(apiKey ? { apiKey } : {}),
-        ...(primaryModel ? { primaryModel } : {}),
-      });
-    }
-
-    if (!connection) {
-      return {
-        text: `Failed to build provider switch connection for ${normalizedProvider}.`,
-        success: false,
-        data: { error: "INVALID_PROVIDER", provider: normalizedProvider },
-      };
-    }
-
-    try {
-      await applyOnboardingConnectionConfig(config, connection);
-
-      // Apply caller-supplied model slot overrides on top of the connection.
-      if (modelConfigs) {
-        const models = (config.models ?? {}) as Record<string, unknown>;
-        for (const slot of [
-          "nano",
-          "small",
-          "medium",
-          "large",
-          "mega",
-        ] as const) {
-          const value = trimToString(modelConfigs[slot], 256);
-          if (value) models[slot] = value;
-        }
-        config.models = models;
-      }
-
-      saveElizaConfig(config);
-    } catch (err) {
-      logger.error(
-        { error: err instanceof Error ? err.stack : String(err) },
-        "[settings-actions] UPDATE_AI_PROVIDER failed",
-      );
-      return {
-        text: `Failed to apply provider config: ${err instanceof Error ? err.message : String(err)}`,
-        success: false,
-        data: { error: "APPLY_FAILED" },
-      };
-    }
-
-    const providerOption = getOnboardingProviderOption(normalizedProvider);
-    return {
-      text: `Switched AI provider to ${providerOption?.name ?? normalizedProvider}. Restart the agent to load the new provider.`,
-      success: true,
-      data: {
-        provider: normalizedProvider,
-        providerName: providerOption?.name ?? normalizedProvider,
-        primaryModel,
-        requiresRestart: true,
-      },
-    };
-  },
-
-  parameters: [
-    {
-      name: "provider",
-      description:
-        "AI provider id (e.g. 'anthropic', 'openai', 'openrouter', 'gemini', 'grok', 'groq', 'deepseek', 'mistral', 'together', 'ollama', 'zai', 'elizacloud').",
+      name: "action",
+      description: `Operation discriminator. One of: ${SETTINGS_OPS.join(", ")}.`,
       required: true,
       schema: { type: "string" as const },
     },
     {
-      name: "apiKey",
+      name: "provider",
       description:
-        "Optional API key for the new provider. Persisted to the provider's signal env key.",
+        "[update_ai_provider] AI provider id (anthropic, openai, openrouter, gemini, grok, groq, deepseek, mistral, together, ollama, zai, elizacloud).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "apiKey",
+      description: "[update_ai_provider] Optional API key for the provider.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "modelConfigs",
       description:
-        "Optional model slot overrides — supply any of `nano`, `small`, `medium`, `large`, `mega`, or `primary`/`large` for the headline model.",
+        "[update_ai_provider] Optional model slot overrides — `nano|small|medium|large|mega` or `primary`.",
       required: false,
       schema: { type: "object" as const },
     },
+    {
+      name: "capability",
+      description: `[toggle_capability] Capability key. One of: ${CAPABILITY_KEYS.join(", ")}.`,
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "enabled",
+      description: "[toggle_capability | toggle_training] Boolean enable flag.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "threshold",
+      description:
+        "[toggle_training] Optional positive integer — trajectories per task that triggers a run.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "cooldownHours",
+      description:
+        "[toggle_training] Optional non-negative number — minimum hours between runs for the same task.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "name",
+      description: `[set_owner_name] New owner display name (1–${OWNER_NAME_MAX_LENGTH} chars after trim).`,
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "key",
+      description: "[set] Setting registry key.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "value",
+      description: "[set] Setting value (string | boolean | number).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "updates",
+      description: "[set] Optional array of `{ key, value }` for bulk writes.",
+      required: false,
+      schema: { type: "array" as const },
+    },
   ],
+
+  handler: async (runtime, message, _state, options) => {
+    const params = readParams(options as HandlerOptions | undefined);
+    const op = params.action ?? params.subaction ?? params.op;
+
+    switch (op) {
+      case "update_ai_provider":
+        return handleUpdateAiProvider(params);
+      case "toggle_capability":
+        return handleToggleCapability(params);
+      case "toggle_training":
+        return handleToggleTraining(params);
+      case "set_owner_name":
+        return handleSetOwnerName(params);
+      case "set":
+        return handleSet(runtime, message?.entityId, params);
+      default:
+        return fail(
+          "SETTINGS_INVALID",
+          `SETTINGS requires \`action\`. One of: ${SETTINGS_OPS.join(", ")}.`,
+          { op: typeof op === "string" ? op : null },
+        );
+    }
+  },
+
   examples: [
     [
       {
@@ -431,134 +662,6 @@ export const updateAiProviderAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Use Eliza Cloud as the LLM provider." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Switched AI provider to Eliza Cloud. Restart the agent to load the new provider.",
-        },
-      },
-    ],
-  ] as ActionExample[][],
-};
-
-// ── TOGGLE_CAPABILITY ────────────────────────────────────────────────────
-
-interface ToggleCapabilityParams {
-  capability?: string;
-  enabled?: boolean;
-}
-
-export const toggleCapabilityAction: Action = {
-  name: "TOGGLE_CAPABILITY",
-  contexts: ["settings", "admin", "agent_internal"],
-  roleGate: { minRole: "OWNER" },
-
-  similes: [
-    "ENABLE_CAPABILITY",
-    "DISABLE_CAPABILITY",
-    "SET_CAPABILITY",
-    "TOGGLE_FEATURE",
-    "ENABLE_FEATURE",
-    "DISABLE_FEATURE",
-  ],
-
-  description:
-    "Enable or disable a high-level capability surface (wallet, browser, " +
-    "computerUse). Mirrors the Capabilities section of the Settings page. " +
-    "Persists to `config.ui.capabilities.{capability}` so the preference " +
-    "survives restarts.",
-  descriptionCompressed:
-    "enable disable high-level capability surface (wallet, browser, computeruse) mirror Capabilities section Settings page persist config ui capability capability preference survive restart",
-
-  validate: async () => true,
-
-  handler: async (_runtime, _message, _state, options) => {
-    const params = (options as HandlerOptions | undefined)?.parameters as
-      | ToggleCapabilityParams
-      | undefined;
-
-    const capabilityValue = params?.capability;
-    if (!isCapabilityKey(capabilityValue)) {
-      return {
-        text: `Unknown capability: ${String(capabilityValue)}. Must be one of: ${CAPABILITY_KEYS.join(", ")}.`,
-        success: false,
-        data: {
-          error: "UNKNOWN_CAPABILITY",
-          allowed: [...CAPABILITY_KEYS],
-        },
-      };
-    }
-
-    if (typeof params?.enabled !== "boolean") {
-      return {
-        text: "TOGGLE_CAPABILITY requires `enabled: boolean`.",
-        success: false,
-        data: { error: "MISSING_ENABLED" },
-      };
-    }
-
-    const enabled = params.enabled;
-
-    try {
-      const config = loadElizaConfig() as Record<string, unknown>;
-      const ui = (
-        typeof config.ui === "object" &&
-        config.ui !== null &&
-        !Array.isArray(config.ui)
-          ? config.ui
-          : {}
-      ) as Record<string, unknown>;
-      const capabilities = (
-        typeof ui.capabilities === "object" &&
-        ui.capabilities !== null &&
-        !Array.isArray(ui.capabilities)
-          ? ui.capabilities
-          : {}
-      ) as Record<string, unknown>;
-
-      capabilities[capabilityValue] = enabled;
-      ui.capabilities = capabilities;
-      config.ui = ui;
-      saveElizaConfig(config as Parameters<typeof saveElizaConfig>[0]);
-    } catch (err) {
-      logger.error(
-        { error: err instanceof Error ? err.stack : String(err) },
-        "[settings-actions] TOGGLE_CAPABILITY failed",
-      );
-      return {
-        text: `Failed to persist capability toggle: ${err instanceof Error ? err.message : String(err)}`,
-        success: false,
-        data: { error: "PERSIST_FAILED" },
-      };
-    }
-
-    return {
-      text: `Capability ${capabilityValue} is now ${enabled ? "enabled" : "disabled"}.`,
-      success: true,
-      data: { capability: capabilityValue, enabled },
-    };
-  },
-
-  parameters: [
-    {
-      name: "capability",
-      description: `Capability key. One of: ${CAPABILITY_KEYS.join(", ")}.`,
-      required: true,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "enabled",
-      description: "True to enable the capability, false to disable it.",
-      required: true,
-      schema: { type: "boolean" as const },
-    },
-  ],
-  examples: [
-    [
-      {
-        name: "{{name1}}",
         content: { text: "Turn off the wallet capability." },
       },
       {
@@ -566,156 +669,6 @@ export const toggleCapabilityAction: Action = {
         content: { text: "Capability wallet is now disabled." },
       },
     ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Enable computer use." },
-      },
-      {
-        name: "{{agentName}}",
-        content: { text: "Capability computerUse is now enabled." },
-      },
-    ],
-  ] as ActionExample[][],
-};
-
-// UPDATE_VOICE_CONFIG is intentionally NOT defined here. The upstream
-// `setVoiceConfigAction` (`@elizaos/core` advanced-capabilities/personality)
-// already owns the canonical TTS-voice persistence path and lists
-// `UPDATE_VOICE_CONFIG`, `SET_VOICE`, `UPDATE_VOICE`, and similar names as
-// similes. Defining a second action here would create a duplicate handler
-// and conflict with the existing simile resolution. If the upstream action
-// is ever removed, port its handler into this file and re-introduce
-// `updateVoiceConfigAction`.
-
-// ── TOGGLE_AUTO_TRAINING ─────────────────────────────────────────────────
-
-interface ToggleAutoTrainingParams {
-  enabled?: boolean;
-  threshold?: number;
-  cooldownHours?: number;
-}
-
-export const toggleAutoTrainingAction: Action = {
-  name: "TOGGLE_AUTO_TRAINING",
-  contexts: ["settings", "admin", "agent_internal", "automation"],
-  roleGate: { minRole: "OWNER" },
-
-  similes: [
-    "ENABLE_AUTO_TRAINING",
-    "DISABLE_AUTO_TRAINING",
-    "SET_AUTO_TRAINING",
-    "CONFIGURE_AUTO_TRAINING",
-  ],
-
-  description:
-    "Enable or disable auto-training, and optionally tune the trigger " +
-    "threshold (trajectories per task) and cooldown (hours). Mirrors the " +
-    "Capabilities → Auto-training row in the Settings page.",
-  descriptionCompressed:
-    "enable disable auto-train, optionally tune trigger threshold (trajectory per task) cooldown (hour) mirror Capabilities Auto-training row Settings page",
-
-  validate: async () => true,
-
-  handler: async (_runtime, _message, _state, options) => {
-    const params = (options as HandlerOptions | undefined)?.parameters as
-      | ToggleAutoTrainingParams
-      | undefined;
-
-    if (typeof params?.enabled !== "boolean") {
-      return {
-        text: "TOGGLE_AUTO_TRAINING requires `enabled: boolean`.",
-        success: false,
-        data: { error: "MISSING_ENABLED" },
-      };
-    }
-
-    const threshold = params.threshold;
-    if (
-      threshold !== undefined &&
-      (!Number.isFinite(threshold) || threshold <= 0)
-    ) {
-      return {
-        text: "`threshold` must be a positive finite number when provided.",
-        success: false,
-        data: { error: "INVALID_THRESHOLD" },
-      };
-    }
-
-    const cooldownHours = params.cooldownHours;
-    if (
-      cooldownHours !== undefined &&
-      (!Number.isFinite(cooldownHours) || cooldownHours < 0)
-    ) {
-      return {
-        text: "`cooldownHours` must be a non-negative finite number when provided.",
-        success: false,
-        data: { error: "INVALID_COOLDOWN" },
-      };
-    }
-
-    let next: TrainingConfig;
-    try {
-      const { loadTrainingConfig, saveTrainingConfig } =
-        await loadTrainingConfigModule();
-      const current = loadTrainingConfig();
-      next = {
-        ...current,
-        autoTrain: params.enabled,
-        ...(threshold !== undefined
-          ? { triggerThreshold: Math.floor(threshold) }
-          : {}),
-        ...(cooldownHours !== undefined
-          ? { triggerCooldownHours: cooldownHours }
-          : {}),
-      };
-      saveTrainingConfig(next);
-    } catch (err) {
-      logger.error(
-        { error: err instanceof Error ? err.stack : String(err) },
-        "[settings-actions] TOGGLE_AUTO_TRAINING failed",
-      );
-      return {
-        text: `Failed to update auto-training config: ${err instanceof Error ? err.message : String(err)}`,
-        success: false,
-        data: { error: "PERSIST_FAILED" },
-      };
-    }
-
-    return {
-      text: `Auto-training is now ${next.autoTrain ? "enabled" : "disabled"} (threshold ${next.triggerThreshold}, cooldown ${next.triggerCooldownHours}h).`,
-      success: true,
-      data: {
-        autoTrain: next.autoTrain,
-        triggerThreshold: next.triggerThreshold,
-        triggerCooldownHours: next.triggerCooldownHours,
-      },
-    };
-  },
-
-  parameters: [
-    {
-      name: "enabled",
-      description: "True to enable auto-training, false to disable it.",
-      required: true,
-      schema: { type: "boolean" as const },
-    },
-    {
-      name: "threshold",
-      description:
-        "Optional positive integer — trajectory count per task that triggers a run.",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
-      name: "cooldownHours",
-      description:
-        "Optional non-negative number — minimum hours between consecutive runs for the same task.",
-      required: false,
-      schema: { type: "number" as const },
-    },
-  ],
-  examples: [
     [
       {
         name: "{{name1}}",
@@ -731,16 +684,12 @@ export const toggleAutoTrainingAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: {
-          text: "Disable auto-training for now.",
-        },
+        content: { text: "Change my display name to Sam." },
       },
       {
         name: "{{agentName}}",
-        content: {
-          text: "Auto-training is now disabled (threshold 100, cooldown 12h).",
-        },
+        content: { text: 'Owner name set to "Sam".' },
       },
     ],
-  ] as ActionExample[][],
+  ],
 };

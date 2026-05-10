@@ -35,9 +35,9 @@ export default scenario({
       text: "Give me the daily brief with these sections in order: Actions First, Today's Schedule, Unread By Channel, Overdue Follow-Ups, Documents And Forms. Use my connected inbox and calendar plus the recent cross-channel context already in scope.",
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
-          "TRIAGE_MESSAGES",
+          "MESSAGE",
           "CALENDAR",
-          "SEARCH_MESSAGES",
+          "MESSAGE",
           "RELATIONSHIP",
         ],
         description: "strict cross-channel morning brief generation",
@@ -68,18 +68,18 @@ export default scenario({
     {
       type: "selectedAction",
       actionName: [
-        "TRIAGE_MESSAGES",
+        "MESSAGE",
         "CALENDAR",
-        "SEARCH_MESSAGES",
+        "MESSAGE",
         "RELATIONSHIP",
       ],
     },
     {
       type: "selectedActionArguments",
       actionName: [
-        "TRIAGE_MESSAGES",
+        "MESSAGE",
         "CALENDAR",
-        "SEARCH_MESSAGES",
+        "MESSAGE",
         "RELATIONSHIP",
       ],
       includesAny: [
@@ -104,9 +104,9 @@ export default scenario({
       name: "ea-daily-brief-cross-channel-action-coverage",
       predicate: expectScenarioToCallAction({
         acceptedActions: [
-          "TRIAGE_MESSAGES",
+          "MESSAGE",
           "CALENDAR",
-          "SEARCH_MESSAGES",
+          "MESSAGE",
           "RELATIONSHIP",
         ],
         description: "strict cross-channel morning brief generation",

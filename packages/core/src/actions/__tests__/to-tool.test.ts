@@ -31,7 +31,7 @@ describe("actionToTool", () => {
 			options: Array<{ label: string; value: string }>;
 		};
 		const action = makeAction({
-			name: "SEARCH_KNOWLEDGE",
+			name: "DOCUMENT",
 			description: "Search indexed knowledge",
 			descriptionCompressed: "Search knowledge",
 			parameters: [
@@ -56,7 +56,7 @@ describe("actionToTool", () => {
 		expect(tool).toEqual({
 			type: "function",
 			function: {
-				name: "SEARCH_KNOWLEDGE",
+				name: "DOCUMENT",
 				description: "Search knowledge",
 				strict: true,
 				parameters: {
@@ -102,7 +102,7 @@ describe("actionToTool", () => {
 							title: {
 								type: "string",
 								required: true,
-							} as unknown as ActionParameterSchema,
+							} as ActionParameterSchema,
 							metadata: {
 								type: "object",
 								properties: {
@@ -146,8 +146,8 @@ describe("actionToTool", () => {
 	});
 
 	it("rejects names that are not strict native tool names", () => {
-		expect(() => actionToTool(makeAction({ name: "searchKnowledge" }))).toThrow(
-			/Invalid tool name 'searchKnowledge'/,
+		expect(() => actionToTool(makeAction({ name: "searchDocuments" }))).toThrow(
+			/Invalid tool name 'searchDocuments'/,
 		);
 		expect(() => actionToTool(makeAction({ name: "1_SEARCH" }))).toThrow(
 			/must match/,

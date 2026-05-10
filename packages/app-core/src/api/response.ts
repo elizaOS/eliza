@@ -1,10 +1,3 @@
-/**
- * Shared HTTP JSON response helpers for the app API layer.
- *
- * Consolidates the `sendJson` / `sendJsonError` / `sendJsonResponse` pattern
- * that was independently defined in server.ts, cloud-routes.ts, and others.
- */
-
 import type http from "node:http";
 
 function scrubStackFields(value: unknown): unknown {
@@ -16,16 +9,17 @@ function scrubStackFields(value: unknown): unknown {
   }
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (k === "stack" || k === "stackTrace") continue;
-      out[k] = scrubStackFields(v);
+    for (const [key, nested] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      if (key === "stack" || key === "stackTrace") continue;
+      out[key] = scrubStackFields(nested);
     }
     return out;
   }
   return value;
 }
 
-/** Send a JSON response. No-op if headers already sent. */
 export function sendJson(
   res: http.ServerResponse,
   status: number,
@@ -37,7 +31,6 @@ export function sendJson(
   res.end(JSON.stringify(scrubStackFields(body)));
 }
 
-/** Send a JSON `{ error: message }` response. */
 export function sendJsonError(
   res: http.ServerResponse,
   status: number,

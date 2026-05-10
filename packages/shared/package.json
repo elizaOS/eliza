@@ -1,9 +1,9 @@
 {
   "name": "@elizaos/shared",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Shared code for Eliza agent and app-core.",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "./dist/index.js",
   "license": "MIT",
   "homepage": "https://github.com/elizaOS/eliza",
   "repository": {
@@ -34,60 +34,25 @@
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
-    "build:dist": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/shared",
+    "build:dist": "node ../../scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/shared",
     "pack:dry-run": "cd dist && npm pack --dry-run"
   },
   "exports": {
-    ".": "./src/index.ts",
-    "./app-hero-art": "./src/app-hero-art.ts",
-    "./connectors": "./src/connectors.ts",
-    "./env-utils": "./src/env-utils.ts",
-    "./format-error": "./src/format-error.ts",
-    "./runtime-env": "./src/runtime-env.ts",
-    "./contracts": "./src/contracts/index.ts",
-    "./contracts/app-permissions": "./src/contracts/app-permissions.ts",
-    "./contracts/apps": "./src/contracts/apps.ts",
-    "./contracts/awareness": "./src/contracts/awareness.ts",
-    "./contracts/config": "./src/contracts/config.ts",
-    "./contracts/drop": "./src/contracts/drop.ts",
-    "./contracts/lifeops": "./src/contracts/lifeops.ts",
-    "./contracts/onboarding": "./src/contracts/onboarding.ts",
-    "./contracts/permissions": "./src/contracts/permissions.ts",
-    "./contracts/service-routing": "./src/contracts/service-routing.ts",
-    "./contracts/verification": "./src/contracts/verification.ts",
-    "./contracts/content-pack": "./src/contracts/content-pack.ts",
-    "./contracts/theme": "./src/contracts/theme.ts",
-    "./themes": "./src/themes/index.ts",
-    "./themes/presets": "./src/themes/presets.ts",
-    "./contracts/wallet": "./src/contracts/wallet.ts",
-    "./config": "./src/config/types.ts",
-    "./config/types.agent-defaults": "./src/config/types.agent-defaults.ts",
-    "./config/types.agents": "./src/config/types.agents.ts",
-    "./config/types.eliza": "./src/config/types.eliza.ts",
-    "./config/types.gateway": "./src/config/types.gateway.ts",
-    "./config/types.hooks": "./src/config/types.hooks.ts",
-    "./config/types.messages": "./src/config/types.messages.ts",
-    "./config/types.tools": "./src/config/types.tools.ts",
-    "./awareness": "./src/awareness/index.ts",
-    "./restart": "./src/restart.ts",
-    "./self-edit": "./src/self-edit.ts",
-    "./spoken-text": "./src/spoken-text.ts",
-    "./eliza-core-roles": "./src/eliza-core-roles.ts",
-    "./validation-keywords": "./src/validation-keywords.ts",
-    "./onboarding-presets": "./src/onboarding-presets.ts",
-    "./dev-settings-table": "./src/dev-settings-table.ts",
-    "./dev-settings-banner-style": "./src/dev-settings-banner-style.ts",
-    "./dev-settings-figlet-heading": "./src/dev-settings-figlet-heading.ts",
-    "./recent-messages-state": "./src/recent-messages-state.ts",
-    "./type-guards": "./src/type-guards.ts",
-    "./contracts/lifeops-extensions": "./src/contracts/lifeops-extensions.ts"
+    ".": {
+      "import": "./dist/index.js",
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./dev-settings-figlet-heading": "./dist/dev-settings-figlet-heading.js"
   },
   "publishConfig": {
     "access": "public",
     "directory": "dist"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
+    "chalk": "^5.3.0",
+    "drizzle-orm": "0.45.2",
     "zod": "^4.4.3"
   },
   "optionalDependencies": {
@@ -96,6 +61,7 @@
   "devDependencies": {
     "@types/figlet": "^1.7.0",
     "bun-types": "^1.3.12",
-    "typescript": "^6.0.0"
-  }
+    "typescript": "^6.0.3"
+  },
+  "types": "./dist/index.d.ts"
 }

@@ -22,7 +22,7 @@
  */
 
 import { getOnboardingProviderFamily } from "@elizaos/shared";
-import type { OperationIntent, ReloadTier } from "./types.js";
+import type { OperationIntent, ReloadTier } from "./types.ts";
 
 export interface ClassifyContext {
   currentProvider?: string;

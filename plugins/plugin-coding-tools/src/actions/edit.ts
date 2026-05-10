@@ -83,9 +83,7 @@ export const editAction: Action = {
       schema: { type: "boolean" },
     },
   ],
-  validate: async (runtime: IAgentRuntime) => {
-    return true;
-  },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -135,7 +133,7 @@ export const editAction: Action = {
     }
 
     const validated = await sandbox.validatePath(conversationId, filePath);
-    if (!validated.ok) {
+    if (validated.ok === false) {
       const reason =
         validated.reason === "blocked" ? "path_blocked" : "invalid_param";
       return failureToActionResult({ reason, message: validated.message });
@@ -144,7 +142,7 @@ export const editAction: Action = {
     const resolved = validated.resolved;
 
     const gate = await fileState.assertWritable(conversationId, resolved);
-    if (!gate.ok) {
+    if (gate.ok === false) {
       const reason =
         gate.reason === "stale_read" ? "stale_read" : "invalid_param";
       return failureToActionResult({ reason, message: gate.message });
@@ -216,4 +214,42 @@ export const editAction: Action = {
       firstLine,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "In src/server.ts replace 'port = 3000' with 'port = process.env.PORT ?? 3000'.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Edited src/server.ts (1 replacement).",
+          actions: ["EDIT"],
+          thought:
+            "Single in-place text replacement maps to EDIT with path, oldText, and newText.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Replace every TODO comment in lib/handler.ts with FIXME.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Edited lib/handler.ts (4 replacements).",
+          actions: ["EDIT"],
+          thought:
+            "Multi-occurrence replacement maps to EDIT with replaceAll=true plus the matching oldText / newText.",
+        },
+      },
+    ],
+  ],
 };

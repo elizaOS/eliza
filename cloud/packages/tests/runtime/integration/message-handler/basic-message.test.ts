@@ -10,6 +10,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mcpTestCharacter } from "../../../fixtures/mcp-test-character";
 import {
+  AgentMode,
   cleanupTestData,
   // Test data
   createTestDataSet,
@@ -66,7 +67,7 @@ describe.skipIf(skipLiveModelSuite)("Message Handler - Basic Message Processing"
       creditBalance: 1000.0,
       includeCharacter: true,
       characterName: "Mira",
-      characterData: mcpTestCharacter as unknown as Record<string, unknown>,
+      characterData: { ...mcpTestCharacter },
       characterSettings: mcpTestCharacter.settings as Record<string, unknown>,
     });
     console.log("Test data created");
@@ -94,7 +95,7 @@ describe.skipIf(skipLiveModelSuite)("Message Handler - Basic Message Processing"
     testRuntimeResult = await createTestRuntime({
       testData,
       characterId: testData.character?.id,
-      agentMode: "ASSISTANT" as any,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
 

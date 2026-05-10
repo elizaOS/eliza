@@ -6,6 +6,7 @@ import {
   type State,
 } from "@elizaos/core";
 import type { BotState } from "../sdk/types.js";
+import { getRs2004scapeEventLogService } from "./service-access.js";
 
 interface Goal {
   priority: "IMMEDIATE" | "SHORT_TERM" | "MEDIUM_TERM" | "EXPLORE";
@@ -171,10 +172,7 @@ export const goalsProvider: Provider = {
     _state: State,
   ): Promise<ProviderResult> {
     try {
-      const service = runtime.getService("rs_2004scape") as unknown as {
-        getBotState(): BotState | null;
-        getEventLog(): Array<{ action: string; timestamp: number }>;
-      } | null;
+      const service = getRs2004scapeEventLogService(runtime);
       const state = service?.getBotState?.();
       if (!state?.connected || !state.inGame || !state.player) {
         return {

@@ -1,4 +1,4 @@
-import type { JSONSchema7 } from "json-schema";
+import type { JSONSchema7, JSONSchema7Definition } from "json-schema";
 
 export type ModelProvider = "openai" | "anthropic" | "google" | "openrouter" | "unknown";
 
@@ -106,9 +106,10 @@ export abstract class McpToolCompatibility {
     const processed = { ...schema };
 
     for (const key of ["oneOf", "anyOf", "allOf"] as const) {
-      if (Array.isArray(schema[key])) {
-        (processed as Record<string, unknown>)[key] = schema[key]!.map((s: any) =>
-          typeof s === "object" ? this.processSchema(s as JSONSchema7) : s,
+      const variants = schema[key];
+      if (Array.isArray(variants)) {
+        processed[key] = variants.map((subschema: JSONSchema7Definition) =>
+          typeof subschema === "object" ? this.processSchema(subschema) : subschema,
         );
       }
     }

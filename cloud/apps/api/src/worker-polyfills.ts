@@ -34,14 +34,19 @@ class FinalizationRegistryPolyfill {
   unregister(_unregisterToken: object): void {}
 }
 
-const root = globalThis as unknown as Record<string, unknown>;
+const root: typeof globalThis & {
+  MessagePort?: unknown;
+  MessageChannel?: unknown;
+  FinalizationRegistry?: unknown;
+} = globalThis;
 
 if (root.MessagePort === undefined) {
-  root.MessagePort = MessagePortPolyfill;
+  root.MessagePort = MessagePortPolyfill as unknown as typeof MessagePort;
 }
 if (root.MessageChannel === undefined) {
-  root.MessageChannel = MessageChannelPolyfill;
+  root.MessageChannel = MessageChannelPolyfill as unknown as typeof MessageChannel;
 }
 if (root.FinalizationRegistry === undefined) {
-  root.FinalizationRegistry = FinalizationRegistryPolyfill;
+  root.FinalizationRegistry =
+    FinalizationRegistryPolyfill as unknown as typeof FinalizationRegistry;
 }

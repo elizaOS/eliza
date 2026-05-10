@@ -1,0 +1,32 @@
+{
+  "$schema": "../profile-config.schema.json",
+  "description": "Host Metal profiling matrix (macOS / Apple Silicon). Profiles Eliza-1 on Metal with supported KV-cache settings.",
+  "models": ["eliza-1-mobile-1_7b", "eliza-1-desktop-9b"],
+  "kvCacheConfigs": [
+    { "name": "baseline-fp16", "k": "f16", "v": "f16" },
+    { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" }
+  ],
+  "dflashConfigs": [
+    { "name": "no-dflash", "drafter": null },
+    { "name": "no-drafter", "drafter": null }
+  ],
+  "prompts": [
+    {
+      "id": "short-q",
+      "text": "What is the capital of France?",
+      "maxTokens": 50
+    },
+    {
+      "id": "med-reason",
+      "text": "Explain in three sentences why the sky is blue.",
+      "maxTokens": 120
+    },
+    {
+      "id": "long-gen",
+      "text": "Write a 200-word story about a small robot who wants to learn to paint.",
+      "maxTokens": 250
+    }
+  ],
+  "iterations": 3,
+  "warmupIterations": 1
+}

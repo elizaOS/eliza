@@ -18,7 +18,7 @@ import { logger } from "@elizaos/core";
 import {
 	type AppPermissionsManifest,
 	parseAppPermissions,
-} from "@elizaos/shared/contracts/app-permissions";
+} from "@elizaos/shared";
 import { readStringOption } from "../params.js";
 import {
 	isProtected,

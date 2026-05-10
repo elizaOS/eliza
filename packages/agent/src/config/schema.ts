@@ -1,4 +1,4 @@
-import { VERSION } from "../runtime/version.js";
+import { VERSION } from "../runtime/version.ts";
 
 /** Known connector IDs for config schema generation. Keep in sync with runtime/plugin maps. */
 export const CONNECTOR_IDS = [
@@ -24,7 +24,7 @@ export const CONNECTOR_IDS = [
   "googlechat",
 ] as const;
 
-import { ElizaSchema } from "./zod-schema.js";
+import { ElizaSchema } from "./zod-schema.ts";
 
 export type ShowIfCondition = {
   field: string;
@@ -293,6 +293,9 @@ const FIELD_LABELS: Record<string, string> = {
   "tools.web.fetch.maxChars": "Web Fetch Max Chars",
   "tools.web.fetch.timeoutSeconds": "Web Fetch Timeout (sec)",
   "tools.web.fetch.cacheTtlMinutes": "Web Fetch Cache TTL (min)",
+  "tools.cache.enabled": "Enable Tool-Call Cache",
+  "tools.cache.memoryCapacity": "Tool Cache In-Memory Capacity",
+  "tools.cache.diskRoot": "Tool Cache Disk Root",
   "tools.web.fetch.maxRedirects": "Web Fetch Max Redirects",
   "tools.web.fetch.userAgent": "Web Fetch User-Agent",
   "gateway.controlUi.basePath": "Control UI Base Path",
@@ -624,6 +627,12 @@ const FIELD_HELP: Record<string, string> = {
     "Timeout in seconds for web_fetch requests.",
   "tools.web.fetch.cacheTtlMinutes":
     "Cache TTL in minutes for web_fetch results.",
+  "tools.cache.enabled":
+    "Enable the cross-tool call cache (default: enabled). Caches results of cacheable tools (web_search, web_fetch, file_read, rag_search, knowledge_lookup) by canonicalized argument hash to a two-tier in-memory + on-disk store. Side-effect tools never cache.",
+  "tools.cache.memoryCapacity":
+    "In-memory LRU capacity for the tool-call cache. Default 1000.",
+  "tools.cache.diskRoot":
+    "Override the on-disk root for the tool-call cache. Default: ~/.milady/tool-cache.",
   "tools.web.fetch.maxRedirects":
     "Maximum redirects allowed for web_fetch (default: 3).",
   "tools.web.fetch.userAgent":
@@ -730,11 +739,11 @@ const FIELD_HELP: Record<string, string> = {
   "agents.defaults.memorySearch.cache.enabled":
     "Cache chunk embeddings in SQLite to speed up reindexing and frequent updates (default: true).",
   "embedding.model":
-    "GGUF model filename for local embeddings (default: bge-small-en-v1.5.Q4_K_M.gguf).",
+    "GGUF model filename for local embeddings (default: text/eliza-1-lite-0_6b-32k.gguf).",
   "embedding.modelRepo":
-    "HuggingFace repo for auto-downloading the embedding model (default: ChristianAzinn/bge-small-en-v1.5-gguf).",
+    "HuggingFace repo for auto-downloading the embedding model (default: elizaos/eliza-1-lite-0_6b).",
   "embedding.dimensions":
-    "Embedding vector dimensions (must match the model; default: 384).",
+    "Embedding vector dimensions (must match the model; default: 1024).",
   "embedding.contextSize":
     "Embedding context window size (must match the model; default inferred from selected model).",
   "embedding.gpuLayers":

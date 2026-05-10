@@ -9,15 +9,24 @@ sidecar. This module is the single source of truth for that surface.
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 from pathlib import Path
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping
 
 import torch
 import torch.nn as nn
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+
+if TYPE_CHECKING:
+    # Static-only import. ``PretrainedConfig`` is the upstream type for
+    # every HF causal-LM config (``model.config``); importing it eagerly
+    # would force transformers at import time even for tests that just
+    # want the helpers below. Behind ``TYPE_CHECKING`` mypy/pyright still
+    # see the strong type and reject helpers that misuse the config.
+    from transformers import PretrainedConfig
 
 log = logging.getLogger(__name__)
 
@@ -92,7 +101,19 @@ def write_sidecar(output_dir: Path, filename: str, payload: Mapping[str, object]
     return out
 
 
-def get_text_config(model_config: object) -> object:
+# Re-export from the zero-dep _kernel_manifest module so existing recipe
+# imports (`from _common import kernel_manifest_fragment`) keep working
+# while unit tests can import the helper without pulling in transformers.
+from _kernel_manifest import (  # noqa: E402,F401
+    KERNEL_BLOCK_LAYOUT_VERSIONS,
+    KERNEL_CODEBOOK_HASHES,
+    KERNEL_PER_BLOCK_TOLERANCE,
+    KERNEL_TARGETS,
+    kernel_manifest_fragment,
+)
+
+
+def get_text_config(model_config: "PretrainedConfig") -> "PretrainedConfig":
     """Return the text-decoder sub-config for hybrid VLM/decoder models, else
     ``model_config`` itself.
     """
@@ -102,24 +123,86 @@ def get_text_config(model_config: object) -> object:
     return model_config
 
 
-def head_dim_of(text_cfg: object) -> int:
+def head_dim_of(text_cfg: "PretrainedConfig") -> int:
     """Resolve head_dim from a text decoder config, falling back to
     ``hidden_size // num_attention_heads`` when ``head_dim`` isn't set.
     """
     explicit = getattr(text_cfg, "head_dim", None)
     if explicit:
         return int(explicit)
+    # ``hidden_size`` and ``num_attention_heads`` are required fields on
+    # any decoder config; fall through with a clear assertion so a wrong
+    # config type fails fast instead of raising AttributeError downstream.
+    assert hasattr(text_cfg, "hidden_size") and hasattr(
+        text_cfg, "num_attention_heads"
+    ), (
+        "head_dim_of requires a transformers PretrainedConfig with "
+        "hidden_size + num_attention_heads"
+    )
     return int(text_cfg.hidden_size // text_cfg.num_attention_heads)
 
 
-def full_attention_layer_indices(text_cfg: object) -> list[int]:
+def full_attention_layer_indices(text_cfg: "PretrainedConfig") -> list[int]:
     """Indices of ``full_attention`` layers (Qwen3.5/3.6 hybrid models),
     or ``range(num_hidden_layers)`` when ``layer_types`` is absent.
     """
     layer_types = getattr(text_cfg, "layer_types", None)
     if layer_types:
         return [i for i, t in enumerate(layer_types) if t == "full_attention"]
+    assert hasattr(text_cfg, "num_hidden_layers"), (
+        "full_attention_layer_indices requires a PretrainedConfig with "
+        "num_hidden_layers"
+    )
     return list(range(int(text_cfg.num_hidden_layers)))
+
+
+def add_quantization_cli_args(parser: argparse.ArgumentParser) -> None:
+    """Add the CLI flags shared by every ``*_apply.py`` recipe.
+
+    The shared surface (``--model``, ``--output``, ``--calibration``,
+    ``--calibration-samples``, ``--device``, ``--dry-run``) is identical
+    across turboquant, fused-turboquant, polarquant, qjl, and
+    abliteration. Recipe-specific flags (``--nbits``, ``--bits``,
+    ``--no-compress-v``, …) stay in each script so the help text in
+    ``--help`` accurately reflects which knobs that recipe accepts.
+    """
+    parser.add_argument(
+        "--model",
+        required=True,
+        help=(
+            "HF repo id or local path. LoRA adapter dirs are merged "
+            "automatically."
+        ),
+    )
+    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--calibration",
+        type=Path,
+        default=None,
+        help=(
+            "Optional JSONL of records with currentMessage.content for "
+            "calibration. Recipes that don't read it (fused-turboquant) "
+            "still validate the file exists when the flag is present."
+        ),
+    )
+    parser.add_argument("--calibration-samples", type=int, default=128)
+    parser.add_argument("--device", default="cuda")
+    parser.add_argument("--dry-run", action="store_true")
+
+
+def validate_quantization_args(args: argparse.Namespace) -> None:
+    """Cross-cut validation for the shared CLI args.
+
+    Currently:
+    - ``--device cuda`` requires CUDA on this host.
+    - ``--calibration PATH`` (when set) must point at an existing file.
+    """
+    if args.device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA requested but not available")
+    if args.calibration is not None and not args.calibration.exists():
+        raise FileNotFoundError(
+            f"--calibration path does not exist: {args.calibration}"
+        )
 
 
 def load_calibration_prompts(path: Path, n: int) -> list[str]:

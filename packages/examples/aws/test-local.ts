@@ -8,7 +8,7 @@
  */
 
 import type { APIGatewayProxyEventV2, Context } from "aws-lambda";
-import { handler } from "./handler";
+import { handler, shutdownRuntime } from "./handler";
 
 // Mock Lambda context
 const mockContext: Context = {
@@ -85,8 +85,7 @@ async function runTests(): Promise<void> {
   console.log(`   Body: ${healthResult.body}\n`);
 
   if (healthResult.statusCode !== 200) {
-    console.error("❌ Health check failed!");
-    process.exit(1);
+    throw new Error("Health check failed");
   }
   console.log("   ✅ Health check passed\n");
 
@@ -107,8 +106,7 @@ async function runTests(): Promise<void> {
     console.log(`   Duration: ${duration}ms`);
 
     if (chatResult.statusCode !== 200) {
-      console.error(`❌ Chat failed: ${chatResult.body}`);
-      process.exit(1);
+      throw new Error(`Chat failed: ${chatResult.body}`);
     }
 
     const response = JSON.parse(chatResult.body);
@@ -130,8 +128,7 @@ async function runTests(): Promise<void> {
   console.log(`   Status: ${invalidResult.statusCode}`);
 
   if (invalidResult.statusCode !== 400) {
-    console.error("❌ Validation test failed - expected 400");
-    process.exit(1);
+    throw new Error("Validation test failed - expected 400");
   }
   console.log("   ✅ Validation passed\n");
 
@@ -144,15 +141,20 @@ async function runTests(): Promise<void> {
   console.log(`   Status: ${notFoundResult.statusCode}`);
 
   if (notFoundResult.statusCode !== 404) {
-    console.error("❌ 404 test failed");
-    process.exit(1);
+    throw new Error("404 test failed");
   }
   console.log("   ✅ 404 handling passed\n");
 
   console.log("🎉 All tests passed with elizaOS runtime!");
 }
 
-runTests().catch((error) => {
-  console.error("Fatal error:", error);
-  process.exit(1);
-});
+runTests()
+  .then(async () => {
+    await shutdownRuntime();
+    process.exit(0);
+  })
+  .catch(async (error) => {
+    console.error("Fatal error:", error);
+    await shutdownRuntime();
+    process.exit(1);
+  });

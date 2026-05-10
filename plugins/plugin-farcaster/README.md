@@ -60,44 +60,22 @@ const agent = new AgentRuntime({
   // ... other config
 });
 ```
-# Load configuration from environment
-config = FarcasterConfig.from_env()
 
-# Create client
-async with FarcasterClient(config) as client:
-    # Send a cast
-    casts = await client.send_cast("Hello from elizaOS! 🤖")
-    print(f"Cast sent: {casts[0].hash}")
-```
 ## Actions
 
-### SEND_CAST
+Farcaster public posts are exposed through the primary `POST` action:
 
-Posts a new cast to Farcaster.
+- `POST operation=send` publishes a cast through the Farcaster PostConnector.
+- `POST operation=read` reads recent casts through the Farcaster PostConnector.
 
-```typescript
-// Triggered by messages containing: post, cast, share, announce, farcaster, post
-"Please post about the new ElizaOS features on Farcaster";
-```
-
-### REPLY_TO_CAST
-
-Replies to an existing cast.
-
-```typescript
-// Triggered by messages containing: reply, respond, answer, comment
-"Reply to that cast and thank them for the feedback";
-```
+Farcaster search is not advertised until the local Neynar client exposes a
+search primitive.
 
 ## Providers
 
 ### farcaster_profile
 
 Provides the agent's Farcaster profile information for context.
-
-### farcaster_timeline
-
-Provides the agent's recent timeline for context about recent activity.
 
 ### farcaster_thread
 

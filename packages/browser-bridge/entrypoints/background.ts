@@ -2,7 +2,7 @@ import type {
   BrowserBridgeAction,
   BrowserBridgeSettings,
 } from "@elizaos/plugin-browser";
-import type { LifeOpsBrowserSession } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsBrowserSession } from "@elizaos/shared";
 import { BrowserBridgeRelayClient, RelayApiError } from "../src/api-client";
 import type {
   BackgroundState,
@@ -153,6 +153,28 @@ function autoPairErrorMessage(
     return `${apiBaseUrl} does not expose browser-bridge auto-pair yet.`;
   }
   return error;
+}
+
+function isCompanionAuthError(error: unknown): error is RelayApiError {
+  if (!(error instanceof RelayApiError) || error.status !== 401) {
+    return false;
+  }
+  return (
+    error.code === null ||
+    error.code === "browser_bridge_companion_pairing_invalid" ||
+    error.code === "browser_bridge_companion_token_expired" ||
+    error.code === "browser_bridge_companion_token_revoked"
+  );
+}
+
+function companionAuthErrorMessage(error: RelayApiError): string {
+  if (error.code === "browser_bridge_companion_token_revoked") {
+    return "Pairing was revoked. Agent Browser Bridge will try to auto-pair again.";
+  }
+  if (error.code === "browser_bridge_companion_token_expired") {
+    return "Pairing expired. Agent Browser Bridge will try to auto-pair again.";
+  }
+  return "Pairing is no longer valid. Agent Browser Bridge will try to auto-pair again.";
 }
 
 function readAutoPairResponsePayload(
@@ -932,8 +954,7 @@ async function syncNow(reason: string): Promise<BackgroundState> {
       });
     }
   } catch (error) {
-    const isPairingInvalid =
-      error instanceof RelayApiError && error.status === 401;
+    const isPairingInvalid = isCompanionAuthError(error);
     if (isPairingInvalid) {
       syncScheduled = false;
       await clearCompanionConfig();
@@ -942,7 +963,7 @@ async function syncNow(reason: string): Promise<BackgroundState> {
       syncing: false,
       ...(isPairingInvalid && { config: null, settingsSummary: null }),
       lastError: isPairingInvalid
-        ? "Pairing expired. Agent Browser Bridge will try to auto-pair again."
+        ? companionAuthErrorMessage(error)
         : `${reason}: ${error instanceof Error ? error.message : String(error)}`,
     });
   } finally {

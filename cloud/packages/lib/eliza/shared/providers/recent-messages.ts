@@ -14,6 +14,21 @@ import {
 } from "@elizaos/core";
 import { isVisibleDialogueMessage } from "@/lib/types/message-content";
 
+interface EntityWithLegacyData extends Entity {
+  data?: unknown;
+}
+
+interface RecentMessagesMemoryService {
+  getConfig?: () => {
+    shortTermSummarizationThreshold: number;
+    shortTermRetainRecent: number;
+  };
+  hasStorage?: () => boolean;
+  getCurrentSessionSummary?: (
+    roomId: Memory["roomId"],
+  ) => Promise<{ lastMessageOffset?: number } | null>;
+}
+
 /**
  * Helper to extract the display name from an entity.
  * Priority order:
@@ -25,9 +40,10 @@ function getEntityDisplayName(entity: Entity): string {
   try {
     // Parse metadata if it's stored in data field as string
     let metadata: Record<string, unknown> | undefined;
+    const legacyData = (entity as EntityWithLegacyData).data;
 
-    if (typeof (entity as any).data === "string") {
-      metadata = JSON.parse((entity as any).data);
+    if (typeof legacyData === "string") {
+      metadata = JSON.parse(legacyData);
     } else if (entity.metadata) {
       metadata = entity.metadata as Record<string, unknown>;
     }
@@ -91,11 +107,11 @@ export const recentMessagesProvider: Provider = {
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     try {
-      const memoryService = runtime.getService("memory") as any;
+      const memoryService = runtime.getService("memory") as RecentMessagesMemoryService | null;
       const { roomId } = message;
 
       // Get configuration
-      const config = memoryService?.getConfig() || {
+      const config = memoryService?.getConfig?.() || {
         shortTermSummarizationThreshold: 16,
         shortTermRetainRecent: 6,
       };
@@ -109,7 +125,7 @@ export const recentMessagesProvider: Provider = {
 
       // Check if we have a summary to determine offset and whether to use summarization mode
       let hasSummary = false;
-      if (memoryService?.hasStorage?.()) {
+      if (memoryService?.hasStorage?.() && memoryService.getCurrentSessionSummary) {
         const currentSummary = await memoryService.getCurrentSessionSummary(roomId);
         if (currentSummary) {
           hasSummary = true;

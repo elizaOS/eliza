@@ -14,13 +14,13 @@ interface ClickData {
 }
 
 // Shader uniforms
-interface ShaderUniforms {
+type ShaderUniforms = NonNullable<THREE.ShaderMaterialParameters["uniforms"]> & {
   uResolution: { value: THREE.Vector2 };
   uTime: { value: number };
   uClickPos: { value: THREE.Vector2[] };
   uClickTimes: { value: number[] };
   uMousePos: { value: THREE.Vector2 };
-}
+};
 
 // Vertex shader - simple pass-through
 const vertexShader = `
@@ -237,7 +237,7 @@ function BayerDitheringMaterial({
       ref={materialRef}
       vertexShader={vertexShader}
       fragmentShader={fragmentShader}
-      uniforms={uniforms as any}
+      uniforms={uniforms}
     />
   );
 }

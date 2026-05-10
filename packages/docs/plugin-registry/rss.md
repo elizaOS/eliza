@@ -38,5 +38,5 @@ export RSS_POLL_INTERVAL="15"
 
 ## Related
 
-- [Knowledge Plugin](/plugin-registry/knowledge) — Store and query ingested content
+- [Knowledge Plugin](/plugin-registry/documents) — Store and query ingested content
 - [Cron Plugin](/plugin-registry/cron) — Schedule recurring agent tasks

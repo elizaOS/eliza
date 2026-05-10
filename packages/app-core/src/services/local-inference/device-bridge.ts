@@ -36,7 +36,10 @@ import path from "node:path";
 import type { Duplex } from "node:stream";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { LocalInferenceLoader } from "./active-model";
+import type {
+  LocalInferenceLoadArgs,
+  LocalInferenceLoader,
+} from "./active-model";
 import { localInferenceRoot } from "./paths";
 
 const DEFAULT_CALL_TIMEOUT_MS = 60_000;
@@ -47,13 +50,23 @@ const PENDING_LOG_FILENAME = "pending-requests.json";
 interface DeviceCapabilities {
   platform: "ios" | "android" | "web" | "electrobun" | "desktop";
   deviceModel: string;
+  machineId?: string;
+  osVersion?: string;
+  isSimulator?: boolean;
   totalRamGb: number;
+  availableRamGb?: number | null;
+  freeStorageGb?: number | null;
   cpuCores: number;
   gpu: {
     backend: "metal" | "vulkan" | "gpu-delegate" | "cuda";
     available: boolean;
     totalVramGb?: number;
   } | null;
+  gpuSupported?: boolean;
+  lowPowerMode?: boolean;
+  thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
+  dflashSupported?: boolean;
+  dflashReason?: string;
 }
 
 interface DeviceRegistration {
@@ -92,13 +105,7 @@ type DeviceOutbound =
   | { type: "pong"; at: number };
 
 type AgentOutbound =
-  | {
-      type: "load";
-      correlationId: string;
-      modelPath: string;
-      contextSize?: number;
-      useGpu?: boolean;
-    }
+  | ({ type: "load"; correlationId: string } & LocalInferenceLoadArgs)
   | { type: "unload"; correlationId: string }
   | {
       type: "generate";
@@ -107,6 +114,14 @@ type AgentOutbound =
       stopSequences?: string[];
       maxTokens?: number;
       temperature?: number;
+      /**
+       * Forwarded promptCacheKey from `ProviderCachePlan`. The receiving
+       * device's local-inference layer can use this to derive a stable
+       * slot_id (llama-server) or to look up a session in its session
+       * pool (node-llama-cpp). Old clients ignore the field; new clients
+       * get prefix-cache reuse across calls with the same key.
+       */
+      cacheKey?: string;
     }
   | { type: "embed"; correlationId: string; input: string }
   | { type: "ping"; at: number };
@@ -143,6 +158,30 @@ interface WssConstructor {
 interface WsModule {
   WebSocketServer: WssConstructor;
   WebSocket: WsConstructor;
+}
+
+function isWsModule(value: unknown): value is WsModule {
+  if (!value || typeof value !== "object") return false;
+  const WebSocketServer = Reflect.get(value, "WebSocketServer");
+  const WebSocket = Reflect.get(value, "WebSocket");
+  if (
+    typeof WebSocketServer !== "function" ||
+    typeof WebSocket !== "function"
+  ) {
+    return false;
+  }
+  return (
+    typeof Reflect.get(WebSocket, "OPEN") === "number" &&
+    typeof Reflect.get(WebSocket, "CLOSED") === "number"
+  );
+}
+
+async function importWsModule(): Promise<WsModule> {
+  const mod: unknown = await import("ws");
+  if (!isWsModule(mod)) {
+    throw new Error("ws module did not expose WebSocketServer/WebSocket");
+  }
+  return mod;
 }
 
 interface PendingLoad {
@@ -253,15 +292,28 @@ function scoreDevice(
       : cap.platform === "ios" || cap.platform === "android"
         ? 10
         : 0;
-  const ramScore = cap.totalRamGb * 2;
+  const usableRamGb =
+    typeof cap.availableRamGb === "number" && cap.availableRamGb > 0
+      ? Math.min(
+          cap.totalRamGb,
+          Math.max(cap.availableRamGb, cap.totalRamGb * 0.6),
+        )
+      : cap.totalRamGb;
+  const ramScore = usableRamGb * 2;
   const vramScore = cap.gpu?.available
     ? (cap.gpu.totalVramGb ?? cap.totalRamGb) * 5
     : 0;
+  const healthPenalty =
+    cap.lowPowerMode || cap.thermalState === "serious"
+      ? 15
+      : cap.thermalState === "critical"
+        ? 100
+        : 0;
   const loadedBonus =
     opts.preferLoadedPath && device.loadedPath === opts.preferLoadedPath
       ? 50
       : 0;
-  return platformBase + ramScore + vramScore + loadedBonus;
+  return platformBase + ramScore + vramScore + loadedBonus - healthPenalty;
 }
 
 export class DeviceBridge {
@@ -354,7 +406,7 @@ export class DeviceBridge {
 
   async attachToHttpServer(server: HttpServer): Promise<void> {
     if (this.wss) return;
-    const ws = (await import("ws")) as unknown as WsModule;
+    const ws = await importWsModule();
     const wss = new ws.WebSocketServer({
       noServer: true,
       maxPayload: 1024 * 1024,
@@ -707,11 +759,7 @@ export class DeviceBridge {
 
   // ── LocalInferenceLoader surface ──────────────────────────────────────
 
-  async loadModel(args: {
-    modelPath: string;
-    contextSize?: number;
-    useGpu?: boolean;
-  }): Promise<void> {
+  async loadModel(args: LocalInferenceLoadArgs): Promise<void> {
     const best = this.pickBestDevice({ preferLoadedPath: args.modelPath });
     if (!best) {
       throw new Error(
@@ -739,9 +787,7 @@ export class DeviceBridge {
         this.sendToDevice(best.deviceId, {
           type: "load",
           correlationId,
-          modelPath: args.modelPath,
-          contextSize: args.contextSize,
-          useGpu: args.useGpu,
+          ...args,
         });
       } catch (err) {
         clearTimeout(timeout);
@@ -865,6 +911,7 @@ export class DeviceBridge {
     stopSequences?: string[];
     maxTokens?: number;
     temperature?: number;
+    cacheKey?: string;
   }): Promise<string> {
     const envTimeout = Number.parseInt(
       process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS?.trim() ?? "",
@@ -883,6 +930,7 @@ export class DeviceBridge {
       stopSequences: args.stopSequences,
       maxTokens: args.maxTokens,
       temperature: args.temperature,
+      cacheKey: args.cacheKey,
     };
 
     const best = this.pickBestDevice();
@@ -1038,7 +1086,7 @@ export function registerDeviceBridgeLoader(
 ): void {
   if (typeof runtime.registerService !== "function") return;
   const loader: LocalInferenceLoader = {
-    async loadModel(args: { modelPath: string }) {
+    async loadModel(args: LocalInferenceLoadArgs) {
       await deviceBridge.loadModel(args);
     },
     async unloadModel() {

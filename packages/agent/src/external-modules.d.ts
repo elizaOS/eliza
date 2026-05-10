@@ -1,64 +1,5 @@
 declare module "@elizaos/plugin-agent-orchestrator";
 declare module "@elizaos/plugin-agent-skills";
-declare module "@elizaos/plugin-computeruse";
-declare module "@elizaos/plugin-telegram/account-auth-service" {
-  export interface TelegramAccountAuthSessionLike {
-    getSnapshot(): TelegramAccountAuthSnapshot;
-    getResolvedConnectorConfig(): TelegramAccountConnectorConfig | null;
-    start(args: {
-      phone: string;
-      credentials: { apiId: number; apiHash: string } | null;
-    }): Promise<TelegramAccountAuthSnapshot>;
-    submit(
-      input:
-        | { provisioningCode: string }
-        | { telegramCode: string }
-        | { password: string },
-    ): Promise<TelegramAccountAuthSnapshot>;
-    getSessionString(): string;
-    stop(): Promise<void>;
-  }
-  export type TelegramAccountAuthSnapshot = {
-    status: string;
-    phone?: string | null;
-    error: string | null;
-    account?: {
-      id: string;
-      username?: string | null;
-      firstName?: string | null;
-    } | null;
-    [key: string]: unknown;
-  };
-  export type TelegramAccountConnectorConfig = {
-    appId?: string;
-    appHash?: string;
-    deviceModel?: string;
-    systemVersion?: string;
-    [key: string]: unknown;
-  };
-  export class TelegramAccountAuthSession
-    implements TelegramAccountAuthSessionLike
-  {
-    constructor();
-    getSnapshot(): TelegramAccountAuthSnapshot;
-    getResolvedConnectorConfig(): TelegramAccountConnectorConfig | null;
-    start(args: {
-      phone: string;
-      credentials: { apiId: number; apiHash: string } | null;
-    }): Promise<TelegramAccountAuthSnapshot>;
-    submit(
-      input:
-        | { provisioningCode: string }
-        | { telegramCode: string }
-        | { password: string },
-    ): Promise<TelegramAccountAuthSnapshot>;
-    getSessionString(): string;
-    stop(): Promise<void>;
-  }
-  export function defaultTelegramAccountDeviceModel(): string;
-  export function defaultTelegramAccountSystemVersion(): string;
-  export function loadTelegramAccountSessionString(): string;
-}
 declare module "telegram" {
   export class TelegramClient {
     constructor(
@@ -130,147 +71,299 @@ declare module "telegram/sessions" {
     [key: string]: unknown;
   }
 }
-declare module "@elizaos/plugin-elizacloud";
+declare module "@elizaos/plugin-elizacloud" {
+  export interface CloudOnboardingResult {
+    apiKey: string;
+    agentId: string | undefined;
+    baseUrl: string;
+    bridgeUrl?: string;
+  }
+  export function runCloudOnboarding(
+    clack: unknown,
+    name: string,
+    chosenTemplate?: unknown,
+  ): Promise<CloudOnboardingResult | null>;
+}
+declare module "@elizaos/plugin-elizacloud" {
+  export interface CloudConfigLike {
+    apiKey?: string | null;
+    baseUrl?: string | null;
+    [key: string]: unknown;
+  }
+
+  export interface CloudOnboardingResult {
+    apiKey: string;
+    agentId: string | undefined;
+    baseUrl: string;
+    bridgeUrl?: string;
+  }
+
+  export interface CloudRouteState {
+    config?: unknown;
+    runtime?: unknown;
+    [key: string]: unknown;
+  }
+
+  export interface CloudWalletDescriptor {
+    agentWalletId: string;
+    walletAddress: string;
+    walletProvider: CloudWalletProvider;
+    chainType: "evm" | "solana";
+    balance?: string | number;
+  }
+
+  export type CloudWalletProvider = "privy" | "steward";
+
+  export class ElizaCloudClient {
+    constructor(...args: unknown[]);
+    [key: string]: unknown;
+  }
+
+  export class CloudManager {
+    constructor(...args: unknown[]);
+    init(): Promise<void>;
+    connect(
+      agentId: string,
+    ): Promise<{ agentName?: string; [key: string]: unknown }>;
+    disconnect(): Promise<void>;
+    [key: string]: unknown;
+  }
+
+  export function normalizeCloudSiteUrl(value?: string): string;
+  export function normalizeCloudSecret(
+    value: string | null | undefined,
+  ): string | null;
+  export function validateCloudBaseUrl(value: string): string | null;
+  export function resolveCloudApiBaseUrl(...args: unknown[]): string;
+  export function resolveCloudApiKey(...args: unknown[]): string | null;
+  export function __resetCloudBaseUrlCache(): void;
+  export function clearCloudSecrets(): void;
+  export function ensureCloudTtsApiKeyAlias(...args: unknown[]): void;
+  export function getCloudSecret(...args: unknown[]): string | undefined;
+  export function getOrCreateClientAddressKey(): Promise<{ address: string }>;
+  export function isCloudProvisionedContainer(...args: unknown[]): boolean;
+  export function provisionCloudWalletsBestEffort(...args: unknown[]): Promise<{
+    descriptors: Partial<Record<"evm" | "solana", CloudWalletDescriptor>>;
+    failures: Array<{ chain: "evm" | "solana"; error: unknown }>;
+    warnings: string[];
+  }>;
+  export function persistCloudWalletCache(...args: unknown[]): void;
+  export function resolveCloudTtsBaseUrl(...args: unknown[]): string;
+  export function resolveElevenLabsApiKeyForCloudMode(
+    ...args: unknown[]
+  ): string | undefined;
+  export function runCloudOnboarding(
+    ...args: unknown[]
+  ): Promise<CloudOnboardingResult | null>;
+
+  export function handleCloudBillingRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudCompatRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudRelayRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudRoute(...args: unknown[]): Promise<boolean>;
+  export function handleCloudStatusRoutes(...args: unknown[]): Promise<boolean>;
+  export function handleCloudTtsPreviewRoute(
+    ...args: unknown[]
+  ): Promise<boolean>;
+  export function mirrorCompatHeaders(...args: unknown[]): void;
+
+  const plugin: unknown;
+  export default plugin;
+}
 declare module "@elizaos/plugin-commands";
-declare module "@elizaos/plugin-edge-tts";
-declare module "@elizaos/plugin-edge-tts/node";
-declare module "@elizaos/plugin-local-embedding";
-declare module "@elizaos/plugin-ollama";
-declare module "@elizaos/plugin-openai";
-declare module "@elizaos/plugin-shell";
-declare module "@elizaos/signal-native";
-declare module "qrcode";
-
-declare module "@elizaos/app-knowledge/routes" {
-  export type KnowledgeRouteContext = unknown;
-  export type KnowledgeRouteHelpers = unknown;
-  export const handleKnowledgeRoutes: (
-    context: unknown,
-  ) => Promise<boolean> | boolean;
-}
-
-declare module "@elizaos/app-knowledge/service-loader" {
-  import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
-
-  export type KnowledgeLoadFailReason =
+declare module "@elizaos/plugin-signal" {
+  export type SignalPairingStatus =
+    | "idle"
+    | "initializing"
+    | "waiting_for_qr"
+    | "connected"
+    | "disconnected"
     | "timeout"
-    | "runtime_unavailable"
-    | "not_registered";
-  export interface KnowledgeServiceLike {
-    addKnowledge(options: {
-      agentId?: UUID;
-      worldId: UUID;
-      roomId: UUID;
-      entityId: UUID;
-      clientDocumentId: UUID;
-      contentType: string;
-      originalFilename: string;
-      content: string;
-      metadata?: Record<string, unknown>;
-    }): Promise<{
-      clientDocumentId: string;
-      storedDocumentMemoryId: UUID;
-      fragmentCount: number;
-    }>;
-    getKnowledge(
-      message: Memory,
-      options?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
-    ): Promise<
-      Array<{
-        id: UUID;
-        content: { text?: string };
-        similarity?: number;
-        metadata?: Record<string, unknown>;
-      }>
-    >;
-    getMemories(params: {
-      tableName: string;
-      roomId?: UUID;
-      count?: number;
-      offset?: number;
-      end?: number;
-    }): Promise<Memory[]>;
-    countMemories(params: {
-      tableName: string;
-      roomId?: UUID;
-      unique?: boolean;
-    }): Promise<number>;
-    updateKnowledgeDocument?(options: {
-      documentId: UUID;
-      content: string;
-    }): Promise<{
-      documentId: UUID;
-      fragmentCount: number;
-    }>;
-    deleteMemory(memoryId: UUID): Promise<void>;
+    | "error";
+
+  export interface SignalPairingEvent {
+    type: "signal-qr" | "signal-status";
+    accountId: string;
+    qrDataUrl?: string;
+    status?: SignalPairingStatus;
+    uuid?: string;
+    phoneNumber?: string;
+    error?: string;
   }
-  export interface KnowledgeServiceResult {
-    service: KnowledgeServiceLike | null;
-    reason?: KnowledgeLoadFailReason;
+
+  export interface SignalPairingSnapshot {
+    status: SignalPairingStatus;
+    qrDataUrl: string | null;
+    phoneNumber: string | null;
+    error: string | null;
   }
-  export const getKnowledgeService: (
-    runtime: AgentRuntime | null,
-  ) => Promise<KnowledgeServiceResult>;
-  export const getKnowledgeTimeoutMs: () => number;
+
+  export interface SignalPairingOptions {
+    authDir: string;
+    accountId: string;
+    cliPath?: string;
+    onEvent: (event: SignalPairingEvent) => void;
+  }
+
+  export class SignalPairingSession {
+    constructor(options: SignalPairingOptions);
+    start(): Promise<void>;
+    stop(): void;
+    getStatus(): SignalPairingStatus;
+    getSnapshot(): SignalPairingSnapshot;
+  }
+
+  export function applySignalQrOverride(
+    plugins: {
+      id: string;
+      validationErrors: unknown[];
+      configured: boolean;
+      qrConnected?: boolean;
+    }[],
+    workspaceDir: string,
+  ): void;
+
+  export function classifySignalPairingErrorStatus(
+    errorMessage: string,
+  ): SignalPairingStatus;
+  export function extractSignalCliProvisioningUrl(text: string): string | null;
+  export function parseSignalCliAccountsOutput(output: string): string | null;
+  export function sanitizeSignalAccountId(raw: string): string;
+  export function signalAuthExists(
+    workspaceDir: string,
+    accountId?: string,
+  ): boolean;
+  export function signalLogout(workspaceDir: string, accountId?: string): void;
+}
+declare module "@elizaos/plugin-discord" {
+  export interface DiscordProfileLike {
+    displayName?: string | null;
+    username?: string | null;
+    avatarUrl?: string | null;
+    rawUserId?: string | null;
+  }
+
+  export function cacheDiscordAvatarUrl(...args: unknown[]): Promise<string>;
+  export function getDiscordAvatarCacheDir(): string;
+  export function getDiscordAvatarCachePath(fileName: string): string;
+  export function cacheDiscordAvatarForRuntime(
+    ...args: unknown[]
+  ): Promise<string | undefined>;
+  export function isCanonicalDiscordSource(source: unknown): boolean;
+  export function resolveDiscordMessageAuthorProfile(
+    ...args: unknown[]
+  ): Promise<DiscordProfileLike | null>;
+  export function resolveDiscordUserProfile(
+    ...args: unknown[]
+  ): Promise<DiscordProfileLike | null>;
+  export function resolveStoredDiscordEntityProfile(
+    ...args: unknown[]
+  ): Promise<DiscordProfileLike | null>;
+  const discordPlugin: unknown;
+  export default discordPlugin;
 }
 
-declare module "@elizaos/app-training/core/context-types" {
-  export type AgentContext = string;
-  export const AGENT_CONTEXTS: AgentContext[];
+declare module "@elizaos/plugin-whatsapp" {
+  import type { Plugin } from "@elizaos/core";
+
+  export function applyWhatsAppQrOverride(...args: unknown[]): void;
+  export function handleWhatsAppRoute(...args: unknown[]): unknown;
+  export type WhatsAppPairingEventLike = Record<string, unknown>;
+  export type WhatsAppPairingSessionLike = Record<string, unknown>;
+  export type WhatsAppRouteDeps = Record<string, unknown>;
+  export type WhatsAppRouteState = Record<string, unknown>;
+
+  export type WhatsAppPairingEvent = Record<string, unknown>;
+  export type WhatsAppPairingOptions = Record<string, unknown>;
+  export type WhatsAppPairingStatus = string;
+
+  export class WhatsAppPairingSession {
+    constructor(...args: unknown[]);
+    stop(): void;
+  }
+
+  export function sanitizeWhatsAppAccountId(...args: unknown[]): string;
+  export function whatsappAuthExists(...args: unknown[]): boolean;
+  export function whatsappLogout(...args: unknown[]): void;
+
+  const whatsappPlugin: Plugin;
+  export default whatsappPlugin;
 }
 
-declare module "@elizaos/app-contacts/plugin" {
+declare module "@elizaos/plugin-computeruse" {
+  export function handleSandboxRoute(
+    req: unknown,
+    res: unknown,
+    pathname: unknown,
+    method: unknown,
+    options: unknown,
+  ): Promise<boolean>;
+  export function handleComputerUseRoutes(...args: unknown[]): unknown;
+}
+
+declare module "@elizaos/plugin-mcp" {
+  export function handleMcpRoutes(...args: unknown[]): unknown;
+}
+
+declare module "@elizaos/app-contacts" {
   import type { Plugin, Provider } from "@elizaos/core";
 
   export const contactsProvider: Provider;
   export const appContactsPlugin: Plugin;
-  export default appContactsPlugin;
 }
 
-declare module "@elizaos/app-phone/plugin" {
-  import type { Action, Plugin, Provider } from "@elizaos/core";
-
-  export const placeCallAction: Action;
-  export const phoneCallLogProvider: Provider;
-  export const appPhonePlugin: Plugin;
-  export default appPhonePlugin;
-}
-
-declare module "@elizaos/app-wifi/plugin" {
+declare module "@elizaos/app-wifi" {
   import type { Plugin, Provider } from "@elizaos/core";
 
-  export const wifiNetworksProvider: Provider;
   export const appWifiPlugin: Plugin;
-  export default appWifiPlugin;
+  export const wifiNetworksProvider: Provider;
 }
 
-declare module "@elizaos/app-training/core/context-catalog" {
-  import type { AgentContext } from "@elizaos/app-training";
-
-  export type ContextResolutionSource = string;
-  export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]>;
-  export const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]>;
-  export const ALL_CONTEXTS: AgentContext[];
-  export const resolveActionContexts: (...args: unknown[]) => AgentContext[];
-  export const resolveProviderContexts: (...args: unknown[]) => AgentContext[];
-  export const resolveActionContextResolution: (...args: unknown[]) => {
-    contexts: AgentContext[];
-    source: ContextResolutionSource;
-  };
-  export const resolveProviderContextResolution: (...args: unknown[]) => {
-    contexts: AgentContext[];
-    source: ContextResolutionSource;
-  };
+declare module "@elizaos/plugin-discord-local" {
+  const plugin: unknown;
+  export default plugin;
 }
 
-declare module "@elizaos/app-training/core/cli" {}
-declare module "@elizaos/app-training/core/context-audit" {}
-declare module "@elizaos/app-training/core/dataset-generator" {}
-declare module "@elizaos/app-training/core/replay-validator" {}
-declare module "@elizaos/app-training/core/roleplay-executor" {}
-declare module "@elizaos/app-training/core/roleplay-trajectories" {}
-declare module "@elizaos/app-training/core/scenario-blueprints" {}
-declare module "@elizaos/app-training/core/trajectory-task-datasets" {}
+declare module "@elizaos/plugin-edge-tts";
+declare module "@elizaos/plugin-imessage" {
+  export function resolveBlueBubblesWebhookPath(...args: unknown[]): string;
+  const imessagePlugin: unknown;
+  export default imessagePlugin;
+}
+declare module "@elizaos/plugin-local-embedding";
+declare module "@elizaos/plugin-ollama";
+declare module "@elizaos/plugin-openai";
+declare module "@elizaos/plugin-shell";
+declare module "@elizaos/plugin-x402" {
+  import type {
+    PaymentEnabledRoute,
+    Route,
+    RouteRequest,
+    RouteResponse,
+    IAgentRuntime,
+  } from "@elizaos/core";
+
+  export interface X402StartupValidationResult {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+  }
+
+  export function createPaymentAwareHandler(
+    route: PaymentEnabledRoute,
+  ): (
+    req: RouteRequest,
+    res: RouteResponse,
+    runtime: IAgentRuntime,
+  ) => void | Promise<void>;
+  export function isRoutePaymentWrapped(route: unknown): boolean;
+  export function validateX402Startup(
+    routes: Route[],
+    character?: unknown,
+    options?: { agentId?: string },
+  ): X402StartupValidationResult;
+}
+declare module "@elizaos/signal-native";
+declare module "qrcode";
 
 declare module "abitype" {
   export type TypedData = Record<
@@ -290,29 +383,6 @@ declare module "abitype" {
   export type Address = `0x${string}`;
   export type TypedDataParameter = { name: string; type: string };
   export type TypedDataType = string;
-}
-
-declare module "@elizaos/plugin-sql" {
-  import type { Plugin } from "@elizaos/core";
-
-  export * from "@elizaos/plugin-sql/schema";
-  export type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
-
-  export const PGLITE_ERROR_CODES: {
-    ACTIVE_LOCK: string;
-    CORRUPT_DATA: string;
-    MANUAL_RESET_REQUIRED: string;
-  };
-
-  export function getPgliteErrorCode(error: unknown): string | null;
-  export function createPgliteInitError(
-    code: string,
-    message: string,
-    options?: Record<string, unknown>,
-  ): Error;
-
-  const plugin: Plugin;
-  export default plugin;
 }
 
 declare module "ws" {

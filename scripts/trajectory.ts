@@ -70,7 +70,7 @@ interface ModelCallRecord {
   modelType: string;
   modelName?: string;
   provider: string;
-  prompt: string;
+  prompt?: string;
   messages?: ChatMessage[];
   tools?: ToolDefinition[];
   toolChoice?: unknown;
@@ -113,7 +113,8 @@ interface RecordedStage {
     | "tool"
     | "evaluation"
     | "subPlanner"
-    | "compaction";
+    | "compaction"
+    | "factsAndRelationships";
   iteration?: number;
   parentStageId?: string;
   startedAt: number;
@@ -272,6 +273,38 @@ function truncate(text: string, max: number): string {
   return `${text.slice(0, max)}${c.dim("…")}`;
 }
 
+function stringifyModelContent(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === undefined) return "";
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function modelInputTranscript(model: ModelCallRecord | undefined): string {
+  if (!model) return "";
+  if (typeof model.prompt === "string" && model.prompt.trim().length > 0) {
+    return model.prompt;
+  }
+  if (!Array.isArray(model.messages)) return "";
+  return model.messages
+    .map((message, index) => {
+      const role =
+        typeof message.role === "string" && message.role.trim()
+          ? message.role
+          : `message[${index}]`;
+      return `${role}: ${stringifyModelContent(message.content)}`;
+    })
+    .filter((line) => line.trim().length > 0)
+    .join("\n\n");
+}
+
+function matchesStage(stage: RecordedStage, idOrKind: string): boolean {
+  return stage.stageId === idOrKind || stage.kind === idOrKind;
+}
+
 function stageHeader(stage: RecordedStage, index: number): string {
   const kindLabel = stage.kind;
   const iter = stage.iteration ? ` iter ${stage.iteration}` : "";
@@ -417,9 +450,10 @@ function printStage(
         `${c.dim("tools:")}    ${m.tools.map((t) => t.name ?? "<anon>").join(", ")}`,
       );
     }
-    if (m.prompt) {
-      console.log(c.dim("prompt:"));
-      console.log(truncate(m.prompt, promptLimit));
+    const modelInput = modelInputTranscript(m);
+    if (modelInput) {
+      console.log(c.dim(m.prompt ? "prompt:" : "messages:"));
+      console.log(truncate(modelInput, promptLimit));
     }
     if (m.response) {
       console.log(c.dim("response:"));
@@ -493,7 +527,7 @@ async function cmdPrint(idOrPath: string, opts: PrintOptions): Promise<void> {
   console.log("");
 
   const stages = opts.stageId
-    ? t.stages.filter((s) => s.stageId === opts.stageId)
+    ? t.stages.filter((s) => matchesStage(s, opts.stageId ?? ""))
     : t.stages;
   if (opts.stageId && stages.length === 0) {
     console.error(c.red(`Stage "${opts.stageId}" not found in trajectory.`));
@@ -529,12 +563,19 @@ async function cmdStats(idOrPath: string): Promise<void> {
     .join(", ");
 
   const decisionCounts = new Map<string, number>();
+  let terminalTaskFailures = 0;
   for (const s of t.stages) {
     if (s.evaluation?.decision) {
       decisionCounts.set(
         s.evaluation.decision,
         (decisionCounts.get(s.evaluation.decision) ?? 0) + 1,
       );
+      if (
+        s.evaluation.decision === "FINISH" &&
+        s.evaluation.success === false
+      ) {
+        terminalTaskFailures++;
+      }
     }
   }
   const decisionList = Array.from(decisionCounts.entries())
@@ -567,7 +608,10 @@ async function cmdStats(idOrPath: string): Promise<void> {
     `Tool calls: ${m?.toolCallsExecuted ?? 0} executed (${(m?.toolCallsExecuted ?? 0) - (m?.toolCallFailures ?? 0)} success, ${m?.toolCallFailures ?? 0} failed)`,
   );
   console.log(`Evaluator decisions: ${decisionList || "—"}`);
-  console.log(`Evaluator success=false: ${m?.evaluatorFailures ?? 0} stages`);
+  console.log(
+    `Evaluator protocol failures: ${m?.evaluatorFailures ?? 0} stages`,
+  );
+  console.log(`Terminal task failures: ${terminalTaskFailures} stages`);
   console.log(`Cache hit rate (avg): ${meanCacheRate.toFixed(1)}%`);
 }
 
@@ -645,8 +689,8 @@ async function cmdDiff(idOrPath: string, opts: DiffOptions): Promise<void> {
   );
   console.log("");
 
-  const promptA = a.model?.prompt ?? "";
-  const promptB = b.model?.prompt ?? "";
+  const promptA = modelInputTranscript(a.model);
+  const promptB = modelInputTranscript(b.model);
 
   let common = 0;
   const min = Math.min(promptA.length, promptB.length);
@@ -696,21 +740,22 @@ async function cmdReplay(idOrPath: string, stageId?: string): Promise<void> {
   }
   const t = loaded.trajectory;
   const stage = stageId
-    ? t.stages.find((s) => s.stageId === stageId)
-    : t.stages.find((s) => s.model?.prompt);
+    ? t.stages.find((s) => matchesStage(s, stageId))
+    : t.stages.find((s) => modelInputTranscript(s.model).length > 0);
 
   if (!stage) {
-    console.error(c.red("No matching stage with a model prompt."));
+    console.error(c.red("No matching stage with model input."));
     process.exitCode = 1;
     return;
   }
-  if (!stage.model?.prompt) {
-    console.error(c.red(`Stage ${stage.stageId} has no recorded prompt.`));
+  const input = modelInputTranscript(stage.model);
+  if (!input) {
+    console.error(c.red(`Stage ${stage.stageId} has no recorded model input.`));
     process.exitCode = 1;
     return;
   }
-  process.stdout.write(stage.model.prompt);
-  if (!stage.model.prompt.endsWith("\n")) process.stdout.write("\n");
+  process.stdout.write(input);
+  if (!input.endsWith("\n")) process.stdout.write("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -752,9 +797,10 @@ function exportMarkdown(t: RecordedTrajectory): string {
           `- usage: ${stage.model.usage.promptTokens} in · ${stage.model.usage.completionTokens} out · cache-read ${stage.model.usage.cacheReadInputTokens ?? 0}`,
         );
       }
+      const input = modelInputTranscript(stage.model);
       lines.push("```");
       lines.push("PROMPT:");
-      lines.push(stage.model.prompt);
+      lines.push(input);
       lines.push("");
       lines.push("RESPONSE:");
       lines.push(stage.model.response);
@@ -810,8 +856,9 @@ function htmlEscape(text: string): string {
 function exportHtml(t: RecordedTrajectory): string {
   const stages = t.stages
     .map((stage, idx) => {
-      const promptBlock = stage.model?.prompt
-        ? `<details><summary>prompt (${stage.model.prompt.length} chars)</summary><pre>${htmlEscape(stage.model.prompt)}</pre></details>`
+      const input = modelInputTranscript(stage.model);
+      const promptBlock = input
+        ? `<details><summary>input (${input.length} chars)</summary><pre>${htmlEscape(input)}</pre></details>`
         : "";
       const responseBlock = stage.model?.response
         ? `<details><summary>response</summary><pre>${htmlEscape(stage.model.response)}</pre></details>`
@@ -1170,11 +1217,11 @@ function printHelp(): void {
 
 Commands:
   list [--agent <id>] [--since <iso>] [--limit 20]
-  print <id> [--stage <id>] [--full]
+  print <id> [--stage <id-or-kind>] [--full]
   stats <id>
   failures <id>
   diff <id> --stages a,b
-  replay <id> [--stage <id>]
+  replay <id> [--stage <id-or-kind>]
   export <id> --format markdown|html|json [--out <path>]
   validate <id-or-path> [--expected-stages a,b] [--expected-contexts x,y] [--strict-messages] [--json]
   compare <idA> <idB> [--json]

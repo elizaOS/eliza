@@ -1,4 +1,4 @@
-import { gatePluginSessionForHostedApp } from "@elizaos/agent/services/app-session-gate";
+import { gatePluginSessionForHostedApp } from "@elizaos/agent";
 import type { Plugin } from "@elizaos/core";
 import {
   handleAppRoutes,
@@ -34,3 +34,5 @@ export {
 };
 
 export default screensharePlugin;
+export * from "./routes.js";
+export * from "./ui/index.js";

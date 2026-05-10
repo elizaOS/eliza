@@ -23,8 +23,42 @@ import {
   getPublicAppInfo,
   testAppPayload,
 } from "../helpers/app-lifecycle";
+import { readJson } from "../helpers/json-body";
 
 setDefaultTimeout(30_000);
+
+type AppSummary = {
+  id: string;
+  name?: string;
+  description?: string;
+  is_active?: boolean;
+};
+
+type CheckNameResponse = {
+  success: boolean;
+  available: boolean;
+  slug?: string;
+};
+
+type AppResponse = {
+  success: boolean;
+  app: AppSummary;
+};
+
+type AppListResponse = { apps?: AppSummary[] } | AppSummary[];
+
+type EarningsHistoryResponse = {
+  success: boolean;
+};
+
+type RegenerateApiKeyResponse = {
+  success: boolean;
+  apiKey: string;
+};
+
+type DeleteAppResponse = {
+  success: boolean;
+};
 
 describe("Mini App Lifecycle", () => {
   let appId: string;
@@ -46,7 +80,7 @@ describe("Mini App Lifecycle", () => {
     );
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<CheckNameResponse>(response);
     expect(body.success).toBe(true);
     expect(body.available).toBe(true);
     expect(typeof body.slug).toBe("string");
@@ -77,7 +111,7 @@ describe("Mini App Lifecycle", () => {
     });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<AppResponse>(response);
     expect(body.success).toBe(true);
     expect(body.app.id).toBe(appId);
     expect(body.app.name).toBe(payload.name);
@@ -93,7 +127,7 @@ describe("Mini App Lifecycle", () => {
     );
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<CheckNameResponse>(response);
     expect(body.success).toBe(true);
     expect(body.available).toBe(false);
   });
@@ -111,7 +145,7 @@ describe("Mini App Lifecycle", () => {
     );
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<AppResponse>(response);
     expect(body.success).toBe(true);
     expect(body.app.description).toBe("Updated by E2E test");
   });
@@ -167,11 +201,11 @@ describe("Mini App Lifecycle", () => {
     const response = await api.get("/api/v1/apps", { authenticated: true });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
-    const apps = body.apps || body;
+    const body = await readJson<AppListResponse>(response);
+    const apps = Array.isArray(body) ? body : (body.apps ?? []);
     expect(Array.isArray(apps)).toBe(true);
 
-    const found = apps.find((a: any) => a.id === appId);
+    const found = apps.find((a) => a.id === appId);
     expect(found).toBeDefined();
   });
 
@@ -210,7 +244,7 @@ describe("Mini App Lifecycle", () => {
     });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<EarningsHistoryResponse>(response);
     expect(body.success).toBe(true);
   });
 
@@ -225,7 +259,7 @@ describe("Mini App Lifecycle", () => {
     expect([200, 404]).toContain(response.status);
 
     if (response.status === 200) {
-      const body = (await response.json()) as any;
+      const body = await readJson<RegenerateApiKeyResponse>(response);
       expect(body.success).toBe(true);
       expect(typeof body.apiKey).toBe("string");
       expect(body.apiKey).not.toBe(appApiKey);
@@ -239,7 +273,7 @@ describe("Mini App Lifecycle", () => {
     });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<DeleteAppResponse>(response);
     expect(body.success).toBe(true);
   });
 

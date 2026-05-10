@@ -40,7 +40,9 @@ function formatDue(dueAt: number): string {
 export const listTodosAction: Action = {
 	name: "LIST_TODOS",
 	contexts: ["todos", "agent_internal"],
-	description: "List todo items for the current user.",
+	roleGate: { minRole: "USER" },
+	description:
+		"List todo items for the current user, optionally filtered by status and limited by count.",
 	similes: ["SHOW_TODOS", "GET_TODOS", "MY_TODOS"],
 
 	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -136,7 +138,41 @@ export const listTodosAction: Action = {
 			schema: { type: "number" as const, minimum: 1 },
 		},
 	],
-	examples: [],
+	examples: [
+		[
+			{
+				name: "{{name1}}",
+				content: { text: "Show me my open todos.", source: "chat" },
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: "Listing your open todos.",
+					actions: ["LIST_TODOS"],
+					thought:
+						"Default open-status filter; LIST_TODOS with no params returns active todos for the user.",
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Show all completed todos from the last week.",
+					source: "chat",
+				},
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: "Listing completed todos.",
+					actions: ["LIST_TODOS"],
+					thought:
+						"Status='completed' filter routes to LIST_TODOS with status set; agent narrows by recency in the response.",
+				},
+			},
+		],
+	],
 };
 
 export default listTodosAction;

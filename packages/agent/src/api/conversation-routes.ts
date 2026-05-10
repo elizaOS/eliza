@@ -16,6 +16,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import type { RouteRequestContext } from "@elizaos/core";
 import {
   type AgentRuntime,
   ChannelType,
@@ -25,9 +26,16 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.js";
-import { resolveStateDir } from "../config/paths.js";
-import type { ChatGenerationResult, LogEntry } from "./chat-routes.js";
+import {
+  cacheDiscordAvatarForRuntime,
+  isCanonicalDiscordSource,
+  resolveDiscordMessageAuthorProfile,
+  resolveDiscordUserProfile,
+  resolveStoredDiscordEntityProfile,
+} from "@elizaos/plugin-discord";
+import type { ElizaConfig } from "../config/config.ts";
+import { resolveStateDir } from "../config/paths.ts";
+import type { ChatGenerationResult, LogEntry } from "./chat-routes.ts";
 import {
   classifyChatFailure,
   generateChatResponse,
@@ -43,29 +51,21 @@ import {
   writeChatTokenSse,
   writeSse,
   writeSseJson,
-} from "./chat-routes.js";
-import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
+} from "./chat-routes.ts";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
 import {
   buildConversationRoomMetadata,
   sanitizeConversationMetadata,
-} from "./conversation-metadata.js";
-import {
-  cacheDiscordAvatarForRuntime,
-  isCanonicalDiscordSource,
-  resolveDiscordMessageAuthorProfile,
-  resolveDiscordUserProfile,
-  resolveStoredDiscordEntityProfile,
-} from "./discord-profiles.js";
-import { evictOldestConversation } from "./memory-bounds.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+} from "./conversation-metadata.ts";
+import { evictOldestConversation } from "./memory-bounds.ts";
 import {
   buildUserMessages,
   getErrorMessage,
   resolveAppUserName,
   resolveConversationGreetingText,
   resolveWalletModeGuidanceReply,
-} from "./server-helpers.js";
-import type { ConversationMeta, ConversationMetadata } from "./server-types.js";
+} from "./server-helpers.ts";
+import type { ConversationMeta, ConversationMetadata } from "./server-types.ts";
 
 // ---------------------------------------------------------------------------
 // Deleted-conversations state persistence

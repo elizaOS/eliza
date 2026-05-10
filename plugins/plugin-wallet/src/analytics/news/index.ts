@@ -34,7 +34,6 @@ export const defiNewsPlugin: Plugin = {
   name: "defi-news",
   description:
     "DeFi News plugin that provides comprehensive market context including global DeFi/crypto statistics, token data, and real-world crypto news from CoinGecko and Brave New Coin RSS feed",
-  evaluators: [],
   providers: [defiNewsProvider],
   actions: [],
   services: [NewsDataService],

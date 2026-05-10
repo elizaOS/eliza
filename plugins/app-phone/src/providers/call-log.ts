@@ -4,10 +4,10 @@
  * Reading the recent-calls list is state exposure, not an agent operation
  * with side effects. Surfaced as a dynamic provider so the planner can pull
  * call-log context when a question hinges on prior calls. Live operations
- * such as PLACE_CALL remain as actions on the same plugin.
+ * such as outbound dialing route through the canonical VOICE_CALL surface.
  */
 
-import { Phone } from "@elizaos/capacitor-phone";
+import { type CallLogEntry, Phone } from "@elizaos/capacitor-phone";
 import type {
   IAgentRuntime,
   Memory,
@@ -47,15 +47,17 @@ export const phoneCallLogProvider: Provider = {
   ): Promise<ProviderResult> => {
     try {
       const { calls } = await Phone.listRecentCalls({ limit: CALL_LOG_LIMIT });
-      const entries: PhoneCallLogEntry[] = calls.map((call) => ({
-        id: call.id,
-        number: call.number,
-        cachedName: call.cachedName ?? "",
-        date: call.date,
-        durationSeconds: call.durationSeconds,
-        type: call.type,
-        isNew: call.isNew,
-      }));
+      const entries: PhoneCallLogEntry[] = calls.map(
+        (call: CallLogEntry): PhoneCallLogEntry => ({
+          id: call.id,
+          number: call.number,
+          cachedName: call.cachedName ?? "",
+          date: call.date,
+          durationSeconds: call.durationSeconds,
+          type: call.type,
+          isNew: call.isNew,
+        }),
+      );
 
       return {
         text: JSON.stringify({

@@ -14,6 +14,7 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
+import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 
 // ============================================================================
 // Command Lanes
@@ -40,7 +41,7 @@ const execFileAsync = promisify(execFile);
 
 /**
  * Resolves a command for Windows compatibility.
- * On Windows, non-.exe commands (like npm, pnpm) require their .cmd extension.
+ * On Windows, non-.exe commands (like npm) require their .cmd extension.
  */
 function resolveCommand(command: string): string {
   if (process.platform !== "win32") {
@@ -51,7 +52,7 @@ function resolveCommand(command: string): string {
   if (ext) {
     return command;
   }
-  const cmdCommands = ["npm", "pnpm", "yarn", "npx"];
+  const cmdCommands = ["npm", "yarn", "npx"];
   if (cmdCommands.includes(basename)) {
     return `${command}.cmd`;
   }
@@ -124,6 +125,16 @@ export async function runCommandWithTimeout(
   argv: string[],
   optionsOrTimeout: number | CommandOptions
 ): Promise<SpawnResult> {
+  const mode = resolveRuntimeExecutionMode();
+  if (mode === "cloud") {
+    throw new Error("Local shell execution disabled in cloud mode.");
+  }
+  if (mode === "local-safe") {
+    throw new Error(
+      "[shell] runCommandWithTimeout cannot route through SandboxManager from this code path; use the runtime-aware shell action."
+    );
+  }
+
   const options: CommandOptions =
     typeof optionsOrTimeout === "number" ? { timeoutMs: optionsOrTimeout } : optionsOrTimeout;
   const { timeoutMs, cwd, input, env } = options;

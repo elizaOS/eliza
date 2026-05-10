@@ -8,7 +8,7 @@ import {
 import { InMemoryDatabaseAdapter } from "./adapter";
 import { MemoryStorage } from "./storage-memory";
 
-const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-inmemorydb/global-singletons");
+const GLOBAL_SINGLETONS = Symbol.for("elizaos.plugin-inmemorydb.global-singletons");
 type GlobalSymbols = typeof globalThis & {
   [GLOBAL_SINGLETONS]?: {
     storageManager?: MemoryStorage;

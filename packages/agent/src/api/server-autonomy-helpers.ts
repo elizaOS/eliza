@@ -1,6 +1,6 @@
-import type { AgentEventPayloadLike } from "../runtime/agent-event-service.js";
-import { routeAutonomyTextToUser } from "./server-helpers-swarm.js";
-import type { ServerState } from "./server-types.js";
+import type { AgentEventPayloadLike } from "../runtime/agent-event-service.ts";
+import { routeAutonomyTextToUser } from "./server-helpers-swarm.ts";
+import type { ServerState } from "./server-types.ts";
 
 export function isLifeOpsCloudPluginRoute(pathname: string): boolean {
   return (

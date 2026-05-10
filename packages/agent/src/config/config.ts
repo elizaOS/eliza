@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/shared";
 import {
   isElizaSettingsDebugEnabled,
   isPlainObject,
@@ -9,20 +10,19 @@ import {
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import JSON5 from "json5";
-import { readConfigEnvSync } from "../api/config-env.js";
-import { syncSolanaPublicKeyEnv } from "../api/wallet-env-sync.js";
-import { isVaultRef } from "../runtime/operations/vault-bridge.js";
-import { collectConfigEnvVars, collectConnectorEnvVars } from "./env-vars.js";
-import { resolveConfigIncludes } from "./includes.js";
-import { normalizeModelMetadataInConfig } from "./model-metadata.js";
+import { readConfigEnvSync } from "../api/config-env.ts";
+import { syncSolanaPublicKeyEnv } from "../api/wallet-env-sync.ts";
+import { isVaultRef } from "../runtime/operations/vault-bridge.ts";
+import { collectConfigEnvVars, collectConnectorEnvVars } from "./env-vars.ts";
+import { resolveConfigIncludes } from "./includes.ts";
+import { normalizeModelMetadataInConfig } from "./model-metadata.ts";
 import {
   resolveConfigPath,
   resolveStateDir,
   resolveUserPath,
-} from "./paths.js";
-import type { ElizaConfig } from "./types.js";
+} from "./paths.ts";
 
-export * from "./types.js";
+export type { ElizaConfig } from "@elizaos/shared";
 
 function resolveConfigWritePath(env: NodeJS.ProcessEnv = process.env): string {
   const persistPath = env.ELIZA_PERSIST_CONFIG_PATH?.trim();

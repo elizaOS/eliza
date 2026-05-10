@@ -16,8 +16,19 @@ import {
   getEarnings,
   getMonetization,
 } from "../helpers/app-lifecycle";
+import { readJson } from "../helpers/json-body";
 
 setDefaultTimeout(30_000);
+
+type EarningsChartResponse = {
+  earnings: {
+    chartData: unknown[];
+  };
+};
+
+type EarningsHistoryResponse = {
+  success: boolean;
+};
 
 describe("App Monetization", () => {
   let appId: string;
@@ -119,7 +130,7 @@ describe("App Monetization", () => {
     });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<EarningsChartResponse>(response);
     expect(Array.isArray(body.earnings.chartData)).toBe(true);
   });
 
@@ -130,7 +141,7 @@ describe("App Monetization", () => {
     });
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<EarningsHistoryResponse>(response);
     expect(body.success).toBe(true);
   });
 

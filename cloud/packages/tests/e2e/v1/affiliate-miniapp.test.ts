@@ -23,8 +23,35 @@ import {
   deleteTestApp,
   enableMonetization,
 } from "../helpers/app-lifecycle";
+import { readJson } from "../helpers/json-body";
 
 setDefaultTimeout(30_000);
+
+type AffiliateCharacterResponse = {
+  success: boolean;
+  characterId: string;
+  redirectUrl: string;
+};
+
+type AppCharactersResponse = {
+  success: boolean;
+  characters: Array<{
+    id: string;
+  }>;
+};
+
+type AgentPublishResponse = {
+  agent: {
+    isPublic: boolean;
+    monetizationEnabled: boolean;
+  };
+};
+
+type AppMonetizationResponse = {
+  monetization: {
+    monetizationEnabled: boolean;
+  };
+};
 
 // ── Affiliate Character Creation ────────────────────────────────────
 // The affiliate endpoint requires an API key with "affiliate:create-character"
@@ -61,7 +88,7 @@ describe("Affiliate Mini App Flow", () => {
 
     if (response.status === 201) {
       // Key has affiliate permission — character was created
-      const body = (await response.json()) as any;
+      const body = await readJson<AffiliateCharacterResponse>(response);
       expect(body.success).toBe(true);
       expect(typeof body.characterId).toBe("string");
       expect(typeof body.redirectUrl).toBe("string");
@@ -165,7 +192,7 @@ describe("Programmatic Mini App Setup", () => {
       authenticated: true,
     });
     if (verify.status === 200) {
-      const body = (await verify.json()) as any;
+      const body = await readJson<AppCharactersResponse>(verify);
       expect(body.success).toBe(true);
       expect(body.characters.length).toBe(1);
       expect(body.characters[0].id).toBe(agent);
@@ -198,7 +225,7 @@ describe("Programmatic Mini App Setup", () => {
     );
     expect(response.status).toBe(200);
 
-    const body = (await response.json()) as any;
+    const body = await readJson<AgentPublishResponse>(response);
     expect(body.agent.isPublic).toBe(true);
     expect(body.agent.monetizationEnabled).toBe(true);
   });
@@ -215,7 +242,7 @@ describe("Programmatic Mini App Setup", () => {
       authenticated: true,
     });
     expect(monetResp.status).toBe(200);
-    const monetBody = (await monetResp.json()) as any;
+    const monetBody = await readJson<AppMonetizationResponse>(monetResp);
     expect(monetBody.monetization.monetizationEnabled).toBe(true);
 
     // Earnings endpoint works

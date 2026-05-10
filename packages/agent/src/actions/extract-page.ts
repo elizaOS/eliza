@@ -10,7 +10,7 @@ import { logger } from "@elizaos/core";
 import {
   extractHostedCloudPage,
   isHostedCloudToolingConfigured,
-} from "../services/hosted-tools.js";
+} from "../services/hosted-tools.ts";
 
 type ExtractPageParameters = {
   formats?: Array<"html" | "links" | "markdown" | "screenshot">;
@@ -46,7 +46,7 @@ function formatExtractPreview(
 
 export const extractPageAction: Action = {
   name: "EXTRACT_PAGE",
-  contexts: ["web", "browser", "knowledge"],
+  contexts: ["web", "browser", "documents"],
   roleGate: { minRole: "OWNER" },
   similes: ["SCRAPE_PAGE", "FETCH_PAGE", "READ_WEB_PAGE", "EXTRACT_WEB_PAGE"],
   description:

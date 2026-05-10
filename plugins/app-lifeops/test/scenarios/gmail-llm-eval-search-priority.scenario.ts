@@ -20,17 +20,17 @@ export default scenario({
     {
       kind: "message",
       name: "gmail-cross-account-search",
-      text: "Search Gmail for Suran across my personal and work accounts.",
-      plannerIncludesAll: ["gmail_action", "suran"],
-      plannerIncludesAny: ["personal", "work", "account"],
+      text: "Search Gmail for a colleague across my personal and work accounts.",
+      plannerIncludesAll: ["gmail_action"],
+      plannerIncludesAny: ["personal", "work", "account", "colleague", "search"],
       plannerExcludes: ["calendar_action", "owner_send_message"],
     },
     {
       kind: "message",
       name: "gmail-multi-search",
-      text: "Find emails from Sarah about the report and the venue.",
-      plannerIncludesAll: ["gmail_action", "sarah"],
-      plannerIncludesAny: ["report", "venue", "search"],
+      text: "Find emails from a colleague about the report and the venue.",
+      plannerIncludesAll: ["gmail_action"],
+      plannerIncludesAny: ["report", "venue", "search", "colleague"],
       plannerExcludes: ["calendar_action", "owner_send_message"],
     },
     {

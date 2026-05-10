@@ -24,6 +24,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", type=str, default="gpt-4o")
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--mode",
+        choices=("bridge", "simulate"),
+        default="bridge",
+        help=(
+            "How to generate replies. `bridge` (default) routes every turn "
+            "through the elizaOS TS bench server so the real agent + "
+            "registered actions answer. `simulate` falls back to the "
+            "deterministic keyword simulator (smoke-test only — does not "
+            "measure the eliza agent)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -38,10 +50,12 @@ def main() -> None:
         model=args.model,
         strict=bool(args.strict),
         seed=args.seed,
+        mode=args.mode,
     )
-    runner = LifecycleRunner(config)
-    results, metrics, report_path = runner.run()
+    with LifecycleRunner(config) as runner:
+        results, metrics, report_path = runner.run()
     print("Orchestrator lifecycle benchmark complete")
+    print(f"Mode: {config.mode}")
     print(f"Scenarios: {len(results)}")
     print(f"Overall score: {metrics.overall_score:.3f}")
     print(f"Pass rate: {metrics.scenario_pass_rate:.1%}")

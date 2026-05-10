@@ -29,7 +29,7 @@ interface DiscoveryConfig {
 }
 
 interface ScoredTweet {
-  tweet: Tweet;
+  tweet: DiscoveryTweet;
   relevanceScore: number;
   engagementType: "like" | "reply" | "quote" | "skip";
 }
@@ -45,9 +45,33 @@ interface ScoredAccount {
   relevanceScore: number;
 }
 
+type DiscoveryTweet = Tweet & {
+  id: string;
+  userId: string;
+  username: string;
+};
+
+type DiscoverySource = "topic" | "thread";
+
+function isDiscoveryTweet(tweet: Tweet): tweet is DiscoveryTweet {
+  return (
+    typeof tweet.id === "string" &&
+    tweet.id.length > 0 &&
+    typeof tweet.userId === "string" &&
+    tweet.userId.length > 0 &&
+    typeof tweet.username === "string" &&
+    tweet.username.length > 0
+  );
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export class TwitterDiscoveryClient {
   private twitterClient: Client;
   private runtime: IAgentRuntime;
+  private accountId: string;
   private config: DiscoveryConfig;
   private isRunning: boolean = false;
   private isDryRun: boolean;
@@ -59,8 +83,9 @@ export class TwitterDiscoveryClient {
   ) {
     this.twitterClient = client.twitterClient;
     this.runtime = runtime;
+    this.accountId = client.accountId;
 
-    // Check dry run mode. Legacy callers may pass booleans, so widen the
+    // Check dry run mode. Runtime settings may pass booleans, so widen the
     // narrowed string from `TwitterClientState` back to `unknown`.
     const dryRunSetting: unknown =
       state?.TWITTER_DRY_RUN ??
@@ -206,7 +231,7 @@ export class TwitterDiscoveryClient {
       try {
         await this.runDiscoveryCycle();
       } catch (error) {
-        logger.error("Discovery cycle error:", error);
+        logger.error("Discovery cycle error:", errorMessage(error));
       }
 
       // Run discovery every 20-40 minutes (with variance)
@@ -271,7 +296,7 @@ export class TwitterDiscoveryClient {
         allAccounts.set(acc.user.id, acc);
       }
     } catch (error) {
-      logger.error("Failed to discover from topics:", error);
+      logger.error("Failed to discover from topics:", errorMessage(error));
     }
 
     // 2. Discover from conversation threads
@@ -282,7 +307,7 @@ export class TwitterDiscoveryClient {
         allAccounts.set(acc.user.id, acc);
       }
     } catch (error) {
-      logger.error("Failed to discover from threads:", error);
+      logger.error("Failed to discover from threads:", errorMessage(error));
     }
 
     // 3. Discover from popular accounts in our topics
@@ -293,7 +318,10 @@ export class TwitterDiscoveryClient {
         allAccounts.set(acc.user.id, acc);
       }
     } catch (error) {
-      logger.error("Failed to discover from popular accounts:", error);
+      logger.error(
+        "Failed to discover from popular accounts:",
+        errorMessage(error),
+      );
     }
 
     // Sort by relevance score
@@ -338,6 +366,7 @@ export class TwitterDiscoveryClient {
         );
 
         for (const tweet of popularResults.tweets) {
+          if (!isDiscoveryTweet(tweet)) continue;
           // Filter by engagement after retrieval
           if ((tweet.likes || 0) < 10) continue;
 
@@ -379,6 +408,7 @@ export class TwitterDiscoveryClient {
         );
 
         for (const tweet of engagedResults.tweets) {
+          if (!isDiscoveryTweet(tweet)) continue;
           // Only include tweets with some engagement
           if ((tweet.likes || 0) < 5) continue;
 
@@ -408,7 +438,7 @@ export class TwitterDiscoveryClient {
           }
         }
       } catch (error) {
-        logger.error(`Failed to search topic ${topic}:`, error);
+        logger.error(`Failed to search topic ${topic}:`, errorMessage(error));
       }
     }
 
@@ -444,6 +474,7 @@ export class TwitterDiscoveryClient {
       );
 
       for (const tweet of searchResults.tweets) {
+        if (!isDiscoveryTweet(tweet)) continue;
         // Filter for tweets with good engagement (proxy for viral threads)
         const engagementScore = (tweet.likes || 0) + (tweet.retweets || 0) * 2;
         if (engagementScore < 10) continue; // Lowered from 50 - more inclusive
@@ -465,7 +496,7 @@ export class TwitterDiscoveryClient {
         }
       }
     } catch (error) {
-      logger.error("Failed to discover threads:", error);
+      logger.error("Failed to discover threads:", errorMessage(error));
     }
 
     return { tweets, accounts: Array.from(accounts.values()) };
@@ -499,6 +530,7 @@ export class TwitterDiscoveryClient {
         );
 
         for (const tweet of results.tweets) {
+          if (!isDiscoveryTweet(tweet)) continue;
           // Filter by engagement metrics after retrieval
           const engagement = (tweet.likes || 0) + (tweet.retweets || 0) * 2;
           if (engagement < 5) continue; // Lowered from 20 - more inclusive
@@ -527,7 +559,7 @@ export class TwitterDiscoveryClient {
       } catch (error) {
         logger.error(
           `Failed to discover popular accounts for ${topic}:`,
-          error,
+          errorMessage(error),
         );
       }
     }
@@ -538,7 +570,10 @@ export class TwitterDiscoveryClient {
   // Remove the discoverFromTrends method since API v2 doesn't support it
   // Remove the isTrendRelevant method since we're not using trends
 
-  private scoreTweet(tweet: Tweet, source: string): ScoredTweet {
+  private scoreTweet(
+    tweet: DiscoveryTweet,
+    source: DiscoverySource,
+  ): ScoredTweet {
     // Skip retweets - we want original content
     if (tweet.isRetweet) {
       return {
@@ -567,7 +602,7 @@ export class TwitterDiscoveryClient {
     relevanceScore += engagementScore;
 
     // Score by content relevance to topics
-    const textLower = tweet.text.toLowerCase();
+    const textLower = (tweet.text ?? "").toLowerCase();
     const topicMatches = this.config.topics.filter((topic) =>
       textLower.includes(topic.toLowerCase()),
     ).length;
@@ -680,7 +715,7 @@ export class TwitterDiscoveryClient {
       } catch (error) {
         logger.error(
           `Failed to follow @${scoredAccount.user.username}:`,
-          error,
+          errorMessage(error),
         );
       }
     }
@@ -792,7 +827,7 @@ export class TwitterDiscoveryClient {
         } else {
           logger.error(
             `Failed to engage with tweet ${scoredTweet.tweet.id}:`,
-            error,
+            errorMessage(error),
           );
         }
       }
@@ -816,7 +851,7 @@ export class TwitterDiscoveryClient {
     return followMemories.length > 0;
   }
 
-  private async generateReply(tweet: Tweet): Promise<string> {
+  private async generateReply(tweet: DiscoveryTweet): Promise<string> {
     // Handle case where runtime.character might be undefined
     const characterName = this.runtime?.character?.name || "AI Assistant";
     let characterBio = "";
@@ -854,7 +889,7 @@ Reply:`;
     return response.trim();
   }
 
-  private async generateQuote(tweet: Tweet): Promise<string> {
+  private async generateQuote(tweet: DiscoveryTweet): Promise<string> {
     // Handle case where runtime.character might be undefined
     const characterName = this.runtime?.character?.name || "AI Assistant";
     let characterBio = "";
@@ -892,10 +927,14 @@ Quote tweet:`;
     return response.trim();
   }
 
-  private async saveEngagementMemory(tweet: Tweet, engagementType: string) {
+  private async saveEngagementMemory(
+    tweet: DiscoveryTweet,
+    engagementType: string,
+  ) {
     try {
       // Ensure context exists before saving memory
       const context = await ensureTwitterContext(this.runtime, {
+        accountId: this.accountId,
         userId: tweet.userId,
         username: tweet.username,
         conversationId: tweet.conversationId || tweet.id,
@@ -907,6 +946,7 @@ Quote tweet:`;
         content: {
           text: `${engagementType} tweet from @${tweet.username}: ${tweet.text}`,
           metadata: {
+            accountId: this.accountId,
             tweetId: tweet.id,
             engagementType,
             source: "discovery",
@@ -923,7 +963,10 @@ Quote tweet:`;
         `[Discovery] Saved ${engagementType} memory for tweet ${tweet.id}`,
       );
     } catch (error) {
-      logger.error(`[Discovery] Failed to save engagement memory:`, error);
+      logger.error(
+        `[Discovery] Failed to save engagement memory:`,
+        errorMessage(error),
+      );
       // Don't throw - just log the error
     }
   }
@@ -932,6 +975,7 @@ Quote tweet:`;
     try {
       // Create a simple context for follows
       const context = await ensureTwitterContext(this.runtime, {
+        accountId: this.accountId,
         userId: user.id,
         username: user.username,
         name: user.name,
@@ -944,6 +988,7 @@ Quote tweet:`;
         content: {
           text: `followed twitter user ${user.id} @${user.username}`,
           metadata: {
+            accountId: this.accountId,
             userId: user.id,
             username: user.username,
             name: user.name,
@@ -960,7 +1005,10 @@ Quote tweet:`;
       await createMemorySafe(this.runtime, memory, "messages");
       logger.debug(`[Discovery] Saved follow memory for @${user.username}`);
     } catch (error) {
-      logger.error(`[Discovery] Failed to save follow memory:`, error);
+      logger.error(
+        `[Discovery] Failed to save follow memory:`,
+        errorMessage(error),
+      );
       // Don't throw - just log the error
     }
   }

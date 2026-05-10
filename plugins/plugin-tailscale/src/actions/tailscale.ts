@@ -10,25 +10,46 @@
  */
 
 import {
-  ModelType,
-  elizaLogger,
   type Action,
   type ActionResult,
+  elizaLogger,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
   type Memory,
-} from '@elizaos/core';
-import { z } from 'zod';
-import { getTunnelService } from '../types';
+  ModelType,
+} from "@elizaos/core";
+import { z } from "zod";
+import { resolveTailscaleAccountId } from "../accounts";
+import { CloudTailscaleService } from "../services/CloudTailscaleService";
+import { LocalTailscaleService } from "../services/LocalTailscaleService";
+import { getTunnelService, type ITunnelService } from "../types";
 
-type TailscaleOp = 'start' | 'stop';
+/**
+ * Narrow the canonical tunnel service back to a concrete Tailscale backend so
+ * the action can pass tailscale-specific options (per-account routing). The
+ * canonical `ITunnelService` contract intentionally hides `accountId` from
+ * other tunnel consumers; this narrowing is local to the tailscale plugin.
+ */
+type TailscaleService = LocalTailscaleService | CloudTailscaleService;
 
-const ALL_OPS: readonly TailscaleOp[] = ['start', 'stop'] as const;
+function asTailscaleService(service: ITunnelService): TailscaleService | null {
+  if (
+    service instanceof LocalTailscaleService ||
+    service instanceof CloudTailscaleService
+  ) {
+    return service;
+  }
+  return null;
+}
+
+type TailscaleOp = "start" | "stop";
+
+const ALL_OPS: readonly TailscaleOp[] = ["start", "stop"] as const;
 
 const portPayloadSchema = z.object({
   port: z.union([z.number(), z.string().regex(/^\d+$/)]).transform((value) => {
-    const num = typeof value === 'string' ? Number.parseInt(value, 10) : value;
+    const num = typeof value === "string" ? Number.parseInt(value, 10) : value;
     return num;
   }),
 });
@@ -50,7 +71,7 @@ function isValidPort(value: number): boolean {
 function parseJsonObject(value: string): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>)
       : null;
   } catch {
@@ -61,33 +82,57 @@ function parseJsonObject(value: string): Record<string, unknown> | null {
 function parsePort(value: string): number {
   const parsed = parseJsonObject(value.trim());
   const result = portPayloadSchema.safeParse(parsed);
-  return result.success && isValidPort(result.data.port) ? result.data.port : DEFAULT_PORT;
+  return result.success && isValidPort(result.data.port)
+    ? result.data.port
+    : DEFAULT_PORT;
 }
 
 function readPort(options?: HandlerOptions): number | null {
-  const direct = options && typeof options === 'object' ? (options as Record<string, unknown>) : {};
+  const direct =
+    options && typeof options === "object"
+      ? (options as Record<string, unknown>)
+      : {};
   const params =
-    direct.parameters && typeof direct.parameters === 'object'
+    direct.parameters && typeof direct.parameters === "object"
       ? (direct.parameters as Record<string, unknown>)
       : {};
-  const result = portPayloadSchema.safeParse({ port: params.port ?? direct.port });
-  return result.success && isValidPort(result.data.port) ? result.data.port : null;
+  const result = portPayloadSchema.safeParse({
+    port: params.port ?? direct.port,
+  });
+  return result.success && isValidPort(result.data.port)
+    ? result.data.port
+    : null;
 }
 
 function readOp(options: unknown): TailscaleOp | null {
-  const direct = options && typeof options === 'object' ? (options as Record<string, unknown>) : {};
+  const direct =
+    options && typeof options === "object"
+      ? (options as Record<string, unknown>)
+      : {};
   const params =
-    direct.parameters && typeof direct.parameters === 'object'
+    direct.parameters && typeof direct.parameters === "object"
       ? (direct.parameters as Record<string, unknown>)
       : {};
   const requested = params.op ?? direct.op;
-  if (typeof requested === 'string') {
+  if (typeof requested === "string") {
     const normalized = requested.trim().toLowerCase();
     if ((ALL_OPS as readonly string[]).includes(normalized)) {
       return normalized as TailscaleOp;
     }
   }
   return null;
+}
+
+function readOptions(options?: HandlerOptions): Record<string, unknown> {
+  const direct =
+    options && typeof options === "object"
+      ? (options as Record<string, unknown>)
+      : {};
+  const params =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  return { ...direct, ...params };
 }
 
 async function handleStart(
@@ -97,44 +142,48 @@ async function handleStart(
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const tunnelService = getTunnelService(runtime);
+  const accountId = resolveTailscaleAccountId(runtime, readOptions(options));
   if (!tunnelService) {
     if (callback) {
       await callback({
-        text: 'Tunnel service is not available. Ensure the tailscale plugin is properly configured.',
+        text: "Tunnel service is not available. Ensure the tailscale plugin is properly configured.",
       });
     }
-    return { success: false, error: 'tunnel service unavailable' };
+    return { success: false, error: "tunnel service unavailable" };
   }
 
   if (tunnelService.isActive()) {
     if (callback) {
       await callback({
-        text: 'Tunnel is already active. Stop the existing tunnel before starting a new one.',
+        text: "Tunnel is already active. Stop the existing tunnel before starting a new one.",
       });
     }
-    return { success: false, error: 'tunnel already active' };
+    return { success: false, error: "tunnel already active" };
   }
 
-  elizaLogger.info('[tailscale] starting tunnel');
+  elizaLogger.info("[tailscale] starting tunnel");
 
-  const userMessage = message.content.text ?? '';
+  const userMessage = message.content.text ?? "";
   const directPort = readPort(options);
   const port =
     directPort ??
     parsePort(
       String(
         await runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt: PORT_PROMPT_TEMPLATE.replace('{{userMessage}}', userMessage),
+          prompt: PORT_PROMPT_TEMPLATE.replace("{{userMessage}}", userMessage),
           temperature: 0.3,
         }),
       ),
     );
-  const url = await tunnelService.startTunnel(port);
-  const publicUrl = typeof url === 'string' ? url : tunnelService.getUrl();
+  const tailscaleImpl = asTailscaleService(tunnelService);
+  const url = tailscaleImpl
+    ? await tailscaleImpl.startTunnel(port, { accountId })
+    : await tunnelService.startTunnel(port);
+  const publicUrl = typeof url === "string" ? url : tunnelService.getUrl();
 
   if (callback) {
     await callback({
-      text: `Tailscale tunnel started.\n\nURL: ${publicUrl ?? 'unknown'}\nLocal port: ${port}`,
+      text: `Tailscale tunnel started.\n\nURL: ${publicUrl ?? "unknown"}\nLocal port: ${port}`,
     });
   }
 
@@ -142,34 +191,37 @@ async function handleStart(
     success: true,
     text: `Tailscale tunnel started on port ${port}`,
     data: {
-      action: 'tunnel_started',
-      tunnelUrl: publicUrl ?? '',
+      action: "tunnel_started",
+      tunnelUrl: publicUrl ?? "",
       port,
+      accountId,
     },
   };
 }
 
 async function handleStop(
   runtime: IAgentRuntime,
+  options?: HandlerOptions,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const tunnelService = getTunnelService(runtime);
+  const accountId = resolveTailscaleAccountId(runtime, readOptions(options));
   if (!tunnelService) {
     if (callback) {
-      await callback({ text: 'Tunnel service is not available.' });
+      await callback({ text: "Tunnel service is not available." });
     }
-    return { success: false, error: 'tunnel service unavailable' };
+    return { success: false, error: "tunnel service unavailable" };
   }
 
   if (!tunnelService.isActive()) {
-    elizaLogger.warn('[tailscale] no active tunnel to stop');
+    elizaLogger.warn("[tailscale] no active tunnel to stop");
     if (callback) {
-      await callback({ text: 'No tunnel is currently running.' });
+      await callback({ text: "No tunnel is currently running." });
     }
     return {
       success: true,
-      text: 'no active tunnel',
-      data: { action: 'tunnel_not_active' },
+      text: "no active tunnel",
+      data: { action: "tunnel_not_active", accountId },
     };
   }
 
@@ -177,7 +229,12 @@ async function handleStop(
   const previousUrl = status.url;
   const previousPort = status.port;
 
-  await tunnelService.stopTunnel();
+  const tailscaleImpl = asTailscaleService(tunnelService);
+  if (tailscaleImpl) {
+    await tailscaleImpl.stopTunnel({ accountId });
+  } else {
+    await tunnelService.stopTunnel();
+  }
 
   if (callback) {
     await callback({
@@ -188,37 +245,46 @@ async function handleStop(
     success: true,
     text: `Tailscale tunnel stopped (was on port ${previousPort})`,
     data: {
-      action: 'tunnel_stopped',
-      previousUrl: previousUrl ?? '',
+      action: "tunnel_stopped",
+      previousUrl: previousUrl ?? "",
       previousPort: previousPort ?? 0,
+      accountId,
     },
   };
 }
 
 export const tailscaleAction: Action = {
-  name: 'TAILSCALE',
-  contexts: ['connectors', 'settings', 'admin'],
-  contextGate: { anyOf: ['connectors', 'settings', 'admin'] },
-  roleGate: { minRole: 'USER' },
+  name: "TAILSCALE",
+  contexts: ["connectors", "settings", "admin"],
+  contextGate: { anyOf: ["connectors", "settings", "admin"] },
+  roleGate: { minRole: "USER" },
   similes: [],
   description:
-    'Tailscale tunnel router. Operations: start (open tunnel for a local port), stop (close active tunnel). Status reads come from the tailscaleStatus provider.',
-  descriptionCompressed: 'Tailscale: start tunnel, stop tunnel.',
+    "Tailscale tunnel router. Operations: start (open tunnel for a local port), stop (close active tunnel). Status reads come from the tailscaleStatus provider.",
+  descriptionCompressed: "Tailscale: start tunnel, stop tunnel.",
   parameters: [
     {
-      name: 'op',
-      description: 'Tunnel operation. One of: start, stop.',
+      name: "subaction",
+      description: "Tunnel operation. One of: start, stop.",
       required: true,
-      schema: { type: 'string', enum: [...ALL_OPS] },
+      schema: { type: "string", enum: [...ALL_OPS] },
     },
     {
-      name: 'port',
-      description: 'Local port to expose when op is start.',
+      name: "port",
+      description: "Local port to expose when op is start.",
       required: false,
-      schema: { type: 'number', default: DEFAULT_PORT },
+      schema: { type: "number", default: DEFAULT_PORT },
+    },
+    {
+      name: "accountId",
+      description:
+        "Optional Tailscale account id from TAILSCALE_ACCOUNTS. Defaults to TAILSCALE_DEFAULT_ACCOUNT_ID or legacy settings.",
+      required: false,
+      schema: { type: "string" },
     },
   ],
-  validate: async (runtime: IAgentRuntime) => Boolean(getTunnelService(runtime)),
+  validate: async (runtime: IAgentRuntime) =>
+    Boolean(getTunnelService(runtime)),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -228,45 +294,43 @@ export const tailscaleAction: Action = {
   ): Promise<ActionResult> => {
     const op = readOp(options);
     if (op === null) {
-      const text = 'TAILSCALE requires op: start or stop.';
+      const text = "TAILSCALE requires op: start or stop.";
       if (callback) {
         await callback({ text });
       }
-      return { success: false, text, error: 'missing op' };
+      return { success: false, text, error: "missing op" };
     }
 
     switch (op) {
-      case 'start':
+      case "start":
         return handleStart(runtime, message, options, callback);
-      case 'stop':
-        return handleStop(runtime, callback);
+      case "stop":
+        return handleStop(runtime, options, callback);
     }
   },
   examples: [
     [
       {
-        name: 'user',
-        content: { text: 'Start a tailscale tunnel on port 8080' },
+        name: "user",
+        content: { text: "Start a tailscale tunnel on port 8080" },
       },
       {
-        name: 'assistant',
+        name: "assistant",
         content: {
-          text: 'Tailscale tunnel started.\n\nURL: https://device.tail-scale.ts.net\nLocal port: 8080',
-          actions: ['TAILSCALE'],
+          text: "Tailscale tunnel started.\n\nURL: https://device.tail-scale.ts.net\nLocal port: 8080",
+          actions: ["TAILSCALE"],
         },
       },
     ],
     [
-      { name: 'user', content: { text: 'Stop the tailscale tunnel' } },
+      { name: "user", content: { text: "Stop the tailscale tunnel" } },
       {
-        name: 'assistant',
+        name: "assistant",
         content: {
-          text: 'Tailscale tunnel stopped.\n\nWas running on port: 3000\nPrevious URL: https://device.tail-scale.ts.net',
-          actions: ['TAILSCALE'],
+          text: "Tailscale tunnel stopped.\n\nWas running on port: 3000\nPrevious URL: https://device.tail-scale.ts.net",
+          actions: ["TAILSCALE"],
         },
       },
     ],
   ],
 };
-
-export default tailscaleAction;

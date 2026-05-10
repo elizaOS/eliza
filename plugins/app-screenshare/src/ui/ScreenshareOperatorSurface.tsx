@@ -1,13 +1,14 @@
-import { client } from "@elizaos/app-core/api";
 import {
+  Button,
+  client,
+  Input,
   SurfaceBadge,
   SurfaceEmptyState,
   SurfaceSection,
   selectLatestRunForApp,
-} from "@elizaos/app-core/components/apps/extensions/surface";
-import type { AppOperatorSurfaceProps } from "@elizaos/app-core/components/apps/surfaces/types";
-import { useApp } from "@elizaos/app-core/state";
-import { Button, Input } from "@elizaos/ui";
+  useApp,
+} from "@elizaos/app-core";
+import type { AppOperatorSurfaceProps } from "@elizaos/app-core";
 import {
   Copy,
   ExternalLink,

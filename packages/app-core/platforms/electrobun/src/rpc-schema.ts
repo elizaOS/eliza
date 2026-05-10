@@ -17,7 +17,7 @@ import type {
 	BrowserWorkspaceTab,
 	NavigateBrowserWorkspaceTabRequest,
 	OpenBrowserWorkspaceTabRequest,
-} from "@elizaos/agent/services/browser-workspace-types";
+} from "@elizaos/plugin-browser";
 import type { RPCSchema } from "electrobun/bun";
 
 // ============================================================================
@@ -425,6 +425,22 @@ export interface FileDialogResult {
 	filePaths: string[];
 }
 
+/**
+ * Workspace folder pick result. Used by store builds (Mac App Store, etc.)
+ * where the agent's writable area is restricted to user-granted folders.
+ *
+ * `path` — resolved absolute path (empty string when canceled).
+ * `canceled` — user dismissed the dialog without choosing.
+ * `bookmark` — opaque, OS-specific persistence handle (macOS security-scoped
+ *   bookmark base64; null on platforms that do not require it, or until the
+ *   native bookmark bridge ships). Callers must persist it verbatim.
+ */
+export interface WorkspaceFolderPickResult {
+	canceled: boolean;
+	path: string;
+	bookmark: string | null;
+}
+
 // -- Screen / Display --
 export interface DisplayBounds {
 	x: number;
@@ -517,6 +533,10 @@ export type ElizaDesktopRPCSchema = {
 				params: undefined;
 				response: ExistingElizaInstallInfo;
 			};
+			agentPostReset: {
+				params: { apiBase?: string; bearerToken?: string } | undefined | null;
+				response: { ok: boolean; error?: string };
+			};
 			agentPostCloudDisconnect: {
 				params: { apiBase?: string; bearerToken?: string } | undefined | null;
 				response: { ok: boolean; error?: string };
@@ -528,6 +548,20 @@ export type ElizaDesktopRPCSchema = {
 					| { cancelled: true }
 					| { ok: true }
 					| { ok: false; error: string };
+			};
+
+			// ---- Renderer diagnostics ----
+			rendererReportDiagnostic: {
+				params:
+					| {
+							level?: "log" | "info" | "warn" | "error";
+							source?: string;
+							message?: string;
+							details?: unknown;
+					  }
+					| undefined
+					| null;
+				response: { ok: true };
 			};
 
 			// ---- Desktop: Tray ----
@@ -805,6 +839,10 @@ export type ElizaDesktopRPCSchema = {
 				params: FileDialogOptions;
 				response: FileDialogResult;
 			};
+			desktopPickWorkspaceFolder: {
+				params: { defaultPath?: string; promptTitle?: string };
+				response: WorkspaceFolderPickResult;
+			};
 
 			// ---- Gateway ----
 			gatewayStartDiscovery: {
@@ -922,7 +960,7 @@ export type ElizaDesktopRPCSchema = {
 			canvasDestroyWindow: { params: { id: string }; response: undefined };
 			canvasNavigate: {
 				params: { id: string; url: string };
-				response: undefined;
+				response: { available: boolean; reason?: string };
 			};
 			/**
 			 * PRIVILEGED: Executes arbitrary JavaScript in a canvas BrowserWindow.
@@ -1469,6 +1507,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"agent:restartClearLocalDb": "agentRestartClearLocalDb",
 	"agent:status": "agentStatus",
 	"agent:inspectExistingInstall": "agentInspectExistingInstall",
+	"agent:postReset": "agentPostReset",
 	"agent:postCloudDisconnect": "agentPostCloudDisconnect",
 	"agent:cloudDisconnectWithConfirm": "agentCloudDisconnectWithConfirm",
 
@@ -1574,6 +1613,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	// Desktop: File Dialogs
 	"desktop:showOpenDialog": "desktopShowOpenDialog",
 	"desktop:showSaveDialog": "desktopShowSaveDialog",
+	"desktop:pickWorkspaceFolder": "desktopPickWorkspaceFolder",
 
 	// Gateway
 	"gateway:startDiscovery": "gatewayStartDiscovery",

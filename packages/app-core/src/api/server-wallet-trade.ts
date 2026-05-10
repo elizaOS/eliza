@@ -6,7 +6,7 @@ import type {
   WalletExportRejection as CompatWalletExportRejection,
   WalletExportRequestBody,
 } from "@elizaos/shared";
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
+import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/shared";
 
 type UpstreamRejectionFn = (
   req: http.IncomingMessage,
@@ -267,7 +267,7 @@ function createHardenedExportGuard(
     }
 
     const nonceResult = validateExportNonce(body.exportNonce, ip);
-    if (!nonceResult.valid) {
+    if (nonceResult.valid === false) {
       recordWalletExportAudit({
         timestamp: new Date().toISOString(),
         ip,

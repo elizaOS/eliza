@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-shopify",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Shopify Admin API plugin for elizaOS agents -- manage products, orders, inventory, and customers.",
   "type": "module",
   "main": "dist/index.js",
@@ -22,7 +22,7 @@
     "test:live": "bun run test:e2e"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "devDependencies": {
     "tsdown": "^0.21.10",

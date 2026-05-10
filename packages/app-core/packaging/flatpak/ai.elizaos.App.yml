@@ -1,7 +1,22 @@
-# Flatpak manifest for elizaOS App
-# Build:   flatpak-builder --repo=repo --force-clean build-dir ai.elizaos.App.yml
-# Install: flatpak --user install repo ai.elizaos.App
-# Bundle:  flatpak build-bundle repo elizaos-app.flatpak ai.elizaos.App
+# Flatpak manifest — DIRECT (power-user) variant for elizaOS App.
+#
+# This is the unrestricted build that mirrors the AppImage / .deb / .rpm
+# distribution: full $HOME access, host shell reach via xdg-run, host Ollama
+# and docker discoverable, EXECUTE_CODE permitted. It is intended for
+# self-hosted Flatpak repos and side-loaded bundles, NOT for Flathub.
+#
+# For Flathub submission use `ai.elizaos.App.store.yml`, which removes
+# `--filesystem=home` and other host-escape sockets that Flathub reviewers
+# will reject.
+#
+# Build (direct):
+#   flatpak-builder --repo=repo --force-clean build-dir ai.elizaos.App.yml
+# Install:
+#   flatpak --user install repo ai.elizaos.App
+# Bundle:
+#   flatpak build-bundle repo elizaos-app.flatpak ai.elizaos.App
+#
+# See ./README.md for the difference between store and direct variants.
 
 app-id: ai.elizaos.App
 runtime: org.freedesktop.Platform

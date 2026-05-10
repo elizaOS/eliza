@@ -1,8 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson } from "../helpers/json-body";
+
+type McpRegistryResponse =
+  | {
+      registry?: unknown[];
+    }
+  | unknown[];
 
 /**
- * OAuth, Connections, MCPs & Knowledge API E2E Tests
+ * OAuth, Connections, MCPs & Documents API E2E Tests
  */
 
 describe("OAuth API", () => {
@@ -44,14 +51,15 @@ describe("MCPs API", () => {
   test("GET /api/mcp/registry returns public registry", async () => {
     const response = await api.get("/api/mcp/registry");
     expect(response.status).toBe(200);
-    const body = (await response.json()) as any;
-    expect(body.registry || Array.isArray(body)).toBeTruthy();
+    const body = await readJson<McpRegistryResponse>(response);
+    const hasRegistry = Array.isArray(body) || Array.isArray(body.registry);
+    expect(hasRegistry).toBe(true);
   });
 });
 
-describe("Knowledge API", () => {
-  test("GET /api/v1/knowledge requires auth", async () => {
-    const response = await api.get("/api/v1/knowledge");
+describe("Documents API", () => {
+  test("GET /api/v1/documents requires auth", async () => {
+    const response = await api.get("/api/v1/documents");
     expect([401, 403, 404]).toContain(response.status);
   });
 });

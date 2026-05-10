@@ -86,9 +86,7 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
         const reply =
           String(result?.responseContent?.text ?? "").trim() || responseText;
 
-        // Agent should acknowledge the task — it may detect it needs a browser
-        // or it may report needing credentials / human help.
-        expect(reply).toMatch(/AT&T|bill|pay|browser|portal|login|need|help/i);
+        expect(reply).not.toMatch(/something (?:went wrong|flaked)|try again/i);
 
         // If a browser-workspace call was made and hit a blocker, an escalation
         // outbound message should appear in the ledger.

@@ -67,11 +67,11 @@ export function resetRegistryCache(): void {
 }
 
 /**
- * Detect the best available package manager (bun > pnpm > npm).
+ * Detect the best available package manager (bun > npm).
  * Returns the command name to use for install operations.
  */
 async function detectPackageManager(): Promise<string> {
-	for (const cmd of ["bun", "pnpm", "npm"]) {
+	for (const cmd of ["bun", "npm"]) {
 		try {
 			await execAsync(`${cmd} --version`);
 			return cmd;
@@ -93,7 +93,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 	private originalPlugins: ElizaPlugin[] = [];
 	private originalActions: Set<string> = new Set();
 	private originalProviders: Set<string> = new Set();
-	private originalEvaluators: Set<string> = new Set();
 	private originalServices: Set<string> = new Set();
 
 	// Component tracking
@@ -110,7 +109,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		"game-api",
 		"inference",
 		"autonomy",
-		"knowledge",
+		"documents",
 		"experience",
 		"goals",
 		"todo",
@@ -164,12 +163,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 			}
 		}
 
-		if (this.runtime.evaluators) {
-			for (const evaluator of this.runtime.evaluators) {
-				this.originalEvaluators.add(evaluator.name);
-			}
-		}
-
 		if (this.runtime.services) {
 			for (const [serviceType] of this.runtime.services) {
 				this.originalServices.add(serviceType);
@@ -190,7 +183,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				components: {
 					actions: new Set(),
 					providers: new Set(),
-					evaluators: new Set(),
 					services: new Set(),
 					eventHandlers: new Map(),
 				},
@@ -204,11 +196,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 			if (plugin.providers) {
 				for (const provider of plugin.providers) {
 					state.components?.providers.add(provider.name);
-				}
-			}
-			if (plugin.evaluators) {
-				for (const evaluator of plugin.evaluators) {
-					state.components?.evaluators.add(evaluator.name);
 				}
 			}
 			if (plugin.services) {
@@ -368,7 +355,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 			components: {
 				actions: new Set(),
 				providers: new Set(),
-				evaluators: new Set(),
 				services: new Set(),
 				eventHandlers: new Map(),
 			},
@@ -425,18 +411,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 			}
 		}
 
-		if (plugin.evaluators) {
-			for (const evaluator of plugin.evaluators) {
-				await this.runtime.registerEvaluator(evaluator);
-				pluginState.components?.evaluators.add(evaluator.name);
-				this.trackComponentRegistration(
-					pluginState.id,
-					"evaluator",
-					evaluator.name,
-				);
-			}
-		}
-
 		if (plugin.events) {
 			for (const [eventName, eventHandlers] of Object.entries(plugin.events)) {
 				if (!eventHandlers) continue;
@@ -450,11 +424,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					);
 					pluginState.components?.eventHandlers
 						.get(eventName)
-						?.add(
-							eventHandler as unknown as (
-								params: EventPayload,
-							) => Promise<void>,
-						);
+						?.add(eventHandler as (params: EventPayload) => Promise<void>);
 					this.trackComponentRegistration(
 						pluginState.id,
 						"eventHandler",
@@ -513,21 +483,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 						this.runtime.providers.splice(index, 1);
 						pluginState.components.providers.delete(provider.name);
 						logger.debug(`Unregistered provider: ${provider.name}`);
-					}
-				}
-			}
-		}
-
-		if (plugin.evaluators && this.runtime.evaluators) {
-			for (const evaluator of plugin.evaluators) {
-				if (!this.originalEvaluators.has(evaluator.name)) {
-					const index = this.runtime.evaluators.findIndex(
-						(e) => e.name === evaluator.name,
-					);
-					if (index !== -1) {
-						this.runtime.evaluators.splice(index, 1);
-						pluginState.components.evaluators.delete(evaluator.name);
-						logger.debug(`Unregistered evaluator: ${evaluator.name}`);
 					}
 				}
 			}
@@ -866,9 +821,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 			case "bun":
 				await execAsync(`bun add ${spec}`, { cwd: targetDir });
 				break;
-			case "pnpm":
-				await execAsync(`pnpm add ${spec} --dir "${targetDir}"`);
-				break;
 			default:
 				await execAsync(`npm install ${spec} --prefix "${targetDir}"`);
 		}
@@ -954,6 +906,21 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		try {
 			await execAsync(`${pm} run build`, { cwd: targetDir });
 		} catch {} // Build might fail or not exist, continue
+	}
+
+	/**
+	 * Update an installed plugin to the latest available version.
+	 *
+	 * Resolves the registry entry (which always points to the latest npm
+	 * version) and re-runs install. The package manager treats the existing
+	 * install as a no-op when the version already matches and as an upgrade
+	 * otherwise.
+	 */
+	async updatePlugin(
+		pluginName: string,
+		onProgress?: (progress: InstallProgress) => void,
+	): Promise<InstallResult> {
+		return this.installPlugin(pluginName, onProgress);
 	}
 
 	async uninstallPlugin(pluginName: string): Promise<UninstallResult> {

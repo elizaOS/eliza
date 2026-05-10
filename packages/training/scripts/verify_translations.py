@@ -14,7 +14,7 @@ LANGS = ["es", "fr", "de", "pt", "zh", "ja", "ko", "ru"]
 
 ACTION_NAMES = {
     "RESPOND", "IGNORE", "STOP", "REPLY", "TASK_CALL", "USE_SKILL",
-    "EXECUTE_CODE", "FUNCTION_CALL", "CALL_TOOL",
+    "FUNCTION_CALL", "CALL_TOOL",
 }
 
 

@@ -1,0 +1,56 @@
+{
+  "name": "@elizaos/plugin-aosp-local-inference",
+  "version": "2.0.0-beta.1",
+  "description": "AOSP-only llama.cpp FFI bindings (via bun:ffi) and local-inference bootstrap for elizaOS mobile builds.",
+  "type": "module",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git",
+    "directory": "plugins/plugin-aosp-local-inference"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "aosp",
+    "android",
+    "llama.cpp",
+    "local-inference",
+    "bun-ffi"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc --noCheck -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist .turbo node_modules",
+    "lint": "echo \"Lint skipped\"",
+    "lint:check": "bun run lint",
+    "test": "echo \"No tests\""
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "bun-types": "1.3.13",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

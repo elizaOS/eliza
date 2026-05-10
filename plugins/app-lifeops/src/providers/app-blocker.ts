@@ -5,8 +5,8 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { getAppBlockerAccess } from "../app-blocker/access.ts";
-import { getCachedAppBlockerStatus } from "../app-blocker/engine.ts";
+import { getAppBlockerAccess } from "../app-blocker/access.js";
+import { getCachedAppBlockerStatus } from "../app-blocker/engine.js";
 
 export const appBlockerProvider: Provider = {
   name: "appBlocker",

@@ -72,7 +72,6 @@ These services are available but not loaded by default — enable via admin pane
 | `@elizaos/plugin-cua` | CUA computer-use agent (cloud sandbox automation) |
 | `@elizaos/plugin-obsidian` | Obsidian vault CLI integration |
 | `@elizaos/plugin-repoprompt` | RepoPrompt CLI integration |
-| `@elizaos/plugin-claude-code-workbench` | Claude Code companion workflows |
 | `@elizaos/plugin-computeruse` | Computer use automation (platform-specific, requires platform binaries) |
 | `@elizaos/plugin-browser` | Browser automation (requires stagehand-server) |
 | `@elizaos/plugin-vision` | Visual understanding (feature-gated) |

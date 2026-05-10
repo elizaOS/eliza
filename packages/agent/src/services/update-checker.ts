@@ -3,10 +3,10 @@
  * configured release channel (stable/beta/nightly).
  */
 
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import type { ReleaseChannel, UpdateConfig } from "../config/types.eliza.js";
-import { VERSION } from "../runtime/version.js";
-import { compareSemver } from "./version-compat.js";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
+import type { ReleaseChannel, UpdateConfig } from "../config/types.eliza.ts";
+import { VERSION } from "../runtime/version.ts";
+import { compareSemver } from "./version-compat.ts";
 
 const CHECK_INTERVAL_SECONDS = 14_400; // 4 hours
 const REGISTRY_TIMEOUT_MS = 8_000;

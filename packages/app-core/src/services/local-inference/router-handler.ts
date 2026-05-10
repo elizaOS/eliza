@@ -24,7 +24,7 @@
  */
 
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import { readEffectiveAssignments } from "./assignments";
 import { localInferenceEngine } from "./engine";
 import type { HandlerRegistration } from "./handler-registry";
@@ -62,10 +62,6 @@ function slotToModelType(slot: AgentModelSlot): string | undefined {
       return ModelType.TEXT_LARGE;
     case "TEXT_EMBEDDING":
       return ModelType.TEXT_EMBEDDING;
-    case "OBJECT_SMALL":
-      return ModelType.OBJECT_SMALL;
-    case "OBJECT_LARGE":
-      return ModelType.OBJECT_LARGE;
   }
 }
 
@@ -130,38 +126,76 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
     const policy = prefs.policy[slot] ?? DEFAULT_ROUTING_POLICY;
     const preferred = prefs.preferredProvider[slot] ?? null;
 
-    // Ask the policy engine which handler to dispatch to.
+    // Ask the policy engine which handler to dispatch to. For automatic
+    // policies, honor the documented fallback behaviour: if the selected
+    // provider throws, try the next eligible provider instead of surfacing a
+    // local/model-specific failure while cloud providers are available.
     const candidates = await filterUnavailableLocalInference(
       slot,
       policy,
       preferred,
       handlerRegistry.getForTypeExcluding(modelType, ROUTER_PROVIDER),
     );
-    const pick = policyEngine.pickProvider({
-      modelType,
-      policy,
-      preferredProvider: preferred,
-      candidates,
-      selfProvider: ROUTER_PROVIDER,
-    });
+    const failedProviders = new Set<string>();
+    let lastError: unknown = null;
 
-    if (!pick) {
-      throw new Error(
-        `[router] No provider registered for ${slot}. Configure a cloud provider, enable local inference, or pair a device.`,
+    while (true) {
+      const remaining = candidates.filter(
+        (candidate) => !failedProviders.has(candidate.provider),
       );
-    }
+      const pick = policyEngine.pickProvider({
+        modelType,
+        policy,
+        preferredProvider: preferred,
+        candidates: remaining,
+        selfProvider: ROUTER_PROVIDER,
+      });
 
-    policyEngine.recordPick(pick.provider, modelType);
-    const start = Date.now();
-    try {
-      const result = await pick.handler(runtime, params);
-      policyEngine.recordLatency(pick.provider, modelType, Date.now() - start);
-      return result;
-    } catch (err) {
-      // Record the timing even on failure so "fastest" doesn't silently
-      // prefer providers that error out fast.
-      policyEngine.recordLatency(pick.provider, modelType, Date.now() - start);
-      throw err;
+      if (!pick) {
+        if (lastError) {
+          throw lastError;
+        }
+        throw new Error(
+          `[router] No provider registered for ${slot}. Configure a cloud provider, enable local inference, or pair a device.`,
+        );
+      }
+
+      policyEngine.recordPick(pick.provider, modelType);
+      const start = Date.now();
+      try {
+        const result = await pick.handler(runtime, params);
+        policyEngine.recordLatency(
+          pick.provider,
+          modelType,
+          Date.now() - start,
+        );
+        return result;
+      } catch (err) {
+        // Record the timing even on failure so "fastest" doesn't silently
+        // prefer providers that error out fast.
+        policyEngine.recordLatency(
+          pick.provider,
+          modelType,
+          Date.now() - start,
+        );
+
+        const manualPreferred =
+          policy === "manual" &&
+          preferred !== null &&
+          pick.provider === preferred;
+        const hasAlternative = remaining.some(
+          (candidate) => candidate.provider !== pick.provider,
+        );
+        if (manualPreferred || !hasAlternative) {
+          throw err;
+        }
+
+        failedProviders.add(pick.provider);
+        lastError = err;
+        logger.warn(
+          `[router] Provider ${pick.provider} failed for ${slot}; trying fallback provider (${err instanceof Error ? err.message : String(err)})`,
+        );
+      }
     }
   };
 }

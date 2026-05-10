@@ -5,12 +5,6 @@
 
 "use client";
 
-import { Loader2, MessageSquare, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
-import { useChatStore } from "@/lib/stores/chat-store";
-import { cn } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,8 +14,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@elizaos/cloud-ui/components/alert-dialog";
-import { Button } from "@elizaos/cloud-ui/components/button";
+  Button,
+} from "@elizaos/cloud-ui";
+import { Loader2, MessageSquare, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
+import { useChatStore } from "@/lib/stores/chat-store";
+import { cn } from "@/lib/utils";
 
 export function SidebarChatRooms() {
   const navigate = useNavigate();

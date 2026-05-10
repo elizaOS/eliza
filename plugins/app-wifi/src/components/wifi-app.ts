@@ -1,12 +1,12 @@
 /**
  * WiFi overlay app definition + registration.
  *
- * Registered as a side-effect from `@elizaos/app-wifi/register` only on
+ * Registered by the WiFi side-effect entry only on
  * Android; other platforms intentionally skip registration so the app does
  * not appear in the catalog where it cannot function.
  */
 
-import { type OverlayApp, registerOverlayApp } from "@elizaos/app-core";
+import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 import { WifiAppView } from "./WifiAppView";
 
 export const WIFI_APP_NAME = "@elizaos/app-wifi";

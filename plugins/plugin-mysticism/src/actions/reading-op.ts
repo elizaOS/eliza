@@ -454,7 +454,7 @@ async function finalizeReading(
 }
 
 export const readingOpAction: Action = {
-  name: "READING_OP",
+  name: "READING",
   contexts: ["knowledge", "general"],
   contextGate: { anyOf: ["knowledge", "general"] },
   roleGate: { minRole: "USER" },
@@ -575,7 +575,7 @@ export const readingOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "I'd be happy to do a tarot reading. Let me shuffle the cards...",
-          actions: ["READING_OP"],
+          actions: ["READING"],
         },
       },
     ],
@@ -588,7 +588,7 @@ export const readingOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Let us consult the ancient oracle. I'll cast the coins for your hexagram...",
-          actions: ["READING_OP"],
+          actions: ["READING"],
         },
       },
     ],
@@ -601,7 +601,7 @@ export const readingOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "I'd love to explore your natal chart. First, I'll need your birth details...",
-          actions: ["READING_OP"],
+          actions: ["READING"],
         },
       },
     ],
@@ -614,7 +614,7 @@ export const readingOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Let me reveal the next element of your reading...",
-          actions: ["READING_OP"],
+          actions: ["READING"],
         },
       },
     ],
@@ -627,7 +627,7 @@ export const readingOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Let me look more deeply at that element of your reading...",
-          actions: ["READING_OP"],
+          actions: ["READING"],
         },
       },
     ],

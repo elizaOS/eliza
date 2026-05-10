@@ -1,15 +1,55 @@
-import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  type Content,
+  type IAgentRuntime,
+  type Memory,
+  Service,
+  type UUID,
+} from "@elizaos/core";
 import { FarcasterAgentManager } from "../managers/AgentManager";
 import { FARCASTER_SERVICE_NAME } from "../types";
-import { getFarcasterFid, hasFarcasterEnabled, validateFarcasterConfig } from "../utils/config";
+import {
+  getFarcasterFid,
+  hasFarcasterEnabled,
+  listFarcasterAccountIds,
+  normalizeFarcasterAccountId,
+  resolveDefaultFarcasterAccountId,
+  validateFarcasterConfig,
+} from "../utils/config";
 import { FarcasterCastService } from "./CastService";
 import { FarcasterMessageService } from "./MessageService";
 
+type FarcasterPostConnectorRegistration = {
+  source: string;
+  label?: string;
+  description?: string;
+  capabilities?: string[];
+  contexts?: string[];
+  metadata?: Record<string, unknown>;
+  postHandler: (runtime: IAgentRuntime, content: Content) => Promise<Memory>;
+  fetchFeed?: FarcasterCastService["fetchFeed"];
+  searchPosts?: FarcasterCastService["searchPosts"];
+  contentShaping?: {
+    systemPromptFragment?: string;
+    constraints?: Record<string, unknown>;
+  };
+  accountId?: string;
+};
+
+type RuntimeWithPostConnector = IAgentRuntime & {
+  registerPostConnector?: (registration: FarcasterPostConnectorRegistration) => void;
+};
+
+interface AgentAccounts {
+  defaultAccountId: string;
+  managers: Map<string, FarcasterAgentManager>;
+  messageServices: Map<string, FarcasterMessageService>;
+  castServices: Map<string, FarcasterCastService>;
+}
+
 export class FarcasterService extends Service {
   private static instance?: FarcasterService;
-  private managers = new Map<UUID, FarcasterAgentManager>();
-  private messageServices = new Map<UUID, FarcasterMessageService>();
-  private castServices = new Map<UUID, FarcasterCastService>();
+  private agents = new Map<UUID, AgentAccounts>();
 
   static serviceType = FARCASTER_SERVICE_NAME;
 
@@ -29,9 +69,7 @@ export class FarcasterService extends Service {
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = FarcasterService.getInstance();
-    let manager = service.managers.get(runtime.agentId);
-
-    if (manager) {
+    if (service.agents.has(runtime.agentId)) {
       runtime.logger.warn({ agentId: runtime.agentId }, "Farcaster service already started");
       return service;
     }
@@ -41,54 +79,177 @@ export class FarcasterService extends Service {
       return service;
     }
 
-    const farcasterConfig = validateFarcasterConfig(runtime);
-    manager = new FarcasterAgentManager(runtime, farcasterConfig);
-    service.managers.set(runtime.agentId, manager);
+    const accounts: AgentAccounts = {
+      defaultAccountId: normalizeFarcasterAccountId(resolveDefaultFarcasterAccountId(runtime)),
+      managers: new Map(),
+      messageServices: new Map(),
+      castServices: new Map(),
+    };
+    service.agents.set(runtime.agentId, accounts);
 
-    const messageService = new FarcasterMessageService(manager.client, runtime);
-    const castService = new FarcasterCastService(manager.client, runtime);
+    for (const accountId of listFarcasterAccountIds(runtime)) {
+      if (!hasFarcasterEnabled(runtime, accountId)) {
+        continue;
+      }
 
-    service.messageServices.set(runtime.agentId, messageService);
-    service.castServices.set(runtime.agentId, castService);
+      const farcasterConfig = validateFarcasterConfig(runtime, accountId);
+      const manager = new FarcasterAgentManager(runtime, farcasterConfig);
+      accounts.managers.set(accountId, manager);
+      accounts.messageServices.set(
+        accountId,
+        new FarcasterMessageService(manager.client, runtime, accountId)
+      );
+      accounts.castServices.set(
+        accountId,
+        new FarcasterCastService(manager.client, runtime, accountId)
+      );
 
-    await manager.start();
+      await manager.start();
+      runtime.logger.success({ agentId: runtime.agentId, accountId }, "Farcaster client started");
+    }
 
-    runtime.logger.success({ agentId: runtime.agentId }, "Farcaster client started");
     return service;
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
     const service = FarcasterService.getInstance();
-    const manager = service.managers.get(runtime.agentId);
-    if (manager) {
-      await manager.stop();
-      service.managers.delete(runtime.agentId);
-      service.messageServices.delete(runtime.agentId);
-      service.castServices.delete(runtime.agentId);
+    const accounts = service.agents.get(runtime.agentId);
+    if (accounts) {
+      for (const manager of accounts.managers.values()) {
+        await manager.stop();
+      }
+      service.agents.delete(runtime.agentId);
       runtime.logger.info({ agentId: runtime.agentId }, "Farcaster client stopped");
     } else {
       runtime.logger.debug({ agentId: runtime.agentId }, "Farcaster service not running");
     }
   }
 
+  static registerSendHandlers(runtime: IAgentRuntime, serviceInstance: FarcasterService): void {
+    const accounts = serviceInstance?.agents.get(runtime.agentId);
+    if (!accounts || accounts.castServices.size === 0) {
+      runtime.logger.warn(
+        { src: "plugin:farcaster", agentId: runtime.agentId },
+        "Cannot register Farcaster post connector; cast service is not initialized"
+      );
+      return;
+    }
+
+    const withPostConnector = runtime as RuntimeWithPostConnector;
+    if (typeof withPostConnector.registerPostConnector !== "function") {
+      return;
+    }
+
+    for (const castService of accounts.castServices.values()) {
+      const accountId = castService.getAccountId();
+      withPostConnector.registerPostConnector({
+        source: "farcaster",
+        accountId,
+        label: "Farcaster",
+        description:
+          "Farcaster public cast connector for publishing casts and reading or searching the authenticated account's recent feed.",
+        capabilities: ["post", "fetch_feed", "search_posts"],
+        contexts: ["social", "social_posting", "connectors"],
+        metadata: {
+          accountId,
+          service: FARCASTER_SERVICE_NAME,
+        },
+        postHandler: castService.handleSendPost.bind(castService),
+        fetchFeed: castService.fetchFeed.bind(castService),
+        searchPosts: castService.searchPosts.bind(castService),
+        contentShaping: {
+          systemPromptFragment:
+            "For Farcaster casts, write a conversational public cast under 320 characters. If replying, keep enough context for a public thread.",
+          constraints: {
+            maxLength: 320,
+            supportsMarkdown: false,
+            channelType: ChannelType.FEED,
+          },
+        },
+      });
+    }
+
+    runtime.logger.info(
+      { src: "plugin:farcaster", agentId: runtime.agentId },
+      "Registered Farcaster post connector"
+    );
+  }
+
   async stop(): Promise<void> {
-    for (const manager of Array.from(this.managers.values())) {
-      const agentId = manager.runtime.agentId;
-      manager.runtime.logger.debug("Stopping Farcaster service");
+    for (const [agentId, accounts] of Array.from(this.agents.entries())) {
+      const runtime = accounts.managers.values().next().value?.runtime;
+      runtime?.logger.debug("Stopping Farcaster service");
       try {
-        await FarcasterService.stop(manager.runtime);
+        if (runtime) {
+          await FarcasterService.stop(runtime);
+        } else {
+          this.agents.delete(agentId);
+        }
       } catch (error) {
-        manager.runtime.logger.error({ agentId, error }, "Error stopping Farcaster service");
+        runtime?.logger.error({ agentId, error }, "Error stopping Farcaster service");
       }
     }
   }
 
-  getMessageService(agentId: UUID): FarcasterMessageService | undefined {
-    return this.messageServices.get(agentId);
+  getMessageService(agentId: UUID, accountId?: string): FarcasterMessageService | undefined {
+    return this.getMessageServiceForAccount(accountId, agentId);
   }
 
-  getCastService(agentId: UUID): FarcasterCastService | undefined {
-    return this.castServices.get(agentId);
+  getCastService(agentId: UUID, accountId?: string): FarcasterCastService | undefined {
+    return this.getCastServiceForAccount(accountId, agentId);
+  }
+
+  getMessageServiceForAccount(
+    accountId: string | undefined,
+    agentId?: UUID
+  ): FarcasterMessageService | undefined {
+    const resolvedAgentId = agentId ?? this.firstAgentId();
+    if (!resolvedAgentId) return undefined;
+    const accounts = this.agents.get(resolvedAgentId);
+    if (!accounts) return undefined;
+    const id = accountId ? normalizeFarcasterAccountId(accountId) : accounts.defaultAccountId;
+    return accounts.messageServices.get(id);
+  }
+
+  getCastServiceForAccount(
+    accountId: string | undefined,
+    agentId?: UUID
+  ): FarcasterCastService | undefined {
+    const resolvedAgentId = agentId ?? this.firstAgentId();
+    if (!resolvedAgentId) return undefined;
+    const accounts = this.agents.get(resolvedAgentId);
+    if (!accounts) return undefined;
+    const id = accountId ? normalizeFarcasterAccountId(accountId) : accounts.defaultAccountId;
+    return accounts.castServices.get(id);
+  }
+
+  getManagerForAccount(
+    accountId: string | undefined,
+    agentId?: UUID
+  ): FarcasterAgentManager | undefined {
+    const resolvedAgentId = agentId ?? this.firstAgentId();
+    if (!resolvedAgentId) return undefined;
+    const accounts = this.agents.get(resolvedAgentId);
+    if (!accounts) return undefined;
+    const id = accountId ? normalizeFarcasterAccountId(accountId) : accounts.defaultAccountId;
+    return accounts.managers.get(id);
+  }
+
+  getDefaultAccountId(agentId?: UUID): string | undefined {
+    const resolvedAgentId = agentId ?? this.firstAgentId();
+    return resolvedAgentId ? this.agents.get(resolvedAgentId)?.defaultAccountId : undefined;
+  }
+
+  listAccountIds(agentId?: UUID): string[] {
+    const resolvedAgentId = agentId ?? this.firstAgentId();
+    const accounts = resolvedAgentId ? this.agents.get(resolvedAgentId) : undefined;
+    return accounts ? Array.from(accounts.managers.keys()) : [];
+  }
+
+  getManagersForAgent(agentId?: UUID): Map<string, FarcasterAgentManager> {
+    const resolvedAgentId = agentId ?? this.firstAgentId();
+    const accounts = resolvedAgentId ? this.agents.get(resolvedAgentId) : undefined;
+    return new Map(accounts?.managers ?? []);
   }
 
   async healthCheck(): Promise<{
@@ -98,37 +259,53 @@ export class FarcasterService extends Service {
     const managerStatuses: Record<string, unknown> = {};
     let overallHealthy = true;
 
-    for (const [agentId, manager] of Array.from(this.managers.entries())) {
-      try {
-        const fid = getFarcasterFid(manager.runtime);
-        if (!fid) {
-          throw new Error("FARCASTER_FID not configured");
+    for (const [agentId, accounts] of Array.from(this.agents.entries())) {
+      managerStatuses[agentId] = {};
+      for (const [accountId, manager] of Array.from(accounts.managers.entries())) {
+        try {
+          const fid = getFarcasterFid(manager.runtime, accountId);
+          if (!fid) {
+            throw new Error("FARCASTER_FID not configured");
+          }
+          const profile = await manager.client.getProfile(fid);
+          (managerStatuses[agentId] as Record<string, unknown>)[accountId] = {
+            status: "healthy",
+            fid: profile.fid,
+            username: profile.username,
+          };
+        } catch (error) {
+          (managerStatuses[agentId] as Record<string, unknown>)[accountId] = {
+            status: "unhealthy",
+            error: error instanceof Error ? error.message : "Unknown error",
+          };
+          overallHealthy = false;
         }
-        const profile = await manager.client.getProfile(fid);
-        managerStatuses[agentId] = {
-          status: "healthy",
-          fid: profile.fid,
-          username: profile.username,
-        };
-      } catch (error) {
-        managerStatuses[agentId] = {
-          status: "unhealthy",
-          error: error instanceof Error ? error.message : "Unknown error",
-        };
-        overallHealthy = false;
       }
     }
 
     return {
       healthy: overallHealthy,
       details: {
-        activeManagers: this.managers.size,
+        activeManagers: Array.from(this.agents.values()).reduce(
+          (total, accounts) => total + accounts.managers.size,
+          0
+        ),
         managerStatuses,
       },
     };
   }
 
-  getActiveManagers(): Map<UUID, FarcasterAgentManager> {
-    return new Map(this.managers);
+  getActiveManagers(): Map<string, FarcasterAgentManager> {
+    return new Map(
+      Array.from(this.agents.entries()).flatMap(([agentId, accounts]) =>
+        Array.from(accounts.managers.entries()).map(
+          ([accountId, manager]) => [`${agentId}:${accountId}`, manager] as const
+        )
+      )
+    );
+  }
+
+  private firstAgentId(): UUID | undefined {
+    return this.agents.keys().next().value;
   }
 }

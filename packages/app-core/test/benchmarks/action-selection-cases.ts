@@ -178,40 +178,40 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     tags: ["calendar", "standard"],
   },
 
-  // ─── Email triage (TRIAGE_MESSAGES, channel=gmail) ────────────────────
+  // ─── Email triage (MESSAGE, channel=gmail) ────────────────────
   {
     id: "email-triage-inbox",
     userMessage: "triage my gmail inbox",
-    expectedAction: "TRIAGE_MESSAGES",
+    expectedAction: "MESSAGE",
     acceptableActions: ["TRIAGE"],
     tags: ["email", "critical"],
   },
   {
     id: "email-unread",
     userMessage: "summarize my unread emails",
-    expectedAction: "TRIAGE_MESSAGES",
-    acceptableActions: ["LIST_INBOX", "CHECKIN"],
+    expectedAction: "MESSAGE",
+    acceptableActions: ["MESSAGE", "CHECKIN"],
     tags: ["email", "standard"],
   },
   {
     id: "email-draft-reply",
     userMessage:
       "draft a reply to the latest email from Sarah saying I'll review it tomorrow",
-    expectedAction: "DRAFT_REPLY",
+    expectedAction: "MESSAGE",
     tags: ["email", "critical"],
   },
   {
     id: "email-send-reply",
     userMessage:
       "send a reply to the last email from finance confirming receipt",
-    expectedAction: "RESPOND_TO_MESSAGE",
-    acceptableActions: ["SEND_DRAFT"],
+    expectedAction: "MESSAGE",
+    acceptableActions: ["MESSAGE"],
     tags: ["email", "critical"],
   },
   {
     id: "email-unsubscribe-sender",
     userMessage: "unsubscribe me from newsletters@medium.com and block them",
-    expectedAction: "MANAGE_MESSAGE",
+    expectedAction: "MESSAGE",
     expectedParams: { operation: "unsubscribe" },
     tags: ["email", "standard"],
   },
@@ -220,21 +220,21 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "inbox-triage",
     userMessage: "triage my inbox",
-    expectedAction: "TRIAGE_MESSAGES",
+    expectedAction: "MESSAGE",
     tags: ["inbox", "critical"],
   },
   {
     id: "inbox-digest",
     userMessage: "give me my inbox digest",
     expectedAction: "CHECKIN",
-    acceptableActions: ["LIST_INBOX"],
+    acceptableActions: ["MESSAGE"],
     tags: ["inbox", "standard"],
   },
   {
     id: "inbox-respond",
     userMessage: "respond to the messages that need an answer in my inbox",
-    expectedAction: "RESPOND_TO_MESSAGE",
-    acceptableActions: ["TRIAGE_MESSAGES"],
+    expectedAction: "MESSAGE",
+    acceptableActions: ["MESSAGE"],
     tags: ["inbox", "standard"],
   },
 
@@ -304,22 +304,22 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "cross-send-telegram",
     userMessage:
       "send a telegram message to Jane saying I'm running 10 minutes late",
-    expectedAction: "SEND_DRAFT",
-    acceptableActions: ["RESPOND_TO_MESSAGE"],
+    expectedAction: "MESSAGE",
+    acceptableActions: ["MESSAGE"],
     tags: ["messaging", "critical"],
   },
   {
     id: "cross-send-discord",
     userMessage: "post 'standup in 5' to the engineering discord channel",
-    expectedAction: "SEND_DRAFT",
-    acceptableActions: ["RESPOND_TO_MESSAGE"],
+    expectedAction: "MESSAGE",
+    acceptableActions: ["MESSAGE"],
     tags: ["messaging", "standard"],
   },
   {
     id: "cross-send-signal",
     userMessage: "send a Signal message to Priya saying thanks for the review",
-    expectedAction: "SEND_DRAFT",
-    acceptableActions: ["RESPOND_TO_MESSAGE"],
+    expectedAction: "MESSAGE",
+    acceptableActions: ["MESSAGE"],
     tags: ["messaging", "standard"],
   },
 
@@ -327,25 +327,22 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "x-read-dms",
     userMessage: "check my twitter DMs",
-    expectedAction: "X",
-    acceptableActions: ["READ_DMS"],
-    expectedParams: { intent: "read_dms" },
+    expectedAction: "MESSAGE",
+    expectedParams: { subaction: "read_dms" },
     tags: ["x", "standard"],
   },
   {
     id: "x-read-feed",
     userMessage: "what's on my X timeline?",
-    expectedAction: "X",
-    acceptableActions: ["READ_FEED"],
-    expectedParams: { intent: "read_feed" },
+    expectedAction: "POST",
+    expectedParams: { subaction: "read_feed" },
     tags: ["x", "standard"],
   },
   {
     id: "x-search",
     userMessage: "search twitter for posts about elizaOS",
-    expectedAction: "X",
-    acceptableActions: ["SEARCH"],
-    expectedParams: { intent: "search" },
+    expectedAction: "POST",
+    expectedParams: { subaction: "search" },
     tags: ["x", "standard"],
   },
 
@@ -416,7 +413,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "browser-manage-settings",
     userMessage: "show me my LifeOps browser settings",
-    expectedAction: "MANAGE_LIFEOPS_BROWSER",
+    expectedAction: "MANAGE_BROWSER_BRIDGE",
+    acceptableActions: ["MANAGE_LIFEOPS_BROWSER"],
     tags: ["browser", "standard"],
   },
   {
@@ -566,7 +564,7 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "intent-sync-broadcast-reminder",
     userMessage: "broadcast a reminder to all my devices",
     expectedAction: "DEVICE_INTENT",
-    acceptableActions: ["SEND_DRAFT"],
+    acceptableActions: ["MESSAGE"],
     tags: ["intent-sync", "standard"],
   },
   {

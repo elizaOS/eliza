@@ -12,12 +12,21 @@ Storage layout: int8 codes + fp16 per-block norms (+ 1-bit QJL signs).
 from __future__ import annotations
 
 import math
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 from scipy.stats import norm
+
+# Import the canonical xorshift32 helper (sibling of the polarquant/ package).
+_HERE = Path(__file__).resolve().parent
+_QUANT_DIR = _HERE.parent
+if str(_QUANT_DIR) not in sys.path:
+    sys.path.insert(0, str(_QUANT_DIR))
+from polar_xorshift32 import polar_xorshift32_signs  # noqa: E402
 
 # Pre-computed Lloyd-Max centroids for N(0,1). Keyed by bits; entries stay
 # None until first use (computed on demand by ``_ensure_centroids``).
@@ -150,10 +159,9 @@ def polar_quantize(
     if use_qjl:
         recon_scaled = centroids[codes.long()]
         residual = blocks_scaled - recon_scaled
-        gen = torch.Generator(device="cpu").manual_seed(_QJL_SEED)
-        random_signs = (
-            torch.randint(0, 2, (block_size,), generator=gen).float() * 2 - 1
-        ).to(weight.device)
+        random_signs = torch.from_numpy(
+            polar_xorshift32_signs(block_size, _QJL_SEED)
+        ).to(dtype=torch.float32, device=weight.device)
         projections = (residual * random_signs.unsqueeze(0)).sum(dim=1)
         qjl_signs = (projections >= 0).to(torch.uint8)
 
@@ -190,10 +198,9 @@ def polar_dequantize(
     recon_scaled = centroids[blocks_codes]
 
     if result.use_qjl and result.qjl_signs is not None:
-        gen = torch.Generator(device="cpu").manual_seed(_QJL_SEED)
-        random_signs = (
-            torch.randint(0, 2, (bs,), generator=gen).float() * 2 - 1
-        ).to(device)
+        random_signs = torch.from_numpy(
+            polar_xorshift32_signs(bs, _QJL_SEED)
+        ).to(dtype=torch.float32, device=device)
         correction_dir = random_signs.unsqueeze(0) / math.sqrt(bs)
         correction_sign = result.qjl_signs.float().to(device) * 2 - 1
         recon_scaled = recon_scaled + (

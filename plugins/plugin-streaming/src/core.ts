@@ -480,7 +480,7 @@ function readParam(
       typeof v === "boolean" ||
       v === null
     ) {
-      return v;
+      return v as string | number | boolean | null;
     }
   }
   const flat = options as Record<string, unknown>;
@@ -491,7 +491,7 @@ function readParam(
     typeof v === "boolean" ||
     v === null
   ) {
-    return v;
+    return v as string | number | boolean | null;
   }
   return undefined;
 }
@@ -537,7 +537,7 @@ export function buildStreamOpAction(
   };
 
   const opParam: ActionParameter = {
-    name: "op",
+    name: "subaction",
     description:
       "Operation to perform: start (go live), stop (go offline), or status.",
     descriptionCompressed: "Op: start|stop|status.",
@@ -549,7 +549,7 @@ export function buildStreamOpAction(
   };
 
   return {
-    name: "STREAM_OP",
+    name: "STREAM",
     contexts: ["media", "automation", "connectors"],
     contextGate: { anyOf: ["media", "automation", "connectors"] },
     roleGate: { minRole: "ADMIN" },
@@ -654,7 +654,7 @@ export function buildStreamOpAction(
           name: "{{agent}}",
           content: {
             text: "Starting the Twitch stream now.",
-            actions: ["STREAM_OP"],
+            actions: ["STREAM"],
           },
         },
       ],
@@ -667,7 +667,7 @@ export function buildStreamOpAction(
           name: "{{agent}}",
           content: {
             text: "Stopping the stream now.",
-            actions: ["STREAM_OP"],
+            actions: ["STREAM"],
           },
         },
       ],
@@ -680,7 +680,7 @@ export function buildStreamOpAction(
           name: "{{agent}}",
           content: {
             text: "Let me check the stream status.",
-            actions: ["STREAM_OP"],
+            actions: ["STREAM"],
           },
         },
       ],

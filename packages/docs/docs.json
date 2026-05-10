@@ -589,7 +589,7 @@
               "rest/character",
               "rest/models",
               "rest/memory",
-              "rest/knowledge"
+              "rest/documents"
             ]
           },
           {
@@ -679,7 +679,6 @@
               "plugin-registry/llm/xai",
               "plugin-registry/llm/deepseek",
               "plugin-registry/llm/ollama",
-              "plugin-registry/llm/qwen",
               "plugin-registry/llm/minimax",
               "plugin-registry/llm/together",
               "plugin-registry/llm/mistral",
@@ -741,7 +740,6 @@
               "plugin-registry/edge-tts",
               "plugin-registry/elevenlabs",
               "plugin-registry/robot-voice",
-              "plugin-registry/simple-voice",
               "plugin-registry/suno",
               "plugin-registry/fal",
               "plugin-registry/image-generation",
@@ -763,7 +761,6 @@
               "plugin-registry/webhooks",
               "plugin-registry/obsidian",
               "plugin-registry/linear",
-              "plugin-registry/n8n-workflow",
               "plugin-registry/shopify",
               "plugin-registry/rss",
               "plugin-registry/s3-storage"
@@ -772,7 +769,7 @@
           {
             "group": "Agent Intelligence",
             "pages": [
-              "plugin-registry/knowledge",
+              "plugin-registry/documents",
               "plugin-registry/memory",
               "plugin-registry/experience",
               "plugin-registry/directives",
@@ -851,7 +848,7 @@
               "guides/cloud-provider-routing",
               "guides/config-includes",
               "guides/config-templates",
-              "guides/knowledge",
+              "guides/documents",
               "guides/autonomous-mode",
               "guides/custom-actions",
               "guides/hooks",
@@ -952,7 +949,6 @@
               "plugin-registry/llm/together",
               "plugin-registry/llm/cohere",
               "plugin-registry/llm/perplexity",
-              "plugin-registry/llm/qwen",
               "plugin-registry/llm/minimax",
               "plugin-registry/llm/vercel-ai-gateway",
               "plugin-registry/llm/zai"
@@ -994,7 +990,7 @@
           {
             "group": "Feature Plugins",
             "pages": [
-              "plugin-registry/knowledge",
+              "plugin-registry/documents",
               "plugin-registry/sql",
               "plugin-registry/cron",
               "plugin-registry/browser",
@@ -1029,7 +1025,7 @@
               "rest/agents",
               "rest/conversations",
               "rest/memory",
-              "rest/knowledge",
+              "rest/documents",
               "rest/character",
               "rest/models",
               "rest/plugins",
@@ -1287,7 +1283,6 @@
               "plugin-registry/llm/together",
               "plugin-registry/llm/cohere",
               "plugin-registry/llm/perplexity",
-              "plugin-registry/llm/qwen",
               "plugin-registry/llm/minimax",
               "plugin-registry/llm/vercel-ai-gateway",
               "plugin-registry/llm/zai"
@@ -1338,7 +1333,7 @@
               "plugin-registry/cron",
               "plugin-registry/fal",
               "plugin-registry/image-generation",
-              "plugin-registry/knowledge",
+              "plugin-registry/documents",
               "plugin-registry/obsidian",
               "plugin-registry/sql",
               "plugin-registry/stt",
@@ -1415,7 +1410,7 @@
               "guides/first-extension-walkthrough",
               "guides/custom-actions",
               "guides/hooks",
-              "guides/knowledge",
+              "guides/documents",
               "guides/triggers",
               "guides/local-models",
               "guides/sandbox",
@@ -1493,7 +1488,7 @@
               "rest/drop",
               "rest/emotes",
               "rest/inbox",
-              "rest/knowledge",
+              "rest/documents",
               "rest/lifeops",
               "rest/mcp",
               "rest/memory",
@@ -1658,7 +1653,7 @@
               "rest/character",
               "rest/conversations",
               "rest/memory",
-              "rest/knowledge",
+              "rest/documents",
               "rest/models",
               "rest/plugins",
               "rest/connectors",

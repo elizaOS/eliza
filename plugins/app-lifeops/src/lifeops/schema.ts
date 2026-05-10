@@ -1,8 +1,19 @@
 /**
  * LifeOps Drizzle schema.
  *
+ * Tables are placed in the `app_lifeops` PostgreSQL schema (matches the
+ * `deriveSchemaName("@elizaos/app-lifeops")` result used by plugin-sql's
+ * runtime migrator) so they no longer trip the
+ * "Plugin table is using public schema" warning. The runtime migrator
+ * issues `CREATE SCHEMA IF NOT EXISTS` automatically before applying
+ * migrations.
+ *
  * Tables and indexes are created and migrated via the elizaOS
  * plugin-migration system when the plugin's `schema` field is populated.
+ *
+ * IMPORTANT: All raw SQL inside this plugin's `src/` must qualify table
+ * names with the `app_lifeops.` prefix. The bare `life_*` and `lifeops_*`
+ * names no longer resolve in the default search path.
  */
 
 import { sql } from "drizzle-orm";
@@ -12,7 +23,7 @@ import {
   index,
   integer,
   jsonb,
-  pgTable,
+  pgSchema,
   real,
   text,
   timestamp,
@@ -20,23 +31,20 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+export const appLifeopsPgSchema = pgSchema("app_lifeops");
+
 // ---------------------------------------------------------------------------
 // Wave 1+ additions — relationships, X read, screen time, scheduling.
 // All life_* prefix, text IDs, ISO timestamps.
-//
-// TODO(schema-isolation): plugin-sql warns these tables sit in the `public`
-// schema. Moving them to `pgSchema("app_lifeops")` requires a coordinated
-// migration — the same tables are also created and queried via raw SQL in
-// `repository.ts` (bootstrapSchema + 50+ queries). Do that in one atomic
-// pass or the app will split-brain between `app_lifeops.*` and `public.*`.
 // ---------------------------------------------------------------------------
 
-export const lifeConnectorGrants = pgTable(
+export const lifeConnectorGrants = appLifeopsPgSchema.table(
   "life_connector_grants",
   {
     id: text("id").primaryKey(),
     agentId: text("agent_id").notNull(),
     provider: text("provider").notNull(),
+    connectorAccountId: text("connector_account_id"),
     side: text("side").notNull().default("owner"),
     identityJson: text("identity_json").notNull().default("{}"),
     identityEmail: text("identity_email"),
@@ -56,7 +64,28 @@ export const lifeConnectorGrants = pgTable(
   (t) => [unique().on(t.agentId, t.provider, t.side, t.mode, t.identityEmail)],
 );
 
-export const lifeTaskDefinitions = pgTable(
+export const lifeAccountPrivacy = appLifeopsPgSchema.table(
+  "life_account_privacy",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull(),
+    connectorAccountId: text("connector_account_id").notNull(),
+    visibilityScope: text("visibility_scope").notNull().default("owner_only"),
+    allowedDataClassesJson: text("allowed_data_classes_json")
+      .notNull()
+      .default("[]"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.provider, t.connectorAccountId),
+    index("idx_life_account_privacy_agent").on(t.agentId, t.provider),
+  ],
+);
+
+export const lifeTaskDefinitions = appLifeopsPgSchema.table(
   "life_task_definitions",
   {
     id: text("id").primaryKey(),
@@ -96,7 +125,7 @@ export const lifeTaskDefinitions = pgTable(
   ],
 );
 
-export const lifeTaskOccurrences = pgTable(
+export const lifeTaskOccurrences = appLifeopsPgSchema.table(
   "life_task_occurrences",
   {
     id: text("id").primaryKey(),
@@ -143,7 +172,7 @@ export const lifeTaskOccurrences = pgTable(
   ],
 );
 
-export const lifeGoalDefinitions = pgTable(
+export const lifeGoalDefinitions = appLifeopsPgSchema.table(
   "life_goal_definitions",
   {
     id: text("id").primaryKey(),
@@ -176,7 +205,7 @@ export const lifeGoalDefinitions = pgTable(
   ],
 );
 
-export const lifeGoalLinks = pgTable(
+export const lifeGoalLinks = appLifeopsPgSchema.table(
   "life_goal_links",
   {
     id: text("id").primaryKey(),
@@ -193,7 +222,7 @@ export const lifeGoalLinks = pgTable(
   ],
 );
 
-export const lifeReminderPlans = pgTable(
+export const lifeReminderPlans = appLifeopsPgSchema.table(
   "life_reminder_plans",
   {
     id: text("id").primaryKey(),
@@ -215,7 +244,7 @@ export const lifeReminderPlans = pgTable(
   ],
 );
 
-export const lifeReminderAttempts = pgTable(
+export const lifeReminderAttempts = appLifeopsPgSchema.table(
   "life_reminder_attempts",
   {
     id: text("id").primaryKey(),
@@ -256,7 +285,7 @@ export const lifeReminderAttempts = pgTable(
   ],
 );
 
-export const lifeAuditEvents = pgTable(
+export const lifeAuditEvents = appLifeopsPgSchema.table(
   "life_audit_events",
   {
     id: text("id").primaryKey(),
@@ -280,7 +309,7 @@ export const lifeAuditEvents = pgTable(
   ],
 );
 
-export const lifeSubscriptionAudits = pgTable("life_subscription_audits", {
+export const lifeSubscriptionAudits = appLifeopsPgSchema.table("life_subscription_audits", {
   id: text("id").primaryKey(),
   agentId: text("agent_id").notNull(),
   source: text("source").notNull().default("gmail"),
@@ -296,7 +325,7 @@ export const lifeSubscriptionAudits = pgTable("life_subscription_audits", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const lifeSubscriptionCandidates = pgTable(
+export const lifeSubscriptionCandidates = appLifeopsPgSchema.table(
   "life_subscription_candidates",
   {
     id: text("id").primaryKey(),
@@ -319,7 +348,7 @@ export const lifeSubscriptionCandidates = pgTable(
   (t) => [unique().on(t.agentId, t.auditId, t.serviceSlug)],
 );
 
-export const lifeSubscriptionCancellations = pgTable(
+export const lifeSubscriptionCancellations = appLifeopsPgSchema.table(
   "life_subscription_cancellations",
   {
     id: text("id").primaryKey(),
@@ -344,7 +373,7 @@ export const lifeSubscriptionCancellations = pgTable(
   },
 );
 
-export const lifeEmailUnsubscribes = pgTable("life_email_unsubscribes", {
+export const lifeEmailUnsubscribes = appLifeopsPgSchema.table("life_email_unsubscribes", {
   id: text("id").primaryKey(),
   agentId: text("agent_id").notNull(),
   senderEmail: text("sender_email").notNull(),
@@ -364,7 +393,7 @@ export const lifeEmailUnsubscribes = pgTable("life_email_unsubscribes", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const lifePaymentSources = pgTable("life_payment_sources", {
+export const lifePaymentSources = appLifeopsPgSchema.table("life_payment_sources", {
   id: text("id").primaryKey(),
   agentId: text("agent_id").notNull(),
   kind: text("kind").notNull().default("manual"),
@@ -379,7 +408,7 @@ export const lifePaymentSources = pgTable("life_payment_sources", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const lifePaymentTransactions = pgTable(
+export const lifePaymentTransactions = appLifeopsPgSchema.table(
   "life_payment_transactions",
   {
     id: text("id").primaryKey(),
@@ -408,7 +437,7 @@ export const lifePaymentTransactions = pgTable(
   ],
 );
 
-export const lifeActivitySignals = pgTable(
+export const lifeActivitySignals = appLifeopsPgSchema.table(
   "life_activity_signals",
   {
     id: text("id").primaryKey(),
@@ -426,7 +455,7 @@ export const lifeActivitySignals = pgTable(
   (t) => [index("idx_life_activity_signals_agent").on(t.agentId, t.observedAt)],
 );
 
-export const lifeHealthMetricSamples = pgTable(
+export const lifeHealthMetricSamples = appLifeopsPgSchema.table(
   "life_health_metric_samples",
   {
     id: text("id").primaryKey(),
@@ -461,7 +490,7 @@ export const lifeHealthMetricSamples = pgTable(
   ],
 );
 
-export const lifeHealthWorkouts = pgTable(
+export const lifeHealthWorkouts = appLifeopsPgSchema.table(
   "life_health_workouts",
   {
     id: text("id").primaryKey(),
@@ -492,7 +521,7 @@ export const lifeHealthWorkouts = pgTable(
   ],
 );
 
-export const lifeHealthSyncStates = pgTable(
+export const lifeHealthSyncStates = appLifeopsPgSchema.table(
   "life_health_sync_states",
   {
     id: text("id").primaryKey(),
@@ -509,7 +538,7 @@ export const lifeHealthSyncStates = pgTable(
   (t) => [unique().on(t.agentId, t.provider, t.grantId)],
 );
 
-export const lifeHealthSleepEpisodes = pgTable(
+export const lifeHealthSleepEpisodes = appLifeopsPgSchema.table(
   "life_health_sleep_episodes",
   {
     id: text("id").primaryKey(),
@@ -553,7 +582,7 @@ export const lifeHealthSleepEpisodes = pgTable(
   ],
 );
 
-export const lifeChannelPolicies = pgTable(
+export const lifeChannelPolicies = appLifeopsPgSchema.table(
   "life_channel_policies",
   {
     id: text("id").primaryKey(),
@@ -577,7 +606,7 @@ export const lifeChannelPolicies = pgTable(
   ],
 );
 
-export const lifeWebsiteAccessGrants = pgTable(
+export const lifeWebsiteAccessGrants = appLifeopsPgSchema.table(
   "life_website_access_grants",
   {
     id: text("id").primaryKey(),
@@ -606,7 +635,7 @@ export const lifeWebsiteAccessGrants = pgTable(
   ],
 );
 
-export const lifeCalendarEvents = pgTable(
+export const lifeCalendarEvents = appLifeopsPgSchema.table(
   "life_calendar_events",
   {
     id: text("id").primaryKey(),
@@ -615,6 +644,12 @@ export const lifeCalendarEvents = pgTable(
     side: text("side").notNull().default("owner"),
     calendarId: text("calendar_id").notNull(),
     externalEventId: text("external_event_id").notNull(),
+    // New writes set connector_account_id from the owning account.
+    connectorAccountId: text("connector_account_id"),
+    purgeResyncRequired: boolean("purge_resync_required")
+      .notNull()
+      .default(false),
+    purgeResyncReason: text("purge_resync_reason"),
     grantId: text("grant_id"),
     title: text("title").notNull().default(""),
     description: text("description").notNull().default(""),
@@ -637,7 +672,7 @@ export const lifeCalendarEvents = pgTable(
   ],
 );
 
-export const lifeCalendarSyncStates = pgTable(
+export const lifeCalendarSyncStates = appLifeopsPgSchema.table(
   "life_calendar_sync_states",
   {
     id: text("id").primaryKey(),
@@ -645,7 +680,12 @@ export const lifeCalendarSyncStates = pgTable(
     provider: text("provider").notNull().default("google"),
     side: text("side").notNull().default("owner"),
     calendarId: text("calendar_id").notNull(),
+    connectorAccountId: text("connector_account_id"),
     grantId: text("grant_id"),
+    purgeResyncRequired: boolean("purge_resync_required")
+      .notNull()
+      .default(false),
+    purgeResyncReason: text("purge_resync_reason"),
     windowStartAt: text("window_start_at").notNull(),
     windowEndAt: text("window_end_at").notNull(),
     syncedAt: text("synced_at").notNull(),
@@ -654,7 +694,7 @@ export const lifeCalendarSyncStates = pgTable(
   (t) => [unique().on(t.agentId, t.provider, t.side, t.calendarId)],
 );
 
-export const lifeGmailMessages = pgTable(
+export const lifeGmailMessages = appLifeopsPgSchema.table(
   "life_gmail_messages",
   {
     id: text("id").primaryKey(),
@@ -662,6 +702,7 @@ export const lifeGmailMessages = pgTable(
     provider: text("provider").notNull().default("google"),
     side: text("side").notNull().default("owner"),
     externalMessageId: text("external_message_id").notNull(),
+    connectorAccountId: text("connector_account_id"),
     grantId: text("grant_id"),
     threadId: text("thread_id").notNull().default(""),
     subject: text("subject").notNull().default(""),
@@ -688,7 +729,7 @@ export const lifeGmailMessages = pgTable(
   ],
 );
 
-export const lifeInboxMessages = pgTable(
+export const lifeInboxMessages = appLifeopsPgSchema.table(
   "life_inbox_messages",
   {
     id: text("id").primaryKey(),
@@ -714,6 +755,7 @@ export const lifeInboxMessages = pgTable(
     priorityScore: integer("priority_score"),
     priorityCategory: text("priority_category"),
     priorityFlagsJson: text("priority_flags_json").notNull().default("[]"),
+    connectorAccountId: text("connector_account_id"),
     cachedAt: text("cached_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -724,7 +766,7 @@ export const lifeInboxMessages = pgTable(
   ],
 );
 
-export const lifeGmailSyncStates = pgTable(
+export const lifeGmailSyncStates = appLifeopsPgSchema.table(
   "life_gmail_sync_states",
   {
     id: text("id").primaryKey(),
@@ -740,7 +782,7 @@ export const lifeGmailSyncStates = pgTable(
   (t) => [unique().on(t.agentId, t.provider, t.side, t.grantId, t.mailbox)],
 );
 
-export const lifeGmailSpamReviewItems = pgTable(
+export const lifeGmailSpamReviewItems = appLifeopsPgSchema.table(
   "life_gmail_spam_review_items",
   {
     id: text("id").primaryKey(),
@@ -775,7 +817,7 @@ export const lifeGmailSpamReviewItems = pgTable(
   ],
 );
 
-export const lifeWorkflowDefinitions = pgTable(
+export const lifeWorkflowDefinitions = appLifeopsPgSchema.table(
   "life_workflow_definitions",
   {
     id: text("id").primaryKey(),
@@ -815,7 +857,7 @@ export const lifeWorkflowDefinitions = pgTable(
   ],
 );
 
-export const lifeWorkflowRuns = pgTable(
+export const lifeWorkflowRuns = appLifeopsPgSchema.table(
   "life_workflow_runs",
   {
     id: text("id").primaryKey(),
@@ -843,7 +885,7 @@ export const lifeWorkflowRuns = pgTable(
 // The `companionId` column is a soft FK to
 // `browser_bridge_companions.id` (no hard constraint so the plugin package
 // remains the schema owner of that table).
-export const lifeWorkflowBrowserSessions = pgTable(
+export const lifeWorkflowBrowserSessions = appLifeopsPgSchema.table(
   "life_workflow_browser_sessions",
   {
     id: text("id").primaryKey(),
@@ -889,7 +931,7 @@ export const lifeWorkflowBrowserSessions = pgTable(
   ],
 );
 
-export const lifeEscalationStates = pgTable(
+export const lifeEscalationStates = appLifeopsPgSchema.table(
   "life_escalation_states",
   {
     id: text("id").primaryKey(),
@@ -914,7 +956,7 @@ export const lifeEscalationStates = pgTable(
   ],
 );
 
-export const lifeInboxTriageEntries = pgTable("life_inbox_triage_entries", {
+export const lifeInboxTriageEntries = appLifeopsPgSchema.table("life_inbox_triage_entries", {
   id: text("id").primaryKey(),
   agentId: text("agent_id").notNull(),
   source: text("source").notNull(),
@@ -940,7 +982,7 @@ export const lifeInboxTriageEntries = pgTable("life_inbox_triage_entries", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const lifeInboxTriageExamples = pgTable("life_inbox_triage_examples", {
+export const lifeInboxTriageExamples = appLifeopsPgSchema.table("life_inbox_triage_examples", {
   id: text("id").primaryKey(),
   agentId: text("agent_id").notNull(),
   source: text("source").notNull(),
@@ -952,7 +994,7 @@ export const lifeInboxTriageExamples = pgTable("life_inbox_triage_examples", {
   createdAt: text("created_at").notNull(),
 });
 
-export const lifeIntents = pgTable("life_intents", {
+export const lifeIntents = appLifeopsPgSchema.table("life_intents", {
   id: text("id").primaryKey(),
   agentId: text("agent_id").notNull(),
   kind: text("kind").notNull(),
@@ -969,7 +1011,7 @@ export const lifeIntents = pgTable("life_intents", {
   metadataJson: text("metadata_json"),
 });
 
-export const lifeCheckinReports = pgTable("life_checkin_reports", {
+export const lifeCheckinReports = appLifeopsPgSchema.table("life_checkin_reports", {
   id: text("id").primaryKey(),
   agentId: text("agent_id").notNull(),
   kind: text("kind").notNull(),
@@ -980,7 +1022,7 @@ export const lifeCheckinReports = pgTable("life_checkin_reports", {
   acknowledgedAt: text("acknowledged_at"),
 });
 
-export const lifeopsFeaturesTable = pgTable("lifeops_features", {
+export const lifeopsFeaturesTable = appLifeopsPgSchema.table("lifeops_features", {
   featureKey: text("feature_key").primaryKey(),
   enabled: boolean("enabled").notNull(),
   source: text("source").notNull(),
@@ -1001,7 +1043,7 @@ export const lifeopsFeaturesTable = pgTable("lifeops_features", {
     .defaultNow(),
 });
 
-export const lifeRelationships = pgTable(
+export const lifeRelationships = appLifeopsPgSchema.table(
   "life_relationships",
   {
     id: text("id").primaryKey(),
@@ -1022,7 +1064,7 @@ export const lifeRelationships = pgTable(
   (t) => [unique().on(t.agentId, t.primaryChannel, t.primaryHandle)],
 );
 
-export const lifeRelationshipInteractions = pgTable(
+export const lifeRelationshipInteractions = appLifeopsPgSchema.table(
   "life_relationship_interactions",
   {
     id: text("id").primaryKey(),
@@ -1037,7 +1079,7 @@ export const lifeRelationshipInteractions = pgTable(
   },
 );
 
-export const lifeFollowUps = pgTable("life_follow_ups", {
+export const lifeFollowUps = appLifeopsPgSchema.table("life_follow_ups", {
   id: text("id").primaryKey(),
   agentId: text("agent_id").notNull(),
   relationshipId: text("relationship_id").notNull(),
@@ -1052,7 +1094,147 @@ export const lifeFollowUps = pgTable("life_follow_ups", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const lifeXDms = pgTable(
+// Knowledge graph: entities + relationships.
+//
+// `life_entities` stores nodes (person, organization, place, project,
+// concept, ...). Per-connector identity claims are stored in
+// `life_entity_identities`; open-keyed extracted attributes in
+// `life_entity_attributes`. The `(agent_id, entity_id)` pair is unique;
+// `entityId === "self"` is the special user node.
+//
+// `life_relationships_v2` stores typed edges. `(agent_id, from_entity_id,
+// to_entity_id, type)` is unique for active edges (a retired edge of the
+// same triple may co-exist with a new active one). `cadence_days` is
+// surfaced as a column-level shortcut for the cadence-overdue filter
+// even though it also appears inside `metadata_json`.
+export const lifeEntities = appLifeopsPgSchema.table(
+  "life_entities",
+  {
+    entityId: text("entity_id").notNull(),
+    agentId: text("agent_id").notNull(),
+    type: text("type").notNull(),
+    preferredName: text("preferred_name").notNull(),
+    fullName: text("full_name"),
+    tagsJson: text("tags_json").notNull().default("[]"),
+    visibility: text("visibility").notNull().default("owner_agent_admin"),
+    stateLastObservedAt: text("state_last_observed_at"),
+    stateLastInboundAt: text("state_last_inbound_at"),
+    stateLastOutboundAt: text("state_last_outbound_at"),
+    stateLastInteractionPlatform: text("state_last_interaction_platform"),
+    legacyRelationshipId: text("legacy_relationship_id"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.entityId),
+    index("life_entities_agent_type_idx").on(t.agentId, t.type),
+    index("life_entities_agent_name_idx").on(t.agentId, t.preferredName),
+  ],
+);
+
+export const lifeEntityIdentities = appLifeopsPgSchema.table(
+  "life_entity_identities",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    entityId: text("entity_id").notNull(),
+    platform: text("platform").notNull(),
+    handle: text("handle").notNull(),
+    displayName: text("display_name"),
+    verified: boolean("verified").notNull().default(false),
+    confidence: real("confidence").notNull().default(0),
+    addedAt: text("added_at").notNull(),
+    addedVia: text("added_via").notNull(),
+    evidenceJson: text("evidence_json").notNull().default("[]"),
+  },
+  (t) => [
+    unique().on(t.agentId, t.entityId, t.platform, t.handle),
+    index("life_entity_identities_lookup_idx").on(
+      t.agentId,
+      t.platform,
+      t.handle,
+    ),
+  ],
+);
+
+export const lifeEntityAttributes = appLifeopsPgSchema.table(
+  "life_entity_attributes",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    entityId: text("entity_id").notNull(),
+    key: text("key").notNull(),
+    valueJson: text("value_json").notNull().default("null"),
+    confidence: real("confidence").notNull().default(0),
+    evidenceJson: text("evidence_json").notNull().default("[]"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.entityId, t.key),
+    index("life_entity_attributes_lookup_idx").on(t.agentId, t.entityId),
+  ],
+);
+
+export const lifeRelationshipsV2 = appLifeopsPgSchema.table(
+  "life_relationships_v2",
+  {
+    relationshipId: text("relationship_id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    fromEntityId: text("from_entity_id").notNull(),
+    toEntityId: text("to_entity_id").notNull(),
+    type: text("type").notNull(),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    cadenceDays: integer("cadence_days"),
+    stateLastObservedAt: text("state_last_observed_at"),
+    stateLastInteractionAt: text("state_last_interaction_at"),
+    stateInteractionCount: integer("state_interaction_count")
+      .notNull()
+      .default(0),
+    stateSentimentTrend: text("state_sentiment_trend"),
+    evidenceJson: text("evidence_json").notNull().default("[]"),
+    confidence: real("confidence").notNull().default(0),
+    source: text("source").notNull(),
+    status: text("status").notNull().default("active"),
+    retiredAt: text("retired_at"),
+    retiredReason: text("retired_reason"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("life_relationships_v2_edge_idx").on(
+      t.agentId,
+      t.fromEntityId,
+      t.toEntityId,
+      t.type,
+    ),
+    index("life_relationships_v2_to_idx").on(t.agentId, t.toEntityId),
+    index("life_relationships_v2_cadence_idx").on(
+      t.agentId,
+      t.cadenceDays,
+      t.stateLastInteractionAt,
+    ),
+  ],
+);
+
+export const lifeRelationshipAuditEvents = appLifeopsPgSchema.table(
+  "life_relationship_audit_events",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    relationshipId: text("relationship_id").notNull(),
+    kind: text("kind").notNull(),
+    detailsJson: text("details_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("life_relationship_audit_events_lookup_idx").on(
+      t.agentId,
+      t.relationshipId,
+    ),
+  ],
+);
+
+export const lifeXDms = appLifeopsPgSchema.table(
   "life_x_dms",
   {
     id: text("id").primaryKey(),
@@ -1073,7 +1255,7 @@ export const lifeXDms = pgTable(
   (t) => [unique().on(t.agentId, t.externalDmId)],
 );
 
-export const lifeXFeedItems = pgTable(
+export const lifeXFeedItems = appLifeopsPgSchema.table(
   "life_x_feed_items",
   {
     id: text("id").primaryKey(),
@@ -1091,7 +1273,7 @@ export const lifeXFeedItems = pgTable(
   (t) => [unique().on(t.agentId, t.externalTweetId, t.feedType)],
 );
 
-export const lifeXSyncStates = pgTable(
+export const lifeXSyncStates = appLifeopsPgSchema.table(
   "life_x_sync_states",
   {
     id: text("id").primaryKey(),
@@ -1104,7 +1286,7 @@ export const lifeXSyncStates = pgTable(
   (t) => [unique().on(t.agentId, t.feedType)],
 );
 
-export const lifeScreenTimeSessions = pgTable("life_screen_time_sessions", {
+export const lifeScreenTimeSessions = appLifeopsPgSchema.table("life_screen_time_sessions", {
   id: text("id").primaryKey(),
   agentId: text("agent_id").notNull(),
   source: text("source").notNull(),
@@ -1119,7 +1301,7 @@ export const lifeScreenTimeSessions = pgTable("life_screen_time_sessions", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const lifeScreenTimeDaily = pgTable(
+export const lifeScreenTimeDaily = appLifeopsPgSchema.table(
   "life_screen_time_daily",
   {
     id: text("id").primaryKey(),
@@ -1136,7 +1318,7 @@ export const lifeScreenTimeDaily = pgTable(
   (t) => [unique().on(t.agentId, t.source, t.identifier, t.date)],
 );
 
-export const lifeSleepEpisodes = pgTable(
+export const lifeSleepEpisodes = appLifeopsPgSchema.table(
   "life_sleep_episodes",
   {
     id: text("id").primaryKey(),
@@ -1171,7 +1353,7 @@ export const lifeSleepEpisodes = pgTable(
  * Retention: 60 days for raw events, daily rollups retained indefinitely
  * (see `pruneTelemetryEvents` + `life_telemetry_rollup_daily` below).
  */
-export const lifeTelemetryEvents = pgTable(
+export const lifeTelemetryEvents = appLifeopsPgSchema.table(
   "life_telemetry_events",
   {
     id: text("id").primaryKey(),
@@ -1202,7 +1384,7 @@ export const lifeTelemetryEvents = pgTable(
  * indefinitely so the scorer's 28-day regularity window and the longer-term
  * baseline query remain cheap even after raw events age out.
  */
-export const lifeTelemetryRollupDaily = pgTable(
+export const lifeTelemetryRollupDaily = appLifeopsPgSchema.table(
   "life_telemetry_rollup_daily",
   {
     agentId: text("agent_id").notNull(),
@@ -1223,7 +1405,7 @@ export const lifeTelemetryRollupDaily = pgTable(
  * `unclear` if it's older than MAX_STATE_AGE_MS. Every scheduler tick that
  * produces a state update writes here.
  */
-export const lifeCircadianStates = pgTable(
+export const lifeCircadianStates = appLifeopsPgSchema.table(
   "life_circadian_states",
   {
     agentId: text("agent_id").primaryKey(),
@@ -1243,7 +1425,7 @@ export const lifeCircadianStates = pgTable(
   ],
 );
 
-export const lifeScheduleInsights = pgTable(
+export const lifeScheduleInsights = appLifeopsPgSchema.table(
   "life_schedule_insights",
   {
     id: text("id").primaryKey(),
@@ -1292,7 +1474,7 @@ export const lifeScheduleInsights = pgTable(
   (t) => [unique().on(t.agentId, t.effectiveDayKey)],
 );
 
-export const lifeScheduleObservations = pgTable("life_schedule_observations", {
+export const lifeScheduleObservations = appLifeopsPgSchema.table("life_schedule_observations", {
   id: text("id").primaryKey(),
   agentId: text("agent_id").notNull(),
   origin: text("origin").notNull(),
@@ -1302,7 +1484,6 @@ export const lifeScheduleObservations = pgTable("life_schedule_observations", {
   observedAt: text("observed_at").notNull(),
   windowStartAt: text("window_start_at").notNull(),
   windowEndAt: text("window_end_at"),
-  // Canonical circadian state replaces the legacy `state` + `phase` columns.
   // Default `unclear` so ADD COLUMN migrations succeed on tables with rows.
   circadianState: text("circadian_state").notNull().default("unclear"),
   stateConfidence: real("state_confidence").notNull().default(0),
@@ -1313,7 +1494,7 @@ export const lifeScheduleObservations = pgTable("life_schedule_observations", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const lifeScheduleMergedStates = pgTable(
+export const lifeScheduleMergedStates = appLifeopsPgSchema.table(
   "life_schedule_merged_states",
   {
     id: text("id").primaryKey(),
@@ -1362,7 +1543,7 @@ export const lifeScheduleMergedStates = pgTable(
   (t) => [unique().on(t.agentId, t.scope, t.timezone)],
 );
 
-export const lifeSchedulingNegotiations = pgTable(
+export const lifeSchedulingNegotiations = appLifeopsPgSchema.table(
   "life_scheduling_negotiations",
   {
     id: text("id").primaryKey(),
@@ -1381,7 +1562,7 @@ export const lifeSchedulingNegotiations = pgTable(
   },
 );
 
-export const lifeSchedulingProposals = pgTable("life_scheduling_proposals", {
+export const lifeSchedulingProposals = appLifeopsPgSchema.table("life_scheduling_proposals", {
   id: text("id").primaryKey(),
   agentId: text("agent_id").notNull(),
   negotiationId: text("negotiation_id").notNull(),
@@ -1396,7 +1577,7 @@ export const lifeSchedulingProposals = pgTable("life_scheduling_proposals", {
 
 // T8d — Activity tracker (WakaTime-like).
 // Append-only per-event log produced by the macOS Swift collector.
-export const lifeActivityEvents = pgTable("life_activity_events", {
+export const lifeActivityEvents = appLifeopsPgSchema.table("life_activity_events", {
   id: text("id").primaryKey(),
   agentId: text("agent_id").notNull(),
   observedAt: text("observed_at").notNull(),
@@ -1413,7 +1594,7 @@ export const lifeActivityEvents = pgTable("life_activity_events", {
 // duration, or an explicit ISO target. The reconciler releases rules when
 // their gate is fulfilled; harsh_no_bypass rules can only be released by the
 // reconciler on gate fulfillment (never by the user).
-export const lifeBlockRules = pgTable("life_block_rules", {
+export const lifeBlockRules = appLifeopsPgSchema.table("life_block_rules", {
   id: uuid("id").primaryKey(),
   agentId: uuid("agent_id").notNull(),
   profile: text("profile").notNull(),
@@ -1429,12 +1610,146 @@ export const lifeBlockRules = pgTable("life_block_rules", {
   releasedReason: text("released_reason"),
 });
 
+// ScheduledTask spine + state log.
+//
+// `life_scheduled_tasks` stores the typed ScheduledTask record. The
+// runner is the only writer; each row's `state_json` carries the
+// `ScheduledTaskState` fields (status, firedAt, …). `idempotency_key`
+// is unique per agent and dedupes schedule() calls.
+//
+// `life_scheduled_task_log` is the append-only state-log; the nightly
+// rollup pass folds expired raw rows into a daily summary row keyed by
+// (task, day, transition).
+
+export const lifeScheduledTasks = appLifeopsPgSchema.table(
+  "life_scheduled_tasks",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    kind: text("kind").notNull(),
+    promptInstructions: text("prompt_instructions").notNull(),
+    contextRequestJson: text("context_request_json"),
+    triggerJson: text("trigger_json").notNull(),
+    priority: text("priority").notNull().default("medium"),
+    shouldFireJson: text("should_fire_json"),
+    completionCheckJson: text("completion_check_json"),
+    escalationJson: text("escalation_json"),
+    outputJson: text("output_json"),
+    pipelineJson: text("pipeline_json"),
+    subjectKind: text("subject_kind"),
+    subjectId: text("subject_id"),
+    idempotencyKey: text("idempotency_key"),
+    respectsGlobalPause: boolean("respects_global_pause")
+      .notNull()
+      .default(true),
+    stateJson: text("state_json").notNull().default("{}"),
+    source: text("source").notNull().default("user_chat"),
+    createdBy: text("created_by").notNull().default(""),
+    ownerVisible: boolean("owner_visible").notNull().default(true),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.idempotencyKey),
+    index("idx_life_scheduled_tasks_agent_kind").on(t.agentId, t.kind),
+    index("idx_life_scheduled_tasks_subject").on(
+      t.agentId,
+      t.subjectKind,
+      t.subjectId,
+    ),
+  ],
+);
+
+export const lifeScheduledTaskLog = appLifeopsPgSchema.table(
+  "life_scheduled_task_log",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    taskId: text("task_id").notNull(),
+    occurredAt: text("occurred_at").notNull(),
+    transition: text("transition").notNull(),
+    reason: text("reason"),
+    rolledUp: boolean("rolled_up").notNull().default(false),
+    detailJson: text("detail_json"),
+  },
+  (t) => [
+    index("idx_life_scheduled_task_log_agent_task").on(t.agentId, t.taskId),
+    index("idx_life_scheduled_task_log_agent_time").on(
+      t.agentId,
+      t.occurredAt,
+    ),
+  ],
+);
+
+// Work-thread coordination index. Threads are not schedulers; they point at
+// ScheduledTask/workflow/approval/pending-prompt state that owns durable work.
+
+export const lifeWorkThreads = appLifeopsPgSchema.table(
+  "life_work_threads",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    ownerEntityId: text("owner_entity_id"),
+    status: text("status").notNull().default("active"),
+    title: text("title").notNull().default(""),
+    summary: text("summary").notNull().default(""),
+    currentPlanSummary: text("current_plan_summary"),
+    primarySourceRefJson: text("primary_source_ref_json").notNull(),
+    sourceRefsJson: text("source_refs_json").notNull().default("[]"),
+    participantEntityIdsJson: text("participant_entity_ids_json")
+      .notNull()
+      .default("[]"),
+    currentScheduledTaskId: text("current_scheduled_task_id"),
+    workflowRunId: text("workflow_run_id"),
+    approvalId: text("approval_id"),
+    lastMessageMemoryId: text("last_message_memory_id"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    lastActivityAt: text("last_activity_at").notNull(),
+  },
+  (t) => [
+    index("idx_life_work_threads_agent_status").on(t.agentId, t.status),
+    index("idx_life_work_threads_agent_owner").on(
+      t.agentId,
+      t.ownerEntityId,
+      t.status,
+    ),
+    index("idx_life_work_threads_agent_activity").on(
+      t.agentId,
+      t.lastActivityAt,
+    ),
+  ],
+);
+
+export const lifeWorkThreadEvents = appLifeopsPgSchema.table(
+  "life_work_thread_events",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    workThreadId: text("work_thread_id").notNull(),
+    occurredAt: text("occurred_at").notNull(),
+    type: text("type").notNull(),
+    reason: text("reason"),
+    detailJson: text("detail_json"),
+  },
+  (t) => [
+    index("idx_life_work_thread_events_thread").on(
+      t.agentId,
+      t.workThreadId,
+      t.occurredAt,
+    ),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // Aggregate export for plugin schema property
 // ---------------------------------------------------------------------------
 
 export const lifeOpsSchema = {
   lifeConnectorGrants,
+  lifeAccountPrivacy,
   lifeTaskDefinitions,
   lifeTaskOccurrences,
   lifeGoalDefinitions,
@@ -1470,6 +1785,11 @@ export const lifeOpsSchema = {
   lifeRelationships,
   lifeRelationshipInteractions,
   lifeFollowUps,
+  lifeEntities,
+  lifeEntityIdentities,
+  lifeEntityAttributes,
+  lifeRelationshipsV2,
+  lifeRelationshipAuditEvents,
   lifeInboxTriageEntries,
   lifeInboxTriageExamples,
   lifeXDms,
@@ -1488,5 +1808,276 @@ export const lifeOpsSchema = {
   lifeSchedulingNegotiations,
   lifeSchedulingProposals,
   lifeBlockRules,
+  lifeScheduledTasks,
+  lifeScheduledTaskLog,
+  lifeWorkThreads,
+  lifeWorkThreadEvents,
   lifeopsFeaturesTable,
 } as const;
+
+// Zod schemas for `ScheduledTask`. Runtime validators used at the REST
+// boundary (`src/routes/scheduled-tasks.ts`). Runtime types live in
+// `./scheduled-task/types.ts`; Zod is the validator at the
+// untyped-input edge.
+import { z } from "zod";
+
+const isoString = z
+  .string()
+  .min(1)
+  .refine(
+    (v) => !Number.isNaN(new Date(v).getTime()),
+    "must be an ISO timestamp",
+  );
+
+const terminalStateSchema = z.enum([
+  "completed",
+  "skipped",
+  "expired",
+  "failed",
+  "dismissed",
+]);
+
+const scheduledTaskKindSchema = z.enum([
+  "reminder",
+  "checkin",
+  "followup",
+  "approval",
+  "recap",
+  "watcher",
+  "output",
+  "custom",
+]);
+
+const scheduledTaskPrioritySchema = z.enum(["low", "medium", "high"]);
+
+const scheduledTaskSourceSchema = z.enum([
+  "default_pack",
+  "user_chat",
+  "first_run",
+  "plugin",
+]);
+
+const scheduledTaskSubjectSchema = z.object({
+  kind: z.enum([
+    "entity",
+    "relationship",
+    "thread",
+    "document",
+    "calendar_event",
+    "self",
+  ]),
+  id: z.string().min(1),
+});
+
+const scheduledTaskTriggerSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("once"), atIso: isoString }),
+  z.object({
+    kind: z.literal("cron"),
+    expression: z.string().min(1),
+    tz: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal("interval"),
+    everyMinutes: z.number().int().positive(),
+    from: isoString.optional(),
+    until: isoString.optional(),
+  }),
+  z.object({
+    kind: z.literal("relative_to_anchor"),
+    anchorKey: z.string().min(1),
+    offsetMinutes: z.number().int(),
+  }),
+  z.object({
+    kind: z.literal("during_window"),
+    windowKey: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal("event"),
+    eventKind: z.string().min(1),
+    filter: z.unknown().optional(),
+  }),
+  z.object({ kind: z.literal("manual") }),
+  z.object({
+    kind: z.literal("after_task"),
+    taskId: z.string().min(1),
+    outcome: terminalStateSchema,
+  }),
+]);
+
+const scheduledTaskShouldFireSchema = z.object({
+  compose: z.enum(["all", "any", "first_deny"]).optional(),
+  gates: z
+    .array(
+      z.object({
+        kind: z.string().min(1),
+        params: z.unknown().optional(),
+      }),
+    )
+    .min(1),
+});
+
+const scheduledTaskCompletionCheckSchema = z.object({
+  kind: z.string().min(1),
+  params: z.unknown().optional(),
+  followupAfterMinutes: z.number().int().positive().optional(),
+});
+
+const escalationStepSchema = z.object({
+  delayMinutes: z.number().int().min(0),
+  channelKey: z.string().min(1),
+  intensity: z.enum(["soft", "normal", "urgent"]).optional(),
+});
+
+const scheduledTaskEscalationSchema = z.object({
+  ladderKey: z.string().min(1).optional(),
+  steps: z.array(escalationStepSchema).optional(),
+});
+
+const scheduledTaskOutputSchema = z.object({
+  destination: z.enum([
+    "in_app_card",
+    "channel",
+    "apple_notes",
+    "gmail_draft",
+    "memory",
+  ]),
+  target: z.string().min(1).optional(),
+  persistAs: z.enum(["task_metadata", "external_only"]).optional(),
+});
+
+const scheduledTaskRefSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.union([z.string().min(1), scheduledTaskInputBaseSchema]),
+);
+
+const scheduledTaskPipelineSchema = z.object({
+  onComplete: z.array(scheduledTaskRefSchema).optional(),
+  onSkip: z.array(scheduledTaskRefSchema).optional(),
+  onFail: z.array(scheduledTaskRefSchema).optional(),
+});
+
+const scheduledTaskContextRequestSchema = z.object({
+  includeOwnerFacts: z
+    .array(
+      z.enum([
+        "preferredName",
+        "timezone",
+        "morningWindow",
+        "eveningWindow",
+        "locale",
+      ]),
+    )
+    .optional(),
+  includeEntities: z
+    .object({
+      entityIds: z.array(z.string().min(1)),
+      fields: z
+        .array(
+          z.enum([
+            "preferredName",
+            "type",
+            "identities",
+            "state.lastInteractionPlatform",
+          ]),
+        )
+        .optional(),
+    })
+    .optional(),
+  includeRelationships: z
+    .object({
+      relationshipIds: z.array(z.string().min(1)).optional(),
+      forEntityIds: z.array(z.string().min(1)).optional(),
+      types: z.array(z.string().min(1)).optional(),
+    })
+    .optional(),
+  includeRecentTaskStates: z
+    .object({
+      kind: scheduledTaskKindSchema.optional(),
+      lookbackHours: z.number().int().positive().optional(),
+    })
+    .optional(),
+  includeEventPayload: z.boolean().optional(),
+});
+
+/**
+ * The "input shape" for `runner.schedule()` — omits server-managed
+ * `taskId` and `state` so callers cannot fabricate a state. The route
+ * layer accepts this shape; the runner generates the rest.
+ */
+const scheduledTaskInputBaseSchema = z.object({
+  kind: scheduledTaskKindSchema,
+  promptInstructions: z.string().min(1),
+  contextRequest: scheduledTaskContextRequestSchema.optional(),
+  trigger: scheduledTaskTriggerSchema,
+  priority: scheduledTaskPrioritySchema,
+  shouldFire: scheduledTaskShouldFireSchema.optional(),
+  completionCheck: scheduledTaskCompletionCheckSchema.optional(),
+  escalation: scheduledTaskEscalationSchema.optional(),
+  output: scheduledTaskOutputSchema.optional(),
+  pipeline: scheduledTaskPipelineSchema.optional(),
+  subject: scheduledTaskSubjectSchema.optional(),
+  idempotencyKey: z.string().min(1).optional(),
+  respectsGlobalPause: z.boolean(),
+  source: scheduledTaskSourceSchema,
+  createdBy: z.string().min(1),
+  ownerVisible: z.boolean(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const scheduledTaskInputSchema = scheduledTaskInputBaseSchema;
+
+export const scheduledTaskStateSchema = z.object({
+  status: z.enum([
+    "completed",
+    "skipped",
+    "expired",
+    "failed",
+    "dismissed",
+    "scheduled",
+    "fired",
+    "acknowledged",
+  ]),
+  firedAt: isoString.optional(),
+  acknowledgedAt: isoString.optional(),
+  completedAt: isoString.optional(),
+  followupCount: z.number().int().min(0),
+  lastFollowupAt: isoString.optional(),
+  pipelineParentId: z.string().min(1).optional(),
+  lastDecisionLog: z.string().optional(),
+});
+
+export const scheduledTaskSchema = scheduledTaskInputBaseSchema.extend({
+  taskId: z.string().min(1),
+  state: scheduledTaskStateSchema,
+});
+
+export const scheduledTaskVerbSchema = z.enum([
+  "snooze",
+  "skip",
+  "complete",
+  "dismiss",
+  "escalate",
+  "acknowledge",
+  "edit",
+  "reopen",
+]);
+
+export const scheduledTaskSnoozePayloadSchema = z
+  .object({
+    minutes: z.number().int().positive().optional(),
+    untilIso: isoString.optional(),
+  })
+  .refine(
+    (v) => typeof v.minutes === "number" || typeof v.untilIso === "string",
+    "snooze: provide minutes or untilIso",
+  );
+
+export const scheduledTaskFilterSchema = z.object({
+  kind: scheduledTaskKindSchema.optional(),
+  status: z
+    .union([scheduledTaskStateSchema.shape.status, z.array(scheduledTaskStateSchema.shape.status)])
+    .optional(),
+  subject: scheduledTaskSubjectSchema.optional(),
+  source: scheduledTaskSourceSchema.optional(),
+  firedSince: isoString.optional(),
+  ownerVisibleOnly: z.boolean().optional(),
+});

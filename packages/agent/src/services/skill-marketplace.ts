@@ -1,10 +1,9 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
+import { logger, resolveStateDir } from "@elizaos/core";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -208,8 +207,7 @@ export interface InstallSkillInput {
 }
 
 function stateDirBase(): string {
-  const base = process.env.ELIZA_STATE_DIR?.trim();
-  return base || path.join(os.homedir(), ".eliza");
+  return resolveStateDir();
 }
 
 function safeName(raw: string): string {

@@ -1,2 +1,1 @@
-export { signalContactsProvider } from "./signalContacts";
-export { signalGroupsProvider } from "./signalGroups";
+// Signal contacts/groups are exposed through MESSAGE connector hooks.

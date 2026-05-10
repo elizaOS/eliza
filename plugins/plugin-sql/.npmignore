@@ -10,8 +10,8 @@
 # Dependencies
 **/node_modules/
 
-# Source files (dist is published)
-**/src/
+# Source files (dist is published) — do not exclude this package's `src/` tree;
+# npm `files` lists `src/dist`; ignoring `**/src/` would omit published assets.
 **/tsconfig.json
 **/tsconfig.*.json
 **/*.tsbuildinfo

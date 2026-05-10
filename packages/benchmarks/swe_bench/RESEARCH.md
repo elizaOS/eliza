@@ -829,7 +829,7 @@ User Message (Memory)
 │ │                                   │
 │ ├─ use_model() - generate response │
 │ ├─ parse XML (actions, params)     │
-│ ├─ process_actions() - execute     │
+│ ├─ planned tool execution          │
 │ │  ├─ SEARCH_CODE                  │
 │ │  ├─ READ_FILE                    │
 │ │  ├─ EDIT_FILE                    │
@@ -893,7 +893,7 @@ The implementation uses the canonical `DefaultMessageService` which:
 2. Composes state from all registered providers
 3. Uses `MESSAGE_HANDLER_TEMPLATE` for response generation
 4. Parses XML for actions, params, thought
-5. Executes actions via `runtime.process_actions()`
+5. Executes actions via planned tool execution
 6. Runs evaluators via `runtime.evaluate()`
 
 #### BasicCapabilities
@@ -923,7 +923,7 @@ Expected output shows:
 - Bootstrap plugin initializing with providers, actions, services
 - SWE-bench plugin registering
 - Agent steps using canonical message handling
-- Actions executing via `process_actions()`
+- Actions executing via planned tool execution
 
 ### Improvement Roadmap
 

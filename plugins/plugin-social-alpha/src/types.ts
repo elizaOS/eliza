@@ -2,6 +2,7 @@ import type {
 	Content,
 	UUID as CoreUUID,
 	IAgentRuntime,
+	MetadataValue,
 	Memory,
 } from "@elizaos/core";
 
@@ -958,6 +959,7 @@ export interface RecommendationMetric {
 	isScamOrRug?: boolean; // Flagged based on heuristics
 	evaluationTimestamp: number; // When this metric was last calculated
 	notes?: string; // e.g., "Hit ATH 3 days later", "Rug pulled", "Low liquidity spike"
+	[key: string]: MetadataValue | undefined;
 }
 
 // Represents a single recommendation or criticism made by a user
@@ -975,6 +977,7 @@ export interface Recommendation {
 	priceAtRecommendation?: number; // Price of the token when the recommendation was made
 	metrics?: RecommendationMetric; // Performance metrics, calculated later by a task
 	processedForTradeDecision?: boolean; // Has the PROCESS_TRADE_DECISION task run for this?
+	[key: string]: MetadataValue | undefined;
 }
 
 // Data structure for the component stored on an Entity
@@ -986,7 +989,7 @@ export interface UserTrustProfile {
 	lastTradeDecisionMadeTimestamp?: number; // For the 12-hour cooldown for *acting* on this user's recs
 	recommendations: Recommendation[]; // Array of recommendations made by this user
 	// Allow additional properties for Metadata compatibility
-	[key: string]: string | number | boolean | Recommendation[] | undefined;
+	[key: string]: MetadataValue | undefined;
 }
 
 // Type alias for the data field within the ElizaOS Component

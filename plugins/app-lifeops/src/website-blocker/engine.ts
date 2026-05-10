@@ -7,7 +7,7 @@ import path from "node:path";
 import { domainToASCII } from "node:url";
 import { promisify } from "node:util";
 import type { HandlerOptions } from "@elizaos/core";
-import type { PermissionState, PermissionStatus } from "./permissions.ts";
+import type { PermissionState, PermissionStatus } from "./permissions.js";
 
 const BLOCK_START_MARKER = "# >>> eliza-selfcontrol >>>";
 const BLOCK_END_MARKER = "# <<< eliza-selfcontrol <<<";

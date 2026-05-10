@@ -7,7 +7,7 @@ import {
   type TriggerTaskMetadata,
   type TriggerType,
   type TriggerWakeMode,
-} from "./types.js";
+} from "./types.ts";
 
 export const MIN_TRIGGER_INTERVAL_MS = 60_000;
 export const MAX_TRIGGER_INTERVAL_MS = 31 * 24 * 60 * 60 * 1000;
@@ -338,7 +338,10 @@ export function buildTriggerDedupeKey(parts: {
   kind?: TriggerKind;
   workflowId?: string;
 }): string {
-  const effectiveKind: TriggerKind = parts.kind ?? "text";
+  // Phase 2E: every persisted trigger is `kind: "workflow"`. Stale
+  // `kind: "text"` records are tolerated only on read (legacy hash) until
+  // the boot migration rewrites them.
+  const effectiveKind: TriggerKind = parts.kind ?? "workflow";
   const normalizedParts = [
     parts.triggerType,
     normalizeText(parts.instructions).toLowerCase(),

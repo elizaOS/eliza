@@ -29,6 +29,14 @@ export interface DispatchCrossChannelSendArgs {
   body: string;
 }
 
+type LegacyMessagingService = LifeOpsService & {
+  sendTelegramMessage?: (args: {
+    target: string;
+    message: string;
+  }) => Promise<unknown>;
+  sendIMessage?: (args: { to: string; text: string }) => Promise<unknown>;
+};
+
 function ok(channel: string, target: string, body: string): ActionResult {
   return {
     text: `Sent ${channel} to ${target}.`,
@@ -59,12 +67,23 @@ export async function dispatchCrossChannelSend(
   switch (channel) {
     case "telegram": {
       try {
-        await (
-          service as unknown as Record<
-            string,
-            (...a: unknown[]) => Promise<unknown>
-          >
-        ).sendTelegramMessage?.({ target, message: body });
+        const messagingService = service as LegacyMessagingService;
+        if (typeof messagingService.sendTelegramMessage === "function") {
+          try {
+            await messagingService.sendTelegramMessage({ target, message: body });
+            return ok(channel, target, body);
+          } catch {
+            // Fall through to the runtime connector path. Test and desktop
+            // runtimes often expose Telegram through sendMessageToTarget rather
+            // than LifeOpsService credentials.
+          }
+        }
+        await args.runtime.sendMessageToTarget(
+          { source: "telegram", channelId: target } as Parameters<
+            typeof args.runtime.sendMessageToTarget
+          >[0],
+          { text: body, source: "telegram" },
+        );
         return ok(channel, target, body);
       } catch (error) {
         return fail(
@@ -95,12 +114,8 @@ export async function dispatchCrossChannelSend(
     }
     case "imessage": {
       try {
-        await (
-          service as unknown as Record<
-            string,
-            (...a: unknown[]) => Promise<unknown>
-          >
-        ).sendIMessage?.({ to: target, text: body });
+        const messagingService = service as LegacyMessagingService;
+        await messagingService.sendIMessage?.({ to: target, text: body });
         return ok(channel, target, body);
       } catch (error) {
         return fail(

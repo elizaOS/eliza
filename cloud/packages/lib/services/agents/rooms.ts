@@ -12,7 +12,6 @@ import {
   memoriesRepository,
   participantsRepository,
   type Room,
-  type RoomWithPreview,
   roomsRepository,
 } from "@/db/repositories";
 import { entityTable, participantTable, roomTable } from "@/db/schemas/eliza";
@@ -42,7 +41,7 @@ export interface RoomWithMessages {
 
 /**
  * Room preview for sidebar/list views
- * Transformed from RoomWithPreview for API response
+ * Transformed from repository `RoomWithPreview` for API response.
  */
 export interface RoomPreview {
   id: string;
@@ -53,11 +52,8 @@ export interface RoomPreview {
   lastTime?: number; // from last message createdAt (ms timestamp)
   lastText?: string; // from last message content.text (truncated)
   isLocked?: boolean; // Whether the room is locked (character was created/saved)
-  isBuildRoom?: boolean; // Whether this is a BUILD/CREATOR room
+  isBuildRoom?: boolean; // Whether this is a legacy builder room
 }
-
-// Re-export for convenience
-export type { RoomWithPreview };
 
 export class RoomsService {
   /**
@@ -174,10 +170,10 @@ export class RoomsService {
    *
    * By default, filters out:
    * - Locked rooms (where a character was created/saved)
-   * - BUILD and CREATOR rooms (character building sessions)
+   * - legacy builder rooms
    *
    * @param entityId - The user's ID (from auth)
-   * @param options.includeBuildRooms - Include build rooms in results (for edit mode)
+   * @param options.includeBuildRooms - Include legacy builder rooms in results
    * @returns Room previews sorted by most recent activity
    */
   async getRoomsForEntity(
@@ -189,7 +185,7 @@ export class RoomsService {
 
     const includeBuildRooms = options?.includeBuildRooms ?? false;
 
-    // Transform to API response format and filter out locked/builder rooms
+    // Transform to API response format and filter out locked/legacy builder rooms
     return roomsWithPreview
       .map((room) => {
         const metadata = room.metadata as { locked?: boolean } | null;
@@ -240,7 +236,7 @@ export class RoomsService {
         name: input.name,
         metadata: input.metadata,
         createdAt: new Date(),
-      })
+      } as typeof roomTable.$inferInsert)
       .returning()) as Room[];
 
     return roomResult[0];
@@ -271,9 +267,9 @@ export class RoomsService {
           name: roomInput.name,
           metadata: roomInput.metadata,
           createdAt: new Date(),
-        })
+        } as typeof roomTable.$inferInsert)
         .returning();
-      const room = (rows as unknown as Room[])[0];
+      const room = rows[0] as Room;
 
       // Create entity (upsert - ignore if exists)
       // Must use tx so the insert is visible within this transaction

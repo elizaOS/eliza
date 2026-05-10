@@ -1,7 +1,7 @@
 ---
 title: "Groq Plugin"
 sidebarTitle: "Groq"
-description: "Groq inference provider for Eliza — ultra-fast LPU-accelerated inference for Llama, Mixtral, and Gemma models."
+description: "Groq inference provider for Eliza — ultra-fast LPU-accelerated GPT-OSS 120B inference."
 ---
 
 The Groq plugin connects Eliza agents to Groq's inference API. Groq's Language Processing Unit (LPU) delivers significantly faster token generation speeds than GPU-based inference — making it ideal for latency-sensitive agent workflows.
@@ -42,7 +42,7 @@ export GROQ_API_KEY=gsk_...
     "profiles": {
       "default": {
         "provider": "groq",
-        "model": "llama-3.3-70b-versatile"
+        "model": "openai/gpt-oss-120b"
       }
     }
   }
@@ -53,30 +53,20 @@ export GROQ_API_KEY=gsk_...
 
 | Model | Context | Speed | Best For |
 |-------|---------|-------|---------|
-| `openai/gpt-oss-20b` | 128k | Fastest | Default small model |
-| `llama-3.3-70b-versatile` | 128k | Fast | General-purpose, balanced |
-| `llama-3.1-70b-versatile` | 128k | Fast | Reasoning and analysis |
-| `llama-3.1-8b-instant` | 128k | Fastest | High-throughput, simple tasks |
-| `llama-3.2-90b-vision-preview` | 128k | Fast | Vision tasks |
-| `llama-3.2-11b-vision-preview` | 128k | Fastest | Fast vision tasks |
-| `mixtral-8x7b-32768` | 32k | Fast | Code and technical tasks |
-| `gemma2-9b-it` | 8k | Fastest | Efficient instruction following |
-| `llama-guard-3-8b` | 8k | Fast | Content moderation |
+| `openai/gpt-oss-120b` | 128k | Fast | Default small and large text model |
 
 ## Model Type Mapping
 
 | elizaOS Model Type | Groq Model |
 |-------------------|-----------|
-| `TEXT_SMALL` | `openai/gpt-oss-20b` |
-| `TEXT_LARGE` | `llama-3.3-70b-versatile` |
-| `IMAGE_DESCRIPTION` | `llama-3.2-11b-vision-preview` |
+| `TEXT_SMALL` | `openai/gpt-oss-120b` |
+| `TEXT_LARGE` | `openai/gpt-oss-120b` |
 
 ## Features
 
 - Ultra-low latency generation (typically 250–800 tokens/second)
 - Streaming responses
 - Tool use / function calling (on select models)
-- Vision input (Llama 3.2 vision models)
 - Compatible with OpenAI SDK format
 - Free tier available
 

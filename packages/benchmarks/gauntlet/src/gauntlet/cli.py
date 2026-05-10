@@ -96,6 +96,15 @@ async def run_benchmark(args: argparse.Namespace) -> int:
     # Load scenarios
     print("📋 Loading scenarios...")
     orchestrator.load_scenarios()
+    if args.max_scenarios is not None:
+        remaining = max(args.max_scenarios, 0)
+        for level in sorted(orchestrator._scenarios):
+            scenarios = orchestrator._scenarios[level]
+            if remaining <= 0:
+                orchestrator._scenarios[level] = []
+                continue
+            orchestrator._scenarios[level] = scenarios[:remaining]
+            remaining -= len(orchestrator._scenarios[level])
     
      # Start Surfpool
     print("🚀 Starting Surfpool...")
@@ -269,6 +278,12 @@ def create_parser() -> argparse.ArgumentParser:
         "--clone-mainnet",
         action="store_true",
         help="Clone Jupiter program from mainnet for real program testing",
+    )
+    run_parser.add_argument(
+        "--max-scenarios",
+        type=int,
+        default=None,
+        help="Maximum number of scenarios to run across all levels",
     )
     run_parser.set_defaults(func=lambda args: asyncio.run(run_benchmark(args)))
     

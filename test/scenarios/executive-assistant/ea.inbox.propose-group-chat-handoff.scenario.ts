@@ -32,7 +32,7 @@ export default scenario({
       room: "main",
       text: "If direct relaying gets messy here, suggest making a group chat handoff instead.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+        acceptedActions: ["MESSAGE", "MESSAGE"],
         description: "group chat handoff planning",
         includesAny: ["group", "chat", "handoff", "relay"],
       }),
@@ -53,7 +53,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      actionName: ["MESSAGE", "MESSAGE"],
     },
     {
       type: "memoryWriteOccurred",
@@ -63,7 +63,7 @@ export default scenario({
       type: "custom",
       name: "ea-group-handoff-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+        acceptedActions: ["MESSAGE", "MESSAGE"],
         description: "group chat handoff planning",
         includesAny: ["group", "chat", "handoff", "relay"],
       }),

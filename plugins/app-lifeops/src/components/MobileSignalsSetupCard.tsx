@@ -4,7 +4,7 @@ import {
   isElectrobunRuntime,
   isNative,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import {
   MobileSignals,
   type MobileSignalsPermissionStatus,

@@ -16,14 +16,13 @@
     "rootDir": "../../../../",
     "paths": {
       "@elizaos/plugin-inmemorydb": [
-        "../../../../plugins/plugin-inmemorydb/dist/browser/index.d.ts"
+        "./../../../../plugins/plugin-inmemorydb/dist/browser/index.d.ts"
       ],
       "@elizaos/plugin-localdb": [
-        "../../../../plugins/plugin-localdb/index.browser.ts"
-      ],
-      "@elizaos/*": ["../../../../packages/*", "../../../../plugins/*"]
+        "./../../../../plugins/plugin-localdb/index.browser.ts"
+      ]
     },
-    "types": ["chrome"]
+    "types": ["chrome", "node"]
   },
   "include": ["src/**/*", "../shared/**/*"],
   "exclude": ["node_modules", "dist"]

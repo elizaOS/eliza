@@ -9,7 +9,7 @@ import {
 test("settings exposes computer use capability controls", async ({ page }) => {
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);
-  await openAppPath(page, "/voice");
+  await openAppPath(page, "/settings/voice");
 
   await expect(page.getByTestId("settings-shell")).toBeVisible();
   await openSettingsSection(page, /^Capabilities\b/);
@@ -43,10 +43,10 @@ test("onboarding starts with setup choices before capability settings", async ({
   await page.goto("/chat", { waitUntil: "domcontentloaded" });
 
   await expect(
-    page.getByRole("heading", { name: "Choose your setup" }),
+    page.getByRole("heading", { name: /^Welcome to / }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: /Eliza Cloud/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Get started" })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /Remote agent/ }),
+    page.getByRole("button", { name: "I want to run it myself" }),
   ).toBeVisible();
 });

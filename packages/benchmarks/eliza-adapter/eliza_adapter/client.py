@@ -60,11 +60,64 @@ class ElizaClient:
         """GET /api/benchmark/health — check if the server is up."""
         return self._get("/api/benchmark/health")
 
-    def reset(self, task_id: str, benchmark: str) -> dict[str, object]:
-        """POST /api/benchmark/reset — start a fresh session for a task."""
+    def reset(
+        self,
+        task_id: str,
+        benchmark: str,
+        *,
+        world_snapshot_path: str | None = None,
+        now_iso: str | None = None,
+    ) -> dict[str, object]:
+        """Start a fresh session for a task.
+
+        For most benchmarks this hits ``POST /api/benchmark/reset``. When
+        ``benchmark == "lifeops_bench"`` and a world snapshot path is given,
+        the call routes to the lifeops_bench-specific reset route which
+        loads the LifeWorld JSON into an in-process fake backend keyed by
+        ``task_id``.
+        """
+        if benchmark == "lifeops_bench" and world_snapshot_path is not None:
+            payload: dict[str, object] = {
+                "task_id": task_id,
+                "world_snapshot_path": world_snapshot_path,
+            }
+            if now_iso is not None:
+                payload["now_iso"] = now_iso
+            return self._post("/api/benchmark/lifeops_bench/reset", payload)
         return self._post(
             "/api/benchmark/reset",
             {"task_id": task_id, "benchmark": benchmark},
+        )
+
+    def lifeops_message(
+        self,
+        task_id: str,
+        text: str,
+        *,
+        tools: list[dict[str, object]] | None = None,
+    ) -> dict[str, object]:
+        """POST /api/benchmark/lifeops_bench/message — runs the planner and
+        executes any captured tool calls against the in-memory fake backend.
+
+        Returns the raw JSON body — callers are expected to map it into a
+        ``MessageTurn`` (see ``eliza_adapter.lifeops_bench``).
+        """
+        body: dict[str, object] = {"task_id": task_id, "text": text}
+        if tools:
+            body["context"] = {"tools": tools}
+        return self._post("/api/benchmark/lifeops_bench/message", body)
+
+    def lifeops_world_state(self, task_id: str) -> dict[str, object]:
+        """GET /api/benchmark/lifeops_bench/{task_id}/world_state — returns
+        the LifeWorld JSON snapshot for state-hash scoring."""
+        return self._get(f"/api/benchmark/lifeops_bench/{task_id}/world_state")
+
+    def lifeops_teardown(self, task_id: str) -> dict[str, object]:
+        """POST /api/benchmark/lifeops_bench/teardown — frees the per-task
+        fake backend on the server."""
+        return self._post(
+            "/api/benchmark/lifeops_bench/teardown",
+            {"task_id": task_id},
         )
 
     def send_message(

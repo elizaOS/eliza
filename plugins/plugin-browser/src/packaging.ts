@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { VERSION } from "@elizaos/agent/runtime/version";
 import type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionReleaseManifest,
@@ -152,7 +151,7 @@ function resolveBrowserBridgeReleaseVersion(): string {
       return value;
     }
   }
-  return VERSION;
+  return "0.0.0";
 }
 
 function resolveBrowserBridgeReleaseRepository(

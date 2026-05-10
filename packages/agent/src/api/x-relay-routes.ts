@@ -8,13 +8,15 @@
  */
 
 import type http from "node:http";
-import type { Service } from "@elizaos/core";
-import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
-import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
-import { validateCloudBaseUrl } from "../cloud/validate-url.js";
-import type { ElizaConfig } from "../config/config.js";
-import type { CloudProxyConfigLike } from "../types/config-like.js";
-import { sendJson, sendJsonError } from "./http-helpers.js";
+import { type Service, sendJsonError } from "@elizaos/core";
+import {
+  normalizeCloudSiteUrl,
+  resolveCloudApiKey,
+  validateCloudBaseUrl,
+} from "@elizaos/plugin-elizacloud";
+import { sendJson } from "@elizaos/shared";
+import type { ElizaConfig } from "../config/config.ts";
+import type { CloudProxyConfigLike } from "../types/config-like.ts";
 
 interface XRelayRuntime {
   getService(serviceType: string): Service | null;

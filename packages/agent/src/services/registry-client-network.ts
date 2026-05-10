@@ -1,7 +1,33 @@
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
-import type { RegistryPluginInfo } from "./registry-client-types.js";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
+import type { RegistryPluginInfo } from "./registry-client-types.ts";
 
 const REGISTRY_FETCH_TIMEOUT_MS = 2_500;
+
+export class RegistryNetworkFallbackError extends Error {
+  readonly expectedLocalFallback = true;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "RegistryNetworkFallbackError";
+  }
+}
+
+export function isExpectedRegistryNetworkFallback(
+  error: unknown,
+): error is RegistryNetworkFallbackError {
+  return (
+    error instanceof RegistryNetworkFallbackError ||
+    (typeof error === "object" &&
+      error !== null &&
+      "expectedLocalFallback" in error &&
+      (error as { expectedLocalFallback?: unknown }).expectedLocalFallback ===
+        true)
+  );
+}
+
+function isExpectedRegistryNotFound(resp: Response): boolean {
+  return resp.status === 404;
+}
 
 function createRegistryFetchInit(): RequestInit {
   return {
@@ -153,7 +179,12 @@ export async function fetchFromNetwork(params: {
       generatedSpan.success({ statusCode: resp.status });
       return plugins;
     }
-    generatedSpan.failure({ statusCode: resp.status, errorKind: "http_error" });
+    if (!isExpectedRegistryNotFound(resp)) {
+      generatedSpan.failure({
+        statusCode: resp.status,
+        errorKind: "http_error",
+      });
+    }
   } catch (err) {
     generatedSpan.failure({ error: err });
     // caller logs fallback warnings
@@ -171,8 +202,12 @@ export async function fetchFromNetwork(params: {
     throw err;
   }
   if (!resp.ok) {
-    indexSpan.failure({ statusCode: resp.status, errorKind: "http_error" });
-    throw new Error(`index.json: ${resp.status} ${resp.statusText}`);
+    if (!isExpectedRegistryNotFound(resp)) {
+      indexSpan.failure({ statusCode: resp.status, errorKind: "http_error" });
+    }
+    throw new RegistryNetworkFallbackError(
+      `index.json: ${resp.status} ${resp.statusText}`,
+    );
   }
   const data = (await resp.json()) as Record<string, string>;
   const plugins = new Map<string, RegistryPluginInfo>();

@@ -24,13 +24,13 @@
 #   VLLM_PORT           port the manifest's vllm argv binds to. Must match
 #                       the manifest's `port` field (the pyworker tails this
 #                       port for /health).
-#   VLLM_REGISTRY_KEY   training-side registry key (qwen3.5-2b etc.) — used
+#   VLLM_REGISTRY_KEY   training-side registry key (eliza-1-2b etc.) — used
 #                       only for log lines and the registration hook.
 #
 # CONTRACT — optional env:
 #   MILADY_VAST_MANIFEST    path to a per-size manifest JSON. Default:
 #                           script-dir/eliza-1-${VLLM_REGISTRY_KEY##*-}.json
-#                           (so VLLM_REGISTRY_KEY=qwen3.5-9b → eliza-1-9b.json).
+#                           (so VLLM_REGISTRY_KEY=eliza-1-9b -> eliza-1-9b.json).
 #                           Override with an absolute path for custom manifests.
 #   HUGGING_FACE_HUB_TOKEN  for gated repos. The published eliza-1 sibling
 #                           repos are public; the bf16 base may be gated.
@@ -78,7 +78,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODEL_ALIAS="${MODEL_ALIAS:-${MODEL_REPO##*/}}"
 VLLM_REGISTRY_KEY="${VLLM_REGISTRY_KEY:-unknown}"
 
-# Default manifest path: derive from the registry key suffix (qwen3.5-9b → 9b).
+# Default manifest path: derive from the registry key suffix (eliza-1-9b -> 9b).
 _default_manifest() {
   case "$VLLM_REGISTRY_KEY" in
     *-2b)  printf '%s/eliza-1-2b.json'  "$SCRIPT_DIR" ;;
@@ -122,11 +122,9 @@ PY
 fi
 
 # ---- 2. Pull the model ------------------------------------------------------
-# huggingface_hub 1.x renamed the binary from `huggingface-cli` to `hf`. Keep
-# us aligned with the train-side `hf download` calls in scripts/train_vast.sh
-# so a single hub version pin is enough across train + serve. Both binaries
-# are content-aware caches, so re-runs on a warm instance hit the cache and
-# exit fast either way.
+# Use the current HuggingFace CLI (`hf`) to stay aligned with train-side
+# `hf download` calls in scripts/train_vast.sh. The CLI is content-aware,
+# so re-runs on a warm instance hit the cache and exit fast.
 if ! command -v hf >/dev/null 2>&1; then
   python3 -m pip install --no-cache-dir 'huggingface_hub[cli,hf_transfer]>=1.0.0' 'hf_xet>=1.0.0'
 fi

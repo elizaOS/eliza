@@ -54,6 +54,32 @@ export interface AgentProvisionJobResult {
   error?: string;
 }
 
+function agentProvisionJobDataToRecord(data: AgentProvisionJobData): Record<string, unknown> {
+  return { ...data };
+}
+
+function agentProvisionJobResultToRecord(result: AgentProvisionJobResult): Record<string, unknown> {
+  return { ...result };
+}
+
+function isAgentProvisionJobData(value: unknown): value is AgentProvisionJobData {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { agentId?: unknown }).agentId === "string" &&
+    typeof (value as { organizationId?: unknown }).organizationId === "string" &&
+    typeof (value as { userId?: unknown }).userId === "string" &&
+    typeof (value as { agentName?: unknown }).agentName === "string"
+  );
+}
+
+function readAgentProvisionJobData(job: Job): AgentProvisionJobData {
+  if (!isAgentProvisionJobData(job.data)) {
+    throw new Error(`Invalid agent provision job data for job ${job.id}`);
+  }
+  return job.data;
+}
+
 export interface EnqueueAgentProvisionResult {
   job: Job;
   created: boolean;
@@ -104,7 +130,7 @@ export class ProvisioningJobService {
     const newJob: NewJob = {
       type: JOB_TYPES.AGENT_PROVISION,
       status: "pending",
-      data: jobData as unknown as Record<string, unknown>,
+      data: agentProvisionJobDataToRecord(jobData),
       data_storage: "inline",
       organization_id: params.organizationId,
       user_id: params.userId,
@@ -191,9 +217,47 @@ export class ProvisioningJobService {
    */
   async triggerImmediate(env?: {
     CRON_SECRET?: string;
+    CONTAINER_CONTROL_PLANE_TOKEN?: string;
+    CONTAINER_CONTROL_PLANE_URL?: string;
+    CONTAINER_SIDECAR_URL?: string;
+    DATABASE_URL?: string;
+    HETZNER_CONTAINER_CONTROL_PLANE_URL?: string;
     NEXT_PUBLIC_API_URL?: string;
     NEXT_PUBLIC_APP_URL?: string;
   }): Promise<void> {
+    const controlPlaneBaseUrl =
+      env?.CONTAINER_CONTROL_PLANE_URL ??
+      env?.CONTAINER_SIDECAR_URL ??
+      env?.HETZNER_CONTAINER_CONTROL_PLANE_URL ??
+      process.env.CONTAINER_CONTROL_PLANE_URL ??
+      process.env.CONTAINER_SIDECAR_URL ??
+      process.env.HETZNER_CONTAINER_CONTROL_PLANE_URL;
+    const controlPlaneToken =
+      env?.CONTAINER_CONTROL_PLANE_TOKEN ?? process.env.CONTAINER_CONTROL_PLANE_TOKEN;
+    const databaseUrl = env?.DATABASE_URL ?? process.env.DATABASE_URL;
+
+    if (controlPlaneBaseUrl && controlPlaneToken && databaseUrl) {
+      try {
+        const target = new URL(controlPlaneBaseUrl);
+        target.pathname = "/api/v1/cron/process-provisioning-jobs";
+        target.search = "?limit=5";
+        await fetch(target, {
+          method: "POST",
+          headers: {
+            "x-container-control-plane-token": controlPlaneToken,
+            "x-eliza-cloud-database-url": databaseUrl,
+            "user-agent": "agent-provision-trigger/1.0",
+          },
+          signal: AbortSignal.timeout(120_000),
+        });
+        return;
+      } catch (err) {
+        logger.debug("[provisioning-jobs] direct triggerImmediate failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
     const cronSecret = env?.CRON_SECRET ?? process.env.CRON_SECRET;
     const baseUrl =
       env?.NEXT_PUBLIC_API_URL ??
@@ -318,7 +382,7 @@ export class ProvisioningJobService {
         // sandbox as "error" immediately so the UI reflects reality
         // instead of staying stuck in "provisioning".
         if (updated?.status === "failed" && job.type === JOB_TYPES.AGENT_PROVISION) {
-          const data = job.data as unknown as AgentProvisionJobData;
+          const data = readAgentProvisionJobData(job);
           try {
             await agentSandboxesRepository.update(data.agentId, {
               status: "error",
@@ -351,7 +415,7 @@ export class ProvisioningJobService {
   }
 
   private async executeAgentProvision(job: Job): Promise<void> {
-    const data = job.data as unknown as AgentProvisionJobData;
+    const data = readAgentProvisionJobData(job);
 
     // Cross-check: the org ID stored in the JSONB payload must match the
     // first-class organization_id column. A mismatch indicates either a bug
@@ -376,7 +440,7 @@ export class ProvisioningJobService {
           cloudAgentId: data.agentId,
           status: provResult.sandboxRecord?.status ?? "error",
           error: provResult.error,
-        } as unknown as Record<string, unknown>,
+        },
       });
       throw new Error(provResult.error);
     }
@@ -390,7 +454,7 @@ export class ProvisioningJobService {
     };
 
     await jobsRepository.updateStatus(job.id, "completed", {
-      result: jobResult as unknown as Record<string, unknown>,
+      result: agentProvisionJobResultToRecord(jobResult),
       completed_at: new Date(),
     });
 

@@ -21,14 +21,12 @@ import {
 } from "@elizaos/shared";
 import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
-import {
-  hasLifeOpsAccess,
-  runLifeOpsJsonModel,
-} from "./lifeops-google-helpers.js";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
+import { runLifeOpsJsonModel } from "../lifeops/google/format-helpers.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
-} from "./lifeops-grounded-reply.js";
+} from "../lifeops/voice/grounded-reply.js";
 
 type Subaction =
   | "list_contacts"
@@ -576,8 +574,10 @@ export const relationshipAction: Action & {
   description:
     "Owner-only. Contacts / rolodex / follow-up tracker. The owner's people graph: list/add contacts, log interactions, ask how long since the owner talked to someone, create or complete a follow-up, list overdue follow-ups, tune the overdue threshold.",
   descriptionCompressed:
-    "contacts rolodex follow-ups: list_contacts add_contact log_interaction add_follow_up complete_follow_up follow_up_list days_since list_overdue_followups mark_followup_done set_followup_threshold",
-  contexts: ["contacts", "tasks", "calendar", "messaging"],
+    "contacts rolodex follow-ups: use for relationship cadence follow-ups and days-since-contact, even if contact is missing; one-off dated call/text reminders belong to LIFE. subactions list_contacts add_contact log_interaction add_follow_up complete_follow_up follow_up_list days_since list_overdue_followups mark_followup_done set_followup_threshold",
+  routingHint:
+    "relationship cadence (\"follow up with David\", \"how long since I talked to X\") -> RELATIONSHIP; one-off dated reminders to call/text someone (\"remember to call mom Sunday\") -> LIFE",
+  contexts: ["contacts", "tasks", "calendar", "messaging", "memory"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async () => true,

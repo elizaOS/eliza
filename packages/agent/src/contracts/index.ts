@@ -1,1 +1,1 @@
-export * from "./awareness.js";
+export * from "./awareness.ts";

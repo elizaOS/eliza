@@ -15,6 +15,7 @@ import type {
   HardwareInfo,
   LlamaAdapter,
   LoadOptions,
+  SetSpecTypeArgs,
 } from "./definitions";
 
 // Dynamically imported so the adapter can be bundled into a desktop build
@@ -40,6 +41,7 @@ interface LlamaCppPluginLike {
   }) => Promise<NativeLlamaContext>;
   releaseContext: (options: { contextId: number }) => Promise<void>;
   releaseAllContexts: () => Promise<void>;
+  getHardwareInfo?: () => Promise<Partial<HardwareInfo>>;
   completion?: (options: {
     contextId: number;
     params: NativeCompletionParams;
@@ -70,14 +72,58 @@ interface LlamaCppPluginLike {
     text: string;
     imagePaths?: Array<string>;
   }) => Promise<{ tokens: number[] }>;
+  /**
+   * Optional - exposed only by the buun-llama-cpp fork. Stock builds
+   * lack this method and the adapter feature-detects + warn-no-ops.
+   */
+  setCacheType?: (options: {
+    cacheTypeK: string;
+    cacheTypeV: string;
+  }) => Promise<void>;
+  /**
+   * Optional - exposed only by the buun-llama-cpp fork (DFlash spec
+   * decode bridge).
+   */
+  setSpecType?: (options: {
+    target: string;
+    drafter: string;
+    specType: string;
+    draftMin: number;
+    draftMax: number;
+  }) => Promise<void>;
+  /**
+   * Optional - returns the list of fork-specific kernel symbols
+   * compiled into the loaded native library (or an empty array on
+   * stock builds). Backed by a `kernels.json` resource read from
+   * the .so's APK assets at first call.
+   */
+  getNativeKernels?: () => Promise<{ kernels: string[]; variant?: string }>;
   addListener: (
     event: string,
     listener: (data: TokenEventPayload) => void,
-  ) => Promise<PluginListenerHandle | void>;
+  ) => Promise<PluginListenerHandle | undefined>;
 }
 
 const CONTEXT_ID = 1;
 const DEFAULT_MAX_TOKENS = 256;
+
+/**
+ * Mobile-side parallel slot count. Mirrors `DEFAULT_CACHE_PARALLEL` in
+ * `cache-bridge.ts`; on devices with constrained KV memory we keep a small
+ * fixed pool so distinct cacheKey values still get prefix reuse without
+ * blowing memory.
+ */
+const MOBILE_PARALLEL = 4;
+
+/** FNV-1a 32-bit, deterministic across platforms — matches the agent side. */
+function deriveCacheSlotId(key: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < key.length; i += 1) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return Math.abs(hash | 0) % MOBILE_PARALLEL;
+}
 const MOBILE_MAX_TOKENS_CAP = 256;
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -112,6 +158,10 @@ function toPlainLlamaCppPlugin(plugin: LlamaCppPluginLike): LlamaCppPluginLike {
     initContext: (options) => plugin.initContext(options),
     releaseContext: (options) => plugin.releaseContext(options),
     releaseAllContexts: () => plugin.releaseAllContexts(),
+    getHardwareInfo:
+      typeof plugin.getHardwareInfo === "function"
+        ? () => plugin.getHardwareInfo?.() as Promise<Partial<HardwareInfo>>
+        : undefined,
     completion:
       typeof plugin.completion === "function"
         ? (options) =>
@@ -132,6 +182,22 @@ function toPlainLlamaCppPlugin(plugin: LlamaCppPluginLike): LlamaCppPluginLike {
       typeof plugin.tokenize === "function"
         ? (options) =>
             plugin.tokenize?.(options) as Promise<{ tokens: number[] }>
+        : undefined,
+    setCacheType:
+      typeof plugin.setCacheType === "function"
+        ? (options) => plugin.setCacheType?.(options) as Promise<void>
+        : undefined,
+    setSpecType:
+      typeof plugin.setSpecType === "function"
+        ? (options) => plugin.setSpecType?.(options) as Promise<void>
+        : undefined,
+    getNativeKernels:
+      typeof plugin.getNativeKernels === "function"
+        ? () =>
+            plugin.getNativeKernels?.() as Promise<{
+              kernels: string[];
+              variant?: string;
+            }>
         : undefined,
     addListener: (event, listener) => plugin.addListener(event, listener),
   };
@@ -159,6 +225,141 @@ function resolveMobileMaxTokens(requested?: number): number {
     return DEFAULT_MAX_TOKENS;
   }
   return Math.min(Math.floor(requested), MOBILE_MAX_TOKENS_CAP);
+}
+
+function numberFromUnknown(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return value;
+}
+
+function booleanFromUnknown(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function stringFromUnknown(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function fallbackHardwareInfo(
+  platform = detectPlatform(),
+  reason = "native hardware probe unavailable",
+): HardwareInfo {
+  const nav = (
+    globalThis as {
+      navigator?: { hardwareConcurrency?: number; deviceMemory?: number };
+    }
+  ).navigator;
+  const totalRamGb = numberFromUnknown(nav?.deviceMemory) ?? 0;
+  const gpu =
+    platform === "ios"
+      ? ({ backend: "metal", available: true } as const)
+      : platform === "android"
+        ? ({ backend: "vulkan", available: true } as const)
+        : null;
+  return {
+    platform,
+    deviceModel: platform,
+    totalRamGb,
+    availableRamGb: null,
+    cpuCores: nav?.hardwareConcurrency ?? 0,
+    gpu,
+    gpuSupported: platform !== "web",
+    dflashSupported: false,
+    dflashReason: reason,
+    source: "adapter-fallback",
+    nativeKernels: [],
+    forkVariant: null,
+  };
+}
+
+function normalizeForkVariant(
+  value: unknown,
+): "buun-llama-cpp" | "stock-llama-cpp" | null | undefined {
+  if (value === "buun-llama-cpp" || value === "stock-llama-cpp") return value;
+  if (value === null) return null;
+  return undefined;
+}
+
+function stringArrayFromUnknown(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry === "string" && entry.length > 0) out.push(entry);
+  }
+  return out;
+}
+
+function normalizeHardwareInfo(
+  value: Partial<HardwareInfo> | null | undefined,
+  platform = detectPlatform(),
+): HardwareInfo {
+  const fallback = fallbackHardwareInfo(platform);
+  if (!value) return fallback;
+  const totalRamGb = numberFromUnknown(value.totalRamGb) ?? fallback.totalRamGb;
+  const availableRamGb =
+    value.availableRamGb === null
+      ? null
+      : (numberFromUnknown(value.availableRamGb) ?? fallback.availableRamGb);
+  const gpu =
+    value.gpu && isObject(value.gpu)
+      ? {
+          backend:
+            value.gpu.backend === "metal" ||
+            value.gpu.backend === "vulkan" ||
+            value.gpu.backend === "gpu-delegate"
+              ? value.gpu.backend
+              : (fallback.gpu?.backend ?? "gpu-delegate"),
+          available: Boolean(value.gpu.available),
+        }
+      : fallback.gpu;
+  return {
+    platform:
+      value.platform === "ios" ||
+      value.platform === "android" ||
+      value.platform === "web"
+        ? value.platform
+        : platform,
+    deviceModel: stringFromUnknown(value.deviceModel) ?? fallback.deviceModel,
+    ...(stringFromUnknown(value.machineId)
+      ? { machineId: stringFromUnknown(value.machineId) }
+      : {}),
+    ...(stringFromUnknown(value.osVersion)
+      ? { osVersion: stringFromUnknown(value.osVersion) }
+      : {}),
+    ...(typeof value.isSimulator === "boolean"
+      ? { isSimulator: value.isSimulator }
+      : {}),
+    totalRamGb,
+    availableRamGb,
+    ...(numberFromUnknown(value.freeStorageGb) !== null
+      ? { freeStorageGb: numberFromUnknown(value.freeStorageGb) }
+      : {}),
+    cpuCores: numberFromUnknown(value.cpuCores) ?? fallback.cpuCores,
+    gpu,
+    gpuSupported:
+      booleanFromUnknown(value.gpuSupported) ?? fallback.gpuSupported,
+    ...(typeof value.lowPowerMode === "boolean"
+      ? { lowPowerMode: value.lowPowerMode }
+      : {}),
+    ...(value.thermalState === "nominal" ||
+    value.thermalState === "fair" ||
+    value.thermalState === "serious" ||
+    value.thermalState === "critical" ||
+    value.thermalState === "unknown"
+      ? { thermalState: value.thermalState }
+      : {}),
+    dflashSupported: Boolean(value.dflashSupported),
+    dflashReason:
+      stringFromUnknown(value.dflashReason) ??
+      (value.dflashSupported
+        ? undefined
+        : "native plugin did not report DFlash support"),
+    source: value.source === "native" ? "native" : "adapter-fallback",
+    nativeKernels: stringArrayFromUnknown(value.nativeKernels) ?? [],
+    forkVariant: normalizeForkVariant(value.forkVariant) ?? null,
+  };
 }
 
 class CapacitorLlamaAdapter implements LlamaAdapter {
@@ -212,17 +413,85 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
 
   async getHardwareInfo(): Promise<HardwareInfo> {
     const platform = detectPlatform();
-    const nav = (globalThis as { navigator?: { hardwareConcurrency?: number } })
-      .navigator;
-    return {
-      platform,
-      deviceModel: platform,
-      totalRamGb: 0,
-      availableRamGb: null,
-      cpuCores: nav?.hardwareConcurrency ?? 0,
-      gpu: null,
-      gpuSupported: platform !== "web",
-    };
+    if (!isCapacitorNative()) return fallbackHardwareInfo(platform);
+    try {
+      const plugin = await this.loadPlugin();
+      const baseInfo = normalizeHardwareInfo(
+        await plugin.getHardwareInfo?.(),
+        platform,
+      );
+      // Probe fork-specific kernels through the optional bridge method.
+      // Stock builds and older fork builds without the bridge fall back
+      // to the empty list + "stock-llama-cpp" variant marker.
+      let nativeKernels = baseInfo.nativeKernels ?? [];
+      let forkVariant: HardwareInfo["forkVariant"] =
+        baseInfo.forkVariant ?? "stock-llama-cpp";
+      if (typeof plugin.getNativeKernels === "function") {
+        try {
+          const probe = await plugin.getNativeKernels();
+          const kernels = stringArrayFromUnknown(probe?.kernels);
+          if (kernels) nativeKernels = kernels;
+          const variant = normalizeForkVariant(probe?.variant);
+          if (variant !== undefined) forkVariant = variant;
+          else if (nativeKernels.length > 0) forkVariant = "buun-llama-cpp";
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.debug("[capacitor-llama] getNativeKernels probe failed", {
+            error: message,
+          });
+        }
+      }
+      return {
+        ...baseInfo,
+        nativeKernels,
+        forkVariant,
+      };
+    } catch (error) {
+      return fallbackHardwareInfo(
+        platform,
+        error instanceof Error ? error.message : "native hardware probe failed",
+      );
+    }
+  }
+
+  async setCacheType(typeK: string, typeV: string): Promise<void> {
+    if (!isCapacitorNative()) {
+      console.warn(
+        "[capacitor-llama] setCacheType called on non-native platform; ignoring",
+      );
+      return;
+    }
+    const plugin = await this.loadPlugin();
+    if (typeof plugin.setCacheType !== "function") {
+      console.warn(
+        "[capacitor-llama] underlying plugin does not expose setCacheType (likely stock build); cache types must be passed via load() params instead",
+      );
+      return;
+    }
+    await plugin.setCacheType({ cacheTypeK: typeK, cacheTypeV: typeV });
+  }
+
+  async setSpecType(args: SetSpecTypeArgs): Promise<void> {
+    if (!isCapacitorNative()) {
+      console.warn(
+        "[capacitor-llama] setSpecType called on non-native platform; ignoring",
+      );
+      return;
+    }
+    const plugin = await this.loadPlugin();
+    if (typeof plugin.setSpecType !== "function") {
+      console.warn(
+        "[capacitor-llama] underlying plugin does not expose setSpecType (likely stock build); pass draft_model + draft_min/max via load() instead",
+      );
+      return;
+    }
+    await plugin.setSpecType({
+      target: args.target,
+      drafter: args.drafter,
+      specType: args.specType,
+      draftMin: args.draftMin,
+      draftMax: args.draftMax,
+    });
   }
 
   async isLoaded(): Promise<{ loaded: boolean; modelPath: string | null }> {
@@ -249,15 +518,38 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
       this.loadedPath = null;
     }
 
+    const speculativeSamples = options.mobileSpeculative
+      ? Math.min(options.speculativeSamples ?? options.draftMax ?? 3, 4)
+      : (options.speculativeSamples ?? 3);
+    const params: NativeContextParams & Record<string, unknown> = {
+      model: options.modelPath,
+      n_ctx: options.contextSize ?? 4096,
+      n_gpu_layers: options.useGpu === false ? 0 : 99,
+      n_threads: options.maxThreads ?? 0,
+      use_mmap: true,
+      flash_attn: options.useGpu !== false,
+      n_batch: options.mobileSpeculative ? 128 : 512,
+      n_ubatch: options.mobileSpeculative ? 64 : 512,
+      ...(options.draftModelPath
+        ? {
+            draft_model: options.draftModelPath,
+            speculative_samples: speculativeSamples,
+            mobile_speculative: options.mobileSpeculative ?? true,
+          }
+        : {}),
+      ...(options.draftContextSize
+        ? { n_ctx_draft: options.draftContextSize }
+        : {}),
+      ...(options.draftMin ? { draft_min: options.draftMin } : {}),
+      ...(options.draftMax ? { draft_max: options.draftMax } : {}),
+      ...(options.cacheTypeK ? { cache_type_k: options.cacheTypeK } : {}),
+      ...(options.cacheTypeV ? { cache_type_v: options.cacheTypeV } : {}),
+      ...(options.disableThinking ? { reasoning: false } : {}),
+    };
+
     await plugin.initContext({
       contextId: CONTEXT_ID,
-      params: {
-        model: options.modelPath,
-        n_ctx: options.contextSize ?? 4096,
-        n_gpu_layers: options.useGpu === false ? 0 : 99,
-        n_threads: options.maxThreads ?? 0,
-        use_mmap: true,
-      },
+      params,
     });
     this.loadedPath = options.modelPath;
   }
@@ -288,6 +580,17 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     }
     if (options.stream) {
       params.emit_partial_completion = true;
+    }
+    // Cache key threading: surface the slot id derived from
+    // ProviderCachePlan.promptCacheKey to the native side. Stock
+    // llama-cpp-capacitor builds ignore the field; the patched fork build
+    // reads it via setCacheType / completion params and pins KV slots.
+    if (options.cacheKey) {
+      const slotId = deriveCacheSlotId(options.cacheKey);
+      (params as NativeGenerateParams & { cache_prompt?: boolean; slot_id?: number }).cache_prompt =
+        true;
+      (params as NativeGenerateParams & { cache_prompt?: boolean; slot_id?: number }).slot_id =
+        slotId;
     }
 
     const started = Date.now();
@@ -391,8 +694,8 @@ export function registerCapacitorLlamaLoader(runtime: {
 }): void {
   if (typeof runtime.registerService !== "function") return;
   runtime.registerService("localInferenceLoader", {
-    async loadModel(args: { modelPath: string }): Promise<void> {
-      await capacitorLlama.load({ modelPath: args.modelPath });
+    async loadModel(args: LoadOptions): Promise<void> {
+      await capacitorLlama.load(args);
     },
     async unloadModel(): Promise<void> {
       await capacitorLlama.unload();

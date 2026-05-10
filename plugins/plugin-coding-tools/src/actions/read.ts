@@ -35,7 +35,11 @@ export const readAction: Action = {
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
   roleGate: { minRole: "ADMIN" },
-  similes: ["READ_FILE", "CAT", "OPEN_FILE"],
+  // FILE retained as a one-release simile so cached planner outputs that
+  // routed through the legacy `FILE` umbrella still resolve. READ is the
+  // closest sibling: FILE's most common subaction was `read`. Drop after
+  // one release.
+  similes: ["READ_FILE", "CAT", "OPEN_FILE", "FILE", "FILE_OPERATION", "FILE_IO"],
   description:
     "Read the contents of a file at an absolute path. Returns numbered lines, capped by a per-call line limit and a per-file byte limit. Use offset/limit to paginate through large files. Required before WRITE/EDIT can mutate an existing file.",
   descriptionCompressed:
@@ -60,9 +64,7 @@ export const readAction: Action = {
       schema: { type: "number" },
     },
   ],
-  validate: async (runtime: IAgentRuntime) => {
-    return true;
-  },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -103,7 +105,7 @@ export const readAction: Action = {
     }
 
     const validated = await sandbox.validatePath(conversationId, filePath);
-    if (!validated.ok) {
+    if (validated.ok === false) {
       const reason =
         validated.reason === "blocked" ? "path_blocked" : "invalid_param";
       return failureToActionResult({ reason, message: validated.message });
@@ -156,7 +158,7 @@ export const readAction: Action = {
     if (buffer.includes(0)) {
       return failureToActionResult({
         reason: "io_error",
-        message: `binary file detected at ${resolved}; use BASH+xxd or similar to inspect`,
+        message: `binary file detected at ${resolved}; use SHELL+xxd or similar to inspect`,
       });
     }
 
@@ -200,4 +202,39 @@ export const readAction: Action = {
       truncated,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Read /tmp/notes.md.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Reading /tmp/notes.md.",
+          actions: ["READ"],
+          thought:
+            "Whole-file read on an absolute path maps to READ with path='/tmp/notes.md'.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Show me lines 100-200 of src/server.ts.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Reading src/server.ts (lines 100-200).",
+          actions: ["READ"],
+          thought:
+            "Range read maps to READ with offset=100 and limit=100 to fetch the requested window.",
+        },
+      },
+    ],
+  ],
 };

@@ -11,7 +11,49 @@ export type OAuthConnectionStatus = "pending" | "active" | "expired" | "revoked"
 
 export type OAuthConnectionSource = "platform_credentials" | "secrets";
 
-export type OAuthConnectionRole = "owner" | "agent";
+export const OAUTH_CONNECTION_ROLES = ["OWNER", "AGENT", "TEAM"] as const;
+
+export type OAuthStandardConnectionRole = (typeof OAUTH_CONNECTION_ROLES)[number];
+export type OAuthLegacyConnectionRole = "owner" | "agent";
+export type OAuthConnectionRoleOutput = OAuthLegacyConnectionRole | "team";
+export type OAuthConnectionRole = OAuthStandardConnectionRole | OAuthLegacyConnectionRole | "team";
+
+export function parseOAuthConnectionRole(value: unknown): OAuthStandardConnectionRole | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  switch (normalized) {
+    case "OWNER":
+      return "OWNER";
+    case "AGENT":
+      return "AGENT";
+    case "TEAM":
+      return "TEAM";
+    default:
+      return null;
+  }
+}
+
+export function normalizeOAuthConnectionRole(
+  value: unknown,
+  fallback: OAuthStandardConnectionRole = "OWNER",
+): OAuthStandardConnectionRole {
+  return parseOAuthConnectionRole(value) ?? fallback;
+}
+
+export function formatOAuthConnectionRole(value: unknown): OAuthConnectionRoleOutput {
+  switch (normalizeOAuthConnectionRole(value)) {
+    case "AGENT":
+      return "agent";
+    case "TEAM":
+      return "team";
+    case "OWNER":
+      return "owner";
+  }
+}
+
+export function isOAuthConnectionRole(value: unknown): value is OAuthConnectionRole {
+  return parseOAuthConnectionRole(value) !== null;
+}
 
 /**
  * Provider information returned by the list providers endpoint.
@@ -40,7 +82,7 @@ export interface OAuthConnection {
   /** Cloud user that owns the connection when user-scoped */
   userId?: string;
   /** Logical role Agent uses for the connection */
-  connectionRole?: OAuthConnectionRole;
+  connectionRole?: OAuthConnectionRoleOutput;
   /** Platform identifier (e.g., 'google', 'twitter') */
   platform: string;
   /** User ID on the platform */

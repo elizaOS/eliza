@@ -14,9 +14,8 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
+import type { DrizzleDatabase } from "@elizaos/plugin-sql";
 import { AuthStore } from "../services/auth-store";
-import { extractHeaderValue } from "./auth";
 import {
   appendAuditEvent,
   bootstrapExchangeLimiter,
@@ -24,6 +23,7 @@ import {
   serializeSessionCookie,
   verifyBootstrapToken,
 } from "./auth/index";
+import { extractHeaderValue } from "./auth.ts";
 import {
   type CompatRuntimeState,
   isLoopbackRemoteAddress,
@@ -124,7 +124,7 @@ export async function handleAuthBootstrapRoutes(
   const userAgent = extractHeaderValue(req.headers["user-agent"]);
   const result = await verifyBootstrapToken(token, { authStore: store });
 
-  if (!result.ok) {
+  if (result.ok === false) {
     // Failure path is audited so the operator can see replay / mismatch
     // attempts. The token itself is never written — just the failure
     // reason.

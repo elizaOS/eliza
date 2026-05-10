@@ -152,7 +152,7 @@ List all training jobs.
       "status": "completed",
       "datasetId": "dataset-2024-06-10",
       "backend": "mlx",
-      "model": "llama-3.2-3b",
+      "model": "eliza-1-2b",
       "createdAt": 1718000000000,
       "completedAt": 1718003600000
     }
@@ -172,7 +172,7 @@ Start a new training job.
 {
   "datasetId": "dataset-2024-06-10",
   "backend": "mlx",
-  "model": "llama-3.2-3b",
+  "model": "eliza-1-2b",
   "iterations": 100,
   "batchSize": 4,
   "learningRate": 1e-5
@@ -267,7 +267,7 @@ List all fine-tuned models.
     {
       "id": "model-001",
       "jobId": "job-001",
-      "name": "eliza-llama-3.2-3b-v1",
+      "name": "eliza-1-2b-v1",
       "createdAt": 1718003600000,
       "active": false
     }
@@ -292,7 +292,7 @@ Import a fine-tuned model into Ollama for local inference.
 ```json
 {
   "modelName": "eliza-v1",
-  "baseModel": "llama3.2:3b",
+  "baseModel": "eliza-1-2b",
   "ollamaUrl": "http://localhost:11434"
 }
 ```

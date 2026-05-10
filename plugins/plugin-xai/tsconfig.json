@@ -11,10 +11,16 @@
     "strict": true,
     "allowImportingTsExtensions": true,
     "paths": {
-      "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
-      "@elizaos/core/*": ["../../../packages/core/src/*"]
+      "@elizaos/core": ["../../../packages/core/src/index.node.ts"]
     }
   },
   "include": ["**/*.ts"],
-  "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
+  ]
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Action/Provider/Evaluator Docs Generator
+ * Action/Provider Docs Generator
  *
  * Reads canonical specs from packages/prompts/specs/** and generates
  * TypeScript docs modules under packages/core/src/generated.
@@ -22,11 +22,9 @@ const PROMPTS_ROOT = path.resolve(__dirname, "..");
 
 const ACTIONS_SPECS_DIR = path.join(PROMPTS_ROOT, "specs", "actions");
 const PROVIDERS_SPECS_DIR = path.join(PROMPTS_ROOT, "specs", "providers");
-const EVALUATORS_SPECS_DIR = path.join(PROMPTS_ROOT, "specs", "evaluators");
 
 const CORE_ACTIONS_SPEC_PATH = path.join(ACTIONS_SPECS_DIR, "core.json");
 const CORE_PROVIDERS_SPEC_PATH = path.join(PROVIDERS_SPECS_DIR, "core.json");
-const CORE_EVALUATORS_SPEC_PATH = path.join(EVALUATORS_SPECS_DIR, "core.json");
 
 /**
  * @typedef {"string" | "number" | "integer" | "boolean" | "object" | "array"} JsonSchemaType
@@ -241,30 +239,6 @@ function assertProviderDoc(provider, name) {
 }
 
 /**
- * @param {unknown} evaluator
- * @param {string} name
- * @returns {asserts evaluator is Record<string, unknown>}
- */
-function assertEvaluatorDoc(evaluator, name) {
-  assertRecord(evaluator, name);
-  assertString(evaluator.name, `${name}.name`);
-  assertString(evaluator.description, `${name}.description`);
-  assertCompressedDescriptionAliases(evaluator, name);
-  if (evaluator.similes !== undefined) {
-    assertArray(evaluator.similes, `${name}.similes`);
-    for (let i = 0; i < evaluator.similes.length; i++) {
-      assertString(evaluator.similes[i], `${name}.similes[${i}]`);
-    }
-  }
-  if (evaluator.alwaysRun !== undefined) {
-    assertBoolean(evaluator.alwaysRun, `${name}.alwaysRun`);
-  }
-  if (evaluator.examples !== undefined) {
-    assertArray(evaluator.examples, `${name}.examples`);
-  }
-}
-
-/**
  * @param {string} filePath
  * @returns {unknown}
  */
@@ -335,21 +309,6 @@ function parseProvidersSpec(root, label) {
 }
 
 /**
- * @param {unknown} root
- * @param {string} label
- * @returns {{ version: string, evaluators: unknown[] }}
- */
-function parseEvaluatorsSpec(root, label) {
-  assertRecord(root, label);
-  assertString(root.version, `${label}.version`);
-  assertArray(root.evaluators, `${label}.evaluators`);
-  for (let i = 0; i < root.evaluators.length; i++) {
-    assertEvaluatorDoc(root.evaluators[i], `${label}.evaluators[${i}]`);
-  }
-  return { version: root.version, evaluators: root.evaluators };
-}
-
-/**
  * @param {unknown[]} docs
  * @param {string} label
  */
@@ -371,7 +330,7 @@ function assertUniqueNames(docs, label) {
 /**
  * @param {string} dir
  * @param {string} corePath
- * @param {"actions" | "providers" | "evaluators"} kind
+ * @param {"actions" | "providers"} kind
  * @returns {{ core: { version: string, items: unknown[] }, all: { version: string, items: unknown[] } }}
  */
 function loadSpecs(dir, corePath, kind) {
@@ -384,72 +343,43 @@ function loadSpecs(dir, corePath, kind) {
 
   const coreRoot = readJson(corePath);
   const coreLabel = `${kind} core spec`;
-  let coreParsed;
-
-  if (kind === "actions") {
-    coreParsed = parseActionsSpec(coreRoot, coreLabel);
-  } else if (kind === "providers") {
-    coreParsed = parseProvidersSpec(coreRoot, coreLabel);
-  } else {
-    coreParsed = parseEvaluatorsSpec(coreRoot, coreLabel);
-  }
+  const coreParsed =
+    kind === "actions"
+      ? parseActionsSpec(coreRoot, coreLabel)
+      : parseProvidersSpec(coreRoot, coreLabel);
 
   const allFiles = listJsonFiles(dir).filter(
     (p) => path.resolve(p) !== path.resolve(corePath),
   );
   /** @type {unknown[]} */
   const merged = [
-    ...(kind === "actions"
-      ? coreParsed.actions
-      : kind === "providers"
-        ? coreParsed.providers
-        : coreParsed.evaluators),
+    ...(kind === "actions" ? coreParsed.actions : coreParsed.providers),
   ];
 
   for (const filePath of allFiles) {
     const root = readJson(filePath);
     const label = `${kind} spec (${path.relative(PROMPTS_ROOT, filePath)})`;
-    let parsed;
-
-    if (kind === "actions") {
-      parsed = parseActionsSpec(root, label);
-    } else if (kind === "providers") {
-      parsed = parseProvidersSpec(root, label);
-    } else {
-      parsed = parseEvaluatorsSpec(root, label);
-    }
+    const parsed =
+      kind === "actions"
+        ? parseActionsSpec(root, label)
+        : parseProvidersSpec(root, label);
 
     if (parsed.version !== coreParsed.version) {
       throw new Error(
         `${label}.version (${parsed.version}) must match core version (${coreParsed.version})`,
       );
     }
-    merged.push(
-      ...(kind === "actions"
-        ? parsed.actions
-        : kind === "providers"
-          ? parsed.providers
-          : parsed.evaluators),
-    );
+    merged.push(...(kind === "actions" ? parsed.actions : parsed.providers));
   }
 
   const itemsLabel =
-    kind === "actions"
-      ? "actions spec.actions"
-      : kind === "providers"
-        ? "providers spec.providers"
-        : "evaluators spec.evaluators";
+    kind === "actions" ? "actions spec.actions" : "providers spec.providers";
   assertUniqueNames(merged, itemsLabel);
 
   return {
     core: {
       version: coreParsed.version,
-      items:
-        kind === "actions"
-          ? coreParsed.actions
-          : kind === "providers"
-            ? coreParsed.providers
-            : coreParsed.evaluators,
+      items: kind === "actions" ? coreParsed.actions : coreParsed.providers,
     },
     all: {
       version: coreParsed.version,
@@ -525,18 +455,10 @@ function normalizeProviderDoc(provider) {
 }
 
 /**
- * @param {Record<string, unknown>} evaluator
- */
-function normalizeEvaluatorDoc(evaluator) {
-  normalizeCompressedDescription(evaluator);
-}
-
-/**
  * @param {{ core: { items: unknown[] }; all: { items: unknown[] } }} actionsSpec
  * @param {{ core: { items: unknown[] }; all: { items: unknown[] } }} providersSpec
- * @param {{ core: { items: unknown[] }; all: { items: unknown[] } }} evaluatorsSpec
  */
-function normalizeSpecsInPlace(actionsSpec, providersSpec, evaluatorsSpec) {
+function normalizeSpecsInPlace(actionsSpec, providersSpec) {
   for (const action of actionsSpec.core.items) {
     normalizeActionDoc(/** @type {Record<string, unknown>} */ (action));
   }
@@ -549,15 +471,9 @@ function normalizeSpecsInPlace(actionsSpec, providersSpec, evaluatorsSpec) {
   for (const p of providersSpec.all.items) {
     normalizeProviderDoc(/** @type {Record<string, unknown>} */ (p));
   }
-  for (const evaluator of evaluatorsSpec.core.items) {
-    normalizeEvaluatorDoc(/** @type {Record<string, unknown>} */ (evaluator));
-  }
-  for (const evaluator of evaluatorsSpec.all.items) {
-    normalizeEvaluatorDoc(/** @type {Record<string, unknown>} */ (evaluator));
-  }
 }
 
-function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
+function generateTypeScript(actionsSpec, providersSpec) {
   const outDir = path.join(REPO_ROOT, "packages", "core", "src", "generated");
   ensureDir(outDir);
 
@@ -584,29 +500,19 @@ function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
     null,
     2,
   );
-  const evaluatorsJson = JSON.stringify(
-    {
-      version: evaluatorsSpec.core.version,
-      evaluators: evaluatorsSpec.core.items,
-    },
-    null,
-    2,
-  );
-  const evaluatorsAllJson = JSON.stringify(
-    {
-      version: evaluatorsSpec.all.version,
-      evaluators: evaluatorsSpec.all.items,
-    },
-    null,
-    2,
-  );
 
   const content = `/**
- * Auto-generated canonical action/provider/evaluator docs.
+ * Auto-generated canonical action/provider docs.
  * DO NOT EDIT - Generated from packages/prompts/specs/**.
  */
 
-export type ActionDocParameterExampleValue = string | number | boolean | null;
+export type ActionDocParameterExampleValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly ActionDocParameterExampleValue[]
+  | { readonly [key: string]: ActionDocParameterExampleValue };
 
 export type ActionDocParameterSchema = {
   type: "string" | "number" | "integer" | "boolean" | "object" | "array";
@@ -666,58 +572,20 @@ export type ProviderDoc = {
   dynamic?: boolean;
 };
 
-export type EvaluatorDocMessageContent = {
-  text: string;
-  type?: string;
-};
-
-export type EvaluatorDocMessage = {
-  name: string;
-  content: EvaluatorDocMessageContent;
-};
-
-export type EvaluatorDocExample = {
-  prompt: string;
-  messages: readonly EvaluatorDocMessage[];
-  outcome: string;
-};
-
-export type EvaluatorDoc = {
-  name: string;
-  description: string;
-  descriptionCompressed?: string;
-  compressedDescription?: string;
-  similes?: readonly string[];
-  alwaysRun?: boolean;
-  examples?: readonly EvaluatorDocExample[];
-};
-
 export const coreActionsSpecVersion = ${JSON.stringify(actionsSpec.core.version)} as const;
 export const allActionsSpecVersion = ${JSON.stringify(actionsSpec.all.version)} as const;
 export const coreProvidersSpecVersion = ${JSON.stringify(providersSpec.core.version)} as const;
 export const allProvidersSpecVersion = ${JSON.stringify(providersSpec.all.version)} as const;
-export const coreEvaluatorsSpecVersion = ${JSON.stringify(evaluatorsSpec.core.version)} as const;
-export const allEvaluatorsSpecVersion = ${JSON.stringify(evaluatorsSpec.all.version)} as const;
 
 export const coreActionsSpec = ${actionsJson} as const satisfies { version: string; actions: readonly ActionDoc[] };
 export const allActionsSpec = ${actionsAllJson} as const satisfies { version: string; actions: readonly ActionDoc[] };
 export const coreProvidersSpec = ${providersJson} as const satisfies { version: string; providers: readonly ProviderDoc[] };
 export const allProvidersSpec = ${providersAllJson} as const satisfies { version: string; providers: readonly ProviderDoc[] };
-export const coreEvaluatorsSpec = ${evaluatorsJson} as const satisfies {
-  version: string;
-  evaluators: readonly EvaluatorDoc[];
-};
-export const allEvaluatorsSpec = ${evaluatorsAllJson} as const satisfies {
-  version: string;
-  evaluators: readonly EvaluatorDoc[];
-};
 
 export const coreActionDocs: readonly ActionDoc[] = coreActionsSpec.actions;
 export const allActionDocs: readonly ActionDoc[] = allActionsSpec.actions;
 export const coreProviderDocs: readonly ProviderDoc[] = coreProvidersSpec.providers;
 export const allProviderDocs: readonly ProviderDoc[] = allProvidersSpec.providers;
-export const coreEvaluatorDocs: readonly EvaluatorDoc[] = coreEvaluatorsSpec.evaluators;
-export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evaluators;
 `;
 
   const actionDocsPath = path.join(outDir, "action-docs.ts");
@@ -744,17 +612,12 @@ function main() {
     CORE_PROVIDERS_SPEC_PATH,
     "providers",
   );
-  const evaluatorsSpec = loadSpecs(
-    EVALUATORS_SPECS_DIR,
-    CORE_EVALUATORS_SPEC_PATH,
-    "evaluators",
-  );
 
-  normalizeSpecsInPlace(actionsSpec, providersSpec, evaluatorsSpec);
+  normalizeSpecsInPlace(actionsSpec, providersSpec);
 
-  generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec);
+  generateTypeScript(actionsSpec, providersSpec);
 
-  console.log("Generated action/provider/evaluator docs.");
+  console.log("Generated action/provider docs.");
 }
 
 main();

@@ -25,9 +25,8 @@ export interface TrajectoryContext {
 	purpose?: string;
 	/**
 	 * Step ID of the parent trajectory step, when the current step was
-	 * dispatched from inside another (e.g. an action invoked through
-	 * `executeCode`). Persistence layers use this to attach child step IDs
-	 * to the parent's `childSteps` array.
+	 * dispatched from inside another. Persistence layers use this to attach
+	 * child step IDs to the parent's `childSteps` array.
 	 */
 	parentStepId?: string;
 }

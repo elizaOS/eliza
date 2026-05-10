@@ -8,6 +8,7 @@ import type {
 	MessageExampleGroup,
 } from "../../../../types/index.ts";
 import { Service } from "../../../../types/service.ts";
+import { getCharacterPersistenceService } from "../character-persistence.ts";
 import { PersonalityServiceType } from "../types.ts";
 
 // Validation schema for character modifications
@@ -48,15 +49,6 @@ const CharacterModificationSchema = z.object({
 });
 
 type CharacterModification = z.infer<typeof CharacterModificationSchema>;
-
-type CharacterPersistenceServiceLike = {
-	persistCharacter: (params?: {
-		character?: Record<string, unknown>;
-		previousCharacter?: Record<string, unknown>;
-		previousName?: string;
-		source?: "manual" | "agent" | "restore";
-	}) => Promise<{ success: boolean; error?: string }>;
-};
 
 /**
  * Service for safely managing character file modifications
@@ -430,9 +422,7 @@ export class CharacterFileManager extends Service {
 				logger.info("Character file updated successfully");
 			}
 
-			const persistenceService = this.runtime.getService(
-				"eliza_character_persistence",
-			) as unknown as CharacterPersistenceServiceLike | null;
+			const persistenceService = getCharacterPersistenceService(this.runtime);
 			if (persistenceService) {
 				const persistenceResult = await persistenceService.persistCharacter({
 					character: currentCharacter as Record<string, unknown>,
@@ -575,9 +565,7 @@ export class CharacterFileManager extends Service {
 				});
 			}
 
-			const persistenceService = this.runtime.getService(
-				"eliza_character_persistence",
-			) as unknown as CharacterPersistenceServiceLike | null;
+			const persistenceService = getCharacterPersistenceService(this.runtime);
 			if (persistenceService) {
 				const persistenceResult = await persistenceService.persistCharacter({
 					character: backupContent as Record<string, unknown>,

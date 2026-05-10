@@ -18,11 +18,23 @@
  * symlinks. Idempotent: existing correct symlinks are left alone.
  */
 
-import { existsSync, readdirSync, readFileSync, lstatSync, symlinkSync, mkdirSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 const nativePluginsRoot = path.join(repoRoot, "packages", "native-plugins");
 const nodeModulesRoot = path.join(repoRoot, "node_modules");
 
@@ -61,22 +73,32 @@ for (const dirName of readdirSync(nativePluginsRoot)) {
   // /Users/... path).
   const relativeTarget = path.relative(parentDir, pkgDir);
 
-  // Already a correct symlink? Leave it.
+  // Already a correct symlink? Leave it. Wrong or dangling symlinks need
+  // replacing; existsSync() follows links and returns false for those.
   let needLink = true;
-  if (existsSync(targetDir)) {
-    try {
-      const stat = lstatSync(targetDir);
-      if (stat.isSymbolicLink()) {
+  try {
+    const stat = lstatSync(targetDir);
+    if (stat.isSymbolicLink()) {
+      let resolvedTarget = null;
+      try {
+        resolvedTarget = path.resolve(parentDir, readlinkSync(targetDir));
+      } catch {}
+
+      if (resolvedTarget === pkgDir) {
         needLink = false;
         alreadyOk += 1;
       } else {
-        // Real directory at the same path — bun installed something
-        // unrelated under the same name. Leave it; printing here would
-        // surface a real conflict.
-        skipped += 1;
-        continue;
+        rmSync(targetDir, { force: true });
       }
-    } catch {
+    } else {
+      // Real directory at the same path — bun installed something
+      // unrelated under the same name. Leave it; printing here would
+      // surface a real conflict.
+      skipped += 1;
+      continue;
+    }
+  } catch (err) {
+    if (err?.code !== "ENOENT") {
       // Stat failure — fall through to (re)create.
       try {
         rmSync(targetDir, { recursive: true, force: true });

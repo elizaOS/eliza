@@ -2,7 +2,6 @@ import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { TEEService } from "./services/tee";
 import { getVendor, TeeVendorNames } from "./vendors";
 
-export { remoteAttestationAction } from "./actions";
 export {
   DeriveKeyProvider,
   PhalaDeriveKeyProvider,
@@ -70,7 +69,6 @@ export const teePlugin: Plugin = {
   actions: defaultVendor.getActions(),
   providers: defaultVendor.getProviders(),
   services: [TEEService],
-  evaluators: [],
 };
 
 export default teePlugin;

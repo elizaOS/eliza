@@ -1,10 +1,10 @@
-import type { RouteRequestContext } from "@elizaos/agent/api/route-helpers";
-import type { ElizaConfig } from "@elizaos/agent/config/config";
+import type { RouteRequestContext } from "@elizaos/core";
+import type { ElizaConfig } from "@elizaos/agent";
 import type {
   BscTradeQuoteResponse,
   BscUnsignedApprovalTx,
   BscUnsignedTradeTx,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 import type { ethers } from "ethers";
 import type { TradePermissionMode } from "./trade-safety";
 import type { WalletTradeLedgerRecordInput } from "./wallet-trading-profile";
@@ -280,7 +280,7 @@ export async function handleWalletTradeExecuteRoute(
         if (rpcUrl && approvalHash) {
           const provider = deps.createProvider(rpcUrl);
           try {
-            const prov = provider as unknown as {
+            const prov = provider as {
               waitForTransaction?: (
                 hash: string,
                 confirmations?: number,

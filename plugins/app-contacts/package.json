@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-contacts",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "description": "Android Contacts overlay app — wraps the @elizaos/capacitor-contacts native plugin.",
   "main": "./dist/index.js",
@@ -8,38 +8,30 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "biome check src/",
     "test": "bunx vitest run --config ./vitest.config.ts",
-    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "clean": "rm -rf dist"
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./ui": {
-      "types": "./src/ui.ts",
-      "import": "./dist/ui.js",
-      "default": "./dist/ui.js"
-    },
     "./plugin": {
-      "types": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
-    },
-    "./register": {
-      "types": "./src/register.ts",
-      "import": "./dist/register.js",
-      "default": "./dist/register.js"
     }
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/capacitor-contacts": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*",
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/capacitor-contacts": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1",
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {
@@ -57,7 +49,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],

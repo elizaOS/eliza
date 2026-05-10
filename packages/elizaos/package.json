@@ -1,6 +1,6 @@
 {
   "name": "elizaos",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "elizaOS CLI - Create and upgrade elizaOS projects and plugins",
   "type": "module",
   "bin": {
@@ -28,7 +28,7 @@
     "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:packaged": "node ./scripts/packaged-smoke.mjs",
     "prepublishOnly": "bun run build"
   },
@@ -39,7 +39,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.17"
   },
   "keywords": [

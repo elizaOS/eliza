@@ -33,7 +33,7 @@ function buildScopedListOptions(
   message: Memory,
   includeArchived: boolean,
 ): ListTaskThreadsOptions {
-  const messageLike = message as unknown as MessageFields;
+  const messageLike = message as MessageFields;
   return {
     includeArchived,
     roomId: stringValue(messageLike.roomId),

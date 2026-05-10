@@ -19,7 +19,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger, resolveCanonicalOwnerIdForMessage } from "@elizaos/core";
-import { hasAdminAccess } from "../security/access.js";
+import { hasAdminAccess } from "../security/access.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -101,7 +101,7 @@ async function findLastOwnerMessageTimestamp(
 
 async function checkActiveEscalation(triggers: Trigger[]): Promise<void> {
   try {
-    const { EscalationService } = await import("../services/escalation.js");
+    const { EscalationService } = await import("../services/escalation.ts");
     const active = EscalationService.getActiveEscalationSync();
     if (active && !active.resolved) {
       triggers.push({
@@ -220,7 +220,7 @@ export function createEscalationTriggerProvider(): Provider {
       const lines = triggers.map(
         (t) => `- [${t.urgency.toUpperCase()}] ${t.message}`,
       );
-      const text = `# Escalation Context\n${lines.join("\n")}\n\nIf any of these warrant owner attention, use SEND_ADMIN_MESSAGE (urgency: "urgent" for emergencies — this triggers multi-channel escalation).`;
+      const text = `# Escalation Context\n${lines.join("\n")}`;
 
       const highestUrgency = triggers.reduce<Urgency>((max, t) => {
         return (URGENCY_ORDER[t.urgency] ?? 0) > (URGENCY_ORDER[max] ?? 0)

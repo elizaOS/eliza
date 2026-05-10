@@ -28,9 +28,9 @@ import {
 import { MessageCircle, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
-import type { UserCharacterDto } from "@/types/cloud-api";
 import type { AffiliateTheme } from "@/lib/config/affiliate-themes";
 import { getThemeCSSVariables } from "@/lib/config/affiliate-themes";
+import type { UserCharacterDto } from "@/types/cloud-api";
 import { EmailCaptureModal } from "./email-capture-modal";
 
 interface CharacterIntroPageProps {

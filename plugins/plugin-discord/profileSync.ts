@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import { resolveStateDir, resolveUserPath } from "@elizaos/core";
 import type { ClientUser } from "discord.js";
 import type { DiscordSettings } from "./types";
 
@@ -15,35 +15,10 @@ type PersistedDiscordProfileSyncState = {
 	username?: string;
 };
 
-function resolveUserPath(input: string): string {
-	const trimmed = input.trim();
-	if (!trimmed) {
-		return trimmed;
-	}
-	if (trimmed.startsWith("~")) {
-		return path.resolve(trimmed.replace(/^~(?=$|[\\/])/, os.homedir()));
-	}
-	return path.resolve(trimmed);
-}
-
-function resolveStateDirFromEnv(env: NodeJS.ProcessEnv = process.env): string {
-	const override = env.ELIZA_STATE_DIR?.trim();
-	if (override) {
-		return resolveUserPath(override);
-	}
-
-	const namespace = env.ELIZA_NAMESPACE?.trim() || "eliza";
-	return path.join(os.homedir(), `.${namespace}`);
-}
-
 function resolveProfileSyncStatePath(
 	env: NodeJS.ProcessEnv = process.env,
 ): string {
-	return path.join(
-		resolveStateDirFromEnv(env),
-		"cache",
-		PROFILE_SYNC_STATE_FILE,
-	);
+	return path.join(resolveStateDir(env), "cache", PROFILE_SYNC_STATE_FILE);
 }
 
 async function readPersistedProfileSyncState(

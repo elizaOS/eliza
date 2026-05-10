@@ -8,7 +8,7 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import type { JsonValue } from "../types.ts";
 
 type PlanningActionOptions = HandlerOptions & {
@@ -60,7 +60,7 @@ export const createPlanAction: Action = {
 	],
 
 	validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
-		return hasActionContextOrKeyword(message, state, {
+		return hasActionContext(message, state, {
 			contexts: ["tasks", "automation", "code", "agent_internal"],
 			keywordKeys: ["action.createPlan.request"],
 		});
@@ -140,4 +140,42 @@ export const createPlanAction: Action = {
 			});
 		}
 	},
+	examples: [
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Plan a project to migrate our auth service.",
+					source: "chat",
+				},
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: "Created a multi-phase plan.",
+					actions: ["CREATE_PLAN"],
+					thought:
+						"Open-ended migration request maps to CREATE_PLAN with goal text; the planner returns phases and tasks.",
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Build me a 3-phase plan for the website redesign.",
+					source: "chat",
+				},
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: "Created a 3-phase plan.",
+					actions: ["CREATE_PLAN"],
+					thought:
+						"Explicit phase count maps to CREATE_PLAN with phaseCount=3 alongside the goal.",
+				},
+			},
+		],
+	],
 };

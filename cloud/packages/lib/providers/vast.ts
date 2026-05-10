@@ -6,7 +6,7 @@
  * auth token come from `VAST_BASE_URL` and `VAST_API_KEY` because each Vast
  * endpoint has a unique routing URL — we don't bake one in.
  *
- * Catalog ids look like `vast/qwen3.6-27b-neo-code`. The upstream llama-server
+ * Catalog ids look like `vast/eliza-1-27b`. The upstream llama-server
  * is launched with `--alias <catalog id>` so the model id round-trips
  * unchanged; `VAST_NATIVE_MODEL_ID_MAP` is kept available so we can register
  * additional quants/variants later. Vast itself manages autoscaling, queueing,

@@ -8,7 +8,7 @@ import {
   detectBestEngine,
   type ISandboxEngine,
   type SandboxEngineType,
-} from "./sandbox-engine.js";
+} from "./sandbox-engine.ts";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -84,6 +84,32 @@ export interface SandboxExecResult {
   stderr: string;
   durationMs: number;
   executedInSandbox: boolean;
+}
+
+export interface SandboxRunOptions {
+  cmd: string;
+  args: readonly string[];
+  workdir?: string;
+  env?: Record<string, string>;
+  timeoutMs?: number;
+  stdin?: string;
+  /**
+   * Override sandbox image. Currently informational; the manager runs commands
+   * in the long-lived container provisioned at start(), not a per-call image.
+   */
+  image?: string;
+}
+
+/**
+ * Quote a single argv token using POSIX single-quote rules so the engine's
+ * string-based command parser round-trips it back to exactly one argument.
+ * Single-quoted strings preserve every character except `'`, which is encoded
+ * as the standard `'\''` sequence.
+ */
+function shQuote(token: string): string {
+  if (token.length === 0) return "''";
+  if (/^[A-Za-z0-9_+\-./=:@%]+$/.test(token)) return token;
+  return `'${token.replace(/'/g, "'\\''")}'`;
 }
 
 export interface SandboxEvent {
@@ -432,6 +458,14 @@ export class SandboxManager {
         executedInSandbox: true,
       };
     } catch (err) {
+      this.emitEvent({
+        timestamp: Date.now(),
+        type: "error",
+        detail: `Sandbox exec failed: ${String(err)}`,
+        metadata: {
+          command: options.command.substring(0, 200),
+        },
+      });
       return {
         exitCode: 1,
         stdout: "",
@@ -440,6 +474,24 @@ export class SandboxManager {
         executedInSandbox: false,
       };
     }
+  }
+
+  /**
+   * Argv-aware variant of {@link exec}. Builds a properly-quoted command
+   * string from `cmd` + `args` and forwards to the underlying engine. Use
+   * this from the shell-execution router so callers that already have
+   * argv-shaped requests don't have to re-quote and risk shell-injection
+   * mismatches.
+   */
+  async run(options: SandboxRunOptions): Promise<SandboxExecResult> {
+    const tokens = [options.cmd, ...options.args].map(shQuote).join(" ");
+    return this.exec({
+      command: tokens,
+      workdir: options.workdir,
+      env: options.env,
+      timeoutMs: options.timeoutMs,
+      stdin: options.stdin,
+    });
   }
 
   getBrowserCdpEndpoint(): string | null {

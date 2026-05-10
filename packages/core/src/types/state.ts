@@ -1,14 +1,5 @@
 import type { ActionResult, ProviderValue } from "./components";
 import type { Entity, Room, World } from "./environment";
-import type {
-	ActionPlan as ProtoActionPlan,
-	ActionPlanStep as ProtoActionPlanStep,
-	ProviderCacheEntry as ProtoProviderCacheEntry,
-	State as ProtoState,
-	StateData as ProtoStateData,
-	StateValues as ProtoStateValues,
-	WorkingMemoryItem as ProtoWorkingMemoryItem,
-} from "./proto.js";
 
 /**
  * Allowed value types for state values (JSON-serializable)
@@ -39,18 +30,18 @@ export interface StructuredOutputFailure {
 }
 
 /** Single step in an action plan */
-export interface ActionPlanStep
-	extends Omit<ProtoActionPlanStep, "$typeName" | "$unknown" | "result"> {
+export interface ActionPlanStep {
+	action: string;
 	status: "pending" | "completed" | "failed";
+	error?: string;
 	result?: ActionResult;
 }
 
 /** Multi-step action plan */
-export interface ActionPlan
-	extends Omit<
-		ProtoActionPlan,
-		"$typeName" | "$unknown" | "steps" | "metadata"
-	> {
+export interface ActionPlan {
+	thought: string;
+	totalSteps: number;
+	currentStep: number;
 	steps: ActionPlanStep[];
 	metadata?: Record<string, StateValue>;
 }
@@ -58,11 +49,8 @@ export interface ActionPlan
 /**
  * Provider result cache entry
  */
-export interface ProviderCacheEntry
-	extends Omit<
-		ProtoProviderCacheEntry,
-		"$typeName" | "$unknown" | "values" | "data"
-	> {
+export interface ProviderCacheEntry {
+	text?: string;
 	values?: Record<string, StateValue>;
 	data?: Record<string, StateValue>;
 }
@@ -70,11 +58,8 @@ export interface ProviderCacheEntry
 /**
  * Working memory entry for action execution
  */
-export interface WorkingMemoryEntry
-	extends Omit<
-		ProtoWorkingMemoryItem,
-		"$typeName" | "$unknown" | "result" | "timestamp"
-	> {
+export interface WorkingMemoryEntry {
+	actionName: string;
 	result: ActionResult;
 	timestamp: number;
 }
@@ -88,19 +73,7 @@ export type WorkingMemory = Record<string, WorkingMemoryEntry>;
  * Structured data cached in state by providers and actions.
  * Common properties are typed for better DX while allowing dynamic extension.
  */
-export interface StateData
-	extends Omit<
-		ProtoStateData,
-		| "$typeName"
-		| "$unknown"
-		| "room"
-		| "world"
-		| "entity"
-		| "providers"
-		| "actionPlan"
-		| "actionResults"
-		| "workingMemory"
-	> {
+export interface StateData {
 	/** Cached room data from providers */
 	room?: Room;
 	/** Cached world data from providers */
@@ -124,8 +97,7 @@ export interface StateData
 /**
  * State values populated by providers
  */
-export interface StateValues
-	extends Omit<ProtoStateValues, "$typeName" | "$unknown" | "extra"> {
+export interface StateValues {
 	/** Agent name */
 	agentName?: string;
 	/** Action names available to the agent */
@@ -140,13 +112,11 @@ export interface StateValues
 
 /**
  * Represents the current state or context of a conversation or agent interaction.
- * This interface is a container for various pieces of information that define the agent's
- * understanding at a point in time.
  */
-export interface State
-	extends Omit<ProtoState, "$typeName" | "$unknown" | "values" | "data"> {
+export interface State {
 	values: StateValues;
 	data: StateData;
+	text: string;
 	[key: string]: StateValue | StateValues | StateData | undefined;
 }
 

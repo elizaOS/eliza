@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-xai",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "elizaOS xAI plugin: Grok models for text generation and embeddings.",
   "type": "module",
   "main": "dist/node/index.node.js",
@@ -35,8 +35,20 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "embedding"
+      ]
+    }
+  },
   "keywords": [
     "elizaos",
     "plugin",
@@ -50,7 +62,7 @@
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
     "dev": "bun --hot build.ts",
-    "clean": "rm -rf dist .turbo node_modules",
+    "clean": "rm -rf dist .turbo",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "echo \"Lint skipped for release\"",
@@ -59,7 +71,7 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
@@ -68,7 +80,7 @@
     "vitest": "^4.0.0"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "publishConfig": {
     "access": "public"

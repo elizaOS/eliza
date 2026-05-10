@@ -7,28 +7,17 @@ import type { Room } from "./environment";
 import type { Memory } from "./memory";
 import type { ModelType } from "./model";
 import type { Content, Media, MentionContext, UUID } from "./primitives";
-import type {
-	MessageProcessingMode as ProtoMessageProcessingMode,
-	MessageProcessingOptions as ProtoMessageProcessingOptions,
-	ShouldRespondModelType as ProtoShouldRespondModelType,
-} from "./proto.js";
 import type { IAgentRuntime } from "./runtime";
 import type { State } from "./state";
 
 /**
  * Configuration options for message processing
  */
-export interface MessageProcessingOptions
-	extends Omit<
-		ProtoMessageProcessingOptions,
-		| "$typeName"
-		| "$unknown"
-		| "maxRetries"
-		| "timeoutDuration"
-		| "shouldRespondModel"
-	> {
+export interface MessageProcessingOptions {
 	maxRetries?: number;
 	timeoutDuration?: number;
+	useMultiStep?: boolean;
+	maxMultiStepIterations?: number;
 	shouldRespondModel?: ShouldRespondModelType;
 	onStreamChunk?: StreamChunkCallback;
 	/**
@@ -45,15 +34,6 @@ export interface MessageProcessingOptions
 	 * @default resolved from runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") if not set
 	 */
 	keepExistingResponses?: boolean;
-	/**
-	 * Called after the planner commits to executing registered actions (mode === "actions"),
-	 * immediately before `processActions`. Omit for simple single-shot replies (mode === "simple").
-	 * Use for channel typing indicators so users do not see "typing" during planning-only turns.
-	 */
-	onBeforeActionExecution?: (ctx: {
-		runtime: IAgentRuntime;
-		message: Memory;
-	}) => void | Promise<void>;
 }
 
 /**
@@ -90,7 +70,6 @@ export interface ContextRoutedResponseDecision extends ResponseDecision {
 }
 
 export type ShouldRespondModelType =
-	| ProtoShouldRespondModelType
 	| "nano"
 	| "small"
 	| "large"
@@ -101,12 +80,7 @@ export type ShouldRespondModelType =
 	| typeof ModelType.TEXT_LARGE
 	| typeof ModelType.TEXT_MEGA
 	| typeof ModelType.RESPONSE_HANDLER;
-export type MessageProcessingMode =
-	| ProtoMessageProcessingMode
-	| "simple"
-	| "actions"
-	| "none"
-	| "blocked";
+export type MessageProcessingMode = "simple" | "actions" | "none" | "blocked";
 
 /**
  * Core interface for message handling service.

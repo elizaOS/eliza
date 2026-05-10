@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -96,19 +97,23 @@ def _make_registry_adapter(
         "agentbench",
         "gaia",
         "gaia_orchestrated",
+        "gauntlet",
+        "orchestrator_lifecycle",
         "realm",
         "rlm_bench",
         "social_alpha",
         "terminal_bench",
     }:
-        adapter_pythonpath = str((benchmarks_root / "eliza-adapter").resolve())
+        adapter_python_paths = [str((benchmarks_root / "eliza-adapter").resolve())]
+        if benchmark_id == "gauntlet":
+            adapter_python_paths.append(str((benchmarks_root / "gauntlet" / "src").resolve()))
 
         def env_builder(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
             existing = ctx.env.get("PYTHONPATH", "")
             pythonpath = (
-                os.pathsep.join([adapter_pythonpath, existing])
+                os.pathsep.join([*adapter_python_paths, existing])
                 if existing
-                else adapter_pythonpath
+                else os.pathsep.join(adapter_python_paths)
             )
             return {"PYTHONPATH": pythonpath}
 
@@ -170,7 +175,7 @@ def _make_extra_adapter(
 
 def _command_hyperliquid(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     args = [
-        "python",
+        sys.executable,
         "-m",
         "benchmarks.HyperliquidBench",
         "--coverage",
@@ -185,12 +190,21 @@ def _command_hyperliquid(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> li
 
 
 def _command_adhdbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    provider = ctx.request.provider.strip().lower()
+    # Route LLM-backed providers through the eliza TS bridge by default so
+    # the registered eliza agent + plugins are exercised. Callers can
+    # opt out via extra_config "use_direct_provider": True.
+    bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
+    use_direct = bool(ctx.request.extra_config.get("use_direct_provider"))
+    effective_provider = (
+        "eliza" if (provider in bridge_providers and not use_direct) else ctx.request.provider
+    )
     args = [
-        "python",
+        sys.executable,
         "scripts/run_benchmark.py",
         "run",
         "--provider",
-        ctx.request.provider,
+        effective_provider,
         "--model",
         ctx.request.model,
         "--output",
@@ -242,10 +256,12 @@ def _env_configbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[s
     env: dict[str, str] = {}
     if provider_name in {"groq", "openai", "anthropic"}:
         env["CONFIGBENCH_AGENT_PROVIDER"] = provider_name
+    elif provider_name in {"cerebras", "openrouter", "vllm"}:
+        env["CONFIGBENCH_AGENT_PROVIDER"] = "openai"
     if provider_name == "groq" and ctx.request.model.strip():
         env["GROQ_SMALL_MODEL"] = ctx.request.model.strip()
         env["GROQ_LARGE_MODEL"] = ctx.request.model.strip()
-    elif provider_name == "openai" and ctx.request.model.strip():
+    elif provider_name in {"openai", "cerebras", "openrouter", "vllm"} and ctx.request.model.strip():
         env["OPENAI_SMALL_MODEL"] = ctx.request.model.strip()
         env["OPENAI_LARGE_MODEL"] = ctx.request.model.strip()
     return env
@@ -254,7 +270,7 @@ def _env_configbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[s
 def _command_experience(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     mode = str(ctx.request.extra_config.get("mode", "eliza-agent"))
     args = [
-        "python",
+        sys.executable,
         "run_benchmark.py",
         "--mode",
         mode,
@@ -267,12 +283,18 @@ def _command_experience(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
         args.extend(["--output", str(ctx.request.extra_config["output_file"])])
     else:
         args.extend(["--output", str(ctx.output_root / "experience-results.json")])
-    if "experiences" in ctx.request.extra_config:
-        args.extend(["--experiences", str(int(ctx.request.extra_config["experiences"]))])
-    if "queries" in ctx.request.extra_config:
-        args.extend(["--queries", str(int(ctx.request.extra_config["queries"]))])
-    if "learning_cycles" in ctx.request.extra_config:
-        args.extend(["--learning-cycles", str(int(ctx.request.extra_config["learning_cycles"]))])
+    experiences = ctx.request.extra_config.get("experiences")
+    if isinstance(experiences, int) and experiences > 0:
+        args.extend(["--experiences", str(experiences)])
+    queries = ctx.request.extra_config.get("queries", ctx.request.extra_config.get("max_tasks"))
+    if isinstance(queries, int) and queries > 0:
+        args.extend(["--queries", str(queries)])
+    learning_cycles = ctx.request.extra_config.get(
+        "learning_cycles",
+        ctx.request.extra_config.get("max_tasks"),
+    )
+    if isinstance(learning_cycles, int) and learning_cycles > 0:
+        args.extend(["--learning-cycles", str(learning_cycles)])
     if "seed" in ctx.request.extra_config:
         args.extend(["--seed", str(int(ctx.request.extra_config["seed"]))])
     return args
@@ -304,7 +326,7 @@ def _command_app_eval(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
         return args
 
     args = [
-        "python",
+        sys.executable,
         "-m",
         "eliza_adapter.app_eval",
         "--tasks-dir",
@@ -362,7 +384,7 @@ def _command_framework(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list
 
 def _command_rolodex(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     args = [
-        "python",
+        sys.executable,
         "-m",
         "benchmarks.rolodex.python_bench.run",
         "--output",
@@ -377,14 +399,26 @@ def _command_social_alpha(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
     system_raw = ctx.request.extra_config.get("system")
     if isinstance(system_raw, str) and system_raw.strip():
         system = system_raw.strip()
-    elif ctx.request.provider.strip().lower() in {"eliza", "eliza-bridge", "eliza-ts"}:
+    elif ctx.request.provider.strip().lower() in {
+        "eliza",
+        "eliza-bridge",
+        "eliza-ts",
+        "cerebras",
+        "openai",
+        "groq",
+        "openrouter",
+        "vllm",
+    }:
+        # Route LLM-backed providers through the eliza TS bridge so the actual
+        # registered eliza agent + plugin-social-alpha is exercised, not the
+        # Python port in benchmark/systems/full_system.py.
         system = "eliza-bridge"
     else:
         system = "baseline"
     data_dir = str(ctx.request.extra_config.get("data_dir", "trenches-chat-dataset/data"))
     output_dir = str(ctx.output_root)
     args = [
-        "python",
+        sys.executable,
         "-m",
         "benchmark.harness",
         "--data-dir",
@@ -406,10 +440,19 @@ def _command_social_alpha(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
 def _command_trust(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     handler = str(ctx.request.extra_config.get("handler", "oracle"))
     provider_name = ctx.request.provider.strip().lower()
-    if handler == "eliza" and provider_name in {"openai", "groq", "openrouter"}:
+    # Route LLM-backed providers through the eliza TS bridge handler when
+    # the caller didn't explicitly request a different handler.
+    bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
+    if (
+        handler == "oracle"
+        and "handler" not in ctx.request.extra_config
+        and provider_name in bridge_providers
+    ):
+        handler = "eliza"
+    if handler == "eliza" and provider_name in {"openai", "groq", "openrouter", "cerebras", "vllm"}:
         handler = "llm"
     args = [
-        "python",
+        sys.executable,
         "run_benchmark.py",
         "--handler",
         handler,
@@ -435,7 +478,7 @@ def _command_trust(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str
 
 def _command_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     args = [
-        "python",
+        sys.executable,
         "-m",
         "elizaos_webshop",
         "--output",
@@ -488,7 +531,7 @@ def _env_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, 
 
 def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     args = [
-        "python",
+        sys.executable,
         "-m",
         "benchmarks.woobench",
         "--model",
@@ -498,14 +541,19 @@ def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
     ]
     provider_lower = ctx.request.provider.strip().lower()
     agent_lower = ctx.request.agent.strip().lower()
+    payment_mode = ctx.request.extra_config.get("payment") is True or ctx.request.extra_config.get("payments") is True
     if ctx.request.extra_config.get("mock") is True or provider_lower == "mock" or agent_lower == "dummy":
-        args.extend(["--agent", "dummy"])
+        args.extend(["--agent", "dummy-charge" if payment_mode else "dummy"])
         args.extend(["--evaluator", "heuristic"])
     else:
         args.extend(["--agent", "eliza"])
         evaluator = ctx.request.extra_config.get("evaluator")
         if isinstance(evaluator, str) and evaluator in {"llm", "heuristic"}:
             args.extend(["--evaluator", evaluator])
+
+    payment_mock_url = ctx.request.extra_config.get("payment_mock_url")
+    if isinstance(payment_mock_url, str) and payment_mock_url.strip():
+        args.extend(["--payment-mock-url", payment_mock_url.strip()])
 
     for extra_key, cli_key in (
         ("scenario", "--scenario"),
@@ -515,6 +563,14 @@ def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
         value = ctx.request.extra_config.get(extra_key)
         if isinstance(value, str) and value.strip():
             args.extend([cli_key, value.strip()])
+
+    max_tasks = ctx.request.extra_config.get("max_tasks")
+    has_scope_filter = any(
+        isinstance(ctx.request.extra_config.get(key), str) and ctx.request.extra_config.get(key).strip()
+        for key in ("scenario", "system", "persona")
+    )
+    if isinstance(max_tasks, int) and max_tasks == 1 and not has_scope_filter:
+        args.extend(["--scenario", "skeptic_tarot_01"])
 
     concurrency = ctx.request.extra_config.get("concurrency")
     if isinstance(concurrency, int) and concurrency > 0:
@@ -544,7 +600,11 @@ def _env_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str,
 
 
 def _command_hyperliquid_env(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
-    env: dict[str, str] = {}
+    existing = ctx.env.get("PYTHONPATH", "")
+    adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
+    env: dict[str, str] = {
+        "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
+    }
     model = ctx.request.model.strip()
     provider = ctx.request.provider.strip().lower()
     if model:
@@ -555,7 +615,7 @@ def _command_hyperliquid_env(ctx: ExecutionContext, adapter: BenchmarkAdapter) -
 
 
 def _command_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    return ["python", "-m", "benchmarks.evm.eliza_explorer"]
+    return [sys.executable, "-m", "benchmarks.evm.eliza_explorer"]
 
 
 def _env_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
@@ -622,7 +682,7 @@ def _score_from_evm(path: Path) -> ScoreSummary:
 
 def _command_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     return [
-        "python",
+        sys.executable,
         "-m",
         "benchmarks.solana.eliza_agent",
         "--output-dir",
@@ -642,6 +702,8 @@ def _env_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, s
         else "false",
     }
     max_messages = ctx.request.extra_config.get("max_messages")
+    if not isinstance(max_messages, int):
+        max_messages = ctx.request.extra_config.get("max_tasks")
     if isinstance(max_messages, int) and max_messages >= 0:
         env["MAX_MESSAGES"] = str(max_messages)
     environment_config = ctx.request.extra_config.get("environment_config")
@@ -657,7 +719,7 @@ def _env_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, s
 
 def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     args = [
-        "python",
+        sys.executable,
         "scripts/python/run_multienv_eliza.py",
         "--result_dir",
         str(ctx.output_root),
@@ -727,7 +789,7 @@ def _command_eliza_replay(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
         ctx.request.extra_config.get("capture_glob", "*.replay.json"),
     ).strip()
     args = [
-        "python",
+        sys.executable,
         "-m",
         "eliza_adapter.replay_eval",
         "--input",
@@ -810,6 +872,38 @@ def _score_from_configbench(path: Path) -> ScoreSummary:
             "securityScore": target.get("securityScore"),
             "capabilityScore": target.get("capabilityScore"),
         },
+    )
+
+
+def _score_from_experience(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    agent = data.get("eliza_agent", {}) if isinstance(data, dict) else {}
+    if not isinstance(agent, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+
+    values: list[float] = []
+    metrics: dict[str, Any] = {}
+    for key in (
+        "learning_success_rate",
+        "agent_recall_rate",
+        "agent_keyword_incorporation_rate",
+        "direct_recall_rate",
+    ):
+        raw = agent.get(key)
+        if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+            val = float(raw)
+            metrics[key] = val
+            values.append(val)
+
+    if not values:
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics=metrics)
+    return ScoreSummary(
+        score=sum(values) / len(values),
+        unit="ratio",
+        higher_is_better=True,
+        metrics=metrics,
     )
 
 
@@ -1008,6 +1102,12 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_iterations": 5,
             "max_depth": 3,
         },
+        "mint": {
+            "agent": "eliza",
+        },
+        "social_alpha": {
+            "system": "eliza",
+        },
         "swe_bench": {
             "max_instances": 1,
             "no_docker": True,
@@ -1105,7 +1205,10 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             description="ADHDBench attention/context scaling benchmark",
             cwd=str((benchmarks_root / "adhdbench").resolve()),
             command_builder=_command_adhdbench,
-            result_patterns=["adhdbench_summary_*.json", "*.json"],
+            # Only match the summary file. The traces JSON is bigger
+            # and tends to be the last-written, so a generic `*.json`
+            # fallback was picking traces and the scorer returned None.
+            result_patterns=["adhdbench_summary_*.json"],
             score_extractor=_score_from_adhd,
         ),
         _make_extra_adapter(
@@ -1125,7 +1228,16 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             description="Experience memory benchmark via Eliza agent mode",
             cwd=str((benchmarks_root / "experience").resolve()),
             command_builder=_command_experience,
+            env_builder=lambda ctx, adapter: {
+                "PYTHONPATH": os.pathsep.join(
+                    [
+                        str((ctx.benchmarks_root / "eliza-adapter").resolve()),
+                        ctx.env.get("PYTHONPATH", ""),
+                    ],
+                ).rstrip(os.pathsep),
+            },
             result_patterns=["experience-results.json", "*.json"],
+            score_extractor=_score_from_experience,
         ),
         _make_extra_adapter(
             adapter_id="app-eval",

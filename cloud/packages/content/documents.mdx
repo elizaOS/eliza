@@ -1,0 +1,312 @@
+---
+title: Knowledge Base
+description: Add documents to your agents' knowledge base for RAG-powered responses on elizaOS Cloud.
+---
+
+import { Callout, Steps, Tabs, Cards } from "@/docs/components";
+
+# Knowledge Base
+
+Enhance your agents with document-based knowledge using Retrieval-Augmented Generation (RAG).
+
+<div className="status-badge status-stable">Stable</div>
+
+## Overview
+
+The Knowledge Base allows you to:
+
+- Upload documents (PDF, TXT, MD, etc.)
+- Automatically chunk and index content
+- Query for relevant context
+- Connect to agents for enhanced responses
+
+## Quick Start
+
+### Dashboard
+
+Navigate to [Dashboard → Knowledge](/dashboard/documents) for the visual interface.
+
+### API
+
+<Tabs items={['cURL', 'JavaScript', 'Python']}>
+  <Tabs.Tab>
+```bash
+# Upload a document
+curl -X POST "https://elizacloud.ai/api/v1/documents/upload-file" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "files=@document.pdf" \
+  -F "characterId=agent_abc123"
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```javascript
+const formData = new FormData();
+formData.append('files', file);
+formData.append('characterId', 'agent_abc123');
+
+const response = await fetch('https://elizacloud.ai/api/v1/documents/upload-file', {
+method: 'POST',
+headers: {
+'Authorization': 'Bearer YOUR_API_KEY',
+},
+body: formData,
+});
+
+const result = await response.json();
+console.log('Document uploaded:', result.id);
+
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```python
+import requests
+
+with open('document.pdf', 'rb') as f:
+    response = requests.post(
+        'https://elizacloud.ai/api/v1/documents/upload-file',
+        headers={'Authorization': 'Bearer YOUR_API_KEY'},
+        files={'files': f},
+        data={'characterId': 'agent_abc123'},
+    )
+
+result = response.json()
+print(f'Document uploaded: {result["id"]}')
+```
+
+  </Tabs.Tab>
+</Tabs>
+
+## Supported Formats
+
+| Format   | Extension | Max Size |
+| -------- | --------- | -------- |
+| PDF      | `.pdf`    | 5MB      |
+| Text     | `.txt`    | 5MB      |
+| Markdown | `.md`     | 5MB      |
+| Word     | `.docx`   | 5MB      |
+| JSON     | `.json`   | 5MB      |
+| XML      | `.xml`    | 5MB      |
+| YAML     | `.yaml`   | 5MB      |
+| CSV      | `.csv`    | 5MB      |
+
+**Note:** Maximum 5MB per file and 5MB total per batch upload.
+
+## Upload Documents
+
+<Steps>
+### Prepare Your Documents
+Ensure documents are in a supported format and within size limits.
+
+### Upload via Dashboard or API
+
+Use the Knowledge dashboard or the upload API endpoint.
+
+### Wait for Processing
+
+Documents are stored as runtime documents and chunked for search.
+
+### Connect to Agent
+
+Link the knowledge base to your agent for RAG.
+
+</Steps>
+
+### Upload Response
+
+```json
+{
+  "id": "doc_abc123",
+  "filename": "product-manual.pdf",
+  "status": "processing",
+  "chunks": null,
+  "createdAt": "2024-01-15T10:30:00Z"
+}
+```
+
+### Check Processing Status
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/documents/check?documentId=doc_abc123" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+```json
+{
+  "id": "doc_abc123",
+  "status": "completed",
+  "chunks": 42,
+  "tokensUsed": 15234
+}
+```
+
+## Query Knowledge
+
+Search your knowledge base:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/documents/query" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "How do I reset my password?",
+    "agentId": "agent_abc123",
+    "limit": 5
+  }'
+```
+
+### Response
+
+```json
+{
+  "results": [
+    {
+      "content": "To reset your password, navigate to Settings > Security > Reset Password...",
+      "score": 0.92,
+      "documentId": "doc_abc123",
+      "metadata": {
+        "page": 15,
+        "section": "Account Settings"
+      }
+    },
+    {
+      "content": "Password requirements include at least 8 characters...",
+      "score": 0.85,
+      "documentId": "doc_abc123",
+      "metadata": {
+        "page": 16,
+        "section": "Security"
+      }
+    }
+  ]
+}
+```
+
+## Managing Documents
+
+### List Documents
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/documents?agentId=agent_abc123" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Get Document Details
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/documents/doc_abc123" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Delete Document
+
+```bash
+curl -X DELETE "https://elizacloud.ai/api/v1/documents/doc_abc123" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## RAG Configuration
+
+### Chunk Settings
+
+Configure how documents are split:
+
+| Setting        | Default | Description            |
+| -------------- | ------- | ---------------------- |
+| `chunkSize`    | 1000    | Characters per chunk   |
+| `chunkOverlap` | 200     | Overlap between chunks |
+| `minChunkSize` | 100     | Minimum chunk size     |
+
+### Retrieval Settings
+
+Configure query behavior:
+
+| Setting    | Default | Description                   |
+| ---------- | ------- | ----------------------------- |
+| `limit`    | 5       | Number of results             |
+| `minScore` | 0.7     | Minimum relevance score       |
+| `rerank`   | true    | Re-rank results for relevance |
+
+## Agent Integration
+
+### Automatic RAG
+
+When knowledge is connected to an agent, relevant context is automatically retrieved:
+
+```javascript
+// Agent with knowledge base
+const response = await fetch("https://elizacloud.ai/api/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    Authorization: "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    model: "agent_abc123", // Agent with connected knowledge
+    messages: [{ role: "user", content: "How do I reset my password?" }],
+  }),
+});
+```
+
+The agent automatically queries the knowledge base and includes relevant context in its response.
+
+### Manual RAG
+
+Query knowledge and inject context manually:
+
+```javascript
+// 1. Query knowledge
+const knowledge = await fetch("https://elizacloud.ai/api/v1/documents/query", {
+  method: "POST",
+  headers: {
+    Authorization: "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    query: "password reset",
+    limit: 3,
+  }),
+}).then((r) => r.json());
+
+// 2. Include in chat
+const context = knowledge.results.map((r) => r.content).join("\n\n");
+
+const response = await fetch("https://elizacloud.ai/api/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    Authorization: "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    model: "gpt-4o",
+    messages: [
+      { role: "system", content: `Use this context:\n\n${context}` },
+      { role: "user", content: "How do I reset my password?" },
+    ],
+  }),
+});
+```
+
+## Pricing
+
+See [Billing & Credits](/docs/billing) for current pricing on document uploads, embeddings, queries, and storage.
+
+## Best Practices
+
+- **Quality Content** — Use well-structured, accurate documents
+- **Organize** — Group related documents for better retrieval
+- **Update Regularly** — Keep knowledge current by refreshing documents
+- **Test Queries** — Verify retrieval quality before production
+
+## Next Steps
+
+<Cards>
+  <Cards.Card title="AI Agents" href="/docs/agents">
+    Create agents that use knowledge
+  </Cards.Card>
+  <Cards.Card title="Chat API" href="/docs/api">
+    Integrate RAG into your applications
+  </Cards.Card>
+  <Cards.Card title="Embeddings" href="/docs/api">
+    Learn about vector embeddings
+  </Cards.Card>
+</Cards>

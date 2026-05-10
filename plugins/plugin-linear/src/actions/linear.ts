@@ -7,6 +7,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { hasLinearAccountConfig } from "../accounts";
+import { linearAccountIdParameter } from "./account-options";
 import { clearActivityAction } from "./clearActivity";
 import { createCommentAction } from "./createComment";
 import { createIssueAction } from "./createIssue";
@@ -16,8 +18,8 @@ import { getActivityAction } from "./getActivity";
 import { getIssueAction } from "./getIssue";
 import { listCommentsAction } from "./listComments";
 import { searchIssuesAction } from "./searchIssues";
-import { updateCommentAction } from "./updateComment";
-import { updateIssueAction } from "./updateIssue";
+import { handleUpdateComment } from "./updateComment";
+import { handleUpdateIssue } from "./updateIssue";
 
 export const LINEAR_CONTEXT = "linear";
 
@@ -48,9 +50,18 @@ const ALL_OPS: readonly LinearOp[] = [
   "search_issues",
 ] as const;
 
+type LinearHandlerFn = (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+  options?: HandlerOptions,
+  callback?: HandlerCallback
+) => Promise<ActionResult>;
+
 interface LinearRoute {
   op: LinearOp;
-  action: Action;
+  action?: Action;
+  run?: LinearHandlerFn;
   match: RegExp;
 }
 
@@ -62,7 +73,7 @@ const ROUTES: LinearRoute[] = [
   },
   {
     op: "update_issue",
-    action: updateIssueAction,
+    run: handleUpdateIssue,
     match:
       /\b(update|edit|modify|move|change|assign|reassign|priority|status|label)\b.*\b(issue|bug|task|ticket|[a-z]+-\d+)\b/i,
   },
@@ -79,7 +90,7 @@ const ROUTES: LinearRoute[] = [
   },
   {
     op: "update_comment",
-    action: updateCommentAction,
+    run: handleUpdateComment,
     match: /\b(update|edit|modify|change)\b.*\bcomment\b/i,
   },
   {
@@ -90,7 +101,8 @@ const ROUTES: LinearRoute[] = [
   {
     op: "list_comments",
     action: listCommentsAction,
-    match: /\b(list|show|get|fetch|view)\b.*\bcomments?\b|\bcomments?\b.*\b(list|show|get|fetch)\b/i,
+    match:
+      /\b(list|show|get|fetch|view)\b.*\bcomments?\b|\bcomments?\b.*\b(list|show|get|fetch)\b/i,
   },
   {
     op: "clear_activity",
@@ -115,9 +127,6 @@ const ROUTES: LinearRoute[] = [
       /\b(show|get|view|check|details?|status|what'?s|find)\b.*\b(issue|bug|task|ticket|[a-z]+-\d+)\b|[a-z]+-\d+/i,
   },
 ];
-
-const LINEAR_FALLBACK_PATTERN =
-  /\b(linear|issue|bug|task|ticket|comment|reply|activity|search|[a-z]+-\d+)\b/i;
 
 function textOf(message: Memory): string {
   return typeof message.content?.text === "string" ? message.content.text : "";
@@ -146,7 +155,7 @@ function selectRoute(
   options?: HandlerOptions | Record<string, unknown>
 ): LinearRoute | null {
   const opts = readOptions(options);
-  const requested = normalizeOp(opts.op ?? opts.subaction);
+  const requested = normalizeOp(opts.action ?? opts.subaction ?? opts.op);
   if (requested) {
     const route = ROUTES.find((candidate) => candidate.op === requested);
     if (route) return route;
@@ -156,8 +165,7 @@ function selectRoute(
 }
 
 function hasLinearAccess(runtime: IAgentRuntime): boolean {
-  const apiKey = runtime.getSetting("LINEAR_API_KEY");
-  return typeof apiKey === "string" && apiKey.trim().length > 0;
+  return hasLinearAccountConfig(runtime);
 }
 
 export const linearAction: Action = {
@@ -199,18 +207,17 @@ export const linearAction: Action = {
   roleGate: { minRole: "USER" },
   parameters: [
     {
-      name: "op",
+      name: "action",
       description:
         "Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
       required: false,
       schema: { type: "string", enum: [...ALL_OPS] },
     },
+    linearAccountIdParameter,
   ],
-  validate: async (runtime: IAgentRuntime, message: Memory) => {
+  validate: async (runtime: IAgentRuntime) => {
     if (!hasLinearAccess(runtime)) return false;
-    const text = textOf(message);
-    if (!text.trim()) return false;
-    return ROUTES.some((route) => route.match.test(text)) || LINEAR_FALLBACK_PATTERN.test(text);
+    return true;
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -227,20 +234,22 @@ export const linearAction: Action = {
       return {
         success: false,
         text,
-        values: { error: "MISSING_OP" },
+        values: { error: "MISSING" },
         data: { actionName: "LINEAR", availableOps: ops },
       };
     }
 
-    const result =
-      (await route.action.handler(runtime, message, state, options, callback)) ??
-      ({ success: true } as ActionResult);
+    const dispatch = route.run ?? route.action?.handler?.bind(route.action);
+    const result = dispatch
+      ? ((await dispatch(runtime, message, state, options, callback)) ??
+        ({ success: true } as ActionResult))
+      : ({ success: true } as ActionResult);
     return {
       ...result,
       data: {
         ...(typeof result.data === "object" && result.data ? result.data : {}),
         actionName: "LINEAR",
-        routedActionName: route.action.name,
+        routedActionName: route.action?.name ?? route.op,
         op: route.op,
       },
     };

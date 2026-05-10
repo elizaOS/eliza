@@ -17,21 +17,22 @@
  */
 
 import { promises as fs } from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
-import { logger, Service } from "@elizaos/core";
 import {
 	type ElizaCuratedAppDefinition,
+	type IAgentRuntime,
+	logger,
 	registerCuratedApp,
-} from "@elizaos/shared";
+	resolveStateDir,
+	Service,
+} from "@elizaos/core";
 import {
 	type AppPermissionsView,
 	type AppTrust,
 	RECOGNISED_PERMISSION_NAMESPACES,
 	type RecognisedPermissionNamespace,
 	recognisedNamespacesForRaw,
-} from "@elizaos/shared/contracts/app-permissions";
+} from "@elizaos/shared";
 
 export const APP_REGISTRY_SERVICE_TYPE = "app-registry";
 
@@ -110,31 +111,6 @@ export interface SetGrantedNamespacesError {
 export type SetGrantedNamespacesResult =
 	| { ok: true; view: AppPermissionsView }
 	| SetGrantedNamespacesError;
-
-const STATE_DIR_KEYS = ["ELIZA_STATE_DIR", "ELIZA_STATE_DIR"] as const;
-const NAMESPACE_KEYS = ["ELIZA_NAMESPACE"] as const;
-
-function readEnv(
-	env: NodeJS.ProcessEnv,
-	keys: readonly string[],
-): string | null {
-	for (const key of keys) {
-		const value = env[key]?.trim();
-		if (value) return value;
-	}
-	return null;
-}
-
-function resolveStateDir(env: NodeJS.ProcessEnv = process.env): string {
-	const override = readEnv(env, STATE_DIR_KEYS);
-	if (override) {
-		return path.isAbsolute(override)
-			? override
-			: path.resolve(os.homedir(), override.replace(/^~\//, ""));
-	}
-	const namespace = readEnv(env, NAMESPACE_KEYS) ?? "eliza";
-	return path.join(os.homedir(), `.${namespace}`);
-}
 
 function registryFilePath(stateDir: string): string {
 	return path.join(stateDir, "app-registry.json");

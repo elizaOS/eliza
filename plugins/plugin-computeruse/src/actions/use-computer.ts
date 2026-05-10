@@ -52,7 +52,7 @@ function getComputerUseService(
   runtime: IAgentRuntime,
 ): ComputerUseService | null {
   return (
-    (runtime.getService("computeruse") as unknown as ComputerUseService) ?? null
+    (runtime.getService("computeruse") as ComputerUseService) ?? null
   );
 }
 
@@ -201,6 +201,8 @@ export const useComputerAction: Action = {
     "computer_use:\n  purpose: Canonical cross-platform computer-use action for real desktop interaction on macOS, Linux, and Windows when direct computer operation is required.\n  guidance: Take a screenshot before acting. After each desktop action, the result includes a screenshot when available. Use this standard plugin action, not a LifeOps wrapper, for Finder/Desktop/native-app/browser/file/terminal workflows on the owner's machine.\n  actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
   descriptionCompressed:
     "Canonical cross-platform desktop control: screenshot/click/modified click/double/right/move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
+  routingHint:
+    "desktop/computer/native-app/Finder/window screenshots or control -> COMPUTER_USE; never invent takeScreenshot",
 
   parameters: [
     {
@@ -326,4 +328,70 @@ export const useComputerAction: Action = {
       suppressClipboard: true,
     });
   },
+
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Take a screenshot of my screen.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Capturing the screen.",
+          actions: ["COMPUTER_USE"],
+          thought:
+            "User asked for a screenshot of the desktop; COMPUTER_USE action=screenshot is the canonical handler.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Click the Send button on the page.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Clicking Send.",
+          actions: ["COMPUTER_USE"],
+          thought:
+            "Direct UI click on a desktop control belongs in COMPUTER_USE action=click; pass the coordinate of the visible button.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Type 'Hello team' in the focused text box.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Typing the text.",
+          actions: ["COMPUTER_USE"],
+          thought:
+            "Keyboard input into the focused field maps to COMPUTER_USE action=type with the literal text payload.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Press Cmd+Shift+T to reopen the closed tab.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Sending the key combo.",
+          actions: ["COMPUTER_USE"],
+          thought:
+            "A multi-key shortcut routes to COMPUTER_USE action=key_combo with key='cmd+shift+t' so the desktop service triggers it as a single chord.",
+        },
+      },
+    ],
+  ],
 };

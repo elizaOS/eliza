@@ -5,11 +5,11 @@ import { AlertTriangle, CheckCircle2, Copy, Link as LinkIcon, UserCog, Users } f
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { useDashboardReferralMe } from "./use-dashboard-referral-me";
 import { COPY_FEEDBACK_DURATION_MS } from "@/lib/constants/copy-feedback";
 import { getAppUrl } from "@/lib/utils/app-url";
 import { copyTextToClipboard } from "@/lib/utils/copy-to-clipboard";
 import { buildReferralInviteLoginUrl } from "@/lib/utils/referral-invite-url";
+import { useDashboardReferralMe } from "./use-dashboard-referral-me";
 
 interface AffiliateData {
   id: string;

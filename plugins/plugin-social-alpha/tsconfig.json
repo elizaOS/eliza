@@ -12,6 +12,7 @@
 		"emitDeclarationOnly": true,
 		"resolveJsonModule": true,
 		"skipLibCheck": true,
+		"ignoreDeprecations": "6.0",
 		"forceConsistentCasingInFileNames": true,
 		"noUnusedLocals": false,
 		"noUnusedParameters": false,
@@ -24,9 +25,10 @@
 		"node_modules",
 		"dist",
 		"**/node_modules/**",
+		"vitest.config.ts",
+		"**/__tests__/**",
 		"**/*.test.ts",
-		"**/*.spec.ts",
-		"cypress/**/*",
-		"vitest.config.ts"
+		"**/*.test.tsx",
+		"**/*.e2e.test.ts"
 	]
 }

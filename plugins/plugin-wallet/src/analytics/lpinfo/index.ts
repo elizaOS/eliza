@@ -28,7 +28,6 @@ export const lpinfoPlugin: Plugin = {
   name: "lpinfo",
   description:
     "Comprehensive liquidity pool information plugin supporting Steer Finance and Kamino Protocol for pool tracking, yield optimization, and position management",
-  evaluators: [],
   providers: [
     ...(steerPlugin.providers || []),
     ...(kaminoPlugin.providers || []),

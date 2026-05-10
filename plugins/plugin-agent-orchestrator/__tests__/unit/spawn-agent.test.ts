@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { spawnAgentAction } from "../../src/actions/spawn-agent.js";
+// Post-consolidation: SPAWN_AGENT is `TASKS { op: "spawn_agent" }`.
+import { spawnAgentAction } from "../../src/actions/tasks.js";
 import {
   callback,
   memory,
@@ -8,8 +9,10 @@ import {
   state,
 } from "../../src/test-utils/action-test-utils.js";
 
-describe("SPAWN_AGENT", () => {
-  it("validates explicit payload and rejects missing service", async () => {
+const spawnOptions = { parameters: { op: "spawn_agent" } };
+
+describe("TASKS:spawn_agent (legacy SPAWN_AGENT)", () => {
+  it("validates with explicit payload and a service available", async () => {
     expect(
       await spawnAgentAction.validate(
         runtimeWith(serviceMock()),
@@ -33,7 +36,7 @@ describe("SPAWN_AGENT", () => {
       runtimeWith(svc),
       memory({ task: "fix bug", agentType: "codex", workdir: "/tmp/x" }),
       state,
-      {},
+      spawnOptions,
       cb,
     );
     expect(result?.success).toBe(true);
@@ -46,7 +49,7 @@ describe("SPAWN_AGENT", () => {
     });
   });
 
-  it("handles missing service and failures", async () => {
+  it("handles missing service and auth failures", async () => {
     const cb = callback();
     expect(
       (
@@ -54,7 +57,7 @@ describe("SPAWN_AGENT", () => {
           runtimeWith(undefined),
           memory(),
           state,
-          {},
+          spawnOptions,
           cb,
         )
       )?.error,
@@ -70,7 +73,7 @@ describe("SPAWN_AGENT", () => {
           runtimeWith(svc),
           memory({ task: "x" }),
           state,
-          {},
+          spawnOptions,
           callback(),
         )
       )?.error,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { messageAction } from "../../features/advanced-capabilities/actions/message.ts";
 import type { Action, ActionParameterSchema } from "../../types";
 import { validateToolArgs } from "../validate-tool-args.ts";
 
@@ -48,7 +49,7 @@ const nestedAction = makeAction({
 							days: { type: "integer", minimum: 1 },
 							timezone: { type: "string", default: "UTC" },
 						},
-					} as unknown as ActionParameterSchema,
+					} as ActionParameterSchema,
 					labels: { type: "array", items: { type: "string" } },
 					mode: { type: "string", enum: ["once", "repeat"], default: "once" },
 				},
@@ -137,6 +138,24 @@ describe("validateToolArgs", () => {
 			valid: false,
 			args: undefined,
 			errors: ["Tool arguments for action SCHEDULE_TASK must be an object"],
+		});
+	});
+
+	it("accepts MESSAGE planner compatibility aliases", () => {
+		const result = validateToolArgs(messageAction, {
+			__subaction: "respond_to_message",
+			id: "mock-email-2",
+			folder: "inbox",
+			reply: "Thanks, I received it.",
+		});
+
+		expect(result.valid).toBe(true);
+		expect(result.errors).toEqual([]);
+		expect(result.args).toMatchObject({
+			__subaction: "respond_to_message",
+			id: "mock-email-2",
+			folder: "inbox",
+			reply: "Thanks, I received it.",
 		});
 	});
 });

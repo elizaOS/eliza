@@ -136,4 +136,3 @@ export function isAllowedOrigin(
     return false;
   }
 }
-

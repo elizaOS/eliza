@@ -22,7 +22,7 @@ import type {
 import type { Memory } from "../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
 import type { State } from "../../../types/state.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import { hasOwnerAccess as defaultOwnerAccessFn } from "../security.ts";
 import { runCoreStatus } from "./plugin-handlers/core-status.ts";
 import {
@@ -93,9 +93,6 @@ const EJECTED_NOUN = /\bejected\b/i;
 const CORE_NOUN = /\bcore\b/i;
 const STATUS_NOUN = /\bstatus\b/i;
 const MANAGE_VERBS = /\b(manage|build|create|build|fix|update|edit)\b/i;
-
-const KEYWORD_HEURISTIC =
-	/\b(install|eject|sync|reinject|search|find|create|build|make|scaffold|new|list|show|details?|info|status|enable|disable|activate|deactivate|load|unload|manage|fix|update|edit)\b.*\bplugins?\b|\bcore\s+status\b|\bplugin\b.*\b(install|eject|sync|reinject|search|find|create|build|make|scaffold|new|list|show|details?|info|status|enable|disable|activate|deactivate|load|unload)\b|(?:tell\s+me\s+more|more\s+about|describe)\s+@?[\w-]+\/?plugin-[\w.-]+/i;
 
 type OwnerAccessFn = (
 	runtime: IAgentRuntime,
@@ -196,7 +193,9 @@ function inferMode(
 	options?: Record<string, unknown>,
 ): PluginSubaction | null {
 	const explicit =
-		readStringOption(options, "subaction") ?? readStringOption(options, "mode");
+		readStringOption(options, "action") ??
+		readStringOption(options, "subaction") ??
+		readStringOption(options, "mode");
 	if (explicit) return normalizeSubaction(explicit);
 
 	const trimmed = text.trim();
@@ -329,20 +328,19 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 		],
 
 		description:
-			"Unified plugin control. subaction=install installs from registry; eject clones a registry plugin locally; sync pulls upstream into an ejected plugin; reinject removes the local copy; list shows loaded/installed; list_ejected shows ejected; search queries the registry; details shows registry/runtime details; status reports plugin state; enable/disable load or unload runtime-registered plugins; core_status reports @elizaos/core ejection state; create runs the multi-turn create-or-edit flow that scaffolds from the min-plugin template and dispatches a coding agent with AppVerificationService validator.",
+			"Unified plugin control. action=install installs from registry; eject clones a registry plugin locally; sync pulls upstream into an ejected plugin; reinject removes the local copy; list shows loaded/installed; list_ejected shows ejected; search queries the registry; details shows registry/runtime details; status reports plugin state; enable/disable load or unload runtime-registered plugins; core_status reports @elizaos/core ejection state; create runs the multi-turn create-or-edit flow that scaffolds from the min-plugin template and dispatches a coding agent with AppVerificationService validator.",
 
 		parameters: [
 			{
-				name: "subaction",
+				name: "action",
 				description:
-					"Subaction: install | eject | sync | reinject | list | list_ejected | search | details | status | enable | disable | core_status | create.",
+					"Action: install | eject | sync | reinject | list | list_ejected | search | details | status | enable | disable | core_status | create.",
 				required: true,
 				schema: { type: "string", enum: [...SUBACTIONS] },
 			},
 			{
 				name: "mode",
-				description:
-					"Legacy alias for subaction. Prefer subaction in new calls.",
+				description: "Legacy alias for action. Prefer action in new calls.",
 				required: false,
 				schema: { type: "string", enum: [...SUBACTIONS] },
 			},
@@ -409,7 +407,8 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			if (!(await canManagePlugins(runtime, message))) return false;
 			const text = message.content?.text ?? "";
 			const hasStructuredMode = Boolean(
-				readStringOption(options, "subaction") ||
+				readStringOption(options, "action") ||
+					readStringOption(options, "subaction") ||
 					readStringOption(options, "mode"),
 			);
 
@@ -426,18 +425,8 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			return (
 				hasStructuredMode ||
 				hasPendingCreateChoice ||
-				KEYWORD_HEURISTIC.test(text) ||
-				hasActionContextOrKeyword(message, state, {
+				hasActionContext(message, state, {
 					contexts: ["admin", "settings", "connectors"],
-					keywords: [
-						"plugin",
-						"plugins",
-						"install plugin",
-						"eject plugin",
-						"sync plugin",
-						"plugin status",
-						"plugin details",
-					],
 				})
 			);
 		},

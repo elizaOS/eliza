@@ -33,7 +33,7 @@ import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { USER_PREFS_TABLE } from "../../../core/src/features/advanced-capabilities/personality/types.ts";
 import { describeIf } from "../helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../helpers/live-provider";
+import { selectLiveProvider } from "../helpers/live-provider.ts";
 import { withTimeout } from "../helpers/test-utils";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -236,8 +236,13 @@ describeIf(hasModelProvider)("Personality Routing E2E", () => {
       },
     });
 
+    // The leaf "MODIFY_CHARACTER" action was consolidated into the umbrella
+    // "CHARACTER" action; the old name lives on as a simile alias.
     const modifyCharacterAction = runtime.actions.find(
-      (action) => action.name === "MODIFY_CHARACTER",
+      (action) =>
+        action.name === "CHARACTER" ||
+        action.name === "MODIFY_CHARACTER" ||
+        action.similes?.includes("MODIFY_CHARACTER"),
     );
     expect(modifyCharacterAction).toBeDefined();
 

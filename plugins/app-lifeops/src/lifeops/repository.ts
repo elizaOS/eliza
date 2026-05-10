@@ -14,7 +14,7 @@ import type {
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
   LifeOpsXSyncState,
-} from "@elizaos/shared/contracts/lifeops-extensions";
+} from "@elizaos/shared";
 import {
   LIFEOPS_INBOX_CHANNELS,
   type LifeOpsActivitySignal,
@@ -83,6 +83,15 @@ import type {
   LifeOpsPaymentSourceStatus,
   LifeOpsPaymentTransaction,
 } from "./payment-types.js";
+import {
+  createConnectorAccountPrivacyPolicy,
+  deriveConnectorAccountId,
+  deriveConnectorAccountIdFromGrant,
+  grantScopedConnectorAccountId,
+  type LifeOpsConnectorAccountPrivacyPolicy,
+  normalizeLifeOpsAccountPrivacyScope,
+  normalizeLifeOpsEgressDataClasses,
+} from "./privacy-egress.js";
 import { refreshLifeOpsRelativeTime } from "./relative-time.js";
 import type {
   LifeOpsScheduleMergedState,
@@ -90,6 +99,7 @@ import type {
 } from "./schedule-sync-contracts.js";
 import { lifeOpsSchema } from "./schema.js";
 import {
+  DEFAULT_WORKFLOW_PERMISSION_POLICY,
   REMINDER_REVIEW_AT_METADATA_KEY,
   REMINDER_REVIEW_STATUS_METADATA_KEY,
 } from "./service-constants.js";
@@ -97,6 +107,7 @@ import {
   executeRawSql,
   parseJsonArray,
   parseJsonRecord,
+  parseJsonValue,
   sqlBoolean,
   sqlInteger,
   sqlJson,
@@ -117,7 +128,13 @@ import { buildTelemetryEventFromSignal } from "./telemetry-mapping.js";
 type BrowserCompanionCredential = {
   companion: BrowserBridgeCompanionStatus;
   pairingTokenHash: string | null;
+  pendingPairingTokens: BrowserCompanionPendingPairingToken[];
   pendingPairingTokenHashes: string[];
+};
+
+type BrowserCompanionPendingPairingToken = {
+  hash: string;
+  expiresAt: string | null;
 };
 
 function normalizeConnectorIdentityEmail(value: unknown): string | null {
@@ -175,23 +192,24 @@ export interface LifeOpsScheduleObservationRecord
 export interface LifeOpsScheduleMergedStateRecord
   extends LifeOpsScheduleMergedState {}
 
-export type LifeOpsPersistedSleepEpisodeSource =
-  | LifeOpsSleepCycleEvidence["source"]
-  | "manual";
-
-export interface LifeOpsSleepEpisodeRecord {
-  id: string;
-  agentId: string;
-  startAt: string;
-  endAt: string | null;
-  source: LifeOpsPersistedSleepEpisodeSource;
-  confidence: number;
-  cycleType: LifeOpsSleepCycleType;
-  sealed: boolean;
-  evidence: LifeOpsSleepCycleEvidence[];
-  createdAt: string;
-  updatedAt: string;
-}
+// Sleep- and health-record types + factories owned by `@elizaos/plugin-health`,
+// re-exported here so existing app-lifeops importers keep resolving via the
+// repository module.
+export type {
+  LifeOpsPersistedSleepEpisodeSource,
+  LifeOpsSleepEpisodeRecord,
+} from "@elizaos/plugin-health";
+export {
+  createLifeOpsHealthMetricSample,
+  createLifeOpsHealthSleepEpisode,
+  createLifeOpsHealthSyncState,
+  createLifeOpsHealthWorkout,
+  createLifeOpsSleepEpisode,
+} from "@elizaos/plugin-health";
+import type {
+  LifeOpsPersistedSleepEpisodeSource,
+  LifeOpsSleepEpisodeRecord,
+} from "@elizaos/plugin-health";
 
 export interface LifeOpsCachedInboxMessage extends LifeOpsInboxMessage {
   cachedAt: string;
@@ -275,19 +293,23 @@ function parseTaskDefinition(
     timezone: toText(row.timezone),
     status: toText(row.status) as LifeOpsTaskDefinition["status"],
     priority: toNumber(row.priority, 3),
-    cadence: parseJsonRecord(
+    cadence: parseJsonValue<LifeOpsTaskDefinition["cadence"]>(
       row.cadence_json,
-    ) as unknown as LifeOpsTaskDefinition["cadence"],
-    windowPolicy: parseJsonRecord(
+      { kind: "once", dueAt: "" },
+    ),
+    windowPolicy: parseJsonValue<LifeOpsTaskDefinition["windowPolicy"]>(
       row.window_policy_json,
-    ) as unknown as LifeOpsTaskDefinition["windowPolicy"],
-    progressionRule: parseJsonRecord(
+      { timezone: "UTC", windows: [] },
+    ),
+    progressionRule: parseJsonValue<LifeOpsTaskDefinition["progressionRule"]>(
       row.progression_rule_json,
-    ) as unknown as LifeOpsTaskDefinition["progressionRule"],
+      { kind: "none" },
+    ),
     websiteAccess: row.website_access_json
-      ? (parseJsonRecord(
+      ? parseJsonValue<LifeOpsTaskDefinition["websiteAccess"]>(
           row.website_access_json,
-        ) as unknown as LifeOpsTaskDefinition["websiteAccess"])
+          null,
+        )
       : null,
     reminderPlanId: row.reminder_plan_id ? toText(row.reminder_plan_id) : null,
     goalId: row.goal_id ? toText(row.goal_id) : null,
@@ -337,7 +359,7 @@ function parseOccurrenceView(
     ) as LifeOpsOccurrenceView["definitionStatus"],
     cadence: parseJsonRecord(
       row.definition_cadence_json,
-    ) as unknown as LifeOpsOccurrenceView["cadence"],
+    ) as LifeOpsOccurrenceView["cadence"],
     title: toText(row.definition_title),
     description: toText(row.definition_description),
     priority: toNumber(row.definition_priority, 3),
@@ -464,7 +486,7 @@ function parseFollowUp(row: Record<string, unknown>): LifeOpsFollowUp {
     status: toText(row.status) as LifeOpsFollowUp["status"],
     priority: toNumber(row.priority, 3),
     draft: row.draft_json
-      ? (parseJsonRecord(row.draft_json) as unknown as LifeOpsCrossChannelDraft)
+      ? parseJsonValue<LifeOpsCrossChannelDraft | null>(row.draft_json, null)
       : null,
     completedAt: row.completed_at ? toText(row.completed_at) : null,
     metadata: parseJsonRecord(row.metadata_json),
@@ -503,10 +525,13 @@ function parseConnectorGrant(
   row: Record<string, unknown>,
 ): LifeOpsConnectorGrant {
   const identity = parseJsonRecord(row.identity_json);
-  return {
+  const grant: LifeOpsConnectorGrant = {
     id: toText(row.id),
     agentId: toText(row.agent_id),
     provider: toText(row.provider) as LifeOpsConnectorGrant["provider"],
+    connectorAccountId: row.connector_account_id
+      ? toText(row.connector_account_id)
+      : null,
     side: toText(row.side, "owner") as LifeOpsConnectorGrant["side"],
     identity,
     identityEmail: row.identity_email ? toText(row.identity_email) : null,
@@ -526,6 +551,29 @@ function parseConnectorGrant(
       : null,
     metadata: parseJsonRecord(row.metadata_json),
     lastRefreshAt: row.last_refresh_at ? toText(row.last_refresh_at) : null,
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+  return {
+    ...grant,
+    connectorAccountId:
+      grant.connectorAccountId ?? deriveConnectorAccountIdFromGrant(grant),
+  };
+}
+
+function parseConnectorAccountPrivacyPolicy(
+  row: Record<string, unknown>,
+): LifeOpsConnectorAccountPrivacyPolicy {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    provider: toText(row.provider),
+    connectorAccountId: toText(row.connector_account_id),
+    visibilityScope: normalizeLifeOpsAccountPrivacyScope(row.visibility_scope),
+    allowedDataClasses: normalizeLifeOpsEgressDataClasses(
+      parseJsonArray(row.allowed_data_classes_json),
+    ),
+    metadata: parseJsonRecord(row.metadata_json),
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
   };
@@ -966,6 +1014,9 @@ function parseCalendarEvent(
     provider: "google",
     side: toText(row.side, "owner") as LifeOpsCalendarEvent["side"],
     calendarId: toText(row.calendar_id),
+    connectorAccountId: row.connector_account_id
+      ? toText(row.connector_account_id)
+      : undefined,
     title: toText(row.title),
     description: toText(row.description),
     location: toText(row.location),
@@ -979,7 +1030,7 @@ function parseCalendarEvent(
     organizer: row.organizer_json ? parseJsonRecord(row.organizer_json) : null,
     attendees: parseJsonArray(
       row.attendees_json,
-    ) as unknown as LifeOpsCalendarEvent["attendees"],
+    ) as LifeOpsCalendarEvent["attendees"],
     metadata: parseJsonRecord(row.metadata_json),
     syncedAt: toText(row.synced_at),
     updatedAt: toText(row.updated_at),
@@ -995,6 +1046,9 @@ function parseGmailMessageSummary(
     agentId: toText(row.agent_id),
     provider: "google",
     side: toText(row.side, "owner") as LifeOpsGmailMessageSummary["side"],
+    connectorAccountId: row.connector_account_id
+      ? toText(row.connector_account_id)
+      : undefined,
     grantId: row.grant_id ? toText(row.grant_id) : undefined,
     threadId: toText(row.thread_id),
     subject: toText(row.subject),
@@ -1208,6 +1262,9 @@ function parseCachedInboxMessage(
     gmailAccountId: row.gmail_account_id
       ? toText(row.gmail_account_id)
       : undefined,
+    connectorAccountId: row.connector_account_id
+      ? toText(row.connector_account_id)
+      : undefined,
     gmailAccountEmail: row.gmail_account_email
       ? toText(row.gmail_account_email)
       : undefined,
@@ -1260,15 +1317,20 @@ function parseWorkflowDefinition(
     triggerType: toText(
       row.trigger_type,
     ) as LifeOpsWorkflowDefinition["triggerType"],
-    schedule: parseJsonRecord(
+    schedule: parseJsonValue<LifeOpsWorkflowDefinition["schedule"]>(
       row.schedule_json,
-    ) as unknown as LifeOpsWorkflowDefinition["schedule"],
-    actionPlan: parseJsonRecord(
+      { kind: "manual" },
+    ),
+    actionPlan: parseJsonValue<LifeOpsWorkflowDefinition["actionPlan"]>(
       row.action_plan_json,
-    ) as unknown as LifeOpsWorkflowDefinition["actionPlan"],
-    permissionPolicy: parseJsonRecord(
+      { steps: [] },
+    ),
+    permissionPolicy: parseJsonValue<
+      LifeOpsWorkflowDefinition["permissionPolicy"]
+    >(
       row.permission_policy_json,
-    ) as unknown as LifeOpsWorkflowDefinition["permissionPolicy"],
+      DEFAULT_WORKFLOW_PERMISSION_POLICY,
+    ),
     status: toText(row.status) as LifeOpsWorkflowDefinition["status"],
     createdBy: toText(row.created_by) as LifeOpsWorkflowDefinition["createdBy"],
     metadata: parseJsonRecord(row.metadata_json),
@@ -1355,7 +1417,7 @@ function parseBrowserSession(
         : (rawStatus as LifeOpsBrowserSession["status"]),
     actions: parseJsonArray(
       row.actions_json,
-    ) as unknown as LifeOpsBrowserSession["actions"],
+    ) as LifeOpsBrowserSession["actions"],
     currentActionIndex: toNumber(row.current_action_index, 0),
     awaitingConfirmationForActionId: row.awaiting_confirmation_for_action_id
       ? toText(row.awaiting_confirmation_for_action_id)
@@ -1440,26 +1502,60 @@ function parseBrowserCompanion(
     permissions: parseBrowserPermissionState(row.permissions_json),
     lastSeenAt: row.last_seen_at ? toText(row.last_seen_at) : null,
     pairedAt: row.paired_at ? toText(row.paired_at) : null,
+    pairingTokenExpiresAt: row.pairing_token_expires_at
+      ? toText(row.pairing_token_expires_at)
+      : null,
+    pairingTokenRevokedAt: row.pairing_token_revoked_at
+      ? toText(row.pairing_token_revoked_at)
+      : null,
     metadata: parseJsonRecord(row.metadata_json),
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
   };
 }
 
+function parseBrowserCompanionPendingPairingTokens(
+  value: unknown,
+): BrowserCompanionPendingPairingToken[] {
+  return parseJsonArray(value)
+    .map((candidate): BrowserCompanionPendingPairingToken | null => {
+      if (typeof candidate === "string" && candidate.length > 0) {
+        return { hash: candidate, expiresAt: null };
+      }
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+        return null;
+      }
+      const record = candidate as Record<string, unknown>;
+      if (typeof record.hash !== "string" || record.hash.length === 0) {
+        return null;
+      }
+      return {
+        hash: record.hash,
+        expiresAt:
+          typeof record.expiresAt === "string" && record.expiresAt.length > 0
+            ? record.expiresAt
+            : null,
+      };
+    })
+    .filter(
+      (candidate): candidate is BrowserCompanionPendingPairingToken =>
+        candidate !== null,
+    );
+}
+
 function parseBrowserCompanionCredential(
   row: Record<string, unknown>,
 ): BrowserCompanionCredential {
+  const pendingPairingTokens = parseBrowserCompanionPendingPairingTokens(
+    row.pending_pairing_token_hashes_json,
+  );
   return {
     companion: parseBrowserCompanion(row),
     pairingTokenHash: row.pairing_token_hash
       ? toText(row.pairing_token_hash)
       : null,
-    pendingPairingTokenHashes: parseJsonArray(
-      row.pending_pairing_token_hashes_json,
-    ).filter(
-      (candidate): candidate is string =>
-        typeof candidate === "string" && candidate.length > 0,
-    ),
+    pendingPairingTokens,
+    pendingPairingTokenHashes: pendingPairingTokens.map((token) => token.hash),
   };
 }
 
@@ -1791,9 +1887,15 @@ function parseScheduleRegularity(value: unknown): LifeOpsScheduleRegularity {
 function parseTelemetryEventRow(
   row: Record<string, unknown>,
 ): LifeOpsTelemetryEvent {
-  const payload = parseJsonRecord(
+  const payload = parseJsonValue<LifeOpsTelemetryPayload>(
     row.payload_json,
-  ) as unknown as LifeOpsTelemetryPayload;
+    {
+      family: "manual_override_event",
+      platform: "macos_desktop",
+      kind: "going_to_bed",
+      note: null,
+    },
+  );
   return {
     id: toText(row.id),
     agentId: toText(row.agent_id),
@@ -2039,11 +2141,18 @@ function parseSchedulingProposal(
 function isMissingTableError(error: unknown, table: string): boolean {
   const message = errorMessagesWithCauses(error).join("\n");
   const escaped = table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const schema = table.includes(".") ? table.split(".")[0] : "";
   const pattern = new RegExp(
     `no such table: ${escaped}|relation ["']?${escaped}["']? does not exist|undefined table`,
     "i",
   );
-  return pattern.test(message);
+  return (
+    pattern.test(message) ||
+    (schema.length > 0 &&
+      new RegExp(`schema ["']?${schema}["']? does not exist`, "i").test(
+        message,
+      ))
+  );
 }
 
 /**
@@ -2056,8 +2165,8 @@ function isMissingTableError(error: unknown, table: string): boolean {
  *
  * SECURITY: `table` is interpolated directly into the SQL. Callers MUST
  * pass a hardcoded literal, NEVER a user-derived or runtime-derived name.
- * The current three callers (life_scheduling_negotiations,
- * life_activity_signals, life_inbox_messages) all pass string literals.
+ * The current three callers (app_lifeops.life_scheduling_negotiations,
+ * app_lifeops.life_activity_signals, app_lifeops.life_inbox_messages) all pass string literals.
  *
  * Failure mode: any error other than the recognized "missing table"
  * patterns (`isMissingTableError`) rethrows. We deliberately fail loud on
@@ -2079,6 +2188,52 @@ async function tableExists(
   }
 }
 
+type BrowserBridgeTableKey =
+  | "companions"
+  | "settings"
+  | "tabs"
+  | "pageContexts";
+
+const BROWSER_BRIDGE_TABLE_NAMES = {
+  companions: "browser_bridge_companions",
+  settings: "browser_bridge_settings",
+  tabs: "browser_bridge_tabs",
+  pageContexts: "browser_bridge_page_contexts",
+} as const satisfies Record<BrowserBridgeTableKey, string>;
+
+const browserBridgeTableCache = new WeakMap<
+  IAgentRuntime,
+  Partial<Record<BrowserBridgeTableKey, string>>
+>();
+
+async function resolveBrowserBridgeTable(
+  runtime: IAgentRuntime,
+  key: BrowserBridgeTableKey,
+): Promise<string> {
+  let cached = browserBridgeTableCache.get(runtime);
+  if (!cached) {
+    cached = {};
+    browserBridgeTableCache.set(runtime, cached);
+  }
+  if (cached[key]) {
+    return cached[key];
+  }
+
+  const publicTable = BROWSER_BRIDGE_TABLE_NAMES[key];
+  const schemaTable = `browser.${publicTable}`;
+  if (await tableExists(runtime, schemaTable)) {
+    cached[key] = schemaTable;
+    return schemaTable;
+  }
+  if (await tableExists(runtime, publicTable)) {
+    cached[key] = publicTable;
+    return publicTable;
+  }
+
+  cached[key] = schemaTable;
+  return schemaTable;
+}
+
 function errorMessagesWithCauses(error: unknown): string[] {
   const messages: string[] = [];
   let current: unknown = error;
@@ -2098,6 +2253,208 @@ function errorMessagesWithCauses(error: unknown): string[] {
   return messages;
 }
 
+// ScheduledTask row parsers (private helpers).
+
+function parseOptionalJsonRecord<T>(value: unknown): T | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string" && value.length === 0) return undefined;
+  const parsed = parseJsonRecord(value);
+  if (Object.keys(parsed).length === 0) return undefined;
+  return parsed as T;
+}
+
+function parseScheduledTaskRow(
+  row: Record<string, unknown>,
+): import("./scheduled-task/types.js").ScheduledTask {
+  type StateShape =
+    import("./scheduled-task/types.js").ScheduledTaskState;
+  type TaskShape = import("./scheduled-task/types.js").ScheduledTask;
+  const stateRaw = parseJsonRecord(row.state_json);
+  const state: StateShape = {
+    status: ((stateRaw.status as string) ??
+      "scheduled") as StateShape["status"],
+    firedAt:
+      typeof stateRaw.firedAt === "string" ? stateRaw.firedAt : undefined,
+    acknowledgedAt:
+      typeof stateRaw.acknowledgedAt === "string"
+        ? stateRaw.acknowledgedAt
+        : undefined,
+    completedAt:
+      typeof stateRaw.completedAt === "string"
+        ? stateRaw.completedAt
+        : undefined,
+    followupCount:
+      typeof stateRaw.followupCount === "number" ? stateRaw.followupCount : 0,
+    lastFollowupAt:
+      typeof stateRaw.lastFollowupAt === "string"
+        ? stateRaw.lastFollowupAt
+        : undefined,
+    pipelineParentId:
+      typeof stateRaw.pipelineParentId === "string"
+        ? stateRaw.pipelineParentId
+        : undefined,
+    lastDecisionLog:
+      typeof stateRaw.lastDecisionLog === "string"
+        ? stateRaw.lastDecisionLog
+        : undefined,
+  };
+  const subjectKind = toText(row.subject_kind, "");
+  const subjectId = toText(row.subject_id, "");
+  const parsedMetadata =
+    parseOptionalJsonRecord<Record<string, unknown>>(row.metadata_json) ?? {};
+  if (
+    typeof row.created_at === "string" &&
+    typeof parsedMetadata.createdAtIso !== "string"
+  ) {
+    parsedMetadata.createdAtIso = row.created_at;
+  }
+  return {
+    taskId: toText(row.id),
+    kind: toText(row.kind) as TaskShape["kind"],
+    promptInstructions: toText(row.prompt_instructions),
+    contextRequest: parseOptionalJsonRecord<TaskShape["contextRequest"]>(
+      row.context_request_json,
+    ),
+    trigger: parseJsonRecord(row.trigger_json) as TaskShape["trigger"],
+    priority: toText(row.priority, "medium") as TaskShape["priority"],
+    shouldFire: parseOptionalJsonRecord<TaskShape["shouldFire"]>(
+      row.should_fire_json,
+    ),
+    completionCheck: parseOptionalJsonRecord<TaskShape["completionCheck"]>(
+      row.completion_check_json,
+    ),
+    escalation: parseOptionalJsonRecord<TaskShape["escalation"]>(
+      row.escalation_json,
+    ),
+    output: parseOptionalJsonRecord<TaskShape["output"]>(row.output_json),
+    pipeline: parseOptionalJsonRecord<TaskShape["pipeline"]>(row.pipeline_json),
+    subject:
+      subjectKind && subjectId
+        ? ({
+            kind: subjectKind,
+            id: subjectId,
+          } as TaskShape["subject"])
+        : undefined,
+    idempotencyKey:
+      typeof row.idempotency_key === "string" && row.idempotency_key.length > 0
+        ? row.idempotency_key
+        : undefined,
+    respectsGlobalPause: toBoolean(row.respects_global_pause, true),
+    state,
+    source: toText(row.source, "user_chat") as TaskShape["source"],
+    createdBy: toText(row.created_by, ""),
+    ownerVisible: toBoolean(row.owner_visible, true),
+    metadata: parsedMetadata,
+  };
+}
+
+function parseScheduledTaskLogRow(
+  row: Record<string, unknown>,
+): import("./scheduled-task/types.js").ScheduledTaskLogEntry {
+  type LogShape =
+    import("./scheduled-task/types.js").ScheduledTaskLogEntry;
+  return {
+    logId: toText(row.id),
+    taskId: toText(row.task_id),
+    agentId: toText(row.agent_id),
+    occurredAtIso: toText(row.occurred_at),
+    transition: toText(row.transition) as LogShape["transition"],
+    reason: typeof row.reason === "string" ? row.reason : undefined,
+    rolledUp: toBoolean(row.rolled_up, false),
+    detail: parseOptionalJsonRecord<Record<string, unknown>>(row.detail_json),
+  };
+}
+
+function parseThreadSourceRefs(
+  value: unknown,
+): import("./work-threads/types.js").ThreadSourceRef[] {
+  return parseJsonArray<import("./work-threads/types.js").ThreadSourceRef>(
+    value,
+  ).filter(
+    (ref) =>
+      ref &&
+      typeof ref === "object" &&
+      typeof ref.connector === "string" &&
+      ref.connector.length > 0,
+  );
+}
+
+function parseWorkThreadRow(
+  row: Record<string, unknown>,
+): import("./work-threads/types.js").WorkThread {
+  const primary =
+    parseOptionalJsonRecord<import("./work-threads/types.js").ThreadSourceRef>(
+      row.primary_source_ref_json,
+    ) ?? { connector: "unknown" };
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    ownerEntityId:
+      typeof row.owner_entity_id === "string" && row.owner_entity_id.length > 0
+        ? row.owner_entity_id
+        : null,
+    status: toText(
+      row.status,
+      "active",
+    ) as import("./work-threads/types.js").WorkThreadStatus,
+    title: toText(row.title),
+    summary: toText(row.summary),
+    currentPlanSummary:
+      typeof row.current_plan_summary === "string"
+        ? row.current_plan_summary
+        : null,
+    primarySourceRef: primary,
+    sourceRefs: parseThreadSourceRefs(row.source_refs_json),
+    participantEntityIds: parseJsonArray<string>(
+      row.participant_entity_ids_json,
+    ).filter((id) => typeof id === "string" && id.length > 0),
+    currentScheduledTaskId:
+      typeof row.current_scheduled_task_id === "string" &&
+      row.current_scheduled_task_id.length > 0
+        ? row.current_scheduled_task_id
+        : null,
+    workflowRunId:
+      typeof row.workflow_run_id === "string" && row.workflow_run_id.length > 0
+        ? row.workflow_run_id
+        : null,
+    approvalId:
+      typeof row.approval_id === "string" && row.approval_id.length > 0
+        ? row.approval_id
+        : null,
+    lastMessageMemoryId:
+      typeof row.last_message_memory_id === "string" &&
+      row.last_message_memory_id.length > 0
+        ? row.last_message_memory_id
+        : null,
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+    lastActivityAt: toText(row.last_activity_at),
+    metadata: parseOptionalJsonRecord<Record<string, unknown>>(
+      row.metadata_json,
+    ),
+  };
+}
+
+function parseWorkThreadEventRow(
+  row: Record<string, unknown>,
+): import("./work-threads/types.js").WorkThreadEvent {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    workThreadId: toText(row.work_thread_id),
+    occurredAt: toText(row.occurred_at),
+    type: toText(
+      row.type,
+      "updated",
+    ) as import("./work-threads/types.js").WorkThreadEventType,
+    reason:
+      typeof row.reason === "string" && row.reason.length > 0
+        ? row.reason
+        : null,
+    detail: parseOptionalJsonRecord<Record<string, unknown>>(row.detail_json),
+  };
+}
+
 export class LifeOpsRepository {
   /**
    * Per-agent counter for telemetry-mirror failures inside
@@ -2112,11 +2469,24 @@ export class LifeOpsRepository {
   constructor(private readonly runtime: IAgentRuntime) {}
 
   /**
-   * Ensure the LifeOps plugin schema has been migrated for this runtime.
-   * Legacy callers still use this entrypoint in tests and seed helpers, but
-   * those callers do not always construct a runtime with the LifeOps plugin
-   * registered. Run this plugin's schema directly so the contract is stable.
+   * EntityStore / RelationshipStore accessors for the typed graph. New code
+   * paths should consume the graph via these factories rather than the
+   * legacy `upsertRelationship` / `listRelationships` helpers.
    */
+  async entityStore(
+    agentId: string,
+  ): Promise<import("./entities/store.js").EntityStore> {
+    const mod = await import("./entities/store.js");
+    return new mod.EntityStore(this.runtime, agentId);
+  }
+
+  async relationshipStore(
+    agentId: string,
+  ): Promise<import("./relationships/store.js").RelationshipStore> {
+    const mod = await import("./relationships/store.js");
+    return new mod.RelationshipStore(this.runtime, agentId);
+  }
+
   static async bootstrapSchema(runtime: IAgentRuntime): Promise<void> {
     const adapter = runtime.adapter;
     if (!adapter || typeof adapter.runPluginMigrations !== "function") {
@@ -2145,77 +2515,98 @@ export class LifeOpsRepository {
     await LifeOpsRepository.ensureActivitySignalColumns(runtime);
     await LifeOpsRepository.ensureSchedulingNegotiationColumns(runtime);
     await LifeOpsRepository.ensureReminderReviewColumns(runtime);
+    await LifeOpsRepository.ensureBrowserBridgeCompanionTokenColumns(runtime);
+    await LifeOpsRepository.ensureConnectorAccountColumns(runtime);
     await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
   }
 
   static async ensureSchedulingNegotiationColumns(
     runtime: IAgentRuntime,
   ): Promise<void> {
-    if (!(await tableExists(runtime, "life_scheduling_negotiations"))) {
+    if (!(await tableExists(runtime, "app_lifeops.life_scheduling_negotiations"))) {
       return;
     }
     await executeRawSql(
       runtime,
-      "ALTER TABLE life_scheduling_negotiations ADD COLUMN IF NOT EXISTS accepted_proposal_id TEXT",
+      "ALTER TABLE app_lifeops.life_scheduling_negotiations ADD COLUMN IF NOT EXISTS accepted_proposal_id TEXT",
     );
   }
 
   static async ensureActivitySignalColumns(
     runtime: IAgentRuntime,
   ): Promise<void> {
-    if (!(await tableExists(runtime, "life_activity_signals"))) {
+    if (!(await tableExists(runtime, "app_lifeops.life_activity_signals"))) {
       return;
     }
     await executeRawSql(
       runtime,
-      "ALTER TABLE life_activity_signals ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT ''",
+      "ALTER TABLE app_lifeops.life_activity_signals ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT ''",
     );
     await executeRawSql(
       runtime,
-      "ALTER TABLE life_activity_signals ADD COLUMN IF NOT EXISTS idle_state TEXT",
+      "ALTER TABLE app_lifeops.life_activity_signals ADD COLUMN IF NOT EXISTS idle_state TEXT",
     );
     await executeRawSql(
       runtime,
-      "ALTER TABLE life_activity_signals ADD COLUMN IF NOT EXISTS idle_time_seconds INTEGER",
+      "ALTER TABLE app_lifeops.life_activity_signals ADD COLUMN IF NOT EXISTS idle_time_seconds INTEGER",
     );
     await executeRawSql(
       runtime,
-      "ALTER TABLE life_activity_signals ADD COLUMN IF NOT EXISTS on_battery BOOLEAN",
+      "ALTER TABLE app_lifeops.life_activity_signals ADD COLUMN IF NOT EXISTS on_battery BOOLEAN",
     );
     await executeRawSql(
       runtime,
-      "CREATE INDEX IF NOT EXISTS idx_life_activity_signals_agent ON life_activity_signals (agent_id, observed_at)",
+      "CREATE INDEX IF NOT EXISTS idx_life_activity_signals_agent ON app_lifeops.life_activity_signals (agent_id, observed_at)",
     );
+  }
+
+  static async ensureBrowserBridgeCompanionTokenColumns(
+    runtime: IAgentRuntime,
+  ): Promise<void> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      runtime,
+      "companions",
+    );
+    if (!(await tableExists(runtime, companionsTable))) {
+      return;
+    }
+    const companionTokenColumnRepairs = [
+      `ALTER TABLE ${companionsTable} ADD COLUMN IF NOT EXISTS pairing_token_expires_at TEXT`,
+      `ALTER TABLE ${companionsTable} ADD COLUMN IF NOT EXISTS pairing_token_revoked_at TEXT`,
+    ];
+    for (const statement of companionTokenColumnRepairs) {
+      await executeRawSql(runtime, statement);
+    }
   }
 
   static async ensureReminderReviewColumns(
     runtime: IAgentRuntime,
   ): Promise<void> {
-    if (!(await tableExists(runtime, "life_reminder_attempts"))) {
+    if (!(await tableExists(runtime, "app_lifeops.life_reminder_attempts"))) {
       return;
     }
     const reminderReviewColumnRepairs = [
-      "ALTER TABLE life_reminder_attempts ADD COLUMN IF NOT EXISTS review_at TEXT",
-      "ALTER TABLE life_reminder_attempts ADD COLUMN IF NOT EXISTS review_status TEXT",
-      "ALTER TABLE life_reminder_attempts ADD COLUMN IF NOT EXISTS review_claimed_at TEXT",
-      "ALTER TABLE life_reminder_attempts ADD COLUMN IF NOT EXISTS review_claimed_by TEXT",
-      "ALTER TABLE life_reminder_attempts ADD COLUMN IF NOT EXISTS review_attempt_count INTEGER NOT NULL DEFAULT 0",
-      "ALTER TABLE life_reminder_attempts ADD COLUMN IF NOT EXISTS review_next_retry_at TEXT",
-      "ALTER TABLE life_reminder_attempts ADD COLUMN IF NOT EXISTS review_last_error TEXT",
+      "ALTER TABLE app_lifeops.life_reminder_attempts ADD COLUMN IF NOT EXISTS review_at TEXT",
+      "ALTER TABLE app_lifeops.life_reminder_attempts ADD COLUMN IF NOT EXISTS review_status TEXT",
+      "ALTER TABLE app_lifeops.life_reminder_attempts ADD COLUMN IF NOT EXISTS review_claimed_at TEXT",
+      "ALTER TABLE app_lifeops.life_reminder_attempts ADD COLUMN IF NOT EXISTS review_claimed_by TEXT",
+      "ALTER TABLE app_lifeops.life_reminder_attempts ADD COLUMN IF NOT EXISTS review_attempt_count INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE app_lifeops.life_reminder_attempts ADD COLUMN IF NOT EXISTS review_next_retry_at TEXT",
+      "ALTER TABLE app_lifeops.life_reminder_attempts ADD COLUMN IF NOT EXISTS review_last_error TEXT",
     ];
     for (const statement of reminderReviewColumnRepairs) {
       await executeRawSql(runtime, statement);
     }
     await executeRawSql(
       runtime,
-      `UPDATE life_reminder_attempts
+      `UPDATE app_lifeops.life_reminder_attempts
           SET review_at = delivery_metadata_json::jsonb ->> ${sqlQuote(REMINDER_REVIEW_AT_METADATA_KEY)}
         WHERE review_at IS NULL
           AND delivery_metadata_json::jsonb ? ${sqlQuote(REMINDER_REVIEW_AT_METADATA_KEY)}`,
     );
     await executeRawSql(
       runtime,
-      `UPDATE life_reminder_attempts
+      `UPDATE app_lifeops.life_reminder_attempts
           SET review_status = delivery_metadata_json::jsonb ->> ${sqlQuote(REMINDER_REVIEW_STATUS_METADATA_KEY)}
         WHERE review_status IS NULL
           AND delivery_metadata_json::jsonb ? ${sqlQuote(REMINDER_REVIEW_STATUS_METADATA_KEY)}`,
@@ -2223,18 +2614,74 @@ export class LifeOpsRepository {
     await executeRawSql(
       runtime,
       `CREATE INDEX IF NOT EXISTS idx_life_reminder_attempts_review_due
-         ON life_reminder_attempts (agent_id, review_status, review_at)`,
+         ON app_lifeops.life_reminder_attempts (agent_id, review_status, review_at)`,
     );
   }
 
+  static async ensureConnectorAccountColumns(
+    runtime: IAgentRuntime,
+  ): Promise<void> {
+    const tableColumnRepairs: Array<{
+      table: string;
+      statements: string[];
+    }> = [
+      {
+        table: "app_lifeops.life_connector_grants",
+        statements: [
+          "ALTER TABLE app_lifeops.life_connector_grants ADD COLUMN IF NOT EXISTS connector_account_id TEXT",
+          "CREATE INDEX IF NOT EXISTS idx_life_connector_grants_account ON app_lifeops.life_connector_grants (agent_id, provider, connector_account_id)",
+        ],
+      },
+      {
+        table: "app_lifeops.life_calendar_events",
+        statements: [
+          "ALTER TABLE app_lifeops.life_calendar_events ADD COLUMN IF NOT EXISTS connector_account_id TEXT",
+          "ALTER TABLE app_lifeops.life_calendar_events ADD COLUMN IF NOT EXISTS purge_resync_required BOOLEAN NOT NULL DEFAULT FALSE",
+          "ALTER TABLE app_lifeops.life_calendar_events ADD COLUMN IF NOT EXISTS purge_resync_reason TEXT",
+          "CREATE INDEX IF NOT EXISTS idx_life_calendar_events_account ON app_lifeops.life_calendar_events (agent_id, provider, connector_account_id)",
+        ],
+      },
+      {
+        table: "app_lifeops.life_calendar_sync_states",
+        statements: [
+          "ALTER TABLE app_lifeops.life_calendar_sync_states ADD COLUMN IF NOT EXISTS connector_account_id TEXT",
+          "ALTER TABLE app_lifeops.life_calendar_sync_states ADD COLUMN IF NOT EXISTS purge_resync_required BOOLEAN NOT NULL DEFAULT FALSE",
+          "ALTER TABLE app_lifeops.life_calendar_sync_states ADD COLUMN IF NOT EXISTS purge_resync_reason TEXT",
+          "CREATE INDEX IF NOT EXISTS idx_life_calendar_sync_states_account ON app_lifeops.life_calendar_sync_states (agent_id, provider, connector_account_id)",
+        ],
+      },
+      {
+        table: "app_lifeops.life_gmail_messages",
+        statements: [
+          "ALTER TABLE app_lifeops.life_gmail_messages ADD COLUMN IF NOT EXISTS connector_account_id TEXT",
+          "CREATE INDEX IF NOT EXISTS idx_life_gmail_messages_account ON app_lifeops.life_gmail_messages (agent_id, provider, connector_account_id)",
+        ],
+      },
+      {
+        table: "app_lifeops.life_inbox_messages",
+        statements: [
+          "ALTER TABLE app_lifeops.life_inbox_messages ADD COLUMN IF NOT EXISTS connector_account_id TEXT",
+          "CREATE INDEX IF NOT EXISTS idx_life_inbox_messages_account ON app_lifeops.life_inbox_messages (agent_id, connector_account_id)",
+        ],
+      },
+    ];
+
+    for (const repair of tableColumnRepairs) {
+      if (!(await tableExists(runtime, repair.table))) continue;
+      for (const statement of repair.statements) {
+        await executeRawSql(runtime, statement);
+      }
+    }
+  }
+
   static async ensureInboxCacheIndexes(runtime: IAgentRuntime): Promise<void> {
-    if (!(await tableExists(runtime, "life_inbox_messages"))) {
+    if (!(await tableExists(runtime, "app_lifeops.life_inbox_messages"))) {
       return;
     }
 
     await executeRawSql(
       runtime,
-      `DELETE FROM life_inbox_messages
+      `DELETE FROM app_lifeops.life_inbox_messages
         WHERE id IN (
           SELECT id
             FROM (
@@ -2243,7 +2690,7 @@ export class LifeOpsRepository {
                        PARTITION BY agent_id, channel, external_id
                        ORDER BY updated_at DESC, cached_at DESC, id DESC
                      ) AS row_number
-                FROM life_inbox_messages
+                FROM app_lifeops.life_inbox_messages
             ) ranked
            WHERE row_number > 1
         )`,
@@ -2251,23 +2698,23 @@ export class LifeOpsRepository {
     await executeRawSql(
       runtime,
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_life_inbox_messages_agent_channel_external
-         ON life_inbox_messages (agent_id, channel, external_id)`,
+         ON app_lifeops.life_inbox_messages (agent_id, channel, external_id)`,
     );
     const inboxCacheColumnRepairs = [
-      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS thread_id TEXT",
-      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS sender_email TEXT",
-      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS subject TEXT",
-      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS deep_link TEXT",
-      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS source_ref_json TEXT NOT NULL DEFAULT '{}'",
-      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS chat_type TEXT NOT NULL DEFAULT 'channel'",
-      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS participant_count INTEGER",
-      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS gmail_account_id TEXT",
-      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS gmail_account_email TEXT",
-      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS last_seen_at TEXT",
-      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS replied_at TEXT",
-      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS priority_score INTEGER",
-      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS priority_category TEXT",
-      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS priority_flags_json TEXT NOT NULL DEFAULT '[]'",
+      "ALTER TABLE app_lifeops.life_inbox_messages ADD COLUMN IF NOT EXISTS thread_id TEXT",
+      "ALTER TABLE app_lifeops.life_inbox_messages ADD COLUMN IF NOT EXISTS sender_email TEXT",
+      "ALTER TABLE app_lifeops.life_inbox_messages ADD COLUMN IF NOT EXISTS subject TEXT",
+      "ALTER TABLE app_lifeops.life_inbox_messages ADD COLUMN IF NOT EXISTS deep_link TEXT",
+      "ALTER TABLE app_lifeops.life_inbox_messages ADD COLUMN IF NOT EXISTS source_ref_json TEXT NOT NULL DEFAULT '{}'",
+      "ALTER TABLE app_lifeops.life_inbox_messages ADD COLUMN IF NOT EXISTS chat_type TEXT NOT NULL DEFAULT 'channel'",
+      "ALTER TABLE app_lifeops.life_inbox_messages ADD COLUMN IF NOT EXISTS participant_count INTEGER",
+      "ALTER TABLE app_lifeops.life_inbox_messages ADD COLUMN IF NOT EXISTS gmail_account_id TEXT",
+      "ALTER TABLE app_lifeops.life_inbox_messages ADD COLUMN IF NOT EXISTS gmail_account_email TEXT",
+      "ALTER TABLE app_lifeops.life_inbox_messages ADD COLUMN IF NOT EXISTS last_seen_at TEXT",
+      "ALTER TABLE app_lifeops.life_inbox_messages ADD COLUMN IF NOT EXISTS replied_at TEXT",
+      "ALTER TABLE app_lifeops.life_inbox_messages ADD COLUMN IF NOT EXISTS priority_score INTEGER",
+      "ALTER TABLE app_lifeops.life_inbox_messages ADD COLUMN IF NOT EXISTS priority_category TEXT",
+      "ALTER TABLE app_lifeops.life_inbox_messages ADD COLUMN IF NOT EXISTS priority_flags_json TEXT NOT NULL DEFAULT '[]'",
     ];
     for (const statement of inboxCacheColumnRepairs) {
       await executeRawSql(runtime, statement);
@@ -2277,7 +2724,7 @@ export class LifeOpsRepository {
   async createDefinition(definition: LifeOpsTaskDefinition): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_task_definitions (
+      `INSERT INTO app_lifeops.life_task_definitions (
         id, agent_id, domain, subject_type, subject_id, visibility_scope,
         context_policy, kind, title, description, original_intent, timezone,
         status, priority, cadence_json, window_policy_json,
@@ -2319,7 +2766,7 @@ export class LifeOpsRepository {
   async updateDefinition(definition: LifeOpsTaskDefinition): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE life_task_definitions
+      `UPDATE app_lifeops.life_task_definitions
          SET domain = ${sqlQuote(definition.domain)},
              subject_type = ${sqlQuote(definition.subjectType)},
              subject_id = ${sqlQuote(definition.subjectId)},
@@ -2356,7 +2803,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_task_definitions
+         FROM app_lifeops.life_task_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(definitionId)}
         LIMIT 1`,
@@ -2369,7 +2816,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_task_definitions
+         FROM app_lifeops.life_task_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY created_at ASC`,
     );
@@ -2382,7 +2829,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_task_definitions
+         FROM app_lifeops.life_task_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND status = 'active'
         ORDER BY created_at ASC`,
@@ -2393,27 +2840,27 @@ export class LifeOpsRepository {
   async deleteDefinition(agentId: string, definitionId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_reminder_plans
+      `DELETE FROM app_lifeops.life_reminder_plans
         WHERE agent_id = ${sqlQuote(agentId)}
           AND owner_type = 'definition'
           AND owner_id = ${sqlQuote(definitionId)}`,
     );
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_goal_links
+      `DELETE FROM app_lifeops.life_goal_links
         WHERE agent_id = ${sqlQuote(agentId)}
           AND linked_type = 'definition'
           AND linked_id = ${sqlQuote(definitionId)}`,
     );
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_task_occurrences
+      `DELETE FROM app_lifeops.life_task_occurrences
         WHERE agent_id = ${sqlQuote(agentId)}
           AND definition_id = ${sqlQuote(definitionId)}`,
     );
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_task_definitions
+      `DELETE FROM app_lifeops.life_task_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(definitionId)}`,
     );
@@ -2422,7 +2869,7 @@ export class LifeOpsRepository {
   async upsertOccurrence(occurrence: LifeOpsOccurrence): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_task_occurrences (
+      `INSERT INTO app_lifeops.life_task_occurrences (
         id, agent_id, domain, subject_type, subject_id, visibility_scope,
         context_policy, definition_id, occurrence_key, scheduled_at, due_at,
         relevance_start_at, relevance_end_at, window_name, state,
@@ -2478,7 +2925,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_task_occurrences
+         FROM app_lifeops.life_task_occurrences
         WHERE agent_id = ${sqlQuote(agentId)}
           AND definition_id = ${sqlQuote(definitionId)}
         ORDER BY relevance_start_at ASC`,
@@ -2499,7 +2946,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_task_occurrences
+         FROM app_lifeops.life_task_occurrences
         WHERE agent_id = ${sqlQuote(agentId)}
           AND definition_id IN (${definitionList})
         ORDER BY definition_id ASC, relevance_start_at ASC`,
@@ -2514,7 +2961,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_task_occurrences
+         FROM app_lifeops.life_task_occurrences
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(occurrenceId)}
         LIMIT 1`,
@@ -2539,8 +2986,8 @@ export class LifeOpsRepository {
               definition.timezone AS definition_timezone,
               definition.source AS definition_source,
               definition.goal_id AS definition_goal_id
-         FROM life_task_occurrences AS occurrence
-         JOIN life_task_definitions AS definition
+         FROM app_lifeops.life_task_occurrences AS occurrence
+         JOIN app_lifeops.life_task_definitions AS definition
            ON definition.id = occurrence.definition_id
           AND definition.agent_id = occurrence.agent_id
         WHERE occurrence.agent_id = ${sqlQuote(agentId)}
@@ -2567,8 +3014,8 @@ export class LifeOpsRepository {
               definition.timezone AS definition_timezone,
               definition.source AS definition_source,
               definition.goal_id AS definition_goal_id
-         FROM life_task_occurrences AS occurrence
-         JOIN life_task_definitions AS definition
+         FROM app_lifeops.life_task_occurrences AS occurrence
+         JOIN app_lifeops.life_task_definitions AS definition
            ON definition.id = occurrence.definition_id
           AND definition.agent_id = occurrence.agent_id
         WHERE occurrence.agent_id = ${sqlQuote(agentId)}
@@ -2588,7 +3035,7 @@ export class LifeOpsRepository {
   async updateOccurrence(occurrence: LifeOpsOccurrence): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE life_task_occurrences
+      `UPDATE app_lifeops.life_task_occurrences
           SET domain = ${sqlQuote(occurrence.domain)},
               subject_type = ${sqlQuote(occurrence.subjectType)},
               subject_id = ${sqlQuote(occurrence.subjectId)},
@@ -2623,7 +3070,7 @@ export class LifeOpsRepository {
         : "";
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_task_occurrences
+      `DELETE FROM app_lifeops.life_task_occurrences
         WHERE agent_id = ${sqlQuote(agentId)}
           AND definition_id = ${sqlQuote(definitionId)}
           AND state IN ('pending', 'visible', 'snoozed', 'expired')
@@ -2634,7 +3081,7 @@ export class LifeOpsRepository {
   async createGoal(goal: LifeOpsGoalDefinition): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_goal_definitions (
+      `INSERT INTO app_lifeops.life_goal_definitions (
         id, agent_id, domain, subject_type, subject_id, visibility_scope,
         context_policy, title, description, cadence_json, support_strategy_json,
         success_criteria_json, status, review_state, metadata_json,
@@ -2664,7 +3111,7 @@ export class LifeOpsRepository {
   async updateGoal(goal: LifeOpsGoalDefinition): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE life_goal_definitions
+      `UPDATE app_lifeops.life_goal_definitions
           SET domain = ${sqlQuote(goal.domain)},
               subject_type = ${sqlQuote(goal.subjectType)},
               subject_id = ${sqlQuote(goal.subjectId)},
@@ -2691,7 +3138,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_goal_definitions
+         FROM app_lifeops.life_goal_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(goalId)}
         LIMIT 1`,
@@ -2704,7 +3151,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_goal_definitions
+         FROM app_lifeops.life_goal_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY created_at ASC`,
     );
@@ -2714,20 +3161,20 @@ export class LifeOpsRepository {
   async deleteGoal(agentId: string, goalId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_goal_links
+      `DELETE FROM app_lifeops.life_goal_links
         WHERE agent_id = ${sqlQuote(agentId)}
           AND goal_id = ${sqlQuote(goalId)}`,
     );
     await executeRawSql(
       this.runtime,
-      `UPDATE life_task_definitions
+      `UPDATE app_lifeops.life_task_definitions
          SET goal_id = NULL
        WHERE agent_id = ${sqlQuote(agentId)}
          AND goal_id = ${sqlQuote(goalId)}`,
     );
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_goal_definitions
+      `DELETE FROM app_lifeops.life_goal_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(goalId)}`,
     );
@@ -2736,7 +3183,7 @@ export class LifeOpsRepository {
   async upsertGoalLink(link: LifeOpsGoalLink): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_goal_links (
+      `INSERT INTO app_lifeops.life_goal_links (
         id, agent_id, goal_id, linked_type, linked_id, created_at
       ) VALUES (
         ${sqlQuote(link.id)},
@@ -2757,7 +3204,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_goal_links
+      `DELETE FROM app_lifeops.life_goal_links
         WHERE agent_id = ${sqlQuote(agentId)}
           AND linked_type = ${sqlQuote(linkedType)}
           AND linked_id = ${sqlQuote(linkedId)}`,
@@ -2771,7 +3218,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_goal_links
+         FROM app_lifeops.life_goal_links
         WHERE agent_id = ${sqlQuote(agentId)}
           AND goal_id = ${sqlQuote(goalId)}
         ORDER BY created_at ASC`,
@@ -2782,7 +3229,7 @@ export class LifeOpsRepository {
   async createReminderPlan(plan: LifeOpsReminderPlan): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_reminder_plans (
+      `INSERT INTO app_lifeops.life_reminder_plans (
         id, agent_id, owner_type, owner_id, steps_json,
         mute_policy_json, quiet_hours_json, created_at, updated_at
       ) VALUES (
@@ -2802,7 +3249,7 @@ export class LifeOpsRepository {
   async updateReminderPlan(plan: LifeOpsReminderPlan): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE life_reminder_plans
+      `UPDATE app_lifeops.life_reminder_plans
           SET steps_json = ${sqlJson(plan.steps)},
               mute_policy_json = ${sqlJson(plan.mutePolicy)},
               quiet_hours_json = ${sqlJson(plan.quietHours)},
@@ -2815,7 +3262,7 @@ export class LifeOpsRepository {
   async deleteReminderPlan(agentId: string, planId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_reminder_plans
+      `DELETE FROM app_lifeops.life_reminder_plans
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(planId)}`,
     );
@@ -2828,7 +3275,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_reminder_plans
+         FROM app_lifeops.life_reminder_plans
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(planId)}
         LIMIT 1`,
@@ -2847,7 +3294,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_reminder_plans
+         FROM app_lifeops.life_reminder_plans
         WHERE agent_id = ${sqlQuote(agentId)}
           AND owner_type = ${sqlQuote(ownerType)}
           AND owner_id IN (${ownerList})`,
@@ -2858,7 +3305,7 @@ export class LifeOpsRepository {
   async createAuditEvent(event: LifeOpsAuditEvent): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_audit_events (
+      `INSERT INTO app_lifeops.life_audit_events (
         id, agent_id, event_type, owner_type, owner_id, reason,
         inputs_json, decision_json, actor, created_at
       ) VALUES (
@@ -2885,7 +3332,7 @@ export class LifeOpsRepository {
   async createAuditEventIfNew(event: LifeOpsAuditEvent): Promise<boolean> {
     const rows = await executeRawSql(
       this.runtime,
-      `INSERT INTO life_audit_events (
+      `INSERT INTO app_lifeops.life_audit_events (
         id, agent_id, event_type, owner_type, owner_id, reason,
         inputs_json, decision_json, actor, created_at
       ) VALUES (
@@ -2914,7 +3361,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_audit_events
+         FROM app_lifeops.life_audit_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND owner_type = ${sqlQuote(ownerType)}
           AND owner_id = ${sqlQuote(ownerId)}
@@ -2928,7 +3375,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_subscription_audits (
+      `INSERT INTO app_lifeops.life_subscription_audits (
         id, agent_id, source, query_window_days, status, total_candidates,
         active_candidates, canceled_candidates, uncertain_candidates, summary,
         metadata_json, created_at, updated_at
@@ -2955,7 +3402,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE life_subscription_audits
+      `UPDATE app_lifeops.life_subscription_audits
           SET source = ${sqlQuote(audit.source)},
               query_window_days = ${sqlInteger(audit.queryWindowDays)},
               status = ${sqlQuote(audit.status)},
@@ -2978,7 +3425,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_subscription_audits
+         FROM app_lifeops.life_subscription_audits
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(auditId)}
         LIMIT 1`,
@@ -2993,7 +3440,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_subscription_audits
+         FROM app_lifeops.life_subscription_audits
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY updated_at DESC, created_at DESC
         LIMIT 1`,
@@ -3007,7 +3454,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_subscription_candidates (
+      `INSERT INTO app_lifeops.life_subscription_candidates (
         id, agent_id, audit_id, service_slug, service_name, provider, cadence,
         state, confidence, annual_cost_estimate_usd, management_url,
         latest_evidence_at, evidence_json, metadata_json, created_at, updated_at
@@ -3051,7 +3498,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_subscription_candidates
+         FROM app_lifeops.life_subscription_candidates
         WHERE agent_id = ${sqlQuote(agentId)}
           AND audit_id = ${sqlQuote(auditId)}
         ORDER BY confidence DESC, service_name ASC`,
@@ -3066,7 +3513,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_subscription_candidates
+         FROM app_lifeops.life_subscription_candidates
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(candidateId)}
         LIMIT 1`,
@@ -3080,7 +3527,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_subscription_cancellations (
+      `INSERT INTO app_lifeops.life_subscription_cancellations (
         id, agent_id, audit_id, candidate_id, service_slug, service_name,
         executor, status, confirmed, current_step, browser_session_id,
         evidence_summary, artifact_count, management_url, error, metadata_json,
@@ -3114,7 +3561,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE life_subscription_cancellations
+      `UPDATE app_lifeops.life_subscription_cancellations
           SET audit_id = ${sqlText(cancellation.auditId)},
               candidate_id = ${sqlText(cancellation.candidateId)},
               service_slug = ${sqlQuote(cancellation.serviceSlug)},
@@ -3143,7 +3590,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_subscription_cancellations
+         FROM app_lifeops.life_subscription_cancellations
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(cancellationId)}
         LIMIT 1`,
@@ -3162,7 +3609,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_subscription_cancellations
+         FROM app_lifeops.life_subscription_cancellations
         WHERE agent_id = ${sqlQuote(agentId)}
           ${serviceClause}
         ORDER BY updated_at DESC, created_at DESC
@@ -3175,7 +3622,7 @@ export class LifeOpsRepository {
   async createEmailUnsubscribe(record: EmailUnsubscribeRecord): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_email_unsubscribes (
+      `INSERT INTO app_lifeops.life_email_unsubscribes (
         id, agent_id, sender_email, sender_display, sender_domain, list_id,
         method, status, http_status_code, http_final_url, filter_created,
         filter_id, threads_trashed, error_message, metadata_json,
@@ -3210,7 +3657,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_email_unsubscribes
+         FROM app_lifeops.life_email_unsubscribes
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY created_at DESC
         LIMIT ${limit}`,
@@ -3225,7 +3672,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_email_unsubscribes
+         FROM app_lifeops.life_email_unsubscribes
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(id)}
         LIMIT 1`,
@@ -3241,7 +3688,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_email_unsubscribes
+         FROM app_lifeops.life_email_unsubscribes
         WHERE agent_id = ${sqlQuote(agentId)}
           AND sender_email = ${sqlQuote(senderEmail.trim().toLowerCase())}
         ORDER BY created_at DESC
@@ -3254,7 +3701,7 @@ export class LifeOpsRepository {
   async upsertPaymentSource(source: LifeOpsPaymentSource): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_payment_sources (
+      `INSERT INTO app_lifeops.life_payment_sources (
         id, agent_id, kind, label, institution, account_mask, status,
         last_synced_at, transaction_count, metadata_json, created_at, updated_at
       ) VALUES (
@@ -3288,7 +3735,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_payment_sources
+         FROM app_lifeops.life_payment_sources
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY created_at DESC`,
     );
@@ -3302,7 +3749,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_payment_sources
+         FROM app_lifeops.life_payment_sources
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(sourceId)}
         LIMIT 1`,
@@ -3314,13 +3761,13 @@ export class LifeOpsRepository {
   async deletePaymentSource(agentId: string, sourceId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_payment_transactions
+      `DELETE FROM app_lifeops.life_payment_transactions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND source_id = ${sqlQuote(sourceId)}`,
     );
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_payment_sources
+      `DELETE FROM app_lifeops.life_payment_sources
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(sourceId)}`,
     );
@@ -3332,7 +3779,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_payment_transactions
+      `DELETE FROM app_lifeops.life_payment_transactions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(transactionId)}`,
     );
@@ -3343,7 +3790,7 @@ export class LifeOpsRepository {
   ): Promise<boolean> {
     const rows = await executeRawSql(
       this.runtime,
-      `INSERT INTO life_payment_transactions (
+      `INSERT INTO app_lifeops.life_payment_transactions (
         id, agent_id, source_id, external_id, posted_at, amount_usd, direction,
         merchant_raw, merchant_normalized, description, category, currency,
         metadata_json, created_at
@@ -3399,7 +3846,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_payment_transactions
+         FROM app_lifeops.life_payment_transactions
         WHERE agent_id = ${sqlQuote(agentId)}
           ${sourceClause}
           ${sinceClause}
@@ -3419,7 +3866,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT COUNT(*) AS count
-         FROM life_payment_transactions
+         FROM app_lifeops.life_payment_transactions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND source_id = ${sqlQuote(sourceId)}`,
     );
@@ -3434,7 +3881,7 @@ export class LifeOpsRepository {
         : signal.metadata;
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_activity_signals (
+      `INSERT INTO app_lifeops.life_activity_signals (
         id, agent_id, source, platform, state, observed_at, idle_state,
         idle_time_seconds, on_battery, metadata_json, created_at
       ) VALUES (
@@ -3454,10 +3901,9 @@ export class LifeOpsRepository {
 
     // Mirror into the canonical telemetry store. Dedupes on
     // (agent_id, dedupe_key) so re-persists and migrator replays are safe.
-    // Failures here must not block signal persistence — the legacy table is
-    // still the primary source of truth for the scorer — but they are
-    // counted and logged (first + every 100th) so broken mirrors surface
-    // in observability instead of silently rotting.
+    // Failures here must not block signal persistence, but they are counted
+    // and logged (first + every 100th) so broken mirrors surface in
+    // observability.
     try {
       const telemetry = buildTelemetryEventFromSignal(
         signal,
@@ -3510,7 +3956,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_activity_signals
+         FROM app_lifeops.life_activity_signals
         WHERE ${clauses.join("\n          AND ")}
         ORDER BY observed_at DESC
         ${limitClause}`,
@@ -3523,7 +3969,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_health_metric_samples (
+      `INSERT INTO app_lifeops.life_health_metric_samples (
         id, agent_id, provider, grant_id, metric, value, unit, start_at, end_at,
         local_date, source_external_id, metadata_json, created_at, updated_at
       ) VALUES (
@@ -3585,7 +4031,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_health_metric_samples
+         FROM app_lifeops.life_health_metric_samples
         WHERE ${clauses.join("\n          AND ")}
         ORDER BY start_at DESC, metric ASC
         ${limitClause}`,
@@ -3596,7 +4042,7 @@ export class LifeOpsRepository {
   async upsertHealthWorkout(workout: LifeOpsHealthWorkout): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_health_workouts (
+      `INSERT INTO app_lifeops.life_health_workouts (
         id, agent_id, provider, grant_id, source_external_id, workout_type,
         title, start_at, end_at, duration_seconds, distance_meters, calories,
         average_heart_rate, max_heart_rate, metadata_json, created_at,
@@ -3663,7 +4109,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_health_workouts
+         FROM app_lifeops.life_health_workouts
         WHERE ${clauses.join("\n          AND ")}
         ORDER BY start_at DESC
         ${limitClause}`,
@@ -3676,7 +4122,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_health_sleep_episodes (
+      `INSERT INTO app_lifeops.life_health_sleep_episodes (
         id, agent_id, provider, grant_id, source_external_id, local_date,
         timezone, start_at, end_at, is_main_sleep, sleep_type,
         duration_seconds, time_in_bed_seconds, efficiency, latency_seconds,
@@ -3771,7 +4217,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_health_sleep_episodes
+         FROM app_lifeops.life_health_sleep_episodes
         WHERE ${clauses.join("\n          AND ")}
         ORDER BY start_at DESC
         ${limitClause}`,
@@ -3782,7 +4228,7 @@ export class LifeOpsRepository {
   async upsertHealthSyncState(state: LifeOpsHealthSyncState): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_health_sync_states (
+      `INSERT INTO app_lifeops.life_health_sync_states (
         id, agent_id, provider, grant_id, cursor, last_synced_at,
         last_sync_started_at, last_sync_error, metadata_json, updated_at
       ) VALUES (
@@ -3815,7 +4261,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_health_sync_states
+         FROM app_lifeops.life_health_sync_states
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           AND grant_id = ${sqlQuote(grantId)}
@@ -3829,7 +4275,7 @@ export class LifeOpsRepository {
   async upsertChannelPolicy(policy: LifeOpsChannelPolicy): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_channel_policies (
+      `INSERT INTO app_lifeops.life_channel_policies (
         id, agent_id, channel_type, channel_ref, privacy_class,
         allow_reminders, allow_escalation, allow_posts,
         require_confirmation_for_actions, metadata_json, created_at, updated_at
@@ -3862,7 +4308,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_channel_policies
+         FROM app_lifeops.life_channel_policies
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY created_at ASC`,
     );
@@ -3877,7 +4323,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_channel_policies
+         FROM app_lifeops.life_channel_policies
         WHERE agent_id = ${sqlQuote(agentId)}
           AND channel_type = ${sqlQuote(channelType)}
           AND channel_ref = ${sqlQuote(channelRef)}
@@ -3892,7 +4338,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_website_access_grants (
+      `INSERT INTO app_lifeops.life_website_access_grants (
         id, agent_id, group_key, definition_id, occurrence_id, websites_json,
         unlock_mode, unlock_duration_minutes, callback_key, unlocked_at,
         expires_at, revoked_at, metadata_json, created_at, updated_at
@@ -3922,7 +4368,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_website_access_grants
+         FROM app_lifeops.life_website_access_grants
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY updated_at DESC, created_at DESC`,
     );
@@ -3946,15 +4392,92 @@ export class LifeOpsRepository {
     }
     await executeRawSql(
       this.runtime,
-      `UPDATE life_website_access_grants
+      `UPDATE app_lifeops.life_website_access_grants
           SET revoked_at = ${sqlQuote(args.revokedAt)},
               updated_at = ${sqlQuote(args.revokedAt)}
         WHERE ${clauses.join("\n          AND ")}`,
     );
   }
 
+  async ensureConnectorAccountPrivacy(input: {
+    agentId: string;
+    provider: string;
+    connectorAccountId: string;
+  }): Promise<LifeOpsConnectorAccountPrivacyPolicy> {
+    const existing = await this.getConnectorAccountPrivacy(
+      input.agentId,
+      input.provider,
+      input.connectorAccountId,
+    );
+    if (existing) return existing;
+
+    const policy = createConnectorAccountPrivacyPolicy(input);
+    await this.upsertConnectorAccountPrivacy(policy);
+    return policy;
+  }
+
+  async upsertConnectorAccountPrivacy(
+    input: LifeOpsConnectorAccountPrivacyPolicy,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_account_privacy (
+        id, agent_id, provider, connector_account_id, visibility_scope,
+        allowed_data_classes_json, metadata_json, created_at, updated_at
+      ) VALUES (
+        ${sqlQuote(input.id)},
+        ${sqlQuote(input.agentId)},
+        ${sqlQuote(input.provider)},
+        ${sqlQuote(input.connectorAccountId)},
+        ${sqlQuote(input.visibilityScope)},
+        ${sqlJson(input.allowedDataClasses)},
+        ${sqlJson(input.metadata)},
+        ${sqlQuote(input.createdAt)},
+        ${sqlQuote(input.updatedAt)}
+      )
+      ON CONFLICT(agent_id, provider, connector_account_id) DO UPDATE SET
+        visibility_scope = excluded.visibility_scope,
+        allowed_data_classes_json = excluded.allowed_data_classes_json,
+        metadata_json = excluded.metadata_json,
+        updated_at = excluded.updated_at`,
+    );
+  }
+
+  async listConnectorAccountPrivacy(
+    agentId: string,
+  ): Promise<LifeOpsConnectorAccountPrivacyPolicy[]> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_account_privacy
+        WHERE agent_id = ${sqlQuote(agentId)}
+        ORDER BY provider ASC, connector_account_id ASC`,
+    );
+    return rows.map(parseConnectorAccountPrivacyPolicy);
+  }
+
+  async getConnectorAccountPrivacy(
+    agentId: string,
+    provider: string,
+    connectorAccountId: string,
+  ): Promise<LifeOpsConnectorAccountPrivacyPolicy | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_account_privacy
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND provider = ${sqlQuote(provider)}
+          AND connector_account_id = ${sqlQuote(connectorAccountId)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseConnectorAccountPrivacyPolicy(row) : null;
+  }
+
   async upsertConnectorGrant(grant: LifeOpsConnectorGrant): Promise<void> {
     const identityEmail = deriveConnectorIdentityEmail(grant.identity);
+    const connectorAccountId =
+      grant.connectorAccountId ?? deriveConnectorAccountIdFromGrant(grant);
     const logicalIdentityClause =
       identityEmail === null
         ? "identity_email IS NULL"
@@ -3962,7 +4485,7 @@ export class LifeOpsRepository {
     const existingRows = await executeRawSql(
       this.runtime,
       `SELECT id, created_at
-         FROM life_connector_grants
+         FROM app_lifeops.life_connector_grants
         WHERE agent_id = ${sqlQuote(grant.agentId)}
           AND provider = ${sqlQuote(grant.provider)}
           AND side = ${sqlQuote(grant.side)}
@@ -3980,8 +4503,9 @@ export class LifeOpsRepository {
     if (existingRow) {
       await executeRawSql(
         this.runtime,
-        `UPDATE life_connector_grants
-            SET identity_json = ${sqlJson(grant.identity)},
+        `UPDATE app_lifeops.life_connector_grants
+            SET connector_account_id = ${sqlText(connectorAccountId)},
+                identity_json = ${sqlJson(grant.identity)},
                 identity_email = ${sqlText(identityEmail)},
                 granted_scopes_json = ${sqlJson(grant.grantedScopes)},
                 capabilities_json = ${sqlJson(grant.capabilities)},
@@ -3995,62 +4519,69 @@ export class LifeOpsRepository {
                 updated_at = ${sqlQuote(grant.updatedAt)}
           WHERE id = ${sqlQuote(targetId)}`,
       );
-      return;
+    } else {
+      await executeRawSql(
+        this.runtime,
+        `INSERT INTO app_lifeops.life_connector_grants (
+          id, agent_id, provider, connector_account_id, side, identity_json,
+          identity_email, granted_scopes_json, capabilities_json, token_ref,
+          mode, execution_target, source_of_truth, preferred_by_agent,
+          cloud_connection_id, metadata_json, last_refresh_at, created_at,
+          updated_at
+        ) VALUES (
+          ${sqlQuote(targetId)},
+          ${sqlQuote(grant.agentId)},
+          ${sqlQuote(grant.provider)},
+          ${sqlText(connectorAccountId)},
+          ${sqlQuote(grant.side)},
+          ${sqlJson(grant.identity)},
+          ${sqlText(identityEmail)},
+          ${sqlJson(grant.grantedScopes)},
+          ${sqlJson(grant.capabilities)},
+          ${sqlText(grant.tokenRef)},
+          ${sqlQuote(grant.mode)},
+          ${sqlQuote(grant.executionTarget)},
+          ${sqlQuote(grant.sourceOfTruth)},
+          ${sqlBoolean(grant.preferredByAgent)},
+          ${sqlText(grant.cloudConnectionId)},
+          ${sqlJson(grant.metadata)},
+          ${sqlText(grant.lastRefreshAt)},
+          ${sqlQuote(createdAt)},
+          ${sqlQuote(grant.updatedAt)}
+        )
+        ON CONFLICT(id) DO UPDATE SET
+          agent_id = excluded.agent_id,
+          provider = excluded.provider,
+          connector_account_id = excluded.connector_account_id,
+          side = excluded.side,
+          identity_json = excluded.identity_json,
+          identity_email = excluded.identity_email,
+          granted_scopes_json = excluded.granted_scopes_json,
+          capabilities_json = excluded.capabilities_json,
+          token_ref = excluded.token_ref,
+          execution_target = excluded.execution_target,
+          source_of_truth = excluded.source_of_truth,
+          preferred_by_agent = excluded.preferred_by_agent,
+          cloud_connection_id = excluded.cloud_connection_id,
+          metadata_json = excluded.metadata_json,
+          last_refresh_at = excluded.last_refresh_at,
+          created_at = app_lifeops.life_connector_grants.created_at,
+          updated_at = excluded.updated_at`,
+      );
     }
 
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO life_connector_grants (
-        id, agent_id, provider, side, identity_json, identity_email,
-        granted_scopes_json,
-        capabilities_json, token_ref, mode, execution_target, source_of_truth,
-        preferred_by_agent, cloud_connection_id, metadata_json,
-        last_refresh_at, created_at, updated_at
-      ) VALUES (
-        ${sqlQuote(targetId)},
-        ${sqlQuote(grant.agentId)},
-        ${sqlQuote(grant.provider)},
-        ${sqlQuote(grant.side)},
-        ${sqlJson(grant.identity)},
-        ${sqlText(identityEmail)},
-        ${sqlJson(grant.grantedScopes)},
-        ${sqlJson(grant.capabilities)},
-        ${sqlText(grant.tokenRef)},
-        ${sqlQuote(grant.mode)},
-        ${sqlQuote(grant.executionTarget)},
-        ${sqlQuote(grant.sourceOfTruth)},
-        ${sqlBoolean(grant.preferredByAgent)},
-        ${sqlText(grant.cloudConnectionId)},
-        ${sqlJson(grant.metadata)},
-        ${sqlText(grant.lastRefreshAt)},
-        ${sqlQuote(createdAt)},
-        ${sqlQuote(grant.updatedAt)}
-      )
-      ON CONFLICT(id) DO UPDATE SET
-        agent_id = excluded.agent_id,
-        provider = excluded.provider,
-        side = excluded.side,
-        identity_json = excluded.identity_json,
-        identity_email = excluded.identity_email,
-        granted_scopes_json = excluded.granted_scopes_json,
-        capabilities_json = excluded.capabilities_json,
-        token_ref = excluded.token_ref,
-        execution_target = excluded.execution_target,
-        source_of_truth = excluded.source_of_truth,
-        preferred_by_agent = excluded.preferred_by_agent,
-        cloud_connection_id = excluded.cloud_connection_id,
-        metadata_json = excluded.metadata_json,
-        last_refresh_at = excluded.last_refresh_at,
-        created_at = life_connector_grants.created_at,
-        updated_at = excluded.updated_at`,
-    );
+    await this.ensureConnectorAccountPrivacy({
+      agentId: grant.agentId,
+      provider: grant.provider,
+      connectorAccountId,
+    });
   }
 
   async listConnectorGrants(agentId: string): Promise<LifeOpsConnectorGrant[]> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_connector_grants
+         FROM app_lifeops.life_connector_grants
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY created_at ASC`,
     );
@@ -4066,7 +4597,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-        FROM life_connector_grants
+        FROM app_lifeops.life_connector_grants
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           AND side = ${sqlQuote(side)}
@@ -4090,7 +4621,7 @@ export class LifeOpsRepository {
     const grantClause = grantId ? `AND id = ${sqlQuote(grantId)}` : "";
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_connector_grants
+      `DELETE FROM app_lifeops.life_connector_grants
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${modeClause}
@@ -4103,13 +4634,21 @@ export class LifeOpsRepository {
     event: LifeOpsCalendarEvent,
     side: LifeOpsConnectorSide = event.side,
   ): Promise<void> {
+    const connectorAccountId =
+      event.connectorAccountId ??
+      deriveConnectorAccountId({
+        provider: event.provider,
+        side,
+        identityEmail: event.accountEmail,
+        grantId: event.grantId,
+      });
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_calendar_events (
+      `INSERT INTO app_lifeops.life_calendar_events (
         id, agent_id, provider, side, calendar_id, external_event_id, title,
         description, location, status, start_at, end_at, is_all_day,
-        timezone, html_link, conference_link, organizer_json,
-        attendees_json, metadata_json, synced_at, updated_at
+        timezone, html_link, conference_link, organizer_json, attendees_json,
+        connector_account_id, grant_id, metadata_json, synced_at, updated_at
       ) VALUES (
         ${sqlQuote(event.id)},
         ${sqlQuote(event.agentId)},
@@ -4129,6 +4668,8 @@ export class LifeOpsRepository {
         ${sqlText(event.conferenceLink)},
         ${event.organizer ? sqlJson(event.organizer) : "NULL"},
         ${sqlJson(event.attendees)},
+        ${sqlText(connectorAccountId)},
+        ${sqlText(event.grantId)},
         ${sqlJson(event.metadata)},
         ${sqlQuote(event.syncedAt)},
         ${sqlQuote(event.updatedAt)}
@@ -4146,6 +4687,8 @@ export class LifeOpsRepository {
         conference_link = excluded.conference_link,
         organizer_json = excluded.organizer_json,
         attendees_json = excluded.attendees_json,
+        connector_account_id = COALESCE(excluded.connector_account_id, app_lifeops.life_calendar_events.connector_account_id),
+        grant_id = COALESCE(excluded.grant_id, app_lifeops.life_calendar_events.grant_id),
         metadata_json = excluded.metadata_json,
         synced_at = excluded.synced_at,
         updated_at = excluded.updated_at`,
@@ -4164,7 +4707,7 @@ export class LifeOpsRepository {
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_calendar_events
+      `DELETE FROM app_lifeops.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${calendarClause}
@@ -4182,7 +4725,7 @@ export class LifeOpsRepository {
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_calendar_events
+      `DELETE FROM app_lifeops.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           AND calendar_id = ${sqlQuote(calendarId)}
@@ -4208,7 +4751,7 @@ export class LifeOpsRepository {
         : "";
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_calendar_events
+      `DELETE FROM app_lifeops.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           AND side = ${sqlQuote(side)}
@@ -4232,7 +4775,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_calendar_events
+         FROM app_lifeops.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${sideClause}
@@ -4268,7 +4811,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_calendar_events
+         FROM app_lifeops.life_calendar_events
         WHERE agent_id = ${sqlQuote(args.agentId)}
           AND provider = ${sqlQuote(args.provider)}
           ${sideClause}
@@ -4285,7 +4828,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_calendar_sync_states (
+      `INSERT INTO app_lifeops.life_calendar_sync_states (
         id, agent_id, provider, side, calendar_id, window_start_at,
         window_end_at, synced_at, updated_at
       ) VALUES (
@@ -4317,7 +4860,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_calendar_sync_states
+         FROM app_lifeops.life_calendar_sync_states
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           AND calendar_id = ${sqlQuote(calendarId)}
@@ -4340,7 +4883,7 @@ export class LifeOpsRepository {
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_calendar_sync_states
+      `DELETE FROM app_lifeops.life_calendar_sync_states
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${calendarClause}
@@ -4353,12 +4896,21 @@ export class LifeOpsRepository {
     side: LifeOpsConnectorSide = message.side,
   ): Promise<void> {
     const grantId = requireScopedGmailGrantId(message.grantId);
+    const connectorAccountId =
+      message.connectorAccountId ??
+      deriveConnectorAccountId({
+        provider: message.provider,
+        side,
+        identityEmail: message.accountEmail,
+        grantId,
+      });
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_gmail_messages (
-        id, agent_id, provider, side, external_message_id, grant_id, thread_id,
-        subject, from_display, from_email, reply_to, to_json, cc_json, snippet,
-        received_at, is_unread, is_important, likely_reply_needed, triage_score,
+      `INSERT INTO app_lifeops.life_gmail_messages (
+        id, agent_id, provider, side, external_message_id,
+        connector_account_id, grant_id, thread_id, subject, from_display,
+        from_email, reply_to, to_json, cc_json, snippet, received_at,
+        is_unread, is_important, likely_reply_needed, triage_score,
         triage_reason, label_ids_json, html_link, metadata_json, synced_at,
         updated_at
       ) VALUES (
@@ -4367,6 +4919,7 @@ export class LifeOpsRepository {
         ${sqlQuote(message.provider)},
         ${sqlQuote(side)},
         ${sqlQuote(message.externalId)},
+        ${sqlText(connectorAccountId)},
         ${sqlQuote(grantId)},
         ${sqlQuote(message.threadId)},
         ${sqlQuote(message.subject)},
@@ -4390,6 +4943,7 @@ export class LifeOpsRepository {
       )
       ON CONFLICT(agent_id, provider, side, grant_id, external_message_id) DO UPDATE SET
         id = excluded.id,
+        connector_account_id = COALESCE(excluded.connector_account_id, app_lifeops.life_gmail_messages.connector_account_id),
         thread_id = excluded.thread_id,
         subject = excluded.subject,
         from_display = excluded.from_display,
@@ -4429,7 +4983,7 @@ export class LifeOpsRepository {
     const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_gmail_messages
+      `DELETE FROM app_lifeops.life_gmail_messages
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${sideClause}
@@ -4468,7 +5022,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_gmail_messages
+         FROM app_lifeops.life_gmail_messages
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${sideClause}
@@ -4493,7 +5047,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_gmail_messages
+         FROM app_lifeops.life_gmail_messages
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${sideClause}
@@ -4526,15 +5080,32 @@ export class LifeOpsRepository {
       const priorityFlags = normalizeInboxPriorityFlags(message.priorityFlags);
       const priorityFlagsUpdate = hasPriorityFlags
         ? "excluded.priority_flags_json"
-        : "life_inbox_messages.priority_flags_json";
+        : "app_lifeops.life_inbox_messages.priority_flags_json";
+      const connectorAccountId =
+        message.connectorAccountId ??
+        (channel === "gmail"
+          ? (deriveConnectorAccountId({
+              provider: "google",
+              side: "owner",
+              identityEmail: message.gmailAccountEmail,
+              grantId: message.gmailAccountId,
+            }) ??
+            (message.gmailAccountId
+              ? grantScopedConnectorAccountId({
+                  provider: "google",
+                  side: "owner",
+                  grantId: message.gmailAccountId,
+                })
+              : null))
+          : null);
       await executeRawSql(
         this.runtime,
-        `INSERT INTO life_inbox_messages (
+        `INSERT INTO app_lifeops.life_inbox_messages (
           id, agent_id, channel, external_id, thread_id, sender_id,
           sender_display, sender_email, subject, snippet, received_at,
           is_unread, deep_link, source_ref_json, chat_type, participant_count,
           gmail_account_id, gmail_account_email, last_seen_at, replied_at, priority_score,
-          priority_category, priority_flags_json, cached_at, updated_at
+          priority_category, priority_flags_json, connector_account_id, cached_at, updated_at
         ) VALUES (
           ${sqlQuote(message.id)},
           ${sqlQuote(agentId)},
@@ -4559,6 +5130,7 @@ export class LifeOpsRepository {
           ${sqlInteger(message.priorityScore)},
           ${sqlText(message.priorityCategory)},
           ${sqlJson(priorityFlags)},
+          ${sqlText(connectorAccountId)},
           ${sqlQuote(now)},
           ${sqlQuote(now)}
         )
@@ -4578,11 +5150,12 @@ export class LifeOpsRepository {
           participant_count = excluded.participant_count,
           gmail_account_id = excluded.gmail_account_id,
           gmail_account_email = excluded.gmail_account_email,
-          last_seen_at = COALESCE(excluded.last_seen_at, life_inbox_messages.last_seen_at),
-          replied_at = COALESCE(excluded.replied_at, life_inbox_messages.replied_at),
-          priority_score = COALESCE(excluded.priority_score, life_inbox_messages.priority_score),
-          priority_category = COALESCE(excluded.priority_category, life_inbox_messages.priority_category),
+          last_seen_at = COALESCE(excluded.last_seen_at, app_lifeops.life_inbox_messages.last_seen_at),
+          replied_at = COALESCE(excluded.replied_at, app_lifeops.life_inbox_messages.replied_at),
+          priority_score = COALESCE(excluded.priority_score, app_lifeops.life_inbox_messages.priority_score),
+          priority_category = COALESCE(excluded.priority_category, app_lifeops.life_inbox_messages.priority_category),
           priority_flags_json = ${priorityFlagsUpdate},
+          connector_account_id = COALESCE(excluded.connector_account_id, app_lifeops.life_inbox_messages.connector_account_id),
           cached_at = excluded.cached_at,
           updated_at = excluded.updated_at`,
       );
@@ -4617,7 +5190,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_inbox_messages
+         FROM app_lifeops.life_inbox_messages
         WHERE agent_id = ${sqlQuote(agentId)}
           ${channelClause}
           ${gmailAccountClause}
@@ -4634,7 +5207,7 @@ export class LifeOpsRepository {
   ): Promise<LifeOpsCachedInboxMessage | null> {
     await executeRawSql(
       this.runtime,
-      `UPDATE life_inbox_messages
+      `UPDATE app_lifeops.life_inbox_messages
           SET is_unread = ${sqlBoolean(false)},
               last_seen_at = ${sqlQuote(readAt)},
               updated_at = ${sqlQuote(readAt)}
@@ -4644,7 +5217,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_inbox_messages
+         FROM app_lifeops.life_inbox_messages
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(messageId)}
         LIMIT 1`,
@@ -4667,7 +5240,7 @@ export class LifeOpsRepository {
     const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_gmail_messages
+      `DELETE FROM app_lifeops.life_gmail_messages
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${sideClause}
@@ -4686,7 +5259,7 @@ export class LifeOpsRepository {
     const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_gmail_messages
+      `DELETE FROM app_lifeops.life_gmail_messages
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${sideClause}
@@ -4698,7 +5271,7 @@ export class LifeOpsRepository {
     const grantId = requireScopedGmailGrantId(state.grantId);
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_gmail_sync_states (
+      `INSERT INTO app_lifeops.life_gmail_sync_states (
         id, agent_id, provider, side, mailbox, grant_id, max_results, synced_at,
         updated_at
       ) VALUES (
@@ -4732,7 +5305,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_gmail_sync_states
+         FROM app_lifeops.life_gmail_sync_states
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           AND mailbox = ${sqlQuote(mailbox)}
@@ -4756,7 +5329,7 @@ export class LifeOpsRepository {
     const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_gmail_sync_states
+      `DELETE FROM app_lifeops.life_gmail_sync_states
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${mailboxClause}
@@ -4770,7 +5343,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_gmail_spam_review_items (
+      `INSERT INTO app_lifeops.life_gmail_spam_review_items (
         id, agent_id, provider, side, grant_id, account_email, message_id,
         external_message_id, thread_id, subject, from_display, from_email,
         received_at, snippet, label_ids_json, rationale, confidence, status,
@@ -4838,7 +5411,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_gmail_spam_review_items
+         FROM app_lifeops.life_gmail_spam_review_items
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${sideClause}
@@ -4860,7 +5433,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_gmail_spam_review_items
+         FROM app_lifeops.life_gmail_spam_review_items
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${sideClause}
@@ -4883,7 +5456,7 @@ export class LifeOpsRepository {
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     await executeRawSql(
       this.runtime,
-      `UPDATE life_gmail_spam_review_items
+      `UPDATE app_lifeops.life_gmail_spam_review_items
           SET status = ${sqlQuote(status)},
               reviewed_at = ${sqlText(reviewedAt)},
               updated_at = ${sqlQuote(updatedAt)}
@@ -4904,7 +5477,7 @@ export class LifeOpsRepository {
     const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_gmail_spam_review_items
+      `DELETE FROM app_lifeops.life_gmail_spam_review_items
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${sideClause}
@@ -4915,7 +5488,7 @@ export class LifeOpsRepository {
   async createWorkflow(definition: LifeOpsWorkflowDefinition): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_workflow_definitions (
+      `INSERT INTO app_lifeops.life_workflow_definitions (
         id, agent_id, domain, subject_type, subject_id, visibility_scope,
         context_policy, title, trigger_type, schedule_json, action_plan_json,
         permission_policy_json, status, created_by, metadata_json,
@@ -4945,7 +5518,7 @@ export class LifeOpsRepository {
   async updateWorkflow(definition: LifeOpsWorkflowDefinition): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE life_workflow_definitions
+      `UPDATE app_lifeops.life_workflow_definitions
           SET domain = ${sqlQuote(definition.domain)},
               subject_type = ${sqlQuote(definition.subjectType)},
               subject_id = ${sqlQuote(definition.subjectId)},
@@ -4968,7 +5541,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_workflow_definitions
+         FROM app_lifeops.life_workflow_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY updated_at DESC, created_at DESC`,
     );
@@ -4978,20 +5551,20 @@ export class LifeOpsRepository {
   async deleteWorkflow(agentId: string, workflowId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_workflow_runs
+      `DELETE FROM app_lifeops.life_workflow_runs
         WHERE agent_id = ${sqlQuote(agentId)}
           AND workflow_id = ${sqlQuote(workflowId)}`,
     );
     await executeRawSql(
       this.runtime,
-      `UPDATE life_workflow_browser_sessions
+      `UPDATE app_lifeops.life_workflow_browser_sessions
          SET workflow_id = NULL
        WHERE agent_id = ${sqlQuote(agentId)}
          AND workflow_id = ${sqlQuote(workflowId)}`,
     );
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_workflow_definitions
+      `DELETE FROM app_lifeops.life_workflow_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(workflowId)}`,
     );
@@ -5004,7 +5577,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_workflow_definitions
+         FROM app_lifeops.life_workflow_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(workflowId)}
         LIMIT 1`,
@@ -5016,7 +5589,7 @@ export class LifeOpsRepository {
   async createWorkflowRun(run: LifeOpsWorkflowRun): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_workflow_runs (
+      `INSERT INTO app_lifeops.life_workflow_runs (
         id, agent_id, workflow_id, started_at, finished_at, status,
         result_json, audit_ref
       ) VALUES (
@@ -5039,7 +5612,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_workflow_runs
+         FROM app_lifeops.life_workflow_runs
         WHERE agent_id = ${sqlQuote(agentId)}
           AND workflow_id = ${sqlQuote(workflowId)}
         ORDER BY started_at DESC`,
@@ -5056,7 +5629,7 @@ export class LifeOpsRepository {
       attempt.reviewStatus ?? metadataReviewColumns.reviewStatus;
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_reminder_attempts (
+      `INSERT INTO app_lifeops.life_reminder_attempts (
         id, agent_id, plan_id, owner_type, owner_id, occurrence_id,
         channel, step_index, scheduled_for, attempted_at, outcome,
         connector_ref, delivery_metadata_json, review_at, review_status
@@ -5100,7 +5673,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_reminder_attempts
+         FROM app_lifeops.life_reminder_attempts
         WHERE agent_id = ${sqlQuote(agentId)}
           ${ownerTypeClause}
           ${ownerIdClause}
@@ -5119,7 +5692,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_reminder_attempts
+         FROM app_lifeops.life_reminder_attempts
         WHERE agent_id = ${sqlQuote(agentId)}
           AND attempted_at IS NOT NULL
           AND outcome IN ('delivered', 'delivered_read', 'delivered_unread')
@@ -5163,13 +5736,13 @@ export class LifeOpsRepository {
     const normalizedLimit = Math.max(1, Math.min(500, Math.trunc(limit)));
     const rows = await executeRawSql(
       this.runtime,
-      `UPDATE life_reminder_attempts
+      `UPDATE app_lifeops.life_reminder_attempts
           SET review_claimed_at = ${sqlQuote(nowIso)},
               review_claimed_by = ${sqlQuote(claimedBy)},
               review_attempt_count = COALESCE(review_attempt_count, 0) + 1
         WHERE id IN (
           SELECT id
-            FROM life_reminder_attempts
+            FROM app_lifeops.life_reminder_attempts
            WHERE agent_id = ${sqlQuote(agentId)}
              AND attempted_at IS NOT NULL
              AND outcome IN ('delivered', 'delivered_read', 'delivered_unread')
@@ -5209,7 +5782,7 @@ export class LifeOpsRepository {
       }
       await executeRawSql(
         this.runtime,
-        `UPDATE life_reminder_attempts
+        `UPDATE app_lifeops.life_reminder_attempts
             SET outcome = ${sqlQuote(outcome)},
                 delivery_metadata_json = delivery_metadata_json::jsonb || ${sqlJson(metadata)}::jsonb
                 ${
@@ -5222,7 +5795,7 @@ export class LifeOpsRepository {
     } else {
       await executeRawSql(
         this.runtime,
-        `UPDATE life_reminder_attempts
+        `UPDATE app_lifeops.life_reminder_attempts
             SET outcome = ${sqlQuote(outcome)}
           WHERE id = ${sqlQuote(id)}`,
       );
@@ -5232,7 +5805,7 @@ export class LifeOpsRepository {
   async createBrowserSession(session: LifeOpsBrowserSession): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_workflow_browser_sessions (
+      `INSERT INTO app_lifeops.life_workflow_browser_sessions (
         id, agent_id, domain, subject_type, subject_id, visibility_scope,
         context_policy, workflow_id, browser, companion_id, profile_id,
         window_id, tab_id, title, status, actions_json,
@@ -5269,7 +5842,7 @@ export class LifeOpsRepository {
   async updateBrowserSession(session: LifeOpsBrowserSession): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE life_workflow_browser_sessions
+      `UPDATE app_lifeops.life_workflow_browser_sessions
           SET domain = ${sqlQuote(session.domain)},
               subject_type = ${sqlQuote(session.subjectType)},
               subject_id = ${sqlQuote(session.subjectId)},
@@ -5302,7 +5875,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_workflow_browser_sessions
+         FROM app_lifeops.life_workflow_browser_sessions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(sessionId)}
         LIMIT 1`,
@@ -5315,7 +5888,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_workflow_browser_sessions
+         FROM app_lifeops.life_workflow_browser_sessions
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY updated_at DESC, created_at DESC`,
     );
@@ -5325,10 +5898,14 @@ export class LifeOpsRepository {
   async getBrowserSettings(
     agentId: string,
   ): Promise<BrowserBridgeSettings | null> {
+    const settingsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "settings",
+    );
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM browser_bridge_settings
+         FROM ${settingsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
         LIMIT 1`,
     );
@@ -5341,9 +5918,13 @@ export class LifeOpsRepository {
     settings: BrowserBridgeSettings,
   ): Promise<void> {
     const createdAt = settings.updatedAt ?? isoNow();
+    const settingsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "settings",
+    );
     await executeRawSql(
       this.runtime,
-      `INSERT INTO browser_bridge_settings (
+      `INSERT INTO ${settingsTable} (
         agent_id, enabled, tracking_mode, allow_browser_control,
         require_confirmation_for_account_affecting, incognito_enabled,
         site_access_mode, granted_origins_json, blocked_origins_json,
@@ -5385,10 +5966,14 @@ export class LifeOpsRepository {
     browser: BrowserBridgeCompanionStatus["browser"],
     profileId: string,
   ): Promise<BrowserBridgeCompanionStatus | null> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM browser_bridge_companions
+         FROM ${companionsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND browser = ${sqlQuote(browser)}
           AND profile_id = ${sqlQuote(profileId)}
@@ -5402,10 +5987,14 @@ export class LifeOpsRepository {
     agentId: string,
     companionId: string,
   ): Promise<BrowserCompanionCredential | null> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM browser_bridge_companions
+         FROM ${companionsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(companionId)}
         LIMIT 1`,
@@ -5417,9 +6006,13 @@ export class LifeOpsRepository {
   async upsertBrowserCompanion(
     companion: BrowserBridgeCompanionStatus,
   ): Promise<void> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
     await executeRawSql(
       this.runtime,
-      `INSERT INTO browser_bridge_companions (
+      `INSERT INTO ${companionsTable} (
         id, agent_id, browser, profile_id, profile_label, label,
         extension_version, connection_state, permissions_json, last_seen_at,
         paired_at, metadata_json, created_at, updated_at
@@ -5446,7 +6039,7 @@ export class LifeOpsRepository {
         connection_state = excluded.connection_state,
         permissions_json = excluded.permissions_json,
         last_seen_at = excluded.last_seen_at,
-        paired_at = COALESCE(browser_bridge_companions.paired_at, excluded.paired_at),
+        paired_at = COALESCE(${companionsTable}.paired_at, excluded.paired_at),
         metadata_json = excluded.metadata_json,
         updated_at = excluded.updated_at`,
     );
@@ -5456,13 +6049,20 @@ export class LifeOpsRepository {
     agentId: string,
     companionId: string,
     pairingTokenHash: string,
+    pairingTokenExpiresAt: string | null,
     pairedAt: string,
     updatedAt: string,
   ): Promise<void> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
     await executeRawSql(
       this.runtime,
-      `UPDATE browser_bridge_companions
+      `UPDATE ${companionsTable}
           SET pairing_token_hash = ${sqlQuote(pairingTokenHash)},
+              pairing_token_expires_at = ${sqlText(pairingTokenExpiresAt)},
+              pairing_token_revoked_at = NULL,
               pending_pairing_token_hashes_json = '[]',
               paired_at = ${sqlQuote(pairedAt)},
               updated_at = ${sqlQuote(updatedAt)}
@@ -5474,12 +6074,18 @@ export class LifeOpsRepository {
   async updateBrowserCompanionPendingPairingTokenHashes(
     agentId: string,
     companionId: string,
-    pendingPairingTokenHashes: string[],
+    pendingPairingTokenHashes: Array<
+      string | { hash: string; expiresAt?: string | null }
+    >,
     updatedAt: string,
   ): Promise<void> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
     await executeRawSql(
       this.runtime,
-      `UPDATE browser_bridge_companions
+      `UPDATE ${companionsTable}
           SET pending_pairing_token_hashes_json = ${sqlJson(pendingPairingTokenHashes)},
               updated_at = ${sqlQuote(updatedAt)}
         WHERE agent_id = ${sqlQuote(agentId)}
@@ -5491,14 +6097,23 @@ export class LifeOpsRepository {
     agentId: string,
     companionId: string,
     pairingTokenHash: string,
-    pendingPairingTokenHashes: string[],
+    pendingPairingTokenHashes: Array<
+      string | { hash: string; expiresAt?: string | null }
+    >,
+    pairingTokenExpiresAt: string | null,
     pairedAt: string,
     updatedAt: string,
   ): Promise<void> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
     await executeRawSql(
       this.runtime,
-      `UPDATE browser_bridge_companions
+      `UPDATE ${companionsTable}
           SET pairing_token_hash = ${sqlQuote(pairingTokenHash)},
+              pairing_token_expires_at = ${sqlText(pairingTokenExpiresAt)},
+              pairing_token_revoked_at = NULL,
               pending_pairing_token_hashes_json = ${sqlJson(pendingPairingTokenHashes)},
               paired_at = ${sqlQuote(pairedAt)},
               updated_at = ${sqlQuote(updatedAt)}
@@ -5507,13 +6122,38 @@ export class LifeOpsRepository {
     );
   }
 
+  async revokeBrowserCompanionPairingToken(
+    agentId: string,
+    companionId: string,
+    revokedAt: string,
+  ): Promise<void> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
+    await executeRawSql(
+      this.runtime,
+      `UPDATE ${companionsTable}
+          SET pairing_token_revoked_at = ${sqlQuote(revokedAt)},
+              pending_pairing_token_hashes_json = '[]',
+              connection_state = 'disconnected',
+              updated_at = ${sqlQuote(revokedAt)}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(companionId)}`,
+    );
+  }
+
   async listBrowserCompanions(
     agentId: string,
   ): Promise<BrowserBridgeCompanionStatus[]> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM browser_bridge_companions
+         FROM ${companionsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY browser ASC, profile_label ASC, label ASC`,
     );
@@ -5521,9 +6161,10 @@ export class LifeOpsRepository {
   }
 
   async upsertBrowserTab(tab: BrowserBridgeTabSummary): Promise<void> {
+    const tabsTable = await resolveBrowserBridgeTable(this.runtime, "tabs");
     await executeRawSql(
       this.runtime,
-      `INSERT INTO browser_bridge_tabs (
+      `INSERT INTO ${tabsTable} (
         id, agent_id, companion_id, browser, profile_id, window_id, tab_id,
         url, title, active_in_window, focused_window, focused_active,
         incognito, favicon_url, last_seen_at, last_focused_at, metadata_json,
@@ -5566,10 +6207,11 @@ export class LifeOpsRepository {
   }
 
   async listBrowserTabs(agentId: string): Promise<BrowserBridgeTabSummary[]> {
+    const tabsTable = await resolveBrowserBridgeTable(this.runtime, "tabs");
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM browser_bridge_tabs
+         FROM ${tabsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY focused_active DESC,
                  active_in_window DESC,
@@ -5582,18 +6224,20 @@ export class LifeOpsRepository {
   async deleteBrowserTabsByIds(agentId: string, ids: string[]): Promise<void> {
     if (ids.length === 0) return;
     const values = ids.map((id) => sqlQuote(id)).join(", ");
+    const tabsTable = await resolveBrowserBridgeTable(this.runtime, "tabs");
     await executeRawSql(
       this.runtime,
-      `DELETE FROM browser_bridge_tabs
+      `DELETE FROM ${tabsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id IN (${values})`,
     );
   }
 
   async deleteAllBrowserTabs(agentId: string): Promise<void> {
+    const tabsTable = await resolveBrowserBridgeTable(this.runtime, "tabs");
     await executeRawSql(
       this.runtime,
-      `DELETE FROM browser_bridge_tabs
+      `DELETE FROM ${tabsTable}
         WHERE agent_id = ${sqlQuote(agentId)}`,
     );
   }
@@ -5601,9 +6245,13 @@ export class LifeOpsRepository {
   async upsertBrowserPageContext(
     context: BrowserBridgePageContext,
   ): Promise<void> {
+    const pageContextsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "pageContexts",
+    );
     await executeRawSql(
       this.runtime,
-      `INSERT INTO browser_bridge_page_contexts (
+      `INSERT INTO ${pageContextsTable} (
         id, agent_id, browser, profile_id, window_id, tab_id, url, title,
         selection_text, main_text, headings_json, links_json, forms_json,
         captured_at, metadata_json
@@ -5640,10 +6288,14 @@ export class LifeOpsRepository {
   async listBrowserPageContexts(
     agentId: string,
   ): Promise<BrowserBridgePageContext[]> {
+    const pageContextsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "pageContexts",
+    );
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM browser_bridge_page_contexts
+         FROM ${pageContextsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY captured_at DESC`,
     );
@@ -5656,18 +6308,26 @@ export class LifeOpsRepository {
   ): Promise<void> {
     if (ids.length === 0) return;
     const values = ids.map((id) => sqlQuote(id)).join(", ");
+    const pageContextsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "pageContexts",
+    );
     await executeRawSql(
       this.runtime,
-      `DELETE FROM browser_bridge_page_contexts
+      `DELETE FROM ${pageContextsTable}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id IN (${values})`,
     );
   }
 
   async deleteAllBrowserPageContexts(agentId: string): Promise<void> {
+    const pageContextsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "pageContexts",
+    );
     await executeRawSql(
       this.runtime,
-      `DELETE FROM browser_bridge_page_contexts
+      `DELETE FROM ${pageContextsTable}
         WHERE agent_id = ${sqlQuote(agentId)}`,
     );
   }
@@ -5678,7 +6338,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_workflow_browser_sessions
+      `DELETE FROM app_lifeops.life_workflow_browser_sessions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(sessionId)}`,
     );
@@ -5704,7 +6364,7 @@ export class LifeOpsRepository {
     const now = isoNow();
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_escalation_states (
+      `INSERT INTO app_lifeops.life_escalation_states (
         id, agent_id, reason, text, current_step,
         channels_sent_json, started_at, last_sent_at,
         resolved, resolved_at, metadata_json,
@@ -5743,7 +6403,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_escalation_states
+         FROM app_lifeops.life_escalation_states
         WHERE agent_id = ${sqlQuote(agentId)}
           AND resolved = FALSE
         ORDER BY started_at DESC
@@ -5757,7 +6417,7 @@ export class LifeOpsRepository {
     const now = isoNow();
     await executeRawSql(
       this.runtime,
-      `UPDATE life_escalation_states
+      `UPDATE app_lifeops.life_escalation_states
          SET resolved = TRUE,
              resolved_at = ${sqlQuote(resolvedAt)},
              updated_at = ${sqlQuote(now)}
@@ -5772,7 +6432,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_escalation_states
+         FROM app_lifeops.life_escalation_states
         WHERE agent_id = ${sqlQuote(agentId)}
         ORDER BY started_at DESC
         LIMIT ${sqlInteger(limit)}`,
@@ -5783,7 +6443,7 @@ export class LifeOpsRepository {
   async deleteAllEscalationStates(agentId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM life_escalation_states
+      `DELETE FROM app_lifeops.life_escalation_states
         WHERE agent_id = ${sqlQuote(agentId)}`,
     );
   }
@@ -5795,7 +6455,7 @@ export class LifeOpsRepository {
   async upsertRelationship(rel: LifeOpsRelationship): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_relationships (
+      `INSERT INTO app_lifeops.life_relationships (
          id, agent_id, name, primary_channel, primary_handle, email, phone,
          notes, tags_json, relationship_type, last_contacted_at, metadata_json,
          created_at, updated_at
@@ -5815,7 +6475,8 @@ export class LifeOpsRepository {
          ${sqlQuote(rel.createdAt)},
          ${sqlQuote(rel.updatedAt)}
        )
-       ON CONFLICT (id) DO UPDATE SET
+       ON CONFLICT (agent_id, primary_channel, primary_handle) DO UPDATE SET
+         id = EXCLUDED.id,
          name = EXCLUDED.name,
          primary_channel = EXCLUDED.primary_channel,
          primary_handle = EXCLUDED.primary_handle,
@@ -5837,7 +6498,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_relationships
+         FROM app_lifeops.life_relationships
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(id)}
         LIMIT 1`,
@@ -5859,7 +6520,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_relationships
+         FROM app_lifeops.life_relationships
         WHERE ${clauses.join(" AND ")}
         ORDER BY name ASC
         ${limitClause}`,
@@ -5872,7 +6533,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_relationship_interactions (
+      `INSERT INTO app_lifeops.life_relationship_interactions (
          id, agent_id, relationship_id, channel, direction, summary,
          occurred_at, metadata_json, created_at
        ) VALUES (
@@ -5899,7 +6560,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_relationship_interactions
+         FROM app_lifeops.life_relationship_interactions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND relationship_id = ${sqlQuote(relationshipId)}
         ORDER BY occurred_at DESC
@@ -5915,7 +6576,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `UPDATE life_relationships
+      `UPDATE app_lifeops.life_relationships
           SET last_contacted_at = ${sqlQuote(timestamp)},
               updated_at = ${sqlQuote(timestamp)}
         WHERE agent_id = ${sqlQuote(agentId)}
@@ -5927,7 +6588,7 @@ export class LifeOpsRepository {
   async upsertFollowUp(fu: LifeOpsFollowUp): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_follow_ups (
+      `INSERT INTO app_lifeops.life_follow_ups (
          id, agent_id, relationship_id, due_at, reason, status, priority,
          draft_json, completed_at, metadata_json, created_at, updated_at
        ) VALUES (
@@ -5964,7 +6625,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_follow_ups
+         FROM app_lifeops.life_follow_ups
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(id)}
         LIMIT 1`,
@@ -5989,7 +6650,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_follow_ups
+         FROM app_lifeops.life_follow_ups
         WHERE ${clauses.join(" AND ")}
         ORDER BY due_at ASC
         ${limitClause}`,
@@ -6009,7 +6670,7 @@ export class LifeOpsRepository {
       : "";
     await executeRawSql(
       this.runtime,
-      `UPDATE life_follow_ups
+      `UPDATE app_lifeops.life_follow_ups
           SET status = ${sqlQuote(status)},
               updated_at = ${sqlQuote(now)}
               ${completedClause}
@@ -6026,7 +6687,7 @@ export class LifeOpsRepository {
     const now = isoNow();
     await executeRawSql(
       this.runtime,
-      `UPDATE life_follow_ups
+      `UPDATE app_lifeops.life_follow_ups
           SET due_at = ${sqlQuote(dueAt)},
               updated_at = ${sqlQuote(now)}
         WHERE agent_id = ${sqlQuote(agentId)}
@@ -6041,7 +6702,7 @@ export class LifeOpsRepository {
   async upsertXDm(dm: LifeOpsXDm): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_x_dms (
+      `INSERT INTO app_lifeops.life_x_dms (
         id, agent_id, external_dm_id, conversation_id, sender_handle, sender_id,
         is_inbound, text, received_at, read_at, replied_at, metadata_json,
         synced_at, updated_at
@@ -6068,8 +6729,8 @@ export class LifeOpsRepository {
         is_inbound = excluded.is_inbound,
         text = excluded.text,
         received_at = excluded.received_at,
-        read_at = COALESCE(excluded.read_at, life_x_dms.read_at),
-        replied_at = COALESCE(excluded.replied_at, life_x_dms.replied_at),
+        read_at = COALESCE(excluded.read_at, app_lifeops.life_x_dms.read_at),
+        replied_at = COALESCE(excluded.replied_at, app_lifeops.life_x_dms.replied_at),
         metadata_json = excluded.metadata_json,
         synced_at = excluded.synced_at,
         updated_at = excluded.updated_at`,
@@ -6091,7 +6752,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_x_dms
+         FROM app_lifeops.life_x_dms
         WHERE agent_id = ${sqlQuote(agentId)}
           ${conversationClause}
         ORDER BY received_at DESC
@@ -6103,7 +6764,7 @@ export class LifeOpsRepository {
   async upsertXFeedItem(item: LifeOpsXFeedItem): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_x_feed_items (
+      `INSERT INTO app_lifeops.life_x_feed_items (
         id, agent_id, external_tweet_id, author_handle, author_id, text,
         created_at_source, feed_type, metadata_json, synced_at, updated_at
       ) VALUES (
@@ -6143,7 +6804,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_x_feed_items
+         FROM app_lifeops.life_x_feed_items
         WHERE agent_id = ${sqlQuote(agentId)}
           AND feed_type = ${sqlQuote(feedType)}
         ORDER BY created_at_source DESC
@@ -6155,7 +6816,7 @@ export class LifeOpsRepository {
   async upsertXSyncState(state: LifeOpsXSyncState): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_x_sync_states (
+      `INSERT INTO app_lifeops.life_x_sync_states (
         id, agent_id, feed_type, last_cursor, synced_at, updated_at
       ) VALUES (
         ${sqlQuote(state.id)},
@@ -6179,7 +6840,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_x_sync_states
+         FROM app_lifeops.life_x_sync_states
         WHERE agent_id = ${sqlQuote(agentId)}
           AND feed_type = ${sqlQuote(feedType)}
         LIMIT 1`,
@@ -6197,7 +6858,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_screen_time_sessions (
+      `INSERT INTO app_lifeops.life_screen_time_sessions (
          id, agent_id, source, identifier, display_name, start_at, end_at,
          duration_seconds, is_active, metadata_json, created_at, updated_at
        ) VALUES (
@@ -6234,7 +6895,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_screen_time_sessions
+         FROM app_lifeops.life_screen_time_sessions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(id)}
         LIMIT 1`,
@@ -6252,7 +6913,7 @@ export class LifeOpsRepository {
     const now = isoNow();
     await executeRawSql(
       this.runtime,
-      `UPDATE life_screen_time_sessions
+      `UPDATE app_lifeops.life_screen_time_sessions
           SET end_at = ${sqlQuote(endAt)},
               duration_seconds = ${sqlInteger(durationSeconds)},
               is_active = ${sqlBoolean(false)},
@@ -6281,7 +6942,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_screen_time_sessions
+         FROM app_lifeops.life_screen_time_sessions
         WHERE ${clauses.join(" AND ")}
         ORDER BY start_at ASC
         ${limitClause}`,
@@ -6308,7 +6969,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_screen_time_sessions
+         FROM app_lifeops.life_screen_time_sessions
         WHERE ${clauses.join(" AND ")}
         ORDER BY start_at ASC
         ${limitClause}`,
@@ -6319,7 +6980,7 @@ export class LifeOpsRepository {
   async upsertScreenTimeDaily(row: LifeOpsScreenTimeDaily): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_screen_time_daily (
+      `INSERT INTO app_lifeops.life_screen_time_daily (
          id, agent_id, source, identifier, date, total_seconds, session_count,
          metadata_json, created_at, updated_at
        ) VALUES (
@@ -6347,7 +7008,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_schedule_insights (
+      `INSERT INTO app_lifeops.life_schedule_insights (
          id, agent_id, effective_day_key, local_date, timezone, inferred_at,
          circadian_state, state_confidence, uncertainty_reason, sleep_status,
          sleep_confidence,
@@ -6431,7 +7092,7 @@ export class LifeOpsRepository {
   async insertTelemetryEvent(event: LifeOpsTelemetryEvent): Promise<boolean> {
     const rows = await executeRawSql(
       this.runtime,
-      `INSERT INTO life_telemetry_events (
+      `INSERT INTO app_lifeops.life_telemetry_events (
          id, agent_id, family, occurred_at, ingested_at, dedupe_key,
          source_reliability, payload_json
        ) VALUES (
@@ -6473,7 +7134,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_telemetry_events
+         FROM app_lifeops.life_telemetry_events
         WHERE ${clauses.join(" AND ")}
         ORDER BY occurred_at ASC
         ${limitClause}`,
@@ -6484,7 +7145,7 @@ export class LifeOpsRepository {
   /**
    * Delete telemetry rows older than the retention window. Callers should
    * prune daily via the scheduler. Daily rollups in
-   * `life_telemetry_rollup_daily` are retained indefinitely.
+   * `app_lifeops.life_telemetry_rollup_daily` are retained indefinitely.
    */
   async pruneTelemetryEvents(args: {
     agentId: string;
@@ -6495,7 +7156,7 @@ export class LifeOpsRepository {
     ).toISOString();
     const rows = await executeRawSql(
       this.runtime,
-      `DELETE FROM life_telemetry_events
+      `DELETE FROM app_lifeops.life_telemetry_events
         WHERE agent_id = ${sqlQuote(args.agentId)}
           AND occurred_at < ${sqlQuote(cutoff)}
         RETURNING id`,
@@ -6525,7 +7186,7 @@ export class LifeOpsRepository {
               SUBSTR(occurred_at, 1, 10) AS local_date,
               COUNT(*) AS event_count,
               MAX(occurred_at) AS last_observed_at
-         FROM life_telemetry_events
+         FROM app_lifeops.life_telemetry_events
         WHERE agent_id = ${sqlQuote(args.agentId)}
           AND occurred_at >= ${sqlQuote(args.sinceIso)}
           AND occurred_at < ${sqlQuote(args.untilIso)}
@@ -6540,7 +7201,7 @@ export class LifeOpsRepository {
       if (!family || !localDate || !lastObservedAt) continue;
       await executeRawSql(
         this.runtime,
-        `INSERT INTO life_telemetry_rollup_daily (
+        `INSERT INTO app_lifeops.life_telemetry_rollup_daily (
            agent_id, family, local_date, event_count,
            last_observed_at, created_at, updated_at
          ) VALUES (
@@ -6568,7 +7229,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_circadian_states
+         FROM app_lifeops.life_circadian_states
         WHERE agent_id = ${sqlQuote(agentId)}
         LIMIT 1`,
     );
@@ -6578,7 +7239,7 @@ export class LifeOpsRepository {
   async upsertCircadianState(state: LifeOpsCircadianStateRow): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_circadian_states (
+      `INSERT INTO app_lifeops.life_circadian_states (
          agent_id, circadian_state, state_confidence, uncertainty_reason,
          entered_at, since_sleep_detected_at, since_wake_observed_at,
          since_wake_confirmed_at, evidence_refs_json, created_at, updated_at
@@ -6611,7 +7272,7 @@ export class LifeOpsRepository {
   async upsertSleepEpisode(episode: LifeOpsSleepEpisodeRecord): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_sleep_episodes (
+      `INSERT INTO app_lifeops.life_sleep_episodes (
          id, agent_id, start_at, end_at, source, confidence, cycle_type,
          sealed, evidence_json, created_at, updated_at
        ) VALUES (
@@ -6657,7 +7318,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_sleep_episodes
+         FROM app_lifeops.life_sleep_episodes
         WHERE ${clauses.join(" AND ")}
         ORDER BY start_at ASC
         ${limitClause}`,
@@ -6670,7 +7331,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_schedule_observations (
+      `INSERT INTO app_lifeops.life_schedule_observations (
          id, agent_id, origin, device_id, device_kind, timezone, observed_at,
          window_start_at, window_end_at, circadian_state, state_confidence,
          uncertainty_reason, meal_label, metadata_json, created_at, updated_at
@@ -6728,7 +7389,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_schedule_observations
+         FROM app_lifeops.life_schedule_observations
         WHERE ${clauses.join(" AND ")}
         ORDER BY observed_at DESC
         ${limitClause}`,
@@ -6741,7 +7402,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_schedule_merged_states (
+      `INSERT INTO app_lifeops.life_schedule_merged_states (
          id, agent_id, scope, effective_day_key, local_date, timezone,
          merged_at, inferred_at, circadian_state, state_confidence,
          uncertainty_reason, sleep_status, sleep_confidence,
@@ -6835,7 +7496,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_schedule_merged_states
+         FROM app_lifeops.life_schedule_merged_states
         WHERE agent_id = ${sqlQuote(agentId)}
           AND scope = ${sqlQuote(scope)}
           AND timezone = ${sqlQuote(timezone)}
@@ -6861,7 +7522,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_screen_time_daily
+         FROM app_lifeops.life_screen_time_daily
         WHERE ${clauses.join(" AND ")}
         ORDER BY total_seconds DESC
         ${limitClause}`,
@@ -6883,7 +7544,7 @@ export class LifeOpsRepository {
               MAX(display_name) AS display_name,
               SUM(duration_seconds) AS total_seconds,
               COUNT(*) AS session_count
-         FROM life_screen_time_sessions
+         FROM app_lifeops.life_screen_time_sessions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND start_at >= ${sqlQuote(dayStart)}
           AND start_at <= ${sqlQuote(dayEnd)}
@@ -6921,7 +7582,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_scheduling_negotiations (
+      `INSERT INTO app_lifeops.life_scheduling_negotiations (
          id, agent_id, subject, relationship_id, duration_minutes, timezone,
          state, accepted_proposal_id, started_at, finalized_at, metadata_json,
          created_at, updated_at
@@ -6960,7 +7621,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_scheduling_negotiations
+         FROM app_lifeops.life_scheduling_negotiations
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(id)}
         LIMIT 1`,
@@ -6982,7 +7643,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_scheduling_negotiations
+         FROM app_lifeops.life_scheduling_negotiations
         WHERE ${clauses.join(" AND ")}
         ORDER BY updated_at DESC
         ${limitClause}`,
@@ -7003,7 +7664,7 @@ export class LifeOpsRepository {
         : `, finalized_at = ${sqlText(finalizedAt)}`;
     await executeRawSql(
       this.runtime,
-      `UPDATE life_scheduling_negotiations
+      `UPDATE app_lifeops.life_scheduling_negotiations
           SET state = ${sqlQuote(state)},
               updated_at = ${sqlQuote(now)}${finalizedClause}
         WHERE agent_id = ${sqlQuote(agentId)}
@@ -7014,7 +7675,7 @@ export class LifeOpsRepository {
   async upsertSchedulingProposal(p: LifeOpsSchedulingProposal): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO life_scheduling_proposals (
+      `INSERT INTO app_lifeops.life_scheduling_proposals (
          id, agent_id, negotiation_id, start_at, end_at, proposed_by, status,
          metadata_json, created_at, updated_at
        ) VALUES (
@@ -7046,7 +7707,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_scheduling_proposals
+         FROM app_lifeops.life_scheduling_proposals
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(id)}
         LIMIT 1`,
@@ -7062,7 +7723,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM life_scheduling_proposals
+         FROM app_lifeops.life_scheduling_proposals
         WHERE agent_id = ${sqlQuote(agentId)}
           AND negotiation_id = ${sqlQuote(negotiationId)}
         ORDER BY created_at ASC`,
@@ -7078,12 +7739,465 @@ export class LifeOpsRepository {
     const now = isoNow();
     await executeRawSql(
       this.runtime,
-      `UPDATE life_scheduling_proposals
+      `UPDATE app_lifeops.life_scheduling_proposals
           SET status = ${sqlQuote(status)},
               updated_at = ${sqlQuote(now)}
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(id)}`,
     );
+  }
+
+  // ScheduledTask spine. The runner is the only writer for these tables;
+  // tables are created by the drizzle plugin-migration system from
+  // `lifeOpsSchema`.
+
+  async upsertScheduledTask(
+    agentId: string,
+    task: import("./scheduled-task/types.js").ScheduledTask,
+  ): Promise<void> {
+    const now = isoNow();
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_scheduled_tasks (
+        id, agent_id, kind, prompt_instructions, context_request_json,
+        trigger_json, priority, should_fire_json, completion_check_json,
+        escalation_json, output_json, pipeline_json, subject_kind, subject_id,
+        idempotency_key, respects_global_pause, state_json, source,
+        created_by, owner_visible, metadata_json, created_at, updated_at
+      ) VALUES (
+        ${sqlQuote(task.taskId)},
+        ${sqlQuote(agentId)},
+        ${sqlQuote(task.kind)},
+        ${sqlQuote(task.promptInstructions)},
+        ${sqlText(task.contextRequest ? JSON.stringify(task.contextRequest) : null)},
+        ${sqlJson(task.trigger)},
+        ${sqlQuote(task.priority)},
+        ${sqlText(task.shouldFire ? JSON.stringify(task.shouldFire) : null)},
+        ${sqlText(task.completionCheck ? JSON.stringify(task.completionCheck) : null)},
+        ${sqlText(task.escalation ? JSON.stringify(task.escalation) : null)},
+        ${sqlText(task.output ? JSON.stringify(task.output) : null)},
+        ${sqlText(task.pipeline ? JSON.stringify(task.pipeline) : null)},
+        ${sqlText(task.subject?.kind ?? null)},
+        ${sqlText(task.subject?.id ?? null)},
+        ${sqlText(task.idempotencyKey ?? null)},
+        ${sqlBoolean(task.respectsGlobalPause)},
+        ${sqlJson(task.state)},
+        ${sqlQuote(task.source)},
+        ${sqlQuote(task.createdBy)},
+        ${sqlBoolean(task.ownerVisible)},
+        ${sqlJson(task.metadata ?? {})},
+        ${sqlQuote(now)},
+        ${sqlQuote(now)}
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        kind = EXCLUDED.kind,
+        prompt_instructions = EXCLUDED.prompt_instructions,
+        context_request_json = EXCLUDED.context_request_json,
+        trigger_json = EXCLUDED.trigger_json,
+        priority = EXCLUDED.priority,
+        should_fire_json = EXCLUDED.should_fire_json,
+        completion_check_json = EXCLUDED.completion_check_json,
+        escalation_json = EXCLUDED.escalation_json,
+        output_json = EXCLUDED.output_json,
+        pipeline_json = EXCLUDED.pipeline_json,
+        subject_kind = EXCLUDED.subject_kind,
+        subject_id = EXCLUDED.subject_id,
+        idempotency_key = EXCLUDED.idempotency_key,
+        respects_global_pause = EXCLUDED.respects_global_pause,
+        state_json = EXCLUDED.state_json,
+        source = EXCLUDED.source,
+        created_by = EXCLUDED.created_by,
+        owner_visible = EXCLUDED.owner_visible,
+        metadata_json = EXCLUDED.metadata_json,
+        updated_at = ${sqlQuote(now)}`,
+    );
+  }
+
+  async getScheduledTask(
+    agentId: string,
+    taskId: string,
+  ): Promise<import("./scheduled-task/types.js").ScheduledTask | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_scheduled_tasks
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(taskId)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseScheduledTaskRow(row) : null;
+  }
+
+  async getScheduledTaskByIdempotencyKey(
+    agentId: string,
+    idempotencyKey: string,
+  ): Promise<import("./scheduled-task/types.js").ScheduledTask | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_scheduled_tasks
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND idempotency_key = ${sqlQuote(idempotencyKey)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseScheduledTaskRow(row) : null;
+  }
+
+  async listScheduledTasks(
+    agentId: string,
+    filter?: {
+      kind?: string;
+      status?: string | string[];
+      subjectKind?: string;
+      subjectId?: string;
+      source?: string;
+      ownerVisibleOnly?: boolean;
+    },
+  ): Promise<import("./scheduled-task/types.js").ScheduledTask[]> {
+    const clauses: string[] = [`agent_id = ${sqlQuote(agentId)}`];
+    if (filter?.kind) {
+      clauses.push(`kind = ${sqlQuote(filter.kind)}`);
+    }
+    if (filter?.subjectKind) {
+      clauses.push(`subject_kind = ${sqlQuote(filter.subjectKind)}`);
+    }
+    if (filter?.subjectId) {
+      clauses.push(`subject_id = ${sqlQuote(filter.subjectId)}`);
+    }
+    if (filter?.source) {
+      clauses.push(`source = ${sqlQuote(filter.source)}`);
+    }
+    if (filter?.ownerVisibleOnly) {
+      clauses.push(`owner_visible = TRUE`);
+    }
+    if (filter?.status) {
+      const arr = Array.isArray(filter.status) ? filter.status : [filter.status];
+      const inList = arr
+        .filter((s) => typeof s === "string" && s.length > 0)
+        .map((s) => sqlQuote(s))
+        .join(", ");
+      if (inList.length > 0) {
+        // status is stored inside state_json — we filter post-fetch
+        // but include the full row in case the caller wants it.
+        clauses.push(
+          `(state_json::jsonb ->> 'status') IN (${inList})`,
+        );
+      }
+    }
+    const where = clauses.join(" AND ");
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_scheduled_tasks
+        WHERE ${where}
+        ORDER BY created_at ASC`,
+    );
+    return rows.map(parseScheduledTaskRow);
+  }
+
+  async deleteScheduledTask(
+    agentId: string,
+    taskId: string,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `DELETE FROM app_lifeops.life_scheduled_tasks
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(taskId)}`,
+    );
+    await executeRawSql(
+      this.runtime,
+      `DELETE FROM app_lifeops.life_scheduled_task_log
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND task_id = ${sqlQuote(taskId)}`,
+    );
+  }
+
+  async appendScheduledTaskLog(
+    entry: import("./scheduled-task/types.js").ScheduledTaskLogEntry,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_scheduled_task_log (
+        id, agent_id, task_id, occurred_at, transition, reason, rolled_up, detail_json
+      ) VALUES (
+        ${sqlQuote(entry.logId)},
+        ${sqlQuote(entry.agentId)},
+        ${sqlQuote(entry.taskId)},
+        ${sqlQuote(entry.occurredAtIso)},
+        ${sqlQuote(entry.transition)},
+        ${sqlText(entry.reason ?? null)},
+        ${sqlBoolean(entry.rolledUp)},
+        ${sqlText(entry.detail ? JSON.stringify(entry.detail) : null)}
+      )`,
+    );
+  }
+
+  async listScheduledTaskLog(args: {
+    agentId: string;
+    taskId: string;
+    sinceIso?: string;
+    untilIso?: string;
+    excludeRollups?: boolean;
+    limit?: number;
+  }): Promise<import("./scheduled-task/types.js").ScheduledTaskLogEntry[]> {
+    const clauses: string[] = [
+      `agent_id = ${sqlQuote(args.agentId)}`,
+      `task_id = ${sqlQuote(args.taskId)}`,
+    ];
+    if (args.sinceIso) clauses.push(`occurred_at >= ${sqlQuote(args.sinceIso)}`);
+    if (args.untilIso) clauses.push(`occurred_at < ${sqlQuote(args.untilIso)}`);
+    if (args.excludeRollups) clauses.push(`rolled_up = FALSE`);
+    const limit =
+      typeof args.limit === "number" && args.limit > 0
+        ? `LIMIT ${sqlInteger(args.limit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_scheduled_task_log
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY occurred_at ASC
+        ${limit}`,
+    );
+    return rows.map(parseScheduledTaskLogRow);
+  }
+
+  async rollupScheduledTaskLog(args: {
+    agentId: string;
+    olderThanIso: string;
+  }): Promise<{ rolledUp: number; deletedRaw: number }> {
+    // Read all expired raw rows for the agent.
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_scheduled_task_log
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND rolled_up = FALSE
+          AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
+    );
+    if (rows.length === 0) {
+      return { rolledUp: 0, deletedRaw: 0 };
+    }
+    const summary = new Map<
+      string,
+      {
+        taskId: string;
+        transition: string;
+        dayIso: string;
+        count: number;
+        firstReason: string | null;
+      }
+    >();
+    for (const r of rows) {
+      const occurredAt = toText(r.occurred_at);
+      const dayIso = occurredAt.slice(0, 10);
+      const key = `${toText(r.task_id)}::${dayIso}::${toText(r.transition)}`;
+      const existing = summary.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        summary.set(key, {
+          taskId: toText(r.task_id),
+          transition: toText(r.transition),
+          dayIso,
+          count: 1,
+          firstReason: typeof r.reason === "string" ? r.reason : null,
+        });
+      }
+    }
+    // Delete the raw rows we just summarized.
+    await executeRawSql(
+      this.runtime,
+      `DELETE FROM app_lifeops.life_scheduled_task_log
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND rolled_up = FALSE
+          AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
+    );
+    let counter = 0;
+    for (const s of summary.values()) {
+      counter += 1;
+      const id = `rollup-${s.taskId}-${s.dayIso}-${s.transition}-${counter}`;
+      await executeRawSql(
+        this.runtime,
+        `INSERT INTO app_lifeops.life_scheduled_task_log (
+          id, agent_id, task_id, occurred_at, transition, reason, rolled_up, detail_json
+        ) VALUES (
+          ${sqlQuote(id)},
+          ${sqlQuote(args.agentId)},
+          ${sqlQuote(s.taskId)},
+          ${sqlQuote(`${s.dayIso}T00:00:00.000Z`)},
+          ${sqlQuote(s.transition)},
+          ${sqlText(s.firstReason ?? null)},
+          ${sqlBoolean(true)},
+          ${sqlText(JSON.stringify({ rollupCount: s.count }))}
+        )`,
+      );
+    }
+    return { rolledUp: summary.size, deletedRaw: rows.length };
+  }
+
+  async upsertWorkThread(
+    agentId: string,
+    thread: import("./work-threads/types.js").WorkThread,
+  ): Promise<void> {
+    const now = isoNow();
+    const createdAt = thread.createdAt || now;
+    const updatedAt = thread.updatedAt || now;
+    const lastActivityAt = thread.lastActivityAt || updatedAt;
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_work_threads (
+        id, agent_id, owner_entity_id, status, title, summary,
+        current_plan_summary, primary_source_ref_json, source_refs_json,
+        participant_entity_ids_json, current_scheduled_task_id, workflow_run_id,
+        approval_id, last_message_memory_id, metadata_json, created_at,
+        updated_at, last_activity_at
+      ) VALUES (
+        ${sqlQuote(thread.id)},
+        ${sqlQuote(agentId)},
+        ${sqlText(thread.ownerEntityId ?? null)},
+        ${sqlQuote(thread.status)},
+        ${sqlQuote(thread.title)},
+        ${sqlQuote(thread.summary)},
+        ${sqlText(thread.currentPlanSummary ?? null)},
+        ${sqlJson(thread.primarySourceRef)},
+        ${sqlJson(thread.sourceRefs ?? [])},
+        ${sqlJson(thread.participantEntityIds ?? [])},
+        ${sqlText(thread.currentScheduledTaskId ?? null)},
+        ${sqlText(thread.workflowRunId ?? null)},
+        ${sqlText(thread.approvalId ?? null)},
+        ${sqlText(thread.lastMessageMemoryId ?? null)},
+        ${sqlJson(thread.metadata ?? {})},
+        ${sqlQuote(createdAt)},
+        ${sqlQuote(updatedAt)},
+        ${sqlQuote(lastActivityAt)}
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        owner_entity_id = EXCLUDED.owner_entity_id,
+        status = EXCLUDED.status,
+        title = EXCLUDED.title,
+        summary = EXCLUDED.summary,
+        current_plan_summary = EXCLUDED.current_plan_summary,
+        primary_source_ref_json = EXCLUDED.primary_source_ref_json,
+        source_refs_json = EXCLUDED.source_refs_json,
+        participant_entity_ids_json = EXCLUDED.participant_entity_ids_json,
+        current_scheduled_task_id = EXCLUDED.current_scheduled_task_id,
+        workflow_run_id = EXCLUDED.workflow_run_id,
+        approval_id = EXCLUDED.approval_id,
+        last_message_memory_id = EXCLUDED.last_message_memory_id,
+        metadata_json = EXCLUDED.metadata_json,
+        updated_at = EXCLUDED.updated_at,
+        last_activity_at = EXCLUDED.last_activity_at`,
+    );
+  }
+
+  async getWorkThread(
+    agentId: string,
+    workThreadId: string,
+  ): Promise<import("./work-threads/types.js").WorkThread | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_work_threads
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(workThreadId)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseWorkThreadRow(row) : null;
+  }
+
+  async listWorkThreads(
+    agentId: string,
+    filter: import("./work-threads/types.js").WorkThreadListFilter = {},
+  ): Promise<import("./work-threads/types.js").WorkThread[]> {
+    const clauses: string[] = [`agent_id = ${sqlQuote(agentId)}`];
+    if (filter.statuses && filter.statuses.length > 0) {
+      const statuses = filter.statuses.map((status) => sqlQuote(status)).join(", ");
+      clauses.push(`status IN (${statuses})`);
+    }
+    if (filter.ownerEntityId) {
+      clauses.push(`owner_entity_id = ${sqlQuote(filter.ownerEntityId)}`);
+    }
+    const shouldApplyLimitInSql = !filter.roomId;
+    const requestedLimit =
+      typeof filter.limit === "number" && filter.limit > 0
+        ? Math.floor(filter.limit)
+        : null;
+    const sqlLimit =
+      shouldApplyLimitInSql && requestedLimit
+        ? `LIMIT ${sqlInteger(requestedLimit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_work_threads
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY last_activity_at DESC
+        ${sqlLimit}`,
+    );
+    let threads = rows.map(parseWorkThreadRow);
+    if (filter.roomId) {
+      threads = threads.filter((thread) =>
+        [thread.primarySourceRef, ...thread.sourceRefs].some(
+          (ref) => ref.roomId === filter.roomId,
+        ),
+      );
+    }
+    if (!filter.includeCrossChannel && filter.roomId) {
+      threads = threads.filter((thread) =>
+        [thread.primarySourceRef, ...thread.sourceRefs].some(
+          (ref) => ref.roomId === filter.roomId && ref.canRead !== false,
+        ),
+      );
+    }
+    if (!shouldApplyLimitInSql && requestedLimit) {
+      threads = threads.slice(0, requestedLimit);
+    }
+    return threads;
+  }
+
+  async appendWorkThreadEvent(
+    event: import("./work-threads/types.js").WorkThreadEvent,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_work_thread_events (
+        id, agent_id, work_thread_id, occurred_at, type, reason, detail_json
+      ) VALUES (
+        ${sqlQuote(event.id)},
+        ${sqlQuote(event.agentId)},
+        ${sqlQuote(event.workThreadId)},
+        ${sqlQuote(event.occurredAt)},
+        ${sqlQuote(event.type)},
+        ${sqlText(event.reason ?? null)},
+        ${sqlText(event.detail ? JSON.stringify(event.detail) : null)}
+      )`,
+    );
+  }
+
+  async listWorkThreadEvents(args: {
+    agentId: string;
+    workThreadId: string;
+    limit?: number;
+  }): Promise<import("./work-threads/types.js").WorkThreadEvent[]> {
+    const limit =
+      typeof args.limit === "number" && args.limit > 0
+        ? `LIMIT ${sqlInteger(args.limit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_work_thread_events
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND work_thread_id = ${sqlQuote(args.workThreadId)}
+        ORDER BY occurred_at DESC
+        ${limit}`,
+    );
+    return rows.map(parseWorkThreadEventRow);
   }
 }
 
@@ -7206,17 +8320,8 @@ export function createLifeOpsActivitySignal(
   };
 }
 
-export function createLifeOpsSleepEpisode(
-  params: Omit<LifeOpsSleepEpisodeRecord, "id" | "createdAt" | "updatedAt">,
-): LifeOpsSleepEpisodeRecord {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
+// `createLifeOpsSleepEpisode` lives in `@elizaos/plugin-health`; re-exported
+// at the top of this file.
 
 export function createLifeOpsConnectorGrant(
   params: Omit<
@@ -7242,64 +8347,28 @@ export function createLifeOpsConnectorGrant(
     >,
 ): LifeOpsConnectorGrant {
   const timestamp = isoNow();
-  return {
+  const id = crypto.randomUUID();
+  const grant: LifeOpsConnectorGrant = {
     ...params,
+    connectorAccountId: params.connectorAccountId ?? null,
     side: params.side ?? "owner",
     executionTarget: params.executionTarget ?? "local",
     sourceOfTruth: params.sourceOfTruth ?? "local_storage",
     preferredByAgent: params.preferredByAgent ?? false,
     cloudConnectionId: params.cloudConnectionId ?? null,
-    id: crypto.randomUUID(),
+    id,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
-}
-
-export function createLifeOpsHealthMetricSample(
-  params: Omit<LifeOpsHealthMetricSample, "id" | "createdAt" | "updatedAt">,
-): LifeOpsHealthMetricSample {
-  const timestamp = isoNow();
   return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
+    ...grant,
+    connectorAccountId:
+      grant.connectorAccountId ?? deriveConnectorAccountIdFromGrant(grant),
   };
 }
 
-export function createLifeOpsHealthWorkout(
-  params: Omit<LifeOpsHealthWorkout, "id" | "createdAt" | "updatedAt">,
-): LifeOpsHealthWorkout {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-export function createLifeOpsHealthSleepEpisode(
-  params: Omit<LifeOpsHealthSleepEpisode, "id" | "createdAt" | "updatedAt">,
-): LifeOpsHealthSleepEpisode {
-  const timestamp = isoNow();
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-export function createLifeOpsHealthSyncState(
-  params: Omit<LifeOpsHealthSyncState, "id" | "updatedAt">,
-): LifeOpsHealthSyncState {
-  return {
-    ...params,
-    id: crypto.randomUUID(),
-    updatedAt: isoNow(),
-  };
-}
+// `createLifeOpsHealth*` factories live in `@elizaos/plugin-health`;
+// re-exported at the top of this file.
 
 export function createLifeOpsCalendarSyncState(
   params: Omit<LifeOpsCalendarSyncState, "id" | "updatedAt">,
@@ -7369,14 +8438,25 @@ export function createLifeOpsBrowserSession(
 export function createBrowserBridgeCompanionStatus(
   params: Omit<
     BrowserBridgeCompanionStatus,
-    "id" | "createdAt" | "updatedAt" | "pairedAt"
-  > & { pairedAt?: string | null },
+    | "id"
+    | "createdAt"
+    | "updatedAt"
+    | "pairedAt"
+    | "pairingTokenExpiresAt"
+    | "pairingTokenRevokedAt"
+  > & {
+    pairedAt?: string | null;
+    pairingTokenExpiresAt?: string | null;
+    pairingTokenRevokedAt?: string | null;
+  },
 ): BrowserBridgeCompanionStatus {
   const timestamp = isoNow();
   return {
     ...params,
     id: crypto.randomUUID(),
     pairedAt: params.pairedAt ?? timestamp,
+    pairingTokenExpiresAt: params.pairingTokenExpiresAt ?? null,
+    pairingTokenRevokedAt: params.pairingTokenRevokedAt ?? null,
     createdAt: timestamp,
     updatedAt: timestamp,
   };

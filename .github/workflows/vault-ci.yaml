@@ -150,10 +150,6 @@ jobs:
         working-directory: packages/shared
         run: bun run build:i18n
 
-      - name: Generate protobuf bindings (transitive prerequisite)
-        working-directory: packages/schemas
-        run: bunx buf generate
-
       - name: Run vault wiring tests
         working-directory: packages/app-core
         run: |

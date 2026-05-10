@@ -22,6 +22,7 @@ import {
 	type Message,
 	type User,
 } from "discord.js";
+import { isDiscordUserAddressed } from "./addressing";
 import {
 	type ChannelDebouncer,
 	createChannelDebouncer,
@@ -54,9 +55,10 @@ import {
 /**
  * Subset of DiscordService fields needed by the event listeners.
  * Because many of the relevant fields are private, the caller passes
- * `this as unknown as DiscordServiceInternals`.
+ * `this as DiscordServiceInternals`.
  */
 export interface DiscordServiceInternals {
+	accountId?: string;
 	client: NonNullable<DiscordService["client"]>;
 	runtime: DiscordService["runtime"];
 	character: DiscordService["character"];
@@ -66,6 +68,7 @@ export interface DiscordServiceInternals {
 	channelDebouncer: ChannelDebouncer | undefined;
 	discordSettings: { shouldIgnoreBotMessages: boolean };
 	allowedChannelIds: string[] | undefined;
+	listenChannelIds?: string[];
 	allowAllSlashCommands: Set<string>;
 	slashCommands: DiscordSlashCommand[];
 	timeouts: ReturnType<typeof setTimeout>[];
@@ -111,15 +114,19 @@ function parseEventListenerConfig(
 	const listenCidsRaw = service.runtime.getSetting(
 		"DISCORD_LISTEN_CHANNEL_IDS",
 	) as string | string[] | undefined;
-	const listenCids = Array.isArray(listenCidsRaw)
-		? listenCidsRaw
-		: listenCidsRaw && typeof listenCidsRaw === "string" && listenCidsRaw.trim()
+	const listenCids = service.listenChannelIds
+		? service.listenChannelIds
+		: Array.isArray(listenCidsRaw)
 			? listenCidsRaw
-					.trim()
-					.split(",")
-					.map((s) => s.trim())
-					.filter((s) => s.length > 0)
-			: [];
+			: listenCidsRaw &&
+					typeof listenCidsRaw === "string" &&
+					listenCidsRaw.trim()
+				? listenCidsRaw
+						.trim()
+						.split(",")
+						.map((s) => s.trim())
+						.filter((s) => s.length > 0)
+				: [];
 
 	const debounceMsSetting = service.runtime.getSetting("DISCORD_DEBOUNCE_MS") as
 		| string
@@ -167,6 +174,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 	messageDebouncer: MessageDebouncer;
 	channelDebouncer: ChannelDebouncer;
 } {
+	const accountId = service.accountId ?? "default";
 	const { listenCids, debounceMs, channelDebounceMs, responseCooldownMs } =
 		parseEventListenerConfig(service);
 	const messageCoalesce = getDiscordMessageCoalesceConfig((key) =>
@@ -236,28 +244,17 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				return;
 			}
 
-			const clientUser = service.client?.user;
-			const botId = clientUser?.id;
-			const agentName = service.character?.name?.toLowerCase();
-
 			let anchor: Message | undefined;
+			const botId = service.client?.user?.id;
 			if (botId) {
-				anchor = messages.find(
-					(message) =>
-						message.mentions?.users?.has(botId) ||
-						Boolean(
-							agentName &&
-								agentName.length >= 2 &&
-								message.content?.toLowerCase().includes(agentName),
-						),
+				anchor = messages.find((message) =>
+					isDiscordUserAddressed({
+						text: message.content,
+						userId: botId,
+						hasMessageReference: Boolean(message.reference?.messageId),
+						repliedUserId: message.mentions?.repliedUser?.id,
+					}),
 				);
-				if (!anchor) {
-					anchor = messages.find(
-						(message) =>
-							Boolean(message.reference?.messageId) &&
-							message.mentions?.repliedUser?.id === botId,
-					);
-				}
 			}
 
 			anchor ??= messages[messages.length - 1];
@@ -296,6 +293,12 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 						: anchor.content || "";
 				const combined = Object.create(anchor, {
 					content: { value: combinedText, writable: true, enumerable: true },
+					__discordAddressingContent: {
+						value: anchor.content,
+						writable: false,
+						enumerable: false,
+						configurable: true,
+					},
 				});
 				void service.messageManager.handleMessage(combined as Message);
 			}
@@ -306,7 +309,6 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			debounceMs: effectiveChannelDebounceMs,
 			responseCooldownMs,
 			getBotUserId: () => service.client?.user?.id,
-			botName: service.character?.name,
 			coalesceEnabled: messageCoalesce.enabled,
 			maxBatch: messageCoalesce.maxBatch,
 		},
@@ -361,6 +363,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				runtime: service.runtime,
 				message: newMessage,
 				source: "discord",
+				accountId,
 			};
 			service.runtime.emitEvent(
 				DiscordEventTypes.LISTEN_CHANNEL_MESSAGE,
@@ -381,6 +384,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				runtime: service.runtime,
 				message: message,
 				source: "discord",
+				accountId,
 			};
 			service.runtime.emitEvent(
 				DiscordEventTypes.NOT_IN_CHANNELS_MESSAGE,

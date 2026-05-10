@@ -15,21 +15,30 @@ import {
   isLlmGenerationModelType,
   normalizeTrajectoryLlmPurpose,
 } from "@elizaos/core";
-import { detectRuntimeModel } from "../api/agent-model.js";
+import { detectRuntimeModel } from "../api/agent-model.ts";
 import {
   type ModelTokenMetadata,
   resolveModelTokenMetadata,
-} from "../config/model-metadata.js";
-import type { ElizaConfig } from "../config/types.js";
+} from "../config/model-metadata.ts";
+import type { ElizaConfig } from "../config/types.ts";
 
-import type { TrajectoryLlmCall } from "../types/trajectory.js";
+import type { TrajectoryLlmCall } from "../types/trajectory.ts";
+import {
+  applyConversationCompaction,
+  selectStrategyFromEnv,
+  type StrategyName,
+} from "./conversation-compactor-runtime.ts";
+import type {
+  CompactorMessage,
+  CompactorModelCall,
+} from "./conversation-compactor.types.ts";
 import {
   compactActionsForIntent,
   compactCodingExamplesForIntent,
   compactConversationHistory,
   compactModelPrompt,
   validateIntentActionMap,
-} from "./prompt-compaction.js";
+} from "./prompt-compaction.ts";
 import {
   enrichTrajectoryLlmCall,
   ensureTrajectoriesTable,
@@ -38,13 +47,13 @@ import {
   saveTrajectory,
   toOptionalNumber,
   toText,
-} from "./trajectory-internals.js";
+} from "./trajectory-internals.ts";
 
 export {
   buildFullParamActionSet,
   compactActionsForIntent,
   detectIntentCategories,
-} from "./prompt-compaction.js";
+} from "./prompt-compaction.ts";
 
 // ---------------------------------------------------------------------------
 // Env-var driven configuration (evaluated once at import time)
@@ -721,6 +730,98 @@ function truncatePromptToTokenBudget(
   return `${prompt.slice(0, headBudget)}${marker}${tail}`;
 }
 
+/**
+ * Resolve the configured conversation compactor strategy lazily (per call)
+ * so tests can mutate `process.env` without re-importing the module.
+ * Throws on an invalid env value — handled by the caller.
+ */
+function resolveConversationCompactionStrategy(): StrategyName | null {
+  return selectStrategyFromEnv();
+}
+
+/**
+ * Build a `CompactorModelCall` that delegates to `runtime.useModel`.
+ * Bypasses the wrapped `useModel` (we use the original closure) to avoid
+ * recursion when the summarization call itself triggers prompt
+ * optimization. Falls back to the wrapped `useModel` if no original is
+ * supplied (e.g. when called from tests).
+ */
+function buildRuntimeCompactorModelCall(
+  runtime: AgentRuntime,
+  originalUseModel: AgentRuntime["useModel"] | null,
+): CompactorModelCall {
+  const useModel = (originalUseModel ?? runtime.useModel.bind(runtime)) as (
+    modelType: string,
+    payload: unknown,
+  ) => Promise<unknown>;
+  return async ({
+    systemPrompt,
+    messages,
+    maxOutputTokens,
+  }: {
+    systemPrompt: string;
+    messages: CompactorMessage[];
+    maxOutputTokens?: number;
+  }) => {
+    const userText = messages.map((m) => m.content).join("\n");
+    const result = await useModel("TEXT_LARGE", {
+      system: systemPrompt,
+      prompt: userText,
+      ...(maxOutputTokens !== undefined ? { maxTokens: maxOutputTokens } : {}),
+    });
+    if (typeof result === "string") return result;
+    if (result == null) return "";
+    try {
+      return JSON.stringify(result);
+    } catch {
+      return String(result);
+    }
+  };
+}
+
+/**
+ * Async pre-step that runs a conversation-compactor strategy when
+ * `ELIZA_CONVERSATION_COMPACTOR` is set and the prompt is over budget.
+ * No-ops when the env var is unset, the prompt is under budget, or the
+ * compactor cannot reduce the prompt below the budget.
+ *
+ * Logs `[eliza] conversation-compaction strategy=X originalTokens=N
+ * compactedTokens=M latencyMs=L` on a successful compaction.
+ */
+export async function maybeApplyConversationCompaction(
+  runtime: AgentRuntime,
+  prompt: string,
+  budgetTokens: number,
+  callModel: CompactorModelCall,
+): Promise<string> {
+  let strategy: StrategyName | null;
+  try {
+    strategy = resolveConversationCompactionStrategy();
+  } catch (error) {
+    runtime.logger?.warn?.(String((error as Error).message));
+    return prompt;
+  }
+  if (!strategy) return prompt;
+
+  const currentTokens = estimateTokenCount(prompt);
+  if (currentTokens <= budgetTokens) return prompt;
+
+  const result = await applyConversationCompaction({
+    prompt,
+    strategy,
+    currentTokens,
+    targetTokens: budgetTokens,
+    callModel,
+    runtime,
+  });
+  if (!result.didCompact) return prompt;
+
+  runtime.logger?.info?.(
+    `[eliza] conversation-compaction strategy=${strategy} originalTokens=${result.originalTokens} compactedTokens=${result.compactedTokens} latencyMs=${result.latencyMs}`,
+  );
+  return result.prompt;
+}
+
 export function fitPromptToTokenBudget(
   prompt: string,
   budgetTokens: number,
@@ -933,6 +1034,26 @@ export function installPromptOptimizations(
         [promptKey]: nextPrompt,
       });
       outputReserveTokens = budget.outputReserveTokens;
+
+      // Conversation-level compaction (opt-in via env). Runs before the
+      // truncation-based fitter so summarization gets first crack at
+      // shrinking the conversation history. If it can't get the prompt
+      // under budget, the existing tail-truncation pipeline still kicks in.
+      try {
+        nextPrompt = await maybeApplyConversationCompaction(
+          runtime,
+          nextPrompt,
+          budget.promptBudgetTokens,
+          buildRuntimeCompactorModelCall(runtime, originalUseModel),
+        );
+      } catch (error) {
+        runtime.logger?.warn?.(
+          `[eliza] conversation-compaction failed: ${String(
+            (error as Error).message,
+          )}`,
+        );
+      }
+
       const budgetedPrompt = fitPromptToTokenBudget(
         nextPrompt,
         budget.promptBudgetTokens,

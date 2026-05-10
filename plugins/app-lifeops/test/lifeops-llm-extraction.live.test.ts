@@ -238,7 +238,7 @@ describeIfLive("LLM plan extraction (live)", () => {
         expectTripLocation: true,
       },
       {
-        intent: "meetings with Sarah this week",
+        intent: "meetings with my colleague this week",
         expectedSubaction: "search_events",
         expectQueries: true,
       },

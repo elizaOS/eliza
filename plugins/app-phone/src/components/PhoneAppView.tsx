@@ -16,9 +16,9 @@
  * compiled into the host APK).
  */
 
-import type { OverlayAppContext } from "@elizaos/app-core";
 import type { CallLogEntry, CallLogType } from "@elizaos/capacitor-phone";
 import { Phone } from "@elizaos/capacitor-phone";
+import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from "@elizaos/ui";
 import {
   ArrowLeft,
@@ -133,9 +133,7 @@ interface ContactsModule {
 async function loadContactsModule(): Promise<ContactsModule | null> {
   const specifier = "@elizaos/capacitor-contacts";
   try {
-    const mod = (await import(
-      /* @vite-ignore */ specifier
-    )) as unknown as ContactsModule;
+    const mod = (await import(/* @vite-ignore */ specifier)) as ContactsModule;
     if (mod && typeof mod.Contacts?.listContacts === "function") {
       return mod;
     }

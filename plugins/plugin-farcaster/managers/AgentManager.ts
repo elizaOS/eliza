@@ -10,9 +10,11 @@ export class FarcasterAgentManager {
   readonly client: FarcasterClient;
   readonly casts: FarcasterCastManager;
   readonly interactions: FarcasterInteractionManager;
+  readonly config: FarcasterConfig & { accountId?: string };
 
-  constructor(runtime: IAgentRuntime, config: FarcasterConfig) {
+  constructor(runtime: IAgentRuntime, config: FarcasterConfig & { accountId?: string }) {
     this.runtime = runtime;
+    this.config = config;
     const signerUuid = config.FARCASTER_SIGNER_UUID;
 
     const neynarConfig = new Configuration({

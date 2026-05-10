@@ -9,6 +9,7 @@ import {
   Badge,
   Button,
   DashboardStatCard,
+  MilestoneProgress,
   Select,
   SelectContent,
   SelectItem,
@@ -31,7 +32,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { MilestoneProgress } from "@elizaos/cloud-ui/components/monetization";
 import {
   Bar,
   BarChart,

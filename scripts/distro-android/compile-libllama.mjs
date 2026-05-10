@@ -112,6 +112,7 @@ export function parseSubArgs(argv, brand) {
     abis: ABI_TARGETS.map((t) => t.androidAbi),
     skipIfPresent: false,
     jobs: Math.max(1, Math.min(os.cpus().length, 8)),
+    srcDir: null,
   };
 
   const readFlagValue = (flag, index) => {
@@ -129,6 +130,9 @@ export function parseSubArgs(argv, brand) {
       i += 1;
     } else if (arg === "--cache-dir") {
       args.cacheDir = path.resolve(readFlagValue(arg, i));
+      i += 1;
+    } else if (arg === "--src-dir") {
+      args.srcDir = path.resolve(readFlagValue(arg, i));
       i += 1;
     } else if (arg === "--abi") {
       const value = readFlagValue(arg, i);
@@ -152,8 +156,11 @@ export function parseSubArgs(argv, brand) {
     } else if (arg === "-h" || arg === "--help") {
       console.log(
         "Usage: node scripts/distro-android/compile-libllama.mjs [--brand-config <PATH>] " +
-          "[--assets-dir <PATH>] [--cache-dir <PATH>] [--abi <arm64-v8a|x86_64>] " +
-          "[--jobs <N>] [--skip-if-present]",
+          "[--assets-dir <PATH>] [--cache-dir <PATH>] [--src-dir <PATH>] " +
+          "[--abi <arm64-v8a|x86_64>] [--jobs <N>] [--skip-if-present]\n" +
+          "  --src-dir <PATH>  Use an existing llama.cpp / buun-llama-cpp checkout instead\n" +
+          "                    of cloning. The directory's HEAD is used as-is; the pinned\n" +
+          "                    LLAMA_CPP_TAG/COMMIT in this script is ignored.",
       );
       process.exit(0);
     } else {
@@ -422,11 +429,34 @@ export async function main(argv = process.argv.slice(2)) {
     return;
   }
 
-  const srcDir = ensureLlamaCppCheckout({
-    cacheDir: args.cacheDir,
-    log: console.log,
-    spawn: run,
-  });
+  let srcDir;
+  let srcDescription;
+  if (args.srcDir) {
+    if (!fs.existsSync(path.join(args.srcDir, "CMakeLists.txt"))) {
+      throw new Error(
+        `[compile-libllama] --src-dir ${args.srcDir} does not contain a CMakeLists.txt; ` +
+          `expected a llama.cpp / buun-llama-cpp checkout.`,
+      );
+    }
+    srcDir = args.srcDir;
+    const headFile = path.join(srcDir, ".git", "HEAD");
+    let headRef = "(unknown)";
+    try {
+      headRef = fs.readFileSync(headFile, "utf8").trim();
+    } catch {}
+    console.log(
+      `[compile-libllama] Using --src-dir ${srcDir} (HEAD: ${headRef}); ` +
+        `pinned tag ${LLAMA_CPP_TAG} ignored.`,
+    );
+    srcDescription = `external src-dir ${srcDir}`;
+  } else {
+    srcDir = ensureLlamaCppCheckout({
+      cacheDir: args.cacheDir,
+      log: console.log,
+      spawn: run,
+    });
+    srcDescription = `llama.cpp ${LLAMA_CPP_TAG} / ${LLAMA_CPP_COMMIT.slice(0, 12)}`;
+  }
 
   for (const abi of args.abis) {
     const abiAssetDir = path.join(args.androidAssetsDir, abi);
@@ -441,7 +471,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
 
   console.log(
-    `[compile-libllama] Built libllama.so for ${args.abis.join(", ")} (llama.cpp ${LLAMA_CPP_TAG} / ${LLAMA_CPP_COMMIT.slice(0, 12)}).`,
+    `[compile-libllama] Built libllama.so for ${args.abis.join(", ")} (${srcDescription}).`,
   );
 }
 

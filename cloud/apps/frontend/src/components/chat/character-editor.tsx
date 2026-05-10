@@ -1,6 +1,6 @@
 /**
  * Character editor component with tabbed interface for editing character properties.
- * Supports form-based editing, JSON editing, plugins management, and knowledge uploads.
+ * Supports form-based editing, JSON editing, plugins management, and document uploads.
  *
  * @param props - Character editor configuration
  * @param props.character - Character data to edit
@@ -14,12 +14,9 @@ import { AnimatedTabs, Button, ScrollArea } from "@elizaos/cloud-ui";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { ElizaCharacter } from "@/lib/types";
-import type { PreUploadedFile } from "@/lib/types/knowledge";
-import {
-  CharacterForm,
-  type FormTab,
-} from "../character-builder/character-form";
-import { JsonEditor } from "../character-builder/json-editor";
+import type { PreUploadedFile } from "@/lib/types/documents";
+import { CharacterForm, type FormTab } from "../agent-editor/character-form";
+import { JsonEditor } from "../agent-editor/json-editor";
 import { PluginsTab } from "./plugins-tab";
 import { UploadsTab } from "./uploads-tab";
 
@@ -115,7 +112,7 @@ export function CharacterEditor({
             {showJson ? (
               <h2 className="text-xl font-bold text-white">JSON Editor</h2>
             ) : (
-              <h2 className="text-xl font-bold text-white">Agent Builder</h2>
+              <h2 className="text-xl font-bold text-white">Agent Editor</h2>
             )}
           </div>
           <div className="flex items-center justify-between w-full sm:w-auto">
@@ -150,7 +147,6 @@ export function CharacterEditor({
                   ? "bg-[#FF5800]/40 text-white hover:bg-[#FF5800]/55 border-[#FF5800]/50 hover:border-[#FF5800]/90"
                   : "bg-red-900/60 text-white hover:bg-red-800/80 border-red-500/50 hover:border-red-400/70"
               }`}
-              data-onboarding="build-save"
             >
               {isSaving
                 ? "Saving"

@@ -16,17 +16,59 @@
  * runCrossChannelSearch() to inject context for named persons/topics.
  */
 
-// WS3 dependency — types may not yet be exported from agent index when this
-// file is first compiled. Importing from the source path so type-only
-// resolution succeeds even before the public re-export lands.
-import {
-  getMemoriesForCluster as getClusterMemories,
-  type RelationshipsGraphService,
-  type RelationshipsPersonSummary,
-  resolveRelationshipsGraphService,
-} from "@elizaos/agent/services/relationships-graph";
+// Graph types live in @elizaos/core's relationships-graph-builder. That
+// module is internal to core and not part of its public exports map, so we
+// can't import its runtime helpers from here. We type-shape the parts we
+// touch and provide a local fallback for cluster memory lookup.
 import type { IAgentRuntime, Memory, Room, UUID } from "@elizaos/core";
 import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
+
+type RelationshipsPersonSummary = {
+  groupId: UUID;
+  primaryEntityId: UUID;
+  memberEntityIds: UUID[];
+  displayName: string;
+  aliases: string[];
+  platforms: string[];
+  identities: unknown[];
+  emails: string[];
+  phones: string[];
+  websites: string[];
+  preferredCommunicationChannel: string | null;
+  categories: string[];
+  tags: string[];
+  factCount: number;
+  relationshipCount: number;
+  isOwner: boolean;
+  profiles: unknown[];
+  lastInteractionAt?: string;
+};
+
+type RelationshipsGraphService = {
+  getGraphSnapshot: (query?: {
+    search?: string | null;
+    limit?: number;
+  }) => Promise<{ people: RelationshipsPersonSummary[] }>;
+  getPersonDetail: (
+    primaryEntityId: UUID,
+  ) => Promise<RelationshipsPersonSummary | null>;
+};
+
+// Local fallback used when the registered RelationshipsGraphService doesn't
+// implement getMemoriesForCluster — degrades to a single-entity query.
+async function getClusterMemories(
+  runtime: IAgentRuntime,
+  primaryEntityId: UUID,
+  params: { tableName: string; worldId?: UUID; count?: number },
+): Promise<Memory[]> {
+  return runtime.getMemories({
+    tableName: params.tableName,
+    worldId: params.worldId,
+    count: params.count,
+    entityId: primaryEntityId,
+  });
+}
+
 import type {
   LifeOpsCalendarEvent,
   LifeOpsGmailMessageSummary,
@@ -294,7 +336,7 @@ type CrossChannelNativeSearchService = GmailSearchService & {
       text: string;
     }>
   >;
-  pullWhatsAppRecent?: (limit?: number) => {
+  pullWhatsAppRecent?: (limit?: number) => Promise<{
     count: number;
     messages: Array<{
       id: string;
@@ -304,7 +346,7 @@ type CrossChannelNativeSearchService = GmailSearchService & {
       text?: string;
       metadata?: { contactName?: string };
     }>;
-  };
+  }>;
   getCalendarFeed?: (
     requestUrl: URL,
     request: {
@@ -323,12 +365,17 @@ type CrossChannelNativeSearchService = GmailSearchService & {
   }) => Promise<LifeOpsXDm[]>;
 };
 
+function isObjectService(value: unknown): value is object {
+  return Boolean(value) && typeof value === "object";
+}
+
 function getLifeOpsSearchService(
   runtime: IAgentRuntime,
 ): CrossChannelNativeSearchService | null {
-  return runtime.getService(
-    "lifeops",
-  ) as unknown as CrossChannelNativeSearchService | null;
+  const service = runtime.getService("lifeops");
+  return isObjectService(service)
+    ? (service as unknown as CrossChannelNativeSearchService)
+    : null;
 }
 
 async function searchGmail(
@@ -589,7 +636,7 @@ async function searchWhatsApp(
 
   const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
   const needle = query.query.trim().toLowerCase();
-  const recent = lifeOps.pullWhatsAppRecent(limit + 25);
+  const recent = await lifeOps.pullWhatsAppRecent(limit + 25);
   const hits: CrossChannelSearchHit[] = [];
   for (const msg of recent.messages) {
     const text = msg.text?.trim();
@@ -930,6 +977,17 @@ type RelationshipsGraphServiceWithCluster = RelationshipsGraphService & {
   getMemoriesForCluster?: GetMemoriesForClusterFn;
 };
 
+function isRelationshipsGraphServiceWithCluster(
+  service: unknown,
+): service is RelationshipsGraphServiceWithCluster {
+  if (!isObjectService(service)) return false;
+  const candidate = service as Partial<RelationshipsGraphServiceWithCluster>;
+  return (
+    typeof candidate.getGraphSnapshot === "function" &&
+    typeof candidate.getPersonDetail === "function"
+  );
+}
+
 async function resolvePerson(
   runtime: IAgentRuntime,
   ref: CrossChannelSearchPersonRef | undefined,
@@ -942,9 +1000,10 @@ async function resolvePerson(
     return { service: null, person: null, degraded: [] };
   }
 
-  const baseService = (await resolveRelationshipsGraphService(
-    runtime,
-  )) as RelationshipsGraphServiceWithCluster | null;
+  const candidateService = runtime.getService("relationships");
+  const baseService = isRelationshipsGraphServiceWithCluster(candidateService)
+    ? candidateService
+    : null;
   const service = baseService
     ? ({
         ...baseService,

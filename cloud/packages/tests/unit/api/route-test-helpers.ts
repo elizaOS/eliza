@@ -24,10 +24,10 @@ export async function flushMicrotasks() {
 }
 
 export function formDataRequest(url: string, formData: FormData) {
-  return {
-    url,
-    formData: async () => formData,
-  } as unknown as Request;
+  return new Request(url, {
+    method: "POST",
+    body: formData,
+  });
 }
 
 export function createFile(name: string, type: string, contents: string | Uint8Array = "test") {

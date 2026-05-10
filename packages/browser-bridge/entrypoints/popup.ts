@@ -199,6 +199,10 @@ function parsePairingJson(jsonValue: string): Partial<CompanionConfig> {
       typeof record.companionId === "string" ? record.companionId : "",
     pairingToken:
       typeof record.pairingToken === "string" ? record.pairingToken : "",
+    pairingTokenExpiresAt:
+      typeof record.pairingTokenExpiresAt === "string"
+        ? record.pairingTokenExpiresAt
+        : null,
     profileId: typeof record.profileId === "string" ? record.profileId : "",
     profileLabel:
       typeof record.profileLabel === "string" ? record.profileLabel : "",

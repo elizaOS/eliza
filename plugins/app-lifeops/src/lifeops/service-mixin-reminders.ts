@@ -11,8 +11,8 @@ import {
   loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
   resolveOwnerContactWithFallback,
-} from "@elizaos/agent/config/owner-contacts";
-import { registerEscalationChannel } from "@elizaos/agent/services/escalation";
+} from "@elizaos/agent";
+import { registerEscalationChannel } from "@elizaos/agent";
 import {
   type IAgentRuntime,
   ModelType,
@@ -75,7 +75,7 @@ import {
   buildSleepRecapFromSchedule,
   shouldRunMorningCheckinFromSleepCycle,
   shouldRunNightCheckinFromSleepCycle,
-} from "./checkin/sleep-cycle-dispatch.js";
+} from "@elizaos/plugin-health";
 import {
   type ContactRoutePurpose,
   resolveContactRouteCandidates,
@@ -97,6 +97,7 @@ import {
   type LifeOpsScheduleObservationRecord,
 } from "./repository.js";
 import { refreshLifeOpsScheduleInsight } from "./schedule-insight.js";
+import { processDueScheduledTasks } from "./scheduled-task/scheduler.js";
 import {
   deriveLocalScheduleObservations,
   isFreshCloudMergedState,
@@ -113,7 +114,6 @@ import {
   type SyncLifeOpsScheduleObservationsRequest,
   type SyncLifeOpsScheduleObservationsResponse,
 } from "./schedule-sync-contracts.js";
-import { STRETCH_ROUTINE_TITLE } from "./seed-routines.js";
 import {
   DEFAULT_REMINDER_INTENSITY,
   DEFAULT_REMINDER_PROCESS_LIMIT,
@@ -193,15 +193,11 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import { normalizeHealthSignal } from "./service-normalize-health.js";
 import {
+  normalizeHealthSignal,
   deriveSleepWakeEvents,
   type LifeOpsDerivedEvent,
-} from "./sleep-wake-events.js";
-import {
-  pickStretchReminderCopy,
-  shouldStretchNow,
-} from "./stretch-decider.js";
+} from "@elizaos/plugin-health";
 import {
   DEFAULT_TELEMETRY_RETENTION_DAYS,
   runTelemetryRetention,
@@ -216,6 +212,8 @@ import {
   sendTwilioSms,
   sendTwilioVoiceCall,
 } from "./twilio.js";
+
+const DEFAULT_SCHEDULED_TASK_PROCESS_LIMIT = 25;
 
 type AdaptiveWindowProfile = Pick<
   ActivityProfile,
@@ -361,10 +359,13 @@ export interface LifeOpsReminderService {
     now?: string;
     reminderLimit?: number;
     workflowLimit?: number;
+    scheduledTaskLimit?: number;
   }): Promise<{
     now: string;
     reminderAttempts: LifeOpsReminderAttempt[];
     workflowRuns: LifeOpsWorkflowRun[];
+    scheduledTaskFires: Array<Record<string, unknown>>;
+    scheduledTaskCompletionTimeouts: Array<Record<string, unknown>>;
   }>;
   relockWebsiteAccessGroup(groupKey: string, now?: Date): Promise<{ ok: true }>;
   resolveWebsiteAccessCallback(
@@ -501,6 +502,11 @@ const LIFEOPS_OWNER_CONTACTS_LOAD_CONTEXT = {
   envPrefix: "LIFEOPS_OWNER_",
 } as const;
 
+/** Delay between the first and second reminder-delivery attempt when the
+ *  runtime returns a transient send failure. Keeps the dispatcher from
+ *  hammering a flaky connector while still retrying within the same turn. */
+const REMINDER_DELIVERY_RETRY_DELAY_MS = 2_000;
+
 function isDeliveredReminderOutcome(
   outcome: LifeOpsReminderAttemptOutcome,
 ): boolean {
@@ -564,82 +570,11 @@ function buildReminderBody(args: {
   return parts.join("\n");
 }
 
-/** Identify a stretch routine reminder by its canonical seeded title. */
-function isStretchDefinition(
-  definition: Pick<LifeOpsTaskDefinition, "title"> | null,
-): boolean {
-  return definition?.title === STRETCH_ROUTINE_TITLE;
-}
-
-/** Day-of-year (1–366) for the given Date inside the supplied timezone. */
-function computeDayOfYear(date: Date, timezone: string): number {
-  const parts = getZonedDateParts(date, timezone);
-  const start = Date.UTC(parts.year, 0, 1);
-  const today = Date.UTC(parts.year, parts.month - 1, parts.day);
-  return Math.floor((today - start) / 86_400_000) + 1;
-}
-
-interface StretchReminderGateResult {
-  shouldSuppress: boolean;
-  bodyOverride?: string;
-}
-
-/**
- * Stretch-specific dispatch gate. Returns `shouldSuppress: true` when
- * the soft-self-care nudge should sit out this tick (busy day, weekend,
- * late evening, or still inside the cooldown). When the nudge does
- * fire, returns a deterministic copy variant via `bodyOverride` so the
- * stretch body stops being the generic "Reminder: Stretch" line.
- *
- * No-op for any non-stretch reminder.
- */
-function evaluateStretchReminderGate(args: {
-  definition: Pick<LifeOpsTaskDefinition, "title"> | null;
-  plan: Pick<LifeOpsReminderPlan, "id">;
-  existingAttempts: LifeOpsReminderAttempt[];
-  activityProfile: ReminderActivityProfileSnapshot | null;
-  ownerTimezone: string;
-  now: Date;
-}): StretchReminderGateResult {
-  if (!isStretchDefinition(args.definition)) {
-    return { shouldSuppress: false };
-  }
-  const planAttempts = args.existingAttempts.filter(
-    (attempt) =>
-      attempt.planId === args.plan.id &&
-      attempt.outcome === "delivered" &&
-      typeof attempt.attemptedAt === "string",
-  );
-  let lastStretchMs: number | null = null;
-  for (const attempt of planAttempts) {
-    const attemptedAt = attempt.attemptedAt;
-    if (typeof attemptedAt !== "string") continue;
-    const ms = Date.parse(attemptedAt);
-    if (!Number.isFinite(ms)) continue;
-    if (lastStretchMs === null || ms > lastStretchMs) {
-      lastStretchMs = ms;
-    }
-  }
-  const localParts = getZonedDateParts(args.now, args.ownerTimezone);
-  const dayOfWeek = getWeekdayForLocalDate(localParts);
-  const decision = shouldStretchNow({
-    nowMs: args.now.getTime(),
-    lastStretchMs,
-    // Walk-out / outside-detection signal lands when issue #13's
-    // location consumer is wired in. Until then we deliberately leave
-    // this null so the helper falls back to the cadence-only path.
-    lastWalkOutMs: null,
-    isBusyDay: isReminderBusyDay(args.activityProfile),
-    dayOfWeek,
-    hourOfDay: localParts.hour,
-  });
-  if (!decision.shouldFire) {
-    return { shouldSuppress: true };
-  }
-  const dayOfYear = computeDayOfYear(args.now, args.ownerTimezone);
-  const bodyOverride = pickStretchReminderCopy({ dayOfYear });
-  return { shouldSuppress: false, bodyOverride };
-}
+// Stretch cadence + walk-out / weekend / late-evening rules live as
+// registered gate-registry entries composed on the stretch starter task in
+// `default-packs/habit-starters.ts` (`weekend_skip`, `late_evening_skip`,
+// `stretch.walk_out_reset`). The `ScheduledTask` runner consults the gate
+// registry directly.
 
 function buildReminderVoiceContext(runtime: IAgentRuntime): string {
   if (!runtime.character) return "";
@@ -1520,8 +1455,10 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         args.definition.cadence.kind !== "once"
       ) {
         if (previousReminderId) {
-          const deleteResult =
-            await deleteNativeAppleReminderLikeItem(previousReminderId);
+          const deleteResult = await deleteNativeAppleReminderLikeItem(
+            previousReminderId,
+            { runtime: this.runtime },
+          );
           if (deleteResult.ok === false) {
             this.logLifeOpsWarn(
               "native_apple_reminder_sync",
@@ -1529,8 +1466,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               {
                 definitionId: args.previousDefinition?.id ?? null,
                 reminderId: previousReminderId,
-                skippedReason: deleteResult.skippedReason,
-                error: deleteResult.error,
+                reason: deleteResult.reason,
+                detail:
+                  deleteResult.reason === "permission"
+                    ? `permission ${deleteResult.permission} (canRequest=${deleteResult.canRequest})`
+                    : deleteResult.reason === "native_error"
+                      ? deleteResult.message
+                      : `not_supported on ${deleteResult.platform}`,
               },
             );
           }
@@ -1557,11 +1499,12 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           dueAt: cadence.dueAt,
           notes: definition.description,
           originalIntent: definition.originalIntent,
+          runtime: this.runtime,
         });
         if (updateResult.ok === true) {
           return this.withNativeAppleReminderId(
             definition,
-            updateResult.reminderId ?? reminderId,
+            updateResult.data.reminderId ?? reminderId,
           );
         }
         this.logLifeOpsWarn(
@@ -1571,8 +1514,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             definitionId: definition.id,
             kind: nativeMetadata.kind,
             reminderId,
-            skippedReason: updateResult.skippedReason,
-            error: updateResult.error,
+            reason: updateResult.reason,
+            detail:
+              updateResult.reason === "permission"
+                ? `permission ${updateResult.permission} (canRequest=${updateResult.canRequest})`
+                : updateResult.reason === "native_error"
+                  ? updateResult.message
+                  : `not_supported on ${updateResult.platform}`,
           },
         );
         return this.withNativeAppleReminderId(definition, reminderId);
@@ -1584,6 +1532,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         dueAt: cadence.dueAt,
         notes: definition.description,
         originalIntent: definition.originalIntent,
+        runtime: this.runtime,
       });
       if (createResult.ok === false) {
         this.logLifeOpsWarn(
@@ -1592,15 +1541,20 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           {
             definitionId: definition.id,
             kind: nativeMetadata.kind,
-            skippedReason: createResult.skippedReason,
-            error: createResult.error,
+            reason: createResult.reason,
+            detail:
+              createResult.reason === "permission"
+                ? `permission ${createResult.permission} (canRequest=${createResult.canRequest})`
+                : createResult.reason === "native_error"
+                  ? createResult.message
+                  : `not_supported on ${createResult.platform}`,
           },
         );
         return definition;
       }
       return this.withNativeAppleReminderId(
         definition,
-        createResult.reminderId ?? null,
+        createResult.data.reminderId ?? null,
       );
     }
 
@@ -4057,7 +4011,9 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               `[lifeops] Reminder delivery failed for ${args.channel}, retrying in 2s`,
               { error: lifeOpsErrorMessage(firstError) },
             );
-            await new Promise((r) => setTimeout(r, 2_000));
+            await new Promise((r) =>
+              setTimeout(r, REMINDER_DELIVERY_RETRY_DELAY_MS),
+            );
             try {
               await this.runtime.sendMessageToTarget(
                 runtimeTarget.target,
@@ -4783,17 +4739,6 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         ) {
           continue;
         }
-        const stretchGate = evaluateStretchReminderGate({
-          definition,
-          plan,
-          existingAttempts,
-          activityProfile,
-          ownerTimezone,
-          now,
-        });
-        if (stretchGate.shouldSuppress) {
-          continue;
-        }
         const attempt = await this.dispatchReminderAttempt({
           plan,
           ownerType: "occurrence",
@@ -4819,7 +4764,6 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           }),
           timezone: ownerTimezone,
           definition,
-          bodyOverride: stretchGate.bodyOverride,
         });
         dueAttempts.push(attempt);
         if (isDeliveredReminderOutcome(attempt.outcome)) {
@@ -5066,11 +5010,18 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         now?: string;
         reminderLimit?: number;
         workflowLimit?: number;
+        scheduledTaskLimit?: number;
       } = {},
     ): Promise<{
       now: string;
       reminderAttempts: LifeOpsReminderAttempt[];
       workflowRuns: LifeOpsWorkflowRun[];
+      scheduledTaskFires: Awaited<
+        ReturnType<typeof processDueScheduledTasks>
+      >["fires"];
+      scheduledTaskCompletionTimeouts: Awaited<
+        ReturnType<typeof processDueScheduledTasks>
+      >["completionTimeouts"];
     }> {
       const now =
         request.now === undefined
@@ -5084,6 +5035,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         request.workflowLimit === undefined
           ? DEFAULT_WORKFLOW_PROCESS_LIMIT
           : normalizePositiveInteger(request.workflowLimit, "workflowLimit");
+      const scheduledTaskLimit =
+        request.scheduledTaskLimit === undefined
+          ? DEFAULT_SCHEDULED_TASK_PROCESS_LIMIT
+          : normalizePositiveInteger(
+              request.scheduledTaskLimit,
+              "scheduledTaskLimit",
+            );
       await this.syncWebsiteAccessState(now);
       const previousSchedule = await this.readEffectiveScheduleState({ now });
       const currentSchedule = await this.refreshEffectiveScheduleState({ now });
@@ -5193,6 +5151,12 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         limit: workflowLimit,
         lifeOpsEvents,
       });
+      const scheduledTaskResult = await processDueScheduledTasks({
+        runtime: this.runtime,
+        agentId: this.agentId(),
+        now,
+        limit: scheduledTaskLimit,
+      });
       await this.processSleepCycleCheckins({
         now,
         currentSchedule,
@@ -5202,6 +5166,9 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         now: now.toISOString(),
         reminderAttempts: reminderResult.attempts,
         workflowRuns: [...workflowRuns, ...eventWorkflowRuns],
+        scheduledTaskFires: scheduledTaskResult.fires,
+        scheduledTaskCompletionTimeouts:
+          scheduledTaskResult.completionTimeouts,
       };
     }
 

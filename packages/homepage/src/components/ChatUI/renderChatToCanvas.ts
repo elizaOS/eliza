@@ -210,10 +210,18 @@ function s(v: number) {
   return v * SCALE;
 }
 
+function get2dContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("2D canvas context is not available");
+  }
+  return ctx;
+}
+
 /** Returns the height of a message bubble in unscaled pixels (divide by SCALE not needed — already in logical px). */
 export function measureBubbleHeight(text: string): number {
   const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d")!;
+  const ctx = get2dContext(canvas);
   const msgFontSize = s(16);
   ctx.font = `400 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`;
   const maxBubbleW = W * 0.7;
@@ -224,7 +232,7 @@ export function measureBubbleHeight(text: string): number {
   const lines: string[] = [];
   let line = "";
   for (const word of words) {
-    const test = line ? line + " " + word : word;
+    const test = line ? `${line} ${word}` : word;
     if (ctx.measureText(test).width > maxBubbleW - padX * 2) {
       if (line) lines.push(line);
       line = word;
@@ -406,7 +414,7 @@ function renderLoginCard(
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
-  const ctx = canvas.getContext("2d")!;
+  const ctx = get2dContext(canvas);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
@@ -475,7 +483,7 @@ export function renderChatToCanvas(
   const canvas = document.createElement("canvas");
   canvas.width = W;
   canvas.height = H;
-  const ctx = canvas.getContext("2d")!;
+  const ctx = get2dContext(canvas);
 
   // Enable subpixel antialiasing
   ctx.imageSmoothingEnabled = true;
@@ -484,11 +492,7 @@ export function renderChatToCanvas(
   // ── App switcher mode ──
   if (switcherProgress > 0) {
     // Wallpaper background
-    if (
-      wallpaperImg &&
-      wallpaperImg.complete &&
-      wallpaperImg.naturalWidth > 0
-    ) {
+    if (wallpaperImg?.complete && wallpaperImg.naturalWidth > 0) {
       ctx.drawImage(wallpaperImg, 0, 0, W, H);
     } else {
       ctx.fillStyle = "#22c55e";
@@ -673,7 +677,7 @@ export function renderChatToCanvas(
     const lines: string[] = [];
     let line = "";
     for (const word of words) {
-      const test = line ? line + " " + word : word;
+      const test = line ? `${line} ${word}` : word;
       if (ctx.measureText(test).width > maxBubbleW - padX * 2) {
         if (line) lines.push(line);
         line = word;
@@ -831,7 +835,7 @@ export function renderChatToCanvas(
       const lines: string[] = [];
       let line = "";
       for (const word of words) {
-        const test = line ? line + " " + word : word;
+        const test = line ? `${line} ${word}` : word;
         if (ctx.measureText(test).width > maxBubbleW - padX * 2) {
           if (line) lines.push(line);
           line = word;

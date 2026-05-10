@@ -1,79 +1,30 @@
 {
   "name": "@elizaos/app-steward",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./ui": {
-      "types": "./src/ui.ts",
-      "import": "./dist/ui.js",
-      "default": "./dist/ui.js"
-    },
     "./plugin": {
-      "types": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
-    },
-    "./types": {
-      "types": "./src/types/index.ts",
-      "import": "./dist/types/index.js",
-      "default": "./dist/types/index.js"
-    },
-    "./types/*": {
-      "types": "./src/types/*.ts",
-      "import": "./dist/types/*.js",
-      "default": "./dist/types/*.js"
-    },
-    "./api/*": {
-      "types": "./src/api/*.ts",
-      "import": "./dist/api/*.js",
-      "default": "./dist/api/*.js"
-    },
-    "./services/*": {
-      "types": "./src/services/*.ts",
-      "import": "./dist/services/*.js",
-      "default": "./dist/services/*.js"
-    },
-    "./security/*": {
-      "types": "./src/security/*.ts",
-      "import": "./dist/security/*.js",
-      "default": "./dist/security/*.js"
-    },
-    "./routes/*": {
-      "types": "./src/routes/*.ts",
-      "import": "./dist/routes/*.js",
-      "default": "./dist/routes/*.js"
-    },
-    "./actions/*": {
-      "types": "./src/actions/*.ts",
-      "import": "./dist/actions/*.js",
-      "default": "./dist/actions/*.js"
-    },
-    "./browser-workspace-wallet": {
-      "types": "./src/browser-workspace-wallet.ts",
-      "import": "./dist/browser-workspace-wallet.js",
-      "default": "./dist/browser-workspace-wallet.js"
-    },
-    "./*": {
-      "types": "./src/*",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
     }
   },
   "dependencies": {
+    "@elizaos/agent": "2.0.0-beta.1",
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-wallet": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1",
     "@noble/curves": "2.2.0",
     "@simplewebauthn/browser": "^13.0.0",
     "@solana/web3.js": "1.98.4",
     "@stwd/sdk": "^0.8.1",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-wallet": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*",
     "ethers": "^6.16.0",
     "lucide-react": "^1.0.0",
     "viem": "^2.48.8"
@@ -86,10 +37,12 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "clean": "rm -rf dist"
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [
     "dist"

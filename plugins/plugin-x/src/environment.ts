@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { z } from "zod";
+import * as z from "zod";
 import { getSetting } from "./utils/settings";
 
 /**
@@ -8,8 +8,13 @@ import { getSetting } from "./utils/settings";
  * All time intervals are in minutes for consistency
  */
 export const twitterEnvSchema = z.object({
-  // Auth mode (backward compatible default)
-  TWITTER_AUTH_MODE: z.enum(["env", "oauth", "broker"]).default("env"),
+  // Auth mode
+  TWITTER_AUTH_MODE: z.enum(["env", "oauth"]).default("env"),
+
+  // Account routing. TWITTER_ACCOUNTS may contain sensitive credentials.
+  TWITTER_ACCOUNT_ID: z.string().default(""),
+  TWITTER_DEFAULT_ACCOUNT_ID: z.string().default(""),
+  TWITTER_ACCOUNTS: z.string().default(""),
 
   // Required API credentials
   TWITTER_API_KEY: z.string().default(""),
@@ -24,9 +29,6 @@ export const twitterEnvSchema = z.object({
     .string()
     .default("tweet.read tweet.write users.read offline.access"),
 
-  // Broker scaffolding (stub)
-  TWITTER_BROKER_URL: z.string().default(""),
-
   // Core configuration
   TWITTER_DRY_RUN: z.string().default("false"),
   TWITTER_TARGET_USERS: z.string().default(""), // comma-separated list, empty = all
@@ -37,10 +39,10 @@ export const twitterEnvSchema = z.object({
   TWITTER_ENABLE_ACTIONS: z.string().default("false"), // likes, retweets, quotes
 
   // Timing configuration (all in minutes)
-  TWITTER_POST_INTERVAL: z.string().default("120"), // fallback minutes between posts when MIN/MAX unset
+  TWITTER_POST_INTERVAL: z.string().default("120"), // fixed minutes between posts when MIN/MAX unset
   TWITTER_POST_INTERVAL_MIN: z.string().default("90"), // minimum minutes between posts
   TWITTER_POST_INTERVAL_MAX: z.string().default("180"), // maximum minutes between posts
-  TWITTER_ENGAGEMENT_INTERVAL: z.string().default("30"), // fallback minutes between interactions when MIN/MAX unset
+  TWITTER_ENGAGEMENT_INTERVAL: z.string().default("30"), // fixed minutes between interactions when MIN/MAX unset
   TWITTER_ENGAGEMENT_INTERVAL_MIN: z.string().default("20"), // minimum minutes between engagements
   TWITTER_ENGAGEMENT_INTERVAL_MAX: z.string().default("40"), // maximum minutes between engagements
   TWITTER_DISCOVERY_INTERVAL_MIN: z.string().default("15"), // minimum minutes between discovery cycles
@@ -57,7 +59,7 @@ export const twitterEnvSchema = z.object({
 export type TwitterConfig = z.infer<typeof twitterEnvSchema>;
 
 /**
- * Parse safe integer with fallback
+ * Parse safe integer with a default value.
  */
 function safeParseInt(value: string | undefined, defaultValue: number): number {
   if (!value) return defaultValue;
@@ -129,15 +131,27 @@ export async function validateTwitterConfig(
       typeof rawMode === "string" && rawMode.trim() ? rawMode.trim() : "env";
 
     const isAuthMode = (v: string): v is TwitterConfig["TWITTER_AUTH_MODE"] =>
-      v === "env" || v === "oauth" || v === "broker";
+      v === "env" || v === "oauth";
     if (!isAuthMode(normalizedMode)) {
       throw new Error(
-        `Invalid TWITTER_AUTH_MODE=${normalizedMode}. Expected env|oauth|broker.`,
+        `Invalid TWITTER_AUTH_MODE=${normalizedMode}. Expected env|oauth.`,
       );
     }
 
     const validatedConfig: TwitterConfig = {
       TWITTER_AUTH_MODE: normalizedMode,
+      TWITTER_ACCOUNT_ID:
+        config.TWITTER_ACCOUNT_ID ??
+        getSetting(runtime, "TWITTER_ACCOUNT_ID") ??
+        "",
+      TWITTER_DEFAULT_ACCOUNT_ID:
+        config.TWITTER_DEFAULT_ACCOUNT_ID ??
+        getSetting(runtime, "TWITTER_DEFAULT_ACCOUNT_ID") ??
+        "",
+      TWITTER_ACCOUNTS:
+        config.TWITTER_ACCOUNTS ??
+        getSetting(runtime, "TWITTER_ACCOUNTS") ??
+        "",
       TWITTER_API_KEY:
         config.TWITTER_API_KEY ?? getSetting(runtime, "TWITTER_API_KEY") ?? "",
       TWITTER_API_SECRET_KEY:
@@ -164,10 +178,6 @@ export async function validateTwitterConfig(
         config.TWITTER_SCOPES ??
         getSetting(runtime, "TWITTER_SCOPES") ??
         "tweet.read tweet.write users.read offline.access",
-      TWITTER_BROKER_URL:
-        config.TWITTER_BROKER_URL ??
-        getSetting(runtime, "TWITTER_BROKER_URL") ??
-        "",
       TWITTER_DRY_RUN: String(
         (
           config.TWITTER_DRY_RUN ??
@@ -301,15 +311,9 @@ export async function validateTwitterConfig(
           "Twitter OAuth is selected (TWITTER_AUTH_MODE=oauth). Please set TWITTER_CLIENT_ID and TWITTER_REDIRECT_URI",
         );
       }
-    } else if (mode === "broker") {
-      if (!validatedConfig.TWITTER_BROKER_URL) {
-        throw new Error(
-          "Twitter broker auth is selected (TWITTER_AUTH_MODE=broker). Please set TWITTER_BROKER_URL",
-        );
-      }
     } else {
       throw new Error(
-        `Invalid TWITTER_AUTH_MODE=${validatedConfig.TWITTER_AUTH_MODE}. Expected env|oauth|broker.`,
+        `Invalid TWITTER_AUTH_MODE=${validatedConfig.TWITTER_AUTH_MODE}. Expected env|oauth.`,
       );
     }
 
@@ -317,10 +321,10 @@ export async function validateTwitterConfig(
   } catch (error) {
     if (error instanceof z.ZodError) {
       // zod v3 uses `issues`; some builds also expose `errors`.
-      const zodLike = error as unknown as {
+      const zodLike: {
         issues?: unknown;
         errors?: unknown;
-      };
+      } = error;
       const raw = Array.isArray(zodLike.issues)
         ? zodLike.issues
         : Array.isArray(zodLike.errors)
@@ -361,7 +365,7 @@ function getEnvConfig(): Partial<TwitterConfig> {
     const value = getConfig(typedKey);
     if (value !== undefined) {
       if (typedKey === "TWITTER_AUTH_MODE") {
-        if (value === "env" || value === "oauth" || value === "broker") {
+        if (value === "env" || value === "oauth") {
           config.TWITTER_AUTH_MODE = value;
         }
       } else {
@@ -387,12 +391,13 @@ function getDefaultConfig(): TwitterConfig {
 
   const rawAuthMode = getConfig("TWITTER_AUTH_MODE");
   const TWITTER_AUTH_MODE: TwitterConfig["TWITTER_AUTH_MODE"] =
-    rawAuthMode === "env" || rawAuthMode === "oauth" || rawAuthMode === "broker"
-      ? rawAuthMode
-      : "env";
+    rawAuthMode === "env" || rawAuthMode === "oauth" ? rawAuthMode : "env";
 
   return {
     TWITTER_AUTH_MODE,
+    TWITTER_ACCOUNT_ID: getConfig("TWITTER_ACCOUNT_ID") || "",
+    TWITTER_DEFAULT_ACCOUNT_ID: getConfig("TWITTER_DEFAULT_ACCOUNT_ID") || "",
+    TWITTER_ACCOUNTS: getConfig("TWITTER_ACCOUNTS") || "",
     TWITTER_API_KEY: getConfig("TWITTER_API_KEY") || "",
     TWITTER_API_SECRET_KEY: getConfig("TWITTER_API_SECRET_KEY") || "",
     TWITTER_ACCESS_TOKEN: getConfig("TWITTER_ACCESS_TOKEN") || "",
@@ -402,7 +407,6 @@ function getDefaultConfig(): TwitterConfig {
     TWITTER_SCOPES:
       getConfig("TWITTER_SCOPES") ||
       "tweet.read tweet.write users.read offline.access",
-    TWITTER_BROKER_URL: getConfig("TWITTER_BROKER_URL") || "",
     TWITTER_DRY_RUN: getConfig("TWITTER_DRY_RUN") || "false",
     TWITTER_TARGET_USERS: getConfig("TWITTER_TARGET_USERS") || "",
     TWITTER_ENABLE_POST: getConfig("TWITTER_ENABLE_POST") || "false",
@@ -428,29 +432,9 @@ function getDefaultConfig(): TwitterConfig {
   };
 }
 
-/**
- * Load configuration from file (stub for future implementation)
- * @param configPath - Path to the configuration file (optional)
- * @returns Partial TwitterConfig object
- */
-export function loadConfigFromFile(
-  _configPath?: string,
-): Partial<TwitterConfig> {
-  // For now, return empty config as file loading is not implemented
-  return {};
-}
-
-/**
- * Load merged configuration from all sources
- * @param configPath - Path to the configuration file (optional)
- * @returns Complete TwitterConfig object
- */
-export function loadConfig(configPath?: string): TwitterConfig {
-  const fileConfig = loadConfigFromFile(configPath);
-
+export function loadConfig(): TwitterConfig {
   return {
     ...getDefaultConfig(),
-    ...fileConfig,
     ...getEnvConfig(),
   };
 }
@@ -466,7 +450,7 @@ export function validateConfig(config: unknown): TwitterConfig {
 
 /**
  * Get a random interval between min and max values
- * If min/max are not configured, falls back to the fixed interval
+ * If min/max are not configured, uses the fixed interval.
  *
  * @param runtime - The agent runtime
  * @param type - The type of interval ('post', 'engagement', 'discovery')
@@ -478,7 +462,7 @@ export function getRandomInterval(
 ): number {
   let minInterval: number | undefined;
   let maxInterval: number | undefined;
-  let fallbackInterval: number;
+  let fixedInterval: number;
 
   switch (type) {
     case "post": {
@@ -492,7 +476,7 @@ export function getRandomInterval(
       ) as string;
       minInterval = postMin ? safeParseInt(postMin, 0) : undefined;
       maxInterval = postMax ? safeParseInt(postMax, 0) : undefined;
-      fallbackInterval = safeParseInt(
+      fixedInterval = safeParseInt(
         getSetting(runtime, "TWITTER_POST_INTERVAL") as string,
         120,
       );
@@ -509,7 +493,7 @@ export function getRandomInterval(
       ) as string;
       minInterval = engagementMin ? safeParseInt(engagementMin, 0) : undefined;
       maxInterval = engagementMax ? safeParseInt(engagementMax, 0) : undefined;
-      fallbackInterval = safeParseInt(
+      fixedInterval = safeParseInt(
         getSetting(runtime, "TWITTER_ENGAGEMENT_INTERVAL") as string,
         30,
       );
@@ -526,7 +510,7 @@ export function getRandomInterval(
       ) as string;
       minInterval = discoveryMin ? safeParseInt(discoveryMin, 0) : undefined;
       maxInterval = discoveryMax ? safeParseInt(discoveryMax, 0) : undefined;
-      fallbackInterval = 20; // Default discovery interval
+      fixedInterval = 20; // Default discovery interval
       break;
     }
     default:
@@ -547,7 +531,6 @@ export function getRandomInterval(
     return randomInterval;
   }
 
-  // Otherwise, fall back to fixed interval
-  logger.debug(`Using fixed ${type} interval: ${fallbackInterval} minutes`);
-  return fallbackInterval;
+  logger.debug(`Using fixed ${type} interval: ${fixedInterval} minutes`);
+  return fixedInterval;
 }

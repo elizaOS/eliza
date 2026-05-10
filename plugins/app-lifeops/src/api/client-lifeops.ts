@@ -2,20 +2,13 @@
  * LifeOps API methods on ElizaClient.
  *
  * Uses TypeScript declaration merging to augment the `ElizaClient` class in
- * `@elizaos/app-core/api/client-base` with LifeOps-specific methods.
+ * `@elizaos/ui` with LifeOps-specific methods.
  *
- * Side-effect import — include once at startup to register the methods:
- *
- *   import "@elizaos/app-lifeops/api/client-lifeops";
+ * Include once at startup to register the methods.
  *
  * The `@elizaos/app-lifeops/widgets` entry point imports this transitively.
  */
 
-// Direct source-module import to break the barrel cycle:
-// app-core/api/client.ts imports this file (LifeOps extension) as a
-// side-effect before re-exporting `ElizaClient` from its barrel, so a
-// barrel import here would resolve to `undefined` at module-init time.
-import { ElizaClient } from "@elizaos/app-core/api/client-base";
 import type {
   BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionPackageStatus,
@@ -32,7 +25,7 @@ import type {
   OpenBrowserBridgeCompanionPackagePathResponse,
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser/contracts";
+} from "@elizaos/plugin-browser";
 import type {
   CaptureLifeOpsActivitySignalRequest,
   CaptureLifeOpsManualOverrideRequest,
@@ -44,7 +37,6 @@ import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGmailReplyDraftRequest,
   CreateLifeOpsGoalRequest,
-  DisconnectLifeOpsGoogleConnectorRequest,
   DisconnectLifeOpsHealthConnectorRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
   DisconnectLifeOpsXConnectorRequest,
@@ -82,7 +74,6 @@ import type {
   LifeOpsGmailUnrespondedFeed,
   LifeOpsGoalRecord,
   LifeOpsGoalReview,
-  LifeOpsGoogleConnectorStatus,
   LifeOpsHealthConnectorProvider,
   LifeOpsHealthConnectorStatus,
   LifeOpsHealthSummaryResponse,
@@ -112,7 +103,6 @@ import type {
   LifeOpsXConnectorStatus,
   ListLifeOpsCalendarsRequest,
   ManageLifeOpsGmailMessagesRequest,
-  SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsDiscordMessageRequest,
   SendLifeOpsDiscordMessageResponse,
   SendLifeOpsGmailReplyRequest,
@@ -123,8 +113,6 @@ import type {
   SetLifeOpsCalendarIncludedRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
-  StartLifeOpsGoogleConnectorRequest,
-  StartLifeOpsGoogleConnectorResponse,
   StartLifeOpsHealthConnectorRequest,
   StartLifeOpsHealthConnectorResponse,
   StartLifeOpsSignalPairingRequest,
@@ -144,6 +132,11 @@ import type {
   VerifyLifeOpsTelegramConnectorRequest,
   VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared";
+// Direct source-module import to break the barrel cycle:
+// app-core/api/client.ts imports this file (LifeOps extension) as a
+// side-effect before re-exporting `ElizaClient` from its barrel, so a
+// barrel import here would resolve to `undefined` at module-init time.
+import { ElizaClient } from "@elizaos/ui";
 import type { FullDiskAccessProbeResult } from "../lifeops/fda-probe.js";
 import type {
   LifeOpsScheduleInspection,
@@ -153,16 +146,9 @@ import type { GetLifeOpsScheduleMergedStateResponse } from "../lifeops/schedule-
 
 type LifeOpsScheduleInspectionResponse = LifeOpsScheduleInspection;
 
-import type { RoutineSeedTemplate } from "../lifeops/seed-routines.js";
-
-type LifeOpsSeedRoutinesResponse = {
-  createdIds: string[];
-};
-
-type LifeOpsSeedTemplatesResponse = {
-  needsSeeding: boolean;
-  availableTemplates: RoutineSeedTemplate[];
-};
+// Wave-2 W2-A removed `RoutineSeedTemplate`, `LifeOpsSeedTemplatesResponse`,
+// and `LifeOpsSeedRoutinesResponse`. The legacy seed-routines surface is
+// retired in favour of the FIRST_RUN customize path.
 
 type LifeOpsXConnectorRequest = {
   side?: LifeOpsConnectorSide;
@@ -212,513 +198,492 @@ export type LifeOpsAppStateDto = {
   priorityScoring: LifeOpsPriorityScoringStateDto;
 };
 
-declare module "@elizaos/app-core/api/client-base" {
-  interface ElizaClient {
-    getLifeOpsAppState(): Promise<LifeOpsAppStateDto>;
-    updateLifeOpsAppState(data: {
-      enabled: boolean;
-      priorityScoring?: LifeOpsPriorityScoringStateDto | null;
-    }): Promise<LifeOpsAppStateDto>;
-    getLifeOpsOverview(): Promise<LifeOpsOverview>;
-    getLifeOpsPaymentsDashboard(data?: {
-      windowDays?: number | null;
-    }): Promise<import("../lifeops/payment-types.js").LifeOpsPaymentsDashboard>;
-    listLifeOpsPaymentSources(): Promise<{
-      sources: import("../lifeops/payment-types.js").LifeOpsPaymentSource[];
-    }>;
-    addLifeOpsPaymentSource(
-      data: import("../lifeops/payment-types.js").AddPaymentSourceRequest,
-    ): Promise<{
-      source: import("../lifeops/payment-types.js").LifeOpsPaymentSource;
-    }>;
-    deleteLifeOpsPaymentSource(sourceId: string): Promise<{ ok: true }>;
-    importLifeOpsPaymentCsv(
-      data: import("../lifeops/payment-types.js").ImportTransactionsCsvRequest,
-    ): Promise<
-      import("../lifeops/payment-types.js").ImportTransactionsCsvResult
-    >;
-    listLifeOpsPaymentTransactions(data?: {
-      sourceId?: string | null;
-      limit?: number | null;
-      merchantContains?: string | null;
-      onlyDebits?: boolean | null;
-    }): Promise<{
-      transactions: import("../lifeops/payment-types.js").LifeOpsPaymentTransaction[];
-    }>;
-    listLifeOpsRecurringCharges(data?: {
-      sourceId?: string | null;
-      sinceDays?: number | null;
-    }): Promise<{
-      charges: import("../lifeops/payment-types.js").LifeOpsRecurringCharge[];
-    }>;
-    listLifeOpsUpcomingBills(): Promise<{
-      bills: import("../lifeops/payment-types.js").LifeOpsUpcomingBill[];
-    }>;
-    getLifeOpsSmartFeatureSettings(): Promise<{
-      emailClassifierEnabled: boolean;
-      emailClassifierModel: string;
-      billsAutoExtract: boolean;
-    }>;
-    updateLifeOpsSmartFeatureSettings(data: {
-      emailClassifierEnabled?: boolean;
-      emailClassifierModel?: string | null;
-      billsAutoExtract?: boolean;
-    }): Promise<{ ok: true }>;
-    markLifeOpsBillPaid(data: {
-      billId: string;
-      paidAt?: string | null;
-    }): Promise<{ ok: true }>;
-    snoozeLifeOpsBill(data: {
-      billId: string;
-      days?: number;
-    }): Promise<{ ok: true; dueDate: string }>;
-    scanLifeOpsEmailSubscriptions(): Promise<
-      import("../lifeops/email-unsubscribe-types.js").EmailSubscriptionScanResult
-    >;
-    lookupLifeOpsSubscriptionPlaybook(merchant: string): Promise<{
-      playbook: {
-        key: string;
-        serviceName: string;
-        managementUrl: string;
-        executorPreference: "user_browser" | "agent_browser" | "desktop_native";
-      } | null;
-    }>;
-    listLifeOpsSubscriptionPlaybooks(): Promise<{
-      playbooks: Array<{
-        key: string;
-        serviceName: string;
-        aliases: string[];
-        managementUrl: string;
-        executorPreference: "user_browser" | "agent_browser" | "desktop_native";
-      }>;
-    }>;
-    cancelLifeOpsSubscription(data: {
-      serviceName?: string | null;
-      serviceSlug?: string | null;
-      candidateId?: string | null;
-      executor?: "user_browser" | "agent_browser" | "desktop_native" | null;
-      confirmed?: boolean;
-    }): Promise<unknown>;
-    createLifeOpsPlaidLinkToken(): Promise<{
-      linkToken: string;
-      expiration: string;
-      environment: string;
-    }>;
-    completeLifeOpsPlaidLink(data: {
-      publicToken: string;
-      label?: string | null;
-    }): Promise<{
-      source: import("../lifeops/payment-types.js").LifeOpsPaymentSource;
-    }>;
-    syncLifeOpsPlaidTransactions(data: { sourceId: string }): Promise<{
-      inserted: number;
-      skipped: number;
-      nextCursor: string;
-    }>;
-    createLifeOpsPaypalAuthorizeUrl(data: { state: string }): Promise<{
-      url: string;
-      scope: string;
-      environment: "live" | "sandbox";
-    }>;
-    completeLifeOpsPaypalLink(data: {
-      code: string;
-      label?: string | null;
-    }): Promise<{
-      source: import("../lifeops/payment-types.js").LifeOpsPaymentSource;
-      capability: { hasReporting: boolean; hasIdentity: boolean };
-    }>;
-    syncLifeOpsPaypalTransactions(data: {
-      sourceId: string;
-      windowDays?: number | null;
-    }): Promise<{
-      inserted: number;
-      skipped: number;
-      fallback: "csv_export" | null;
-    }>;
-    unsubscribeLifeOpsEmailSender(data: {
-      senderEmail: string;
-      blockAfter?: boolean;
-      trashExisting?: boolean;
-      confirmed: boolean;
-    }): Promise<
-      import("../lifeops/email-unsubscribe-types.js").EmailUnsubscribeResult
-    >;
-    getLifeOpsCapabilitiesStatus(): Promise<LifeOpsCapabilitiesStatus>;
-    getLifeOpsScheduleMergedState(
-      data?: LifeOpsScheduleMergedStateRequest,
-    ): Promise<GetLifeOpsScheduleMergedStateResponse>;
-    getLifeOpsScreenTimeSummary(
-      data: LifeOpsScreenTimeSummaryRequest,
-    ): Promise<LifeOpsScreenTimeSummary>;
-    getLifeOpsScreenTimeBreakdown(
-      data: LifeOpsScreenTimeSummaryRequest,
-    ): Promise<LifeOpsScreenTimeBreakdown>;
-    getLifeOpsScreenTimeHistory(data: {
-      range: LifeOpsScreenTimeRangeKey;
-      topN?: number;
-      socialTopN?: number;
-    }): Promise<LifeOpsScreenTimeHistoryResponse>;
-    getLifeOpsSocialHabitSummary(
-      data: Omit<LifeOpsScreenTimeSummaryRequest, "source" | "identifier">,
-    ): Promise<LifeOpsSocialHabitSummary>;
-    getLifeOpsSleepHistory(opts?: {
-      windowDays?: number;
-      includeNaps?: boolean;
-    }): Promise<LifeOpsSleepHistoryResponse>;
-    getLifeOpsSleepRegularity(opts?: {
-      windowDays?: number;
-      includeNaps?: boolean;
-    }): Promise<LifeOpsSleepRegularityResponse>;
-    getLifeOpsPersonalBaseline(opts?: {
-      windowDays?: number;
-    }): Promise<LifeOpsPersonalBaselineResponse>;
-    getLifeOpsSeedTemplates(): Promise<LifeOpsSeedTemplatesResponse>;
-    seedLifeOpsRoutines(data: {
-      keys: string[];
-      timezone?: string;
-    }): Promise<LifeOpsSeedRoutinesResponse>;
-    getBrowserBridgeSettings(): Promise<{ settings: BrowserBridgeSettings }>;
-    updateBrowserBridgeSettings(
-      data: UpdateBrowserBridgeSettingsRequest,
-    ): Promise<{ settings: BrowserBridgeSettings }>;
-    listBrowserBridgeCompanions(): Promise<{
-      companions: BrowserBridgeCompanionStatus[];
-    }>;
-    getBrowserBridgePackageStatus(): Promise<{
-      status: BrowserBridgeCompanionPackageStatus;
-    }>;
-    autoPairBrowserBridgeCompanion(
-      data: CreateBrowserBridgeCompanionAutoPairRequest,
-    ): Promise<BrowserBridgeCompanionAutoPairResponse>;
-    createBrowserBridgeCompanionPairing(
-      data: CreateBrowserBridgeCompanionPairingRequest,
-    ): Promise<BrowserBridgeCompanionPairingResponse>;
-    buildBrowserBridgeCompanionPackage(browser: BrowserBridgeKind): Promise<{
-      status: BrowserBridgeCompanionPackageStatus;
-    }>;
-    openBrowserBridgeCompanionPackagePath(data: {
-      target: BrowserBridgePackagePathTarget;
-      revealOnly?: boolean;
-    }): Promise<OpenBrowserBridgeCompanionPackagePathResponse>;
-    openBrowserBridgeCompanionManager(
-      browser: BrowserBridgeKind,
-    ): Promise<OpenBrowserBridgeCompanionManagerResponse>;
-    downloadBrowserBridgeCompanionPackage(browser: BrowserBridgeKind): Promise<{
-      blob: Blob;
-      filename: string;
-    }>;
-    listBrowserBridgeTabs(): Promise<{ tabs: BrowserBridgeTabSummary[] }>;
-    getBrowserBridgeCurrentPage(): Promise<{
-      page: BrowserBridgePageContext | null;
-    }>;
-    syncBrowserBridgeState(data: SyncBrowserBridgeStateRequest): Promise<{
-      companion: BrowserBridgeCompanionStatus;
-      tabs: BrowserBridgeTabSummary[];
-      currentPage: BrowserBridgePageContext | null;
-    }>;
-    listLifeOpsBrowserSessions(): Promise<{
-      sessions: LifeOpsBrowserSession[];
-    }>;
-    getLifeOpsBrowserSession(
-      sessionId: string,
-    ): Promise<{ session: LifeOpsBrowserSession }>;
-    createLifeOpsBrowserSession(
-      data: CreateLifeOpsBrowserSessionRequest,
-    ): Promise<{ session: LifeOpsBrowserSession }>;
-    confirmLifeOpsBrowserSession(
-      sessionId: string,
-      data: ConfirmLifeOpsBrowserSessionRequest,
-    ): Promise<{ session: LifeOpsBrowserSession }>;
-    updateLifeOpsBrowserSessionProgress(
-      sessionId: string,
-      data: UpdateLifeOpsBrowserSessionProgressRequest,
-    ): Promise<{ session: LifeOpsBrowserSession }>;
-    completeLifeOpsBrowserSession(
-      sessionId: string,
-      data: CompleteLifeOpsBrowserSessionRequest,
-    ): Promise<{ session: LifeOpsBrowserSession }>;
-    captureLifeOpsActivitySignal(
-      data: CaptureLifeOpsActivitySignalRequest,
-    ): Promise<{ signal: LifeOpsActivitySignal }>;
-    captureLifeOpsManualOverride(
-      data: CaptureLifeOpsManualOverrideRequest,
-    ): Promise<LifeOpsManualOverrideResult>;
-    getLifeOpsScheduleInspection(
-      timezone: string,
-    ): Promise<LifeOpsScheduleInspectionResponse>;
-    getLifeOpsScheduleSummary(
-      timezone: string,
-    ): Promise<LifeOpsScheduleSummary>;
-    getLifeOpsFullDiskAccessStatus(): Promise<FullDiskAccessProbeResult>;
-    getLifeOpsCalendarFeed(
-      options?: GetLifeOpsCalendarFeedRequest,
-    ): Promise<LifeOpsCalendarFeed>;
-    getLifeOpsCalendars(
-      options?: ListLifeOpsCalendarsRequest,
-    ): Promise<{ calendars: LifeOpsCalendarSummary[] }>;
-    setLifeOpsCalendarIncluded(
-      data: SetLifeOpsCalendarIncludedRequest,
-    ): Promise<{ calendar: LifeOpsCalendarSummary }>;
-    getLifeOpsGmailTriage(
-      options?: GetLifeOpsGmailTriageRequest,
-    ): Promise<LifeOpsGmailTriageFeed>;
-    getLifeOpsGmailSearch(
-      options: GetLifeOpsGmailSearchRequest,
-    ): Promise<LifeOpsGmailSearchFeed>;
-    getLifeOpsGmailNeedsResponse(
-      options?: GetLifeOpsGmailTriageRequest,
-    ): Promise<LifeOpsGmailNeedsResponseFeed>;
-    getLifeOpsGmailRecommendations(
-      options?: GetLifeOpsGmailRecommendationsRequest,
-    ): Promise<LifeOpsGmailRecommendationsFeed>;
-    getLifeOpsGmailSpamReview(
-      options?: GetLifeOpsGmailSpamReviewRequest,
-    ): Promise<LifeOpsGmailSpamReviewFeed>;
-    updateLifeOpsGmailSpamReviewItem(
-      itemId: string,
-      data: UpdateLifeOpsGmailSpamReviewItemRequest,
-    ): Promise<{ item: LifeOpsGmailSpamReviewItem }>;
-    getLifeOpsGmailUnresponded(
-      options?: GetLifeOpsGmailUnrespondedRequest,
-    ): Promise<LifeOpsGmailUnrespondedFeed>;
-    getLifeOpsNextCalendarEventContext(
-      options?: GetLifeOpsCalendarFeedRequest,
-    ): Promise<LifeOpsNextCalendarEventContext>;
-    createLifeOpsCalendarEvent(
-      data: CreateLifeOpsCalendarEventRequest,
-    ): Promise<{ event: LifeOpsCalendarFeed["events"][number] }>;
-    updateLifeOpsCalendarEvent(
-      eventId: string,
-      patch: LifeOpsCalendarEventUpdate,
-    ): Promise<LifeOpsCalendarEventMutationResult>;
-    deleteLifeOpsCalendarEvent(
-      eventId: string,
-      options?: Pick<
-        LifeOpsCalendarEventUpdate,
-        "calendarId" | "grantId" | "side"
-      >,
-    ): Promise<{ deleted: true }>;
-    getLifeOpsInbox(options?: GetLifeOpsInboxRequest): Promise<LifeOpsInbox>;
-    createLifeOpsGmailReplyDraft(
-      data: CreateLifeOpsGmailReplyDraftRequest,
-    ): Promise<{ draft: LifeOpsGmailReplyDraft }>;
-    sendLifeOpsGmailReply(
-      data: SendLifeOpsGmailReplyRequest,
-    ): Promise<{ ok: true }>;
-    manageLifeOpsGmailMessages(
-      data: ManageLifeOpsGmailMessagesRequest,
-    ): Promise<LifeOpsGmailManageResult>;
-    ingestLifeOpsGmailEvent(
-      data: IngestLifeOpsGmailEventRequest,
-    ): Promise<LifeOpsGmailEventIngestResult>;
-    listLifeOpsDefinitions(): Promise<{
-      definitions: LifeOpsDefinitionRecord[];
-    }>;
-    getLifeOpsDefinition(
-      definitionId: string,
-    ): Promise<LifeOpsDefinitionRecord>;
-    createLifeOpsDefinition(
-      data: CreateLifeOpsDefinitionRequest,
-    ): Promise<LifeOpsDefinitionRecord>;
-    updateLifeOpsDefinition(
-      definitionId: string,
-      data: UpdateLifeOpsDefinitionRequest,
-    ): Promise<LifeOpsDefinitionRecord>;
-    listLifeOpsGoals(): Promise<{ goals: LifeOpsGoalRecord[] }>;
-    getLifeOpsGoal(goalId: string): Promise<LifeOpsGoalRecord>;
-    reviewLifeOpsGoal(goalId: string): Promise<LifeOpsGoalReview>;
-    createLifeOpsGoal(
-      data: CreateLifeOpsGoalRequest,
-    ): Promise<LifeOpsGoalRecord>;
-    updateLifeOpsGoal(
-      goalId: string,
-      data: UpdateLifeOpsGoalRequest,
-    ): Promise<LifeOpsGoalRecord>;
-    completeLifeOpsOccurrence(
-      occurrenceId: string,
-      data?: CompleteLifeOpsOccurrenceRequest,
-    ): Promise<LifeOpsOccurrenceActionResult>;
-    skipLifeOpsOccurrence(
-      occurrenceId: string,
-    ): Promise<LifeOpsOccurrenceActionResult>;
-    snoozeLifeOpsOccurrence(
-      occurrenceId: string,
-      data: SnoozeLifeOpsOccurrenceRequest,
-    ): Promise<LifeOpsOccurrenceActionResult>;
-    getLifeOpsOccurrenceExplanation(
-      occurrenceId: string,
-    ): Promise<LifeOpsOccurrenceExplanation>;
-    inspectLifeOpsReminder(
-      ownerType: "occurrence" | "calendar_event",
-      ownerId: string,
-    ): Promise<LifeOpsReminderInspection>;
-    getGoogleLifeOpsConnectorStatus(
-      mode?: LifeOpsConnectorMode,
-      side?: LifeOpsConnectorSide,
-    ): Promise<LifeOpsGoogleConnectorStatus>;
-    selectGoogleLifeOpsConnectorMode(
-      data: SelectLifeOpsGoogleConnectorPreferenceRequest,
-    ): Promise<LifeOpsGoogleConnectorStatus>;
-    startGoogleLifeOpsConnector(
-      data?: StartLifeOpsGoogleConnectorRequest,
-    ): Promise<StartLifeOpsGoogleConnectorResponse>;
-    disconnectGoogleLifeOpsConnector(
-      data?: DisconnectLifeOpsGoogleConnectorRequest,
-    ): Promise<LifeOpsGoogleConnectorStatus>;
-    getGoogleLifeOpsConnectorAccounts(
-      mode?: LifeOpsConnectorMode,
-      side?: LifeOpsConnectorSide,
-    ): Promise<LifeOpsGoogleConnectorStatus[]>;
-    getHealthLifeOpsConnectorStatuses(
-      mode?: LifeOpsConnectorMode,
-      side?: LifeOpsConnectorSide,
-    ): Promise<LifeOpsHealthConnectorStatus[]>;
-    getHealthLifeOpsConnectorStatus(
-      provider: LifeOpsHealthConnectorProvider,
-      mode?: LifeOpsConnectorMode,
-      side?: LifeOpsConnectorSide,
-    ): Promise<LifeOpsHealthConnectorStatus>;
-    startHealthLifeOpsConnector(
-      provider: LifeOpsHealthConnectorProvider,
-      data?: Omit<StartLifeOpsHealthConnectorRequest, "provider">,
-    ): Promise<StartLifeOpsHealthConnectorResponse>;
-    disconnectHealthLifeOpsConnector(
-      provider: LifeOpsHealthConnectorProvider,
-      data?: Omit<DisconnectLifeOpsHealthConnectorRequest, "provider">,
-    ): Promise<LifeOpsHealthConnectorStatus>;
-    syncLifeOpsHealth(
-      data?: SyncLifeOpsHealthConnectorRequest,
-    ): Promise<LifeOpsHealthSummaryResponse>;
-    getLifeOpsHealthSummary(
-      data?: GetLifeOpsHealthSummaryRequest,
-    ): Promise<LifeOpsHealthSummaryResponse>;
-    getXLifeOpsConnectorStatus(
-      mode?: LifeOpsConnectorMode,
-      side?: LifeOpsConnectorSide,
-    ): Promise<LifeOpsXConnectorStatus>;
-    startXLifeOpsConnector(
-      data?: StartLifeOpsXConnectorRequest,
-    ): Promise<StartLifeOpsXConnectorResponse>;
-    disconnectXLifeOpsConnector(
-      data?: DisconnectLifeOpsXConnectorRequest,
-    ): Promise<LifeOpsXConnectorStatus>;
-    upsertXLifeOpsConnector(
-      data: LifeOpsXConnectorRequest,
-    ): Promise<LifeOpsXConnectorStatus>;
-    createXLifeOpsPost(data: LifeOpsXPostRequest): Promise<{
-      ok: boolean;
-      status: number | null;
-      postId?: string;
-      error?: string;
-      category:
-        | "success"
-        | "auth"
-        | "rate_limit"
-        | "network"
-        | "invalid"
-        | "unknown";
-    }>;
+type RawRequestClient = {
+  rawRequest(path: string, init?: RequestInit): Promise<Response>;
+};
 
-    // --- iMessage connector ---
-    getIMessageConnectorStatus(): Promise<LifeOpsIMessageConnectorStatus>;
-    listLifeOpsIMessageChats(): Promise<{
-      chats: LifeOpsIMessageChat[];
-      count: number;
+interface LifeOpsElizaClientMethods {
+  getLifeOpsAppState(): Promise<LifeOpsAppStateDto>;
+  updateLifeOpsAppState(data: {
+    enabled: boolean;
+    priorityScoring?: LifeOpsPriorityScoringStateDto | null;
+  }): Promise<LifeOpsAppStateDto>;
+  getLifeOpsOverview(): Promise<LifeOpsOverview>;
+  getLifeOpsPaymentsDashboard(data?: {
+    windowDays?: number | null;
+  }): Promise<import("../lifeops/payment-types.js").LifeOpsPaymentsDashboard>;
+  listLifeOpsPaymentSources(): Promise<{
+    sources: import("../lifeops/payment-types.js").LifeOpsPaymentSource[];
+  }>;
+  addLifeOpsPaymentSource(
+    data: import("../lifeops/payment-types.js").AddPaymentSourceRequest,
+  ): Promise<{
+    source: import("../lifeops/payment-types.js").LifeOpsPaymentSource;
+  }>;
+  deleteLifeOpsPaymentSource(sourceId: string): Promise<{ ok: true }>;
+  importLifeOpsPaymentCsv(
+    data: import("../lifeops/payment-types.js").ImportTransactionsCsvRequest,
+  ): Promise<import("../lifeops/payment-types.js").ImportTransactionsCsvResult>;
+  listLifeOpsPaymentTransactions(data?: {
+    sourceId?: string | null;
+    limit?: number | null;
+    merchantContains?: string | null;
+    onlyDebits?: boolean | null;
+  }): Promise<{
+    transactions: import("../lifeops/payment-types.js").LifeOpsPaymentTransaction[];
+  }>;
+  listLifeOpsRecurringCharges(data?: {
+    sourceId?: string | null;
+    sinceDays?: number | null;
+  }): Promise<{
+    charges: import("../lifeops/payment-types.js").LifeOpsRecurringCharge[];
+  }>;
+  listLifeOpsUpcomingBills(): Promise<{
+    bills: import("../lifeops/payment-types.js").LifeOpsUpcomingBill[];
+  }>;
+  getLifeOpsSmartFeatureSettings(): Promise<{
+    emailClassifierEnabled: boolean;
+    emailClassifierModel: string;
+    billsAutoExtract: boolean;
+  }>;
+  updateLifeOpsSmartFeatureSettings(data: {
+    emailClassifierEnabled?: boolean;
+    emailClassifierModel?: string | null;
+    billsAutoExtract?: boolean;
+  }): Promise<{ ok: true }>;
+  markLifeOpsBillPaid(data: {
+    billId: string;
+    paidAt?: string | null;
+  }): Promise<{ ok: true }>;
+  snoozeLifeOpsBill(data: {
+    billId: string;
+    days?: number;
+  }): Promise<{ ok: true; dueDate: string }>;
+  scanLifeOpsEmailSubscriptions(): Promise<
+    import("../lifeops/email-unsubscribe-types.js").EmailSubscriptionScanResult
+  >;
+  lookupLifeOpsSubscriptionPlaybook(merchant: string): Promise<{
+    playbook: {
+      key: string;
+      serviceName: string;
+      managementUrl: string;
+      executorPreference: "user_browser" | "agent_browser" | "desktop_native";
+    } | null;
+  }>;
+  listLifeOpsSubscriptionPlaybooks(): Promise<{
+    playbooks: Array<{
+      key: string;
+      serviceName: string;
+      aliases: string[];
+      managementUrl: string;
+      executorPreference: "user_browser" | "agent_browser" | "desktop_native";
     }>;
-    getLifeOpsIMessageMessages(
-      options?: GetLifeOpsIMessageMessagesRequest,
-    ): Promise<{
-      messages: LifeOpsIMessageMessage[];
-      count: number;
+  }>;
+  cancelLifeOpsSubscription(data: {
+    serviceName?: string | null;
+    serviceSlug?: string | null;
+    candidateId?: string | null;
+    executor?: "user_browser" | "agent_browser" | "desktop_native" | null;
+    confirmed?: boolean;
+  }): Promise<unknown>;
+  createLifeOpsPlaidLinkToken(): Promise<{
+    linkToken: string;
+    expiration: string;
+    environment: string;
+  }>;
+  completeLifeOpsPlaidLink(data: {
+    publicToken: string;
+    label?: string | null;
+  }): Promise<{
+    source: import("../lifeops/payment-types.js").LifeOpsPaymentSource;
+  }>;
+  syncLifeOpsPlaidTransactions(data: { sourceId: string }): Promise<{
+    inserted: number;
+    skipped: number;
+    nextCursor: string;
+  }>;
+  createLifeOpsPaypalAuthorizeUrl(data: { state: string }): Promise<{
+    url: string;
+    scope: string;
+    environment: "live" | "sandbox";
+  }>;
+  completeLifeOpsPaypalLink(data: {
+    code: string;
+    label?: string | null;
+  }): Promise<{
+    source: import("../lifeops/payment-types.js").LifeOpsPaymentSource;
+    capability: { hasReporting: boolean; hasIdentity: boolean };
+  }>;
+  syncLifeOpsPaypalTransactions(data: {
+    sourceId: string;
+    windowDays?: number | null;
+  }): Promise<{
+    inserted: number;
+    skipped: number;
+    fallback: "csv_export" | null;
+  }>;
+  unsubscribeLifeOpsEmailSender(data: {
+    senderEmail: string;
+    blockAfter?: boolean;
+    trashExisting?: boolean;
+    confirmed: boolean;
+  }): Promise<
+    import("../lifeops/email-unsubscribe-types.js").EmailUnsubscribeResult
+  >;
+  getLifeOpsCapabilitiesStatus(): Promise<LifeOpsCapabilitiesStatus>;
+  getLifeOpsScheduleMergedState(
+    data?: LifeOpsScheduleMergedStateRequest,
+  ): Promise<GetLifeOpsScheduleMergedStateResponse>;
+  getLifeOpsScreenTimeSummary(
+    data: LifeOpsScreenTimeSummaryRequest,
+  ): Promise<LifeOpsScreenTimeSummary>;
+  getLifeOpsScreenTimeBreakdown(
+    data: LifeOpsScreenTimeSummaryRequest,
+  ): Promise<LifeOpsScreenTimeBreakdown>;
+  getLifeOpsScreenTimeHistory(data: {
+    range: LifeOpsScreenTimeRangeKey;
+    topN?: number;
+    socialTopN?: number;
+  }): Promise<LifeOpsScreenTimeHistoryResponse>;
+  getLifeOpsSocialHabitSummary(
+    data: Omit<LifeOpsScreenTimeSummaryRequest, "source" | "identifier">,
+  ): Promise<LifeOpsSocialHabitSummary>;
+  getLifeOpsSleepHistory(opts?: {
+    windowDays?: number;
+    includeNaps?: boolean;
+  }): Promise<LifeOpsSleepHistoryResponse>;
+  getLifeOpsSleepRegularity(opts?: {
+    windowDays?: number;
+    includeNaps?: boolean;
+  }): Promise<LifeOpsSleepRegularityResponse>;
+  getLifeOpsPersonalBaseline(opts?: {
+    windowDays?: number;
+  }): Promise<LifeOpsPersonalBaselineResponse>;
+  getBrowserBridgeSettings(): Promise<{ settings: BrowserBridgeSettings }>;
+  updateBrowserBridgeSettings(
+    data: UpdateBrowserBridgeSettingsRequest,
+  ): Promise<{ settings: BrowserBridgeSettings }>;
+  listBrowserBridgeCompanions(): Promise<{
+    companions: BrowserBridgeCompanionStatus[];
+  }>;
+  getBrowserBridgePackageStatus(): Promise<{
+    status: BrowserBridgeCompanionPackageStatus;
+  }>;
+  autoPairBrowserBridgeCompanion(
+    data: CreateBrowserBridgeCompanionAutoPairRequest,
+  ): Promise<BrowserBridgeCompanionAutoPairResponse>;
+  createBrowserBridgeCompanionPairing(
+    data: CreateBrowserBridgeCompanionPairingRequest,
+  ): Promise<BrowserBridgeCompanionPairingResponse>;
+  buildBrowserBridgeCompanionPackage(browser: BrowserBridgeKind): Promise<{
+    status: BrowserBridgeCompanionPackageStatus;
+  }>;
+  openBrowserBridgeCompanionPackagePath(data: {
+    target: BrowserBridgePackagePathTarget;
+    revealOnly?: boolean;
+  }): Promise<OpenBrowserBridgeCompanionPackagePathResponse>;
+  openBrowserBridgeCompanionManager(
+    browser: BrowserBridgeKind,
+  ): Promise<OpenBrowserBridgeCompanionManagerResponse>;
+  downloadBrowserBridgeCompanionPackage(browser: BrowserBridgeKind): Promise<{
+    blob: Blob;
+    filename: string;
+  }>;
+  listBrowserBridgeTabs(): Promise<{ tabs: BrowserBridgeTabSummary[] }>;
+  getBrowserBridgeCurrentPage(): Promise<{
+    page: BrowserBridgePageContext | null;
+  }>;
+  syncBrowserBridgeState(data: SyncBrowserBridgeStateRequest): Promise<{
+    companion: BrowserBridgeCompanionStatus;
+    tabs: BrowserBridgeTabSummary[];
+    currentPage: BrowserBridgePageContext | null;
+  }>;
+  listLifeOpsBrowserSessions(): Promise<{
+    sessions: LifeOpsBrowserSession[];
+  }>;
+  getLifeOpsBrowserSession(
+    sessionId: string,
+  ): Promise<{ session: LifeOpsBrowserSession }>;
+  createLifeOpsBrowserSession(
+    data: CreateLifeOpsBrowserSessionRequest,
+  ): Promise<{ session: LifeOpsBrowserSession }>;
+  confirmLifeOpsBrowserSession(
+    sessionId: string,
+    data: ConfirmLifeOpsBrowserSessionRequest,
+  ): Promise<{ session: LifeOpsBrowserSession }>;
+  updateLifeOpsBrowserSessionProgress(
+    sessionId: string,
+    data: UpdateLifeOpsBrowserSessionProgressRequest,
+  ): Promise<{ session: LifeOpsBrowserSession }>;
+  completeLifeOpsBrowserSession(
+    sessionId: string,
+    data: CompleteLifeOpsBrowserSessionRequest,
+  ): Promise<{ session: LifeOpsBrowserSession }>;
+  captureLifeOpsActivitySignal(
+    data: CaptureLifeOpsActivitySignalRequest,
+  ): Promise<{ signal: LifeOpsActivitySignal }>;
+  captureLifeOpsManualOverride(
+    data: CaptureLifeOpsManualOverrideRequest,
+  ): Promise<LifeOpsManualOverrideResult>;
+  getLifeOpsScheduleInspection(
+    timezone: string,
+  ): Promise<LifeOpsScheduleInspectionResponse>;
+  getLifeOpsScheduleSummary(timezone: string): Promise<LifeOpsScheduleSummary>;
+  getLifeOpsFullDiskAccessStatus(): Promise<FullDiskAccessProbeResult>;
+  getLifeOpsCalendarFeed(
+    options?: GetLifeOpsCalendarFeedRequest,
+  ): Promise<LifeOpsCalendarFeed>;
+  getLifeOpsCalendars(
+    options?: ListLifeOpsCalendarsRequest,
+  ): Promise<{ calendars: LifeOpsCalendarSummary[] }>;
+  setLifeOpsCalendarIncluded(
+    data: SetLifeOpsCalendarIncludedRequest,
+  ): Promise<{ calendar: LifeOpsCalendarSummary }>;
+  getLifeOpsGmailTriage(
+    options?: GetLifeOpsGmailTriageRequest,
+  ): Promise<LifeOpsGmailTriageFeed>;
+  getLifeOpsGmailSearch(
+    options: GetLifeOpsGmailSearchRequest,
+  ): Promise<LifeOpsGmailSearchFeed>;
+  getLifeOpsGmailNeedsResponse(
+    options?: GetLifeOpsGmailTriageRequest,
+  ): Promise<LifeOpsGmailNeedsResponseFeed>;
+  getLifeOpsGmailRecommendations(
+    options?: GetLifeOpsGmailRecommendationsRequest,
+  ): Promise<LifeOpsGmailRecommendationsFeed>;
+  getLifeOpsGmailSpamReview(
+    options?: GetLifeOpsGmailSpamReviewRequest,
+  ): Promise<LifeOpsGmailSpamReviewFeed>;
+  updateLifeOpsGmailSpamReviewItem(
+    itemId: string,
+    data: UpdateLifeOpsGmailSpamReviewItemRequest,
+  ): Promise<{ item: LifeOpsGmailSpamReviewItem }>;
+  getLifeOpsGmailUnresponded(
+    options?: GetLifeOpsGmailUnrespondedRequest,
+  ): Promise<LifeOpsGmailUnrespondedFeed>;
+  getLifeOpsNextCalendarEventContext(
+    options?: GetLifeOpsCalendarFeedRequest,
+  ): Promise<LifeOpsNextCalendarEventContext>;
+  createLifeOpsCalendarEvent(
+    data: CreateLifeOpsCalendarEventRequest,
+  ): Promise<{ event: LifeOpsCalendarFeed["events"][number] }>;
+  updateLifeOpsCalendarEvent(
+    eventId: string,
+    patch: LifeOpsCalendarEventUpdate,
+  ): Promise<LifeOpsCalendarEventMutationResult>;
+  deleteLifeOpsCalendarEvent(
+    eventId: string,
+    options?: Pick<
+      LifeOpsCalendarEventUpdate,
+      "calendarId" | "grantId" | "side"
+    >,
+  ): Promise<{ deleted: true }>;
+  getLifeOpsInbox(options?: GetLifeOpsInboxRequest): Promise<LifeOpsInbox>;
+  createLifeOpsGmailReplyDraft(
+    data: CreateLifeOpsGmailReplyDraftRequest,
+  ): Promise<{ draft: LifeOpsGmailReplyDraft }>;
+  sendLifeOpsGmailReply(
+    data: SendLifeOpsGmailReplyRequest,
+  ): Promise<{ ok: true }>;
+  manageLifeOpsGmailMessages(
+    data: ManageLifeOpsGmailMessagesRequest,
+  ): Promise<LifeOpsGmailManageResult>;
+  ingestLifeOpsGmailEvent(
+    data: IngestLifeOpsGmailEventRequest,
+  ): Promise<LifeOpsGmailEventIngestResult>;
+  listLifeOpsDefinitions(): Promise<{
+    definitions: LifeOpsDefinitionRecord[];
+  }>;
+  getLifeOpsDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord>;
+  createLifeOpsDefinition(
+    data: CreateLifeOpsDefinitionRequest,
+  ): Promise<LifeOpsDefinitionRecord>;
+  updateLifeOpsDefinition(
+    definitionId: string,
+    data: UpdateLifeOpsDefinitionRequest,
+  ): Promise<LifeOpsDefinitionRecord>;
+  listLifeOpsGoals(): Promise<{ goals: LifeOpsGoalRecord[] }>;
+  getLifeOpsGoal(goalId: string): Promise<LifeOpsGoalRecord>;
+  reviewLifeOpsGoal(goalId: string): Promise<LifeOpsGoalReview>;
+  createLifeOpsGoal(data: CreateLifeOpsGoalRequest): Promise<LifeOpsGoalRecord>;
+  updateLifeOpsGoal(
+    goalId: string,
+    data: UpdateLifeOpsGoalRequest,
+  ): Promise<LifeOpsGoalRecord>;
+  completeLifeOpsOccurrence(
+    occurrenceId: string,
+    data?: CompleteLifeOpsOccurrenceRequest,
+  ): Promise<LifeOpsOccurrenceActionResult>;
+  skipLifeOpsOccurrence(
+    occurrenceId: string,
+  ): Promise<LifeOpsOccurrenceActionResult>;
+  snoozeLifeOpsOccurrence(
+    occurrenceId: string,
+    data: SnoozeLifeOpsOccurrenceRequest,
+  ): Promise<LifeOpsOccurrenceActionResult>;
+  getLifeOpsOccurrenceExplanation(
+    occurrenceId: string,
+  ): Promise<LifeOpsOccurrenceExplanation>;
+  inspectLifeOpsReminder(
+    ownerType: "occurrence" | "calendar_event",
+    ownerId: string,
+  ): Promise<LifeOpsReminderInspection>;
+  getHealthLifeOpsConnectorStatuses(
+    mode?: LifeOpsConnectorMode,
+    side?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsHealthConnectorStatus[]>;
+  getHealthLifeOpsConnectorStatus(
+    provider: LifeOpsHealthConnectorProvider,
+    mode?: LifeOpsConnectorMode,
+    side?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsHealthConnectorStatus>;
+  startHealthLifeOpsConnector(
+    provider: LifeOpsHealthConnectorProvider,
+    data?: Omit<StartLifeOpsHealthConnectorRequest, "provider">,
+  ): Promise<StartLifeOpsHealthConnectorResponse>;
+  disconnectHealthLifeOpsConnector(
+    provider: LifeOpsHealthConnectorProvider,
+    data?: Omit<DisconnectLifeOpsHealthConnectorRequest, "provider">,
+  ): Promise<LifeOpsHealthConnectorStatus>;
+  syncLifeOpsHealth(
+    data?: SyncLifeOpsHealthConnectorRequest,
+  ): Promise<LifeOpsHealthSummaryResponse>;
+  getLifeOpsHealthSummary(
+    data?: GetLifeOpsHealthSummaryRequest,
+  ): Promise<LifeOpsHealthSummaryResponse>;
+  getXLifeOpsConnectorStatus(
+    mode?: LifeOpsConnectorMode,
+    side?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsXConnectorStatus>;
+  startXLifeOpsConnector(
+    data?: StartLifeOpsXConnectorRequest,
+  ): Promise<StartLifeOpsXConnectorResponse>;
+  disconnectXLifeOpsConnector(
+    data?: DisconnectLifeOpsXConnectorRequest,
+  ): Promise<LifeOpsXConnectorStatus>;
+  upsertXLifeOpsConnector(
+    data: LifeOpsXConnectorRequest,
+  ): Promise<LifeOpsXConnectorStatus>;
+  createXLifeOpsPost(data: LifeOpsXPostRequest): Promise<{
+    ok: boolean;
+    status: number | null;
+    postId?: string;
+    error?: string;
+    category:
+      | "success"
+      | "auth"
+      | "rate_limit"
+      | "network"
+      | "invalid"
+      | "unknown";
+  }>;
+
+  // --- iMessage connector ---
+  getIMessageConnectorStatus(): Promise<LifeOpsIMessageConnectorStatus>;
+  listLifeOpsIMessageChats(): Promise<{
+    chats: LifeOpsIMessageChat[];
+    count: number;
+  }>;
+  getLifeOpsIMessageMessages(
+    options?: GetLifeOpsIMessageMessagesRequest,
+  ): Promise<{
+    messages: LifeOpsIMessageMessage[];
+    count: number;
+  }>;
+  sendLifeOpsIMessage(
+    data: SendLifeOpsIMessageRequest,
+  ): Promise<{ ok: true; messageId?: string }>;
+
+  // --- Signal connector ---
+  getSignalConnectorStatus(
+    side?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsSignalConnectorStatus>;
+  startLifeOpsSignalPairing(
+    data?: StartLifeOpsSignalPairingRequest,
+  ): Promise<StartLifeOpsSignalPairingResponse>;
+  getLifeOpsSignalPairingStatus(
+    sessionId: string,
+  ): Promise<LifeOpsSignalPairingStatus>;
+  stopLifeOpsSignalPairing(
+    data?: DisconnectLifeOpsMessagingConnectorRequest,
+  ): Promise<LifeOpsSignalPairingStatus>;
+  disconnectSignalConnector(
+    data?: DisconnectLifeOpsMessagingConnectorRequest,
+  ): Promise<LifeOpsSignalConnectorStatus>;
+  getSignalConnectorMessages(options?: {
+    limit?: number;
+  }): Promise<GetLifeOpsSignalMessagesResponse>;
+  sendSignalConnectorMessage(
+    data: SendLifeOpsSignalMessageRequest,
+  ): Promise<SendLifeOpsSignalMessageResponse>;
+
+  // --- Discord connector ---
+  getDiscordConnectorStatus(
+    side?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsDiscordConnectorStatus>;
+  startDiscordConnector(
+    data?: StartLifeOpsDiscordConnectorRequest,
+  ): Promise<LifeOpsDiscordConnectorStatus>;
+  disconnectDiscordConnector(
+    data?: DisconnectLifeOpsMessagingConnectorRequest,
+  ): Promise<LifeOpsDiscordConnectorStatus>;
+  sendDiscordConnectorMessage(
+    data: SendLifeOpsDiscordMessageRequest,
+  ): Promise<SendLifeOpsDiscordMessageResponse>;
+  verifyDiscordConnector(
+    data?: VerifyLifeOpsDiscordConnectorRequest,
+  ): Promise<VerifyLifeOpsDiscordConnectorResponse>;
+
+  // --- WhatsApp connector ---
+  getWhatsAppConnectorStatus(): Promise<LifeOpsWhatsAppConnectorStatus>;
+  sendWhatsAppConnectorMessage(
+    data: SendLifeOpsWhatsAppMessageRequest,
+  ): Promise<{ ok: true; messageId: string }>;
+  getWhatsAppConnectorMessages(options?: { limit?: number }): Promise<{
+    count: number;
+    messages: Array<{
+      id: string;
+      from: string;
+      channelId: string;
+      timestamp: string;
+      type: "text" | "image" | "audio" | "document" | "unknown";
+      text?: string;
     }>;
-    sendLifeOpsIMessage(
-      data: SendLifeOpsIMessageRequest,
-    ): Promise<{ ok: true; messageId?: string }>;
+  }>;
 
-    // --- Signal connector ---
-    getSignalConnectorStatus(
-      side?: LifeOpsConnectorSide,
-    ): Promise<LifeOpsSignalConnectorStatus>;
-    startLifeOpsSignalPairing(
-      data?: StartLifeOpsSignalPairingRequest,
-    ): Promise<StartLifeOpsSignalPairingResponse>;
-    getLifeOpsSignalPairingStatus(
-      sessionId: string,
-    ): Promise<LifeOpsSignalPairingStatus>;
-    stopLifeOpsSignalPairing(
-      data?: DisconnectLifeOpsMessagingConnectorRequest,
-    ): Promise<LifeOpsSignalPairingStatus>;
-    disconnectSignalConnector(
-      data?: DisconnectLifeOpsMessagingConnectorRequest,
-    ): Promise<LifeOpsSignalConnectorStatus>;
-    getSignalConnectorMessages(options?: {
-      limit?: number;
-    }): Promise<GetLifeOpsSignalMessagesResponse>;
-    sendSignalConnectorMessage(
-      data: SendLifeOpsSignalMessageRequest,
-    ): Promise<SendLifeOpsSignalMessageResponse>;
-
-    // --- Discord connector ---
-    getDiscordConnectorStatus(
-      side?: LifeOpsConnectorSide,
-    ): Promise<LifeOpsDiscordConnectorStatus>;
-    startDiscordConnector(
-      data?: StartLifeOpsDiscordConnectorRequest,
-    ): Promise<LifeOpsDiscordConnectorStatus>;
-    disconnectDiscordConnector(
-      data?: DisconnectLifeOpsMessagingConnectorRequest,
-    ): Promise<LifeOpsDiscordConnectorStatus>;
-    sendDiscordConnectorMessage(
-      data: SendLifeOpsDiscordMessageRequest,
-    ): Promise<SendLifeOpsDiscordMessageResponse>;
-    verifyDiscordConnector(
-      data?: VerifyLifeOpsDiscordConnectorRequest,
-    ): Promise<VerifyLifeOpsDiscordConnectorResponse>;
-
-    // --- WhatsApp connector ---
-    getWhatsAppConnectorStatus(): Promise<LifeOpsWhatsAppConnectorStatus>;
-    sendWhatsAppConnectorMessage(
-      data: SendLifeOpsWhatsAppMessageRequest,
-    ): Promise<{ ok: true; messageId: string }>;
-    getWhatsAppConnectorMessages(options?: { limit?: number }): Promise<{
-      count: number;
-      messages: Array<{
-        id: string;
-        from: string;
-        channelId: string;
-        timestamp: string;
-        type: "text" | "image" | "audio" | "document" | "unknown";
-        text?: string;
-      }>;
-    }>;
-
-    // --- Telegram connector ---
-    getTelegramConnectorStatus(
-      side?: LifeOpsConnectorSide,
-    ): Promise<LifeOpsTelegramConnectorStatus>;
-    startTelegramAuth(
-      data: StartLifeOpsTelegramAuthRequest,
-    ): Promise<StartLifeOpsTelegramAuthResponse>;
-    submitTelegramAuth(
-      data: SubmitLifeOpsTelegramAuthRequest,
-    ): Promise<StartLifeOpsTelegramAuthResponse>;
-    cancelTelegramAuth(
-      data?: DisconnectLifeOpsMessagingConnectorRequest,
-    ): Promise<LifeOpsTelegramConnectorStatus>;
-    disconnectTelegramConnector(
-      data?: DisconnectLifeOpsMessagingConnectorRequest,
-    ): Promise<LifeOpsTelegramConnectorStatus>;
-    verifyTelegramConnector(
-      data?: VerifyLifeOpsTelegramConnectorRequest,
-    ): Promise<VerifyLifeOpsTelegramConnectorResponse>;
-  }
+  // --- Telegram connector ---
+  getTelegramConnectorStatus(
+    side?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsTelegramConnectorStatus>;
+  startTelegramAuth(
+    data: StartLifeOpsTelegramAuthRequest,
+  ): Promise<StartLifeOpsTelegramAuthResponse>;
+  submitTelegramAuth(
+    data: SubmitLifeOpsTelegramAuthRequest,
+  ): Promise<StartLifeOpsTelegramAuthResponse>;
+  cancelTelegramAuth(
+    data?: DisconnectLifeOpsMessagingConnectorRequest,
+  ): Promise<LifeOpsTelegramConnectorStatus>;
+  disconnectTelegramConnector(
+    data?: DisconnectLifeOpsMessagingConnectorRequest,
+  ): Promise<LifeOpsTelegramConnectorStatus>;
+  verifyTelegramConnector(
+    data?: VerifyLifeOpsTelegramConnectorRequest,
+  ): Promise<VerifyLifeOpsTelegramConnectorResponse>;
 }
 
-ElizaClient.prototype.getLifeOpsAppState = async function (this: ElizaClient) {
+declare module "@elizaos/ui" {
+  interface ElizaClient extends LifeOpsElizaClientMethods {}
+}
+
+const lifeOpsClientPrototype = ElizaClient.prototype as ElizaClient &
+  LifeOpsElizaClientMethods;
+
+lifeOpsClientPrototype.getLifeOpsAppState = async function (this: ElizaClient) {
   return this.fetch<LifeOpsAppStateDto>("/api/lifeops/app-state");
 };
 
-ElizaClient.prototype.updateLifeOpsAppState = async function (
+lifeOpsClientPrototype.updateLifeOpsAppState = async function (
   this: ElizaClient,
   data: {
     enabled: boolean;
@@ -731,11 +696,11 @@ ElizaClient.prototype.updateLifeOpsAppState = async function (
   });
 };
 
-ElizaClient.prototype.getLifeOpsOverview = async function (this: ElizaClient) {
+lifeOpsClientPrototype.getLifeOpsOverview = async function (this: ElizaClient) {
   return this.fetch("/api/lifeops/overview");
 };
 
-ElizaClient.prototype.getLifeOpsPaymentsDashboard = async function (
+lifeOpsClientPrototype.getLifeOpsPaymentsDashboard = async function (
   this: ElizaClient,
   data = {},
 ) {
@@ -747,13 +712,13 @@ ElizaClient.prototype.getLifeOpsPaymentsDashboard = async function (
   return this.fetch(`/api/lifeops/money/dashboard${query ? `?${query}` : ""}`);
 };
 
-ElizaClient.prototype.listLifeOpsPaymentSources = async function (
+lifeOpsClientPrototype.listLifeOpsPaymentSources = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/money/sources");
 };
 
-ElizaClient.prototype.addLifeOpsPaymentSource = async function (
+lifeOpsClientPrototype.addLifeOpsPaymentSource = async function (
   this: ElizaClient,
   data,
 ) {
@@ -763,7 +728,7 @@ ElizaClient.prototype.addLifeOpsPaymentSource = async function (
   });
 };
 
-ElizaClient.prototype.deleteLifeOpsPaymentSource = async function (
+lifeOpsClientPrototype.deleteLifeOpsPaymentSource = async function (
   this: ElizaClient,
   sourceId: string,
 ) {
@@ -773,7 +738,7 @@ ElizaClient.prototype.deleteLifeOpsPaymentSource = async function (
   );
 };
 
-ElizaClient.prototype.importLifeOpsPaymentCsv = async function (
+lifeOpsClientPrototype.importLifeOpsPaymentCsv = async function (
   this: ElizaClient,
   data,
 ) {
@@ -783,7 +748,7 @@ ElizaClient.prototype.importLifeOpsPaymentCsv = async function (
   });
 };
 
-ElizaClient.prototype.listLifeOpsPaymentTransactions = async function (
+lifeOpsClientPrototype.listLifeOpsPaymentTransactions = async function (
   this: ElizaClient,
   data = {},
 ) {
@@ -801,7 +766,7 @@ ElizaClient.prototype.listLifeOpsPaymentTransactions = async function (
   );
 };
 
-ElizaClient.prototype.listLifeOpsRecurringCharges = async function (
+lifeOpsClientPrototype.listLifeOpsRecurringCharges = async function (
   this: ElizaClient,
   data = {},
 ) {
@@ -814,19 +779,19 @@ ElizaClient.prototype.listLifeOpsRecurringCharges = async function (
   return this.fetch(`/api/lifeops/money/recurring${query ? `?${query}` : ""}`);
 };
 
-ElizaClient.prototype.scanLifeOpsEmailSubscriptions = async function (
+lifeOpsClientPrototype.scanLifeOpsEmailSubscriptions = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/email-unsubscribe/scan", { method: "POST" });
 };
 
-ElizaClient.prototype.listLifeOpsUpcomingBills = async function (
+lifeOpsClientPrototype.listLifeOpsUpcomingBills = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/money/bills");
 };
 
-ElizaClient.prototype.markLifeOpsBillPaid = async function (
+lifeOpsClientPrototype.markLifeOpsBillPaid = async function (
   this: ElizaClient,
   data,
 ) {
@@ -836,7 +801,7 @@ ElizaClient.prototype.markLifeOpsBillPaid = async function (
   });
 };
 
-ElizaClient.prototype.snoozeLifeOpsBill = async function (
+lifeOpsClientPrototype.snoozeLifeOpsBill = async function (
   this: ElizaClient,
   data,
 ) {
@@ -846,13 +811,13 @@ ElizaClient.prototype.snoozeLifeOpsBill = async function (
   });
 };
 
-ElizaClient.prototype.getLifeOpsSmartFeatureSettings = async function (
+lifeOpsClientPrototype.getLifeOpsSmartFeatureSettings = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/smart-features/settings");
 };
 
-ElizaClient.prototype.updateLifeOpsSmartFeatureSettings = async function (
+lifeOpsClientPrototype.updateLifeOpsSmartFeatureSettings = async function (
   this: ElizaClient,
   data,
 ) {
@@ -862,7 +827,7 @@ ElizaClient.prototype.updateLifeOpsSmartFeatureSettings = async function (
   });
 };
 
-ElizaClient.prototype.lookupLifeOpsSubscriptionPlaybook = async function (
+lifeOpsClientPrototype.lookupLifeOpsSubscriptionPlaybook = async function (
   this: ElizaClient,
   merchant: string,
 ) {
@@ -872,13 +837,13 @@ ElizaClient.prototype.lookupLifeOpsSubscriptionPlaybook = async function (
   );
 };
 
-ElizaClient.prototype.listLifeOpsSubscriptionPlaybooks = async function (
+lifeOpsClientPrototype.listLifeOpsSubscriptionPlaybooks = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/subscriptions/playbooks");
 };
 
-ElizaClient.prototype.cancelLifeOpsSubscription = async function (
+lifeOpsClientPrototype.cancelLifeOpsSubscription = async function (
   this: ElizaClient,
   data,
 ) {
@@ -888,13 +853,13 @@ ElizaClient.prototype.cancelLifeOpsSubscription = async function (
   });
 };
 
-ElizaClient.prototype.createLifeOpsPlaidLinkToken = async function (
+lifeOpsClientPrototype.createLifeOpsPlaidLinkToken = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/money/plaid/link-token", { method: "POST" });
 };
 
-ElizaClient.prototype.completeLifeOpsPlaidLink = async function (
+lifeOpsClientPrototype.completeLifeOpsPlaidLink = async function (
   this: ElizaClient,
   data,
 ) {
@@ -904,7 +869,7 @@ ElizaClient.prototype.completeLifeOpsPlaidLink = async function (
   });
 };
 
-ElizaClient.prototype.syncLifeOpsPlaidTransactions = async function (
+lifeOpsClientPrototype.syncLifeOpsPlaidTransactions = async function (
   this: ElizaClient,
   data,
 ) {
@@ -914,7 +879,7 @@ ElizaClient.prototype.syncLifeOpsPlaidTransactions = async function (
   });
 };
 
-ElizaClient.prototype.createLifeOpsPaypalAuthorizeUrl = async function (
+lifeOpsClientPrototype.createLifeOpsPaypalAuthorizeUrl = async function (
   this: ElizaClient,
   data,
 ) {
@@ -924,7 +889,7 @@ ElizaClient.prototype.createLifeOpsPaypalAuthorizeUrl = async function (
   });
 };
 
-ElizaClient.prototype.completeLifeOpsPaypalLink = async function (
+lifeOpsClientPrototype.completeLifeOpsPaypalLink = async function (
   this: ElizaClient,
   data,
 ) {
@@ -934,7 +899,7 @@ ElizaClient.prototype.completeLifeOpsPaypalLink = async function (
   });
 };
 
-ElizaClient.prototype.syncLifeOpsPaypalTransactions = async function (
+lifeOpsClientPrototype.syncLifeOpsPaypalTransactions = async function (
   this: ElizaClient,
   data,
 ) {
@@ -944,7 +909,7 @@ ElizaClient.prototype.syncLifeOpsPaypalTransactions = async function (
   });
 };
 
-ElizaClient.prototype.unsubscribeLifeOpsEmailSender = async function (
+lifeOpsClientPrototype.unsubscribeLifeOpsEmailSender = async function (
   this: ElizaClient,
   data,
 ) {
@@ -954,13 +919,13 @@ ElizaClient.prototype.unsubscribeLifeOpsEmailSender = async function (
   });
 };
 
-ElizaClient.prototype.getLifeOpsCapabilitiesStatus = async function (
+lifeOpsClientPrototype.getLifeOpsCapabilitiesStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/capabilities");
 };
 
-ElizaClient.prototype.getLifeOpsScheduleMergedState = async function (
+lifeOpsClientPrototype.getLifeOpsScheduleMergedState = async function (
   this: ElizaClient,
   data = {},
 ) {
@@ -980,7 +945,7 @@ ElizaClient.prototype.getLifeOpsScheduleMergedState = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsScreenTimeSummary = async function (
+lifeOpsClientPrototype.getLifeOpsScreenTimeSummary = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1001,7 +966,7 @@ ElizaClient.prototype.getLifeOpsScreenTimeSummary = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsScreenTimeBreakdown = async function (
+lifeOpsClientPrototype.getLifeOpsScreenTimeBreakdown = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1022,7 +987,7 @@ ElizaClient.prototype.getLifeOpsScreenTimeBreakdown = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsScreenTimeHistory = async function (
+lifeOpsClientPrototype.getLifeOpsScreenTimeHistory = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1039,7 +1004,7 @@ ElizaClient.prototype.getLifeOpsScreenTimeHistory = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsSocialHabitSummary = async function (
+lifeOpsClientPrototype.getLifeOpsSocialHabitSummary = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1054,7 +1019,7 @@ ElizaClient.prototype.getLifeOpsSocialHabitSummary = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsSleepHistory = async function (
+lifeOpsClientPrototype.getLifeOpsSleepHistory = async function (
   this: ElizaClient,
   opts,
 ) {
@@ -1071,7 +1036,7 @@ ElizaClient.prototype.getLifeOpsSleepHistory = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsSleepRegularity = async function (
+lifeOpsClientPrototype.getLifeOpsSleepRegularity = async function (
   this: ElizaClient,
   opts,
 ) {
@@ -1088,7 +1053,7 @@ ElizaClient.prototype.getLifeOpsSleepRegularity = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsPersonalBaseline = async function (
+lifeOpsClientPrototype.getLifeOpsPersonalBaseline = async function (
   this: ElizaClient,
   opts,
 ) {
@@ -1102,29 +1067,13 @@ ElizaClient.prototype.getLifeOpsPersonalBaseline = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsSeedTemplates = async function (
-  this: ElizaClient,
-) {
-  return this.fetch("/api/lifeops/seed-templates");
-};
-
-ElizaClient.prototype.seedLifeOpsRoutines = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch<LifeOpsSeedRoutinesResponse>("/api/lifeops/seed", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-ElizaClient.prototype.getBrowserBridgeSettings = async function (
+lifeOpsClientPrototype.getBrowserBridgeSettings = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/browser-bridge/settings");
 };
 
-ElizaClient.prototype.updateBrowserBridgeSettings = async function (
+lifeOpsClientPrototype.updateBrowserBridgeSettings = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1134,19 +1083,19 @@ ElizaClient.prototype.updateBrowserBridgeSettings = async function (
   });
 };
 
-ElizaClient.prototype.listBrowserBridgeCompanions = async function (
+lifeOpsClientPrototype.listBrowserBridgeCompanions = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/browser-bridge/companions");
 };
 
-ElizaClient.prototype.getBrowserBridgePackageStatus = async function (
+lifeOpsClientPrototype.getBrowserBridgePackageStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/browser-bridge/packages");
 };
 
-ElizaClient.prototype.autoPairBrowserBridgeCompanion = async function (
+lifeOpsClientPrototype.autoPairBrowserBridgeCompanion = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1156,7 +1105,7 @@ ElizaClient.prototype.autoPairBrowserBridgeCompanion = async function (
   });
 };
 
-ElizaClient.prototype.createBrowserBridgeCompanionPairing = async function (
+lifeOpsClientPrototype.createBrowserBridgeCompanionPairing = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1166,7 +1115,7 @@ ElizaClient.prototype.createBrowserBridgeCompanionPairing = async function (
   });
 };
 
-ElizaClient.prototype.buildBrowserBridgeCompanionPackage = async function (
+lifeOpsClientPrototype.buildBrowserBridgeCompanionPackage = async function (
   this: ElizaClient,
   browser,
 ) {
@@ -1178,7 +1127,7 @@ ElizaClient.prototype.buildBrowserBridgeCompanionPackage = async function (
   );
 };
 
-ElizaClient.prototype.openBrowserBridgeCompanionPackagePath = async function (
+lifeOpsClientPrototype.openBrowserBridgeCompanionPackagePath = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1188,7 +1137,7 @@ ElizaClient.prototype.openBrowserBridgeCompanionPackagePath = async function (
   });
 };
 
-ElizaClient.prototype.openBrowserBridgeCompanionManager = async function (
+lifeOpsClientPrototype.openBrowserBridgeCompanionManager = async function (
   this: ElizaClient,
   browser,
 ) {
@@ -1200,11 +1149,11 @@ ElizaClient.prototype.openBrowserBridgeCompanionManager = async function (
   );
 };
 
-ElizaClient.prototype.downloadBrowserBridgeCompanionPackage = async function (
+lifeOpsClientPrototype.downloadBrowserBridgeCompanionPackage = async function (
   this: ElizaClient,
   browser,
 ) {
-  const response = await this.rawRequest(
+  const response = await (this as ElizaClient & RawRequestClient).rawRequest(
     `/api/browser-bridge/packages/${encodeURIComponent(browser)}/download`,
     {
       method: "GET",
@@ -1220,19 +1169,19 @@ ElizaClient.prototype.downloadBrowserBridgeCompanionPackage = async function (
   };
 };
 
-ElizaClient.prototype.listBrowserBridgeTabs = async function (
+lifeOpsClientPrototype.listBrowserBridgeTabs = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/browser-bridge/tabs");
 };
 
-ElizaClient.prototype.getBrowserBridgeCurrentPage = async function (
+lifeOpsClientPrototype.getBrowserBridgeCurrentPage = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/browser-bridge/current-page");
 };
 
-ElizaClient.prototype.syncBrowserBridgeState = async function (
+lifeOpsClientPrototype.syncBrowserBridgeState = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1242,13 +1191,13 @@ ElizaClient.prototype.syncBrowserBridgeState = async function (
   });
 };
 
-ElizaClient.prototype.listLifeOpsBrowserSessions = async function (
+lifeOpsClientPrototype.listLifeOpsBrowserSessions = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/browser-bridge/sessions");
 };
 
-ElizaClient.prototype.getLifeOpsBrowserSession = async function (
+lifeOpsClientPrototype.getLifeOpsBrowserSession = async function (
   this: ElizaClient,
   sessionId,
 ) {
@@ -1257,7 +1206,7 @@ ElizaClient.prototype.getLifeOpsBrowserSession = async function (
   );
 };
 
-ElizaClient.prototype.createLifeOpsBrowserSession = async function (
+lifeOpsClientPrototype.createLifeOpsBrowserSession = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1267,7 +1216,7 @@ ElizaClient.prototype.createLifeOpsBrowserSession = async function (
   });
 };
 
-ElizaClient.prototype.confirmLifeOpsBrowserSession = async function (
+lifeOpsClientPrototype.confirmLifeOpsBrowserSession = async function (
   this: ElizaClient,
   sessionId,
   data,
@@ -1281,7 +1230,7 @@ ElizaClient.prototype.confirmLifeOpsBrowserSession = async function (
   );
 };
 
-ElizaClient.prototype.updateLifeOpsBrowserSessionProgress = async function (
+lifeOpsClientPrototype.updateLifeOpsBrowserSessionProgress = async function (
   this: ElizaClient,
   sessionId,
   data,
@@ -1295,7 +1244,7 @@ ElizaClient.prototype.updateLifeOpsBrowserSessionProgress = async function (
   );
 };
 
-ElizaClient.prototype.completeLifeOpsBrowserSession = async function (
+lifeOpsClientPrototype.completeLifeOpsBrowserSession = async function (
   this: ElizaClient,
   sessionId,
   data,
@@ -1309,7 +1258,7 @@ ElizaClient.prototype.completeLifeOpsBrowserSession = async function (
   );
 };
 
-ElizaClient.prototype.captureLifeOpsActivitySignal = async function (
+lifeOpsClientPrototype.captureLifeOpsActivitySignal = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1319,7 +1268,7 @@ ElizaClient.prototype.captureLifeOpsActivitySignal = async function (
   });
 };
 
-ElizaClient.prototype.captureLifeOpsManualOverride = async function (
+lifeOpsClientPrototype.captureLifeOpsManualOverride = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1329,7 +1278,7 @@ ElizaClient.prototype.captureLifeOpsManualOverride = async function (
   });
 };
 
-ElizaClient.prototype.getLifeOpsScheduleInspection = async function (
+lifeOpsClientPrototype.getLifeOpsScheduleInspection = async function (
   this: ElizaClient,
   timezone,
 ) {
@@ -1338,7 +1287,7 @@ ElizaClient.prototype.getLifeOpsScheduleInspection = async function (
   return this.fetch(`/api/lifeops/schedule/inspection?${params.toString()}`);
 };
 
-ElizaClient.prototype.getLifeOpsScheduleSummary = async function (
+lifeOpsClientPrototype.getLifeOpsScheduleSummary = async function (
   this: ElizaClient,
   timezone,
 ) {
@@ -1347,13 +1296,13 @@ ElizaClient.prototype.getLifeOpsScheduleSummary = async function (
   return this.fetch(`/api/lifeops/schedule/summary?${params.toString()}`);
 };
 
-ElizaClient.prototype.getLifeOpsFullDiskAccessStatus = async function (
+lifeOpsClientPrototype.getLifeOpsFullDiskAccessStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/permissions/full-disk-access");
 };
 
-ElizaClient.prototype.getLifeOpsCalendarFeed = async function (
+lifeOpsClientPrototype.getLifeOpsCalendarFeed = async function (
   this: ElizaClient,
   options: GetLifeOpsCalendarFeedRequest = {},
 ) {
@@ -1394,7 +1343,7 @@ ElizaClient.prototype.getLifeOpsCalendarFeed = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsCalendars = async function (
+lifeOpsClientPrototype.getLifeOpsCalendars = async function (
   this: ElizaClient,
   options: ListLifeOpsCalendarsRequest = {},
 ) {
@@ -1414,7 +1363,7 @@ ElizaClient.prototype.getLifeOpsCalendars = async function (
   );
 };
 
-ElizaClient.prototype.setLifeOpsCalendarIncluded = async function (
+lifeOpsClientPrototype.setLifeOpsCalendarIncluded = async function (
   this: ElizaClient,
   data: SetLifeOpsCalendarIncludedRequest,
 ) {
@@ -1427,7 +1376,7 @@ ElizaClient.prototype.setLifeOpsCalendarIncluded = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsGmailTriage = async function (
+lifeOpsClientPrototype.getLifeOpsGmailTriage = async function (
   this: ElizaClient,
   options: GetLifeOpsGmailTriageRequest = {},
 ) {
@@ -1453,7 +1402,7 @@ ElizaClient.prototype.getLifeOpsGmailTriage = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsGmailSearch = async function (
+lifeOpsClientPrototype.getLifeOpsGmailSearch = async function (
   this: ElizaClient,
   options: GetLifeOpsGmailSearchRequest,
 ) {
@@ -1486,7 +1435,7 @@ ElizaClient.prototype.getLifeOpsGmailSearch = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsGmailNeedsResponse = async function (
+lifeOpsClientPrototype.getLifeOpsGmailNeedsResponse = async function (
   this: ElizaClient,
   options: GetLifeOpsGmailTriageRequest = {},
 ) {
@@ -1512,7 +1461,7 @@ ElizaClient.prototype.getLifeOpsGmailNeedsResponse = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsGmailRecommendations = async function (
+lifeOpsClientPrototype.getLifeOpsGmailRecommendations = async function (
   this: ElizaClient,
   options: GetLifeOpsGmailRecommendationsRequest = {},
 ) {
@@ -1547,7 +1496,7 @@ ElizaClient.prototype.getLifeOpsGmailRecommendations = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsGmailSpamReview = async function (
+lifeOpsClientPrototype.getLifeOpsGmailSpamReview = async function (
   this: ElizaClient,
   options = {},
 ) {
@@ -1573,7 +1522,7 @@ ElizaClient.prototype.getLifeOpsGmailSpamReview = async function (
   );
 };
 
-ElizaClient.prototype.updateLifeOpsGmailSpamReviewItem = async function (
+lifeOpsClientPrototype.updateLifeOpsGmailSpamReviewItem = async function (
   this: ElizaClient,
   itemId,
   data,
@@ -1587,7 +1536,7 @@ ElizaClient.prototype.updateLifeOpsGmailSpamReviewItem = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsGmailUnresponded = async function (
+lifeOpsClientPrototype.getLifeOpsGmailUnresponded = async function (
   this: ElizaClient,
   options: GetLifeOpsGmailUnrespondedRequest = {},
 ) {
@@ -1613,7 +1562,7 @@ ElizaClient.prototype.getLifeOpsGmailUnresponded = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsNextCalendarEventContext = async function (
+lifeOpsClientPrototype.getLifeOpsNextCalendarEventContext = async function (
   this: ElizaClient,
   options = {},
 ) {
@@ -1642,7 +1591,7 @@ ElizaClient.prototype.getLifeOpsNextCalendarEventContext = async function (
   );
 };
 
-ElizaClient.prototype.createLifeOpsCalendarEvent = async function (
+lifeOpsClientPrototype.createLifeOpsCalendarEvent = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1652,7 +1601,7 @@ ElizaClient.prototype.createLifeOpsCalendarEvent = async function (
   });
 };
 
-ElizaClient.prototype.updateLifeOpsCalendarEvent = async function (
+lifeOpsClientPrototype.updateLifeOpsCalendarEvent = async function (
   this: ElizaClient,
   eventId,
   patch,
@@ -1666,7 +1615,7 @@ ElizaClient.prototype.updateLifeOpsCalendarEvent = async function (
   );
 };
 
-ElizaClient.prototype.deleteLifeOpsCalendarEvent = async function (
+lifeOpsClientPrototype.deleteLifeOpsCalendarEvent = async function (
   this: ElizaClient,
   eventId,
   options = {},
@@ -1684,7 +1633,7 @@ ElizaClient.prototype.deleteLifeOpsCalendarEvent = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsInbox = async function (
+lifeOpsClientPrototype.getLifeOpsInbox = async function (
   this: ElizaClient,
   options = {},
 ) {
@@ -1723,7 +1672,7 @@ ElizaClient.prototype.getLifeOpsInbox = async function (
   return this.fetch(`/api/lifeops/inbox${query ? `?${query}` : ""}`);
 };
 
-ElizaClient.prototype.createLifeOpsGmailReplyDraft = async function (
+lifeOpsClientPrototype.createLifeOpsGmailReplyDraft = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1733,7 +1682,7 @@ ElizaClient.prototype.createLifeOpsGmailReplyDraft = async function (
   });
 };
 
-ElizaClient.prototype.sendLifeOpsGmailReply = async function (
+lifeOpsClientPrototype.sendLifeOpsGmailReply = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1743,7 +1692,7 @@ ElizaClient.prototype.sendLifeOpsGmailReply = async function (
   });
 };
 
-ElizaClient.prototype.manageLifeOpsGmailMessages = async function (
+lifeOpsClientPrototype.manageLifeOpsGmailMessages = async function (
   this: ElizaClient,
   data: ManageLifeOpsGmailMessagesRequest,
 ) {
@@ -1753,7 +1702,7 @@ ElizaClient.prototype.manageLifeOpsGmailMessages = async function (
   });
 };
 
-ElizaClient.prototype.ingestLifeOpsGmailEvent = async function (
+lifeOpsClientPrototype.ingestLifeOpsGmailEvent = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1763,13 +1712,13 @@ ElizaClient.prototype.ingestLifeOpsGmailEvent = async function (
   });
 };
 
-ElizaClient.prototype.listLifeOpsDefinitions = async function (
+lifeOpsClientPrototype.listLifeOpsDefinitions = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/definitions");
 };
 
-ElizaClient.prototype.getLifeOpsDefinition = async function (
+lifeOpsClientPrototype.getLifeOpsDefinition = async function (
   this: ElizaClient,
   definitionId,
 ) {
@@ -1778,7 +1727,7 @@ ElizaClient.prototype.getLifeOpsDefinition = async function (
   );
 };
 
-ElizaClient.prototype.createLifeOpsDefinition = async function (
+lifeOpsClientPrototype.createLifeOpsDefinition = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1788,7 +1737,7 @@ ElizaClient.prototype.createLifeOpsDefinition = async function (
   });
 };
 
-ElizaClient.prototype.updateLifeOpsDefinition = async function (
+lifeOpsClientPrototype.updateLifeOpsDefinition = async function (
   this: ElizaClient,
   definitionId,
   data,
@@ -1802,25 +1751,25 @@ ElizaClient.prototype.updateLifeOpsDefinition = async function (
   );
 };
 
-ElizaClient.prototype.listLifeOpsGoals = async function (this: ElizaClient) {
+lifeOpsClientPrototype.listLifeOpsGoals = async function (this: ElizaClient) {
   return this.fetch("/api/lifeops/goals");
 };
 
-ElizaClient.prototype.getLifeOpsGoal = async function (
+lifeOpsClientPrototype.getLifeOpsGoal = async function (
   this: ElizaClient,
   goalId,
 ) {
   return this.fetch(`/api/lifeops/goals/${encodeURIComponent(goalId)}`);
 };
 
-ElizaClient.prototype.reviewLifeOpsGoal = async function (
+lifeOpsClientPrototype.reviewLifeOpsGoal = async function (
   this: ElizaClient,
   goalId,
 ) {
   return this.fetch(`/api/lifeops/goals/${encodeURIComponent(goalId)}/review`);
 };
 
-ElizaClient.prototype.createLifeOpsGoal = async function (
+lifeOpsClientPrototype.createLifeOpsGoal = async function (
   this: ElizaClient,
   data,
 ) {
@@ -1830,7 +1779,7 @@ ElizaClient.prototype.createLifeOpsGoal = async function (
   });
 };
 
-ElizaClient.prototype.updateLifeOpsGoal = async function (
+lifeOpsClientPrototype.updateLifeOpsGoal = async function (
   this: ElizaClient,
   goalId,
   data,
@@ -1841,7 +1790,7 @@ ElizaClient.prototype.updateLifeOpsGoal = async function (
   });
 };
 
-ElizaClient.prototype.completeLifeOpsOccurrence = async function (
+lifeOpsClientPrototype.completeLifeOpsOccurrence = async function (
   this: ElizaClient,
   occurrenceId,
   data = {},
@@ -1855,7 +1804,7 @@ ElizaClient.prototype.completeLifeOpsOccurrence = async function (
   );
 };
 
-ElizaClient.prototype.skipLifeOpsOccurrence = async function (
+lifeOpsClientPrototype.skipLifeOpsOccurrence = async function (
   this: ElizaClient,
   occurrenceId,
 ) {
@@ -1868,7 +1817,7 @@ ElizaClient.prototype.skipLifeOpsOccurrence = async function (
   );
 };
 
-ElizaClient.prototype.snoozeLifeOpsOccurrence = async function (
+lifeOpsClientPrototype.snoozeLifeOpsOccurrence = async function (
   this: ElizaClient,
   occurrenceId,
   data,
@@ -1882,7 +1831,7 @@ ElizaClient.prototype.snoozeLifeOpsOccurrence = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsOccurrenceExplanation = async function (
+lifeOpsClientPrototype.getLifeOpsOccurrenceExplanation = async function (
   this: ElizaClient,
   occurrenceId,
 ) {
@@ -1891,7 +1840,7 @@ ElizaClient.prototype.getLifeOpsOccurrenceExplanation = async function (
   );
 };
 
-ElizaClient.prototype.inspectLifeOpsReminder = async function (
+lifeOpsClientPrototype.inspectLifeOpsReminder = async function (
   this: ElizaClient,
   ownerType,
   ownerId,
@@ -1903,73 +1852,7 @@ ElizaClient.prototype.inspectLifeOpsReminder = async function (
   return this.fetch(`/api/lifeops/reminders/inspection?${params.toString()}`);
 };
 
-ElizaClient.prototype.getGoogleLifeOpsConnectorStatus = async function (
-  this: ElizaClient,
-  mode?: LifeOpsConnectorMode,
-  side?: LifeOpsConnectorSide,
-) {
-  const params = new URLSearchParams();
-  if (mode) {
-    params.set("mode", mode);
-  }
-  if (side) {
-    params.set("side", side);
-  }
-  const query = params.size > 0 ? `?${params.toString()}` : "";
-  return this.fetch<LifeOpsGoogleConnectorStatus>(
-    `/api/lifeops/connectors/google/status${query}`,
-  );
-};
-
-ElizaClient.prototype.selectGoogleLifeOpsConnectorMode = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/lifeops/connectors/google/preference", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-ElizaClient.prototype.startGoogleLifeOpsConnector = async function (
-  this: ElizaClient,
-  data = {},
-) {
-  return this.fetch("/api/lifeops/connectors/google/start", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-ElizaClient.prototype.disconnectGoogleLifeOpsConnector = async function (
-  this: ElizaClient,
-  data = {},
-) {
-  return this.fetch("/api/lifeops/connectors/google/disconnect", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-ElizaClient.prototype.getGoogleLifeOpsConnectorAccounts = async function (
-  this: ElizaClient,
-  mode?: LifeOpsConnectorMode,
-  side?: LifeOpsConnectorSide,
-) {
-  const params = new URLSearchParams();
-  if (mode) {
-    params.set("mode", mode);
-  }
-  if (side) {
-    params.set("side", side);
-  }
-  const query = params.size > 0 ? `?${params.toString()}` : "";
-  return this.fetch<LifeOpsGoogleConnectorStatus[]>(
-    `/api/lifeops/connectors/google/accounts${query}`,
-  );
-};
-
-ElizaClient.prototype.getHealthLifeOpsConnectorStatuses = async function (
+lifeOpsClientPrototype.getHealthLifeOpsConnectorStatuses = async function (
   this: ElizaClient,
   mode?: LifeOpsConnectorMode,
   side?: LifeOpsConnectorSide,
@@ -1987,7 +1870,7 @@ ElizaClient.prototype.getHealthLifeOpsConnectorStatuses = async function (
   );
 };
 
-ElizaClient.prototype.getHealthLifeOpsConnectorStatus = async function (
+lifeOpsClientPrototype.getHealthLifeOpsConnectorStatus = async function (
   this: ElizaClient,
   provider,
   mode?: LifeOpsConnectorMode,
@@ -2006,7 +1889,7 @@ ElizaClient.prototype.getHealthLifeOpsConnectorStatus = async function (
   );
 };
 
-ElizaClient.prototype.startHealthLifeOpsConnector = async function (
+lifeOpsClientPrototype.startHealthLifeOpsConnector = async function (
   this: ElizaClient,
   provider,
   data = {},
@@ -2020,7 +1903,7 @@ ElizaClient.prototype.startHealthLifeOpsConnector = async function (
   );
 };
 
-ElizaClient.prototype.disconnectHealthLifeOpsConnector = async function (
+lifeOpsClientPrototype.disconnectHealthLifeOpsConnector = async function (
   this: ElizaClient,
   provider,
   data = {},
@@ -2034,7 +1917,7 @@ ElizaClient.prototype.disconnectHealthLifeOpsConnector = async function (
   );
 };
 
-ElizaClient.prototype.syncLifeOpsHealth = async function (
+lifeOpsClientPrototype.syncLifeOpsHealth = async function (
   this: ElizaClient,
   data = {},
 ) {
@@ -2044,7 +1927,7 @@ ElizaClient.prototype.syncLifeOpsHealth = async function (
   });
 };
 
-ElizaClient.prototype.getLifeOpsHealthSummary = async function (
+lifeOpsClientPrototype.getLifeOpsHealthSummary = async function (
   this: ElizaClient,
   data = {},
 ) {
@@ -2062,7 +1945,7 @@ ElizaClient.prototype.getLifeOpsHealthSummary = async function (
   );
 };
 
-ElizaClient.prototype.getXLifeOpsConnectorStatus = async function (
+lifeOpsClientPrototype.getXLifeOpsConnectorStatus = async function (
   this: ElizaClient,
   mode,
   side,
@@ -2078,7 +1961,7 @@ ElizaClient.prototype.getXLifeOpsConnectorStatus = async function (
   return this.fetch(`/api/lifeops/connectors/x/status${query}`);
 };
 
-ElizaClient.prototype.startXLifeOpsConnector = async function (
+lifeOpsClientPrototype.startXLifeOpsConnector = async function (
   this: ElizaClient,
   data = {},
 ) {
@@ -2088,7 +1971,7 @@ ElizaClient.prototype.startXLifeOpsConnector = async function (
   });
 };
 
-ElizaClient.prototype.disconnectXLifeOpsConnector = async function (
+lifeOpsClientPrototype.disconnectXLifeOpsConnector = async function (
   this: ElizaClient,
   data = {},
 ) {
@@ -2098,7 +1981,7 @@ ElizaClient.prototype.disconnectXLifeOpsConnector = async function (
   });
 };
 
-ElizaClient.prototype.upsertXLifeOpsConnector = async function (
+lifeOpsClientPrototype.upsertXLifeOpsConnector = async function (
   this: ElizaClient,
   data,
 ) {
@@ -2108,7 +1991,7 @@ ElizaClient.prototype.upsertXLifeOpsConnector = async function (
   });
 };
 
-ElizaClient.prototype.createXLifeOpsPost = async function (
+lifeOpsClientPrototype.createXLifeOpsPost = async function (
   this: ElizaClient,
   data,
 ) {
@@ -2122,19 +2005,19 @@ ElizaClient.prototype.createXLifeOpsPost = async function (
 // iMessage connector
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getIMessageConnectorStatus = async function (
+lifeOpsClientPrototype.getIMessageConnectorStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/connectors/imessage/status");
 };
 
-ElizaClient.prototype.listLifeOpsIMessageChats = async function (
+lifeOpsClientPrototype.listLifeOpsIMessageChats = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/connectors/imessage/chats");
 };
 
-ElizaClient.prototype.getLifeOpsIMessageMessages = async function (
+lifeOpsClientPrototype.getLifeOpsIMessageMessages = async function (
   this: ElizaClient,
   options = {},
 ) {
@@ -2152,7 +2035,7 @@ ElizaClient.prototype.getLifeOpsIMessageMessages = async function (
   return this.fetch(`/api/lifeops/connectors/imessage/messages${query}`);
 };
 
-ElizaClient.prototype.sendLifeOpsIMessage = async function (
+lifeOpsClientPrototype.sendLifeOpsIMessage = async function (
   this: ElizaClient,
   data,
 ) {
@@ -2166,7 +2049,7 @@ ElizaClient.prototype.sendLifeOpsIMessage = async function (
 // Signal connector
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getSignalConnectorStatus = async function (
+lifeOpsClientPrototype.getSignalConnectorStatus = async function (
   this: ElizaClient,
   side,
 ) {
@@ -2178,7 +2061,7 @@ ElizaClient.prototype.getSignalConnectorStatus = async function (
   return this.fetch(`/api/lifeops/connectors/signal/status${query}`);
 };
 
-ElizaClient.prototype.startLifeOpsSignalPairing = async function (
+lifeOpsClientPrototype.startLifeOpsSignalPairing = async function (
   this: ElizaClient,
   data = {},
 ): Promise<StartLifeOpsSignalPairingResponse> {
@@ -2191,7 +2074,7 @@ ElizaClient.prototype.startLifeOpsSignalPairing = async function (
   );
 };
 
-ElizaClient.prototype.getLifeOpsSignalPairingStatus = async function (
+lifeOpsClientPrototype.getLifeOpsSignalPairingStatus = async function (
   this: ElizaClient,
   sessionId: string,
 ): Promise<LifeOpsSignalPairingStatus> {
@@ -2201,7 +2084,7 @@ ElizaClient.prototype.getLifeOpsSignalPairingStatus = async function (
   );
 };
 
-ElizaClient.prototype.stopLifeOpsSignalPairing = async function (
+lifeOpsClientPrototype.stopLifeOpsSignalPairing = async function (
   this: ElizaClient,
   data = { provider: "signal" },
 ): Promise<LifeOpsSignalPairingStatus> {
@@ -2214,7 +2097,7 @@ ElizaClient.prototype.stopLifeOpsSignalPairing = async function (
   );
 };
 
-ElizaClient.prototype.disconnectSignalConnector = async function (
+lifeOpsClientPrototype.disconnectSignalConnector = async function (
   this: ElizaClient,
   data = { provider: "signal" },
 ) {
@@ -2224,7 +2107,7 @@ ElizaClient.prototype.disconnectSignalConnector = async function (
   });
 };
 
-ElizaClient.prototype.getSignalConnectorMessages = async function (
+lifeOpsClientPrototype.getSignalConnectorMessages = async function (
   this: ElizaClient,
   options = {},
 ): Promise<GetLifeOpsSignalMessagesResponse> {
@@ -2238,7 +2121,7 @@ ElizaClient.prototype.getSignalConnectorMessages = async function (
   );
 };
 
-ElizaClient.prototype.sendSignalConnectorMessage = async function (
+lifeOpsClientPrototype.sendSignalConnectorMessage = async function (
   this: ElizaClient,
   data,
 ) {
@@ -2252,7 +2135,7 @@ ElizaClient.prototype.sendSignalConnectorMessage = async function (
 // Discord connector
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getDiscordConnectorStatus = async function (
+lifeOpsClientPrototype.getDiscordConnectorStatus = async function (
   this: ElizaClient,
   side,
 ) {
@@ -2264,7 +2147,7 @@ ElizaClient.prototype.getDiscordConnectorStatus = async function (
   return this.fetch(`/api/lifeops/connectors/discord/status${query}`);
 };
 
-ElizaClient.prototype.startDiscordConnector = async function (
+lifeOpsClientPrototype.startDiscordConnector = async function (
   this: ElizaClient,
   data = {},
 ) {
@@ -2274,7 +2157,7 @@ ElizaClient.prototype.startDiscordConnector = async function (
   });
 };
 
-ElizaClient.prototype.disconnectDiscordConnector = async function (
+lifeOpsClientPrototype.disconnectDiscordConnector = async function (
   this: ElizaClient,
   data = { provider: "discord" },
 ) {
@@ -2284,7 +2167,7 @@ ElizaClient.prototype.disconnectDiscordConnector = async function (
   });
 };
 
-ElizaClient.prototype.sendDiscordConnectorMessage = async function (
+lifeOpsClientPrototype.sendDiscordConnectorMessage = async function (
   this: ElizaClient,
   data,
 ) {
@@ -2294,7 +2177,7 @@ ElizaClient.prototype.sendDiscordConnectorMessage = async function (
   });
 };
 
-ElizaClient.prototype.verifyDiscordConnector = async function (
+lifeOpsClientPrototype.verifyDiscordConnector = async function (
   this: ElizaClient,
   data = {},
 ) {
@@ -2308,13 +2191,13 @@ ElizaClient.prototype.verifyDiscordConnector = async function (
 // WhatsApp connector
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getWhatsAppConnectorStatus = async function (
+lifeOpsClientPrototype.getWhatsAppConnectorStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/connectors/whatsapp/status");
 };
 
-ElizaClient.prototype.sendWhatsAppConnectorMessage = async function (
+lifeOpsClientPrototype.sendWhatsAppConnectorMessage = async function (
   this: ElizaClient,
   data,
 ) {
@@ -2324,7 +2207,7 @@ ElizaClient.prototype.sendWhatsAppConnectorMessage = async function (
   });
 };
 
-ElizaClient.prototype.getWhatsAppConnectorMessages = async function (
+lifeOpsClientPrototype.getWhatsAppConnectorMessages = async function (
   this: ElizaClient,
   options = {},
 ) {
@@ -2340,7 +2223,7 @@ ElizaClient.prototype.getWhatsAppConnectorMessages = async function (
 // Telegram connector
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getTelegramConnectorStatus = async function (
+lifeOpsClientPrototype.getTelegramConnectorStatus = async function (
   this: ElizaClient,
   side,
 ) {
@@ -2352,7 +2235,7 @@ ElizaClient.prototype.getTelegramConnectorStatus = async function (
   return this.fetch(`/api/lifeops/connectors/telegram/status${query}`);
 };
 
-ElizaClient.prototype.startTelegramAuth = async function (
+lifeOpsClientPrototype.startTelegramAuth = async function (
   this: ElizaClient,
   data,
 ) {
@@ -2362,7 +2245,7 @@ ElizaClient.prototype.startTelegramAuth = async function (
   });
 };
 
-ElizaClient.prototype.submitTelegramAuth = async function (
+lifeOpsClientPrototype.submitTelegramAuth = async function (
   this: ElizaClient,
   data,
 ) {
@@ -2372,7 +2255,7 @@ ElizaClient.prototype.submitTelegramAuth = async function (
   });
 };
 
-ElizaClient.prototype.cancelTelegramAuth = async function (
+lifeOpsClientPrototype.cancelTelegramAuth = async function (
   this: ElizaClient,
   data = { provider: "telegram" },
 ) {
@@ -2387,7 +2270,7 @@ ElizaClient.prototype.cancelTelegramAuth = async function (
   });
 };
 
-ElizaClient.prototype.disconnectTelegramConnector = async function (
+lifeOpsClientPrototype.disconnectTelegramConnector = async function (
   this: ElizaClient,
   data = { provider: "telegram" },
 ) {
@@ -2402,7 +2285,7 @@ ElizaClient.prototype.disconnectTelegramConnector = async function (
   });
 };
 
-ElizaClient.prototype.verifyTelegramConnector = async function (
+lifeOpsClientPrototype.verifyTelegramConnector = async function (
   this: ElizaClient,
   data = {},
 ) {

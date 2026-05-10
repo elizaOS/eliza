@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "@elizaos/cloud-ui/runtime/image";
+import { Image } from "@elizaos/cloud-ui";
 import { AlertCircle, CheckCircle, Copy, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";

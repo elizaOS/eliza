@@ -1,5 +1,4 @@
 import type { ComponentType } from "react";
-import * as THREE from "three";
 
 const EmptyComponent: ComponentType = () => null;
 const optionalPlugin = Object.freeze({
@@ -30,7 +29,7 @@ export const LIFEOPS_CONNECTOR_DEGRADATION_AXES = Object.freeze([]);
 export const appPlugin = optionalPlugin;
 export const defaultPlugin = optionalPlugin;
 export const hyperliquidPlugin = optionalPlugin;
-export const knowledgePlugin = optionalPlugin;
+export const documentsPlugin = optionalPlugin;
 export const lifeopsPlugin = optionalPlugin;
 export const polymarketPlugin = optionalPlugin;
 export const plugin = optionalPlugin;
@@ -39,7 +38,7 @@ export const stewardPlugin = optionalPlugin;
 export const trainingPlugin = optionalPlugin;
 export const vincentPlugin = optionalPlugin;
 
-export const knowledgeRoutes = Object.freeze([]);
+export const documentsRoutes = Object.freeze([]);
 export const trainingRoutes = Object.freeze([]);
 
 export function createVectorBrowserRenderer(): Promise<null> {
@@ -84,7 +83,7 @@ export function getSelfControlPermissionState() {
 export async function handleCloudFeaturesRoute() {
   return false;
 }
-export async function handleKnowledgeRoutes() {
+export async function handleDocumentsRoutes() {
   return false;
 }
 export async function handleTrainingRoutes() {
@@ -121,5 +120,4 @@ export function setActiveTrainingService() {}
 export async function stewardEvmPostBoot() {}
 export async function stewardEvmPreBoot() {}
 
-export { THREE };
 export default optionalPlugin;

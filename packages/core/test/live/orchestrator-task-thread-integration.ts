@@ -55,7 +55,7 @@ async function cleanup(): Promise<void> {
 
 async function main(): Promise<void> {
 	({ runtime, cleanup: cleanupRuntime } = await createTestRuntime());
-	service = await PTYService.start(runtime as unknown as IAgentRuntime);
+	service = await PTYService.start(runtime);
 	(runtime.services as Map<string, unknown[]>).set("PTY_SERVICE", [
 		service as unknown,
 	]);

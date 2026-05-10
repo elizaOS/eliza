@@ -1,11 +1,11 @@
 import {
+  Button,
   LanguageDropdown,
   ThemeToggle,
   type UiLanguage,
   type UiTheme,
   useMediaQuery,
-} from "@elizaos/app-core";
-import { Button } from "@elizaos/ui";
+} from "@elizaos/ui";
 import {
   MessageCirclePlus,
   Monitor,

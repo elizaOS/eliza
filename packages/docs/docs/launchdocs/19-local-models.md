@@ -18,7 +18,7 @@ The main app-core route surface is `packages/app-core/src/api/local-inference-co
 
 Settings surface exists in `packages/app-core/src/components/settings/ProviderSwitcher.tsx` and `packages/app-core/src/components/local-inference/*`. The local provider panel renders `LocalInferencePanel` (`ProviderSwitcher.tsx:1038-1060`), and advanced "Model settings" render providers plus `RoutingMatrix` (`ProviderSwitcher.tsx:1299-1303`). `LocalInferencePanel` covers hardware, device bridge status, first-run download offer, active model bar, curated/search/download tabs, slot assignments, devices, discovered external models, verify, redownload, activate, and uninstall.
 
-The curated local model catalog is GGUF-focused and Hugging Face-backed. It includes tiny/mobile entries such as SmolLM2 360M, SmolLM2 1.7B, Llama 3.2 1B/3B, Qwen2.5 3B, mid/large code/chat/reasoning models, and a Bonsai 8B 1-bit TurboQuant AOSP-oriented entry (`catalog.ts:1-248`). Catalog download URLs are constructed from `hfRepo` + exact `ggufFile`, optionally via `ELIZA_HF_BASE_URL` mirrors (`catalog.ts:254-260`).
+The curated local model catalog is GGUF-focused, Hugging Face-backed, and Eliza-1 only. It exposes the Eliza-1 lite, mobile, desktop, pro, and server tiers, with download URLs constructed from `hfRepo` + exact `ggufFile`, optionally via `ELIZA_HF_BASE_URL` mirrors.
 
 Downloads are resumable and stream from Hugging Face into `$STATE_DIR/local-inference/downloads/<id>.part`, then atomically rename into the Eliza-owned model dir, hash the final file, register it, and auto-assign empty slots (`downloader.ts:1-15`, `downloader.ts:123-158`, `downloader.ts:198-311`). Installed model verification checks GGUF magic and SHA256 against the locally recorded hash (`verify.ts` inspected).
 
@@ -94,7 +94,7 @@ The plugin has no local `vitest.config.ts`; the subsequent root-pattern run abov
 - No real GGUF downloads, large-file hash passes, or interrupted download resumes. Those would be heavyweight.
 - No real `node-llama-cpp` model load/generate on desktop GPU/CPU.
 - No mobile device bridge end-to-end with an actual iOS/Android device.
-- No AOSP `libllama.so` FFI load, Bonsai TurboQuant path, or Android thermal/battery behavior.
+- No AOSP `libllama.so` FFI load or Android thermal/battery behavior.
 - No live Hugging Face search/download network call beyond code inspection; tests cover mocked/bounded paths.
 - No Vertex tuning, teacher-model dataset generation, roleplay execution, or native optimizer quality evals.
 - No full UI visual/browser validation of Settings -> Local provider due to task scope and time.

@@ -1,6 +1,5 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { readResourceAction } from "./actions/readResourceAction";
-import { listConnectionsAction, searchActionsAction } from "./actions/search-actions";
+import { mcpAction } from "./actions/mcp";
 import { provider } from "./provider";
 import { McpService } from "./service";
 
@@ -29,9 +28,7 @@ export {
 // Re-export types
 export * from "./types";
 
-// Use type assertion for the plugin definition because McpService and ActionWithParams
-// have minor structural differences from upstream @elizaos/core ServiceClass and Action types
-const mcpPlugin = {
+const mcpPlugin: Plugin = {
   name: "mcp",
   description: "Plugin for connecting to MCP (Model Context Protocol) servers",
 
@@ -40,8 +37,8 @@ const mcpPlugin = {
   },
 
   services: [McpService],
-  actions: [readResourceAction, searchActionsAction, listConnectionsAction],
+  actions: [mcpAction],
   providers: [provider],
-} satisfies Record<string, unknown> as unknown as Plugin;
+};
 
 export default mcpPlugin;

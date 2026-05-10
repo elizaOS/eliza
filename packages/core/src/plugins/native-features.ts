@@ -1,33 +1,24 @@
-import { withCanonicalActionDocs } from "../action-docs";
+// Direct leaf-file imports — see comment in
+// ../features/advanced-capabilities/index.ts for the Bun.build mis-rewrite
+// that requires bypassing the barrels here too.
+import { promoteSubactionsToActions } from "../actions/promote-subactions";
+import { messageAction } from "../features/advanced-capabilities/actions/message";
+import { postAction } from "../features/advanced-capabilities/actions/post";
+import { reflectionItems } from "../features/advanced-capabilities/evaluators/reflection-items";
+import { skillItems } from "../features/advanced-capabilities/evaluators/skill-items";
+import { advancedContactsProvider } from "../features/advanced-capabilities/providers/contacts";
+import { factsProvider } from "../features/advanced-capabilities/providers/facts";
+import { followUpsProvider } from "../features/advanced-capabilities/providers/followUps";
+import { relationshipsProvider } from "../features/advanced-capabilities/providers/relationships";
 import {
-	addContactAction,
-	removeContactAction,
-	scheduleFollowUpAction,
-	searchContactsAction,
-	sendMessageAction,
-	updateContactAction,
-	updateEntityAction,
-} from "../features/advanced-capabilities/actions/index";
-import {
-	factExtractorAction,
-	reflectionAction,
-	relationshipExtractionAction,
-} from "../features/advanced-capabilities/evaluators/index";
-import {
-	contactsProvider,
-	factsProvider,
-	followUpsProvider,
-	relationshipsProvider,
-} from "../features/advanced-capabilities/providers/index";
-import {
-	__setKnowledgeUrlFetchImplForTests,
+	__setDocumentUrlFetchImplForTests,
+	DocumentService,
 	documentsPlugin,
-	type FetchedKnowledgeUrl,
-	type FetchedKnowledgeUrlKind,
-	type FetchKnowledgeFromUrlOptions,
-	fetchKnowledgeFromUrl,
+	type FetchDocumentFromUrlOptions,
+	type FetchedDocumentUrl,
+	type FetchedDocumentUrlKind,
+	fetchDocumentFromUrl,
 	isYouTubeUrl,
-	KnowledgeService,
 } from "../features/documents/index";
 import { trajectoriesPlugin } from "../features/trajectories/index";
 import { FollowUpService } from "../services/followUp";
@@ -44,26 +35,27 @@ export const relationshipsPlugin: Plugin = {
 	description:
 		"Native relationship, contact, follow-up, and social memory capabilities.",
 	actions: [
-		withCanonicalActionDocs(addContactAction),
-		withCanonicalActionDocs(removeContactAction),
-		withCanonicalActionDocs(scheduleFollowUpAction),
-		withCanonicalActionDocs(searchContactsAction),
-		withCanonicalActionDocs(sendMessageAction),
-		withCanonicalActionDocs(updateContactAction),
-		withCanonicalActionDocs(updateEntityAction),
-		// ALWAYS_AFTER actions (post-message work; replaces legacy evaluators).
-		factExtractorAction,
-		reflectionAction,
-		// ALWAYS_BEFORE actions (pre-Stage 1 heuristics; runs even on IGNORE/STOP).
-		relationshipExtractionAction,
+		// Contact / Rolodex / entity ops are consolidated into the
+		// `CONTACT` parent action in `@elizaos/agent`
+		// (packages/agent/src/actions/contact.ts). The old
+		// addContactAction / removeContactAction / searchContactsAction /
+		// updateContactAction / updateEntityAction leaves are no longer
+		// registered here — their similes live on CONTACT's similes list.
+		// MESSAGE and POST register the parent umbrella plus virtual
+		// MESSAGE_<SUB> / POST_<SUB> actions for every subaction. The
+		// virtuals delegate to the parent's handler with `subaction:`
+		// injected, so the planner can pick a specific verb directly OR
+		// call the parent with custom params.
+		...promoteSubactionsToActions(messageAction),
+		...promoteSubactionsToActions(postAction),
 	],
+	evaluators: [...reflectionItems, ...skillItems],
 	providers: [
-		contactsProvider,
+		advancedContactsProvider,
 		factsProvider,
 		followUpsProvider,
 		relationshipsProvider,
 	],
-	evaluators: [],
 	services: [RelationshipsService, FollowUpService],
 };
 
@@ -123,16 +115,16 @@ export {
 	documentsPluginHeadless,
 } from "../features/documents/index";
 export type {
-	FetchedKnowledgeUrl,
-	FetchedKnowledgeUrlKind,
-	FetchKnowledgeFromUrlOptions,
+	FetchDocumentFromUrlOptions,
+	FetchedDocumentUrl,
+	FetchedDocumentUrlKind,
 };
 export {
-	__setKnowledgeUrlFetchImplForTests,
+	__setDocumentUrlFetchImplForTests,
+	DocumentService,
 	FollowUpService,
-	fetchKnowledgeFromUrl,
+	fetchDocumentFromUrl,
 	isYouTubeUrl,
-	KnowledgeService,
 	RelationshipsService,
 	trajectoriesPlugin,
 };

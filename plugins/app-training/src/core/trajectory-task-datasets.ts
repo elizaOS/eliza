@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type {
   Trajectory,
   TrajectoryLlmCall,
-} from "@elizaos/agent/types/trajectory";
+} from "@elizaos/agent";
 import {
   ELIZA_NATIVE_MODEL_BOUNDARIES,
   buildElizaNativeTrajectoryRows,

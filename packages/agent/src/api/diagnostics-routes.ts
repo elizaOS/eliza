@@ -1,7 +1,10 @@
 import type http from "node:http";
-import { parseClampedInteger } from "../utils/number-parsing.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
+import type {
+  ReadJsonBodyOptions,
+  RouteHelpers,
+  RouteRequestMeta,
+} from "@elizaos/core";
+import { parseClampedInteger } from "../utils/number-parsing.ts";
 
 interface LogEntryLike {
   timestamp: number;

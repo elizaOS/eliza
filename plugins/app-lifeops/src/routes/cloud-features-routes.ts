@@ -1,9 +1,9 @@
 import type http from "node:http";
-import { sendJson, sendJsonError } from "@elizaos/agent/api/http-helpers";
-import { normalizeCloudSiteUrl } from "@elizaos/agent/cloud/base-url";
-import { resolveCloudApiKey } from "@elizaos/agent/cloud/cloud-api-key";
-import { validateCloudBaseUrl } from "@elizaos/agent/cloud/validate-url";
-import type { CloudProxyConfigLike } from "@elizaos/agent/types/config-like";
+import { sendJson, sendJsonError } from "@elizaos/core";
+import { normalizeCloudSiteUrl } from "@elizaos/plugin-elizacloud";
+import { resolveCloudApiKey } from "@elizaos/plugin-elizacloud";
+import { validateCloudBaseUrl } from "@elizaos/plugin-elizacloud";
+import type { CloudProxyConfigLike } from "@elizaos/agent";
 import {
   type AgentRuntime,
   type IAgentRuntime,
@@ -150,7 +150,9 @@ function toRowDto(state: FeatureFlagState): LifeOpsFeatureFlagRowDto {
     enabledAt: state.enabledAt ? state.enabledAt.toISOString() : null,
     enabledBy: state.enabledBy,
     packageId: typeof packageId === "string" ? packageId : null,
-    cloudDefaultOn: isCloudLinkedDefaultOnFeatureKey(state.featureKey),
+    cloudDefaultOn: isLifeOpsFeatureKey(state.featureKey)
+      ? isCloudLinkedDefaultOnFeatureKey(state.featureKey)
+      : false,
   };
 }
 

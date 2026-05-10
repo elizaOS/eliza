@@ -8,7 +8,7 @@ const LIST_SPLIT_RE = /[\n,;]/;
 export const AGENT_CONTEXTS = [
   "general",
   "wallet",
-  "knowledge",
+  "documents",
   "browser",
   "code",
   "media",
@@ -22,6 +22,10 @@ export type AgentContext = (typeof AGENT_CONTEXTS)[number];
 export interface ContextRoutingDecision {
   primaryContext?: AgentContext;
   secondaryContexts?: AgentContext[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
@@ -47,25 +51,25 @@ const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   STAKE: ["wallet"],
   UNSTAKE: ["wallet"],
   CLAIM_REWARDS: ["wallet"],
-  GET_TOKEN_PRICE: ["wallet", "knowledge"],
+  GET_TOKEN_PRICE: ["wallet", "documents"],
   GET_PORTFOLIO: ["wallet"],
   CREATE_WALLET: ["wallet"],
   IMPORT_WALLET: ["wallet"],
-  SEARCH_KNOWLEDGE: ["knowledge"],
-  ADD_KNOWLEDGE: ["knowledge"],
-  REMEMBER: ["knowledge"],
-  RECALL: ["knowledge"],
-  LEARN_FROM_EXPERIENCE: ["knowledge"],
-  SEARCH_WEB: ["knowledge", "browser"],
-  WEB_SEARCH: ["knowledge", "browser"],
-  SUMMARIZE: ["knowledge"],
-  ANALYZE: ["knowledge"],
+  SEARCH_DOCUMENT: ["documents"],
+  ADD_DOCUMENT: ["documents"],
+  REMEMBER: ["documents"],
+  RECALL: ["documents"],
+  LEARN_FROM_EXPERIENCE: ["documents"],
+  SEARCH_WEB: ["documents", "browser"],
+  WEB_SEARCH: ["documents", "browser"],
+  SUMMARIZE: ["documents"],
+  ANALYZE: ["documents"],
   BROWSE: ["browser"],
   SCREENSHOT: ["browser", "media"],
   NAVIGATE: ["browser"],
   CLICK: ["browser"],
   TYPE_TEXT: ["browser"],
-  EXTRACT_PAGE: ["browser", "knowledge"],
+  EXTRACT_PAGE: ["browser", "documents"],
   SPAWN_AGENT: ["code", "automation"],
   KILL_AGENT: ["code", "automation"],
   UPDATE_AGENT: ["code", "system"],
@@ -76,12 +80,12 @@ const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   CREATE_SUBTASK: ["code", "automation"],
   COMPLETE_TASK: ["code", "automation"],
   CANCEL_TASK: ["code", "automation"],
-  GENERATE_IMAGE: ["media"],
-  DESCRIBE_IMAGE: ["media", "knowledge"],
-  DESCRIBE_VIDEO: ["media", "knowledge"],
-  DESCRIBE_AUDIO: ["media", "knowledge"],
+  GENERATE_MEDIA: ["media"],
+  DESCRIBE_IMAGE: ["media", "documents"],
+  DESCRIBE_VIDEO: ["media", "documents"],
+  DESCRIBE_AUDIO: ["media", "documents"],
   TEXT_TO_SPEECH: ["media"],
-  TRANSCRIBE: ["media", "knowledge"],
+  TRANSCRIBE: ["media", "documents"],
   UPLOAD_FILE: ["media"],
   CREATE_CRON: ["automation"],
   UPDATE_CRON: ["automation"],
@@ -90,7 +94,7 @@ const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   PAUSE_CRON: ["automation"],
   TRIGGER_WEBHOOK: ["automation"],
   SCHEDULE: ["automation"],
-  SEND_MESSAGE: ["social"],
+  MESSAGE: ["social"],
   ADD_CONTACT: ["social"],
   UPDATE_CONTACT: ["social"],
   GET_CONTACT: ["social"],
@@ -104,8 +108,7 @@ const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   SHELL_EXEC: ["system", "code"],
   RESTART: ["system"],
   CONFIGURE_RUNTIME: ["system"],
-  OAUTH_CONNECT: ["system", "social"],
-  SEARCH_ACTIONS: ["system", "knowledge"],
+  SEARCH_ACTIONS: ["system", "documents"],
   FINISH: ["general"],
 };
 
@@ -218,17 +221,14 @@ export function getActiveRoutingContexts(routing: ContextRoutingDecision): Agent
 }
 
 export function setContextRoutingMetadata(message: Memory, routing: ContextRoutingDecision): void {
-  const existingMetadata =
-    message.content && typeof message.content.metadata === "object"
-      ? (message.content.metadata as Record<string, unknown>)
-      : {};
-
   if (!message.content || typeof message.content !== "object") {
     return;
   }
 
+  const existingMetadata = isRecord(message.content.metadata) ? message.content.metadata : {};
+
   message.content = {
-    ...(message.content as Record<string, unknown>),
+    ...message.content,
     metadata: {
       ...existingMetadata,
       [CONTEXT_ROUTING_METADATA_KEY]: routing,

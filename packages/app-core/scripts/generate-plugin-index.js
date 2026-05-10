@@ -43,7 +43,6 @@ const AI_PROVIDERS = new Set([
   "mistral",
   "cohere",
   "perplexity",
-  "qwen",
   "minimax",
   "zai",
 ]);

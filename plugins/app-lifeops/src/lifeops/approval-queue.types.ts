@@ -16,6 +16,7 @@ export type ApprovalAction =
   | "cancel_event"
   | "book_travel"
   | "make_call"
+  | "sign_document"
   | "execute_workflow"
   | "spend_money";
 
@@ -120,6 +121,13 @@ export type ApprovalPayload =
       to: string;
       script: string;
       maxDurationSeconds: number;
+    }
+  | {
+      action: "sign_document";
+      documentId: string;
+      documentName: string;
+      signatureUrl: string;
+      deadline: string;
     }
   | {
       action: "execute_workflow";

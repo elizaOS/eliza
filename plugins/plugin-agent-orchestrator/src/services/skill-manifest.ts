@@ -12,7 +12,7 @@
  * @module services/skill-manifest
  */
 
-import type { IAgentRuntime, Logger } from "@elizaos/core";
+import type { IAgentRuntime, Logger, Service } from "@elizaos/core";
 
 const LOG_PREFIX = "[SkillManifest]";
 const MAX_DESCRIPTION_CHARS = 200;
@@ -64,7 +64,7 @@ function truncateDescription(value: string): string {
 }
 
 function getLogger(runtime: IAgentRuntime): Logger | Console {
-  const candidate = (runtime as unknown as { logger?: Logger }).logger;
+  const candidate = (runtime as { logger?: Logger }).logger;
   return candidate ?? console;
 }
 
@@ -138,8 +138,8 @@ export async function buildSkillsManifest(
   opts: BuildSkillsManifestOptions = {},
 ): Promise<SkillsManifestResult> {
   const log = getLogger(runtime);
-  const service = runtime.getService("AGENT_SKILLS_SERVICE") as unknown as
-    | SkillsServiceShape
+  const service = runtime.getService("AGENT_SKILLS_SERVICE") as
+    | (Service & SkillsServiceShape)
     | undefined;
 
   if (!service) {

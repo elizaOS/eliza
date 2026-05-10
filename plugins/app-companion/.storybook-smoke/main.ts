@@ -30,10 +30,6 @@ const config: StorybookConfig = {
     config.resolve ??= {};
     config.resolve.alias = {
       ...(config.resolve.alias ?? {}),
-      "@elizaos/app-core/styles/styles.css": path.resolve(
-        elizaRoot,
-        "packages/app-core/src/styles/styles.css",
-      ),
       "@elizaos/app-core": path.resolve(elizaRoot, "packages/app-core/src"),
       "@elizaos/core": path.resolve(elizaRoot, "packages/core/src"),
       "@elizaos/ui": path.resolve(elizaRoot, "packages/ui/src"),

@@ -47,7 +47,7 @@ async function buildRuntime(
   const stub = {
     getSetting: (key: string) => mergedSettings[key],
     getService: <T>(_type: string): T | null => null,
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 
   const sandbox = await SandboxService.start(stub);
   const session = await SessionCwdService.start(stub);
@@ -64,7 +64,7 @@ async function buildRuntime(
       );
       return null;
     }
-    (rg as unknown as { rgPath: string }).rgPath = sysRg;
+    (rg as { rgPath: string }).rgPath = sysRg;
   }
 
   session.setCwd("test-room", root);
@@ -72,19 +72,21 @@ async function buildRuntime(
   const runtime = {
     getSetting: (key: string) => mergedSettings[key],
     getService: <T>(serviceType: string): T | null => {
-      if (serviceType === SANDBOX_SERVICE) return sandbox as unknown as T;
-      if (serviceType === SESSION_CWD_SERVICE) return session as unknown as T;
-      if (serviceType === RIPGREP_SERVICE) return rg as unknown as T;
+      if (serviceType === SANDBOX_SERVICE) return sandbox as T;
+      if (serviceType === SESSION_CWD_SERVICE) return session as T;
+      if (serviceType === RIPGREP_SERVICE) return rg as T;
       return null;
     },
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 
-  const message = { roomId: "test-room" } as unknown as Memory;
+  const message = { roomId: "test-room" } as Memory;
   return { runtime, message };
 }
 
 beforeEach(async () => {
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ct-grep-"));
+  blockedPath = path.join(tmpRoot, "_blocked");
+  await fs.mkdir(blockedPath, { recursive: true });
   const fooDir = path.join(tmpRoot, "foo");
   const subDir = path.join(fooDir, "sub");
   await fs.mkdir(subDir, { recursive: true });

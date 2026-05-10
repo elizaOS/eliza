@@ -69,15 +69,17 @@ Response:
 ```json
 {
   "authKey": "tskey-auth-...",
-  "tailnet": "example.ts.net",
-  "magicDnsName": "eliza-agent-1234.example.ts.net"
+  "tailnet": "https://headscale.elizacloud.ai",
+  "loginServer": "https://headscale.elizacloud.ai",
+  "hostname": "eliza-org-session",
+  "magicDnsName": "eliza-agent-1234.tunnel.elizacloud.ai"
 }
 ```
 
 The plugin then runs locally, in this order:
 
 ```bash
-tailscale up --auth-key=<authKey>
+tailscale up --auth-key=<authKey> --login-server=<loginServer> --hostname=<hostname>
 tailscale serve --bg --https=443 localhost:<port>     # or `tailscale funnel <port>`
 ```
 

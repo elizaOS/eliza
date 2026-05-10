@@ -8,7 +8,7 @@ import type {
   RegistryPluginInfo,
   RegistryPluginListItem,
   RegistrySearchResult,
-} from "./registry-client-types.js";
+} from "./registry-client-types.ts";
 
 export function normalizePluginLookupAlias(name: string): string {
   const trimmed = name.trim();
@@ -192,6 +192,7 @@ export function toAppInfo(
     session: meta?.session,
     developerOnly: meta?.developerOnly,
     visibleInAppStore: meta?.visibleInAppStore,
+    mainTab: meta?.mainTab,
   };
 }
 

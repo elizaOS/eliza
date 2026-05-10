@@ -7,20 +7,14 @@
  * @license MIT
  */
 
-import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
-import { formRestoreAction } from "./actions/restore";
+import type {
+  IAgentRuntime,
+  Plugin,
+  ServiceClass,
+} from "@elizaos/core";
+import { formEvaluator } from "./evaluators/extractor";
 
-// ============================================================================
-// TYPE EXPORTS
-// ============================================================================
-
-// Types - all interfaces and type definitions
 export * from "./types";
-
-// ============================================================================
-// BUILT-IN TYPES EXPORTS
-// Pre-registered control types (text, number, email, etc.)
-// ============================================================================
 
 export {
   BUILTIN_TYPE_MAP,
@@ -29,11 +23,6 @@ export {
   isBuiltinType,
   registerBuiltinTypes,
 } from "./builtins";
-
-// ============================================================================
-// VALIDATION EXPORTS
-// Field validation, type coercion, and custom type registration
-// ============================================================================
 
 export {
   clearTypeHandlers,
@@ -44,23 +33,6 @@ export {
   registerTypeHandler,
   validateField,
 } from "./validation";
-
-// ============================================================================
-// INTENT DETECTION EXPORTS
-// Two-tier intent detection (fast path + LLM fallback)
-// ============================================================================
-
-export {
-  hasDataToExtract,
-  isLifecycleIntent,
-  isUXIntent,
-  quickIntentDetect,
-} from "./intent";
-
-// ============================================================================
-// STORAGE EXPORTS
-// Component-based persistence for sessions, submissions, autofill
-// ============================================================================
 
 export {
   deleteSession,
@@ -74,21 +46,14 @@ export {
   saveSubmission,
 } from "./storage";
 
-// ============================================================================
-// EXTRACTION EXPORTS
-// LLM-based field extraction from natural language
-// ============================================================================
-
 export {
+  buildFormExtractorPromptSection,
+  buildFormExtractorSchema,
+  coerceExtractionsAgainstControls,
   detectCorrection,
   extractSingleField,
-  llmIntentAndExtract,
+  parseFormExtractorOutput,
 } from "./extraction";
-
-// ============================================================================
-// TTL & EFFORT EXPORTS
-// Smart retention based on user effort
-// ============================================================================
 
 export {
   calculateTTL,
@@ -100,43 +65,15 @@ export {
   shouldNudge,
 } from "./ttl";
 
-// ============================================================================
-// DEFAULTS EXPORTS
-// Sensible default value application
-// ============================================================================
-
 export { applyControlDefaults, applyFormDefaults, prettify } from "./defaults";
-
-// ============================================================================
-// BUILDER API EXPORTS
-// Fluent API for defining forms and controls
-// ============================================================================
 
 export { C, ControlBuilder, Form, FormBuilder } from "./builder";
 
-// ============================================================================
-// SERVICE EXPORT
-// Central form management service
-// ============================================================================
-
 export { FormService } from "./service";
 
-// ============================================================================
-// COMPONENT EXPORTS
-// Provider, Evaluator, Action, Tasks
-// ============================================================================
-
-// Action - fast-path restore for stashed forms
 export { formRestoreAction } from "./actions/restore";
-
-// Evaluator - extracts fields and handles intents
 export { formEvaluator } from "./evaluators/extractor";
-// Provider - injects form context into agent state
 export { formContextProvider } from "./providers/context";
-
-// ============================================================================
-// PLUGIN DEFINITION
-// ============================================================================
 
 /**
  * Form Plugin
@@ -148,7 +85,21 @@ export const formPlugin = {
   description: "Agent-native conversational forms for data collection",
   descriptionCompressed: "Conversational forms for structured data collection.",
 
-  // Service for form management
+  autoEnable: {
+    shouldEnable: (
+      _env: Record<string, string | undefined>,
+      config: Record<string, unknown>,
+    ) => {
+      const f = (config?.features as Record<string, unknown> | undefined)?.form;
+      return (
+        f === true ||
+        (typeof f === "object" &&
+          f !== null &&
+          (f as { enabled?: unknown }).enabled !== false)
+      );
+    },
+  },
+
   services: [
     {
       serviceType: "FORM",
@@ -159,7 +110,6 @@ export const formPlugin = {
     } as ServiceClass,
   ],
 
-  // Provider for form context
   providers: [
     {
       name: "FORM_CONTEXT",
@@ -172,27 +122,8 @@ export const formPlugin = {
     },
   ],
 
-  // Action for restoring stashed forms before normal reply generation
-  actions: [formRestoreAction],
-
-  // Evaluator for field extraction
-  evaluators: [
-    {
-      name: "form_evaluator",
-      description: "Extracts form fields and handles form intents",
-      descriptionCompressed: "Extract form fields and handle form intents.",
-      similes: ["FORM_EXTRACTION", "FORM_HANDLER"],
-      examples: [],
-      validate: async (runtime, message, state) => {
-        const { formEvaluator } = await import("./evaluators/extractor");
-        return formEvaluator.validate(runtime, message, state);
-      },
-      handler: async (runtime, message, state) => {
-        const { formEvaluator } = await import("./evaluators/extractor");
-        return formEvaluator.handler(runtime, message, state);
-      },
-    },
-  ],
+  actions: [],
+  evaluators: [formEvaluator],
 } as Plugin & { descriptionCompressed?: string };
 
 export default formPlugin;

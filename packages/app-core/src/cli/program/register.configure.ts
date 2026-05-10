@@ -1,6 +1,5 @@
+import { formatDocsLink, theme } from "@elizaos/shared";
 import type { Command } from "commander";
-import { formatDocsLink } from "../../terminal/links";
-import { theme } from "../../terminal/theme";
 
 export function registerConfigureCommand(program: Command) {
   program

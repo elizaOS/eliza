@@ -41,12 +41,12 @@ import {
 import { LifeOpsService, LifeOpsServiceError } from "../../lifeops/service.js";
 import { getZonedDateParts } from "../../lifeops/time.js";
 import { parseJsonModelRecord } from "../../utils/json-model-output.js";
-import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops-google-helpers.js";
+import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
+import { inferTimeZoneFromLocationText } from "../../lifeops/time/timezone.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
-} from "../lifeops-grounded-reply.js";
-import { inferTimeZoneFromLocationText } from "../timezone-normalization.js";
+} from "../../lifeops/voice/grounded-reply.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 
 const MS_PER_MINUTE = 60_000;
@@ -454,7 +454,12 @@ export const proposeMeetingTimesAction: Action & {
     "BULK_RESCHEDULE_MEETINGS",
     "RESCHEDULE_MEETINGS",
   ],
-  tags: ["meeting slots", "reschedule options"],
+  tags: [
+    "domain:calendar",
+    "capability:read",
+    "surface:remote-api",
+    "surface:internal",
+  ],
   description:
     "Propose concrete meeting time slots to offer to another person. This is " +
     "the dedicated action for any 'propose N times', 'suggest N slots', " +
@@ -464,16 +469,16 @@ export const proposeMeetingTimesAction: Action & {
     "buffer) and returns three available slots by default over the next seven " +
     "days. Also correct for bundled scheduling while traveling or concrete " +
     "reschedule options. " +
-    "STRONG POSITIVE TRIGGERS — route HERE, not to CALENDAR_ACTION or SCHEDULING: " +
+    "STRONG POSITIVE TRIGGERS — route HERE, not to CALENDAR or SCHEDULING_NEGOTIATION: " +
     "'propose three times for a sync with a person', 'suggest a few times for " +
-    "Jill', 'offer Marco three 30-minute slots', 'find us three options " +
-    "next week', 'give me slots to send Sarah'. " +
+    "a partner', 'offer a colleague three 30-minute slots', 'find us three options " +
+    "next week', 'give me slots to send to a teammate'. " +
     "DO NOT use this for small talk, weather, or vague conversation. " +
     "DO NOT use this to check the owner's calendar, create a calendar event, " +
-    "or view upcoming events — that is CALENDAR_ACTION. " +
+    "or view upcoming events — that is CALENDAR. " +
     "DO NOT use this to start a multi-turn scheduling negotiation record — " +
-    "that is SCHEDULING (subaction: start). This action just generates the " +
-    "candidate slots; SCHEDULING tracks the negotiation lifecycle around them.",
+    "that is SCHEDULING_NEGOTIATION (subaction: start). This action just generates " +
+    "the candidate slots; SCHEDULING_NEGOTIATION tracks the negotiation lifecycle around them.",
   descriptionCompressed:
     "Propose available meeting slots from the owner's calendar and meeting preferences; not calendar CRUD or negotiation tracking.",
   contexts: ["calendar", "contacts", "tasks"],
@@ -486,7 +491,7 @@ export const proposeMeetingTimesAction: Action & {
       message,
       state,
       callback,
-      actionName: "OWNER_CALENDAR",
+      actionName: "PROPOSE_MEETING_TIMES",
     });
 
     if (await denyIfNoAccess(runtime, message)) {
@@ -670,6 +675,12 @@ export const proposeMeetingTimesAction: Action & {
 export const checkAvailabilityAction: Action = {
   name: "CHECK_AVAILABILITY",
   similes: ["AM_I_FREE", "AVAILABILITY_CHECK", "FREE_BUSY"],
+  tags: [
+    "domain:calendar",
+    "capability:read",
+    "surface:remote-api",
+    "cost:cheap",
+  ],
   description:
     "Check whether the owner is free or busy across a specific ISO-8601 " +
     "time window. Returns a free/busy summary and any overlapping events.",
@@ -684,7 +695,7 @@ export const checkAvailabilityAction: Action = {
       message,
       state,
       callback,
-      actionName: "OWNER_CALENDAR",
+      actionName: "CHECK_AVAILABILITY",
     });
 
     if (await denyIfNoAccess(runtime, message)) {
@@ -838,11 +849,10 @@ export const updateMeetingPreferencesAction: Action & {
     "PROTECT_SLEEP",
   ],
   tags: [
-    "always-include",
-    "sleep window",
-    "no-call hours",
-    "protected hours",
-    "blackout window",
+    "domain:calendar",
+    "capability:write",
+    "capability:update",
+    "surface:internal",
   ],
   description:
     "Persist the owner's meeting scheduling preferences: preferred start/end " +
@@ -861,7 +871,7 @@ export const updateMeetingPreferencesAction: Action & {
       message,
       state,
       callback,
-      actionName: "OWNER_CALENDAR",
+      actionName: "UPDATE_MEETING_PREFERENCES",
     });
 
     if (await denyIfNoAccess(runtime, message)) {
@@ -992,6 +1002,19 @@ type SchedulingSubaction =
   | "list_active"
   | "list_proposals";
 
+const SCHEDULING_SUBACTIONS: readonly SchedulingSubaction[] = [
+  "start",
+  "propose",
+  "respond",
+  "finalize",
+  "cancel",
+  "list_active",
+  "list_proposals",
+];
+
+const SCHEDULING_RESPONSES = ["accepted", "declined", "expired"] as const;
+const SCHEDULING_PROPOSED_BY = ["agent", "owner", "counterparty"] as const;
+
 type SchedulingActionParameters = {
   subaction?: SchedulingSubaction;
   intent?: string;
@@ -1095,7 +1118,7 @@ async function resolveSchedulingPlanWithLlm(args: {
     "Use cancel when stopping an active negotiation.",
     "Use list_active for listing negotiations.",
     "Use list_proposals for listing proposals in one negotiation.",
-    "If the user is making a first-turn calendar request, asking for recurring time, asking to bundle meetings while traveling, or asking for missed-call repair, this action is the wrong tool. Return shouldAct=false so the planner can choose OWNER_CALENDAR, TRIAGE_MESSAGES, or SEND_DRAFT instead.",
+    "If the user is making a first-turn calendar request, asking for recurring time, asking to bundle meetings while traveling, or asking for missed-call repair, this action is the wrong tool. Return shouldAct=false so the planner can choose CALENDAR or MESSAGE with the appropriate inbox/draft operation instead.",
     "Set shouldAct=false when the user is vague or only asks for general scheduling help.",
     "",
     'Example: {"subaction":"start","shouldAct":true,"response":null}',
@@ -1167,25 +1190,27 @@ function formatProposalSummary(p: {
 export const schedulingAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "SCHEDULING",
+  name: "SCHEDULING_NEGOTIATION",
   similes: [
+    "SCHEDULING",
     "NEGOTIATE_MEETING",
     "MULTI_TURN_SCHEDULING",
     "MANAGE_SCHEDULING_NEGOTIATION",
     "RESPOND_TO_MEETING_PROPOSAL",
     "FINALIZE_SCHEDULING_NEGOTIATION",
   ],
+  tags: [
+    "domain:calendar",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "surface:internal",
+  ],
   description:
-    "Multi-turn scheduling negotiation coordinator. Use this only for an " +
-    "existing proposal workflow: start a negotiation record, submit a concrete " +
-    "proposal for that negotiation, record accepted/declined responses, " +
-    "finalize the winning proposal, cancel, or list negotiations/proposals. " +
-    "Do not use this for first-turn calendar requests, recurring blocks, " +
-    "travel-time bundling, missed-call repair, or fresh candidate-slot " +
-    "searches; those belong to OWNER_CALENDAR, TRIAGE_MESSAGES, " +
-    "or SEND_DRAFT.",
+    "Track a multi-turn meeting negotiation. Subactions: start (open a negotiation), propose (submit a concrete time), respond (accept/decline a proposal), finalize (commit the winner), cancel, list. " +
+    "Use only when an existing proposal workflow is in flight — first-turn calendar requests, recurring blocks, travel-time bundling, and fresh candidate-slot searches belong to CALENDAR or MESSAGE.",
   descriptionCompressed:
-    "Multi-turn scheduling negotiation lifecycle: start, propose, respond, finalize, cancel, and list negotiations/proposals.",
+    "multi-turn meeting negotiation: start|propose|respond|finalize|cancel|list; only for existing proposal workflows",
   contexts: ["calendar", "contacts", "tasks", "messaging"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -1202,7 +1227,7 @@ export const schedulingAction: Action & {
       message,
       state,
       callback,
-      actionName: "OWNER_CALENDAR",
+      actionName: "SCHEDULING_NEGOTIATION",
     });
 
     const params =
@@ -1468,56 +1493,115 @@ export const schedulingAction: Action & {
     {
       name: "subaction",
       description:
-        "Which step of the negotiation to run: start, propose, respond, finalize, cancel, list_active, list_proposals.",
-      schema: { type: "string" as const },
+        "Which step of the negotiation to run: start (open new negotiation), propose (submit candidate slot), respond (accept/decline a proposal), finalize (confirm the winning slot), cancel (close negotiation), list_active (show open negotiations), list_proposals (show proposals on one negotiation).",
+      descriptionCompressed:
+        "scheduling op: start | propose | respond | finalize | cancel | list_active | list_proposals",
+      schema: {
+        type: "string" as const,
+        enum: [...SCHEDULING_SUBACTIONS],
+      },
+      examples: ["start", "propose", "respond", "finalize"],
     },
     {
       name: "intent",
       description:
         "Free-text description of what the scheduling turn is trying to do.",
+      descriptionCompressed: "free-text intent",
       schema: { type: "string" as const },
     },
     {
       name: "negotiationId",
       description:
-        "Target negotiation ID for proposal, finalize, cancel, or list_proposals.",
+        "Target negotiation ID for propose, finalize, cancel, or list_proposals.",
+      descriptionCompressed:
+        "negotiation id (propose|finalize|cancel|list_proposals)",
       schema: { type: "string" as const },
+      examples: ["neg_2026_05_10_abc123"],
     },
     {
       name: "proposalId",
       description: "Target proposal ID for respond or finalize.",
+      descriptionCompressed: "proposal id (respond|finalize)",
       schema: { type: "string" as const },
+      examples: ["prop_xyz789"],
     },
     {
       name: "subject",
       description: "Subject of the meeting (used when starting a negotiation).",
+      descriptionCompressed: "meeting subject (start)",
       schema: { type: "string" as const },
+      examples: ["Q3 review with Alice"],
     },
     {
       name: "startAt",
-      description: "ISO-8601 proposed start time.",
+      description: "ISO-8601 proposed start time (UTC).",
+      descriptionCompressed: "ISO-8601 start UTC (propose)",
       schema: { type: "string" as const },
+      examples: ["2026-05-12T14:00:00Z"],
     },
     {
       name: "endAt",
-      description: "ISO-8601 proposed end time.",
+      description: "ISO-8601 proposed end time (UTC).",
+      descriptionCompressed: "ISO-8601 end UTC (propose)",
       schema: { type: "string" as const },
+      examples: ["2026-05-12T15:00:00Z"],
     },
     {
       name: "durationMinutes",
       description:
         "Meeting duration in minutes (defaults to 30 when starting).",
-      schema: { type: "number" as const },
+      descriptionCompressed: "duration mins default 30 (start)",
+      schema: { type: "number" as const, minimum: 5, maximum: 1440 },
+      examples: [30, 60, 90],
     },
     {
       name: "response",
       description: "Proposal response: accepted, declined, or expired.",
-      schema: { type: "string" as const },
+      descriptionCompressed: "respond: accepted|declined|expired",
+      schema: {
+        type: "string" as const,
+        enum: [...SCHEDULING_RESPONSES],
+      },
+      examples: ["accepted", "declined"],
     },
     {
       name: "confirmed",
       description: "Set true alongside a proposalId to finalize.",
+      descriptionCompressed: "true to finalize alongside proposalId",
       schema: { type: "boolean" as const },
+    },
+    {
+      name: "proposedBy",
+      description:
+        "Who is the source of the proposal: agent (Eliza emitted it), owner (user-emitted), counterparty (recorded from the other party).",
+      descriptionCompressed:
+        "proposedBy: agent | owner | counterparty (defaults agent)",
+      schema: {
+        type: "string" as const,
+        enum: [...SCHEDULING_PROPOSED_BY],
+      },
+      examples: ["agent", "counterparty"],
+    },
+    {
+      name: "relationshipId",
+      description:
+        "Optional relationship/contact id the negotiation is with (used by start).",
+      descriptionCompressed: "contact id (start)",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "timezone",
+      description: "IANA timezone (e.g. America/Los_Angeles) used by start.",
+      descriptionCompressed: "IANA tz (start)",
+      schema: { type: "string" as const },
+      examples: ["America/Los_Angeles", "UTC"],
+    },
+    {
+      name: "reason",
+      description:
+        "Optional reason note (cancel) or free-text annotation captured for audit.",
+      descriptionCompressed: "reason (cancel/audit)",
+      schema: { type: "string" as const },
     },
   ],
   examples: [

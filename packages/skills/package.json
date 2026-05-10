@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/skills",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Bundled skills and skill loading utilities for elizaOS agents",
   "type": "module",
   "main": "dist/index.js",
@@ -10,12 +10,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./skills": "./skills/",
     "./package.json": "./package.json"
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc --noCheck -p tsconfig.build.json",
     "dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
     "test": "bun test ./test",
     "prepublishOnly": "bun run clean && bun run build",
@@ -25,7 +24,8 @@
   "files": [
     "dist/**/*",
     "skills/**/*",
-    "README.md"
+    "README.md",
+    "dist"
   ],
   "keywords": [
     "elizaos",
@@ -46,7 +46,7 @@
     "node": ">=24.0.0"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "yaml": "^2.8.2"
   },
   "devDependencies": {

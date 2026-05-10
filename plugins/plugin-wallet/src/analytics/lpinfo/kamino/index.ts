@@ -16,7 +16,6 @@ export const kaminoPlugin: Plugin = {
   name: "kamino-protocol",
   description:
     "Comprehensive Kamino protocol integration for viewing lending positions, liquidity pools, and market analytics. Supports position tracking and yield optimization.",
-  evaluators: [],
   providers: [kaminoProvider, kaminoLiquidityProvider, kaminoPoolProvider],
   actions: [],
   services: [KaminoService, KaminoLiquidityService],

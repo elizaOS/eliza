@@ -1,0 +1,405 @@
+{
+  "generatedAtIso": "2026-05-10T12:00:01.576Z",
+  "provider": "cerebras",
+  "model": "gpt-oss-120b",
+  "domainsGraded": 28,
+  "counts": {
+    "pass": 28,
+    "pass_with_caveat": 0,
+    "fail": 0
+  },
+  "domains": [
+    {
+      "domain": 1,
+      "title": "Onboarding & first-run setup",
+      "verdict": "pass",
+      "rationale": "All default-pack seeds are correctly created in scheduled state with appropriate logs, meeting the journey expectations.",
+      "usage": {
+        "promptTokens": 1984,
+        "completionTokens": 55,
+        "totalTokens": 2039,
+        "cachedTokens": 0
+      },
+      "tasksObserved": 4,
+      "logEntriesObserved": 4
+    },
+    {
+      "domain": 2,
+      "title": "Core data model & overview surface",
+      "verdict": "pass",
+      "rationale": "All documented task kinds reached the expected scheduled state with correct log entries",
+      "usage": {
+        "promptTokens": 2502,
+        "completionTokens": 45,
+        "totalTokens": 2547,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 8,
+      "logEntriesObserved": 8
+    },
+    {
+      "domain": 3,
+      "title": "Habits",
+      "verdict": "pass",
+      "rationale": "The habit reminder completed and correctly spawned a scheduled output task as its onComplete child",
+      "usage": {
+        "promptTokens": 1881,
+        "completionTokens": 67,
+        "totalTokens": 1948,
+        "cachedTokens": 0
+      },
+      "tasksObserved": 2,
+      "logEntriesObserved": 5
+    },
+    {
+      "domain": 4,
+      "title": "Routines & multi-step daily flows",
+      "verdict": "pass",
+      "rationale": "All terminal statuses and pipeline relationships match the described multi-step flow",
+      "usage": {
+        "promptTokens": 2064,
+        "completionTokens": 129,
+        "totalTokens": 2193,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 3,
+      "logEntriesObserved": 6
+    },
+    {
+      "domain": 5,
+      "title": "Tasks (one-off)",
+      "verdict": "pass",
+      "rationale": "The task reached completed status with correct reason and timing rules allow early completion; all required fields are present.",
+      "usage": {
+        "promptTokens": 1460,
+        "completionTokens": 121,
+        "totalTokens": 1581,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 2
+    },
+    {
+      "domain": 6,
+      "title": "Goals",
+      "verdict": "pass",
+      "rationale": "The watcher was correctly scheduled with the quiet_hours gate and remains in the scheduled state as expected.",
+      "usage": {
+        "promptTokens": 1431,
+        "completionTokens": 65,
+        "totalTokens": 1496,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 1
+    },
+    {
+      "domain": 7,
+      "title": "Reminders & escalation ladder",
+      "verdict": "pass",
+      "rationale": "The high-priority reminder correctly remains a single scheduled task without premature escalation tasks, adhering to lazy ladder evaluation rules.",
+      "usage": {
+        "promptTokens": 1386,
+        "completionTokens": 105,
+        "totalTokens": 1491,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 1
+    },
+    {
+      "domain": 8,
+      "title": "Calendar journeys",
+      "verdict": "pass",
+      "rationale": "The recap task was correctly skipped and its onSkip followup was created and scheduled as expected.",
+      "usage": {
+        "promptTokens": 1836,
+        "completionTokens": 104,
+        "totalTokens": 1940,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 2,
+      "logEntriesObserved": 3
+    },
+    {
+      "domain": 9,
+      "title": "Inbox & email triage",
+      "verdict": "pass",
+      "rationale": "The output task reached completed status with correct terminal state and log entries",
+      "usage": {
+        "promptTokens": 1470,
+        "completionTokens": 54,
+        "totalTokens": 1524,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 2
+    },
+    {
+      "domain": 10,
+      "title": "Travel",
+      "verdict": "pass",
+      "rationale": "The approval task completed and correctly spawned a scheduled output child as defined by the onComplete pipeline.",
+      "usage": {
+        "promptTokens": 1748,
+        "completionTokens": 65,
+        "totalTokens": 1813,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 2,
+      "logEntriesObserved": 3
+    },
+    {
+      "domain": 11,
+      "title": "Follow-up repair (relationships)",
+      "verdict": "pass",
+      "rationale": "The watcher completed as expected after the subject update within the lookback window, with correct terminal status and log entries.",
+      "usage": {
+        "promptTokens": 1699,
+        "completionTokens": 100,
+        "totalTokens": 1799,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 4
+    },
+    {
+      "domain": 12,
+      "title": "Documents, signatures, portals",
+      "verdict": "pass",
+      "rationale": "The reminder correctly transitioned to failed and spawned a scheduled followup as defined by the onFail pipeline.",
+      "usage": {
+        "promptTokens": 1752,
+        "completionTokens": 88,
+        "totalTokens": 1840,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 2,
+      "logEntriesObserved": 3
+    },
+    {
+      "domain": 13,
+      "title": "Self-control / app & website blockers",
+      "verdict": "pass",
+      "rationale": "The task correctly evaluated the travel gate, fired, and reached the expected terminal status with appropriate log entries.",
+      "usage": {
+        "promptTokens": 1572,
+        "completionTokens": 72,
+        "totalTokens": 1644,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 3
+    },
+    {
+      "domain": 14,
+      "title": "Group chat handoff",
+      "verdict": "pass",
+      "rationale": "The custom watcher task is correctly created with the specified properties and remains in the scheduled state as expected.",
+      "usage": {
+        "promptTokens": 1388,
+        "completionTokens": 74,
+        "totalTokens": 1462,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 1
+    },
+    {
+      "domain": 15,
+      "title": "Multi-channel & cross-channel search",
+      "verdict": "pass",
+      "rationale": "The task was correctly scheduled with the required contextRequest and appropriate terminal status.",
+      "usage": {
+        "promptTokens": 1451,
+        "completionTokens": 84,
+        "totalTokens": 1535,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 1
+    },
+    {
+      "domain": 16,
+      "title": "Activity signals & screen context",
+      "verdict": "pass",
+      "rationale": "The task completed via the health signal completion check within the lookback window, and all terminal states and logs are correct.",
+      "usage": {
+        "promptTokens": 1717,
+        "completionTokens": 104,
+        "totalTokens": 1821,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 4
+    },
+    {
+      "domain": 17,
+      "title": "Approval queues & action gating",
+      "verdict": "pass",
+      "rationale": "The approval task was correctly scheduled and dismissed with the expected terminal status and log entries.",
+      "usage": {
+        "promptTokens": 1461,
+        "completionTokens": 85,
+        "totalTokens": 1546,
+        "cachedTokens": 1408
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 2
+    },
+    {
+      "domain": 18,
+      "title": "Identity merge (canonical person)",
+      "verdict": "pass",
+      "rationale": "The watcher reached completed status with correct terminal state and log entries, adhering to optional firedAt semantics.",
+      "usage": {
+        "promptTokens": 1471,
+        "completionTokens": 67,
+        "totalTokens": 1538,
+        "cachedTokens": 1408
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 2
+    },
+    {
+      "domain": 19,
+      "title": "Memory recall",
+      "verdict": "pass",
+      "rationale": "The task is correctly scheduled with the required output configuration and no errors in the log; no further actions were required for this scenario.",
+      "usage": {
+        "promptTokens": 1369,
+        "completionTokens": 84,
+        "totalTokens": 1453,
+        "cachedTokens": 1280
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 1
+    },
+    {
+      "domain": 20,
+      "title": "Connectors & permissions",
+      "verdict": "pass",
+      "rationale": "The followup task is correctly scheduled with high priority, metadata, and no erroneous state transitions.",
+      "usage": {
+        "promptTokens": 1403,
+        "completionTokens": 78,
+        "totalTokens": 1481,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 1
+    },
+    {
+      "domain": 21,
+      "title": "Health, money, screen time",
+      "verdict": "pass",
+      "rationale": "The watcher was correctly scheduled with the appropriate completion check and no premature firing or completion, matching the expected end state.",
+      "usage": {
+        "promptTokens": 1427,
+        "completionTokens": 82,
+        "totalTokens": 1509,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 1
+    },
+    {
+      "domain": 22,
+      "title": "Push notifications",
+      "verdict": "pass",
+      "rationale": "The high-priority reminder was correctly scheduled without premature firing or missing required fields, and ladder behavior is as designed.",
+      "usage": {
+        "promptTokens": 1382,
+        "completionTokens": 97,
+        "totalTokens": 1479,
+        "cachedTokens": 1280
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 1
+    },
+    {
+      "domain": 23,
+      "title": "Remote sessions",
+      "verdict": "pass",
+      "rationale": "The task was correctly created with the expected high‑priority followup kind, metadata, and remains in scheduled state as allowed.",
+      "usage": {
+        "promptTokens": 1395,
+        "completionTokens": 84,
+        "totalTokens": 1479,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 1
+    },
+    {
+      "domain": 24,
+      "title": "Settings & UX",
+      "verdict": "pass",
+      "rationale": "The task is correctly scheduled with ownerVisible false and appropriate metadata, and no firing is required for this shadow task.",
+      "usage": {
+        "promptTokens": 1386,
+        "completionTokens": 80,
+        "totalTokens": 1466,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 1
+    },
+    {
+      "domain": 25,
+      "title": "REST API access flows",
+      "verdict": "pass",
+      "rationale": "The task includes source='plugin' and ownerVisible=false with correct scheduled state, matching the journey expectations.",
+      "usage": {
+        "promptTokens": 1347,
+        "completionTokens": 83,
+        "totalTokens": 1430,
+        "cachedTokens": 1280
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 1
+    },
+    {
+      "domain": 26,
+      "title": "Workflows (event-triggered)",
+      "verdict": "pass",
+      "rationale": "The watcher completed and correctly spawned a scheduled output task as its onComplete child, matching expected terminal states and pipeline behavior.",
+      "usage": {
+        "promptTokens": 1724,
+        "completionTokens": 67,
+        "totalTokens": 1791,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 2,
+      "logEntriesObserved": 3
+    },
+    {
+      "domain": 27,
+      "title": "Multilingual coverage",
+      "verdict": "pass",
+      "rationale": "The reminder was correctly scheduled with the Spanish locale metadata and no erroneous state fields.",
+      "usage": {
+        "promptTokens": 1380,
+        "completionTokens": 72,
+        "totalTokens": 1452,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 1
+    },
+    {
+      "domain": 28,
+      "title": "Suspected-but-unconfirmed flows",
+      "verdict": "pass",
+      "rationale": "The custom suspected flow was scheduled and correctly dismissed with appropriate status and log entries.",
+      "usage": {
+        "promptTokens": 1445,
+        "completionTokens": 82,
+        "totalTokens": 1527,
+        "cachedTokens": 1024
+      },
+      "tasksObserved": 1,
+      "logEntriesObserved": 2
+    }
+  ]
+}

@@ -14,3 +14,5 @@ const hyperscapePlugin: Plugin = {
 };
 
 export default hyperscapePlugin;
+export * from "./routes.js";
+export * from "./ui/index.js";

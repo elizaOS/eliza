@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { logger, stringToUuid, type UUID } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   asRecord,
   type DeploymentTargetConfig,
@@ -11,14 +12,13 @@ import {
   normalizeServiceRoutingConfig,
   type ServiceRoutingConfig,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
-import { configFileExists, loadElizaConfig } from "../config/config.js";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
+import type { ElizaConfig } from "../config/config.ts";
+import { configFileExists, loadElizaConfig } from "../config/config.ts";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
   applyCanonicalOnboardingConfig,
   applyOnboardingCredentialPersistence,
-} from "./provider-switch-config.js";
+} from "./provider-switch-config.ts";
 
 // ---------------------------------------------------------------------------
 // Cloud container character default bootstrapping
@@ -633,7 +633,7 @@ export async function handleOnboardingRoutes(
         config.connectors[connectorName] = {
           ...(currentConnector ?? {}),
           ...nextConnector,
-        } as import("../config/types.eliza.js").ConnectorConfig;
+        } as import("../config/types.eliza.ts").ConnectorConfig;
       }
     }
     if (

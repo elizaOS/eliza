@@ -14,7 +14,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 const ELIZA_CORE_RUNTIME_FILES = [
@@ -147,95 +146,6 @@ export function patchBrokenElizaCoreRuntimeDists(root, log = console.log) {
     }
   }
   return patched;
-}
-
-/**
- * Install the `@elizaos/core/roles` runtime subpath.
- *
- * The published `@elizaos/core@alpha` exposes `dist/roles.d.ts` (types only)
- * and declares `export * from "./roles";` in `dist/index.node.d.ts`, but
- * neither the matching runtime `dist/roles.js` file nor a `./roles` subpath
- * in `package.json` `exports` ship in the published tarball. Every
- * `import { … } from "@elizaos/core/roles"` therefore fails with
- * `ERR_MODULE_NOT_FOUND` at runtime (vitest, node, bun) even though tsc
- * resolves the subpath via the tsconfig `paths` map to the local `./eliza`
- * source.
- *
- * Copy a pre-bundled shim (see `scripts/lib/elizaos-core-roles-shim.js`) to
- * each installed `@elizaos/core/dist/roles.js` location and add the matching
- * `./roles` entry to the package.json `exports` field. The shim bundles
- * `eliza/packages/core/src/roles.ts` verbatim with its two runtime
- * dependencies (`createUniqueUuid`, `logger`) left as top-level imports from
- * `@elizaos/core` — both of which are already present in the main published
- * runtime bundle.
- */
-export function patchElizaCoreRolesSubpath(root, log = console.log) {
-  const shimSource = resolve(
-    dirname(fileURLToPath(import.meta.url)),
-    "elizaos-core-roles-shim.js",
-  );
-  if (!existsSync(shimSource)) {
-    log(
-      `[patch-deps] Skipping @elizaos/core/roles subpath install: shim ${shimSource} is missing`,
-    );
-    return false;
-  }
-  const shimContents = readFileSync(shimSource, "utf8");
-
-  const pkgPaths = findPackageJsonPaths(root, "@elizaos/core");
-  let patchedAny = false;
-
-  for (const pkgPath of pkgPaths) {
-    const pkgDir = dirname(pkgPath);
-    const distDir = resolve(pkgDir, "dist");
-    if (!existsSync(distDir)) continue;
-
-    const targetJs = resolve(distDir, "roles.js");
-    const needsJs = !existsSync(targetJs);
-    let wroteJs = false;
-    if (needsJs) {
-      writeFileAtomic(targetJs, shimContents);
-      wroteJs = true;
-    }
-
-    let pkg;
-    try {
-      pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
-    } catch {
-      continue;
-    }
-    if (!pkg || typeof pkg !== "object") continue;
-    if (!pkg.exports || typeof pkg.exports !== "object") {
-      pkg.exports = {};
-    }
-
-    const currentRoles = pkg.exports["./roles"];
-    const needsExport =
-      !currentRoles ||
-      typeof currentRoles !== "object" ||
-      typeof currentRoles.import !== "string" ||
-      !currentRoles.import.includes("roles.js");
-
-    let wrotePkg = false;
-    if (needsExport) {
-      pkg.exports["./roles"] = {
-        types: "./dist/roles.d.ts",
-        import: "./dist/roles.js",
-        default: "./dist/roles.js",
-      };
-      writeFileAtomic(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
-      wrotePkg = true;
-    }
-
-    if (wroteJs || wrotePkg) {
-      patchedAny = true;
-      log(
-        `[patch-deps] Installed @elizaos/core/roles runtime subpath at ${pkgDir}`,
-      );
-    }
-  }
-
-  return patchedAny;
 }
 
 function findElizaPluginPackageJsonPaths(root) {
@@ -1515,12 +1425,17 @@ export function patchAutonomousTypeError(root, log = console.log) {
   for (const filePath of candidates) {
     if (!existsSync(filePath)) continue;
     let source = readFileSync(filePath, "utf8");
-    // Skip if already fixed (contains "as unknown as SubscriptionAuthApi")
-    if (source.includes("as unknown as SubscriptionAuthApi")) continue;
+    // Skip if already fixed by widening through the generated API surface.
+    if (
+      source.includes(
+        "as Partial<SubscriptionAuthApi> as SubscriptionAuthApi",
+      )
+    )
+      continue;
     if (source.includes("as SubscriptionAuthApi")) {
       source = source.replaceAll(
         "as SubscriptionAuthApi",
-        "as unknown as SubscriptionAuthApi",
+        "as Partial<SubscriptionAuthApi> as SubscriptionAuthApi",
       );
       writeFileSync(filePath, source, "utf8");
       patched = true;

@@ -141,7 +141,7 @@ function buildDiscordMessage(
 			},
 		},
 		createdAt: Date.now(),
-	} as unknown as Memory;
+	} as Memory;
 }
 
 let runtime: AgentRuntime | undefined;
@@ -223,7 +223,7 @@ async function main(): Promise<void> {
 	);
 
 	({ runtime, cleanup: cleanupRuntime } = await createTestRuntime());
-	service = await PTYService.start(runtime as unknown as IAgentRuntime);
+	service = await PTYService.start(runtime as IAgentRuntime);
 	(runtime.services as Map<string, unknown[]>).set("PTY_SERVICE", [
 		service as unknown,
 	]);
@@ -244,7 +244,7 @@ async function main(): Promise<void> {
 		return originalGetSetting(key);
 	}) as IAgentRuntime["getSetting"];
 
-	setConnectorAdminWhitelist(runtime as unknown as IAgentRuntime, {
+	setConnectorAdminWhitelist(runtime as IAgentRuntime, {
 		discord: [cozyGuildDetail.owner_id],
 	});
 
@@ -308,7 +308,7 @@ async function main(): Promise<void> {
 	const secondSentinel = `DISCORD_OWNER_INTERACT_${Date.now()}`;
 
 	const allowedCreateMessage = buildDiscordMessage(
-		runtime as unknown as IAgentRuntime,
+		runtime as IAgentRuntime,
 		room,
 		allowedEntity,
 		"Create a task agent in Discord and prove it worked.",
@@ -316,7 +316,7 @@ async function main(): Promise<void> {
 		"cozy-owner",
 	);
 	const deniedCreateMessage = buildDiscordMessage(
-		runtime as unknown as IAgentRuntime,
+		runtime as IAgentRuntime,
 		room,
 		deniedEntity,
 		"Try to create a task agent without the required role.",
@@ -325,7 +325,7 @@ async function main(): Promise<void> {
 	);
 
 	const allowedCreate = await startCodingTaskAction.handler(
-		runtime as unknown as IAgentRuntime,
+		runtime as IAgentRuntime,
 		allowedCreateMessage,
 		undefined,
 		{
@@ -356,7 +356,7 @@ async function main(): Promise<void> {
 	sessionsToStop.add(allowedSessionId);
 
 	const deniedCreate = await startCodingTaskAction.handler(
-		runtime as unknown as IAgentRuntime,
+		runtime as IAgentRuntime,
 		deniedCreateMessage,
 		undefined,
 		{
@@ -381,7 +381,7 @@ async function main(): Promise<void> {
 	);
 
 	const deniedInteract = await sendToAgentAction.handler(
-		runtime as unknown as IAgentRuntime,
+		runtime as IAgentRuntime,
 		deniedCreateMessage,
 		undefined,
 		{
@@ -399,7 +399,7 @@ async function main(): Promise<void> {
 	assert.equal(deniedInteract?.error, "FORBIDDEN");
 
 	const allowedInteract = await sendToAgentAction.handler(
-		runtime as unknown as IAgentRuntime,
+		runtime as IAgentRuntime,
 		allowedCreateMessage,
 		undefined,
 		{

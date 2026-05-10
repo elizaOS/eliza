@@ -1,30 +1,30 @@
+import { animated, useSpring } from "@react-spring/three";
+import { Environment, useGLTF } from "@react-three/drei";
+import { Canvas, useFrame } from "@react-three/fiber";
 import {
-  useRef,
-  useEffect,
   forwardRef,
+  useEffect,
   useImperativeHandle,
+  useRef,
   useState,
 } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { useGLTF, Environment } from "@react-three/drei";
-import { useSpring, animated } from "@react-spring/three";
 import * as THREE from "three";
 import {
-  renderChatToCanvas,
-  measureBubbleHeight,
-  getMessageCount,
-  measurePreloadedScrollHeight,
-  TYPING_BUBBLE_HEIGHT,
-  BACK_BTN_X,
   BACK_BTN_CY,
   BACK_BTN_H,
   BACK_BTN_W_ESTIMATE,
+  BACK_BTN_X,
+  CANVAS_H,
+  CANVAS_W,
+  type ExtraMessage,
+  getMessageCount,
+  measureBubbleHeight,
+  measurePreloadedScrollHeight,
+  renderChatToCanvas,
+  setChatPlatform,
+  TYPING_BUBBLE_HEIGHT,
   VID_BTN_CX,
   VID_BTN_CY,
-  CANVAS_W,
-  CANVAS_H,
-  setChatPlatform,
-  type ExtraMessage,
 } from "@/components/ChatUI/renderChatToCanvas";
 
 export interface ModelBHandle {
@@ -295,7 +295,7 @@ function Model() {
         }
         const elapsed = now - offsetStart;
         const t = Math.min(elapsed / offsetDuration, 1);
-        const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
         const offset = startOffset * (1 - eased);
 
         chatTexture.image = renderChatToCanvas(0, avatarImg, 1, offset);
@@ -328,7 +328,7 @@ function Model() {
             if (cancelled) return;
             const elapsed = now - startTime;
             const t = Math.min(elapsed / duration, 1);
-            const eased = 1 - Math.pow(1 - t, 3);
+            const eased = 1 - (1 - t) ** 3;
 
             chatTexture.image = renderChatToCanvas(count, avatarImg, eased);
             chatTexture.needsUpdate = true;
@@ -379,7 +379,7 @@ function Model() {
         const tick = (now: number) => {
           const elapsed = now - startTime;
           const t = Math.min(elapsed / duration, 1);
-          msg.progress = 1 - Math.pow(1 - t, 3);
+          msg.progress = 1 - (1 - t) ** 3;
 
           chatTexture.image = renderChatToCanvas(
             msgCountRef.current,
@@ -417,7 +417,7 @@ function Model() {
           const animTyping = (now: number) => {
             const elapsed = now - start;
             const t = Math.min(elapsed / dur, 1);
-            typingMsg.progress = 1 - Math.pow(1 - t, 3);
+            typingMsg.progress = 1 - (1 - t) ** 3;
             chatTexture.image = renderChatToCanvas(
               msgCountRef.current,
               avatarImg,
@@ -458,7 +458,7 @@ function Model() {
             const animResponse = (now: number) => {
               const elapsed = now - start2;
               const t = Math.min(elapsed / dur2, 1);
-              responseMsg.progress = 1 - Math.pow(1 - t, 3);
+              responseMsg.progress = 1 - (1 - t) ** 3;
               chatTexture.image = renderChatToCanvas(
                 msgCountRef.current,
                 avatarImg,
@@ -682,7 +682,7 @@ function FovZoom() {
     }
     progress.current = Math.min(progress.current + delta * 0.9, 1);
     const p = progress.current;
-    const t = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+    const t = p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2;
     cam.fov = startFov + (endFov - startFov) * t;
     cam.position.y = startY + (endY - startY) * t;
     cam.updateProjectionMatrix();
@@ -709,8 +709,8 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
   },
   ref,
 ) {
-  const backBtnOverlayRef = useRef<HTMLDivElement>(null);
-  const vidBtnOverlayRef = useRef<HTMLDivElement>(null);
+  const backBtnOverlayRef = useRef<HTMLButtonElement>(null);
+  const vidBtnOverlayRef = useRef<HTMLButtonElement>(null);
   const platformRef = useRef(platform);
 
   useEffect(() => {
@@ -830,27 +830,34 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
         <FovZoom />
       </Canvas>
       {/* Back button overlay — pill shaped, size set dynamically via rAF */}
-      <div
+      <button
+        type="button"
         ref={backBtnOverlayRef}
         onClick={() => {
           currentOnBackClick?.();
         }}
+        aria-label="Back"
         style={{
           display: "none",
           position: "fixed",
           top: 0,
           left: 0,
+          border: "none",
           borderRadius: "9999px",
+          background: "transparent",
           cursor: "pointer",
+          padding: 0,
           zIndex: 25,
         }}
       />
       {/* Video button overlay */}
-      <div
+      <button
+        type="button"
         ref={vidBtnOverlayRef}
         onClick={() => {
           currentOnVideoClick?.();
         }}
+        aria-label="Open video call"
         style={{
           display: "none",
           position: "fixed",
@@ -858,8 +865,11 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
           left: 0,
           width: OVERLAY_SIZE,
           height: OVERLAY_SIZE,
+          border: "none",
           borderRadius: "50%",
+          background: "transparent",
           cursor: "pointer",
+          padding: 0,
           zIndex: 25,
         }}
       />

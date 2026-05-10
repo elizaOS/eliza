@@ -1,7 +1,7 @@
 /**
  * Debug Plugin
  *
- * Registers event listeners to collect debug traces across all agent modes.
+ * Registers event listeners to collect debug traces for cloud chat runs.
  * Opt-in via DEBUG_TRACING=true environment variable.
  */
 
@@ -105,14 +105,9 @@ async function handleRunStarted(payload: RunStartedPayload): Promise<void> {
   const runtime = payload.runtime as { agentId?: UUID };
   const agentId = runtime?.agentId ?? ("unknown" as UUID);
 
-  // Determine agent mode from source
-  let agentMode: "chat" | "assistant" | "build" | "unknown" = "unknown";
-  if (source?.includes("chatPlayground")) {
+  let agentMode: "chat" | "unknown" = "unknown";
+  if (source?.includes("chat")) {
     agentMode = "chat";
-  } else if (source?.includes("chatAssistant") || source?.includes("assistant")) {
-    agentMode = "assistant";
-  } else if (source?.includes("build") || source?.includes("character")) {
-    agentMode = "build";
   }
 
   // Create new collector for this run

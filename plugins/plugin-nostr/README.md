@@ -15,8 +15,8 @@ Nostr decentralized messaging plugin for ElizaOS agents. Enables secure, encrypt
 # npm
 npm install @elizaos/plugin-nostr
 
-# pnpm
-pnpm add @elizaos/plugin-nostr
+# bun
+bun add @elizaos/plugin-nostr
 ```
 
 ## Configuration
@@ -48,23 +48,19 @@ pnpm add @elizaos/plugin-nostr
 
 ### Actions
 
-#### NOSTR_SEND_DM
+Nostr DMs and public notes are exposed through canonical connector actions. Use
+`source: "nostr"` when a request needs to target Nostr explicitly.
 
-Send an encrypted direct message to a Nostr pubkey.
+| Primary action | Operation | Description |
+|----------------|-----------|-------------|
+| `MESSAGE` | `send` | Send an encrypted direct message to a Nostr pubkey |
+| `MESSAGE` | `read` | Read recent direct messages where the connector can fetch them |
+| `POST` | `send` | Publish a public Nostr note |
+| `POST` | `read` | Read recent relay feed posts |
+| `POST` | `search` | Search relay posts where supported |
 
-```
-"Send them a message saying 'Hello!'"
-"Message npub1abc... saying 'Thanks for the zap!'"
-```
-
-#### NOSTR_PUBLISH_PROFILE
-
-Update the agent's Nostr profile.
-
-```
-"Update your profile name to 'Bot Assistant'"
-"Set your bio to 'I am an AI assistant on Nostr'"
-```
+Profile updates remain a Nostr-specific profile capability outside the
+MESSAGE/POST connector action set.
 
 ### Providers
 

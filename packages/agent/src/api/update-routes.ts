@@ -1,6 +1,6 @@
 import type http from "node:http";
-import type { ElizaConfig } from "../config/config.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
+import type { ReadJsonBodyOptions } from "@elizaos/core";
+import type { ElizaConfig } from "../config/config.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -34,14 +34,14 @@ export async function handleUpdateRoutes(
 
   // ── GET /api/update/status ───────────────────────────────────────────
   if (method === "GET" && pathname === "/api/update/status") {
-    const { VERSION } = await import("../runtime/version.js");
+    const { VERSION } = await import("../runtime/version.ts");
     const {
       resolveChannel,
       checkForUpdate,
       fetchAllChannelVersions,
       CHANNEL_DIST_TAGS,
-    } = await import("../services/update-checker.js");
-    const { detectInstallMethod } = await import("../services/self-updater.js");
+    } = await import("../services/update-checker.ts");
+    const { detectInstallMethod } = await import("../services/self-updater.ts");
     const channel = resolveChannel(state.config.update);
 
     const [check, versions] = await Promise.all([

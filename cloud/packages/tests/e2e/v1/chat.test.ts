@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson } from "../helpers/json-body";
+
+type ChatCompletionResponse = {
+  choices?: unknown[];
+  id?: string;
+};
 
 /**
  * Chat API E2E Tests
@@ -63,7 +69,7 @@ describe("Chat Completions API (OpenAI-compat)", () => {
     );
 
     if (response.status === 200) {
-      const body = (await response.json()) as any;
+      const body = await readJson<ChatCompletionResponse>(response);
       expect(body.choices || body.id).toBeTruthy();
     } else {
       expect([402, 429, 503]).toContain(response.status);

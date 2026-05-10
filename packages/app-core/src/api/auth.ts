@@ -6,7 +6,6 @@
  */
 
 import type http from "node:http";
-import { logger } from "@elizaos/core";
 import { resolveApiToken } from "@elizaos/shared";
 import {
   CSRF_HEADER_NAME,

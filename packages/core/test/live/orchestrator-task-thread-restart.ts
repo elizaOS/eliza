@@ -76,7 +76,7 @@ async function startRuntime(): Promise<SwarmCoordinator> {
 	runtime = created.runtime;
 	cleanupRuntime = created.cleanup;
 	pgliteDir = created.pgliteDir;
-	service = await PTYService.start(runtime as unknown as IAgentRuntime);
+	service = await PTYService.start(runtime);
 	(runtime.services as Map<string, unknown[]>).set("PTY_SERVICE", [
 		service as unknown,
 	]);

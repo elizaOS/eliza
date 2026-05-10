@@ -1,5 +1,3 @@
-import { edgeRuntimeCache } from "@/lib/cache/edge-runtime-cache";
-import { invalidateByOrganization } from "@/lib/eliza/runtime-factory";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import {
   getDefaultPlatformRedirectOrigins,
@@ -7,8 +5,7 @@ import {
   resolveOAuthSuccessRedirectUrl,
 } from "@/lib/security/redirect-validation";
 import { connectionEnforcementService } from "@/lib/services/eliza-app";
-import { entitySettingsCache } from "@/lib/services/entity-settings/cache";
-import { incrementOAuthVersion } from "@/lib/services/oauth/cache-version";
+import { invalidateOAuthState } from "@/lib/services/oauth/invalidation";
 import { getProvider, isProviderConfigured } from "@/lib/services/oauth/provider-registry";
 import { handleOAuth2Callback } from "@/lib/services/oauth/providers";
 import { logger } from "@/lib/utils/logger";
@@ -105,10 +102,7 @@ export async function handleGenericOAuthCallback(
 
     try {
       await Promise.all([
-        invalidateByOrganization(result.organizationId),
-        entitySettingsCache.invalidateUser(result.userId),
-        edgeRuntimeCache.bumpMcpVersion(result.organizationId),
-        incrementOAuthVersion(result.organizationId, platformLower),
+        invalidateOAuthState(result.organizationId, platformLower, result.userId),
         connectionEnforcementService.invalidateRequiredConnectionCache(
           result.organizationId,
           result.userId,

@@ -1,4 +1,4 @@
-import type { SetOptions } from "./vault.js";
+import type { SetOptions } from "./vault-types.js";
 
 export function assertKey(key: string): void {
   if (typeof key !== "string" || key.length === 0) {

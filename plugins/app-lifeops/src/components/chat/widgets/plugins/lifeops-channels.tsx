@@ -5,7 +5,7 @@ import {
   type TriggerSummary,
   useApp,
   WidgetSection,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -95,6 +95,7 @@ function useGoogleData(timeZone: string) {
             ? client.getLifeOpsCalendarFeed({
                 mode: dataStatus.mode,
                 side: dataStatus.side,
+                grantId: dataStatus.grant?.id,
                 timeZone,
               })
             : Promise.resolve<LifeOpsCalendarFeed | null>(null),
@@ -102,6 +103,7 @@ function useGoogleData(timeZone: string) {
             ? client.getLifeOpsGmailTriage({
                 mode: dataStatus.mode,
                 side: dataStatus.side,
+                grantId: dataStatus.grant?.id,
                 maxResults: INBOX_ROW_LIMIT,
               })
             : Promise.resolve<LifeOpsGmailTriageFeed | null>(null),

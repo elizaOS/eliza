@@ -1,9 +1,8 @@
-import {
-  type RelationshipsGraphService,
-  type RelationshipsPersonDetail,
-  type RelationshipsPersonSummary,
-  resolveRelationshipsGraphService,
-} from "@elizaos/agent";
+import type {
+  RelationshipsGraphService,
+  RelationshipsPersonDetail,
+  RelationshipsPersonSummary,
+} from "@elizaos/core";
 import {
   type AgentRuntime,
   ChannelType,
@@ -330,7 +329,9 @@ export async function acceptCanonicalIdentityMerge(
 export async function getCanonicalIdentityGraph(
   runtime: AgentRuntime,
 ): Promise<RelationshipsGraphService> {
-  const graph = await resolveRelationshipsGraphService(runtime);
+  const graph = runtime.getService(
+    "relationships",
+  ) as RelationshipsGraphService | null;
   if (!graph) {
     throw new Error("relationships graph service unavailable");
   }

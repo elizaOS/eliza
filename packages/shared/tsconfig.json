@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ESNext"
+    ],
     "allowJs": false,
     "jsx": "react-jsx",
     "skipLibCheck": true,
@@ -16,7 +20,10 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["node", "bun-types"],
+    "types": [
+      "node",
+      "bun-types"
+    ],
     "typeRoots": [
       "../app-core/node_modules/@types",
       "../../node_modules/@types",
@@ -29,27 +36,33 @@
       "../../../node_modules/.bun/node_modules"
     ],
     "paths": {
-      "@types/*": ["./src/*"],
-      "@elizaos/core": ["../core/src/index.node.ts"],
-      "@elizaos/core/*": ["../core/src/*"],
-      "react": ["../app-core/node_modules/@types/react/index.d.ts"],
+      "@types/*": [
+        "./src/*"
+      ],
+      "@elizaos/core": [
+        "../core/src/index.node.ts"
+      ],
+      "react": [
+        "../app-core/node_modules/@types/react/index.d.ts"
+      ],
       "react/jsx-runtime": [
         "../app-core/node_modules/@types/react/jsx-runtime.d.ts"
       ],
       "react/jsx-dev-runtime": [
         "../app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
       ],
-      "react-dom": ["../app-core/node_modules/@types/react-dom/index.d.ts"]
+      "react-dom": [
+        "../app-core/node_modules/@types/react-dom/index.d.ts"
+      ]
     }
   },
   "exclude": [
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx",
     "../app-core/src/ui/**/*.stories.ts",
-    "../app-core/src/ui/**/*.stories.tsx",
-    "../app-core/src/ui/**/*.test.ts",
-    "../app-core/src/ui/**/*.test.tsx"
+    "../app-core/src/ui/**/*.stories.tsx"
   ],
-  "include": ["src", "../app-core/src/ui"],
+  "include": [
+    "src",
+    "../app-core/src/ui"
+  ],
   "references": []
 }

@@ -122,14 +122,8 @@ const response = await runtime.useModel("TEXT_LARGE", {
 
 </div>
 
-Les modèles DeepSeek sont également disponibles localement via Ollama :
-
-```bash
-ollama pull deepseek-r1:7b
-ollama pull deepseek-r1:70b
-```
-
-Configurez avec le [plugin Ollama](/fr/plugin-registry/llm/ollama) au lieu de ce plugin lors d'une exécution locale.
+Pour l'inférence locale, configurez le [plugin Ollama](/fr/plugin-registry/llm/ollama)
+avec Eliza-1 au lieu de router DeepSeek via un serveur local.
 
 <div id="rate-limits-and-pricing">
 

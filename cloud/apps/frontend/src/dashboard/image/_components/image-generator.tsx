@@ -11,12 +11,12 @@ import {
   ImageLoadingState as LoadingState,
   ImagePromptInput as PromptInput,
   type StylePreset,
-} from "@elizaos/cloud-ui/components/image-gen";
+} from "@elizaos/cloud-ui";
 import { useCallback, useState } from "react";
 import { ImageDisplay } from "./image-display";
 
 // Re-export types for consumers that still import from this file
-export type { AspectRatio, StylePreset } from "@elizaos/cloud-ui/components/image-gen";
+export type { AspectRatio, StylePreset } from "@elizaos/cloud-ui";
 
 interface GeneratedImage {
   image: string;

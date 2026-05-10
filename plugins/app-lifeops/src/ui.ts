@@ -1,20 +1,20 @@
 import "./api/client-lifeops.js";
 
-export * from "./components/AppBlockerSettingsCard.tsx";
+export * from "./components/AppBlockerSettingsCard.js";
 export {
   BrowserBridgeSetupPanel,
   BrowserBridgeSetupPanel as LifeOpsBrowserSetupPanel,
-} from "./components/BrowserBridgeSetupPanel.tsx";
-export { LifeOpsActivitySignalsEffect } from "./components/LifeOpsActivitySignalsEffect.tsx";
-export * from "./components/LifeOpsPageSections.tsx";
-export * from "./components/LifeOpsPageView.tsx";
-export * from "./components/LifeOpsSettingsSection.tsx";
-export * from "./components/LifeOpsWorkspaceView.tsx";
-export * from "./components/WebsiteBlockerSettingsCard.tsx";
-export { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "./platform/lifeops-github.ts";
+} from "./components/BrowserBridgeSetupPanel.js";
+export { LifeOpsActivitySignalsEffect } from "./components/LifeOpsActivitySignalsEffect.js";
+export * from "./components/LifeOpsPageSections.js";
+export * from "./components/LifeOpsPageView.js";
+export * from "./components/LifeOpsSettingsSection.js";
+export * from "./components/LifeOpsWorkspaceView.js";
+export * from "./components/WebsiteBlockerSettingsCard.js";
+export { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "./platform/lifeops-github.js";
 export type {
   AppBlockerSettingsCardProps,
   AppBlockerSettingsMode,
   WebsiteBlockerSettingsCardProps,
   WebsiteBlockerSettingsMode,
-} from "./types/index.ts";
+} from "./types/index.js";

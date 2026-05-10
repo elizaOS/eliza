@@ -18,13 +18,14 @@ import type {
 import { logger } from "@elizaos/core";
 import {
   buildResolvedClient,
+  describeSelection,
   isConfirmed,
   optionalStringArray,
+  resolveAccountSelection,
   type ResolvedClient,
   requireNumber,
   requireString,
   requireStringArray,
-  resolveIdentity,
   splitRepo,
 } from "../action-helpers.js";
 import {
@@ -315,7 +316,7 @@ export const issueOpAction: Action = {
     "GitHub issue ops: create, assign, close, reopen, comment, label.",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description:
         "Issue operation: create, assign, close, reopen, comment, or label.",
       required: true,
@@ -364,6 +365,13 @@ export const issueOpAction: Action = {
       schema: { type: "string", enum: ["agent", "user"], default: "agent" },
     },
     {
+      name: "accountId",
+      description:
+        "Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
       name: "confirmed",
       description: "Must be true to perform the write operation.",
       required: false,
@@ -394,7 +402,7 @@ export const issueOpAction: Action = {
       return { success: false, error: err };
     }
 
-    const identity = resolveIdentity(options, "agent");
+    const selection = resolveAccountSelection(options, "agent");
     const repo = requireString(options, "repo");
     if (!repo) {
       const err = "GITHUB_ISSUE_OP requires repo (owner/name)";
@@ -409,12 +417,12 @@ export const issueOpAction: Action = {
     }
 
     if (!isConfirmed(options)) {
-      const preview = buildPreview(op, repo, identity, options);
+      const preview = buildPreview(op, repo, describeSelection(selection), options);
       await callback?.({ text: preview });
       return { success: false, requiresConfirmation: true, preview };
     }
 
-    const resolved = buildResolvedClient(runtime, identity);
+    const resolved = buildResolvedClient(runtime, selection);
     if ("error" in resolved) {
       await callback?.({ text: resolved.error });
       return { success: false, error: resolved.error };

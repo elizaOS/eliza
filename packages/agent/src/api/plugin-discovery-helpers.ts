@@ -11,17 +11,16 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger, type UUID } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.js";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
-import { getBundledRuntimePluginIds } from "../runtime/release-plugin-policy.js";
-import { signalAuthExists } from "../services/signal-pairing.js";
+import { applySignalQrOverride } from "@elizaos/plugin-signal";
+import { applyWhatsAppQrOverride } from "@elizaos/plugin-whatsapp";
+import type { ElizaConfig } from "../config/config.ts";
+import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.ts";
+import { getBundledRuntimePluginIds } from "../runtime/release-plugin-policy.ts";
 import {
   type PluginParamInfo,
   validatePluginConfig,
-} from "./plugin-validation.js";
-import { findOwnPackageRoot } from "./server-helpers.js";
-import { applySignalQrOverride } from "./signal-routes.js";
-import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
+} from "./plugin-validation.ts";
+import { findOwnPackageRoot } from "./server-helpers.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -46,9 +45,9 @@ function findPluginsManifestRoot(startDir: string): string {
   return manifestRoot ?? findOwnPackageRoot(startDir);
 }
 
-export type { PluginEntry, PluginParamDef } from "./server-types.js";
+export type { PluginEntry, PluginParamDef } from "./server-types.ts";
 
-import type { PluginEntry, PluginParamDef } from "./server-types.js";
+import type { PluginEntry, PluginParamDef } from "./server-types.ts";
 
 export interface SkillEntry {
   id: string;
@@ -1126,11 +1125,7 @@ export function discoverPluginsFromManifest(): PluginEntry[] {
       );
 
       applyWhatsAppQrOverride(entries, resolveDefaultAgentWorkspaceDir());
-      applySignalQrOverride(
-        entries,
-        resolveDefaultAgentWorkspaceDir(),
-        signalAuthExists,
-      );
+      applySignalQrOverride(entries, resolveDefaultAgentWorkspaceDir());
 
       return entries;
     } catch (err) {
@@ -1165,7 +1160,6 @@ export function categorizePlugin(
     "mistral",
     "cohere",
     "perplexity",
-    "qwen",
     "minimax",
     "zai",
   ];

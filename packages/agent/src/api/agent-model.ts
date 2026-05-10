@@ -4,7 +4,7 @@ import {
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
+import type { ElizaConfig } from "../config/config.ts";
 
 const MODEL_PLACEHOLDERS = new Set(["", "n/a", "na", "unknown", "provided"]);
 
@@ -12,6 +12,14 @@ const PROVIDER_HINTS = [
   "openai-codex",
   "openai-subscription",
   "anthropic-subscription",
+  "gemini-subscription",
+  "gemini-cli",
+  "zai-coding-subscription",
+  "zai-coding",
+  "kimi-coding-subscription",
+  "kimi-coding",
+  "deepseek-coding-subscription",
+  "deepseek-coding",
   "openrouter",
   "moonshot",
   "kimi",
@@ -45,6 +53,13 @@ const ENV_PROVIDER_SIGNALS: ReadonlyArray<{
   { envVar: "ZAI_API_KEY", label: "zai" },
   { envVar: "MOONSHOT_API_KEY", label: "moonshot" },
   { envVar: "OLLAMA_BASE_URL", label: "ollama" },
+  // The aosp-local-inference plugin sets ELIZA_LOCAL_LLAMA=1 when it
+  // registers the bundled llama.cpp model handlers at agent boot.
+  // Without this signal `detectRuntimeModel` returns undefined on AOSP
+  // installs, the API surface reports no `model` field, and the React
+  // shell's chat composer locks behind "Setup Provider To Chat" even
+  // though llama is loaded and ready.
+  { envVar: "ELIZA_LOCAL_LLAMA", label: "aosp-local-llama" },
 ];
 
 function normalizeModelSpec(value: unknown): string | undefined {

@@ -21,10 +21,10 @@ function createRuntime() {
   return {
     categories,
     registerSearchCategory,
-    runtime: {
+    runtime: Object.assign(Object.create(null) as IAgentRuntime, {
       getSearchCategory,
       registerSearchCategory,
-    } as unknown as IAgentRuntime,
+    }),
   };
 }
 
@@ -52,6 +52,7 @@ describe("GitHub search category", () => {
         "state",
         "author",
         "as",
+        "accountId",
         "limit",
       ]),
     );

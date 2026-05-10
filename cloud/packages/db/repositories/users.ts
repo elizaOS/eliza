@@ -178,7 +178,9 @@ export class UsersRepository {
     return this.findWithOrganization(identity.user_id);
   }
 
-  async listForAdminDashboard(limit: number): Promise<
+  async listForAdminDashboard(
+    limit: number,
+  ): Promise<
     Array<
       Pick<
         User,

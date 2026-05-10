@@ -1,6 +1,8 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import type { TwitterClientState } from "../../types";
 import { getSetting } from "../../utils/settings";
+import { DEFAULT_X_ACCOUNT_ID, resolveRequestedXAccountId } from "../accounts";
 import { promptForRedirectedUrl, waitForLoopbackCallback } from "./interactive";
 import { createCodeChallenge, createCodeVerifier, createState } from "./pkce";
 import type { StoredOAuth2Tokens, TokenStore } from "./token-store";
@@ -35,34 +37,54 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
   readonly mode = "oauth" as const;
 
   private tokens: StoredOAuth2Tokens | null = null;
+  private readonly accountId: string;
 
   constructor(
     private readonly runtime: IAgentRuntime,
-    private readonly tokenStore: TokenStore = chooseDefaultTokenStore(runtime),
+    private readonly state?: TwitterClientState,
+    private readonly tokenStore: TokenStore = chooseDefaultTokenStore(
+      runtime,
+      resolveRequestedXAccountId(runtime, state, state?.accountId) ??
+        DEFAULT_X_ACCOUNT_ID,
+    ),
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly interactiveLoginFn?: () => Promise<StoredOAuth2Tokens>,
-  ) {}
+  ) {
+    this.accountId = resolveRequestedXAccountId(
+      runtime,
+      state,
+      state?.accountId,
+    );
+  }
 
   private get clientId(): string {
-    const v = getSetting(this.runtime, "TWITTER_CLIENT_ID");
+    const v =
+      this.state?.TWITTER_CLIENT_ID ??
+      getSetting(this.runtime, "TWITTER_CLIENT_ID");
     if (!v)
       throw new Error(
-        "TWITTER_CLIENT_ID is required for TWITTER_AUTH_MODE=oauth",
+        `TWITTER_CLIENT_ID is required for TWITTER_AUTH_MODE=oauth (accountId=${this.accountId})`,
       );
     return v;
   }
 
   private get redirectUri(): string {
-    const v = getSetting(this.runtime, "TWITTER_REDIRECT_URI");
+    const v =
+      this.state?.TWITTER_REDIRECT_URI ??
+      getSetting(this.runtime, "TWITTER_REDIRECT_URI");
     if (!v)
       throw new Error(
-        "TWITTER_REDIRECT_URI is required for TWITTER_AUTH_MODE=oauth",
+        `TWITTER_REDIRECT_URI is required for TWITTER_AUTH_MODE=oauth (accountId=${this.accountId})`,
       );
     return v;
   }
 
   private get scopes(): string {
-    return getSetting(this.runtime, "TWITTER_SCOPES") || DEFAULT_SCOPES;
+    return (
+      this.state?.TWITTER_SCOPES ??
+      getSetting(this.runtime, "TWITTER_SCOPES") ??
+      DEFAULT_SCOPES
+    );
   }
 
   private async loadTokens(): Promise<StoredOAuth2Tokens | null> {

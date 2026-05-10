@@ -19,7 +19,7 @@
  *
  *   const filled = await extractActionParamsViaLlm<MyParams>({
  *     runtime, message, state,
- *     actionName: "TRIAGE_MESSAGES",
+ *     actionName: "MESSAGE",
  *     actionDescription: "Cross-channel inbox: triage / digest / respond / search...",
  *     paramSchema: triageMessagesAction.parameters,
  *     existingParams: planParams,
@@ -43,6 +43,8 @@
  */
 
 import {
+  composePrompt,
+  extractActionParamsTemplate,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -251,29 +253,22 @@ function buildExtractionPrompt(args: {
     .join("\n");
 
   const existingJson = JSON.stringify(existingParams ?? {}, null, 0);
+  const recentConversationBlock = recentConversation
+    ? `Recent conversation (oldest first):\n${recentConversation}`
+    : "(no recent conversation context)";
 
-  return [
-    `You are filling in missing parameters for the ${actionName} action.`,
-    `Action description: ${actionDescription}`,
-    ``,
-    `Parameter schema:`,
-    schemaLines,
-    ``,
-    `Already-supplied parameters: ${existingJson}`,
-    ``,
-    `Missing required fields you must extract: ${missingFields.join(", ")}`,
-    ``,
-    recentConversation
-      ? `Recent conversation (oldest first):\n${recentConversation}`
-      : `(no recent conversation context)`,
-    ``,
-    `Current user message: ${currentMessageText || "(empty)"}`,
-    ``,
-    `Return ONLY a JSON object containing values for the MISSING fields.`,
-    `If a value is genuinely indeterminable from the conversation, return null for that field.`,
-    `Do not return any text outside the JSON. Do not wrap it in markdown.`,
-    `Example: {"subaction": "search", "query": "github"}`,
-  ].join("\n");
+  return composePrompt({
+    state: {
+      actionName,
+      actionDescription,
+      schemaLines,
+      existingJson,
+      missingFields: missingFields.join(", "),
+      recentConversationBlock,
+      currentMessageText: currentMessageText || "(empty)",
+    },
+    template: extractActionParamsTemplate,
+  });
 }
 
 function parseExtraction(text: string): Record<string, unknown> | null {

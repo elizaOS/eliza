@@ -1,11 +1,10 @@
-import { v5EvaluatorSchema, v5EvaluatorTemplate } from "../prompts/evaluator";
+import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { EvaluationResult } from "../types/components";
 import {
 	type ChatMessage,
 	ModelType,
 	type PromptSegment,
-	type TextGenerationModelType,
 } from "../types/model";
 import { computePrefixHashes } from "./context-hash";
 import {
@@ -20,66 +19,33 @@ import {
 	buildModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
-import type {
-	ContextObject,
-	PlannerToolCall,
-	PlannerTrajectory,
-} from "./planner-loop";
 import {
 	cacheProviderOptions,
 	trajectoryStepsToMessages,
-} from "./planner-loop";
+} from "./planner-rendering";
+import type {
+	ContextObject,
+	EvaluatorEffects,
+	EvaluatorOutput,
+	EvaluatorRoute,
+	EvaluatorRuntime,
+	PlannerToolCall,
+	PlannerTrajectory,
+	RunEvaluatorParams,
+} from "./planner-types";
 import type {
 	RecordedStage,
 	RecordedUsage,
 	TrajectoryRecorder,
 } from "./trajectory-recorder";
 
-export type EvaluatorRoute = EvaluationResult["decision"];
-
-export interface EvaluatorRuntime {
-	useModel(
-		modelType: TextGenerationModelType,
-		params: {
-			messages: ChatMessage[];
-			responseSchema?: unknown;
-			promptSegments?: PromptSegment[];
-			providerOptions?: Record<string, unknown>;
-		},
-		provider?: string,
-	): Promise<
-		string | { text?: string; object?: unknown; providerMetadata?: unknown }
-	>;
-	logger?: {
-		warn?: (context: unknown, message?: string) => void;
-		debug?: (context: unknown, message?: string) => void;
-	};
-}
-
-export interface EvaluatorEffects {
-	copyToClipboard?: (
-		clipboard: NonNullable<EvaluationResult["copyToClipboard"]>,
-	) => Promise<void> | void;
-	messageToUser?: (message: string) => Promise<void> | void;
-}
-
-export type EvaluatorOutput = EvaluationResult & {
-	nextTool?: PlannerToolCall;
-	raw?: Record<string, unknown>;
-};
-
-export interface RunEvaluatorParams {
-	runtime: EvaluatorRuntime;
-	context: ContextObject;
-	trajectory: PlannerTrajectory;
-	modelType?: TextGenerationModelType;
-	effects?: EvaluatorEffects;
-	provider?: string;
-	recorder?: TrajectoryRecorder;
-	trajectoryId?: string;
-	parentStageId?: string;
-	iteration?: number;
-}
+export type {
+	EvaluatorEffects,
+	EvaluatorOutput,
+	EvaluatorRoute,
+	EvaluatorRuntime,
+	RunEvaluatorParams,
+} from "./planner-types";
 
 interface RawEvaluatorOutput {
 	success?: unknown;
@@ -91,6 +57,11 @@ interface RawEvaluatorOutput {
 	messageToUser?: unknown;
 	copyToClipboard?: unknown;
 	recommendedToolCallId?: unknown;
+}
+
+interface ParsedEvaluatorObject {
+	object: RawEvaluatorOutput | null;
+	parseError?: string;
 }
 
 export async function runEvaluator(
@@ -115,6 +86,9 @@ export async function runEvaluator(
 		cacheProviderOptions({
 			prefixHash,
 			segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+			promptSegments: renderedInput.promptSegments,
+			provider: params.provider,
+			conversationId: params.trajectoryId,
 		}),
 		modelInputBudget,
 	);
@@ -124,7 +98,7 @@ export async function runEvaluator(
 		modelType,
 		{
 			messages: renderedInput.messages,
-			responseSchema: v5EvaluatorSchema,
+			responseSchema: evaluatorSchema,
 			promptSegments: renderedInput.promptSegments,
 			providerOptions,
 		},
@@ -217,6 +191,7 @@ async function recordEvaluationStage(args: {
 				messageToUser: args.output.messageToUser,
 				copyToClipboard: args.output.copyToClipboard,
 				recommendedToolCallId: args.output.recommendedToolCallId,
+				parseError: args.output.parseError,
 			},
 			cache: {
 				segmentHashes: args.segmentHashes,
@@ -284,14 +259,17 @@ function renderEvaluatorModelInput(params: {
 	promptSegments: PromptSegment[];
 } {
 	const renderedContext = renderContextObject(params.context);
-	const template = params.template ?? v5EvaluatorTemplate;
+	const template = params.template ?? evaluatorTemplate;
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
+	// Mirrors planner-loop: the evaluator stage instructions are template-derived
+	// (`evaluatorTemplate`) and structurally identical across calls. Marking
+	// the segment `stable: true` makes them cacheable on Anthropic's wire path.
 	const promptSegments = normalizePromptSegments([
 		...renderedContext.promptSegments,
-		{ content: `evaluator_stage:\n${instructions}`, stable: false },
+		{ content: `evaluator_stage:\n${instructions}`, stable: true },
 	]);
 	// Use proper assistant/tool message pairs so the evaluator sees the same
 	// native tool-calling format as the planner. The trajectory JSON is NOT
@@ -309,7 +287,18 @@ function renderEvaluatorModelInput(params: {
 export function parseEvaluatorOutput(
 	raw: string | { text?: string; object?: unknown },
 ): EvaluatorOutput {
-	const parsed = getStructuredObject<RawEvaluatorOutput>(raw) ?? {};
+	const parsedResult = getStructuredEvaluatorObject(raw);
+	if (parsedResult.parseError) {
+		return {
+			success: false,
+			decision: "CONTINUE",
+			thought: `Invalid evaluator output: ${parsedResult.parseError}. Replanning from recorded tool results.`,
+			parseError: parsedResult.parseError,
+			raw: {},
+		};
+	}
+
+	const parsed = parsedResult.object ?? {};
 	const decision = normalizeEvaluatorRoute(parsed.decision ?? parsed.route);
 	return {
 		success: parsed.success === true,
@@ -378,23 +367,65 @@ export function normalizeEvaluatorRoute(route: unknown): EvaluatorRoute {
 	return "CONTINUE";
 }
 
-function getStructuredObject<T extends object>(
+function isEvaluatorShapedObject(value: unknown): value is RawEvaluatorOutput {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return false;
+	}
+	const record = value as Record<string, unknown>;
+	return "success" in record || "decision" in record || "route" in record;
+}
+
+function getStructuredEvaluatorObject(
 	raw: string | { text?: string; object?: unknown },
-): T | null {
+): ParsedEvaluatorObject {
 	if (typeof raw === "string") {
-		return parseJsonObject<T>(raw);
+		return parseEvaluatorText(raw);
 	}
 	if (
 		raw.object &&
 		typeof raw.object === "object" &&
 		!Array.isArray(raw.object)
 	) {
-		return raw.object as T;
+		return { object: raw.object as RawEvaluatorOutput };
 	}
 	if (typeof raw.text === "string") {
-		return parseJsonObject<T>(raw.text);
+		return parseEvaluatorText(raw.text);
 	}
-	return null;
+	return { object: null, parseError: "missing evaluator text/object" };
+}
+
+function parseEvaluatorText(text: string): ParsedEvaluatorObject {
+	const candidate = unwrapJsonFence(text.trim());
+	if (!candidate) {
+		return { object: null, parseError: "empty response" };
+	}
+	try {
+		const parsed = JSON.parse(candidate);
+		if (!isEvaluatorShapedObject(parsed)) {
+			return {
+				object: null,
+				parseError: "JSON object is not evaluator-shaped",
+			};
+		}
+		return { object: parsed };
+	} catch {
+		const tolerant = parseJsonObject<RawEvaluatorOutput>(candidate);
+		if (isEvaluatorShapedObject(tolerant)) {
+			return {
+				object: null,
+				parseError:
+					"response contains extra text or multiple JSON objects around evaluator JSON",
+			};
+		}
+		return { object: null, parseError: "response is not a single JSON object" };
+	}
+}
+
+function unwrapJsonFence(text: string): string {
+	if (!text.startsWith("```")) return text;
+	const firstLineEnd = text.indexOf("\n");
+	if (firstLineEnd < 0 || !text.endsWith("```")) return text;
+	return text.slice(firstLineEnd + 1, -3).trim();
 }
 
 function normalizeNextTool(value: unknown): PlannerToolCall | undefined {

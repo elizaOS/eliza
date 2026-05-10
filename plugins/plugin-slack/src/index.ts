@@ -1,29 +1,43 @@
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import getUserInfo from "./actions/getUserInfo";
-import messageOp from "./actions/messageOp";
-import readChannel from "./actions/readChannel";
-
-import { memberListProvider } from "./providers/memberList";
-import { slackChannelsProvider } from "./providers/slackChannels";
-import { slackEmojisProvider } from "./providers/slackEmojis";
-import { slackPinsProvider } from "./providers/slackPins";
-import { workspaceInfoProvider } from "./providers/workspaceInfo";
+import {
+  getConnectorAccountManager,
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+} from "@elizaos/core";
+import { createSlackConnectorAccountProvider } from "./connector-account-provider";
 
 import { SlackService } from "./service";
+import { SlackWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const slackPlugin: Plugin = {
   name: "slack",
   description: "Slack integration plugin for ElizaOS with Socket Mode support",
-  services: [SlackService],
-  actions: [messageOp, readChannel, getUserInfo],
-  providers: [
-    workspaceInfoProvider,
-    memberListProvider,
-    slackChannelsProvider,
-    slackPinsProvider,
-    slackEmojisProvider,
-  ],
+  services: [SlackService, SlackWorkflowCredentialProvider],
+  actions: [],
+  providers: [],
+  // Self-declared auto-enable: activate when the "slack" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["slack"],
+  },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    // Register with the ConnectorAccountManager so the generic HTTP CRUD +
+    // OAuth surface can list, create, patch, delete, and run OAuth v2 install
+    // flows for Slack workspaces.
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createSlackConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:slack",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Slack provider with ConnectorAccountManager",
+      );
+    }
+
     const botToken = runtime.getSetting("SLACK_BOT_TOKEN") as string;
     const appToken = runtime.getSetting("SLACK_APP_TOKEN") as string;
     const signingSecret = runtime.getSetting("SLACK_SIGNING_SECRET") as string;
@@ -138,14 +152,12 @@ export {
   type SlackSlashCommandConfig,
   type SlackTokenSource,
 } from "./accounts";
-export { getUserInfo } from "./actions/getUserInfo";
-export { messageOp } from "./actions/messageOp";
-export { readChannel } from "./actions/readChannel";
 // Channel configuration types
 export type {
   SlackConfig,
   SlackThreadConfig,
 } from "./config";
+export { createSlackConnectorAccountProvider } from "./connector-account-provider";
 // Formatting exports
 export {
   buildSlackMessagePermalink,
@@ -174,11 +186,6 @@ export {
   stripSlackFormatting,
   truncateText,
 } from "./formatting";
-export { memberListProvider } from "./providers/memberList";
-export { slackChannelsProvider } from "./providers/slackChannels";
-export { slackEmojisProvider } from "./providers/slackEmojis";
-export { slackPinsProvider } from "./providers/slackPins";
-export { workspaceInfoProvider } from "./providers/workspaceInfo";
 // Export service for direct access
 export { SlackService } from "./service";
 // Export types

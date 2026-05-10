@@ -5,10 +5,20 @@ import {
   type IAgentRuntime,
   lifeOpsPassiveConnectorsEnabled,
   type Memory,
+  type Room,
   Service,
   type UUID,
 } from "@elizaos/core";
-import { checkWhatsAppUserAccess } from "./accounts";
+import {
+  checkWhatsAppUserAccess,
+  DEFAULT_ACCOUNT_ID,
+  getMultiAccountConfig,
+  listWhatsAppAccountIds,
+  normalizeAccountId as normalizeWhatsAppAccountId,
+  resolveDefaultWhatsAppAccountId,
+  resolveWhatsAppAccount,
+  type WhatsAppAccountRuntimeConfig,
+} from "./accounts";
 import { WhatsAppClient } from "./client";
 import { BaileysClient } from "./clients/baileys-client";
 import {
@@ -31,6 +41,8 @@ import type {
 
 type RuntimeServiceConfig =
   | {
+      accountId: string;
+      name?: string;
       transport: "baileys";
       authDir: string;
       dmPolicy?: "open" | "allowlist" | "pairing" | "disabled";
@@ -39,9 +51,12 @@ type RuntimeServiceConfig =
       groupAllowFrom?: string[];
     }
   | {
+      accountId: string;
+      name?: string;
       transport: "cloudapi";
       accessToken: string;
       phoneNumberId: string;
+      businessAccountId?: string;
       webhookVerifyToken?: string;
       apiVersion?: string;
       dmPolicy?: "open" | "allowlist" | "pairing" | "disabled";
@@ -96,6 +111,7 @@ function resolveRuntimeConfig(runtime: IAgentRuntime): RuntimeServiceConfig | nu
     readStringSetting(runtime, "WHATSAPP_SESSION_PATH");
   if (authDir) {
     return {
+      accountId: DEFAULT_ACCOUNT_ID,
       transport: "baileys",
       authDir,
       dmPolicy,
@@ -109,6 +125,7 @@ function resolveRuntimeConfig(runtime: IAgentRuntime): RuntimeServiceConfig | nu
   const phoneNumberId = readStringSetting(runtime, "WHATSAPP_PHONE_NUMBER_ID");
   if (accessToken && phoneNumberId) {
     return {
+      accountId: DEFAULT_ACCOUNT_ID,
       transport: "cloudapi",
       accessToken,
       phoneNumberId,
@@ -122,6 +139,77 @@ function resolveRuntimeConfig(runtime: IAgentRuntime): RuntimeServiceConfig | nu
   }
 
   return null;
+}
+
+function configuredAccountForId(
+  config: ReturnType<typeof getMultiAccountConfig>,
+  accountId: string
+): WhatsAppAccountRuntimeConfig {
+  const normalized = normalizeWhatsAppAccountId(accountId);
+  const accountConfig =
+    config.accounts?.[accountId] ??
+    Object.entries(config.accounts ?? {}).find(
+      ([key]) => normalizeWhatsAppAccountId(key) === normalized
+    )?.[1] ??
+    {};
+  return {
+    ...config,
+    accounts: undefined,
+    groups: undefined,
+    ...accountConfig,
+  } as WhatsAppAccountRuntimeConfig;
+}
+
+function resolveRuntimeConfigs(runtime: IAgentRuntime): RuntimeServiceConfig[] {
+  const multiConfig = getMultiAccountConfig(runtime);
+  const accountIds = listWhatsAppAccountIds(runtime);
+  const configs: RuntimeServiceConfig[] = [];
+
+  for (const accountId of accountIds) {
+    const normalizedAccountId = normalizeWhatsAppAccountId(accountId);
+    const accountConfig = configuredAccountForId(multiConfig, normalizedAccountId);
+    const authDir = accountConfig.authDir?.trim();
+    const transport = accountConfig.transport ?? (authDir ? "baileys" : "cloudapi");
+
+    if (transport === "baileys" && authDir) {
+      configs.push({
+        accountId: normalizedAccountId,
+        name: accountConfig.name?.trim() || undefined,
+        transport: "baileys",
+        authDir,
+        dmPolicy: accountConfig.dmPolicy,
+        groupPolicy: accountConfig.groupPolicy,
+        allowFrom: accountConfig.allowFrom?.map(String),
+        groupAllowFrom: accountConfig.groupAllowFrom?.map(String),
+      });
+      continue;
+    }
+
+    const cloud = resolveWhatsAppAccount(runtime, normalizedAccountId);
+    if (cloud.enabled && cloud.configured) {
+      configs.push({
+        accountId: normalizedAccountId,
+        name: cloud.name,
+        transport: "cloudapi",
+        accessToken: cloud.accessToken,
+        phoneNumberId: cloud.phoneNumberId,
+        businessAccountId: cloud.businessAccountId,
+        webhookVerifyToken: cloud.config.webhookVerifyToken,
+        apiVersion: cloud.config.apiVersion,
+        dmPolicy: cloud.config.dmPolicy,
+        groupPolicy: cloud.config.groupPolicy,
+        allowFrom: cloud.config.allowFrom?.map(String),
+        groupAllowFrom: cloud.config.groupAllowFrom?.map(String),
+      });
+    }
+  }
+
+  if (configs.length > 0) {
+    return configs;
+  }
+
+  const legacy = resolveRuntimeConfig(runtime);
+  return legacy ? [legacy] : [];
 }
 
 function toTimestampMs(value: number | string | undefined): number {
@@ -156,8 +244,68 @@ type MessageConnectorChatContext = NonNullable<
 type MessageConnectorUserContext = NonNullable<
   Awaited<ReturnType<NonNullable<MessageConnectorRegistration["getUserContext"]>>>
 >;
+type AccountTargetInfo = ConnectorTargetInfo & { accountId?: string };
+type AccountQueryContext = MessageConnectorQueryContext & { accountId?: string };
+
+function readTargetAccountId(target?: ConnectorTargetInfo | null): string | undefined {
+  return (target as AccountTargetInfo | undefined)?.accountId;
+}
+
+function readContextAccountId(context?: MessageConnectorQueryContext | null): string | undefined {
+  return (context as AccountQueryContext | undefined)?.accountId;
+}
+
+function targetWithAccount(
+  target: Partial<ConnectorTargetInfo>,
+  accountId: string
+): ConnectorTargetInfo {
+  return { ...target, accountId } as ConnectorTargetInfo;
+}
+
+type ConnectorFetchMessagesParams = {
+  target?: ConnectorTargetInfo;
+  limit?: number;
+  before?: string;
+  after?: string;
+  channelId?: string;
+  roomId?: UUID;
+};
+
+type ConnectorSearchMessagesParams = ConnectorFetchMessagesParams & {
+  query?: string;
+};
+
+type ConnectorReactionParams = {
+  target?: ConnectorTargetInfo;
+  channelId?: string;
+  roomId?: UUID;
+  messageId?: string;
+  emoji?: string;
+  remove?: boolean;
+};
+
+type ConnectorUserLookupParams = {
+  userId?: string;
+  username?: string;
+  handle?: string;
+  query?: string;
+};
+
+type ExtendedMessageConnectorRegistration = MessageConnectorRegistration & {
+  fetchMessages?: (
+    context: MessageConnectorQueryContext,
+    params: ConnectorFetchMessagesParams
+  ) => Promise<Memory[]>;
+  searchMessages?: (
+    context: MessageConnectorQueryContext,
+    params: ConnectorSearchMessagesParams
+  ) => Promise<Memory[]>;
+  reactHandler?: (runtime: IAgentRuntime, params: ConnectorReactionParams) => Promise<void>;
+  getUser?: (runtime: IAgentRuntime, params: ConnectorUserLookupParams) => Promise<unknown>;
+};
 
 type KnownWhatsAppTarget = {
+  accountId: string;
   chatId: string;
   senderId: string;
   label: string;
@@ -168,14 +316,16 @@ type KnownWhatsAppTarget = {
 
 function registerMessageConnectorIfAvailable(
   runtime: IAgentRuntime,
-  registration: MessageConnectorRegistration
+  registration: ExtendedMessageConnectorRegistration
 ): void {
   const withRegistry = runtime as RuntimeWithOptionalConnectorRegistry;
   if (typeof withRegistry.registerMessageConnector === "function") {
     withRegistry.registerMessageConnector(registration);
     return;
   }
-  runtime.registerSendHandler(registration.source, registration.sendHandler);
+  if (registration.sendHandler) {
+    runtime.registerSendHandler(registration.source, registration.sendHandler);
+  }
 }
 
 function normalizeBaileysSendTarget(target: string): string {
@@ -236,18 +386,23 @@ function knownWhatsAppTargetToConnectorTarget(
   known: KnownWhatsAppTarget,
   score = 0.72
 ): MessageConnectorTarget {
+  const accountId = known.accountId ?? DEFAULT_ACCOUNT_ID;
   return {
-    target: {
-      source: "whatsapp",
-      channelId: known.chatId,
-      entityId: known.senderId as unknown as UUID,
-      roomId: known.roomId,
-    },
+    target: targetWithAccount(
+      {
+        source: "whatsapp",
+        channelId: known.chatId,
+        entityId: known.senderId,
+        roomId: known.roomId,
+      },
+      accountId
+    ),
     label: known.label,
     kind: known.isGroup ? "group" : whatsappTargetKind(known.senderId),
     description: known.isGroup ? "WhatsApp group chat" : "WhatsApp contact",
     score,
     metadata: {
+      accountId,
       chatId: known.chatId,
       senderId: known.senderId,
       lastMessageAt: known.lastMessageAt,
@@ -255,47 +410,82 @@ function knownWhatsAppTargetToConnectorTarget(
   };
 }
 
-function directWhatsAppTarget(value: string, score = 0.68): MessageConnectorTarget | null {
+function directWhatsAppTarget(
+  value: string,
+  accountId = DEFAULT_ACCOUNT_ID,
+  score = 0.68
+): MessageConnectorTarget | null {
   const normalized = normalizeWhatsAppConnectorTarget(value);
   if (!normalized || !isWhatsAppAddress(normalized)) return null;
   return {
-    target: {
-      source: "whatsapp",
-      channelId: normalized,
-      entityId: normalized as unknown as UUID,
-    },
+    target: targetWithAccount(
+      {
+        source: "whatsapp",
+        channelId: normalized,
+        entityId: normalized,
+      },
+      accountId
+    ),
     label: normalized,
     kind: whatsappTargetKind(normalized),
     score,
     metadata: {
+      accountId,
       normalizedTarget: normalized,
     },
   };
 }
 
+type ResolvedWhatsAppSendTarget = {
+  accountId: string;
+  chatId: string;
+};
+
 async function resolveWhatsAppSendTarget(
   runtime: IAgentRuntime,
   service: WhatsAppConnectorService,
-  target: ConnectorTargetInfo
-): Promise<string | null> {
+  target: ConnectorTargetInfo,
+  fallbackAccountId?: string
+): Promise<ResolvedWhatsAppSendTarget | null> {
+  const targetAccountId =
+    typeof service.resolveAccountId === "function"
+      ? service.resolveAccountId(readTargetAccountId(target) ?? fallbackAccountId)
+      : normalizeWhatsAppAccountId(readTargetAccountId(target) ?? fallbackAccountId);
   if (target.channelId?.trim()) {
     const normalized = normalizeWhatsAppConnectorTarget(target.channelId);
     const known =
-      service.getKnownTarget(normalized) ?? service.findKnownChatByParticipant(normalized);
-    return known?.chatId ?? (isWhatsAppAddress(normalized) ? normalized : null);
+      service.getKnownTarget(normalized, targetAccountId) ??
+      service.findKnownChatByParticipant(normalized, targetAccountId);
+    if (known) {
+      return { accountId: known.accountId ?? targetAccountId, chatId: known.chatId };
+    }
+    return isWhatsAppAddress(normalized)
+      ? { accountId: targetAccountId, chatId: normalized }
+      : null;
   }
   if (target.entityId?.trim()) {
     const normalized = normalizeWhatsAppConnectorTarget(target.entityId);
-    const known = service.findKnownChatByParticipant(normalized);
-    return known?.chatId ?? (isWhatsAppAddress(normalized) ? normalized : null);
+    const known = service.findKnownChatByParticipant(normalized, targetAccountId);
+    if (known) {
+      return { accountId: known.accountId ?? targetAccountId, chatId: known.chatId };
+    }
+    return isWhatsAppAddress(normalized)
+      ? { accountId: targetAccountId, chatId: normalized }
+      : null;
   }
   if (target.roomId) {
     const room = await runtime.getRoom(target.roomId);
     if (room?.channelId) {
       const normalized = normalizeWhatsAppConnectorTarget(room.channelId);
       const known =
-        service.getKnownTarget(normalized) ?? service.findKnownChatByParticipant(normalized);
-      return known?.chatId ?? (isWhatsAppAddress(normalized) ? normalized : null);
+        service.getKnownTarget(normalized, targetAccountId) ??
+        service.findKnownChatByParticipant(normalized, targetAccountId);
+      if (known) {
+        return { accountId: known.accountId ?? targetAccountId, chatId: known.chatId };
+      }
+      return isWhatsAppAddress(normalized)
+        ? { accountId: targetAccountId, chatId: normalized }
+        : null;
     }
   }
   return null;
@@ -360,8 +550,12 @@ export class WhatsAppConnectorService extends Service {
   public connected = false;
   public phoneNumber: string | null = null;
 
+  private defaultAccountId = DEFAULT_ACCOUNT_ID;
+  private clients: Map<string, BaileysClient | WhatsAppClient> = new Map();
+  private configs: Map<string, RuntimeServiceConfig> = new Map();
+  private phoneNumbers: Map<string, string> = new Map();
   private client: BaileysClient | WhatsAppClient | null = null;
-  config: RuntimeServiceConfig | null = null;
+  config: RuntimeServiceConfig | undefined = undefined;
   private knownTargets: Map<string, KnownWhatsAppTarget> = new Map();
 
   constructor(runtime?: IAgentRuntime) {
@@ -371,6 +565,74 @@ export class WhatsAppConnectorService extends Service {
     }
   }
 
+  resolveAccountId(accountId?: string | null): string {
+    return normalizeWhatsAppAccountId(accountId ?? this.defaultAccountId);
+  }
+
+  private getClientForAccount(accountId?: string | null): BaileysClient | WhatsAppClient | null {
+    const normalizedAccountId = this.resolveAccountId(accountId);
+    return (
+      this.clients.get(normalizedAccountId) ??
+      (normalizedAccountId === this.defaultAccountId ? this.client : null)
+    );
+  }
+
+  private getConfigForAccount(accountId?: string | null): RuntimeServiceConfig | null {
+    const normalizedAccountId = this.resolveAccountId(accountId);
+    return (
+      this.configs.get(normalizedAccountId) ??
+      (normalizedAccountId === this.defaultAccountId ? (this.config ?? null) : null)
+    );
+  }
+
+  private getConnectorAccountIds(): string[] {
+    const ids = Array.from(this.configs.keys());
+    return ids.length > 0 ? ids : [this.defaultAccountId];
+  }
+
+  private targetKey(chatId: string, accountId?: string | null): string {
+    return `${this.resolveAccountId(accountId)}:${normalizeWhatsAppConnectorTarget(chatId)}`;
+  }
+
+  private roomIdFor(chatId: string, accountId?: string | null): UUID {
+    const normalizedAccountId = this.resolveAccountId(accountId);
+    return createUniqueUuid(
+      this.runtime,
+      normalizedAccountId === DEFAULT_ACCOUNT_ID
+        ? `whatsapp-room:${chatId}`
+        : `whatsapp-room:${normalizedAccountId}:${chatId}`
+    ) as UUID;
+  }
+
+  private entityIdFor(senderId: string, accountId?: string | null): UUID {
+    const normalizedAccountId = this.resolveAccountId(accountId);
+    return createUniqueUuid(
+      this.runtime,
+      normalizedAccountId === DEFAULT_ACCOUNT_ID
+        ? `whatsapp-entity:${senderId}`
+        : `whatsapp-entity:${normalizedAccountId}:${senderId}`
+    ) as UUID;
+  }
+
+  private worldIdFor(chatId: string, accountId?: string | null): UUID {
+    const normalizedAccountId = this.resolveAccountId(accountId);
+    return createUniqueUuid(
+      this.runtime,
+      normalizedAccountId === DEFAULT_ACCOUNT_ID
+        ? `whatsapp-world:${chatId}`
+        : `whatsapp-world:${normalizedAccountId}:${chatId}`
+    ) as UUID;
+  }
+
+  private metadataMatchesAccount(memory: Memory, accountId: string): boolean {
+    const metadata = memory.metadata as Record<string, unknown> | undefined;
+    const memoryAccountId =
+      typeof metadata?.accountId === "string" && metadata.accountId.trim()
+        ? this.resolveAccountId(metadata.accountId)
+        : undefined;
+    return memoryAccountId ? memoryAccountId === accountId : accountId === DEFAULT_ACCOUNT_ID;
+  }
+
   static async start(runtime: IAgentRuntime): Promise<WhatsAppConnectorService> {
     const service = new WhatsAppConnectorService(runtime);
     await service.initialize();
@@ -378,120 +640,176 @@ export class WhatsAppConnectorService extends Service {
   }
 
   static registerSendHandlers(runtime: IAgentRuntime, service: WhatsAppConnectorService): void {
-    registerMessageConnectorIfAvailable(runtime, {
-      source: "whatsapp",
-      label: "WhatsApp",
-      capabilities: ["send_message", "contact_resolution", "chat_context"],
-      supportedTargetKinds: ["phone", "contact", "user", "group", "room"],
-      contexts: ["phone", "social", "connectors"],
-      description:
-        "Send WhatsApp text messages through Cloud API or Baileys using phone numbers, JIDs, known contacts, or group ids.",
-      metadata: {
-        aliases: ["whatsapp", "wa"],
-        transport: service.config?.transport ?? "unconfigured",
-        connected: service.connected,
-      },
-      sendHandler: async (
-        _runtime: IAgentRuntime,
-        target: ConnectorTargetInfo,
-        content: ConnectorContent
-      ) => {
-        const text = typeof content.text === "string" ? content.text.trim() : "";
-        if (!text) {
-          return;
-        }
+    const resolveServiceAccountId = (accountId?: string | null): string =>
+      typeof service.resolveAccountId === "function"
+        ? service.resolveAccountId(accountId)
+        : normalizeWhatsAppAccountId(accountId);
+    const getServiceConfigForAccount = (accountId?: string | null): RuntimeServiceConfig | null =>
+      typeof service.getConfigForAccount === "function"
+        ? service.getConfigForAccount(accountId)
+        : (service.config ?? null);
+    const accountIds =
+      typeof service.getConnectorAccountIds === "function"
+        ? service.getConnectorAccountIds()
+        : [DEFAULT_ACCOUNT_ID];
+    const registrationAccountIds =
+      accountIds.length > 1 ? accountIds : [undefined as string | undefined];
 
-        const chatId = await resolveWhatsAppSendTarget(runtime, service, target);
-        if (!chatId) {
-          throw new Error("WhatsApp target is missing a phone number, JID, or chat id");
-        }
-
-        let replyToMessageId: string | undefined;
-        if (typeof content.inReplyTo === "string" && content.inReplyTo.trim()) {
-          const repliedToMemory = await runtime.getMemoryById(content.inReplyTo as UUID);
-          const metadata = repliedToMemory?.metadata as Record<string, unknown> | undefined;
-          const externalMessageId =
-            metadata?.messageIdFull ?? metadata?.externalMessageId ?? metadata?.whatsappMessageId;
-          if (typeof externalMessageId === "string" && externalMessageId.trim()) {
-            replyToMessageId = externalMessageId.trim();
+    for (const registrationAccountId of registrationAccountIds) {
+      const connectorAccountId = resolveServiceAccountId(registrationAccountId);
+      const config = getServiceConfigForAccount(connectorAccountId);
+      registerMessageConnectorIfAvailable(runtime, {
+        source: "whatsapp",
+        ...(registrationAccountId ? { accountId: connectorAccountId } : {}),
+        label:
+          registrationAccountId && connectorAccountId !== DEFAULT_ACCOUNT_ID
+            ? `WhatsApp (${connectorAccountId})`
+            : "WhatsApp",
+        capabilities: [
+          "send_message",
+          "read_messages",
+          "search_messages",
+          "send_reaction",
+          "contact_resolution",
+          "chat_context",
+          "get_user",
+        ],
+        supportedTargetKinds: ["phone", "contact", "user", "group", "room"],
+        contexts: ["phone", "social", "connectors"],
+        description:
+          "Send, read, search, and react in WhatsApp conversations through Cloud API or Baileys using phone numbers, JIDs, known contacts, or group ids.",
+        metadata: {
+          aliases: ["whatsapp", "wa"],
+          accountId: connectorAccountId,
+          transport: config?.transport ?? service.config?.transport ?? "unconfigured",
+          connected: service.connected,
+        },
+        sendHandler: async (
+          _runtime: IAgentRuntime,
+          target: ConnectorTargetInfo,
+          content: ConnectorContent
+        ) => {
+          const text = typeof content.text === "string" ? content.text.trim() : "";
+          if (!text) {
+            return;
           }
-        }
 
-        for (const chunk of chunkWhatsAppText(text)) {
-          await service.sendMessage({
-            type: "text",
-            to: chatId,
-            content: chunk,
-            replyToMessageId,
-          });
-        }
-      },
-      resolveTargets: async (query: string) => {
-        const candidates: MessageConnectorTarget[] = [];
-        for (const known of service.listKnownTargets()) {
-          if (matchesQuery(query, known.label, known.chatId, known.senderId)) {
-            candidates.push(knownWhatsAppTargetToConnectorTarget(known, 0.82));
+          const resolved = await resolveWhatsAppSendTarget(
+            runtime,
+            service,
+            target,
+            connectorAccountId
+          );
+          if (!resolved) {
+            throw new Error("WhatsApp target is missing a phone number, JID, or chat id");
           }
-        }
-        const direct = directWhatsAppTarget(query, 0.74);
-        if (direct) candidates.push(direct);
-        return candidates;
-      },
-      listRecentTargets: () =>
-        service
-          .listKnownTargets()
-          .map((known) => knownWhatsAppTargetToConnectorTarget(known, 0.66)),
-      listRooms: () =>
-        service
-          .listKnownTargets()
-          .filter((known) => known.isGroup)
-          .map((known) => knownWhatsAppTargetToConnectorTarget(known, 0.7)),
-      getChatContext: async (
-        target: ConnectorTargetInfo,
-        context: MessageConnectorQueryContext
-      ): Promise<MessageConnectorChatContext | null> => {
-        const chatId = await resolveWhatsAppSendTarget(context.runtime, service, target);
-        if (!chatId) return null;
-        const known = service.getKnownTarget(chatId) ?? service.findKnownChatByParticipant(chatId);
-        return {
-          target,
-          label: known?.label ?? chatId,
-          summary: known?.isGroup ? "WhatsApp group chat." : "WhatsApp direct chat.",
-          metadata: {
-            chatId,
-            senderId: known?.senderId,
-            lastMessageAt: known?.lastMessageAt,
-            connected: service.connected,
-            transport: service.config?.transport,
-          },
-        };
-      },
-      getUserContext: async (
-        entityId: string | UUID
-      ): Promise<MessageConnectorUserContext | null> => {
-        const handle = normalizeWhatsAppConnectorTarget(String(entityId));
-        if (!handle) return null;
-        const known = service.findKnownChatByParticipant(handle);
-        return {
-          entityId,
-          label: known?.label ?? handle,
-          aliases: known ? [known.label, known.senderId, known.chatId] : [handle],
-          handles: {
-            whatsapp: known?.chatId ?? handle,
-            phone: normalizeWhatsAppTarget(handle) ?? handle,
-          },
-          metadata: {
-            normalizedHandle: handle,
-            chatId: known?.chatId,
-          },
-        };
-      },
-    });
+
+          let replyToMessageId: string | undefined;
+          if (typeof content.inReplyTo === "string" && content.inReplyTo.trim()) {
+            const repliedToMemory = await runtime.getMemoryById(content.inReplyTo as UUID);
+            const metadata = repliedToMemory?.metadata as Record<string, unknown> | undefined;
+            const externalMessageId =
+              metadata?.messageIdFull ?? metadata?.externalMessageId ?? metadata?.whatsappMessageId;
+            if (typeof externalMessageId === "string" && externalMessageId.trim()) {
+              replyToMessageId = externalMessageId.trim();
+            }
+          }
+
+          for (const chunk of chunkWhatsAppText(text)) {
+            await service.sendMessage({
+              accountId: resolved.accountId,
+              type: "text",
+              to: resolved.chatId,
+              content: chunk,
+              replyToMessageId,
+            });
+          }
+        },
+        resolveTargets: async (query: string) => {
+          const candidates: MessageConnectorTarget[] = [];
+          for (const known of service.listKnownTargets(connectorAccountId)) {
+            if (matchesQuery(query, known.label, known.chatId, known.senderId)) {
+              candidates.push(knownWhatsAppTargetToConnectorTarget(known, 0.82));
+            }
+          }
+          const direct = directWhatsAppTarget(query, connectorAccountId, 0.74);
+          if (direct) candidates.push(direct);
+          return candidates;
+        },
+        listRecentTargets: () =>
+          service
+            .listKnownTargets(connectorAccountId)
+            .map((known) => knownWhatsAppTargetToConnectorTarget(known, 0.66)),
+        listRooms: () =>
+          service
+            .listKnownTargets(connectorAccountId)
+            .filter((known) => known.isGroup)
+            .map((known) => knownWhatsAppTargetToConnectorTarget(known, 0.7)),
+        fetchMessages: service.fetchConnectorMessages.bind(service),
+        searchMessages: service.searchConnectorMessages.bind(service),
+        reactHandler: service.reactConnectorMessage.bind(service),
+        getUser: service.getConnectorUser.bind(service),
+        getChatContext: async (
+          target: ConnectorTargetInfo,
+          context: MessageConnectorQueryContext
+        ): Promise<MessageConnectorChatContext | null> => {
+          const resolved = await resolveWhatsAppSendTarget(
+            context.runtime,
+            service,
+            target,
+            readContextAccountId(context) ?? connectorAccountId
+          );
+          if (!resolved) return null;
+          const known =
+            service.getKnownTarget(resolved.chatId, resolved.accountId) ??
+            service.findKnownChatByParticipant(resolved.chatId, resolved.accountId);
+          const resolvedConfig = getServiceConfigForAccount(resolved.accountId);
+          return {
+            target: targetWithAccount(
+              { ...target, channelId: resolved.chatId },
+              resolved.accountId
+            ),
+            label: known?.label ?? resolved.chatId,
+            summary: known?.isGroup ? "WhatsApp group chat." : "WhatsApp direct chat.",
+            metadata: {
+              accountId: resolved.accountId,
+              chatId: resolved.chatId,
+              senderId: known?.senderId,
+              lastMessageAt: known?.lastMessageAt,
+              connected: service.connected,
+              transport: resolvedConfig?.transport,
+            },
+          };
+        },
+        getUserContext: async (
+          entityId: string | UUID
+        ): Promise<MessageConnectorUserContext | null> => {
+          const handle = normalizeWhatsAppConnectorTarget(String(entityId));
+          if (!handle) return null;
+          const known = service.findKnownChatByParticipant(handle, connectorAccountId);
+          return {
+            entityId,
+            label: known?.label ?? handle,
+            aliases: known ? [known.label, known.senderId, known.chatId] : [handle],
+            handles: {
+              whatsapp: known?.chatId ?? handle,
+              phone: normalizeWhatsAppTarget(handle) ?? handle,
+            },
+            metadata: {
+              accountId: known?.accountId ?? connectorAccountId,
+              normalizedHandle: handle,
+              chatId: known?.chatId,
+            },
+          };
+        },
+      });
+    }
   }
 
   async initialize(): Promise<void> {
-    this.config = resolveRuntimeConfig(this.runtime);
-    if (!this.config) {
+    this.defaultAccountId = resolveDefaultWhatsAppAccountId(this.runtime);
+    const configs = resolveRuntimeConfigs(this.runtime);
+    if (configs.length === 0) {
       this.runtime.logger.warn(
         { src: "plugin:whatsapp", agentId: this.runtime.agentId },
         "WhatsApp connector is not configured"
@@ -499,32 +817,46 @@ export class WhatsAppConnectorService extends Service {
       return;
     }
 
-    this.client =
-      this.config.transport === "baileys"
-        ? new BaileysClient({
-            authMethod: "baileys",
-            authDir: this.config.authDir,
-            printQRInTerminal: false,
-          } satisfies BaileysConfig)
-        : new WhatsAppClient({
-            accessToken: this.config.accessToken,
-            phoneNumberId: this.config.phoneNumberId,
-            webhookVerifyToken: this.config.webhookVerifyToken,
-            apiVersion: this.config.apiVersion,
-          } satisfies CloudAPIConfig);
+    for (const config of configs) {
+      const client =
+        config.transport === "baileys"
+          ? new BaileysClient({
+              authMethod: "baileys",
+              authDir: config.authDir,
+              printQRInTerminal: false,
+            } satisfies BaileysConfig)
+          : new WhatsAppClient({
+              accessToken: config.accessToken,
+              phoneNumberId: config.phoneNumberId,
+              webhookVerifyToken: config.webhookVerifyToken,
+              apiVersion: config.apiVersion,
+            } satisfies CloudAPIConfig);
 
-    this.bindClientEvents(this.client);
-    await this.client.start();
+      this.configs.set(config.accountId, config);
+      this.clients.set(config.accountId, client);
+      if (config.accountId === this.defaultAccountId || !this.client) {
+        this.config = config;
+        this.client = client;
+      }
 
-    if (this.config.transport === "cloudapi") {
-      this.connected = true;
+      this.bindClientEvents(client, config.accountId);
+      await client.start();
+
+      if (config.transport === "cloudapi") {
+        this.connected = true;
+      }
     }
   }
 
   async stop(): Promise<void> {
-    if (this.client) {
-      await this.client.stop();
+    for (const client of this.clients.values()) {
+      await client.stop();
     }
+    this.clients.clear();
+    this.configs.clear();
+    this.phoneNumbers.clear();
+    this.client = null;
+    this.config = undefined;
     this.connected = false;
     this.phoneNumber = null;
   }
@@ -533,39 +865,85 @@ export class WhatsAppConnectorService extends Service {
     for (const entry of event.entry ?? []) {
       for (const change of entry.changes ?? []) {
         const value = change.value;
+        const accountId = this.resolveWebhookAccountId(value?.metadata?.phone_number_id);
         if (typeof value?.metadata?.display_phone_number === "string") {
-          this.phoneNumber = value.metadata.display_phone_number;
+          this.phoneNumbers.set(accountId, value.metadata.display_phone_number);
+          if (accountId === this.defaultAccountId) {
+            this.phoneNumber = value.metadata.display_phone_number;
+          }
         }
 
         for (const message of value?.messages ?? []) {
-          await this.handleIncomingWebhookMessage(message);
+          await this.handleIncomingWebhookMessage(message, accountId);
         }
       }
     }
   }
 
-  verifyWebhook(mode: string, token: string, challenge: string): string | null {
-    const expectedToken =
-      this.config?.transport === "cloudapi"
-        ? this.config.webhookVerifyToken
-        : readStringSetting(this.runtime, "WHATSAPP_WEBHOOK_VERIFY_TOKEN");
+  verifyWebhook(mode: string, token: string, challenge: string, accountId?: string): string | null {
+    const configs = accountId
+      ? [this.getConfigForAccount(accountId)].filter((config): config is RuntimeServiceConfig =>
+          Boolean(config)
+        )
+      : Array.from(this.configs.values());
+    const expectedTokens =
+      configs.length > 0
+        ? configs
+            .filter((config) => config.transport === "cloudapi")
+            .map((config) => config.webhookVerifyToken)
+        : [
+            this.config?.transport === "cloudapi"
+              ? this.config.webhookVerifyToken
+              : readStringSetting(this.runtime, "WHATSAPP_WEBHOOK_VERIFY_TOKEN"),
+          ];
 
-    if (mode === "subscribe" && expectedToken && token === expectedToken && challenge) {
+    if (
+      mode === "subscribe" &&
+      challenge &&
+      expectedTokens.some((expectedToken) => expectedToken && token === expectedToken)
+    ) {
       return challenge;
     }
 
     return null;
   }
 
-  private bindClientEvents(client: BaileysClient | WhatsAppClient): void {
+  private resolveWebhookAccountId(phoneNumberId?: string | null): string {
+    const normalizedPhoneNumberId =
+      typeof phoneNumberId === "string" && phoneNumberId.trim() ? phoneNumberId.trim() : undefined;
+    if (normalizedPhoneNumberId) {
+      for (const [accountId, config] of this.configs) {
+        if (config.transport === "cloudapi" && config.phoneNumberId === normalizedPhoneNumberId) {
+          return accountId;
+        }
+      }
+    }
+    return this.defaultAccountId;
+  }
+
+  private bindClientEvents(client: BaileysClient | WhatsAppClient, accountId: string): void {
     client.on("connection", (status: ConnectionStatus) => {
-      this.connected = status === "open";
+      if (status === "open") {
+        this.connected = true;
+      }
       if (status === "open" && client instanceof BaileysClient) {
         const nextPhone = client.getPhoneNumber();
-        this.phoneNumber = (nextPhone && normalizeWhatsAppTarget(nextPhone)) ?? nextPhone;
+        const normalizedPhone = (nextPhone && normalizeWhatsAppTarget(nextPhone)) ?? nextPhone;
+        if (normalizedPhone) {
+          this.phoneNumbers.set(accountId, normalizedPhone);
+        }
+        if (accountId === this.defaultAccountId) {
+          this.phoneNumber = normalizedPhone;
+        }
       }
       if (status === "close") {
-        this.phoneNumber = null;
+        this.phoneNumbers.delete(accountId);
+        this.connected =
+          this.phoneNumbers.size > 0 ||
+          Array.from(this.configs.values()).some((config) => config.transport === "cloudapi");
+        if (accountId === this.defaultAccountId) {
+          this.phoneNumber = null;
+        }
       }
     });
 
@@ -573,16 +951,23 @@ export class WhatsAppConnectorService extends Service {
       this.connected = true;
       if (client instanceof BaileysClient) {
         const nextPhone = client.getPhoneNumber();
-        this.phoneNumber = (nextPhone && normalizeWhatsAppTarget(nextPhone)) ?? nextPhone;
+        const normalizedPhone = (nextPhone && normalizeWhatsAppTarget(nextPhone)) ?? nextPhone;
+        if (normalizedPhone) {
+          this.phoneNumbers.set(accountId, normalizedPhone);
+        }
+        if (accountId === this.defaultAccountId) {
+          this.phoneNumber = normalizedPhone;
+        }
       }
     });
 
     client.on("message", (message: NormalizedMessage) => {
-      void this.handleNormalizedMessage(message).catch((error: unknown) => {
+      void this.handleNormalizedMessage(message, accountId).catch((error: unknown) => {
         this.runtime.logger.error(
           {
             src: "plugin:whatsapp",
             agentId: this.runtime.agentId,
+            accountId,
             error: error instanceof Error ? error.message : String(error),
           },
           "Failed to process inbound WhatsApp message"
@@ -595,6 +980,7 @@ export class WhatsAppConnectorService extends Service {
         {
           src: "plugin:whatsapp",
           agentId: this.runtime.agentId,
+          accountId,
           error: error instanceof Error ? error.message : String(error),
         },
         "WhatsApp client error"
@@ -602,7 +988,10 @@ export class WhatsAppConnectorService extends Service {
     });
   }
 
-  private async handleNormalizedMessage(message: NormalizedMessage): Promise<void> {
+  private async handleNormalizedMessage(
+    message: NormalizedMessage,
+    accountId = this.defaultAccountId
+  ): Promise<void> {
     const chatId = message.chatId ?? message.from;
     const senderId = message.senderId ?? message.from;
     const text = typeof message.content === "string" ? message.content.trim() : "";
@@ -618,10 +1007,14 @@ export class WhatsAppConnectorService extends Service {
       externalMessageId: message.id,
       replyToExternalMessageId: message.replyToId,
       createdAt: toTimestampMs(message.timestamp),
+      accountId,
     });
   }
 
-  private async handleIncomingWebhookMessage(message: WhatsAppIncomingMessage): Promise<void> {
+  private async handleIncomingWebhookMessage(
+    message: WhatsAppIncomingMessage,
+    accountId = this.defaultAccountId
+  ): Promise<void> {
     const text = extractWebhookText(message);
     if (!text) {
       return;
@@ -636,10 +1029,12 @@ export class WhatsAppConnectorService extends Service {
       externalMessageId: message.id,
       replyToExternalMessageId: message.context?.id,
       createdAt: toTimestampMs(message.timestamp),
+      accountId,
     });
   }
 
   private async processIncomingMessage(params: {
+    accountId: string;
     chatId: string;
     senderId: string;
     text: string;
@@ -651,14 +1046,16 @@ export class WhatsAppConnectorService extends Service {
       throw new Error("WhatsApp connector requires runtime.messageService");
     }
 
+    const accountId = this.resolveAccountId(params.accountId);
+    const config = this.getConfigForAccount(accountId);
     const isGroup = isWhatsAppGroupJid(params.chatId);
     const normalizedSender = normalizeWhatsAppTarget(params.senderId) ?? params.senderId;
 
     const accountConfig = {
-      dmPolicy: this.config?.dmPolicy,
-      groupPolicy: this.config?.groupPolicy,
-      allowFrom: this.config?.allowFrom,
-      groupAllowFrom: this.config?.groupAllowFrom,
+      dmPolicy: config?.dmPolicy,
+      groupPolicy: config?.groupPolicy,
+      allowFrom: config?.allowFrom,
+      groupAllowFrom: config?.groupAllowFrom,
     };
 
     const access = await checkWhatsAppUserAccess({
@@ -667,26 +1064,30 @@ export class WhatsAppConnectorService extends Service {
       accountConfig,
       isGroup,
       ...(isGroup ? { groupId: params.chatId } : {}),
-      metadata: { senderId: normalizedSender },
+      metadata: { accountId, senderId: normalizedSender },
     });
 
     if (!access.allowed) {
       if (access.replyMessage) {
-        await this.sendTextMessage(params.chatId, access.replyMessage);
+        await this.sendTextMessage(params.chatId, access.replyMessage, undefined, accountId);
       }
       return;
     }
 
     const channelType = isGroup ? ChannelType.GROUP : ChannelType.DM;
-    const roomId = createUniqueUuid(this.runtime, `whatsapp-room:${params.chatId}`) as UUID;
-    const worldId = createUniqueUuid(this.runtime, `whatsapp-world:${params.chatId}`) as UUID;
-    const entityId = createUniqueUuid(this.runtime, `whatsapp-entity:${normalizedSender}`) as UUID;
-    const inboundMemoryId = toMemoryId(this.runtime, params.chatId, params.externalMessageId);
+    const roomId = this.roomIdFor(params.chatId, accountId);
+    const worldId = this.worldIdFor(params.chatId, accountId);
+    const entityId = this.entityIdFor(normalizedSender, accountId);
+    const inboundMemoryId = toMemoryId(
+      this.runtime,
+      accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`,
+      params.externalMessageId
+    );
 
     await this.runtime.ensureConnection({
       entityId,
       roomId,
-      userId: normalizedSender as unknown as UUID,
+      userId: normalizedSender,
       userName: normalizedSender,
       name: normalizedSender,
       source: "whatsapp",
@@ -697,9 +1098,34 @@ export class WhatsAppConnectorService extends Service {
         chatType: isGroup ? "group" : "user",
         chatId: params.chatId,
       }),
+      metadata: {
+        accountId,
+        chatId: params.chatId,
+        isGroup,
+      },
     });
+    if (typeof this.runtime.ensureRoomExists === "function") {
+      await this.runtime.ensureRoomExists({
+        id: roomId,
+        name: resolveWhatsAppSystemLocation({
+          chatType: isGroup ? "group" : "user",
+          chatId: params.chatId,
+        }),
+        agentId: this.runtime.agentId,
+        source: "whatsapp",
+        type: channelType,
+        channelId: params.chatId,
+        worldId,
+        metadata: {
+          accountId,
+          chatId: params.chatId,
+          isGroup,
+        },
+      } as Room);
+    }
 
     this.rememberTarget({
+      accountId,
       chatId: params.chatId,
       senderId: normalizedSender,
       label: resolveWhatsAppSystemLocation({
@@ -724,7 +1150,11 @@ export class WhatsAppConnectorService extends Service {
         messageId: params.externalMessageId,
         ...(params.replyToExternalMessageId
           ? {
-              inReplyTo: toMemoryId(this.runtime, params.chatId, params.replyToExternalMessageId),
+              inReplyTo: toMemoryId(
+                this.runtime,
+                accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`,
+                params.replyToExternalMessageId
+              ),
             }
           : {}),
       },
@@ -732,6 +1162,7 @@ export class WhatsAppConnectorService extends Service {
         type: "message",
         source: "whatsapp",
         provider: "whatsapp",
+        accountId,
         timestamp: params.createdAt,
         entityName: normalizedSender,
         entityUserName: normalizedSender,
@@ -746,17 +1177,12 @@ export class WhatsAppConnectorService extends Service {
           username: normalizedSender,
         },
         whatsapp: {
-          id: normalizedSender,
-          userId: normalizedSender,
-          username: normalizedSender,
-          userName: normalizedSender,
-          name: normalizedSender,
-          chatId: params.chatId,
+          contactId: normalizedSender,
           messageId: params.externalMessageId,
         },
         rawChatId: params.chatId,
         rawSenderId: params.senderId,
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
       createdAt: params.createdAt,
     };
 
@@ -770,13 +1196,22 @@ export class WhatsAppConnectorService extends Service {
       const responseMemories: Memory[] = [];
 
       for (const [index, chunk] of chunks.entries()) {
-        const response = await this.sendTextMessage(params.chatId, chunk, params.externalMessageId);
+        const response = await this.sendTextMessage(
+          params.chatId,
+          chunk,
+          params.externalMessageId,
+          accountId
+        );
         const externalResponseId =
           response.messages?.[0]?.id ??
           `${params.externalMessageId}:response:${index}:${Date.now()}`;
 
         responseMemories.push({
-          id: toMemoryId(this.runtime, params.chatId, externalResponseId),
+          id: toMemoryId(
+            this.runtime,
+            accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`,
+            externalResponseId
+          ),
           entityId: this.runtime.agentId,
           agentId: this.runtime.agentId,
           roomId,
@@ -791,6 +1226,7 @@ export class WhatsAppConnectorService extends Service {
             type: "message",
             source: "whatsapp",
             provider: "whatsapp",
+            accountId,
             timestamp: Date.now(),
             fromBot: true,
             fromId: this.runtime.agentId,
@@ -798,12 +1234,12 @@ export class WhatsAppConnectorService extends Service {
             chatType: channelType,
             messageIdFull: externalResponseId,
             whatsapp: {
-              chatId: params.chatId,
+              contactId: params.chatId,
               messageId: externalResponseId,
             },
             rawChatId: params.chatId,
             externalMessageId: externalResponseId,
-          } as unknown as Memory["metadata"],
+          } satisfies Memory["metadata"],
           createdAt: Date.now(),
         });
       }
@@ -831,16 +1267,20 @@ export class WhatsAppConnectorService extends Service {
   private async sendTextMessage(
     chatId: string,
     text: string,
-    replyToMessageId?: string
+    replyToMessageId?: string,
+    accountId?: string
   ): Promise<WhatsAppMessageResponse> {
-    if (!this.client || !this.config) {
+    const normalizedAccountId = this.resolveAccountId(accountId);
+    const client = this.getClientForAccount(normalizedAccountId);
+    const config = this.getConfigForAccount(normalizedAccountId);
+    if (!client || !config) {
       throw new Error("WhatsApp client is not initialized");
     }
 
-    const response = await this.client.sendMessage({
+    const response = await client.sendMessage({
       type: "text",
       to:
-        this.config.transport === "baileys"
+        config.transport === "baileys"
           ? normalizeBaileysSendTarget(chatId)
           : (normalizeWhatsAppTarget(chatId) ?? chatId),
       content: text,
@@ -853,27 +1293,234 @@ export class WhatsAppConnectorService extends Service {
   }
 
   async sendMessage(message: {
+    accountId?: string;
     type: "text";
     to: string;
     content: string;
     replyToMessageId?: string;
   }): Promise<WhatsAppMessageResponse> {
-    return this.sendTextMessage(message.to, message.content, message.replyToMessageId);
-  }
-
-  listKnownTargets(): KnownWhatsAppTarget[] {
-    return Array.from(this.knownTargets.values()).sort(
-      (left, right) => right.lastMessageAt - left.lastMessageAt
+    return this.sendTextMessage(
+      message.to,
+      message.content,
+      message.replyToMessageId,
+      message.accountId
     );
   }
 
-  getKnownTarget(chatId: string): KnownWhatsAppTarget | null {
-    return this.knownTargets.get(normalizeWhatsAppConnectorTarget(chatId)) ?? null;
+  async fetchConnectorMessages(
+    context: MessageConnectorQueryContext,
+    params: ConnectorFetchMessagesParams
+  ): Promise<Memory[]> {
+    if (typeof this.runtime.getMemoriesByRoomIds !== "function") {
+      return [];
+    }
+
+    const target = params.target ?? (context.target as ConnectorTargetInfo | undefined);
+    let accountId = this.resolveAccountId(
+      readTargetAccountId(target) ?? readContextAccountId(context)
+    );
+    let chatId = params.channelId;
+    if (!chatId && target) {
+      const resolved = await resolveWhatsAppSendTarget(context.runtime, this, target, accountId);
+      if (resolved) {
+        accountId = resolved.accountId;
+        chatId = resolved.chatId;
+      }
+    }
+    if (!chatId && params.roomId) {
+      const room = await context.runtime.getRoom(params.roomId);
+      chatId = room?.channelId;
+      const metadata = room?.metadata as Record<string, unknown> | undefined;
+      if (typeof metadata?.accountId === "string") {
+        accountId = this.resolveAccountId(metadata.accountId);
+      }
+    }
+
+    const knownTargets = chatId
+      ? [
+          this.getKnownTarget(chatId, accountId) ??
+            this.findKnownChatByParticipant(chatId, accountId) ?? {
+              accountId,
+              chatId,
+              senderId: chatId,
+              label: chatId,
+              isGroup: isWhatsAppGroupJid(chatId),
+              lastMessageAt: 0,
+              roomId: this.roomIdFor(chatId, accountId),
+            },
+        ]
+      : this.listKnownTargets(accountId);
+
+    const roomIds = knownTargets
+      .map((known) => known.roomId ?? this.roomIdFor(known.chatId, known.accountId))
+      .filter((roomId): roomId is UUID => Boolean(roomId));
+    if (roomIds.length === 0) {
+      return [];
+    }
+
+    const limit = Number.isFinite(params.limit)
+      ? Math.max(1, Math.min(Number(params.limit), 100))
+      : 25;
+    const memories = await this.runtime.getMemoriesByRoomIds({
+      tableName: "messages",
+      roomIds,
+      limit: limit * Math.max(roomIds.length, 1),
+    });
+    const chatIds = new Set(
+      knownTargets.map((known) => normalizeWhatsAppConnectorTarget(known.chatId))
+    );
+    const before = params.before ? Number(params.before) : undefined;
+    const after = params.after ? Number(params.after) : undefined;
+
+    return memories
+      .filter((memory) => memory.content?.source === "whatsapp")
+      .filter((memory) => this.metadataMatchesAccount(memory, accountId))
+      .filter((memory) => {
+        const metadata = memory.metadata as Record<string, unknown> | undefined;
+        const rawChatId =
+          typeof metadata?.rawChatId === "string"
+            ? normalizeWhatsAppConnectorTarget(metadata.rawChatId)
+            : undefined;
+        if (chatId && rawChatId && !chatIds.has(rawChatId)) {
+          return false;
+        }
+        const createdAt = Number(memory.createdAt ?? 0);
+        if (before !== undefined && Number.isFinite(before) && createdAt >= before) {
+          return false;
+        }
+        if (after !== undefined && Number.isFinite(after) && createdAt <= after) {
+          return false;
+        }
+        return true;
+      })
+      .sort((left, right) => Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0))
+      .slice(0, limit);
   }
 
-  findKnownChatByParticipant(participant: string): KnownWhatsAppTarget | null {
+  async searchConnectorMessages(
+    context: MessageConnectorQueryContext,
+    params: ConnectorSearchMessagesParams
+  ): Promise<Memory[]> {
+    const query = params.query?.trim().toLowerCase();
+    if (!query) {
+      return [];
+    }
+    const memories = await this.fetchConnectorMessages(context, {
+      ...params,
+      limit: Math.max(params.limit ?? 100, 100),
+    });
+    return memories
+      .filter((memory) => {
+        const text = String(memory.content?.text ?? "").toLowerCase();
+        const from = String(memory.content?.from ?? "").toLowerCase();
+        return text.includes(query) || from.includes(query);
+      })
+      .slice(0, params.limit ?? 25);
+  }
+
+  async reactConnectorMessage(
+    runtime: IAgentRuntime,
+    params: ConnectorReactionParams
+  ): Promise<void> {
+    const target = params.target;
+    const resolved = target
+      ? await resolveWhatsAppSendTarget(runtime, this, target)
+      : params.channelId
+        ? { accountId: this.defaultAccountId, chatId: params.channelId }
+        : null;
+    const accountId = this.resolveAccountId(resolved?.accountId ?? readTargetAccountId(target));
+    const client = this.getClientForAccount(accountId);
+    const config = this.getConfigForAccount(accountId);
+    if (!client || !config) {
+      throw new Error("WhatsApp client is not initialized");
+    }
+    const chatId =
+      params.channelId ??
+      resolved?.chatId ??
+      (params.roomId ? (await runtime.getRoom(params.roomId))?.channelId : undefined);
+    if (!chatId) {
+      throw new Error("WhatsApp reaction requires a target chat.");
+    }
+    if (!params.messageId) {
+      throw new Error("WhatsApp reaction requires messageId.");
+    }
+
+    await client.sendMessage({
+      type: "reaction",
+      to:
+        config.transport === "baileys"
+          ? normalizeBaileysSendTarget(chatId)
+          : (normalizeWhatsAppTarget(chatId) ?? chatId),
+      content: {
+        messageId: params.messageId,
+        emoji: params.remove ? "" : params.emoji || "👍",
+      },
+    });
+  }
+
+  async getConnectorUser(
+    _runtime: IAgentRuntime,
+    params: ConnectorUserLookupParams
+  ): Promise<unknown> {
+    const lookup = params.userId ?? params.handle ?? params.username ?? params.query;
+    if (!lookup) {
+      return null;
+    }
+    const normalized = normalizeWhatsAppConnectorTarget(lookup);
+    const known = this.findKnownChatByParticipant(normalized) ?? this.getKnownTarget(normalized);
+    if (!known) {
+      return null;
+    }
+    return {
+      id: this.entityIdFor(known.senderId, known.accountId),
+      agentId: this.runtime.agentId,
+      names: [known.label, known.senderId, known.chatId].filter(
+        (value): value is string => typeof value === "string" && value.length > 0
+      ),
+      metadata: {
+        accountId: known.accountId,
+        source: "whatsapp",
+        whatsapp: {
+          accountId: known.accountId,
+          chatId: known.chatId,
+          senderId: known.senderId,
+          isGroup: known.isGroup,
+        },
+      },
+    };
+  }
+
+  listKnownTargets(accountId?: string | null): KnownWhatsAppTarget[] {
+    const normalizedAccountId = accountId ? this.resolveAccountId(accountId) : null;
+    return Array.from(this.knownTargets.values())
+      .filter((target) => !normalizedAccountId || target.accountId === normalizedAccountId)
+      .sort((left, right) => right.lastMessageAt - left.lastMessageAt);
+  }
+
+  getKnownTarget(chatId: string, accountId?: string | null): KnownWhatsAppTarget | null {
+    const normalized = normalizeWhatsAppConnectorTarget(chatId);
+    if (accountId) {
+      return this.knownTargets.get(this.targetKey(normalized, accountId)) ?? null;
+    }
+    return (
+      this.knownTargets.get(this.targetKey(normalized, this.defaultAccountId)) ??
+      Array.from(this.knownTargets.values()).find(
+        (target) => normalizeWhatsAppConnectorTarget(target.chatId) === normalized
+      ) ??
+      null
+    );
+  }
+
+  findKnownChatByParticipant(
+    participant: string,
+    accountId?: string | null
+  ): KnownWhatsAppTarget | null {
     const normalized = normalizeWhatsAppConnectorTarget(participant);
+    const normalizedAccountId = accountId ? this.resolveAccountId(accountId) : null;
     for (const target of this.knownTargets.values()) {
+      if (normalizedAccountId && target.accountId !== normalizedAccountId) {
+        continue;
+      }
       if (
         normalizeWhatsAppConnectorTarget(target.senderId) === normalized ||
         normalizeWhatsAppConnectorTarget(target.chatId) === normalized
@@ -885,6 +1532,9 @@ export class WhatsAppConnectorService extends Service {
   }
 
   private rememberTarget(target: KnownWhatsAppTarget): void {
-    this.knownTargets.set(normalizeWhatsAppConnectorTarget(target.chatId), target);
+    this.knownTargets.set(this.targetKey(target.chatId, target.accountId), {
+      ...target,
+      accountId: this.resolveAccountId(target.accountId),
+    });
   }
 }

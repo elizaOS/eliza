@@ -24,14 +24,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import { formatError } from "@elizaos/shared";
-import { resolveStateDir } from "../../config/paths.js";
-import { readJsonFile, writeJsonAtomic } from "../../utils/atomic-json.js";
+import { resolveStateDir } from "../../config/paths.ts";
+import { readJsonFile, writeJsonAtomic } from "../../utils/atomic-json.ts";
 import type {
   OperationPhase,
   RuntimeOperation,
   RuntimeOperationListOptions,
   RuntimeOperationRepository,
-} from "./types.js";
+} from "./types.ts";
 
 const ABANDONED_AFTER_MS = 24 * 60 * 60 * 1000;
 const IDEMPOTENCY_RETENTION_MS = 24 * 60 * 60 * 1000;

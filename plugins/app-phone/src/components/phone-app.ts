@@ -1,12 +1,12 @@
 /**
  * Phone overlay app definition + registration.
  *
- * Registered side-effect from `@elizaos/app-phone/register` only on Android;
+ * Registered by the phone side-effect entry only on Android;
  * other platforms intentionally skip registration so the app does not appear
  * in the catalog where it cannot function.
  */
 
-import { type OverlayApp, registerOverlayApp } from "@elizaos/app-core";
+import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 import { PhoneAppView } from "./PhoneAppView";
 
 export const PHONE_APP_NAME = "@elizaos/app-phone";

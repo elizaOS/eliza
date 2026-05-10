@@ -27,7 +27,7 @@ import {
 import { resolveDefaultTimeZone } from "./defaults.js";
 import { createFeatureFlagService } from "./feature-flags.js";
 import type { FeatureFlagState } from "./feature-flags.types.js";
-import type { HealthBackend } from "./health-bridge.js";
+import type { HealthBackend } from "@elizaos/plugin-health";
 import type { LifeOpsScheduleMergedState } from "./schedule-sync-contracts.js";
 import {
   LIFEOPS_TASK_NAME,
@@ -285,7 +285,6 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
         browserCompanions,
         health,
         xLocal,
-        xCloud,
         schedulerTasks,
       ] = await Promise.all([
         runCheck(checkedAt, () => loadLifeOpsAppState(this.runtime)),
@@ -304,7 +303,6 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
         runCheck(checkedAt, () => this.listBrowserCompanions()),
         runCheck(checkedAt, () => this.getHealthConnectorStatus()),
         runCheck(checkedAt, () => this.getXConnectorStatus("local")),
-        runCheck(checkedAt, () => this.getXConnectorStatus("cloud_managed")),
         runCheck(checkedAt, () =>
           this.runtime.getTasks({
             agentIds: [this.runtime.agentId],
@@ -332,7 +330,7 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
             now.getTime(),
           )
         : null;
-      const xStatuses = [xLocal, xCloud]
+      const xStatuses = [xLocal]
         .filter(
           (
             result,

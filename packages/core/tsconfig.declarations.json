@@ -1,46 +1,51 @@
 {
-	"extends": "../../tsconfig.json",
-	"compilerOptions": {
-		"outDir": "./dist",
-		"rootDir": "./src",
-		"moduleResolution": "bundler",
-		"typeRoots": [
-			"../../node_modules/@types",
-			"../../node_modules/.bun/node_modules/@types",
-			"../../cloud/node_modules/@types",
-			"../../cloud/node_modules/.bun/node_modules/@types",
-			"../../node_modules",
-			"../../node_modules/.bun/node_modules",
-			"../../cloud/node_modules",
-			"../../cloud/node_modules/.bun/node_modules",
-			"../../../node_modules/@types",
-			"../../../node_modules/.bun/node_modules/@types",
-			"../../../node_modules",
-			"../../../node_modules/.bun/node_modules"
-		],
-		"types": ["node", "bun"],
-		"noEmit": false,
-		"emitDeclarationOnly": true,
-		"composite": false,
-		"incremental": false,
-		"skipLibCheck": true,
-		"paths": {
-			"@elizaos/core": ["./src/index.node.ts"],
-			"@elizaos/core/*": ["./src/*"],
-			"@elizaos/shared": ["../../shared/src/index.ts"],
-			"@elizaos/shared/*": ["../../shared/src/*"]
-		}
-	},
-	"include": [
-		"src/external-modules.ts",
-		"src/index.ts",
-		"src/index.node.ts",
-		"src/index.browser.ts"
-	],
-	"exclude": [
-		"src/**/*.test.ts",
-		"src/**/*.spec.ts",
-		"src/__tests__/**/*",
-		"src/testing/**/*"
-	]
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "moduleResolution": "bundler",
+    "typeRoots": [
+      "../../node_modules/@types",
+      "../../node_modules/.bun/node_modules/@types",
+      "../../cloud/node_modules/@types",
+      "../../cloud/node_modules/.bun/node_modules/@types",
+      "../../node_modules",
+      "../../node_modules/.bun/node_modules",
+      "../../cloud/node_modules",
+      "../../cloud/node_modules/.bun/node_modules",
+      "../../../node_modules/@types",
+      "../../../node_modules/.bun/node_modules/@types",
+      "../../../node_modules",
+      "../../../node_modules/.bun/node_modules"
+    ],
+    "types": [
+      "node",
+      "bun"
+    ],
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "composite": false,
+    "incremental": false,
+    "skipLibCheck": true,
+    "paths": {
+      "@elizaos/core": [
+        "./src/index.node.ts"
+      ],
+      "@elizaos/shared": [
+        "../shared/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/external-modules.ts",
+    "src/index.ts",
+    "src/index.node.ts",
+    "src/index.browser.ts"
+  ],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    "src/__tests__/**/*",
+    "src/testing/**/*"
+  ]
 }

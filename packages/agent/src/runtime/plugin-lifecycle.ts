@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   Action,
+  AgentContext,
   AgentRuntime,
   Evaluator,
   Plugin,
@@ -12,6 +13,12 @@ import type {
   ServiceTypeName,
 } from "@elizaos/core";
 import { resolveActionContexts, resolveProviderContexts } from "@elizaos/core";
+import {
+  createToolCallCacheFromConfig,
+  wrapActionWithCache,
+  type ToolCacheConfig,
+} from "./tool-call-cache-wrapper.ts";
+import type { ToolCallCache } from "./tool-call-cache/index.ts";
 
 /** elizaOS runtime plugin lifecycle bookkeeping (not exported from @elizaos/core). */
 type ElizaPluginOwnership = {
@@ -30,9 +37,11 @@ type ElizaPluginOwnership = {
   registeredAt: number;
 };
 
+type RuntimeEventHandler = NonNullable<AgentRuntime["events"][string]>[number];
+
 type ElizaPluginEventRegistration = {
   eventName: string;
-  handler: (params: unknown) => Promise<void>;
+  handler: RuntimeEventHandler;
 };
 
 type ElizaPluginModelRegistration = {
@@ -47,7 +56,7 @@ type ElizaPluginServiceRegistration = {
 };
 
 type ContextScoped = {
-  contexts?: string[];
+  contexts?: AgentContext[];
 };
 
 type RuntimeAction = NonNullable<Plugin["actions"]>[number] & ContextScoped;
@@ -55,7 +64,6 @@ type RuntimeProvider = NonNullable<Plugin["providers"]>[number] & ContextScoped;
 type RuntimeEvaluator = NonNullable<Plugin["evaluators"]>[number];
 type RuntimeRoute = NonNullable<Plugin["routes"]>[number];
 type RuntimeServiceClass = NonNullable<Plugin["services"]>[number];
-type RuntimeEventHandler = ElizaPluginEventRegistration["handler"];
 type RuntimeEventRegistration = ElizaPluginEventRegistration;
 type RuntimeModelRegistration = ElizaPluginModelRegistration;
 type RuntimeServiceRegistration = ElizaPluginServiceRegistration;
@@ -147,7 +155,7 @@ const pluginServiceStartContext =
 const serviceClassOwners = new WeakMap<RuntimeServiceClass, string>();
 
 function getRuntimePrivateState(runtime: AgentRuntime): RuntimePrivateState {
-  return runtime as unknown as RuntimePrivateState;
+  return runtime as AgentRuntime & RuntimePrivateState;
 }
 
 function getPluginOwnershipStore(
@@ -212,11 +220,7 @@ function applyEffectiveActionContexts(
 
   return {
     ...inherited,
-    contexts: [
-      ...resolveActionContexts(
-        inherited as unknown as Parameters<typeof resolveActionContexts>[0],
-      ),
-    ],
+    contexts: [...resolveActionContexts(inherited)],
   };
 }
 
@@ -231,11 +235,7 @@ function applyEffectiveProviderContexts(
 
   return {
     ...inherited,
-    contexts: [
-      ...resolveProviderContexts(
-        inherited as unknown as Parameters<typeof resolveProviderContexts>[0],
-      ),
-    ],
+    contexts: [...resolveProviderContexts(inherited)],
   };
 }
 
@@ -445,7 +445,7 @@ function removeOwnedEvents(
     if (!currentHandlers || currentHandlers.length === 0) continue;
     const ownedSet = new Set(ownedHandlers);
     const remainingHandlers = currentHandlers.filter(
-      (handler) => !ownedSet.has(handler as unknown as RuntimeEventHandler),
+      (handler) => !ownedSet.has(handler),
     );
     if (remainingHandlers.length > 0) {
       runtime.events[eventName] = remainingHandlers;
@@ -614,6 +614,36 @@ function trackRoutesAndPluginRef(
   }
 }
 
+/**
+ * Lazily-built tool-call cache for this runtime. Built once per runtime on
+ * first action registration so we can read the latest config and avoid
+ * paying the disk-tier setup cost when the cache is disabled or unused.
+ */
+function getOrBuildToolCallCache(
+  runtime: AgentRuntime,
+): { cache: ToolCallCache; cfg: ToolCacheConfig | undefined } | null {
+  const r = runtime as AgentRuntime & {
+    __toolCallCache?: ToolCallCache | null;
+    __toolCallCacheCfg?: ToolCacheConfig | undefined;
+    __toolCallCacheBuilt?: boolean;
+  };
+  if (r.__toolCallCacheBuilt) {
+    if (!r.__toolCallCache) return null;
+    return { cache: r.__toolCallCache, cfg: r.__toolCallCacheCfg };
+  }
+  r.__toolCallCacheBuilt = true;
+
+  const character = runtime.character as
+    | { settings?: { tools?: { cache?: ToolCacheConfig } } }
+    | undefined;
+  const cfg: ToolCacheConfig | undefined = character?.settings?.tools?.cache;
+  const cache = createToolCallCacheFromConfig(cfg);
+  r.__toolCallCache = cache;
+  r.__toolCallCacheCfg = cfg;
+  if (!cache) return null;
+  return { cache, cfg };
+}
+
 export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
   const runtimeWithLifecycle = runtime as RuntimeWithPluginLifecycle;
   if (runtimeWithLifecycle.__elizaPluginLifecycleInstalled) {
@@ -680,12 +710,19 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
       return;
     }
     const actionsBefore = runtime.actions.length;
-    originalRegisterAction(
-      applyEffectiveActionContexts(
-        action,
-        getPluginContexts(capture?.ownership.plugin),
-      ),
+    let effective = applyEffectiveActionContexts(
+      action,
+      getPluginContexts(capture?.ownership.plugin),
     );
+    const toolCache = getOrBuildToolCallCache(runtime);
+    if (toolCache) {
+      effective = wrapActionWithCache(
+        effective,
+        toolCache.cache,
+        toolCache.cfg,
+      );
+    }
+    originalRegisterAction(effective);
     if (!capture || runtime.actions.length <= actionsBefore) return;
     for (const registeredAction of runtime.actions.slice(actionsBefore)) {
       pushUniqueRef(capture.ownership.actions, registeredAction);
@@ -744,7 +781,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
     for (const registeredHandler of nextHandlers.slice(handlersBefore)) {
       pushUniqueEvent(capture.ownership.events, {
         eventName: event,
-        handler: registeredHandler as unknown as RuntimeEventHandler,
+        handler: registeredHandler,
       });
     }
   }) as typeof runtime.registerEvent;

@@ -12,7 +12,7 @@ function makeRuntime(overrides?: Partial<IAgentRuntime>): IAgentRuntime {
 		agentId: AGENT_ID,
 		getSetting: () => null,
 		...overrides,
-	} as unknown as IAgentRuntime;
+	} as IAgentRuntime;
 }
 
 function makeMessage(
@@ -28,7 +28,7 @@ function makeMessage(
 			text: "",
 			...overrides,
 		},
-	} as unknown as Memory;
+	} as Memory;
 }
 
 describe("TodosService", () => {

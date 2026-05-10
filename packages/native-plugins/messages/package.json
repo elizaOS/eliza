@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-messages",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Android SMS/MMS bridge for ElizaOS.",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",
@@ -16,12 +16,13 @@
   "files": [
     "android/src/main/",
     "android/build.gradle",
-    "dist/"
+    "dist/",
+    "dist"
   ],
   "scripts": {
-    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
-    "clean": "rimraf ./dist",
-    "prepublishOnly": "npm run build"
+    "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
+    "prepublishOnly": "bun run build"
   },
   "license": "MIT",
   "capacitor": {
@@ -34,7 +35,7 @@
     "@capacitor/core": "^8.3.1",
     "rimraf": "^6.0.0",
     "rollup": "^4.60.2",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

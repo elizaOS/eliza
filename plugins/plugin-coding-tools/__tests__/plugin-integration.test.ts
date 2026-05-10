@@ -15,28 +15,13 @@ import codingToolsPlugin, {
   SandboxService,
   SESSION_CWD_SERVICE,
   SessionCwdService,
-  SHELL_TASK_SERVICE,
-  ShellTaskService,
 } from "../src/index.js";
 import * as pluginModule from "../src/index.js";
 
 const EXPECTED_ACTIONS = [
-  "READ",
-  "WRITE",
-  "EDIT",
-  "NOTEBOOK_EDIT",
-  "BASH",
-  "TASK_OUTPUT",
-  "TASK_STOP",
-  "GREP",
-  "GLOB",
-  "LS",
-  "WEB_FETCH",
-  "CODE_WEB_SEARCH",
-  "TODO_WRITE",
-  "ASK_USER_QUESTION",
-  "ENTER_WORKTREE",
-  "EXIT_WORKTREE",
+  "FILE",
+  "SHELL",
+  "WORKTREE",
 ];
 
 describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
@@ -45,10 +30,38 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     expect(codingToolsPlugin.description).toBeTruthy();
   });
 
-  it("registers exactly the 16 expected actions", () => {
+  it("registers the consolidated top-level coding actions", () => {
     const actions = codingToolsPlugin.actions ?? [];
     const names = actions.map((a) => a.name).sort();
     expect(names).toEqual([...EXPECTED_ACTIONS].sort());
+  });
+
+  it("does not register legacy leaf actions as planner-facing actions", () => {
+    const names = new Set((codingToolsPlugin.actions ?? []).map((a) => a.name));
+    for (const legacyName of [
+      "READ",
+      "WRITE",
+      "EDIT",
+      "BASH",
+      "GREP",
+      "GLOB",
+      "LS",
+      "WEB_FETCH",
+      "ASK_USER_QUESTION",
+      "ENTER_WORKTREE",
+      "EXIT_WORKTREE",
+    ]) {
+      expect(names.has(legacyName), legacyName).toBe(false);
+    }
+  });
+
+  it("FILE exposes the former file leaf actions as similes", () => {
+    const fileAction = (codingToolsPlugin.actions ?? []).find(
+      (action) => action.name === "FILE",
+    );
+    expect(fileAction?.similes).toEqual(
+      expect.arrayContaining(["READ", "WRITE", "EDIT", "GREP", "GLOB", "LS"]),
+    );
   });
 
   it("each action has the required fields", () => {
@@ -65,21 +78,24 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it("exports the 5 active services", () => {
+  it("exports the 4 active services", () => {
     const services = codingToolsPlugin.services ?? [];
     expect(services).toContain(FileStateService);
     expect(services).toContain(SandboxService);
     expect(services).toContain(SessionCwdService);
     expect(services).toContain(RipgrepService);
-    expect(services).toContain(ShellTaskService);
-    expect(services.length).toBe(5);
+    expect(services.length).toBe(4);
   });
 
-  it("does not export deprecated AST or OS-sandbox service constants", () => {
+  it("does not export removed actions or service constants", () => {
     expect("BASH_AST_SERVICE" in pluginModule).toBe(false);
     expect("OS_SANDBOX_SERVICE" in pluginModule).toBe(false);
-    expect("BashAstService" in pluginModule).toBe(false);
-    expect("OsSandboxService" in pluginModule).toBe(false);
+    expect("SHELL_TASK_SERVICE" in pluginModule).toBe(false);
+    expect("ShellTaskService" in pluginModule).toBe(false);
+    expect("notebookEditAction" in pluginModule).toBe(false);
+    expect("taskOutputAction" in pluginModule).toBe(false);
+    expect("taskStopAction" in pluginModule).toBe(false);
+    expect("todoWriteAction" in pluginModule).toBe(false);
   });
 
   it("exports the available-tools provider at position -10 with code/terminal/automation gates", () => {
@@ -94,8 +110,8 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
       getSetting: (key: string) =>
         key === "CODING_TOOLS_DISABLE" ? true : undefined,
       getService: () => null,
-    } as unknown as IAgentRuntime;
-    const message = { roomId: "r" } as unknown as Memory;
+    } as IAgentRuntime;
+    const message = { roomId: "r" } as Memory;
     for (const action of codingToolsPlugin.actions ?? []) {
       const ok = await action.validate!(runtime, message);
       expect(ok, action.name).toBe(true);
@@ -129,23 +145,20 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
       agentId: "00000000-0000-0000-0000-000000000000" as UUID,
       getSetting: (_key: string) => undefined,
       getService: (key: string) => services.get(key) ?? null,
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
 
     const fileState = await FileStateService.start(runtime);
     const sandbox = await SandboxService.start(runtime);
     const session = await SessionCwdService.start(runtime);
     const rg = await RipgrepService.start(runtime);
-    const shellTasks = await ShellTaskService.start(runtime);
     services.set(FILE_STATE_SERVICE, fileState);
     services.set(SANDBOX_SERVICE, sandbox);
     services.set(SESSION_CWD_SERVICE, session);
     services.set(RIPGREP_SERVICE, rg);
-    services.set(SHELL_TASK_SERVICE, shellTasks);
     cleanup.push(() => fileState.stop());
     cleanup.push(() => sandbox.stop());
     cleanup.push(() => session.stop());
     cleanup.push(() => rg.stop());
-    cleanup.push(() => shellTasks.stop());
     session.setCwd("smoke-room", tmpDir);
   });
 
@@ -161,37 +174,38 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   });
 
   function findAction(name: string) {
-    const a = (codingToolsPlugin.actions ?? []).find((x) => x.name === name);
+    const actions = codingToolsPlugin.actions ?? [];
+    const a = actions.find((x) => x.name === name);
     if (!a) throw new Error(`action ${name} not found`);
     return a;
   }
 
   function makeMessage(): Memory {
-    return { roomId: "smoke-room" } as unknown as Memory;
+    return { roomId: "smoke-room" } as Memory;
   }
 
-  it("READ returns a known file's contents", async () => {
-    const action = findAction("READ");
+  it("FILE action=read returns a known file's contents", async () => {
+    const action = findAction("FILE");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: { file_path: path.join(tmpDir, "needle.txt") },
+      parameters: { action: "read", file_path: path.join(tmpDir, "needle.txt") },
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("NEEDLE");
   });
 
-  it("WRITE creates a new file", async () => {
-    const action = findAction("WRITE");
+  it("FILE action=write creates a new file", async () => {
+    const action = findAction("FILE");
     const target = path.join(tmpDir, "smoke-out.txt");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: { file_path: target, content: "smoke ok" },
+      parameters: { action: "write", file_path: target, content: "smoke ok" },
     });
     expect(result.success).toBe(true);
     const written = await fs.readFile(target, "utf8");
     expect(written).toBe("smoke ok");
   });
 
-  it("BASH echo hello", async () => {
-    const action = findAction("BASH");
+  it("SHELL echo hello", async () => {
+    const action = findAction("SHELL");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
       parameters: { command: "echo smoke-bash-ok", cwd: tmpDir },
     });
@@ -200,19 +214,19 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
     expect(result.text).toContain("[exit 0]");
   });
 
-  it("GLOB lists *.txt files", async () => {
-    const action = findAction("GLOB");
+  it("FILE action=glob lists *.txt files", async () => {
+    const action = findAction("FILE");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: { pattern: "*.txt", path: tmpDir },
+      parameters: { action: "glob", pattern: "*.txt", path: tmpDir },
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("needle.txt");
   });
 
-  it("LS shows fixture entries", async () => {
-    const action = findAction("LS");
+  it("FILE action=ls shows fixture entries", async () => {
+    const action = findAction("FILE");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: { path: tmpDir },
+      parameters: { action: "ls", path: tmpDir },
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("needle.txt");
@@ -222,8 +236,6 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   it("GREP finds the NEEDLE token (skip when ripgrep absent)", async () => {
     const rg = services.get(RIPGREP_SERVICE) as RipgrepService | undefined;
     if (!rg) return;
-    // The bundled @vscode/ripgrep binary may be missing in dev installs;
-    // patch in a system rg if so.
     const fs2 = await import("node:fs");
     const initial = rg.binary();
     if (!fs2.existsSync(initial)) {
@@ -234,35 +246,21 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
       ];
       const sys = candidates.find((p) => fs2.existsSync(p));
       if (!sys) return;
-      (rg as unknown as { rgPath: string }).rgPath = sys;
+      (rg as { rgPath: string }).rgPath = sys;
     }
-    const action = findAction("GREP");
+    const action = findAction("FILE");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: { pattern: "NEEDLE", path: tmpDir },
+      parameters: { action: "grep", pattern: "NEEDLE", path: tmpDir },
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("needle.txt");
   });
 
-  it("TODO_WRITE persists a list", async () => {
-    const action = findAction("TODO_WRITE");
+  it("WORKTREE action=enter in a non-git dir fails cleanly", async () => {
+    const action = findAction("WORKTREE");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: {
-        todos: [
-          { content: "first task", status: "pending" },
-          { content: "doing now", status: "in_progress" },
-        ],
-      },
+      parameters: { action: "enter" },
     });
-    expect(result.success).toBe(true);
-  });
-
-  it("ENTER_WORKTREE in a non-git dir fails cleanly", async () => {
-    const action = findAction("ENTER_WORKTREE");
-    const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: {},
-    });
-    // tmpDir isn't a git repo, so this must fail cleanly (not throw).
     expect(result.success).toBe(false);
     expect(result.text).toContain("io_error");
   });

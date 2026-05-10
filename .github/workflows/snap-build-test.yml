@@ -62,19 +62,6 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install protobuf generator
-        run: |
-          bun add -g @bufbuild/protoc-gen-es@2.12.0
-          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
-
-      - name: Generate protobuf types
-        run: |
-          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/core/src/types/generated ]; then
-            cd packages/schemas
-            buf dep update
-            buf generate
-          fi
-
       - name: Prepare snapcraft.yaml
         run: |
           mkdir -p snap

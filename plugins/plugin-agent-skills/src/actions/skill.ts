@@ -79,8 +79,6 @@ const ROUTES: SkillRoute[] = [
 	},
 ];
 
-const SKILL_FALLBACK_PATTERN = /\bskills?\b/i;
-
 function readOptions(
 	options?: HandlerOptions | Record<string, unknown>,
 ): Record<string, unknown> {
@@ -134,23 +132,33 @@ export const skillAction: Action = {
 		"Manage skill catalog. Operations: search (browse available skills), details (info about a specific skill), sync (refresh catalog from registry), toggle (enable/disable installed skill), install (install from registry), uninstall (remove non-bundled skill). For invoking an enabled skill, use USE_SKILL instead.",
 	descriptionCompressed:
 		"Skill catalog: search, details, sync, toggle, install, uninstall.",
-	similes: [],
+	contexts: ["automation", "knowledge", "settings", "connectors"],
+	contextGate: { anyOf: ["automation", "knowledge", "settings", "connectors"] },
+	similes: [
+		"MANAGE_SKILL",
+		"MANAGE_SKILLS",
+		"SKILL_CATALOG",
+		"SKILLS",
+		"AGENT_SKILL",
+		"AGENT_SKILLS",
+		"INSTALL_SKILL",
+		"UNINSTALL_SKILL",
+		"SEARCH_SKILLS",
+		"SYNC_SKILL_CATALOG",
+		"TOGGLE_SKILL",
+	],
 	roleGate: { minRole: "USER" },
 	parameters: [
 		{
-			name: "op",
+			name: "subaction",
 			description:
 				"Operation to perform. One of: search, details, sync, toggle, install, uninstall. Inferred from message text when omitted.",
 			required: false,
 			schema: { type: "string", enum: [...ALL_OPS] },
 		},
 	],
-	validate: async (_runtime: IAgentRuntime, message: Memory) => {
-		const text = typeof message.content?.text === "string" ? message.content.text : "";
-		if (!text.trim()) return false;
-		return (
-			ROUTES.some((route) => route.match.test(text)) || SKILL_FALLBACK_PATTERN.test(text)
-		);
+	validate: async (runtime: IAgentRuntime) => {
+		return Boolean(runtime.getService("AGENT_SKILLS_SERVICE"));
 	},
 	handler: async (
 		runtime: IAgentRuntime,
@@ -167,7 +175,7 @@ export const skillAction: Action = {
 			return {
 				success: false,
 				text,
-				values: { error: "MISSING_OP" },
+				values: { error: "MISSING" },
 				data: { actionName: "SKILL", availableOps: ops },
 			};
 		}

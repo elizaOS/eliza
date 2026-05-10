@@ -1,0 +1,585 @@
+/**
+ * Engine ↔ voice scheduler bridge.
+ *
+ * Adapts the live `LocalInferenceEngine` (`engine.ts`) plus the DFlash
+ * llama-server (`dflash-server.ts`) onto the voice scaffold's
+ * `VoiceScheduler`. See `packages/inference/AGENTS.md` §4 for the
+ * streaming graph this implements:
+ *
+ *   ASR → text tokens → DFlash drafter ↔ target verifier (text model)
+ *        → phrase chunker → speaker preset cache + phrase cache
+ *        → OmniVoice TTS → PCM ring buffer → audio out
+ *
+ * Plus rollback queue (DFlash rejection → cancel pending TTS chunks)
+ * and barge-in cancellation (mic VAD → drain ring buffer + cancel TTS).
+ *
+ * Two TTS backends are exposed:
+ *   - `StubOmniVoiceBackend`: deterministic synthetic PCM. Used by tests
+ *     and any path that wants the streaming graph without real audio.
+ *   - `FfiOmniVoiceBackend`: documents the planned FFI surface against
+ *     `libelizainference.{dylib,so}`. Throws a hard "not implemented"
+ *     error on every call until the fused omnivoice build target lands
+ *     (see `packages/app-core/scripts/build-llama-cpp-dflash.mjs` for
+ *     the fused-target build hook the other agent finished).
+ *
+ * Per AGENTS.md §3 + §9 (no defensive code, no log-and-continue), every
+ * startup precondition surfaces as a thrown `VoiceStartupError`. There
+ * is no silent fallback to text-only.
+ */
+
+import { existsSync, statSync } from "node:fs";
+import path from "node:path";
+import type {
+  ElizaInferenceContextHandle,
+  ElizaInferenceFfi,
+} from "./ffi-bindings";
+import { loadElizaInferenceFfi } from "./ffi-bindings";
+import {
+  VoiceLifecycle,
+  type VoiceLifecycleLoaders,
+} from "./lifecycle";
+import {
+  PhraseCache,
+  type CachedPhraseAudio,
+} from "./phrase-cache";
+import {
+  type MmapRegionHandle,
+  SharedResourceRegistry,
+} from "./shared-resources";
+import { SpeakerPresetCache } from "./speaker-preset-cache";
+import { VoiceScheduler, type SchedulerEvents } from "./scheduler";
+import type {
+  AudioChunk,
+  AudioSink,
+  OmniVoiceBackend,
+  Phrase,
+  RejectedTokenRange,
+  SchedulerConfig,
+  SpeakerPreset,
+  TextToken,
+} from "./types";
+
+const SAMPLE_RATE_DEFAULT = 24_000;
+const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s
+const PHRASE_MAX_TOKENS_DEFAULT = 12;
+const STUB_PCM_MS_PER_PHRASE = 100;
+
+/**
+ * Structured startup failure. The engine MUST throw one of these when
+ * voice mode is requested but cannot start (missing FFI, missing speaker
+ * preset, missing fused build, manifest mismatch). The runtime then
+ * refuses to activate the model — never silently degrades to text-only.
+ */
+export class VoiceStartupError extends Error {
+  readonly code:
+    | "missing-ffi"
+    | "missing-speaker-preset"
+    | "missing-bundle-root"
+    | "missing-fused-build"
+    | "already-started"
+    | "not-started";
+
+  constructor(
+    code: VoiceStartupError["code"],
+    message: string,
+  ) {
+    super(message);
+    this.name = "VoiceStartupError";
+    this.code = code;
+  }
+}
+
+/**
+ * Stub TTS backend that returns deterministic synthetic PCM. Each phrase
+ * yields `STUB_PCM_MS_PER_PHRASE` ms of silence (zeros), with the
+ * cancel signal honoured at the kernel-tick boundary so barge-in tests
+ * observe cancellation without waiting on a real model.
+ */
+export class StubOmniVoiceBackend implements OmniVoiceBackend {
+  readonly id = "stub" as const;
+  private readonly sampleRate: number;
+  calls = 0;
+
+  constructor(sampleRate = SAMPLE_RATE_DEFAULT) {
+    this.sampleRate = sampleRate;
+  }
+
+  async synthesize(args: {
+    phrase: Phrase;
+    preset: SpeakerPreset;
+    cancelSignal: { cancelled: boolean };
+    onKernelTick?: () => void;
+  }): Promise<AudioChunk> {
+    this.calls++;
+    args.onKernelTick?.();
+    const samples = Math.floor(
+      (this.sampleRate * STUB_PCM_MS_PER_PHRASE) / 1000,
+    );
+    const pcm = new Float32Array(samples);
+    return {
+      phraseId: args.phrase.id,
+      fromIndex: args.phrase.fromIndex,
+      toIndex: args.phrase.toIndex,
+      pcm,
+      sampleRate: this.sampleRate,
+    };
+  }
+}
+
+/**
+ * FFI-backed TTS backend. Forwards each `synthesize()` call through the
+ * fused `libelizainference` ABI declared in
+ * `packages/app-core/scripts/omnivoice-fuse/ffi.h`. The library handle
+ * + a per-engine context pointer are held by the bridge and passed in
+ * at construction so this backend stays a thin adapter.
+ *
+ * Until the real fused build ships, the binding is exercised against
+ * the C stub at `scripts/omnivoice-fuse/ffi-stub.c`, which returns
+ * `ELIZA_ERR_NOT_IMPLEMENTED` for `tts_synthesize` — the binding then
+ * raises `VoiceLifecycleError({code:"kernel-missing"})`. The adapter
+ * re-wraps that as `VoiceStartupError("missing-fused-build", ...)` so
+ * the engine layer's startup-error taxonomy stays unified. No silent
+ * fallback (AGENTS.md §3 + §9).
+ */
+export class FfiOmniVoiceBackend implements OmniVoiceBackend {
+  readonly id = "ffi" as const;
+  private readonly ffi: ElizaInferenceFfi;
+  private readonly ctx: ElizaInferenceContextHandle;
+  private readonly sampleRate: number;
+  private readonly maxSecondsPerPhrase: number;
+
+  constructor(args: {
+    ffi: ElizaInferenceFfi;
+    ctx: ElizaInferenceContextHandle;
+    sampleRate?: number;
+    maxSecondsPerPhrase?: number;
+  }) {
+    this.ffi = args.ffi;
+    this.ctx = args.ctx;
+    this.sampleRate = args.sampleRate ?? SAMPLE_RATE_DEFAULT;
+    this.maxSecondsPerPhrase = args.maxSecondsPerPhrase ?? 6;
+  }
+
+  async synthesize(args: {
+    phrase: Phrase;
+    preset: SpeakerPreset;
+    cancelSignal: { cancelled: boolean };
+    onKernelTick?: () => void;
+  }): Promise<AudioChunk> {
+    args.onKernelTick?.();
+    const out = new Float32Array(this.sampleRate * this.maxSecondsPerPhrase);
+    const samples = this.ffi.ttsSynthesize({
+      ctx: this.ctx,
+      text: args.phrase.text,
+      speakerPresetId: args.preset.voiceId,
+      out,
+    });
+    return {
+      phraseId: args.phrase.id,
+      fromIndex: args.phrase.fromIndex,
+      toIndex: args.phrase.toIndex,
+      pcm: out.subarray(0, samples),
+      sampleRate: this.sampleRate,
+    };
+  }
+}
+
+export interface EngineVoiceBridgeOptions {
+  /**
+   * Bundle root on disk. Must contain `cache/voice-preset-default.bin`
+   * and the FFI library (`lib/libelizainference.{dylib,so}`) when
+   * `useFfiBackend === true`.
+   */
+  bundleRoot: string;
+  /**
+   * When true, use `FfiOmniVoiceBackend` (will hard-fail at synthesize
+   * time until the fused build lands). When false, use the stub backend
+   * so tests and the streaming-graph integration can run end-to-end
+   * with synthetic PCM.
+   */
+  useFfiBackend: boolean;
+  /** Override sample rate. Defaults to 24 kHz. */
+  sampleRate?: number;
+  /** Override ring buffer capacity (samples). Defaults to 4 s @ 24 kHz. */
+  ringBufferCapacity?: number;
+  /** Phrase chunker `maxTokensPerPhrase`. Defaults to 12. */
+  maxTokensPerPhrase?: number;
+  /**
+   * Pre-warmed phrase cache entries. Per AGENTS.md §4, a precomputed
+   * phrase cache for common assistant utterances is mandatory for the
+   * first-byte-latency win. Empty by default — callers wire actual
+   * entries from the bundle when available.
+   */
+  prewarmedPhrases?: ReadonlyArray<CachedPhraseAudio>;
+  /**
+   * Optional sink override (e.g. for tests or for routing PCM to a
+   * platform-specific audio device). Defaults to the in-memory sink the
+   * scheduler creates.
+   */
+  sink?: AudioSink;
+  /** Optional scheduler event listeners (rollback, audio, cancel). */
+  events?: SchedulerEvents;
+  /**
+   * Optional override for the TTS backend. When set, supersedes
+   * `useFfiBackend`. Tests use this to inject a controllable backend
+   * (e.g. one that holds synthesis open until a deferred resolves) so
+   * rollback timing can be observed deterministically.
+   */
+  backendOverride?: OmniVoiceBackend;
+  /**
+   * Optional shared resource registry. When the bridge is created
+   * inside an engine that already owns one (text + voice on the same
+   * tokenizer / mmap regions), the engine passes its registry in so
+   * voice ref-counts against the same canonical resources. Tests can
+   * leave this unset to get a private registry.
+   */
+  sharedResources?: SharedResourceRegistry;
+  /**
+   * Optional lifecycle loaders override. Production wires real
+   * `madvise`-backed mmap handles via the FFI; tests inject mocks so
+   * the disarm path can assert eviction without a real file mapping.
+   * When unset, default loaders are derived from the bundle root.
+   */
+  lifecycleLoaders?: VoiceLifecycleLoaders;
+}
+
+/**
+ * Wires the voice scaffold (`VoiceScheduler` + helpers) onto the engine.
+ * One bridge per active voice session — created in
+ * `LocalInferenceEngine.startVoice()` and disposed when the engine
+ * unloads or `stopVoice()` is called.
+ */
+export class EngineVoiceBridge {
+  readonly scheduler: VoiceScheduler;
+  readonly backend: OmniVoiceBackend;
+  readonly lifecycle: VoiceLifecycle;
+  /** Loaded FFI handle when running against the fused build (else null). */
+  readonly ffi: ElizaInferenceFfi | null;
+  /** FFI context this bridge owns; destroyed in `dispose()`. */
+  readonly ffiCtx: ElizaInferenceContextHandle | null;
+  private readonly bundleRoot: string;
+
+  private constructor(
+    scheduler: VoiceScheduler,
+    backend: OmniVoiceBackend,
+    bundleRoot: string,
+    lifecycle: VoiceLifecycle,
+    ffi: ElizaInferenceFfi | null,
+    ffiCtx: ElizaInferenceContextHandle | null,
+  ) {
+    this.scheduler = scheduler;
+    this.backend = backend;
+    this.bundleRoot = bundleRoot;
+    this.lifecycle = lifecycle;
+    this.ffi = ffi;
+    this.ffiCtx = ffiCtx;
+  }
+
+  /**
+   * Tear down the FFI context the bridge owns. Idempotent; safe to call
+   * multiple times. Callers should `disarm()` first to drop voice
+   * resources, then `dispose()` to close the FFI handle.
+   */
+  dispose(): void {
+    if (this.ffi && this.ffiCtx !== null) {
+      this.ffi.destroy(this.ffiCtx);
+      this.ffi.close();
+    }
+  }
+
+  /**
+   * Start the voice session for a bundle. Validates the bundle layout
+   * up-front (per AGENTS.md §3 + §7 — required artifacts checked before
+   * activation) and throws `VoiceStartupError` for any missing piece.
+   * No partial activation: either the scheduler exists and is wired or
+   * the call throws.
+   */
+  static start(opts: EngineVoiceBridgeOptions): EngineVoiceBridge {
+    if (!opts.bundleRoot || !existsSync(opts.bundleRoot)) {
+      throw new VoiceStartupError(
+        "missing-bundle-root",
+        `[voice] Bundle root does not exist: ${opts.bundleRoot}`,
+      );
+    }
+
+    const presetPath = path.join(
+      opts.bundleRoot,
+      "cache",
+      "voice-preset-default.bin",
+    );
+    if (!existsSync(presetPath)) {
+      throw new VoiceStartupError(
+        "missing-speaker-preset",
+        `[voice] Bundle is missing required speaker preset at ${presetPath}. The default voice MUST ship as a precomputed embedding (AGENTS.md §4).`,
+      );
+    }
+
+    const sampleRate = opts.sampleRate ?? SAMPLE_RATE_DEFAULT;
+    const presetCache = new SpeakerPresetCache();
+    const { preset, phrases: seedPhrases } = presetCache.loadFromBundle({
+      bundleRoot: opts.bundleRoot,
+    });
+
+    const phraseCache = new PhraseCache();
+    phraseCache.seed(seedPhrases);
+    for (const entry of opts.prewarmedPhrases ?? []) {
+      phraseCache.put(entry);
+    }
+
+    // FFI binding + per-bridge context. When the bridge runs against
+    // the real fused build, the same `ffi`/`ctx` pair is shared by:
+    //   - the TTS backend (`FfiOmniVoiceBackend.synthesize`),
+    //   - the lifecycle loaders (`MmapRegionHandle.evictPages` calls
+    //     `ffi.mmapEvict(ctx, "tts" | "asr")`).
+    // Tests can opt out by either passing `lifecycleLoaders` (mocks
+    // `evictPages`) or `backendOverride` (mocks the backend) or
+    // setting `useFfiBackend: false` (stub TTS + no-op evict).
+    let ffiHandle: ElizaInferenceFfi | null = null;
+    let ffiCtx: ElizaInferenceContextHandle | null = null;
+    let backend: OmniVoiceBackend;
+    if (opts.backendOverride) {
+      backend = opts.backendOverride;
+    } else if (opts.useFfiBackend) {
+      const libPath = path.join(opts.bundleRoot, "lib", libraryFilename());
+      if (!existsSync(libPath)) {
+        throw new VoiceStartupError(
+          "missing-ffi",
+          `[voice] Fused omnivoice library not found at ${libPath}. Build via packages/app-core/scripts/build-llama-cpp-dflash.mjs (omnivoice-fuse target).`,
+        );
+      }
+      ffiHandle = loadElizaInferenceFfi(libPath);
+      ffiCtx = ffiHandle.create(opts.bundleRoot);
+      backend = new FfiOmniVoiceBackend({
+        ffi: ffiHandle,
+        ctx: ffiCtx,
+        sampleRate,
+      });
+    } else {
+      backend = new StubOmniVoiceBackend(sampleRate);
+    }
+
+    const config: SchedulerConfig = {
+      chunkerConfig: {
+        maxTokensPerPhrase:
+          opts.maxTokensPerPhrase ?? PHRASE_MAX_TOKENS_DEFAULT,
+      },
+      preset,
+      ringBufferCapacity:
+        opts.ringBufferCapacity ?? RING_BUFFER_CAPACITY_DEFAULT,
+      sampleRate,
+    };
+
+    const sinkOverride = opts.sink;
+    const scheduler = new VoiceScheduler(
+      config,
+      sinkOverride
+        ? { backend, sink: sinkOverride, phraseCache }
+        : { backend, phraseCache },
+      opts.events ?? {},
+    );
+
+    // Wire the voice lifecycle. The lifecycle starts in `voice-off` —
+    // heavy resources (TTS + ASR mmap regions) are loaded only when
+    // `arm()` is called. The default loaders derive an mmap-style
+    // handle from the bundle's `tts/` and `asr/` directories so that
+    // production paths get real eviction calls; tests inject
+    // `lifecycleLoaders` to assert the disarm path.
+    const registry = opts.sharedResources ?? new SharedResourceRegistry();
+    const loaders =
+      opts.lifecycleLoaders ??
+      defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiCtx);
+    const lifecycle = new VoiceLifecycle({ registry, loaders });
+
+    return new EngineVoiceBridge(
+      scheduler,
+      backend,
+      opts.bundleRoot,
+      lifecycle,
+      ffiHandle,
+      ffiCtx,
+    );
+  }
+
+  /**
+   * Lazy-load TTS + ASR mmap regions and the voice scheduler nodes via
+   * the lifecycle state machine. Idempotent for repeated calls in
+   * `voice-on` (returns the existing armed resources). Surfaces RAM
+   * pressure / mmap-fail / kernel-missing as `VoiceLifecycleError` —
+   * see `lifecycle.ts` for the full error taxonomy.
+   */
+  async arm(): Promise<void> {
+    if (this.lifecycle.current().kind === "voice-on") return;
+    await this.lifecycle.arm();
+  }
+
+  /**
+   * Drain in-flight TTS, settle the scheduler, then disarm the
+   * lifecycle. Disarm calls `evictPages()` (madvise / VirtualUnlock
+   * equivalent) on the TTS + ASR mmap regions and releases every
+   * voice-only ref. Speaker preset + phrase cache survive in the
+   * registry as small LRU entries (KB-scale; not worth evicting).
+   */
+  async disarm(): Promise<void> {
+    if (this.lifecycle.current().kind !== "voice-on") return;
+    await this.settle();
+    await this.lifecycle.disarm();
+  }
+
+  /**
+   * Forward an accepted text token from the verifier into the scheduler.
+   * Tokens that fill a phrase trigger TTS dispatch on the same scheduler
+   * tick (AGENTS.md §4 — no buffering past phrase boundaries).
+   */
+  async pushAcceptedToken(
+    token: TextToken,
+    acceptedAt = Date.now(),
+  ): Promise<void> {
+    await this.scheduler.accept(token, acceptedAt);
+  }
+
+  /**
+   * DFlash rejection → rollback queue. The scheduler cancels any
+   * in-flight TTS forward pass for phrases that overlap the rejected
+   * token range and emits an `onRollback` event for observability.
+   * Already-played audio cannot be unplayed; the chunker is sized so
+   * rollback is rare and cheap.
+   */
+  async pushRejectedRange(range: RejectedTokenRange): Promise<void> {
+    await this.scheduler.reject(range);
+  }
+
+  /**
+   * Voice activity detected on the mic input → cancel everything.
+   * Drains the ring buffer immediately, flushes the chunker queue, and
+   * marks every in-flight cancel signal so synthesise loops exit at the
+   * next kernel boundary (AGENTS.md §4 — barge-in cancellation MUST be
+   * within one kernel tick).
+   */
+  triggerBargeIn(): void {
+    this.scheduler.bargeIn.onMicActive();
+  }
+
+  /**
+   * Drain pending phrase data and wait for in-flight TTS to settle.
+   * Used at the end of a turn so callers can synchronise on a quiescent
+   * scheduler before they tear it down.
+   */
+  async settle(): Promise<void> {
+    await this.scheduler.flushPending();
+    await this.scheduler.waitIdle();
+  }
+
+  /** Diagnostic accessor — bundle root the bridge is wired against. */
+  bundlePath(): string {
+    return this.bundleRoot;
+  }
+}
+
+/**
+ * Default lifecycle loaders derived from the bundle layout (per
+ * AGENTS.md §2: `tts/omnivoice-<size>.gguf` + `asr/...`).
+ *
+ * When a live `ffi`/`ctx` pair is passed in, the returned mmap handles'
+ * `evictPages()` calls forward to `ffi.mmapEvict(ctx, "tts" | "asr")` —
+ * the C ABI declared in `scripts/omnivoice-fuse/ffi.h`. The real fused
+ * build implements this against `madvise(MADV_DONTNEED)` on POSIX and
+ * `VirtualUnlock + OfferVirtualMemory` on Windows. The stub library
+ * returns `ELIZA_ERR_NOT_IMPLEMENTED`, which the binding raises as
+ * `VoiceLifecycleError({code:"kernel-missing"})`.
+ *
+ * When `ffi` is null, `evictPages()` is a documented no-op — used by
+ * the stub TTS path in tests + dev (no real mmap exists, nothing to
+ * evict). The lifecycle test still asserts the call shape via injected
+ * mocks (`lifecycleLoaders` opt).
+ */
+function defaultLifecycleLoaders(
+  bundleRoot: string,
+  ffi: ElizaInferenceFfi | null,
+  ctx: ElizaInferenceContextHandle | null,
+): VoiceLifecycleLoaders {
+  return {
+    loadTtsRegion: async () =>
+      bundleMmapRegion(path.join(bundleRoot, "tts"), "tts", ffi, ctx),
+    loadAsrRegion: async () =>
+      bundleMmapRegion(path.join(bundleRoot, "asr"), "asr", ffi, ctx),
+    loadVoiceCaches: async () => ({
+      id: `voice-caches:${bundleRoot}`,
+      async release() {
+        // Caches stay live in the SpeakerPresetCache + PhraseCache
+        // singletons; the registry refcount is the only thing that
+        // drops on disarm.
+      },
+    }),
+    loadVoiceSchedulerNodes: async () => ({
+      id: `voice-scheduler-nodes:${bundleRoot}`,
+      async release() {
+        // Scheduler nodes (chunker, rollback, ring buffer, barge-in)
+        // are owned by the bridge's `scheduler` field — no extra
+        // teardown beyond the refcount drop.
+      },
+    }),
+  };
+}
+
+/**
+ * Build an `MmapRegionHandle` for a bundle subdirectory. Refuses to
+ * fabricate a region when the directory is missing — that surfaces as
+ * `VoiceLifecycleError` via the lifecycle's `arm-failed`/`mmap-fail`
+ * mapping (no silent fallback to a smaller voice model — AGENTS.md §3).
+ *
+ * `evictPages()` forwards to the FFI binding when one is supplied. With
+ * no FFI handle (stub mode), the call is a deliberate no-op — there is
+ * nothing to evict because no real mmap was made. The lifecycle test
+ * still asserts the call shape via injected mocks.
+ */
+function bundleMmapRegion(
+  dir: string,
+  kind: "tts" | "asr",
+  ffi: ElizaInferenceFfi | null,
+  ctx: ElizaInferenceContextHandle | null,
+): MmapRegionHandle {
+  if (!existsSync(dir)) {
+    throw new Error(
+      `[voice] mmap MAP_FAILED: ${kind} directory missing at ${dir}`,
+    );
+  }
+  // Stat the directory to get a stable inode for id derivation. Real
+  // FFI will mmap each weight file independently; this default loader
+  // collapses them into one region per kind for refcount purposes.
+  const st = statSync(dir);
+  return {
+    id: `mmap:${kind}:${st.ino}`,
+    path: dir,
+    sizeBytes: st.size,
+    async evictPages() {
+      if (ffi && ctx !== null) {
+        // Real fused build: madvise / VirtualUnlock through the C ABI.
+        // Throws VoiceLifecycleError on a negative return — the
+        // lifecycle catches and re-classifies via `disarm-failed`.
+        ffi.mmapEvict(ctx, kind);
+      }
+      // Else: no FFI handle (stub TTS / no fused build) — nothing to
+      // evict. Documented no-op.
+    },
+    async release() {
+      // The FFI owns the actual mmap; release is a refcount drop on
+      // the JS side. The fused build's destroy path flushes any
+      // remaining pages when the context is destroyed.
+    },
+  };
+}
+
+/** Re-export for the engine and tests that want the default loader. */
+export { defaultLifecycleLoaders };
+
+/**
+ * Platform-specific shared-library suffix for the fused omnivoice build.
+ * macOS dylib, Linux/Android so. Windows builds aren't on the device
+ * matrix yet (AGENTS.md §2 tier table) so we don't synthesise a `.dll`
+ * suffix here.
+ */
+function libraryFilename(): string {
+  return process.platform === "darwin"
+    ? "libelizainference.dylib"
+    : "libelizainference.so";
+}

@@ -18,16 +18,18 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@elizaos/core": ["./../../../packages/core/dist/index.d.ts"],
+      "@elizaos/shared": ["./../../../packages/shared/dist/index.d.ts"]
     },
     "target": "ES2017"
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
+    ".next-build/types/**/*.ts",
     ".next/types/**/*.ts",
-    "next-env.d.ts",
-    ".next-build/types/**/*.ts"
+    "next-env.d.ts"
   ],
   "exclude": ["node_modules"]
 }

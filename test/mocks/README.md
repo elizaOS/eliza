@@ -24,6 +24,7 @@ at those local URLs via env vars instead of hitting real services.
 | `environments/telegram.json`          | Telegram Bot API (HTTP)              | `ELIZA_MOCK_TELEGRAM_BASE`                               |
 | `environments/linear.json`            | Linear GraphQL API                   | `ELIZA_MOCK_LINEAR_BASE`                                 |
 | `environments/shopify.json`           | Shopify Admin API 2024-04            | `ELIZA_MOCK_SHOPIFY_BASE`                                |
+| `environments/payments.json`          | Payment requests and callbacks       | `ELIZA_MOCK_PAYMENT_BASE` / `ELIZA_MOCK_PAYMENTS_BASE`  |
 | `environments/anthropic.json`         | Anthropic Messages API               | `ELIZA_MOCK_ANTHROPIC_BASE`                              |
 | `environments/openai.json`            | OpenAI Chat / Embeddings / Models    | `ELIZA_MOCK_OPENAI_BASE`                                 |
 | `environments/vision.json`            | Hosted vision analysis API           | `ELIZA_MOCK_VISION_BASE`                                 |
@@ -90,7 +91,8 @@ bunx @mockoon/cli start \
   --data test/mocks/environments/browser-workspace.json \
   --data test/mocks/environments/bluebubbles.json \
   --data test/mocks/environments/github.json \
-  --data test/mocks/environments/lifeops-samantha.json
+  --data test/mocks/environments/payments.json \
+  --data test/mocks/environments/lifeops-presence-active.json
 ```
 
 Then point the clients at the mocks:
@@ -110,7 +112,9 @@ export ELIZA_IMESSAGE_BACKEND=bluebubbles
 export ELIZA_BLUEBUBBLES_URL=http://127.0.0.1:3008
 export ELIZA_BLUEBUBBLES_PASSWORD=mock-bluebubbles-password
 export ELIZA_MOCK_GITHUB_BASE=http://127.0.0.1:3009
-export ELIZA_MOCK_LIFEOPS_SAMANTHA_BASE=http://127.0.0.1:3010
+export ELIZA_MOCK_PAYMENT_BASE=http://127.0.0.1:3010
+export ELIZA_MOCK_PAYMENTS_BASE=http://127.0.0.1:3010
+export ELIZA_MOCK_LIFEOPS_PRESENCE_ACTIVE_BASE=http://127.0.0.1:3011
 ```
 
 ## Test usage
@@ -198,30 +202,30 @@ MTProto through `telegram-local-client.ts` and already exposes a dependency
 injection seam (`TelegramLocalClientDeps`) for tests. Adding a fake Telegram
 HTTP gateway would not match a real consumer path.
 
-## Samantha interaction scenario mocks
+## Presence-active interaction scenario mocks
 
-`fixtures/lifeops-samantha.ts` is the executable catalog for the seven assistant
+`fixtures/lifeops-presence-active.ts` is the executable catalog for the seven assistant
 interaction moves from the Samantha/Theodore setup and email scene: intake
 affect, assistant identity, permissioned context scan, bulk email curation,
 contact resolution, document review, and proactive multi-hop follow-up.
 
-The in-process runner serves the catalog only from the `lifeops-samantha` mock
+The in-process runner serves the catalog only from the `lifeops-presence-active` mock
 base URL:
 
-- `GET /__mock/lifeops/samantha/scenarios` returns scenario summaries, provider
+- `GET /__mock/lifeops/presence-active/scenarios` returns scenario summaries, provider
   coverage, API example counts, and edge-case counts.
-- `GET /__mock/lifeops/samantha/scenarios/:id` returns the full scenario with
+- `GET /__mock/lifeops/presence-active/scenarios/:id` returns the full scenario with
   lined-up mock records, API examples, expected workflow, assertions, safety
   gates, and edge cases.
-- `POST /__mock/lifeops/samantha/tasks` starts a synthetic long-running task for
+- `POST /__mock/lifeops/presence-active/tasks` starts a synthetic long-running task for
   the multi-hop vendor packet scenario.
-- `GET /__mock/lifeops/samantha/tasks/:id` returns the current deterministic
+- `GET /__mock/lifeops/presence-active/tasks/:id` returns the current deterministic
   task snapshot without advancing it.
-- `POST /__mock/lifeops/samantha/tasks/:id/advance` moves the in-process task
+- `POST /__mock/lifeops/presence-active/tasks/:id/advance` moves the in-process task
   through queued, running, waiting-for-input, and completed snapshots.
 
 For manual Mockoon API testing, load
-`test/mocks/environments/lifeops-samantha.json`. It exposes representative local
+`test/mocks/environments/lifeops-presence-active.json`. It exposes representative local
 LifeOps endpoints for onboarding affect, organization scans, email curation,
 explicit preference memory, contact resolution, document proofread,
 long-running task polling, task advance, and edge variants for provider
@@ -258,6 +262,7 @@ falls out of sync.
 | `telegram-bot-http`          | `GET /bot<token>/getMe`; `POST /bot<token>/sendMessage`; `POST /bot<token>/sendPhoto`; `POST /bot<token>/editMessageText`; `POST /bot<token>/sendChatAction`; `GET /bot<token>/getFile`; `POST /bot<token>/answerCallbackQuery`; `GET /bot<token>/getUpdates (drains pending queue)`; `POST /bot<token>/setWebhook`; `POST /bot<token>/deleteWebhook`; `POST /bot<token>/answerInlineQuery`; Test-only inject at /__mock/telegram/inbound (also /__mock/telegram/inbound-update alias) | No MTProto; only Bot API HTTP surface; No media types beyond photo (audio, video, document, sticker); No inline keyboards or reply markup payload validation; No chat/group admin endpoints |
 | `linear`                     | POST /graphql — Viewer query; POST /graphql — Issues query; POST /graphql — Teams query; POST /graphql — Team query; POST /graphql — Users query; POST /graphql — Projects query; POST /graphql — IssueCreate mutation (stateful issue store); POST /graphql — IssueUpdate mutation; POST /graphql — IssueDelete mutation | No webhook delivery simulation; No full GraphQL grammar (fragments, aliases, pagination cursors); No attachment, comment, cycle, or roadmap surfaces; No rate-limit or permission-error variants |
 | `shopify`                    | GET /admin/api/2024-10/products.json; POST /admin/api/2024-10/products.json; GET /admin/api/2024-10/products/:id.json; GET /admin/api/2024-10/orders.json; GET /admin/api/2024-10/orders/:id.json; GET /admin/api/2024-10/customers.json; GET /admin/api/2024-10/customers/:id.json; GET /admin/api/2024-10/inventory_levels.json; GET /admin/api/2024-10/shop.json | No cart, checkout, or fulfillment surfaces; No webhook delivery or signature verification; No metafields, collections, discounts, or gift cards; No pagination, filter query params, or error variants |
+| `payments`                   | POST /v1/payment-requests — create a dollar-denominated payment request; GET /v1/payment-requests/:id — status lookup; POST /v1/payment-requests/:id/pay — mark paid/accepted with transaction hash; POST /v1/payment-requests/:id/fail — mark failed and attach a reason; POST /api/v1/apps/:appId/charges — Cloud-style app charge request; GET /api/v1/apps/:appId/charges/:chargeId — public charge status; POST /api/v1/apps/:appId/charges/:chargeId/checkout — mock Stripe/OxaPay checkout link; GET /__mock/payments/requests — inspect payment request, app charge, and callback ledger; DELETE /__mock/payments/requests and POST /__mock/payments/reset — reset state; Signed HTTP callbacks for paid and failed transitions; request ledger metadata | No card-network, wallet, OxaPay, Stripe, or x402 protocol validation; No real settlement, exchange-rate, dispute, refund, or chargeback lifecycle; No delayed webhook retries; callback delivery is synchronous in the fixture |
 | `anthropic`                  | POST /v1/messages — text response (static baseline); POST /v1/messages — prompt-prefix-keyed text response (ping/echo/summarize/explain); POST /v1/messages — tool_use response (when tools present); POST /v1/messages — computer-use tool_use (screenshot first turn); POST /v1/messages — text after tool_result (computer-use follow-up); GET /v1/models | No streaming (Server-Sent Events) support; No message batches API; No Files API or vision image uploads; No prompt caching or token-budget headers                                                                                        |
 | `openai`                     | POST /v1/chat/completions; POST /v1/embeddings (deterministic 1536-dim vector seeded by sha256 of input); POST /v1/images/generations (placeholder image URL); GET /v1/models | No streaming (Server-Sent Events) support; No vision image uploads or image-in-content; No function-calling streaming or parallel tool calls; No Assistants v2 (threads, runs, vector stores); No fine-tuning, moderation, or audio endpoints |
 | `vision-analysis`            | POST /v1/vision/analyze — cat-fixture (default; legacy path); POST /v1/analyze — full analyze; sha256 image-bytes hash → fixture, fallback to image_hint, fallback to generic; POST /v1/describe — caption only; POST /v1/objects — object detection only; POST /v1/text — OCR only; Three deterministic fixture hints: cat-fixture, document-fixture, street-fixture; Generic 'no recognizable content' response for unknown image hashes | No real computer vision; responses are deterministic fixture data; No OCR confidence scores or word-level bounding boxes; No multi-image batch analysis; No streaming or async result polling                                              |

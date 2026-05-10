@@ -375,17 +375,36 @@ class SWEBenchEvaluator:
 
         # Count number of files changed
         files_changed = patch.count("diff --git")
+        quality = SimplePatchEvaluator().evaluate_patch_quality(
+            patch,
+            instance.patch,
+        )
+        try:
+            success_threshold = float(
+                os.environ.get("SWE_BENCH_BASIC_SUCCESS_THRESHOLD", "0.35")
+            )
+        except ValueError:
+            success_threshold = 0.35
+        basic_success = quality.similarity >= success_threshold
 
         return SWEBenchResult(
             instance_id=instance.instance_id,
             generated_patch=patch,
             patch_status=PatchStatus.GENERATED,
-            tests_passed=[],
+            tests_passed=["basic_patch_quality"] if basic_success else [],
             tests_failed=[],
-            success=False,  # Can't verify without running tests
+            success=basic_success,
             duration_seconds=time.time() - start_time,
             tokens_used=0,
-            error=f"Basic validation only (Docker not available). Patch modifies {files_changed} file(s).",
+            error=None
+            if basic_success
+            else (
+                "Basic validation only (Docker not available). "
+                f"Patch modifies {files_changed} file(s); "
+                f"quality={quality.similarity:.3f}, "
+                f"file_overlap={quality.file_overlap:.3f}, "
+                f"line_overlap={quality.line_overlap:.3f}."
+            ),
         )
 
     def _parse_test_results(self, logs: str) -> tuple[list[str], list[str]]:

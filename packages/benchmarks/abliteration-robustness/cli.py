@@ -99,7 +99,7 @@ def _fallback_prompts(limit: int) -> list[str]:
 
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="abliteration-robustness")
-    p.add_argument("--provider", default="vllm", choices=("vllm", "openai", "groq", "openrouter", "mock"))
+    p.add_argument("--provider", default="vllm", choices=("vllm", "openai", "groq", "openrouter", "cerebras", "mock"))
     p.add_argument("--model", required=True)
     p.add_argument("--base-url", default=None)
     p.add_argument("--api-key-env", default="OPENAI_API_KEY")
@@ -124,13 +124,16 @@ def _make_client(args: argparse.Namespace):
         base_url = "https://api.groq.com/openai/v1"
     if not base_url and args.provider == "openrouter":
         base_url = "https://openrouter.ai/api/v1"
+    if not base_url and args.provider == "cerebras":
+        base_url = "https://api.cerebras.ai/v1"
     if not base_url:
         raise SystemExit("--base-url required for vllm provider")
     api_key_env = args.api_key_env
-    if api_key_env == "OPENAI_API_KEY" and args.provider in {"groq", "openrouter"}:
+    if api_key_env == "OPENAI_API_KEY" and args.provider in {"groq", "openrouter", "cerebras"}:
         api_key_env = {
             "groq": "GROQ_API_KEY",
             "openrouter": "OPENROUTER_API_KEY",
+            "cerebras": "CEREBRAS_API_KEY",
         }[args.provider]
     api_key = os.environ.get(api_key_env) or os.environ.get(args.api_key_env, "EMPTY")
     return OpenAI(base_url=base_url, api_key=api_key)
@@ -156,7 +159,15 @@ def main() -> int:
     elif args.provider == "mock":
         prompts = _fallback_prompts(args.max_examples)
     else:
-        prompts = _load_prompts_from_hf(args.dataset, args.max_examples)
+        try:
+            prompts = _load_prompts_from_hf(args.dataset, args.max_examples)
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "could not load HF dataset %s (%s); using embedded smoke prompts",
+                args.dataset,
+                exc,
+            )
+            prompts = _fallback_prompts(args.max_examples)
     if not prompts:
         raise SystemExit("no prompts loaded")
     log.info("loaded %d harmless prompts", len(prompts))

@@ -1,8 +1,0 @@
-{
-  "message": "Start a research thread titled 'elizaOS overview' — use CREATE_RESEARCH to open the thread and WEB_SEARCH to populate it with initial findings.",
-  "expect": {
-    "stages": ["planner", "subPlanner"],
-    "contexts": ["research_workflow"],
-    "rationale": "Sub-planner scenario: the RESEARCH umbrella action has subActions=[WEB_SEARCH, WRITE_DOCUMENT], which should trigger runSubPlanner descent. Success = trajectory includes a subPlanner stage."
-  }
-}

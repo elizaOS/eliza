@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-todos",
-  "version": "0.1.0",
-  "description": "TODO_WRITE action and a current-todos provider. Per-conversation in-memory todo list with markdown rendering, mirroring Claude Code's TodoWrite tool.",
+  "version": "2.0.0-beta.1",
+  "description": "User-scoped persistent todos with CRUD. Single TODO umbrella action (op-based: write/create/update/complete/cancel/delete/list/clear) and a currentTodosProvider that surfaces the user's pending + in-progress todos to the planner each turn. Backed by drizzle pgSchema('todos').",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -33,17 +33,21 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1",
+    "drizzle-orm": "^0.45.1"
+  },
+  "peerDependencies": {
+    "@elizaos/plugin-sql": "2.0.0-beta.1"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun --hot build.ts",
-    "clean": "rm -rf dist .turbo node_modules",
+    "clean": "rm -rf dist .turbo",
     "test": "vitest run",
     "typecheck": "bunx tsc --noEmit -p tsconfig.json",
     "lint": "echo \"Lint skipped\"",

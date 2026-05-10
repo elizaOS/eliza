@@ -4,7 +4,7 @@
  * Handles installation of skill dependencies using various package managers:
  * - brew (Homebrew, macOS)
  * - apt (apt-get, Debian/Ubuntu Linux)
- * - node (npm/pnpm/bun)
+ * - node (bun/npm)
  * - pip (Python pip/pip3)
  * - cargo (Rust cargo)
  *
@@ -26,7 +26,7 @@ import type {
 const DEFAULT_TIMEOUT = 300_000;
 
 /** Node package managers in preference order */
-const NODE_MANAGERS = ["bun", "pnpm", "npm", "yarn"] as const;
+const NODE_MANAGERS = ["bun", "npm", "yarn"] as const;
 
 // ============================================================
 // PLATFORM UTILITIES
@@ -69,9 +69,8 @@ async function binaryExists(name: string): Promise<boolean> {
  * Order of preference:
  * 1. OTTO_NODE_MANAGER env var if set
  * 2. bun (fastest)
- * 3. pnpm (efficient)
- * 4. npm (universal fallback)
- * 5. yarn
+ * 3. npm (universal fallback)
+ * 4. yarn
  */
 export async function getPreferredNodeManager(): Promise<string | null> {
 	// Check for explicit preference
@@ -165,7 +164,7 @@ async function resolveNodeManager(command: string): Promise<string> {
 	const manager = await getPreferredNodeManager();
 	if (!manager) {
 		throw new Error(
-			"No Node.js package manager found (tried bun, pnpm, npm, yarn)",
+			"No Node.js package manager found (tried bun, npm, yarn)",
 		);
 	}
 

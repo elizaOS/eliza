@@ -1,5 +1,1 @@
-/**
- * Export all Google Chat actions.
- */
-
-export { GOOGLE_CHAT_MESSAGE_OP_ACTION, messageOp } from "./messageOp.js";
+// Google Chat messaging routes through MESSAGE connector hooks.

@@ -9,12 +9,12 @@ import { logger, stringToUuid } from "@elizaos/core";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
-} from "../api/conversation-metadata.js";
-import { hasAdminAccess } from "../security/access.js";
+} from "../api/conversation-metadata.ts";
+import { hasAdminAccess } from "../security/access.ts";
 import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
-} from "./conversation-utils.js";
+} from "../shared/conversation-format.ts";
 
 const MAX_TERMINAL_MESSAGES = 8;
 

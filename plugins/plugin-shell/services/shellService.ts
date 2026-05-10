@@ -56,6 +56,7 @@ import {
   markBackgrounded,
   markExited,
 } from "./processRegistry";
+import { isCloudExecutionMode, shouldUseSandboxExecution } from "@elizaos/shared";
 
 const DEFAULT_MAX_OUTPUT = clampNumber(
   readEnvInt("SHELL_MAX_OUTPUT_CHARS"),
@@ -71,6 +72,25 @@ const DEFAULT_PENDING_MAX_OUTPUT = clampNumber(
 );
 const DEFAULT_BACKGROUND_MS = clampNumber(readEnvInt("SHELL_BACKGROUND_MS"), 10_000, 10, 120_000);
 const DEFAULT_TIMEOUT_SEC = 1800; // 30 minutes
+
+interface RuntimeSandboxManager {
+  getState?: () => string;
+  isReady?: () => boolean;
+  start?: () => Promise<void>;
+  exec: (options: {
+    command: string;
+    workdir?: string;
+    env?: Record<string, string>;
+    timeoutMs?: number;
+    stdin?: string;
+  }) => Promise<{
+    exitCode: number;
+    stdout: string;
+    stderr: string;
+    durationMs: number;
+    executedInSandbox: boolean;
+  }>;
+}
 
 export class ShellService extends Service {
   public static serviceType = "shell";
@@ -115,6 +135,75 @@ export class ShellService extends Service {
     return "Execute shell commands with PTY support, background execution, and session management";
   }
 
+  private getSandboxManager(): RuntimeSandboxManager | null {
+    const candidate = (
+      this.runtime as unknown as {
+        getSandboxManager?: () => RuntimeSandboxManager | null;
+      }
+    ).getSandboxManager?.();
+    return candidate ?? null;
+  }
+
+  private toSandboxWorkdir(workdir: string): string | undefined {
+    const relative = path.relative(process.cwd(), path.resolve(workdir));
+    if (relative === "") return "/workspace";
+    if (!relative.startsWith("..") && !path.isAbsolute(relative)) {
+      return `/workspace/${relative}`;
+    }
+    return undefined;
+  }
+
+  private async runSandboxCommand(
+    command: string,
+    workdir: string,
+    timeoutMs: number,
+    env?: Record<string, string>
+  ): Promise<CommandResult> {
+    const sandboxManager = this.getSandboxManager();
+    if (!sandboxManager) {
+      logger.error("[shell:sandbox] local-safe denied: SandboxManager unavailable");
+      return {
+        success: false,
+        stdout: "",
+        stderr:
+          "local-safe mode requires SandboxManager, but no sandbox manager is available for command execution.",
+        exitCode: 1,
+        error: "Sandbox unavailable",
+        executedIn: workdir,
+      };
+    }
+
+    const sandboxWorkdir = this.toSandboxWorkdir(workdir);
+    if (!sandboxWorkdir) {
+      return {
+        success: false,
+        stdout: "",
+        stderr: `local-safe mode can only execute inside the sandbox workspace; cwd is outside process workspace: ${workdir}`,
+        exitCode: 1,
+        error: "Sandbox unavailable",
+        executedIn: workdir,
+      };
+    }
+
+    logger.info(`[shell:sandbox] routing exec via SandboxManager: ${command.substring(0, 100)}`);
+    const result = await sandboxManager.exec({
+      command,
+      workdir: sandboxWorkdir,
+      timeoutMs,
+      env,
+    });
+    logger.info(
+      `[shell:sandbox] exec completed: exit=${result.exitCode} duration=${result.durationMs}ms executedInSandbox=${result.executedInSandbox}`
+    );
+    return {
+      success: result.exitCode === 0,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+      executedIn: workdir,
+    };
+  }
+
   /**
    * Set scope key for session isolation
    */
@@ -137,8 +226,25 @@ export class ShellService extends Service {
       };
     }
 
+    if (isCloudExecutionMode(this.runtime)) {
+      logger.error("[shell:cloud] local exec disabled in cloud mode");
+      return {
+        success: false,
+        stdout: "",
+        stderr: "Local shell execution disabled in cloud mode.",
+        exitCode: 1,
+        error: "Local shell execution disabled in cloud mode.",
+        executedIn: this.currentDirectory,
+      };
+    }
+
     // Sandbox remote mode: route to host capability API
-    if (this.runtime && (this.runtime as unknown as Record<string, unknown>).sandboxMode) {
+    if (
+      !shouldUseSandboxExecution(this.runtime) &&
+      this.runtime &&
+      "sandboxMode" in this.runtime &&
+      this.runtime.sandboxMode
+    ) {
       const hostApiUrl =
         (this.runtime.getSetting("SANDBOX_HOST_API_URL") as string | null) ??
         "http://localhost:2138";
@@ -215,7 +321,9 @@ export class ShellService extends Service {
       return result;
     }
 
-    const result = await this.runCommandSimple(trimmedCommand);
+    const result = shouldUseSandboxExecution(this.runtime)
+      ? await this.runSandboxCommand(trimmedCommand, this.currentDirectory, 30_000)
+      : await this.runCommandSimple(trimmedCommand);
 
     if (result.success) {
       const fileOps = this.detectFileOperations(trimmedCommand, this.currentDirectory);
@@ -243,6 +351,17 @@ export class ShellService extends Service {
         durationMs: 0,
         aggregated: "Invalid command",
         reason: "Command must be a non-empty string",
+      };
+    }
+
+    if (isCloudExecutionMode(this.runtime)) {
+      logger.error("[shell:cloud] local exec disabled in cloud mode");
+      return {
+        status: "failed",
+        exitCode: 1,
+        durationMs: 0,
+        aggregated: "",
+        reason: "Local shell execution disabled in cloud mode.",
       };
     }
 
@@ -300,6 +419,40 @@ export class ShellService extends Service {
         : DEFAULT_TIMEOUT_SEC;
     const usePty = options.pty === true;
     const notifyOnExit = options.notifyOnExit !== false;
+
+    if (shouldUseSandboxExecution(this.runtime)) {
+      if (backgroundRequested || yieldRequested || usePty) {
+        warnings.push(
+          "Warning: local-safe sandbox execution runs synchronously; background, yield, and PTY options are ignored."
+        );
+      }
+      const startedAt = Date.now();
+      const sandboxResult = await this.runSandboxCommand(
+        trimmedCommand,
+        workdir,
+        timeoutSec * 1000,
+        mergedEnv
+      );
+      const warningText = warnings.length ? `${warnings.join("\n")}\n\n` : "";
+      const aggregated = [sandboxResult.stdout, sandboxResult.stderr].filter(Boolean).join("\n");
+      if (!sandboxResult.success) {
+        return {
+          status: "failed",
+          exitCode: sandboxResult.exitCode,
+          durationMs: Date.now() - startedAt,
+          aggregated,
+          cwd: workdir,
+          reason: `${warningText}${sandboxResult.error ?? sandboxResult.stderr}`,
+        };
+      }
+      return {
+        status: "completed",
+        exitCode: sandboxResult.exitCode,
+        durationMs: Date.now() - startedAt,
+        aggregated: `${warningText}${aggregated || "(no output)"}`,
+        cwd: workdir,
+      };
+    }
 
     // Run the process
     const handle = await this.runExecProcess({

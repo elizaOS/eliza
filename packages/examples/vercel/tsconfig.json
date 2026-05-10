@@ -14,5 +14,6 @@
     "types": ["node", "bun-types"]
   },
   "include": ["*.ts", "typescript/**/*.ts", "api/**/*.ts"],
-  "exclude": ["node_modules", "dist", "rust"]
+  "exclude": ["node_modules", "dist", "rust"],
+  "extends": "../../../tsconfig.dist-paths.json"
 }

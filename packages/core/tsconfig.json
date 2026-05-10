@@ -4,6 +4,8 @@
 	"compilerOptions": {
 		"outDir": "./dist",
 		"rootDir": "../../",
+		"sourceMap": false,
+		"inlineSourceMap": false,
 		"typeRoots": [
 			"../../node_modules/@types",
 			"../../node_modules/.bun/node_modules/@types",
@@ -26,20 +28,30 @@
 		"skipLibCheck": true,
 		"paths": {
 			"@elizaos/core": ["./src/index.node.ts"],
-			"@elizaos/core/*": ["./src/*"],
-			"@elizaos/app-core": ["../app-core/src/index.ts"],
-			"@elizaos/app-core/*": ["../app-core/src/*"],
 			"@elizaos/shared": ["../shared/src/index.ts"],
-			"@elizaos/shared/*": ["../shared/src/*"]
+			"@elizaos/plugin-elizacloud": ["../../plugins/plugin-elizacloud/src/index.node.ts"],
+			"@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+			"@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
+			"@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+			"@elizaos/plugin-computeruse": [
+				"../../plugins/plugin-computeruse/src/index.ts"
+			],
+			"@elizaos/plugin-whatsapp": ["../../plugins/plugin-whatsapp/src/index.ts"],
+			"@elizaos/app-task-coordinator": [
+				"../../plugins/app-task-coordinator/src/api/coordinator-types.ts"
+			]
 		}
 	},
-	"include": ["src/**/*.ts", "../@schemas/**/*.ts"],
+	"include": [
+		"src/**/*.ts",
+		"../@schemas/**/*.ts",
+		"../agent/src/external-modules.d.ts"
+	],
 	"exclude": [
-		"src/**/*.test.ts",
-		"src/**/*.spec.ts",
-		"src/**/__tests__/**",
 		"vitest.config.ts",
 		"node_modules",
-		"dist"
+		"dist",
+		"src/**/__tests__/**",
+		"src/**/*.test.ts"
 	]
 }

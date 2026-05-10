@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { readJson } from "../helpers/json-body";
+
+type EmbeddingsResponse = {
+  data?: unknown;
+  embeddings?: unknown;
+};
 
 /**
  * Media Generation API E2E Tests
@@ -16,6 +22,32 @@ describe("Video Generation API", () => {
   test("POST /api/v1/generate-video validates input", async () => {
     const response = await api.post("/api/v1/generate-video", {}, { authenticated: true });
     expect([400, 402, 503]).toContain(response.status);
+  });
+});
+
+describe("Music Generation API", () => {
+  test("POST /api/v1/generate-music requires auth", async () => {
+    const response = await api.post("/api/v1/generate-music", {
+      prompt: "A test music prompt",
+    });
+    expect([401, 403]).toContain(response.status);
+  });
+
+  test("POST /api/v1/generate-music validates input", async () => {
+    const response = await api.post("/api/v1/generate-music", {}, { authenticated: true });
+    expect(response.status).toBe(400);
+  });
+
+  test("POST /api/v1/generate-music rejects unsupported models before provider I/O", async () => {
+    const response = await api.post(
+      "/api/v1/generate-music",
+      {
+        prompt: "A short launch track",
+        model: "unknown/music-model",
+      },
+      { authenticated: true },
+    );
+    expect(response.status).toBe(400);
   });
 });
 
@@ -76,7 +108,7 @@ describe("Embeddings API", () => {
     expect([200, 402, 429, 503]).toContain(response.status);
 
     if (response.status === 200) {
-      const body = (await response.json()) as any;
+      const body = await readJson<EmbeddingsResponse>(response);
       expect(body.data || body.embeddings).toBeTruthy();
     }
   });

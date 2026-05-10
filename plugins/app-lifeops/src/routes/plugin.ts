@@ -1,14 +1,32 @@
 import type http from "node:http";
+import { sendJson as httpSendJson, sendJsonError as httpSendJsonError } from "@elizaos/core";
 import { TLSSocket } from "node:tls";
+import { handleConnectorAccountRoutes } from "@elizaos/agent";
 import {
-  readJsonBody as httpReadJsonBody,
-  sendJson as httpSendJson,
-  sendJsonError as httpSendJsonError,
-} from "@elizaos/agent/api/http-helpers";
-import type { AgentRuntime, Plugin, Route, UUID } from "@elizaos/core";
-import { resolveCanonicalOwnerId } from "@elizaos/core";
+  readJsonBody as httpReadJsonBody } from "@elizaos/shared";
+import type {
+  AgentRuntime,
+  Plugin,
+  RoleName,
+  RolesWorldMetadata,
+  Route,
+  UUID,
+} from "@elizaos/core";
+import {
+  ROLE_RANK,
+  resolveCanonicalOwnerId,
+  resolveEntityRole,
+  stringToUuid,
+} from "@elizaos/core";
+import { createRuntimeScheduledTaskRunner } from "../lifeops/scheduled-task/runtime-wiring.js";
+import { handleEntityRoutes } from "./entities.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
+import { handleRelationshipRoutes } from "./relationships.js";
+import {
+  makeScheduledTasksRouteHandler,
+  SCHEDULED_TASKS_ROUTE_PATHS,
+} from "./scheduled-tasks.js";
 import { handleSleepRoutes } from "./sleep-routes.js";
 import type { WebsiteBlockerRouteContext } from "./website-blocker-routes.js";
 import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
@@ -61,7 +79,93 @@ function requestBaseUrl(req: http.IncomingMessage): string {
 
 function routeOwnerEntityId(runtime: AgentRuntime | null): UUID | null {
   const ownerId = runtime ? resolveCanonicalOwnerId(runtime) : null;
-  return typeof ownerId === "string" ? (ownerId as UUID) : null;
+  if (typeof ownerId === "string" && ownerId.trim()) {
+    return ownerId as UUID;
+  }
+  if (
+    runtime &&
+    typeof runtime.agentId === "string" &&
+    runtime.agentId.trim()
+  ) {
+    return stringToUuid(`${runtime.agentId}-admin-entity`) as UUID;
+  }
+  return null;
+}
+
+function routeActorEntityId(
+  req: http.IncomingMessage,
+  runtime: AgentRuntime | null,
+): UUID | null {
+  const headerActor =
+    firstHeaderValue(req.headers["x-eliza-entity-id"]) ??
+    firstHeaderValue(req.headers["x-eliza-actor-entity-id"]);
+  if (headerActor) {
+    return headerActor as UUID;
+  }
+  return routeOwnerEntityId(runtime);
+}
+
+async function resolveRouteActorRole(
+  runtime: AgentRuntime,
+  actorEntityId: UUID,
+): Promise<RoleName> {
+  const ownerEntityId = routeOwnerEntityId(runtime);
+  if (ownerEntityId && actorEntityId === ownerEntityId) {
+    return "OWNER";
+  }
+
+  const worlds =
+    typeof runtime.getAllWorlds === "function"
+      ? await runtime.getAllWorlds()
+      : [];
+  let bestRole: RoleName = "GUEST";
+  for (const world of worlds ?? []) {
+    const metadata = (world?.metadata ?? {}) as RolesWorldMetadata;
+    const role = await resolveEntityRole(
+      runtime,
+      world,
+      metadata,
+      actorEntityId,
+    );
+    if (ROLE_RANK[role] > ROLE_RANK[bestRole]) {
+      bestRole = role;
+    }
+    if (ROLE_RANK[bestRole] >= ROLE_RANK.ADMIN) {
+      return bestRole;
+    }
+  }
+  return bestRole;
+}
+
+export async function requireLifeOpsRouteOwnerAdminAccess(args: {
+  req: http.IncomingMessage;
+  res: http.ServerResponse;
+  runtime: AgentRuntime | null;
+}): Promise<boolean> {
+  const { req, res, runtime } = args;
+  if (!runtime) {
+    error(res, "Agent runtime is not available", 503);
+    return false;
+  }
+
+  const actorEntityId = routeActorEntityId(req, runtime);
+  if (!actorEntityId) {
+    error(res, "LifeOps routes require OWNER or ADMIN access", 403);
+    return false;
+  }
+
+  try {
+    const role = await resolveRouteActorRole(runtime, actorEntityId);
+    if (ROLE_RANK[role] >= ROLE_RANK.ADMIN) {
+      return true;
+    }
+  } catch {
+    error(res, "LifeOps route access could not be verified", 403);
+    return false;
+  }
+
+  error(res, "LifeOps routes require OWNER or ADMIN access", 403);
+  return false;
 }
 
 function buildLifeOpsContext(
@@ -173,23 +277,6 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/gmail/batch-reply-send" },
   { type: "POST", path: "/api/lifeops/gmail/manage" },
   { type: "POST", path: "/api/lifeops/gmail/events/ingest" },
-  { type: "GET", path: "/api/lifeops/connectors/google/status" },
-  { type: "POST", path: "/api/lifeops/connectors/google/start" },
-  { type: "POST", path: "/api/lifeops/connectors/google/preference" },
-  {
-    type: "GET",
-    path: "/api/lifeops/connectors/google/callback",
-    public: true,
-    name: "lifeops.google.callback",
-  },
-  {
-    type: "GET",
-    path: "/api/lifeops/connectors/google/success",
-    public: true,
-    name: "lifeops.google.success",
-  },
-  { type: "GET", path: "/api/lifeops/connectors/google/accounts" },
-  { type: "POST", path: "/api/lifeops/connectors/google/disconnect" },
   { type: "GET", path: "/api/lifeops/connectors/x/status" },
   { type: "POST", path: "/api/lifeops/connectors/x/start" },
   {
@@ -294,6 +381,14 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/features/toggle" },
   // Browser extension self-registration.
   { type: "POST", path: "/api/lifeops/browser/register" },
+  // W1-E knowledge-graph: entities + relationships.
+  { type: "GET", path: "/api/lifeops/entities" },
+  { type: "POST", path: "/api/lifeops/entities" },
+  { type: "GET", path: "/api/lifeops/entities/resolve" },
+  { type: "POST", path: "/api/lifeops/entities/merge" },
+  { type: "GET", path: "/api/lifeops/relationships" },
+  { type: "POST", path: "/api/lifeops/relationships" },
+  { type: "POST", path: "/api/lifeops/relationships/observe" },
 ];
 
 const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
@@ -355,6 +450,13 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/occurrences/:id/snooze" },
   // /api/lifeops/website-access/callbacks/:key/resolve
   { type: "POST", path: "/api/lifeops/website-access/callbacks/:key/resolve" },
+  // W1-E knowledge graph dynamic routes.
+  { type: "GET", path: "/api/lifeops/entities/:id" },
+  { type: "PATCH", path: "/api/lifeops/entities/:id" },
+  { type: "POST", path: "/api/lifeops/entities/:id/identities" },
+  { type: "GET", path: "/api/lifeops/relationships/:id" },
+  { type: "PATCH", path: "/api/lifeops/relationships/:id" },
+  { type: "POST", path: "/api/lifeops/relationships/:id/retire" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -392,6 +494,32 @@ const TRAVEL_PROVIDER_RELAY_ROUTES: RouteSpec[] = [
   },
 ];
 
+const GOOGLE_CONNECTOR_ACCOUNT_ROUTES: RouteSpec[] = [
+  { type: "GET", path: "/api/connectors/google/accounts" },
+  { type: "POST", path: "/api/connectors/google/accounts" },
+  { type: "GET", path: "/api/connectors/google/accounts/:accountId" },
+  { type: "PATCH", path: "/api/connectors/google/accounts/:accountId" },
+  { type: "DELETE", path: "/api/connectors/google/accounts/:accountId" },
+  { type: "POST", path: "/api/connectors/google/accounts/:accountId/test" },
+  { type: "POST", path: "/api/connectors/google/accounts/:accountId/refresh" },
+  { type: "POST", path: "/api/connectors/google/accounts/:accountId/default" },
+  { type: "POST", path: "/api/connectors/google/oauth/start" },
+  { type: "GET", path: "/api/connectors/google/oauth/status" },
+  {
+    type: "GET",
+    path: "/api/connectors/google/oauth/callback",
+    public: true,
+    name: "connectors.google.oauth.callback",
+  },
+  {
+    type: "POST",
+    path: "/api/connectors/google/oauth/callback",
+    public: true,
+    name: "connectors.google.oauth.callback.post",
+  },
+  { type: "GET", path: "/api/connectors/google/audit/events" },
+];
+
 // ---------------------------------------------------------------------------
 // Build Plugin Route arrays
 // ---------------------------------------------------------------------------
@@ -403,6 +531,27 @@ interface CloudProxyConfigLike {
     apiKey?: string;
     baseUrl?: string;
     serviceKey?: string;
+  };
+}
+
+function withOwnerAdminGate(handler: PluginRouteHandler): PluginRouteHandler {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const agentRuntime = (runtime as AgentRuntime) ?? null;
+    const allowed = await requireLifeOpsRouteOwnerAdminAccess({
+      req: httpReq,
+      res: httpRes,
+      runtime: agentRuntime,
+    });
+    if (!allowed) {
+      return;
+    }
+    await handler(req as never, res as never, runtime as never);
   };
 }
 
@@ -425,7 +574,7 @@ function buildRawRoutes(
       type: spec.type,
       path: spec.path,
       rawPath: true,
-      handler,
+      handler: withOwnerAdminGate(handler),
     };
   });
 }
@@ -443,7 +592,42 @@ function lifeOpsRouteHandler(): PluginRouteHandler {
       httpRes,
       (runtime as AgentRuntime) ?? null,
     );
+    if (await handleEntityRoutes(ctx)) return;
+    if (await handleRelationshipRoutes(ctx)) return;
     await handleLifeOpsRoutes(ctx);
+  };
+}
+
+function scheduledTasksRouteHandler(): PluginRouteHandler {
+  // The runner is created per-request because it depends on the
+  // runtime which is only available inside the route call. The runtime
+  // wiring registers the built-in gates / completion-checks / ladders
+  // and uses the LifeOpsRepository for storage.
+  const handle = makeScheduledTasksRouteHandler({
+    async resolveRunner(ctx) {
+      const runtime = ctx.state.runtime;
+      if (!runtime) {
+        ctx.error(ctx.res, "Agent runtime is not available", 503);
+        return null;
+      }
+      return createRuntimeScheduledTaskRunner({
+        runtime,
+        agentId: runtime.agentId,
+      });
+    },
+  });
+  return async (req, res, runtime): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as unknown as http.ServerResponse;
+    const ctx = buildLifeOpsContext(
+      httpReq,
+      httpRes,
+      (runtime as AgentRuntime) ?? null,
+    );
+    const handled = await handle(ctx);
+    if (!handled) {
+      error(httpRes, "Scheduled-tasks route not found", 404);
+    }
   };
 }
 
@@ -529,14 +713,51 @@ function travelProviderRelayRouteHandler(): PluginRouteHandler {
   };
 }
 
+function googleConnectorAccountRouteHandler(): PluginRouteHandler {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const method = (httpReq.method ?? "GET").toUpperCase();
+    const url = new URL(httpReq.url ?? "/", requestBaseUrl(httpReq));
+    const handled = await handleConnectorAccountRoutes({
+      req: httpReq,
+      res: httpRes,
+      method,
+      pathname: url.pathname,
+      state: {
+        runtime: (runtime as AgentRuntime) ?? null,
+      },
+      json,
+      error,
+      readJsonBody: httpReadJsonBody,
+    });
+    if (!handled) {
+      error(httpRes, "Connector account route not found", 404);
+    }
+  };
+}
+
 const lifeOpsPluginRoutes: Route[] = [
   ...buildRawRoutes(CLOUD_FEATURE_ROUTES, cloudFeaturesRouteHandler()),
   ...buildRawRoutes(
     TRAVEL_PROVIDER_RELAY_ROUTES,
     travelProviderRelayRouteHandler(),
   ),
+  ...buildRawRoutes(
+    GOOGLE_CONNECTOR_ACCOUNT_ROUTES,
+    googleConnectorAccountRouteHandler(),
+  ),
   ...buildRawRoutes(LIFEOPS_STATIC_ROUTES, lifeOpsRouteHandler()),
   ...buildRawRoutes(LIFEOPS_DYNAMIC_ROUTES, lifeOpsRouteHandler()),
+  // W1-A — ScheduledTask spine REST surface (`docs/audit/wave1-interfaces.md` §1.6).
+  ...buildRawRoutes(
+    SCHEDULED_TASKS_ROUTE_PATHS,
+    scheduledTasksRouteHandler(),
+  ),
   ...buildRawRoutes(LIFEOPS_SLEEP_ROUTES, sleepRouteHandler()),
   ...buildRawRoutes(WEBSITE_BLOCKER_ROUTES, websiteBlockerRouteHandler()),
 ];
@@ -549,5 +770,6 @@ export const lifeopsPlugin: Plugin = {
   name: "@elizaos/app-lifeops-routes",
   description:
     "LifeOps dashboard, Google Workspace, website blocker, and scheduling routes",
+  dependencies: ["@elizaos/plugin-google"],
   routes: lifeOpsPluginRoutes,
 };

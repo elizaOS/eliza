@@ -20,7 +20,7 @@ export const GROUP_POLICY_DISABLED = "disabled";
 // API endpoints
 export const API_ENDPOINTS = {
 	SERVER_INFO: "/api/v1/server/info",
-	SEND_MESSAGE: "/api/v1/message/text",
+	MESSAGE_TEXT: "/api/v1/message/text",
 	SEND_ATTACHMENT: "/api/v1/message/attachment",
 	CHAT_INFO: "/api/v1/chat",
 	CHAT_QUERY: "/api/v1/chat/query",

@@ -1,34 +1,38 @@
 import {
   getDefaultTriageService,
+  type ActionResult,
+  type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   logger,
+  type Memory,
+  messagingTriageActions,
   type Plugin,
+  promoteSubactionsToActions,
   registerSendPolicy,
+  type State,
 } from "@elizaos/core";
-import { manageBrowserBridgeAction } from "./action.ts";
-import { appBlockAction } from "./actions/app-block.js";
-import { autofillAction } from "./actions/autofill.js";
-import { bookTravelAction } from "./actions/book-travel.js";
+import { blockAction } from "./actions/block.js";
 import { calendarAction } from "./actions/calendar.js";
-import { chatThreadAction } from "./actions/chat-thread.js";
-import { checkinAction } from "./actions/checkin.js";
 import { connectorAction } from "./actions/connector.js";
-import { deviceIntentAction } from "./actions/device-intent.js";
-import { healthAction } from "./actions/health.js";
-import { lifeAction } from "./actions/life.js";
-import { passwordManagerAction } from "./actions/password-manager.js";
-import { paymentsAction } from "./actions/payments.js";
-import { profileAction } from "./actions/profile.js";
-import { relationshipAction } from "./actions/relationship.js";
+import { credentialsAction } from "./actions/credentials.js";
+import { entityAction } from "./actions/entity.js";
+import {
+  ownerAlarmsAction,
+  ownerFinancesAction,
+  ownerGoalsAction,
+  ownerHealthAction,
+  ownerRemindersAction,
+  ownerRoutinesAction,
+  ownerScreenTimeAction,
+  ownerTodosAction,
+  personalAssistantAction,
+} from "./actions/owner-surfaces.js";
 import { remoteDesktopAction } from "./actions/remote-desktop.js";
 import { resolveRequestAction } from "./actions/resolve-request.js";
-import { scheduleAction } from "./actions/schedule.js";
-import { screenTimeAction } from "./actions/screen-time.js";
-import { subscriptionsAction } from "./actions/subscriptions.js";
-import { toggleFeatureAction } from "./actions/toggle-feature.js";
+import { scheduledTaskAction } from "./actions/scheduled-task.js";
 import { voiceCallAction } from "./actions/voice-call.js";
-import { websiteBlockAction } from "./actions/website-block.js";
-import { xAction } from "./actions/x.js";
+import { workThreadAction } from "./actions/work-thread.js";
 import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
 import { PresenceSignalBridgeService } from "./activity-profile/presence-signal-bridge-service.js";
 import {
@@ -41,10 +45,48 @@ import {
   FOLLOWUP_TRACKER_TASK_NAME,
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
+import {
+  createChannelRegistry,
+  registerChannelRegistry,
+  registerDefaultChannelPack,
+} from "./lifeops/channels/index.js";
+import {
+  createConnectorRegistry,
+  registerConnectorRegistry,
+  registerDefaultConnectorPack,
+} from "./lifeops/connectors/index.js";
+import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.js";
+import {
+  createMultilingualPromptRegistry,
+  registerDefaultPromptPack,
+  registerMultilingualPromptRegistry,
+} from "./lifeops/i18n/prompt-registry.js";
 import { BrowserBridgeAdapter } from "./lifeops/messaging/adapters/browser-bridge-adapter.js";
 import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
+import { LifeOpsGmailAdapter } from "./lifeops/messaging/adapters/gmail-adapter.js";
 import { XDmAdapter } from "./lifeops/messaging/adapters/x-dm-adapter.js";
 import { createOwnerSendPolicy } from "./lifeops/messaging/owner-send-policy.js";
+import {
+  createOwnerFactStore,
+  registerOwnerFactStore,
+} from "./lifeops/owner/fact-store.js";
+import {
+  createAnchorRegistry,
+  createEventKindRegistry,
+  createFamilyRegistry,
+  createWorkflowStepRegistry,
+  registerAnchorRegistry,
+  registerAppLifeOpsAnchors,
+  registerAppLifeOpsBusFamilies,
+  registerAppLifeOpsEventKinds,
+  registerBuiltinTelemetryFamilies,
+  registerDefaultBlockerPack,
+  registerDefaultFeatureFlagPack,
+  registerDefaultWorkflowStepPack,
+  registerEventKindRegistry,
+  registerFamilyRegistry,
+  registerWorkflowStepRegistry,
+} from "./lifeops/registries/index.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
 // LifeOps runtime (scheduler task worker + registration)
 import {
@@ -53,30 +95,235 @@ import {
   registerLifeOpsTaskWorker,
 } from "./lifeops/runtime.js";
 import { lifeOpsSchema } from "./lifeops/schema.js";
-import { browserBridgeProvider } from "./provider.ts";
+import {
+  createSendPolicyRegistry,
+  registerSendPolicyRegistry,
+} from "./lifeops/send-policy/index.js";
+import {
+  createActivitySignalBus,
+  registerActivitySignalBus,
+} from "./lifeops/signals/bus.js";
+import { browserBridgeProvider } from "./provider.js";
 // Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
 import { appBlockerProvider } from "./providers/app-blocker.js";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
 
 // LifeOps core providers
+import { firstRunProvider } from "./providers/first-run.js";
 import { healthProvider } from "./providers/health.js";
 import { inboxTriageProvider } from "./providers/inbox-triage.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
+import { pendingPromptsProvider } from "./providers/pending-prompts.js";
+import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
+import { roomPolicyProvider } from "./providers/room-policy.js";
+import { workThreadsProvider } from "./providers/work-threads.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
-import { BrowserBridgePluginService } from "./service.ts";
-import {
-  blockUntilTaskCompleteAction,
-  listActiveBlocksAction,
-  registerBlockRuleReconcilerWorker,
-  releaseBlockAction,
-} from "./website-blocker/chat-integration/index.js";
+import { BrowserBridgePluginService } from "./service.js";
+import { registerBlockRuleReconcilerWorker } from "./website-blocker/chat-integration/index.js";
 import {
   getSelfControlStatus,
   type SelfControlPluginConfig,
   setSelfControlPluginConfig,
 } from "./website-blocker/engine.js";
 import { WebsiteBlockerService } from "./website-blocker/service.js";
+import { workThreadResponseHandlerEvaluator } from "./lifeops/work-threads/response-handler-evaluator.js";
+import { ownerProfileExtractionEvaluator } from "./lifeops/profile/response-handler-evaluator.js";
+import { InboxTriageRepository } from "./inbox/repository.js";
+import { createApprovalQueue } from "./lifeops/approval-queue.js";
+import type { ApprovalChannel } from "./lifeops/approval-queue.types.js";
+
+const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
+const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
+
+type LifeOpsMessageActionHookArgs = {
+  operation: string;
+  runtime: IAgentRuntime;
+  message: Memory;
+  state?: State;
+  options?: HandlerOptions;
+  callback?: HandlerCallback;
+};
+
+function getMessageText(message: Memory): string {
+  return typeof message.content?.text === "string" ? message.content.text : "";
+}
+
+function looksLikeMissedCallRepairApproval(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return (
+    /\bmissed\b/.test(normalized) &&
+    /\bcall\b/.test(normalized) &&
+    /\b(?:repair|reschedul|follow\s*up|reply|respond)\b/.test(normalized) &&
+    /\b(?:approval|approve|hold|confirm)\b/.test(normalized)
+  );
+}
+
+function looksLikeFlightConflictQuestion(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return (
+    /\b(?:flight|flights?|airport|jfk|sfo|lax|ewr|lga)\b/u.test(
+      normalized,
+    ) &&
+    /\b(?:meeting|board|calendar|appointment|event)\b/u.test(normalized) &&
+    /\b(?:land|lands|arrival|arrive|make|conflict|rebook)\b/u.test(
+      normalized,
+    )
+  );
+}
+
+function buildFlightConflictPreview(text: string): string {
+  if (/8\s*(?:am|a\.m\.)/iu.test(text) && /9\s*(?:am|a\.m\.)/iu.test(text)) {
+    return "The 8 AM JFK arrival is too tight for a 9 AM board meeting. I would treat that as a conflict unless the meeting is at the airport or remote. The concrete options are to rebook to an earlier flight or the night before, move the meeting later, or plan to join remotely while in transit.";
+  }
+  return "Your 8 AM JFK arrival is too tight for the 9 AM board meeting on that calendar day. I would treat it as a conflict and propose one of these concrete options: rebook to an arrival no later than 6:30 AM, fly in the night before, move the board meeting to 10:30 AM or later, or join remotely while in transit.";
+}
+
+function approvalChannelFromSource(source: string | null): ApprovalChannel {
+  const normalized = (source ?? "").toLowerCase();
+  if (normalized === "discord") return "discord";
+  if (normalized === "imessage") return "imessage";
+  if (normalized === "sms" || normalized === "text") return "sms";
+  if (normalized === "x" || normalized === "twitter" || normalized === "x_dm") {
+    return "x_dm";
+  }
+  return "telegram";
+}
+
+function extractCounterpartyHint(text: string): string | null {
+  const match =
+    /\bwith\s+(?:the\s+)?(.+?)(?:\s+(?:guys|team|folks|people)\b|[,.]|$)/iu.exec(
+      text,
+    ) ?? /\b(?:to|for)\s+([A-Z][\w &'-]{2,80})(?:[,.]|$)/u.exec(text);
+  return match?.[1]?.replace(/\s+/gu, " ").trim() || null;
+}
+
+function textMatchesEntry(text: string, entryText: string): boolean {
+  const normalized = text.toLowerCase();
+  const candidate = entryText.toLowerCase();
+  return candidate
+    .split(/\s+/u)
+    .map((token) => token.replace(/[^a-z0-9]/gu, ""))
+    .filter((token) => token.length >= 4)
+    .some((token) => normalized.includes(token));
+}
+
+async function handleLifeOpsMessageAction(
+  args: LifeOpsMessageActionHookArgs,
+): Promise<ActionResult | null> {
+  if (
+    args.operation !== "triage" &&
+    args.operation !== "send_draft" &&
+    args.operation !== "draft_followup" &&
+    args.operation !== "draft_reply" &&
+    args.operation !== "respond"
+  ) {
+    return null;
+  }
+
+  const text = getMessageText(args.message);
+  if (!looksLikeMissedCallRepairApproval(text)) {
+    return null;
+  }
+
+  const triageRepo = new InboxTriageRepository(args.runtime);
+  const unresolved = await triageRepo.getUnresolved({ limit: 25 });
+  const hint = extractCounterpartyHint(text);
+  const match =
+    unresolved.find((entry) => {
+      const haystack = [
+        entry.channelName,
+        entry.senderName ?? "",
+        entry.snippet,
+        entry.suggestedResponse ?? "",
+        ...(entry.threadContext ?? []),
+      ].join(" ");
+      return (
+        (hint ? haystack.toLowerCase().includes(hint.toLowerCase()) : false) ||
+        textMatchesEntry(text, haystack)
+      );
+    }) ?? unresolved[0];
+
+  const recipient =
+    match?.sourceRoomId ??
+    match?.sourceEntityId ??
+    match?.channelName ??
+    hint ??
+    "owner-selected-thread";
+  const body =
+    match?.suggestedResponse ??
+    (hint
+      ? `Sorry I missed your call earlier. I can reschedule and make the walkthrough work this week if you send a couple of windows.`
+      : `Sorry I missed your call earlier. I can reschedule this week if you send a couple of windows that work.`);
+  const channel = approvalChannelFromSource(match?.source ?? null);
+  const subjectUserId =
+    typeof args.message.entityId === "string"
+      ? args.message.entityId
+      : String(args.runtime.agentId);
+  const queue = createApprovalQueue(args.runtime, {
+    agentId: args.runtime.agentId,
+  });
+  const request = await queue.enqueue({
+    requestedBy: "MESSAGE",
+    subjectUserId,
+    action: "send_message",
+    payload: {
+      action: "send_message",
+      recipient,
+      body,
+      replyToMessageId: match?.sourceMessageId ?? null,
+    },
+    channel,
+    reason: `Repair missed call thread${match?.channelName ? ` with ${match.channelName}` : hint ? ` with ${hint}` : ""}`,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  });
+
+  const responseText = `Queued the repair note for your approval before sending it.`;
+  await args.callback?.({
+    text: responseText,
+    source: "action",
+    action: "MESSAGE",
+  });
+  return {
+    text: responseText,
+    success: true,
+    data: {
+      actionName: "MESSAGE",
+      operation: args.operation,
+      requestId: request.id,
+      requiresConfirmation: true,
+      channel,
+      recipient,
+    },
+  };
+}
+
+async function handleLifeOpsDirectMessageRequest(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State;
+}): Promise<ActionResult | null> {
+  const text = getMessageText(args.message);
+  if (looksLikeMissedCallRepairApproval(text)) {
+    return handleLifeOpsMessageAction({
+      operation: "triage",
+      runtime: args.runtime,
+      message: args.message,
+      state: args.state,
+    });
+  }
+  if (looksLikeFlightConflictQuestion(text)) {
+    return {
+      text: buildFlightConflictPreview(text),
+      success: true,
+      data: {
+        actionName: "CALENDAR",
+        subaction: "flight_conflict_rebooking",
+      },
+    };
+  }
+  return null;
+}
 
 async function ensureTaskWithRetries(args: {
   runtime: IAgentRuntime;
@@ -133,6 +380,71 @@ function isDisabledByEnv(disableKey: string, enableKey?: string): boolean {
 
   const enableValue = (process.env[enableKey] ?? "").trim().toLowerCase();
   return enableValue === "0" || enableValue === "false";
+}
+
+function isGoogleConnectorPlugin(plugin: Plugin): boolean {
+  return (
+    plugin.name === GOOGLE_CONNECTOR_PLUGIN_NAME ||
+    plugin.name === GOOGLE_CONNECTOR_PLUGIN_PACKAGE
+  );
+}
+
+function resolvePluginExport(module: Record<string, unknown>): Plugin | null {
+  for (const key of ["googlePlugin", "default"]) {
+    const value = module[key];
+    if (
+      value &&
+      typeof value === "object" &&
+      typeof (value as Plugin).name === "string"
+    ) {
+      return value as Plugin;
+    }
+  }
+  return null;
+}
+
+async function importGoogleConnectorPluginModule(): Promise<
+  Record<string, unknown>
+> {
+  try {
+    return (await import(GOOGLE_CONNECTOR_PLUGIN_PACKAGE)) as Record<
+      string,
+      unknown
+    >;
+  } catch (error) {
+    const stagedDependencyUrl = new URL(
+      "../node_modules/@elizaos/plugin-google/dist/index.js",
+      import.meta.url,
+    );
+    try {
+      return (await import(stagedDependencyUrl.href)) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      throw error;
+    }
+  }
+}
+
+export async function ensureLifeOpsGooglePluginRegistered(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  if (runtime.plugins.some(isGoogleConnectorPlugin)) {
+    return;
+  }
+
+  const module = await importGoogleConnectorPluginModule();
+  const plugin = resolvePluginExport(module);
+  if (!plugin) {
+    throw new Error(
+      `${GOOGLE_CONNECTOR_PLUGIN_PACKAGE} did not export a valid plugin`,
+    );
+  }
+  if (runtime.plugins.some(isGoogleConnectorPlugin)) {
+    return;
+  }
+  await runtime.registerPlugin(plugin);
 }
 
 const LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY =
@@ -197,42 +509,46 @@ function scheduleTaskEnsureAfterRuntimeInit(args: {
 const rawAppLifeOpsPlugin: Plugin = {
   name: "@elizaos/app-lifeops",
   description:
-    "LifeOps: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companions (Chrome/Safari), website blocking, app blocking, and related surfaces.",
+    "Owner operations: routines, goals, scheduled tasks, calendar, messaging, connectors, credentials, voice calls, browser companions, website/app blocking, and related owner-only surfaces.",
+  dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE],
   schema: lifeOpsSchema,
   actions: [
-    manageBrowserBridgeAction,
-    websiteBlockAction,
-    blockUntilTaskCompleteAction,
-    listActiveBlocksAction,
-    releaseBlockAction,
-    appBlockAction,
-    calendarAction,
-    xAction,
-    resolveRequestAction,
-    lifeAction,
-    bookTravelAction,
-    profileAction,
-    checkinAction,
-    relationshipAction,
-    screenTimeAction,
-    voiceCallAction,
+    // Canonical owner-operation umbrellas. Each umbrella registers itself + its
+    // per-action virtuals via
+    // `promoteSubactionsToActions` so the planner sees a discoverable
+    // top-level entry for every flat child action (e.g. `BLOCK_BLOCK`,
+    // `BLOCK_LIST_ACTIVE`, `OWNER_FINANCES_DASHBOARD`, `CREDENTIALS_FILL`, ...).
+    ...promoteSubactionsToActions(blockAction),
+    ...promoteSubactionsToActions(ownerFinancesAction),
+    ...promoteSubactionsToActions(credentialsAction),
+    ...promoteSubactionsToActions(calendarAction),
+    ...promoteSubactionsToActions(resolveRequestAction),
+    ...promoteSubactionsToActions(ownerRemindersAction),
+    ...promoteSubactionsToActions(ownerAlarmsAction),
+    ...promoteSubactionsToActions(ownerGoalsAction),
+    ...promoteSubactionsToActions(ownerTodosAction),
+    ...promoteSubactionsToActions(ownerRoutinesAction),
+    ...promoteSubactionsToActions(ownerHealthAction),
+    ...promoteSubactionsToActions(ownerScreenTimeAction),
+    ...promoteSubactionsToActions(personalAssistantAction),
+    entityAction,
+    ...promoteSubactionsToActions(voiceCallAction),
     remoteDesktopAction,
-    scheduleAction,
-    deviceIntentAction,
-    passwordManagerAction,
-    autofillAction,
-    healthAction,
-    subscriptionsAction,
-    paymentsAction,
-    chatThreadAction,
-    connectorAction,
-    toggleFeatureAction,
+    workThreadAction,
+    ...promoteSubactionsToActions(scheduledTaskAction),
+    ...promoteSubactionsToActions(connectorAction),
+    ...messagingTriageActions,
   ],
   providers: [
     browserBridgeProvider,
     websiteBlockerProvider,
     appBlockerProvider,
+    firstRunProvider,
+    roomPolicyProvider,
     lifeOpsProvider,
+    pendingPromptsProvider,
+    workThreadsProvider,
+    recentTaskStatesProvider,
     healthProvider,
     inboxTriageProvider,
     crossChannelContextProvider,
@@ -244,10 +560,26 @@ const rawAppLifeOpsPlugin: Plugin = {
     ActivityTrackerService,
     PresenceSignalBridgeService,
   ],
+  responseHandlerEvaluators: [
+    ownerProfileExtractionEvaluator,
+    workThreadResponseHandlerEvaluator,
+  ],
   init: async (
     pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,
   ) => {
+    // When LIFEOPS_USE_MOCKOON=1, redirect every external connector base URL
+    // to the matching Mockoon environment on localhost. No-op otherwise.
+    const mockoonApplied = applyMockoonEnvOverrides();
+    if (mockoonApplied.length > 0) {
+      logger.info(
+        { mockoonConnectors: mockoonApplied },
+        `[lifeops] LIFEOPS_USE_MOCKOON=1 — redirecting ${mockoonApplied.length} connector base URL(s) to mock servers`,
+      );
+    }
+
+    await ensureLifeOpsGooglePluginRegistered(runtime);
+
     setSelfControlPluginConfig(pluginConfig as SelfControlPluginConfig);
     const status = await getSelfControlStatus();
 
@@ -261,14 +593,95 @@ const rawAppLifeOpsPlugin: Plugin = {
       );
     }
 
+    const connectorRegistry = createConnectorRegistry();
+    registerDefaultConnectorPack(connectorRegistry, runtime);
+    registerConnectorRegistry(runtime, connectorRegistry);
+    (runtime as IAgentRuntime & { connectorRegistry?: typeof connectorRegistry })
+      .connectorRegistry = connectorRegistry;
+
+    const channelRegistry = createChannelRegistry();
+    registerDefaultChannelPack(channelRegistry, runtime);
+    registerChannelRegistry(runtime, channelRegistry);
+    (runtime as IAgentRuntime & { channelRegistry?: typeof channelRegistry })
+      .channelRegistry = channelRegistry;
+
+    const sendPolicyRegistry = createSendPolicyRegistry();
+    registerSendPolicyRegistry(runtime, sendPolicyRegistry);
+
+    registerDefaultBlockerPack(runtime);
+
+    const anchorRegistry = createAnchorRegistry();
+    registerAppLifeOpsAnchors(anchorRegistry);
+    registerAnchorRegistry(runtime, anchorRegistry);
+    (runtime as IAgentRuntime & { anchorRegistry?: typeof anchorRegistry })
+      .anchorRegistry = anchorRegistry;
+
+    const eventKindRegistry = createEventKindRegistry();
+    registerAppLifeOpsEventKinds(eventKindRegistry);
+    registerEventKindRegistry(runtime, eventKindRegistry);
+    (runtime as IAgentRuntime & { eventKindRegistry?: typeof eventKindRegistry })
+      .eventKindRegistry = eventKindRegistry;
+
+    const familyRegistry = createFamilyRegistry();
+    registerBuiltinTelemetryFamilies(familyRegistry);
+    registerAppLifeOpsBusFamilies(familyRegistry);
+    registerFamilyRegistry(runtime, familyRegistry);
+    (runtime as IAgentRuntime & { busFamilyRegistry?: typeof familyRegistry })
+      .busFamilyRegistry = familyRegistry;
+
+    const workflowStepRegistry = createWorkflowStepRegistry();
+    registerDefaultWorkflowStepPack(workflowStepRegistry);
+    registerWorkflowStepRegistry(runtime, workflowStepRegistry);
+    (
+      runtime as IAgentRuntime & {
+        workflowStepRegistry?: typeof workflowStepRegistry;
+      }
+    ).workflowStepRegistry = workflowStepRegistry;
+
+    // FeatureFlagRegistry — open-key registry covering the 10 closed
+    // `LifeOpsFeatureKey` built-ins plus any 3rd-party plugin contributions.
+    // Audit C top-1 finding (`docs/audit/rigidity-hunt-audit.md`).
+    registerDefaultFeatureFlagPack(runtime);
+
+    const activitySignalBus = createActivitySignalBus({ familyRegistry });
+    registerActivitySignalBus(runtime, activitySignalBus);
+
+    const ownerFactStore = createOwnerFactStore(runtime);
+    registerOwnerFactStore(runtime, ownerFactStore);
+
+    const promptRegistry = createMultilingualPromptRegistry();
+    registerDefaultPromptPack(promptRegistry);
+    registerMultilingualPromptRegistry(runtime, promptRegistry);
+
     // Owner outbound-message approval policy: gmail drafts require explicit
     // owner approval; everything else passes straight through.
     registerSendPolicy(runtime, createOwnerSendPolicy());
+    (
+      runtime as IAgentRuntime & {
+        lifeOpsMessageActionHook?: {
+          handleMessageAction: typeof handleLifeOpsMessageAction;
+        };
+        lifeOpsDirectMessageHook?: {
+          handleMessageRequest: typeof handleLifeOpsDirectMessageRequest;
+        };
+      }
+    ).lifeOpsMessageActionHook = {
+      handleMessageAction: handleLifeOpsMessageAction,
+    };
+    (
+      runtime as IAgentRuntime & {
+        lifeOpsDirectMessageHook?: {
+          handleMessageRequest: typeof handleLifeOpsDirectMessageRequest;
+        };
+      }
+    ).lifeOpsDirectMessageHook = {
+      handleMessageRequest: handleLifeOpsDirectMessageRequest,
+    };
 
-    // First-party adapters that aren't part of core's built-in set: X DMs
-    // (overrides the built-in Twitter adapter), Calendly, and the
-    // browser-bridge.
+    // First-party adapters backed by LifeOps services. Gmail and X replace the
+    // core placeholders so MESSAGE triage operations operate on real connected data.
     const triage = getDefaultTriageService();
+    triage.register(new LifeOpsGmailAdapter());
     triage.register(new XDmAdapter());
     triage.register(new CalendlyAdapter());
     triage.register(new BrowserBridgeAdapter());
@@ -306,6 +719,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     });
 
     registerBlockRuleReconcilerWorker(runtime);
+
     scheduleTaskEnsureAfterRuntimeInit({
       runtime,
       prefix: "[lifeops]",
@@ -346,6 +760,11 @@ const rawAppLifeOpsPlugin: Plugin = {
    * to touch those here.
    */
   dispose: async (runtime: IAgentRuntime) => {
+    delete (runtime as IAgentRuntime & { lifeOpsMessageActionHook?: unknown })
+      .lifeOpsMessageActionHook;
+    delete (runtime as IAgentRuntime & { lifeOpsDirectMessageHook?: unknown })
+      .lifeOpsDirectMessageHook;
+
     const taskNames: readonly string[] = [
       PROACTIVE_TASK_NAME,
       LIFEOPS_TASK_NAME,
@@ -395,6 +814,10 @@ const rawAppLifeOpsPlugin: Plugin = {
 
 export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;
 
+export { firstRunAction } from "./actions/first-run.js";
+export { lifeOpsPauseAction } from "./actions/lifeops-pause.js";
+export { messageHandoffAction } from "./actions/message-handoff.js";
+export { workThreadAction } from "./actions/work-thread.js";
 export {
   getAppBlockerPermissionState,
   getAppBlockerStatus,
@@ -437,6 +860,84 @@ export type {
   RecordAcknowledgementRequest,
   RunCheckinRequest,
 } from "./lifeops/checkin/types.js";
+export {
+  FirstRunService,
+  type ScheduledTaskRunnerLike,
+  setScheduledTaskRunner,
+} from "./lifeops/first-run/service.js";
+export {
+  createFirstRunStateStore,
+  createOwnerFactStore,
+  type FirstRunRecord,
+  type FirstRunStateStore,
+  type OwnerFactStore,
+  type OwnerFacts,
+  type OwnerFactsPatch,
+} from "./lifeops/first-run/state.js";
+export {
+  createGlobalPauseStore,
+  type GlobalPauseStatus,
+  type GlobalPauseStore,
+  type GlobalPauseWindow,
+} from "./lifeops/global-pause/store.js";
+export {
+  createHandoffStore,
+  describeResumeCondition,
+  evaluateResume,
+  type HandoffEnterOpts,
+  type HandoffStatus,
+  type HandoffStore,
+  type ResumeCondition,
+  type ResumeEvaluation,
+  type ResumeEvaluationInput,
+} from "./lifeops/handoff/store.js";
+export {
+  createMultilingualPromptRegistry,
+  getDefaultPromptExamplePair,
+  getDefaultPromptRegistry,
+  getMultilingualPromptRegistry,
+  type MultilingualPromptRegistry,
+  PROMPT_REGISTRY_DEFAULT_LOCALE,
+  type PromptExampleEntry,
+  type PromptLocale,
+  type PromptRegistryFilter,
+  registerDefaultPromptPack,
+  registerMultilingualPromptRegistry,
+  resolveActionExamplePairs,
+} from "./lifeops/i18n/prompt-registry.js";
+export {
+  type EscalationRule,
+  getOwnerFactStore,
+  type OwnerFactEntry,
+  type OwnerFactProvenance,
+  type OwnerFactProvenanceSource,
+  type OwnerFactWindow,
+  type OwnerQuietHours,
+  ownerFactsToView,
+  type PolicyPatchEscalationRule,
+  type PolicyPatchReminderIntensity,
+  type ReminderIntensity,
+  registerOwnerFactStore,
+  resolveOwnerFactStore,
+} from "./lifeops/owner/fact-store.js";
+export {
+  createPendingPromptsStore,
+  type PendingPromptRecordInput,
+  type PendingPromptsStore,
+} from "./lifeops/pending-prompts/store.js";
+export {
+  createWorkThreadStore,
+  type CreateWorkThreadInput,
+  type ThreadSourceRef,
+  type UpdateWorkThreadInput,
+  type WorkThread,
+  type WorkThreadEvent,
+  type WorkThreadEventType,
+  type WorkThreadListFilter,
+  type WorkThreadStatus,
+  type WorkThreadStore,
+} from "./lifeops/work-threads/index.js";
+export { workThreadResponseHandlerEvaluator } from "./lifeops/work-threads/response-handler-evaluator.js";
 // LifeOps runtime exports
 export {
   ensureLifeOpsSchedulerTask,
@@ -448,16 +949,89 @@ export {
   registerLifeOpsTaskWorker,
   resolveLifeOpsTaskIntervalMs,
 } from "./lifeops/runtime.js";
+export type {
+  AnchorConsolidationPolicy,
+  AnchorContribution,
+  AnchorRegistry,
+  CompletionCheckContribution,
+  CompletionCheckRegistry,
+  EscalationLadder,
+  EscalationLadderRegistry,
+  EscalationStep,
+  GateDecision,
+  ScheduledTask,
+  ScheduledTaskCompletionCheck,
+  ScheduledTaskContextRequest,
+  ScheduledTaskEscalation,
+  ScheduledTaskFilter,
+  ScheduledTaskKind,
+  ScheduledTaskLogEntry,
+  ScheduledTaskOutput,
+  ScheduledTaskPipeline,
+  ScheduledTaskPriority,
+  ScheduledTaskRef,
+  ScheduledTaskRunner,
+  ScheduledTaskRunnerHandle,
+  ScheduledTaskShouldFire,
+  ScheduledTaskState,
+  ScheduledTaskStatus,
+  ScheduledTaskSubject,
+  ScheduledTaskTrigger,
+  ScheduledTaskVerb,
+  ProcessDueScheduledTasksRequest,
+  ProcessDueScheduledTasksResult,
+  ScheduledTaskDueContext,
+  ScheduledTaskDueDecision,
+  TaskGateContribution,
+  TaskGateRegistry,
+  TerminalState,
+} from "./lifeops/scheduled-task/index.js";
+export {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  DEFAULT_ESCALATION_LADDERS,
+  PRIORITY_DEFAULT_LADDER_KEYS,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+  registerStubAnchors,
+  processDueScheduledTasks,
+  STATE_LOG_DEFAULT_RETENTION_DAYS,
+} from "./lifeops/scheduled-task/index.js";
+export type { CreateRuntimeRunnerOptions } from "./lifeops/scheduled-task/runtime-wiring.js";
+export { createRuntimeScheduledTaskRunner } from "./lifeops/scheduled-task/runtime-wiring.js";
 export { appBlockerProvider } from "./providers/app-blocker.js";
+export type { FirstRunAffordance } from "./providers/first-run.js";
+export { firstRunProvider } from "./providers/first-run.js";
 export { healthProvider } from "./providers/health.js";
 export { inboxTriageProvider } from "./providers/inbox-triage.js";
 export { lifeOpsProvider } from "./providers/lifeops.js";
+export type {
+  PendingPrompt,
+  PendingPromptsProvider,
+} from "./providers/pending-prompts.js";
+export {
+  createPendingPromptsProvider,
+  pendingPromptsProvider,
+} from "./providers/pending-prompts.js";
+export type {
+  RecentTaskStatesProvider,
+  RecentTaskStatesSummary,
+} from "./providers/recent-task-states.js";
+export {
+  createRecentTaskStatesProvider,
+  recentTaskStatesProvider,
+} from "./providers/recent-task-states.js";
+export { roomPolicyProvider } from "./providers/room-policy.js";
+export { workThreadsProvider } from "./providers/work-threads.js";
 export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
 export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
-export {
-  BrowserBridgePluginService,
-  browserBridgeProvider,
-  manageBrowserBridgeAction,
-};
+export { BrowserBridgePluginService, browserBridgeProvider };

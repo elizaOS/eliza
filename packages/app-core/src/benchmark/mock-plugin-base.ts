@@ -254,8 +254,7 @@ function createBenchmarkActionJson(prompt: string): string {
         .exec(prompt)?.[1]
         ?.toLowerCase() ?? prompt.toLowerCase();
     let action = "REPLY";
-    if (/send a message|message to/.test(currentMessage))
-      action = "SEND_MESSAGE";
+    if (/send a message|message to/.test(currentMessage)) action = "MESSAGE";
     else if (/mute this|too noisy/.test(currentMessage)) action = "MUTE_ROOM";
     else if (/unmute/.test(currentMessage)) action = "UNMUTE_ROOM";
     else if (/follow the/.test(currentMessage)) action = "FOLLOW_ROOM";
@@ -277,7 +276,7 @@ function createBenchmarkActionJson(prompt: string): string {
     else if (/phone number|contact info/.test(currentMessage))
       action = "UPDATE_CONTACT_INFO";
     else if (/generate .*picture|image/.test(currentMessage))
-      action = "GENERATE_IMAGE";
+      action = "GENERATE_MEDIA";
     else if (/ignore that last/.test(currentMessage)) action = "IGNORE";
     else if (/create .*plan/.test(currentMessage)) action = "CREATE_PLAN";
     if (["REPLY", "IGNORE", "NONE"].includes(action)) {

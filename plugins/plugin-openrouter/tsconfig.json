@@ -27,9 +27,6 @@
     "paths": {
       "@elizaos/core": [
         "../../../node_modules/@elizaos/core/dist/index.d.ts"
-      ],
-      "@elizaos/core/*": [
-        "../../../node_modules/@elizaos/core/dist/*"
       ]
     },
     "types": [
@@ -43,6 +40,9 @@
   "exclude": [
     "node_modules",
     "dist",
-    "__tests__"
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
   ]
 }

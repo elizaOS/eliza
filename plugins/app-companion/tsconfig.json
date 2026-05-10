@@ -21,26 +21,21 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
+      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/app-lifeops": ["../app-lifeops/src/index.ts"],
-      "@elizaos/app-lifeops/*": ["../app-lifeops/src/*"],
       "@elizaos/app-task-coordinator": ["../app-task-coordinator/src/index.ts"],
-      "@elizaos/app-task-coordinator/*": ["../app-task-coordinator/src/*"],
       "@elizaos/app-steward": ["../app-steward/src/index.ts"],
-      "@elizaos/app-steward/*": ["../app-steward/src/*"],
       "@elizaos/app-wallet": ["../app-wallet/src/index.ts"],
-      "@elizaos/app-wallet/*": ["../app-wallet/src/*"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/ui/api/client-types-cloud": [
+        "../../packages/ui/src/api/client-types-cloud.ts"
+      ],
       "@elizaos/app-companion": ["./src/index.ts"],
-      "@elizaos/app-companion/*": ["./src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
-      "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/capacitor-appblocker": [
         "../../packages/native-plugins/appblocker/src/index.ts"
       ],
@@ -57,7 +52,6 @@
       "react-dom": [
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
       ],
-      "@elizaos/*": ["../../node_modules/@elizaos/*"],
       "lucide-react": ["./node_modules/lucide-react"]
     }
   },
@@ -66,13 +60,7 @@
     "src/**/*.tsx",
     "src/**/*.d.ts",
     "../../packages/agent/src/external-modules.d.ts",
-    "../../packages/app-core/src/ambient-modules.d.ts",
-    "../../packages/app-core/src/platform/capacitor-plugin-modules.d.ts"
+    "../../packages/app-core/src/ambient-modules.d.ts"
   ],
-  "exclude": [
-    "src/**/*.stories.ts",
-    "src/**/*.stories.tsx",
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx"
-  ]
+  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
 }

@@ -131,7 +131,7 @@ Run with `bun run test --filter=<your-action>` from the plugin dir.
 
 ## Style
 
-- Match the style of `plugin-executecode/src/action.ts`.
+- Match the style of the existing action implementations in `src/actions/`.
 - Use `coreLogger.debug` / `.warn` for diagnostic logs prefixed with
   `CODING_TOOLS_LOG_PREFIX`.
 - No comments narrating obvious code. Only comment non-obvious WHY.

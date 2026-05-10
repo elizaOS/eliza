@@ -153,7 +153,7 @@ Browse all voices at [elevenlabs.io/voice-library](https://elevenlabs.io/voice-l
 | Action | Description |
 |--------|-------------|
 | `SPEAK` | Convert text to speech and play/return audio |
-| `GENERATE_AUDIO` | Generate an audio file from text |
+| `GENERATE_MEDIA` | Generate an audio file from text using `mediaType: "audio"` |
 | `SET_VOICE` | Change the active voice |
 
 ## Usage Examples

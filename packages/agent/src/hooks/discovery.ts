@@ -13,7 +13,7 @@ import type {
   HookEntry,
   HookSource,
   ParsedHookFrontmatter,
-} from "./types.js";
+} from "./types.ts";
 
 const HOOK_MD = "HOOK.md";
 const HANDLER_NAMES = [

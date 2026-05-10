@@ -80,7 +80,7 @@ bun run dev
 
 | Outil | Objectif |
 |-------|----------|
-| pnpm | Gestionnaire de paquets optionnel pour les workflows hors repo |
+| bun | Gestionnaire de paquets optionnel pour les workflows hors repo |
 | Docker | Tests en conteneur |
 | VS Code | Éditeur recommandé |
 

@@ -46,7 +46,7 @@ export const grepAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: ["SEARCH_CONTENT", "RIPGREP", "RG"],
   description:
-    "Search file contents using ripgrep (a fast regex search). Returns matching files, counts, or line content. Always excludes VCS directories. Use this instead of BASH for content search.",
+    "Search file contents using ripgrep (a fast regex search). Returns matching files, counts, or line content. Always excludes VCS directories. Use this instead of SHELL for content search.",
   descriptionCompressed:
     "Ripgrep wrapper: regex search across files, returns matches/counts/files.",
   parameters: [
@@ -130,13 +130,7 @@ export const grepAction: Action = {
       schema: { type: "boolean" },
     },
   ],
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
-  ) => {
-    return true;
-  },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -184,7 +178,7 @@ export const grepAction: Action = {
       const targetPath = requestedPath ?? session.getCwd(conversationId);
 
       const validation = await sandbox.validatePath(conversationId, targetPath);
-      if (!validation.ok) {
+      if (validation.ok === false) {
         const reason =
           validation.reason === "blocked" ? "path_blocked" : "invalid_param";
         return failureToActionResult({ reason, message: validation.message });
@@ -293,4 +287,39 @@ export const grepAction: Action = {
       });
     }
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Search the codebase for 'TODO' comments.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Searching for TODO matches.",
+          actions: ["GREP"],
+          thought:
+            "Plain text search across files maps to GREP with pattern='TODO'.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Find references to fooBar in src/ only.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Searching src/ for fooBar.",
+          actions: ["GREP"],
+          thought:
+            "Scoped search; GREP with pattern='fooBar' and path='src/' restricts the ripgrep run.",
+        },
+      },
+    ],
+  ],
 };

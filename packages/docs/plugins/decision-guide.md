@@ -47,7 +47,7 @@ import type { Action } from '@elizaos/core';
 const sendEmailAction: Action = {
   name: 'SEND_EMAIL',
   description: 'Send an email to a specified recipient',
-  similes: ['EMAIL', 'MAIL', 'SEND_MESSAGE'],
+  similes: ['EMAIL', 'MAIL', 'MESSAGE'],
   validate: async (runtime, message) => {
     return !!runtime.getSetting('SMTP_HOST');
   },

@@ -2,7 +2,6 @@ const REASONING_TAGS = [
 	"thinking",
 	"reasoning",
 	"reflection",
-	"scratchpad",
 	"thought",
 	"antthinking",
 ] as const;
@@ -10,7 +9,7 @@ const REASONING_TAGS = [
 const SELF_CLOSING_ARTIFACTS_RE =
 	/<(?:STOP|END|end_turn|eot_id)\s*\/?>|<\|(?:end|stop|im_end|eot_id)\|>/gi;
 const QUICK_TAG_RE =
-	/<\/?(?:thinking|reasoning|reflection|scratchpad|thought|antthinking|final|STOP|END|end_turn)\b|<\|(?:end|stop|im_end)/i;
+	/<\/?(?:thinking|reasoning|reflection|thought|antthinking|final|STOP|END|end_turn)\b|<\|(?:end|stop|im_end)/i;
 const CODE_BLOCK_RE = /```[\s\S]*?```/g;
 const PLACEHOLDER_PREFIX = "\x00CB";
 

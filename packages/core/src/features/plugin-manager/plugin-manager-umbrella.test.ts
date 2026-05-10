@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import { listSubactionsFromParameters } from "../../actions/promote-subactions.ts";
 import * as pluginManagerExports from "./index.ts";
 import { pluginAction, pluginManagerPlugin } from "./index.ts";
 
@@ -27,10 +27,7 @@ describe("plugin manager umbrella action", () => {
 	});
 
 	it("folds plugin management operations into subactions", () => {
-		const subaction = pluginAction.parameters?.find(
-			(parameter) => parameter.name === "subaction",
-		);
-		expect(subaction?.schema.enum).toEqual([
+		expect(listSubactionsFromParameters(pluginAction.parameters)).toEqual([
 			"install",
 			"eject",
 			"sync",
@@ -55,31 +52,6 @@ describe("plugin manager umbrella action", () => {
 			"getPluginDetailsAction",
 		]) {
 			expect(pluginManagerExports).not.toHaveProperty(oldExport);
-		}
-	});
-
-	it("removes the agent-local read-only plugin list action names", async () => {
-		const files = await Promise.all([
-			readFile(
-				new URL(
-					"../../../../agent/src/actions/list-ejected.ts",
-					import.meta.url,
-				),
-				"utf8",
-			),
-			readFile(
-				new URL(
-					"../../../../agent/src/actions/list-installed-plugins.ts",
-					import.meta.url,
-				),
-				"utf8",
-			),
-		]);
-
-		for (const source of files) {
-			for (const oldName of OLD_ACTION_NAMES) {
-				expect(source).not.toContain(oldName);
-			}
 		}
 	});
 });

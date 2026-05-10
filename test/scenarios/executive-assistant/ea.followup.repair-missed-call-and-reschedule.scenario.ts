@@ -35,10 +35,10 @@ export default scenario({
       text: "I missed a call with the Frontier Tower guys today. Need to repair that and reschedule if possible asap, but hold the note for my approval first.",
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
-          "TRIAGE_MESSAGES",
-          "TRIAGE_MESSAGES",
+          "MESSAGE",
+          "MESSAGE",
           "CALENDAR",
-          "SEND_DRAFT",
+          "MESSAGE",
         ],
         description: "missed-call repair draft",
         includesAny: [
@@ -69,10 +69,10 @@ export default scenario({
       text: "Yes, approve that repair note and send it now.",
       assertTurn: expectTurnToCallAction({
         acceptedActions: [
-          "TRIAGE_MESSAGES",
+          "MESSAGE",
           "RESOLVE_REQUEST",
-          "SEND_DRAFT",
-          "TRIAGE_MESSAGES",
+          "MESSAGE",
+          "MESSAGE",
         ],
         description: "repair approval and dispatch",
         includesAny: ["approve", "send", "repair", "Frontier Tower"],
@@ -90,7 +90,7 @@ export default scenario({
       room: "main",
       text: "They confirmed Thursday at 2pm works. Mark the Frontier Tower follow-up done and close the loop.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["RELATIONSHIP", "CALENDAR", "TRIAGE_MESSAGES"],
+        acceptedActions: ["RELATIONSHIP", "CALENDAR", "MESSAGE"],
         description: "follow-up loop closure",
         includesAny: [
           "Frontier Tower",
@@ -117,36 +117,36 @@ export default scenario({
     {
       type: "selectedAction",
       actionName: [
-        "TRIAGE_MESSAGES",
+        "MESSAGE",
         "RELATIONSHIP",
         "RESOLVE_REQUEST",
-        "TRIAGE_MESSAGES",
+        "MESSAGE",
         "CALENDAR",
-        "SEND_DRAFT",
+        "MESSAGE",
       ],
     },
     {
       type: "approvalRequestExists",
       expected: true,
       state: ["approved", "executing", "done"],
-      actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      actionName: ["MESSAGE", "MESSAGE", "MESSAGE"],
     },
     {
       type: "connectorDispatchOccurred",
       channel: ["gmail", "telegram", "discord", "signal"],
-      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES", "SEND_DRAFT"],
+      actionName: ["MESSAGE", "MESSAGE", "MESSAGE"],
     },
     {
       type: "custom",
       name: "ea-repair-missed-call-action-coverage",
       predicate: expectScenarioToCallAction({
         acceptedActions: [
-          "TRIAGE_MESSAGES",
+          "MESSAGE",
           "RELATIONSHIP",
           "RESOLVE_REQUEST",
-          "TRIAGE_MESSAGES",
+          "MESSAGE",
           "CALENDAR",
-          "SEND_DRAFT",
+          "MESSAGE",
         ],
         description: "missed-call repair lifecycle",
         includesAny: [
@@ -165,7 +165,7 @@ export default scenario({
       predicate: expectApprovalRequest({
         description:
           "repair note is queued behind approval before the outbound send happens",
-        actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+        actionName: ["MESSAGE", "MESSAGE", "MESSAGE"],
       }),
     },
     {
@@ -175,7 +175,7 @@ export default scenario({
         description: "repair approval moved pending → approved before dispatch",
         from: "pending",
         to: "approved",
-        actionName: ["SEND_DRAFT", "TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+        actionName: ["MESSAGE", "MESSAGE", "MESSAGE"],
       }),
     },
     {

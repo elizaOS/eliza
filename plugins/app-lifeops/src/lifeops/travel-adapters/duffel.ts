@@ -1,4 +1,4 @@
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import {
   PaymentRequiredError,
@@ -32,9 +32,15 @@ export interface DuffelConfig {
   cloudRelayBaseUrl: string | null;
 }
 
-const DUFFEL_API_BASE = "https://api.duffel.com";
+const DUFFEL_API_BASE_DEFAULT = "https://api.duffel.com";
 const DUFFEL_API_VERSION = "v2";
 const DEFAULT_CLOUD_RELAY_BASE = "http://127.0.0.1:31337";
+
+/** Honour the mockoon redirect (or any explicit `LIFEOPS_DUFFEL_API_BASE`
+ *  override) so direct-mode tests can swap Duffel for a local mock. */
+function getDuffelApiBase(): string {
+  return process.env.LIFEOPS_DUFFEL_API_BASE?.trim() || DUFFEL_API_BASE_DEFAULT;
+}
 
 function resolveDirectFlag(env: NodeJS.ProcessEnv): boolean {
   const value = env.ELIZA_DUFFEL_DIRECT?.trim().toLowerCase();
@@ -517,7 +523,7 @@ async function duffelFetch<T>(
   const isCloud = config.mode === "cloud";
   const url = isCloud
     ? `${config.cloudRelayBaseUrl ?? ""}${cloudRelayPath}`
-    : `${DUFFEL_API_BASE}${directPath}`;
+    : `${getDuffelApiBase()}${directPath}`;
 
   const headers = isCloud
     ? { "Content-Type": "application/json", Accept: "application/json" }

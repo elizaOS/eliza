@@ -18,8 +18,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { runExtractorPipeline } from "../../lifeops/llm/extractor-pipeline.js";
 import { parseJsonModelRecord } from "../../utils/json-model-output.js";
-import { runExtractorPipeline } from "../extractor-pipeline.js";
 import { recentConversationTextsFromState } from "./recent-context.js";
 
 // ── Public types ──────────────────────────────────────
@@ -51,7 +51,13 @@ export interface ResolveActionArgsInput<TSubaction extends string, _TParams> {
 }
 
 export type ResolveActionArgsResult<TSubaction extends string, TParams> =
-  | { ok: true; subaction: TSubaction; params: TParams }
+  | {
+      ok: true;
+      subaction: TSubaction;
+      params: TParams;
+      missing?: never;
+      clarification?: never;
+    }
   | {
       ok: false;
       missing: string[];
@@ -190,8 +196,8 @@ function buildExtractionPrompt<TSubaction extends string>(args: {
 }): string {
   const { actionName, subactions, defaultSubaction, intent, intentHint } = args;
   const lines: string[] = [
-    `Pick the correct subaction for the ${actionName} umbrella and extract its parameters.`,
-    "Subactions (with their required + optional parameter keys):",
+    `Pick the correct action value for the ${actionName} umbrella and extract its parameters.`,
+    "Action values (with their required + optional parameter keys):",
     describeSubactionsForPrompt(subactions),
     "",
   ];
@@ -202,7 +208,7 @@ function buildExtractionPrompt<TSubaction extends string>(args: {
   }
   lines.push(
     "Return ONLY a JSON object with these fields:",
-    "  subaction: one of the subaction keys above, or null if the request does not match any subaction",
+    "  action: one of the action keys above, or null if the request does not match any action",
     "  params: record containing the required and any obvious optional parameter values you extracted",
     "  missing: list of required parameter keys you could NOT extract from the request or context",
     "  confidence: number from 0.0 to 1.0 reflecting how confident you are in the subaction choice",
@@ -221,7 +227,7 @@ function buildExtractionPrompt<TSubaction extends string>(args: {
     "Recent conversation (most recent last):",
     args.recentConversation.length > 0 ? args.recentConversation : "(none)",
     "",
-    'Return ONLY the JSON object. Example: {"subaction":null,"params":{},"missing":["subaction"],"confidence":0.0}. No prose, markdown, or code fences.',
+    'Return ONLY the JSON object. Example: {"action":null,"params":{},"missing":["action"],"confidence":0.0}. No prose, markdown, or code fences.',
   );
   return lines.join("\n");
 }
@@ -229,8 +235,8 @@ function buildExtractionPrompt<TSubaction extends string>(args: {
 function buildRepairPromptForExtraction(rawFirstPass: string): string {
   return [
     "Your previous reply was not valid JSON for the action argument extractor.",
-    "Return ONLY a JSON object with exactly these fields: subaction, params, missing, confidence.",
-    "subaction: string or null. params: record. missing: list of strings. confidence: number 0.0-1.0.",
+    "Return ONLY a JSON object with exactly these fields: action, params, missing, confidence.",
+    "action: string or null. params: record. missing: list of strings. confidence: number 0.0-1.0.",
     "No prose, no markdown, no code fences.",
     "",
     "Previous invalid output:",
@@ -250,7 +256,7 @@ function parseExtractionEnvelope<TSubaction extends string>(
     return null;
   }
 
-  const subactionRaw = parsed.subaction;
+  const subactionRaw = parsed.action ?? parsed.subaction;
   const subaction = isSubactionKey(subactionRaw, subactions)
     ? subactionRaw
     : null;
@@ -312,7 +318,7 @@ export async function resolveActionArgs<
       : {};
 
   // 1. Planner trust path — fully populated subaction + required fields.
-  const plannerSubactionRaw = plannerParams.subaction;
+  const plannerSubactionRaw = plannerParams.action ?? plannerParams.subaction;
   if (isSubactionKey(plannerSubactionRaw, subactions)) {
     const plannerSubaction = plannerSubactionRaw;
     const missingFromPlanner = missingRequiredKeys(
@@ -329,9 +335,7 @@ export async function resolveActionArgs<
     }
   }
 
-  // TODO(native-parameters): delete this legacy extractor fallback once
-  // LifeOps planners reliably populate options.parameters for umbrella actions.
-  // 2. LLM extraction path.
+  // 2. LLM extraction path for natural-language umbrella actions.
   const intent = asTrimmedString(intentHint) || getMessageText(message);
   const recentConversation = recentConversationTextsFromState(
     state,

@@ -118,7 +118,7 @@ export const attachmentsProvider: Provider = {
     Content Type: ${attachment.contentType ?? "unknown"}
     Stored Content: ${
 			attachment.text || attachment.description
-				? "available via READ_ATTACHMENT"
+				? "available via ATTACHMENT action=read"
 				: "none"
 		}
     `,
@@ -126,7 +126,7 @@ export const attachmentsProvider: Provider = {
 				.join("\n");
 			const omissionNotice =
 				omittedCount > 0
-					? `Showing the ${visibleAttachments.length} most recent attachments. ${omittedCount} older attachment${omittedCount === 1 ? "" : "s"} omitted from context; use READ_ATTACHMENT to inspect one.`
+					? `Showing the ${visibleAttachments.length} most recent attachments. ${omittedCount} older attachment${omittedCount === 1 ? "" : "s"} omitted from context; use ATTACHMENT action=read to inspect one.`
 					: "";
 
 			// Create formatted text with header

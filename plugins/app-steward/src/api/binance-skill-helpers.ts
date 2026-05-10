@@ -5,7 +5,7 @@
  * (meme-rush, trading-signal, token-info, etc.) and fallback action parsing.
  */
 
-import { extractCompatTextContent } from "@elizaos/agent/api/compat-utils";
+import { extractCompatTextContent } from "@elizaos/agent";
 import {
   type Action,
   type ActionParameters,
@@ -52,7 +52,7 @@ async function resolveBuiltInFallbackAction(
 
   if (!ownerWebsiteBlockFallbackPromise) {
     ownerWebsiteBlockFallbackPromise = import(
-      "@elizaos/app-lifeops/selfcontrol"
+      "@elizaos/app-lifeops"
     )
       .then((mod) => mod.websiteBlockAction ?? null)
       .catch(() => null);

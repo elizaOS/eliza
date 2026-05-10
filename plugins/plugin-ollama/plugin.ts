@@ -1,9 +1,43 @@
+/**
+ * Ollama provider plugin registration.
+ *
+ * ## Why this file exists separately from `models/*`
+ *
+ * Centralizes **plugin metadata**, **model-type → handler** wiring, and **init-time** logging
+ * (base URL, model defaults) so model modules stay pure “call Ollama / AI SDK” logic.
+ *
+ * ## Text handlers and v5 parity
+ *
+ * `TEXT_*`, `RESPONSE_HANDLER`, and `ACTION_PLANNER` all route through `models/text.ts`, which uses:
+ *
+ * - **`generateText`** — default completion; structured output when `responseSchema` is set and
+ *   streaming is not used for that shape; **`stream: true`** + schema-only (no tools) for nested
+ *   extractors. **Why:** keeps JSON `format` on the supported completion path.
+ * - **`streamText`** — plain SSE chat when `stream: true` with no tools/schema/`toolChoice`; and
+ *   **`stream: true` + native tools** so Ollama can stream `/api/chat` with tools. For v5 planner
+ *   model types under SSE, `models/text.ts` may yield a **single** `textStream` chunk of plan JSON
+ *   so `useModel`’s concatenated string stays parseable. **Why:** core’s streaming path only
+ *   accumulates `textStream` chunks, not the `text` promise; mixing arbitrary deltas with plan JSON
+ *   breaks `parseMessageHandlerOutput`.
+ *
+ * Handlers return **`Promise<string | TextStreamResult>`** — **why:** `useModel` accepts either a
+ * final string or a streaming object for text model keys; matching OpenRouter keeps orchestration
+ * and SSE paths identical. ElizaOS v5 Stage 1 calls `RESPONSE_HANDLER` with **`messages`**,
+ * **`tools`**, and **`toolChoice`**; the text adapter must accept the same shapes as
+ * OpenRouter/OpenAI or local-only agents fail before the first reply. See `models/text.ts` and
+ * `utils/ai-sdk-wire.ts` module comments for the full rationale.
+ *
+ * ## AI SDK log noise
+ *
+ * Suppresses noisy AI SDK warnings at load (`AI_SDK_LOG_WARNINGS`) because local inference
+ * runs in tight loops during tests and desktop shells. **Why:** keeps CI and packaged logs readable.
+ */
 import type {
   GenerateTextParams,
   IAgentRuntime,
-  ObjectGenerationParams,
   Plugin,
   TextEmbeddingParams,
+  TextStreamResult,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 
@@ -13,7 +47,6 @@ const _globalThis = globalThis as typeof globalThis & {
 _globalThis.AI_SDK_LOG_WARNINGS ??= false;
 
 import { handleTextEmbedding } from "./models/embedding";
-import { handleObjectLarge, handleObjectSmall } from "./models/object";
 import {
   handleActionPlanner,
   handleResponseHandler,
@@ -44,6 +77,9 @@ const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER")
 export const ollamaPlugin: Plugin = {
   name: "ollama",
   description: "Ollama plugin for local LLM inference",
+  autoEnable: {
+    envKeys: ["OLLAMA_BASE_URL"],
+  },
 
   config: {
     OLLAMA_API_ENDPOINT: env.OLLAMA_API_ENDPOINT ?? null,
@@ -66,6 +102,7 @@ export const ollamaPlugin: Plugin = {
     ACTION_PLANNER_MODEL: env.ACTION_PLANNER_MODEL ?? null,
     PLANNER_MODEL: env.PLANNER_MODEL ?? null,
     OLLAMA_EMBEDDING_MODEL: env.OLLAMA_EMBEDDING_MODEL ?? null,
+    OLLAMA_DISABLE_STRUCTURED_OUTPUT: env.OLLAMA_DISABLE_STRUCTURED_OUTPUT ?? null,
   },
 
   async init(_config, runtime) {
@@ -105,64 +142,50 @@ export const ollamaPlugin: Plugin = {
     [TEXT_NANO_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
       params: GenerateTextParams
-    ): Promise<string> => {
+    ): Promise<string | TextStreamResult> => {
       return handleTextNano(runtime, params);
     },
 
     [ModelType.TEXT_SMALL]: async (
       runtime: IAgentRuntime,
       params: GenerateTextParams
-    ): Promise<string> => {
+    ): Promise<string | TextStreamResult> => {
       return handleTextSmall(runtime, params);
     },
 
     [TEXT_MEDIUM_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
       params: GenerateTextParams
-    ): Promise<string> => {
+    ): Promise<string | TextStreamResult> => {
       return handleTextMedium(runtime, params);
     },
 
     [ModelType.TEXT_LARGE]: async (
       runtime: IAgentRuntime,
       params: GenerateTextParams
-    ): Promise<string> => {
+    ): Promise<string | TextStreamResult> => {
       return handleTextLarge(runtime, params);
     },
 
     [TEXT_MEGA_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
       params: GenerateTextParams
-    ): Promise<string> => {
+    ): Promise<string | TextStreamResult> => {
       return handleTextMega(runtime, params);
     },
 
     [RESPONSE_HANDLER_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
       params: GenerateTextParams
-    ): Promise<string> => {
+    ): Promise<string | TextStreamResult> => {
       return handleResponseHandler(runtime, params);
     },
 
     [ACTION_PLANNER_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
       params: GenerateTextParams
-    ): Promise<string> => {
+    ): Promise<string | TextStreamResult> => {
       return handleActionPlanner(runtime, params);
-    },
-
-    [ModelType.OBJECT_SMALL]: async (
-      runtime: IAgentRuntime,
-      params: ObjectGenerationParams
-    ): Promise<Record<string, string | number | boolean | null>> => {
-      return handleObjectSmall(runtime, params);
-    },
-
-    [ModelType.OBJECT_LARGE]: async (
-      runtime: IAgentRuntime,
-      params: ObjectGenerationParams
-    ): Promise<Record<string, string | number | boolean | null>> => {
-      return handleObjectLarge(runtime, params);
     },
   },
 
@@ -235,36 +258,44 @@ export const ollamaPlugin: Plugin = {
           },
         },
         {
-          name: "ollama_test_object_small",
+          name: "ollama_test_structured_output_via_text_small",
           fn: async (runtime: IAgentRuntime) => {
             try {
               const runModel = runtime.useModel.bind(runtime);
-              const object = await runModel(ModelType.OBJECT_SMALL, {
+              const result = await runModel(ModelType.TEXT_SMALL, {
                 prompt:
                   "Generate a JSON object representing a user profile with name, age, and hobbies",
                 temperature: 0.7,
-                schema: undefined,
+                responseSchema: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    age: { type: "number" },
+                    hobbies: { type: "array", items: { type: "string" } },
+                  },
+                  required: ["name", "age", "hobbies"],
+                },
               });
-              logger.log({ object }, "Generated object");
+              logger.log({ result }, "Generated structured output via TEXT_SMALL");
             } catch (error) {
-              logger.error({ error }, "Error in test_object_small");
+              logger.error({ error }, "Error in test_structured_output_via_text_small");
             }
           },
         },
         {
-          name: "ollama_test_object_large",
+          name: "ollama_test_structured_output_via_text_large",
           fn: async (runtime: IAgentRuntime) => {
             try {
               const runModel = runtime.useModel.bind(runtime);
-              const object = await runModel(ModelType.OBJECT_LARGE, {
+              const result = await runModel(ModelType.TEXT_LARGE, {
                 prompt:
                   "Generate a detailed JSON object representing a restaurant with name, cuisine type, menu items with prices, and customer reviews",
                 temperature: 0.7,
-                schema: undefined,
+                responseSchema: { type: "object" },
               });
-              logger.log({ object }, "Generated object");
+              logger.log({ result }, "Generated structured output via TEXT_LARGE");
             } catch (error) {
-              logger.error({ error }, "Error in test_object_large");
+              logger.error({ error }, "Error in test_structured_output_via_text_large");
             }
           },
         },

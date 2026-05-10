@@ -29,7 +29,7 @@ export default scenario({
       room: "main",
       text: "Draft a reply to the latest Discord DM from Bob saying I'll be there soon.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+        acceptedActions: ["MESSAGE", "MESSAGE"],
         description: "discord DM draft reply",
         includesAny: ["discord", "Bob", "draft", "reply"],
       }),
@@ -46,7 +46,7 @@ export default scenario({
       room: "main",
       text: "Send it.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+        acceptedActions: ["MESSAGE", "MESSAGE"],
         description: "discord DM send after confirmation",
         includesAny: ["send", "discord", "reply"],
       }),
@@ -61,7 +61,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      actionName: ["MESSAGE", "MESSAGE"],
     },
     {
       type: "custom",
@@ -87,7 +87,7 @@ export default scenario({
       type: "custom",
       name: "discord-local-reply-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+        acceptedActions: ["MESSAGE", "MESSAGE"],
         description: "discord DM draft then send",
         includesAny: ["discord", "draft", "send", "reply"],
         minCount: 2,
@@ -99,9 +99,9 @@ export default scenario({
       predicate: async (ctx) => {
         const sendAction = [...ctx.actionsCalled]
           .reverse()
-          .find((entry) => entry.actionName === "SEND_DRAFT");
+          .find((entry) => entry.actionName === "MESSAGE");
         if (!sendAction) {
-          return "expected a SEND_DRAFT action for the confirmed Discord reply";
+          return "expected a MESSAGE action for the confirmed Discord reply";
         }
 
         const blob = JSON.stringify(sendAction).toLowerCase();

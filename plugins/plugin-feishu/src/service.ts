@@ -2,10 +2,12 @@ import {
 	ChannelType,
 	type Content,
 	createUniqueUuid,
+	type Entity,
 	type EventPayload,
 	EventType,
 	type IAgentRuntime,
 	logger,
+	type Memory,
 	type MessageConnectorChatContext,
 	type MessageConnectorTarget,
 	type MessageConnectorUserContext,
@@ -79,6 +81,109 @@ function feishuChatToConnectorTarget(
 			tenantKey: chat.tenantKey,
 		},
 	};
+}
+
+type ConnectorHookContext = {
+	runtime: IAgentRuntime;
+	roomId?: UUID;
+	target?: TargetInfo;
+};
+
+type ConnectorReadParams = {
+	target?: TargetInfo;
+	limit?: number;
+	query?: string;
+};
+
+type ConnectorUserLookupParams = {
+	entityId?: UUID | string;
+	userId?: string;
+	username?: string;
+	handle?: string;
+	target?: TargetInfo;
+};
+
+type AdditiveMessageConnectorHooks = {
+	fetchMessages?: (
+		context: ConnectorHookContext,
+		params?: ConnectorReadParams,
+	) => Promise<Memory[]>;
+	searchMessages?: (
+		context: ConnectorHookContext,
+		params: ConnectorReadParams & { query: string },
+	) => Promise<Memory[]>;
+	getUser?: (
+		runtime: IAgentRuntime,
+		params: ConnectorUserLookupParams,
+	) => Promise<Entity | null>;
+};
+
+type ExtendedMessageConnectorRegistration = Parameters<
+	IAgentRuntime["registerMessageConnector"]
+>[0] &
+	AdditiveMessageConnectorHooks;
+
+function normalizeConnectorLimit(
+	limit: number | undefined,
+	fallback = 50,
+): number {
+	if (!Number.isFinite(limit) || !limit || limit <= 0) {
+		return fallback;
+	}
+	return Math.min(Math.floor(limit), 200);
+}
+
+async function readStoredMessageMemories(
+	runtime: IAgentRuntime,
+	roomId: UUID,
+	limit: number,
+): Promise<Memory[]> {
+	return runtime.getMemories({
+		tableName: "messages",
+		roomId,
+		limit,
+		orderBy: "createdAt",
+		orderDirection: "desc",
+	});
+}
+
+async function readStoredMessagesForTargets(
+	runtime: IAgentRuntime,
+	targets: MessageConnectorTarget[],
+	limit: number,
+): Promise<Memory[]> {
+	const roomIds = Array.from(
+		new Set(
+			targets
+				.map((target) => target.target.roomId)
+				.filter((id): id is UUID => Boolean(id)),
+		),
+	);
+	const chunks = await Promise.all(
+		roomIds.map((roomId) => readStoredMessageMemories(runtime, roomId, limit)),
+	);
+	return chunks
+		.flat()
+		.sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+		.slice(0, limit);
+}
+
+function filterMemoriesByQuery(
+	memories: Memory[],
+	query: string,
+	limit: number,
+): Memory[] {
+	const normalized = query.trim().toLowerCase();
+	if (!normalized) {
+		return memories.slice(0, limit);
+	}
+	return memories
+		.filter((memory) => {
+			const text =
+				typeof memory.content?.text === "string" ? memory.content.text : "";
+			return text.toLowerCase().includes(normalized);
+		})
+		.slice(0, limit);
 }
 
 /**
@@ -178,7 +283,7 @@ export class FeishuService extends Service {
 	}
 
 	static async stop(runtime: IAgentRuntime): Promise<void> {
-		const service = runtime.getService(FEISHU_SERVICE_NAME) as unknown as
+		const service = runtime.getService(FEISHU_SERVICE_NAME) as
 			| FeishuService
 			| undefined;
 		if (service) {
@@ -192,7 +297,7 @@ export class FeishuService extends Service {
 		if (this.wsClient) {
 			try {
 				// WSClient may not have a stop method in newer SDK versions
-				const wsClientWithStop = this.wsClient as unknown as {
+				const wsClientWithStop = this.wsClient as {
 					stop?: () => Promise<void>;
 				};
 				if (typeof wsClientWithStop.stop === "function") {
@@ -221,7 +326,7 @@ export class FeishuService extends Service {
 		// Get bot info - the API path may vary by SDK version
 		try {
 			// Try to get bot info via the contact API
-			const client = this.client as unknown as {
+			const client = this.client as {
 				bot?: {
 					botInfo?: {
 						get: (params: Record<string, unknown>) => Promise<{
@@ -515,11 +620,21 @@ export class FeishuService extends Service {
 		serviceInstance: FeishuService,
 	): void {
 		if (serviceInstance?.client && serviceInstance?.messageManager) {
-			const sendHandler =
-				serviceInstance.handleSendMessage.bind(serviceInstance);
+			const sendHandler = async (
+				handlerRuntime: IAgentRuntime,
+				target: TargetInfo,
+				content: Content,
+			): Promise<Memory | undefined> => {
+				await serviceInstance.handleSendMessage(
+					handlerRuntime,
+					target,
+					content,
+				);
+				return undefined;
+			};
 
 			if (typeof runtime.registerMessageConnector === "function") {
-				runtime.registerMessageConnector({
+				const registration = {
 					source: FEISHU_SERVICE_NAME,
 					label: "Feishu/Lark",
 					capabilities: [
@@ -564,6 +679,49 @@ export class FeishuService extends Service {
 							({ chat, roomId }) =>
 								feishuChatToConnectorTarget(chat, 0.55, roomId),
 						),
+					fetchMessages: async (context, params) => {
+						const limit = normalizeConnectorLimit(params?.limit);
+						const target = params?.target ?? context.target;
+						if (target?.roomId) {
+							return readStoredMessageMemories(
+								context.runtime,
+								target.roomId,
+								limit,
+							);
+						}
+						const targets = (
+							await serviceInstance.listConnectorChats(context.runtime)
+						)
+							.slice(0, 10)
+							.map(({ chat, roomId }) =>
+								feishuChatToConnectorTarget(chat, 0.55, roomId),
+							);
+						return readStoredMessagesForTargets(
+							context.runtime,
+							targets,
+							limit,
+						);
+					},
+					searchMessages: async (context, params) => {
+						const limit = normalizeConnectorLimit(params?.limit);
+						const target = params?.target ?? context.target;
+						const messages = target?.roomId
+							? await readStoredMessageMemories(
+									context.runtime,
+									target.roomId,
+									Math.max(limit, 100),
+								)
+							: await readStoredMessagesForTargets(
+									context.runtime,
+									(await serviceInstance.listConnectorChats(context.runtime))
+										.slice(0, 10)
+										.map(({ chat, roomId }) =>
+											feishuChatToConnectorTarget(chat, 0.55, roomId),
+										),
+									Math.max(limit, 100),
+								);
+						return filterMemoriesByQuery(messages, params.query, limit);
+					},
 					getChatContext: async (target, context) => {
 						const room = target.roomId
 							? await context.runtime.getRoom(target.roomId)
@@ -618,7 +776,29 @@ export class FeishuService extends Service {
 							metadata: entity.metadata,
 						} satisfies MessageConnectorUserContext;
 					},
-				});
+					getUser: async (handlerRuntime, params) => {
+						const lookupParams = params as ConnectorUserLookupParams;
+						const entityId = String(
+							lookupParams.entityId ??
+								params.userId ??
+								params.username ??
+								params.handle ??
+								params.target?.entityId ??
+								"",
+						).trim();
+						if (
+							!entityId ||
+							typeof handlerRuntime.getEntityById !== "function"
+						) {
+							return null;
+						}
+						const entity = await handlerRuntime
+							.getEntityById(entityId as UUID)
+							.catch(() => null);
+						return entity;
+					},
+				} as ExtendedMessageConnectorRegistration;
+				runtime.registerMessageConnector(registration);
 			} else {
 				runtime.registerSendHandler(FEISHU_SERVICE_NAME, sendHandler);
 			}

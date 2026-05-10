@@ -6,7 +6,7 @@ import {
   type GameOperatorEvent,
   GameOperatorShell,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import { useCallback, useMemo, useState } from "react";
 
 const PRIMARY_COMMANDS = [

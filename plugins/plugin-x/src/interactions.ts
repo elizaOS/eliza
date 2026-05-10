@@ -9,7 +9,6 @@ import {
   type Memory,
   type MessagePayload,
   ModelType,
-  type UUID,
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import { SearchMode } from "./client/index";
@@ -38,6 +37,49 @@ import {
 } from "./utils/memory";
 import { getSetting } from "./utils/settings";
 import { getEpochMs } from "./utils/time";
+
+type ProcessableTweet = ClientTweet & {
+  id: string;
+  userId: string;
+  username: string;
+  name: string;
+  conversationId: string;
+  text: string;
+  timestamp: number;
+  thread: ClientTweet[];
+};
+
+function normalizeTweet(tweet: ClientTweet): ProcessableTweet | null {
+  if (
+    typeof tweet.id !== "string" ||
+    tweet.id.length === 0 ||
+    typeof tweet.userId !== "string" ||
+    tweet.userId.length === 0
+  ) {
+    return null;
+  }
+
+  const username =
+    typeof tweet.username === "string" && tweet.username.length > 0
+      ? tweet.username
+      : "unknown";
+
+  return {
+    ...tweet,
+    id: tweet.id,
+    userId: tweet.userId,
+    username,
+    name: tweet.name ?? username,
+    conversationId: tweet.conversationId ?? tweet.id,
+    text: tweet.text ?? "",
+    timestamp: tweet.timestamp ?? Date.now(),
+    thread: tweet.thread?.length ? tweet.thread : [tweet],
+  };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 /**
  * Template for generating dialog and actions for a Twitter message handler.
@@ -85,7 +127,7 @@ export const messageHandlerTemplate = `
 export class TwitterInteractionClient {
   client: ClientBase;
   runtime: IAgentRuntime;
-  twitterUsername: string;
+  twitterUsername = "";
   private isDryRun: boolean;
   private state: TwitterClientState;
   private isRunning: boolean = false;
@@ -106,7 +148,7 @@ export class TwitterInteractionClient {
     this.runtime = runtime;
     this.state = state;
 
-    // `state` values are typed as strings but legacy callers may pass booleans;
+    // `state` values are typed as strings but runtime settings may pass booleans;
     // widen to unknown so the defensive boolean check below still compiles.
     const dryRunSetting: unknown =
       this.state?.TWITTER_DRY_RUN ??
@@ -174,8 +216,12 @@ export class TwitterInteractionClient {
         (getSetting(this.runtime, "TWITTER_ENABLE_REPLIES") ??
           process.env.TWITTER_ENABLE_REPLIES) !== "false";
 
-      if (repliesEnabled) {
+      if (repliesEnabled && twitterUsername) {
         await this.handleMentions(twitterUsername);
+      } else if (repliesEnabled) {
+        logger.warn(
+          "Skipping Twitter mentions: profile username is unavailable",
+        );
       }
 
       // Check target users' posts for autonomous engagement
@@ -192,7 +238,7 @@ export class TwitterInteractionClient {
 
       logger.log("Finished checking Twitter interactions");
     } catch (error) {
-      logger.error("Error handling Twitter interactions:", error);
+      logger.error("Error handling Twitter interactions:", errorMessage(error));
     }
   }
 
@@ -203,8 +249,8 @@ export class TwitterInteractionClient {
     try {
       // Check for mentions
       const cursorKey = `twitter/${twitterUsername}/mention_cursor`;
-      const cachedCursor: string =
-        await this.runtime.getCache<string>(cursorKey);
+      const cachedCursor =
+        (await this.runtime.getCache<string>(cursorKey)) ?? "";
 
       const searchResult = await this.client.fetchSearchTweets(
         `@${twitterUsername}`,
@@ -225,7 +271,7 @@ export class TwitterInteractionClient {
 
       await this.processMentionTweets(mentionCandidates);
     } catch (error) {
-      logger.error("Error handling mentions:", error);
+      logger.error("Error handling mentions:", errorMessage(error));
     }
   }
 
@@ -269,7 +315,10 @@ export class TwitterInteractionClient {
             );
           }
         } catch (error) {
-          logger.error(`Error searching posts from @${targetUser}:`, error);
+          logger.error(
+            `Error searching posts from @${targetUser}:`,
+            errorMessage(error),
+          );
         }
       }
 
@@ -278,7 +327,7 @@ export class TwitterInteractionClient {
         await this.processTimelineForEngagement();
       }
     } catch (error) {
-      logger.error("Error handling target user posts:", error);
+      logger.error("Error handling target user posts:", errorMessage(error));
     }
   }
 
@@ -298,7 +347,10 @@ export class TwitterInteractionClient {
 
     let engagementCount = 0;
 
-    for (const tweet of tweets) {
+    for (const rawTweet of tweets) {
+      const tweet = normalizeTweet(rawTweet);
+      if (!tweet) continue;
+
       if (engagementCount >= maxEngagementsPerRun) {
         logger.info(`Reached max engagements limit (${maxEngagementsPerRun})`);
         break;
@@ -365,14 +417,19 @@ export class TwitterInteractionClient {
         await this.processTargetUserTweets(relevantTweets, "timeline");
       }
     } catch (error) {
-      logger.error("Error processing timeline for engagement:", error);
+      logger.error(
+        "Error processing timeline for engagement:",
+        errorMessage(error),
+      );
     }
   }
 
   /**
    * Determine if the bot should engage with a specific tweet
    */
-  private async shouldEngageWithTweet(tweet: ClientTweet): Promise<boolean> {
+  private async shouldEngageWithTweet(
+    tweet: ProcessableTweet,
+  ): Promise<boolean> {
     try {
       // Create a simple evaluation prompt
       const evaluationContext = {
@@ -424,7 +481,7 @@ Response (YES/NO):`;
 
       return response.trim().toUpperCase().includes("YES");
     } catch (error) {
-      logger.error("Error determining engagement:", error);
+      logger.error("Error determining engagement:", errorMessage(error));
       return false;
     }
   }
@@ -432,9 +489,10 @@ Response (YES/NO):`;
   /**
    * Ensure tweet context exists (world, room, entity)
    */
-  private async ensureTweetContext(tweet: ClientTweet) {
+  private async ensureTweetContext(tweet: ProcessableTweet) {
     try {
       const context = await ensureContext(this.runtime, {
+        accountId: this.client.accountId,
         userId: tweet.userId,
         username: tweet.username,
         name: tweet.name,
@@ -453,12 +511,20 @@ Response (YES/NO):`;
         },
         agentId: this.runtime.agentId,
         roomId: context.roomId,
+        metadata: buildTwitterMessageMetadata(
+          tweet,
+          context.entityId,
+          this.client.accountId,
+        ),
         createdAt: getEpochMs(tweet.timestamp),
       };
 
       await createMemorySafe(this.runtime, tweetMemory, "messages");
     } catch (error) {
-      logger.error(`Failed to ensure context for tweet ${tweet.id}:`, error);
+      logger.error(
+        `Failed to ensure context for tweet ${tweet.id}:`,
+        errorMessage(error),
+      );
       throw error;
     }
   }
@@ -466,11 +532,12 @@ Response (YES/NO):`;
   /**
    * Engage with a tweet by generating and sending a reply
    */
-  private async engageWithTweet(tweet: ClientTweet): Promise<boolean> {
+  private async engageWithTweet(tweet: ProcessableTweet): Promise<boolean> {
     try {
+      const entityId = createUniqueUuid(this.runtime, tweet.userId);
       const message: Memory = {
         id: createUniqueUuid(this.runtime, tweet.id),
-        entityId: createUniqueUuid(this.runtime, tweet.userId),
+        entityId,
         content: {
           text: tweet.text,
           source: "twitter",
@@ -478,6 +545,11 @@ Response (YES/NO):`;
         },
         agentId: this.runtime.agentId,
         roomId: createUniqueUuid(this.runtime, tweet.conversationId),
+        metadata: buildTwitterMessageMetadata(
+          tweet,
+          entityId,
+          this.client.accountId,
+        ),
         createdAt: getEpochMs(tweet.timestamp),
       };
 
@@ -487,9 +559,9 @@ Response (YES/NO):`;
         thread: tweet.thread || [tweet],
       });
 
-      return result.text && result.text.length > 0;
+      return Boolean(result.text && result.text.length > 0);
     } catch (error) {
-      logger.error("Error engaging with tweet:", error);
+      logger.error("Error engaging with tweet:", errorMessage(error));
       return false;
     }
   }
@@ -509,12 +581,15 @@ Response (YES/NO):`;
       "Completed checking mentioned tweets:",
       mentionCandidates.length.toString(),
     );
-    let uniqueTweetCandidates = [...mentionCandidates];
+    let uniqueTweetCandidates = mentionCandidates
+      .map((tweet) => normalizeTweet(tweet))
+      .filter((tweet): tweet is ProcessableTweet => tweet !== null);
+    const profileId = this.client.profile?.id;
 
     // Sort tweet candidates by ID in ascending order
     uniqueTweetCandidates = uniqueTweetCandidates
       .sort((a, b) => a.id.localeCompare(b.id))
-      .filter((tweet) => tweet.userId !== this.client.profile.id);
+      .filter((tweet) => !profileId || tweet.userId !== profileId);
 
     // Get TWITTER_TARGET_USERS configuration
     const targetUsersConfig =
@@ -573,7 +648,7 @@ Response (YES/NO):`;
         } catch (error) {
           logger.warn(
             "Unable to resolve parent tweet authors for mention/reply filtering",
-            error,
+            errorMessage(error),
           );
         }
       }
@@ -584,8 +659,7 @@ Response (YES/NO):`;
           (tweet.inReplyToStatusId
             ? parentTweetAuthorMap.get(tweet.inReplyToStatusId)
             : undefined);
-        const isReplyToUs =
-          !!parentAuthorId && parentAuthorId === this.client.profile.id;
+        const isReplyToUs = !!parentAuthorId && parentAuthorId === profileId;
 
         if (isReplyToUs && !autoRespondReplies) {
           logger.log(
@@ -687,7 +761,9 @@ Response (YES/NO):`;
           agentId: this.runtime.agentId,
           metadata: {
             ownership: { ownerId: userId },
+            accountId: this.client.accountId,
             twitter: {
+              accountId: this.client.accountId,
               username: username,
               id: userId,
             },
@@ -699,7 +775,7 @@ Response (YES/NO):`;
         await this.runtime.ensureConnection({
           entityId,
           roomId,
-          userId: userId as unknown as UUID,
+          userId,
           userName: username,
           name: tweet.name,
           source: "twitter",
@@ -730,7 +806,11 @@ Response (YES/NO):`;
           },
           agentId: this.runtime.agentId,
           roomId,
-          metadata: buildTwitterMessageMetadata(tweet, entityId),
+          metadata: buildTwitterMessageMetadata(
+            tweet,
+            entityId,
+            this.client.accountId,
+          ),
           createdAt: getEpochMs(tweet.timestamp),
         };
 
@@ -739,7 +819,7 @@ Response (YES/NO):`;
 
         // Handle thread-specific events
         if (tweet.thread && tweet.thread.length > 0) {
-          const threadStartId = tweet.thread[0].id;
+          const threadStartId = tweet.thread[0]?.id ?? tweet.id;
           const threadMemoryId = createUniqueUuid(
             this.runtime,
             `thread-${threadStartId}`,
@@ -765,7 +845,7 @@ Response (YES/NO):`;
               TwitterEventTypes.THREAD_UPDATED,
               threadPayload,
             );
-          } else if (tweet.thread[0].id === tweet.id) {
+          } else if ((tweet.thread[0]?.id ?? tweet.id) === tweet.id) {
             // This is the start of a new thread
             this.runtime.emitEvent(
               TwitterEventTypes.THREAD_CREATED,
@@ -810,6 +890,9 @@ Response (YES/NO):`;
         content: {
           text: interaction.targetTweet.text,
           source: "twitter",
+          metadata: {
+            accountId: this.client.accountId,
+          },
         },
         entityId: createUniqueUuid(this.runtime, interaction.userId),
         roomId: createUniqueUuid(
@@ -817,6 +900,20 @@ Response (YES/NO):`;
           interaction.targetTweet.conversationId,
         ),
         agentId: this.runtime.agentId,
+        metadata: {
+          type: "message",
+          source: "twitter",
+          accountId: this.client.accountId,
+          provider: "twitter",
+          fromId: interaction.userId,
+          messageIdFull: interaction.targetTweetId,
+          twitter: {
+            accountId: this.client.accountId,
+            tweetId: interaction.targetTweetId,
+            userId: interaction.userId,
+            username: interaction.username,
+          },
+        } satisfies Memory["metadata"],
         createdAt: Date.now(),
       };
 
@@ -887,6 +984,7 @@ Response (YES/NO):`;
         source: "twitter",
         metadata: {
           type: interaction.type,
+          accountId: this.client.accountId,
           targetTweetId: interaction.targetTweetId,
           username: interaction.username,
           userId: interaction.userId,
@@ -924,7 +1022,19 @@ Response (YES/NO):`;
       content: {
         type,
         source: "twitter",
+        metadata: {
+          accountId: this.client.accountId,
+        },
+      } as TwitterInteractionMemory["content"] & {
+        metadata: { accountId: string };
       },
+      metadata: {
+        type: "message",
+        source: "twitter",
+        interactionType: type,
+        accountId: this.client.accountId,
+        provider: "twitter",
+      } satisfies Memory["metadata"],
       createdAt: Date.now(),
     };
   }
@@ -949,6 +1059,16 @@ Response (YES/NO):`;
     message: Memory;
     thread: ClientTweet[];
   }) {
+    const normalizedTweet = normalizeTweet(tweet);
+    if (!normalizedTweet) {
+      logger.warn("Skipping Tweet with missing required ids", tweet.id);
+      return { text: "", actions: ["IGNORE"] };
+    }
+    tweet = normalizedTweet;
+    thread = thread.map(
+      (threadTweet) => normalizeTweet(threadTweet) ?? threadTweet,
+    );
+
     if (!message.content.text) {
       logger.log("Skipping Tweet with no text", tweet.id);
       return { text: "", actions: ["IGNORE"] };
@@ -1000,6 +1120,19 @@ Response (YES/NO):`;
             source: "twitter",
             inReplyTo: message.id,
           },
+          metadata: {
+            type: "message",
+            source: "twitter",
+            accountId: this.client.accountId,
+            provider: "twitter",
+            fromBot: true,
+            messageIdFull: tweetResult.id,
+            twitter: {
+              accountId: this.client.accountId,
+              tweetId: tweetResult.id,
+              inReplyTo: tweetToReplyTo,
+            },
+          } satisfies Memory["metadata"],
           createdAt: Date.now(),
         };
 
@@ -1008,14 +1141,14 @@ Response (YES/NO):`;
         // Return the created memory
         return [responseMemory];
       } catch (error) {
-        logger.error("Error in tweet reply callback:", error);
+        logger.error("Error in tweet reply callback:", errorMessage(error));
         return [];
       }
     };
 
-    const twitterUserId = tweet.userId;
+    const twitterUserId = normalizedTweet.userId;
     const entityId = createUniqueUuid(this.runtime, twitterUserId);
-    const twitterUsername = tweet.username;
+    const twitterUsername = normalizedTweet.username;
 
     // Add Twitter-specific metadata to message
     message.metadata = {

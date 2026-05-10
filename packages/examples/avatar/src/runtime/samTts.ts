@@ -1,6 +1,6 @@
 /**
  * SAM TTS shim. The original implementation depended on
- * `@elizaos/plugin-simple-voice`'s SamTTSService. That plugin has been
+ * `@elizaos/plugin-robot-voice`'s SamTTSService. That plugin has been
  * removed; this stub keeps the avatar example compiling. Calling
  * `synthesizeSamWav` throws so the caller falls through to ElevenLabs.
  */

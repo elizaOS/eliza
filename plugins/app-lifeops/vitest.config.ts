@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -9,7 +10,7 @@ import { getElizaWorkspaceRoot } from "../../test/vitest/workspace-aliases";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = getElizaWorkspaceRoot(repoRoot);
 const packageRootFromRepo = path
-  .relative(repoRoot, here)
+  .relative(elizaRoot, here)
   .split(path.sep)
   .join("/");
 const appCoreTestSetup = path.join(
@@ -19,6 +20,48 @@ const appCoreTestSetup = path.join(
   "test",
   "setup.ts",
 );
+const lifeopsTestSetup = path.join(here, "test", "setup.ts");
+const lifeopsTestStubsRoot = path.join(here, "test", "stubs");
+const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
+const corePackageRequire = createRequire(
+  path.join(elizaRoot, "packages", "core", "package.json"),
+);
+const escapedAgentSourceRoot = agentSourceRoot.replace(
+  /[.*+?^${}()|[\]\\]/g,
+  "\\$&",
+);
+const agentSourceJsToTsPlugin = {
+  name: "lifeops-agent-source-js-to-ts",
+  enforce: "pre" as const,
+  resolveId(source: string, importer?: string) {
+    if (source === "@elizaos/agent") {
+      return path.join(lifeopsTestStubsRoot, "agent.ts");
+    }
+    if (source === "@elizaos/ui") {
+      return path.join(lifeopsTestStubsRoot, "ui.ts");
+    }
+    if (source === "@elizaos/plugin-google") {
+      return path.join(lifeopsTestStubsRoot, "plugin-google.ts");
+    }
+
+    const normalizedImporter = importer?.replace(/^\/@fs/, "");
+    if (
+      normalizedImporter &&
+      (source.startsWith("./") || source.startsWith("../")) &&
+      source.endsWith(".js")
+    ) {
+      const candidate = path.resolve(path.dirname(normalizedImporter), source);
+      if (candidate.startsWith(`${agentSourceRoot}${path.sep}`)) {
+        const tsCandidate = candidate.slice(0, -".js".length) + ".ts";
+        if (fs.existsSync(tsCandidate)) {
+          return tsCandidate;
+        }
+      }
+    }
+
+    return null;
+  },
+};
 function resolveNodePackageRoot(packageName: string): string {
   const directCandidates = [
     path.join(here, "node_modules", packageName),
@@ -44,8 +87,23 @@ function resolveNodePackageRoot(packageName: string): string {
   return path.join(here, "node_modules", packageName);
 }
 
+function resolveCorePackageEntry(packageName: string): string {
+  return corePackageRequire.resolve(packageName);
+}
+
+function resolveCorePackageRoot(packageName: string): string {
+  return path.dirname(
+    corePackageRequire.resolve(path.join(packageName, "package.json")),
+  );
+}
+
 const reactRoot = resolveNodePackageRoot("react");
 const reactDomRoot = resolveNodePackageRoot("react-dom");
+const aiEntry = resolveCorePackageEntry("ai");
+const fsExtraEntry = resolveCorePackageEntry("fs-extra");
+const handlebarsEntry = resolveCorePackageEntry("handlebars");
+const mammothEntry = resolveCorePackageEntry("mammoth");
+const markdownItRoot = resolveCorePackageRoot("markdown-it");
 const telegramSessionsEntry = path.join(
   elizaRoot,
   "plugins",
@@ -54,6 +112,12 @@ const telegramSessionsEntry = path.join(
   "telegram",
   "sessions",
   "index.js",
+);
+const pluginHealthSrc = path.join(
+  elizaRoot,
+  "plugins",
+  "plugin-health",
+  "src",
 );
 
 const defaultUnitExcludes = [
@@ -72,10 +136,62 @@ const defaultUnitExcludes = [
 
 export default defineConfig({
   ...baseConfig,
-  root: repoRoot,
+  root: elizaRoot,
+  plugins: [
+    ...(Array.isArray(baseConfig.plugins) ? baseConfig.plugins : []),
+    agentSourceJsToTsPlugin,
+  ],
+  ssr: {
+    ...baseConfig.ssr,
+    noExternal: [
+      "@elizaos/agent",
+      "@elizaos/ui",
+      ...(Array.isArray(baseConfig.ssr?.noExternal)
+        ? baseConfig.ssr.noExternal
+        : []),
+    ],
+  },
   resolve: {
     ...baseConfig.resolve,
+    preserveSymlinks: false,
     alias: [
+      // These packages are imported by @elizaos/core while this suite inlines
+      // core. Resolve them through Bun's real package-store path so their own
+      // nested dependencies remain visible with preserveSymlinks enabled.
+      { find: /^ai$/, replacement: aiEntry },
+      { find: /^fs-extra$/, replacement: fsExtraEntry },
+      { find: /^handlebars$/, replacement: handlebarsEntry },
+      { find: /^mammoth$/, replacement: mammothEntry },
+      {
+        find: /^markdown-it$/,
+        replacement: path.join(markdownItRoot, "index.mjs"),
+      },
+      {
+        find: new RegExp(`^${escapedAgentSourceRoot}/(.+)\\.js$`),
+        replacement: `${agentSourceRoot}/$1.ts`,
+      },
+      {
+        find: new RegExp(`^/@fs${escapedAgentSourceRoot}/(.+)\\.js$`),
+        replacement: `${agentSourceRoot}/$1.ts`,
+      },
+      {
+        find: "@elizaos/ui",
+        replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
+      },
+      {
+        find: "@elizaos/agent",
+        replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-workflow$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-workflow",
+          "src",
+          "index.ts",
+        ),
+      },
       {
         find: /^react\/jsx-dev-runtime$/,
         replacement: path.join(reactRoot, "jsx-dev-runtime.js"),
@@ -115,9 +231,47 @@ export default defineConfig({
         ),
       },
       { find: /^telegram\/sessions$/, replacement: telegramSessionsEntry },
+      {
+        find: /^@elizaos\/plugin-calendly$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-calendly",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-google$/,
+        replacement: path.join(lifeopsTestStubsRoot, "plugin-google.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-elizacloud$/,
+        replacement: path.join(lifeopsTestStubsRoot, "plugin-elizacloud.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-discord$/,
+        replacement: path.join(lifeopsTestStubsRoot, "plugin-discord.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-health$/,
+        replacement: path.join(pluginHealthSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-health\/(.+)$/,
+        replacement: path.join(pluginHealthSrc, "$1"),
+      },
       ...(Array.isArray(baseConfig.resolve?.alias)
         ? baseConfig.resolve.alias
         : []),
+      {
+        find: "@elizaos/ui",
+        replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
+      },
+      {
+        find: "@elizaos/agent",
+        replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
+      },
     ],
   },
   test: {
@@ -134,7 +288,14 @@ export default defineConfig({
       `${packageRootFromRepo}/extensions/**/*.test.tsx`,
     ],
     exclude: defaultUnitExcludes,
-    setupFiles: [appCoreTestSetup],
+    setupFiles: [lifeopsTestSetup, appCoreTestSetup],
+    server: {
+      ...baseConfig.test?.server,
+      deps: {
+        ...baseConfig.test?.server?.deps,
+        inline: true,
+      },
+    },
     coverage: {
       ...baseConfig.test?.coverage,
       include: [`${packageRootFromRepo}/src/**/*.{ts,tsx}`],

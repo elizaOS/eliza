@@ -11,31 +11,26 @@ import {
 
 import {
   failureToActionResult,
-  readBoolParam,
   readNumberParam,
   readPositiveIntSetting,
   readStringParam,
   successActionResult,
   truncate,
 } from "../lib/format.js";
+import { resolveRuntimeExecutionMode } from "@elizaos/shared";
+import { runShell, type ShellResult } from "../lib/run-shell.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
-import type {
-  ShellTaskRecord,
-  ShellTaskService,
-} from "../services/shell-task-service.js";
 import {
   CODING_TOOLS_CONTEXTS,
   CODING_TOOLS_LOG_PREFIX,
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
-  SHELL_TASK_SERVICE,
 } from "../types.js";
 
 const TIMEOUT_MIN_MS = 100;
 const TIMEOUT_MAX_MS = 600_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
-const DEFAULT_BG_BUDGET_MS = 15_000;
 const STREAM_CAP_CHARS = 30_000;
 
 function clampTimeout(value: number | undefined, fallback: number): number {
@@ -58,26 +53,16 @@ function formatStreams(stdout: string, stderr: string): string {
   return lines.join("\n");
 }
 
-function formatForeground(
-  rec: ShellTaskRecord,
-  command: string,
-  took: number,
-): string {
-  const exit = rec.exitCode ?? -1;
-  const head = `$ ${command}\n[exit ${exit}] (cwd=${rec.cwd}, took=${took}ms)`;
-  const streams = formatStreams(rec.stdout, rec.stderr);
-  return streams.length > 0 ? `${head}\n${streams}` : head;
-}
 
-export const bashAction: Action = {
-  name: "BASH",
+export const shellAction: Action = {
+  name: "SHELL",
   contexts: [...CODING_TOOLS_CONTEXTS],
+  roleGate: { minRole: "OWNER" },
   contextGate: { anyOf: ["code", "terminal", "automation"] },
-  similes: ["SHELL", "EXEC", "RUN_COMMAND"],
+  similes: ["BASH", "EXEC", "RUN_COMMAND"],
   description:
-    "Execute a shell command via /bin/bash -c <command>. Runs in the session cwd by default. Foreground commands return stdout, stderr, and exit code. Long-running commands auto-promote to background and return a task_id; pass run_in_background=true to background immediately. Paths under the configured blocklist (e.g. ~/pvt, ~/Library, ~/.ssh) are off-limits as cwd.",
-  descriptionCompressed:
-    "Run a shell command (foreground or background).",
+    "Execute a shell command via the configured local shell. Runs synchronously in the session cwd by default. Returns stdout, stderr, and exit code. Hard timeout kills the command. Paths under the configured blocklist are off-limits as cwd.",
+  descriptionCompressed: "Run a shell command synchronously.",
   parameters: [
     {
       name: "command",
@@ -105,21 +90,8 @@ export const bashAction: Action = {
       required: false,
       schema: { type: "string" },
     },
-    {
-      name: "run_in_background",
-      description:
-        "If true, return a task_id immediately. Use TASK_OUTPUT to poll and TASK_STOP to terminate.",
-      required: false,
-      schema: { type: "boolean" },
-    },
   ],
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
-  ) => {
-    return true;
-  },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -131,13 +103,10 @@ export const bashAction: Action = {
     if (!command || command.trim().length === 0) {
       return failureToActionResult({
         reason: "missing_param",
-        message: "BASH requires 'command' (string)",
+        message: "SHELL requires 'command' (string)",
       });
     }
-    const description = readStringParam(options, "description");
     const cwdParam = readStringParam(options, "cwd");
-    const runInBackground =
-      readBoolParam(options, "run_in_background") ?? false;
 
     if (!message.roomId) {
       return failureToActionResult({
@@ -153,10 +122,7 @@ export const bashAction: Action = {
     const session = runtime.getService(SESSION_CWD_SERVICE) as InstanceType<
       typeof SessionCwdService
     > | null;
-    const tasks = runtime.getService(SHELL_TASK_SERVICE) as InstanceType<
-      typeof ShellTaskService
-    > | null;
-    if (!sandbox || !session || !tasks) {
+    if (!sandbox || !session) {
       return failureToActionResult({
         reason: "internal",
         message: "coding-tools services unavailable",
@@ -166,7 +132,7 @@ export const bashAction: Action = {
     let cwd: string;
     if (cwdParam) {
       const v = await sandbox.validatePath(conversationId, cwdParam);
-      if (!v.ok) {
+      if (v.ok === false) {
         return failureToActionResult({
           reason: v.reason === "blocked" ? "path_blocked" : "invalid_param",
           message: v.message,
@@ -196,88 +162,112 @@ export const bashAction: Action = {
       "CODING_TOOLS_BASH_TIMEOUT_MS",
       DEFAULT_TIMEOUT_MS,
     );
-    const bgBudget = readPositiveIntSetting(
-      runtime,
-      "CODING_TOOLS_BASH_BG_BUDGET_MS",
-      DEFAULT_BG_BUDGET_MS,
-    );
     const timeout = clampTimeout(
       readNumberParam(options, "timeout"),
       defaultTimeout,
     );
 
     coreLogger.debug(
-      `${CODING_TOOLS_LOG_PREFIX} BASH ${runInBackground ? "(bg)" : "(fg)"} cwd=${cwd} timeout=${timeout}ms`,
+      `${CODING_TOOLS_LOG_PREFIX} SHELL cwd=${cwd} timeout=${timeout}ms`,
     );
 
-    const startOpts: {
-      command: string;
-      cwd: string;
-      description?: string;
-    } = {
-      command,
-      cwd,
-    };
-    if (description !== undefined) startOpts.description = description;
-    const rec = tasks.start_(startOpts);
-
-    if (runInBackground) {
-      const text = `Started background task ${rec.id}`;
-      if (callback) await callback({ text, source: "coding-tools" });
-      return successActionResult(text, { task_id: rec.id, command, cwd });
+    const startedAt = Date.now();
+    const mode = resolveRuntimeExecutionMode(runtime);
+    if (mode === "cloud") {
+      coreLogger.error(
+        `${CODING_TOOLS_LOG_PREFIX} SHELL cloud-mode denied: local exec disabled`,
+      );
+      return failureToActionResult(
+        {
+          reason: "internal",
+          message: "Local shell execution disabled in cloud mode.",
+        },
+        { cwd },
+      );
     }
 
-    const startedAt = rec.startedAt;
-    const foregroundBudget = Math.min(timeout, bgBudget);
-    const settled = await tasks.waitFor(rec.id, foregroundBudget);
+    coreLogger.info(
+      `${CODING_TOOLS_LOG_PREFIX} SHELL mode=${mode} cwd=${cwd}`,
+    );
 
-    if (settled && settled.status !== "running") {
-      const took = (settled.endedAt ?? Date.now()) - startedAt;
-      const text = formatForeground(settled, command, took);
-      if (callback) await callback({ text, source: "coding-tools" });
-      if (settled.status === "completed") {
-        return successActionResult(text, {
-          task_id: settled.id,
-          exit_code: settled.exitCode ?? 0,
-          cwd,
-        });
-      }
+    let result: ShellResult;
+    try {
+      result = await runShell(runtime, { command, cwd, timeoutMs: timeout });
+    } catch (err) {
+      const message = (err as Error).message;
+      coreLogger.error(`${CODING_TOOLS_LOG_PREFIX} SHELL dispatch failed: ${message}`);
+      return failureToActionResult({ reason: "internal", message }, { cwd });
+    }
+
+    const took = Date.now() - startedAt;
+    const timedOut = result.timedOut;
+    const signal = result.signal;
+    const head = timedOut
+      ? `$ ${command}\n[timeout ${timeout}ms] (cwd=${cwd}, took=${took}ms)`
+      : `$ ${command}\n[exit ${result.exitCode}] (cwd=${cwd}, took=${took}ms)`;
+    const streams = formatStreams(result.stdout, result.stderr);
+    const text = streams.length > 0 ? `${head}\n${streams}` : head;
+
+    if (callback) await callback({ text, source: "coding-tools" });
+
+    if (timedOut) {
+      return failureToActionResult(
+        { reason: "timeout", message: `command timed out after ${timeout}ms` },
+        { cwd, output: text },
+      );
+    }
+    if (result.exitCode !== 0) {
       return failureToActionResult(
         {
           reason: "command_failed",
-          message: `command exited with code ${settled.exitCode ?? -1}`,
+          message: `command exited with code ${result.exitCode}`,
         },
-        {
-          task_id: settled.id,
-          exit_code: settled.exitCode ?? -1,
-          cwd,
-          output: text,
-        },
+        { exit_code: result.exitCode, cwd, output: text },
       );
     }
-
-    if (timeout <= bgBudget) {
-      tasks.stop_(rec.id);
-      await tasks.waitFor(rec.id, 500);
-      const final = tasks.get(rec.id);
-      const took = (final?.endedAt ?? Date.now()) - startedAt;
-      const head = `$ ${command}\n[timeout ${timeout}ms] (cwd=${cwd}, took=${took}ms)`;
-      const streams = formatStreams(final?.stdout ?? "", final?.stderr ?? "");
-      const text = streams.length > 0 ? `${head}\n${streams}` : head;
-      if (callback) await callback({ text, source: "coding-tools" });
-      return failureToActionResult(
-        { reason: "timeout", message: `command timed out after ${timeout}ms` },
-        { task_id: rec.id, cwd, output: text },
-      );
-    }
-
-    const text = `Foreground budget (${bgBudget}ms) exceeded. Promoted to background task ${rec.id}. Use TASK_OUTPUT to poll.`;
-    if (callback) await callback({ text, source: "coding-tools" });
     return successActionResult(text, {
-      task_id: rec.id,
-      command,
+      exit_code: result.exitCode,
       cwd,
-      promoted: true,
+      execution_route: result.sandbox === "host" ? "host" : "sandbox",
+      sandbox_backend: result.sandbox,
+      signal,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Run `git status` in the current repo.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "$ git status\n[exit 0]",
+          actions: ["SHELL"],
+          thought:
+            "Plain shell command request maps to SHELL with command='git status' in the session cwd.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Build the project: run `bun run build` with a 5-minute timeout.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "$ bun run build\n[exit 0]",
+          actions: ["SHELL"],
+          thought:
+            "Long-running build maps to SHELL with command and timeout=300000 to fit the 5-minute window.",
+        },
+      },
+    ],
+  ],
 };
+
+export const bashAction = shellAction;

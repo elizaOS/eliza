@@ -20,7 +20,7 @@ async function canViewNodeTopology(c: AppContext): Promise<boolean> {
     // The legacy helpers expect a Request. They only read headers, so
     // pass through the underlying Request — Hono's `c.req.raw` is a Fetch
     // Request which both helpers accept.
-    const req = c.req.raw as unknown as Parameters<typeof validateServiceKey>[0];
+    const req = c.req.raw;
     if (validateServiceKey(req)) return true;
     if (await authenticateWaifuBridge(req)) return true;
     return false;

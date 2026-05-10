@@ -35,7 +35,9 @@
   "exclude": [
     "dist",
     "node_modules",
-    "src/__tests__/**/*",
-    "**/*.spec.ts"
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.e2e.test.ts",
+    "**/*.test.tsx"
   ]
 }

@@ -19,9 +19,43 @@ import type {
   WalletGenerateResult,
   WalletImportResult,
   WalletKeys,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { ethers } from "ethers";
+
+type StewardAgentWalletPayload = {
+  walletAddress?: string;
+  walletAddresses?: { evm?: string; solana?: string };
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readStringField(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = record[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function readStewardAgentWalletPayload(
+  value: unknown,
+): StewardAgentWalletPayload {
+  const envelope = isRecord(value) ? value : {};
+  const payload = isRecord(envelope.data) ? envelope.data : envelope;
+  const walletAddresses = isRecord(payload.walletAddresses)
+    ? {
+        evm: readStringField(payload.walletAddresses, "evm"),
+        solana: readStringField(payload.walletAddresses, "solana"),
+      }
+    : undefined;
+  return {
+    walletAddress: readStringField(payload, "walletAddress"),
+    walletAddresses,
+  };
+}
 
 // ── Re-exports from contracts/wallet ──────────────────────────────────
 
@@ -59,7 +93,7 @@ export type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/shared";
+} from "@elizaos/core";
 
 // ── Re-exports from extracted modules ─────────────────────────────────
 
@@ -476,15 +510,7 @@ export async function initStewardWalletCache(): Promise<void> {
       return;
     }
 
-    const body = (await res.json()) as {
-      ok?: boolean;
-      data?: {
-        walletAddress?: string;
-        walletAddresses?: { evm?: string; solana?: string };
-      };
-    };
-
-    const agent = body.data ?? (body as unknown as typeof body.data);
+    const agent = readStewardAgentWalletPayload(await res.json());
     const stewardEvm =
       agent?.walletAddresses?.evm?.trim() ||
       agent?.walletAddress?.trim() ||
@@ -666,15 +692,7 @@ export async function getWalletAddressesWithSteward(): Promise<
       return base;
     }
 
-    const body = (await res.json()) as {
-      ok?: boolean;
-      data?: {
-        walletAddress?: string;
-        walletAddresses?: { evm?: string; solana?: string };
-      };
-    };
-
-    const agent = body.data ?? (body as unknown as typeof body.data);
+    const agent = readStewardAgentWalletPayload(await res.json());
     const stewardEvm =
       agent?.walletAddresses?.evm?.trim() ||
       agent?.walletAddress?.trim() ||

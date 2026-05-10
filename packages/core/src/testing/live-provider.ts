@@ -17,13 +17,27 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-// Load .env from repo root if dotenv is available
-const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
-try {
-	const { config } = await import("dotenv");
-	config({ path: path.join(REPO_ROOT, ".env") });
-} catch {
-	// dotenv optional
+// Load .env from repo root if dotenv is available. Lazy-loaded behind a
+// memoized helper so this module's import graph stays free of top-level
+// awaits. Bun.build's mobile bundle path rejects any transitive `require`
+// of a module containing a TLA, so all dotenv loading must be deferred.
+const REPO_ROOT =
+	process.env.ELIZA_REPO_ROOT?.trim() ||
+	(typeof import.meta.dirname === "string"
+		? path.resolve(import.meta.dirname, "..", "..", "..", "..")
+		: process.cwd());
+let dotenvLoaded: Promise<void> | null = null;
+async function ensureDotenvLoaded(): Promise<void> {
+	if (dotenvLoaded) return dotenvLoaded;
+	dotenvLoaded = (async () => {
+		try {
+			const { config } = await import("dotenv");
+			config({ path: path.join(REPO_ROOT, ".env") });
+		} catch {
+			// dotenv optional
+		}
+	})();
+	return dotenvLoaded;
 }
 
 const ELIZA_CLOUD_OPENAI_BASE_URL = "https://elizacloud.ai/api/v1";
@@ -49,7 +63,18 @@ function loadConfiguredCloudApiKey(): string {
 	}
 }
 
-const configuredCloudApiKey = loadConfiguredCloudApiKey();
+// Module-level cache of the on-disk cloud API key. Read on first use rather
+// than at module-init so tests that change env vars between test files
+// observe the latest value, and so this module's import graph stays
+// TLA-free (Bun.build mobile bundler refuses to require any module
+// transitively reachable from a TLA).
+let cachedConfiguredCloudApiKey: string | null = null;
+function getConfiguredCloudApiKey(): string {
+	if (cachedConfiguredCloudApiKey === null) {
+		cachedConfiguredCloudApiKey = loadConfiguredCloudApiKey();
+	}
+	return cachedConfiguredCloudApiKey;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -96,8 +121,8 @@ const PROVIDERS: Array<{
 		defaultBaseUrl: "https://api.groq.com/openai/v1",
 		smallModelEnvVar: "GROQ_SMALL_MODEL",
 		largeModelEnvVar: "GROQ_LARGE_MODEL",
-		defaultSmallModel: "llama-3.1-8b-instant",
-		defaultLargeModel: "llama-3.1-8b-instant",
+		defaultSmallModel: "openai/gpt-oss-120b",
+		defaultLargeModel: "openai/gpt-oss-120b",
 	},
 	{
 		name: "openai",
@@ -207,7 +232,7 @@ export function selectLiveProvider(
 	const cloudApiKey =
 		process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
 		process.env.ELIZA_CLOUD_API_KEY?.trim() ||
-		configuredCloudApiKey;
+		getConfiguredCloudApiKey();
 	if (cloudApiKey && (!preferredProvider || preferredProvider === "openai")) {
 		const smallModel = process.env.OPENAI_SMALL_MODEL?.trim() || "gpt-5.4-mini";
 		const largeModel =
@@ -271,7 +296,7 @@ export function availableProviderNames(): LiveProviderName[] {
 	if (
 		process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
 		process.env.ELIZA_CLOUD_API_KEY?.trim() ||
-		configuredCloudApiKey
+		getConfiguredCloudApiKey()
 	) {
 		providers.add("openai");
 	}

@@ -206,7 +206,7 @@ app.get("/", async (c) => {
       }
     }
 
-    const isAdmin = user.wallet_address ? await adminService.isAdmin(user.wallet_address) : false;
+    const { isAdmin } = await adminService.getAdminStatusForUser(user);
 
     const adminDetails = isAdmin ? toAdminDetailsDto(agent, isDockerAgent) : null;
 

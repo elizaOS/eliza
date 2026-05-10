@@ -35,12 +35,8 @@ import {
   HealthBridgeError,
   type HealthDailySummary,
   type HealthDataPoint,
-} from "./health-bridge.js";
-import {
   HealthConnectorApiError,
   syncHealthConnectorData,
-} from "./health-connectors.js";
-import {
   completeHealthConnectorOAuth,
   deleteStoredHealthToken,
   HealthOAuthError,
@@ -49,7 +45,7 @@ import {
   refreshStoredHealthToken,
   resolveHealthOAuthConfig,
   startHealthConnectorOAuth,
-} from "./health-oauth.js";
+} from "@elizaos/plugin-health";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsHealthSyncState,
@@ -908,7 +904,7 @@ export function withHealth<TBase extends Constructor<LifeOpsServiceBase>>(
     }
   }
 
-  return LifeOpsHealthServiceMixin as unknown as MixinClass<
+  return LifeOpsHealthServiceMixin as MixinClass<
     TBase,
     LifeOpsHealthServicePublic
   >;

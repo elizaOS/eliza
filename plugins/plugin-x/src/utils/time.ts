@@ -21,7 +21,7 @@ export function getEpochMs(ts: number | undefined): number {
     return Math.floor(ts / 1000);
   }
 
-  // Fallback: if absurdly large, scale down until plausible (safety)
+  // If absurdly large, scale down until plausible.
   while (ts > 9_999_999_999_999) {
     ts = Math.floor(ts / 1000);
   }

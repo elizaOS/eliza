@@ -1,0 +1,13 @@
+=== TBQ symbols on arm64-v8a ===
+8
+=== QJL symbols on arm64-v8a ===
+19
+=== Polar symbols on arm64-v8a ===
+4
+
+=== TBQ symbols on x86_64 ===
+8
+=== QJL symbols on x86_64 ===
+15
+=== Polar symbols on x86_64 ===
+4

@@ -13,7 +13,7 @@ import type http from "node:http";
 import { resolveAppHeroImage } from "@elizaos/agent";
 import type { RegistryAppInfo } from "@elizaos/shared";
 import { type AppEntry, getApps, loadRegistry } from "../registry";
-import { ensureRouteAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth.ts";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
 
@@ -41,11 +41,11 @@ function appEntryToRegistryAppInfo(entry: AppEntry): RegistryAppInfo {
     repository: entry.resources.repository ?? "",
     latestVersion: entry.version ?? null,
     supports: entry.launch.supports ?? { v0: false, v1: false, v2: true },
-    npm: entry.launch.npm ?? {
-      package: entry.npmName ?? entry.id,
-      v0Version: null,
-      v1Version: null,
-      v2Version: entry.version ?? null,
+    npm: {
+      package: entry.launch.npm?.package ?? entry.npmName ?? entry.id,
+      v0Version: entry.launch.npm?.v0Version ?? null,
+      v1Version: entry.launch.npm?.v1Version ?? null,
+      v2Version: entry.launch.npm?.v2Version ?? entry.version ?? null,
     },
     viewer: entry.launch.viewer,
     uiExtension: entry.launch.uiExtension,

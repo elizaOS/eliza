@@ -52,7 +52,7 @@ export async function parseBody(
 // Helper to send JSON response
 export function sendJson(
   res: ServerResponse,
-  data: JsonValue,
+  data: unknown,
   status = 200,
 ): void {
   res.writeHead(status, { "Content-Type": "application/json" });

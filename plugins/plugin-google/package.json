@@ -1,0 +1,72 @@
+{
+  "name": "@elizaos/plugin-google",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "vitest run",
+    "test:watch": "vitest --config vitest.config.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "google-auth-library": "^10.0.0",
+    "googleapis": "^169.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node"
+  },
+  "agentConfig": {
+    "pluginParameters": {
+      "GOOGLE_CLIENT_ID": {
+        "type": "string",
+        "description": "Google OAuth client ID",
+        "required": false,
+        "sensitive": false
+      },
+      "GOOGLE_CLIENT_SECRET": {
+        "type": "string",
+        "description": "Google OAuth client secret",
+        "required": false,
+        "sensitive": true
+      },
+      "GOOGLE_REDIRECT_URI": {
+        "type": "string",
+        "description": "Google OAuth redirect URI",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

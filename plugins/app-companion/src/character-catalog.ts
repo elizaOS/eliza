@@ -1,1 +1,7 @@
-export * from "@elizaos/app-core/character-catalog";
+export {
+  DEFAULT_ELIZA_CHARACTER_ASSET,
+  getCharacterAsset,
+  getCharacterAssets,
+  getInjectedCharacter,
+  getInjectedCharacters,
+} from "@elizaos/ui";

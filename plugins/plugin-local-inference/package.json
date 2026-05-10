@@ -1,0 +1,45 @@
+{
+	"name": "@elizaos/plugin-local-inference",
+	"version": "2.0.0-beta.1",
+	"description": "Local inference HTTP routes for the Eliza agent: model catalog, downloads, hardware detection, and chat-command surface.",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsup src/index.ts --format esm --dts --clean",
+		"dev": "tsup src/index.ts --format esm --dts --watch",
+		"clean": "rm -rf dist .turbo node_modules",
+		"lint": "bunx @biomejs/biome check --write --unsafe .",
+		"lint:check": "bunx @biomejs/biome check .",
+		"format": "bunx @biomejs/biome format --write .",
+		"format:check": "bunx @biomejs/biome format .",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@elizaos/core": "2.0.0-beta.1",
+		"@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1"
+	},
+	"peerDependencies": {
+		"@elizaos/core": "2.0.0-beta.1",
+		"@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.14",
+		"@types/node": "24.12.2",
+		"tsup": "8.5.1",
+		"typescript": "^6.0.3"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { DashboardPageContainer, useSetPageHeader } from "@elizaos/cloud-ui/primitives";
+import { DashboardPageContainer, useSetPageHeader } from "@elizaos/cloud-ui";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -186,7 +186,7 @@ export function MyAgentsClient() {
   });
 
   const handleCreateNew = useCallback(() => {
-    navigate("/dashboard/build");
+    navigate("/dashboard/chat");
   }, [navigate]);
 
   // Handler for removing saved agents from the list

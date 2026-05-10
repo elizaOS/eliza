@@ -1,8 +1,8 @@
 import type {
-  StewardStatusResponse,
   WalletConfigStatus,
   WalletEntry,
-} from "@elizaai/shared/contracts/wallet";
+} from "@elizaos/core";
+import type { StewardStatusResponse } from "./types/steward";
 
 export interface StewardUiState {
   connected: boolean;

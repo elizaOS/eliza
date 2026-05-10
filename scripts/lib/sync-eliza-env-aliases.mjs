@@ -1,13 +1,13 @@
 const DEFAULT_BRANDED_PREFIX = "ELIZA";
 const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
-  "@elizaos/app-vincent/register-routes",
-  "@elizaos/app-shopify/register-routes",
-  "@elizaos/app-steward/register-routes",
-  "@elizaos/app-lifeops/register-routes",
-  "@elizaos/plugin-github/register-routes",
-  "@elizaos/plugin-computeruse/register-routes",
-  "@elizaos/plugin-elizacloud/register-routes",
-  "@elizaos/plugin-n8n-workflow/register-routes",
+  "@elizaos/app-vincent",
+  "@elizaos/app-shopify",
+  "@elizaos/app-steward",
+  "@elizaos/app-lifeops",
+  "@elizaos/plugin-github",
+  "@elizaos/plugin-computeruse",
+  "@elizaos/plugin-elizacloud",
+  "@elizaos/plugin-workflow",
 ];
 
 function normalizeBrandedPrefix(prefix) {

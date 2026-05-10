@@ -28,10 +28,22 @@ const EXTERNAL_ALLOWLIST_ENV_KEY = "TWILIO_CALL_EXTERNAL_ALLOWLIST";
 const E164_RE = /^\+[1-9]\d{1,14}$/;
 const PLACEHOLDER_555_RE = /^\+?1?[-\s]?\(?5{3}\)?[-\s]?5{3}[-\s]?5{4}$/;
 
-type VoiceCallSubaction = "place" | "call_owner" | "call_external";
+type VoiceCallSubaction = "dial";
+
+type RecipientKind = "owner" | "external" | "e164";
 
 interface VoiceCallParams {
+  /**
+   * Recipient discriminator. Drives the routing inside `dial`:
+   *   - `owner`     → owner-escalation path (env-resolved owner number,
+   *                   standing-policy acknowledgement)
+   *   - `external`  → name-resolved third party + allow-list check
+   *   - `e164`      → raw E.164 number, no relationship lookup
+   */
+  recipientKind?: RecipientKind;
+  /** Resolved or asserted phone number (E.164). Required for `e164`. */
   phoneNumber?: string;
+  /** Contact name or E.164 used for `external` lookup. */
   recipient?: string;
   bodyText?: string;
   confirmed?: boolean;
@@ -39,28 +51,19 @@ interface VoiceCallParams {
 }
 
 const SUBACTIONS: SubactionsMap<VoiceCallSubaction> = {
-  place: {
+  dial: {
     description:
-      "Place a generic Twilio voice call to a specific E.164 phone number. Drafts first; requires confirmed:true to dispatch.",
-    descriptionCompressed: "Twilio voice-call E.164 number draft-confirm",
-    required: ["phoneNumber"],
-    optional: ["bodyText", "confirmed"],
-  },
-  call_owner: {
-    description:
-      "Call the owner as an escalation when the agent is blocked. Acknowledges standing escalation policies and uses the approval queue.",
+      "Place an outbound Twilio voice call. Pass `recipientKind` to route: `owner` (escalation; uses owner number env + standing-policy acknowledgement), `external` (third party; recipient name resolved via relationships, then allow-list checked), or `e164` (raw phone number with `phoneNumber`). All paths draft first; require confirmed:true to dispatch.",
     descriptionCompressed:
-      "call owner escalation agent-blocked standing-policy approval-queue draft-confirm",
-    required: [],
-    optional: ["bodyText", "confirmed", "reason"],
-  },
-  call_external: {
-    description:
-      "Call a third party. Recipient name resolved via relationships, then normalized against the allow-list. Uses the approval queue.",
-    descriptionCompressed:
-      "call third-party name->phone relationships allowlist-check approval-queue draft-confirm",
-    required: ["recipient"],
-    optional: ["bodyText", "confirmed", "reason"],
+      "Twilio voice dial: recipientKind=owner|external|e164; draft-confirm; approval-queue",
+    required: ["recipientKind"],
+    optional: [
+      "phoneNumber",
+      "recipient",
+      "bodyText",
+      "confirmed",
+      "reason",
+    ],
   },
 };
 
@@ -146,7 +149,9 @@ function buildCallUserPolicyAcknowledgement(
     },
     data: {
       actionName: ACTION_NAME,
-      subaction: "call_owner",
+      action: "dial",
+      subaction: "dial",
+      recipientKind: "owner",
       policyRecorded: true,
       policyType: "stuck_computer_phone_escalation",
       channel: "phone_call",
@@ -332,7 +337,7 @@ async function resolveExternalCallRecipient(args: {
 function deliveryToResult(
   delivery: TwilioDeliveryResult,
   to: string,
-  subaction: VoiceCallSubaction,
+  recipientKind: RecipientKind,
 ): ActionResult {
   return {
     text: delivery.ok ? `Placed call to ${to}.` : `Call to ${to} failed.`,
@@ -344,7 +349,9 @@ function deliveryToResult(
     },
     data: {
       actionName: ACTION_NAME,
-      subaction,
+      action: "dial",
+      subaction: "dial",
+      recipientKind,
       to,
       sid: delivery.sid ?? null,
       status: delivery.status,
@@ -357,7 +364,7 @@ function deliveryToResult(
 function invalidPhoneResult(
   to: string,
   contact: string | undefined,
-  subaction: VoiceCallSubaction,
+  recipientKind: RecipientKind,
   errorCode: "INVALID_PHONE_NUMBER" | "PLACEHOLDER_PHONE_NUMBER",
 ): ActionResult {
   const subject = contact ?? "this contact";
@@ -371,7 +378,9 @@ function invalidPhoneResult(
     values: { success: false, error: errorCode, to, contact: contact ?? null },
     data: {
       actionName: ACTION_NAME,
-      subaction,
+      action: "dial",
+      subaction: "dial",
+      recipientKind,
       error: errorCode,
       to,
       contact: contact ?? null,
@@ -379,7 +388,7 @@ function invalidPhoneResult(
   };
 }
 
-async function handlePlace(
+async function dialE164(
   _runtime: IAgentRuntime,
   params: VoiceCallParams,
 ): Promise<ActionResult> {
@@ -389,7 +398,12 @@ async function handlePlace(
       text: "Twilio is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER.",
       success: false,
       values: { success: false, error: "TWILIO_NOT_CONFIGURED" },
-      data: { actionName: ACTION_NAME, subaction: "place" },
+      data: {
+        actionName: ACTION_NAME,
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "e164",
+      },
     };
   }
 
@@ -399,19 +413,24 @@ async function handlePlace(
       text: "Missing required parameter: phoneNumber (E.164 phone number).",
       success: false,
       values: { success: false, error: "MISSING_TO" },
-      data: { actionName: ACTION_NAME, subaction: "place" },
+      data: {
+        actionName: ACTION_NAME,
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "e164",
+      },
     };
   }
   if (isPlaceholderOrNonNumeric(to)) {
     return invalidPhoneResult(
       to,
       undefined,
-      "place",
+      "e164",
       "PLACEHOLDER_PHONE_NUMBER",
     );
   }
   if (!isE164(to)) {
-    return invalidPhoneResult(to, undefined, "place", "INVALID_PHONE_NUMBER");
+    return invalidPhoneResult(to, undefined, "e164", "INVALID_PHONE_NUMBER");
   }
 
   const messageBody = (params.bodyText ?? "").trim();
@@ -420,7 +439,12 @@ async function handlePlace(
       text: "Missing required parameter: bodyText.",
       success: false,
       values: { success: false, error: "MISSING_MESSAGE" },
-      data: { actionName: ACTION_NAME, subaction: "place" },
+      data: {
+        actionName: ACTION_NAME,
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "e164",
+      },
     };
   }
 
@@ -437,7 +461,9 @@ async function handlePlace(
       },
       data: {
         actionName: ACTION_NAME,
-        subaction: "place",
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "e164",
         draft: true,
         to,
         message: messageBody,
@@ -462,7 +488,9 @@ async function handlePlace(
       },
       data: {
         actionName: ACTION_NAME,
-        subaction: "place",
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "e164",
         to,
         message: messageBody,
         status: result.status,
@@ -477,7 +505,9 @@ async function handlePlace(
     values: { success: true, to, sid: result.sid ?? null },
     data: {
       actionName: ACTION_NAME,
-      subaction: "place",
+      action: "dial",
+      subaction: "dial",
+      recipientKind: "e164",
       to,
       message: messageBody,
       sid: result.sid ?? null,
@@ -487,7 +517,7 @@ async function handlePlace(
   };
 }
 
-async function handleCallOwner(
+async function dialOwner(
   runtime: IAgentRuntime,
   message: Memory,
   params: VoiceCallParams,
@@ -516,7 +546,9 @@ async function handleCallOwner(
       },
       data: {
         actionName: ACTION_NAME,
-        subaction: "call_owner",
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "owner",
         policyRecorded: true,
         channel: "phone_call",
       },
@@ -525,8 +557,8 @@ async function handleCallOwner(
 
   if (params.confirmed !== true) {
     logger.info(
-      { action: ACTION_NAME, subaction: "call_owner" },
-      `[${ACTION_NAME}] confirmation required for call_owner`,
+      { action: ACTION_NAME, recipientKind: "owner" },
+      `[${ACTION_NAME}] confirmation required for owner dial`,
     );
     const spokenMessage =
       params.bodyText?.trim() ||
@@ -551,7 +583,9 @@ async function handleCallOwner(
       values: { success: false, requiresConfirmation: true },
       data: {
         actionName: ACTION_NAME,
-        subaction: "call_owner",
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "owner",
         requiresConfirmation: true,
         approvalTaskId,
       },
@@ -561,7 +595,7 @@ async function handleCallOwner(
   const to = readOwnerNumber(runtime);
   if (!to) {
     logger.warn(
-      { action: ACTION_NAME, subaction: "call_owner" },
+      { action: ACTION_NAME, recipientKind: "owner" },
       `[${ACTION_NAME}] owner phone number not configured`,
     );
     return {
@@ -570,7 +604,9 @@ async function handleCallOwner(
       values: { success: false, error: "OWNER_NUMBER_NOT_CONFIGURED" },
       data: {
         actionName: ACTION_NAME,
-        subaction: "call_owner",
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "owner",
         error: "OWNER_NUMBER_NOT_CONFIGURED",
       },
     };
@@ -579,7 +615,7 @@ async function handleCallOwner(
     return invalidPhoneResult(
       to,
       "the owner",
-      "call_owner",
+      "owner",
       isPlaceholderOrNonNumeric(to)
         ? "PLACEHOLDER_PHONE_NUMBER"
         : "INVALID_PHONE_NUMBER",
@@ -594,7 +630,9 @@ async function handleCallOwner(
       values: { success: false, error: "TWILIO_NOT_CONFIGURED" },
       data: {
         actionName: ACTION_NAME,
-        subaction: "call_owner",
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "owner",
         error: "TWILIO_NOT_CONFIGURED",
       },
     };
@@ -609,7 +647,7 @@ async function handleCallOwner(
     to,
     message: spokenMessage,
   });
-  const result = deliveryToResult(delivery, to, "call_owner");
+  const result = deliveryToResult(delivery, to, "owner");
   if (result.success) {
     await clearPendingCallDraft(runtime, message.roomId, "CALL_USER");
     if (
@@ -622,7 +660,7 @@ async function handleCallOwner(
   return result;
 }
 
-async function handleCallExternal(
+async function dialExternal(
   runtime: IAgentRuntime,
   message: Memory,
   params: VoiceCallParams,
@@ -649,7 +687,9 @@ async function handleCallExternal(
       },
       data: {
         actionName: ACTION_NAME,
-        subaction: "call_external",
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "external",
         error: "MISSING_RECIPIENT",
         requiresConfirmation: true,
       },
@@ -659,7 +699,7 @@ async function handleCallExternal(
     return invalidPhoneResult(
       to,
       undefined,
-      "call_external",
+      "external",
       "PLACEHOLDER_PHONE_NUMBER",
     );
   }
@@ -667,15 +707,15 @@ async function handleCallExternal(
     return invalidPhoneResult(
       to,
       undefined,
-      "call_external",
+      "external",
       "INVALID_PHONE_NUMBER",
     );
   }
 
   if (params.confirmed !== true) {
     logger.info(
-      { action: ACTION_NAME, subaction: "call_external", to },
-      `[${ACTION_NAME}] confirmation required for call_external`,
+      { action: ACTION_NAME, recipientKind: "external", to },
+      `[${ACTION_NAME}] confirmation required for external dial`,
     );
     const spokenMessage =
       params.bodyText?.trim() ||
@@ -701,7 +741,9 @@ async function handleCallExternal(
       values: { success: false, requiresConfirmation: true, to },
       data: {
         actionName: ACTION_NAME,
-        subaction: "call_external",
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "external",
         requiresConfirmation: true,
         to,
         matchedRelationshipId: resolvedRecipient.matchedRelationshipId ?? null,
@@ -717,7 +759,7 @@ async function handleCallExternal(
   );
   if (!isAllowed) {
     logger.warn(
-      { action: ACTION_NAME, subaction: "call_external", to },
+      { action: ACTION_NAME, recipientKind: "external", to },
       `[${ACTION_NAME}] recipient not in allow-list`,
     );
     return {
@@ -726,7 +768,9 @@ async function handleCallExternal(
       values: { success: false, reason: "disallowed-recipient", to },
       data: {
         actionName: ACTION_NAME,
-        subaction: "call_external",
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "external",
         reason: "disallowed-recipient",
         to,
         matchedRelationshipId: resolvedRecipient.matchedRelationshipId ?? null,
@@ -742,7 +786,9 @@ async function handleCallExternal(
       values: { success: false, error: "TWILIO_NOT_CONFIGURED" },
       data: {
         actionName: ACTION_NAME,
-        subaction: "call_external",
+        action: "dial",
+        subaction: "dial",
+        recipientKind: "external",
         error: "TWILIO_NOT_CONFIGURED",
       },
     };
@@ -757,7 +803,7 @@ async function handleCallExternal(
     to,
     message: spokenMessage,
   });
-  const result = deliveryToResult(delivery, to, "call_external");
+  const result = deliveryToResult(delivery, to, "external");
   if (result.success) {
     await clearPendingCallDraft(runtime, message.roomId, "CALL_EXTERNAL");
     if (
@@ -770,64 +816,76 @@ async function handleCallExternal(
   return result;
 }
 
+function normalizeRecipientKind(value: unknown): RecipientKind | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "owner" ||
+    normalized === "external" ||
+    normalized === "e164"
+  ) {
+    return normalized;
+  }
+  return null;
+}
+
 export const voiceCallAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
   suppressPostActionContinuation: true,
   similes: [
-    "VOICE_CALL",
     "PLACE_CALL",
     "CALL_ME",
     "ESCALATE_TO_USER",
     "CALL_THIRD_PARTY",
     "PHONE_SOMEONE",
+    "DIAL",
   ],
   tags: [
-    "always-include",
-    "call me",
-    "phone me",
-    "stuck in browser",
-    "unblock computer",
-    "standing escalation policy",
-    "call if stuck",
-    "book by phone",
-    "rebook by phone",
-    "call vendor",
-    "call airline",
-    "call dentist",
-    "call doctor",
-    "phone support",
-    "call cable company",
-    "reschedule appointment",
+    "domain:meta",
+    "capability:execute",
+    "capability:send",
+    "surface:remote-api",
+    "risk:user-visible",
   ],
   description:
-    "Owner-only. Place an outbound voice call via Twilio. Subactions: place (generic call to a phone number with confirmation), call_owner (call the owner — escalation when agent is blocked), call_external (call a third party — name resolved via relationships, allow-list checked). All paths draft first, require confirmed:true to dispatch, and use the approval queue.",
+    "Owner-only. Place an outbound voice call via a registered provider. Action: `dial` with recipientKind=owner|external|e164. Current dispatch provider is Twilio; Android/app-phone is implementation-only until wired as a VOICE_CALL provider. Owner uses the env-configured owner number + standing escalation policy; external resolves a contact name via relationships then checks the allow-list; e164 dials a raw phone number. All paths draft first, require confirmed:true to dispatch, and use the approval queue.",
   descriptionCompressed:
-    "Twilio voice: place(number) call_owner(escalation policy) call_external(name→phone via relationships allowlist-check) draft-confirm approval-queue",
-  contexts: ["contacts", "messaging", "tasks", "automation"],
+    "Twilio voice dial: recipientKind=owner|external|e164; draft-confirm; approval-queue",
+  contexts: ["contacts", "messaging", "phone", "tasks", "automation"],
   roleGate: { minRole: "OWNER" },
 
   validate: async () => true,
 
   parameters: [
     {
-      name: "subaction",
-      description: "One of: place, call_owner, call_external.",
+      name: "action",
+      description: "Single canonical verb: `dial`.",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, enum: ["dial"] },
+    },
+    {
+      name: "recipientKind",
+      description:
+        "Recipient discriminator: `owner` (escalation; uses owner number env), `external` (third party; recipient name resolved via relationships, allow-list checked), or `e164` (raw E.164 phone in `phoneNumber`).",
+      required: true,
+      schema: {
+        type: "string" as const,
+        enum: ["owner", "external", "e164"],
+      },
     },
     {
       name: "phoneNumber",
       description:
-        "For place: destination phone number in E.164 format (e.g. +15551234567).",
+        "For recipientKind=e164: destination phone number in E.164 format (e.g. +15551234567).",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "recipient",
       description:
-        "For call_external: contact name or E.164 phone number. Names resolve via the relationships store.",
+        "For recipientKind=external: contact name or E.164 phone number. Names resolve via the relationships store.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -864,6 +922,7 @@ export const voiceCallAction: Action & {
       options,
       actionName: ACTION_NAME,
       subactions: SUBACTIONS,
+      defaultSubaction: "dial",
     });
     if (!resolved.ok) {
       return {
@@ -873,14 +932,29 @@ export const voiceCallAction: Action & {
       };
     }
 
-    const { subaction, params } = resolved;
-    switch (subaction) {
-      case "place":
-        return handlePlace(runtime, params);
-      case "call_owner":
-        return handleCallOwner(runtime, message, params);
-      case "call_external":
-        return handleCallExternal(runtime, message, params);
+    const { params } = resolved;
+    const recipientKind = normalizeRecipientKind(params.recipientKind);
+    if (!recipientKind) {
+      return {
+        success: false,
+        text: "VOICE_CALL.dial requires recipientKind = owner | external | e164.",
+        values: { success: false, error: "MISSING_RECIPIENT_KIND" },
+        data: {
+          actionName: ACTION_NAME,
+          action: "dial",
+          subaction: "dial",
+          error: "MISSING_RECIPIENT_KIND",
+        },
+      };
+    }
+
+    switch (recipientKind) {
+      case "e164":
+        return dialE164(runtime, params);
+      case "owner":
+        return dialOwner(runtime, message, params);
+      case "external":
+        return dialExternal(runtime, message, params);
     }
   },
 

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-agent-skills",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Agent Skills plugin for elizaOS - implement the Agent Skills specification with progressive disclosure",
   "main": "dist/index.js",
   "type": "module",
@@ -14,8 +14,17 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "agent-skills"
+      ]
+    }
+  },
   "keywords": [
     "elizaos",
     "plugin",
@@ -27,14 +36,14 @@
     "progressive-disclosure"
   ],
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "fflate": "^0.8.2"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
     "@biomejs/biome": "^2.4.14",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {

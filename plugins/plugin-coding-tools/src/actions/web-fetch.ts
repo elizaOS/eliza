@@ -68,11 +68,11 @@ export const webFetchAction: Action = {
     },
   ],
   validate: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
   ) => {
-    return true;
+    return typeof fetch === "function";
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -200,4 +200,39 @@ export const webFetchAction: Action = {
       truncated,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Fetch the changelog at https://example.com/CHANGELOG.md.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Fetching the URL.",
+          actions: ["WEB_FETCH"],
+          thought:
+            "Direct URL retrieval maps to WEB_FETCH with the explicit url parameter.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Read https://example.com/api/status as JSON.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Fetching the API status.",
+          actions: ["WEB_FETCH"],
+          thought:
+            "JSON endpoint; WEB_FETCH retrieves the body and the agent parses content-type from the response.",
+        },
+      },
+    ],
+  ],
 };

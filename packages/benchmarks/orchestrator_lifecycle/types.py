@@ -71,3 +71,10 @@ class LifecycleConfig:
     provider: str = "openai"
     strict: bool = True
     seed: int = 42
+    # When `mode == "bridge"` (the default for any LLM-backed provider),
+    # the runner spawns the elizaOS TS bench server and routes every
+    # scenario turn through `/api/benchmark/message` so the registered
+    # agent + actions are exercised end-to-end. `mode == "simulate"`
+    # falls back to the deterministic simulator for offline /
+    # smoke-testing only — it does NOT measure the eliza agent.
+    mode: str = "bridge"

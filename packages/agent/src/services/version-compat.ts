@@ -56,6 +56,7 @@ export const AI_PROVIDER_PLUGINS: readonly string[] = [
   "@elizaos/plugin-xai",
   "@homunculuslabs/plugin-zai",
   "@elizaos/plugin-elizacloud",
+  "@elizaos/plugin-codex-cli",
 ];
 
 /**
@@ -64,7 +65,10 @@ export const AI_PROVIDER_PLUGINS: readonly string[] = [
  * (e.g. "elizaOSCloud") that differs from the npm package name.  The
  * diagnostic must recognise both forms to avoid false-positive warnings.
  */
-const AI_PROVIDER_PLUGIN_ALIASES: readonly string[] = ["elizaOSCloud"];
+const AI_PROVIDER_PLUGIN_ALIASES: readonly string[] = [
+  "elizaOSCloud",
+  "codex-cli",
+];
 
 // ---------------------------------------------------------------------------
 // Semver comparison for stable and prerelease tags.

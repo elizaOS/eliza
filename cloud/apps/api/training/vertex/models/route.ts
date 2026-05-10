@@ -1,19 +1,37 @@
 import { Hono } from "hono";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { vertexModelRegistryService } from "@/lib/services/vertex-model-registry";
+import type { VertexTuningScope, VertexTuningSlot } from "@/lib/services/vertex-tuning";
 import type { AppEnv } from "@/types/cloud-worker-env";
+
+const VERTEX_TUNING_SLOTS = [
+  "should_respond",
+  "response_handler",
+  "action_planner",
+  "planner",
+  "response",
+  "media_description",
+] as const satisfies readonly VertexTuningSlot[];
+
+function parseScope(value: unknown): VertexTuningScope | undefined {
+  return value === "global" || value === "organization" || value === "user" ? value : undefined;
+}
+
+function parseSlot(value: unknown): VertexTuningSlot | undefined {
+  return typeof value === "string" ? VERTEX_TUNING_SLOTS.find((slot) => slot === value) : undefined;
+}
 
 async function __hono_GET(request: Request) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { searchParams } = new URL(request.url);
-    const scope =
-      searchParams.get("scope") === "global" ||
-      searchParams.get("scope") === "organization" ||
-      searchParams.get("scope") === "user"
-        ? (searchParams.get("scope") as "global" | "organization" | "user")
-        : undefined;
-    const slot = searchParams.get("slot") || undefined;
+    const scope = parseScope(searchParams.get("scope"));
+    const rawSlot = searchParams.get("slot");
+    const slot = parseSlot(rawSlot);
+
+    if (rawSlot && !slot) {
+      return Response.json({ error: "Invalid slot." }, { status: 400 });
+    }
 
     const [models, assignments, resolved] = await Promise.all([
       vertexModelRegistryService.listVisibleTunedModels(
@@ -23,7 +41,7 @@ async function __hono_GET(request: Request) {
         },
         {
           scope,
-          slot: slot as any,
+          slot,
         },
       ),
       vertexModelRegistryService.listVisibleAssignments(
@@ -33,7 +51,7 @@ async function __hono_GET(request: Request) {
         },
         {
           scope,
-          slot: slot as any,
+          slot,
           activeOnly: true,
         },
       ),

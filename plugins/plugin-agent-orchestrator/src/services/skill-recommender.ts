@@ -15,7 +15,12 @@
  * @module services/skill-recommender
  */
 
-import { type IAgentRuntime, type Logger, ModelType } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type Logger,
+  ModelType,
+  type Service,
+} from "@elizaos/core";
 import { parseJsonObjectResponse } from "./json-model-output.js";
 import { withTrajectoryContext } from "./trajectory-context.js";
 
@@ -24,6 +29,7 @@ const DEFAULT_MAX = 5;
 const KEYWORD_CANDIDATE_LIMIT = 10;
 const LLM_SHORT_CIRCUIT_SCORE = 0.9;
 const BUILD_MONETIZED_APP_SLUG = "build-monetized-app";
+const ELIZA_CLOUD_SKILL_SLUG = "eliza-cloud";
 const APP_BUILD_TASK_RE =
   /\b(build|create|make|ship|write|develop|generate)\b(?:(?!\b(?:article|blog|post)\b)[\s\S]){0,120}\b(app|site|page|tool|game|dashboard|chatbot|chat\s*bot|chat\s+app|assistant|companion)\b/i;
 // Tokens shorter than this carry no signal — they show up in nearly every
@@ -138,7 +144,7 @@ interface SkillsServiceShape {
 }
 
 function getLogger(runtime: IAgentRuntime): Logger | Console {
-  const candidate = (runtime as unknown as { logger?: Logger }).logger;
+  const candidate = (runtime as { logger?: Logger }).logger;
   return candidate ?? console;
 }
 
@@ -226,7 +232,37 @@ function shouldForceCloudAppSkill(taskText: string): boolean {
   return APP_BUILD_TASK_RE.test(taskText);
 }
 
-function withForcedCloudAppSkill(
+function buildForcedCloudAppSkills(
+  candidates: SkillCandidate[],
+): RecommendedSkill[] {
+  const forcedSkillSpecs = [
+    {
+      slug: BUILD_MONETIZED_APP_SLUG,
+      reason:
+        "standard Eliza Cloud app build, container deploy, monetization, and domain flow",
+    },
+    {
+      slug: ELIZA_CLOUD_SKILL_SLUG,
+      reason:
+        "paired Cloud backend, billing, payment, payout, and existing-app operations reference",
+    },
+  ];
+
+  return forcedSkillSpecs.flatMap(({ slug, reason }) => {
+    const candidate = candidates.find((skill) => skill.slug === slug);
+    if (!candidate) return [];
+    return [
+      {
+        slug: candidate.slug,
+        name: candidate.name,
+        score: 1,
+        reason,
+      },
+    ];
+  });
+}
+
+function withForcedCloudAppSkills(
   recommendations: RecommendedSkill[],
   candidates: SkillCandidate[],
   taskText: string,
@@ -236,24 +272,15 @@ function withForcedCloudAppSkill(
     return recommendations.slice(0, max);
   }
 
-  const candidate = candidates.find(
-    (skill) => skill.slug === BUILD_MONETIZED_APP_SLUG,
-  );
-  if (!candidate) {
+  const forced = buildForcedCloudAppSkills(candidates);
+  if (forced.length === 0) {
     return recommendations.slice(0, max);
   }
-
-  const forced: RecommendedSkill = {
-    slug: candidate.slug,
-    name: candidate.name,
-    score: 1,
-    reason:
-      "standard Eliza Cloud app build, container deploy, monetization, and domain flow",
-  };
+  const forcedSlugs = new Set(forced.map((rec) => rec.slug));
 
   return [
-    forced,
-    ...recommendations.filter((rec) => rec.slug !== BUILD_MONETIZED_APP_SLUG),
+    ...forced,
+    ...recommendations.filter((rec) => !forcedSlugs.has(rec.slug)),
   ].slice(0, max);
 }
 
@@ -374,8 +401,8 @@ export async function recommendSkillsForTask(
   const max = opts.max ?? DEFAULT_MAX;
   if (max <= 0) return [];
 
-  const service = runtime.getService("AGENT_SKILLS_SERVICE") as unknown as
-    | SkillsServiceShape
+  const service = runtime.getService("AGENT_SKILLS_SERVICE") as
+    | (Service & SkillsServiceShape)
     | undefined;
   if (!service) {
     log.debug?.(
@@ -420,7 +447,7 @@ export async function recommendSkillsForTask(
 
   if (scoredCandidates.length === 0) {
     log.debug?.(`${LOG_PREFIX} no keyword overlap for task; skipping LLM pass`);
-    return withForcedCloudAppSkill([], candidates, opts.taskText, max);
+    return withForcedCloudAppSkills([], candidates, opts.taskText, max);
   }
 
   const fastPathRecommendations: RecommendedSkill[] = scoredCandidates.map(
@@ -437,7 +464,7 @@ export async function recommendSkillsForTask(
   const llmShortCircuit = topFastScore >= LLM_SHORT_CIRCUIT_SCORE;
 
   if (llmDisabled || llmShortCircuit) {
-    return withForcedCloudAppSkill(
+    return withForcedCloudAppSkills(
       fastPathRecommendations,
       candidates,
       opts.taskText,
@@ -447,7 +474,7 @@ export async function recommendSkillsForTask(
 
   const useModelFn = (runtime as { useModel?: unknown }).useModel;
   if (typeof useModelFn !== "function") {
-    return withForcedCloudAppSkill(
+    return withForcedCloudAppSkills(
       fastPathRecommendations,
       candidates,
       opts.taskText,
@@ -484,7 +511,7 @@ export async function recommendSkillsForTask(
     log.debug?.(
       `${LOG_PREFIX} LLM scoring returned no parseable entries; falling back to keyword pass`,
     );
-    return withForcedCloudAppSkill(
+    return withForcedCloudAppSkills(
       fastPathRecommendations,
       candidates,
       opts.taskText,
@@ -532,7 +559,7 @@ export async function recommendSkillsForTask(
   const finalRecommendations = Array.from(dedupedBySlug.values())
     .sort((a, b) => b.score - a.score)
     .slice(0, max);
-  return withForcedCloudAppSkill(
+  return withForcedCloudAppSkills(
     finalRecommendations,
     candidates,
     opts.taskText,

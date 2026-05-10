@@ -17,8 +17,6 @@ export class TwitterAuth {
   private lastAccessToken?: string;
 
   constructor(private readonly provider: TwitterAuthProvider) {
-    // Backward-compatible behavior: legacy OAuth1 provider is considered authenticated immediately,
-    // matching previous eager client initialization semantics.
     if (this.isOAuth1Provider(provider)) {
       this.authenticated = true;
     }
@@ -149,9 +147,6 @@ export class TwitterAuth {
     this.loggedOut = true;
   }
 
-  /**
-   * For compatibility - always returns true since we use API keys
-   */
   hasToken(): boolean {
     return this.authenticated && !this.loggedOut;
   }

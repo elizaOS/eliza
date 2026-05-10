@@ -24,7 +24,7 @@ type PaymentsSubaction =
   | "recurring_charges";
 
 type PaymentsActionParams = {
-  mode?: PaymentsSubaction;
+  subaction?: PaymentsSubaction;
   sourceId?: string;
   kind?: LifeOpsPaymentSourceKind;
   label?: string;
@@ -65,12 +65,12 @@ function mergeParams(
   return params as PaymentsActionParams;
 }
 
-function normalizeMode(value: unknown): PaymentsSubaction | null {
+function normalizeSubaction(value: unknown): PaymentsSubaction | null {
   if (typeof value !== "string") {
     return null;
   }
   const normalized = value.trim().toLowerCase().replace(/[- ]/g, "_");
-  const modes: PaymentsSubaction[] = [
+  const subactions: PaymentsSubaction[] = [
     "dashboard",
     "list_sources",
     "add_source",
@@ -80,7 +80,7 @@ function normalizeMode(value: unknown): PaymentsSubaction | null {
     "spending_summary",
     "recurring_charges",
   ];
-  return (modes as string[]).includes(normalized)
+  return (subactions as string[]).includes(normalized)
     ? (normalized as PaymentsSubaction)
     : null;
 }
@@ -95,9 +95,9 @@ async function runPaymentsAction(
   void message;
   const params = mergeParams(message, options);
   const service = new LifeOpsService(runtime);
-  const mode = normalizeMode(params.mode) ?? "dashboard";
+  const subaction = normalizeSubaction(params.subaction) ?? "dashboard";
 
-  switch (mode) {
+  switch (subaction) {
     case "dashboard": {
       const dashboard = await service.getPaymentsDashboard({
         windowDays: params.windowDays ?? null,
@@ -265,7 +265,19 @@ const examples: ActionExample[][] = [
   ],
 ];
 
-export const paymentsAction: Action & {
+/**
+ * Internal implementation of the legacy `PAYMENTS` action surface.
+ *
+ * Audit B Defer #4 folded `PAYMENTS` and `SUBSCRIPTIONS` into the single
+ * `MONEY` umbrella (`./money.ts`). The umbrella forwards the eight payments
+ * verbs (`dashboard | list_sources | add_source | remove_source | import_csv |
+ * list_transactions | spending_summary | recurring_charges`) directly to this
+ * impl. The legacy export name (`paymentsAction`) is re-exported below as an
+ * alias for `moneyAction` so cached planner outputs and downstream importers
+ * keep resolving — but no `PAYMENTS`-named action is registered in the plugin
+ * anymore; the umbrella simile carries the legacy name forward.
+ */
+export const paymentsActionImpl: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
@@ -286,7 +298,7 @@ export const paymentsAction: Action & {
 
   parameters: [
     {
-      name: "mode",
+      name: "subaction",
       description:
         "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges (defaults dashboard).",
       required: false,
@@ -413,3 +425,8 @@ export const paymentsAction: Action & {
   },
   examples,
 };
+
+// Legacy export — the `PAYMENTS` name lives on as a simile of the new MONEY
+// umbrella. Importers that destructured `paymentsAction` get the umbrella
+// back so they continue to dispatch through the unified entry.
+export { moneyAction as paymentsAction } from "./money.js";

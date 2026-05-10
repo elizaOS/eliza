@@ -110,7 +110,7 @@ The plugin supports multiple image generation backends. Configure via the `media
 
 | Action | Description |
 |--------|-------------|
-| `GENERATE_IMAGE` | Generate an image from a text description |
+| `GENERATE_MEDIA` | Generate an image from a text description using `mediaType: "image"` |
 | `EDIT_IMAGE` | Edit an existing image with a prompt |
 | `IMAGE_VARIATION` | Create variations of an existing image |
 | `DESCRIBE_IMAGE` | Analyze and describe an image (uses vision) |

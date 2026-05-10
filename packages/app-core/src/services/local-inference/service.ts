@@ -8,13 +8,26 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { ActiveModelCoordinator } from "./active-model";
+import {
+  ActiveModelCoordinator,
+  type LocalInferenceLoadOverrides,
+} from "./active-model";
 import { readEffectiveAssignments, setAssignment } from "./assignments";
 import { registerBundledModels } from "./bundled-models";
+import type { CacheStatsEntry } from "./cache-bridge";
 import { MODEL_CATALOG } from "./catalog";
+import { dflashLlamaServer, getDflashRuntimeStatus } from "./dflash-server";
 import { Downloader } from "./downloader";
+import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
 import { searchHuggingFaceGguf } from "./hf-search";
+import { buildTextGenerationReadiness } from "./readiness";
+import {
+  chooseSmallerFallbackModel,
+  type RecommendedModelSelection,
+  selectRecommendedModelForSlot,
+  selectRecommendedModels,
+} from "./recommendation";
 import {
   listInstalledModels,
   removeElizaModel,
@@ -27,8 +40,10 @@ import type {
   DownloadEvent,
   DownloadJob,
   HardwareProbe,
+  LocalInferenceReadiness,
   ModelAssignments,
   ModelHubSnapshot,
+  TextGenerationSlot,
 } from "./types";
 import { type VerifyResult, verifyInstalledModel } from "./verify";
 
@@ -38,7 +53,7 @@ export class LocalInferenceService {
   private bundledBootstrap: Promise<void> | null = null;
 
   getCatalog() {
-    return MODEL_CATALOG;
+    return MODEL_CATALOG.filter((model) => !model.hiddenFromCatalog);
   }
 
   /**
@@ -92,20 +107,94 @@ export class LocalInferenceService {
       this.getHardware(),
       this.getAssignments(),
     ]);
+    const active = this.getActive();
+    const downloads = this.getDownloads();
     return {
       catalog: this.getCatalog(),
       installed,
-      active: this.getActive(),
-      downloads: this.getDownloads(),
+      active,
+      downloads,
       hardware,
       assignments,
+      textReadiness: buildTextGenerationReadiness({
+        assignments,
+        installed,
+        active,
+        downloads,
+        catalog: MODEL_CATALOG,
+      }),
     };
+  }
+
+  async getTextReadiness(): Promise<LocalInferenceReadiness> {
+    const [installed, assignments] = await Promise.all([
+      this.getInstalled(),
+      this.getAssignments(),
+    ]);
+    return buildTextGenerationReadiness({
+      assignments,
+      installed,
+      active: this.getActive(),
+      downloads: this.getDownloads(),
+      catalog: MODEL_CATALOG,
+    });
+  }
+
+  async getRecommendedModel(
+    slot: TextGenerationSlot,
+    hardware?: HardwareProbe,
+  ): Promise<RecommendedModelSelection> {
+    return selectRecommendedModelForSlot(
+      slot,
+      hardware ?? (await this.getHardware()),
+      MODEL_CATALOG,
+      { binaryKernels: this.installedBinaryKernels() },
+    );
+  }
+
+  async getRecommendedModels(
+    hardware?: HardwareProbe,
+  ): Promise<Record<TextGenerationSlot, RecommendedModelSelection>> {
+    return selectRecommendedModels(
+      hardware ?? (await this.getHardware()),
+      MODEL_CATALOG,
+      { binaryKernels: this.installedBinaryKernels() },
+    );
+  }
+
+  /**
+   * Pull the kernels map from CAPABILITIES.json next to the installed
+   * llama-server binary. Null when the file is absent or when DFlash isn't
+   * enabled. Surfaces to the recommender so we don't recommend a model the
+   * installed binary can't actually run.
+   */
+  private installedBinaryKernels(): Partial<Record<string, boolean>> | null {
+    const caps = getDflashRuntimeStatus().capabilities;
+    return caps?.kernels ?? null;
   }
 
   async startDownload(
     modelIdOrSpec: string | CatalogModel,
   ): Promise<DownloadJob> {
     return this.downloader.start(modelIdOrSpec);
+  }
+
+  async startSmallerFallbackDownload(
+    currentModelId: string,
+    slot: TextGenerationSlot = "TEXT_LARGE",
+    hardware?: HardwareProbe,
+  ): Promise<{ model: CatalogModel; job: DownloadJob } | null> {
+    const model = chooseSmallerFallbackModel(
+      currentModelId,
+      hardware ?? (await this.getHardware()),
+      slot,
+      MODEL_CATALOG,
+    );
+    if (!model) return null;
+    return {
+      model,
+      job: await this.startDownload(model.id),
+    };
   }
 
   async searchHuggingFace(
@@ -171,16 +260,39 @@ export class LocalInferenceService {
   async setActive(
     runtime: AgentRuntime | null,
     modelId: string,
+    overrides?: LocalInferenceLoadOverrides,
   ): Promise<ActiveModelState> {
     const installed = (await this.getInstalled()).find((m) => m.id === modelId);
     if (!installed) {
       throw new Error(`Model not installed: ${modelId}`);
     }
-    return this.activeModel.switchTo(runtime, installed);
+    return this.activeModel.switchTo(runtime, installed, overrides);
   }
 
   async clearActive(runtime: AgentRuntime | null): Promise<ActiveModelState> {
     return this.activeModel.unload(runtime);
+  }
+
+  /**
+   * Diagnostic snapshot of the local prefix-cache state. Returns:
+   *   - `dflash`: per-slot files persisted by the out-of-process
+   *     llama-server (size + mtime + age in ms).
+   *   - `engine`: in-process session-pool size and live cache keys.
+   * Used by the API layer to render a "local cache" debug panel.
+   */
+  async getLocalCacheStats(): Promise<{
+    dflash: {
+      modelHash: string | null;
+      slotDir: string | null;
+      parallel: number;
+      files: CacheStatsEntry[];
+    };
+    engine: { size: number; maxSize: number; keys: string[] } | null;
+  }> {
+    return {
+      dflash: await dflashLlamaServer.describeCache(),
+      engine: localInferenceEngine.describeSessionPool(),
+    };
   }
 
   async uninstall(

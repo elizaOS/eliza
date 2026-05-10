@@ -31,7 +31,6 @@ Los proveedores marcados como **incluidos** están preinstalados con cada lanzam
 | [DeepSeek](https://deepseek.com) | `@elizaos/plugin-deepseek` | `DEEPSEEK_API_KEY` | Bajo demanda | Modelos de razonamiento y código. |
 | [Ollama](https://ollama.com) | `@elizaos/plugin-ollama` | `OLLAMA_BASE_URL` | Incluido | **Modelos locales.** No se necesita clave API. Requiere un servidor [Ollama](https://ollama.com) en ejecución. |
 | [Local AI](https://github.com/elizaos-plugins/plugin-local-ai) | `@elizaos/plugin-local-ai` | — | Bajo demanda | **Modelos locales en proceso.** Ejecuta modelos GGUF directamente sin servidor externo. |
-| [Qwen](https://qwen.ai) | `@elizaos/plugin-qwen` | — | Bajo demanda | Modelos Qwen de Alibaba. Configurar mediante la entrada del plugin. |
 | [MiniMax](https://minimaxi.com) | `@elizaos/plugin-minimax` | — | Bajo demanda | Modelos de lenguaje MiniMax. Configurar mediante la entrada del plugin. |
 | [Together AI](https://together.ai) | `@elizaos/plugin-together` | `TOGETHER_API_KEY` | Bajo demanda | Alojamiento de modelos de código abierto. |
 | [Mistral](https://mistral.ai) | `@elizaos/plugin-mistral` | `MISTRAL_API_KEY` | Bajo demanda | Modelos Mistral y Mixtral. |
@@ -213,7 +212,7 @@ Eliza soporta una cadena de respaldo ordenada. Si el modelo principal falla (lí
         primary: "anthropic/claude-sonnet-4.6",
         fallbacks: [
           "openai/gpt-4o",
-          "groq/llama-3.3-70b-versatile",
+          "groq/openai/gpt-oss-120b",
         ],
       },
     },
@@ -287,7 +286,7 @@ Ollama te permite ejecutar modelos localmente sin clave API y con total privacid
   </Step>
   <Step title="Descargar un modelo">
     ```bash
-    ollama pull llama3.3
+    ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m
     ```
   </Step>
   <Step title="Configurar la URL base">
@@ -303,7 +302,7 @@ Ollama te permite ejecutar modelos localmente sin clave API y con total privacid
       agents: {
         defaults: {
           model: {
-            primary: "ollama/llama3.3",
+            primary: "ollama/eliza-1-9b",
           },
         },
       },

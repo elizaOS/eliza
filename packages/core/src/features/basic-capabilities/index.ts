@@ -19,9 +19,10 @@ import {
 	postCreationTemplate,
 } from "../../prompts.ts";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
+import { EvaluatorService } from "../../services/evaluator.ts";
 import {
 	OPTIMIZED_PROMPT_SERVICE,
-	type OptimizedPromptService,
+	OptimizedPromptService,
 } from "../../services/optimized-prompt.ts";
 import { resolveOptimizedPrompt } from "../../services/optimized-prompt-resolver.ts";
 import { TaskService } from "../../services/task.ts";
@@ -35,8 +36,6 @@ import type {
 	Content,
 	ControlMessagePayload,
 	EntityPayload,
-	Evaluator,
-	EvaluatorEventPayload,
 	IAgentRuntime,
 	IMessageBusService,
 	InvokePayload,
@@ -61,14 +60,32 @@ import {
 	getLocalServerUrl,
 	parseJSONObjectFromText,
 } from "../../utils.ts";
-import * as autonomy from "../autonomy/index.ts";
+// Direct leaf imports — see comment in
+// ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
+// requires bypassing barrels here too.
+import { sendToAdminAction } from "../autonomy/action.ts";
+import {
+	adminChatProvider,
+	autonomyStatusProvider,
+} from "../autonomy/providers.ts";
+import { autonomyRoutes } from "../autonomy/routes.ts";
+import { AutonomyService } from "../autonomy/service.ts";
 
 const ROLE_OWNER: Role = "OWNER";
 
 // Re-export action and provider modules
 export * from "./actions/index.ts";
+// Generic scheduled-prompt TaskWorker (registered automatically by TaskService).
+export {
+	PROMPT_RUNNER_TASK_KIND,
+	PROMPT_RUNNER_TASK_WORKER_NAME,
+	type PromptRunnerTaskMetadata,
+	promptRunnerTaskWorker,
+} from "./prompt-runner-task.ts";
 export * from "./providers/index.ts";
 
+import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
+import { readAttachmentAction } from "../working-memory/readAttachmentAction.ts";
 // Import advanced capabilities
 import {
 	advancedActions,
@@ -83,13 +100,34 @@ import {
 	secretsCapability,
 	trustCapability,
 } from "../index.ts";
-// Import for local use
-import * as actions from "./actions/index.ts";
-import * as providers from "./providers/index.ts";
+// Import for local use.
+//
+// Direct leaf imports — see comment in
+// ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
+// requires bypassing barrels here too.
+import { choiceAction } from "./actions/choice.ts";
+import { ignoreAction } from "./actions/ignore.ts";
+import { noneAction } from "./actions/none.ts";
+import { replyAction } from "./actions/reply.ts";
+import { actionStateProvider } from "./providers/actionState.ts";
+import { actionsProvider } from "./providers/actions.ts";
+import { attachmentsProvider } from "./providers/attachments.ts";
+import { characterProvider } from "./providers/character.ts";
+import { choiceProvider } from "./providers/choice.ts";
+import { contextBenchProvider } from "./providers/contextBench.ts";
+import { currentTimeProvider } from "./providers/currentTime.ts";
+import { entitiesProvider } from "./providers/entities.ts";
+import {
+	platformChatContextProvider,
+	platformUserContextProvider,
+} from "./providers/platformContext.ts";
+import { providersProvider } from "./providers/providers.ts";
+import { recentMessagesProvider } from "./providers/recentMessages.ts";
+import { uiContextProvider } from "./providers/uiContext.ts";
+import { worldProvider } from "./providers/world.ts";
 
 // Re-export advanced capability modules
 export * from "../advanced-capabilities/actions/index.ts";
-export * from "../advanced-capabilities/evaluators/index.ts";
 // Re-export advanced capabilities
 export {
 	advancedActions,
@@ -1104,37 +1142,6 @@ const events: PluginEvents = {
 		},
 	],
 
-	[EventType.EVALUATOR_STARTED]: [
-		async (payload: EvaluatorEventPayload) => {
-			logger.debug(
-				{
-					src: "basic-capabilities:evaluator",
-					agentId: payload.runtime.agentId,
-					evaluatorName: payload.evaluatorName,
-					evaluatorId: payload.evaluatorId,
-				},
-				"Evaluator started",
-			);
-		},
-	],
-
-	[EventType.EVALUATOR_COMPLETED]: [
-		async (payload: EvaluatorEventPayload) => {
-			const status = payload.error ? "failed" : "completed";
-			logger.debug(
-				{
-					src: "basic-capabilities:evaluator",
-					agentId: payload.runtime.agentId,
-					status,
-					evaluatorName: payload.evaluatorName,
-					evaluatorId: payload.evaluatorId,
-					error: payload.error?.message || undefined,
-				},
-				"Evaluator completed",
-			);
-		},
-	],
-
 	[EventType.RUN_STARTED]: [
 		async (payload: RunEventPayload) => {
 			await payload.runtime.createLogs([
@@ -1251,37 +1258,33 @@ const events: PluginEvents = {
  * Basic providers - core functionality for agent operation
  */
 export const basicProviders = [
-	providers.actionsProvider,
-	providers.actionStateProvider,
-	providers.attachmentsProvider,
-	providers.characterProvider,
-	providers.choiceProvider,
-	providers.contextBenchProvider,
-	providers.currentTimeProvider,
-	providers.entitiesProvider,
-	providers.evaluatorsProvider,
-	providers.platformChatContextProvider,
-	providers.platformUserContextProvider,
-	providers.providersProvider,
-	providers.recentMessagesProvider,
-	providers.uiContextProvider,
-	providers.worldProvider,
+	actionsProvider,
+	actionStateProvider,
+	attachmentsProvider,
+	characterProvider,
+	choiceProvider,
+	contextBenchProvider,
+	currentTimeProvider,
+	entitiesProvider,
+	platformChatContextProvider,
+	platformUserContextProvider,
+	providersProvider,
+	recentMessagesProvider,
+	uiContextProvider,
+	worldProvider,
 ];
 
 /**
  * Basic actions - fundamental response actions
  */
 export const basicActions = [
-	withCanonicalActionDocs(actions.choiceAction),
-	withCanonicalActionDocs(actions.replyAction),
-	withCanonicalActionDocs(actions.ignoreAction),
-	withCanonicalActionDocs(actions.noneAction),
+	withCanonicalActionDocs(choiceAction),
+	withCanonicalActionDocs(generateMediaAction),
+	withCanonicalActionDocs(readAttachmentAction),
+	withCanonicalActionDocs(replyAction),
+	withCanonicalActionDocs(ignoreAction),
+	withCanonicalActionDocs(noneAction),
 ];
-
-/**
- * Basic evaluators - none by default (evaluators are typically advanced features)
- */
-export const basicEvaluators: never[] = [];
 
 /**
  * Basic services - essential infrastructure services
@@ -1289,6 +1292,12 @@ export const basicEvaluators: never[] = [];
 export const basicServices: ServiceClass[] = [
 	TaskService,
 	EmbeddingGenerationService,
+	EvaluatorService,
+	// Loads optimized prompts for action_planner / media_description / etc.
+	// from the on-disk store (~/.eliza/optimized-prompts/<task>/). Cheap
+	// in-memory cache; registering it on every runtime so the planner-loop
+	// can pick up artifacts produced by `bun run train -- --backend native`.
+	OptimizedPromptService as unknown as ServiceClass,
 ];
 
 /**
@@ -1297,7 +1306,6 @@ export const basicServices: ServiceClass[] = [
 export const basicCapabilities = {
 	providers: basicProviders,
 	actions: basicActions,
-	evaluators: basicEvaluators,
 	services: basicServices,
 };
 
@@ -1308,7 +1316,7 @@ export const basicCapabilities = {
 /**
  * Configuration for basic capabilities.
  * - Basic: Core functionality (reply, ignore, none actions; core providers; task/embedding services)
- * - Advanced/Extended: Additional features (choice, mute/follow room, roles, settings, image generation)
+ * - Advanced/Extended: Additional features (choice, mute/follow room, roles, settings)
  * - Autonomy: Autonomous operation (autonomy service, admin communication, status providers)
  *
  * @see basic-capabilities for basic capability definitions
@@ -1336,11 +1344,10 @@ export interface CapabilityConfig {
 // Autonomy capabilities - opt-in
 // Provides autonomous operation with continuous agent thinking loop
 const autonomyCapabilities = {
-	providers: [autonomy.adminChatProvider, autonomy.autonomyStatusProvider],
-	actions: [withCanonicalActionDocs(autonomy.sendToAdminAction)],
-	evaluators: [] as Evaluator[],
-	services: [autonomy.AutonomyService] as ServiceClass[],
-	routes: autonomy.autonomyRoutes,
+	providers: [adminChatProvider, autonomyStatusProvider],
+	actions: [withCanonicalActionDocs(sendToAdminAction)],
+	services: [AutonomyService] as ServiceClass[],
+	routes: autonomyRoutes,
 };
 
 // Legacy alias exports for backwards compatibility
@@ -1368,7 +1375,7 @@ export function createBasicCapabilitiesPlugin(
 
 	return {
 		name: "basic-capabilities",
-		description: "Agent basic capabilities with core actions and evaluators",
+		description: "Agent basic capabilities with core actions",
 		actions: [
 			...(config.disableBasic ? [] : basicActions),
 			...(useAdvanced ? advancedActions : []),
@@ -1385,11 +1392,7 @@ export function createBasicCapabilitiesPlugin(
 			...(config.enableSecretsManager ? secretsCapability.providers : []),
 			...(config.enablePluginManager ? pluginManagerCapability.providers : []),
 		],
-		evaluators: [
-			...(config.disableBasic ? [] : basicEvaluators),
-			...(useAdvanced ? advancedEvaluators : []),
-			...(config.enableAutonomy ? autonomyCapabilities.evaluators : []),
-		],
+		evaluators: [...(useAdvanced ? advancedEvaluators : [])],
 		services: [
 			...(config.disableBasic ? [] : basicServices),
 			...(useAdvanced ? advancedServices : []),

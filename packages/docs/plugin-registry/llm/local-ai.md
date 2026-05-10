@@ -18,10 +18,10 @@ eliza plugins install local-ai
 
 | Environment Variable | Required | Default | Description |
 |---------------------|----------|---------|-------------|
-| `LOCAL_LARGE_MODEL` | No | `DeepHermes-3-Llama-3-8B-q4.gguf` | Filename of the large local model |
-| `LOCAL_SMALL_MODEL` | No | `DeepHermes-3-Llama-3-3B-Preview-q4.gguf` | Filename of the small local model |
-| `LOCAL_EMBEDDING_MODEL` | No | `bge-small-en-v1.5.Q4_K_M.gguf` | Filename of the embedding model |
-| `LOCAL_EMBEDDING_DIMENSIONS` | No | `384` | Number of embedding dimensions |
+| `LOCAL_LARGE_MODEL` | No | `text/eliza-1-desktop-9b-64k.gguf` | Filename of the large local model |
+| `LOCAL_SMALL_MODEL` | No | `text/eliza-1-mobile-1_7b-32k.gguf` | Filename of the small local model |
+| `LOCAL_EMBEDDING_MODEL` | No | `text/eliza-1-lite-0_6b-32k.gguf` | Filename of the embedding model |
+| `LOCAL_EMBEDDING_DIMENSIONS` | No | `1024` | Number of embedding dimensions |
 | `MODELS_DIR` | No | — | Directory where model files are stored |
 | `CACHE_DIR` | No | — | Cache directory for model assets |
 | `CUDA_VISIBLE_DEVICES` | No | — | GPU device selection for CUDA acceleration |
@@ -44,9 +44,9 @@ eliza plugins install local-ai
 
 | elizaOS Model Type | Default Model |
 |-------------------|--------------|
-| `TEXT_SMALL` | `DeepHermes-3-Llama-3-3B-Preview-q4.gguf` |
-| `TEXT_LARGE` | `DeepHermes-3-Llama-3-8B-q4.gguf` |
-| `TEXT_EMBEDDING` | `bge-small-en-v1.5.Q4_K_M.gguf` |
+| `TEXT_SMALL` | `text/eliza-1-mobile-1_7b-32k.gguf` |
+| `TEXT_LARGE` | `text/eliza-1-desktop-9b-64k.gguf` |
+| `TEXT_EMBEDDING` | `text/eliza-1-lite-0_6b-32k.gguf` |
 
 ## Features
 

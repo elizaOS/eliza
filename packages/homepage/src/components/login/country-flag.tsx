@@ -1,6 +1,6 @@
-import * as React from "react";
-import * as FlagComponents from "country-flag-icons/react/3x2";
 import { hasFlag } from "country-flag-icons";
+import * as FlagComponents from "country-flag-icons/react/3x2";
+import type * as React from "react";
 
 const FlagMap = FlagComponents as Record<
   string,

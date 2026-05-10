@@ -49,11 +49,7 @@ function sha1Bytes(message: string): Uint8Array {
   const dataView = new DataView(padded.buffer);
   const bitLength = messageLength * 8;
   dataView.setUint32(padded.length - 4, bitLength >>> 0, false);
-  dataView.setUint32(
-    padded.length - 8,
-    Math.floor(bitLength / 2 ** 32) >>> 0,
-    false,
-  );
+  dataView.setUint32(padded.length - 8, Math.floor(bitLength / 2 ** 32) >>> 0, false);
 
   let h0 = 0x67452301;
   let h1 = 0xefcdab89;
@@ -67,11 +63,7 @@ function sha1Bytes(message: string): Uint8Array {
       words[index] = dataView.getUint32(offset + index * 4, false);
     }
     for (let index = 16; index < 80; index += 1) {
-      const value =
-        words[index - 3] ^
-        words[index - 8] ^
-        words[index - 14] ^
-        words[index - 16];
+      const value = words[index - 3] ^ words[index - 8] ^ words[index - 14] ^ words[index - 16];
       words[index] = (value << 1) | (value >>> 31);
     }
 
@@ -208,6 +200,85 @@ export const ChannelType = {
   SELF: "SELF",
 } as const;
 
+type SensitiveRequestKind = "secret" | "payment" | "oauth" | "private_info";
+type SensitiveRequestPaymentContext = "verified_payer" | "any_payer";
+
+export function defaultSensitiveRequestPolicy(
+  kind: SensitiveRequestKind,
+  paymentContext: SensitiveRequestPaymentContext = "verified_payer",
+) {
+  if (kind === "payment" && paymentContext === "any_payer") {
+    return {
+      actor: "any_payer",
+      requirePrivateDelivery: false,
+      requireAuthenticatedLink: false,
+      allowInlineOwnerAppEntry: true,
+      allowPublicLink: true,
+      allowDmFallback: true,
+      allowTunnelLink: true,
+      allowCloudLink: true,
+    };
+  }
+
+  if (kind === "payment") {
+    return {
+      actor: "verified_payer",
+      requirePrivateDelivery: false,
+      requireAuthenticatedLink: true,
+      allowInlineOwnerAppEntry: true,
+      allowPublicLink: true,
+      allowDmFallback: true,
+      allowTunnelLink: true,
+      allowCloudLink: true,
+    };
+  }
+
+  if (kind === "oauth") {
+    return {
+      actor: "owner_or_linked_identity",
+      requirePrivateDelivery: false,
+      requireAuthenticatedLink: true,
+      allowInlineOwnerAppEntry: true,
+      allowPublicLink: true,
+      allowDmFallback: true,
+      allowTunnelLink: true,
+      allowCloudLink: true,
+    };
+  }
+
+  return {
+    actor: "owner_or_linked_identity",
+    requirePrivateDelivery: true,
+    requireAuthenticatedLink: true,
+    allowInlineOwnerAppEntry: true,
+    allowPublicLink: false,
+    allowDmFallback: true,
+    allowTunnelLink: true,
+    allowCloudLink: true,
+  };
+}
+
+const SENSITIVE_METADATA_KEY_RE =
+  /(^|[_-])(authorization|bearer|credential|jwt|password|private|secret|signature|token)([_-]|$)|api[_-]?key/i;
+
+export function redactSensitiveRequestMetadata(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSensitiveRequestMetadata(item));
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const redacted: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    redacted[key] = SENSITIVE_METADATA_KEY_RE.test(key)
+      ? "[redacted]"
+      : redactSensitiveRequestMetadata(item);
+  }
+  return redacted;
+}
+
 export const ModelType = {
   TEXT_SMALL: "TEXT_SMALL",
   TEXT_LARGE: "TEXT_LARGE",
@@ -232,6 +303,7 @@ export const ServiceType = {
   BROWSER: "BROWSER",
   PDF: "PDF",
   REMOTE_FILES: "REMOTE_FILES",
+  MEDIA_GENERATION: "MEDIA_GENERATION",
 } as const;
 
 export const VECTOR_DIMS = {
@@ -251,9 +323,17 @@ export const MemoryType = {
   CUSTOM: "custom",
 } as const;
 
+export const documentsPluginCore = {
+  name: "documents",
+  description: "Cloud Worker stub for the documents runtime plugin.",
+  actions: [],
+  providers: [],
+  services: [],
+};
+
 export const addHeader = (header: string, body: string) => (body ? `${header}\n${body}` : "");
 
-export const UUID = asUUID as unknown as (value?: string) => string;
+export const UUID = (value?: string): string => asUUID(value ?? "");
 export const composeActionExamples = throwingExport("composeActionExamples");
 export const formatActions = throwingExport("formatActions");
 export const formatActionNames = throwingExport("formatActionNames");
@@ -273,6 +353,7 @@ export const formatPosts = throwingExport("formatPosts");
 export const getEntityDetails = throwingExport("getEntityDetails");
 export const splitChunks = throwingExport("splitChunks");
 export const createMessageMemory = throwingExport("createMessageMemory");
+export const executePlannedToolCall = throwingExport("executePlannedToolCall");
 
 function renderSystemPromptBio(value: unknown): string {
   if (typeof value === "string") return value.trim();
@@ -309,11 +390,7 @@ export function buildCanonicalSystemPrompt(args: {
       ? character.name.trim()
       : "the agent";
   const role = typeof args.userRole === "string" ? args.userRole.trim().toUpperCase() : "";
-  return [
-    system,
-    bio ? `# About ${name}\n${bio}` : "",
-    role ? `user_role: ${role}` : "",
-  ]
+  return [system, bio ? `# About ${name}\n${bio}` : "", role ? `user_role: ${role}` : ""]
     .filter(Boolean)
     .join("\n\n")
     .trim();
@@ -367,18 +444,37 @@ export function getRequestContext(): undefined {
 }
 
 export class Service {
-  constructor(..._args: unknown[]) {
-    unavailable("Service");
+  protected runtime: unknown;
+
+  constructor(runtime?: unknown) {
+    this.runtime = runtime;
   }
 
   static start(..._args: unknown[]): never {
     unavailable("Service.start");
+  }
+
+  async stop(): Promise<void> {}
+}
+
+export class IMediaGenerationService extends Service {
+  static readonly serviceType = ServiceType.MEDIA_GENERATION;
+  readonly capabilityDescription = "Generates media from prompts.";
+
+  async generateMedia(..._args: unknown[]): Promise<never> {
+    unavailable("IMediaGenerationService.generateMedia");
   }
 }
 
 export class AgentRuntime {
   constructor(..._args: unknown[]) {
     unavailable("AgentRuntime");
+  }
+}
+
+export class DefaultMessageService {
+  constructor(..._args: unknown[]) {
+    unavailable("DefaultMessageService");
   }
 }
 
@@ -425,6 +521,13 @@ export type Component = unknown;
 export type Task = unknown;
 export type ActionExample = unknown;
 export type Content = unknown;
+export type ImageGenerationResult = unknown;
+export type MediaGenerationRequest = {
+  mediaType: string;
+  prompt: string;
+  size?: string;
+};
+export type MediaGenerationResponse = Record<string, unknown>;
 
 export default {
   logger,
@@ -436,6 +539,7 @@ export default {
   ServiceType,
   VECTOR_DIMS,
   MemoryType,
+  documentsPluginCore,
   addHeader,
   UUID,
   composeActionExamples,
@@ -460,12 +564,15 @@ export default {
   asUUID,
   splitChunks,
   createMessageMemory,
+  executePlannedToolCall,
   buildCanonicalSystemPrompt,
   resolveEffectiveSystemPrompt,
   renderChatMessagesForPrompt,
   getRequestContext,
   Service,
+  IMediaGenerationService,
   AgentRuntime,
+  DefaultMessageService,
   Semaphore,
   BM25,
 };

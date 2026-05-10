@@ -11,6 +11,7 @@
 
 "use client";
 
+import type { Voice } from "@elizaos/cloud-ui";
 import {
   Button,
   Dialog,
@@ -18,12 +19,12 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  VoiceAudioPlayer,
+  VoiceEmptyState,
 } from "@elizaos/cloud-ui";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { VoiceAudioPlayer, VoiceEmptyState } from "@elizaos/cloud-ui/components/voice";
-import type { Voice } from "@elizaos/cloud-ui/components/voice/types";
 import { VoiceCard } from "./voice-card";
 import { VoiceCloneForm } from "./voice-clone-form";
 

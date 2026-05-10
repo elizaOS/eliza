@@ -40,11 +40,7 @@ export function isTestExempt(file) {
     )
   )
     return true;
-  if (
-    /(^|\/)(bun\.lock|package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/.test(
-      file,
-    )
-  )
+  if (/(^|\/)(bun\.lock|package-lock\.json|yarn\.lock)$/.test(file))
     return true;
   if (/(^|\/)package\.json$/.test(file)) return true;
   if (/(^|\/)tsconfig(\.[\w-]+)?\.json$/.test(file)) return true;

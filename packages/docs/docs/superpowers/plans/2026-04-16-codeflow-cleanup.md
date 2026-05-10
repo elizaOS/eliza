@@ -158,7 +158,7 @@ CLAUDE.md
 bun.lock
 package-lock.json
 yarn.lock
-pnpm-lock.yaml
+bun.lock
 
 # Build & generated output
 apps/**/dist/**
@@ -446,7 +446,7 @@ Remove lines 108-110 (the `isWebPlatform` function definition):
 -  return platform === "web" && !isElectrobunRuntime();
 -}
 -
- import type { ShareTargetPayload } from "@elizaos/app-core/platform";
+ import type { ShareTargetPayload } from "@elizaos/ui";
 ```
 
 And remove the `isWebPlatform as isWeb` line from the export block (around line 596):

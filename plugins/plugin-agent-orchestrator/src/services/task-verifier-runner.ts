@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import path from "node:path";
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { type IAgentRuntime, ModelType, resolveStateDir } from "@elizaos/core";
 import { parseJsonObjectResponse } from "./json-model-output.js";
 import type {
   TaskNodeRecord,
@@ -92,9 +91,7 @@ function parseAcceptanceEvaluation(raw: string): AcceptanceEvaluation | null {
 }
 
 function getVerifierRootDir(): string {
-  const stateDir =
-    process.env.ELIZA_STATE_DIR?.trim() || path.join(homedir(), ".eliza");
-  return path.join(stateDir, "task-verifiers");
+  return path.join(resolveStateDir(), "task-verifiers");
 }
 
 function truncate(text: string, limit = 1_200): string {

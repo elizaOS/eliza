@@ -120,8 +120,7 @@ OpenRouter 提供对所有主要提供者模型的访问。使用带有提供者
 
 | 模型 ID | 描述 |
 |---------|------|
-| `meta-llama/llama-3.3-70b-instruct` | Llama 3.3 70B |
-| `meta-llama/llama-3.1-405b-instruct` | Llama 3.1 405B |
+| `openai/gpt-oss-120b` | GPT-OSS 120B |
 
 <div id="google-via-openrouter">
 
@@ -195,8 +194,7 @@ OpenRouter 支持按成本、延迟或吞吐量设置路由偏好：
 
 OpenRouter 提供对精选开源模型的免费访问（有速率限制）：
 
-- `meta-llama/llama-3.2-3b-instruct:free`
-- `google/gemma-2-9b-it:free`
+- `openai/gpt-oss-120b:free`
 - `mistralai/mistral-7b-instruct:free`
 
 <div id="rate-limits-and-pricing">

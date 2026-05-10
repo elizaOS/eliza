@@ -1,9 +1,7 @@
 import {
   type GenerateTextParams,
   type IAgentRuntime,
-  type JsonValue,
   ModelType,
-  type ObjectGenerationParams,
   type Plugin,
   type TextEmbeddingParams,
 } from "@elizaos/core";
@@ -232,8 +230,7 @@ function extractAdhdAction(prompt: string): string {
   ) {
     return "REPLY";
   }
-  if (/send a message|tell alice|message to/.test(message))
-    return "SEND_MESSAGE";
+  if (/send a message|tell alice|message to/.test(message)) return "MESSAGE";
   if (/mute this|too noisy/.test(message)) return "MUTE_ROOM";
   if (/unmute/.test(message)) return "UNMUTE_ROOM";
   if (/follow the/.test(message)) return "FOLLOW_ROOM";
@@ -249,7 +246,7 @@ function extractAdhdAction(prompt: string): string {
   if (/clear everything|start fresh|reset/.test(message))
     return "RESET_SESSION";
   if (/phone number|contact info/.test(message)) return "UPDATE_CONTACT_INFO";
-  if (/generate .*picture|image/.test(message)) return "GENERATE_IMAGE";
+  if (/generate .*picture|image/.test(message)) return "GENERATE_MEDIA";
   if (/ignore that last/.test(message)) return "IGNORE";
   if (/create .*plan|detailed plan/.test(message)) return "CREATE_PLAN";
   return lower.includes("reply") ? "REPLY" : "REPLY";
@@ -636,116 +633,6 @@ function mockEmbeddingModel(
   return vector;
 }
 
-function mockObjectModel(
-  _runtime: IAgentRuntime,
-  params: ObjectGenerationParams,
-): Record<string, JsonValue> {
-  const prompt = extractPrompt(params.prompt ?? params);
-  const command = extractCommand(prompt);
-  const replyJson =
-    /Benchmark:\*{0,2}\s*trust/i.test(prompt) ||
-    /security analysis agent|prompt_injection|credential_theft/i.test(prompt)
-      ? buildTrustAnalysisJson(prompt)
-      : /Benchmark:\*{0,2}\s*(social_alpha|social-alpha)/i.test(prompt) ||
-          /Social-Alpha benchmark|crypto trading signal extraction engine/i.test(
-            prompt,
-          )
-        ? buildSocialAlphaExtractionJson(prompt)
-        : null;
-  if (replyJson) {
-    const text = /^text:\s*(.*)$/m.exec(replyJson)?.[1] ?? "";
-    const thought = /^thought:\s*(.*)$/m.exec(replyJson)?.[1] ?? "";
-    return {
-      thought,
-      reasoning: thought,
-      actions: ["REPLY"],
-      name: "REPLY",
-      action: "REPLY",
-      params: {},
-      text,
-      isFinish: true,
-    };
-  }
-  const schemaProps =
-    params.schema && typeof params.schema.properties === "object"
-      ? params.schema.properties
-      : undefined;
-
-  const fallback: Record<string, JsonValue> = {
-    thought: "Execute deterministic benchmark action",
-    actions: ["BENCHMARK_ACTION"],
-    name: "BENCHMARK_ACTION",
-    reasoning: "Execute deterministic benchmark action",
-    action: "BENCHMARK_ACTION",
-    params: {
-      BENCHMARK_ACTION: {
-        command,
-      },
-    },
-    text: `Executed ${command}`,
-    isFinish: true,
-  };
-
-  if (!schemaProps) {
-    return fallback;
-  }
-
-  const output: Record<string, JsonValue> = {};
-  for (const [key, schema] of Object.entries(schemaProps)) {
-    const fieldType =
-      schema && typeof schema === "object" && "type" in schema
-        ? schema.type
-        : undefined;
-    const normalizedType =
-      typeof fieldType === "string"
-        ? fieldType
-        : Array.isArray(fieldType) && typeof fieldType[0] === "string"
-          ? fieldType[0]
-          : undefined;
-
-    if (
-      key === "action" ||
-      key === "name" ||
-      key === "actions" ||
-      key.toLowerCase().includes("action")
-    ) {
-      output[key] =
-        normalizedType === "array" ? ["BENCHMARK_ACTION"] : "BENCHMARK_ACTION";
-      continue;
-    }
-    if (
-      key === "reasoning" ||
-      key === "thought" ||
-      key.toLowerCase().includes("reason")
-    ) {
-      output[key] = "Execute deterministic benchmark action";
-      continue;
-    }
-    if (key === "params" || key.toLowerCase().includes("param")) {
-      output[key] = { BENCHMARK_ACTION: { command } };
-      continue;
-    }
-    if (key === "text" || key.toLowerCase().includes("message")) {
-      output[key] = `Executed ${command}`;
-      continue;
-    }
-
-    if (normalizedType === "boolean") {
-      output[key] = false;
-    } else if (normalizedType === "number" || normalizedType === "integer") {
-      output[key] = 1;
-    } else if (normalizedType === "array") {
-      output[key] = [];
-    } else if (normalizedType === "object") {
-      output[key] = {};
-    } else {
-      output[key] = "ok";
-    }
-  }
-
-  return { ...fallback, ...output };
-}
-
 export const mockPlugin: Plugin = {
   name: "mock-plugin",
   description: "Deterministic benchmark plugin for offline benchmark runs",
@@ -757,10 +644,6 @@ export const mockPlugin: Plugin = {
       mockTextModel(runtime, params),
     [ModelType.TEXT_COMPLETION]: async (runtime, params) =>
       mockTextModel(runtime, params),
-    [ModelType.OBJECT_SMALL]: async (runtime, params) =>
-      mockObjectModel(runtime, params),
-    [ModelType.OBJECT_LARGE]: async (runtime, params) =>
-      mockObjectModel(runtime, params),
     [ModelType.TEXT_EMBEDDING]: async (runtime, params) =>
       mockEmbeddingModel(runtime, params),
   },

@@ -4,11 +4,10 @@ import {
   constants as fsConstants,
   promises as fsp,
 } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { elizaLogger } from "@elizaos/core";
+import { elizaLogger, resolveStateDir } from "@elizaos/core";
 import youtubeDl from "youtube-dl-exec";
 
 export type YtDlpRunner = (
@@ -21,7 +20,20 @@ interface YtDlpFactory {
   create: (binaryPath: string) => YtDlpRunner;
 }
 
-const ytDlpModule = youtubeDl as unknown as YtDlpRunner & YtDlpFactory;
+type YtDlpModule = YtDlpRunner & YtDlpFactory;
+
+function isYtDlpModule(value: unknown): value is YtDlpModule {
+  return (
+    typeof value === "function" &&
+    typeof (value as { create?: unknown }).create === "function"
+  );
+}
+
+if (!isYtDlpModule(youtubeDl)) {
+  throw new TypeError("youtube-dl-exec did not expose the expected runner API");
+}
+
+const ytDlpModule = youtubeDl;
 
 const YT_DLP_RELEASE_URL =
   "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
@@ -221,8 +233,13 @@ export class BinaryResolver {
     }
 
     try {
-      const mod: { default?: string | null } = await import("ffmpeg-static");
-      const staticPath = mod.default ?? (mod as unknown as string | null);
+      const mod: unknown = await import("ffmpeg-static");
+      const staticPath =
+        typeof mod === "string"
+          ? mod
+          : mod && typeof mod === "object" && "default" in mod
+            ? (mod.default as string | null | undefined)
+            : null;
       if (
         typeof staticPath === "string" &&
         staticPath.length > 0 &&
@@ -480,9 +497,7 @@ export class BinaryResolver {
 function defaultBinariesDir(): string {
   const explicit = process.env.ELIZA_BINARIES_DIR;
   if (explicit) return explicit;
-  const stateDir =
-    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
-  return path.join(stateDir, "binaries");
+  return path.join(resolveStateDir(), "binaries");
 }
 
 export function ytDlpAssetName(): string {

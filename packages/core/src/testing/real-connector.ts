@@ -14,13 +14,30 @@
 
 import path from "node:path";
 
-// Load .env
-const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
-try {
-	const { config } = await import("dotenv");
-	config({ path: path.join(REPO_ROOT, ".env") });
-} catch {
-	// dotenv optional
+// Load .env on first connector call. The previous module-init top-level
+// `await import("dotenv")` is incompatible with Bun.build's mobile bundle
+// path: any runtime entry that transitively `require()`s a module with a
+// TLA fails the build (see `packages/agent/scripts/build-mobile-bundle.mjs`
+// for the rest of this story). Defer to a memoized loader so test helpers
+// still pick up `.env` on first use without leaking a TLA into the import
+// graph.
+const REPO_ROOT =
+	process.env.ELIZA_REPO_ROOT?.trim() ||
+	(typeof import.meta.dirname === "string"
+		? path.resolve(import.meta.dirname, "..", "..", "..", "..")
+		: process.cwd());
+let dotenvLoaded: Promise<void> | null = null;
+async function ensureDotenvLoaded(): Promise<void> {
+	if (dotenvLoaded) return dotenvLoaded;
+	dotenvLoaded = (async () => {
+		try {
+			const { config } = await import("dotenv");
+			config({ path: path.join(REPO_ROOT, ".env") });
+		} catch {
+			// dotenv optional
+		}
+	})();
+	return dotenvLoaded;
 }
 
 // ---------------------------------------------------------------------------
@@ -39,11 +56,13 @@ export interface DiscordTestClient {
  * Returns null if token is not available.
  */
 export async function createDiscordTestClient(): Promise<DiscordTestClient | null> {
+	await ensureDotenvLoaded();
 	const token = process.env.DISCORD_BOT_TOKEN?.trim();
 	if (!token) return null;
 
 	try {
-		const { Client, GatewayIntentBits } = await import("discord.js");
+		const discordJsModuleName: string = "discord.js";
+		const { Client, GatewayIntentBits } = await import(discordJsModuleName);
 		const client = new Client({
 			intents: [
 				GatewayIntentBits.Guilds,
@@ -185,6 +204,7 @@ export interface TelegramTestBot {
  * Returns null if token is not available.
  */
 export async function createTelegramTestBot(): Promise<TelegramTestBot | null> {
+	await ensureDotenvLoaded();
 	const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
 	if (!token) return null;
 

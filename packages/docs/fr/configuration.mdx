@@ -405,7 +405,7 @@ La façon la plus simple de configurer les modèles est via `agents.defaults.mod
     defaults: {
       model: {
         primary: "anthropic/claude-sonnet-4.6",
-        fallbacks: ["openai/gpt-4o", "groq/llama-3.3-70b"],
+        fallbacks: ["openai/gpt-4o", "groq/openai/gpt-oss-120b"],
       },
     },
   },
@@ -558,7 +558,6 @@ Eliza active automatiquement les plugins en fonction de votre configuration. Vou
 | `CUA_API_KEY` / `CUA_HOST` | `@elizaos/plugin-cua` |
 | `OBSIDIAN_VAULT_PATH` | `@elizaos/plugin-obsidian` |
 | `REPOPROMPT_CLI_PATH` | `@elizaos/plugin-repoprompt` |
-| `CLAUDE_CODE_WORKBENCH_ENABLED` | `@elizaos/plugin-claude-code-workbench` |
 
 **Les plugins de fonctionnalités** sont activés automatiquement via la carte de drapeaux `features` :
 
@@ -598,7 +597,6 @@ Eliza active automatiquement les plugins en fonction de votre configuration. Vou
 | `vision` | `@elizaos/plugin-vision` |
 | `computeruse` | `@elizaos/plugin-computeruse` |
 | `repoprompt` | `@elizaos/plugin-repoprompt` |
-| `claudeCodeWorkbench` | `@elizaos/plugin-claude-code-workbench` |
 
 <Info>
 Les plugins `vision`, `fal` et `suno` sont également activés automatiquement lorsque leurs sections de configuration `media.*` respectives sont configurées (par exemple, `media.vision.provider` est défini, ou `media.image.provider: "fal"` avec `mode: "own-key"`). Les plugins de webhooks s'activent automatiquement lorsque `hooks.token` est défini. Gmail watch s'active automatiquement lorsque `hooks.gmail.account` est défini.

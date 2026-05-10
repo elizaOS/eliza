@@ -6,11 +6,7 @@
 
 "use client";
 
-import {
-  AgentCard,
-  type AgentCardData,
-  type ViewMode,
-} from "../agents/agent-card";
+import { AgentCard, type AgentCardData, type ViewMode } from "../agents/agent-card";
 import { EmptyState } from "./empty-state";
 
 export interface AgentWithOwnership extends AgentCardData {

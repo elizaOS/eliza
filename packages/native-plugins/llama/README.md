@@ -43,7 +43,7 @@ transparently.
    registerCapacitorLlamaLoader(runtime);
    ```
 
-3. Run `npx cap sync` in `apps/app` to pick up the native plugin. iOS and
+3. Run `bunx cap sync` in `apps/app` to pick up the native plugin. iOS and
    Android builds will pull in `llama-cpp-capacitor`'s prebuilt native
    libraries automatically.
 

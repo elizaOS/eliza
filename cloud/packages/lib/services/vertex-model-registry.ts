@@ -218,7 +218,7 @@ async function prepareRemotePayloadFields(params: {
     objectId: params.objectId,
     field: "last_remote_payload",
     createdAt: params.createdAt,
-    value: params.remoteJob as unknown as Record<string, unknown>,
+    value: { ...params.remoteJob },
     inlineValueWhenOffloaded: {},
   });
 

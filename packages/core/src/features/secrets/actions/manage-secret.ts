@@ -18,7 +18,7 @@ import {
 	ModelType,
 	type State,
 } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import {
 	SECRETS_SERVICE_TYPE,
 	type SecretsService,
@@ -58,13 +58,20 @@ export const manageSecretAction: Action = {
 		"Manage secrets - get, set, delete, or list secrets at various levels",
 	parameters: [
 		{
-			name: "operation",
+			name: "action",
 			description: "Secret operation: get, set, delete, list, or check.",
 			required: false,
 			schema: {
 				type: "string" as const,
 				enum: ["get", "set", "delete", "list", "check"],
 			},
+		},
+		{
+			name: "operation",
+			description:
+				"Legacy alias for action, accepted for planner compatibility.",
+			required: false,
+			schema: { type: "string" as const },
 		},
 		{
 			name: "key",
@@ -113,41 +120,31 @@ export const manageSecretAction: Action = {
 		if (runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE) === null) {
 			return false;
 		}
+		const channelType = message.content.channelType;
+		if (channelType !== undefined && channelType !== ChannelType.DM) {
+			return false;
+		}
 		const params =
 			_options?.parameters && typeof _options.parameters === "object"
 				? (_options.parameters as Record<string, unknown>)
 				: {};
-		const hasStructuredOperation =
-			typeof params.operation === "string" &&
-			params.operation.trim().length > 0;
-		const text = message.content.text?.toLowerCase() ?? "";
-		const patterns = [
-			/\b(get|show|what|retrieve)\b.*\b(secret|key|token|credential)/i,
-			/\b(delete|remove|clear)\b.*\b(secret|key|token|credential)/i,
-			/\b(list|show)\b.*\b(secrets|keys|tokens|credentials)/i,
-			/\bdo i have\b.*\b(secret|key|token)/i,
-			/\b(check|is)\b.*\b(secret|key|token)\b.*\b(set|configured)/i,
-			/\bmy secrets\b/i,
-			/\bwhat secrets\b/i,
-		];
-		const hasPatternIntent = patterns.some((pattern) => pattern.test(text));
-		if (!hasPatternIntent) {
-			return (
-				hasStructuredOperation ||
-				hasActionContextOrKeyword(message, _state, {
-					contexts: ["secrets", "settings", "connectors"],
-					keywords: [
-						"manage secret",
-						"list secrets",
-						"delete secret",
-						"check secret",
-						"show keys",
-					],
-				})
-			);
-		}
-
-		return hasStructuredOperation || hasPatternIntent;
+		const subactionField =
+			typeof params.action === "string" && params.action.trim().length > 0
+				? params.action
+				: typeof params.subaction === "string" &&
+						params.subaction.trim().length > 0
+					? params.subaction
+					: typeof params.operation === "string" &&
+							params.operation.trim().length > 0
+						? params.operation
+						: undefined;
+		const hasStructuredOperation = typeof subactionField === "string";
+		return (
+			hasStructuredOperation ||
+			hasActionContext(message, _state, {
+				contexts: ["secrets", "settings", "connectors"],
+			})
+		);
 	},
 
 	handler: async (
@@ -265,6 +262,8 @@ export const manageSecretAction: Action = {
 			// Transform and validate result
 			operation = {
 				operation:
+					(params.action as SecretOperation["operation"]) ||
+					(params.subaction as SecretOperation["operation"]) ||
 					(params.operation as SecretOperation["operation"]) ||
 					(result?.operation as SecretOperation["operation"]) ||
 					"list",

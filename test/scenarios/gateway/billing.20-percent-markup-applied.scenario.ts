@@ -3,7 +3,7 @@ import { expectTurnToCallAction } from "../_helpers/action-assertions.ts";
 
 function assertTwilioBillingResult(ctx: ScenarioContext): string | undefined {
   const action = ctx.turns?.[1]?.actionsCalled.find((entry) =>
-    ["SEND_DRAFT", "SEND_DRAFT"].includes(entry.actionName),
+    ["MESSAGE", "MESSAGE"].includes(entry.actionName),
   );
   if (!action?.result?.data || typeof action.result.data !== "object") {
     return "expected a Twilio send action with structured billing data";
@@ -68,7 +68,7 @@ export default scenario({
       room: "main",
       text: 'Draft a Twilio SMS to my coworker and hold it for approval. Exact SMS: "I checked the plan, the vendor push is complete, the updated deck is in the shared folder, the QA notes are attached, the launch checklist is green, the finance numbers have been reconciled, and we are still on track for the afternoon review as long as nobody adds new scope before noon or changes the agenda without telling me. Please reply in the thread if anything changes, because I need a clean handoff, a stable agenda, and no surprises before the meeting starts. I am intentionally keeping this note detailed so the Twilio SMS spans multiple segments, exercises the markup path, and leaves a clear audit trail for billing. Add that the backup approval path is the same as last week, the escalation contact is still Sam, the summary needs to include the delta from the morning notes, and the final send should happen only after we confirm the exact recipient and time window."',
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["SEND_DRAFT"],
+        acceptedActions: ["MESSAGE"],
         description: "twilio sms draft",
         includesAny: ["sms", "draft", "coworker", "approval"],
       }),
@@ -80,7 +80,7 @@ export default scenario({
       room: "main",
       text: "Yes, send that SMS exactly as drafted.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["SEND_DRAFT"],
+        acceptedActions: ["MESSAGE"],
         description: "twilio sms send confirmed",
         includesAny: ["sms", "send", "confirmed", "sent"],
       }),
@@ -90,7 +90,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: "SEND_DRAFT",
+      actionName: "MESSAGE",
     },
     {
       type: "custom",

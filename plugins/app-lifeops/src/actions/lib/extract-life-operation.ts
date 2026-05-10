@@ -1,12 +1,9 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import {
-  ModelType,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
+import { resolveContextWindow } from "../../lifeops/defaults.js";
+import { runExtractorPipeline } from "../../lifeops/llm/extractor-pipeline.js";
 import { parseJsonModelRecord } from "../../utils/json-model-output.js";
-import { runExtractorPipeline } from "../extractor-pipeline.js";
-import { resolveContextWindow } from "../lifeops-extraction-config.js";
 
 export const LIFE_OPERATION_VALUES = [
   "create",
@@ -16,6 +13,11 @@ export const LIFE_OPERATION_VALUES = [
   "skip",
   "snooze",
   "review",
+  // Owner policy verbs — write reminder intensity / escalation rules on
+  // OwnerFactStore. PROFILE no longer carries these (its surface is
+  // `save | capture_phone`).
+  "policy_set_reminder",
+  "policy_configure_escalation",
   "query_calendar_today",
   "query_calendar_next",
   "query_email",

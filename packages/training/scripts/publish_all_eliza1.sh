@@ -1,202 +1,141 @@
 #!/usr/bin/env bash
-# publish_all_eliza1.sh — orchestrate the full eliza-1 HF release matrix.
+# publish_all_eliza1.sh — drive the Eliza-1 publish orchestrator per tier.
 #
-# Walks the (size x quant variant x lineage) matrix and dispatches each cell
-# to scripts/push_model_to_hf.py. Skips any cell whose checkpoint directory
-# is missing — re-run after each quantization / abliteration step lands.
+# Thin wrapper. The actual end-to-end pipeline lives in
+# scripts/publish/orchestrator.py:
 #
-# Layout assumed for checkpoint directories (override with --checkpoint-root):
-#   <root>/eliza-1-2b/                                bf16 SFT checkpoint
-#   <root>/eliza-1-2b/polarquant/                     polarquant sidecar
-#   <root>/eliza-1-2b/turboquant/                     turboquant sidecar
-#   <root>/eliza-1-2b/fp8/                            fp8 weights
-#   <root>/eliza-1-2b/gguf-q4_k_m/  (with *.gguf)     llama.cpp K-quant
-#   <root>/eliza-1-2b/gguf-q5_k_m/
-#   <root>/eliza-1-2b/gguf-q6_k/
-#   <root>/eliza-1-2b-uncensored/                     post-abliteration
-#                                                     (with abliteration_metadata.json)
-# Same scheme for eliza-1-9b and eliza-1-27b.
+#   layout → kernel verify → eval gates → manifest → README → HF push → git tag
 #
-# QJL is intentionally absent from the matrix: it is a runtime-time
-# KV-cache projection, not a published checkpoint.
+# This script's only job is to walk the tier matrix and dispatch one
+# orchestrator invocation per tier. There is NO continue-on-error: any
+# tier that fails any stage exits non-zero and aborts the matrix walk.
+# There is no skip-eval / skip-verify / publish-anyway flag — see
+# packages/training/AGENTS.md §6 and packages/inference/AGENTS.md §6.
+#
+# The only flag that bypasses HF push is --dry-run, which performs every
+# check but does not push.
+#
+# Layout: each tier is published from its own bundle directory. Pass the
+# parent directory via --bundles-root; per-tier dirs are
+# <root>/<tier>/. Per-tier directory layout is the §2 bundle (text/,
+# tts/, asr/, vision/, dflash/, cache/, evals/, licenses/).
+#
+# Metal verification is hardware-only. To publish a tier that includes
+# the Metal backend (lite-0_6b, mobile-1_7b, desktop-9b, pro-27b) you
+# must record a metal_verify.json on a verified host (run
+# packages/inference/verify/metal_verify there) and pass it via
+# --metal-verification-<tier> PATH OR by placing it at
+# <bundles-root>/<tier>/evals/metal_verify.json (the orchestrator picks
+# up that path automatically when passed via --metal-verification).
 #
 # Usage:
-#   scripts/publish_all_eliza1.sh                    # push everything that exists
-#   scripts/publish_all_eliza1.sh --dry-run          # show what would be pushed
-#   scripts/publish_all_eliza1.sh --filter-size 27b  # only the 27B matrix
-#   scripts/publish_all_eliza1.sh --filter-quant polarquant
-#   scripts/publish_all_eliza1.sh --filter-quant base       # only the bf16 base repo
-#   scripts/publish_all_eliza1.sh --filter-variant uncensored
-#   scripts/publish_all_eliza1.sh --public           # create new repos as public
+#   scripts/publish_all_eliza1.sh --bundles-root ./bundles
+#   scripts/publish_all_eliza1.sh --bundles-root ./bundles --dry-run
+#   scripts/publish_all_eliza1.sh --bundles-root ./bundles --filter-tier desktop-9b
+#   scripts/publish_all_eliza1.sh --bundles-root ./bundles --metal-verification-desktop-9b /path/to/metal.json
 #
 # Env:
-#   HF_TOKEN  required for actual upload (not needed for --dry-run).
-#   ELIZA1_CHECKPOINT_ROOT  default for --checkpoint-root (default: ./checkpoints).
-#   ELIZA1_EVAL_DIR         dir holding <repo-slug>.json eval files; if a file
-#                           exists for a given push it is forwarded as
-#                           --eval-results. Default: ./eval-results.
+#   HF_TOKEN  required for actual upload (not for --dry-run).
 
 set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly TRAINING_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# Allow running with `bash scripts/publish_all_eliza1.sh ...` from training/.
 cd "${TRAINING_ROOT}"
 
-# ─── matrix definition ────────────────────────────────────────────────────
-readonly SIZES=("2b" "9b" "27b")
+readonly TIERS=("lite-0_6b" "mobile-1_7b" "desktop-9b" "pro-27b" "server-h200")
 
-# Quant variants for the default (safety-tuned) lineage. These are the
-# values --quant accepts in push_model_to_hf.py.
-readonly DEFAULT_QUANT_VARIANTS=(
-  "base"          # special token: no --quant flag (bf16 base repo)
-  "polarquant"
-  "turboquant"
-  "fp8"
-  "gguf-q4_k_m"
-  "gguf-q5_k_m"
-  "gguf-q6_k"
-)
-
-# The uncensored lineage ships only the bf16 base for now (quants come
-# later if at all). Distinct slot so --filter-variant uncensored works.
-readonly UNCENSORED_VARIANTS=("base")
-
-# ─── registry-key resolution per size ─────────────────────────────────────
-size_to_registry_key() {
-  local size="$1"
-  case "${size}" in
-    2b)  echo "qwen3.5-2b" ;;
-    9b)  echo "qwen3.5-9b" ;;
-    27b) echo "qwen3.6-27b" ;;
-    *) echo "unknown size: ${size}" >&2; return 1 ;;
-  esac
-}
-
-# ─── arg parsing ──────────────────────────────────────────────────────────
 DRY_RUN=0
 PUBLIC=0
-FILTER_SIZE=""
-FILTER_QUANT=""
-FILTER_VARIANT=""
-CHECKPOINT_ROOT="${ELIZA1_CHECKPOINT_ROOT:-${TRAINING_ROOT}/checkpoints}"
-EVAL_DIR="${ELIZA1_EVAL_DIR:-${TRAINING_ROOT}/eval-results}"
+FILTER_TIER=""
+BUNDLES_ROOT=""
+declare -A METAL_PATHS=()
+
+usage() {
+  sed -n '2,40p' "$0" | sed 's/^# \?//'
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run)            DRY_RUN=1; shift ;;
     --public)             PUBLIC=1; shift ;;
-    --filter-size)        FILTER_SIZE="$2"; shift 2 ;;
-    --filter-quant)       FILTER_QUANT="$2"; shift 2 ;;
-    --filter-variant)     FILTER_VARIANT="$2"; shift 2 ;;
-    --checkpoint-root)    CHECKPOINT_ROOT="$2"; shift 2 ;;
-    --eval-dir)           EVAL_DIR="$2"; shift 2 ;;
-    -h|--help)
-      sed -n '2,40p' "$0" | sed 's/^# \?//'
-      exit 0 ;;
+    --filter-tier)        FILTER_TIER="$2"; shift 2 ;;
+    --bundles-root)       BUNDLES_ROOT="$2"; shift 2 ;;
+    --metal-verification-lite-0_6b)    METAL_PATHS[lite-0_6b]="$2"; shift 2 ;;
+    --metal-verification-mobile-1_7b)  METAL_PATHS[mobile-1_7b]="$2"; shift 2 ;;
+    --metal-verification-desktop-9b)   METAL_PATHS[desktop-9b]="$2"; shift 2 ;;
+    --metal-verification-pro-27b)      METAL_PATHS[pro-27b]="$2"; shift 2 ;;
+    -h|--help)            usage; exit 0 ;;
     *)
       echo "unknown arg: $1" >&2
-      echo "usage: $0 [--dry-run] [--public] [--filter-size <2b|9b|27b>] [--filter-quant <name>] [--filter-variant <default|uncensored>] [--checkpoint-root DIR] [--eval-dir DIR]" >&2
+      usage
       exit 2 ;;
   esac
 done
 
-# ─── helpers ─────────────────────────────────────────────────────────────
-PYTHON_BIN="${PYTHON_BIN:-python3}"
-if command -v uv >/dev/null 2>&1 && [[ -f "${TRAINING_ROOT}/pyproject.toml" ]]; then
-  RUNNER=(uv run python)
-else
-  RUNNER=("${PYTHON_BIN}")
+if [[ -z "${BUNDLES_ROOT}" ]]; then
+  echo "--bundles-root is required" >&2
+  exit 2
 fi
 
-declare -i N_TOTAL=0 N_PUSHED=0 N_SKIPPED=0 N_FAILED=0
+if command -v uv >/dev/null 2>&1 && [[ -f "${TRAINING_ROOT}/pyproject.toml" ]]; then
+  RUNNER=(uv run --with pyyaml --with huggingface_hub --with jinja2 python -m scripts.publish.orchestrator)
+else
+  RUNNER=(python -m scripts.publish.orchestrator)
+fi
+
+declare -i N_TOTAL=0 N_OK=0 N_FAILED=0
 RESULTS=()
 
-push_one() {
-  local size="$1" quant_label="$2" variant="$3"
-  local registry_key
-  registry_key="$(size_to_registry_key "${size}")"
-
-  # Resolve checkpoint dir.
-  local ckpt
-  if [[ "${variant}" == "uncensored" ]]; then
-    ckpt="${CHECKPOINT_ROOT}/eliza-1-${size}-uncensored"
-    [[ "${quant_label}" == "base" ]] || ckpt="${ckpt}/${quant_label}"
-  else
-    ckpt="${CHECKPOINT_ROOT}/eliza-1-${size}"
-    [[ "${quant_label}" == "base" ]] || ckpt="${ckpt}/${quant_label}"
-  fi
-
-  # Compute the destination slug for logging + eval-results lookup.
-  local repo_slug="eliza-1-${size}"
-  [[ "${variant}" == "uncensored" ]] && repo_slug="${repo_slug}-uncensored"
-  [[ "${quant_label}" != "base" ]] && repo_slug="${repo_slug}-${quant_label}"
+publish_one() {
+  local tier="$1"
+  local bundle_dir="${BUNDLES_ROOT}/${tier}"
 
   N_TOTAL+=1
 
-  if [[ ! -d "${ckpt}" ]]; then
-    echo "[skip] ${repo_slug}: checkpoint dir missing (${ckpt})"
-    RESULTS+=("SKIP  ${repo_slug}  (no checkpoint)")
-    N_SKIPPED+=1
-    return 0
+  if [[ ! -d "${bundle_dir}" ]]; then
+    echo "[fail] ${tier}: bundle directory missing (${bundle_dir})"
+    RESULTS+=("FAIL  ${tier}  (no bundle dir)")
+    N_FAILED+=1
+    return 1
   fi
 
-  # Build push args.
   local -a args=(
-    --registry-key "${registry_key}"
-    --checkpoint "${ckpt}"
+    --tier "${tier}"
+    --bundle-dir "${bundle_dir}"
   )
-  [[ "${quant_label}" != "base" ]] && args+=(--quant "${quant_label}")
-  [[ "${variant}" == "uncensored" ]] && args+=(--variant abliterated)
   (( DRY_RUN == 1 )) && args+=(--dry-run)
   (( PUBLIC == 1 )) && args+=(--public)
 
-  # Forward eval results if a sidecar JSON for this slug exists.
-  local eval_json="${EVAL_DIR}/${repo_slug}.json"
-  if [[ -f "${eval_json}" ]]; then
-    args+=(--eval-results "${eval_json}")
+  if [[ -n "${METAL_PATHS[${tier}]:-}" ]]; then
+    args+=(--metal-verification "${METAL_PATHS[${tier}]}")
   fi
 
   echo
-  echo "==> push ${repo_slug}"
-  echo "    checkpoint: ${ckpt}"
-  echo "    cmd: ${RUNNER[*]} scripts/push_model_to_hf.py ${args[*]}"
+  echo "==> publish ${tier}"
+  echo "    bundle:  ${bundle_dir}"
+  echo "    cmd:     ${RUNNER[*]} ${args[*]}"
 
-  if "${RUNNER[@]}" scripts/push_model_to_hf.py "${args[@]}"; then
-    RESULTS+=("OK    ${repo_slug}")
-    N_PUSHED+=1
+  if "${RUNNER[@]}" "${args[@]}"; then
+    RESULTS+=("OK    ${tier}")
+    N_OK+=1
+    return 0
   else
-    RESULTS+=("FAIL  ${repo_slug}  (exit $?)")
+    local exit_code=$?
+    RESULTS+=("FAIL  ${tier}  (exit ${exit_code})")
     N_FAILED+=1
+    return "${exit_code}"
   fi
 }
 
-# ─── matrix walk ──────────────────────────────────────────────────────────
-for size in "${SIZES[@]}"; do
-  if [[ -n "${FILTER_SIZE}" && "${FILTER_SIZE}" != "${size}" ]]; then
+for tier in "${TIERS[@]}"; do
+  if [[ -n "${FILTER_TIER}" && "${FILTER_TIER}" != "${tier}" ]]; then
     continue
   fi
-
-  # default lineage
-  if [[ -z "${FILTER_VARIANT}" || "${FILTER_VARIANT}" == "default" ]]; then
-    for q in "${DEFAULT_QUANT_VARIANTS[@]}"; do
-      if [[ -n "${FILTER_QUANT}" && "${FILTER_QUANT}" != "${q}" ]]; then
-        continue
-      fi
-      push_one "${size}" "${q}" "default"
-    done
-  fi
-
-  # uncensored lineage
-  if [[ -z "${FILTER_VARIANT}" || "${FILTER_VARIANT}" == "uncensored" ]]; then
-    for q in "${UNCENSORED_VARIANTS[@]}"; do
-      if [[ -n "${FILTER_QUANT}" && "${FILTER_QUANT}" != "${q}" ]]; then
-        continue
-      fi
-      push_one "${size}" "${q}" "uncensored"
-    done
-  fi
+  # Per AGENTS.md §6: any failure aborts the run. No "publish what
+  # works and skip the rest" behavior.
+  publish_one "${tier}"
 done
 
 echo
@@ -204,7 +143,7 @@ echo "==> publish summary"
 for r in "${RESULTS[@]}"; do
   echo "    ${r}"
 done
-echo "==> totals: ${N_TOTAL} considered, ${N_PUSHED} pushed, ${N_SKIPPED} skipped, ${N_FAILED} failed"
+echo "==> totals: ${N_TOTAL} considered, ${N_OK} ok, ${N_FAILED} failed"
 
 if (( N_FAILED > 0 )); then
   exit 1

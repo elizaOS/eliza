@@ -10,6 +10,8 @@ import {
 
 const DOCUMENT_BATCH_SIZE = 100;
 const DEFAULT_DOCUMENTS_SOURCE = "eliza-default-documents";
+const DOCUMENTS_TABLE = "documents";
+const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 
 type SeededMemory = Memory & { id: UUID };
 
@@ -35,7 +37,10 @@ export const ELIZA_HISTORY_TEXT =
   "ELIZA was created by Joseph Weizenbaum at MIT in the mid-1960s and is widely regarded as one of the earliest chatbots. Its best-known script, DOCTOR, used pattern matching to imitate a Rogerian psychotherapist and showed how simple language rules could feel surprisingly conversational. ELIZA helped define the history of chatbots and influenced later work on conversational agents.";
 
 export const ELIZA_CLOUD_BASICS_TEXT =
-  "Eliza Cloud is the managed backend and app platform for Eliza when cloud mode is enabled. Builders can create an app, keep its appId, use Cloud login and redirect flows so app users can authenticate against Cloud, route chat and media APIs through Cloud, monetize app usage with inference markup and purchase-share settings, and deploy Docker containers when an app needs server-side execution.";
+  "Eliza Cloud is the managed backend and app platform for Eliza and Milady when cloud mode is enabled. Builders can create and manage apps, keep an appId, use Cloud login and redirect flows so app users can authenticate against Cloud, route chat and media through Cloud, monetize app usage with inference markup and purchase-share settings, promote apps, connect payment requests, and deploy Docker containers when an app needs server-side execution.";
+
+export const ELIZA_CLOUD_MONETIZATION_TEXT =
+  "Eliza and Milady can help builders make money with Cloud apps: create monetized apps, set inference markup and app-credit purchase share, send payment requests through Stripe/OxaPay app credits or x402 crypto payments, track whether requests were paid, route payment results back into the initiating conversation, earn from affiliate and creator revenue-share flows, and request admin-reviewed elizaOS token payouts on Base, BSC, Ethereum, or Solana. Paid actions require explicit user confirmation.";
 
 export const DEFAULT_DOCUMENTS: readonly DefaultDocumentDefinition[] = [
   {
@@ -64,13 +69,25 @@ export const DEFAULT_DOCUMENTS: readonly DefaultDocumentDefinition[] = [
   },
   {
     key: "eliza-cloud-basics",
-    version: 1,
+    version: 2,
     filename: "eliza-cloud-basics.txt",
     contentType: "text/plain",
     text: ELIZA_CLOUD_BASICS_TEXT,
     fragments: [
       {
         text: ELIZA_CLOUD_BASICS_TEXT,
+      },
+    ],
+  },
+  {
+    key: "eliza-cloud-monetization",
+    version: 1,
+    filename: "eliza-cloud-monetization.txt",
+    contentType: "text/plain",
+    text: ELIZA_CLOUD_MONETIZATION_TEXT,
+    fragments: [
+      {
+        text: ELIZA_CLOUD_MONETIZATION_TEXT,
       },
     ],
   },
@@ -111,7 +128,7 @@ function normalizeProvidedEmbedding(
 
   if (!embedding.every((value) => Number.isFinite(value))) {
     logger.warn(
-      `[eliza] Ignoring bundled knowledge embedding for ${document.filename} fragment ${index}: vector contains non-finite values.`,
+      `[eliza] Ignoring bundled document embedding for ${document.filename} fragment ${index}: vector contains non-finite values.`,
     );
     return undefined;
   }
@@ -122,7 +139,7 @@ function normalizeProvidedEmbedding(
     embedding.length !== expectedDimensions
   ) {
     logger.warn(
-      `[eliza] Ignoring bundled knowledge embedding for ${document.filename} fragment ${index}: expected ${expectedDimensions} dimensions, received ${embedding.length}.`,
+      `[eliza] Ignoring bundled document embedding for ${document.filename} fragment ${index}: expected ${expectedDimensions} dimensions, received ${embedding.length}.`,
     );
     return undefined;
   }
@@ -141,6 +158,7 @@ function extractTimestamp(memory: Memory | null): number {
 function buildDocumentMetadata(
   document: DefaultDocumentDefinition,
   documentId: UUID,
+  agentId: UUID,
   timestamp: number,
 ): Record<string, unknown> {
   const parsed = path.parse(document.filename);
@@ -157,9 +175,15 @@ function buildDocumentMetadata(
     fileSize: Buffer.byteLength(document.text, "utf8"),
     source: DEFAULT_DOCUMENTS_SOURCE,
     timestamp,
-    bundledKnowledge: true,
-    bundledKnowledgeKey: document.key,
-    bundledKnowledgeVersion: document.version,
+    scope: "global",
+    scopedToEntityId: undefined,
+    addedBy: agentId,
+    addedByRole: "RUNTIME",
+    addedFrom: "default-seed",
+    addedAt: timestamp,
+    bundledDocument: true,
+    bundledDocumentKey: document.key,
+    bundledDocumentVersion: document.version,
     ...(document.metadata ?? {}),
   };
 }
@@ -167,7 +191,9 @@ function buildDocumentMetadata(
 function buildFragmentMetadata(
   document: DefaultDocumentDefinition,
   documentId: UUID,
+  _documentAgentId: UUID,
   index: number,
+  agentId: UUID,
   timestamp: number,
 ): Record<string, unknown> {
   return {
@@ -176,9 +202,15 @@ function buildFragmentMetadata(
     position: index,
     source: DEFAULT_DOCUMENTS_SOURCE,
     timestamp,
-    bundledKnowledge: true,
-    bundledKnowledgeKey: document.key,
-    bundledKnowledgeVersion: document.version,
+    scope: "global",
+    scopedToEntityId: undefined,
+    addedBy: agentId,
+    addedByRole: "RUNTIME",
+    addedFrom: "default-seed",
+    addedAt: timestamp,
+    bundledDocument: true,
+    bundledDocumentKey: document.key,
+    bundledDocumentVersion: document.version,
   };
 }
 
@@ -206,8 +238,8 @@ function documentMatchesDefinition(
     metadata?.documentId === documentId &&
     metadata?.filename === document.filename &&
     metadata?.contentType === document.contentType &&
-    metadata?.bundledKnowledgeKey === document.key &&
-    metadata?.bundledKnowledgeVersion === document.version
+    metadata?.bundledDocumentKey === document.key &&
+    metadata?.bundledDocumentVersion === document.version
   );
 }
 
@@ -231,8 +263,8 @@ function fragmentMatchesDefinition(
     metadata?.type === MemoryType.FRAGMENT &&
     metadata?.documentId === documentId &&
     metadata?.position === index &&
-    metadata?.bundledKnowledgeKey === document.key &&
-    metadata?.bundledKnowledgeVersion === document.version &&
+    metadata?.bundledDocumentKey === document.key &&
+    metadata?.bundledDocumentVersion === document.version &&
     embeddingsEqual(existingEmbedding, embedding)
   );
 }
@@ -246,7 +278,7 @@ async function listFragmentIdsForDocument(
 
   while (true) {
     const batch = await runtime.getMemories({
-      tableName: "knowledge",
+      tableName: DOCUMENT_FRAGMENTS_TABLE,
       roomId: runtime.agentId,
       limit: DOCUMENT_BATCH_SIZE,
       start: offset,
@@ -290,7 +322,12 @@ async function seedBundledDocument(
     worldId: runtime.agentId,
     entityId: runtime.agentId,
     content: { text: document.text },
-    metadata: buildDocumentMetadata(document, documentId, documentTimestamp),
+    metadata: buildDocumentMetadata(
+      document,
+      documentId,
+      runtime.agentId,
+      documentTimestamp,
+    ),
     createdAt: documentCreatedAt,
   };
 
@@ -300,7 +337,7 @@ async function seedBundledDocument(
     if (existingDocument) {
       await runtime.updateMemory(documentMemory);
     } else {
-      await runtime.createMemory(documentMemory, "documents");
+      await runtime.createMemory(documentMemory, DOCUMENTS_TABLE);
     }
     changed = true;
   }
@@ -341,7 +378,9 @@ async function seedBundledDocument(
       metadata: buildFragmentMetadata(
         document,
         documentId,
+        runtime.agentId as UUID,
         index,
+        runtime.agentId,
         fragmentTimestamp,
       ),
       ...(fragmentEmbedding ? { embedding: fragmentEmbedding } : {}),
@@ -365,7 +404,7 @@ async function seedBundledDocument(
       if (existingFragment) {
         await runtime.updateMemory(fragmentMemory);
       } else {
-        await runtime.createMemory(fragmentMemory, "knowledge");
+        await runtime.createMemory(fragmentMemory, DOCUMENT_FRAGMENTS_TABLE);
       }
       changed = true;
     }
@@ -380,7 +419,7 @@ async function seedBundledDocument(
 
   if (changed) {
     logger.info(
-      `[eliza] Seeded bundled knowledge document "${document.filename}" (${document.fragments.length} fragment${document.fragments.length === 1 ? "" : "s"}).`,
+      `[eliza] Seeded bundled document "${document.filename}" (${document.fragments.length} fragment${document.fragments.length === 1 ? "" : "s"}).`,
     );
   }
 }
@@ -393,4 +432,3 @@ export async function seedBundledDocuments(
     await seedBundledDocument(runtime, document);
   }
 }
-

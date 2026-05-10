@@ -1,17 +1,13 @@
-import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import type {
   Action,
-  ActionExample,
   ActionResult,
+  HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
 import {
   broadcastIntent,
-  LIFE_INTENT_KINDS,
-  LIFE_INTENT_PRIORITIES,
-  LIFE_INTENT_TARGETS,
   type LifeOpsIntentKind,
   type LifeOpsIntentPriority,
   type LifeOpsIntentTargetDevice,
@@ -19,67 +15,86 @@ import {
 
 const ACTION_NAME = "DEVICE_INTENT";
 
-function coerceString(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+type DeviceIntentSubaction = "broadcast";
+
+interface DeviceIntentParams {
+  subaction?: DeviceIntentSubaction | string;
+  kind?: LifeOpsIntentKind | string;
+  target?: LifeOpsIntentTargetDevice | string;
+  targetDeviceId?: string;
+  title?: string;
+  body?: string;
+  actionUrl?: string;
+  priority?: LifeOpsIntentPriority | string;
+  expiresInMinutes?: number;
 }
 
-function coerceNumber(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
+function messageText(message: Memory): string {
+  return typeof message.content?.text === "string" ? message.content.text : "";
+}
+
+function stringParam(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function normalizeTarget(
+  value: unknown,
+  text: string,
+): LifeOpsIntentTargetDevice {
+  const explicit = stringParam(value)?.toLowerCase();
+  if (explicit === "mobile" || explicit === "phone") return "mobile";
+  if (explicit === "desktop" || explicit === "computer") return "desktop";
+  if (explicit === "specific") return "specific";
+  if (explicit === "all") return "all";
+  if (/\b(?:mobile|phone)\b/iu.test(text)) return "mobile";
+  if (/\b(?:desktop|computer|mac)\b/iu.test(text)) return "desktop";
+  return "all";
+}
+
+function normalizeKind(value: unknown, text: string): LifeOpsIntentKind {
+  const explicit = stringParam(value)?.toLowerCase();
+  if (explicit === "routine_reminder") return "routine_reminder";
+  if (explicit === "attention_request") return "attention_request";
+  if (explicit === "state_sync") return "state_sync";
+  if (/\broutine\b/iu.test(text)) return "routine_reminder";
+  return "user_action_requested";
+}
+
+function normalizePriority(value: unknown): LifeOpsIntentPriority {
+  const explicit = stringParam(value)?.toLowerCase();
+  if (
+    explicit === "low" ||
+    explicit === "medium" ||
+    explicit === "high" ||
+    explicit === "urgent"
+  ) {
+    return explicit;
   }
-  return undefined;
+  return "medium";
 }
 
-function isKind(value: string): value is LifeOpsIntentKind {
-  return (LIFE_INTENT_KINDS as readonly string[]).includes(value);
+function inferQuoted(text: string, label: string): string | undefined {
+  const pattern = new RegExp(`${label}\\s+['"]([^'"]+)['"]`, "iu");
+  return pattern.exec(text)?.[1]?.trim();
 }
 
-function isTarget(value: string): value is LifeOpsIntentTargetDevice {
-  return (LIFE_INTENT_TARGETS as readonly string[]).includes(value);
+function inferTitle(params: DeviceIntentParams, text: string): string {
+  return (
+    stringParam(params.title) ??
+    inferQuoted(text, "titled") ??
+    "Device reminder"
+  );
 }
 
-function isPriority(value: string): value is LifeOpsIntentPriority {
-  return (LIFE_INTENT_PRIORITIES as readonly string[]).includes(value);
-}
-
-function fail(
-  error: string,
-  extra: Record<string, unknown> = {},
-): ActionResult {
-  return {
-    text: "",
-    success: false,
-    values: { success: false, error, ...extra },
-    data: { actionName: ACTION_NAME, error, ...extra },
-  };
-}
-
-function validationTerminate(
-  error: string,
-  message: string,
-  extra: Record<string, unknown> = {},
-): ActionResult {
-  return {
-    text: message,
-    success: false,
-    values: {
-      success: false,
-      error,
-      requiresConfirmation: true,
-      ...extra,
-    },
-    data: {
-      actionName: ACTION_NAME,
-      error,
-      message,
-      requiresConfirmation: true,
-      ...extra,
-    },
-  };
+function inferBody(params: DeviceIntentParams, text: string): string {
+  return (
+    stringParam(params.body) ??
+    inferQuoted(text, "saying") ??
+    stringParam(text.replace(/^broadcast\s+/iu, "")) ??
+    "Reminder"
+  );
 }
 
 export const deviceIntentAction: Action & {
@@ -88,167 +103,187 @@ export const deviceIntentAction: Action & {
   name: ACTION_NAME,
   similes: [
     "BROADCAST_INTENT",
-    "DEVICE_REMINDER",
+    "BROADCAST_REMINDER",
+    "DEVICE_BROADCAST",
     "MOBILE_REMINDER",
-    "NOTIFY_ALL_DEVICES",
+    "INTENT_SYNC",
   ],
   description:
-    "Broadcast a structured cross-device intent (alarm, reminder, block, or custom) to the device bus so all paired devices realize it. Owner only.",
+    "Owner-only one-shot push notification fan-out across already-paired devices. Use ONLY when the owner explicitly asks to push/broadcast a notification right now to all/mobile/desktop/specific devices (e.g. 'ping all my devices', 'send a push to my phone'). Do NOT use for habits, routines, recurring reminders, alarms, or any time-bound schedule — those go through the LIFE action.",
   descriptionCompressed:
-    "broadcast intent paired-devices: alarm reminder block custom",
-  contexts: ["automation", "tasks", "screen_time", "settings"],
+    "ONE-SHOT push fan-out to paired devices NOW. NOT for habits/routines/recurring schedules (use LIFE).",
+  tags: [
+    "domain:meta",
+    "capability:execute",
+    "capability:send",
+    "surface:device",
+    "risk:user-visible",
+  ],
+  contexts: ["automation", "connectors", "settings"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
-
   validate: async () => true,
-
   parameters: [
     {
+      name: "subaction",
+      description: "Only supported subaction: broadcast.",
+      descriptionCompressed: "op: broadcast",
+      required: false,
+      schema: { type: "string" as const, enum: ["broadcast"] },
+    },
+    {
       name: "kind",
-      description: `Intent kind. One of: ${LIFE_INTENT_KINDS.join(", ")}.`,
-      required: true,
-      schema: { type: "string" as const, enum: [...LIFE_INTENT_KINDS] },
+      description:
+        "Intent kind: user_action_requested, routine_reminder, attention_request, or state_sync.",
+      descriptionCompressed:
+        "kind: user_action_requested|routine_reminder|attention_request|state_sync",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: [
+          "user_action_requested",
+          "routine_reminder",
+          "attention_request",
+          "state_sync",
+        ],
+      },
+    },
+    {
+      name: "target",
+      description: "Target device group: all, mobile, desktop, or specific.",
+      descriptionCompressed: "target: all|mobile|desktop|specific",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["all", "mobile", "desktop", "specific"],
+      },
+      examples: ["mobile", "all"],
+    },
+    {
+      name: "targetDeviceId",
+      description: "Specific device id when target=specific.",
+      descriptionCompressed: "device id when target=specific",
+      required: false,
+      schema: { type: "string" as const },
     },
     {
       name: "title",
-      description: "Short intent title (shown in notification).",
-      required: true,
+      description: "Short notification title.",
+      descriptionCompressed: "notification title",
+      required: false,
       schema: { type: "string" as const },
     },
     {
       name: "body",
-      description: "Intent body text.",
-      required: true,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "target",
-      description: `Target device class. One of: ${LIFE_INTENT_TARGETS.join(", ")}. Defaults to "all".`,
-      required: false,
-      schema: { type: "string" as const, enum: [...LIFE_INTENT_TARGETS] },
-    },
-    {
-      name: "targetDeviceId",
-      description: "Specific device id when target = 'specific'.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "actionUrl",
-      description: "Deep link URL for mobile follow-up.",
+      description: "Notification body.",
+      descriptionCompressed: "notification body",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "priority",
-      description: `Priority. One of: ${LIFE_INTENT_PRIORITIES.join(", ")}. Defaults to "medium".`,
+      description: "Notification priority: low, medium, high, urgent.",
+      descriptionCompressed: "priority: low|medium|high|urgent (default medium)",
       required: false,
-      schema: { type: "string" as const, enum: [...LIFE_INTENT_PRIORITIES] },
+      schema: {
+        type: "string" as const,
+        enum: ["low", "medium", "high", "urgent"],
+      },
     },
     {
       name: "expiresInMinutes",
-      description: "Expire the intent after this many minutes.",
+      description:
+        "Optional auto-expire window in minutes (intent stops broadcasting after this).",
+      descriptionCompressed: "expires-in mins optional",
       required: false,
-      schema: { type: "number" as const },
+      schema: { type: "number" as const, minimum: 1 },
+    },
+    {
+      name: "actionUrl",
+      description:
+        "Optional deep link / URL the notification should open when tapped.",
+      descriptionCompressed: "deep-link URL on tap",
+      required: false,
+      schema: { type: "string" as const },
     },
   ],
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state,
+    options: HandlerOptions | undefined,
+    callback: HandlerCallback | undefined,
+  ): Promise<ActionResult> => {
+    const params = (options?.parameters ?? {}) as DeviceIntentParams;
+    const text = messageText(message);
+    const target = normalizeTarget(params.target, text);
+    const intent = await broadcastIntent(runtime, {
+      kind: normalizeKind(params.kind, text),
+      target,
+      ...(target === "specific" && params.targetDeviceId
+        ? { targetDeviceId: params.targetDeviceId }
+        : {}),
+      title: inferTitle(params, text),
+      body: inferBody(params, text),
+      ...(stringParam(params.actionUrl) ? { actionUrl: params.actionUrl } : {}),
+      priority: normalizePriority(params.priority),
+      ...(typeof params.expiresInMinutes === "number"
+        ? { expiresInMinutes: params.expiresInMinutes }
+        : {}),
+      metadata: {
+        source: ACTION_NAME,
+        originalText: text,
+      },
+    });
 
+    const response = `Broadcast "${intent.title}" to ${intent.target}.`;
+    await callback?.({ text: response, source: "action", action: ACTION_NAME });
+    return {
+      success: true,
+      text: response,
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "broadcast",
+        intent,
+      },
+    };
+  },
   examples: [
     [
       {
         name: "{{name1}}",
-        content: { text: "Ping my phone to take out the trash" },
+        content: {
+          text: "Send a reminder to my phone titled 'Take meds' saying 'Time for evening meds'.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "Broadcasting routine_reminder intent to mobile.",
+          text: 'Broadcast "Take meds" to mobile.',
+          actions: ["DEVICE_INTENT"],
+          thought:
+            "Owner asked for a phone-targeted notification; DEVICE_INTENT subaction=broadcast with target=mobile, title and body extracted from quotes.",
         },
       },
     ],
-  ] as ActionExample[][],
-
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state,
-    options,
-  ): Promise<ActionResult> => {
-    const rawParameters =
-      ((options as HandlerOptions | undefined)?.parameters as
-        | Record<string, unknown>
-        | undefined) ?? {};
-    const params = (await extractActionParamsViaLlm<Record<string, unknown>>({
-      runtime,
-      message,
-      state,
-      actionName: ACTION_NAME,
-      actionDescription: deviceIntentAction.description ?? "",
-      paramSchema: deviceIntentAction.parameters ?? [],
-      existingParams: rawParameters,
-      requiredFields: ["kind", "title", "body"],
-    })) as Record<string, unknown>;
-
-    const kindRaw = coerceString(params.kind);
-    const title = coerceString(params.title);
-    const body = coerceString(params.body);
-
-    if (!kindRaw) {
-      return validationTerminate(
-        "MISSING_KIND",
-        `I need an intent kind to broadcast (one of: ${LIFE_INTENT_KINDS.join(", ")}).`,
-      );
-    }
-    if (!isKind(kindRaw)) {
-      return validationTerminate(
-        "UNKNOWN_KIND",
-        `Unknown intent kind "${kindRaw}". Expected one of: ${LIFE_INTENT_KINDS.join(", ")}.`,
-        { kind: kindRaw },
-      );
-    }
-    if (!title) {
-      return validationTerminate(
-        "MISSING_TITLE",
-        "I need a short title for the intent before I can broadcast it.",
-      );
-    }
-    if (!body) {
-      return validationTerminate(
-        "MISSING_BODY",
-        "I need a body for the intent before I can broadcast it.",
-      );
-    }
-
-    const targetRaw = coerceString(params.target) ?? "all";
-    if (!isTarget(targetRaw)) {
-      return fail("UNKNOWN_TARGET", { target: targetRaw });
-    }
-    const priorityRaw = coerceString(params.priority) ?? "medium";
-    if (!isPriority(priorityRaw)) {
-      return fail("UNKNOWN_PRIORITY", { priority: priorityRaw });
-    }
-
-    const targetDeviceId = coerceString(params.targetDeviceId);
-    if (targetRaw === "specific" && !targetDeviceId) {
-      return fail("MISSING_TARGET_DEVICE_ID");
-    }
-
-    const intent = await broadcastIntent(runtime, {
-      kind: kindRaw,
-      target: targetRaw,
-      targetDeviceId,
-      title,
-      body,
-      actionUrl: coerceString(params.actionUrl),
-      priority: priorityRaw,
-      expiresInMinutes: coerceNumber(params.expiresInMinutes),
-    });
-
-    return {
-      text: `Broadcast ${intent.kind} intent "${intent.title}" to ${intent.target}.`,
-      success: true,
-      values: { success: true, intentId: intent.id, kind: intent.kind },
-      data: { actionName: ACTION_NAME, intent },
-    };
-  },
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Broadcast a routine reminder to all my devices: stretch break.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Broadcast "Device reminder" to all.',
+          actions: ["DEVICE_INTENT"],
+          thought:
+            "Cross-device routine maps to DEVICE_INTENT subaction=broadcast with target=all and kind=routine_reminder.",
+        },
+      },
+    ],
+  ],
 };

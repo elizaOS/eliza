@@ -83,7 +83,7 @@ curl http://localhost:31337/api/conversations \
 ### Upload a knowledge document
 
 ```bash
-curl -X POST http://localhost:31337/api/knowledge/documents \
+curl -X POST http://localhost:31337/api/documents \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -95,7 +95,7 @@ curl -X POST http://localhost:31337/api/knowledge/documents \
 ### Search knowledge
 
 ```bash
-curl "http://localhost:31337/api/knowledge/search?q=what+is+eliza&limit=5" \
+curl "http://localhost:31337/api/documents/search?q=what+is+eliza&limit=5" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
@@ -400,15 +400,15 @@ The inbox aggregates messages from every connected platform (iMessage, Telegram,
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/knowledge/stats` | Get document and fragment counts |
-| `GET` | `/api/knowledge/documents` | List knowledge documents. Params: `limit`, `offset` |
-| `GET` | `/api/knowledge/documents/:id` | Get a specific document with content |
-| `POST` | `/api/knowledge/documents` | Upload a document (base64 content or text) |
-| `POST` | `/api/knowledge/documents/bulk` | Upload up to 100 documents in a single request |
-| `POST` | `/api/knowledge/documents/url` | Upload from URL (supports YouTube auto-transcription) |
-| `DELETE` | `/api/knowledge/documents/:id` | Delete a document and all its fragments |
-| `GET` | `/api/knowledge/search` | Semantic search. Params: `q` (required), `threshold`, `limit` |
-| `GET` | `/api/knowledge/fragments/:documentId` | List all fragments for a document |
+| `GET` | `/api/documents/stats` | Get document and fragment counts |
+| `GET` | `/api/documents` | List knowledge documents. Params: `limit`, `offset` |
+| `GET` | `/api/documents/:id` | Get a specific document with content |
+| `POST` | `/api/documents` | Upload a document (base64 content or text) |
+| `POST` | `/api/documents/bulk` | Upload up to 100 documents in a single request |
+| `POST` | `/api/documents/url` | Upload from URL (supports YouTube auto-transcription) |
+| `DELETE` | `/api/documents/:id` | Delete a document and all its fragments |
+| `GET` | `/api/documents/search` | Semantic search. Params: `q` (required), `threshold`, `limit` |
+| `GET` | `/api/documents/:documentId/fragments` | List all fragments for a document |
 
 ---
 
@@ -444,12 +444,12 @@ The inbox aggregates messages from every connected platform (iMessage, Telegram,
 
 ---
 
-## n8n Workflows
+## Workflows Workflows
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/n8n/workflows` | List n8n workflows |
-| `GET` | `/api/n8n/status` | Get n8n integration status (mode, health, platform) |
+| `GET` | `/api/workflow/workflows` | List workflows |
+| `GET` | `/api/workflow/status` | Get workflow integration status (mode, health, platform) |
 
 ---
 
@@ -643,10 +643,10 @@ Routes under `/api/cloud/v1/` are forwarded as `/api/v1/` on the cloud backend, 
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/automations` | Unified list of all automations (triggers + n8n workflows + workbench tasks) with summary counts |
+| `GET` | `/api/automations` | Unified list of all automations (triggers + workflows + workbench tasks) with summary counts |
 | `GET` | `/api/automations/nodes` | Node catalog — available trigger, action, context, integration, and agent nodes |
-| `GET` | `/api/n8n/workflows` | List n8n workflows |
-| `GET` | `/api/n8n/status` | Get n8n status (mode, health, platform) |
+| `GET` | `/api/workflow/workflows` | List workflows |
+| `GET` | `/api/workflow/status` | Get workflow status (mode, health, platform) |
 
 ---
 

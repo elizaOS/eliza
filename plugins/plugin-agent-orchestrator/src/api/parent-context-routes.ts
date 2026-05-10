@@ -40,7 +40,7 @@ type ParentMemoryHit = { [key: string]: JsonValue } & {
 const BRIDGE_TIMEOUT_MS = 5_000;
 const DEFAULT_MEMORY_LIMIT = 10;
 const MAX_MEMORY_LIMIT = 50;
-const MEMORY_TABLES = ["facts", "messages", "knowledge"] as const;
+const MEMORY_TABLES = ["facts", "messages", "documents"] as const;
 const TERMINAL_TASK_STATUSES = new Set(["completed", "error", "stopped"]);
 const TERMINAL_SESSION_STATUSES = new Set(["stopped", "error", "exited"]);
 
@@ -156,6 +156,10 @@ function readString(value: unknown): string | null {
     : null;
 }
 
+function toJsonValue(value: unknown): JsonValue {
+  return JSON.parse(JSON.stringify(value ?? null));
+}
+
 function readOriginRoomId(
   task: TaskContext | null,
   metadata: Record<string, unknown>,
@@ -167,7 +171,7 @@ function readOriginRoomId(
   );
 }
 
-function normalizeKnowledgeSources(value: unknown): JsonValue[] {
+function normalizeDocumentSources(value: unknown): JsonValue[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry): JsonValue[] => {
     if (typeof entry === "string" && entry.trim()) return [entry.trim()];
@@ -260,7 +264,7 @@ function normalizeMemoryHit(
         : null,
     metadata:
       memory.metadata && typeof memory.metadata === "object"
-        ? (memory.metadata as unknown as JsonValue)
+        ? toJsonValue(memory.metadata)
         : null,
   };
 }
@@ -283,7 +287,10 @@ async function buildParentContext(
         : typeof character.bio === "string"
           ? [character.bio]
           : [],
-      knowledge: normalizeKnowledgeSources(character.knowledge),
+      documents: normalizeDocumentSources([
+        ...(Array.isArray(character.documents) ? character.documents : []),
+        ...(Array.isArray(character.knowledge) ? character.knowledge : []),
+      ]),
     },
     currentRoom: await loadRoom(ctx.runtime, roomId),
     workdir: session?.workdir ?? task?.workdir ?? null,
@@ -339,7 +346,7 @@ async function listActiveWorkspaceContext(
     } as Memory,
     { values: {}, data: {}, text: "" },
   );
-  return (result.data ?? {}) as JsonValue;
+  return toJsonValue(result.data ?? {});
 }
 
 /**

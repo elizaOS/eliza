@@ -2,15 +2,17 @@ import type { AgentRuntime } from "@elizaos/core";
 import {
   type AutocompleteItem,
   CombinedAutocompleteProvider,
-  Container,
+  type OverlayHandle,
   TUI,
 } from "@elizaos/tui";
 import { ChatPane } from "./components/ChatPane.js";
 import { HelpOverlay } from "./components/HelpOverlay.js";
+import { MainScreen } from "./components/MainScreen.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { TaskPane } from "./components/TaskPane.js";
 import { getAgentClient } from "./lib/agent-client.js";
 import { getCwd, setCwd } from "./lib/cwd.js";
+import { FilteringTerminal } from "./lib/filtering-terminal.js";
 import { getCodeTaskService } from "./lib/get-code-task-service.js";
 import { useStore } from "./lib/store.js";
 
@@ -23,7 +25,7 @@ async function handleTaskSlashCommand(
   return false;
 }
 
-import type { SubAgentType, TaskEvent } from "./types.js";
+import type { CodeTask, SubAgentType, TaskEvent } from "./types.js";
 
 function parseYesNo(text: string): "yes" | "no" | null {
   const normalized = text.trim().toLowerCase();
@@ -86,135 +88,130 @@ function normalizeSubAgentType(input: string | undefined): SubAgentType | null {
 
 // Slash command autocomplete items
 const SLASH_COMMANDS: AutocompleteItem[] = [
-  { label: "/new", description: "Start new conversation", insertText: "/new " },
+  { label: "/new", description: "Start new conversation", value: "/new " },
   {
     label: "/reset",
     description: "Reset current conversation",
-    insertText: "/reset",
+    value: "/reset",
   },
   {
     label: "/conversations",
     description: "List all conversations",
-    insertText: "/conversations",
+    value: "/conversations",
   },
   {
     label: "/chats",
     description: "List all conversations",
-    insertText: "/chats",
+    value: "/chats",
   },
   {
     label: "/switch",
     description: "Switch conversation",
-    insertText: "/switch ",
+    value: "/switch ",
   },
   {
     label: "/rename",
     description: "Rename conversation",
-    insertText: "/rename ",
+    value: "/rename ",
   },
   {
     label: "/delete",
     description: "Delete a conversation",
-    insertText: "/delete ",
+    value: "/delete ",
   },
   {
     label: "/agent",
     description: "Select active worker sub-agent",
-    insertText: "/agent ",
+    value: "/agent ",
   },
-  { label: "/task", description: "Task management", insertText: "/task " },
+  { label: "/task", description: "Task management", value: "/task " },
   {
     label: "/task list",
     description: "List all tasks",
-    insertText: "/task list",
+    value: "/task list",
   },
   {
     label: "/task switch",
     description: "Switch to a task",
-    insertText: "/task switch ",
+    value: "/task switch ",
   },
   {
     label: "/task current",
     description: "Show current task",
-    insertText: "/task current",
+    value: "/task current",
   },
   {
     label: "/task pause",
     description: "Pause current task",
-    insertText: "/task pause",
+    value: "/task pause",
   },
   {
     label: "/task resume",
     description: "Resume task",
-    insertText: "/task resume",
+    value: "/task resume",
   },
   {
     label: "/task cancel",
     description: "Cancel a task",
-    insertText: "/task cancel ",
+    value: "/task cancel ",
   },
   {
     label: "/tasks",
     description: "List all tasks (shortcut)",
-    insertText: "/tasks",
+    value: "/tasks",
   },
   {
     label: "/task pane show",
     description: "Show tasks pane",
-    insertText: "/task pane show",
+    value: "/task pane show",
   },
   {
     label: "/task pane hide",
     description: "Hide tasks pane",
-    insertText: "/task pane hide",
+    value: "/task pane hide",
   },
   {
     label: "/task pane auto",
     description: "Auto tasks pane",
-    insertText: "/task pane auto",
+    value: "/task pane auto",
   },
   {
     label: "/task pane toggle",
     description: "Toggle tasks pane",
-    insertText: "/task pane toggle",
+    value: "/task pane toggle",
   },
-  { label: "/cd", description: "Change directory", insertText: "/cd " },
-  { label: "/pwd", description: "Show current directory", insertText: "/pwd" },
-  { label: "/clear", description: "Clear chat history", insertText: "/clear" },
-  { label: "/help", description: "Show all commands", insertText: "/help" },
+  { label: "/cd", description: "Change directory", value: "/cd " },
+  { label: "/pwd", description: "Show current directory", value: "/pwd" },
+  { label: "/clear", description: "Clear chat history", value: "/clear" },
+  { label: "/help", description: "Show all commands", value: "/help" },
 ];
 
-class SlashCommandAutocompleteProvider {
-  getItems(query: string): AutocompleteItem[] {
-    if (!query.startsWith("/")) return [];
-    const lowerQuery = query.toLowerCase();
-    return SLASH_COMMANDS.filter((cmd) =>
-      cmd.label.toLowerCase().startsWith(lowerQuery),
-    );
-  }
-}
-
 export class App {
-  private tui: TUI;
+  private readonly terminal: FilteringTerminal;
+  private readonly tui: TUI;
+  private readonly mainScreen: MainScreen;
   private runtime: AgentRuntime;
-  private container: Container;
   private chatPane: ChatPane;
   private taskPane: TaskPane;
+  private statusBar: StatusBar;
   private helpOverlay: HelpOverlay | null = null;
+  private helpOverlayHandle: OverlayHandle | null = null;
   private showingHelp = false;
   private startupResumeTaskIds: string[] | null = null;
   private didCheckInterruptedTasks = false;
+  private exitResolver: (() => void) | null = null;
 
   constructor(runtime: AgentRuntime) {
     this.runtime = runtime;
-    this.tui = new TUI();
+    this.terminal = new FilteringTerminal((data: string) =>
+      this.consumeGlobalInput(data),
+    );
+    this.tui = new TUI(this.terminal);
 
-    // Create autocomplete provider for slash commands
-    const autocompleteProvider = new CombinedAutocompleteProvider([
-      new SlashCommandAutocompleteProvider(),
-    ]);
+    const autocompleteProvider = new CombinedAutocompleteProvider(
+      SLASH_COMMANDS,
+    );
 
-    // Create components
     this.chatPane = new ChatPane({
       onSubmit: (text) => this.handleSendMessage(text),
       autocompleteProvider,
@@ -228,37 +225,36 @@ export class App {
 
     this.statusBar = new StatusBar();
 
-    // Create main container
-    this.container = new Container({
-      direction: "column",
-      children: [],
-    });
-
-    // Set up the TUI
-    this.tui.setRoot(this.container);
-    this.tui.setFocused(this.chatPane);
+    this.mainScreen = new MainScreen(
+      this.terminal,
+      this.statusBar,
+      this.chatPane,
+      this.taskPane,
+    );
+    this.tui.addChild(this.mainScreen);
+    this.tui.setFocus(this.mainScreen);
   }
 
   async run(): Promise<void> {
-    this.running = true;
-
-    // Load session state
     await useStore.getState().loadSessionState();
-    this.initialized = true;
 
-    // Initialize managers
     this.initializeManagers();
 
-    // Check for interrupted tasks
-    this.checkInterruptedTasks();
+    await this.checkInterruptedTasks();
 
-    // Start render loop
-    await this.tui.run((char: string) => this.handleGlobalInput(char));
+    this.tui.start();
+
+    await new Promise<void>((resolve) => {
+      this.exitResolver = resolve;
+    });
   }
 
   stop(): void {
-    this.running = false;
     this.tui.stop();
+    if (this.exitResolver) {
+      this.exitResolver();
+      this.exitResolver = null;
+    }
   }
 
   private initializeManagers(): void {
@@ -272,38 +268,25 @@ export class App {
       const storedTaskId = state.currentTaskId;
 
       // Initial sync
-      service.getTasks().then(
-        (
-          tasks: Array<{
-            id: string;
-            name: string;
-            metadata: Record<string, unknown>;
-          }>,
-        ) => {
-          useStore
-            .getState()
-            .setTasks(tasks as ReturnType<typeof state.tasks.slice>);
+      service.getTasks().then((tasks: CodeTask[]) => {
+        useStore.getState().setTasks(tasks);
 
-          if (
-            storedTaskId &&
-            tasks.some((t: { id: string }) => t.id === storedTaskId)
-          ) {
-            service.setCurrentTask(storedTaskId);
-          } else {
-            const currentId = service.getCurrentTaskId();
-            if (currentId) {
-              useStore.getState().setCurrentTaskId(currentId);
-            }
+        if (storedTaskId && tasks.some((t) => t.id === storedTaskId)) {
+          service.setCurrentTask(storedTaskId);
+        } else {
+          const currentId = service.getCurrentTaskId();
+          if (currentId) {
+            useStore.getState().setCurrentTaskId(currentId);
           }
-          this.tui.requestRender();
-        },
-      );
+        }
+        this.tui.requestRender();
+      });
 
       // Listen for task events
       const handleTaskEvent = async (event: TaskEvent) => {
         const tasks = await service.getTasks();
         const state = useStore.getState();
-        state.setTasks(tasks as ReturnType<typeof state.tasks.slice>);
+        state.setTasks(tasks);
 
         if (event.type === "task:created") {
           const currentId = service.getCurrentTaskId();
@@ -367,82 +350,82 @@ export class App {
     }
   }
 
-  private handleGlobalInput(char: string): void {
-    // Handle help overlay toggle
+  /**
+   * Global shortcuts handled before input reaches the focused TUI component.
+   * @returns true when the keystroke was consumed.
+   */
+  private consumeGlobalInput(data: string): boolean {
     if (this.showingHelp) {
-      if (char === "?" || char === "\x1b" || char === "\x08") {
-        this.showingHelp = false;
-        this.tui.setRoot(this.container);
-        this.tui.requestRender();
-        return;
+      if (data === "?" || data === "\x1b" || data === "\x08") {
+        this.closeHelp();
       }
-      return;
+      return true;
     }
 
-    // Show help overlay
-    if (char === "?") {
-      this.showHelp();
-      return;
+    if (data === "?") {
+      this.openHelp();
+      return true;
     }
 
-    // Ctrl+C or Ctrl+Q to quit
-    if (char === "\x03" || char === "\x11") {
+    if (data === "\x03" || data === "\x11") {
       useStore.getState().saveSessionState();
       this.stop();
-      return;
+      return true;
     }
 
-    // Ctrl+N for new chat
-    if (char === "\x0e") {
+    if (data === "\x0e") {
       const state = useStore.getState();
       const name = `Chat ${state.rooms.length + 1}`;
       const newRoom = state.createRoom(name);
       state.addMessage(newRoom.id, "system", `Started: ${name}`);
       this.tui.requestRender();
-      return;
+      return true;
     }
 
-    // Tab to toggle panes
-    if (char === "\t") {
+    if (data === "\t") {
       const state = useStore.getState();
       const isCommandMode = state.inputValue.trimStart().startsWith("/");
       if (!isCommandMode) {
         state.togglePane();
-        // Update focus
-        if (state.focusedPane === "chat") {
-          this.tui.setFocused(this.chatPane);
-        } else {
-          this.tui.setFocused(this.taskPane);
-        }
+        this.mainScreen.invalidate();
         this.tui.requestRender();
+        return true;
       }
-      return;
+      return false;
     }
 
-    // Ctrl+< / Ctrl+> to resize task pane
-    if (char === "\x1b[1;5D" || char === ",") {
-      // Ctrl+Left or comma
+    if (data === "\x1b[1;5D" || data === ",") {
       useStore.getState().adjustTaskPaneWidth(-0.05);
       this.tui.requestRender();
-      return;
+      return true;
     }
-    if (char === "\x1b[1;5C" || char === ".") {
-      // Ctrl+Right or period
+    if (data === "\x1b[1;5C" || data === ".") {
       useStore.getState().adjustTaskPaneWidth(0.05);
       this.tui.requestRender();
-      return;
+      return true;
     }
+
+    return false;
   }
 
-  private showHelp(): void {
+  private openHelp(): void {
     this.showingHelp = true;
-    const { columns, rows } = this.tui.getSize();
     if (!this.helpOverlay) {
-      this.helpOverlay = new HelpOverlay(columns, rows);
-    } else {
-      this.helpOverlay.resize(columns, rows);
+      this.helpOverlay = new HelpOverlay(this.terminal);
     }
-    this.tui.setRoot(this.helpOverlay);
+    this.helpOverlayHandle?.hide();
+    this.helpOverlayHandle = this.tui.showOverlay(this.helpOverlay, {
+      width: "88%",
+      maxHeight: "85%",
+      anchor: "center",
+    });
+    this.tui.requestRender();
+  }
+
+  private closeHelp(): void {
+    this.showingHelp = false;
+    this.helpOverlayHandle?.hide();
+    this.helpOverlayHandle = null;
     this.tui.requestRender();
   }
 

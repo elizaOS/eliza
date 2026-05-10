@@ -283,8 +283,6 @@ const MODEL_TYPES = [
   "TEXT_TO_SPEECH",       // TTS
   "AUDIO",                // Audio processing
   "VIDEO",                // Video processing
-  "OBJECT_SMALL",         // Structured JSON output (small)
-  "OBJECT_LARGE",         // Structured JSON output (large)
   "RESEARCH",             // Research/search-augmented generation
 ] as const;
 ```

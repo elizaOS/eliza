@@ -1,6 +1,4 @@
 import type {
-  Action,
-  ActionExample,
   ActionResult,
   HandlerCallback,
   HandlerOptions,
@@ -14,23 +12,13 @@ import {
   type ShopifyService,
 } from "../services/ShopifyService.js";
 import type { Customer } from "../types.js";
+import {
+  getShopifyAccountId,
+  hasShopifyConfig,
+  shopifyAccountIdParameter,
+} from "./account-options.js";
 import { getActionOptions } from "./confirmation.js";
 import { parseJsonObject } from "./json.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function hasShopifyConfig(runtime: IAgentRuntime): boolean {
-  const domain = runtime.getSetting("SHOPIFY_STORE_DOMAIN");
-  const token = runtime.getSetting("SHOPIFY_ACCESS_TOKEN");
-  return (
-    typeof domain === "string" &&
-    domain.trim().length > 0 &&
-    typeof token === "string" &&
-    token.trim().length > 0
-  );
-}
 
 function formatCustomer(c: Customer): string {
   const email = c.email ?? "no email";
@@ -90,140 +78,74 @@ User message: "${text}"
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Action
-// ---------------------------------------------------------------------------
+export async function manageCustomersHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+  options?: HandlerOptions,
+  callback?: HandlerCallback,
+): Promise<ActionResult | undefined> {
+  const svc = runtime.getService<ShopifyService>(SHOPIFY_SERVICE_TYPE);
+  if (!svc?.isConnected()) {
+    await callback?.({
+      text: "Shopify is not connected. Please check SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN.",
+    });
+    return { success: false, error: "Shopify not connected" };
+  }
 
-const examples: ActionExample[][] = [
-  [
-    {
-      name: "user",
-      content: { text: "Show me all customers" },
-    },
-    {
-      name: "assistant",
-      content: {
-        text: "Here are the customers in the store:",
-      },
-    },
-  ],
-  [
-    {
-      name: "user",
-      content: { text: "Find customer john@example.com" },
-    },
-    {
-      name: "assistant",
-      content: {
-        text: "Here is the customer information for john@example.com:",
-      },
-    },
-  ],
-];
+  const text =
+    typeof message.content?.text === "string" ? message.content.text : "";
+  const intent =
+    readCustomerIntent(options) ?? (await classifyIntent(runtime, text));
 
-export const manageCustomersAction: Action = {
-  name: "MANAGE_SHOPIFY_CUSTOMERS",
-  contexts: ["payments", "connectors", "automation"],
-  contextGate: { anyOf: ["payments", "connectors", "automation"] },
-  roleGate: { minRole: "USER" },
-  similes: ["LIST_CUSTOMERS", "FIND_CUSTOMER", "SEARCH_CUSTOMERS"],
-  description: "List and search customers in a connected Shopify store.",
-  descriptionCompressed: "List/search Shopify customers.",
+  if (!intent) {
+    await callback?.({
+      text: "I couldn't determine what customer action you want. Try: list customers or search for a specific customer.",
+    });
+    return { success: false, error: "Could not classify intent" };
+  }
 
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-  ): Promise<boolean> => {
-    return hasShopifyConfig(runtime);
-  },
+  try {
+    const queryStr =
+      intent.action === "search" ? intent.query : (intent.query ?? undefined);
+    const result = await svc.listCustomers({ query: queryStr, first: 15 });
 
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-    options?: HandlerOptions,
-    callback?: HandlerCallback,
-  ): Promise<ActionResult | undefined> => {
-    const svc = runtime.getService<ShopifyService>(SHOPIFY_SERVICE_TYPE);
-    if (!svc?.isConnected()) {
+    if (result.customers.length === 0) {
+      const msg = queryStr
+        ? `No customers found matching "${queryStr}".`
+        : "No customers found in the store.";
+      await callback?.({ text: msg });
+      return { success: true, text: "No customers found" };
+    }
+
+    const lines = result.customers.map(formatCustomer);
+    const more = result.hasNextPage ? "\n\n(More customers available)" : "";
+
+    if (intent.action === "search" && result.customers.length === 1) {
+      const c = result.customers[0];
+      const detail = [
+        `**${c.displayName}**`,
+        `Email: ${c.email ?? "not set"}`,
+        `Phone: ${c.phone ?? "not set"}`,
+        `Orders: ${c.ordersCount}`,
+        `Total spent: ${c.totalSpentV2.amount} ${c.totalSpentV2.currencyCode}`,
+        `Customer since: ${c.createdAt.slice(0, 10)}`,
+      ].join("\n");
+      await callback?.({ text: detail });
+    } else {
       await callback?.({
-        text: "Shopify is not connected. Please check SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN.",
+        text: `Customers (${result.customers.length}):\n\n${lines.join("\n")}${more}`,
       });
-      return { success: false, error: "Shopify not connected" };
     }
 
-    const text =
-      typeof message.content?.text === "string" ? message.content.text : "";
-    const intent =
-      readCustomerIntent(options) ?? (await classifyIntent(runtime, text));
-
-    if (!intent) {
-      await callback?.({
-        text: "I couldn't determine what customer action you want. Try: list customers or search for a specific customer.",
-      });
-      return { success: false, error: "Could not classify intent" };
-    }
-
-    try {
-      const queryStr =
-        intent.action === "search" ? intent.query : (intent.query ?? undefined);
-      const result = await svc.listCustomers({ query: queryStr, first: 15 });
-
-      if (result.customers.length === 0) {
-        const msg = queryStr
-          ? `No customers found matching "${queryStr}".`
-          : "No customers found in the store.";
-        await callback?.({ text: msg });
-        return { success: true, text: "No customers found" };
-      }
-
-      const lines = result.customers.map(formatCustomer);
-      const more = result.hasNextPage ? "\n\n(More customers available)" : "";
-
-      if (intent.action === "search" && result.customers.length === 1) {
-        // Single customer result -- show more detail
-        const c = result.customers[0];
-        const detail = [
-          `**${c.displayName}**`,
-          `Email: ${c.email ?? "not set"}`,
-          `Phone: ${c.phone ?? "not set"}`,
-          `Orders: ${c.ordersCount}`,
-          `Total spent: ${c.totalSpentV2.amount} ${c.totalSpentV2.currencyCode}`,
-          `Customer since: ${c.createdAt.slice(0, 10)}`,
-        ].join("\n");
-        await callback?.({ text: detail });
-      } else {
-        await callback?.({
-          text: `Customers (${result.customers.length}):\n\n${lines.join("\n")}${more}`,
-        });
-      }
-
-      return { success: true, data: { customers: result.customers } };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.error(
-        { src: "plugin:shopify:manage-customers", error: msg },
-        "Customer action failed",
-      );
-      await callback?.({ text: `Shopify customer operation failed: ${msg}` });
-      return { success: false, error: msg };
-    }
-  },
-
-  parameters: [
-    {
-      name: "action",
-      description: "Customer action. One of: list, search.",
-      required: false,
-      schema: { type: "string" as const, enum: ["list", "search"] },
-    },
-    {
-      name: "query",
-      description: "Customer name, email, or other Shopify customer search term.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-  ],
-
-  examples,
-};
+    return { success: true, data: { customers: result.customers } };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error(
+      { src: "plugin:shopify:manage-customers", error: msg },
+      "Customer action failed",
+    );
+    await callback?.({ text: `Shopify customer operation failed: ${msg}` });
+    return { success: false, error: msg };
+  }
+}

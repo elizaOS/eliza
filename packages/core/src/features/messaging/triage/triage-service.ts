@@ -46,7 +46,7 @@ export interface TriageOptions {
 export class TriageService {
 	private adapters = new Map<MessageSource, MessageAdapter>();
 	// Keyed by `${source}:${messageId}` → owning adapter, populated as messages
-	// flow through triage(). Used to route MANAGE_MESSAGE without a per-call hint.
+	// flow through triage(). Used to route MESSAGE without a per-call hint.
 	private adapterByMessageId = new Map<string, MessageAdapter>();
 
 	constructor(

@@ -5,7 +5,7 @@
  * and automatic fallback to public RPC endpoints when premium APIs are unavailable.
  */
 import { logger } from "@elizaos/core";
-import type { EvmChainBalance, EvmNft, EvmTokenBalance } from "@elizaos/shared";
+import type { EvmChainBalance, EvmNft, EvmTokenBalance } from "@elizaos/core";
 import {
   computeValueUsd,
   type DexTokenMeta,

@@ -25,11 +25,11 @@ export {
   shouldRunObservationExtraction,
   truncateField,
   truncateRecord,
-} from "./trajectory-internals.js";
+} from "./trajectory-internals.ts";
 // ---------------------------------------------------------------------------
 // Query — read operations
 // ---------------------------------------------------------------------------
-export { loadPersistedTrajectoryRows } from "./trajectory-query.js";
+export { loadPersistedTrajectoryRows } from "./trajectory-query.ts";
 // ---------------------------------------------------------------------------
 // Storage — write operations
 // ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ export {
   installDatabaseTrajectoryLogger,
   pruneOldTrajectories,
   startTrajectoryStepInDatabase,
-} from "./trajectory-storage.js";
+} from "./trajectory-storage.ts";
 
 // ---------------------------------------------------------------------------
 // Export — archive operations (available via "./trajectory-export" for

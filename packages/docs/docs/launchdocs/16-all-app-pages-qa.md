@@ -27,7 +27,7 @@ The app config currently identifies the app as `elizaOS` / `ai.elizaos.app`, set
 | Tasks / workflows | `/apps/tasks`, `/automations` | Yes | Yes | Yes | Yes | `/apps/tasks` maps to automations; Workflow Builder is an internal tool targeting `/automations` (`packages/app-core/src/navigation/index.ts:410-414`, `packages/app-core/src/components/apps/internal-tool-apps.ts:153-163`). |
 | Browser workspace | `/browser` | Yes when enabled | Yes when enabled | Yes when enabled | Yes plus detached window | Navigation group can be hidden by feature flags (`packages/app-core/src/navigation/index.ts:247-262`). |
 | Stream | `/stream` | Yes when enabled | Yes when enabled | Yes when enabled | Yes | Navigation group can be hidden by feature flags (`packages/app-core/src/navigation/index.ts:214-224`, `packages/app-core/src/App.tsx:422-423`). |
-| Character editor | `/character`, `/character/select`, `/character/knowledge` | Yes | Yes | Yes | Yes | Character tabs share `CharacterEditor` (`packages/app-core/src/App.tsx:439-448`). |
+| Character editor | `/character`, `/character/select`, `/character/documents` | Yes | Yes | Yes | Yes | Character tabs share `CharacterEditor` (`packages/app-core/src/App.tsx:439-448`). |
 | Wallet / inventory | `/wallet` | Yes when wallet enabled | Yes when wallet enabled | Yes when wallet enabled | Yes | `inventory` tab renders `InventoryView`; Steward internal app routes to `/apps/inventory` (`packages/app-core/src/navigation/index.ts:202-205`, `packages/app-core/src/App.tsx:449-457`). |
 | Connectors | `/connectors` | Yes | Yes | Yes | Yes plus detached window | Also accepts legacy `/settings/connectors` (`packages/app-core/src/navigation/index.ts:350-352`). |
 | Plugins | `/apps/plugins` | Yes | Yes | Yes | Yes plus detached window/app window | Internal tool app and apps sub-tab (`packages/app-core/src/components/apps/internal-tool-apps.ts:34-44`). |
@@ -66,7 +66,7 @@ Default catalog visibility is intentionally narrow:
 Route-bearing app packages reviewed:
 
 - Game/session apps: `plugins/app-2004scape/src/routes.ts:1811`, `plugins/app-babylon/src/routes.ts:535`, `plugins/app-clawville/src/routes.ts:836`, `plugins/app-defense-of-the-agents/src/routes.ts:2068`, `plugins/app-scape/src/routes.ts:882`, `plugins/app-hyperscape/src/routes.ts`.
-- Utility/native route apps: `plugins/app-screenshare/src/routes.ts:119`, `plugins/app-training/src/setup-routes.ts:23-94`, `plugins/app-knowledge/src/setup-routes.ts:18-66`.
+- Utility/native route apps: `plugins/app-screenshare/src/routes.ts:119`, `plugins/app-training/src/setup-routes.ts:23-94`, `plugins/app-documents/src/setup-routes.ts:18-66`.
 - Plugin route loaders: `plugins/app-shopify/src/register-routes.ts:1-6`, `plugins/app-vincent/src/register-routes.ts:1-6`, `plugins/app-polymarket/src/register-routes.ts:1-6`, `plugins/app-hyperliquid/src/register-routes.ts:1-6`, `plugins/app-steward/src/register-routes.ts:1-6`.
 
 Android-only overlay apps declare `androidOnly: true` in their overlay definitions: Phone (`plugins/app-phone/src/components/phone-app.ts:14-26`), Contacts (`plugins/app-contacts/src/components/contacts-app.ts:14-26`), and WiFi (`plugins/app-wifi/src/components/wifi-app.ts:14-26`). The overlay API comment says these should be hidden on stock Android, iOS, desktop, and web, with filtering performed by `getAvailableOverlayApps()` (`packages/app-core/src/components/apps/overlay-app-api.ts:41-52`).
@@ -197,7 +197,7 @@ This matrix is intentionally targeted. It is meant to catch wiring, platform, pe
 | WiFi/Contacts/Phone overlays | Hidden | Hidden | MiladyOS Android only | Hidden | Verify Android-only overlays do not appear on stock Android/iOS/web/desktop; verify native plugin prompts on MiladyOS. |
 | Browser workspace | `/browser` when enabled | If enabled | If enabled | Main and detached browser window | URL entry, agent browser controls, detached browser `browse` seed on desktop. |
 | Automations/workflows | `/automations`, `/apps/tasks` | Same | Same | Main and detached triggers window | Task creation/view, workflow builder route, legacy `/tasks` redirect. |
-| Character and knowledge | `/character`, `/character/select`, `/character/knowledge` | Same | Same | Same | Character header actions, save/selection/knowledge page transitions. |
+| Character and knowledge | `/character`, `/character/select`, `/character/documents` | Same | Same | Same | Character header actions, save/selection/knowledge page transitions. |
 | Settings/deep links | `/settings`, `/settings/voice`, connector focus | Same | Same | Settings detached windows | Voice/cloud/connectors/permissions/update sections, deep link scroll/focus. |
 | Desktop detached surfaces | N/A | N/A | N/A | chat, browser, release, triggers, plugins, connectors, cloud | Window singleton/focus, close/reopen, always-on-top where offered, renderer URL correctness. |
 | Desktop app windows | N/A | N/A | N/A | internal, overlay, registry app | `?appWindow=1` windows render without main shell, iframe/external states, per-slug bounds, menu/tray actions. |

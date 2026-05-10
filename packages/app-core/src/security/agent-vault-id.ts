@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 
 import type { SecureStoreSecretKind } from "./platform-secure-store";
 
@@ -9,13 +9,13 @@ import type { SecureStoreSecretKind } from "./platform-secure-store";
 export const ELIZA_AGENT_VAULT_SERVICE = "ai.elizaos.agent.vault";
 
 /**
- * Canonical state directory for this process (same semantics as `ELIZA_STATE_DIR` default).
- * Uses `realpathSync` when the path exists so symlinks normalize consistently.
+ * Canonical state directory for this process. Mirrors the canonical
+ * `MILADY_STATE_DIR` > `ELIZA_STATE_DIR` > `~/.${namespace}` precedence
+ * and uses `realpathSync` when the path exists so symlinks normalize
+ * consistently.
  */
 export function resolveCanonicalStateDir(): string {
-  const raw = process.env.ELIZA_STATE_DIR?.trim();
-  const base = raw && raw.length > 0 ? raw : path.join(os.homedir(), ".eliza");
-  const resolved = path.resolve(base);
+  const resolved = path.resolve(resolveStateDir());
   try {
     return fs.realpathSync(resolved);
   } catch {

@@ -3,8 +3,8 @@
  */
 "use client";
 
-import { BrandButton, EmptyState } from "@elizaos/cloud-ui/primitives";
-import { Plus } from "lucide-react";
+import { BrandButton, EmptyState } from "@elizaos/cloud-ui";
+import { MessageSquare } from "lucide-react";
 
 interface EmptyStateProps {
   onCreateNew: () => void;
@@ -19,8 +19,8 @@ export function AgentsEmptyState({ onCreateNew }: EmptyStateProps) {
           onClick={onCreateNew}
           className="bg-[#FF5800] text-white hover:bg-[#FF5800]/90 active:bg-[#FF5800]/80"
         >
-          <Plus className="h-4 w-4" />
-          Create Agent
+          <MessageSquare className="h-4 w-4" />
+          Open Chat
         </BrandButton>
       }
     />

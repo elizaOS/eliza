@@ -245,551 +245,473 @@ function emitStateEvent(
   } as ElizagotchiStateUpdatedPayload);
 }
 
-function makeGameAction(params: {
-  name: string;
-  description: string;
-  similes: string[];
-  animation: AnimationType;
-  run: (
-    runtime: IAgentRuntime,
-    options?: HandlerOptions,
-  ) => {
-    petState: PetState;
-    message?: string;
-    success: boolean;
-  };
-}): ElizaAction {
+type ElizagotchiOp =
+  | GameAction
+  | "tick"
+  | "status"
+  | "help"
+  | "reset"
+  | "export"
+  | "import"
+  | "name";
+
+const ELIZAGOTCHI_OPS = [
+  "tick",
+  "status",
+  "help",
+  "reset",
+  "export",
+  "import",
+  "name",
+  "feed",
+  "play",
+  "clean",
+  "sleep",
+  "medicine",
+  "discipline",
+  "light_toggle",
+] as const satisfies readonly ElizagotchiOp[];
+
+const ELIZAGOTCHI_ACTION_ALIASES: Partial<Record<string, ElizagotchiOp>> = {
+  elizagotchi_tick: "tick",
+  update: "tick",
+  step: "tick",
+  __tick__: "tick",
+  elizagotchi_status: "status",
+  stats: "status",
+  info: "status",
+  health: "status",
+  elizagotchi_help: "help",
+  commands: "help",
+  options: "help",
+  elizagotchi_reset: "reset",
+  restart: "reset",
+  new: "reset",
+  new_pet: "reset",
+  elizagotchi_export: "export",
+  backup: "export",
+  save_file: "export",
+  elizagotchi_import: "import",
+  load_save: "import",
+  elizagotchi_name: "name",
+  rename: "name",
+  call: "name",
+  elizagotchi_feed: "feed",
+  eat: "feed",
+  food: "feed",
+  meal: "feed",
+  snack: "feed",
+  elizagotchi_play: "play",
+  game: "play",
+  fun: "play",
+  toy: "play",
+  elizagotchi_clean: "clean",
+  wash: "clean",
+  bath: "clean",
+  dirty: "clean",
+  elizagotchi_sleep: "sleep",
+  rest: "sleep",
+  nap: "sleep",
+  bed: "sleep",
+  elizagotchi_medicine: "medicine",
+  heal: "medicine",
+  cure: "medicine",
+  doctor: "medicine",
+  pill: "medicine",
+  elizagotchi_discipline: "discipline",
+  scold: "discipline",
+  punish: "discipline",
+  train: "discipline",
+  elizagotchi_light_toggle: "light_toggle",
+  light: "light_toggle",
+  lights: "light_toggle",
+  lamp: "light_toggle",
+  dark: "light_toggle",
+  bright: "light_toggle",
+};
+
+const ELIZAGOTCHI_SIMILES = [
+  "ELIZAGOTCHI_TICK",
+  "ELIZAGOTCHI_STATUS",
+  "ELIZAGOTCHI_HELP",
+  "ELIZAGOTCHI_RESET",
+  "ELIZAGOTCHI_EXPORT",
+  "ELIZAGOTCHI_IMPORT",
+  "ELIZAGOTCHI_NAME",
+  "ELIZAGOTCHI_FEED",
+  "ELIZAGOTCHI_PLAY",
+  "ELIZAGOTCHI_CLEAN",
+  "ELIZAGOTCHI_SLEEP",
+  "ELIZAGOTCHI_MEDICINE",
+  "ELIZAGOTCHI_DISCIPLINE",
+  "ELIZAGOTCHI_LIGHT_TOGGLE",
+  ...ELIZAGOTCHI_OPS,
+  "update",
+  "step",
+  "__tick__",
+  "stats",
+  "info",
+  "health",
+  "commands",
+  "options",
+  "restart",
+  "new pet",
+  "backup",
+  "save file",
+  "load save",
+  "rename",
+  "eat",
+  "food",
+  "meal",
+  "snack",
+  "game",
+  "fun",
+  "toy",
+  "wash",
+  "bath",
+  "poop",
+  "dirty",
+  "rest",
+  "nap",
+  "bed",
+  "heal",
+  "cure",
+  "doctor",
+  "pill",
+  "scold",
+  "punish",
+  "train",
+  "light",
+  "lamp",
+  "dark",
+  "bright",
+  "actualizar",
+  "estado",
+  "ayuda",
+  "reiniciar",
+  "导出",
+  "导入",
+  "名前",
+  "アップデート",
+  "상태",
+  "giup",
+  "cap nhat",
+];
+
+function inferElizagotchiOpFromMessage(
+  text: string,
+): ElizagotchiOp | undefined {
+  if (text === "__tick__") return "tick";
+  if (text === "__export__") return "export";
+  if (text.startsWith("__import__:")) return "import";
+  if (text.startsWith("__reset__:")) return "reset";
+  const command = parseCommand(text);
+  return command?.action;
+}
+
+function normalizeElizagotchiOp(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function readElizagotchiOpParam(
+  parameters: Record<string, unknown> | undefined,
+): ElizagotchiOp | undefined {
+  const allowed = new Set<string>(ELIZAGOTCHI_OPS);
+  for (const key of ["op", "subaction", "action"]) {
+    const normalized = normalizeElizagotchiOp(parameters?.[key]);
+    if (!normalized) continue;
+    const aliased = ELIZAGOTCHI_ACTION_ALIASES[normalized];
+    if (aliased) return aliased;
+    if (allowed.has(normalized)) return normalized as ElizagotchiOp;
+    return undefined;
+  }
+  return undefined;
+}
+
+function resolveElizagotchiOp(
+  message: { content?: { text?: unknown } } | undefined,
+  options: HandlerOptions | undefined,
+): ElizagotchiOp | undefined {
+  const parameters = options?.parameters as Record<string, unknown> | undefined;
+  return (
+    readElizagotchiOpParam(parameters) ??
+    inferElizagotchiOpFromMessage(getMessageText(message))
+  );
+}
+
+function actionNameForOp(op: ElizagotchiOp): string {
+  return `ELIZAGOTCHI_${op.toUpperCase()}`;
+}
+
+async function runGameMutation(
+  runtime: IAgentRuntime,
+  callback: HandlerCallback | undefined,
+  action: GameAction,
+  animation: AnimationType,
+): Promise<ElizaActionResult> {
+  const current = loadPetState(runtime);
+  const base = applyTimeUpdate(current);
+  const result = performAction(base, action);
+  savePetState(runtime, result.newState);
+  await publishState(runtime, result.newState, callback, {
+    message: result.message,
+    animation,
+  });
   return {
-    name: params.name,
-    description: params.description,
-    contexts: [...ELIZAGOTCHI_CONTEXTS],
-    contextGate: ELIZAGOTCHI_CONTEXT_GATE,
-    similes: params.similes,
-    validate: async (_runtime: IAgentRuntime, message, state) => {
-      return hasElizagotchiSignal(message, state, params.similes);
-    },
-    handler: async (
-      runtime: IAgentRuntime,
-      _message,
-      _state,
-      options,
-      callback,
-    ): Promise<ElizaActionResult> => {
-      const result = params.run(runtime, options);
-      await publishState(runtime, result.petState, callback, {
-        message: result.message,
-        animation: params.animation,
-      });
-      return {
-        success: result.success,
-        text: result.message,
-        data: { actionName: params.name, petState: result.petState },
-      };
+    success: result.success,
+    text: result.message,
+    data: {
+      actionName: "ELIZAGOTCHI",
+      legacyActionName: actionNameForOp(action),
+      op: action,
+      petState: result.newState,
     },
   };
 }
 
 // ============================================================================
-// elizaOS actions
+// elizaOS action
 // ============================================================================
 
-const tickAction: ElizaAction = {
-  name: "ELIZAGOTCHI_TICK",
-  description: "Advance the pet simulation based on elapsed time.",
+const elizagotchiAction: ElizaAction = {
+  name: "ELIZAGOTCHI",
+  description:
+    "Play the Elizagotchi virtual pet game. Use op to tick, check status, show help, reset, export/import saves, rename, feed, play, clean, sleep, give medicine, discipline, or toggle lights.",
+  descriptionCompressed:
+    "Elizagotchi virtual pet. op=tick/status/help/reset/export/import/name/feed/play/clean/sleep/medicine/discipline/light_toggle.",
   contexts: [...ELIZAGOTCHI_CONTEXTS],
   contextGate: ELIZAGOTCHI_CONTEXT_GATE,
-  similes: ["tick", "update", "step", "__tick__"],
+  roleGate: { minRole: "USER" },
+  similes: ELIZAGOTCHI_SIMILES,
   validate: async (_runtime: IAgentRuntime, message, state) => {
-    return hasElizagotchiSignal(message, state, [
-      "tick",
-      "update",
-      "step",
-      "__tick__",
-      "actualizar",
-      "mise a jour",
-      "mettre a jour",
-      "aktualisieren",
-      "更新",
-      "アップデート",
-      "업데이트",
-      "i-update",
-      "cập nhật",
-      "cap nhat",
-    ]);
-  },
-  handler: async (runtime, _message, _state, _options, callback) => {
-    const current = loadPetState(runtime);
-    const updated = applyTimeUpdate(current);
-    savePetState(runtime, updated);
-    await publishState(runtime, updated, callback, {
-      kind: "elizagotchi_tick",
-    });
-    return { success: true, data: { actionName: "ELIZAGOTCHI_TICK" } };
-  },
-};
-
-const statusAction: ElizaAction = {
-  name: "ELIZAGOTCHI_STATUS",
-  description: "Get a full status readout of the pet (with stats).",
-  contexts: [...ELIZAGOTCHI_CONTEXTS],
-  contextGate: ELIZAGOTCHI_CONTEXT_GATE,
-  similes: ["status", "stats", "info", "health"],
-  validate: async (_runtime: IAgentRuntime, message, state) => {
-    return hasElizagotchiSignal(message, state, [
-      "status",
-      "stats",
-      "info",
-      "health",
-      "how is",
-      "estado",
-      "salud",
-      "statut",
-      "sante",
-      "zustand",
-      "gesundheit",
-      "状态",
-      "健康",
-      "ステータス",
-      "상태",
-      "kalagayan",
-      "sức khỏe",
-      "suc khoe",
-    ]);
-  },
-  handler: async (runtime, _message, _state, _options, callback) => {
-    const current = loadPetState(runtime);
-    const updated = applyTimeUpdate(current);
-    savePetState(runtime, updated);
-    await publishState(runtime, updated, callback, {
-      kind: "elizagotchi_status",
-      message: formatStatus(updated),
-      animation: "idle",
-    });
-    return {
-      success: true,
-      text: formatStatus(updated),
-      data: { actionName: "ELIZAGOTCHI_STATUS", petState: updated },
-    };
-  },
-};
-
-const helpAction: ElizaAction = {
-  name: "ELIZAGOTCHI_HELP",
-  description: "Show available Elizagotchi commands.",
-  contexts: [...ELIZAGOTCHI_CONTEXTS],
-  contextGate: ELIZAGOTCHI_CONTEXT_GATE,
-  similes: ["help", "commands", "options"],
-  validate: async (_runtime: IAgentRuntime, message, state) => {
-    return hasElizagotchiSignal(message, state, [
-      "help",
-      "commands",
-      "options",
-      "what can",
-      "ayuda",
-      "comandos",
-      "aide",
-      "commandes",
-      "hilfe",
-      "befehle",
-      "帮助",
-      "命令",
-      "ヘルプ",
-      "도움말",
-      "tulong",
-      "giúp",
-      "giup",
-    ]);
-  },
-  handler: async (_runtime, _message, _state, _options, callback) => {
-    if (callback) {
-      await callback({ type: "elizagotchi_help", text: getHelp() });
-    }
-    return {
-      success: true,
-      text: getHelp(),
-      data: { actionName: "ELIZAGOTCHI_HELP" },
-    };
-  },
-};
-
-const resetAction: ElizaAction = {
-  name: "ELIZAGOTCHI_RESET",
-  description: "Reset the game with a new pet (optionally named).",
-  contexts: [...ELIZAGOTCHI_CONTEXTS],
-  contextGate: ELIZAGOTCHI_CONTEXT_GATE,
-  similes: ["reset", "restart", "new", "again", "new pet"],
-  validate: async (_runtime: IAgentRuntime, message, state) => {
-    return hasElizagotchiSignal(message, state, [
-      "reset",
-      "restart",
-      "new pet",
-      "start over",
-      "__reset__:",
-      "reiniciar",
-      "nouveau",
-      "redemarrer",
-      "zurücksetzen",
-      "zuruecksetzen",
-      "重置",
-      "重新开始",
-      "リセット",
-      "재시작",
-      "i-reset",
-      "đặt lại",
-      "dat lai",
-    ]);
+    return hasElizagotchiSignal(message, state, ELIZAGOTCHI_SIMILES);
   },
   parameters: [
     {
+      name: "op",
+      description: "Elizagotchi operation to run.",
+      required: false,
+      schema: {
+        type: "string",
+        enum: [...ELIZAGOTCHI_OPS],
+      },
+    },
+    {
       name: "name",
-      description: "Name for the new pet",
+      description: "Pet name for reset or rename operations.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "saveJson",
+      description: "Save JSON for the import operation.",
       required: false,
       schema: { type: "string" },
     },
   ],
-  handler: async (runtime, _message, _state, options, callback) => {
-    const name = getStringParam(options, "name") || "Elizagotchi";
-    const fresh = createNewPet(name);
-    savePetState(runtime, fresh);
-    await publishState(runtime, fresh, callback, {
-      kind: "elizagotchi_reset",
-      message: `🥚 ${name} appeared!`,
-      animation: "hatching",
-    });
-    return {
-      success: true,
-      text: `🥚 ${name} appeared!`,
-      data: { actionName: "ELIZAGOTCHI_RESET", petState: fresh },
-    };
-  },
-};
-
-const exportAction: ElizaAction = {
-  name: "ELIZAGOTCHI_EXPORT",
-  description: "Export the current pet save data as JSON.",
-  contexts: [...ELIZAGOTCHI_CONTEXTS],
-  contextGate: ELIZAGOTCHI_CONTEXT_GATE,
-  similes: ["export", "backup", "save file"],
-  validate: async (_runtime: IAgentRuntime, message, state) => {
-    return hasElizagotchiSignal(message, state, [
-      "export",
-      "backup",
-      "save file",
-      "download",
-      "__export__",
-      "exportar",
-      "copia",
-      "exporter",
-      "sauvegarde",
-      "exportieren",
-      "sichern",
-      "导出",
-      "备份",
-      "エクスポート",
-      "내보내기",
-      "i-export",
-      "xuất",
-      "xuat",
-    ]);
-  },
-  handler: async (runtime, _message, _state, _options, callback) => {
-    const petState = loadPetState(runtime);
-    const saveData = buildSaveData(petState);
-    if (callback) {
-      await callback({
-        type: "elizagotchi_export",
-        saveDataJson: JSON.stringify(saveData),
-      });
-    }
-    return {
-      success: true,
-      data: { actionName: "ELIZAGOTCHI_EXPORT", saveData },
-    };
-  },
-};
-
-const importAction: ElizaAction = {
-  name: "ELIZAGOTCHI_IMPORT",
-  description: "Import a pet save JSON and replace the current pet state.",
-  contexts: [...ELIZAGOTCHI_CONTEXTS],
-  contextGate: ELIZAGOTCHI_CONTEXT_GATE,
-  similes: ["import", "load save"],
-  validate: async (_runtime: IAgentRuntime, message, state) => {
-    return hasElizagotchiSignal(message, state, [
-      "import",
-      "load save",
-      "__import__:",
-      "importar",
-      "cargar",
-      "importer",
-      "charger",
-      "importieren",
-      "laden",
-      "导入",
-      "加载存档",
-      "インポート",
-      "가져오기",
-      "i-import",
-      "nhập",
-      "nhap",
-    ]);
-  },
-  parameters: [
-    {
-      name: "saveJson",
-      description: "The JSON string of the save file",
-      required: true,
-      schema: { type: "string" },
-    },
-  ],
-  handler: async (runtime, _message, _state, options, callback) => {
-    const saveJson = getStringParam(options, "saveJson");
-    if (!saveJson) {
-      return { success: false, error: "Missing saveJson parameter" };
-    }
-
-    try {
-      const parsed = JSON.parse(saveJson) as Partial<SaveData> & {
-        pet?: Partial<PetState>;
+  handler: async (runtime, message, _state, options, callback) => {
+    const op = resolveElizagotchiOp(message, options);
+    if (!op) {
+      if (callback) {
+        await callback({ type: "elizagotchi_help", text: getHelp() });
+      }
+      return {
+        success: true,
+        text: getHelp(),
+        data: { actionName: "ELIZAGOTCHI", op: "help" },
       };
+    }
 
-      const pet = parsed.pet;
-      if (
-        !pet ||
-        typeof pet.name !== "string" ||
-        typeof pet.stage !== "string" ||
-        typeof pet.mood !== "string" ||
-        !pet.stats ||
-        typeof pet.birthTime !== "number" ||
-        typeof pet.lastUpdate !== "number"
-      ) {
-        return { success: false, error: "Invalid save file" };
+    if (op === "tick") {
+      const current = loadPetState(runtime);
+      const updated = applyTimeUpdate(current);
+      savePetState(runtime, updated);
+      await publishState(runtime, updated, callback, {
+        kind: "elizagotchi_tick",
+      });
+      return {
+        success: true,
+        data: {
+          actionName: "ELIZAGOTCHI",
+          legacyActionName: "ELIZAGOTCHI_TICK",
+          op,
+        },
+      };
+    }
+
+    if (op === "status") {
+      const current = loadPetState(runtime);
+      const updated = applyTimeUpdate(current);
+      savePetState(runtime, updated);
+      const text = formatStatus(updated);
+      await publishState(runtime, updated, callback, {
+        kind: "elizagotchi_status",
+        message: text,
+        animation: "idle",
+      });
+      return {
+        success: true,
+        text,
+        data: {
+          actionName: "ELIZAGOTCHI",
+          legacyActionName: "ELIZAGOTCHI_STATUS",
+          op,
+          petState: updated,
+        },
+      };
+    }
+
+    if (op === "help") {
+      if (callback) {
+        await callback({ type: "elizagotchi_help", text: getHelp() });
+      }
+      return {
+        success: true,
+        text: getHelp(),
+        data: {
+          actionName: "ELIZAGOTCHI",
+          legacyActionName: "ELIZAGOTCHI_HELP",
+          op,
+        },
+      };
+    }
+
+    if (op === "reset") {
+      const name = getStringParam(options, "name") || "Elizagotchi";
+      const fresh = createNewPet(name);
+      savePetState(runtime, fresh);
+      const text = `🥚 ${name} appeared!`;
+      await publishState(runtime, fresh, callback, {
+        kind: "elizagotchi_reset",
+        message: text,
+        animation: "hatching",
+      });
+      return {
+        success: true,
+        text,
+        data: {
+          actionName: "ELIZAGOTCHI",
+          legacyActionName: "ELIZAGOTCHI_RESET",
+          op,
+          petState: fresh,
+        },
+      };
+    }
+
+    if (op === "export") {
+      const petState = loadPetState(runtime);
+      const saveData = buildSaveData(petState);
+      if (callback) {
+        await callback({
+          type: "elizagotchi_export",
+          saveDataJson: JSON.stringify(saveData),
+        });
+      }
+      return {
+        success: true,
+        data: {
+          actionName: "ELIZAGOTCHI",
+          legacyActionName: "ELIZAGOTCHI_EXPORT",
+          op,
+          saveData,
+        },
+      };
+    }
+
+    if (op === "import") {
+      const saveJson = getStringParam(options, "saveJson");
+      if (!saveJson) {
+        return { success: false, error: "Missing saveJson parameter" };
       }
 
-      // On import, reset lastUpdate so decay starts from "now" in this session.
-      const restored: PetState = {
-        ...(pet as PetState),
-        lastUpdate: Date.now(),
-      };
+      try {
+        const parsed = JSON.parse(saveJson) as Partial<SaveData> & {
+          pet?: Partial<PetState>;
+        };
+        const pet = parsed.pet;
+        if (
+          !pet ||
+          typeof pet.name !== "string" ||
+          typeof pet.stage !== "string" ||
+          typeof pet.mood !== "string" ||
+          !pet.stats ||
+          typeof pet.birthTime !== "number" ||
+          typeof pet.lastUpdate !== "number"
+        ) {
+          return { success: false, error: "Invalid save file" };
+        }
 
-      savePetState(runtime, restored);
-      await publishState(runtime, restored, callback, {
-        kind: "elizagotchi_import",
-        message: `📥 Loaded ${restored.name}!`,
+        const restored: PetState = {
+          ...(pet as PetState),
+          lastUpdate: Date.now(),
+        };
+        savePetState(runtime, restored);
+        const text = `📥 Loaded ${restored.name}!`;
+        await publishState(runtime, restored, callback, {
+          kind: "elizagotchi_import",
+          message: text,
+          animation: "happy",
+        });
+        return {
+          success: true,
+          text,
+          data: {
+            actionName: "ELIZAGOTCHI",
+            legacyActionName: "ELIZAGOTCHI_IMPORT",
+            op,
+            petState: restored,
+          },
+        };
+      } catch {
+        return { success: false, error: "Invalid save JSON" };
+      }
+    }
+
+    if (op === "name") {
+      const newName = getStringParam(options, "name");
+      const current = loadPetState(runtime);
+      const updatedBase = applyTimeUpdate(current);
+      const updated = newName ? { ...updatedBase, name: newName } : updatedBase;
+      savePetState(runtime, updated);
+      const text = newName
+        ? `Your pet is now named "${newName}"!`
+        : "What would you like to name your pet?";
+      await publishState(runtime, updated, callback, {
+        kind: "elizagotchi_name",
+        message: text,
         animation: "happy",
       });
       return {
         success: true,
-        text: `📥 Loaded ${restored.name}!`,
-        data: { actionName: "ELIZAGOTCHI_IMPORT", petState: restored },
+        text,
+        data: {
+          actionName: "ELIZAGOTCHI",
+          legacyActionName: "ELIZAGOTCHI_NAME",
+          op,
+          petState: updated,
+        },
       };
-    } catch {
-      return { success: false, error: "Invalid save JSON" };
     }
+
+    const animationByAction: Record<GameAction, AnimationType> = {
+      feed: "eating",
+      play: "playing",
+      clean: "cleaning",
+      sleep: "sleeping",
+      medicine: "happy",
+      discipline: "sad",
+      light_toggle: "idle",
+    };
+    return runGameMutation(runtime, callback, op, animationByAction[op]);
   },
 };
 
-const renameAction: ElizaAction = {
-  name: "ELIZAGOTCHI_NAME",
-  description: "Rename your pet.",
-  contexts: [...ELIZAGOTCHI_CONTEXTS],
-  contextGate: ELIZAGOTCHI_CONTEXT_GATE,
-  similes: ["name", "call", "rename"],
-  validate: async (_runtime: IAgentRuntime, message, state) => {
-    return hasElizagotchiSignal(message, state, [
-      "name",
-      "rename",
-      "call it",
-      "call my pet",
-      "nombrar",
-      "llamar",
-      "renombrar",
-      "nommer",
-      "appeler",
-      "benennen",
-      "nennen",
-      "命名",
-      "改名",
-      "名前",
-      "이름",
-      "pangalan",
-      "đặt tên",
-      "dat ten",
-    ]);
-  },
-  parameters: [
-    {
-      name: "name",
-      description: "The new pet name",
-      required: true,
-      schema: { type: "string" },
-    },
-  ],
-  handler: async (runtime, _message, _state, options, callback) => {
-    const newName = getStringParam(options, "name");
-    const current = loadPetState(runtime);
-    const updatedBase = applyTimeUpdate(current);
-    const updated = newName ? { ...updatedBase, name: newName } : updatedBase;
-    savePetState(runtime, updated);
-    await publishState(runtime, updated, callback, {
-      kind: "elizagotchi_name",
-      message: newName
-        ? `Your pet is now named "${newName}"!`
-        : "What would you like to name your pet?",
-      animation: "happy",
-    });
-    return {
-      success: true,
-      text: newName
-        ? `Your pet is now named "${newName}"!`
-        : "What would you like to name your pet?",
-      data: { actionName: "ELIZAGOTCHI_NAME", petState: updated },
-    };
-  },
-};
-
-const feedAction = makeGameAction({
-  name: "ELIZAGOTCHI_FEED",
-  description: "Feed the pet to reduce hunger.",
-  similes: ["feed", "eat", "food", "meal", "snack"],
-  animation: "eating",
-  run: (runtime) => {
-    const current = loadPetState(runtime);
-    const base = applyTimeUpdate(current);
-    const result = performAction(base, "feed");
-    savePetState(runtime, result.newState);
-    return {
-      petState: result.newState,
-      message: result.message,
-      success: result.success,
-    };
-  },
-});
-
-const playAction = makeGameAction({
-  name: "ELIZAGOTCHI_PLAY",
-  description: "Play with the pet to increase happiness.",
-  similes: ["play", "game", "fun", "toy"],
-  animation: "playing",
-  run: (runtime) => {
-    const current = loadPetState(runtime);
-    const base = applyTimeUpdate(current);
-    const result = performAction(base, "play");
-    savePetState(runtime, result.newState);
-    return {
-      petState: result.newState,
-      message: result.message,
-      success: result.success,
-    };
-  },
-});
-
-const cleanAction = makeGameAction({
-  name: "ELIZAGOTCHI_CLEAN",
-  description: "Clean up messes and improve cleanliness.",
-  similes: ["clean", "wash", "bath", "poop", "dirty"],
-  animation: "cleaning",
-  run: (runtime) => {
-    const current = loadPetState(runtime);
-    const base = applyTimeUpdate(current);
-    const result = performAction(base, "clean");
-    savePetState(runtime, result.newState);
-    return {
-      petState: result.newState,
-      message: result.message,
-      success: result.success,
-    };
-  },
-});
-
-const sleepAction = makeGameAction({
-  name: "ELIZAGOTCHI_SLEEP",
-  description: "Put the pet to sleep (requires lights off).",
-  similes: ["sleep", "rest", "nap", "bed"],
-  animation: "sleeping",
-  run: (runtime) => {
-    const current = loadPetState(runtime);
-    const base = applyTimeUpdate(current);
-    const result = performAction(base, "sleep");
-    savePetState(runtime, result.newState);
-    return {
-      petState: result.newState,
-      message: result.message,
-      success: result.success,
-    };
-  },
-});
-
-const medicineAction = makeGameAction({
-  name: "ELIZAGOTCHI_MEDICINE",
-  description: "Give medicine when the pet is sick.",
-  similes: ["medicine", "heal", "cure", "doctor", "pill"],
-  animation: "happy",
-  run: (runtime) => {
-    const current = loadPetState(runtime);
-    const base = applyTimeUpdate(current);
-    const result = performAction(base, "medicine");
-    savePetState(runtime, result.newState);
-    return {
-      petState: result.newState,
-      message: result.message,
-      success: result.success,
-    };
-  },
-});
-
-const disciplineAction = makeGameAction({
-  name: "ELIZAGOTCHI_DISCIPLINE",
-  description: "Discipline the pet to improve behavior.",
-  similes: ["discipline", "scold", "punish", "train", "no", "bad"],
-  animation: "sad",
-  run: (runtime) => {
-    const current = loadPetState(runtime);
-    const base = applyTimeUpdate(current);
-    const result = performAction(base, "discipline");
-    savePetState(runtime, result.newState);
-    return {
-      petState: result.newState,
-      message: result.message,
-      success: result.success,
-    };
-  },
-});
-
-const lightToggleAction = makeGameAction({
-  name: "ELIZAGOTCHI_LIGHT_TOGGLE",
-  description: "Toggle the lights on/off (affects sleeping).",
-  similes: ["light", "lamp", "dark", "bright", "lights"],
-  animation: "idle",
-  run: (runtime) => {
-    const current = loadPetState(runtime);
-    const base = applyTimeUpdate(current);
-    const result = performAction(base, "light_toggle");
-    savePetState(runtime, result.newState);
-    return {
-      petState: result.newState,
-      message: result.message,
-      success: result.success,
-    };
-  },
-});
-
-const allActions: ElizaAction[] = [
-  tickAction,
-  statusAction,
-  helpAction,
-  resetAction,
-  exportAction,
-  importAction,
-  renameAction,
-  feedAction,
-  playAction,
-  cleanAction,
-  sleepAction,
-  medicineAction,
-  disciplineAction,
-  lightToggleAction,
-];
+const allActions: ElizaAction[] = [elizagotchiAction];
 
 // ============================================================================
 // Background tick service (keeps state inside agent, UI subscribes)
@@ -846,31 +768,25 @@ function actionNameFromCommand(cmd: GameCommand | null): {
   actionName: string;
   params?: Record<string, string>;
 } {
-  if (!cmd) return { actionName: "ELIZAGOTCHI_HELP" };
+  if (!cmd) return { actionName: "ELIZAGOTCHI", params: { op: "help" } };
 
   switch (cmd.action) {
     case "status":
-      return { actionName: "ELIZAGOTCHI_STATUS" };
+      return { actionName: "ELIZAGOTCHI", params: { op: "status" } };
     case "help":
-      return { actionName: "ELIZAGOTCHI_HELP" };
+      return { actionName: "ELIZAGOTCHI", params: { op: "help" } };
     case "reset":
-      return { actionName: "ELIZAGOTCHI_RESET" };
+      return { actionName: "ELIZAGOTCHI", params: { op: "reset" } };
     case "name":
       return cmd.parameter
-        ? { actionName: "ELIZAGOTCHI_NAME", params: { name: cmd.parameter } }
-        : { actionName: "ELIZAGOTCHI_NAME" };
+        ? {
+            actionName: "ELIZAGOTCHI",
+            params: { op: "name", name: cmd.parameter },
+          }
+        : { actionName: "ELIZAGOTCHI", params: { op: "name" } };
     default: {
       const action = cmd.action as GameAction;
-      const mapping: Record<GameAction, string> = {
-        feed: "ELIZAGOTCHI_FEED",
-        play: "ELIZAGOTCHI_PLAY",
-        clean: "ELIZAGOTCHI_CLEAN",
-        sleep: "ELIZAGOTCHI_SLEEP",
-        medicine: "ELIZAGOTCHI_MEDICINE",
-        discipline: "ELIZAGOTCHI_DISCIPLINE",
-        light_toggle: "ELIZAGOTCHI_LIGHT_TOGGLE",
-      };
-      return { actionName: mapping[action] };
+      return { actionName: "ELIZAGOTCHI", params: { op: action } };
     }
   }
 }
@@ -924,14 +840,16 @@ async function elizagotchiModelHandler(
   if (userText === "__tick__") {
     return toToonResponse({
       thought: "Advance simulation tick",
-      actionName: "ELIZAGOTCHI_TICK",
+      actionName: "ELIZAGOTCHI",
+      actionParams: { op: "tick" },
     });
   }
 
   if (userText === "__export__") {
     return toToonResponse({
       thought: "Export save data",
-      actionName: "ELIZAGOTCHI_EXPORT",
+      actionName: "ELIZAGOTCHI",
+      actionParams: { op: "export" },
     });
   }
 
@@ -940,8 +858,8 @@ async function elizagotchiModelHandler(
     const saveJson = decodeURIComponent(encoded);
     return toToonResponse({
       thought: "Import save data",
-      actionName: "ELIZAGOTCHI_IMPORT",
-      actionParams: { saveJson },
+      actionName: "ELIZAGOTCHI",
+      actionParams: { op: "import", saveJson },
     });
   }
 
@@ -950,8 +868,8 @@ async function elizagotchiModelHandler(
     const name = decodeURIComponent(encoded);
     return toToonResponse({
       thought: "Reset with chosen name",
-      actionName: "ELIZAGOTCHI_RESET",
-      actionParams: { name },
+      actionName: "ELIZAGOTCHI",
+      actionParams: { op: "reset", name },
     });
   }
 

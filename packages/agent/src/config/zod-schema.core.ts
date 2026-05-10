@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { isSafeExecutableValue } from "../utils/exec-safety.js";
+import { isSafeExecutableValue } from "../utils/exec-safety.ts";
 import {
   DEFAULT_MODEL_CONTEXT_WINDOW,
   DEFAULT_MODEL_MAX_TOKENS,
-} from "./model-metadata.js";
+} from "./model-metadata.ts";
 
 export const ModelApiSchema = z.union([
   z.literal("openai-completions"),
@@ -677,7 +677,24 @@ export const VideoConfigSchema = z
 
 // --- Audio/Music Generation ---
 
-export const AudioGenProviderSchema = z.enum(["cloud", "suno", "elevenlabs"]);
+export const AudioKindSchema = z.enum(["music", "sfx", "tts"]);
+
+export const AudioGenProviderSchema = z.enum([
+  "cloud",
+  "suno",
+  "elevenlabs",
+  "fal",
+]);
+
+export const AudioProviderRoutingConfigSchema = z
+  .object({
+    default: AudioGenProviderSchema.optional(),
+    music: AudioGenProviderSchema.optional(),
+    sfx: AudioGenProviderSchema.optional(),
+    tts: AudioGenProviderSchema.optional(),
+  })
+  .strict()
+  .optional();
 
 export const AudioSunoConfigSchema = z
   .object({
@@ -688,21 +705,68 @@ export const AudioSunoConfigSchema = z
   .strict()
   .optional();
 
-export const AudioElevenlabsSfxConfigSchema = z
+export const AudioFalConfigSchema = z
   .object({
     apiKey: z.string().optional(),
-    duration: z.number().min(0.5).max(22).optional(),
+    model: z.string().optional(),
+    baseUrl: z.string().optional(),
+    secondsStart: z.number().int().min(0).optional(),
+    secondsTotal: z.number().int().min(1).optional(),
+    steps: z.number().int().positive().optional(),
+    timeoutMs: z.number().int().min(1000).max(600000).optional(),
+    extraInput: z.record(z.string(), z.unknown()).optional(),
   })
   .strict()
   .optional();
+
+export const AudioElevenlabsVoiceSettingsSchema = z
+  .object({
+    stability: z.number().min(0).max(1).optional(),
+    similarityBoost: z.number().min(0).max(1).optional(),
+    style: z.number().min(0).max(1).optional(),
+    useSpeakerBoost: z.boolean().optional(),
+    speed: z.number().min(0.5).max(2).optional(),
+  })
+  .strict()
+  .optional();
+
+export const AudioElevenlabsConfigSchema = z
+  .object({
+    apiKey: z.string().optional(),
+    baseUrl: z.string().optional(),
+    modelId: z.string().optional(),
+    musicModelId: z.string().optional(),
+    sfxModelId: z.string().optional(),
+    ttsModelId: z.string().optional(),
+    voiceId: z.string().optional(),
+    outputFormat: z.string().optional(),
+    duration: z.number().min(0.5).max(600).optional(),
+    promptInfluence: z.number().min(0).max(1).optional(),
+    loop: z.boolean().optional(),
+    seed: z.number().int().min(0).max(4294967295).optional(),
+    languageCode: z.string().optional(),
+    applyTextNormalization: z.enum(["auto", "on", "off"]).optional(),
+    voiceSettings: AudioElevenlabsVoiceSettingsSchema,
+    signWithC2pa: z.boolean().optional(),
+    timeoutMs: z.number().int().min(1000).max(600000).optional(),
+  })
+  .strict()
+  .optional();
+
+export const AudioElevenlabsSfxConfigSchema = AudioElevenlabsConfigSchema;
 
 export const AudioGenConfigSchema = z
   .object({
     enabled: z.boolean().optional(),
     mode: MediaModeSchema.optional(),
     provider: AudioGenProviderSchema.optional(),
+    providers: AudioProviderRoutingConfigSchema,
+    defaultKind: AudioKindSchema.optional(),
+    audioKind: AudioKindSchema.optional(),
+    kind: AudioKindSchema.optional(),
     suno: AudioSunoConfigSchema,
-    elevenlabs: AudioElevenlabsSfxConfigSchema,
+    elevenlabs: AudioElevenlabsConfigSchema,
+    fal: AudioFalConfigSchema,
   })
   .strict()
   .optional();
@@ -779,6 +843,7 @@ export const VisionConfigSchema = z
 
 export const MediaConfigSchema = z
   .object({
+    preserveFilenames: z.boolean().optional(),
     image: ImageConfigSchema,
     video: VideoConfigSchema,
     audio: AudioGenConfigSchema,

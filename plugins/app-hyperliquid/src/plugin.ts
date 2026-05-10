@@ -1,13 +1,37 @@
 import type http from "node:http";
-import type { Plugin, Route } from "@elizaos/core";
+import type { Plugin, Route, RouteRequest, RouteResponse } from "@elizaos/core";
 import { handleHyperliquidRoute } from "./routes";
+
+function toHttpIncomingMessage(req: RouteRequest): http.IncomingMessage {
+  if (
+    typeof req !== "object" ||
+    req === null ||
+    typeof req.method !== "string" ||
+    typeof req.headers !== "object"
+  ) {
+    throw new TypeError("Hyperliquid routes require a Node HTTP request");
+  }
+  return req as unknown as http.IncomingMessage;
+}
+
+function toHttpServerResponse(res: RouteResponse): http.ServerResponse {
+  if (
+    typeof res !== "object" ||
+    res === null ||
+    typeof res.end !== "function" ||
+    typeof res.setHeader !== "function"
+  ) {
+    throw new TypeError("Hyperliquid routes require a Node HTTP response");
+  }
+  return res as unknown as http.ServerResponse;
+}
 
 function hyperliquidRouteHandler(
   pathname: string,
 ): NonNullable<Route["handler"]> {
   return async (req, res) => {
-    const httpReq = req as unknown as http.IncomingMessage;
-    const httpRes = res as unknown as http.ServerResponse;
+    const httpReq = toHttpIncomingMessage(req);
+    const httpRes = toHttpServerResponse(res);
     const method = (httpReq.method ?? "GET").toUpperCase();
     await handleHyperliquidRoute(httpReq, httpRes, pathname, method);
   };

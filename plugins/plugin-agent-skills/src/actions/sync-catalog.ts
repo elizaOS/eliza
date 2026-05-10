@@ -17,12 +17,18 @@ import { createAgentSkillsActionValidator } from "./validators";
 
 const SYNC_CATALOG_TIMEOUT_MS = 30_000;
 
-export const syncCatalogAction: Action = {
-	name: "SYNC_SKILL_CATALOG",
+export const syncCatalogAction = {
+	name: "SKILL",
 	contexts: ["automation", "settings", "connectors"],
 	contextGate: { anyOf: ["automation", "settings", "connectors"] },
 	roleGate: { minRole: "USER" },
-	similes: ["REFRESH_SKILLS", "UPDATE_CATALOG"],
+	similes: [
+		"SYNC_SKILL_CATALOG",
+		"REFRESH_SKILL_CATALOG",
+		"UPDATE_SKILL_CATALOG",
+		"RELOAD_SKILL_CATALOG",
+		"REFRESH_SKILLS",
+	],
 	description:
 		"Sync the skill catalog from the registry to discover new skills.",
 	descriptionCompressed: "Sync skill catalog from registry.",
@@ -84,11 +90,11 @@ export const syncCatalogAction: Action = {
 				name: "{{agentName}}",
 				content: {
 					text: "Skill catalog synced successfully.\n- Total skills: 150\n- New skills: 5",
-					actions: ["SYNC_SKILL_CATALOG"],
+					actions: ["SKILL"],
 				},
 			},
 		],
 	],
-};
+} satisfies Action;
 
 export default syncCatalogAction;

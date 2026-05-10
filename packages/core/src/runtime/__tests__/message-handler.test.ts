@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { HANDLE_RESPONSE_SCHEMA } from "../../actions/to-tool";
 import {
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
@@ -52,6 +53,31 @@ describe("v5 message handler routing", () => {
 		}
 	});
 
+	it("plans against 'general' when requiresTool=true and contexts is empty", () => {
+		// Stage 1's escape hatch: even when the model didn't pick any context,
+		// `requiresTool: true` forces planning so the planner can attempt a tool.
+		const output = {
+			processMessage: "RESPOND" as const,
+			thought: "Needs a tool.",
+			plan: { contexts: [], requiresTool: true },
+		};
+
+		const route = routeMessageHandlerOutput(output);
+		expect(route.type).toBe("planning_needed");
+		if (route.type === "planning_needed") {
+			expect(route.contexts).toEqual(["general"]);
+		}
+	});
+
+	it("preserves requiresTool through parsing", () => {
+		const parsed = parseMessageHandlerOutput(`{
+  "processMessage": "RESPOND",
+  "thought": "Tool needed.",
+  "plan": { "contexts": ["general"], "requiresTool": true }
+}`);
+		expect(parsed?.plan?.requiresTool).toBe(true);
+	});
+
 	it("strips 'simple' from a mixed selection before planning", () => {
 		const output = {
 			processMessage: "RESPOND" as const,
@@ -72,13 +98,38 @@ describe("v5 message handler routing", () => {
 		const parsed = parseMessageHandlerOutput(`{
   "processMessage": "RESPOND",
   "thought": "Direct.",
-  "plan": { "contexts": ["simple"], "reply": "Done." }
+  "plan": { "contexts": ["simple"], "reply": "Done.", "requiresTool": false }
 }`);
 		expect(parsed).toMatchObject({
 			processMessage: "RESPOND",
 			thought: "Direct.",
-			plan: { contexts: ["simple"], reply: "Done." },
+			plan: { contexts: ["simple"], reply: "Done.", requiresTool: false },
 		});
+	});
+
+	it("keeps requiresTool optional in the Stage 1 tool schema", () => {
+		const planSchema = HANDLE_RESPONSE_SCHEMA.properties?.plan as {
+			required?: string[];
+		};
+
+		expect(planSchema.required).toEqual(["contexts"]);
+	});
+
+	it("plans against general when Stage 1 marks an otherwise simple route as tool-required", () => {
+		const output = {
+			processMessage: "RESPOND" as const,
+			action: "RESPOND" as const,
+			thought: "Needs a tool.",
+			plan: { contexts: [SIMPLE_CONTEXT_ID], requiresTool: true },
+			contexts: [SIMPLE_CONTEXT_ID],
+		};
+
+		const route = routeMessageHandlerOutput(output);
+
+		expect(route.type).toBe("planning_needed");
+		if (route.type === "planning_needed") {
+			expect(route.contexts).toEqual(["general"]);
+		}
 	});
 
 	it("coerces legacy simple:true with empty contexts to ['simple']", () => {
@@ -110,5 +161,35 @@ describe("v5 message handler routing", () => {
   "contexts": ["email"]
 }`);
 		expect(parsed?.plan.contexts).toEqual(["email"]);
+	});
+
+	it("parses extract.facts and extract.relationships when present", () => {
+		const parsed = parseMessageHandlerOutput(`{
+  "processMessage": "RESPOND",
+  "thought": "Capturing user fact.",
+  "plan": { "contexts": ["memory"] },
+  "extract": {
+    "facts": ["the user's birthday is 1990-03-05", "  ", ""],
+    "relationships": [
+      { "subject": "user", "predicate": "works_with", "object": "Alice" },
+      { "subject": "user", "predicate": "", "object": "Bob" }
+    ]
+  }
+}`);
+		expect(parsed?.extract?.facts).toEqual([
+			"the user's birthday is 1990-03-05",
+		]);
+		expect(parsed?.extract?.relationships).toEqual([
+			{ subject: "user", predicate: "works_with", object: "Alice" },
+		]);
+	});
+
+	it("omits extract when no facts or relationships were emitted", () => {
+		const parsed = parseMessageHandlerOutput(`{
+  "processMessage": "RESPOND",
+  "thought": "No durable info.",
+  "plan": { "contexts": ["simple"], "reply": "hi" }
+}`);
+		expect(parsed?.extract).toBeUndefined();
 	});
 });

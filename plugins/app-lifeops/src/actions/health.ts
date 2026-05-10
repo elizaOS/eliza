@@ -21,17 +21,15 @@ import type {
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/index.js";
-import type { HealthDataPoint } from "../lifeops/health-bridge.js";
+import type { HealthDataPoint } from "@elizaos/plugin-health";
 import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
-import {
-  hasLifeOpsAccess,
-  runLifeOpsJsonModel,
-} from "./lifeops-google-helpers.js";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
+import { runLifeOpsJsonModel } from "../lifeops/google/format-helpers.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
-} from "./lifeops-grounded-reply.js";
+} from "../lifeops/voice/grounded-reply.js";
 
 type Subaction = "today" | "trend" | "by_metric" | "status";
 
@@ -289,12 +287,21 @@ export const healthAction: Action = {
     "ACTIVITY_METRICS",
   ],
   description:
-    "Query health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura — sleep " +
-    "(duration, quality, stages), steps, heart rate, workouts, calories, and " +
-    "other body/activity metrics. Subactions: today, trend, by_metric, status.",
+    "Read health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura: sleep, steps, heart rate, workouts, calories, distance. Subactions: today, trend, by_metric, status. Read-only — never writes.",
   descriptionCompressed:
-    "health/fitness telemetry HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today | trend(days) | by_metric(steps heart-rate sleep calories distance workouts) | status",
-  contexts: ["health", "tasks", "calendar"],
+    "read health/fitness telemetry; subactions today|trend|by_metric|status; metrics steps|heart-rate|sleep|calories|distance|workouts; read-only",
+  routingHint:
+    "health/wearable reads (\"step count\", \"sleep last night\", heart rate, workouts) -> HEALTH; never answer from provider summaries or REPLY",
+  // See `12-real-root-cause.md` — "general" widening so HEALTH stays
+  // retrievable when the messageHandler routes wearable / sleep / steps
+  // questions through the conversational frame.
+  tags: [
+    "domain:health",
+    "capability:read",
+    "surface:remote-api",
+    "cost:cheap",
+  ],
+  contexts: ["general", "health", "tasks", "calendar"],
   roleGate: { minRole: "OWNER" },
   validate: async () => true,
   handler: async (
@@ -644,8 +651,14 @@ export const healthAction: Action = {
     {
       name: "subaction",
       description:
-        "Which health query to run: today, trend, by_metric, status.",
-      schema: { type: "string" as const },
+        "Which health query to run: today (default daily summary), trend (multi-day), by_metric (single metric), status (backend connectivity).",
+      descriptionCompressed:
+        "health query: today | trend | by_metric | status",
+      schema: {
+        type: "string" as const,
+        enum: [...HEALTH_SUBACTIONS],
+      },
+      examples: ["today", "trend", "by_metric", "status"],
     },
     {
       name: "intent",
@@ -658,17 +671,27 @@ export const healthAction: Action = {
       name: "metric",
       description:
         "Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
-      schema: { type: "string" as const },
+      descriptionCompressed:
+        "by_metric: steps|heart_rate|sleep_hours|calories|distance_meters|active_minutes",
+      schema: {
+        type: "string" as const,
+        enum: [...HEALTH_METRICS],
+      },
+      examples: ["steps", "sleep_hours", "heart_rate"],
     },
     {
       name: "date",
       description: "YYYY-MM-DD for single-day queries.",
+      descriptionCompressed: "YYYY-MM-DD single-day",
       schema: { type: "string" as const },
+      examples: ["2026-05-10"],
     },
     {
       name: "days",
       description: "Window size for trend and by_metric queries.",
-      schema: { type: "number" as const },
+      descriptionCompressed: "window days trend|by_metric",
+      schema: { type: "number" as const, minimum: 1, maximum: 365 },
+      examples: [1, 7, 30],
     },
   ],
   examples: [

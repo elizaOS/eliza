@@ -85,7 +85,7 @@ app.put("/", async (c) => {
       return c.json({ success: false, error: "Failed to update character" }, 500);
     }
 
-    // TODO(cache): /dashboard, /dashboard/my-agents, /dashboard/build revalidation
+    // TODO(cache): /dashboard and /dashboard/my-agents revalidation
     // dropped — no Workers-side equivalent of next/cache revalidatePath.
 
     const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";

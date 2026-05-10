@@ -1,7 +1,5 @@
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { messageOp } from "./actions/messageOp";
-import readRecentMessages from "./actions/readRecentMessages";
-import { signalContactsProvider, signalGroupsProvider } from "./providers";
+import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import { createSignalConnectorAccountProvider } from "./connector-account-provider";
 
 // Service
 import { DEFAULT_SIGNAL_CLI_PATH, SignalService } from "./service";
@@ -11,15 +9,38 @@ import { signalSetupRoutes } from "./setup-routes";
 
 // Types
 import { normalizeE164 } from "./types";
+import { SignalWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const signalPlugin: Plugin = {
   name: "signal",
   description: "Signal messaging integration plugin for ElizaOS with end-to-end encryption",
-  services: [SignalService],
-  actions: [messageOp, readRecentMessages],
-  providers: [signalContactsProvider, signalGroupsProvider],
+  services: [SignalService, SignalWorkflowCredentialProvider],
+  actions: [],
+  providers: [],
   routes: signalSetupRoutes,
+  // Self-declared auto-enable: activate when the "signal" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["signal"],
+  },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    // Register the Signal provider with the ConnectorAccountManager so the
+    // HTTP CRUD surface (packages/agent/src/api/connector-account-routes.ts)
+    // can list, create, patch, and delete Signal accounts.
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createSignalConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:signal",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Signal provider with ConnectorAccountManager"
+      );
+    }
+
     const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;
     const httpUrl = runtime.getSetting("SIGNAL_HTTP_URL") as string;
     const cliPath = runtime.getSetting("SIGNAL_CLI_PATH") as string;
@@ -99,19 +120,22 @@ export {
   type SignalMultiAccountConfig,
   type SignalReactionNotificationMode,
 } from "./accounts";
-// Export actions
-export { messageOp, SIGNAL_MESSAGE_OP_ACTION } from "./actions/messageOp";
-export { readRecentMessages } from "./actions/readRecentMessages";
-// Export providers
-export { signalContactsProvider, signalGroupsProvider } from "./providers";
 // Channel configuration types
 export type {
   SignalActionConfig,
   SignalConfig,
   SignalReactionLevel,
 } from "./config";
+// ConnectorAccountManager provider exports
+export {
+  createSignalConnectorAccountProvider,
+  SIGNAL_PROVIDER_ID,
+} from "./connector-account-provider";
 // Pairing service (device linking via QR code / signal-cli)
 export {
+  classifySignalPairingErrorStatus,
+  extractSignalCliProvisioningUrl,
+  parseSignalCliAccountsOutput,
   type SignalPairingEvent,
   type SignalPairingOptions,
   SignalPairingSession,

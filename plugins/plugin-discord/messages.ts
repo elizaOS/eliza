@@ -5,15 +5,17 @@ import {
 	ContentType,
 	checkPairingAllowed,
 	createUniqueUuid,
+	type EventPayload,
 	EventType,
-	type FetchedKnowledgeUrl,
-	fetchKnowledgeFromUrl,
+	type FetchedDocumentUrl as FetchedKnowledgeUrl,
+	fetchDocumentFromUrl,
 	type HandlerCallback,
 	type IAgentRuntime,
 	isInAllowlist,
 	lifeOpsPassiveConnectorsEnabled,
 	type Media,
 	type Memory,
+	MemoryType,
 	type Service,
 	ServiceType,
 	stringToUuid,
@@ -27,6 +29,7 @@ import {
 	type Message as DiscordMessage,
 	type TextChannel,
 } from "discord.js";
+import { isDiscordUserAddressed } from "./addressing";
 import { AttachmentManager } from "./attachments";
 // See service.ts for detailed documentation on Discord ID handling.
 // Key point: Discord snowflake IDs (e.g., "1253563208833433701") are NOT valid UUIDs.
@@ -36,7 +39,10 @@ import { createDraftStreamController } from "./draft-stream";
 import { getDiscordSettings } from "./environment";
 import { buildDiscordWorldMetadata } from "./identity";
 import { formatInboundEnvelope } from "./inbound-envelope";
-import { appendCoalescedDiscordMetadata } from "./message-coalesce";
+import {
+	appendCoalescedDiscordMetadata,
+	type DiscordMessageWithCoalescedMetadata,
+} from "./message-coalesce";
 import { stripReasoningTags } from "./reasoning-tags";
 import {
 	applyDiscordStalenessGuard,
@@ -49,7 +55,13 @@ import {
 	type StatusReactionScope,
 	shouldShowStatusReaction,
 } from "./status-reactions";
-import type { DiscordSettings, IDiscordService } from "./types";
+import {
+	DiscordEventTypes,
+	type DiscordSettings,
+	type IDiscordService,
+	type JsonObject,
+	type JsonValue,
+} from "./types";
 import { createTypingController } from "./typing";
 import {
 	canSendMessage,
@@ -75,30 +87,33 @@ export function resolveGenerationTimeoutMs(
 	return parsed > 0 ? Math.max(30_000, parsed) : null;
 }
 
-function escapeRegex(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function isJsonValue(value: unknown): value is JsonValue {
+	if (
+		value === null ||
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return true;
+	}
+	if (Array.isArray(value)) {
+		return value.every(isJsonValue);
+	}
+	if (typeof value === "object" && value !== null) {
+		return Object.values(value).every(isJsonValue);
+	}
+	return false;
 }
 
-function textMentionsAnyName(
-	text: string | undefined,
-	names: Array<string | null | undefined>,
-): boolean {
-	if (!text) {
-		return false;
-	}
-
-	return names.some((name) => {
-		const candidate = name?.trim();
-		if (!candidate) {
-			return false;
+function compactJsonObject(record: Record<string, unknown>): JsonObject {
+	const json: JsonObject = {};
+	for (const [key, value] of Object.entries(record)) {
+		if (value === undefined) continue;
+		if (isJsonValue(value)) {
+			json[key] = value;
 		}
-
-		const pattern = new RegExp(
-			`(^|[^\\p{L}\\p{N}])${escapeRegex(candidate)}(?=$|[^\\p{L}\\p{N}])`,
-			"iu",
-		);
-		return pattern.test(text);
-	});
+	}
+	return json;
 }
 
 function normalizeReplyToMode(
@@ -109,6 +124,13 @@ function normalizeReplyToMode(
 	}
 
 	return "first";
+}
+
+function getAddressingContent(message: DiscordMessage): string {
+	return (
+		(message as DiscordMessageWithCoalescedMetadata)
+			.__discordAddressingContent ?? message.content
+	);
 }
 
 function fetchedUrlToAttachment(
@@ -192,6 +214,7 @@ export class MessageManager {
 	private getChannelType: (channel: Channel) => Promise<ChannelType>;
 	private discordSettings: DiscordSettings;
 	private discordService: IDiscordService;
+	private accountId: string;
 	private statusReactionScope: StatusReactionScope;
 	private envelopeEnabled: boolean;
 	private draftStreamingEnabled: boolean;
@@ -221,8 +244,10 @@ export class MessageManager {
 		this.attachmentManager = new AttachmentManager(this.runtime);
 		this.getChannelType = discordService.getChannelType;
 		this.discordService = discordService;
+		this.accountId = discordService.accountId ?? "default";
 		// Load Discord settings with proper priority (env vars > character settings > defaults)
-		this.discordSettings = getDiscordSettings(this.runtime);
+		this.discordSettings =
+			discordService.discordSettings ?? getDiscordSettings(this.runtime);
 		const reactionScopeSetting = this.runtime.getSetting(
 			"DISCORD_STATUS_REACTIONS",
 		) as string | undefined;
@@ -459,12 +484,18 @@ export class MessageManager {
 			}
 		}
 
-		const isBotMentioned = !!(
+		const isBotPlatformMentioned = !!(
 			clientUser?.id && message.mentions.users?.has(clientUser.id)
 		);
 		const isReplyToBot =
 			!!message.reference?.messageId &&
 			message.mentions.repliedUser?.id === clientUser?.id;
+		const isBotAddressed = isDiscordUserAddressed({
+			text: getAddressingContent(message),
+			userId: clientUser?.id,
+			hasMessageReference: Boolean(message.reference?.messageId),
+			repliedUserId: message.mentions.repliedUser?.id,
+		});
 		const mentionedOtherUsers = message.mentions.users
 			? Array.from(message.mentions.users.values()).some(
 					(user) => user.id !== clientUser?.id && user.id !== message.author.id,
@@ -481,10 +512,8 @@ export class MessageManager {
 			this.discordSettings.shouldRespondOnlyToMentions === true;
 		const replyToMode = normalizeReplyToMode(this.discordSettings.replyToMode);
 		const outboundReplyToMessageId =
-			!isDM && replyToMode !== "off" && (isBotMentioned || isReplyToBot)
-				? message.id
-				: undefined;
-		const strictModeShouldProcess = isDM || isBotMentioned || isReplyToBot;
+			!isDM && replyToMode !== "off" && isBotAddressed ? message.id : undefined;
+		const strictModeShouldProcess = isDM || isBotAddressed;
 
 		const userName = message.author.bot
 			? `${message.author.username}#${message.author.discriminator}`
@@ -553,21 +582,8 @@ export class MessageManager {
 			// Users often mention a teammate and then ask the bot by name in the
 			// same message. Only short-circuit these messages when the bot is not
 			// also clearly addressed.
-			const explicitlyAddressesBotByName = textMentionsAnyName(
-				processedContent,
-				[
-					this.runtime.character.name,
-					this.runtime.character.username,
-					clientUser?.globalName,
-					clientUser?.username,
-				],
-			);
 			const ignoresOtherTarget =
-				!isDM &&
-				!isBotMentioned &&
-				!isReplyToBot &&
-				!explicitlyAddressesBotByName &&
-				(mentionedOtherUsers || isReplyToOtherUser);
+				!isDM && !isBotAddressed && (mentionedOtherUsers || isReplyToOtherUser);
 
 			// Use the service's buildMemoryFromMessage method with pre-processed content
 			const newMessage = await this.discordService.buildMemoryFromMessage(
@@ -577,42 +593,53 @@ export class MessageManager {
 					processedAttachments: attachments,
 					extraContent: {
 						mentionContext: {
-							isMention: isBotMentioned,
+							isMention: isBotPlatformMentioned && isBotAddressed,
 							isReply: isReplyToBot,
 							isThread: isInThread,
-							mentionType: isBotMentioned
-								? "platform_mention"
-								: isReplyToBot
-									? "reply"
-									: isInThread
-										? "thread"
-										: "none",
+							mentionType:
+								isBotPlatformMentioned && isBotAddressed
+									? "platform_mention"
+									: isReplyToBot
+										? "reply"
+										: isInThread
+											? "thread"
+											: "none",
 						},
 					},
-					extraMetadata: appendCoalescedDiscordMetadata(message, {
-						// Reply attribution for cross-agent filtering
-						// WHY: When user replies to another bot's message, we need to know
-						// so other agents can ignore it (only the replied-to agent should respond)
-						replyToAuthor: message.mentions.repliedUser
-							? {
-									id: message.mentions.repliedUser.id,
-									displayName:
-										message.mentions.repliedUser.globalName ??
-										message.mentions.repliedUser.username,
-									username: message.mentions.repliedUser.username,
-									isBot: message.mentions.repliedUser.bot,
-								}
-							: undefined,
-						replyToMessageId: message.reference?.messageId
-							? createUniqueUuid(this.runtime, message.reference.messageId)
-							: undefined,
-						replyToExternalMessageId: message.reference?.messageId,
-						replyToSenderId: message.mentions.repliedUser?.id,
-						replyToSenderName:
-							message.mentions.repliedUser?.globalName ??
-							message.mentions.repliedUser?.username,
-						replyToSenderUserName: message.mentions.repliedUser?.username,
-					}),
+					extraMetadata: compactJsonObject(
+						appendCoalescedDiscordMetadata(message, {
+							// Reply attribution for cross-agent filtering
+							// WHY: When user replies to another bot's message, we need to know
+							// so other agents can ignore it (only the replied-to agent should respond)
+							...(message.mentions.repliedUser
+								? {
+										replyToAuthor: {
+											id: message.mentions.repliedUser.id,
+											displayName:
+												message.mentions.repliedUser.globalName ??
+												message.mentions.repliedUser.username,
+											username: message.mentions.repliedUser.username,
+											isBot: message.mentions.repliedUser.bot,
+										},
+										replyToSenderId: message.mentions.repliedUser.id,
+										replyToSenderName:
+											message.mentions.repliedUser.globalName ??
+											message.mentions.repliedUser.username,
+										replyToSenderUserName:
+											message.mentions.repliedUser.username,
+									}
+								: {}),
+							...(message.reference?.messageId
+								? {
+										replyToMessageId: createUniqueUuid(
+											this.runtime,
+											message.reference.messageId,
+										),
+										replyToExternalMessageId: message.reference.messageId,
+									}
+								: {}),
+						}),
+					),
 				},
 			);
 
@@ -644,11 +671,14 @@ export class MessageManager {
 				worldId: createUniqueUuid(this.runtime, messageServerId ?? roomId),
 				worldName: message.guild?.name,
 				// Preserve the raw Discord user id in source metadata for role and allowlist checks.
-				userId: message.author.id as unknown as UUID,
-				metadata: buildDiscordWorldMetadata(
-					this.runtime,
-					message.guild?.ownerId ?? undefined,
-				),
+				userId: message.author.id as UUID,
+				metadata: {
+					...buildDiscordWorldMetadata(
+						this.runtime,
+						message.guild?.ownerId ?? undefined,
+					),
+					accountId: this.accountId,
+				},
 			});
 
 			if (
@@ -1021,6 +1051,10 @@ export class MessageManager {
 										: undefined,
 							},
 							roomId,
+							metadata: {
+								type: MemoryType.MESSAGE,
+								accountId: this.accountId,
+							},
 							createdAt: m.createdTimestamp,
 						};
 						memories.push(memory);
@@ -1087,12 +1121,24 @@ export class MessageManager {
 							{ src: "plugin:discord", agentId: this.runtime.agentId },
 							"Using event-based message handling",
 						);
-						await this.runtime.emitEvent([EventType.MESSAGE_RECEIVED], {
+						const payload: EventPayload & {
+							message: Memory;
+							callback: HandlerCallback;
+							accountId: string;
+						} = {
 							runtime: this.runtime,
 							message: newMessage,
 							callback,
 							source: "discord",
-						});
+							accountId: this.accountId,
+						};
+						await this.runtime.emitEvent(
+							[
+								DiscordEventTypes.MESSAGE_RECEIVED,
+								EventType.MESSAGE_RECEIVED,
+							] as string[],
+							payload,
+						);
 					}
 				})();
 
@@ -1290,7 +1336,7 @@ export class MessageManager {
 				}
 			} else {
 				try {
-					const fetched = await fetchKnowledgeFromUrl(url);
+					const fetched = await fetchDocumentFromUrl(url);
 					attachments.push(fetchedUrlToAttachment(url, fetched));
 					continue;
 				} catch (error) {

@@ -4,9 +4,9 @@
  * Currently exposes:
  *   - `eliza auth reset` — loopback-only recovery path.
  *
- * The reset command revokes every active session and immediately rejects
- * the legacy static API token. It does NOT touch identities or password
- * hashes — the operator can still log in afterwards via password or SSO.
+ * The reset command revokes every active session. It does NOT touch
+ * identities or password hashes — the operator can still log in afterwards
+ * via password or SSO.
  *
  * Hard rules:
  *   - Refuse to run when `ELIZA_API_BIND` resolves to a non-loopback host.
@@ -21,24 +21,31 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { isLoopbackBindHost, resolveApiBindHost } from "@elizaos/shared";
+import { isLoopbackBindHost, resolveApiBindHost, theme } from "@elizaos/shared";
 import type { Command } from "commander";
-import { theme } from "../../terminal/theme";
 import { runCommandWithRuntime } from "../cli-utils";
 
 const defaultRuntime = { error: console.error, exit: process.exit };
 
 const RESET_PROOF_FILENAME = "RESET_PROOF.txt";
 
-/** Resolve the eliza state dir without importing service modules. */
+/**
+ * Resolve the eliza state dir without importing service modules.
+ * Mirrors the canonical `MILADY_STATE_DIR` > `ELIZA_STATE_DIR` >
+ * `~/.${ELIZA_NAMESPACE ?? "eliza"}` precedence in @elizaos/core's
+ * `resolveStateDir`.
+ */
 function resolveElizaStateDir(): string {
-  const explicit = process.env.ELIZA_STATE_DIR?.trim();
+  const explicit =
+    process.env.MILADY_STATE_DIR?.trim() ||
+    process.env.ELIZA_STATE_DIR?.trim();
   if (explicit) return path.resolve(explicit);
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
   const home =
     process.env.HOME?.trim() ||
     process.env.USERPROFILE?.trim() ||
     process.cwd();
-  return path.join(home, ".eliza");
+  return path.join(home, `.${namespace}`);
 }
 
 interface RuntimeAdapter {
@@ -57,7 +64,9 @@ async function openAuthStoreFromCli(): Promise<{
   store: import("../../services/auth-store").AuthStore;
   close: () => Promise<void>;
 }> {
-  const sql = (await import("@elizaos/plugin-sql")) as unknown as {
+  const sql = (await import(
+    "@elizaos/plugin-sql"
+  )) as typeof import("@elizaos/plugin-sql") & {
     createDatabaseAdapter: (
       cfg: { dataDir: string },
       id: `${string}-${string}-${string}-${string}-${string}`,
@@ -79,7 +88,7 @@ async function openAuthStoreFromCli(): Promise<{
   const adapter = createDatabaseAdapter(
     { dataDir },
     "00000000-0000-0000-0000-000000000001" as `${string}-${string}-${string}-${string}-${string}`,
-  ) as unknown as RuntimeAdapter;
+  ) as RuntimeAdapter;
   if (typeof adapter.initialize === "function") {
     await adapter.initialize();
   } else if (typeof adapter.init === "function") {
@@ -88,7 +97,7 @@ async function openAuthStoreFromCli(): Promise<{
   if (!adapter.db) {
     throw new Error("CLI auth: adapter has no .db handle");
   }
-  const db = adapter.db as import("@elizaos/plugin-sql/types").DrizzleDatabase;
+  const db = adapter.db as import("@elizaos/plugin-sql").DrizzleDatabase;
   const migrations = new DatabaseMigrationService();
   await migrations.initializeWithDatabase(db);
   migrations.discoverAndRegisterPluginSchemas([plugin]);
@@ -181,8 +190,9 @@ export async function runElizaAuthReset(
   const proofPath = path.join(stateDir, "auth", RESET_PROOF_FILENAME);
 
   log(theme.heading("Eliza auth reset"));
-  log(theme.muted("This revokes every active session and retires the legacy"));
-  log(theme.muted("static API token immediately. Identities and password"));
+  log(
+    theme.muted("This revokes every active session. Identities and password"),
+  );
   log(theme.muted("hashes are NOT touched — log in afterwards as usual."));
   log("");
   log("To prove filesystem access, write the following 32-byte hex token");
@@ -234,8 +244,7 @@ export async function runElizaAuthReset(
   for (const ident of owners) {
     revoked += await store.revokeAllSessionsForIdentity(ident.id, now);
   }
-  // Machines can have sessions too (legacy bearer scope, future machine
-  // tokens). Sweep them.
+  // Machines can have sessions too. Sweep them.
   const machines = await store.listIdentitiesByKind("machine");
   for (const ident of machines) {
     revoked += await store.revokeAllSessionsForIdentity(ident.id, now);
@@ -270,9 +279,7 @@ export function registerAuthCommand(program: Command) {
 
   auth
     .command("reset")
-    .description(
-      "Revoke all sessions and retire the legacy static token (loopback only)",
-    )
+    .description("Revoke all sessions (loopback only)")
     .action(async () => {
       await runCommandWithRuntime(defaultRuntime, async () => {
         const result = await runElizaAuthReset();

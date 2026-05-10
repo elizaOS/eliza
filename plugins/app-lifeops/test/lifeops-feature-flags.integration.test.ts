@@ -5,6 +5,7 @@ import {
   ALL_FEATURE_KEYS,
   BASE_FEATURE_DEFAULTS,
   CLOUD_LINKED_DEFAULT_ON,
+  isLifeOpsFeatureKey,
   resolveFeatureDefaults,
 } from "../src/lifeops/feature-flags.types.ts";
 import { executeRawSql } from "../src/lifeops/sql.ts";
@@ -33,7 +34,7 @@ function withMockCloudAuth(
       if (prop === "getService") {
         return <T extends Service>(serviceType: string): T | null => {
           if (serviceType === "CLOUD_AUTH") {
-            return mockAuth as unknown as T;
+            return mockAuth as T;
           }
           return original<T>(serviceType);
         };
@@ -62,6 +63,8 @@ describe("LifeOps feature flag schema integration", () => {
     const states = await service.list();
     expect(states).toHaveLength(ALL_FEATURE_KEYS.length);
     for (const state of states) {
+      expect(isLifeOpsFeatureKey(state.featureKey)).toBe(true);
+      if (!isLifeOpsFeatureKey(state.featureKey)) continue;
       expect(state.enabled).toBe(
         BASE_FEATURE_DEFAULTS[state.featureKey].enabled,
       );
@@ -99,7 +102,7 @@ describe("LifeOps feature flag schema integration", () => {
 
     const service = createFeatureFlagService(runtimeResult.runtime);
     await expect(service.list()).rejects.toThrow(
-      /unknown feature_key from db: made_up\.feature/,
+      /Unknown feature flag 'made_up\.feature'/,
     );
   });
 });

@@ -1,19 +1,17 @@
+import { DashboardLoadingState, PageHeaderProvider, ScrollArea } from "@elizaos/cloud-ui";
 import { Loader2 } from "lucide-react";
 import { Suspense, useCallback, useState } from "react";
 import { Navigate, Outlet } from "react-router-dom";
-import { DashboardLoadingState } from "@elizaos/cloud-ui/components/dashboard/route-placeholders";
 import { OnboardingOverlay } from "../onboarding/onboarding-overlay";
 import { OnboardingProvider } from "../onboarding/onboarding-provider";
-import { ScrollArea } from "@elizaos/cloud-ui/components/scroll-area";
 import Header from "./header";
-import { PageHeaderProvider } from "@elizaos/cloud-ui/primitives";
 import Sidebar from "./sidebar";
 
 export type DashboardShellProps = {
   authReady: boolean;
   /** When set, renders `<Navigate replace />` */
   loginRedirectTo?: string;
-  /** Chat/build — onboarding + outlet only */
+  /** Chat — onboarding + outlet only */
   minimalOutletChrome: boolean;
   headerAnonymous: boolean;
   headerAuthGraceActive: boolean;

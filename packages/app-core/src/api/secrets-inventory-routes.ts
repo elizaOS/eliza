@@ -51,7 +51,7 @@ import {
   writeRoutingConfig,
 } from "@elizaos/vault";
 import { sharedVault } from "../services/vault-mirror";
-import { ensureCompatSensitiveRouteAuthorized } from "./auth";
+import { ensureCompatSensitiveRouteAuthorized } from "./auth.ts";
 import { sendJson, sendJsonError } from "./response";
 
 // ── Public dispatcher ──────────────────────────────────────────────

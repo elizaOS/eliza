@@ -1,4 +1,4 @@
-import { Button, Skeleton } from "@elizaos/app-core";
+import { Button, Skeleton } from "@elizaos/ui";
 import { Minus, Package, Plus } from "lucide-react";
 import { useState } from "react";
 import type { ShopifyInventoryItem } from "./useShopifyDashboard";

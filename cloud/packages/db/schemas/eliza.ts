@@ -5,8 +5,7 @@
  * Provides database access to elizaOS tables.
  */
 
-import plugin from "@elizaos/plugin-sql";
-import { longTermMemories, memoryAccessLogs, sessionSummaries } from "./advanced-memory";
+import * as elizaSchema from "@elizaos/plugin-sql";
 
 /**
  * Re-exported elizaOS plugin-sql tables.
@@ -24,14 +23,11 @@ export const {
   logTable,
   cacheTable,
   worldTable,
-  serverAgentsTable,
+  messageServerAgentsTable,
   messageTable,
   messageServerTable,
   channelTable,
   channelParticipantsTable,
-} = (plugin as unknown as { schema: Record<string, any> }).schema as Record<string, any>;
+} = elizaSchema;
 
-/**
- * Re-exported elizaOS memory plugin tables.
- */
-export { longTermMemories, memoryAccessLogs, sessionSummaries };
+export const serverAgentsTable = messageServerAgentsTable;

@@ -1,0 +1,71 @@
+{
+  "name": "@elizaos/plugin-x402",
+  "version": "2.0.0-beta.1",
+  "description": "x402 micropayment middleware for elizaOS plugin HTTP routes",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git",
+    "directory": "plugins/plugin-x402"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "elizaos": {
+    "plugin": {
+      "capabilities": [
+        "payments",
+        "x402"
+      ]
+    }
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "x402",
+    "payments",
+    "micropayments",
+    "http-402"
+  ],
+  "scripts": {
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"Lint skipped\"",
+    "lint:check": "bun run lint"
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "drizzle-orm": "0.45.2",
+    "viem": "^2.48.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  }
+}

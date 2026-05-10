@@ -202,7 +202,7 @@ The `POST /api/training/jobs` endpoint launches a fine-tuning job:
   "datasetId": "dataset-abc123",
   "maxTrajectories": 500,
   "backend": "mlx",
-  "model": "llama-3.2-3b",
+  "model": "eliza-1-2b",
   "iterations": 100,
   "batchSize": 4,
   "learningRate": 0.0001
@@ -248,7 +248,7 @@ After training completes, the resulting model can be imported to Ollama for loca
 ```json
 {
   "modelName": "my-fine-tuned-model",
-  "baseModel": "llama-3.2-3b",
+  "baseModel": "eliza-1-2b",
   "ollamaUrl": "http://localhost:11434"
 }
 ```
@@ -467,7 +467,7 @@ curl -X POST http://localhost:31337/api/training/jobs \
   -d '{
     "datasetId": "dataset-abc123",
     "backend": "mlx",
-    "model": "llama-3.2-3b",
+    "model": "eliza-1-2b",
     "iterations": 100,
     "batchSize": 4,
     "learningRate": 0.0001
@@ -495,7 +495,7 @@ curl -X POST http://localhost:31337/api/training/models/model-abc123/import-olla
   -H "Content-Type: application/json" \
   -d '{
     "modelName": "my-fine-tuned-agent",
-    "baseModel": "llama-3.2-3b",
+    "baseModel": "eliza-1-2b",
     "ollamaUrl": "http://localhost:11434"
   }'
 ```

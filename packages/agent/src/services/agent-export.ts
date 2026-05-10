@@ -131,24 +131,50 @@ export interface ExportSizeEstimate {
 // Validation schema for the decrypted payload
 // ---------------------------------------------------------------------------
 
-// Records that must have an id field for import to work
-const IdRecord = z
-  .record(z.string(), z.unknown())
-  .and(z.object({ id: z.string() }));
-const IdRecordArray = z.array(IdRecord);
+function hasStringId(value: unknown): value is { id: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    typeof (value as { id?: unknown }).id === "string"
+  );
+}
+
+function typedIdRecordSchema<T>() {
+  return z.custom<T>((value): value is T => hasStringId(value), {
+    message: "Expected object with string id",
+  });
+}
+
+const EntitySchema = typedIdRecordSchema<Entity>();
+const MemorySchema = typedIdRecordSchema<Memory>();
+const ComponentSchema = typedIdRecordSchema<Component>();
+const RoomSchema = typedIdRecordSchema<Room>();
+const RelationshipSchema = typedIdRecordSchema<Relationship>();
+const WorldSchema = typedIdRecordSchema<World>();
+const TaskSchema = typedIdRecordSchema<Task>();
+
 // Logs don't need IDs (they're created fresh on import)
-const LooseRecordArray = z.array(z.record(z.string(), z.unknown()));
+const LogSchema = z.custom<Log>(
+  (value) =>
+    typeof value === "object" && value !== null && !Array.isArray(value),
+  { message: "Expected log object" },
+);
 
 const PayloadSchema = z.object({
   version: z.number().int().min(1),
   exportedAt: z.string(),
   sourceAgentId: z.string(),
-  agent: z.record(z.string(), z.unknown()),
+  agent: z.custom<Partial<Agent>>(
+    (value) =>
+      typeof value === "object" && value !== null && !Array.isArray(value),
+    { message: "Expected agent object" },
+  ),
   characterConfig: z.record(z.string(), z.unknown()).optional(),
-  entities: IdRecordArray,
-  memories: IdRecordArray,
-  components: IdRecordArray,
-  rooms: IdRecordArray,
+  entities: z.array(EntitySchema),
+  memories: z.array(MemorySchema),
+  components: z.array(ComponentSchema),
+  rooms: z.array(RoomSchema),
   participants: z.array(
     z.object({
       entityId: z.string(),
@@ -156,11 +182,38 @@ const PayloadSchema = z.object({
       userState: z.string().nullable(),
     }),
   ),
-  relationships: IdRecordArray,
-  worlds: IdRecordArray,
-  tasks: IdRecordArray,
-  logs: LooseRecordArray,
+  relationships: z.array(RelationshipSchema),
+  worlds: z.array(WorldSchema),
+  tasks: z.array(TaskSchema),
+  logs: z.array(LogSchema),
 });
+
+type ValidatedAgentExportPayload = z.infer<typeof PayloadSchema>;
+
+function toAgentExportPayload(
+  payload: ValidatedAgentExportPayload,
+): AgentExportPayload {
+  return {
+    version: payload.version,
+    exportedAt: payload.exportedAt,
+    sourceAgentId: payload.sourceAgentId,
+    agent: payload.agent,
+    characterConfig: payload.characterConfig,
+    entities: payload.entities,
+    memories: payload.memories,
+    components: payload.components,
+    rooms: payload.rooms,
+    participants: payload.participants.map((participant) => ({
+      entityId: participant.entityId,
+      roomId: participant.roomId,
+      userState: participant.userState ?? null,
+    })),
+    relationships: payload.relationships,
+    worlds: payload.worlds,
+    tasks: payload.tasks,
+    logs: payload.logs,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Crypto helpers
@@ -914,7 +967,7 @@ export async function importAgent(
     );
   }
 
-  const payload = parseResult.data as unknown as AgentExportPayload;
+  const payload = toAgentExportPayload(parseResult.data);
 
   if (payload.version > EXPORT_VERSION) {
     throw new AgentExportError(

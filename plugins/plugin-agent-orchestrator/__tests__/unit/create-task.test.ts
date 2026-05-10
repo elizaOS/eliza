@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createTaskAction } from "../../src/actions/create-task.js";
+// Post-consolidation: CREATE_AGENT_TASK is `TASKS { op: "create" }` (default op).
+import { createTaskAction } from "../../src/actions/tasks.js";
 import {
   callback,
   memory,
@@ -8,7 +9,7 @@ import {
   state,
 } from "../../src/test-utils/action-test-utils.js";
 
-describe("ACPX_CREATE_TASK", () => {
+describe("TASKS:create (legacy CREATE_AGENT_TASK)", () => {
   it("validates explicit payload and declines LifeOps", async () => {
     expect(
       await createTaskAction.validate(
@@ -33,6 +34,7 @@ describe("ACPX_CREATE_TASK", () => {
       state,
       {
         parameters: {
+          op: "create",
           task: "fix bug",
           agentType: "codex",
           workdir: "/tmp/nyx",
@@ -69,7 +71,7 @@ describe("ACPX_CREATE_TASK", () => {
           runtimeWith(undefined),
           memory(),
           state,
-          {},
+          { parameters: { op: "create" } },
           callback(),
         )
       )?.error,
@@ -83,7 +85,7 @@ describe("ACPX_CREATE_TASK", () => {
       runtimeWith(auth),
       memory({ task: "x" }),
       state,
-      {},
+      { parameters: { op: "create" } },
       callback(),
     );
     expect(authResult?.success).toBe(false);
@@ -104,7 +106,7 @@ describe("ACPX_CREATE_TASK", () => {
           runtimeWith(fail),
           memory({ task: "x" }),
           state,
-          {},
+          { parameters: { op: "create" } },
           callback(),
         )
       )?.success,

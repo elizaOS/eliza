@@ -2,10 +2,15 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ES2022",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "moduleResolution": "bundler",
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
     "forceConsistentCasingInFileNames": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
@@ -20,9 +25,12 @@
       "@elizaos/ui": ["./packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["./packages/ui/src/*"],
       "@elizaos/core": ["./packages/core/src/index.node.ts"],
+      "@elizaos/core/testing": ["./packages/core/src/testing/index.ts"],
       "@elizaos/core/*": ["./packages/core/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["./packages/shared/src/*"]
+      "@elizaos/shared/*": ["./packages/shared/src/*"],
+      "@elizaos/app-wallet": ["./plugins/app-wallet/src/index.ts"],
+      "@elizaos/app-wallet/*": ["./plugins/app-wallet/src/*"]
     }
   },
   "exclude": [
@@ -31,12 +39,7 @@
     "**/cypress/**",
     "**/*.cy.tsx",
     "**/*.cy.ts",
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "**/*.spec.ts",
-    "**/__tests__/**",
     "**/scripts/**",
-    "**/e2e/**",
     "examples/code/**",
     "examples/avatar/**",
     "examples/vrm/**",
@@ -54,7 +57,6 @@
     "plugins/plugin-sql/**",
     "plugins/plugin-minecraft/**",
     "plugins/plugin-linear/**",
-    "**/testing/**",
     "**/build.ts"
   ]
 }

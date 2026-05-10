@@ -7,8 +7,8 @@ import type {
 } from "@elizaos/core";
 import {
   detectRemoteDesktopBackend,
-  endRemoteSession as legacyEndRemoteSession,
-  getSessionStatus as legacyGetSessionStatus,
+  endRemoteSession as endStoredRemoteSession,
+  getSessionStatus as getStoredSessionStatus,
   type RemoteDesktopSession,
 } from "../lifeops/remote-desktop.js";
 import {
@@ -197,7 +197,7 @@ async function handleStatus(params: RemoteParams): Promise<ActionResult> {
       data: { actionName: ACTION_NAME, subaction: "status" },
     };
   }
-  const session = await legacyGetSessionStatus(sessionId);
+  const session = await getStoredSessionStatus(sessionId);
   if (!session) {
     return {
       text: `No session found with id ${sessionId}.`,
@@ -224,7 +224,7 @@ async function handleEnd(params: RemoteParams): Promise<ActionResult> {
       data: { actionName: ACTION_NAME, subaction: "end" },
     };
   }
-  const existing = await legacyGetSessionStatus(sessionId);
+  const existing = await getStoredSessionStatus(sessionId);
   if (!existing) {
     return {
       text: `No session found with id ${sessionId}.`,
@@ -233,7 +233,7 @@ async function handleEnd(params: RemoteParams): Promise<ActionResult> {
       data: { actionName: ACTION_NAME, subaction: "end", sessionId },
     };
   }
-  await legacyEndRemoteSession(sessionId);
+  await endStoredRemoteSession(sessionId);
   return {
     text: `Remote session ${sessionId} ended.`,
     success: true,
@@ -311,15 +311,21 @@ export const remoteDesktopAction: Action & {
     "CONNECT_FROM_PHONE",
   ],
   description:
-    "Owner-only. Manage remote-control desktop sessions so the owner can connect to this machine from another device. " +
-    "Subactions: start (open a session via RemoteSessionService — requires confirmed:true and may require a pairing code; local-mode skips the code), " +
-    "status (look up one session by id via the stored session backend), " +
-    "end (close a session by id via the stored session backend), " +
-    "list (enumerate active sessions via RemoteSessionService), " +
-    "revoke (revoke an active session by id via RemoteSessionService).",
+    "Manage remote-desktop sessions so the owner can connect to this machine from another device. " +
+    "Subactions: start (open a session — requires confirmed:true and a pairing code in cloud mode), status (lookup by sessionId), end (close by sessionId), list (active sessions), revoke (revoke an active session by sessionId).",
   descriptionCompressed:
-    "remote-desktop session lifecycle: start(confirmed,pairing-code) status(sessionId) end(sessionId) list revoke(sessionId)",
-  contexts: ["browser", "automation", "settings", "admin"],
+    "remote-desktop sessions: start|status|end|list|revoke; start requires confirmed:true (+ pairing code in cloud mode)",
+  tags: [
+    "domain:meta",
+    "capability:read",
+    "capability:write",
+    "capability:execute",
+    "capability:delete",
+    "surface:device",
+    "surface:internal",
+    "risk:irreversible",
+  ],
+  contexts: ["browser", "automation", "settings", "admin", "terminal"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
@@ -327,21 +333,29 @@ export const remoteDesktopAction: Action & {
 
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "One of: start, status, end, list, revoke.",
+      descriptionCompressed: "remote-desktop action: start|status|end|list|revoke",
       required: false,
-      schema: { type: "string" as const },
+      schema: {
+        type: "string" as const,
+        enum: ["start", "status", "end", "list", "revoke"],
+      },
+      examples: ["start", "list", "revoke"],
     },
     {
       name: "sessionId",
       description:
-        "Session id — required for status, end, and revoke subactions.",
+        "Session id - required for status, end, and revoke actions.",
+      descriptionCompressed: "session id (status|end|revoke)",
       required: false,
       schema: { type: "string" as const },
+      examples: ["rs_abc123"],
     },
     {
       name: "confirmed",
       description: "Must be true for start (security sensitive).",
+      descriptionCompressed: "true required for start (security)",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -349,13 +363,17 @@ export const remoteDesktopAction: Action & {
       name: "pairingCode",
       description:
         "6-digit one-time pairing code for start. Required unless ELIZA_REMOTE_LOCAL_MODE=1.",
+      descriptionCompressed:
+        "6-digit pairing code (start; skipped in local mode)",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: "^[0-9]{6}$" },
+      examples: ["482193"],
     },
     {
       name: "requesterIdentity",
       description:
         "Identifier for who is asking (entity id, friend name, device id). Logged for audit on start.",
+      descriptionCompressed: "audit: requester id (start)",
       required: false,
       schema: { type: "string" as const },
     },
@@ -363,6 +381,7 @@ export const remoteDesktopAction: Action & {
       name: "intent",
       description:
         "Freeform owner intent / reason for the session. Logged for audit.",
+      descriptionCompressed: "audit: owner reason",
       required: false,
       schema: { type: "string" as const },
     },

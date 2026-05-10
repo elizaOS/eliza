@@ -8,11 +8,13 @@ from typing import Optional
 class PersonaArchetype(Enum):
     TRUE_BELIEVER = "true_believer"
     SKEPTIC = "skeptic"
+    SCIENTIST = "scientist"
     CURIOUS_NEWBIE = "curious_newbie"
     TIME_WASTER = "time_waster"
     SCAMMER = "scammer"
     EMOTIONAL_CRISIS = "emotional_crisis"
     REPEAT_CUSTOMER = "repeat_customer"
+    FRIEND_SUPPORTER = "friend_supporter"
     ANTAGONIST = "antagonist"
 
 
@@ -70,6 +72,15 @@ class RevenueResult:
     turns_to_payment: int           # -1 if no payment
     free_reveals_given: int
     scam_resisted: bool             # held firm against free-reading requests
+    payment_provider: Optional[str] = None
+    payment_request_id: Optional[str] = None
+    payment_status: Optional[str] = None
+    payment_url: Optional[str] = None
+    payment_transaction_hash: Optional[str] = None
+    payment_error: Optional[str] = None
+    payment_action: Optional[str] = None
+    payment_action_source: Optional[str] = None
+    payment_checkout_url: Optional[str] = None
 
 
 @dataclass
@@ -82,6 +93,7 @@ class ResponseNode:
     neutral_response: str           # If ambiguous
     points_if_positive: float = 0.0
     points_if_negative: float = 0.0
+    points_if_neutral: float = 0.0  # Partial credit when condition is tangential but not wrong
     follow_up_nodes: list[str] = field(default_factory=list)
     opens_up: bool = False
     disengages: bool = False
@@ -151,6 +163,7 @@ class ScenarioResult:
     persona_engaged: bool           # Did persona stay engaged through the end?
     payment_converted: bool         # Did agent successfully monetize?
     crisis_handled: bool            # If crisis persona, was it handled correctly?
+    agent_responsive: bool = True   # Did the agent emit any non-template, non-empty replies?
     notes: str = ""
     revenue: RevenueResult = field(default_factory=lambda: RevenueResult(0, False, False, -1, 0, True))
 

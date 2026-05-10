@@ -219,14 +219,33 @@ This is a minimal plugin. The `Plugin` interface also supports `evaluators`, `ro
 
 ```typescript
 // src/index.test.ts
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
+import {
+  AgentRuntime,
+  createCharacter,
+  createMessageMemory,
+  InMemoryDatabaseAdapter,
+  stringToUuid,
+  type IAgentRuntime,
+  type Memory,
+} from "@elizaos/core";
 import weatherPlugin from "./index";
 
-const mockRuntime = {
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-} as any;
+function createRuntime(): IAgentRuntime {
+  return new AgentRuntime({
+    agentId: stringToUuid("weather-test-agent"),
+    character: createCharacter({ name: "Weather Test" }),
+    adapter: new InMemoryDatabaseAdapter(),
+    plugins: [],
+    logLevel: "error",
+  });
+}
 
-const mockMessage = { content: { text: "What is the weather in Paris?" } } as any;
+const mockMessage: Memory = createMessageMemory({
+  entityId: stringToUuid("weather-test-user"),
+  roomId: stringToUuid("weather-test-room"),
+  content: { text: "What is the weather in Paris?" },
+});
 
 describe("weather-plugin", () => {
   it("exports a valid plugin", () => {
@@ -238,14 +257,14 @@ describe("weather-plugin", () => {
   it("CHECK_WEATHER action fails validation without API key", async () => {
     delete process.env.WEATHER_API_KEY;
     const action = weatherPlugin.actions![0];
-    const valid = await action.validate(mockRuntime, mockMessage, undefined as any);
+    const valid = await action.validate(createRuntime(), mockMessage);
     expect(valid).toBe(false);
   });
 
   it("CHECK_WEATHER action passes validation with API key", async () => {
     process.env.WEATHER_API_KEY = "test-key";
     const action = weatherPlugin.actions![0];
-    const valid = await action.validate(mockRuntime, mockMessage, undefined as any);
+    const valid = await action.validate(createRuntime(), mockMessage);
     expect(valid).toBe(true);
     delete process.env.WEATHER_API_KEY;
   });

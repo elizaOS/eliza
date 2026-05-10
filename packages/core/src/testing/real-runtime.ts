@@ -20,9 +20,14 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Plugin } from "@elizaos/core";
-import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
-import { configureLocalEmbeddingPlugin } from "../../../agent/src/runtime/eliza";
+import { createCharacter } from "../character";
+import { logger } from "../logger";
+import { AgentRuntime } from "../runtime";
+import type { Plugin } from "../types";
+
+/** Workspace plugins may resolve `@elizaos/core` from npm while this package uses source types. */
+type RegisterablePlugin = Parameters<AgentRuntime["registerPlugin"]>[0];
+
 import {
 	type LiveProviderConfig,
 	type LiveProviderName,
@@ -76,14 +81,28 @@ type TrajectoryWriteService = {
 	writeQueues?: Map<string, Promise<void>>;
 };
 
+type TrajectoryStorageModule = {
+	flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>;
+};
+
+type AgentRuntimeModule = {
+	configureLocalEmbeddingPlugin?: (plugin: Plugin) => void;
+};
+
+type RuntimePluginModule = {
+	default?: Plugin;
+	elizaPlugin?: Plugin;
+};
+
 async function flushPendingTrajectoryWrites(
 	runtime: AgentRuntime,
 ): Promise<void> {
 	try {
-		const { flushTrajectoryWrites } = await import(
-			"../../../agent/src/runtime/trajectory-storage"
-		);
-		await flushTrajectoryWrites(runtime);
+		const modulePath = "../../../agent/src/runtime/trajectory-storage";
+		const { flushTrajectoryWrites } = (await import(
+			modulePath
+		)) as TrajectoryStorageModule;
+		await flushTrajectoryWrites?.(runtime);
 	} catch {
 		// Best effort only. Some test runtimes do not register this helper.
 	}
@@ -144,20 +163,28 @@ export async function createRealTestRuntime(
 	});
 
 	// Always register plugin-sql for PGLite database
-	const { default: pluginSql } = await import("@elizaos/plugin-sql");
-	await runtime.registerPlugin(pluginSql);
+	const pluginSqlModule = (await import(
+		["@elizaos", "plugin-sql"].join("/")
+	)) as RuntimePluginModule;
+	const pluginSql = pluginSqlModule.default ?? pluginSqlModule.elizaPlugin;
+	if (!pluginSql) {
+		throw new Error("plugin-sql did not export a plugin");
+	}
+	await runtime.registerPlugin(pluginSql as RegisterablePlugin);
 
 	if (options?.withLLM) {
 		try {
 			const pluginModule = (await import(
-				"@elizaos/plugin-local-embedding"
-			)) as typeof import("@elizaos/plugin-local-embedding") & {
-				elizaPlugin?: Plugin;
-			};
+				["@elizaos", "plugin-local-embedding"].join("/")
+			)) as RuntimePluginModule;
 			const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
 			if (plugin) {
-				configureLocalEmbeddingPlugin(plugin);
-				await runtime.registerPlugin(plugin);
+				const modulePath = "../../../agent/src/runtime/eliza";
+				const agentRuntimeModule = (await import(
+					modulePath
+				)) as AgentRuntimeModule;
+				agentRuntimeModule.configureLocalEmbeddingPlugin?.(plugin);
+				await runtime.registerPlugin(plugin as RegisterablePlugin);
 				logger.info(
 					"[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
 				);
@@ -186,7 +213,7 @@ export async function createRealTestRuntime(
 				const pluginModule = await import(providerConfig.pluginPackage);
 				const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
 				if (plugin) {
-					await runtime.registerPlugin(plugin);
+					await runtime.registerPlugin(plugin as RegisterablePlugin);
 					logger.info(
 						`[real-runtime] Registered LLM plugin: ${providerConfig.pluginPackage} (${providerName})`,
 					);
@@ -205,13 +232,11 @@ export async function createRealTestRuntime(
 	if (options?.withDiscord && process.env.DISCORD_BOT_TOKEN?.trim()) {
 		try {
 			const discordModule = (await import(
-				"@elizaos/plugin-discord"
-			)) as typeof import("@elizaos/plugin-discord") & {
-				elizaPlugin?: Plugin;
-			};
+				["@elizaos", "plugin-discord"].join("/")
+			)) as RuntimePluginModule;
 			const plugin = discordModule.default ?? discordModule.elizaPlugin;
 			if (plugin) {
-				await runtime.registerPlugin(plugin);
+				await runtime.registerPlugin(plugin as RegisterablePlugin);
 				logger.info("[real-runtime] Registered Discord plugin");
 			}
 		} catch (err) {
@@ -223,13 +248,11 @@ export async function createRealTestRuntime(
 	if (options?.withTelegram && process.env.TELEGRAM_BOT_TOKEN?.trim()) {
 		try {
 			const telegramModule = (await import(
-				"@elizaos/plugin-telegram"
-			)) as typeof import("@elizaos/plugin-telegram") & {
-				elizaPlugin?: Plugin;
-			};
+				["@elizaos", "plugin-telegram"].join("/")
+			)) as RuntimePluginModule;
 			const plugin = telegramModule.default ?? telegramModule.elizaPlugin;
 			if (plugin) {
-				await runtime.registerPlugin(plugin);
+				await runtime.registerPlugin(plugin as RegisterablePlugin);
 				logger.info("[real-runtime] Registered Telegram plugin");
 			}
 		} catch (err) {

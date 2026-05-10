@@ -1,4 +1,4 @@
-import { client } from "@elizaos/app-core";
+import { client } from "@elizaos/ui";
 
 function resolveLocationOrigin(): string | null {
   if (
@@ -36,14 +36,4 @@ export function resolveBrowserBridgeApiBaseUrl(): string {
 
 export function resolveLifeOpsSettingsApiBaseUrl(): URL {
   return resolveLifeOpsBaseUrl("http://127.0.0.1:3000");
-}
-
-export function resolveLifeOpsLocalGoogleRedirectUri(apiBaseUrl: URL): string {
-  const port =
-    apiBaseUrl.port || (apiBaseUrl.protocol === "https:" ? "443" : "80");
-  return `http://127.0.0.1:${port}/api/lifeops/connectors/google/callback`;
-}
-
-export function resolveLifeOpsRemoteGoogleRedirectUri(apiBaseUrl: URL): string {
-  return `${apiBaseUrl.origin}/api/lifeops/connectors/google/callback`;
 }

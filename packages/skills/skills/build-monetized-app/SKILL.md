@@ -1,17 +1,26 @@
 ---
 name: build-monetized-app
-description: "Use when the task is building a new app on Eliza Cloud that earns money — chat apps, agent apps, MCP-backed tools, anything that calls the cloud's chat/messages/inference endpoints on behalf of users. Covers app registration, container deploy, markup configuration, affiliate header, and the survival-economics loop where earnings auto-fund the agent's own hosting. Pairs with the `eliza-cloud` skill (which covers Cloud as a backend in general) by focusing specifically on the build-and-monetize flow."
+description: "Use when the task is building a new app on Eliza Cloud that earns money — chat apps, agent apps, MCP-backed tools, anything that calls the cloud's chat/messages/inference endpoints on behalf of users. Covers app registration, container deploy, markup configuration, affiliate header, app charge requests, x402 payment requests, payout redemptions, and the survival-economics loop where earnings auto-fund the agent's own hosting. Pairs with the `eliza-cloud` skill (which covers Cloud as a backend in general) by focusing specifically on the build-and-monetize flow."
 ---
 
 # Build a monetized app on Eliza Cloud
 
-Use this skill when you need to build an app that takes a markup on every chat or inference call and credits the earnings back to your owner. Eliza Cloud already supports app registration, per-app API keys, container deploys, the `appId`-based auth and redirect flow, app-scoped chat endpoints, optional affiliate headers, and creator-monetization plumbing — you do not need to invent any of these.
+Use this skill when you need to build an app that takes a markup on every chat or inference call and credits the earnings back to your owner. Eliza Cloud already supports app registration, per-app API keys, container deploys, the `appId`-based auth and redirect flow, app-scoped chat endpoints, optional affiliate headers, exact app charge requests, x402 payment requests, payout redemptions, and creator-monetization plumbing — you do not need to invent any of these.
 
 Read `references/sdk-flow.md` for the 6-step build flow with a self-contained code example. External references (all public):
 
 - **Working chat-app**: [`elizaOS/cloud-mini-apps/apps/edad-chat`](https://github.com/elizaOS/cloud-mini-apps/tree/main/apps/edad-chat) — copyable end-to-end implementation. Read its `server.ts` and `api/proxy.ts` for the canonical chat-forwarder shape using `@elizaos/cloud-sdk`.
 - **SDK reference**: [`@elizaos/cloud-sdk` README](https://github.com/elizaOS/cloud/tree/develop/packages/sdk) — typed methods + helpers + auth.
 - **Human-readable recipe**: [`docs/building-a-monetized-app.md`](https://github.com/elizaOS/cloud/blob/develop/docs/building-a-monetized-app.md) — same loop, narrative form, with the schema fields explained.
+
+## Skill Pairing
+
+Always pair this skill with [`eliza-cloud`](../eliza-cloud/SKILL.md). This
+skill owns the new-app build-and-monetize flow; `eliza-cloud` owns the current
+Cloud backend surface, existing-app operations, app charge requests, x402
+requests, affiliate earnings, payout redemptions, media/promotion, and
+parent-agent Cloud command details. Spawned coding agents should load or
+request both skills for Cloud app builds.
 
 ## The survival-economics loop
 
@@ -40,9 +49,35 @@ const { app, apiKey } = await cloud.routes.postApiV1Apps({
 //    instead, hand off to the `eliza-cloud-buy-domain` skill)
 ```
 
+If this flow is being executed by a spawned coding agent, use the `parent-agent`
+Cloud command bridge for account-bound app creation, deployment, monetization,
+charges, x402 requests, domains, media, and advertising. The direct SDK examples
+show the parent/app runtime shape; they are not permission to pass raw owner
+API keys or wallet keys to child workers.
+
+## After launch: charging and payout
+
+Use the [`eliza-cloud`](../eliza-cloud/SKILL.md) skill and its
+`references/payments-and-promotion.md` details for exact charge flows.
+
+- Use `POST /api/v1/apps/{id}/charges` for reusable Stripe/OxaPay requests.
+  The payer buys app credits; creator earnings flow through the app-credit
+  earnings ledger.
+- Use `POST /api/v1/x402/requests` for direct wallet-native crypto payments.
+  Current settlement support includes Base, Ethereum, BSC, and Solana, with the
+  hosted default at `https://x402.elizacloud.ai`.
+- Include `callback_channel` metadata (`roomId`, `agentId`) when the agent
+  should announce payment success/failure in the initiating room.
+- Use `/api/v1/redemptions` to request creator payouts in elizaOS tokens on
+  Base, BSC/BNB, Ethereum, or Solana. The payout is fixed to the USD quote at
+  request time and then admin reviewed/processed.
+- If running through `@elizaos/plugin-elizacloud`, browser/app code should use
+  `/api/cloud/billing/*` local aliases instead of handling Cloud credentials.
+
 Full code in `references/sdk-flow.md`. The skill assumes you have:
 
-- `ELIZAOS_CLOUD_API_KEY` in env (Eliza packages this for you)
+- `ELIZAOS_CLOUD_API_KEY` in the parent/app runtime env (Eliza packages this
+  for you) or the `parent-agent` Cloud command bridge for spawned workers
 - `@elizaos/cloud-sdk` available (already a runtime dependency)
 - A goal and a name (make the name up if not given; collisions retry once with a 6-char suffix)
 

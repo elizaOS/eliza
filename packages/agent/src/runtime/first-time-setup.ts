@@ -19,6 +19,7 @@
  * @module first-time-setup
  */
 
+import type { CloudOnboardingResult } from "@elizaos/plugin-elizacloud";
 import type { StylePreset } from "@elizaos/shared";
 import {
   buildDefaultElizaCloudServiceRouting,
@@ -27,25 +28,30 @@ import {
   getStylePresets,
   migrateLegacyRuntimeConfig,
 } from "@elizaos/shared";
-import { persistConfigEnv } from "../api/config-env.js";
+import { persistConfigEnv } from "../api/config-env.ts";
 import {
   CLOUD_EVM_ADDRESS_ENV_KEY,
   CLOUD_SOLANA_ADDRESS_ENV_KEY,
   WALLET_SOURCE_EVM_ENV_KEY,
   WALLET_SOURCE_SOLANA_ENV_KEY,
-} from "../api/wallet.js";
-import { type ElizaConfig, saveElizaConfig } from "../config/config.js";
-import { isCloudWalletEnabled } from "../config/feature-flags.js";
-import type { AgentConfig } from "../config/types.agents.js";
-import { pickRandomNames } from "./onboarding-names.js";
+} from "../api/wallet.ts";
+import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { isCloudWalletEnabled } from "../config/feature-flags.ts";
+import type { AgentConfig } from "../config/types.agents.ts";
+import { pickRandomNames } from "./onboarding-names.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers (private)
 // ---------------------------------------------------------------------------
 
-type FirstTimeSetupCloudResult =
-  import("./cloud-onboarding.js").CloudOnboardingResult;
-const DEFAULT_ONBOARDING_AGENT_NAME = getStylePresets()[0]?.name ?? "Eliza";
+type FirstTimeSetupCloudResult = CloudOnboardingResult;
+
+// Lazy: calling getStylePresets() at module init triggers a TDZ on
+// DEFAULT_LANGUAGE inside onboarding-presets.ts via a circular import. Defer
+// to first use so the import graph settles before the function runs.
+function getDefaultOnboardingAgentName(): string {
+  return getStylePresets()[0]?.name ?? "Eliza";
+}
 
 export function applyFirstTimeSetupTopology(
   config: ElizaConfig,
@@ -308,7 +314,7 @@ export async function runFirstTimeSetup(
 
     if (clack.isCancel(customName)) cancelOnboarding();
 
-    name = customName.trim() || DEFAULT_ONBOARDING_AGENT_NAME;
+    name = customName.trim() || getDefaultOnboardingAgentName();
   } else {
     name = nameChoice;
   }
@@ -334,9 +340,7 @@ export async function runFirstTimeSetup(
   // ── Step 3.5: Runtime selection (Cloud vs Local) ───────────────────────
   // Present the user with a choice of where to run their agent. Cloud mode
   // skips the local AI provider, wallet, and GitHub steps.
-  let cloudOnboardingResult:
-    | import("./cloud-onboarding.js").CloudOnboardingResult
-    | null = null;
+  let cloudOnboardingResult: CloudOnboardingResult | null = null;
   let isCloudMode = false;
 
   const runtimeChoice = await clack.select({
@@ -368,7 +372,7 @@ export async function runFirstTimeSetup(
       "No problem! Starting with local setup. You can switch to cloud anytime with `eliza cloud connect`.",
     );
   } else if (runtimeChoice === "cloud") {
-    const { runCloudOnboarding } = await import("./cloud-onboarding.js");
+    const { runCloudOnboarding } = await import("@elizaos/plugin-elizacloud");
     cloudOnboardingResult = await runCloudOnboarding(
       clack,
       name,
@@ -595,7 +599,7 @@ export async function runFirstTimeSetup(
     // stored in config.env and process.env, making them available to
     // plugins at runtime.
     const { generateWalletKeys, importWallet, setSolanaWalletEnv } =
-      await import("../api/wallet.js");
+      await import("../api/wallet.ts");
 
     // hasEvmKey and hasSolKey are hoisted above the if (!isCloudMode) block
     // so they're also available in the persistence section.

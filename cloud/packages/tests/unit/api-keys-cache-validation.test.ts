@@ -51,7 +51,7 @@ describe("ApiKeysService cache validation", () => {
       ({
         ...VALID_API_KEY,
         user_id: "1",
-      }) as T) as typeof cache.get;
+      }) as T) as unknown as typeof cache.get;
     cache.del = async (key: string) => {
       deletedKey = key;
     };
@@ -61,7 +61,7 @@ describe("ApiKeysService cache validation", () => {
     apiKeysRepository.findActiveByHash = (async (hash: string) => {
       queriedHash = hash;
       return VALID_API_KEY;
-    }) as typeof apiKeysRepository.findActiveByHash;
+    }) as unknown as typeof apiKeysRepository.findActiveByHash;
 
     const result = await apiKeysService.validateApiKey("eliza_test");
 

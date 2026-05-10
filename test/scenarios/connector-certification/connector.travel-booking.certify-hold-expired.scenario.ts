@@ -23,7 +23,7 @@ export default buildConnectorCertificationScenario({
       responseIncludesAny: ["travel", "hold", "expired", "approval"],
       acceptedActions: [
         "CALENDAR",
-        "SEND_DRAFT",
+        "MESSAGE",
         "VOICE_CALL",
       ],
       includesAny: ["travel", "hold", "expired", "approval"],

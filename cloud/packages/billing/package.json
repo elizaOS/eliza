@@ -3,12 +3,16 @@
   "version": "1.0.0",
   "description": "Shared billing utilities for Eliza Cloud gateway services (platform markup arithmetic).",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
-    ".": "./src/index.ts",
-    "./markup": "./src/markup.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   },
   "scripts": {
+    "build": "node ../../../scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.json",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "typecheck": "tsc --noEmit",
@@ -16,7 +20,11 @@
   },
   "devDependencies": {
     "@types/node": "22.19.17",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
-  }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ]
 }

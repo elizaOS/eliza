@@ -400,7 +400,7 @@ export async function startMockApiServer(
     cloud: { enabled: true },
     messages: {
       tts: {
-        provider: "simple-voice",
+        provider: "robot-voice",
       },
     },
     env: { vars: {} },
@@ -647,7 +647,7 @@ export async function startMockApiServer(
             llmText: {
               transport: "direct",
               backend: "ollama",
-              primaryModel: primaryModel || "llama3.2",
+              primaryModel: primaryModel || "eliza-1-9b",
             },
           },
         };
@@ -899,8 +899,8 @@ export async function startMockApiServer(
         ok: true,
         enabled: true,
         autoSpeak: true,
-        provider: "simple-voice",
-        configuredProvider: "simple-voice",
+        provider: "robot-voice",
+        configuredProvider: "robot-voice",
         hasApiKey: false,
         isSpeaking: false,
         isAttached: true,
@@ -1383,7 +1383,7 @@ export async function startMockApiServer(
       return;
     }
 
-    if (method === "GET" && pathname === "/api/knowledge/stats") {
+    if (method === "GET" && pathname === "/api/documents/stats") {
       json(res, 200, {
         documentCount: 0,
         fragmentCount: 0,
@@ -1391,7 +1391,7 @@ export async function startMockApiServer(
       });
       return;
     }
-    if (method === "GET" && pathname === "/api/knowledge/documents") {
+    if (method === "GET" && pathname === "/api/documents") {
       json(res, 200, { documents: [], total: 0, limit: 100, offset: 0 });
       return;
     }

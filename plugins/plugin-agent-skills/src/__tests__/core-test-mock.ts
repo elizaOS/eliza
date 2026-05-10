@@ -11,6 +11,8 @@ vi.mock("@elizaos/core", () => {
 	};
 
 	return {
+		annotateActiveTrajectoryStep: vi.fn(),
+		getTrajectoryContext: vi.fn(() => undefined),
 		logger,
 	};
 });

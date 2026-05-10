@@ -39,6 +39,11 @@ const whatsappPairingSessions: Map<string, PairingSessionLike> = new Map();
 
 const MAX_PAIRING_SESSIONS = 10;
 
+function routeHost(req: RouteRequest): string {
+  const host = req.headers?.host;
+  return (Array.isArray(host) ? host[0] : host) ?? "localhost";
+}
+
 /**
  * Minimal interface for the connector-setup service exposed by the agent.
  * Plugins access it via `runtime.getService("connector-setup")`.
@@ -94,17 +99,20 @@ async function handleWebhookVerify(
   res: RouteResponse,
   runtime: IAgentRuntime
 ): Promise<void> {
-  const url = new URL(
-    (req as unknown as { url?: string }).url ?? "/",
-    `http://${(req as unknown as { headers?: Record<string, string> }).headers?.host ?? "localhost"}`
-  );
+  const url = new URL(req.url ?? "/", `http://${routeHost(req)}`);
   const mode = url.searchParams.get("hub.mode") ?? "";
   const token = url.searchParams.get("hub.verify_token") ?? "";
   const challenge = url.searchParams.get("hub.challenge") ?? "";
+  const accountId = url.searchParams.get("accountId") ?? undefined;
 
   const service = runtime.getService("whatsapp") as
     | {
-        verifyWebhook?: (mode: string, token: string, challenge: string) => string | null;
+        verifyWebhook?: (
+          mode: string,
+          token: string,
+          challenge: string,
+          accountId?: string
+        ) => string | null;
       }
     | null
     | undefined;
@@ -114,7 +122,7 @@ async function handleWebhookVerify(
     return;
   }
 
-  const verifiedChallenge = service.verifyWebhook(mode, token, challenge);
+  const verifiedChallenge = service.verifyWebhook(mode, token, challenge, accountId);
   if (!verifiedChallenge) {
     res.status(403).json({ error: "Webhook verification failed" });
     return;
@@ -200,17 +208,35 @@ async function handlePair(
           setupService.updateConfig((config) => {
             if (!config.connectors) config.connectors = {};
             const connectors = config.connectors as Record<string, Record<string, unknown>>;
-            connectors.whatsapp = {
-              ...(connectors.whatsapp ?? {}),
+            const previousConfig = connectors.whatsapp ?? {};
+            if (accountId === "default") {
+              connectors.whatsapp = {
+                ...previousConfig,
+                authDir,
+                transport: "baileys",
+                enabled: true,
+              };
+              return;
+            }
+            const accounts =
+              typeof previousConfig.accounts === "object" && previousConfig.accounts !== null
+                ? { ...(previousConfig.accounts as Record<string, Record<string, unknown>>) }
+                : {};
+            accounts[accountId] = {
+              ...(accounts[accountId] ?? {}),
               authDir,
+              transport: "baileys",
+              enabled: true,
+            };
+            connectors.whatsapp = {
+              ...previousConfig,
+              accounts,
               enabled: true,
             };
           });
 
           // Auto-populate owner contact so LifeOps can deliver reminders
-          const phoneNumber = (event as unknown as Record<string, unknown>).phoneNumber as
-            | string
-            | undefined;
+          const phoneNumber = event.phoneNumber;
           setupService.setOwnerContact({
             source: "whatsapp",
             channelId: phoneNumber ?? undefined,
@@ -239,10 +265,7 @@ async function handleStatus(
   cleanupStaleSessions();
 
   const setupService = getSetupService(runtime);
-  const url = new URL(
-    (req as unknown as { url?: string }).url ?? "/",
-    `http://${(req as unknown as { headers?: Record<string, string> }).headers?.host ?? "localhost"}`
-  );
+  const url = new URL(req.url ?? "/", `http://${routeHost(req)}`);
 
   let accountId: string;
   try {
@@ -260,7 +283,7 @@ async function handleStatus(
   try {
     const waService = runtime.getService("whatsapp");
     if (waService && typeof waService === "object") {
-      const waState = waService as unknown as Record<string, unknown>;
+      const waState = waService as { connected?: unknown; phoneNumber?: unknown };
       serviceConnected = Boolean(waState.connected);
       servicePhone = typeof waState.phoneNumber === "string" ? waState.phoneNumber : null;
     }
@@ -354,7 +377,19 @@ async function handleDisconnect(
     setupService.updateConfig((config) => {
       const connectors = config.connectors as Record<string, unknown> | undefined;
       if (connectors) {
-        delete connectors.whatsapp;
+        if (accountId === "default") {
+          delete connectors.whatsapp;
+          return;
+        }
+        const whatsappConfig = connectors.whatsapp as Record<string, unknown> | undefined;
+        const accounts = whatsappConfig?.accounts as Record<string, unknown> | undefined;
+        if (accounts) {
+          delete accounts[accountId];
+        }
+        connectors.whatsapp = {
+          ...(whatsappConfig ?? {}),
+          ...(accounts ? { accounts } : {}),
+        };
       }
     });
   }

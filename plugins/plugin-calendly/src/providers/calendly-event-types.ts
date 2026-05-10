@@ -15,6 +15,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import { resolveCalendlyAccountId } from "../accounts.js";
 import type { CalendlyService } from "../services/CalendlyService.js";
 import { CALENDLY_SERVICE_TYPE } from "../types.js";
 
@@ -49,13 +50,14 @@ export const calendlyEventTypesProvider: Provider = {
     _state: State,
   ): Promise<ProviderResult> => {
     const service = runtime.getService<CalendlyService>(CALENDLY_SERVICE_TYPE);
-    if (!service || !service.isConnected()) {
+    const accountId = resolveCalendlyAccountId(runtime);
+    if (!service || !service.isConnected(accountId)) {
       return { data: {}, values: { calendlyConnected: false }, text: "" };
     }
 
     let eventTypes;
     try {
-      eventTypes = await service.listEventTypes();
+      eventTypes = await service.listEventTypes(accountId);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return {

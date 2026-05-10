@@ -50,6 +50,11 @@ export interface TrajectoryLlmCall {
   error?: string;
   /** Heuristic classification: "action_planner", "should_respond", "reply", "embedding", "other". */
   purpose: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
 }
 
 export interface TrajectoryProviderSnapshot {
@@ -158,21 +163,15 @@ function isTrajectoryMarkdownReviewEnabled(
   );
 }
 
-function safeStringify(value: unknown, max = 64_000): string {
-  try {
-    if (typeof value === "string") return value.slice(0, max);
-    const text = JSON.stringify(value, (_k, v) =>
-      typeof v === "bigint" ? v.toString() : v,
-    );
-    return text.length > max ? `${text.slice(0, max)}…[truncated]` : text;
-  } catch {
-    return String(value).slice(0, max);
-  }
+const MARKDOWN_MAX_LINE_LENGTH = 180;
+
+function truncateText(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}…[truncated]` : text;
 }
 
-function stringifyTrajectoryRecord(value: unknown): string {
+function stringifyJson(value: unknown, space = 0): string {
   const seen = new WeakSet<object>();
-  return JSON.stringify(
+  const text = JSON.stringify(
     value,
     (_key, currentValue) => {
       if (typeof currentValue === "function") {
@@ -189,8 +188,69 @@ function stringifyTrajectoryRecord(value: unknown): string {
       }
       return currentValue;
     },
-    2,
+    space,
   );
+  return text ?? String(value);
+}
+
+function safeStringify(value: unknown, max = 64_000): string {
+  try {
+    if (typeof value === "string") return truncateText(value, max);
+    return truncateText(stringifyJson(value), max);
+  } catch {
+    return truncateText(String(value), max);
+  }
+}
+
+function stringifyTrajectoryRecord(value: unknown): string {
+  return stringifyJson(value, 2);
+}
+
+function prettyJsonString(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed || (trimmed[0] !== "{" && trimmed[0] !== "[")) return null;
+  try {
+    return stringifyJson(JSON.parse(trimmed), 2);
+  } catch {
+    return null;
+  }
+}
+
+function formatMarkdownPayload(value: unknown, max = 64_000): string {
+  try {
+    const text =
+      typeof value === "string"
+        ? (prettyJsonString(value) ?? value)
+        : stringifyJson(value, 2);
+    return truncateText(text, max);
+  } catch {
+    return truncateText(String(value), max);
+  }
+}
+
+function wrapMarkdownLongLines(
+  value: string,
+  max = MARKDOWN_MAX_LINE_LENGTH,
+): string {
+  return value
+    .split(/\r?\n/)
+    .flatMap((line) => {
+      if (line.length <= max) return [line];
+
+      const chunks: string[] = [];
+      let remaining = line;
+      while (remaining.length > max) {
+        let splitAt = remaining.lastIndexOf(" ", max);
+        if (splitAt < Math.floor(max * 0.6)) splitAt = max;
+        chunks.push(remaining.slice(0, splitAt));
+        remaining = remaining.slice(
+          /\s/.test(remaining.charAt(splitAt)) ? splitAt + 1 : splitAt,
+        );
+      }
+      if (remaining.length > 0) chunks.push(remaining);
+      return chunks;
+    })
+    .join("\n");
 }
 
 function redactMarkdownSecrets(text: string): string {
@@ -230,18 +290,72 @@ function formatDuration(durationMs: number): string {
 }
 
 function markdownFence(value: string, language = ""): string[] {
-  const fence = value.includes("```") ? "````" : "```";
-  return [language ? `${fence}${language}` : fence, value, fence];
+  const body = wrapMarkdownLongLines(value);
+  const fence = body.includes("```") ? "````" : "```";
+  return [language ? `${fence}${language}` : fence, body, fence];
 }
 
-function markdownTableCell(value: unknown): string {
-  return String(value ?? "")
+function summarizeEmbeddingResponse(response: string): string | null {
+  const trimmed = response.trim();
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (
+      !Array.isArray(parsed) ||
+      !parsed.every((value) => typeof value === "number")
+    ) {
+      return null;
+    }
+    const preview = parsed
+      .slice(0, 8)
+      .map((value) => Number(value).toFixed(4))
+      .join(", ");
+    return `Embedding vector (${parsed.length} dimensions). Preview: [${preview}${parsed.length > 8 ? ", ..." : ""}]`;
+  } catch {
+    return null;
+  }
+}
+
+function llmResponseForMarkdown(call: TrajectoryLlmCall): string {
+  if (call.purpose === "embedding" || call.modelType === "TEXT_EMBEDDING") {
+    const summary = summarizeEmbeddingResponse(call.response);
+    if (summary) return summary;
+  }
+  return call.response;
+}
+
+function formatUsageLine(call: TrajectoryLlmCall): string | null {
+  const parts: string[] = [];
+  if (call.promptTokens !== undefined) parts.push(`input ${call.promptTokens}`);
+  if (call.completionTokens !== undefined) {
+    parts.push(`output ${call.completionTokens}`);
+  }
+  if (call.totalTokens !== undefined) parts.push(`total ${call.totalTokens}`);
+  if (call.cacheReadInputTokens !== undefined) {
+    const pct =
+      call.promptTokens && call.promptTokens > 0
+        ? ` (${((call.cacheReadInputTokens / call.promptTokens) * 100).toFixed(1)}% input)`
+        : "";
+    parts.push(`cache read ${call.cacheReadInputTokens}${pct}`);
+  }
+  if (call.cacheCreationInputTokens !== undefined) {
+    const pct =
+      call.promptTokens && call.promptTokens > 0
+        ? ` (${((call.cacheCreationInputTokens / call.promptTokens) * 100).toFixed(1)}% input)`
+        : "";
+    parts.push(`cache write ${call.cacheCreationInputTokens}${pct}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function markdownTableCell(value: unknown, max = 160): string {
+  return truncateText(String(value ?? ""), max)
     .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|")
     .replace(/\r?\n/g, "<br>");
 }
 
-function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
+export function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
   const lines: string[] = [];
   lines.push(
     `# Recorded Test Trajectory ${record.caseId ?? record.scenarioId ?? ""}`.trim(),
@@ -262,7 +376,7 @@ function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
     lines.push("");
     lines.push("## Metadata");
     lines.push("");
-    lines.push(...markdownFence(safeStringify(record.metadata), "json"));
+    lines.push(...markdownFence(formatMarkdownPayload(record.metadata), "json"));
   }
 
   if (record.transcript.length > 0) {
@@ -291,21 +405,25 @@ function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
       lines.push(`- model type: \`${call.modelType}\``);
       lines.push(`- latency: ${formatDuration(call.latencyMs)}`);
       lines.push(`- timestamp: ${formatTimestamp(call.timestamp)}`);
+      const usage = formatUsageLine(call);
+      if (usage) lines.push(`- usage: ${usage}`);
       if (call.error) lines.push(`- error: ${call.error}`);
       if (call.systemPrompt) {
         lines.push("");
         lines.push("#### System Prompt");
         lines.push("");
-        lines.push(...markdownFence(call.systemPrompt));
+        lines.push(...markdownFence(formatMarkdownPayload(call.systemPrompt)));
       }
       lines.push("");
       lines.push("#### Prompt");
       lines.push("");
-      lines.push(...markdownFence(call.prompt));
+      lines.push(...markdownFence(formatMarkdownPayload(call.prompt)));
       lines.push("");
       lines.push("#### Response");
       lines.push("");
-      lines.push(...markdownFence(call.response));
+      lines.push(
+        ...markdownFence(formatMarkdownPayload(llmResponseForMarkdown(call))),
+      );
     }
   }
 
@@ -339,7 +457,7 @@ function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
           `- include: ${snapshot.includeList.map((name) => `\`${name}\``).join(", ")}`,
         );
       }
-      lines.push(...markdownFence(safeStringify(snapshot), "json"));
+      lines.push(...markdownFence(formatMarkdownPayload(snapshot), "json"));
     }
   }
 
@@ -347,14 +465,16 @@ function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
     lines.push("");
     lines.push("## Memory Writes");
     lines.push("");
-    lines.push(...markdownFence(safeStringify(record.memoriesWritten), "json"));
+    lines.push(
+      ...markdownFence(formatMarkdownPayload(record.memoriesWritten), "json"),
+    );
   }
 
   if (record.events.length > 0) {
     lines.push("");
     lines.push("## Events");
     lines.push("");
-    lines.push(...markdownFence(safeStringify(record.events), "json"));
+    lines.push(...markdownFence(formatMarkdownPayload(record.events), "json"));
   }
 
   return `${redactMarkdownSecrets(lines.join("\n")).trimEnd()}\n`;
@@ -381,6 +501,8 @@ function classifyLlmPurpose(
     head.includes("actions:") ||
     head.includes("available actions") ||
     head.includes("action planner") ||
+    head.includes("planner_stage") ||
+    head.includes("plan the next native tool calls") ||
     /(^|\n)\s*action\s*:/i.test(response.slice(0, 200))
   ) {
     return "action_planner";
@@ -427,6 +549,85 @@ export function serializeLlmCallResult(result: unknown): {
   };
 }
 
+function objectRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function firstFiniteNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function extractLlmTokenUsage(
+  result: unknown,
+): Pick<
+  TrajectoryLlmCall,
+  | "promptTokens"
+  | "completionTokens"
+  | "totalTokens"
+  | "cacheReadInputTokens"
+  | "cacheCreationInputTokens"
+> {
+  const resultRecord = objectRecord(result);
+  const usageRecord = objectRecord(resultRecord?.usage) ?? resultRecord;
+  const inputDetails =
+    objectRecord(usageRecord?.inputTokenDetails) ??
+    objectRecord(usageRecord?.input_tokens_details) ??
+    objectRecord(usageRecord?.prompt_tokens_details);
+
+  const promptTokens = firstFiniteNumber(
+    usageRecord?.promptTokens,
+    usageRecord?.inputTokens,
+    usageRecord?.prompt_tokens,
+  );
+  const completionTokens = firstFiniteNumber(
+    usageRecord?.completionTokens,
+    usageRecord?.outputTokens,
+    usageRecord?.completion_tokens,
+  );
+  const totalTokens =
+    firstFiniteNumber(usageRecord?.totalTokens, usageRecord?.total_tokens) ??
+    (promptTokens !== undefined || completionTokens !== undefined
+      ? (promptTokens ?? 0) + (completionTokens ?? 0)
+      : undefined);
+  const cacheReadInputTokens = firstFiniteNumber(
+    usageRecord?.cacheReadInputTokens,
+    usageRecord?.cachedPromptTokens,
+    usageRecord?.cachedInputTokens,
+    inputDetails?.cacheReadInputTokens,
+    inputDetails?.cacheReadTokens,
+    inputDetails?.cachedInputTokens,
+    inputDetails?.cached_tokens,
+    inputDetails?.cache_read_input_tokens,
+  );
+  const cacheCreationInputTokens = firstFiniteNumber(
+    usageRecord?.cacheCreationInputTokens,
+    usageRecord?.cacheWriteInputTokens,
+    inputDetails?.cacheCreationInputTokens,
+    inputDetails?.cacheCreationTokens,
+    inputDetails?.cacheWriteTokens,
+    inputDetails?.cache_creation_input_tokens,
+  );
+
+  return {
+    ...(promptTokens !== undefined ? { promptTokens } : {}),
+    ...(completionTokens !== undefined ? { completionTokens } : {}),
+    ...(totalTokens !== undefined ? { totalTokens } : {}),
+    ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
+    ...(cacheCreationInputTokens !== undefined
+      ? { cacheCreationInputTokens }
+      : {}),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // RecordingHarness
 // ---------------------------------------------------------------------------
@@ -434,6 +635,11 @@ export function serializeLlmCallResult(result: unknown): {
 type UseModelFn = AgentRuntime["useModel"];
 type CreateMemoryFn = AgentRuntime["createMemory"];
 type ComposeStateFn = AgentRuntime["composeState"];
+type WritableRuntimeHooks = AgentRuntime & {
+  useModel: UseModelFn;
+  createMemory: CreateMemoryFn;
+  composeState: ComposeStateFn;
+};
 
 export class RecordingHarness {
   readonly inner: ConversationHarness;
@@ -553,7 +759,7 @@ export class RecordingHarness {
         throw err;
       }
     }) as UseModelFn;
-    (runtime as unknown as { useModel: UseModelFn }).useModel = wrappedUseModel;
+    (runtime as WritableRuntimeHooks).useModel = wrappedUseModel;
 
     // Wrap createMemory.
     this.originalCreateMemory = runtime.createMemory.bind(
@@ -571,8 +777,7 @@ export class RecordingHarness {
         unique,
       );
     }) as CreateMemoryFn;
-    (runtime as unknown as { createMemory: CreateMemoryFn }).createMemory =
-      wrappedCreateMemory;
+    (runtime as WritableRuntimeHooks).createMemory = wrappedCreateMemory;
 
     // Wrap composeState (records the providers resolved per state composition).
     this.originalComposeState = runtime.composeState.bind(
@@ -593,8 +798,7 @@ export class RecordingHarness {
       this.recordProviderSnapshot(includeList ?? null, result);
       return result;
     }) as ComposeStateFn;
-    (runtime as unknown as { composeState: ComposeStateFn }).composeState =
-      wrappedComposeState;
+    (runtime as WritableRuntimeHooks).composeState = wrappedComposeState;
 
     // Subscribe to runtime lifecycle events.
     this.subscribeEvent(EventType.RUN_STARTED, "RUN_STARTED");
@@ -651,6 +855,7 @@ export class RecordingHarness {
         ? paramsRecord.systemPrompt
         : undefined;
     const serializedResult = serializeLlmCallResult(result);
+    const usage = extractLlmTokenUsage(result);
     this.llmCalls.push({
       callId: id,
       timestamp: start,
@@ -661,6 +866,7 @@ export class RecordingHarness {
       response: serializedResult.response,
       error: serializedResult.error,
       purpose: classifyLlmPurpose(prompt, serializedResult.response, modelType),
+      ...usage,
     });
   }
 
@@ -764,15 +970,14 @@ export class RecordingHarness {
     if (this.installed) {
       const runtime = this.inner.runtime;
       if (this.originalUseModel) {
-        (runtime as unknown as { useModel: UseModelFn }).useModel =
-          this.originalUseModel;
+        (runtime as WritableRuntimeHooks).useModel = this.originalUseModel;
       }
       if (this.originalCreateMemory) {
-        (runtime as unknown as { createMemory: CreateMemoryFn }).createMemory =
+        (runtime as WritableRuntimeHooks).createMemory =
           this.originalCreateMemory;
       }
       if (this.originalComposeState) {
-        (runtime as unknown as { composeState: ComposeStateFn }).composeState =
+        (runtime as WritableRuntimeHooks).composeState =
           this.originalComposeState;
       }
       for (const unsub of this.eventUnsubs.splice(0)) unsub();

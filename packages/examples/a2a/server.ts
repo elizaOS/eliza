@@ -14,6 +14,7 @@ import {
   type ContentValue,
   createCharacter,
   createMessageMemory,
+  type Plugin,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -73,12 +74,12 @@ async function initializeRuntime(): Promise<AgentRuntime> {
 
   runtime = new AgentRuntime({
     character: CHARACTER,
-    enableKnowledge: shouldUseOpenAi(),
+    enableDocuments: shouldUseOpenAi(),
     enableRelationships: shouldUseOpenAi(),
     enableTrajectories: shouldUseOpenAi(),
     plugins: shouldUseOpenAi()
-      ? [sqlPlugin, openaiPlugin]
-      : [inmemorydbPlugin, elizaClassicPlugin],
+      ? ([sqlPlugin, openaiPlugin] as Plugin[])
+      : ([inmemorydbPlugin, elizaClassicPlugin] as Plugin[]),
   });
 
   await runtime.initialize();

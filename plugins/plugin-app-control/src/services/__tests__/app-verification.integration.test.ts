@@ -19,7 +19,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect } from "vitest";
+import { itIf } from "../../../../../packages/app-core/test/helpers/conditional-tests";
 import { AppVerificationService } from "../app-verification.js";
 
 const execFileAsync = promisify(execFile);
@@ -38,6 +39,15 @@ async function commandAvailable(
 
 const STATE_DIR = mkdtempSync(path.join(tmpdir(), "app-verify-int-state-"));
 process.env.ELIZA_STATE_DIR = STATE_DIR;
+
+// Hoist availability checks to module scope so itIf gates can read them at
+// test-registration time. Top-level await is supported by vitest's ESM runner.
+const bunAvailable = await commandAvailable("bun", ["--version"]);
+const npmAvailable = await commandAvailable("npm", ["--version"]);
+const pkgManagerAvailable = bunAvailable || npmAvailable;
+if (!pkgManagerAvailable) {
+	process.env.SKIP_REASON ||= "bun or npm required to verify scaffolds";
+}
 
 const noopRuntime = {} as IAgentRuntime;
 
@@ -105,59 +115,54 @@ function writeMinimalTsProject(workdir: string, source: string): void {
 }
 
 describe("AppVerificationService.verifyApp (integration)", () => {
-	let bunAvailable = false;
-	let npmAvailable = false;
 	const service = new AppVerificationService(noopRuntime);
-
-	beforeAll(async () => {
-		bunAvailable = await commandAvailable("bun", ["--version"]);
-		npmAvailable = await commandAvailable("npm", ["--version"]);
-	});
 
 	afterAll(async () => {
 		await service.cleanup();
 	});
 
-	it("returns verdict=pass for a real TS project that typechecks cleanly", async () => {
-		if (!bunAvailable && !npmAvailable) {
-			// Neither bun nor npm available — this environment cannot run the test.
-			// Skip is the right call per the test plan.
-			return;
-		}
-		const workdir = mkdtempSync(path.join(tmpdir(), "verify-int-pass-"));
-		writeMinimalTsProject(workdir, PASS_TS);
+	itIf(pkgManagerAvailable)(
+		"returns verdict=pass for a real TS project that typechecks cleanly",
+		async () => {
+			const workdir = mkdtempSync(path.join(tmpdir(), "verify-int-pass-"));
+			writeMinimalTsProject(workdir, PASS_TS);
 
-		const result = await service.verifyApp({
-			workdir,
-			profile: "fast",
-			runId: "int-pass",
-			packageManager: "npm",
-		});
+			const result = await service.verifyApp({
+				workdir,
+				profile: "fast",
+				runId: "int-pass",
+				packageManager: "npm",
+			});
 
-		expect(result.verdict).toBe("pass");
-		const typecheck = result.checks.find((c) => c.kind === "typecheck");
-		expect(typecheck?.passed).toBe(true);
-	}, 120_000);
+			expect(result.verdict).toBe("pass");
+			const typecheck = result.checks.find((c) => c.kind === "typecheck");
+			expect(typecheck?.passed).toBe(true);
+		},
+		120_000,
+	);
 
-	it("returns verdict=fail with non-empty diagnostics when TS has a type error", async () => {
-		if (!bunAvailable && !npmAvailable) {
-			return;
-		}
-		const workdir = mkdtempSync(path.join(tmpdir(), "verify-int-fail-"));
-		writeMinimalTsProject(workdir, FAIL_TS);
+	itIf(pkgManagerAvailable)(
+		"returns verdict=fail with non-empty diagnostics when TS has a type error",
+		async () => {
+			const workdir = mkdtempSync(path.join(tmpdir(), "verify-int-fail-"));
+			writeMinimalTsProject(workdir, FAIL_TS);
 
-		const result = await service.verifyApp({
-			workdir,
-			profile: "fast",
-			runId: "int-fail",
-			packageManager: "npm",
-		});
+			const result = await service.verifyApp({
+				workdir,
+				profile: "fast",
+				runId: "int-fail",
+				packageManager: "npm",
+			});
 
-		expect(result.verdict).toBe("fail");
-		const typecheck = result.checks.find((c) => c.kind === "typecheck");
-		expect(typecheck).toBeDefined();
-		expect(typecheck?.passed).toBe(false);
-		expect((typecheck?.diagnostics ?? []).length).toBeGreaterThan(0);
-		expect(result.retryablePromptForChild.toLowerCase()).toContain("typecheck");
-	}, 120_000);
+			expect(result.verdict).toBe("fail");
+			const typecheck = result.checks.find((c) => c.kind === "typecheck");
+			expect(typecheck).toBeDefined();
+			expect(typecheck?.passed).toBe(false);
+			expect((typecheck?.diagnostics ?? []).length).toBeGreaterThan(0);
+			expect(result.retryablePromptForChild.toLowerCase()).toContain(
+				"typecheck",
+			);
+		},
+		120_000,
+	);
 });

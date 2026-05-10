@@ -11,7 +11,7 @@ import {
 import dotenv from "dotenv";
 import { expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../helpers/live-provider";
+import { selectLiveProvider } from "../helpers/live-provider.ts";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");

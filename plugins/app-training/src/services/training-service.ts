@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import type {
   Trajectory,
   TrajectoryListResult,
-} from "@elizaos/agent/types/trajectory";
+} from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import type { TrainingServiceWithRuntime } from "./training-service-like.js";
 

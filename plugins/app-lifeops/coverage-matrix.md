@@ -1,53 +1,144 @@
 # LifeOps E2E Coverage Matrix
 
-All 20 PRD user journeys × test files × status.
+Domain-anchored matrix per `docs/audit/IMPLEMENTATION_PLAN.md` §5.7 +
+`docs/audit/GAP_ASSESSMENT.md` §8.5. The 28 rows correspond 1:1 with the 28
+chapters in `docs/audit/UX_JOURNEYS.md`'s table of contents — adding or
+removing a chapter requires updating this matrix and vice versa.
 
-PRD: `packages/docs/prd-lifeops-executive-assistant.md`
-Scenario matrix: `packages/docs/plan-lifeops-executive-assistant-scenario-matrix.md`
+The contract test (`test/prd-coverage.contract.test.ts`) enforces:
 
-Journey numbering follows the Phase 7 orchestration brief and matches the
-`// @journey-N` tag at the top of every test file.
+1. Every row points to a real test file under `plugins/app-lifeops/test/`.
+2. Every test file referenced by the matrix is referenced by exactly one row.
+3. Each `Domain` value matches one of the 28 `UX_JOURNEYS.md` chapter
+   headings.
+4. Spine-coverage: at least one test exercises the W1-A `ScheduledTask`
+   spine for every domain whose `Spine` cell says `ScheduledTask`. The
+   contract test asserts this from `Spine` column data plus runner-test
+   discovery.
 
-| Journey ID | Journey Name | Domain | PRD Section | Test File | Mockoon Environments | Status |
+Source references:
+- PRD: `packages/docs/prd-lifeops-executive-assistant.md`
+- Scenario matrix: `packages/docs/plan-lifeops-executive-assistant-scenario-matrix.md`
+- UX journeys: `eliza/plugins/app-lifeops/docs/audit/UX_JOURNEYS.md`
+- Gap assessment: `eliza/plugins/app-lifeops/docs/audit/GAP_ASSESSMENT.md`
+
+| Journey ID | Journey Name | Domain | Spine | Test File | PRD / Scenario Anchors | Status |
 |---|---|---|---|---|---|---|
-| 1 | Recurring Relationship Time (e.g. weekly Jill block) | Calendar / Recurring | Suite A (`ea.schedule.daily-time-with-jill`) | `test/scenarios/calendar-llm-eval-mutations.scenario.ts` | google | covered (extension pending) |
-| 2 | Sleep Window Protection (reject 7am meeting) | Calendar / Sleep Goal | Suite A (`ea.schedule.protect-sleep-window`) | `test/scenarios/goal-sleep-basic.scenario.ts` | google | covered (extension pending) |
-| 3 | Travel Blackout Reschedule (bulk cancel for trip) | Travel / Calendar | Suite A (`ea.schedule.travel-blackout-reschedule`) | `test/book-travel.approval.integration.test.ts` | google (vi-fetch) | covered (extension pending) |
-| 4 | Bundle Meetings While Traveling (NYC trip) | Calendar / Travel | Suite A (`ea.schedule.bundle-meetings-while-traveling`) | `test/bundle-meetings.e2e.test.ts` | google | covered |
-| 5 | Daily Brief Cross-Channel | Inbox / Daily Brief | Suite B (`ea.inbox.daily-brief-cross-channel`) | `test/assistant-user-journeys.morning-brief.e2e.test.ts` | google | covered |
-| 6 | Daily Brief Includes Unsent Drafts | Inbox / Daily Brief | Suite B (`ea.inbox.daily-brief-includes-unsent-drafts`) | `test/daily-brief.drafts.e2e.test.ts` | google | covered |
-| 7 | Priority Ranking — urgent before low-priority | Inbox / Triage | Suite B (`ea.inbox.daily-brief-ranks-urgent-before-low-priority`) | `test/lifeops-inbox-triage.integration.test.ts` | none (in-process) | covered (extension pending) |
-| 8 | Group Chat Handoff (shared topic across DMs) | Messaging / Inbox | Suite B (`ea.inbox.propose-group-chat-handoff`) | `test/group-chat-handoff.e2e.test.ts` | signal, bluebubbles | covered |
-| 9 | Bump Unanswered Decision (follow-up nudger) | Follow-Up | Suite C (`ea.followup.bump-unanswered-decision`) | `test/assistant-user-journeys.followup-repair.e2e.test.ts` | google | covered |
-| 10 | Repair Missed Call And Reschedule | Follow-Up / Repair | Suite C (`ea.followup.repair-missed-call-and-reschedule`) | `test/assistant-user-journeys.followup-repair.e2e.test.ts` | google | covered |
-| 11 | Relationship Overdue Detector | Follow-Up / Relationships | Suite C (`ea.followup.relationship-congrats-from-daily-brief`) | `test/relationships.e2e.test.ts` | none (in-process) | covered |
-| 12 | Capture Travel Booking Preferences | Travel | Suite D (`ea.travel.capture-booking-preferences`) | `test/booking-preferences.e2e.test.ts` | google | covered |
-| 13 | Book Trip After Approval | Travel | Suite D (`ea.travel.book-after-approval`) | `test/book-travel.approval.integration.test.ts` | google (vi-fetch) | covered |
-| 14 | Flight Conflict Detection And Rebooking | Travel | Suite D (`ea.travel.flight-conflict-rebooking`) | `test/flight-rebook.e2e.test.ts` | google, twilio | covered |
-| 15 | Signature Deadline Tracking And Escalation | Docs / Sign-Off | Suite E (`ea.docs.signature-before-appointment`) | `test/signature-deadline.e2e.test.ts` | google, twilio | covered |
-| 16 | Speaker Portal Upload Via Browser Automation | Docs / Portal | Suite E (`ea.docs.portal-upload-from-chat`) | `test/portal-upload.e2e.test.ts` | browser-workspace | covered |
-| 17 | End-Of-Week Approval Escalation | Docs / Escalation | Suite E (`ea.docs.eow-approval-escalation`) | `test/eow-escalation.e2e.test.ts` | twilio, signal | covered |
-| 18 | Multi-Device Meeting Reminder Ladder | Push / Cross-Device | Suite F (`ea.push.multi-device-meeting-ladder`) | `test/notifications-push.e2e.test.ts` | twilio (Ntfy) | covered |
-| 19 | Cancellation Fee Warning | Push / Escalation | Suite F (`ea.push.cancellation-fee-warning`) | `test/cancellation-fee.e2e.test.ts` | google | covered |
-| 20 | Stuck Agent Calls User (browser blocked → phone) | Push / Escalation | Suite F (`ea.push.stuck-agent-calls-user`) | `test/stuck-agent-call.e2e.test.ts` | browser-workspace, twilio | covered |
+| 1 | Onboarding & first-run setup | Onboarding & first-run setup | ScheduledTask | `test/first-run-defaults.e2e.test.ts` | `GAP §3.6 FirstRunService`, `IMPL §3.3` | covered |
+| 2 | Core data model & overview surface | Core data model & overview surface | ScheduledTask | `test/spine-and-first-run.integration.test.ts` | `GAP §3.1 ScheduledTask spine` | covered |
+| 3 | Habits | Habits | ScheduledTask | `test/scheduled-task-end-to-end.e2e.test.ts` | `GAP §3.1`, `UX §3` | covered |
+| 4 | Routines & multi-step daily flows | Routines & multi-step daily flows | ScheduledTask | `test/assistant-user-journeys.morning-brief.e2e.test.ts` | Suite B (`ea.inbox.daily-brief-cross-channel`) | covered |
+| 5 | Tasks (one-off) | Tasks (one-off) | ScheduledTask | `test/reminder-review-job.real.e2e.test.ts` | `UX §5`, `GAP §3.1` | covered |
+| 6 | Goals | Goals | ScheduledTask | `test/lifeops-life-chat.real.test.ts` | Suite A (`ea.schedule.protect-sleep-window`), `test/scenarios/goal-sleep-basic.scenario.ts` | covered (extension pending) |
+| 7 | Reminders & escalation ladder | Reminders & escalation ladder | ScheduledTask | `test/notifications-push.e2e.test.ts` | Suite F (`ea.push.multi-device-meeting-ladder`) | covered |
+| 8 | Calendar journeys | Calendar journeys | ScheduledTask | `test/bundle-meetings.e2e.test.ts` | Suite A (`ea.schedule.bundle-meetings-while-traveling`) | covered |
+| 9 | Inbox & email triage | Inbox & email triage | ScheduledTask | `test/lifeops-inbox-triage.integration.test.ts` | Suite B (`ea.inbox.daily-brief-ranks-urgent-before-low-priority`) | covered (extension pending) |
+| 10 | Travel | Travel | ScheduledTask | `test/book-travel.approval.integration.test.ts` | Suite D (`ea.travel.book-after-approval`) | covered |
+| 11 | Follow-up repair (relationships) | Follow-up repair (relationships) | ScheduledTask | `test/assistant-user-journeys.followup-repair.e2e.test.ts` | Suite C (`ea.followup.bump-unanswered-decision`) | covered |
+| 12 | Documents, signatures, portals | Documents, signatures, portals | ScheduledTask | `test/signature-deadline.e2e.test.ts` | Suite E (`ea.docs.signature-before-appointment`) | covered |
+| 13 | Self-control / app & website blockers | Self-control / app & website blockers | enforcer-registry | `test/selfcontrol-chat.live.e2e.test.ts` | `UX §13`, `GAP §3.16 BlockerRegistry` | covered |
+| 14 | Group chat handoff | Group chat handoff | HandoffStore | `test/handoff.e2e.test.ts` | `GAP §3.14`, `JOURNEY_GAME_THROUGH §J13` | covered |
+| 15 | Multi-channel & cross-channel search | Multi-channel & cross-channel search | ChannelRegistry | `test/cross-channel-search.integration.test.ts` | `GAP §3.5 ChannelRegistry`, `UX §15` | covered |
+| 16 | Activity signals & screen context | Activity signals & screen context | ActivitySignalBus | `test/plugin-health-anchor.integration.test.ts` | `GAP §3.2 ActivitySignalBus`, `UX §16` | covered |
+| 17 | Approval queues & action gating | Approval queues & action gating | ApprovalQueue | `test/approval-queue.integration.test.ts` | `UX §17`, `GAP §3.10 ApprovalQueue` | covered |
+| 18 | Identity merge (canonical person) | Identity merge (canonical person) | EntityStore | `test/assistant-user-journeys.identity-merge.live.e2e.test.ts` | `GAP §3.4 IdentityGraph`, `UX §18` | covered |
+| 19 | Memory recall | Memory recall | MemoryStore | `test/lifeops-memory.live.e2e.test.ts` | `UX §19` | covered |
+| 20 | Connectors & permissions | Connectors & permissions | ConnectorRegistry | `test/google-drive.integration.test.ts` | `GAP §3.5 ConnectorRegistry`, `UX §20` | covered |
+| 21 | Health, money, screen time | Health, money, screen time | plugin-health | `test/screen-time.real.test.ts` | `IMPL §3.2`, `UX §21` | covered |
+| 22 | Push notifications | Push notifications | EscalationLadder | `test/cancellation-fee.e2e.test.ts` | Suite F (`ea.push.cancellation-fee-warning`) | covered |
+| 23 | Remote sessions | Remote sessions | RemoteSession | `test/stuck-agent-call.e2e.test.ts` | Suite F (`ea.push.stuck-agent-calls-user`) | covered |
+| 24 | Settings & UX | Settings & UX | OwnerFactStore | `test/first-run-customize.e2e.test.ts` | `GAP §3.3 OwnerFactStore`, `UX §24` | covered |
+| 25 | REST API access flows | REST API access flows | api | `test/lifeops-feature-flags.integration.test.ts` | `UX §25` | covered |
+| 26 | Workflows (event-triggered) | Workflows (event-triggered) | ScheduledTask | `test/lifeops-signal-inbound.integration.test.ts` | `UX §26` | covered |
+| 27 | Multilingual coverage | Multilingual coverage | MultilingualPromptRegistry | `test/multilingual-action-routing.integration.test.ts` | `GAP §3.7 MultilingualPromptRegistry`, `UX §27` | covered |
+| 28 | Suspected-but-unconfirmed flows | Suspected-but-unconfirmed flows | ScheduledTask | `test/journey-domain-coverage.test.ts` | `UX §28`, `IMPL §7.3` (W3-C 28-domain replay) | covered |
+
+## Spine-coverage assertion (per `GAP §8.5`)
+
+For every row whose `Spine` cell is `ScheduledTask` (rows 1–12, 26), the
+contract test confirms that at least one test exercises the W1-A
+`ScheduledTask` spine in that domain. The runner-level unit test
+`src/lifeops/scheduled-task/runner.test.ts` plus the new e2e tests
+(`scheduled-task-end-to-end.e2e.test.ts`,
+`spine-and-first-run.integration.test.ts`,
+`plugin-health-anchor.integration.test.ts`) supply the runtime coverage.
 
 ## Key
 
-- `covered` — test file exists, lane is wired, no follow-up required for this PRD journey.
-- `covered (extension pending)` — base test file exists; an additional sub-scenario for this exact journey is staged for in-place extension. The contract test still passes because the file exists.
-- `covered (rename pending)` — test exists and runs, but the filename will be normalised to the `*.e2e.test.ts` convention via `git mv`. The contract test points at the post-rename path when the rename has happened.
+- `covered` — test file exists, lane is wired, no follow-up required.
+- `covered (extension pending)` — base test file exists; an additional
+  sub-scenario for this exact domain is staged for in-place extension.
+  The contract test passes because the file exists.
 
-## Mockoon Environment Legend
+## W3-C cross-cutting journey-domain replay
 
-| Environment key | What it mocks |
-|---|---|
-| `google` | Gmail read/write, Google Calendar, Google Drive |
-| `twilio` | SMS send, voice call initiation |
-| `whatsapp` | WhatsApp send and inbound webhook |
-| `signal` | Signal REST API send/receive |
-| `browser-workspace` | Portal navigation, tab eval/snapshot |
-| `bluebubbles` | iMessage via BlueBubbles bridge |
-| `x-twitter` | X (Twitter) DM and timeline |
-| `calendly` | Calendly availability and booking |
-| `cloud-managed` | Eliza Cloud managed API endpoints |
-| `github` | GitHub notifications, PRs |
+`test/journey-domain-coverage.test.ts` is the W3-C deliverable per
+`docs/audit/IMPLEMENTATION_PLAN.md` §7.3. It runs one `describe` block per
+UX_JOURNEYS chapter (Domains 1–28) plus a final block per game-through
+finding explicitly resolved in Wave 1/2 (multi-gate `shouldFire`,
+terminal-state taxonomy, `output` destination, `contextRequest`,
+`subject`, `idempotencyKey`, `respectsGlobalPause`, `reopen`,
+snooze-resets-ladder, priority→posture mapping).
+
+The file is anchored on row 28 above so the contract test still locks
+"every test file referenced by exactly one matrix row", while the
+journey-replay coverage cuts across the other 27 domains as a regression
+guard. Running `bun --cwd plugins/app-lifeops test journey-domain-coverage`
+exercises the W1-A `ScheduledTask` spine end-to-end against a synthetic
+input per domain: schedule → fire → verb → pipeline → terminal.
+
+Remaining ambiguity that surfaced during the replay is captured in
+`docs/audit/post-Wave-2-ambiguity-register.md`.
+
+## Phase 2 — extended coverage
+
+`test/journey-extended-coverage.test.ts` extends the structural 28-domain
+replay with the long-tail journeys cataloged in
+`docs/audit/missing-journeys-audit.md`. The extended set covers
+categories the base replay deliberately under-samples — cross-domain
+composition, ambient behavior, connector recovery, identity rename
+stability, time-shift edge cases, mid-conversation locale mixing, agent
+self-discovery, negotiation under uncertainty, "be-my-Samantha"
+delegation contracts, composite recovery, privacy / consent revocation,
+and signal-source conflict. Every Phase-2 entry composes from the
+existing primitives (`ScheduledTask` spine + `OwnerFactStore` +
+`ActivitySignalBus` + `EntityStore` / `RelationshipStore` +
+`ChannelRegistry` + ladder registry); none required a new primitive.
+
+| Phase 2 row | Category | Test file |
+|---|---|---|
+| P2.1 | Cross-domain composition (calendar → email → reminder → followup) | `test/journey-extended-coverage.test.ts` |
+| P2.2 | Cross-domain composition (travel → calendar → during_travel gate → blocker) | `test/journey-extended-coverage.test.ts` |
+| P2.3 | Ambient behavior (anticipated check-in after long quiet window) | `test/journey-extended-coverage.test.ts` |
+| P2.4 | Connector recovery (escalation cursor advance under degradation) | `test/journey-extended-coverage.test.ts` |
+| P2.5 | Connector recovery (reconnect followup carries surface metadata) | `test/journey-extended-coverage.test.ts` |
+| P2.6 | Identity stability (entity-anchored watcher survives handle rename) | `test/journey-extended-coverage.test.ts` |
+| P2.7 | Time-shift (owner-fact timezone change observable mid-flight) | `test/journey-extended-coverage.test.ts` |
+| P2.8 | Time-shift (completedAt ISO is stable across midnight) | `test/journey-extended-coverage.test.ts` |
+| P2.9 | Multi-locale (mixed Spanish-English promptInstructions) | `test/journey-extended-coverage.test.ts` |
+| P2.10 | Agent self-discovery (inspectRegistries surface for help-card) | `test/journey-extended-coverage.test.ts` |
+| P2.11 | Negotiation (one capped clarifying question via onSkip) | `test/journey-extended-coverage.test.ts` |
+| P2.12 | Delegation (be-my-Samantha window via `once` + flipBack child) | `test/journey-extended-coverage.test.ts` |
+| P2.13 | Delegation revocation (dismiss verb records audit reason) | `test/journey-extended-coverage.test.ts` |
+| P2.14 | Composite recovery (`pipeline.onFail` explanatory followup) | `test/journey-extended-coverage.test.ts` |
+| P2.15 | Privacy revocation (subject filter + dismiss verb) | `test/journey-extended-coverage.test.ts` |
+| P2.16 | Conflict between captures (spine does not adjudicate signals) | `test/journey-extended-coverage.test.ts` |
+
+The Phase 2 file is intentionally a single extra file rather than a new
+matrix row per category — it sits alongside `journey-domain-coverage`
+as a long-tail regression guard. The 28-row structural matrix above is
+unchanged; the contract test (`prd-coverage.contract.test.ts`) does
+not require an extension here. Adding a new category in the future
+just requires adding another `describe` block to the same file (or, if
+a new primitive is introduced, promoting it from `gap_in_coverage`
+to a matrix row).
+
+## Rationale for domain-anchored shape
+
+Per `GAP_ASSESSMENT.md` §8.5, the previous "20 PRD journey rows" form was
+scenario-anchored: it locked the matrix to a specific named-scenario count
+and fought any decomposition / consolidation of journeys. The
+domain-anchored form keeps "every domain is exercised" as the contract
+without freezing the journey count. New scenarios within a domain are
+in-place extensions of the row's test file; new domains require both a
+matrix row and a `UX_JOURNEYS.md` chapter.

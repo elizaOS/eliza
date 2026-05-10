@@ -208,9 +208,9 @@ function hasConfirmedGmailSendAction(
   action: ScenarioContext["actionsCalled"][number],
 ): boolean {
   const acceptedNames = new Set([
-    "SEND_DRAFT",
-    "RESPOND_TO_MESSAGE",
-    "TRIAGE_MESSAGES",
+    "MESSAGE",
+    "MESSAGE",
+    "MESSAGE",
     "GMAIL_ACTION",
     "INBOX",
   ]);
@@ -357,9 +357,9 @@ function actionMatchesChannel(
   switch (channel) {
     case "gmail":
       return [
-        "SEND_DRAFT",
-        "RESPOND_TO_MESSAGE",
-        "TRIAGE_MESSAGES",
+        "MESSAGE",
+        "MESSAGE",
+        "MESSAGE",
       ].includes(action.actionName);
     case "discord":
     case "telegram":
@@ -368,23 +368,20 @@ function actionMatchesChannel(
     case "whatsapp":
     case "sms":
       return [
-        "SEND_DRAFT",
-        "RESPOND_TO_MESSAGE",
-        "TRIAGE_MESSAGES",
+        "MESSAGE",
+        "MESSAGE",
+        "MESSAGE",
       ].includes(action.actionName);
     case "x-dm":
       return [
         "X",
-        "SEND_DRAFT",
-        "RESPOND_TO_MESSAGE",
+        "MESSAGE",
+        "MESSAGE",
       ].includes(action.actionName);
     case "desktop":
     case "mobile":
     case "phone_call":
-      return [
-        "DEVICE_INTENT",
-        "VOICE_CALL",
-      ].includes(action.actionName);
+      return ["VOICE_CALL"].includes(action.actionName);
     default:
       return false;
   }
@@ -630,10 +627,7 @@ registerFinalCheckHandler("pushAcknowledgedSync", (check, { ctx }) => {
   const { expected } = check as { expected?: boolean };
   const any = ctx.actionsCalled.some((action) => {
     const blob = actionBlob(action);
-    return (
-      action.actionName === "DEVICE_INTENT" ||
-      (/acknowledge/.test(blob) && /sync/.test(blob))
-    );
+    return /acknowledge/.test(blob) && /sync/.test(blob);
   });
   const want = expected ?? true;
   if (any === want) {
@@ -898,10 +892,10 @@ registerFinalCheckHandler("gmailActionArguments", (check, { ctx }) => {
     minCount?: number;
   };
   const actionNames = actionName ?? [
-    "TRIAGE_MESSAGES",
-    "SEND_DRAFT",
-    "RESPOND_TO_MESSAGE",
-    "DRAFT_REPLY",
+    "MESSAGE",
+    "MESSAGE",
+    "MESSAGE",
+    "MESSAGE",
     "GMAIL_ACTION",
     "INBOX",
   ];
@@ -1072,9 +1066,9 @@ registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
       (ctx.approvalRequests ?? []).some(
         (request) =>
           matchesActionName(request.actionName, [
-            "SEND_DRAFT",
-            "RESPOND_TO_MESSAGE",
-            "TRIAGE_MESSAGES",
+            "MESSAGE",
+            "MESSAGE",
+            "MESSAGE",
             "GMAIL_ACTION",
             "send_email",
           ]) && request.state === "pending",
@@ -1133,7 +1127,7 @@ registerFinalCheckHandler("gmailNoRealWrite", () => {
   };
 });
 
-registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
+registerFinalCheckHandler("workflowDispatchOccurred", (check, { ctx }) => {
   const { workflowId, expected, minCount } = check as {
     workflowId?: string;
     expected?: boolean;
@@ -1143,7 +1137,7 @@ registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
     hasRecursiveObjectMatch(
       action.result?.data ?? action.result?.raw,
       (record) => {
-        if (record.kind !== "dispatch_n8n_workflow") {
+        if (record.kind !== "dispatch_workflow") {
           return false;
         }
         return workflowId === undefined || record.workflowId === workflowId;
@@ -1152,7 +1146,7 @@ registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
   );
   const matchedWrites = (ctx.memoryWrites ?? []).filter((write) =>
     hasRecursiveObjectMatch(write.content, (record) => {
-      if (record.kind !== "dispatch_n8n_workflow") {
+      if (record.kind !== "dispatch_workflow") {
         return false;
       }
       return workflowId === undefined || record.workflowId === workflowId;
@@ -1162,19 +1156,22 @@ registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
   const want = expected ?? true;
   if (!want) {
     return total === 0
-      ? { status: "passed", detail: "no n8n dispatch observed" }
-      : { status: "failed", detail: `expected no n8n dispatch, saw ${total}` };
+      ? { status: "passed", detail: "no workflow dispatch observed" }
+      : {
+          status: "failed",
+          detail: `expected no workflow dispatch, saw ${total}`,
+        };
   }
   const min = typeof minCount === "number" ? minCount : 1;
   if (total < min) {
     return {
       status: "failed",
-      detail: `expected ${min} n8n dispatch record(s), saw ${total}`,
+      detail: `expected ${min} workflow dispatch record(s), saw ${total}`,
     };
   }
   return {
     status: "passed",
-    detail: `${total} n8n dispatch record(s) observed`,
+    detail: `${total} workflow dispatch record(s) observed`,
   };
 });
 

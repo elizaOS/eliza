@@ -1,7 +1,11 @@
-import { type Action, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { callToolAction } from "./actions/callToolAction";
-import { MCP_ACTION_CONTEXT, mcpRouterAction } from "./actions/mcpRouterAction";
-import { readResourceAction } from "./actions/readResourceAction";
+import {
+  type Action,
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+  promoteSubactionsToActions,
+} from "@elizaos/core";
+import { MCP_ACTION_CONTEXT, mcpAction } from "./actions/mcp";
 import { provider } from "./provider";
 import { McpService } from "./service";
 
@@ -29,8 +33,10 @@ const mcpPlugin: Plugin = {
   },
 
   services: [McpService],
-  actions: [mcpRouterAction, withMcpContext(callToolAction), withMcpContext(readResourceAction)],
+  actions: [...promoteSubactionsToActions(withMcpContext(mcpAction))],
   providers: [provider],
 };
 
 export default mcpPlugin;
+
+export { handleMcpRoutes, type McpRouteContext } from "./routes-mcp.js";

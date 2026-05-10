@@ -12,7 +12,7 @@ import {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "@elizaos/shared";
-import { resolveModelsCacheDir } from "../config/paths.js";
+import { resolveModelsCacheDir } from "../config/paths.ts";
 
 type ModelOption = {
   id: string;
@@ -159,22 +159,10 @@ export function getModelOptions(): {
     },
     // Groq
     {
-      id: "groq/llama-4-scout",
-      name: "Llama 4 Scout",
+      id: "groq/openai/gpt-oss-120b",
+      name: "GPT-OSS 120B",
       provider: "Groq",
-      description: "Latest Llama on Groq inference.",
-    },
-    {
-      id: "groq/llama-3.3-70b",
-      name: "Llama 3.3 70B",
-      provider: "Groq",
-      description: "Strong open-weight model on Groq.",
-    },
-    {
-      id: "groq/llama-3.1-8b-instant",
-      name: "Llama 3.1 8B Instant",
-      provider: "Groq",
-      description: "Low-latency Groq nano option.",
+      description: "Approved Groq GPT-OSS default for small and large slots.",
     },
   ];
 

@@ -275,8 +275,8 @@ export class CoreManagerService extends Service {
 	}
 
 	private async runCoreInstallAndBuild(monorepoDir: string): Promise<void> {
-		await execAsync("pnpm install", { cwd: monorepoDir });
-		await execAsync(`pnpm --filter ${CORE_PACKAGE_NAME} build`, {
+		await execAsync("bun install", { cwd: monorepoDir });
+		await execAsync(`bun --filter ${CORE_PACKAGE_NAME} build`, {
 			cwd: monorepoDir,
 		});
 	}

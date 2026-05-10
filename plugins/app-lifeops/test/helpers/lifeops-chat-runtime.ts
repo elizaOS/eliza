@@ -132,6 +132,8 @@ export function createLifeOpsChatTestRuntime(options: {
       connection_state TEXT NOT NULL DEFAULT 'disconnected',
       permissions_json TEXT NOT NULL DEFAULT '{}',
       pairing_token_hash TEXT,
+      pairing_token_expires_at TEXT,
+      pairing_token_revoked_at TEXT,
       pending_pairing_token_hashes_json TEXT NOT NULL DEFAULT '[]',
       last_seen_at TEXT,
       paired_at TEXT,
@@ -151,6 +153,8 @@ export function createLifeOpsChatTestRuntime(options: {
       connection_state TEXT NOT NULL DEFAULT 'disconnected',
       permissions_json TEXT NOT NULL DEFAULT '{}',
       pairing_token_hash TEXT,
+      pairing_token_expires_at TEXT,
+      pairing_token_revoked_at TEXT,
       pending_pairing_token_hashes_json TEXT NOT NULL DEFAULT '[]',
       last_seen_at TEXT,
       paired_at TEXT,
@@ -562,7 +566,7 @@ export function createLifeOpsChatTestRuntime(options: {
     },
   };
 
-  const runtime = runtimeSubset as unknown as AgentRuntime;
+  const runtime = runtimeSubset as AgentRuntime;
   runtime.messageService = {
     handleMessage: async (
       runtimeArg: AgentRuntime,

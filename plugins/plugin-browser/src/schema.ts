@@ -7,6 +7,13 @@
  * workflow-bound `life_browser_sessions` table remains in LifeOps because
  * it carries `workflowId` plus LifeOps-only scoping columns.
  *
+ * Tables are placed in the `browser` PostgreSQL schema (matches the
+ * `deriveSchemaName("@elizaos/plugin-browser")` result used by
+ * plugin-sql's runtime migrator) so they no longer trip the
+ * "Plugin table is using public schema" warning. The runtime migrator
+ * issues `CREATE SCHEMA IF NOT EXISTS` automatically before applying
+ * migrations.
+ *
  * Migrations are applied via elizaOS plugin-sql's `runPluginMigrations`
  * when the plugin's `schema` field is populated and an appropriate
  * migration strategy is selected. Renaming the old `life_browser_*`
@@ -18,12 +25,14 @@ import {
   boolean,
   index,
   integer,
-  pgTable,
+  pgSchema,
   text,
   unique,
 } from "drizzle-orm/pg-core";
 
-export const browserBridgeCompanions = pgTable(
+export const browserPgSchema = pgSchema("browser");
+
+export const browserBridgeCompanions = browserPgSchema.table(
   "browser_bridge_companions",
   {
     id: text("id").primaryKey(),
@@ -36,6 +45,8 @@ export const browserBridgeCompanions = pgTable(
     connectionState: text("connection_state").notNull().default("disconnected"),
     permissionsJson: text("permissions_json").notNull().default("{}"),
     pairingTokenHash: text("pairing_token_hash"),
+    pairingTokenExpiresAt: text("pairing_token_expires_at"),
+    pairingTokenRevokedAt: text("pairing_token_revoked_at"),
     pendingPairingTokenHashesJson: text("pending_pairing_token_hashes_json")
       .notNull()
       .default("[]"),
@@ -55,32 +66,35 @@ export const browserBridgeCompanions = pgTable(
   ],
 );
 
-export const browserBridgeSettings = pgTable("browser_bridge_settings", {
-  agentId: text("agent_id").primaryKey(),
-  enabled: boolean("enabled").notNull().default(false),
-  trackingMode: text("tracking_mode").notNull().default("current_tab"),
-  allowBrowserControl: boolean("allow_browser_control")
-    .notNull()
-    .default(false),
-  requireConfirmationForAccountAffecting: boolean(
-    "require_confirmation_for_account_affecting",
-  )
-    .notNull()
-    .default(true),
-  incognitoEnabled: boolean("incognito_enabled").notNull().default(false),
-  siteAccessMode: text("site_access_mode")
-    .notNull()
-    .default("current_site_only"),
-  grantedOriginsJson: text("granted_origins_json").notNull().default("[]"),
-  blockedOriginsJson: text("blocked_origins_json").notNull().default("[]"),
-  maxRememberedTabs: integer("max_remembered_tabs").notNull().default(10),
-  pauseUntil: text("pause_until"),
-  metadataJson: text("metadata_json").notNull().default("{}"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
+export const browserBridgeSettings = browserPgSchema.table(
+  "browser_bridge_settings",
+  {
+    agentId: text("agent_id").primaryKey(),
+    enabled: boolean("enabled").notNull().default(false),
+    trackingMode: text("tracking_mode").notNull().default("current_tab"),
+    allowBrowserControl: boolean("allow_browser_control")
+      .notNull()
+      .default(false),
+    requireConfirmationForAccountAffecting: boolean(
+      "require_confirmation_for_account_affecting",
+    )
+      .notNull()
+      .default(true),
+    incognitoEnabled: boolean("incognito_enabled").notNull().default(false),
+    siteAccessMode: text("site_access_mode")
+      .notNull()
+      .default("current_site_only"),
+    grantedOriginsJson: text("granted_origins_json").notNull().default("[]"),
+    blockedOriginsJson: text("blocked_origins_json").notNull().default("[]"),
+    maxRememberedTabs: integer("max_remembered_tabs").notNull().default(10),
+    pauseUntil: text("pause_until"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+);
 
-export const browserBridgeTabs = pgTable(
+export const browserBridgeTabs = browserPgSchema.table(
   "browser_bridge_tabs",
   {
     id: text("id").primaryKey(),
@@ -114,7 +128,7 @@ export const browserBridgeTabs = pgTable(
   ],
 );
 
-export const browserBridgePageContexts = pgTable(
+export const browserBridgePageContexts = browserPgSchema.table(
   "browser_bridge_page_contexts",
   {
     id: text("id").primaryKey(),

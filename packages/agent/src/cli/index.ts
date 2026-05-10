@@ -43,13 +43,13 @@ export async function runAutonomousCli(
   }
 
   if (command === "runtime") {
-    const { bootElizaRuntime } = await import("../runtime/index.js");
+    const { bootElizaRuntime } = await import("../runtime/index.ts");
     await bootElizaRuntime();
     return;
   }
 
   if (command === "serve" || command === "start") {
-    const { startEliza } = await import("../runtime/index.js");
+    const { startEliza } = await import("../runtime/index.ts");
     const runtime = await startEliza({ serverOnly: true });
     console.log(
       `[cli] startEliza returned: runtime=${runtime ? "present" : "null"}, ELIZA_LOCAL_LLAMA=${process.env.ELIZA_LOCAL_LLAMA ?? "(unset)"}`,
@@ -65,7 +65,7 @@ export async function runAutonomousCli(
     if (runtime && process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
       console.log("[cli] importing aosp-local-inference-bootstrap…");
       const { ensureAospLocalInferenceHandlers } = await import(
-        "../runtime/aosp-local-inference-bootstrap.js"
+        "@elizaos/plugin-aosp-local-inference"
       );
       console.log("[cli] calling ensureAospLocalInferenceHandlers(runtime)…");
       const ok = await ensureAospLocalInferenceHandlers(runtime);
@@ -76,7 +76,7 @@ export async function runAutonomousCli(
     ) {
       console.log("[cli] importing mobile-device-bridge-bootstrap…");
       const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-        "../runtime/mobile-device-bridge-bootstrap.js"
+        "@elizaos/plugin-capacitor-bridge"
       );
       console.log(
         "[cli] calling ensureMobileDeviceBridgeInferenceHandlers(runtime)…",
@@ -90,7 +90,7 @@ export async function runAutonomousCli(
   }
 
   if (command === "benchmark") {
-    const { runBenchmark } = await import("./benchmark.js");
+    const { runBenchmark } = await import("./benchmark.ts");
     // Parse benchmark-specific flags from argv
     const opts = {
       task: undefined as string | undefined,

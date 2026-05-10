@@ -8,6 +8,8 @@ import type {
   ProviderValue,
   State,
 } from "@elizaos/core";
+import { hasLinearAccountConfig } from "../accounts";
+import { linearAccountIdParameter } from "./account-options";
 import { clearActivityAction } from "./clearActivity";
 import { createCommentAction } from "./createComment";
 import { createIssueAction } from "./createIssue";
@@ -22,16 +24,21 @@ export const LINEAR_COMMENT_CONTEXT = "linear_comment";
 export const LINEAR_WORKFLOW_CONTEXT = "linear_workflow";
 
 /**
- * Common envelope every Linear router result carries. `actionName` identifies
- * the router that produced the result, `routedActionName` names the child
- * action that handled the request, and `subaction` is the resolved verb (or
- * `null` when no route matched and the router returned a missing-subaction
- * error). The index signature is required so the result is assignable to
- * `ProviderDataRecord`.
+ * Common envelope every Linear router result carries. `actionName` and
+ * `router` identify the public router action that produced the result,
+ * `routedActionName` names the child action that handled the request, and
+ * `op`/`subaction` are the resolved verb (or `null` when no route matched).
+ * `result` carries child action data on success and `error` carries structured
+ * failure details. The index signature is required so the result is assignable
+ * to `ProviderDataRecord`.
  */
 interface LinearRouterEnvelope {
+  router: string;
   routedActionName: string | null;
+  op: string | null;
   subaction: string | null;
+  result?: ProviderValue;
+  error?: ProviderValue;
   /** List of valid subactions, populated only on missing-subaction errors. */
   availableSubactions?: string;
   [key: string]: ProviderValue;
@@ -242,20 +249,33 @@ function selectRoute(
 }
 
 function hasLinearAccess(runtime: IAgentRuntime): boolean {
-  const apiKey = runtime.getSetting("LINEAR_API_KEY");
-  return typeof apiKey === "string" && apiKey.trim().length > 0;
+  return hasLinearAccountConfig(runtime);
+}
+
+function readErrorCode(result: ActionResult): string {
+  const valuesError = result.values?.error;
+  if (typeof valuesError === "string" && valuesError.length > 0) return valuesError;
+
+  const dataError =
+    typeof result.data === "object" && result.data !== null ? result.data.error : undefined;
+  if (typeof dataError === "string" && dataError.length > 0) return dataError;
+
+  return "ACTION_FAILED";
+}
+
+function readErrorMessage(result: ActionResult, fallbackText: string): string {
+  if (result.error instanceof Error) return result.error.message;
+  if (typeof result.error === "string" && result.error.length > 0) return result.error;
+  return fallbackText;
 }
 
 async function validateRouter(
   runtime: IAgentRuntime,
-  message: Memory,
-  routes: readonly LinearRoute[],
-  fallback: RegExp
+  _message: Memory,
+  _routes: readonly LinearRoute[],
+  _fallback: RegExp
 ): Promise<boolean> {
-  if (!hasLinearAccess(runtime)) return false;
-  const text = textOf(message);
-  if (!text.trim()) return false;
-  return routes.some((route) => route.match.test(text)) || fallback.test(text);
+  return hasLinearAccess(runtime);
 }
 
 async function dispatchRoute<T extends LinearRouterResultData>(
@@ -274,8 +294,14 @@ async function dispatchRoute<T extends LinearRouterResultData>(
     await callback?.({ text, source: message.content?.source });
     const data: T = {
       actionName: routerName,
+      router: routerName,
       routedActionName: null,
+      op: null,
       subaction: null,
+      error: {
+        code: "MISSING_SUBACTION",
+        message: text,
+      },
       availableSubactions: subactions,
     } as T;
     return {
@@ -297,17 +323,28 @@ async function dispatchRoute<T extends LinearRouterResultData>(
     typeof result.text === "string" && result.text.length > 0
       ? result.text
       : `${routerName} routed to ${route.action.name}.`;
-  const childData =
-    typeof result.data === "object" && result.data !== null ? result.data : {};
+  const success = result.success ?? true;
+  const childData = typeof result.data === "object" && result.data !== null ? result.data : {};
   const data: T = {
     ...childData,
     actionName: routerName,
+    router: routerName,
     routedActionName: route.action.name,
+    op: route.subaction,
     subaction: route.subaction,
+    ...(success
+      ? { result: Object.keys(childData).length > 0 ? childData : { ok: true } }
+      : {
+          result: Object.keys(childData).length > 0 ? childData : undefined,
+          error: {
+            code: readErrorCode(result),
+            message: readErrorMessage(result, text),
+          },
+        }),
   } as T;
   return {
     ...result,
-    success: result.success ?? true,
+    success,
     text,
     data,
   };
@@ -357,6 +394,7 @@ export const linearIssueRouterAction: RouterAction = {
       required: false,
       schema: { type: "string", enum: ["create", "get", "update", "delete"] },
     },
+    linearAccountIdParameter,
   ],
   examples: [
     [
@@ -408,6 +446,7 @@ export const linearCommentRouterAction: RouterAction = {
       required: false,
       schema: { type: "string", enum: ["create"] },
     },
+    linearAccountIdParameter,
   ],
   examples: [
     [
@@ -459,6 +498,7 @@ export const linearWorkflowRouterAction: RouterAction = {
       required: false,
       schema: { type: "string", enum: ["get_activity", "clear_activity", "search_issues"] },
     },
+    linearAccountIdParameter,
   ],
   examples: [
     [

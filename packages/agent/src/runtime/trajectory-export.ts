@@ -14,7 +14,7 @@ import type {
   TrajectoryLlmCall,
   TrajectoryProviderAccess,
   TrajectoryStep,
-} from "../types/trajectory.js";
+} from "../types/trajectory.ts";
 import {
   enrichTrajectoryLlmCall,
   normalizeStatus,
@@ -27,7 +27,7 @@ import {
   toNumber,
   toOptionalNumber,
   toText,
-} from "./trajectory-internals.js";
+} from "./trajectory-internals.ts";
 
 export type RuntimeTrajectoryExportOptions = TrajectoryExportOptions;
 
@@ -89,16 +89,18 @@ function toPublicTrajectoryStep(
     ...step,
     stepId: toText(step.stepId, trajectoryId),
     timestamp: toNumber(step.timestamp, Date.now()),
-    llmCalls: (step.llmCalls ?? []).map((call) =>
+    llmCalls: ((step.llmCalls ?? []) as PersistedLlmCall[]).map((call) =>
       toPublicTrajectoryLlmCall(
-        call as unknown as PersistedLlmCall,
+        call,
         trajectoryId,
         toText(step.stepId, trajectoryId),
       ),
     ),
-    providerAccesses: (step.providerAccesses ?? []).map((access) =>
+    providerAccesses: (
+      (step.providerAccesses ?? []) as PersistedProviderAccess[]
+    ).map((access) =>
       toPublicTrajectoryProviderAccess(
-        access as unknown as PersistedProviderAccess,
+        access,
         trajectoryId,
         toText(step.stepId, trajectoryId),
       ),
@@ -193,4 +195,4 @@ export {
   TRAJECTORY_ARCHIVE_DIRNAME,
   toArchiveSafeTimestamp,
   writeCompressedJsonlRows,
-} from "./trajectory-internals.js";
+} from "./trajectory-internals.ts";

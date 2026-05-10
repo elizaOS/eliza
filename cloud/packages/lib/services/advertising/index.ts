@@ -460,7 +460,10 @@ class AdvertisingService {
       if (account) {
         const credentials = await this.getCredentials(account);
         const provider = this.getProvider(account.platform);
-        await provider.deleteCampaign(credentials, campaign.external_campaign_id);
+        const result = await provider.deleteCampaign(credentials, campaign.external_campaign_id);
+        if (!result.success) {
+          throw new Error(result.error || "Failed to delete campaign on platform");
+        }
       }
     }
 
@@ -584,6 +587,12 @@ class AdvertisingService {
       call_to_action: input.callToAction,
       destination_url: input.destinationUrl,
       media: input.media,
+      metadata: {
+        facebook_page_id: input.pageId,
+        instagram_account_id: input.instagramActorId,
+        tiktok_identity_id: input.tiktokIdentityId,
+        tiktok_identity_type: input.tiktokIdentityType,
+      },
       status: "draft",
     });
 
@@ -602,10 +611,29 @@ class AdvertisingService {
         );
 
         if (result.success && result.externalCreativeId) {
-          await adCreativesRepository.update(creative.id, {
+          const updated = await adCreativesRepository.update(creative.id, {
             external_creative_id: result.externalCreativeId,
             status: "pending_review",
           });
+          if (updated) {
+            logger.info("[Advertising] Creative created", { creativeId: updated.id });
+            return updated;
+          }
+        } else {
+          await creditsService.refundCredits({
+            organizationId,
+            amount: AD_CREDIT_RATES.createCreative,
+            description: `Refund: Creative creation failed - ${result.error}`,
+            metadata: { campaignId: input.campaignId, creativeName: input.name },
+          });
+          await adCreativesRepository.update(creative.id, {
+            status: "rejected",
+            metadata: {
+              ...(creative.metadata ?? {}),
+              rejection_reason: result.error || "Failed to create creative on platform",
+            },
+          });
+          throw new Error(result.error || "Failed to create creative on platform");
         }
       }
     }

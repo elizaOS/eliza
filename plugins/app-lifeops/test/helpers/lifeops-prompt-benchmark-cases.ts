@@ -135,7 +135,7 @@ const EXECUTIVE_ASSISTANT_CATALOG_PATH = path.join(
   "..",
   "scenarios",
   "_catalogs",
-  "ice-bambam-executive-assistant.json",
+  "executive-assistant-transcript.catalog.json",
 );
 const SELF_CARE_SCENARIO_DIR = path.join(
   import.meta.dirname,
@@ -343,7 +343,7 @@ function deriveSelfCareExpectation(
     );
     return {
       expectedAction: "LIFE",
-      acceptableActions: supportsBlockRule ? ["BLOCK_UNTIL_TASK_COMPLETE"] : [],
+      acceptableActions: supportsBlockRule ? ["WEBSITE_BLOCK"] : [],
       forbiddenActions: [],
       expectedOperation: isGoalScenario ? "create_goal" : "create_definition",
       notes:

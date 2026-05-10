@@ -42,8 +42,9 @@ function resolveStatus(value: unknown): TodoStatus | undefined {
 export const editTodoAction: Action = {
 	name: "EDIT_TODO",
 	contexts: ["todos", "agent_internal"],
+	roleGate: { minRole: "USER" },
 	description:
-		"Edit an existing todo item. Can update title, notes, due date, or status.",
+		"Edit one existing todo item by id, updating its title, notes, due date, or status.",
 	similes: ["UPDATE_TODO", "MODIFY_TODO", "CHANGE_TODO"],
 
 	validate: async (
@@ -178,7 +179,44 @@ export const editTodoAction: Action = {
 			},
 		},
 	],
-	examples: [],
+	examples: [
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Rename todo abc-123 to 'Submit final draft'.",
+					source: "chat",
+				},
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: "Updating the todo title.",
+					actions: ["EDIT_TODO"],
+					thought:
+						"Title change on a specific id; EDIT_TODO with id and title set updates the record.",
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Push the due date on todo abc-123 to next Friday.",
+					source: "chat",
+				},
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: "Updating the due date.",
+					actions: ["EDIT_TODO"],
+					thought:
+						"Deadline shift on an existing todo; EDIT_TODO with id and dueAt set to Friday's timestamp.",
+				},
+			},
+		],
+	],
 };
 
 export default editTodoAction;

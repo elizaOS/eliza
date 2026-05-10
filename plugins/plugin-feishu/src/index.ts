@@ -1,17 +1,41 @@
-import type { Plugin } from "@elizaos/core";
-import { SEND_MESSAGE_ACTION, sendMessageAction } from "./actions";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { getConnectorAccountManager, logger } from "@elizaos/core";
+import { createFeishuConnectorAccountProvider } from "./connector-account-provider";
 import { FEISHU_SERVICE_NAME } from "./constants";
 import { MessageManager } from "./messageManager";
-import { CHAT_STATE_PROVIDER, chatStateProvider } from "./providers";
 import { FeishuService } from "./service";
+import { FeishuWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const feishuPlugin: Plugin = {
 	name: FEISHU_SERVICE_NAME,
 	description: "Feishu/Lark client plugin for elizaOS",
-	services: [FeishuService],
+	services: [FeishuService, FeishuWorkflowCredentialProvider],
 	actions: [],
-	providers: [chatStateProvider],
+	providers: [],
 	tests: [],
+	// Self-declared auto-enable: activate when the "feishu" connector is
+	// configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+	// in plugin-auto-enable-engine.ts still serves as a fallback.
+	autoEnable: {
+		connectorKeys: ["feishu"],
+	},
+	init: async (
+		_config: Record<string, string>,
+		runtime: IAgentRuntime,
+	): Promise<void> => {
+		try {
+			const manager = getConnectorAccountManager(runtime);
+			manager.registerProvider(createFeishuConnectorAccountProvider(runtime));
+		} catch (err) {
+			logger.warn(
+				{
+					src: "plugin:feishu",
+					err: err instanceof Error ? err.message : String(err),
+				},
+				"Failed to register Feishu provider with ConnectorAccountManager",
+			);
+		}
+	},
 };
 
 // Account management exports
@@ -54,15 +78,7 @@ export {
 	truncateText,
 } from "./formatting";
 export * from "./types";
-export {
-	CHAT_STATE_PROVIDER,
-	chatStateProvider,
-	FEISHU_SERVICE_NAME,
-	FeishuService,
-	MessageManager,
-	SEND_MESSAGE_ACTION,
-	sendMessageAction,
-};
+export { FEISHU_SERVICE_NAME, FeishuService, MessageManager };
 
 export default feishuPlugin;
 

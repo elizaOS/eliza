@@ -299,7 +299,7 @@ Eliza registers 7+ providers through the Eliza plugin, plus any providers from l
 ### Actions
 
 Actions are operations the agent can invoke based on conversation context. Each action defines:
-- `name` -- unique identifier (e.g., `RESTART`, `SEND_MESSAGE`, `PLAY_EMOTE`)
+- `name` -- unique identifier (e.g., `RESTART`, `MESSAGE`, `PLAY_EMOTE`)
 - `similes` -- alternative names the agent can use
 - `validate()` -- whether the action can run in the current context
 - `handler()` -- the execution logic
@@ -370,7 +370,7 @@ Routes are organized into domain-specific handler modules:
 | `connector-routes.ts` | `/api/connectors/*` | Messaging connector configuration |
 | `conversation-routes.ts` | `/api/conversations/*` | Web-chat conversations and messaging |
 | `inbox-routes.ts` | `/api/inbox/*` | Unified cross-channel inbox |
-| `knowledge-routes.ts` | `/api/knowledge/*` | Document upload, search, RAG management |
+| `knowledge-routes.ts` | `/api/documents/*` | Document upload, search, RAG management |
 | `memory-routes.ts` | `/api/memory/*`, `/api/context/*` | Memory persistence and context search |
 | `models-routes.ts` | `/api/models/*` | Model provider discovery and selection |
 | `onboarding-routes.ts` | `/api/onboarding/*` | First-run setup flow |
@@ -382,7 +382,7 @@ Routes are organized into domain-specific handler modules:
 | `training-routes.ts` | `/api/training/*` | Fine-tuning orchestration |
 | `trigger-routes.ts` | `/api/triggers/*` | Trigger task management |
 | `workbench-routes.ts` | `/api/workbench/*` | Tasks, todos, unified dashboard |
-| `automations-routes.ts` | `/api/automations/*`, `/api/n8n/*` | Unified automations and n8n workflows |
+| `automations-routes.ts` | `/api/automations/*`, `/api/workflow/*` | Unified automations and workflows |
 | `wallet-routes.ts` | `/api/wallet/*` | Wallet addresses, balances, trading |
 | `apps-routes.ts` | `/api/apps/*` | elizaOS app marketplace |
 

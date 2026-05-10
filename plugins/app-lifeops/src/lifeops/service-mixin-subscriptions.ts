@@ -908,7 +908,7 @@ export function withSubscriptions<
 
       const computerUse = this.runtime.getService(
         "computeruse",
-      ) as unknown as ComputerUseBrowserService | null;
+      ) as ComputerUseBrowserService | null;
       if (!computerUse) {
         cancellation = {
           ...cancellation,
@@ -1078,8 +1078,12 @@ export function withSubscriptions<
     summarizeSubscriptionCancellation(
       summary: LifeOpsSubscriptionCancellationSummary,
     ): string {
-      const lines = [summarizeCancellationStatus(summary.cancellation)];
-      if (summary.cancellation.evidenceSummary) {
+      const status = summarizeCancellationStatus(summary.cancellation);
+      const lines = [status];
+      if (
+        summary.cancellation.evidenceSummary &&
+        summary.cancellation.evidenceSummary !== status
+      ) {
         lines.push(summary.cancellation.evidenceSummary);
       }
       if (summary.candidate) {

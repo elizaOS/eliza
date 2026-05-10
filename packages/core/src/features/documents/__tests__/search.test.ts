@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Memory, UUID } from "../../../types";
 import { MemoryType, ModelType } from "../../../types";
 import { bm25Scores, normalizeBm25Scores, tokenize } from "../bm25";
-import { KnowledgeService } from "../service";
+import { DocumentService } from "../service";
 
 // ── BM25 unit tests ────────────────────────────────────────────────────────
 
@@ -31,6 +31,14 @@ describe("bm25Scores", () => {
 		{ id: "d2", text: "A fast fox ran quickly through the forest" },
 		{ id: "d3", text: "Banana apple mango tropical fruits" },
 	];
+	const scoreById = (
+		scores: ReturnType<typeof bm25Scores>,
+		id: string,
+	): number => {
+		const match = scores.find((s) => s.id === id);
+		expect(match).toBeDefined();
+		return match?.score ?? Number.NaN;
+	};
 
 	it("returns a score entry for every document", () => {
 		const scores = bm25Scores("fox", docs);
@@ -40,21 +48,16 @@ describe("bm25Scores", () => {
 
 	it("gives positive scores to docs containing the query term", () => {
 		const scores = bm25Scores("fox", docs);
-		const d1 = scores.find((s) => s.id === "d1")!;
-		const d2 = scores.find((s) => s.id === "d2")!;
-		const d3 = scores.find((s) => s.id === "d3")!;
-		expect(d1.score).toBeGreaterThan(0);
-		expect(d2.score).toBeGreaterThan(0);
-		expect(d3.score).toBe(0); // "fox" not in d3
+		expect(scoreById(scores, "d1")).toBeGreaterThan(0);
+		expect(scoreById(scores, "d2")).toBeGreaterThan(0);
+		expect(scoreById(scores, "d3")).toBe(0); // "fox" not in d3
 	});
 
 	it("scores docs with the rarest matching term higher (IDF effect)", () => {
 		// "fox" appears in d1 and d2; "lazy" appears only in d1
 		const scores = bm25Scores("lazy", docs);
-		const d1 = scores.find((s) => s.id === "d1")!;
-		const d2 = scores.find((s) => s.id === "d2")!;
-		expect(d1.score).toBeGreaterThan(0);
-		expect(d2.score).toBe(0);
+		expect(scoreById(scores, "d1")).toBeGreaterThan(0);
+		expect(scoreById(scores, "d2")).toBe(0);
 	});
 
 	it("returns all-zero scores for empty query", () => {
@@ -92,9 +95,14 @@ describe("normalizeBm25Scores", () => {
 	});
 });
 
-// ── KnowledgeService.getKnowledge integration-style tests ─────────────────
+// ── DocumentService.searchDocuments integration-style tests ───────────────
 
-function makeFragment(id: string, text: string, similarity?: number): Memory {
+function makeFragment(
+	id: string,
+	text: string,
+	similarity?: number,
+	metadata: Record<string, unknown> = {},
+): Memory {
 	return {
 		id: id as UUID,
 		agentId: "agent-1" as UUID,
@@ -105,6 +113,7 @@ function makeFragment(id: string, text: string, similarity?: number): Memory {
 			documentId: "doc-1" as UUID,
 			position: 0,
 			timestamp: Date.now(),
+			...metadata,
 		},
 		createdAt: Date.now(),
 		...(similarity !== undefined ? { similarity } : {}),
@@ -134,39 +143,40 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 
 function buildService(
 	runtime: ReturnType<typeof buildRuntime>,
-): KnowledgeService {
-	// KnowledgeService constructor accepts runtime as first param
+): DocumentService {
+	// DocumentService constructor accepts runtime as first param
 	const svc = new (
-		KnowledgeService as unknown as new (
+		DocumentService as new (
 			runtime: unknown,
-		) => KnowledgeService
+		) => DocumentService
 	)(runtime);
 	return svc;
 }
 
-function makeMessage(text: string): Memory {
+function makeMessage(text: string, entityId?: UUID): Memory {
 	return {
 		id: "msg-1" as UUID,
 		agentId: "agent-1" as UUID,
 		roomId: "room-1" as UUID,
+		...(entityId ? { entityId } : {}),
 		content: { text },
 		createdAt: Date.now(),
 	};
 }
 
-describe("KnowledgeService.getKnowledge", () => {
+describe("DocumentService.searchDocuments", () => {
 	describe("empty / invalid input", () => {
 		it("returns empty array for empty message text", async () => {
 			const rt = buildRuntime({ hasEmbedding: true });
 			const svc = buildService(rt);
-			const result = await svc.getKnowledge(makeMessage(""), undefined);
+			const result = await svc.searchDocuments(makeMessage(""), undefined);
 			expect(result).toEqual([]);
 		});
 
 		it("returns empty array for whitespace-only message text", async () => {
 			const rt = buildRuntime({ hasEmbedding: true });
 			const svc = buildService(rt);
-			const result = await svc.getKnowledge(makeMessage("   "), undefined);
+			const result = await svc.searchDocuments(makeMessage("   "), undefined);
 			expect(result).toEqual([]);
 		});
 	});
@@ -181,7 +191,7 @@ describe("KnowledgeService.getKnowledge", () => {
 			const rt = buildRuntime({ hasEmbedding: true, fragments: [frag] });
 			const svc = buildService(rt);
 
-			const results = await svc.getKnowledge(
+			const results = await svc.searchDocuments(
 				makeMessage("capital of France"),
 				undefined,
 				"vector",
@@ -195,11 +205,11 @@ describe("KnowledgeService.getKnowledge", () => {
 
 		it("filters out fragments with no id", async () => {
 			const frag = makeFragment("", "orphan fragment", 0.8);
-			frag.id = undefined as unknown as UUID;
+			frag.id = undefined as UUID;
 			const rt = buildRuntime({ hasEmbedding: true, fragments: [frag] });
 			const svc = buildService(rt);
 
-			const results = await svc.getKnowledge(
+			const results = await svc.searchDocuments(
 				makeMessage("orphan"),
 				undefined,
 				"vector",
@@ -218,7 +228,7 @@ describe("KnowledgeService.getKnowledge", () => {
 			const rt = buildRuntime({ hasEmbedding: false, fragments });
 			const svc = buildService(rt);
 
-			const results = await svc.getKnowledge(
+			const results = await svc.searchDocuments(
 				makeMessage("quantum computing"),
 				undefined,
 				"keyword",
@@ -240,12 +250,39 @@ describe("KnowledgeService.getKnowledge", () => {
 			const rt = buildRuntime({ hasEmbedding: false, fragments });
 			const svc = buildService(rt);
 
-			const results = await svc.getKnowledge(
+			const results = await svc.searchDocuments(
 				makeMessage("quantum"),
 				undefined,
 				"keyword",
 			);
 			expect(results).toHaveLength(0);
+		});
+
+		it("filters user-private fragments to the scoped user", async () => {
+			const userOne = "user-1" as UUID;
+			const userTwo = "user-2" as UUID;
+			const fragments = [
+				makeFragment("frag-owned", "private launch note", undefined, {
+					scope: "user-private",
+					scopedToEntityId: userOne,
+					addedBy: userOne,
+				}),
+				makeFragment("frag-other", "private launch note", undefined, {
+					scope: "user-private",
+					scopedToEntityId: userTwo,
+					addedBy: userTwo,
+				}),
+			];
+			const rt = buildRuntime({ hasEmbedding: false, fragments });
+			const svc = buildService(rt);
+
+			const results = await svc.searchDocuments(
+				makeMessage("launch", userOne),
+				undefined,
+				"keyword",
+			);
+
+			expect(results.map((result) => result.id)).toEqual(["frag-owned"]);
 		});
 	});
 
@@ -266,7 +303,7 @@ describe("KnowledgeService.getKnowledge", () => {
 			});
 			const svc = buildService(rt);
 
-			const results = await svc.getKnowledge(
+			const results = await svc.searchDocuments(
 				makeMessage("quantum"),
 				undefined,
 				"hybrid",
@@ -289,7 +326,7 @@ describe("KnowledgeService.getKnowledge", () => {
 			const rt = buildRuntime({ hasEmbedding: true, fragments });
 			const svc = buildService(rt);
 
-			const results = await svc.getKnowledge(
+			const results = await svc.searchDocuments(
 				makeMessage("fox"),
 				undefined,
 				"hybrid",
@@ -312,7 +349,7 @@ describe("KnowledgeService.getKnowledge", () => {
 			const svc = buildService(rt);
 
 			// Request hybrid — should silently fall back to keyword
-			const results = await svc.getKnowledge(
+			const results = await svc.searchDocuments(
 				makeMessage("typescript"),
 				undefined,
 				"hybrid",
@@ -331,7 +368,7 @@ describe("KnowledgeService.getKnowledge", () => {
 
 			// Requesting "vector" mode but no embedding model is registered:
 			// should fall back to keyword search without throwing
-			const results = await svc.getKnowledge(
+			const results = await svc.searchDocuments(
 				makeMessage("vector test"),
 				undefined,
 				"vector",

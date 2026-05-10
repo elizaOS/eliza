@@ -1,4 +1,4 @@
-import { modelLooksLikeElizaCloudHosted } from "@elizaos/app-core";
+import { modelLooksLikeElizaCloudHosted } from "@elizaos/ui";
 
 export type CompanionInferenceNotice =
   | { kind: "cloud"; variant: "danger" | "warn"; tooltip: string }

@@ -14,16 +14,20 @@
  *   }
  */
 
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { updateRoleAction } from "./action.js";
-import { rolesProvider } from "./provider.js";
-import type { RolesConfig, RolesWorldMetadata } from "./types.js";
+import {
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+  roleAction,
+} from "@elizaos/core";
+import { rolesProvider } from "./provider.ts";
+import type { RolesConfig, RolesWorldMetadata } from "./types.ts";
 import {
   hasConfiguredCanonicalOwner,
   matchEntityToConnectorAdminWhitelist,
   normalizeRole,
   resolveCanonicalOwnerId,
-} from "./utils.js";
+} from "./utils.ts";
 
 const BOOTSTRAP_RETRY_TIMERS_KEY = Symbol.for(
   "@elizaos/runtime.roles.bootstrapRetries",
@@ -35,8 +39,7 @@ type RuntimeWithBootstrapRetries = IAgentRuntime & {
   [BOOTSTRAP_RETRY_TIMERS_KEY]?: Map<string, ReturnType<typeof setTimeout>>;
 };
 
-export { updateRoleAction } from "./action.js";
-export { rolesProvider } from "./provider.js";
+export { rolesProvider } from "./provider.ts";
 export type {
   ConnectorAdminWhitelist,
   RoleCheckResult,
@@ -44,8 +47,8 @@ export type {
   RoleName,
   RolesConfig,
   RolesWorldMetadata,
-} from "./types.js";
-export { ROLE_RANK } from "./types.js";
+} from "./types.ts";
+export { ROLE_RANK } from "./types.ts";
 export {
   canModifyRole,
   checkSenderPrivateAccess,
@@ -62,7 +65,8 @@ export {
   resolveWorldForMessage,
   setConnectorAdminWhitelist,
   setEntityRole,
-} from "./utils.js";
+} from "./utils.ts";
+export { roleAction };
 
 async function updateWorldMetadata(
   runtime: IAgentRuntime,
@@ -124,6 +128,28 @@ function scheduleBootstrapRetry(
     });
   }, delayMs);
   timers.set(label, timer);
+}
+
+function isExpectedRuntimeStateBootstrapError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    /Failed query:\s*select\b.*\bfrom "worlds"/i.test(message) ||
+    /relation .*worlds.*does not exist/i.test(message) ||
+    /no such table:?\s*worlds/i.test(message)
+  );
+}
+
+function logRuntimeStateBootstrapDeferral(label: string, err: unknown): void {
+  if (isExpectedRuntimeStateBootstrapError(err)) {
+    logger.info(
+      `[roles] Deferring ${label} bootstrap until runtime worlds are available`,
+    );
+    return;
+  }
+
+  logger.info(
+    `[roles] Deferring ${label} bootstrap until runtime worlds are available: ${String(err)}`,
+  );
 }
 
 /**
@@ -198,9 +224,7 @@ async function ensureOwnerRole(
     }
     return true;
   } catch (err) {
-    logger.info(
-      `[roles] Deferring owner role bootstrap until worlds are available: ${err}`,
-    );
+    logRuntimeStateBootstrapDeferral("owner role", err);
     return false;
   }
 }
@@ -283,9 +307,7 @@ async function applyConnectorAdminWhitelists(
     }
     return true;
   } catch (err) {
-    logger.info(
-      `[roles] Deferring connector admin bootstrap until worlds are available: ${String(err)}`,
-    );
+    logRuntimeStateBootstrapDeferral("connector admin", err);
     return false;
   }
 }
@@ -325,7 +347,7 @@ const rolesPlugin: Plugin = {
     "connector whitelisting and /role command.",
 
   providers: [rolesProvider],
-  actions: [updateRoleAction],
+  actions: [roleAction],
 
   async init(pluginConfig: Record<string, unknown>, runtime: IAgentRuntime) {
     logger.info("[roles] Initializing roles");

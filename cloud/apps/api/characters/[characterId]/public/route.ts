@@ -16,6 +16,7 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
+import { isValidUUID } from "@/lib/utils/validation";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
@@ -24,6 +25,9 @@ app.get("/", async (c) => {
   const characterRef = c.req.param("characterId") ?? "";
   const username =
     characterRef.startsWith("@") && characterRef.length > 1 ? characterRef.slice(1) : null;
+  if (!username && !isValidUUID(characterRef)) {
+    return c.json({ success: false, error: "Invalid character id" }, 400);
+  }
   try {
     const character = username
       ? await charactersService.getByUsername(username)

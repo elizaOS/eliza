@@ -109,7 +109,7 @@ async function importPluginSql(): Promise<Plugin> {
   } catch (packageError) {
     const fallbackPath = path.resolve(
       helperDir,
-      "../../../../plugins/plugin-sql/typescript/index.node.ts",
+      "../../../../plugins/plugin-sql/src/index.node.ts",
     );
     try {
       const { default: pluginSql } = await import(
@@ -196,15 +196,22 @@ function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
     process.env.ELIZA_E2E_CEREBRAS_API_KEY?.trim();
   if (!apiKey) return null;
 
-  const baseUrl =
-    process.env.OPENAI_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
+  // CEREBRAS_API_KEY alone is NOT enough to opt the agent runtime into
+  // Cerebras. Lifeops uses Cerebras for *evaluation/training* by default
+  // (see `lifeops-eval-model.ts`); the agent under test stays on Anthropic
+  // Opus 4.7 unless the operator explicitly opts in with one of:
+  //   - MILADY_PROVIDER=cerebras
+  //   - OPENAI_BASE_URL set to a *.cerebras.ai endpoint
+  // Otherwise the eval key would leak into the agent runtime and the
+  // benchmark would grade Cerebras-vs-Cerebras instead of Anthropic-vs-Cerebras.
   const explicitProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
-  if (
-    explicitProvider !== "cerebras" &&
-    !/cerebras\.ai(?:\/|$)/i.test(baseUrl)
-  ) {
+  const explicitBaseUrl = process.env.OPENAI_BASE_URL?.trim();
+  const baseUrlIsCerebras =
+    !!explicitBaseUrl && /cerebras\.ai(?:\/|$)/i.test(explicitBaseUrl);
+  if (explicitProvider !== "cerebras" && !baseUrlIsCerebras) {
     return null;
   }
+  const baseUrl = explicitBaseUrl || "https://api.cerebras.ai/v1";
 
   const smallModel =
     process.env.ELIZA_LIVE_TEST_SMALL_MODEL?.trim() ||
@@ -214,14 +221,31 @@ function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
     process.env.ELIZA_LIVE_TEST_LARGE_MODEL?.trim() ||
     process.env.OPENAI_LARGE_MODEL?.trim() ||
     "gpt-oss-120b";
+  const mediumModel =
+    process.env.OPENAI_MEDIUM_MODEL?.trim() ||
+    process.env.MEDIUM_MODEL?.trim() ||
+    largeModel;
+  const actionPlannerModel =
+    process.env.OPENAI_ACTION_PLANNER_MODEL?.trim() ||
+    process.env.OPENAI_PLANNER_MODEL?.trim() ||
+    process.env.ACTION_PLANNER_MODEL?.trim() ||
+    process.env.PLANNER_MODEL?.trim() ||
+    largeModel;
   const env = {
     CEREBRAS_API_KEY: apiKey,
+    OPENAI_API_KEY: apiKey,
     OPENAI_BASE_URL: baseUrl,
     MILADY_PROVIDER: "cerebras",
     OPENAI_SMALL_MODEL: smallModel,
+    OPENAI_MEDIUM_MODEL: mediumModel,
     OPENAI_LARGE_MODEL: largeModel,
+    OPENAI_ACTION_PLANNER_MODEL: actionPlannerModel,
+    OPENAI_PLANNER_MODEL: actionPlannerModel,
     SMALL_MODEL: smallModel,
+    MEDIUM_MODEL: mediumModel,
     LARGE_MODEL: largeModel,
+    ACTION_PLANNER_MODEL: actionPlannerModel,
+    PLANNER_MODEL: actionPlannerModel,
   };
 
   return {
@@ -293,7 +317,10 @@ export async function createRealTestRuntime(
     // Always register plugin-sql for PGLite database.
     await runtime.registerPlugin(await importPluginSql());
 
-    if (options?.withLLM) {
+    if (
+      options?.withLLM &&
+      process.env.ELIZA_DISABLE_LOCAL_EMBEDDING_PLUGIN !== "1"
+    ) {
       try {
         const { default: localEmbeddingPlugin } = await import(
           "@elizaos/plugin-local-embedding"
@@ -315,7 +342,7 @@ export async function createRealTestRuntime(
     let providerConfig: LiveProviderConfig | null = null;
 
     if (options?.withLLM) {
-      const { selectLiveProvider } = await import("./live-provider");
+      const { selectLiveProvider } = await import("./live-provider.ts");
       providerConfig = selectLiveProvider(options.preferredProvider);
       if (!providerConfig && options.preferredProvider) {
         providerConfig = selectLiveProvider();
@@ -323,7 +350,17 @@ export async function createRealTestRuntime(
       providerConfig ??= createCerebrasProviderConfigFromEnv();
       if (providerConfig) {
         providerName = providerConfig.name;
-        // Set provider env vars so the plugin picks them up
+        const COMPETING_KEYS_BY_PROVIDER: Record<string, readonly string[]> = {
+          cerebras: ["ANTHROPIC_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY"],
+          openai: ["ANTHROPIC_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "CEREBRAS_API_KEY"],
+          anthropic: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "CEREBRAS_API_KEY"],
+          google: ["ANTHROPIC_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "CEREBRAS_API_KEY"],
+          groq: ["ANTHROPIC_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY", "CEREBRAS_API_KEY"],
+          openrouter: ["ANTHROPIC_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY"],
+        };
+        for (const competingKey of COMPETING_KEYS_BY_PROVIDER[providerName] ?? []) {
+          delete process.env[competingKey];
+        }
         for (const [key, value] of Object.entries(providerConfig.env)) {
           process.env[key] = value;
         }
@@ -388,6 +425,32 @@ export async function createRealTestRuntime(
     }
 
     await runtime.initialize();
+
+    // Eagerly start the OptimizedPromptService so the planner-loop's
+    // synchronous `runtime.getService('optimized_prompt')` call hits an
+    // already-instantiated service. Without this the service is registered
+    // lazy (via basicServices) and the first N planner calls fall back to
+    // the baseline template before lazy start completes.
+    try {
+      const { OptimizedPromptService, OPTIMIZED_PROMPT_SERVICE } = await import(
+        "@elizaos/core"
+      );
+      const existing = runtime.getService(OPTIMIZED_PROMPT_SERVICE);
+      if (!existing) {
+        const optimized = await OptimizedPromptService.start(runtime);
+        const services = (runtime as unknown as {
+          services: Map<string, unknown[]>;
+        }).services;
+        const list = services.get(OPTIMIZED_PROMPT_SERVICE) ?? [];
+        list.push(optimized);
+        services.set(OPTIMIZED_PROMPT_SERVICE, list);
+      }
+    } catch (err) {
+      logger.warn(
+        `[real-runtime] OptimizedPromptService eager start failed: ${err}`,
+      );
+    }
+
     runtime.registerSendHandler(
       "client_chat",
       async (_rt, _target, _content) => {

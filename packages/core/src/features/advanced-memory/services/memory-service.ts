@@ -50,6 +50,19 @@ function resolveConfiguredTextGenerationModelType(
 	return TEXT_GENERATION_MODEL_TYPES.has(normalized) ? normalized : null;
 }
 
+function isMemoryStorageProvider(
+	service: unknown,
+): service is MemoryStorageProvider {
+	return (
+		typeof service === "object" &&
+		service !== null &&
+		"storeLongTermMemory" in service &&
+		typeof service.storeLongTermMemory === "function" &&
+		"storeSessionSummary" in service &&
+		typeof service.storeSessionSummary === "function"
+	);
+}
+
 export class MemoryService extends Service {
 	static serviceType: ServiceTypeName = "memory" as ServiceTypeName;
 
@@ -100,9 +113,8 @@ export class MemoryService extends Service {
 		let provider: MemoryStorageProvider | null = null;
 		if (runtime.hasService("memoryStorage")) {
 			try {
-				provider = (await runtime.getServiceLoadPromise(
-					"memoryStorage",
-				)) as unknown as MemoryStorageProvider | null;
+				const loaded = await runtime.getServiceLoadPromise("memoryStorage");
+				provider = isMemoryStorageProvider(loaded) ? loaded : null;
 			} catch (error) {
 				const err = error instanceof Error ? error.message : String(error);
 				logger.warn(
@@ -220,9 +232,9 @@ export class MemoryService extends Service {
 	private async getStorage(): Promise<MemoryStorageProvider | null> {
 		if (!this.storage && this.runtime.hasService("memoryStorage")) {
 			try {
-				this.storage = (await this.runtime.getServiceLoadPromise(
-					"memoryStorage",
-				)) as unknown as MemoryStorageProvider | null;
+				const loaded =
+					await this.runtime.getServiceLoadPromise("memoryStorage");
+				this.storage = isMemoryStorageProvider(loaded) ? loaded : null;
 			} catch (error) {
 				const err = error instanceof Error ? error.message : String(error);
 				logger.warn(
@@ -256,9 +268,7 @@ export class MemoryService extends Service {
 			tableName?: string,
 		) => Promise<number>;
 
-		const counter = this.runtime.countMemories as unknown as
-			| ModernCounter
-			| LegacyCounter;
+		const counter = this.runtime.countMemories as ModernCounter | LegacyCounter;
 		if (counter.length >= 2) {
 			return (counter as LegacyCounter)(roomId, false, "messages");
 		}

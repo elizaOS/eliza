@@ -33,9 +33,52 @@ const NOOP_FN = function noopStub() {
 // because functions have a non-configurable `prototype` that the
 // `ownKeys` trap must include. Plain objects don't have that constraint.
 function makeStubProxy() {
+  // Pre-define the property names that agent-side bundlers (Bun.build,
+  // and Node-style `__toESM`) rebuild a namespace from at module-load
+  // time. `__toESM(mod, 1)` reads `Object.getOwnPropertyNames(mod)` and
+  // uses THAT list — the Proxy `get` trap is bypassed for unknown names,
+  // so any property that isn't an own key on `target` ends up `undefined`
+  // in the destructured ESM namespace, no matter how clever the trap is.
+  //
+  // Production failure that surfaced this: the agent's plugin-routes
+  // ctx-object pulled `applyWhatsAppQrOverride: import_plugin_whatsapp3
+  // .applyWhatsAppQrOverride`, but the namespace had no own keys, so
+  // the destructure produced `undefined`, and runtime crashed with
+  // `applyWhatsAppQrOverride3 is not a function`.
+  //
+  // Fix: pre-populate the target with no-op functions for every name the
+  // agent's transitive imports destructure off these stubs. The trap then
+  // only handles dynamic access (still NOOP_FN), keeping
+  // findRuntimePluginExport's plugin-shape probe inert.
+  const PRE_POPULATED_NAMES = [
+    // plugin-whatsapp surface used by agent api/server.ts +
+    // plugin-routes.ts
+    "applyWhatsAppQrOverride",
+    "handleWhatsAppRoute",
+    "WHATSAPP_MAX_PAIRING_SESSIONS",
+    // plugin-signal surface (same routing pattern)
+    "applySignalQrOverride",
+    "handleSignalRoute",
+    // plugin-discord-local (api server)
+    "handleDiscordLocalRoute",
+    // plugin-mcp / plugin-streaming used elsewhere; safer to populate
+    // since some are stubbed via `optionalPluginStubs`.
+    "handleMcpRoutes",
+    "handleTtsRoutes",
+    "validateX402Startup",
+    // streamManager has both function- and method-shaped consumers
+    // (streamManager.list(), streamManager.attach(...) in some paths,
+    // and direct call sites elsewhere). Match the live shape with a
+    // function that doubles as a method bag.
+    "streamManager",
+  ];
   const target = {};
+  for (const name of PRE_POPULATED_NAMES) {
+    target[name] = NOOP_FN;
+  }
   return new Proxy(target, {
-    get(_t, prop) {
+    get(t, prop) {
+      if (Object.hasOwn(t, prop)) return t[prop];
       if (prop === "default") return makeStubProxy();
       if (prop === "__esModule") return true;
       if (prop === "__mobileStub") return true;

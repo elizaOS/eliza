@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+console.error("[dev-ui LOCAL PATCH START] running patched local dev-ui.mjs");
 /**
  * Development script that starts:
  * 1. The Eliza dev server (\[(eliza|eliza)(?:-api)?\]|runtime + API on port 31337) with restart support
@@ -23,7 +24,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import * as JSON5Module from "json5";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
@@ -216,6 +217,12 @@ const devLogLevel =
     .toLowerCase() || "info";
 const quietApiLogs = process.env.ELIZA_DEV_QUIET_LOGS === "1";
 const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS !== "0";
+// Keep `bun --watch` opt-in for the API server. Concurrent package builds,
+// native plugin builds, and staged plugin copies rewrite workspace `dist/`
+// files; Bun follows imports into those files and can hot-reload while the
+// runtime is still bootstrapping, leaving PGlite locked by the previous
+// process. The supervisor still restarts the API on explicit restart exits.
+const skipBunWatch = process.env.ELIZA_DEV_NO_WATCH !== "0";
 const DEV_TEST_MOCK_ENV_KEYS = [
   "ELIZA_MOCK_GOOGLE_BASE",
   "ELIZA_MOCK_TWILIO_BASE",
@@ -426,8 +433,14 @@ function formatRelativeImportPath(relativePath) {
 
 function resolveStealthImportPath(devCwd, candidatePaths) {
   for (const candidatePath of candidatePaths) {
-    if (existsSync(path.join(devCwd, candidatePath))) {
-      return formatRelativeImportPath(candidatePath);
+    const absPath = path.join(devCwd, candidatePath);
+    if (existsSync(absPath)) {
+      // Return the absolute path so the value stays valid regardless of
+      // which cwd the API child gets spawned in. The API child is anchored
+      // at the eliza/ submodule (see apiSpawnCwd below), so a path computed
+      // relative to the outer milady cwd would resolve to a non-existent
+      // `eliza/eliza/...` from the child's perspective.
+      return absPath;
     }
   }
   return null;
@@ -589,6 +602,43 @@ function createStartupFilter(dest) {
 }
 
 // ---------------------------------------------------------------------------
+// Concurrent build detection — bun --watch follows imports into workspace
+// `dist/` files. If a turbo/tsup/tsc build is rewriting those files, --watch
+// hot-reloads on every write and prevents the agent from finishing
+// initialization. We detect that case here and auto-disable --watch.
+// ---------------------------------------------------------------------------
+
+function detectConcurrentBuilds() {
+  if (process.platform === "win32") return null;
+  let psOut;
+  try {
+    psOut = execSync("ps axo pid=,command=", {
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+  } catch {
+    return null;
+  }
+  const buildSignatures = [
+    /\bturbo\s+run\s+build\b/i,
+    /\bbun\s+run\s+build\b/i,
+    /\btsup\b.*\bbuild\b/i,
+    /\btsc\b.*\b(--noEmit|tsconfig\.build)\b/i,
+  ];
+  for (const line of psOut.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (buildSignatures.some((re) => re.test(trimmed))) {
+      const sp = trimmed.indexOf(" ");
+      const pidStr = sp > 0 ? trimmed.slice(0, sp).trim() : trimmed;
+      return Number.parseInt(pidStr, 10) || null;
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Port cleanup — force-kill zombie processes on our dev ports
 // ---------------------------------------------------------------------------
 
@@ -626,7 +676,7 @@ function killPort(port) {
 // Wait for a TCP port to accept connections
 // ---------------------------------------------------------------------------
 
-function waitForPort(port, { timeout = 120_000, interval = 500 } = {}) {
+function waitForPort(port, { timeout = 300_000, interval = 500 } = {}) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeout;
     let activeSocket = null;
@@ -669,7 +719,7 @@ function waitForPort(port, { timeout = 120_000, interval = 500 } = {}) {
 
 async function waitForAgentReady(
   port,
-  { timeout = 120_000, interval = 1000 } = {},
+  { timeout = 300_000, interval = 1000 } = {},
 ) {
   const deadline = Date.now() + timeout;
   const url = `http://127.0.0.1:${port}/api/health`;
@@ -782,6 +832,9 @@ if (!uiOnly) {
 let apiProcess = null;
 let viteProcess = null;
 let shuttingDown = false;
+let vitePluginBuildAttempted = false;
+let viteRestartCount = 0;
+let viteRestartTimer = null;
 
 function terminateChild(proc, signal = "SIGTERM") {
   if (!proc) return;
@@ -799,6 +852,10 @@ function cleanup(exitCode = 0) {
 
   terminateChild(viteProcess, "SIGTERM");
   terminateChild(apiProcess, "SIGTERM");
+  if (viteRestartTimer) {
+    clearTimeout(viteRestartTimer);
+    viteRestartTimer = null;
+  }
 
   setTimeout(() => {
     terminateChild(viteProcess, "SIGKILL");
@@ -819,7 +876,8 @@ if (process.platform !== "win32") {
 function startVite() {
   const childEnv = createDevChildEnv(process.env);
   const pkgPath = path.join(cwd, appDir, "package.json");
-  if (existsSync(pkgPath)) {
+  if (!vitePluginBuildAttempted && existsSync(pkgPath)) {
+    vitePluginBuildAttempted = true;
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
       if (pkg.scripts?.["plugin:build"]) {
@@ -861,13 +919,17 @@ function startVite() {
     }
   }
 
-  const viteCmd = hasBun ? "bunx" : "npx";
+  const viteCmd = hasBun ? "bun" : "npx";
   const viteForce =
     process.env.ELIZA_VITE_FORCE === "1" ||
     process.env.ELIZA_VITE_FORCE === "1";
-  const viteArgs = viteForce
-    ? ["vite", "--force", "--port", String(UI_PORT)]
-    : ["vite", "--port", String(UI_PORT)];
+  const viteArgs = hasBun
+    ? viteForce
+      ? ["--bun", "vite", "--force", "--port", String(UI_PORT)]
+      : ["--bun", "vite", "--port", String(UI_PORT)]
+    : viteForce
+      ? ["vite", "--force", "--port", String(UI_PORT)]
+      : ["vite", "--port", String(UI_PORT)];
   if (viteForce) {
     console.log(
       `  ${green(logPrefix)} ${dim("Vite --force (ELIZA_VITE_FORCE=1): re-optimizing deps.")}`,
@@ -906,13 +968,26 @@ function startVite() {
     process.stderr.write(data);
   });
 
-  viteProcess.on("exit", (code) => {
+  viteProcess.on("exit", (code, signal) => {
     if (shuttingDown) return;
-    if (code !== 0) {
+    viteProcess = null;
+    const exitLabel =
+      signal ? `signal ${signal}` : `code ${code === null ? "null" : code}`;
+    viteRestartCount += 1;
+    if (viteRestartCount > 5) {
       console.error(
-        `${green(logPrefix)} vite exited with code ${code} — API server continues without UI`,
+        `${green(logPrefix)} vite exited with ${exitLabel} ${viteRestartCount} times — giving up`,
       );
+      cleanup(code ?? 1);
+      return;
     }
+    console.error(
+      `${green(logPrefix)} vite exited with ${exitLabel} — restarting UI (attempt ${viteRestartCount}/5)`,
+    );
+    viteRestartTimer = setTimeout(() => {
+      viteRestartTimer = null;
+      if (!shuttingDown) startVite();
+    }, 400);
   });
 }
 
@@ -960,14 +1035,32 @@ if (uiOnly) {
     );
   }
 
-  const devServerEntry = resolveDevServerEntryRelativePath(cwd);
+  let devServerEntry = resolveDevServerEntryRelativePath(cwd);
+  // Resolve to absolute so it stays valid when we anchor the API child cwd
+  // at eliza/ for workspace lookup (see apiSpawnCwd below).
+  if (!path.isAbsolute(devServerEntry)) {
+    devServerEntry = path.resolve(cwd, devServerEntry);
+  }
+
+  let useWatch = !skipBunWatch;
+  if (useWatch) {
+    const buildPid = detectConcurrentBuilds();
+    if (buildPid) {
+      console.log(
+        `  ${green(logPrefix)} ${dim(
+          `Concurrent build detected (PID ${buildPid}) — disabling --watch to avoid hot-reload loop on dist/ writes. Set ELIZA_DEV_NO_WATCH=1 to silence this notice.`,
+        )}`,
+      );
+      useWatch = false;
+    }
+  }
 
   const apiCmd = hasBun
     ? [
         "bun",
         "--no-install",
         ...nodeStealthImports.flatMap((filePath) => ["--preload", filePath]),
-        "--watch",
+        ...(useWatch ? ["--watch"] : []),
         devServerEntry,
       ]
     : [
@@ -975,9 +1068,21 @@ if (uiOnly) {
         "--import",
         "tsx",
         ...nodeStealthImports.flatMap((filePath) => ["--import", filePath]),
-        "--watch",
+        ...(useWatch ? ["--watch"] : []),
         devServerEntry,
       ];
+  // The API server resolves @elizaos/* deps via Bun workspace lookup, which
+  // walks up from cwd looking for a package.json with a `workspaces` field.
+  // When running from the milady-style outer repo (cwd contains an `eliza/`
+  // submodule), the outer package.json's `workspaces: ["apps/*"]` excludes
+  // eliza's workspace packages — so plugin-x402, plugin-streaming, etc. fail
+  // to resolve. Spawn the API child with cwd anchored at eliza/ so its
+  // workspaces ([packages/*, plugins/*]) are visible.
+  const elizaSubmoduleRoot = path.join(cwd, "eliza");
+  const apiSpawnCwd = existsSync(path.join(elizaSubmoduleRoot, "package.json"))
+    ? elizaSubmoduleRoot
+    : cwd;
+
   const childEnv = createDevChildEnv(process.env);
   const apiSpawnEnv = extendNodePathEnv(
     {
@@ -991,13 +1096,13 @@ if (uiOnly) {
       ELIZA_DEV_AUTH_BYPASS: "1",
       LOG_LEVEL: devLogLevel,
     },
-    cwd,
+    apiSpawnCwd,
   );
 
   const apiSupervisor = createApiSupervisor({
     spawnChild: () =>
       spawn(apiCmd[0], apiCmd.slice(1), {
-        cwd,
+        cwd: apiSpawnCwd,
         env: apiSpawnEnv,
         stdio: ["inherit", "pipe", "pipe"],
       }),

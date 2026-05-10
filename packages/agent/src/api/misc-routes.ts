@@ -1,19 +1,24 @@
 import crypto from "node:crypto";
 import type http from "node:http";
-import { type AgentRuntime, ModelType } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  composePrompt,
+  customActionGenerateTemplate,
+  ModelType,
+} from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { asRecord } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
+import type { ElizaConfig } from "../config/config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import type {
   CustomActionDef,
   CustomActionHandler,
-} from "../config/types.eliza.js";
+} from "../config/types.eliza.ts";
 import {
   buildTestHandler,
   registerCustomActionLive,
-} from "../runtime/custom-actions.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
-import { resolveTerminalRunLimits } from "./terminal-run-limits.js";
+} from "../runtime/custom-actions.ts";
+import { resolveTerminalRunLimits } from "./terminal-run-limits.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,7 +49,7 @@ type CompanionEmote = {
   [key: string]: unknown;
 };
 
-const COMPANION_EMOTES_MODULE: string = "@elizaos/app-companion/emotes";
+const COMPANION_EMOTES_MODULE: string = "@elizaos/app-companion";
 let companionEmotesPromise: Promise<{
   catalog: CompanionEmote[];
   byId: Map<string, CompanionEmote>;
@@ -622,28 +627,13 @@ export async function handleMiscRoutes(
     }
 
     try {
-      const systemPrompt = [
-        "You are a helper that generates custom action definitions from natural language descriptions.",
-        "Given a user's description of what they want an action to do, generate a JSON object with these fields:",
-        "",
-        "- name: string (UPPER_SNAKE_CASE action name)",
-        "- description: string (clear description of what the action does)",
-        "- similes: optional string[] of alternative action names and phrases",
-        '- handlerType: "http" | "shell" | "code"',
-        "- handler: object with type-specific fields:",
-        '  For http: { type: "http", method: "GET"|"POST"|etc, url: string, headers?: object, bodyTemplate?: string }',
-        '  For shell: { type: "shell", command: string }',
-        '  For code: { type: "code", code: string }',
-        "- parameters: array of { name: string, description: string, required: boolean }",
-        "",
-        "Use {{paramName}} placeholders in URLs, body templates, and shell commands.",
-        "For code handlers, parameters are available via params.paramName and fetch() is available.",
-        "",
-        "Respond with ONLY the JSON object, no markdown fences or explanation.",
-      ].join("\n");
+      const composedPrompt = composePrompt({
+        state: { request: prompt },
+        template: customActionGenerateTemplate,
+      });
 
       const llmResponse = await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt: `${systemPrompt}\n\nUser request: ${prompt}`,
+        prompt: composedPrompt,
       });
 
       const text =

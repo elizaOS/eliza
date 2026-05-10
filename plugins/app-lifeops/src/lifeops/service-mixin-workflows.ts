@@ -6,10 +6,9 @@
 // Refactoring requires either declaration-merging every cross-mixin method
 // or moving to a single composed interface — tracked as separate work.
 
-import { computeNextCronRunAtMs } from "@elizaos/agent/triggers/scheduling";
+import { computeNextCronRunAtMs } from "@elizaos/agent";
 import type {
   CreateLifeOpsWorkflowRequest,
-  LifeOpsBrowserSession,
   LifeOpsCalendarEvent,
   LifeOpsCalendarEventEndedFilters,
   LifeOpsWorkflowDefinition,
@@ -23,10 +22,13 @@ import {
   createLifeOpsWorkflowDefinition,
   createLifeOpsWorkflowRun,
 } from "./repository.js";
+import { parseWorkflowSchedulerState } from "./service-helpers-browser.js";
 import {
-  describeWorkflowValue,
-  parseWorkflowSchedulerState,
-} from "./service-helpers-browser.js";
+  getWorkflowStepRegistry,
+  UnknownWorkflowStepError,
+  type WorkflowStepExecuteArgs,
+  type WorkflowStepExecuteContext,
+} from "./registries/workflow-step-registry.js";
 import {
   isRecord,
   normalizeOptionalRecord,
@@ -55,7 +57,7 @@ import type {
   LifeOpsWorkflowSchedulerState,
 } from "./service-types.js";
 import { LifeOpsServiceError } from "./service-types.js";
-import type { LifeOpsDerivedEvent } from "./sleep-wake-events.js";
+import type { LifeOpsDerivedEvent } from "@elizaos/plugin-health";
 import { addMinutes } from "./time.js";
 
 export interface LifeOpsWorkflowService {
@@ -839,143 +841,37 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
         request: Record<string, unknown>;
       },
     ): Promise<ExecuteWorkflowResult> {
-      const internalUrl = new URL("http://127.0.0.1/");
       const outputs: Record<string, unknown> = {};
       const steps: Array<Record<string, unknown>> = [];
       let status: LifeOpsWorkflowRun["status"] = "success";
 
+      const registry = getWorkflowStepRegistry(this.runtime);
+      if (!registry) {
+        throw new Error(
+          "WorkflowStepRegistry not registered on runtime — call registerDefaultWorkflowStepPack() in plugin init",
+        );
+      }
+      const ctx = this as unknown as WorkflowStepExecuteContext;
+
       try {
         for (const [index, step] of definition.actionPlan.steps.entries()) {
-          let value: unknown;
-          if (step.kind === "create_task") {
-            const created = await this.createDefinition({
-              ...step.request,
-              ownership: step.request.ownership ?? {
-                domain: definition.domain,
-                subjectType: definition.subjectType,
-                subjectId: definition.subjectId,
-                visibilityScope: definition.visibilityScope,
-                contextPolicy: definition.contextPolicy,
-              },
-            });
-            value = {
-              definitionId: created.definition.id,
-              title: created.definition.title,
-              reminderPlanId: created.reminderPlan?.id ?? null,
-            };
-          } else if (step.kind === "relock_website_access") {
-            value = await this.relockWebsiteAccessGroup(
-              step.request.groupKey,
-              new Date(args.startedAt),
+          const contribution = registry.get(step.kind);
+          if (!contribution) {
+            throw new UnknownWorkflowStepError(
+              step.kind,
+              registry.list().map((c) => c.kind),
             );
-          } else if (step.kind === "resolve_website_access_callback") {
-            value = await this.resolveWebsiteAccessCallback(
-              step.request.callbackKey,
-              new Date(args.startedAt),
-            );
-          } else if (step.kind === "get_calendar_feed") {
-            value = await this.getCalendarFeed(
-              internalUrl,
-              step.request ?? {},
-              new Date(args.startedAt),
-            );
-          } else if (step.kind === "get_gmail_triage") {
-            value = await this.getGmailTriage(
-              internalUrl,
-              step.request ?? {},
-              new Date(args.startedAt),
-            );
-          } else if (step.kind === "get_gmail_unresponded") {
-            value = await this.getGmailUnresponded(
-              internalUrl,
-              step.request ?? {},
-              new Date(args.startedAt),
-            );
-          } else if (step.kind === "get_health_summary") {
-            value = await this.getHealthSummary(step.request ?? {});
-          } else if (step.kind === "dispatch_n8n_workflow") {
-            const n8n = this.runtime.getService("N8N_DISPATCH") as {
-              execute?: (
-                workflowId: string,
-                payload?: Record<string, unknown>,
-              ) => Promise<unknown>;
-            } | null;
-            if (!n8n || typeof n8n.execute !== "function") {
-              value = {
-                ok: false,
-                error: "N8N_DISPATCH service not registered",
-              };
-            } else {
-              value = await n8n.execute(step.workflowId, {
-                ...(step.payload ?? {}),
-                request: args.request,
-                outputs,
-              });
-            }
-          } else if (step.kind === "summarize") {
-            const sourceValue =
-              (step.sourceKey
-                ? outputs[step.sourceKey]
-                : steps.at(-1)?.value) ?? null;
-            value = {
-              text: describeWorkflowValue(sourceValue, step.prompt),
-            };
-          } else {
-            if (!definition.permissionPolicy.allowBrowserActions) {
-              value = {
-                blocked: true,
-                reason: "browser_actions_disabled",
-              };
-            } else {
-              const session = await this.createBrowserSessionInternal({
-                workflowId: definition.id,
-                title: step.sessionTitle,
-                actions: step.actions,
-                ownership: {
-                  domain: definition.domain,
-                  subjectType: definition.subjectType,
-                  subjectId: definition.subjectId,
-                  visibilityScope: definition.visibilityScope,
-                  contextPolicy: definition.contextPolicy,
-                },
-              });
-              if (
-                session.awaitingConfirmationForActionId &&
-                !definition.permissionPolicy.trustedBrowserActions &&
-                !args.confirmBrowserActions
-              ) {
-                value = {
-                  sessionId: session.id,
-                  status: session.status,
-                  requiresConfirmation: true,
-                };
-              } else {
-                const updated: LifeOpsBrowserSession = {
-                  ...session,
-                  status: "queued",
-                  awaitingConfirmationForActionId: null,
-                  updatedAt: new Date().toISOString(),
-                };
-                await this.repository.updateBrowserSession(updated);
-                await this.recordBrowserAudit(
-                  "browser_session_updated",
-                  updated.id,
-                  "browser session started",
-                  {
-                    workflowId: definition.id,
-                  },
-                  {
-                    status: updated.status,
-                  },
-                );
-                value = {
-                  sessionId: updated.id,
-                  status: updated.status,
-                  requiresConfirmation: false,
-                };
-              }
-            }
           }
+          const validated = contribution.paramSchema.parse(step);
+          const stepArgs: WorkflowStepExecuteArgs = {
+            definition,
+            startedAt: args.startedAt,
+            confirmBrowserActions: args.confirmBrowserActions,
+            request: args.request,
+            outputs,
+            previousStepValue: steps.at(-1)?.value ?? null,
+          };
+          const value = await contribution.execute(validated, stepArgs, ctx);
           const stepRecord = {
             index,
             kind: step.kind,

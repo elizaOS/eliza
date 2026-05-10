@@ -251,8 +251,26 @@ function deriveVolumePath(organizationId: string, projectName: string): string {
 function readMetadata(row: Container): HetznerContainerMetadata | null {
   const raw = row.metadata as Record<string, unknown> | null | undefined;
   if (!raw || raw.provider !== "hetzner-docker") return null;
-  // Trust the shape because we wrote it. The provider tag is the discriminator.
-  return raw as unknown as HetznerContainerMetadata;
+  if (
+    typeof raw.nodeId !== "string" ||
+    typeof raw.hostname !== "string" ||
+    typeof raw.containerName !== "string" ||
+    typeof raw.hostPort !== "number" ||
+    typeof raw.image !== "string" ||
+    typeof raw.containerPort !== "number"
+  ) {
+    return null;
+  }
+  return {
+    provider: "hetzner-docker",
+    nodeId: raw.nodeId,
+    hostname: raw.hostname,
+    containerName: raw.containerName,
+    hostPort: raw.hostPort,
+    image: raw.image,
+    containerPort: raw.containerPort,
+    volumePath: typeof raw.volumePath === "string" ? raw.volumePath : undefined,
+  };
 }
 
 function rowToSummary(row: Container): ContainerSummary {

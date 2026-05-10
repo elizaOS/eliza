@@ -10,6 +10,7 @@
 
 "use client";
 
+import type { Voice } from "@elizaos/cloud-ui";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,8 +33,6 @@ import { ExternalLink, Play, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-
-import type { Voice } from "@elizaos/cloud-ui/components/voice/types";
 
 interface VoiceCardProps {
   voice: Voice;

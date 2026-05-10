@@ -117,7 +117,7 @@ vastai create instance <offer-id> \
   --image vllm/vllm-openai:v0.20.1 \
   --disk 120 \
   --label eliza-1-27b \
-  --env '-p 8000:8000 -e MODEL_REPO=elizaos/eliza-1-27b-fp8 -e MODEL_ALIAS=vast/eliza-1-27b -e VLLM_PORT=8000 -e VLLM_REGISTRY_KEY=qwen3.6-27b' \
+  --env '-p 8000:8000 -e MODEL_REPO=elizaos/eliza-1-27b-fp8 -e MODEL_ALIAS=vast/eliza-1-27b -e VLLM_PORT=8000 -e VLLM_REGISTRY_KEY=eliza-1-27b' \
   --onstart-cmd "$(cat onstart-vllm.sh)"
 
 # Get the public endpoint.
@@ -134,5 +134,5 @@ The cloud Worker expects model IDs like `vast/eliza-1-9b` to forward
 through `eliza/cloud/packages/lib/providers/vast.ts`. Adding a new
 size to the cloud catalog requires one new entry in
 `eliza/cloud/packages/lib/models/catalog.ts` per Vast alias —
-structurally identical to the existing `vast/qwen3.6-27b-neo-code`
+structurally identical to the existing `vast/eliza-1-27b`
 row. See `../README.md` for the integration overview.

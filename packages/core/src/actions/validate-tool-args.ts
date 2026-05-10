@@ -88,7 +88,28 @@ function validateObject(
 
 	for (const key of Object.keys(value)) {
 		if (!hasOwn(properties, key)) {
-			errors.push(`Unexpected argument '${path ? `${path}.${key}` : key}'`);
+			const childPath = path ? `${path}.${key}` : key;
+			if (schema.additionalProperties === true) {
+				output[key] = value[key];
+				continue;
+			}
+			if (
+				schema.additionalProperties &&
+				typeof schema.additionalProperties === "object"
+			) {
+				const before = errors.length;
+				const childValue = validateSchema(
+					schema.additionalProperties,
+					value[key],
+					childPath,
+					errors,
+				);
+				if (errors.length === before) {
+					output[key] = childValue;
+				}
+				continue;
+			}
+			errors.push(`Unexpected argument '${childPath}'`);
 		}
 	}
 

@@ -257,12 +257,22 @@ async function main(): Promise<void> {
   console.error("📚 Available tools: chat, get_agent_info");
 }
 
+async function shutdown(): Promise<void> {
+  if (runtime) {
+    await runtime.stop();
+    runtime = null;
+  }
+}
+
 // Handle graceful shutdown
 process.on("SIGINT", async () => {
   console.error("\n👋 Shutting down...");
-  if (runtime) {
-    await runtime.stop();
-  }
+  await shutdown();
+  process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+  await shutdown();
   process.exit(0);
 });
 

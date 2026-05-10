@@ -10,5 +10,5 @@
     "rootDir": "src",
     "types": ["bun-types", "node"]
   },
-  "include": ["src", "../../packages/types/plugin-sql.d.ts"]
+  "include": ["src"]
 }

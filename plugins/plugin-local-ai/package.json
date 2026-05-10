@@ -1,12 +1,12 @@
 {
   "name": "@elizaos/plugin-local-ai",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
   "types": "dist/index.d.ts",
-  "browser": "index.browser.ts",
+  "browser": "dist/browser/index.browser.js",
   "sideEffects": false,
   "repository": {
     "type": "git",
@@ -17,9 +17,9 @@
     ".": {
       "types": "./dist/index.d.ts",
       "browser": {
-        "types": "./index.d.ts",
-        "import": "./index.browser.ts",
-        "default": "./index.browser.ts"
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
       },
       "node": {
         "types": "./dist/node/index.d.ts",
@@ -39,7 +39,7 @@
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
     "dev": "bun --hot build.ts",
-    "clean": "rm -rf dist .turbo node_modules",
+    "clean": "rm -rf dist .turbo",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -48,11 +48,10 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "@huggingface/transformers": "^4.0.0",
     "node-llama-cpp": "3.18.1",
     "stream-browserify": "^3.0.0",
-    "undici": "^8.0.0",
     "uuid": "^14.0.0",
     "whisper-node": "^1.1.1",
     "zod": "^4.4.3"
@@ -60,10 +59,10 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "publishConfig": {
     "access": "public"
@@ -87,28 +86,28 @@
         "type": "string",
         "description": "Filename of the small local AI model.",
         "required": false,
-        "default": "DeepHermes-3-Llama-3-3B-Preview-q4.gguf",
+        "default": "text/eliza-1-mobile-1_7b-32k.gguf",
         "sensitive": false
       },
       "LOCAL_LARGE_MODEL": {
         "type": "string",
         "description": "Filename of the large local AI model.",
         "required": false,
-        "default": "DeepHermes-3-Llama-3-8B-q4.gguf",
+        "default": "text/eliza-1-desktop-9b-64k.gguf",
         "sensitive": false
       },
       "LOCAL_EMBEDDING_MODEL": {
         "type": "string",
         "description": "Filename of the embedding model used for vector embeddings.",
         "required": false,
-        "default": "bge-small-en-v1.5.Q4_K_M.gguf",
+        "default": "text/eliza-1-lite-0_6b-32k.gguf",
         "sensitive": false
       },
       "LOCAL_EMBEDDING_DIMENSIONS": {
         "type": "number",
         "description": "Number of dimensions the embedding model outputs.",
         "required": false,
-        "default": 384,
+        "default": 1024,
         "sensitive": false
       },
       "CUDA_VISIBLE_DEVICES": {

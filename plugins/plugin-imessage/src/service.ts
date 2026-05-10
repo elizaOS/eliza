@@ -11,6 +11,7 @@ import {
   type Content,
   ContentType,
   createUniqueUuid,
+  type Entity,
   type EventPayload,
   EventType,
   type HandlerCallback,
@@ -28,6 +29,10 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
+import {
+  DEFAULT_ACCOUNT_ID as IMESSAGE_LOCAL_ACCOUNT_ID,
+  normalizeAccountId as normalizeIMessageAccountId,
+} from "./accounts.js";
 import {
   type ChatDbMessage,
   type ChatDbReader,
@@ -80,6 +85,35 @@ function appleScriptStringLiteral(value: string): string {
 type RuntimeWithOptionalConnectorRegistry = IAgentRuntime & {
   registerMessageConnector?: (registration: MessageConnectorRegistration) => void;
 };
+type RuntimeWithTaskLookup = IAgentRuntime & {
+  getTasksByName(name: string): Promise<unknown[]>;
+};
+type AccountTargetInfo = TargetInfo & { accountId?: string };
+type AccountQueryContext = MessageConnectorQueryContext & { accountId?: string };
+
+type IMessageConnectorReadParams = {
+  target?: TargetInfo;
+  limit?: number;
+  query?: string;
+};
+
+type AdditiveMessageConnectorHooks = {
+  fetchMessages?: (
+    context: MessageConnectorQueryContext,
+    params?: IMessageConnectorReadParams
+  ) => Promise<Memory[]>;
+  searchMessages?: (
+    context: MessageConnectorQueryContext,
+    params: IMessageConnectorReadParams & { query: string }
+  ) => Promise<Memory[]>;
+  getUser?: (
+    runtime: IAgentRuntime,
+    params: { entityId?: UUID | string; userId?: string; username?: string; handle?: string }
+  ) => Promise<Entity | null>;
+};
+
+type ExtendedMessageConnectorRegistration = MessageConnectorRegistration &
+  AdditiveMessageConnectorHooks;
 
 function registerMessageConnectorIfAvailable(
   runtime: IAgentRuntime,
@@ -90,7 +124,26 @@ function registerMessageConnectorIfAvailable(
     withRegistry.registerMessageConnector(registration);
     return;
   }
+  if (!registration.sendHandler) {
+    throw new Error("iMessage connector registration requires a send handler");
+  }
   runtime.registerSendHandler(registration.source, registration.sendHandler);
+}
+
+function hasTaskLookup(runtime: IAgentRuntime): runtime is RuntimeWithTaskLookup {
+  return "getTasksByName" in runtime && typeof runtime.getTasksByName === "function";
+}
+
+function readTargetAccountId(target?: TargetInfo | null): string | undefined {
+  return (target as AccountTargetInfo | undefined)?.accountId;
+}
+
+function readContextAccountId(context?: MessageConnectorQueryContext | null): string | undefined {
+  return (context as AccountQueryContext | undefined)?.accountId;
+}
+
+function targetWithAccount(target: Partial<TargetInfo>, accountId: string): TargetInfo {
+  return { ...target, accountId } as TargetInfo;
 }
 
 function normalizeIMessageConnectorHandle(value: string): string {
@@ -148,6 +201,103 @@ function matchesQuery(query: string, ...values: Array<string | undefined>): bool
   });
 }
 
+function resolveLocalIMessageAccountId(accountId?: string | null): string {
+  return normalizeIMessageAccountId(accountId ?? IMESSAGE_LOCAL_ACCOUNT_ID);
+}
+
+function assertLocalIMessageAccount(accountId?: string | null): string {
+  const normalized = resolveLocalIMessageAccountId(accountId);
+  if (normalized !== IMESSAGE_LOCAL_ACCOUNT_ID) {
+    throw new Error(
+      `iMessage uses the single local macOS Messages account; unsupported accountId: ${normalized}`
+    );
+  }
+  return normalized;
+}
+
+function normalizeConnectorLimit(limit: number | undefined, fallback = 50): number {
+  if (!Number.isFinite(limit) || !limit || limit <= 0) {
+    return fallback;
+  }
+  return Math.min(Math.floor(limit), 200);
+}
+
+function filterMemoriesByQuery(memories: Memory[], query: string, limit: number): Memory[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return memories.slice(0, limit);
+  }
+  return memories
+    .filter((memory) => {
+      const text = typeof memory.content?.text === "string" ? memory.content.text : "";
+      return text.toLowerCase().includes(normalized);
+    })
+    .slice(0, limit);
+}
+
+function publicIMessageToMemory(
+  runtime: IAgentRuntime,
+  message: IMessageMessage,
+  roomId: UUID,
+  accountId = IMESSAGE_LOCAL_ACCOUNT_ID
+): Memory {
+  const normalizedAccountId = assertLocalIMessageAccount(accountId);
+  const handle = normalizeIMessageConnectorHandle(message.handle ?? "");
+  const entityId = message.isFromMe
+    ? runtime.agentId
+    : (createUniqueUuid(runtime, handle || message.chatId || message.id) as UUID);
+  const channelType = message.chatId?.includes(";+;") ? ChannelType.GROUP : ChannelType.DM;
+
+  return {
+    id: createUniqueUuid(runtime, `imessage-public:${message.id}`) as UUID,
+    entityId,
+    agentId: runtime.agentId,
+    roomId,
+    createdAt: message.timestamp,
+    content: {
+      text: message.text,
+      source: "imessage",
+      channelType,
+      ...(message.attachmentPaths?.length
+        ? {
+            attachments: message.attachmentPaths.map((path) => ({
+              id: path,
+              url: path,
+              title: path.split("/").pop() ?? path,
+              source: "imessage",
+              description: "iMessage attachment",
+            })),
+          }
+        : {}),
+    },
+    metadata: {
+      type: MemoryType.MESSAGE,
+      source: "imessage",
+      provider: "imessage",
+      accountId: normalizedAccountId,
+      timestamp: message.timestamp,
+      entityUserName: handle || undefined,
+      fromBot: message.isFromMe,
+      fromId: message.isFromMe ? runtime.agentId : handle,
+      sourceId: entityId,
+      chatType: channelType,
+      messageIdFull: message.id,
+      sender: {
+        id: message.isFromMe ? runtime.agentId : handle,
+        username: handle || undefined,
+      },
+      imessage: {
+        accountId: normalizedAccountId,
+        id: handle,
+        userId: handle,
+        username: handle,
+        chatId: message.chatId,
+        rowId: message.id,
+      },
+    },
+  } as Memory;
+}
+
 function contactKind(handle: string): "phone" | "email" | "contact" {
   if (isEmail(handle)) return "email";
   if (isPhoneNumber(handle)) return "phone";
@@ -162,15 +312,19 @@ function contactTarget(
   const normalized = normalizeIMessageConnectorHandle(handle);
   const displayLabel = label ? `${label} (${normalized})` : normalized;
   return {
-    target: {
-      source: "imessage",
-      channelId: normalized,
-      entityId: normalized as unknown as UUID,
-    },
+    target: targetWithAccount(
+      {
+        source: "imessage",
+        channelId: normalized,
+        entityId: normalized as UUID,
+      },
+      IMESSAGE_LOCAL_ACCOUNT_ID
+    ),
     label: displayLabel,
     kind: contactKind(normalized),
     score,
     metadata: {
+      accountId: IMESSAGE_LOCAL_ACCOUNT_ID,
       handle: normalized,
       contactName: label,
     },
@@ -191,12 +345,15 @@ function chatTarget(chat: IMessageChat, contacts: ContactsMap): MessageConnector
     contactName ??
     (isGroup ? participants.filter(Boolean).join(", ") : primaryHandle) ??
     chat.chatId;
-  const target: TargetInfo = {
-    source: "imessage",
-    channelId: isGroup ? `chat_id:${chat.chatId}` : (primaryHandle ?? `chat_id:${chat.chatId}`),
-  };
+  const target: TargetInfo = targetWithAccount(
+    {
+      source: "imessage",
+      channelId: isGroup ? `chat_id:${chat.chatId}` : (primaryHandle ?? `chat_id:${chat.chatId}`),
+    },
+    IMESSAGE_LOCAL_ACCOUNT_ID
+  );
   if (!isGroup && primaryHandle) {
-    target.entityId = primaryHandle as unknown as UUID;
+    target.entityId = primaryHandle as UUID;
   }
   return {
     target,
@@ -205,6 +362,7 @@ function chatTarget(chat: IMessageChat, contacts: ContactsMap): MessageConnector
     description: isGroup ? "iMessage group chat" : "iMessage direct chat",
     score: isGroup ? 0.76 : 0.72,
     metadata: {
+      accountId: IMESSAGE_LOCAL_ACCOUNT_ID,
       chatId: chat.chatId,
       chatType: chat.chatType,
       participants: participants.filter(Boolean).join(", "),
@@ -216,6 +374,7 @@ async function resolveIMessageSendTarget(
   runtime: IAgentRuntime,
   target: TargetInfo
 ): Promise<string | null> {
+  assertLocalIMessageAccount(readTargetAccountId(target));
   if (target.channelId?.trim()) {
     return normalizeIMessageConnectorHandle(target.channelId);
   }
@@ -235,6 +394,7 @@ async function resolveIMessageChatId(
   runtime: IAgentRuntime,
   target: TargetInfo
 ): Promise<string | null> {
+  assertLocalIMessageAccount(readTargetAccountId(target));
   const channelId =
     target.channelId ??
     (target.roomId ? (await runtime.getRoom(target.roomId))?.channelId : undefined);
@@ -297,12 +457,18 @@ export class IMessageService extends Service implements IIMessageService {
   private chatDbPath: string = DEFAULT_CHAT_DB_PATH;
   /**
    * Cached handle → display name map from the user's Apple Contacts.
-   * Populated once on service start via AppleScript against Contacts.app
-   * and used to rewrite raw phone numbers and email addresses into real
-   * contact names in Memory metadata. Empty map means either the user
-   * hasn't authorized Contacts access yet or the address book is empty.
+   * Populated lazily on first inbound message via AppleScript against
+   * Contacts.app, NOT at service start. Loading at boot would trigger
+   * the macOS Contacts TCC dialog at app launch, even though the user
+   * may never receive an inbound iMessage. We defer the AppleScript
+   * call (and its TCC prompt) until the first message that actually
+   * needs handle→name resolution. Empty map means either the user
+   * hasn't authorized Contacts access yet, the address book is empty,
+   * or no inbound message has triggered the lazy load yet.
    */
   private contacts: ContactsMap = new Map();
+  /** Whether the lazy contact load has been attempted this session. */
+  private contactsLoadAttempted = false;
 
   /**
    * Start the iMessage service.
@@ -352,11 +518,13 @@ export class IMessageService extends Service implements IIMessageService {
       );
     }
 
-    // Load the Apple Contacts map so we can turn raw phone numbers and
-    // email addresses into real names when building Memory objects for
-    // inbound messages. Failure here is non-fatal — the service proceeds
-    // with anonymous handles and logs its own warning.
-    service.contacts = await loadContacts();
+    // NOTE: We intentionally do NOT call loadContacts() here. Loading
+    // contacts at service start runs an AppleScript against Contacts.app,
+    // which triggers the macOS Contacts TCC dialog the first time. App
+    // launch must not trigger TCC dialogs implicitly — the dialog is
+    // deferred to the first inbound message that actually needs name
+    // resolution (see ensureContactsLoaded() below). Outbound-only users
+    // never see the prompt.
 
     // Start polling only when chat.db is available. When the database cannot
     // be opened, the service is intentionally send-only until the next start.
@@ -385,7 +553,7 @@ export class IMessageService extends Service implements IIMessageService {
   }
 
   static registerSendHandlers(runtime: IAgentRuntime, service: IMessageService): void {
-    registerMessageConnectorIfAvailable(runtime, {
+    const registration = {
       source: IMESSAGE_SERVICE_NAME,
       label: "iMessage",
       capabilities: ["send_message", "attachments", "contact_resolution", "chat_context"],
@@ -395,14 +563,13 @@ export class IMessageService extends Service implements IIMessageService {
         "Send SMS/iMessage through macOS Messages using phone numbers, emails, contacts, or chat ids.",
       metadata: {
         aliases: ["imessage", "sms", "text", "messages"],
+        accountId: IMESSAGE_LOCAL_ACCOUNT_ID,
         bridge: "macos-messages",
+        accountSemantics: "local-macos-messages-single-account",
         status: statusMetadata(service.getStatus()),
       },
-      sendHandler: async (
-        _runtime: IAgentRuntime,
-        target: TargetInfo,
-        content: Content
-      ) => {
+      sendHandler: async (_runtime: IAgentRuntime, target: TargetInfo, content: Content) => {
+        const accountId = assertLocalIMessageAccount(readTargetAccountId(target));
         const text = typeof content.text === "string" ? content.text : "";
         const mediaUrl = firstAttachmentUrl(content);
         if (!text.trim() && !mediaUrl) {
@@ -417,7 +584,7 @@ export class IMessageService extends Service implements IIMessageService {
         const result = await service.sendMessage(
           resolvedTarget,
           text,
-          mediaUrl ? { mediaUrl } : undefined
+          mediaUrl ? { mediaUrl, accountId } : { accountId }
         );
         if (!result.success) {
           throw new Error(result.error ?? "iMessage send failed");
@@ -470,13 +637,16 @@ export class IMessageService extends Service implements IIMessageService {
           const handle = normalizeIMessageConnectorHandle(message.handle);
           const target = message.chatId
             ? {
-                target: {
-                  source: "imessage",
-                  channelId: message.chatId.startsWith("chat_id:")
-                    ? message.chatId
-                    : `chat_id:${message.chatId}`,
-                  entityId: handle ? (handle as unknown as UUID) : undefined,
-                },
+                target: targetWithAccount(
+                  {
+                    source: "imessage",
+                    channelId: message.chatId.startsWith("chat_id:")
+                      ? message.chatId
+                      : `chat_id:${message.chatId}`,
+                    entityId: handle ? (handle as UUID) : undefined,
+                  },
+                  IMESSAGE_LOCAL_ACCOUNT_ID
+                ),
                 label:
                   contacts.get(normalizeContactHandle(handle))?.name ??
                   message.handle ??
@@ -484,6 +654,7 @@ export class IMessageService extends Service implements IIMessageService {
                 kind: message.chatId?.includes(";+;") ? "group" : contactKind(handle),
                 score: 0.68,
                 metadata: {
+                  accountId: IMESSAGE_LOCAL_ACCOUNT_ID,
                   handle,
                   chatId: message.chatId,
                   lastMessageAt: message.timestamp,
@@ -501,14 +672,76 @@ export class IMessageService extends Service implements IIMessageService {
         const contacts = service.getContacts();
         return (await service.getChats()).map((chat) => chatTarget(chat, contacts));
       },
+      fetchMessages: async (context, params) => {
+        const limit = normalizeConnectorLimit(params?.limit);
+        const target = params?.target ?? context.target;
+        const accountId = assertLocalIMessageAccount(
+          readTargetAccountId(target) ?? readContextAccountId(context)
+        );
+        const chatId = target ? await resolveIMessageChatId(context.runtime, target) : null;
+        const platformMessages = await service
+          .getMessages({ ...(chatId ? { chatId } : {}), limit })
+          .catch(() => []);
+        if (platformMessages.length > 0) {
+          const roomId =
+            target?.roomId ??
+            (createUniqueUuid(context.runtime, `imessage-read:${chatId ?? "recent"}`) as UUID);
+          return platformMessages
+            .map((message) => publicIMessageToMemory(context.runtime, message, roomId, accountId))
+            .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+            .slice(0, limit);
+        }
+        if (target?.roomId) {
+          return context.runtime.getMemories({
+            tableName: "messages",
+            roomId: target.roomId,
+            limit,
+            orderBy: "createdAt",
+            orderDirection: "desc",
+          });
+        }
+        return [];
+      },
+      searchMessages: async (context, params) => {
+        const limit = normalizeConnectorLimit(params?.limit);
+        const target = params?.target ?? context.target;
+        const accountId = assertLocalIMessageAccount(
+          readTargetAccountId(target) ?? readContextAccountId(context)
+        );
+        const chatId = target ? await resolveIMessageChatId(context.runtime, target) : null;
+        const platformMessages = await service
+          .getMessages({ ...(chatId ? { chatId } : {}), limit: Math.max(limit, 100) })
+          .catch(() => []);
+        const roomId =
+          target?.roomId ??
+          (createUniqueUuid(context.runtime, `imessage-read:${chatId ?? "recent"}`) as UUID);
+        const memories =
+          platformMessages.length > 0
+            ? platformMessages.map((message) =>
+                publicIMessageToMemory(context.runtime, message, roomId, accountId)
+              )
+            : target?.roomId
+              ? await context.runtime.getMemories({
+                  tableName: "messages",
+                  roomId: target.roomId,
+                  limit: Math.max(limit, 100),
+                  orderBy: "createdAt",
+                  orderDirection: "desc",
+                })
+              : [];
+        return filterMemoriesByQuery(memories, params.query, limit);
+      },
       getChatContext: async (
         target: TargetInfo,
         context: MessageConnectorQueryContext
       ): Promise<MessageConnectorChatContext | null> => {
+        const accountId = assertLocalIMessageAccount(
+          readTargetAccountId(target) ?? readContextAccountId(context)
+        );
         const chatId = await resolveIMessageChatId(context.runtime, target);
         const messages = chatId ? await service.getMessages({ chatId, limit: 10 }) : [];
         return {
-          target,
+          target: targetWithAccount(target, accountId),
           label: chatId ?? target.channelId ?? target.entityId ?? "iMessage target",
           summary: service.getStatus().chatDbAvailable
             ? "iMessage chat context from local Messages database."
@@ -520,12 +753,14 @@ export class IMessageService extends Service implements IIMessageService {
             text: message.text,
             timestamp: message.timestamp,
             metadata: {
+              accountId,
               messageId: message.id,
               handle: normalizeIMessageConnectorHandle(message.handle),
               isFromMe: message.isFromMe,
             },
           })),
           metadata: {
+            accountId,
             chatId,
             status: statusMetadata(service.getStatus()),
           },
@@ -546,11 +781,43 @@ export class IMessageService extends Service implements IIMessageService {
             ...(isEmail(handle) ? { email: handle } : { phone: handle }),
           },
           metadata: {
+            accountId: IMESSAGE_LOCAL_ACCOUNT_ID,
             normalizedHandle: handle,
           },
         };
       },
-    });
+      getUser: async (_handlerRuntime, params) => {
+        const lookupParams = params as {
+          entityId?: UUID | string;
+          userId?: UUID | string;
+          username?: string;
+          handle?: string;
+        };
+        const handle = normalizeIMessageConnectorHandle(
+          String(
+            lookupParams.entityId ??
+              lookupParams.userId ??
+              lookupParams.username ??
+              lookupParams.handle ??
+              ""
+          )
+        );
+        if (!handle) return null;
+        const contact = service.getContacts().get(normalizeContactHandle(handle));
+        return {
+          id: createUniqueUuid(_handlerRuntime, `imessage:${handle}`) as UUID,
+          names: contact?.name ? [contact.name, handle] : [handle],
+          agentId: _handlerRuntime.agentId,
+          metadata: {
+            accountId: IMESSAGE_LOCAL_ACCOUNT_ID,
+            normalizedHandle: handle,
+            imessage: handle,
+            ...(isEmail(handle) ? { email: handle } : { phone: handle }),
+          },
+        } satisfies Entity;
+      },
+    } as ExtendedMessageConnectorRegistration;
+    registerMessageConnectorIfAvailable(runtime, registration);
   }
 
   /**
@@ -612,6 +879,7 @@ export class IMessageService extends Service implements IIMessageService {
     text: string,
     options?: IMessageSendOptions
   ): Promise<IMessageSendResult> {
+    const accountId = assertLocalIMessageAccount(options?.accountId);
     if (!this.settings) {
       return { success: false, error: "Service not initialized" };
     }
@@ -638,10 +906,11 @@ export class IMessageService extends Service implements IIMessageService {
       this.runtime.emitEvent(IMessageEventTypes.MESSAGE_SENT, {
         runtime: this.runtime,
         source: "imessage",
+        accountId,
         to: target,
         text,
         hasMedia: Boolean(options?.mediaUrl),
-      } as unknown as EventPayload);
+      } as EventPayload);
       this.runtime.emitEvent(EventType.MESSAGE_SENT, {
         runtime: this.runtime,
         source: "imessage",
@@ -651,9 +920,18 @@ export class IMessageService extends Service implements IIMessageService {
           agentId: this.runtime.agentId,
           roomId: createUniqueUuid(this.runtime, target),
           content: { text, source: "imessage" },
+          metadata: {
+            accountId,
+            source: "imessage",
+            provider: "imessage",
+            imessage: {
+              accountId,
+              chatId: target,
+            },
+          },
           createdAt: Date.now(),
         },
-      } as unknown as EventPayload);
+      } as EventPayload);
     }
 
     return {
@@ -741,6 +1019,28 @@ export class IMessageService extends Service implements IIMessageService {
    */
   getContacts(): ContactsMap {
     return this.contacts;
+  }
+
+  /**
+   * Lazy-load the Apple Contacts map on first call. Subsequent calls
+   * are no-ops. We split this out from `start()` so the macOS Contacts
+   * TCC dialog only fires when the runtime actually needs handle→name
+   * resolution — typically the first inbound message — instead of at
+   * app launch. Failure is non-fatal; the cached map stays empty and
+   * the service falls back to raw handles.
+   */
+  private async ensureContactsLoaded(): Promise<void> {
+    if (this.contactsLoadAttempted) {
+      return;
+    }
+    this.contactsLoadAttempted = true;
+    try {
+      this.contacts = await loadContacts();
+    } catch (err) {
+      logger.warn(
+        `[imessage] Lazy contact load failed: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
   }
 
   /**
@@ -1126,6 +1426,7 @@ export class IMessageService extends Service implements IIMessageService {
    */
   private async dispatchInboundMessage(row: ChatDbMessage): Promise<void> {
     if (!this.runtime) return;
+    const accountId = IMESSAGE_LOCAL_ACCOUNT_ID;
 
     // chat_identifier is stable across messages in the same chat; use it
     // as the room key. Fall back to the handle for the edge case where
@@ -1144,9 +1445,12 @@ export class IMessageService extends Service implements IIMessageService {
 
     const channelType: ChannelType = row.chatType === "group" ? ChannelType.GROUP : ChannelType.DM;
 
-    // Resolve the sender handle against the Apple Contacts map loaded at
-    // service start. On a miss we fall back to the raw handle, so the
+    // Resolve the sender handle against the Apple Contacts map. The map
+    // is loaded lazily on first inbound message — see ensureContactsLoaded
+    // for the rationale (deferring the macOS Contacts TCC dialog away from
+    // app launch). On a miss we fall back to the raw handle, so the
     // conversation still works — it just looks uglier in logs and state.
+    await this.ensureContactsLoaded();
     const resolvedContact = this.contacts.get(normalizeContactHandle(row.handle)) ?? null;
     const resolvedName = resolvedContact?.name ?? null;
 
@@ -1160,11 +1464,32 @@ export class IMessageService extends Service implements IIMessageService {
       source: "imessage",
       channelId: roomKey,
       type: channelType,
+      metadata: {
+        accountId,
+        chatId: roomKey,
+        chatType: row.chatType,
+      },
       name: resolvedName ?? row.displayName ?? row.handle ?? undefined,
-      ...(row.handle ? { userId: row.handle as unknown as UUID } : {}),
+      ...(row.handle ? { userId: row.handle as UUID } : {}),
       worldName: row.displayName ? `imessage-chat-${row.displayName}` : `imessage-chat-${roomKey}`,
       userName: resolvedName ?? row.handle ?? undefined,
     });
+    if (typeof this.runtime.ensureRoomExists === "function") {
+      await this.runtime.ensureRoomExists({
+        id: roomId,
+        name: row.displayName ?? roomKey,
+        agentId: this.runtime.agentId,
+        source: "imessage",
+        type: channelType,
+        channelId: roomKey,
+        worldId,
+        metadata: {
+          accountId,
+          chatId: roomKey,
+          chatType: row.chatType,
+        },
+      });
+    }
 
     // Lifecycle events — WORLD_JOINED + ENTITY_JOINED fire ONCE per
     // room/entity per service lifetime. These are the architectural
@@ -1184,6 +1509,7 @@ export class IMessageService extends Service implements IIMessageService {
           agentId: this.runtime.agentId,
           serverId: roomKey,
           metadata: {
+            accountId,
             type: channelType,
             chatId: roomKey,
             displayName: row.displayName ?? undefined,
@@ -1199,11 +1525,11 @@ export class IMessageService extends Service implements IIMessageService {
             channelId: roomKey,
             serverId: roomKey,
             agentId: this.runtime.agentId,
-            metadata: { chatType: row.chatType },
+            metadata: { accountId, chatType: row.chatType },
           },
         ],
         entities: [],
-      } as unknown as EventPayload);
+      } as EventPayload);
       logger.debug(`[imessage][world-joined] roomKey=${roomKey}`);
     }
 
@@ -1216,12 +1542,13 @@ export class IMessageService extends Service implements IIMessageService {
         worldId,
         roomId,
         metadata: {
+          accountId,
           originalId: row.handle,
           username: row.handle,
           displayName: resolvedName ?? row.handle,
           type: channelType,
         },
-      } as unknown as EventPayload);
+      } as EventPayload);
       logger.debug(
         `[imessage][entity-joined] entityKey=${entityKey} name=${resolvedName ?? row.handle}`
       );
@@ -1272,6 +1599,7 @@ export class IMessageService extends Service implements IIMessageService {
         type: MemoryType.MESSAGE,
         source: "imessage",
         provider: "imessage",
+        accountId,
         timestamp: row.timestamp || Date.now(),
         entityName: resolvedName ?? row.displayName ?? row.handle ?? undefined,
         entityUserName: row.handle ?? undefined,
@@ -1286,6 +1614,7 @@ export class IMessageService extends Service implements IIMessageService {
           username: row.handle ?? undefined,
         },
         imessage: {
+          accountId,
           id: row.handle,
           userId: row.handle,
           username: row.handle,
@@ -1296,7 +1625,7 @@ export class IMessageService extends Service implements IIMessageService {
           rowId: row.rowId,
           service: row.service,
         },
-        // Raw handle + resolved contact name for chatContextProvider.
+        // Raw handle + resolved contact name for connector target context.
         ...(row.handle ? { imessageHandle: row.handle } : {}),
         ...(resolvedName ? { imessageContactName: resolvedName } : {}),
         // Delivery service: iMessage / SMS / RCS.
@@ -1307,7 +1636,7 @@ export class IMessageService extends Service implements IIMessageService {
         // Editing / retraction state for downstream filters.
         ...(row.dateEdited ? { imessageEditedAt: row.dateEdited } : {}),
         ...(row.dateRetracted ? { imessageRetractedAt: row.dateRetracted } : {}),
-      } as unknown as Memory["metadata"],
+      } as Memory["metadata"],
       createdAt: row.timestamp || Date.now(),
     };
 
@@ -1343,6 +1672,12 @@ export class IMessageService extends Service implements IIMessageService {
         metadata: {
           type: MemoryType.MESSAGE,
           source: "imessage",
+          provider: "imessage",
+          accountId,
+          imessage: {
+            accountId,
+            chatId: roomKey,
+          },
         },
         createdAt: Date.now(),
       };
@@ -1358,12 +1693,14 @@ export class IMessageService extends Service implements IIMessageService {
       runtime: this.runtime,
       message: memory,
       source: "imessage",
+      accountId,
       callback,
     } as EventPayload);
     this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
       runtime: this.runtime,
       message: memory,
       source: "imessage",
+      accountId,
       callback,
     } as EventPayload);
 
@@ -1422,6 +1759,7 @@ export class IMessageService extends Service implements IIMessageService {
    */
   private emitAuxiliaryEvent(row: ChatDbMessage): void {
     if (!this.runtime) return;
+    const accountId = IMESSAGE_LOCAL_ACCOUNT_ID;
 
     if (row.kind === "reaction" && row.reaction) {
       logger.debug(
@@ -1430,6 +1768,7 @@ export class IMessageService extends Service implements IIMessageService {
       this.runtime.emitEvent(IMessageEventTypes.REACTION_RECEIVED, {
         runtime: this.runtime,
         source: "imessage",
+        accountId,
         chatId: row.chatId,
         handle: row.handle,
         targetGuid: row.reaction.targetGuid,
@@ -1437,15 +1776,16 @@ export class IMessageService extends Service implements IIMessageService {
         add: row.reaction.add,
         emoji: row.reaction.emoji,
         service: row.service,
-      } as unknown as EventPayload);
+      } as EventPayload);
       this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
         runtime: this.runtime,
         source: "imessage",
+        accountId,
         targetGuid: row.reaction.targetGuid,
         reactionKind: row.reaction.kind,
         add: row.reaction.add,
         emoji: row.reaction.emoji,
-      } as unknown as EventPayload);
+      } as EventPayload);
       return;
     }
 
@@ -1459,11 +1799,12 @@ export class IMessageService extends Service implements IIMessageService {
         {
           runtime: this.runtime,
           source: "imessage",
+          accountId,
           chatId: row.chatId,
           handle: row.handle,
           rowId: row.rowId,
           guid: row.guid,
-        } as unknown as EventPayload
+        } as EventPayload
       );
     }
   }
@@ -1512,29 +1853,14 @@ export class IMessageService extends Service implements IIMessageService {
   private async registerHeartbeat(): Promise<void> {
     if (!this.runtime) return;
 
-    type TaskCapableRuntime = {
-      registerTaskWorker?: (worker: {
-        name: string;
-        execute: (
-          runtime: IAgentRuntime,
-          options: Record<string, unknown>,
-          task: unknown
-        ) => Promise<void>;
-        validate?: () => Promise<boolean>;
-      }) => void;
-      createTask?: (task: Record<string, unknown>) => Promise<unknown>;
-      getTasksByName?: (name: string) => Promise<unknown[]>;
-    };
-    const taskRuntime = this.runtime as unknown as TaskCapableRuntime;
-
-    if (typeof taskRuntime.registerTaskWorker !== "function") {
+    if (typeof this.runtime.registerTaskWorker !== "function") {
       logger.debug("[imessage][heartbeat] runtime does not support registerTaskWorker — skipping");
       return;
     }
 
     const heartbeatIntervalMs = Number(process.env.IMESSAGE_HEARTBEAT_INTERVAL_MS) || 60_000;
 
-    taskRuntime.registerTaskWorker({
+    this.runtime.registerTaskWorker({
       name: "IMESSAGE_HEARTBEAT",
       execute: async (runtime, _options, _task) => {
         let ok = true;
@@ -1574,18 +1900,19 @@ export class IMessageService extends Service implements IIMessageService {
             contactsCount,
             connected: this.connected,
             timestamp: Date.now(),
-          } as unknown as EventPayload
+          } as EventPayload
         );
+        return { nextInterval: heartbeatIntervalMs };
       },
-      validate: async () => true,
+      shouldRun: async () => true,
     });
 
     // Only create the task if one doesn't already exist. This is safe
     // across restarts — on a cold boot no task exists yet, on a warm
     // restart the previous one is still in the queue and we skip.
-    if (typeof taskRuntime.getTasksByName === "function") {
+    if (hasTaskLookup(this.runtime)) {
       try {
-        const existing = await taskRuntime.getTasksByName("IMESSAGE_HEARTBEAT");
+        const existing = await this.runtime.getTasksByName("IMESSAGE_HEARTBEAT");
         if (Array.isArray(existing) && existing.length > 0) {
           logger.debug(
             `[imessage][heartbeat] task already registered (${existing.length} existing) — skipping createTask`
@@ -1597,9 +1924,9 @@ export class IMessageService extends Service implements IIMessageService {
       }
     }
 
-    if (typeof taskRuntime.createTask === "function") {
+    if (typeof this.runtime.createTask === "function") {
       try {
-        await taskRuntime.createTask({
+        await this.runtime.createTask({
           name: "IMESSAGE_HEARTBEAT",
           description:
             "Periodic health probe for the iMessage connector (chat.db reader, contacts, polling cursor).",

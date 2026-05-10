@@ -2,7 +2,7 @@
 //  ViewController.swift
 //  Shared (App)
 //
-//  Created by Shaw Walters on 5/7/26.
+//  Created by Shaw Walters on 5/9/26.
 //
 
 import WebKit
@@ -16,7 +16,7 @@ import SafariServices
 typealias PlatformViewController = NSViewController
 #endif
 
-let extensionBundleIdentifier = "com.elizaos.chatwithwebpage.Extension"
+let extensionBundleIdentifier = "com.elizaos.Chat-with-Webpage.Extension"
 
 class ViewController: PlatformViewController, WKNavigationDelegate, WKScriptMessageHandler {
 

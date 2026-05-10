@@ -27,6 +27,6 @@
       "../../../node_modules/.bun/node_modules/@types"
     ]
   },
-  "exclude": ["dist/**", "__tests__/**"],
+  "exclude": ["dist/**"],
   "include": ["src"]
 }

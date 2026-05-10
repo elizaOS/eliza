@@ -14,18 +14,17 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Image,
   Skeleton,
   StatusBadge,
   Switch,
-} from "@elizaos/cloud-ui/primitives";
-import Image from "@elizaos/cloud-ui/runtime/image";
+} from "@elizaos/cloud-ui";
 import {
   Copy,
   Globe,
   Link as LinkIcon,
   Lock,
   MoreHorizontal,
-  Pencil,
   Trash2,
   Upload,
   X,
@@ -115,8 +114,8 @@ export function AgentCard({
         if (response.ok) {
           const data = await response.json();
           toast.success(`Created "${data.data.character.name}"`);
-          window.location.reload();
-          navigate(`/dashboard/build?characterId=${data.data.character.id}`);
+          window.dispatchEvent(new Event("characters-updated"));
+          navigate(`/dashboard/chat?characterId=${data.data.character.id}`);
         } else {
           const error = await response.json();
           toast.error(error.error || "Failed to duplicate agent");
@@ -254,32 +253,47 @@ export function AgentCard({
     [agent.id, agent.name, onRemoveSaved],
   );
 
+  const openAgentChat = useCallback(async () => {
+    // Ensure rooms are loaded
+    if (rooms.length === 0) {
+      await loadRooms();
+    }
+
+    const currentRooms = useChatStore.getState().rooms;
+    const characterRooms = currentRooms
+      .filter((r) => r.characterId === agent.id)
+      .sort((a, b) => (b.lastTime ?? 0) - (a.lastTime ?? 0));
+
+    if (characterRooms.length > 0) {
+      navigate(`/dashboard/chat?characterId=${agent.id}&roomId=${characterRooms[0].id}`);
+    } else {
+      navigate(`/dashboard/chat?characterId=${agent.id}`);
+    }
+  }, [rooms.length, loadRooms, agent.id, navigate]);
+
   const handleCardClick = useCallback(
-    async (e: React.MouseEvent) => {
+    (e: React.MouseEvent) => {
       if (showDeleteConfirm) {
         e.preventDefault();
         return;
       }
 
       e.preventDefault();
+      void openAgentChat();
+    },
+    [showDeleteConfirm, openAgentChat],
+  );
 
-      // Ensure rooms are loaded
-      if (rooms.length === 0) {
-        await loadRooms();
-      }
-
-      const currentRooms = useChatStore.getState().rooms;
-      const characterRooms = currentRooms
-        .filter((r) => r.characterId === agent.id)
-        .sort((a, b) => (b.lastTime ?? 0) - (a.lastTime ?? 0));
-
-      if (characterRooms.length > 0) {
-        navigate(`/dashboard/chat?characterId=${agent.id}&roomId=${characterRooms[0].id}`);
-      } else {
-        navigate(`/dashboard/chat?characterId=${agent.id}`);
+  const handleCardKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (!showDeleteConfirm) {
+          void openAgentChat();
+        }
       }
     },
-    [showDeleteConfirm, rooms.length, loadRooms, agent.id, navigate],
+    [showDeleteConfirm, openAgentChat],
   );
 
   const isListView = viewMode === "list";
@@ -290,9 +304,7 @@ export function AgentCard({
       <div
         className={cn("min-w-0", !showDeleteConfirm && "cursor-pointer")}
         onClick={handleCardClick}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") handleCardClick(e as unknown as React.MouseEvent);
-        }}
+        onKeyDown={handleCardKeyDown}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         role="button"
@@ -374,16 +386,6 @@ export function AgentCard({
               <DropdownMenuContent align="end" className="w-40">
                 {isOwned ? (
                   <>
-                    <DropdownMenuItem
-                      className="cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/dashboard/build?characterId=${agent.id}`);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4 mr-2" />
-                      Edit
-                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleDuplicate} className="cursor-pointer">
                       <Copy className="h-4 w-4 mr-2" />
                       Duplicate
@@ -481,9 +483,7 @@ export function AgentCard({
     <div
       className={cn("block h-full", !showDeleteConfirm && "cursor-pointer")}
       onClick={handleCardClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") handleCardClick(e as unknown as React.MouseEvent);
-      }}
+      onKeyDown={handleCardKeyDown}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       role="button"
@@ -548,16 +548,6 @@ export function AgentCard({
           <DropdownMenuContent align="start" className="w-40">
             {isOwned ? (
               <>
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/dashboard/build?characterId=${agent.id}`);
-                  }}
-                >
-                  <Pencil className="h-4 w-4 mr-2" />
-                  Edit
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleDuplicate} className="cursor-pointer">
                   <Copy className="h-4 w-4 mr-2" />
                   Duplicate

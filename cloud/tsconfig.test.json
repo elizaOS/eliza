@@ -9,6 +9,7 @@
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
@@ -19,42 +20,11 @@
       "@/tests/*": ["./packages/tests/*"],
       "@/types/*": ["./packages/types/*"],
       "@/components/*": ["./packages/ui/src/components/*"],
-      "@elizaos/cloud-db/client": ["./packages/db/client.ts"],
-      "@elizaos/cloud-db/database-url": ["./packages/db/database-url.ts"],
-      "@elizaos/cloud-db/execute-helpers": ["./packages/db/execute-helpers.ts"],
-      "@elizaos/cloud-db/helpers": ["./packages/db/helpers.ts"],
-      "@elizaos/cloud-db/worker-neon-http": ["./packages/db/worker-neon-http.ts"],
-      "@elizaos/cloud-db/repositories": ["./packages/db/repositories/index.ts"],
-      "@elizaos/cloud-db/repositories/*": ["./packages/db/repositories/*"],
-      "@elizaos/cloud-db/repositories/agents/*": ["./packages/db/repositories/agents/*"],
-      "@elizaos/cloud-db/schemas": ["./packages/db/schemas/index.ts"],
-      "@elizaos/cloud-db/schemas/*": ["./packages/db/schemas/*"],
-      "@elizaos/cloud-lib/types": ["./packages/lib/types.ts"],
-      "@elizaos/cloud-lib/types/*": ["./packages/lib/types/*"],
-      "@elizaos/cloud-lib/blog": ["./packages/lib/blog.ts"],
-      "@elizaos/cloud-lib/pricing": ["./packages/lib/pricing.ts"],
-      "@elizaos/cloud-lib/pricing-constants": ["./packages/lib/pricing-constants.ts"],
-      "@elizaos/cloud-lib/promotion-pricing": ["./packages/lib/promotion-pricing.ts"],
-      "@elizaos/cloud-lib/utils": ["./packages/lib/utils.ts"],
-      "@elizaos/cloud-lib/utils/*": ["./packages/lib/utils/*"],
-      "@elizaos/cloud-lib/constants/*": ["./packages/lib/constants/*"],
-      "@elizaos/cloud-lib/config/*": ["./packages/lib/config/*"],
-      "@elizaos/cloud-lib/hooks/*": ["./packages/lib/hooks/*"],
-      "@elizaos/cloud-lib/providers/*": ["./packages/lib/providers/*"],
-      "@elizaos/cloud-lib/internal/api/*": ["./packages/lib/api/*"],
-      "@elizaos/cloud-lib/internal/auth/*": ["./packages/lib/auth/*"],
-      "@elizaos/cloud-lib/internal/cache/*": ["./packages/lib/cache/*"],
-      "@elizaos/cloud-lib/internal/runtime/*": ["./packages/lib/runtime/*"],
-      "@elizaos/cloud-lib/internal/services/*": ["./packages/lib/services/*"],
-      "@elizaos/cloud-types/cloud-api": ["./packages/types/cloud-api.ts"],
-      "@elizaos/cloud-types/cloud-worker-env": ["./packages/types/cloud-worker-env.ts"],
-      "@elizaos/cloud-types/global": ["./packages/types/global.d.ts"],
-      "@elizaos/cloud-types/plugin-sql": ["./packages/types/plugin-sql.d.ts"],
-      "@elizaos/cloud-types/stripe-queue-message": [
-        "./packages/types/stripe-queue-message.ts"
-      ],
       "@elizaos/cloud-ui": ["./packages/ui/src/index.ts"],
-      "@elizaos/cloud-ui/*": ["./packages/ui/src/*"],
+      "@elizaos/core": ["../packages/core/src/index.node.ts"],
+      "@elizaos/core/*": ["../packages/core/src/*"],
+      "drizzle-orm": ["./node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["./node_modules/drizzle-orm/*"],
       "@/*": ["./*"]
     }
   },
@@ -64,13 +34,7 @@
     "./packages/types/**/*.d.ts",
     "./packages/tests/**/*.ts",
     "./apps/api/test/e2e/**/*.ts",
-    "tests/**/*.tsx",
-    "./packages/lib/**/*.ts",
-    "db/**/*.ts",
-    "app/**/*.ts",
-    "app/**/*.tsx",
-    "components/**/*.ts",
-    "./packages/ui/src/components/**/*.tsx"
+    "tests/**/*.tsx"
   ],
   "exclude": [
     "node_modules",
@@ -79,7 +43,6 @@
     "build",
     "dist",
     "./packages/ui/src/components/**/*.stories.tsx",
-    "./packages/ui/src/components/**/*.stories.ts",
-    "./packages/ui/src/components/**/*.test.tsx"
+    "./packages/ui/src/components/**/*.stories.ts"
   ]
 }

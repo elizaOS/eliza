@@ -1,6 +1,6 @@
 import type { Action, AgentContext, Provider } from "../types/components";
 import type { Memory } from "../types/memory";
-import type { Content } from "../types/primitives";
+import type { Content, ContentValue } from "../types/primitives";
 import type { State } from "../types/state";
 import {
 	resolveActionContexts,
@@ -237,20 +237,28 @@ export function setContextRoutingMetadata(
 ): void {
 	const existingMetadata =
 		message.content && typeof message.content.metadata === "object"
-			? (message.content.metadata as Record<string, unknown>)
+			? (message.content.metadata as Record<string, ContentValue>)
 			: {};
 
 	if (!message.content || typeof message.content !== "object") {
 		return;
 	}
 
+	const routingMetadata: Record<string, ContentValue> = {};
+	if (routing.primaryContext) {
+		routingMetadata.primaryContext = routing.primaryContext;
+	}
+	if (routing.secondaryContexts) {
+		routingMetadata.secondaryContexts = [...routing.secondaryContexts];
+	}
+
 	message.content = {
-		...(message.content as Record<string, unknown>),
+		...message.content,
 		metadata: {
 			...existingMetadata,
-			[CONTEXT_ROUTING_METADATA_KEY]: routing,
+			[CONTEXT_ROUTING_METADATA_KEY]: routingMetadata,
 		},
-	} as unknown as Content;
+	} satisfies Content;
 }
 
 export function deriveAvailableContexts(
@@ -299,9 +307,9 @@ const CONTEXT_SIGNALS: ContextSignal[] = [
 		],
 	},
 	{
-		context: "knowledge",
+		context: "documents",
 		patterns: [
-			/\b(uploaded|document|file|pdf|knowledge|remember|recall|search|lookup|find|summari[sz]e|analy[sz]e|research)\b/u,
+			/\b(uploaded|document|file|pdf|remember|recall|search|lookup|find|summari[sz]e|analy[sz]e|research)\b/u,
 			/\b(what is|what was|where is|tell me about|explain)\b/u,
 		],
 	},

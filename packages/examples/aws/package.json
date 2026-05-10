@@ -8,7 +8,7 @@
     "build": "bun build handler.ts --outdir=dist --target=node --format=esm --outfile=dist/handler.js --packages=external",
     "build:watch": "bun run build --watch",
     "clean": "rm -rf dist",
-    "test": "bun run test-local.ts",
+    "test": "cd ../../.. && bunx tsx packages/examples/aws/test-local.ts",
     "start": "bun run server-local.ts",
     "test:client": "bun run test-client.ts",
     "deploy": "sam build && sam deploy",
@@ -29,7 +29,7 @@
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=24.0.0"

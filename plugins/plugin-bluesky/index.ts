@@ -1,12 +1,29 @@
-import type { IAgentRuntime, Plugin, TestCase, TestSuite } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { postBlueskyAction } from "./actions/post";
+import {
+	getConnectorAccountManager,
+	type IAgentRuntime,
+	logger,
+	type Plugin,
+	type TestCase,
+	type TestSuite,
+} from "@elizaos/core";
+import { createBlueSkyConnectorAccountProvider } from "./connector-account-provider";
 import { BlueSkyService } from "./services/bluesky";
 import { getApiKeyOptional } from "./utils/config";
+import { BlueskyWorkflowCredentialProvider } from "./workflow-credential-provider";
 
-export { postBlueskyAction } from "./actions/post";
 export { BlueSkyClient } from "./client";
+export {
+	BLUESKY_PROVIDER_ID,
+	createBlueSkyConnectorAccountProvider,
+} from "./connector-account-provider";
 export { BlueSkyService } from "./services/bluesky";
+export {
+	DEFAULT_BLUESKY_ACCOUNT_ID,
+	listBlueSkyAccountIds,
+	normalizeBlueSkyAccountId,
+	readBlueSkyAccountId,
+	resolveDefaultBlueSkyAccountId,
+} from "./utils/config";
 
 export interface PluginConfig {
 	readonly BLUESKY_HANDLE?: string;
@@ -23,6 +40,8 @@ export interface PluginConfig {
 	readonly BLUESKY_POST_IMMEDIATELY?: string;
 	readonly BLUESKY_MAX_ACTIONS_PROCESSING?: string;
 	readonly BLUESKY_MAX_POST_LENGTH?: string;
+	readonly BLUESKY_ACCOUNTS?: string;
+	readonly BLUESKY_DEFAULT_ACCOUNT_ID?: string;
 }
 
 const pluginTests = [
@@ -87,15 +106,29 @@ export const blueSkyPlugin: Plugin = {
 		BLUESKY_MAX_ACTIONS_PROCESSING:
 			process.env.BLUESKY_MAX_ACTIONS_PROCESSING ?? null,
 		BLUESKY_MAX_POST_LENGTH: process.env.BLUESKY_MAX_POST_LENGTH ?? null,
+		BLUESKY_ACCOUNTS: process.env.BLUESKY_ACCOUNTS ?? null,
+		BLUESKY_DEFAULT_ACCOUNT_ID: process.env.BLUESKY_DEFAULT_ACCOUNT_ID ?? null,
 	},
 
-	async init(_config, _runtime) {
+	async init(_config, runtime) {
+		try {
+			const manager = getConnectorAccountManager(runtime);
+			manager.registerProvider(createBlueSkyConnectorAccountProvider(runtime));
+		} catch (err) {
+			logger.warn(
+				{
+					src: "plugin:bluesky",
+					err: err instanceof Error ? err.message : String(err),
+				},
+				"Failed to register BlueSky provider with ConnectorAccountManager",
+			);
+		}
 		logger.log("BlueSky plugin initialized");
 	},
 
-	actions: [postBlueskyAction],
+	actions: [],
 
-	services: [BlueSkyService],
+	services: [BlueSkyService, BlueskyWorkflowCredentialProvider],
 
 	tests: pluginTests,
 };

@@ -37,8 +37,10 @@ import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { type Address, createPublicClient, createWalletClient, http, parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { dbRead, dbWrite } from "@/db/client";
+import { redeemableEarnings, redeemableEarningsLedger } from "@/db/schemas/redeemable-earnings";
 import { tokenRedemptions } from "@/db/schemas/token-redemptions";
 import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "@/lib/config/token-constants";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { logger } from "@/lib/utils/logger";
 import {
   ELIZA_TOKEN_ADDRESSES,
@@ -52,8 +54,13 @@ const PAYOUT_CONFIG = {
   // Maximum price slippage allowed from quote (5%)
   MAX_PRICE_SLIPPAGE: 0.05,
 
+  // Default false: redemption requests lock the USD value and token amount at
+  // request time. Admin approval may happen later, so re-pricing during payout
+  // would break the fixed-dollar guarantee.
+  ENFORCE_PRICE_VALIDATION: false,
+
   // Worker ID for distributed locking
-  WORKER_ID: process.env.PAYOUT_WORKER_ID || `worker-${process.pid}`,
+  WORKER_ID: `worker-${process.pid}`,
 
   // Processing lock timeout (5 minutes)
   LOCK_TIMEOUT_MS: 5 * 60 * 1000,
@@ -67,6 +74,15 @@ const PAYOUT_CONFIG = {
   // Minimum hot wallet balance before alerting (in tokens)
   MIN_HOT_WALLET_BALANCE: 1000,
 };
+
+function getPayoutConfig() {
+  const env = getCloudAwareEnv();
+  return {
+    ...PAYOUT_CONFIG,
+    ENFORCE_PRICE_VALIDATION: env.PAYOUT_ENFORCE_PRICE_VALIDATION === "true",
+    WORKER_ID: env.PAYOUT_WORKER_ID || PAYOUT_CONFIG.WORKER_ID,
+  };
+}
 
 // Token decimals, EVM chains, ERC20_ABI imported from @/lib/config/token-constants
 
@@ -100,8 +116,10 @@ export class PayoutProcessorService {
   private readonly solanaConnection: import("@solana/web3.js").Connection | null;
 
   constructor() {
+    const env = getCloudAwareEnv();
+
     // Load EVM private key (support both naming conventions)
-    const evmKey = process.env.EVM_PAYOUT_PRIVATE_KEY || process.env.EVM_PRIVATE_KEY;
+    const evmKey = env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY;
     if (evmKey) {
       this.evmPrivateKey = evmKey.startsWith("0x")
         ? (evmKey as `0x${string}`)
@@ -115,14 +133,14 @@ export class PayoutProcessorService {
     }
 
     // Load Solana keypair
-    const solanaKey = process.env.SOLANA_PAYOUT_PRIVATE_KEY;
+    const solanaKey = env.SOLANA_PAYOUT_PRIVATE_KEY;
     if (solanaKey) {
       try {
         const { Connection, Keypair } =
           require("@solana/web3.js") as typeof import("@solana/web3.js");
         const decoded = bs58.decode(solanaKey);
         this.solanaKeypair = Keypair.fromSecretKey(decoded);
-        const solanaRpc = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+        const solanaRpc = env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
         this.solanaConnection = new Connection(solanaRpc, "confirmed");
         logger.info("[PayoutProcessor] Solana hot wallet configured");
       } catch (error) {
@@ -158,6 +176,7 @@ export class PayoutProcessorService {
    * Should be called by a cron job or worker process.
    */
   async processBatch(): Promise<ProcessingStats> {
+    const payoutConfig = getPayoutConfig();
     const stats: ProcessingStats = {
       processed: 0,
       succeeded: 0,
@@ -166,8 +185,8 @@ export class PayoutProcessorService {
     };
 
     // Check if any payout method is configured
-    const config = this.isConfigured();
-    if (!config.any) {
+    const walletConfig = this.isConfigured();
+    if (!walletConfig.any) {
       logger.warn("[PayoutProcessor] No payout wallets configured - skipping batch processing");
       return stats;
     }
@@ -183,16 +202,16 @@ export class PayoutProcessorService {
             isNull(tokenRedemptions.processing_started_at),
             lt(
               tokenRedemptions.processing_started_at,
-              new Date(Date.now() - PAYOUT_CONFIG.LOCK_TIMEOUT_MS),
+              new Date(Date.now() - payoutConfig.LOCK_TIMEOUT_MS),
             ),
           ),
           lt(
             sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`,
-            PAYOUT_CONFIG.MAX_RETRY_ATTEMPTS,
+            payoutConfig.MAX_RETRY_ATTEMPTS,
           ),
         ),
       )
-      .limit(PAYOUT_CONFIG.BATCH_SIZE);
+      .limit(payoutConfig.BATCH_SIZE);
 
     for (const redemption of redemptions) {
       stats.processed++;
@@ -208,7 +227,7 @@ export class PayoutProcessorService {
       const result = await this.processRedemption(redemption);
 
       if (result.success) {
-        await this.markCompleted(redemption.id, result.txHash!);
+        await this.markCompleted(redemption, result.txHash!);
         stats.succeeded++;
       } else {
         await this.markFailed(redemption.id, result.error!, result.retryable ?? true);
@@ -224,12 +243,13 @@ export class PayoutProcessorService {
    * Acquire processing lock on a redemption.
    */
   private async acquireLock(redemptionId: string): Promise<boolean> {
+    const config = getPayoutConfig();
     const [updated] = await dbWrite
       .update(tokenRedemptions)
       .set({
         status: "processing",
         processing_started_at: new Date(),
-        processing_worker_id: PAYOUT_CONFIG.WORKER_ID,
+        processing_worker_id: config.WORKER_ID,
         updated_at: new Date(),
       })
       .where(and(eq(tokenRedemptions.id, redemptionId), eq(tokenRedemptions.status, "approved")))
@@ -244,25 +264,35 @@ export class PayoutProcessorService {
   private async processRedemption(
     redemption: typeof tokenRedemptions.$inferSelect,
   ): Promise<PayoutResult> {
+    const config = getPayoutConfig();
     const network = redemption.network as SupportedNetwork;
 
-    // Check quote hasn't expired
-    if (new Date() > redemption.price_quote_expires_at) {
-      return {
-        success: false,
-        error: "Price quote expired",
-        retryable: false, // Requires new quote
-      };
-    }
+    if (config.ENFORCE_PRICE_VALIDATION) {
+      // Optional legacy guard for fully automated payout deployments.
+      if (new Date() > redemption.price_quote_expires_at) {
+        return {
+          success: false,
+          error: "Price quote expired",
+          retryable: false,
+        };
+      }
 
-    // Re-validate current price
-    const priceValidation = await this.validatePrice(network, Number(redemption.eliza_price_usd));
-    if (!priceValidation.valid) {
-      return {
-        success: false,
-        error: priceValidation.error,
-        retryable: false, // Price moved too much
-      };
+      const priceValidation = await this.validatePrice(network, Number(redemption.eliza_price_usd));
+      if (!priceValidation.valid) {
+        return {
+          success: false,
+          error: priceValidation.error,
+          retryable: false,
+        };
+      }
+    } else if (new Date() > redemption.price_quote_expires_at) {
+      logger.info("[PayoutProcessor] Processing redemption with expired quote window", {
+        redemptionId: redemption.id,
+        network,
+        quotedElizaAmount: redemption.eliza_amount,
+        quotedPriceUsd: redemption.eliza_price_usd,
+        quoteExpiredAt: redemption.price_quote_expires_at,
+      });
     }
 
     // Execute payout based on network
@@ -284,11 +314,12 @@ export class PayoutProcessorService {
     const currentPrice = quote.priceUsd;
 
     const slippage = Math.abs(currentPrice - quotedPrice) / quotedPrice;
+    const config = getPayoutConfig();
 
-    if (slippage > PAYOUT_CONFIG.MAX_PRICE_SLIPPAGE) {
+    if (slippage > config.MAX_PRICE_SLIPPAGE) {
       return {
         valid: false,
-        error: `Price moved ${(slippage * 100).toFixed(2)}% since quote (max ${PAYOUT_CONFIG.MAX_PRICE_SLIPPAGE * 100}%)`,
+        error: `Price moved ${(slippage * 100).toFixed(2)}% since quote (max ${config.MAX_PRICE_SLIPPAGE * 100}%)`,
       };
     }
 
@@ -479,16 +510,55 @@ export class PayoutProcessorService {
   /**
    * Mark redemption as completed.
    */
-  private async markCompleted(redemptionId: string, txHash: string): Promise<void> {
-    await dbWrite
-      .update(tokenRedemptions)
-      .set({
-        status: "completed",
-        tx_hash: txHash,
-        completed_at: new Date(),
-        updated_at: new Date(),
-      })
-      .where(eq(tokenRedemptions.id, redemptionId));
+  private async markCompleted(
+    redemption: typeof tokenRedemptions.$inferSelect,
+    txHash: string,
+  ): Promise<void> {
+    const completedAt = new Date();
+    const usdValue = redemption.usd_value.toString();
+    const usdNumber = Number(redemption.usd_value);
+
+    await dbWrite.transaction(async (tx) => {
+      await tx
+        .update(tokenRedemptions)
+        .set({
+          status: "completed",
+          tx_hash: txHash,
+          completed_at: completedAt,
+          updated_at: completedAt,
+        })
+        .where(eq(tokenRedemptions.id, redemption.id));
+
+      const [updatedEarnings] = await tx
+        .update(redeemableEarnings)
+        .set({
+          total_pending: sql`GREATEST(0, ${redeemableEarnings.total_pending} - ${usdValue})`,
+          total_redeemed: sql`${redeemableEarnings.total_redeemed} + ${usdValue}`,
+          last_redemption_at: completedAt,
+          version: sql`${redeemableEarnings.version} + 1`,
+          updated_at: completedAt,
+        })
+        .where(eq(redeemableEarnings.user_id, redemption.user_id))
+        .returning();
+
+      if (!updatedEarnings) {
+        throw new Error("Earnings record not found for completed redemption");
+      }
+
+      await tx.insert(redeemableEarningsLedger).values({
+        user_id: redemption.user_id,
+        entry_type: "redemption",
+        amount: "0",
+        balance_after: updatedEarnings.available_balance,
+        redemption_id: redemption.id,
+        description: `Redemption completed: $${usdNumber.toFixed(2)} sent as elizaOS`,
+        metadata: {
+          completed_at: completedAt.toISOString(),
+          network: redemption.network,
+          tx_hash: txHash,
+        },
+      });
+    });
   }
 
   /**
@@ -539,6 +609,7 @@ export class PayoutProcessorService {
     evm: { configured: boolean; balances: Record<string, number> };
     solana: { configured: boolean; balance: number };
   }> {
+    const config = getPayoutConfig();
     const result = {
       evm: {
         configured: !!this.evmPrivateKey,
@@ -570,18 +641,18 @@ export class PayoutProcessorService {
           Number(balance) / 10 ** ELIZA_DECIMALS[network as keyof typeof ELIZA_DECIMALS];
         result.evm.balances[network] = balanceFormatted;
 
-        if (balanceFormatted < PAYOUT_CONFIG.MIN_HOT_WALLET_BALANCE) {
+        if (balanceFormatted < config.MIN_HOT_WALLET_BALANCE) {
           logger.warn("[PayoutProcessor] LOW HOT WALLET BALANCE", {
             network,
             balance: balanceFormatted,
-            threshold: PAYOUT_CONFIG.MIN_HOT_WALLET_BALANCE,
+            threshold: config.MIN_HOT_WALLET_BALANCE,
             address: account.address,
           });
           // Send alert to ops team
           void payoutAlertsService.alertLowBalance(
             network,
             balanceFormatted,
-            PAYOUT_CONFIG.MIN_HOT_WALLET_BALANCE,
+            config.MIN_HOT_WALLET_BALANCE,
           );
         }
       }
@@ -608,18 +679,18 @@ export class PayoutProcessorService {
         const balanceFormatted = Number(account.amount) / 10 ** ELIZA_DECIMALS.solana;
         result.solana.balance = balanceFormatted;
 
-        if (balanceFormatted < PAYOUT_CONFIG.MIN_HOT_WALLET_BALANCE) {
+        if (balanceFormatted < config.MIN_HOT_WALLET_BALANCE) {
           logger.warn("[PayoutProcessor] LOW HOT WALLET BALANCE", {
             network: "solana",
             balance: balanceFormatted,
-            threshold: PAYOUT_CONFIG.MIN_HOT_WALLET_BALANCE,
+            threshold: config.MIN_HOT_WALLET_BALANCE,
             address: this.solanaKeypair.publicKey.toBase58(),
           });
           // Send alert to ops team
           void payoutAlertsService.alertLowBalance(
             "solana",
             balanceFormatted,
-            PAYOUT_CONFIG.MIN_HOT_WALLET_BALANCE,
+            config.MIN_HOT_WALLET_BALANCE,
           );
         }
       }

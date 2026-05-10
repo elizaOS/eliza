@@ -122,14 +122,8 @@ const response = await runtime.useModel("TEXT_LARGE", {
 
 </div>
 
-DeepSeek 模型也可以通过 Ollama 在本地使用：
-
-```bash
-ollama pull deepseek-r1:7b
-ollama pull deepseek-r1:70b
-```
-
-本地运行时，请使用 [Ollama 插件](/zh/plugin-registry/llm/ollama)代替此插件进行配置。
+本地推理请使用 [Ollama 插件](/zh/plugin-registry/llm/ollama) 配置 Eliza-1，
+不要通过本地模型服务器路由 DeepSeek。
 
 <div id="rate-limits-and-pricing">
 

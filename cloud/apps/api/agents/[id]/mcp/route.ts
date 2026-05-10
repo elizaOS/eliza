@@ -17,6 +17,7 @@ import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { calculateCost, estimateTokens, getProviderFromModel } from "@/lib/pricing";
 import {
+  type AnthropicCotEnv,
   mergeAnthropicCotProviderOptions,
   parseThinkingBudgetFromCharacterSettings,
   resolveAnthropicThinkingBudgetTokens,
@@ -38,6 +39,15 @@ const MCPRequestSchema = z.object({
 });
 
 const app = new Hono<AppEnv>();
+
+function getAnthropicCotEnv(env: AppEnv["Bindings"]): AnthropicCotEnv {
+  return {
+    ANTHROPIC_COT_BUDGET:
+      typeof env.ANTHROPIC_COT_BUDGET === "string" ? env.ANTHROPIC_COT_BUDGET : undefined,
+    ANTHROPIC_COT_BUDGET_MAX:
+      typeof env.ANTHROPIC_COT_BUDGET_MAX === "string" ? env.ANTHROPIC_COT_BUDGET_MAX : undefined,
+  };
+}
 
 app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   const id = c.req.param("id");
@@ -273,7 +283,7 @@ async function handleToolCall(
 
     const provider = getProviderFromModel(model);
     const markupPct = Number(character.inference_markup_percentage || 0);
-    const envForThinking = c.env as unknown as Record<string, string | undefined>;
+    const envForThinking = getAnthropicCotEnv(c.env);
     const agentThinkingBudget = parseThinkingBudgetFromCharacterSettings(character.settings);
     const effectiveThinkingBudget = resolveAnthropicThinkingBudgetTokens(
       model,

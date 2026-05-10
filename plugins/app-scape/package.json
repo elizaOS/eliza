@@ -1,25 +1,15 @@
 {
   "name": "@elizaos/app-scape",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "description": "'scape — first-class agent integration for xRSPS. Autonomous RuneScape-alike agent with JSON-encoded state, Scape Journal, and directed-prompt operator control.",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./routes": {
-      "types": "./src/routes.ts",
-      "import": "./dist/routes.js",
-      "default": "./dist/routes.js"
-    },
-    "./ui": {
-      "types": "./src/ui/index.ts",
-      "import": "./dist/ui/index.js",
-      "default": "./dist/ui/index.js"
     }
   },
   "keywords": [
@@ -30,11 +20,11 @@
     "autonomous"
   ],
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*"
+    "@elizaos/agent": "2.0.0-beta.1",
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1"
   },
   "agentConfig": {
     "pluginParameters": {
@@ -140,10 +130,12 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "clean": "rm -rf dist"
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [
     "dist"

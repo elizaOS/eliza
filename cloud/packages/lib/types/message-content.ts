@@ -134,7 +134,7 @@ export interface DialogueMetadata extends BaseMetadata {
   visibility?: "visible" | "hidden";
 
   /** Optional: Agent mode that generated this */
-  agentMode?: "chat" | "build" | "assistant";
+  agentMode?: "chat";
 
   /** Optional: Action that generated this (for action results) */
   action?: string;
