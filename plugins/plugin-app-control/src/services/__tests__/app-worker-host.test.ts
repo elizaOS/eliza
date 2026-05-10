@@ -84,6 +84,19 @@ describe("AppWorkerHostService — Phase 2.2 bridge", () => {
 		expect(reply.result).toEqual(payload);
 	});
 
+	it("echo does not unwrap payloads that look like bridge envelopes", async () => {
+		await service.spawn({ slug: "fixture-echo-envelope", isolation: "worker" });
+		const payload = { ok: true, result: { nested: "literal payload" } };
+		const reply = await service.invoke<typeof payload>(
+			"fixture-echo-envelope",
+			"echo",
+			payload,
+		);
+		expect(reply.ok).toBe(true);
+		if (!reply.ok) return;
+		expect(reply.result).toEqual(payload);
+	});
+
 	it("rejects unknown methods with a structured failure", async () => {
 		await service.spawn({ slug: "fixture-unknown", isolation: "worker" });
 		const reply = await service.invoke("fixture-unknown", "no-such-method");
@@ -209,6 +222,9 @@ describe("AppWorkerHostService — Phase 2.2 bridge", () => {
 					pluginEntryPath: "/nonexistent/plugin.ts",
 				}),
 			).rejects.toThrow();
+			expect(service.list().some((w) => w.slug === "fixture-bad-plugin")).toBe(
+				false,
+			);
 		});
 	});
 });

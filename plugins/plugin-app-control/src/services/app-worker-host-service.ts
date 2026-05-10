@@ -275,7 +275,13 @@ export class AppWorkerHostService extends Service {
 		});
 
 		this.workers.set(options.slug, spawned);
-		await spawned.readyPromise;
+		try {
+			await spawned.readyPromise;
+		} catch (error) {
+			this.workers.delete(options.slug);
+			await worker.terminate().catch(() => undefined);
+			throw error;
+		}
 		return this.snapshot(spawned);
 	}
 

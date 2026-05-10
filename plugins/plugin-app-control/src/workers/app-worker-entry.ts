@@ -51,7 +51,6 @@ interface InvokeActionParams {
 
 interface LoadedAction {
 	name: string;
-	// biome-ignore lint/suspicious/noExplicitAny: action handler signature is plugin-defined, only narrowed at the call site
 	handler: (...args: any[]) => unknown | Promise<unknown>;
 }
 
@@ -180,13 +179,7 @@ async function dispatchInvokeAction(
 	}
 }
 
-type BridgeHandler = (
-	params: unknown,
-) =>
-	| unknown
-	| Promise<unknown>
-	| { ok: false; reason: string }
-	| Promise<{ ok: false; reason: string }>;
+type BridgeHandler = (params: unknown) => unknown | Promise<unknown>;
 
 const BRIDGE_METHODS: Record<string, BridgeHandler> = {
 	ping: () => ({
@@ -196,12 +189,18 @@ const BRIDGE_METHODS: Record<string, BridgeHandler> = {
 		actions: Array.from(actionRegistry.keys()),
 	}),
 	echo: (params) => params,
-	invokeAction: (params) => dispatchInvokeAction(params),
 };
 
 async function dispatch(req: RpcRequest): Promise<RpcResponse> {
 	if (req.method === "shutdown") {
 		process.exit(0);
+	}
+	if (req.method === "invokeAction") {
+		const result = await dispatchInvokeAction(req.params);
+		if (!result.ok) {
+			return { id: req.id, ok: false, reason: result.reason };
+		}
+		return { id: req.id, ok: true, result: result.result };
 	}
 	const handler = BRIDGE_METHODS[req.method];
 	if (!handler) {
@@ -213,32 +212,6 @@ async function dispatch(req: RpcRequest): Promise<RpcResponse> {
 	}
 	try {
 		const result = await handler(req.params);
-		// Bridge handlers can return a structured failure ({ ok: false, reason }).
-		if (
-			result &&
-			typeof result === "object" &&
-			(result as { ok?: unknown }).ok === false &&
-			typeof (result as { reason?: unknown }).reason === "string"
-		) {
-			return {
-				id: req.id,
-				ok: false,
-				reason: (result as { reason: string }).reason,
-			};
-		}
-		// invokeAction wraps its success as { ok: true, result }.
-		if (
-			result &&
-			typeof result === "object" &&
-			(result as { ok?: unknown }).ok === true &&
-			"result" in (result as object)
-		) {
-			return {
-				id: req.id,
-				ok: true,
-				result: (result as { result: unknown }).result,
-			};
-		}
 		return { id: req.id, ok: true, result };
 	} catch (error) {
 		return {
@@ -280,7 +253,7 @@ async function bootSequence() {
 	}
 	parentPort?.postMessage({
 		id: 0,
-		ok: error ? false : true,
+		ok: !error,
 		result: {
 			ready: true,
 			slug,
