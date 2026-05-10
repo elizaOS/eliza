@@ -22,6 +22,7 @@
  * during bootstrap — Phase 2.5 wires that.
  */
 
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
@@ -76,7 +77,17 @@ interface SpawnedWorker {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const WORKER_ENTRY = path.resolve(__dirname, "../workers/app-worker-entry.ts");
+const SOURCE_WORKER_ENTRY = path.resolve(
+	__dirname,
+	"../workers/app-worker-entry.ts",
+);
+const DIST_WORKER_ENTRY = path.resolve(
+	__dirname,
+	"workers/app-worker-entry.js",
+);
+const WORKER_ENTRY = existsSync(SOURCE_WORKER_ENTRY)
+	? SOURCE_WORKER_ENTRY
+	: DIST_WORKER_ENTRY;
 const SHUTDOWN_GRACE_MS = 5_000;
 
 /**
@@ -178,7 +189,10 @@ export class AppWorkerHostService extends Service {
 	 */
 	async spawn(options: SpawnOptions): Promise<SpawnedWorkerSnapshot> {
 		const existing = this.workers.get(options.slug);
-		if (existing) return this.snapshot(existing);
+		if (existing) {
+			await existing.readyPromise;
+			return this.snapshot(existing);
+		}
 
 		const worker = new Worker(WORKER_ENTRY, {
 			workerData: {

@@ -256,6 +256,7 @@ The app registers with `isolation: "worker"` in `app-registry.json`, `app-loads.
 | Phase 1, slice 1 | This spec; parser + types; wired into both `app-load-from-directory.ts` and `apps-routes.ts` discovery; audit log gets `trust` + `requestedPermissions`; `AppRegistryEntry` persists `requestedPermissions`. No enforcement. |
 | Phase 1, slice 2 | Granted-permission store on disk; consent surface in Settings → Apps. |
 | Phase 2.1 | `elizaos.app.isolation` parser + registry/audit/API persistence; no worker spawning or enforcement yet. |
+| Phase 2.2 | `AppWorkerHostService` + Bun worker RPC bridge for apps that declare `isolation: "worker"`; no app-code loading or FS/net gating yet. |
 | Phase 2 | Opt-in `isolation: "worker"` execution path; FS gating using declared `fs` globs; outbound network gating using declared `net.outbound`. |
 | Phase 3 | Default `isolation: "worker"` for `trust: "external"`; first-party stays in-process. |
 
