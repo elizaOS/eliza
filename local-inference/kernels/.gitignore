@@ -4,3 +4,4 @@ verify/gen_fixture
 verify/vulkan_verify
 verify/metal_verify
 verify/*.spv
+vulkan/*.spv
