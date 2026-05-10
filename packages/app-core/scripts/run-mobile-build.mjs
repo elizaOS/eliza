@@ -720,6 +720,56 @@ export function injectNoCompressTarGz(content) {
 }
 
 /**
+ * Inject `packaging.jniLibs.useLegacyPackaging = true` so the JNI-staged
+ * bun runtime (libeliza_bun.so + libeliza_ld_musl_<abi>.so + libeliza_stdcpp.so
+ * + libeliza_gcc_s.so) is materialized on disk under <nativeLibraryDir> at
+ * install time. AGP 9.x defaults this to false, which keeps native libs as
+ * mmap-only entries inside the APK — fine for `dlopen`, but ProcessBuilder
+ * cannot fork-exec a path inside a zip. On stock Android (`untrusted_app`
+ * SELinux domain) the only path that allows `execute_no_trans` for the bun
+ * binary is the `system_data_file`-labeled native-library dir; anything we
+ * extract into `files/agent/<abi>/` lives in `app_data_file` and gets denied.
+ * Switching this back to legacy-packaging materializes the libs on disk so
+ * `ElizaAgentService.preferPackagedExecutable()` can resolve them.
+ *
+ * Idempotent: re-runs are no-ops once the block is present.
+ */
+export function injectUseLegacyJniPackaging(content) {
+  if (/useLegacyPackaging\s*=\s*true/.test(content)) return content;
+  const block =
+    `\n    // Extract native libs to <nativeLibraryDir> at install time so the bun\n` +
+    `    // binary + musl loader can be fork-exec'd by ElizaAgentService. AGP 9.x\n` +
+    `    // defaults useLegacyPackaging to false, which keeps the libs as mmap-only\n` +
+    `    // entries inside the APK — perfect for dlopen, but ProcessBuilder cannot\n` +
+    `    // fork-exec a path inside a zip. The musl loader path under \`lib/<abi>/\`\n` +
+    `    // (system_data_file SELinux context) is the only path the untrusted_app\n` +
+    `    // domain can execute, so the libs MUST be on disk for the local agent to\n` +
+    `    // start. Mirrors platforms/android/app/build.gradle.\n` +
+    `    packaging {\n` +
+    `        jniLibs {\n` +
+    `            useLegacyPackaging = true\n` +
+    `            keepDebugSymbols += ["**/libimage_processing_util_jni.so"]\n` +
+    `        }\n` +
+    `    }\n`;
+  const androidOpen = content.search(/\n\s*android\s*\{/);
+  if (androidOpen < 0) return content;
+  let depth = 0;
+  let i = content.indexOf("{", androidOpen);
+  while (i < content.length) {
+    const ch = content[i];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return content.slice(0, i) + block + content.slice(i);
+      }
+    }
+    i += 1;
+  }
+  return content;
+}
+
+/**
  * Inject an optional app-thinning hook for `assets/agent/`.
  *
  * Local mode on stock Capacitor APKs now depends on the staged bun runtime,
@@ -2063,6 +2113,7 @@ function patchAndroidGradle() {
     );
     patched = injectBuildConfigAospField(patched);
     patched = injectNoCompressTarGz(patched);
+    patched = injectUseLegacyJniPackaging(patched);
     patched = injectAospAssetThinning(patched);
     patched = injectCopyForkLlamaLibTask(patched);
     if (patched !== current) {
