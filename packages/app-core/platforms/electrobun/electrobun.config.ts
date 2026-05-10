@@ -198,7 +198,7 @@ function resolveBrandConfigCopySource({
 }
 
 export function createElectrobunConfig(): ElectrobunConfig {
-	const appName = (process.env.ELIZA_APP_NAME ?? "").trim() || "elizaOS";
+	const appName = (process.env.ELIZA_APP_NAME ?? "").trim() || "Eliza";
 	const appId = (process.env.ELIZA_APP_ID ?? "").trim() || "ai.elizaos.app";
 	const urlScheme = (process.env.ELIZA_URL_SCHEME ?? "").trim() || "elizaos";
 	const releaseUrl = (process.env.ELIZA_RELEASE_URL ?? "").trim() || "";
