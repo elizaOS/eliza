@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { LocalEmbeddingManager } from "../src/index.ts";
 
 /**
  * Parity test for the embedding pipeline.
@@ -27,56 +26,66 @@ import { LocalEmbeddingManager } from "../src/index.ts";
  * default so CI doesn't have to bundle a 90MB GGUF.
  */
 describe("embedding pipeline parity", () => {
-  it("single-input and batched paths produce identical vectors", async () => {
-    const manager = LocalEmbeddingManager.getInstance();
+  // Cold-start jitter: vitest's first transform of `../src/index.ts` plus
+  // the singleton's `validateConfig()` zod walk can punch through the
+  // default 5s timeout on a cold cache (W2-H observed ~21s transform).
+  // Warm runs are <100ms — bump only this test, not the whole file.
+  it(
+    "single-input and batched paths produce identical vectors",
+    { timeout: 30_000 },
+    async () => {
+      const mod = await import("../src/index.ts");
+      const manager = mod.LocalEmbeddingManager.getInstance();
 
-    const dim = 768;
-    const internal = manager as unknown as {
-      embeddingContext: { getEmbeddingFor: ReturnType<typeof vi.fn> };
-      embeddingModel: unknown;
-      embeddingInitialized: boolean;
-      environmentInitialized: boolean;
-      embeddingModelConfig: { dimensions: number; contextSize: number };
-      normalize: boolean;
-      batchSize: number;
-    };
-    internal.embeddingContext = {
-      getEmbeddingFor: vi.fn(async (input: unknown) => {
-        const text = typeof input === "string" ? input : "";
-        const vec = new Array<number>(dim).fill(0);
-        // Deterministic vector keyed off the input.
-        for (let i = 0; i < Math.min(text.length, dim); i += 1) {
-          vec[i] = text.charCodeAt(i) / 255;
-        }
-        return { vector: vec };
-      }),
-    };
-    internal.embeddingModel = {};
-    internal.embeddingInitialized = true;
-    internal.environmentInitialized = true;
-    internal.embeddingModelConfig = { dimensions: dim, contextSize: 8192 };
-    internal.normalize = true;
-    internal.batchSize = 4;
+      const dim = 768;
+      const internal = manager as unknown as {
+        embeddingContext: { getEmbeddingFor: ReturnType<typeof vi.fn> };
+        embeddingModel: unknown;
+        embeddingInitialized: boolean;
+        environmentInitialized: boolean;
+        embeddingModelConfig: { dimensions: number; contextSize: number };
+        normalize: boolean;
+        batchSize: number;
+      };
+      internal.embeddingContext = {
+        getEmbeddingFor: vi.fn(async (input: unknown) => {
+          const text = typeof input === "string" ? input : "";
+          const vec = new Array<number>(dim).fill(0);
+          // Deterministic vector keyed off the input.
+          for (let i = 0; i < Math.min(text.length, dim); i += 1) {
+            vec[i] = text.charCodeAt(i) / 255;
+          }
+          return { vector: vec };
+        }),
+      };
+      internal.embeddingModel = {};
+      internal.embeddingInitialized = true;
+      internal.environmentInitialized = true;
+      internal.embeddingModelConfig = { dimensions: dim, contextSize: 8192 };
+      internal.normalize = true;
+      internal.batchSize = 4;
 
-    const sentence = "The quick brown fox jumps over the lazy dog.";
+      const sentence = "The quick brown fox jumps over the lazy dog.";
 
-    const single = await manager.generateEmbedding(sentence);
-    const batchOf1 = await manager.generateEmbeddings([sentence]);
-    const batchOfMany = await manager.generateEmbeddings([
-      sentence,
-      sentence,
-      sentence,
-      sentence,
-    ]);
+      const single = await manager.generateEmbedding(sentence);
+      const batchOf1 = await manager.generateEmbeddings([sentence]);
+      const batchOfMany = await manager.generateEmbeddings([
+        sentence,
+        sentence,
+        sentence,
+        sentence,
+      ]);
 
-    expect(single).toHaveLength(dim);
-    expect(batchOf1).toHaveLength(1);
-    expect(batchOf1[0]).toEqual(single);
-    for (const vec of batchOfMany) expect(vec).toEqual(single);
-  });
+      expect(single).toHaveLength(dim);
+      expect(batchOf1).toHaveLength(1);
+      expect(batchOf1[0]).toEqual(single);
+      for (const vec of batchOfMany) expect(vec).toEqual(single);
+    },
+  );
 
   it("output is L2-normalised by default", async () => {
-    const manager = LocalEmbeddingManager.getInstance();
+    const mod = await import("../src/index.ts");
+    const manager = mod.LocalEmbeddingManager.getInstance();
     const dim = 384;
     const internal = manager as unknown as {
       embeddingContext: { getEmbeddingFor: ReturnType<typeof vi.fn> };
@@ -104,7 +113,8 @@ describe("embedding pipeline parity", () => {
   });
 
   it("output matches declared dimension when binding returns wrong size", async () => {
-    const manager = LocalEmbeddingManager.getInstance();
+    const mod = await import("../src/index.ts");
+    const manager = mod.LocalEmbeddingManager.getInstance();
     const declaredDim = 768;
     const bindingDim = 384;
     const internal = manager as unknown as {
