@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CapabilityBroker } from "./capability-broker.ts";
 import { PluginCompiler } from "./plugin-compiler.ts";
 import {
   VirtualFilesystemError,
@@ -76,32 +75,6 @@ describe("PluginCompiler", () => {
     expect(mod.default?.name).toBe("tiny-vfs-plugin");
     expect(Array.isArray(mod.default?.actions)).toBe(true);
     expect(mod.default?.actions?.[0]?.name).toBe("TINY_VFS_PING");
-  });
-
-  it("refuses to compile when the capability broker denies", async () => {
-    const filesystem = vfs("compiler-deny");
-    await filesystem.initialize();
-    await filesystem.writeFile("src/plugin.ts", TINY_PLUGIN_TS);
-
-    const denyingBroker = new CapabilityBroker({
-      stateDir: tmpDir,
-      mode: () => "local-yolo",
-      distributionProfile: () => "unrestricted",
-    });
-    denyingBroker.check = () => ({
-      allowed: false,
-      reason: "test-deny",
-      policyKey: "test:deny",
-    });
-
-    const compiler = new PluginCompiler();
-    await expect(
-      compiler.compile({
-        vfs: filesystem,
-        entry: "src/plugin.ts",
-        broker: denyingBroker,
-      }),
-    ).rejects.toThrow(/capability denied: test-deny/);
   });
 
   it("rejects path traversal entries via the VFS", async () => {

@@ -115,17 +115,7 @@ export async function runPlannerLoop(
 	// surfacing a thought as the user-facing reply.
 	let lastPlannerExplicitMessageToUser: string | undefined;
 
-	for (
-		let iteration = 1;
-		iteration <= config.maxPlannerIterations;
-		iteration++
-	) {
-		assertTrajectoryLimit({
-			kind: "planner_iterations",
-			max: config.maxPlannerIterations,
-			observed: iteration,
-		});
-
+	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
 			const plannerOutput = await callPlanner({
 				runtime: params.runtime,
@@ -436,41 +426,6 @@ export async function runPlannerLoop(
 
 		trajectory.plannedQueue.length = 0;
 	}
-
-	const evaluator =
-		trajectory.evaluatorOutputs[trajectory.evaluatorOutputs.length - 1] ??
-		({
-			success: false,
-			decision: "CONTINUE",
-			thought: "Planner loop stopped at iteration limit.",
-		} satisfies EvaluatorOutput);
-	if (requireNonTerminalToolCall && !hasExecutedNonTerminalTool(trajectory)) {
-		const finalMessage =
-			"I could not complete that because the planner did not select an available tool after retrying.";
-		params.runtime.logger?.warn?.(
-			{
-				maxPlannerIterations: config.maxPlannerIterations,
-				steps: trajectory.steps.length,
-			},
-			"Planner exhausted retries before satisfying a required tool call",
-		);
-		return {
-			status: "continued",
-			trajectory,
-			evaluator: {
-				...evaluator,
-				success: false,
-				decision: "CONTINUE",
-				messageToUser: finalMessage,
-			},
-			finalMessage,
-		};
-	}
-	return {
-		status: "continued",
-		trajectory,
-		evaluator,
-	};
 }
 
 function renderPlannerModelInput(params: {

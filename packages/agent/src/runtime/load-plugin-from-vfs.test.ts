@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { AgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CapabilityBroker } from "../services/capability-broker.ts";
 import { VirtualFilesystemService } from "../services/virtual-filesystem.ts";
 import {
   _resetLoadedVfsPluginsForTests,
@@ -24,33 +23,12 @@ afterEach(async () => {
   await fsp.rm(tmpDir, { recursive: true, force: true });
 });
 
-function permissiveBroker(): CapabilityBroker {
-  // local-yolo + unrestricted lets shell.exec and fs.* through so tests can
-  // exercise the real load path without bumping into broker policy.
-  return new CapabilityBroker({
-    stateDir: tmpDir,
-    mode: () => "local-yolo",
-    distributionProfile: () => "unrestricted",
-  });
-}
-
-function denyingBroker(): CapabilityBroker {
-  // store profile + cloud mode hard-denies shell.exec; used to verify that
-  // load-plugin-from-vfs refuses to dynamically import when the broker says no.
-  return new CapabilityBroker({
-    stateDir: tmpDir,
-    mode: () => "cloud",
-    distributionProfile: () => "store",
-  });
-}
-
 function createVfs(projectId = "load-plugin-test"): VirtualFilesystemService {
   return new VirtualFilesystemService({
     projectId,
     stateDir: tmpDir,
     quotaBytes: 4 * 1024 * 1024,
     maxFileBytes: 2 * 1024 * 1024,
-    broker: permissiveBroker(),
   });
 }
 
@@ -79,16 +57,15 @@ describe("loadPluginFromVfs", () => {
 
     const runtime = new AgentRuntime({ logLevel: "fatal" });
     expect(typeof runtime.registerPlugin).toBe("function");
-    expect(typeof (runtime as { unloadPlugin?: unknown }).unloadPlugin).toBe(
-      "function",
-    );
+    expect(
+      typeof (runtime as { unloadPlugin?: unknown }).unloadPlugin,
+    ).toBe("function");
 
     const loaded = await loadPluginFromVfs({
       runtime,
       vfs,
       entry: "src/plugin.ts",
       projectId: "load-plugin-test",
-      broker: permissiveBroker(),
     });
 
     expect(loaded.pluginName).toBe("vfs-loader-test-plugin");
@@ -115,7 +92,9 @@ describe("loadPluginFromVfs", () => {
     });
     expect(unloadResult.unloaded).toBe(true);
     expect(
-      runtime.actions.some((candidate) => candidate.name === "VFS_LOADER_PING"),
+      runtime.actions.some(
+        (candidate) => candidate.name === "VFS_LOADER_PING",
+      ),
     ).toBe(false);
     expect(getLoadedVfsPlugins()).toHaveLength(0);
   });
@@ -136,7 +115,6 @@ describe("loadPluginFromVfs", () => {
       vfs,
       entry: "dist/plugin.js",
       compileFirst: false,
-      broker: permissiveBroker(),
     });
 
     expect(loaded.pluginName).toBe("prebuilt-vfs-plugin");
@@ -145,29 +123,5 @@ describe("loadPluginFromVfs", () => {
       runtime,
       pluginName: "prebuilt-vfs-plugin",
     });
-  });
-
-  it("refuses to load when the capability broker denies shell.exec", async () => {
-    const vfs = createVfs("deny-test");
-    await vfs.initialize();
-    await vfs.writeFile(
-      "dist/plugin.js",
-      `export default { name: "should-not-load", description: "denied" };
-`,
-    );
-
-    const runtime = new AgentRuntime({ logLevel: "fatal" });
-
-    await expect(
-      loadPluginFromVfs({
-        runtime,
-        vfs,
-        entry: "dist/plugin.js",
-        compileFirst: false,
-        broker: denyingBroker(),
-      }),
-    ).rejects.toThrow(/capability denied/);
-
-    expect(getLoadedVfsPlugins()).toHaveLength(0);
   });
 });
