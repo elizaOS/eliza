@@ -34,6 +34,11 @@
     },
     "./schema": {
       "types": "./src/dist/schema/index.d.ts",
+      "bun": {
+        "types": "./src/schema/index.ts",
+        "import": "./src/schema/index.ts",
+        "default": "./src/schema/index.ts"
+      },
       "import": "./src/dist/schema/index.js",
       "default": "./src/dist/schema/index.js"
     }
