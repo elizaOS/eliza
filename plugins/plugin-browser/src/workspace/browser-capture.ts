@@ -21,7 +21,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { logger } from "@elizaos/core";
-import puppeteer from "puppeteer-core";
 
 const CHROME_PATH =
   process.platform === "darwin"
@@ -30,7 +29,8 @@ const CHROME_PATH =
       ? "C:\\Program Files\\Google Chrome\\Application\\chrome.exe"
       : "/usr/bin/google-chrome-stable";
 
-let activeBrowser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let activeBrowser: any | null = null;
 let activeCaptureLoop: Promise<void> | null = null;
 let stopSignal = false;
 
@@ -104,6 +104,7 @@ export async function startBrowserCapture(config: BrowserCaptureConfig) {
   stopSignal = false;
   logger.info(`[browser-capture] Launching headless Chrome to ${captureUrl}`);
 
+  const { default: puppeteer } = await import("puppeteer-core");
   const browser = await puppeteer.launch({
     executablePath: CHROME_PATH,
     headless: true,

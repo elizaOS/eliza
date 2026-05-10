@@ -18,10 +18,10 @@ import type {
   LifeOpsCircadianState,
   LifeOpsPersonalBaseline,
   LifeOpsRegularityClass,
-} from "@elizaos/shared";
-import type { LifeOpsActivityWindow } from "./sleep-cycle.js";
+} from "../contracts/health.js";
 import { getZonedDateParts } from "../util/time.js";
 import { parseIsoMs } from "../util/time-util.js";
+import type { LifeOpsActivityWindow } from "./sleep-cycle.js";
 
 export const MIN_STABILITY_WINDOW_MS = 5 * 60_000;
 export const WAKE_CONFIRM_WINDOW_MS = 10 * 60_000;

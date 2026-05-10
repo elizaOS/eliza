@@ -29,32 +29,15 @@
       },
       "bun": {
         "types": "./dist/index.d.ts",
+        "import": "./dist/node/index.node.js",
         "default": "./dist/node/index.node.js"
       },
       "default": "./dist/node/index.node.js"
-    },
-    "./schema": {
-      "types": "./schema/index.ts",
-      "import": "./schema/index.ts",
-      "default": "./schema/index.ts"
-    },
-    "./drizzle": {
-      "types": "./drizzle/index.ts",
-      "import": "./drizzle/index.ts",
-      "default": "./drizzle/index.ts"
-    },
-    "./types": {
-      "types": "./types.ts",
-      "import": "./types.ts",
-      "default": "./types.ts"
     }
   },
   "sideEffects": false,
   "files": [
-    "dist",
-    "drizzle",
-    "schema",
-    "types.ts"
+    "dist"
   ],
   "dependencies": {
     "@electric-sql/pglite": "^0.4.0",

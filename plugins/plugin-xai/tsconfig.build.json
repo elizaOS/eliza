@@ -8,8 +8,7 @@
     "declarationMap": true,
     "emitDeclarationOnly": true,
     "paths": {
-      "@elizaos/core": ["../../../packages/core/dist"],
-      "@elizaos/core/*": ["../../../packages/core/dist/*"]
+      "@elizaos/core": ["../../../packages/core/dist"]
     },
     "types": ["node", "bun-types"]
   },

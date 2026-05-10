@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { getContractLogoUrl, getNativeLogoUrl } from "./chainConfig";
-import { chainIcon } from "./constants";
-import { normalizeInventoryImageUrl } from "./media-url";
+import { getContractLogoUrl, getNativeLogoUrl } from "./chainConfig.ts";
+import { chainIcon } from "./constants.ts";
+import { normalizeInventoryImageUrl } from "./media-url.ts";
 
 export function tokenLogoUrl(
   chain: string,

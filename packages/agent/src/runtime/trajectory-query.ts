@@ -12,7 +12,7 @@ import {
   executeRawSql,
   extractRows,
   hasRuntimeDb,
-} from "./trajectory-internals.js";
+} from "./trajectory-internals.ts";
 
 // ---------------------------------------------------------------------------
 // Public read API

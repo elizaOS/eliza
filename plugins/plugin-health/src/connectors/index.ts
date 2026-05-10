@@ -17,7 +17,6 @@
  * other Wave-1 agents can reference them.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
   AnchorContribution,
@@ -32,6 +31,8 @@ import type {
 } from "./contract-stubs.js";
 
 export * from "./contract-stubs.js";
+
+type RuntimeHealthRegistryHost = object & RuntimeWithHealthRegistries;
 
 export const HEALTH_CONNECTOR_KINDS = [
   "apple_health",
@@ -62,7 +63,7 @@ export const HEALTH_BUS_FAMILIES = [
 
 /**
  * Capability strings published by plugin-health connectors. Matches the
- * `LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES` set in `@elizaos/shared` so a
+ * `LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES` set in `../contracts/health.js` so a
  * planner querying `connectorRegistry.byCapability("health.sleep.read")`
  * resolves the correct contributors.
  */
@@ -93,11 +94,7 @@ const HEALTH_CONNECTOR_CAPABILITIES: Record<
     "health.vitals.read",
     "health.readiness.read",
   ],
-  withings: [
-    "health.sleep.read",
-    "health.body.read",
-    "health.vitals.read",
-  ],
+  withings: ["health.sleep.read", "health.body.read", "health.vitals.read"],
   oura: [
     "health.sleep.read",
     "health.activity.read",
@@ -188,27 +185,26 @@ function buildBusFamilyContribution(family: string): BusFamilyContribution {
 }
 
 function getConnectorRegistry(
-  runtime: IAgentRuntime,
+  runtime: RuntimeHealthRegistryHost,
 ): ConnectorRegistry | undefined {
-  return (runtime as IAgentRuntime & RuntimeWithHealthRegistries)
-    .connectorRegistry;
+  return runtime.connectorRegistry;
 }
 
 function getAnchorRegistry(
-  runtime: IAgentRuntime,
+  runtime: RuntimeHealthRegistryHost,
 ): AnchorRegistry | undefined {
-  return (runtime as IAgentRuntime & RuntimeWithHealthRegistries)
-    .anchorRegistry;
+  return runtime.anchorRegistry;
 }
 
 function getBusFamilyRegistry(
-  runtime: IAgentRuntime,
+  runtime: RuntimeHealthRegistryHost,
 ): BusFamilyRegistry | undefined {
-  return (runtime as IAgentRuntime & RuntimeWithHealthRegistries)
-    .busFamilyRegistry;
+  return runtime.busFamilyRegistry;
 }
 
-export function registerHealthConnectors(runtime: IAgentRuntime): void {
+export function registerHealthConnectors(
+  runtime: RuntimeHealthRegistryHost,
+): void {
   const registry = getConnectorRegistry(runtime);
   if (!registry) {
     logger.info(
@@ -230,7 +226,9 @@ export function registerHealthConnectors(runtime: IAgentRuntime): void {
   );
 }
 
-export function registerHealthAnchors(runtime: IAgentRuntime): void {
+export function registerHealthAnchors(
+  runtime: RuntimeHealthRegistryHost,
+): void {
   const registry = getAnchorRegistry(runtime);
   if (!registry) {
     logger.info(
@@ -252,7 +250,9 @@ export function registerHealthAnchors(runtime: IAgentRuntime): void {
   );
 }
 
-export function registerHealthBusFamilies(runtime: IAgentRuntime): void {
+export function registerHealthBusFamilies(
+  runtime: RuntimeHealthRegistryHost,
+): void {
   const registry = getBusFamilyRegistry(runtime);
   if (!registry) {
     logger.info(

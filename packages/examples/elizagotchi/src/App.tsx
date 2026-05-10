@@ -8,14 +8,19 @@ import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Clouds, Ground, Poop, Stars } from "./components/GameElements";
 import { PetSprite } from "./components/PetSprite";
-import {
-  type ElizagotchiAgentLogEntry,
-  sendElizagotchiCommand,
-  subscribeElizagotchiAgentLog,
-  subscribeElizagotchiState,
-} from "./game/agent";
+import type { ElizagotchiAgentLogEntry } from "./game/agent";
 import type { Action, AnimationType, PetState } from "./game/types";
 import "./App.css";
+
+type ElizagotchiAgentModule = typeof import("./game/agent");
+
+let elizagotchiAgentModulePromise: Promise<ElizagotchiAgentModule> | null =
+  null;
+
+function loadElizagotchiAgent(): Promise<ElizagotchiAgentModule> {
+  elizagotchiAgentModulePromise ??= import("./game/agent");
+  return elizagotchiAgentModulePromise;
+}
 
 // ============================================================================
 // STAT INDICATOR
@@ -90,7 +95,9 @@ function App() {
     let cancelled = false;
 
     (async () => {
-      unsubscribe = await subscribeElizagotchiState((payload) => {
+      const agent = await loadElizagotchiAgent();
+
+      unsubscribe = await agent.subscribeElizagotchiState((payload) => {
         if (cancelled) return;
         const newState = payload.petState;
 
@@ -115,7 +122,7 @@ function App() {
       });
 
       // Ensure we have an immediate snapshot even if the first tick emitted before subscribing.
-      await sendElizagotchiCommand("__tick__");
+      await agent.sendElizagotchiCommand("__tick__");
     })();
 
     return () => {
@@ -130,7 +137,9 @@ function App() {
     let cancelled = false;
 
     (async () => {
-      unsubscribe = await subscribeElizagotchiAgentLog((entry) => {
+      const agent = await loadElizagotchiAgent();
+
+      unsubscribe = await agent.subscribeElizagotchiAgentLog((entry) => {
         if (cancelled) return;
         if (!agentLogEnabledRef.current) return;
         setAgentLog((prev) => [entry, ...prev].slice(0, 60));
@@ -152,7 +161,8 @@ function App() {
   }, [message]);
 
   const handleAction = useCallback(async (action: Action) => {
-    const event = await sendElizagotchiCommand(action);
+    const agent = await loadElizagotchiAgent();
+    const event = await agent.sendElizagotchiCommand(action);
 
     // Prefer agent-specified animation, fallback to local mapping
     const nextAnimation =
@@ -186,7 +196,10 @@ function App() {
   const handleReset = useCallback(() => {
     (async () => {
       const name = prompt("Name your pet:", "Elizagotchi") || "Elizagotchi";
-      await sendElizagotchiCommand(`__reset__:${encodeURIComponent(name)}`);
+      const agent = await loadElizagotchiAgent();
+      await agent.sendElizagotchiCommand(
+        `__reset__:${encodeURIComponent(name)}`,
+      );
       previousStage.current = "egg";
       setAnimation("idle");
       setMessage(`🥚 ${name} appeared!`);
@@ -198,7 +211,8 @@ function App() {
   const handleExport = useCallback(() => {
     (async () => {
       if (!petState) return;
-      const event = await sendElizagotchiCommand("__export__");
+      const agent = await loadElizagotchiAgent();
+      const event = await agent.sendElizagotchiCommand("__export__");
       const saveData = event?.saveData;
       if (!saveData) {
         setMessage("Export failed");
@@ -237,7 +251,10 @@ function App() {
 
           // Route through agent (state is stored inside runtime)
           const encoded = encodeURIComponent(raw);
-          const result = await sendElizagotchiCommand(`__import__:${encoded}`);
+          const agent = await loadElizagotchiAgent();
+          const result = await agent.sendElizagotchiCommand(
+            `__import__:${encoded}`,
+          );
           const loaded = result?.petState;
           if (loaded) {
             previousStage.current = loaded.stage;

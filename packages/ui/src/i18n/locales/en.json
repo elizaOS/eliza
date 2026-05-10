@@ -2519,7 +2519,7 @@
   "runtimegate.welcomeRemoteTitle": "Connect to your own server",
   "runtimegate.welcomeStartLocal": "Start your local agent",
   "runtimegate.welcomeSubtitle": "Your personal AI. Ready in seconds, hosted by us.",
-  "runtimegate.welcomeTitle": "Welcome to Milady",
+  "runtimegate.welcomeTitle": "Welcome to {{appName}}",
   "runtimegate.yourAgents": "Your cloud agents",
   "runtimeview.AgentRuntimeIsNot": "Agent runtime is not running. Start the runtime and refresh.",
   "runtimeview.ExpandTop": "Expand Top",

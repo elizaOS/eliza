@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@elizaos/agent/security/access", () => ({
+vi.mock("@elizaos/agent", () => ({
   hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
@@ -131,8 +131,6 @@ describe("LifeOps native options.parameters migration", () => {
       "PROPOSE_MEETING_TIMES",
       "CHECK_AVAILABILITY",
       "UPDATE_MEETING_PREFERENCES",
-      "CALENDLY",
-      "SCHEDULING",
     ]);
   });
 });

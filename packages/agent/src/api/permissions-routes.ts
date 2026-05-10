@@ -1,6 +1,6 @@
 import type { AgentRuntime, RouteRequestContext } from "@elizaos/core";
 import type { PermissionState, SystemPermissionId } from "@elizaos/shared";
-import type { AutonomousConfigLike } from "../types/config-like.js";
+import type { AutonomousConfigLike } from "../types/config-like.ts";
 
 interface PermissionAutonomousConfigLike extends AutonomousConfigLike {
   features?: {
@@ -29,7 +29,7 @@ type SelfControlApi = {
   openSelfControlPermissionLocation: () => Promise<boolean>;
 };
 
-const SELFCONTROL_MODULE: string = "@elizaos/app-lifeops/selfcontrol";
+const SELFCONTROL_MODULE: string = "@elizaos/app-lifeops";
 
 async function loadSelfControlApi(): Promise<SelfControlApi | null> {
   try {

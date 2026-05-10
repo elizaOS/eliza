@@ -7,7 +7,6 @@ import path from "node:path";
 import { PassThrough, Readable } from "node:stream";
 import { logger } from "@elizaos/core";
 import { pipeline, type TextToAudioPipeline } from "@huggingface/transformers";
-import { fetch } from "undici";
 import { MODEL_SPECS } from "../types";
 
 function getWavHeader(

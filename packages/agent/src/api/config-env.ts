@@ -30,7 +30,7 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { resolveStateDir } from "../config/paths.js";
+import { resolveStateDir } from "../config/paths.ts";
 
 const CONFIG_ENV_FILENAME = "config.env";
 const BAK_SUFFIX = ".bak";

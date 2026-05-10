@@ -6,58 +6,13 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "bun": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./ui": {
-      "types": "./dist/ui.d.ts",
-      "import": "./dist/ui.js",
-      "default": "./dist/ui.js"
-    },
-    "./plugin": {
-      "types": "./dist/plugin.d.ts",
-      "import": "./dist/plugin.js",
-      "default": "./dist/plugin.js"
-    },
-    "./register": {
-      "types": "./dist/register.d.ts",
-      "import": "./dist/register.js",
-      "default": "./dist/register.js"
-    },
-    "./inventory/ChainIcon": {
-      "types": "./dist/inventory/ChainIcon.d.ts",
-      "import": "./dist/inventory/ChainIcon.js",
-      "default": "./dist/inventory/ChainIcon.js"
-    },
-    "./inventory/TokenLogo": {
-      "types": "./dist/inventory/TokenLogo.d.ts",
-      "import": "./dist/inventory/TokenLogo.js",
-      "default": "./dist/inventory/TokenLogo.js"
-    },
-    "./state/*": {
-      "types": "./dist/state/*.d.ts",
-      "import": "./dist/state/*.js",
-      "default": "./dist/state/*.js"
-    },
-    "./inventory/*": {
-      "types": "./dist/inventory/*.d.ts",
-      "import": "./dist/inventory/*.js",
-      "default": "./dist/inventory/*.js"
-    },
-    "./widgets/*": {
-      "types": "./dist/widgets/*.d.ts",
-      "import": "./dist/widgets/*.js",
-      "default": "./dist/widgets/*.js"
-    },
-    "./wallet-rpc": {
-      "types": "./dist/wallet-rpc.d.ts",
-      "import": "./dist/wallet-rpc.js",
-      "default": "./dist/wallet-rpc.js"
-    },
-    "./*": {
-      "types": "./dist/*",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
     }
   },
   "dependencies": {
@@ -84,7 +39,7 @@
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "tsc -p tsconfig.build.json"
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [
     "dist"

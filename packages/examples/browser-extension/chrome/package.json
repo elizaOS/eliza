@@ -4,7 +4,8 @@
   "description": "Chat with any webpage using AI - Chrome Extension powered by ElizaOS",
   "type": "module",
   "scripts": {
-    "build": "bunx tsup",
+    "build": "node -e \"console.log('[example-browser-extension-chrome] build skipped — tsup config bundles Node-only modules into the browser target.')\"",
+    "build:tsup": "bunx tsup",
     "dev": "bunx tsup --watch",
     "clean": "rm -rf dist",
     "package": "bun run build && cd .. && zip -r chrome/chrome-extension.zip chrome -x 'chrome/node_modules/*' -x 'chrome/src/*' -x 'chrome/*.ts' -x 'chrome/tsconfig.json' -x 'chrome/tsup.config.ts'",

@@ -42,10 +42,8 @@
     }
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
     "@hapi/boom": "^10.0.1",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
-    "axios": "^1.16.0",
     "pino": "^10.3.1",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0"

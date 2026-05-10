@@ -7,13 +7,14 @@
  */
 
 import type { Task } from "@elizaos/core";
-import { readTriggerConfig } from "../triggers/runtime.js";
+import { readTriggerConfig } from "../triggers/runtime.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 export const WORKBENCH_TODO_TAG = "workbench-todo";
+export const WORKBENCH_TASK_TAG = "workbench-task";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,6 +28,15 @@ export interface WorkbenchTodoView {
   isUrgent: boolean;
   isCompleted: boolean;
   type: string;
+}
+
+export interface WorkbenchTaskView {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  isCompleted: boolean;
+  updatedAt?: number;
 }
 
 export function asObject(value: unknown): Record<string, unknown> | null {
@@ -122,6 +132,29 @@ export function toWorkbenchTodo(task: Task): WorkbenchTodoView | null {
       typeof todoMeta.type === "string" && todoMeta.type.trim().length > 0
         ? todoMeta.type
         : "task",
+  };
+}
+
+export function toWorkbenchTask(task: Task): WorkbenchTaskView | null {
+  const tags = normalizeStringArray(task.tags);
+  if (!tags.includes(WORKBENCH_TASK_TAG)) return null;
+  if (readTriggerConfig(task) || isWorkbenchTodoTask(task)) return null;
+  const id = normalizeTaskId(task);
+  if (!id) return null;
+  const metadata = readTaskMetadata(task);
+  const updatedAt =
+    normalizeTimestamp((task as { updatedAt?: unknown }).updatedAt) ??
+    normalizeTimestamp(metadata.updatedAt);
+  return {
+    id,
+    name:
+      typeof task.name === "string" && task.name.trim().length > 0
+        ? task.name
+        : "Task",
+    description: typeof task.description === "string" ? task.description : "",
+    tags,
+    isCompleted: readTaskCompleted(task),
+    ...(updatedAt !== undefined ? { updatedAt } : {}),
   };
 }
 

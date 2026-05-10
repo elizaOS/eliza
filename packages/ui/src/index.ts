@@ -1,13 +1,16 @@
+import "./styles/styles.css";
+import "./styles/brand-gold.css";
+
 export * from "./App";
 export * from "./api";
 export * from "./app-shell-components";
 export * from "./app-shell-registry";
 export * from "./bridge";
-export * from "./capacitor-shell";
 export * from "./character-catalog";
 export * from "./chat";
 export * from "./components";
 export * from "./components/composites";
+export * from "./components/composites/page-panel";
 export * from "./components/pages/vector-browser-utils";
 export * from "./components/primitives";
 export * from "./config";
@@ -35,3 +38,4 @@ export * from "./types";
 export * from "./utils";
 export * from "./voice";
 export * from "./widgets";
+export * from "./widgets/registry-store";

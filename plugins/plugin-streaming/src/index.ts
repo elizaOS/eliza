@@ -2,44 +2,48 @@
  * @elizaos/plugin-streaming — RTMP destinations (Twitch, YouTube, X, pump.fun, custom/named ingest).
  */
 
-export * from "./core.ts";
 export {
-  resolveStreamingUpdate,
+  getHeadlessCaptureConfig,
+  parseDestinationQuery,
+  readOverlayLayout,
+  readStreamSettings,
+  type StreamVisualSettings,
+  type StreamVoiceSettings,
+  safeDestId,
+  seedOverlayDefaults,
+  validateStreamSettings,
+  writeOverlayLayout,
+  writeStreamSettings,
+} from "./api/stream-persistence.ts";
+export type { StreamRouteState } from "./api/stream-route-state.ts";
+export {
+  detectCaptureMode,
+  ensureXvfb,
+  getActiveDestination,
+  handleStreamRoute,
+} from "./api/stream-routes.ts";
+export {
   mergeStreamingText,
+  resolveStreamingUpdate,
   type StreamingUpdate,
   type StreamingUpdateKind,
 } from "./api/streaming-text.ts";
-export {
-  readStreamSettings,
-  writeStreamSettings,
-  validateStreamSettings,
-  readOverlayLayout,
-  writeOverlayLayout,
-  seedOverlayDefaults,
-  safeDestId,
-  parseDestinationQuery,
-  getHeadlessCaptureConfig,
-  type StreamVoiceSettings,
-  type StreamVisualSettings,
-} from "./api/stream-persistence.ts";
 export { handleTtsRoutes, type TtsRouteContext } from "./api/tts-routes.ts";
-export { streamManager, type AudioSource, type StreamConfig } from "./services/stream-manager.ts";
+export * from "./core.ts";
 export {
-  handleStreamRoute,
-  getActiveDestination,
-  detectCaptureMode,
-  ensureXvfb,
-} from "./api/stream-routes.ts";
-export type { StreamRouteState } from "./api/stream-route-state.ts";
+  type AudioSource,
+  type StreamConfig,
+  streamManager,
+} from "./services/stream-manager.ts";
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import {
   buildPresetLayout,
   buildStreamOpAction,
   createStreamingPlugin,
-  streamStatusProvider,
   type StreamingDestination,
   type StreamingPluginConfig,
+  streamStatusProvider,
 } from "./core.ts";
 
 const TWITCH_CFG: StreamingPluginConfig = {

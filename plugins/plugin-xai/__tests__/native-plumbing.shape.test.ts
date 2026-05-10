@@ -26,40 +26,45 @@ beforeEach(() => {
 });
 
 describe("xAI native text plumbing", () => {
-  it("forwards tools and returns native shape with toolCalls when caller passes tools", { timeout: 15000 }, async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          id: "x",
-          object: "chat.completion",
-          created: 0,
-          model: "grok-test-small",
-          choices: [
-            {
-              index: 0,
-              message: {
-                role: "assistant",
-                content: "",
-                tool_calls: [
-                  {
-                    id: "call_1",
-                    type: "function",
-                    function: { name: "lookup", arguments: '{"q":"x"}' },
-                  },
-                ],
+  it("forwards tools and returns native shape with toolCalls when caller passes tools", {
+    timeout: 15000,
+  }, async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "x",
+            object: "chat.completion",
+            created: 0,
+            model: "grok-test-small",
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: "",
+                  tool_calls: [
+                    {
+                      id: "call_1",
+                      type: "function",
+                      function: { name: "lookup", arguments: '{"q":"x"}' },
+                    },
+                  ],
+                },
+                finish_reason: "tool_calls",
               },
-              finish_reason: "tool_calls",
-            },
-          ],
-          usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
+            ],
+            usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
     );
     vi.stubGlobal("fetch", fetchMock);
 
     const { handleTextSmall } = await import("../models/grok");
-    const tools = { lookup: { description: "Lookup", inputSchema: { type: "object" } } };
+    const tools = {
+      lookup: { description: "Lookup", inputSchema: { type: "object" } },
+    };
     const result = (await handleTextSmall(createRuntime(), {
       prompt: "use the tool",
       tools,
@@ -69,14 +74,18 @@ describe("xAI native text plumbing", () => {
       fetchMock.mock.calls[0]?.[1]?.body as string,
     ) as Record<string, unknown>;
     expect(Array.isArray(requestBody.tools)).toBe(true);
-    expect((requestBody.tools as Array<Record<string, unknown>>)[0]?.type).toBe("function");
+    expect((requestBody.tools as Array<Record<string, unknown>>)[0]?.type).toBe(
+      "function",
+    );
     expect(result).toMatchObject({
       text: "",
       finishReason: "tool_calls",
       usage: { promptTokens: 5, completionTokens: 2, totalTokens: 7 },
     });
     expect((result.toolCalls as unknown[]).length).toBe(1);
-    expect((result.toolCalls as Array<Record<string, unknown>>)[0]).toMatchObject({
+    expect(
+      (result.toolCalls as Array<Record<string, unknown>>)[0],
+    ).toMatchObject({
       toolCallId: "call_1",
       toolName: "lookup",
       input: { q: "x" },
@@ -84,24 +93,25 @@ describe("xAI native text plumbing", () => {
   });
 
   it("returns plain text string when no tools/messages/responseSchema/toolChoice provided", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          id: "x",
-          object: "chat.completion",
-          created: 0,
-          model: "grok-test-small",
-          choices: [
-            {
-              index: 0,
-              message: { role: "assistant", content: "hello" },
-              finish_reason: "stop",
-            },
-          ],
-          usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "x",
+            object: "chat.completion",
+            created: 0,
+            model: "grok-test-small",
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "hello" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
     );
     vi.stubGlobal("fetch", fetchMock);
 

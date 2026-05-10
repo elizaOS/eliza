@@ -8,6 +8,8 @@ import {
 } from "@elizaos/core";
 import type { BenchmarkContext, CapturedAction } from "./plugin";
 
+export { coerceParams } from "./params";
+
 export const DEFAULT_PORT = 3939;
 export const DEFAULT_HOST = "127.0.0.1";
 export const BENCHMARK_WORLD_ID = stringToUuid("eliza-benchmark-world");
@@ -314,26 +316,6 @@ export function coerceActions(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
-export function coerceParams(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-    } catch {
-      return {};
-    }
-  }
-
-  return {};
-}
-
 export function normalizeBenchmarkContext(
   session: BenchmarkSession,
   context: Record<string, unknown> | undefined,
@@ -370,6 +352,9 @@ export function capturedActionToParams(
   if (!capturedAction) return {};
 
   const benchmarkParams: Record<string, unknown> = {};
+  if (capturedAction.params) {
+    Object.assign(benchmarkParams, capturedAction.params);
+  }
   if (capturedAction.command) benchmarkParams.command = capturedAction.command;
   if (capturedAction.toolName)
     benchmarkParams.tool_name = capturedAction.toolName;

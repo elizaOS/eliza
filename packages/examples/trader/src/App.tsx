@@ -5,7 +5,15 @@ import { TradeHistory } from "./components/TradeHistory";
 import { TradingPanel } from "./components/TradingPanel";
 import { WalletSetup } from "./components/WalletSetup";
 import { useTrading } from "./hooks/useTrading";
-import { getRuntime, isRuntimeInitialized, resetRuntime } from "./runtime";
+
+type TraderRuntimeModule = typeof import("./runtime");
+
+let traderRuntimeModulePromise: Promise<TraderRuntimeModule> | null = null;
+
+function loadTraderRuntime(): Promise<TraderRuntimeModule> {
+  traderRuntimeModulePromise ??= import("./runtime");
+  return traderRuntimeModulePromise;
+}
 
 function App() {
   const [runtime, setRuntime] = useState<AgentRuntime | null>(null);
@@ -26,12 +34,14 @@ function App() {
       setInitLoading(true);
       setInitError(null);
 
+      const runtimeModule = await loadTraderRuntime();
+
       // Reset existing runtime if any
-      if (isRuntimeInitialized()) {
-        resetRuntime();
+      if (runtimeModule.isRuntimeInitialized()) {
+        runtimeModule.resetRuntime();
       }
 
-      const newRuntime = await getRuntime({
+      const newRuntime = await runtimeModule.getRuntime({
         solanaPrivateKey: config.privateKey,
         solanaRpcUrl: config.rpcUrl,
         birdeyeApiKey: config.birdeyeApiKey,

@@ -7,7 +7,6 @@ const externalDeps = [
   "whisper-node",
   "nodejs-whisper",
   "zod",
-  "undici",
   "uuid",
 ];
 

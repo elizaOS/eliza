@@ -20,22 +20,18 @@ import {
   type Route,
   type RouteRequest,
   type RouteResponse,
+  resolveStateDir,
   Service,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { resolveStateDir } from "@elizaos/agent/config/paths";
 
 const execFileAsync = promisify(execFile);
 
 export const DISCORD_LOCAL_PLUGIN_NAME = "@elizaos/plugin-discord-local";
 export const DISCORD_LOCAL_SERVICE_NAME = "discord-local";
 const DISCORD_OAUTH_TOKEN_URL = "https://discord.com/api/v10/oauth2/token";
-const DISCORD_LOCAL_DEFAULT_SCOPES = [
-  "rpc",
-  "identify",
-  "rpc.notifications.read",
-] as const;
+const DISCORD_LOCAL_DEFAULT_SCOPES = ["rpc", "identify", "rpc.notifications.read"] as const;
 
 const IPC_OP_HANDSHAKE = 0;
 const IPC_OP_FRAME = 1;
@@ -155,9 +151,7 @@ function parseListSetting(value: unknown): string[] {
   return [];
 }
 
-function getDiscordLocalConfig(
-  runtime: IAgentRuntime,
-): DiscordLocalConfig | null {
+function getDiscordLocalConfig(runtime: IAgentRuntime): DiscordLocalConfig | null {
   const clientId = runtime.getSetting("DISCORD_LOCAL_CLIENT_ID");
   const clientSecret = runtime.getSetting("DISCORD_LOCAL_CLIENT_SECRET");
   const enabledValue = runtime.getSetting("DISCORD_LOCAL_ENABLED");
@@ -178,27 +172,19 @@ function getDiscordLocalConfig(
 
   const rawSendDelayMs = runtime.getSetting("DISCORD_LOCAL_SEND_DELAY_MS");
   const parsedSendDelayMs =
-    typeof rawSendDelayMs === "string"
-      ? Number.parseInt(rawSendDelayMs, 10)
-      : Number.NaN;
+    typeof rawSendDelayMs === "string" ? Number.parseInt(rawSendDelayMs, 10) : Number.NaN;
 
   return {
     enabled,
     clientId: clientId.trim(),
     clientSecret: clientSecret.trim(),
     scopes: (() => {
-      const parsed = parseListSetting(
-        runtime.getSetting("DISCORD_LOCAL_SCOPES"),
-      );
+      const parsed = parseListSetting(runtime.getSetting("DISCORD_LOCAL_SCOPES"));
       return parsed.length > 0 ? parsed : [...DISCORD_LOCAL_DEFAULT_SCOPES];
     })(),
-    messageChannelIds: parseListSetting(
-      runtime.getSetting("DISCORD_LOCAL_MESSAGE_CHANNEL_IDS"),
-    ),
+    messageChannelIds: parseListSetting(runtime.getSetting("DISCORD_LOCAL_MESSAGE_CHANNEL_IDS")),
     sendDelayMs:
-      Number.isFinite(parsedSendDelayMs) && parsedSendDelayMs >= 100
-        ? parsedSendDelayMs
-        : 900,
+      Number.isFinite(parsedSendDelayMs) && parsedSendDelayMs >= 100 ? parsedSendDelayMs : 900,
   };
 }
 
@@ -208,9 +194,7 @@ function resolveSessionPath(): string {
   return path.join(dir, "session.json");
 }
 
-function buildDiscordAvatarUrl(
-  user: DiscordLocalUser | null | undefined,
-): string | undefined {
+function buildDiscordAvatarUrl(user: DiscordLocalUser | null | undefined): string | undefined {
   if (!user?.avatar || !user.id) {
     return undefined;
   }
@@ -225,49 +209,31 @@ function roomTypeForChannel(channelType: number | undefined): ChannelType {
 }
 
 function worldIdFor(runtime: IAgentRuntime, serverKey: string): UUID {
-  return stringToUuid(
-    `discord-local-world:${runtime.agentId}:${serverKey}`,
-  ) as UUID;
+  return stringToUuid(`discord-local-world:${runtime.agentId}:${serverKey}`) as UUID;
 }
 
 function roomIdFor(runtime: IAgentRuntime, channelId: string): UUID {
-  return stringToUuid(
-    `discord-local-room:${runtime.agentId}:${channelId}`,
-  ) as UUID;
+  return stringToUuid(`discord-local-room:${runtime.agentId}:${channelId}`) as UUID;
 }
 
 function entityIdFor(userId: string): UUID {
   return stringToUuid(`discord-local-user:${userId}`) as UUID;
 }
 
-function messageIdFor(
-  runtime: IAgentRuntime,
-  channelId: string,
-  messageId: string,
-): UUID {
-  return stringToUuid(
-    `discord-local-message:${runtime.agentId}:${channelId}:${messageId}`,
-  ) as UUID;
+function messageIdFor(runtime: IAgentRuntime, channelId: string, messageId: string): UUID {
+  return stringToUuid(`discord-local-message:${runtime.agentId}:${channelId}:${messageId}`) as UUID;
 }
 
 function outboundMemoryIdFor(runtime: IAgentRuntime, roomId: UUID): UUID {
-  return createUniqueUuid(
-    runtime,
-    `discord-local-outbound:${roomId}:${Date.now()}`,
-  ) as UUID;
+  return createUniqueUuid(runtime, `discord-local-outbound:${roomId}:${Date.now()}`) as UUID;
 }
 
-function getRegisteredSendHandlers(
-  runtime: IAgentRuntime,
-): Map<string, unknown> | null {
-  const sendHandlers = (runtime as IAgentRuntime & { sendHandlers?: unknown })
-    .sendHandlers;
+function getRegisteredSendHandlers(runtime: IAgentRuntime): Map<string, unknown> | null {
+  const sendHandlers = (runtime as IAgentRuntime & { sendHandlers?: unknown }).sendHandlers;
   return sendHandlers instanceof Map ? sendHandlers : null;
 }
 
-function contentTypeForMime(
-  mimeType: string | undefined,
-): ContentType | undefined {
+function contentTypeForMime(mimeType: string | undefined): ContentType | undefined {
   const normalized = mimeType?.trim().toLowerCase();
   if (!normalized) {
     return undefined;
@@ -334,10 +300,7 @@ function buildDiscordSendScript(text: string, delaySeconds: number): string {
   return scriptLines.join("\n");
 }
 
-async function openDiscordTarget(
-  channelId: string,
-  guildId?: string | null,
-): Promise<void> {
+async function openDiscordTarget(channelId: string, guildId?: string | null): Promise<void> {
   const url =
     guildId && guildId.trim().length > 0
       ? `discord://-/channels/${guildId}/${channelId}`
@@ -354,10 +317,7 @@ function getIpcCandidateDirs(): string[] {
     process.env.TEMP,
     "/tmp",
     "/private/tmp",
-  ].filter(
-    (entry): entry is string =>
-      typeof entry === "string" && entry.trim().length > 0,
-  );
+  ].filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
 
   return Array.from(new Set(candidates.map((entry) => entry.trim())));
 }
@@ -372,12 +332,7 @@ function findDiscordIpcPath(): string | null {
     }
   }
 
-  const macRoot = path.join(
-    os.homedir(),
-    "Library",
-    "Application Support",
-    "discord",
-  );
+  const macRoot = path.join(os.homedir(), "Library", "Application Support", "discord");
   if (!fs.existsSync(macRoot)) {
     return null;
   }
@@ -441,14 +396,10 @@ export class DiscordLocalService extends Service {
     return service;
   }
 
-  static registerSendHandlers(
-    runtime: IAgentRuntime,
-    service: DiscordLocalService,
-  ): void {
+  static registerSendHandlers(runtime: IAgentRuntime, service: DiscordLocalService): void {
     const register = (source: string) => {
       runtime.registerSendHandler(source, async (_runtime, target, content) => {
-        const text =
-          typeof content.text === "string" ? content.text.trim() : "";
+        const text = typeof content.text === "string" ? content.text.trim() : "";
         if (!text) {
           return;
         }
@@ -457,18 +408,14 @@ export class DiscordLocalService extends Service {
           target.roomId && typeof runtime.getRoom === "function"
             ? await runtime.getRoom(target.roomId)
             : null;
-        const channelId = String(
-          target.channelId ?? room?.channelId ?? "",
-        ).trim();
+        const channelId = String(target.channelId ?? room?.channelId ?? "").trim();
         if (!channelId) {
           throw new Error("Discord local target is missing a channel ID");
         }
 
         const channel = await service.getChannel(channelId);
         const guildId =
-          channel?.guild_id && channel.guild_id.trim().length > 0
-            ? channel.guild_id
-            : null;
+          channel?.guild_id && channel.guild_id.trim().length > 0 ? channel.guild_id : null;
         await service.sendUiMessage(channelId, guildId, text);
 
         if (!target.roomId) {
@@ -573,9 +520,7 @@ export class DiscordLocalService extends Service {
   async listGuilds(): Promise<DiscordLocalGuild[]> {
     await this.ensureAuthenticated();
     const response = await this.sendRpcCommand("GET_GUILDS");
-    const guilds = Array.isArray(response.data)
-      ? (response.data as DiscordLocalGuild[])
-      : [];
+    const guilds = Array.isArray(response.data) ? (response.data as DiscordLocalGuild[]) : [];
     for (const guild of guilds) {
       if (guild?.id) {
         this.guildCache.set(guild.id, guild);
@@ -589,9 +534,7 @@ export class DiscordLocalService extends Service {
     const response = await this.sendRpcCommand("GET_CHANNELS", {
       guild_id: guildId,
     });
-    const channels = Array.isArray(response.data)
-      ? (response.data as DiscordLocalChannel[])
-      : [];
+    const channels = Array.isArray(response.data) ? (response.data as DiscordLocalChannel[]) : [];
     for (const channel of channels) {
       if (channel?.id) {
         this.channelCache.set(channel.id, channel);
@@ -603,20 +546,14 @@ export class DiscordLocalService extends Service {
   async subscribeChannelMessages(channelIds: string[]): Promise<string[]> {
     const config = this.requireConfig();
     await this.ensureAuthenticated();
-    const normalized = [
-      ...new Set(channelIds.map((entry) => entry.trim()).filter(Boolean)),
-    ];
+    const normalized = [...new Set(channelIds.map((entry) => entry.trim()).filter(Boolean))];
     config.messageChannelIds = normalized;
 
     for (const channelId of Array.from(this.subscribedChannelIds)) {
       if (normalized.includes(channelId)) {
         continue;
       }
-      await this.sendRpcCommand(
-        "UNSUBSCRIBE",
-        { channel_id: channelId },
-        "MESSAGE_CREATE",
-      );
+      await this.sendRpcCommand("UNSUBSCRIBE", { channel_id: channelId }, "MESSAGE_CREATE");
       this.subscribedChannelIds.delete(channelId);
     }
 
@@ -624,11 +561,7 @@ export class DiscordLocalService extends Service {
       if (this.subscribedChannelIds.has(channelId)) {
         continue;
       }
-      await this.sendRpcCommand(
-        "SUBSCRIBE",
-        { channel_id: channelId },
-        "MESSAGE_CREATE",
-      );
+      await this.sendRpcCommand("SUBSCRIBE", { channel_id: channelId }, "MESSAGE_CREATE");
       this.subscribedChannelIds.add(channelId);
     }
 
@@ -678,9 +611,7 @@ export class DiscordLocalService extends Service {
       await this.ensureAuthenticated();
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
-      logger.warn(
-        `[discord-local] Failed to restore Discord local session: ${this.lastError}`,
-      );
+      logger.warn(`[discord-local] Failed to restore Discord local session: ${this.lastError}`);
     }
   }
 
@@ -693,11 +624,7 @@ export class DiscordLocalService extends Service {
     await this.ensureRpcConnection();
 
     const expiresAt = this.session.expiresAt ?? 0;
-    if (
-      this.session.refreshToken &&
-      expiresAt > 0 &&
-      Date.now() >= expiresAt - 60_000
-    ) {
+    if (this.session.refreshToken && expiresAt > 0 && Date.now() >= expiresAt - 60_000) {
       await this.refreshAccessToken();
     }
 
@@ -710,9 +637,7 @@ export class DiscordLocalService extends Service {
     });
     const rawUser =
       response.data && typeof response.data === "object"
-        ? ((response.data as Record<string, unknown>).user as
-            | DiscordLocalUser
-            | undefined)
+        ? ((response.data as Record<string, unknown>).user as DiscordLocalUser | undefined)
         : undefined;
     this.currentUser = rawUser ?? null;
     this.authenticated = true;
@@ -733,11 +658,7 @@ export class DiscordLocalService extends Service {
       if (this.subscribedChannelIds.has(channelId)) {
         continue;
       }
-      await this.sendRpcCommand(
-        "SUBSCRIBE",
-        { channel_id: channelId },
-        "MESSAGE_CREATE",
-      );
+      await this.sendRpcCommand("SUBSCRIBE", { channel_id: channelId }, "MESSAGE_CREATE");
       this.subscribedChannelIds.add(channelId);
     }
   }
@@ -757,9 +678,7 @@ export class DiscordLocalService extends Service {
       body,
     });
     if (!response.ok) {
-      throw new Error(
-        `Discord OAuth token exchange failed with ${response.status}`,
-      );
+      throw new Error(`Discord OAuth token exchange failed with ${response.status}`);
     }
     const json = (await response.json()) as Record<string, unknown>;
     await this.storeTokenResponse(json);
@@ -793,17 +712,13 @@ export class DiscordLocalService extends Service {
     this.authenticated = false;
   }
 
-  private async storeTokenResponse(
-    json: Record<string, unknown>,
-  ): Promise<void> {
-    const accessToken =
-      typeof json.access_token === "string" ? json.access_token : "";
+  private async storeTokenResponse(json: Record<string, unknown>): Promise<void> {
+    const accessToken = typeof json.access_token === "string" ? json.access_token : "";
     if (!accessToken) {
       throw new Error("Discord OAuth token response is missing access_token");
     }
 
-    const refreshToken =
-      typeof json.refresh_token === "string" ? json.refresh_token : undefined;
+    const refreshToken = typeof json.refresh_token === "string" ? json.refresh_token : undefined;
     const expiresIn =
       typeof json.expires_in === "number"
         ? json.expires_in
@@ -811,27 +726,19 @@ export class DiscordLocalService extends Service {
           ? Number.parseInt(json.expires_in, 10)
           : 0;
     const scopeString =
-      typeof json.scope === "string"
-        ? json.scope
-        : (this.connectorConfig?.scopes.join(" ") ?? "");
+      typeof json.scope === "string" ? json.scope : (this.connectorConfig?.scopes.join(" ") ?? "");
 
     this.session = {
       accessToken,
       refreshToken,
       expiresAt:
-        Number.isFinite(expiresIn) && expiresIn > 0
-          ? Date.now() + expiresIn * 1000
-          : undefined,
+        Number.isFinite(expiresIn) && expiresIn > 0 ? Date.now() + expiresIn * 1000 : undefined,
       scopes: scopeString
         .split(/\s+/)
         .map((entry) => entry.trim())
         .filter(Boolean),
     };
-    await fsp.writeFile(
-      this.sessionPath,
-      JSON.stringify(this.session, null, 2),
-      "utf8",
-    );
+    await fsp.writeFile(this.sessionPath, JSON.stringify(this.session, null, 2), "utf8");
   }
 
   private async loadSession(): Promise<DiscordLocalSession | null> {
@@ -840,24 +747,15 @@ export class DiscordLocalService extends Service {
     }
     const raw = await fsp.readFile(this.sessionPath, "utf8");
     const parsed = JSON.parse(raw) as Partial<DiscordLocalSession>;
-    if (
-      typeof parsed.accessToken !== "string" ||
-      parsed.accessToken.trim().length === 0
-    ) {
+    if (typeof parsed.accessToken !== "string" || parsed.accessToken.trim().length === 0) {
       return null;
     }
     return {
       accessToken: parsed.accessToken,
-      refreshToken:
-        typeof parsed.refreshToken === "string"
-          ? parsed.refreshToken
-          : undefined,
-      expiresAt:
-        typeof parsed.expiresAt === "number" ? parsed.expiresAt : undefined,
+      refreshToken: typeof parsed.refreshToken === "string" ? parsed.refreshToken : undefined,
+      expiresAt: typeof parsed.expiresAt === "number" ? parsed.expiresAt : undefined,
       scopes: Array.isArray(parsed.scopes)
-        ? parsed.scopes.filter(
-            (entry): entry is string => typeof entry === "string",
-          )
+        ? parsed.scopes.filter((entry): entry is string => typeof entry === "string")
         : [...DISCORD_LOCAL_DEFAULT_SCOPES],
     };
   }
@@ -873,9 +771,7 @@ export class DiscordLocalService extends Service {
 
     const ipcPath = findDiscordIpcPath();
     if (!ipcPath) {
-      throw new Error(
-        "Discord IPC socket not found. Open the Discord desktop app first.",
-      );
+      throw new Error("Discord IPC socket not found. Open the Discord desktop app first.");
     }
 
     this.readyPromise = new Promise<void>((resolve, reject) => {
@@ -946,9 +842,7 @@ export class DiscordLocalService extends Service {
       const op = this.readBuffer.readInt32LE(0);
       const length = this.readBuffer.readInt32LE(4);
       if (length < 0) {
-        logger.warn(
-          "[discord-local] Discarding malformed IPC frame with negative payload length",
-        );
+        logger.warn("[discord-local] Discarding malformed IPC frame with negative payload length");
         this.readBuffer = Buffer.alloc(0);
         return;
       }
@@ -962,9 +856,7 @@ export class DiscordLocalService extends Service {
       try {
         payload = JSON.parse(body.toString("utf8")) as DiscordLocalRpcPayload;
       } catch {
-        logger.warn(
-          "[discord-local] Discarding malformed IPC frame with invalid JSON payload",
-        );
+        logger.warn("[discord-local] Discarding malformed IPC frame with invalid JSON payload");
         continue;
       }
       this.handleRpcPayload(op, payload);
@@ -1007,8 +899,7 @@ export class DiscordLocalService extends Service {
 
     if (payload.evt === "MESSAGE_CREATE") {
       const data = payload.data as Record<string, unknown> | undefined;
-      const channelId =
-        typeof data?.channel_id === "string" ? data.channel_id : undefined;
+      const channelId = typeof data?.channel_id === "string" ? data.channel_id : undefined;
       const message =
         data && typeof data.message === "object"
           ? (data.message as DiscordLocalMessage)
@@ -1047,7 +938,7 @@ export class DiscordLocalService extends Service {
   private async sendRpcCommand(
     cmd: string,
     args: Record<string, unknown> = {},
-    evt?: string,
+    evt?: string
   ): Promise<DiscordLocalRpcPayload> {
     await this.ensureRpcConnection();
     const nonce = crypto.randomUUID();
@@ -1091,10 +982,7 @@ export class DiscordLocalService extends Service {
     this.pendingRequests.clear();
   }
 
-  private async ingestMessage(
-    channelId: string,
-    message: DiscordLocalMessage,
-  ): Promise<void> {
+  private async ingestMessage(channelId: string, message: DiscordLocalMessage): Promise<void> {
     if (!message.id) {
       return;
     }
@@ -1127,9 +1015,9 @@ export class DiscordLocalService extends Service {
     // excess-property check so the call works under both resolutions;
     // the runtime itself reads `roomName` in both versions, the type
     // just lags in the published package.
-    type EnsureConnectionArg = Parameters<
-      typeof this.runtime.ensureConnection
-    >[0] & { roomName?: string };
+    type EnsureConnectionArg = Parameters<typeof this.runtime.ensureConnection>[0] & {
+      roomName?: string;
+    };
     await this.runtime.ensureConnection({
       entityId,
       roomId,
@@ -1138,47 +1026,38 @@ export class DiscordLocalService extends Service {
       worldName: guild?.name ?? "Discord Direct Messages",
       userName: message.author?.username ?? undefined,
       userId: message.author?.id as UUID | undefined,
-      name:
-        message.author?.global_name ?? message.author?.username ?? undefined,
+      name: message.author?.global_name ?? message.author?.username ?? undefined,
       source: DISCORD_LOCAL_SERVICE_NAME,
       type: roomType,
       channelId,
-      messageServerId: stringToUuid(
-        `discord-local-server:${serverKey}`,
-      ) as UUID,
+      messageServerId: stringToUuid(`discord-local-server:${serverKey}`) as UUID,
       metadata: {
         discordChannelId: channelId,
         ...(guildId ? { discordServerId: guildId } : {}),
       },
     } as EnsureConnectionArg);
 
-    const attachments: Media[] = (message.attachments ?? []).flatMap(
-      (attachment) => {
-        const url = attachment.url?.trim();
-        if (!url) {
-          return [];
-        }
-        return [
-          {
-            id: attachment.id,
-            url,
-            title: attachment.filename,
-            source: DISCORD_LOCAL_SERVICE_NAME,
-            description: attachment.description ?? undefined,
-            contentType: contentTypeForMime(attachment.content_type),
-          },
-        ];
-      },
-    );
+    const attachments: Media[] = (message.attachments ?? []).flatMap((attachment) => {
+      const url = attachment.url?.trim();
+      if (!url) {
+        return [];
+      }
+      return [
+        {
+          id: attachment.id,
+          url,
+          title: attachment.filename,
+          source: DISCORD_LOCAL_SERVICE_NAME,
+          description: attachment.description ?? undefined,
+          contentType: contentTypeForMime(attachment.content_type),
+        },
+      ];
+    });
 
     const replyReference =
-      message.referenced_message?.id ??
-      message.message_reference?.message_id ??
-      undefined;
+      message.referenced_message?.id ?? message.message_reference?.message_id ?? undefined;
     const replyChannelId =
-      message.referenced_message?.channel_id ??
-      message.message_reference?.channel_id ??
-      channelId;
+      message.referenced_message?.channel_id ?? message.message_reference?.channel_id ?? channelId;
     const inReplyTo =
       typeof replyReference === "string" && replyReference.length > 0
         ? messageIdFor(this.runtime, replyChannelId, replyReference)
@@ -1196,24 +1075,20 @@ export class DiscordLocalService extends Service {
         ...(inReplyTo ? { inReplyTo } : {}),
       },
     }) as Memory;
-    memory.createdAt = message.timestamp
-      ? Date.parse(message.timestamp)
-      : Date.now();
+    memory.createdAt = message.timestamp ? Date.parse(message.timestamp) : Date.now();
     memory.metadata = {
       ...memory.metadata,
       source: DISCORD_LOCAL_SERVICE_NAME,
       provider: "discord",
       timestamp: memory.createdAt,
-      entityName:
-        message.author?.global_name ?? message.author?.username ?? roomName,
+      entityName: message.author?.global_name ?? message.author?.username ?? roomName,
       entityUserName: message.author?.username ?? undefined,
       entityAvatarUrl: buildDiscordAvatarUrl(message.author),
       fromId: message.author?.id ?? undefined,
       sourceId: entityId,
       sender: {
         id: message.author?.id ?? undefined,
-        name:
-          message.author?.global_name ?? message.author?.username ?? roomName,
+        name: message.author?.global_name ?? message.author?.username ?? roomName,
         username: message.author?.username ?? undefined,
       },
       [DISCORD_LOCAL_SERVICE_NAME]: {
@@ -1221,8 +1096,7 @@ export class DiscordLocalService extends Service {
         userId: message.author?.id ?? undefined,
         username: message.author?.username ?? undefined,
         userName: message.author?.username ?? undefined,
-        name:
-          message.author?.global_name ?? message.author?.username ?? roomName,
+        name: message.author?.global_name ?? message.author?.username ?? roomName,
         messageId: message.id,
         channelId,
         guildId: guildId ?? undefined,
@@ -1232,8 +1106,7 @@ export class DiscordLocalService extends Service {
         userId: message.author?.id ?? undefined,
         username: message.author?.username ?? undefined,
         userName: message.author?.username ?? undefined,
-        name:
-          message.author?.global_name ?? message.author?.username ?? roomName,
+        name: message.author?.global_name ?? message.author?.username ?? roomName,
         messageId: message.id,
         channelId,
         guildId: guildId ?? undefined,
@@ -1249,13 +1122,11 @@ export class DiscordLocalService extends Service {
   private async sendUiMessage(
     channelId: string,
     guildId: string | null,
-    text: string,
+    text: string
   ): Promise<void> {
     const config = this.requireConfig();
     if (process.platform !== "darwin") {
-      throw new Error(
-        "Discord local send automation currently supports macOS only",
-      );
+      throw new Error("Discord local send automation currently supports macOS only");
     }
 
     await openDiscordTarget(channelId, guildId);
@@ -1264,9 +1135,7 @@ export class DiscordLocalService extends Service {
   }
 }
 
-function isConnectorSetupService(
-  service: unknown,
-): service is ConnectorSetupService {
+function isConnectorSetupService(service: unknown): service is ConnectorSetupService {
   if (!service || typeof service !== "object") {
     return false;
   }
@@ -1285,22 +1154,16 @@ function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
   return isConnectorSetupService(service) ? service : null;
 }
 
-function resolveDiscordLocalService(
-  runtime: IAgentRuntime,
-): DiscordLocalService | null {
+function resolveDiscordLocalService(runtime: IAgentRuntime): DiscordLocalService | null {
   const service = runtime.getService(DISCORD_LOCAL_SERVICE_NAME);
   return service instanceof DiscordLocalService ? service : null;
 }
 
-function getConnectorConfig(
-  setupService: ConnectorSetupService,
-): ConnectorConfig {
+function getConnectorConfig(setupService: ConnectorSetupService): ConnectorConfig {
   const config = setupService.getConfig();
   const connectors =
     (config.connectors as Record<string, ConnectorConfig> | undefined) ??
-    ((config as Record<string, unknown>).channels as
-      | Record<string, ConnectorConfig>
-      | undefined) ??
+    ((config as Record<string, unknown>).channels as Record<string, ConnectorConfig> | undefined) ??
     {};
 
   const current = connectors.discordLocal;
@@ -1313,7 +1176,7 @@ function getConnectorConfig(
 async function handleDiscordLocalStatus(
   _req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
   const service = resolveDiscordLocalService(runtime);
   res.status(200).json(
@@ -1330,14 +1193,14 @@ async function handleDiscordLocalStatus(
           lastError: "discord-local service not registered",
           ipcPath: null,
           reason: "discord-local service not registered",
-        },
+        }
   );
 }
 
 async function handleDiscordLocalAuthorize(
   _req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
   const service = resolveDiscordLocalService(runtime);
   if (!service) {
@@ -1357,7 +1220,7 @@ async function handleDiscordLocalAuthorize(
 async function handleDiscordLocalDisconnect(
   _req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
   const service = resolveDiscordLocalService(runtime);
   if (!service) {
@@ -1378,7 +1241,7 @@ async function handleDiscordLocalDisconnect(
 async function handleDiscordLocalGuilds(
   _req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
   const service = resolveDiscordLocalService(runtime);
   if (!service) {
@@ -1399,7 +1262,7 @@ async function handleDiscordLocalGuilds(
 async function handleDiscordLocalChannels(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
   const service = resolveDiscordLocalService(runtime);
   if (!service) {
@@ -1407,10 +1270,7 @@ async function handleDiscordLocalChannels(
     return;
   }
 
-  const url = new URL(
-    req.url ?? "/api/discord-local/channels",
-    "http://localhost",
-  );
+  const url = new URL(req.url ?? "/api/discord-local/channels", "http://localhost");
   const guildId = url.searchParams.get("guildId")?.trim() ?? "";
   if (!guildId) {
     res.status(400).json({ error: "guildId is required" });
@@ -1430,7 +1290,7 @@ async function handleDiscordLocalChannels(
 async function handleDiscordLocalSubscriptions(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
   const service = resolveDiscordLocalService(runtime);
   if (!service) {
@@ -1450,14 +1310,13 @@ async function handleDiscordLocalSubscriptions(
         new Set(
           rawChannelIds
             .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-            .filter((entry) => entry.length > 0),
-        ),
+            .filter((entry) => entry.length > 0)
+        )
       )
     : [];
 
   try {
-    const subscribedChannelIds =
-      await service.subscribeChannelMessages(channelIds);
+    const subscribedChannelIds = await service.subscribeChannelMessages(channelIds);
 
     const setupService = getSetupService(runtime);
     if (setupService) {

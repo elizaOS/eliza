@@ -12,8 +12,8 @@ import {
   ONBOARDING_CLOUD_PROVIDER_OPTIONS,
   ONBOARDING_PROVIDER_CATALOG,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
-import { generateWalletKeys, setSolanaWalletEnv } from "./wallet.js";
+import type { ElizaConfig } from "../config/config.ts";
+import { generateWalletKeys, setSolanaWalletEnv } from "./wallet.ts";
 
 // ---------------------------------------------------------------------------
 // Config redaction

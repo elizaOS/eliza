@@ -7,5 +7,11 @@
     "declaration": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "src/tests/**/*", "test/**/*"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/tests/**/*",
+    "test/**/*",
+    "src/tests/e2e/run-local.ts"
+  ]
 }

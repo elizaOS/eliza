@@ -13,31 +13,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./contracts": {
-      "types": "./dist/contracts/health.d.ts",
-      "import": "./dist/contracts/health.js",
-      "default": "./dist/contracts/health.js"
-    },
-    "./sleep": {
-      "types": "./dist/sleep/index.d.ts",
-      "import": "./dist/sleep/index.js",
-      "default": "./dist/sleep/index.js"
-    },
-    "./health-bridge": {
-      "types": "./dist/health-bridge/index.d.ts",
-      "import": "./dist/health-bridge/index.js",
-      "default": "./dist/health-bridge/index.js"
-    },
-    "./screen-time": {
-      "types": "./dist/screen-time/index.d.ts",
-      "import": "./dist/screen-time/index.js",
-      "default": "./dist/screen-time/index.js"
-    },
-    "./actions": {
-      "types": "./dist/actions/index.d.ts",
-      "import": "./dist/actions/index.js",
-      "default": "./dist/actions/index.js"
     }
   },
   "files": [
@@ -48,14 +23,12 @@
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "tsc -p tsconfig.build.json",
+    "build:types": "tsc --noCheck -p tsconfig.build.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check ."
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

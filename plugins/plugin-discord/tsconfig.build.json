@@ -19,6 +19,8 @@
 		"**/*.test.ts",
 		"**/*.spec.ts",
 		"test/**",
+		"dist",
+		"node_modules",
 		"build.ts"
 	]
 }

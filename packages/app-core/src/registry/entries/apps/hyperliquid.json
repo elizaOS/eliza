@@ -24,7 +24,7 @@
     "capabilities": ["hyperliquid", "trading", "wallet"],
     "curatedSlug": "hyperliquid",
     "routePlugin": {
-      "specifier": "@elizaos/app-hyperliquid/plugin",
+      "specifier": "@elizaos/app-hyperliquid",
       "exportName": "hyperliquidPlugin"
     }
   }

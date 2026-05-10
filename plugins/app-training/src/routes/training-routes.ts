@@ -586,6 +586,9 @@ export async function handleTrainingRoutes(
     }>(req, res);
     if (!body) return true;
 
+    const cerebrasKey = process.env.CEREBRAS_API_KEY;
+    const trainProvider =
+      process.env.TRAIN_MODEL_PROVIDER?.trim() ?? process.env.TRAINING_PROVIDER?.trim();
     const anthropicKey =
       resolveStringSetting(runtime?.getSetting?.("ANTHROPIC_API_KEY")) ??
       process.env.ANTHROPIC_API_KEY;
@@ -593,10 +596,10 @@ export async function handleTrainingRoutes(
       resolveStringSetting(runtime?.getSetting?.("OPENAI_API_KEY")) ??
       process.env.OPENAI_API_KEY;
 
-    if (!anthropicKey && !openaiKey) {
+    if (!cerebrasKey && !anthropicKey && !openaiKey) {
       error(
         res,
-        "No teacher model API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.",
+        "No teacher model API key found. Set CEREBRAS_API_KEY (preferred), ANTHROPIC_API_KEY, or OPENAI_API_KEY.",
         400,
       );
       return true;
@@ -606,15 +609,19 @@ export async function handleTrainingRoutes(
       generateDataset,
       exportToElizaNativeJSONL,
       createAnthropicTeacher,
+      createCerebrasTeacher,
       createOpenAITeacher,
     } = await import("../core/dataset-generator.js");
     const { buildRoleplayEpisodes, exportRoleplayEpisodes } = await import(
       "../core/roleplay-trajectories.js"
     );
 
-    const teacher = anthropicKey
-      ? createAnthropicTeacher(anthropicKey, runtime ?? undefined)
-      : createOpenAITeacher(openaiKey!, runtime ?? undefined);
+    const teacher =
+      trainProvider === "cerebras" && cerebrasKey
+        ? createCerebrasTeacher(runtime ?? undefined)
+        : anthropicKey
+          ? createAnthropicTeacher(anthropicKey, runtime ?? undefined)
+          : createOpenAITeacher(openaiKey!, runtime ?? undefined);
 
     const outputDir = `.tmp/training-data-${Date.now()}`;
 
@@ -669,6 +676,9 @@ export async function handleTrainingRoutes(
     }>(req, res);
     if (!body) return true;
 
+    const cerebrasKey = process.env.CEREBRAS_API_KEY;
+    const trainProvider =
+      process.env.TRAIN_MODEL_PROVIDER?.trim() ?? process.env.TRAINING_PROVIDER?.trim();
     const anthropicKey =
       resolveStringSetting(runtime?.getSetting?.("ANTHROPIC_API_KEY")) ??
       process.env.ANTHROPIC_API_KEY;
@@ -676,24 +686,31 @@ export async function handleTrainingRoutes(
       resolveStringSetting(runtime?.getSetting?.("OPENAI_API_KEY")) ??
       process.env.OPENAI_API_KEY;
 
-    if (!anthropicKey && !openaiKey) {
+    if (!cerebrasKey && !anthropicKey && !openaiKey) {
       error(
         res,
-        "No teacher model API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.",
+        "No teacher model API key found. Set CEREBRAS_API_KEY (preferred), ANTHROPIC_API_KEY, or OPENAI_API_KEY.",
         400,
       );
       return true;
     }
 
-    const { generateDataset, createAnthropicTeacher, createOpenAITeacher } =
-      await import("../core/dataset-generator.js");
+    const {
+      generateDataset,
+      createAnthropicTeacher,
+      createCerebrasTeacher,
+      createOpenAITeacher,
+    } = await import("../core/dataset-generator.js");
     const { buildRoleplayEpisodes, exportRoleplayEpisodes } = await import(
       "../core/roleplay-trajectories.js"
     );
 
-    const teacher = anthropicKey
-      ? createAnthropicTeacher(anthropicKey, runtime ?? undefined)
-      : createOpenAITeacher(openaiKey!, runtime ?? undefined);
+    const teacher =
+      trainProvider === "cerebras" && cerebrasKey
+        ? createCerebrasTeacher(runtime ?? undefined)
+        : anthropicKey
+          ? createAnthropicTeacher(anthropicKey, runtime ?? undefined)
+          : createOpenAITeacher(openaiKey!, runtime ?? undefined);
     const outputDir = `.tmp/training-roleplay-${Date.now()}`;
 
     try {

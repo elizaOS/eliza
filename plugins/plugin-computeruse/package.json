@@ -9,16 +9,9 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
-    },
-    "./register-routes": {
-      "import": {
-        "types": "./dist/register-routes.d.ts",
-        "default": "./dist/register-routes.js"
-      }
+      "import": "./dist/index.js",
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     }
   },
   "files": [
@@ -33,13 +26,9 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.2.3",
     "typescript": "^6.0.3",

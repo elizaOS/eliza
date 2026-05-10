@@ -2,23 +2,24 @@
  * `PendingPromptsStore` — backing store for `PendingPromptsProvider`.
  *
  * When a `ScheduledTask` whose `completionCheck.kind === "user_replied_within"`
- * (or implicit `user_acknowledged`) fires, the W1-A runner records the open
- * prompt here keyed by `roomId`. When an inbound message arrives the planner
- * uses `list(roomId)` to decide whether to route to `complete` / `acknowledge`
- * on the open task instead of treating it as a fresh request.
+ * (or implicit `user_acknowledged`) fires, the runner records the open prompt
+ * here keyed by `roomId`. When an inbound message arrives the planner uses
+ * `list(roomId)` to decide whether to route to `complete` / `acknowledge` on
+ * the open task instead of treating it as a fresh request.
  *
  * Retention: open prompts are retained for `expiresAt + reopenWindowHours`
- * (default 24h per `wave1-interfaces.md` §1.5) so late inbound replies still
- * correlate. After the reopen window the entry is purged.
+ * (default 24h) so late inbound replies still correlate. After the reopen
+ * window the entry is purged.
  *
  * Backing storage: runtime cache, keyed per room. Bounded per-room slot count
  * to defend against unbounded growth in a noisy chat.
- *
- * Source of truth for the contract: `wave1-interfaces.md` §4.3 +
- * `GAP_ASSESSMENT.md` §3.11.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import {
+  asCacheRuntime,
+  type RuntimeCacheLike,
+} from "../runtime-cache.js";
 
 export type ExpectedReplyKind = "any" | "yes_no" | "approval" | "free_form";
 
@@ -66,25 +67,6 @@ export interface PendingPromptsStore {
   forgetTask(taskId: string): Promise<void>;
   /** Remove every recorded entry (used by `LIFEOPS.wipe`). */
   clearAll(): Promise<void>;
-}
-
-interface RuntimeCacheLike {
-  getCache<T>(key: string): Promise<T | null | undefined>;
-  setCache<T>(key: string, value: T): Promise<boolean | undefined>;
-  deleteCache?(key: string): Promise<boolean | undefined>;
-}
-
-function asCacheRuntime(runtime: IAgentRuntime): RuntimeCacheLike {
-  const candidate = runtime as unknown as Partial<RuntimeCacheLike>;
-  if (
-    typeof candidate.getCache !== "function" ||
-    typeof candidate.setCache !== "function"
-  ) {
-    throw new Error(
-      "[pending-prompts] runtime does not expose getCache/setCache",
-    );
-  }
-  return candidate as RuntimeCacheLike;
 }
 
 const PROMPT_SNIPPET_MAX_LENGTH = 120;

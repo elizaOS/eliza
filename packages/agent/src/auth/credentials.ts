@@ -21,10 +21,10 @@ import {
   loadAccount,
   migrateLegacySingleAccount,
   saveAccount,
-} from "./account-storage.js";
-import { refreshAnthropicToken } from "./anthropic.js";
-import { refreshCodexToken } from "./openai-codex.js";
-import { accountRefreshMutex } from "./refresh-mutex.js";
+} from "./account-storage.ts";
+import { refreshAnthropicToken } from "./anthropic.ts";
+import { refreshCodexToken } from "./openai-codex.ts";
+import { accountRefreshMutex } from "./refresh-mutex.ts";
 import {
   type AccountCredentialProvider,
   isSubscriptionProvider,
@@ -32,7 +32,7 @@ import {
   type StoredCredentials,
   SUBSCRIPTION_PROVIDER_MAP,
   type SubscriptionProvider,
-} from "./types.js";
+} from "./types.ts";
 
 const DEFAULT_ACCOUNT_ID = "default";
 

@@ -263,6 +263,100 @@ function attachInlinePlannerActionParams(
 	parsedPlanner.params = nextParams;
 }
 
+function splitPlannerActionList(actionsText: string): string[] {
+	const parts: string[] = [];
+	let start = 0;
+	let inParams = false;
+	let inJsonString = false;
+	let jsonEscape = false;
+	let jsonDepth = 0;
+	const lower = actionsText.toLowerCase();
+
+	for (let index = 0; index < actionsText.length; index += 1) {
+		if (!inJsonString && lower.startsWith("<params", index)) {
+			inParams = true;
+			const close = actionsText.indexOf(">", index);
+			if (close >= 0) {
+				index = close;
+			}
+			continue;
+		}
+		if (!inJsonString && lower.startsWith("</params>", index)) {
+			inParams = false;
+			index += "</params>".length - 1;
+			continue;
+		}
+
+		const char = actionsText[index];
+		if (!inParams) {
+			if (inJsonString) {
+				if (jsonEscape) {
+					jsonEscape = false;
+				} else if (char === "\\") {
+					jsonEscape = true;
+				} else if (char === '"') {
+					inJsonString = false;
+				}
+			} else if (jsonDepth > 0 && char === '"') {
+				inJsonString = true;
+			} else if (char === "{") {
+				jsonDepth += 1;
+			} else if (char === "}" && jsonDepth > 0) {
+				jsonDepth -= 1;
+			}
+		}
+
+		if (char === "," && !inParams && jsonDepth === 0 && !inJsonString) {
+			parts.push(actionsText.slice(start, index));
+			start = index + 1;
+		}
+	}
+
+	parts.push(actionsText.slice(start));
+	return parts;
+}
+
+function parseInlinePlannerParams(
+	value: string,
+): Record<string, unknown> | null {
+	try {
+		const parsed = JSON.parse(value);
+		return isRecord(parsed) ? parsed : null;
+	} catch {
+		return null;
+	}
+}
+
+function extractInlinePlannerActionParams(value: string): {
+	name: string;
+	params?: Record<string, unknown>;
+} {
+	const inlineJsonMatch = value.match(
+		/^\s*([A-Z][A-Z0-9_:-]*)\s+(\{[\s\S]*\})\s*$/i,
+	);
+	if (inlineJsonMatch) {
+		const params = parseInlinePlannerParams(inlineJsonMatch[2]);
+		if (params) {
+			return {
+				name: unwrapPlannerIdentifier(inlineJsonMatch[1]),
+				params,
+			};
+		}
+	}
+
+	const inlineParamsMatch = value.match(
+		/^([\s\S]*?)\s*<params\b[^>]*>([\s\S]*?)<\/params>\s*$/i,
+	);
+	if (inlineParamsMatch) {
+		return {
+			name: unwrapPlannerIdentifier(inlineParamsMatch[1]),
+			params: parseInlinePlannerParams(inlineParamsMatch[2]) ?? undefined,
+		};
+	}
+
+	return { name: unwrapPlannerIdentifier(value) };
+}
+
 function splitPlannerCompoundActionName(
 	actionName: string,
 ): { actionName: string; subaction: string } | null {
@@ -287,9 +381,14 @@ export function extractPlannerActionNames(
 ): string[] {
 	return (() => {
 		if (typeof parsedPlanner.actions === "string") {
-			return parsedPlanner.actions
-				.split(",")
-				.map((action) => unwrapPlannerIdentifier(String(action)))
+			return splitPlannerActionList(parsedPlanner.actions)
+				.map((action) => {
+					const { name, params } = extractInlinePlannerActionParams(
+						String(action),
+					);
+					attachInlinePlannerActionParams(parsedPlanner, name, params);
+					return name;
+				})
 				.filter((action) => action.length > 0);
 		}
 		if (Array.isArray(parsedPlanner.actions)) {
@@ -304,7 +403,11 @@ export function extractPlannerActionNames(
 						);
 						return actionName;
 					}
-					return unwrapPlannerIdentifier(String(action));
+					const { name, params } = extractInlinePlannerActionParams(
+						String(action),
+					);
+					attachInlinePlannerActionParams(parsedPlanner, name, params);
+					return name;
 				})
 				.filter((action) => action.length > 0);
 		}
@@ -1540,6 +1643,12 @@ function buildV5PlannerActionSurface(params: {
 	message: Memory;
 	state?: State;
 	messageHandler: MessageHandlerResult;
+	// Optional recorder hook. When provided the function emits a `toolSearch`
+	// stage to the trajectory before returning. Fire-and-forget — the caller
+	// does not need to await.
+	recorder?: TrajectoryRecorder;
+	trajectoryId?: string;
+	logger?: IAgentRuntime["logger"];
 }): V5PlannerActionSurface {
 	const candidateActions = getMessageHandlerCandidateActions(
 		params.messageHandler,
@@ -1559,6 +1668,7 @@ function buildV5PlannerActionSurface(params: {
 		});
 	}
 
+	const toolSearchStartedAt = Date.now();
 	const catalog = buildActionCatalog([...params.actions]);
 	const retrieval = retrieveActions({
 		catalog,
@@ -1574,6 +1684,7 @@ function buildV5PlannerActionSurface(params: {
 		catalog,
 		results: retrieval.results,
 	});
+	const toolSearchEndedAt = Date.now();
 	const exposedActionNames = new Set(
 		tieredSurface.exposedActionNames.map(normalizeActionIdentifier),
 	);
@@ -1601,6 +1712,49 @@ function buildV5PlannerActionSurface(params: {
 	const exposedActionCount = params.actions.filter((action) =>
 		exposedActionNames.has(normalizeActionIdentifier(action.name)),
 	).length;
+
+	if (params.recorder && params.trajectoryId) {
+		const stageId = `stage-toolsearch-${toolSearchStartedAt}`;
+		const trajectoryId = params.trajectoryId;
+		void params.recorder
+			.recordStage(trajectoryId, {
+				stageId,
+				kind: "toolSearch",
+				startedAt: toolSearchStartedAt,
+				endedAt: toolSearchEndedAt,
+				latencyMs: toolSearchEndedAt - toolSearchStartedAt,
+				toolSearch: {
+					query: {
+						text: getUserMessageText(params.message) ?? "",
+						tokens: retrieval.query.tokens,
+						candidateActions: [...candidateActions],
+						parentActionHints: [...parentActionHints],
+					},
+					results: retrieval.results.slice(0, 25).map((r, idx) => ({
+						name: r.name,
+						score: r.score,
+						rank: idx,
+						rrfScore: (r as unknown as { rrfScore?: number }).rrfScore,
+						matchedBy: (r as unknown as { matchedBy?: string[] }).matchedBy,
+						stageScores: (r as unknown as { stageScores?: Record<string, number> })
+							.stageScores,
+					})),
+					tier: {
+						tierA: tieredSurface.sortedTierAParentNames,
+						tierB: tieredSurface.sortedTierBParentNames,
+						omitted: tieredSurface.omittedParentNames.length,
+					},
+					durationMs: toolSearchEndedAt - toolSearchStartedAt,
+					fallback,
+				},
+			})
+			.catch((err) => {
+				params.logger?.warn?.(
+					{ err: (err as Error).message, trajectoryId },
+					"[TrajectoryRecorder] failed to record toolSearch stage",
+				);
+			});
+	}
 
 	return {
 		exposedActionNames,
@@ -2464,6 +2618,18 @@ function synthesizeSimpleReplyFromPlainText(
 		plan: {
 			contexts: [SIMPLE_CONTEXT_ID],
 			reply: replyText,
+			simple: true,
+		},
+	};
+}
+
+function buildFallbackStage1DirectReplyPlan(): MessageHandlerResult {
+	return {
+		processMessage: "RESPOND",
+		thought:
+			"Tolerant fallback: response handler returned no parseable plan; routing as a simple direct reply.",
+		plan: {
+			contexts: [SIMPLE_CONTEXT_ID],
 			simple: true,
 		},
 	};
@@ -3858,10 +4024,11 @@ export async function runV5MessageRuntimeStage1(args: {
 		const messageHandlerEndedAt = Date.now();
 		let messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
 		if (!messageHandler) {
-			messageHandler = buildFallbackStage1PlanForKnownToolRequest({
-				message: args.message,
-				availableContexts,
-			});
+			messageHandler =
+				buildFallbackStage1PlanForKnownToolRequest({
+					message: args.message,
+					availableContexts,
+				}) ?? buildFallbackStage1DirectReplyPlan();
 		}
 		if (!messageHandler && process.env.MILADY_DEBUG_STAGE1 === "1") {
 			args.runtime.logger?.warn?.(
@@ -4036,6 +4203,9 @@ export async function runV5MessageRuntimeStage1(args: {
 			message: args.message,
 			state: plannerState,
 			messageHandler,
+			recorder,
+			trajectoryId,
+			logger: args.runtime.logger,
 		});
 		const exposedPlannerActions = plannerCandidateActions.filter((action) =>
 			actionSurface.exposedActionNames.has(

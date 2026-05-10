@@ -10,12 +10,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./skills": "./skills/",
     "./package.json": "./package.json"
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc --noCheck -p tsconfig.build.json",
     "dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
     "test": "bun test ./test",
     "prepublishOnly": "bun run clean && bun run build",

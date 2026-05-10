@@ -5,7 +5,6 @@
  * that require Node APIs or server-only runtime state.
  */
 
-export { TokenLogo, useInventoryData } from "@elizaos/app-wallet";
 export type { RestartHandler } from "@elizaos/shared";
 export {
   RESTART_EXIT_CODE,

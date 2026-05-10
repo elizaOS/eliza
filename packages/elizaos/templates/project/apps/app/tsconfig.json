@@ -8,42 +8,26 @@
     "moduleResolution": "bundler",
     "paths": {
       "@elizaos/app-core": ["./src/type-stubs/app-core/index.d.ts"],
-      "@elizaos/app-core/App": ["./src/type-stubs/app-core/App.d.ts"],
-      "@elizaos/app-core/api": ["./src/type-stubs/app-core/api.d.ts"],
-      "@elizaos/app-core/bridge": ["./src/type-stubs/app-core/bridge.d.ts"],
-      "@elizaos/app-core/components/character/CharacterEditor": [
-        "./src/type-stubs/app-core/CharacterEditor.d.ts"
-      ],
-      "@elizaos/app-core/config": ["./src/type-stubs/app-core/config.d.ts"],
-      "@elizaos/app-core/config/allowed-hosts": [
-        "./src/type-stubs/app-core/allowed-hosts.d.ts"
-      ],
-      "@elizaos/app-core/events": ["./src/type-stubs/app-core/events.d.ts"],
-      "@elizaos/app-core/platform": ["./src/type-stubs/app-core/platform.d.ts"],
-      "@elizaos/app-core/platform/native-plugin-entrypoints": [
-        "./src/type-stubs/app-core/native-plugin-entrypoints.d.ts"
-      ],
-      "@elizaos/app-core/styles/brand-gold.css": ["./src/type-stubs/css.d.ts"],
-      "@elizaos/app-core/styles/styles.css": ["./src/type-stubs/css.d.ts"],
-      "@elizaos/app-core/shell": ["./src/type-stubs/app-core/shell.d.ts"],
-      "@elizaos/app-core/state": ["./src/type-stubs/app-core/state.d.ts"],
-      "@elizaos/app-2004scape/ui": ["./src/type-stubs/empty.d.ts"],
-      "@elizaos/app-babylon/ui": ["./src/type-stubs/empty.d.ts"],
-      "@elizaos/app-defense-of-the-agents/ui": ["./src/type-stubs/empty.d.ts"],
-      "@elizaos/app-hyperscape/ui": ["./src/type-stubs/empty.d.ts"],
       "@elizaos/app-lifeops": ["./src/type-stubs/eliza-apps/lifeops.d.ts"],
-      "@elizaos/app-lifeops/ui": [
-        "./src/type-stubs/eliza-apps/lifeops-ui.d.ts"
-      ],
-      "@elizaos/app-lifeops/widgets": ["./src/type-stubs/empty.d.ts"],
-      "@elizaos/app-scape/ui": ["./src/type-stubs/empty.d.ts"],
-      "@elizaos/app-task-coordinator/register-slots": [
-        "./src/type-stubs/empty.d.ts"
-      ],
       "@elizaos/core": ["./src/type-stubs/core/index.d.ts"],
       "@elizaos/shared": ["./src/type-stubs/shared/index.d.ts"],
-      "@elizaos/shared/onboarding-presets": [
-        "./src/type-stubs/shared/onboarding-presets.d.ts"
+      "@elizaos/app-2004scape": [
+        "../../../../../../plugins/app-2004scape/src/index.ts"
+      ],
+      "@elizaos/app-babylon": [
+        "../../../../../../plugins/app-babylon/src/index.ts"
+      ],
+      "@elizaos/app-defense-of-the-agents": [
+        "../../../../../../plugins/app-defense-of-the-agents/src/index.ts"
+      ],
+      "@elizaos/app-hyperscape": [
+        "../../../../../../plugins/app-hyperscape/src/index.ts"
+      ],
+      "@elizaos/app-scape": [
+        "../../../../../../plugins/app-scape/src/index.ts"
+      ],
+      "@elizaos/app-task-coordinator": [
+        "../../../../../../plugins/app-task-coordinator/src/index.ts"
       ]
     },
     "allowImportingTsExtensions": true,

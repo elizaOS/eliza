@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
 import type { RouteRequestContext } from "@elizaos/shared";
 import { resolveApiToken } from "@elizaos/shared";
-import { isAuthorized, isTrustedLocalRequest } from "./server-helpers-auth.js";
+import { isAuthorized, isTrustedLocalRequest } from "./server-helpers-auth.ts";
 
 function getConfiguredApiToken(): string | undefined {
   return resolveApiToken(process.env) ?? undefined;

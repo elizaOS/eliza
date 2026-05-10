@@ -15,5 +15,9 @@
     "test:smoke:safari": "node scripts/extension-smoke-safari.mjs",
     "test:ci": "bun run test && bun run test:smoke"
   },
+  "dependencies": {
+    "@elizaos/plugin-browser": "workspace:*",
+    "@elizaos/shared": "workspace:*"
+  },
   "private": true
 }

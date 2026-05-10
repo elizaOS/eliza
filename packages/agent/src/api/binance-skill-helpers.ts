@@ -13,7 +13,7 @@ import {
   type createMessageMemory,
   ModelType,
 } from "@elizaos/core";
-import { extractCompatTextContent } from "./compat-utils.js";
+import { extractCompatTextContent } from "./compat-utils.ts";
 
 const EXPOSED_BINANCE_SKILL_IDS = new Set([
   "binance-crypto-market-rank",
@@ -40,7 +40,7 @@ type RuntimeActionLike = Pick<
   "name" | "similes" | "validate" | "handler"
 >;
 
-const LIFEOPS_PUBLIC_MODULE: string = "@elizaos/app-lifeops/public";
+const LIFEOPS_PUBLIC_MODULE: string = "@elizaos/app-lifeops";
 
 let ownerWebsiteBlockFallbackPromise: Promise<RuntimeActionLike | null> | null =
   null;

@@ -1,20 +1,16 @@
-import { Check, Copy, Wallet } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { useApp } from "@elizaos/ui";
-import {
-  EmptyWidgetState,
-  WidgetSection,
-} from "@elizaos/ui";
 import type {
   ChatSidebarWidgetDefinition,
   ChatSidebarWidgetProps,
 } from "@elizaos/ui";
+import { EmptyWidgetState, useApp, WidgetSection } from "@elizaos/ui";
+import { Check, Copy, Wallet } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import {
   type ChainKey,
   getNativeLogoUrl,
   resolveChainKey,
-} from "../inventory/chainConfig";
-import { normalizeInventoryImageUrl } from "../inventory/media-url";
+} from "../inventory/chainConfig.ts";
+import { normalizeInventoryImageUrl } from "../inventory/media-url.ts";
 
 const DUST_THRESHOLD_USD = 0.01;
 const COPY_FEEDBACK_MS = 1200;

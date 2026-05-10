@@ -60,6 +60,12 @@ const InviteAcceptPage = lazyWithPreload(() => import("./pages/invite/accept/pag
 
 const PaymentSuccessLayout = lazyWithPreload(() => import("./pages/payment/success/layout"));
 const PaymentSuccessPage = lazyWithPreload(() => import("./pages/payment/success/page"));
+const AppChargePaymentLayout = lazyWithPreload(
+  () => import("./pages/payment/app-charge/[appId]/[chargeId]/layout"),
+);
+const AppChargePaymentPage = lazyWithPreload(
+  () => import("./pages/payment/app-charge/[appId]/[chargeId]/page"),
+);
 
 const BlogIndex = lazyWithPreload(() => import("./pages/blog/page"));
 const BlogPost = lazyWithPreload(() => import("./pages/blog/[slug]/page"));
@@ -234,6 +240,10 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
   {
     path: "/invite/accept",
     preload: preloadAll(InviteAcceptLayout.preload, InviteAcceptPage.preload),
+  },
+  {
+    path: "/payment/app-charge/:appId/:chargeId",
+    preload: preloadAll(AppChargePaymentLayout.preload, AppChargePaymentPage.preload),
   },
   {
     path: "/payment/success",
@@ -508,6 +518,24 @@ function App() {
             element={
               <Suspense fallback={<RouteChunkFallback />}>
                 <InviteAcceptPage />
+              </Suspense>
+            }
+          />
+        </Route>
+
+        <Route
+          path="payment/app-charge/:appId/:chargeId"
+          element={
+            <Suspense fallback={<RouteChunkFallback />}>
+              <AppChargePaymentLayout />
+            </Suspense>
+          }
+        >
+          <Route
+            index
+            element={
+              <Suspense fallback={<RouteChunkFallback />}>
+                <AppChargePaymentPage />
               </Suspense>
             }
           />

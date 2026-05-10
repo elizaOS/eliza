@@ -41,7 +41,7 @@ import type {
   PluginAutoEnableModule,
 } from "@elizaos/core";
 
-import type { ElizaConfig } from "./types.eliza";
+import type { ElizaConfig } from "./types.eliza.js";
 
 // Re-export the runtime types so consumers that import from @elizaos/shared
 // keep working. The canonical home for these is @elizaos/core (plugin author
@@ -289,9 +289,10 @@ export async function evaluatePluginManifest(
     enabled,
     force,
     capabilities,
-    reason: enabled
-      ? `manifest: ${candidate.packageName}/${block.autoEnableModule}`
-      : null,
+    reason:
+      enabled || force
+        ? `manifest: ${candidate.packageName}/${block.autoEnableModule}`
+        : null,
     error: null,
   };
 }
@@ -351,7 +352,7 @@ export function applyPluginManifestVerdicts(
       );
       continue;
     }
-    if (!verdict.enabled) continue;
+    if (!verdict.enabled && !verdict.force) continue;
 
     const explicitlyDisabled =
       pluginsConfig.entries[verdict.shortId]?.enabled === false;

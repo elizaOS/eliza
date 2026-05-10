@@ -1,10 +1,8 @@
 /**
- * `@elizaos/app-lifeops` — ScheduledTask spine (W1-A).
+ * `@elizaos/app-lifeops` — ScheduledTask spine.
  *
- * Public exports for cross-module consumers. The frozen interface
- * contract lives in `docs/audit/wave1-interfaces.md` §1; this barrel
- * re-exports the typed surface other Wave-1 agents (W1-B / W1-C / W1-D /
- * W1-E / W1-F) build against.
+ * Public exports for cross-module consumers; this barrel re-exports the typed
+ * runner surface other plugins build against.
  */
 
 export type {

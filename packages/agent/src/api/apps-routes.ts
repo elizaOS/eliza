@@ -17,18 +17,18 @@ import {
 import {
   importAppRouteModule,
   resolveWorkspacePackageDir,
-} from "../services/app-package-modules.js";
-import { setOverlayAppPresence } from "../services/overlay-app-presence.js";
+} from "../services/app-package-modules.ts";
+import { setOverlayAppPresence } from "../services/overlay-app-presence.ts";
 import type {
   InstallProgressLike,
   PluginManagerLike,
   RegistryPluginInfo,
   RegistrySearchResult,
-} from "../services/plugin-manager-types.js";
+} from "../services/plugin-manager-types.ts";
 import {
   scoreEntries,
   toSearchResults,
-} from "../services/registry-client-queries.js";
+} from "../services/registry-client-queries.ts";
 
 const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp",
@@ -1062,25 +1062,12 @@ export async function handleAppsRoutes(
         !result.success &&
         result.error?.includes("requires a running agent runtime")
       ) {
-        // Fall back to the app-core installer which writes directly to
+        // Fall back to the direct installer which writes directly to
         // ~/.eliza/plugins/installed without depending on a plugin-manager
         // service. The runtime plugin resolver already searches that dir.
-        const { installPlugin: installPluginDirect } = (await import(
-          /* webpackIgnore: true */ "@elizaos/app-core"
-        )) as unknown as {
-          installPlugin: (
-            name: string,
-            onProgress?: (progress: InstallProgressLike) => void,
-            version?: string,
-          ) => Promise<{
-            success: boolean;
-            pluginName: string;
-            version: string;
-            installPath: string;
-            requiresRestart: boolean;
-            error?: string;
-          }>;
-        };
+        const { installPlugin: installPluginDirect } = await import(
+          /* webpackIgnore: true */ "../services/plugin-installer.js"
+        );
         result = await installPluginDirect(name, recordProgress, body.version);
       }
       if (!result.success) {

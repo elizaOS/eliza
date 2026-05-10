@@ -40,7 +40,7 @@ import { requestRestart, resolveServerOnlyPort } from "@elizaos/shared";
 import {
   isPluginManagerLike,
   type PluginManagerLike,
-} from "../services/plugin-manager-types.js";
+} from "../services/plugin-manager-types.ts";
 
 const PLUGIN_OPS = [
   "install",

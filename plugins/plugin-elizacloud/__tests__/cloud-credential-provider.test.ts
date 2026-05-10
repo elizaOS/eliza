@@ -8,24 +8,20 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { credTypeToConnector, supportedCredTypes } from "../src/lib/credential-type-map";
 import {
   CloudCredentialProvider,
   type CredentialProviderResult,
 } from "../src/services/cloud-credential-provider";
-import {
-  credTypeToConnector,
-  supportedCredTypes,
-} from "../src/lib/credential-type-map";
 
 interface MockClientCalls {
   gets: string[];
   posts: Array<{ path: string; body: unknown }>;
 }
 
-function makeRuntime(opts: {
-  client?: { get?: unknown; post?: unknown } | null;
-  cloudAuth?: object | null;
-} = {}): {
+function makeRuntime(
+  opts: { client?: { get?: unknown; post?: unknown } | null; cloudAuth?: object | null } = {}
+): {
   runtime: { getService: (name: string) => unknown };
   calls: MockClientCalls;
 } {
@@ -149,11 +145,7 @@ describe("CloudCredentialProvider.resolve", () => {
       {
         path: "/eliza/google/connect/initiate",
         body: {
-          capabilities: [
-            "google.gmail.triage",
-            "google.gmail.send",
-            "google.gmail.manage",
-          ],
+          capabilities: ["google.gmail.triage", "google.gmail.send", "google.gmail.manage"],
         },
       },
     ]);
@@ -186,8 +178,7 @@ describe("CloudCredentialProvider.resolve", () => {
   it("returns needs_auth even when connected (RAW_TOKEN_GAP) — never silently injects an empty credential", async () => {
     const client = {
       get: () => Promise.resolve({ connected: true, reason: "connected" }),
-      post: () =>
-        Promise.resolve({ authUrl: "https://elizacloud.ai/oauth/google?reauth=stale" }),
+      post: () => Promise.resolve({ authUrl: "https://elizacloud.ai/oauth/google?reauth=stale" }),
     };
     const { runtime } = makeRuntime({ client });
     const provider = instantiate(runtime);
@@ -210,9 +201,7 @@ describe("CloudCredentialProvider.resolve", () => {
     const { runtime } = makeRuntime({ client });
     const provider = instantiate(runtime);
     await provider.resolve("user-1", "githubOAuth2Api");
-    expect(posts).toEqual([
-      { path: "/eliza/github/connect/initiate", body: {} },
-    ]);
+    expect(posts).toEqual([{ path: "/eliza/github/connect/initiate", body: {} }]);
   });
 
   it("returns null when cloud refuses to issue an authUrl", async () => {

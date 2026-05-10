@@ -217,12 +217,16 @@ function buildSessionState(
       ? {
           balance,
           lifetimePnL: pnl,
-          winRate: agentData.winRate ?? null,
-          reputation: agentData.reputationScore ?? null,
-          totalTrades: agentData.totalTrades ?? null,
+          winRate: asSessionNumber(agentData.winRate),
+          reputation: asSessionNumber(agentData.reputationScore),
+          totalTrades: asSessionNumber(agentData.totalTrades),
         }
       : null,
   };
+}
+
+function asSessionNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 async function readSessionState(

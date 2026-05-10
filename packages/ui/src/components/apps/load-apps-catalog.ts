@@ -6,6 +6,18 @@ import {
   overlayAppToRegistryInfo,
 } from "./overlay-app-registry";
 
+function isTransientOptionalFetchFailure(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const maybeApiError = err as Error & {
+    kind?: string;
+  };
+  return (
+    err.name === "ApiError" &&
+    maybeApiError.kind === "network" &&
+    /^(Failed to fetch|Request aborted)$/i.test(err.message)
+  );
+}
+
 /**
  * Fetch the merged apps catalog used by AppsView. Internal-tool entries are
  * authoritative — server / overlay duplicates are dropped via first-occurrence
@@ -18,7 +30,10 @@ export async function loadAppsCatalog(): Promise<RegistryAppInfo[]> {
     .catch((reason) => ({ status: "rejected" as const, reason }));
   const serverApps =
     serverAppsResult.status === "fulfilled" ? serverAppsResult.value : [];
-  if (serverAppsResult.status === "rejected") {
+  if (
+    serverAppsResult.status === "rejected" &&
+    !isTransientOptionalFetchFailure(serverAppsResult.reason)
+  ) {
     console.warn("[apps-catalog] listApps failed:", serverAppsResult.reason);
   }
 
@@ -29,10 +44,12 @@ export async function loadAppsCatalog(): Promise<RegistryAppInfo[]> {
       ...(await client.listCatalogApps()),
     ];
   } catch (catalogErr) {
-    console.warn(
-      "[apps-catalog] listCatalogApps failed; using internal tools:",
-      catalogErr,
-    );
+    if (!isTransientOptionalFetchFailure(catalogErr)) {
+      console.warn(
+        "[apps-catalog] listCatalogApps failed; using internal tools:",
+        catalogErr,
+      );
+    }
     catalogApps = getInternalToolApps();
   }
 
@@ -60,6 +77,8 @@ export async function prefetchAppsCatalog(): Promise<void> {
     const apps = await loadAppsCatalog();
     writeAppsCache(apps);
   } catch (err) {
-    console.warn("[apps-catalog] prefetch failed:", err);
+    if (!isTransientOptionalFetchFailure(err)) {
+      console.warn("[apps-catalog] prefetch failed:", err);
+    }
   }
 }

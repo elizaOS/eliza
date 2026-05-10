@@ -67,9 +67,7 @@ export function createTranslator(
   const normalized = normalizeLanguage(lang);
   return (key: string, vars?: TranslationVars): string => {
     const merged =
-      defaultVars && vars
-        ? { ...defaultVars, ...vars }
-        : (vars ?? defaultVars);
+      defaultVars && vars ? { ...defaultVars, ...vars } : (vars ?? defaultVars);
     return t(normalized, key, merged);
   };
 }

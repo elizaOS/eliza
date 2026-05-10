@@ -20,13 +20,13 @@ import type {
 import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,
-} from "../api/conversation-metadata.js";
-import type { ConversationScope } from "../api/server-types.js";
-import { hasOwnerAccess } from "../security/access.js";
+} from "../api/conversation-metadata.ts";
+import type { ConversationScope } from "../api/server-types.ts";
+import { hasOwnerAccess } from "../security/access.ts";
 import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
-} from "../shared/conversation-format.js";
+} from "../shared/conversation-format.ts";
 
 const SOURCE_TAIL_LIMIT = 6;
 const SOURCE_TAIL_MIN_FOR_INCLUSION = 2;

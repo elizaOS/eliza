@@ -92,21 +92,25 @@ export const sunoStatusProvider: Provider = {
     name: 'SUNO_STATUS',
     description: 'Suno music generation status',
     descriptionCompressed: 'Suno generation availability.',
-    contexts: ["media"],
-    contextGate: { anyOf: ["media"] },
+    contexts: ['media'],
+    contextGate: { anyOf: ['media'] },
     cacheStable: false,
-    cacheScope: "turn",
+    cacheScope: 'turn',
     get: async (runtime: IAgentRuntime) => {
         const configured = Boolean(runtime.getSetting('SUNO_API_KEY'));
         return {
-            text: JSON.stringify({
-                suno: {
-                    configured,
-                    status: configured ? 'ready' : 'missing_api_key',
-                    action: 'MUSIC_GENERATION',
-                    subactions: ['generate', 'custom', 'extend'],
+            text: JSON.stringify(
+                {
+                    suno: {
+                        configured,
+                        status: configured ? 'ready' : 'missing_api_key',
+                        action: 'MUSIC_GENERATION',
+                        subactions: ['generate', 'custom', 'extend'],
+                    },
                 },
-            }, null, 2),
+                null,
+                2
+            ),
             data: { configured },
             values: { sunoConfigured: configured },
         };

@@ -1,7 +1,6 @@
 /**
- * W2-B — Discord connector contribution.
- *
- * Wraps the LifeOps Discord mixin (`service-mixin-discord.ts`).
+ * Discord connector contribution. Wraps the LifeOps Discord mixin
+ * (`service-mixin-discord.ts`).
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { LifeOpsService } from "../service.js";

@@ -11,7 +11,6 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
-import { buildSeedingOfferMessage } from "../default-packs/index.js";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
 import {
   type BackgroundJobContext,
@@ -55,7 +54,6 @@ import type {
 export const PROACTIVE_TASK_NAME = "PROACTIVE_AGENT" as const;
 export const PROACTIVE_TASK_TAGS = ["queue", "repeat", "proactive"] as const;
 export const PROACTIVE_TASK_INTERVAL_MS = 60_000;
-const SEEDING_MIN_IDLE_MS = 15 * 60_000;
 const CALENDAR_PROACTIVE_CLASSIFICATION_HORIZON_DAYS = 21;
 /**
  * Drop scheduled actions that were due more than this long ago. Without
@@ -463,10 +461,10 @@ export async function executeProactiveTask(
     ? planSocialOveruseCheck(profile, socialSummary, firedLog, timezone, now)
     : null;
 
-  const seedingAction = await planSeedingOffer(runtime, profile, firedLog, now);
+  // Wave-2 W2-A removed the legacy `planSeedingOffer` flow — routine
+  // seeding is now a FIRST_RUN customize-path concern.
 
   const allActions = [
-    seedingAction,
     hydratedGmAction,
     hydratedGnAction,
     ...nudgeActions,
@@ -523,15 +521,6 @@ export async function executeProactiveTask(
       if (resolvedTarget.source === "client_chat") {
         if (emitProactiveAssistantEvent(runtime, action)) {
           firedLog = recordFiredAction(firedLog, todayStr, action);
-          if (action.kind === "onboarding_seed") {
-            try {
-              await new LifeOpsService(runtime).markSeedingOffered();
-            } catch (err) {
-              logger.warn(
-                `[proactive] Failed to record onboarding seed offer audit: ${err}`,
-              );
-            }
-          }
           logger.info(`[proactive] Emitted ${action.kind} as assistant event`);
           continue;
         }
@@ -551,15 +540,6 @@ export async function executeProactiveTask(
         buildProactiveDeliveryContent(action, resolvedTarget.source),
       );
       firedLog = recordFiredAction(firedLog, todayStr, action);
-      if (action.kind === "onboarding_seed") {
-        try {
-          await new LifeOpsService(runtime).markSeedingOffered();
-        } catch (err) {
-          logger.warn(
-            `[proactive] Failed to record onboarding seed offer audit: ${err}`,
-          );
-        }
-      }
       logger.info(
         `[proactive] Fired ${action.kind} on ${resolvedTarget.source}`,
       );
@@ -579,48 +559,10 @@ export async function executeProactiveTask(
   return { nextInterval: PROACTIVE_TASK_INTERVAL_MS };
 }
 
-// Generated from `default-packs/habit-starters.ts` metadata so adding /
-// removing a habit starter updates the offer message automatically. Replaces
-// the hardcoded literal flagged by HARDCODING_AUDIT and IMPL §3.4.
-const SEEDING_MESSAGE = buildSeedingOfferMessage();
-
-async function planSeedingOffer(
-  runtime: IAgentRuntime,
-  profile: ActivityProfile,
-  firedLog: FiredActionsLog | null,
-  now: Date,
-): Promise<ProactiveAction | null> {
-  // Only offer seeding once per day at most
-  if (firedLog?.seedingOfferedAt) {
-    return null;
-  }
-  if (
-    profile.isCurrentlyActive ||
-    now.getTime() - profile.lastSeenAt < SEEDING_MIN_IDLE_MS
-  ) {
-    return null;
-  }
-
-  try {
-    const service = new LifeOpsService(runtime);
-    const result = await service.checkAndOfferSeeding();
-    if (!result.needsSeeding) {
-      return null;
-    }
-  } catch (error) {
-    logger.warn(`[proactive] Failed to check seeding status: ${error}`);
-    return null;
-  }
-
-  return {
-    kind: "onboarding_seed",
-    scheduledFor: now.getTime(),
-    targetPlatform: profile.primaryPlatform ?? "web_app",
-    contextSummary: "No routines configured; offering seed templates",
-    messageText: SEEDING_MESSAGE,
-    status: "pending",
-  };
-}
+// Wave-2 W2-A removed `planSeedingOffer` and `SEEDING_MESSAGE`; the
+// legacy `onboarding_seed` proactive action is gone. Routine seeding is
+// now a FIRST_RUN customize-path concern (see
+// `src/lifeops/first-run/service.ts`).
 
 async function fetchPlannerContext(
   runtime: IAgentRuntime,
@@ -880,8 +822,6 @@ function recordFiredAction(
     if (action.goalId && !current.checkedGoalIds?.includes(action.goalId)) {
       current.checkedGoalIds?.push(action.goalId);
     }
-  } else if (action.kind === "onboarding_seed") {
-    current.seedingOfferedAt = Date.now();
   } else if (action.kind === "social_overuse_check") {
     current.socialOveruseCheckedAt = Date.now();
   }
@@ -977,9 +917,6 @@ function resolveProactiveAssistantEventSource(action: ProactiveAction): string {
   }
   if (action.kind === "goal_check_in") {
     return "proactive-goal-check-in";
-  }
-  if (action.kind === "onboarding_seed") {
-    return "proactive-onboarding";
   }
   if (action.kind === "social_overuse_check") {
     return "proactive-social-overuse";

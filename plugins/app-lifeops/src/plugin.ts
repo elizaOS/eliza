@@ -11,7 +11,6 @@ import { autofillAction } from "./actions/autofill.js";
 import { bookTravelAction } from "./actions/book-travel.js";
 import { calendarAction } from "./actions/calendar.js";
 import { calendlyAction } from "./actions/lib/calendly-handler.js";
-import { checkinAction } from "./actions/checkin.js";
 import { connectorAction } from "./actions/connector.js";
 import { deviceIntentAction } from "./actions/device-intent.js";
 import { firstRunAction } from "./actions/first-run.js";
@@ -22,7 +21,7 @@ import { messageHandoffAction } from "./actions/message-handoff.js";
 import { passwordManagerAction } from "./actions/password-manager.js";
 import { paymentsAction } from "./actions/payments.js";
 import { profileAction } from "./actions/profile.js";
-import { relationshipAction } from "./actions/relationship.js";
+import { entityAction } from "./actions/entity.js";
 import { remoteDesktopAction } from "./actions/remote-desktop.js";
 import { resolveRequestAction } from "./actions/resolve-request.js";
 import { scheduleAction } from "./actions/schedule.js";
@@ -54,6 +53,32 @@ import {
   registerConnectorRegistry,
   registerDefaultConnectorPack,
 } from "./lifeops/connectors/index.js";
+import {
+  createAnchorRegistry,
+  createEventKindRegistry,
+  createFamilyRegistry,
+  registerAnchorRegistry,
+  registerAppLifeOpsAnchors,
+  registerAppLifeOpsBusFamilies,
+  registerAppLifeOpsEventKinds,
+  registerBuiltinTelemetryFamilies,
+  registerDefaultBlockerPack,
+  registerEventKindRegistry,
+  registerFamilyRegistry,
+} from "./lifeops/registries/index.js";
+import {
+  createActivitySignalBus,
+  registerActivitySignalBus,
+} from "./lifeops/signals/bus.js";
+import {
+  createOwnerFactStore,
+  registerOwnerFactStore,
+} from "./lifeops/owner/fact-store.js";
+import {
+  createMultilingualPromptRegistry,
+  registerDefaultPromptPack,
+  registerMultilingualPromptRegistry,
+} from "./lifeops/i18n/prompt-registry.js";
 import { BrowserBridgeAdapter } from "./lifeops/messaging/adapters/browser-bridge-adapter.js";
 import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
 import { LifeOpsGmailAdapter } from "./lifeops/messaging/adapters/gmail-adapter.js";
@@ -87,11 +112,7 @@ import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
 import { roomPolicyProvider } from "./providers/room-policy.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
 import { BrowserBridgePluginService } from "./service.js";
-import {
-  listActiveBlocksAction,
-  registerBlockRuleReconcilerWorker,
-  releaseBlockAction,
-} from "./website-blocker/chat-integration/index.js";
+import { registerBlockRuleReconcilerWorker } from "./website-blocker/chat-integration/index.js";
 import {
   getSelfControlStatus,
   type SelfControlPluginConfig,
@@ -291,13 +312,10 @@ const rawAppLifeOpsPlugin: Plugin = {
   schema: lifeOpsSchema,
   actions: [
     websiteBlockAction,
-    listActiveBlocksAction,
-    releaseBlockAction,
     appBlockAction,
     calendarAction,
     calendlyAction,
     schedulingNegotiationAction,
-    checkinAction,
     resolveRequestAction,
     deviceIntentAction,
     firstRunAction,
@@ -306,7 +324,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     messageHandoffAction,
     bookTravelAction,
     profileAction,
-    relationshipAction,
+    entityAction,
     screenTimeAction,
     voiceCallAction,
     remoteDesktopAction,
@@ -359,8 +377,6 @@ const rawAppLifeOpsPlugin: Plugin = {
       );
     }
 
-    // W1-F connector / channel / send-policy registries; W2-B populates the
-    // default packs with the 10 connector contributions and the 13 channels.
     const connectorRegistry = createConnectorRegistry();
     registerDefaultConnectorPack(connectorRegistry, runtime);
     registerConnectorRegistry(runtime, connectorRegistry);
@@ -371,6 +387,31 @@ const rawAppLifeOpsPlugin: Plugin = {
 
     const sendPolicyRegistry = createSendPolicyRegistry();
     registerSendPolicyRegistry(runtime, sendPolicyRegistry);
+
+    registerDefaultBlockerPack(runtime);
+
+    const anchorRegistry = createAnchorRegistry();
+    registerAppLifeOpsAnchors(anchorRegistry);
+    registerAnchorRegistry(runtime, anchorRegistry);
+
+    const eventKindRegistry = createEventKindRegistry();
+    registerAppLifeOpsEventKinds(eventKindRegistry);
+    registerEventKindRegistry(runtime, eventKindRegistry);
+
+    const familyRegistry = createFamilyRegistry();
+    registerBuiltinTelemetryFamilies(familyRegistry);
+    registerAppLifeOpsBusFamilies(familyRegistry);
+    registerFamilyRegistry(runtime, familyRegistry);
+
+    const activitySignalBus = createActivitySignalBus({ familyRegistry });
+    registerActivitySignalBus(runtime, activitySignalBus);
+
+    const ownerFactStore = createOwnerFactStore(runtime);
+    registerOwnerFactStore(runtime, ownerFactStore);
+
+    const promptRegistry = createMultilingualPromptRegistry();
+    registerDefaultPromptPack(promptRegistry);
+    registerMultilingualPromptRegistry(runtime, promptRegistry);
 
     // Owner outbound-message approval policy: gmail drafts require explicit
     // owner approval; everything else passes straight through.
@@ -622,14 +663,39 @@ export {
   type OwnerFacts,
   type OwnerFactsPatch,
 } from "./lifeops/first-run/state.js";
+export {
+  ownerFactsToView,
+  registerOwnerFactStore,
+  resolveOwnerFactStore,
+  getOwnerFactStore,
+  type EscalationRule,
+  type OwnerFactEntry,
+  type OwnerFactProvenance,
+  type OwnerFactProvenanceSource,
+  type OwnerFactWindow,
+  type OwnerQuietHours,
+  type PolicyPatchEscalationRule,
+  type PolicyPatchReminderIntensity,
+  type ReminderIntensity,
+} from "./lifeops/owner/fact-store.js";
+export {
+  createMultilingualPromptRegistry,
+  getDefaultPromptExamplePair,
+  getDefaultPromptRegistry,
+  getMultilingualPromptRegistry,
+  PROMPT_REGISTRY_DEFAULT_LOCALE,
+  registerDefaultPromptPack,
+  registerMultilingualPromptRegistry,
+  resolveActionExamplePairs,
+  type MultilingualPromptRegistry,
+  type PromptExampleEntry,
+  type PromptLocale,
+  type PromptRegistryFilter,
+} from "./lifeops/i18n/prompt-registry.js";
 export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
 export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
-// W1-A — ScheduledTask spine. Source of truth:
-// `docs/audit/wave1-interfaces.md` §1.
-// Other Wave-1 agents import from `@elizaos/app-lifeops` to consume
-// these types and the runtime wiring helper.
 export {
   createAnchorRegistry,
   createCompletionCheckRegistry,

@@ -317,13 +317,22 @@ interface UseModelRuntime {
 }
 
 function extractUseModel(runtime: RuntimeLike): UseModelLike | null {
+  // Standing direction: training optimizer / variant generation runs on
+  // Cerebras gpt-oss-120b, NOT through the agent's primary provider.
+  const trainProvider =
+    process.env.TRAIN_MODEL_PROVIDER?.trim() ?? process.env.TRAINING_PROVIDER?.trim();
+  if (trainProvider === "cerebras") {
+    // Lazy-import so the helper isn't required during unit tests that don't
+    // exercise this branch.
+    const { getTrainingUseModelAdapter } = require(
+      "../../../app-lifeops/test/helpers/lifeops-eval-model.ts",
+    ) as typeof import("../../../app-lifeops/test/helpers/lifeops-eval-model.ts");
+    return getTrainingUseModelAdapter();
+  }
+
   const candidate = runtime as RuntimeLike & UseModelRuntime;
   if (typeof candidate.useModel !== "function") return null;
   return async (input) => {
-    // We always route native calls through TEXT_LARGE because the optimizers
-    // need high-quality rewrites. The hardcoding mirrors how trajectory
-    // teachers resolve the model — the operator can pin a different provider
-    // by overriding the runtime's TEXT_LARGE handler.
     return await candidate.useModel?.("TEXT_LARGE", input);
   };
 }

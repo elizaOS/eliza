@@ -27,9 +27,9 @@ import {
 import {
   applySubscriptionCredentials,
   deleteCredentials,
-} from "../auth/credentials.js";
-import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
-import type { ElizaConfig } from "../config/types.eliza.js";
+} from "../auth/credentials.ts";
+import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.ts";
+import type { ElizaConfig } from "../config/types.eliza.ts";
 
 type MutableElizaConfig = Partial<ElizaConfig> & {
   cloud?: Record<string, unknown>;

@@ -11,7 +11,7 @@ function toHttpIncomingMessage(req: RouteRequest): http.IncomingMessage {
   ) {
     throw new TypeError("Hyperliquid routes require a Node HTTP request");
   }
-  return req as http.IncomingMessage;
+  return req as unknown as http.IncomingMessage;
 }
 
 function toHttpServerResponse(res: RouteResponse): http.ServerResponse {
@@ -23,7 +23,7 @@ function toHttpServerResponse(res: RouteResponse): http.ServerResponse {
   ) {
     throw new TypeError("Hyperliquid routes require a Node HTTP response");
   }
-  return res as http.ServerResponse;
+  return res as unknown as http.ServerResponse;
 }
 
 function hyperliquidRouteHandler(

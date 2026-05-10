@@ -534,6 +534,20 @@ export type ElizaDesktopRPCSchema = {
 					| { ok: false; error: string };
 			};
 
+			// ---- Renderer diagnostics ----
+			rendererReportDiagnostic: {
+				params:
+					| {
+							level?: "log" | "info" | "warn" | "error";
+							source?: string;
+							message?: string;
+							details?: unknown;
+					  }
+					| undefined
+					| null;
+				response: { ok: true };
+			};
+
 			// ---- Desktop: Tray ----
 			desktopCreateTray: { params: TrayOptions; response: undefined };
 			desktopUpdateTray: { params: Partial<TrayOptions>; response: undefined };
@@ -926,7 +940,7 @@ export type ElizaDesktopRPCSchema = {
 			canvasDestroyWindow: { params: { id: string }; response: undefined };
 			canvasNavigate: {
 				params: { id: string; url: string };
-				response: undefined;
+				response: { available: boolean; reason?: string };
 			};
 			/**
 			 * PRIVILEGED: Executes arbitrary JavaScript in a canvas BrowserWindow.

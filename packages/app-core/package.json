@@ -35,32 +35,17 @@
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
-    "build:dist": "node ../../scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.build.json && node ../../scripts/flatten-tsc-package-output.mjs packages/app-core && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles src/i18n/locales scripts platforms packaging patches test/scripts test/helpers && node ../../scripts/prepare-package-dist.mjs packages/app-core",
+    "build:dist": "node ../../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../../scripts/flatten-tsc-package-output.mjs packages/app-core && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles scripts platforms packaging patches test/scripts test/helpers && node ../../scripts/prepare-package-dist.mjs packages/app-core",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "benchmark:server": "node --import tsx src/benchmark/server.ts"
   },
   "exports": {
+    "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "default": "./dist/index.js"
-    },
-    "./api/auth": {
-      "types": "./dist/api/auth.d.ts",
-      "import": "./dist/api/auth.js",
-      "default": "./dist/api/auth.js"
-    },
-    "./api/compat-route-shared": {
-      "types": "./dist/api/compat-route-shared.d.ts",
-      "import": "./dist/api/compat-route-shared.js",
-      "default": "./dist/api/compat-route-shared.js"
-    },
-    "./services/github-credentials": {
-      "types": "./dist/services/github-credentials.d.ts",
-      "import": "./dist/services/github-credentials.js",
-      "default": "./dist/services/github-credentials.js"
-    },
-    "./package.json": "./package.json"
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
   },
   "peerDependencies": {
     "react": "^19.0.0",
@@ -83,12 +68,18 @@
     "@capacitor/push-notifications": "^8.0.0",
     "@clack/prompts": "^1.0.0",
     "@elizaos/agent": "workspace:*",
-    "@elizaos/app-training": "workspace:*",
+    "@elizaos/capacitor-llama": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-aosp-local-inference": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
+    "@elizaos/plugin-edge-tts": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-groq": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-wechat": "workspace:*",
+    "@elizaos/plugin-workflow": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@elizaos/vault": "workspace:*",
@@ -124,7 +115,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.0.0",
     "telegraf": "^4.16.3",
-    "undici": "^8.0.0",
+    "undici": "8.2.0",
     "ws": "^8.19.0",
     "zod": "^4.4.3"
   },

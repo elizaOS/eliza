@@ -26,7 +26,6 @@
   ],
   "exports": {
     ".": "./dist/index.js",
-    "./testing": "./dist/testing.js",
     "./package.json": "./package.json"
   },
   "scripts": {

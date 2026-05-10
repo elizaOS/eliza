@@ -253,7 +253,7 @@ export class BotSdk {
     const raw =
       typeof event.data === "string" ? event.data : String(event.data);
     const decoded = decodeServerFrame(raw);
-    if (!decoded.ok) {
+    if (decoded.ok === false) {
       this.log("recv", `bad frame: ${decoded.error}`);
       return;
     }

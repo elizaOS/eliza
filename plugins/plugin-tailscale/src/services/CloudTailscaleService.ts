@@ -34,7 +34,7 @@ type CloudFetch = (
   init: CloudFetchInit,
 ) => Promise<CloudFetchResponse>;
 
-export interface CloudTailscaleServiceOptions {
+interface CloudTailscaleServiceOptions {
   /** Override fetch impl for tests. */
   fetch?: CloudFetch;
   /** Override CLI runner for tests. */

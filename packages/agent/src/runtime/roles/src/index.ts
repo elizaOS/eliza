@@ -20,14 +20,14 @@ import {
   type Plugin,
   roleAction,
 } from "@elizaos/core";
-import { rolesProvider } from "./provider.js";
-import type { RolesConfig, RolesWorldMetadata } from "./types.js";
+import { rolesProvider } from "./provider.ts";
+import type { RolesConfig, RolesWorldMetadata } from "./types.ts";
 import {
   hasConfiguredCanonicalOwner,
   matchEntityToConnectorAdminWhitelist,
   normalizeRole,
   resolveCanonicalOwnerId,
-} from "./utils.js";
+} from "./utils.ts";
 
 const BOOTSTRAP_RETRY_TIMERS_KEY = Symbol.for(
   "@elizaos/runtime.roles.bootstrapRetries",
@@ -39,8 +39,7 @@ type RuntimeWithBootstrapRetries = IAgentRuntime & {
   [BOOTSTRAP_RETRY_TIMERS_KEY]?: Map<string, ReturnType<typeof setTimeout>>;
 };
 
-export { roleAction } from "@elizaos/core";
-export { rolesProvider } from "./provider.js";
+export { rolesProvider } from "./provider.ts";
 export type {
   ConnectorAdminWhitelist,
   RoleCheckResult,
@@ -48,8 +47,8 @@ export type {
   RoleName,
   RolesConfig,
   RolesWorldMetadata,
-} from "./types.js";
-export { ROLE_RANK } from "./types.js";
+} from "./types.ts";
+export { ROLE_RANK } from "./types.ts";
 export {
   canModifyRole,
   checkSenderPrivateAccess,
@@ -66,7 +65,8 @@ export {
   resolveWorldForMessage,
   setConnectorAdminWhitelist,
   setEntityRole,
-} from "./utils.js";
+} from "./utils.ts";
+export { roleAction };
 
 async function updateWorldMetadata(
   runtime: IAgentRuntime,

@@ -1542,6 +1542,12 @@ async function buildAdapter(): Promise<AospLlamaAdapter | null> {
  * Register the AOSP llama.cpp FFI loader on the runtime. No-op on non-AOSP
  * builds (when `ELIZA_LOCAL_LLAMA !== "1"`). Returns true on successful
  * registration so the caller can confirm precedence.
+ *
+ * When DFlash is requested (a `draftModelPath` is on the load args, or
+ * `ELIZA_DFLASH=1` is in env), `loadModel` and `generate` are routed to
+ * the out-of-process llama-server adapter (`aosp-dflash-adapter.ts`) so
+ * speculative decoding can use the upstream `--model-draft` + `--spec-type
+ * dflash` flags. `embed()` always stays on the in-process FFI path.
  */
 export async function registerAospLlamaLoader(
   runtime: RuntimeWithRegisterService,
@@ -1550,20 +1556,97 @@ export async function registerAospLlamaLoader(
   if (typeof runtime.registerService !== "function") return false;
   const adapter = await buildAdapter();
   if (!adapter) return false;
+
+  // Lazy-construct the DFlash adapter on first use so we don't pay the
+  // file-existence + chmod-bit checks on every boot. The dispatcher below
+  // routes load/generate to it when a drafter is paired.
+  const { buildDflashAdapter, shouldRouteViaDflash } = await import(
+    "./aosp-dflash-adapter.js"
+  );
+  let dflashAdapter: ReturnType<typeof buildDflashAdapter> = null;
+  let dflashProbed = false;
+  const getDflashAdapter = () => {
+    if (!dflashProbed) {
+      dflashAdapter = buildDflashAdapter();
+      dflashProbed = true;
+      if (dflashAdapter) {
+        logger.info(
+          "[aosp-llama] DFlash spawn-and-route adapter ready (llama-server present in per-ABI asset dir)",
+        );
+      }
+    }
+    return dflashAdapter;
+  };
+  // Track which backend is active for currentModelPath() reporting.
+  let activeBackend: "ffi" | "dflash" = "ffi";
+
   runtime.registerService(SERVICE_NAME, {
     // Accept the shared LocalInferenceLoader shape (`{ modelPath }`) AND the
-    // AOSP-specific extension (`{ modelPath, kvCacheType?, … }`) — callers
-    // that don't know about TBQ pass the slim shape and the adapter
-    // auto-detects from the filename.
-    loadModel: (a: AospLlamaLoadOptions) => adapter.loadModel(a),
-    unloadModel: () => adapter.unloadModel(),
-    currentModelPath: () => adapter.currentModelPath(),
-    generate: (a: {
+    // AOSP-specific extension (`{ modelPath, kvCacheType?, draftModelPath?, … }`).
+    // When draftModelPath is set (or ELIZA_DFLASH=1) and a llama-server binary
+    // is staged for this ABI, route through the spawn-and-route DFlash adapter.
+    loadModel: async (a: AospLlamaLoadOptions) => {
+      if (shouldRouteViaDflash(a) && a.draftModelPath) {
+        const df = getDflashAdapter();
+        if (df) {
+          // Tear down any FFI model that was loaded so we don't double-occupy
+          // RAM with the in-process target weights.
+          if (adapter.currentModelPath() !== null) {
+            await adapter.unloadModel();
+          }
+          await df.loadModel({
+            modelPath: a.modelPath,
+            draftModelPath: a.draftModelPath,
+            contextSize: a.contextSize,
+            draftContextSize: a.draftContextSize,
+            draftMin: a.draftMin,
+            draftMax: a.draftMax,
+            cacheTypeK: a.cacheTypeK,
+            cacheTypeV: a.cacheTypeV,
+            disableThinking: a.disableThinking,
+          });
+          activeBackend = "dflash";
+          return;
+        }
+        logger.warn(
+          "[aosp-llama] DFlash requested but llama-server binary missing; falling back to single-model FFI decode",
+        );
+      }
+      activeBackend = "ffi";
+      return adapter.loadModel(a);
+    },
+    unloadModel: async () => {
+      if (activeBackend === "dflash") {
+        const df = dflashAdapter;
+        if (df) await df.unloadModel();
+      } else {
+        await adapter.unloadModel();
+      }
+    },
+    currentModelPath: () =>
+      activeBackend === "dflash"
+        ? (dflashAdapter?.currentModelPath() ?? null)
+        : adapter.currentModelPath(),
+    generate: async (a: {
       prompt: string;
       stopSequences?: string[];
       maxTokens?: number;
       temperature?: number;
-    }) => adapter.generate(a),
+    }) => {
+      if (activeBackend === "dflash") {
+        const df = dflashAdapter;
+        if (!df) {
+          throw new Error(
+            "[aosp-llama] DFlash adapter went away between loadModel and generate",
+          );
+        }
+        return df.generate(a);
+      }
+      return adapter.generate(a);
+    },
+    // Embeddings stay on the in-process FFI path. DFlash is target+drafter
+    // for token decode; llama-server's /embedding endpoint exists but the
+    // model usually configured for chat doesn't have pooling enabled.
     embed: (a: { input: string }) => adapter.embed(a),
   });
   logger.info(

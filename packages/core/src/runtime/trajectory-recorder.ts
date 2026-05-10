@@ -34,6 +34,7 @@ export type RecordedStageKind =
 	| "messageHandler"
 	| "planner"
 	| "tool"
+	| "toolSearch"
 	| "evaluation"
 	| "subPlanner"
 	| "compaction"
@@ -75,6 +76,32 @@ export interface RecordedToolStage {
 	result: unknown;
 	success: boolean;
 	durationMs: number;
+	error?: string;
+}
+
+/**
+ * Snapshot of the tool-search / action-retrieval phase. Logged once per
+ * planner turn before the LLM call so reviewers can see which actions
+ * were considered, the retrieval scores, and which tier each landed in.
+ */
+export interface RecordedToolSearchStage {
+	query: {
+		text: string;
+		tokens?: string[];
+		candidateActions?: string[];
+		parentActionHints?: string[];
+	};
+	results: Array<{
+		name: string;
+		score: number;
+		rank: number;
+		rrfScore?: number;
+		matchedBy?: string[];
+		stageScores?: Record<string, number>;
+	}>;
+	tier: { tierA: string[]; tierB: string[]; omitted: number };
+	durationMs: number;
+	fallback?: string;
 }
 
 export interface RecordedEvaluationStage extends EvaluationResult {
@@ -122,12 +149,14 @@ export interface RecordedStage {
 	stageId: string;
 	kind: RecordedStageKind;
 	iteration?: number;
+	retryIdx?: number;
 	parentStageId?: string;
 	startedAt: number;
 	endedAt: number;
 	latencyMs: number;
 	model?: RecordedModelCall;
 	tool?: RecordedToolStage;
+	toolSearch?: RecordedToolSearchStage;
 	evaluation?: RecordedEvaluationStage;
 	cache?: RecordedCacheStage;
 	factsAndRelationships?: RecordedFactsAndRelationshipsStage;
@@ -143,6 +172,7 @@ export interface RecordedTrajectoryMetrics {
 	plannerIterations: number;
 	toolCallsExecuted: number;
 	toolCallFailures: number;
+	toolSearchCount: number;
 	evaluatorFailures: number;
 	finalDecision?: "FINISH" | "CONTINUE" | "max_iterations" | "error";
 }
@@ -151,6 +181,8 @@ export interface RecordedTrajectory {
 	trajectoryId: string;
 	agentId: string;
 	roomId?: string;
+	runId?: string;
+	scenarioId?: string;
 	rootMessage: { id: string; text: string; sender?: string };
 	startedAt: number;
 	endedAt?: number;
@@ -167,6 +199,12 @@ export interface StartTrajectoryInput {
 	agentId: string;
 	roomId?: string;
 	rootMessage: { id: string; text: string; sender?: string };
+	// Optional run / scenario correlation for the lifeops aggregator. When set
+	// (typically by the scenario CLI via env vars before each scenario), the
+	// recorder includes them on the persisted trajectory so the aggregator can
+	// group trajectories per scenario without inferring from filesystem layout.
+	runId?: string;
+	scenarioId?: string;
 }
 
 export interface ListTrajectoriesOptions {
@@ -560,6 +598,7 @@ function applyMetricsForStage(
 		metrics.toolCallsExecuted += 1;
 		if (stage.tool && !stage.tool.success) metrics.toolCallFailures += 1;
 	}
+	if (stage.kind === "toolSearch") metrics.toolSearchCount += 1;
 	if (
 		stage.kind === "evaluation" &&
 		typeof stage.evaluation?.parseError === "string" &&
@@ -706,6 +745,9 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			trajectoryId: id,
 			agentId: input.agentId,
 			roomId: input.roomId,
+			runId: input.runId ?? process.env.MILADY_LIFEOPS_RUN_ID,
+			scenarioId:
+				input.scenarioId ?? process.env.MILADY_LIFEOPS_SCENARIO_ID,
 			rootMessage: input.rootMessage,
 			startedAt: Date.now(),
 			status: "running",
@@ -720,6 +762,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 				plannerIterations: 0,
 				toolCallsExecuted: 0,
 				toolCallFailures: 0,
+				toolSearchCount: 0,
 				evaluatorFailures: 0,
 			},
 		};

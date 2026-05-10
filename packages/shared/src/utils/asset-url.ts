@@ -6,8 +6,8 @@
  * resolve to file:///vrms/1.vrm and fail. We lock the asset base URL once from
  * initial startup and resolve assets against that stable base.
  */
-import { getBootConfig } from "../config/boot-config";
-import { getElizaApiBase } from "./eliza-globals";
+import { getBootConfig } from "../config/boot-config.js";
+import { getElizaApiBase } from "./eliza-globals.js";
 
 type AssetUrlResolveOptions = {
   currentUrl?: string;

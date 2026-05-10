@@ -6,33 +6,13 @@ import type { CompatRuntimeState } from "../../src/api/compat-route-shared";
 type AutomationsCompatRoutesModule =
   typeof import("../../src/api/automations-compat-routes");
 
-const toWorkbenchTaskMock = vi.fn();
-const listTriggerTasksMock = vi.fn();
-const taskToTriggerSummaryMock = vi.fn();
-const handleWorkflowRoutesMock = vi.fn();
 const ensureRouteAuthorizedMock = vi.fn();
 
-vi.doMock("@elizaos/agent/config/config", () => ({
+vi.doMock("@elizaos/agent", () => ({
   loadElizaConfig: () => ({
     ui: { assistant: { name: "Eliza" } },
     agents: { defaults: { adminEntityId: "admin-entity-id" } },
   }),
-}));
-
-vi.doMock("@elizaos/agent/api/workbench-helpers", () => ({
-  WORKBENCH_TASK_TAG: "workbench-task",
-  WORKBENCH_TODO_TAG: "workbench-todo",
-  toWorkbenchTask: (...args: unknown[]) => toWorkbenchTaskMock(...args),
-}));
-
-vi.doMock("@elizaos/agent/triggers/runtime", () => ({
-  listTriggerTasks: (...args: unknown[]) => listTriggerTasksMock(...args),
-  taskToTriggerSummary: (...args: unknown[]) =>
-    taskToTriggerSummaryMock(...args),
-}));
-
-vi.doMock("@elizaos/plugin-workflow/routes/workflow-routes", () => ({
-  handleWorkflowRoutes: (...args: unknown[]) => handleWorkflowRoutesMock(...args),
 }));
 
 vi.doMock("../../src/api/auth", () => ({
@@ -181,38 +161,6 @@ function buildRuntimeStub() {
   };
 }
 
-function buildRuntimeWithDuplicateSystemTasks() {
-  return {
-    ...buildRuntimeStub(),
-    getTasks: vi.fn(async () => [
-      {
-        id: "task-user-1",
-        name: "Inbox triage",
-        description: "Clear my inbox and create follow-ups.",
-        tags: [],
-        isCompleted: false,
-        updatedAt: Date.parse("2026-04-17T10:00:00Z"),
-      },
-      {
-        id: "task-system-1",
-        name: "EMBEDDING_DRAIN",
-        description: "",
-        tags: ["queue", "repeat"],
-        isCompleted: false,
-        updatedAt: Date.parse("2026-04-17T08:00:00Z"),
-      },
-      {
-        id: "task-system-2",
-        name: "EMBEDDING_DRAIN",
-        description: "Embedding generation drain",
-        tags: ["queue", "repeat"],
-        isCompleted: false,
-        updatedAt: Date.parse("2026-04-17T09:00:00Z"),
-      },
-    ]),
-  };
-}
-
 function buildRuntimeWithCryptoAutomationCapabilities() {
   const runtime = buildRuntimeStub();
   return {
@@ -238,99 +186,7 @@ describe("automations compat routes", () => {
     delete process.env.SOLANA_PRIVATE_KEY;
     delete process.env.POLYMARKET_PRIVATE_KEY;
 
-    toWorkbenchTaskMock.mockImplementation((task) => task);
     ensureRouteAuthorizedMock.mockResolvedValue(true);
-    listTriggerTasksMock.mockResolvedValue([
-      {
-        id: "trigger-1",
-        taskId: "task-trigger-1",
-        displayName: "Morning summary",
-        instructions: "Summarize the morning queue.",
-        triggerType: "interval",
-        intervalMs: 3_600_000,
-        wakeMode: "inject_now",
-        enabled: true,
-        createdBy: "user",
-        runCount: 0,
-        kind: "text",
-        updatedAt: Date.parse("2026-04-17T11:00:00Z"),
-      },
-      {
-        id: "trigger-workflow-1",
-        taskId: "task-trigger-workflow-1",
-        displayName: "Daily workflow run",
-        instructions: "Run workflow wf-1",
-        triggerType: "cron",
-        cronExpression: "0 9 * * *",
-        wakeMode: "inject_now",
-        enabled: true,
-        createdBy: "user",
-        runCount: 0,
-        kind: "workflow",
-        workflowId: "wf-1",
-        workflowName: "Daily report workflow",
-        updatedAt: Date.parse("2026-04-17T09:00:00Z"),
-      },
-    ]);
-    taskToTriggerSummaryMock.mockImplementation((task) => task);
-
-    handleWorkflowRoutesMock.mockImplementation(
-      async ({
-        pathname,
-        json,
-        res,
-      }: {
-        pathname: string;
-        json: (
-          res: http.ServerResponse,
-          body: unknown,
-          status?: number,
-        ) => void;
-        res: http.ServerResponse;
-      }) => {
-        if (pathname === "/api/workflow/status") {
-          json(
-            res,
-            {
-              mode: "local",
-              host: "http://127.0.0.1:5678",
-              status: "ready",
-              cloudConnected: false,
-              localEnabled: true,
-              platform: "desktop",
-              cloudHealth: "unknown",
-            },
-            200,
-          );
-          return true;
-        }
-
-        if (pathname === "/api/workflow/workflows") {
-          json(
-            res,
-            {
-              workflows: [
-                {
-                  id: "wf-1",
-                  name: "Daily report workflow",
-                  active: true,
-                  description: "Posts a daily report.",
-                  nodeCount: 2,
-                  nodes: [
-                    { id: "node-1", name: "Code task", type: "agent.codeTask" },
-                    { id: "node-2", name: "Gmail", type: "lifeops.gmail" },
-                  ],
-                },
-              ],
-            },
-            200,
-          );
-          return true;
-        }
-
-        return false;
-      },
-    );
 
     registerAutomationNodeContributor("test-lifeops", () => [
       {
@@ -368,7 +224,7 @@ describe("automations compat routes", () => {
     await harness?.dispose?.();
   });
 
-  it("GET /api/automations returns canonical coordinator and workflow items", async () => {
+  it("does not claim GET /api/automations; plugin-workflow owns the list", async () => {
     harness = await startApiHarness({
       current: buildRuntimeStub() as never,
       pendingAgentName: null,
@@ -376,105 +232,7 @@ describe("automations compat routes", () => {
     });
 
     const response = await fetch(`${harness.baseUrl}/api/automations`);
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      automations: Array<{
-        id: string;
-        room?: { conversationId: string | null };
-        schedules: unknown[];
-        isDraft: boolean;
-        workflowId?: string;
-        source: string;
-      }>;
-      summary: {
-        total: number;
-        coordinatorCount: number;
-        workflowCount: number;
-        scheduledCount: number;
-        draftCount: number;
-      };
-      workflowStatus: { mode: string; status: string };
-      workflowFetchError: string | null;
-    };
-
-    expect(body.summary).toEqual({
-      total: 4,
-      coordinatorCount: 2,
-      workflowCount: 2,
-      scheduledCount: 2,
-      draftCount: 1,
-    });
-    expect(body.workflowStatus).toMatchObject({ mode: "local", status: "ready" });
-    expect(body.workflowFetchError).toBeNull();
-
-    const taskItem = body.automations.find((item) => item.id === "task:task-1");
-    const triggerItem = body.automations.find(
-      (item) => item.id === "trigger:trigger-1",
-    );
-    const draftItem = body.automations.find(
-      (item) => item.id === "workflow-draft:draft-1",
-    );
-    const workflowItem = body.automations.find(
-      (item) => item.id === "workflow:wf-1",
-    );
-
-    expect(taskItem?.room?.conversationId).toBe("conv-task-1");
-    expect(triggerItem?.room?.conversationId).toBe("conv-trigger-1");
-    expect(draftItem?.isDraft).toBe(true);
-    expect(workflowItem).toMatchObject({
-      workflowId: "wf-1",
-      source: "workflow_service",
-      room: { conversationId: "conv-wf-1" },
-    });
-    expect(workflowItem?.schedules).toHaveLength(1);
-  });
-
-  it("deduplicates repeated system tasks so the sidebar is not flooded", async () => {
-    harness = await startApiHarness({
-      current: buildRuntimeWithDuplicateSystemTasks() as never,
-      pendingAgentName: null,
-      pendingRestartReasons: [],
-    });
-
-    const response = await fetch(`${harness.baseUrl}/api/automations`);
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      automations: Array<{ id: string; title: string; system: boolean }>;
-      summary: { total: number; coordinatorCount: number };
-    };
-
-    const embeddingDrainItems = body.automations.filter(
-      (item) => item.title === "EMBEDDING_DRAIN" && item.system,
-    );
-
-    expect(embeddingDrainItems).toHaveLength(1);
-    expect(body.summary.total).toBe(5);
-    expect(body.summary.coordinatorCount).toBe(3);
-  });
-
-  it("does not surface trigger-backed runtime tasks as separate coordinator items", async () => {
-    harness = await startApiHarness({
-      current: buildRuntimeStub() as never,
-      pendingAgentName: null,
-      pendingRestartReasons: [],
-    });
-
-    const response = await fetch(`${harness.baseUrl}/api/automations`);
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      automations: Array<{ id: string; taskId?: string }>;
-    };
-
-    expect(body.automations).not.toContainEqual(
-      expect.objectContaining({
-        id: "task:task-trigger-1",
-      }),
-    );
-    expect(body.automations).not.toContainEqual(
-      expect.objectContaining({
-        id: "task:task-trigger-workflow-1",
-      }),
-    );
+    expect(response.status).toBe(404);
   });
 
   it("GET /api/automations/nodes returns enabled and disabled runtime and LifeOps nodes", async () => {

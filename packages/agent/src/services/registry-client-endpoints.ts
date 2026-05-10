@@ -1,12 +1,12 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import net from "node:net";
 import { logger } from "@elizaos/core";
-import type { RegistryEndpoint } from "../config/types.eliza.js";
+import type { RegistryEndpoint } from "../config/types.eliza.ts";
 import {
   isBlockedPrivateOrLinkLocalIp,
   normalizeHostLike,
-} from "../security/network-policy.js";
-import type { RegistryPluginInfo } from "./registry-client-types.js";
+} from "../security/network-policy.ts";
+import type { RegistryPluginInfo } from "./registry-client-types.ts";
 
 const BLOCKED_REGISTRY_HOST_LITERALS = new Set([
   "localhost",

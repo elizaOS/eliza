@@ -13,3 +13,4 @@ export { PtyConsoleSidePanel } from "./PtyConsoleSidePanel";
 export * from "./PtyTerminalPane";
 export * from "./pty-status-dots";
 export * from "./session-hydration";
+export * from "./register-slots";

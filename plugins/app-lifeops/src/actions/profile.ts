@@ -13,9 +13,12 @@ import type {
 } from "../contracts/index.js";
 import {
   normalizeLifeOpsOwnerProfilePatch,
-  persistConfiguredOwnerName,
-  updateLifeOpsOwnerProfile,
 } from "../lifeops/owner-profile.js";
+import {
+  type OwnerFactProvenance,
+  type OwnerFactsPatch,
+  resolveOwnerFactStore,
+} from "../lifeops/owner/fact-store.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import { extractReminderIntensityWithLlm } from "./lib/extract-task-plan.js";
 import {
@@ -26,7 +29,6 @@ import { resolveDefinitionFromIntent } from "./life.js";
 
 type ProfileSubaction =
   | "save"
-  | "set"
   | "capture_phone"
   | "set_reminder_preference"
   | "configure_escalation";
@@ -71,27 +73,16 @@ type ProfileParams = {
   ProfileSetReminderPreferenceParams &
   ProfileConfigureEscalationParams;
 
+// Wave-2 W2-A collapsed PROFILE.save ≡ PROFILE.set into a single
+// canonical `save` subaction. The legacy `set` spelling is normalized
+// onto `save` in `normalizePlannerProfileParams` so old callers keep
+// resolving while the planner converges on a single name.
 const SUBACTIONS = {
   save: {
     description:
-      "Persist stable owner facts: name, location, gender, age, relationship status, travel-booking preferences.",
+      "Persist stable owner facts: name, location, gender, age, relationship status, travel-booking preferences. Also accepts the legacy planner alias `set` (canonicalized to `save`).",
     descriptionCompressed:
       "persist stable owner fact: name location gender age relationship-status travel-booking-prefs",
-    required: [],
-    optional: [
-      "name",
-      "location",
-      "gender",
-      "age",
-      "relationshipStatus",
-      "travelBookingPreferences",
-    ],
-  },
-  set: {
-    description:
-      "Compatibility alias for save. Persist stable owner facts or reusable preferences.",
-    descriptionCompressed:
-      "alias save owner profile fact/preference; normalize key/value when present",
     required: [],
     optional: [
       "key",
@@ -191,7 +182,9 @@ function normalizePlannerProfileParams(
   message: Memory,
 ): ProfileParams {
   const normalized: ProfileParams = { ...params };
-  if (normalized.subaction === "set") {
+  // Wave-2 W2-A: collapse the legacy `set` alias onto the canonical
+  // `save` subaction.
+  if ((normalized.subaction as unknown) === "set") {
     normalized.subaction = "save";
   }
 
@@ -210,31 +203,69 @@ function normalizePlannerProfileParams(
   return normalized;
 }
 
+function makeProfileProvenance(intent: string): OwnerFactProvenance {
+  const provenance: OwnerFactProvenance = {
+    source: "profile_save",
+    recordedAt: new Date().toISOString(),
+  };
+  if (intent.length > 0) {
+    provenance.note = intent.slice(0, 200);
+  }
+  return provenance;
+}
+
+function legacyPatchToFactPatch(
+  legacy: ReturnType<typeof normalizeLifeOpsOwnerProfilePatch>,
+): OwnerFactsPatch {
+  const patch: OwnerFactsPatch = {};
+  if (typeof legacy.name === "string") patch.preferredName = legacy.name;
+  if (typeof legacy.relationshipStatus === "string") {
+    patch.relationshipStatus = legacy.relationshipStatus;
+  }
+  if (typeof legacy.partnerName === "string") {
+    patch.partnerName = legacy.partnerName;
+  }
+  if (typeof legacy.orientation === "string") {
+    patch.orientation = legacy.orientation;
+  }
+  if (typeof legacy.gender === "string") patch.gender = legacy.gender;
+  if (typeof legacy.age === "string") patch.age = legacy.age;
+  if (typeof legacy.location === "string") patch.location = legacy.location;
+  if (typeof legacy.travelBookingPreferences === "string") {
+    patch.travelBookingPreferences = legacy.travelBookingPreferences;
+  }
+  return patch;
+}
+
 async function handleSave(
   runtime: IAgentRuntime,
   params: ProfileParams,
+  message: Memory,
 ): Promise<ReturnType<NonNullable<Action["handler"]>>> {
-  const patch = normalizeLifeOpsOwnerProfilePatch(params);
-  if (Object.keys(patch).length === 0) {
+  const legacyPatch = normalizeLifeOpsOwnerProfilePatch(params);
+  if (Object.keys(legacyPatch).length === 0) {
     return {
       text: "Tell me the stable owner detail you want saved, such as your preferred name, location, relationship status, or reusable travel preferences.",
       success: false,
       data: { error: "NO_FIELDS" },
     };
   }
-  const profile = await updateLifeOpsOwnerProfile(runtime, patch);
-  if (!profile) {
+  const factPatch = legacyPatchToFactPatch(legacyPatch);
+  if (Object.keys(factPatch).length === 0) {
     return {
-      text: "",
+      text: "Tell me the stable owner detail you want saved, such as your preferred name, location, relationship status, or reusable travel preferences.",
       success: false,
-      data: { error: "PROFILE_UPDATE_FAILED" },
+      data: { error: "NO_FIELDS" },
     };
   }
-  const nameSyncSaved =
-    typeof patch.name === "string"
-      ? await persistConfiguredOwnerName(patch.name)
-      : null;
-  const updatedFields = Object.keys(patch);
+  const intent =
+    typeof message.content?.text === "string" ? message.content.text : "";
+  const factStore = resolveOwnerFactStore(runtime);
+  const facts = await factStore.update(
+    factPatch,
+    makeProfileProvenance(intent),
+  );
+  const updatedFields = Object.keys(factPatch);
   const text =
     updatedFields.length === 1
       ? `Updated ${updatedFields[0]}.`
@@ -242,7 +273,7 @@ async function handleSave(
   return {
     text,
     success: true,
-    data: { profile, updatedFields, nameSyncSaved },
+    data: { facts, updatedFields },
   };
 }
 
@@ -275,6 +306,17 @@ async function handleCapturePhone(
     text: `Phone number ${result.phoneNumber} saved. Enabled for: ${channels.join(" and ") || "reminders"}.`,
     data: { result },
   };
+}
+
+function makePolicyProvenance(intent: string): OwnerFactProvenance {
+  const provenance: OwnerFactProvenance = {
+    source: "policy_action",
+    recordedAt: new Date().toISOString(),
+  };
+  if (intent.length > 0) {
+    provenance.note = intent.slice(0, 200);
+  }
+  return provenance;
 }
 
 async function handleSetReminderPreference(
@@ -316,6 +358,17 @@ async function handleSetReminderPreference(
     note: intent,
   };
   const preference = await service.setReminderPreference(request);
+  // Mirror the global setting onto OwnerFactStore so the planner can read
+  // intensity from the canonical policy surface (per W2-E: PROFILE → OFS).
+  // Per-definition overrides remain on the definition; only the global
+  // default lands on OFS.
+  if (!target) {
+    const factStore = resolveOwnerFactStore(runtime);
+    await factStore.setReminderIntensity(
+      { intensity, note: intent },
+      makePolicyProvenance(intent),
+    );
+  }
   const intensityLabel =
     intensity === "high_priority_only"
       ? "high priority only"
@@ -337,21 +390,53 @@ async function handleSetReminderPreference(
 async function handleConfigureEscalation(
   runtime: IAgentRuntime,
   params: ProfileParams,
+  message: Memory,
 ): Promise<ReturnType<NonNullable<Action["handler"]>>> {
   const details = detailRecord(params.details);
   const service = new LifeOpsService(runtime);
   const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
+  const intent =
+    typeof message.content?.text === "string" ? message.content.text : "";
 
-  // Target a specific definition when supplied; otherwise treat as a
-  // global escalation profile-update (currently no-op until a global
-  // escalation contract exists — return a structured ack).
+  // No target supplied → policy applies globally. Persist the rule on the
+  // OwnerFactStore so the planner reads escalation policy from the
+  // canonical owner-policy surface (W2-E: PROFILE → OFS for policy).
   if (!params.target) {
+    const timeoutMinutes =
+      typeof params.timeoutMinutes === "number" ? params.timeoutMinutes : null;
+    const callAfterMinutes =
+      typeof params.callAfterMinutes === "number"
+        ? params.callAfterMinutes
+        : null;
+    if (timeoutMinutes === null && callAfterMinutes === null) {
+      return {
+        success: true,
+        text: "No target supplied and no escalation timing provided; global escalation defaults are unchanged.",
+        data: {
+          timeoutMinutes: null,
+          callAfterMinutes: null,
+        },
+      };
+    }
+    const factStore = resolveOwnerFactStore(runtime);
+    const facts = await factStore.upsertEscalationRule(
+      {
+        rule: {
+          definitionId: null,
+          timeoutMinutes,
+          callAfterMinutes,
+        },
+        note: intent,
+      },
+      makePolicyProvenance(intent),
+    );
     return {
       success: true,
-      text: "No target supplied; global escalation defaults are unchanged.",
+      text: `Global escalation policy updated (timeout=${timeoutMinutes ?? "unset"}m, voice-after=${callAfterMinutes ?? "unset"}m).`,
       data: {
-        timeoutMinutes: params.timeoutMinutes ?? null,
-        callAfterMinutes: params.callAfterMinutes ?? null,
+        facts,
+        timeoutMinutes,
+        callAfterMinutes,
       },
     };
   }
@@ -480,14 +565,17 @@ export const profileAction: Action & {
 
     switch (resolved.subaction) {
       case "save":
-      case "set":
-        return handleSave(runtime, { ...normalizedRawParams, ...params });
+        return handleSave(
+          runtime,
+          { ...normalizedRawParams, ...params },
+          message,
+        );
       case "capture_phone":
         return handleCapturePhone(params, runtime);
       case "set_reminder_preference":
         return handleSetReminderPreference(runtime, params, message);
       case "configure_escalation":
-        return handleConfigureEscalation(runtime, params);
+        return handleConfigureEscalation(runtime, params, message);
     }
   },
 
@@ -495,13 +583,12 @@ export const profileAction: Action & {
     {
       name: "subaction",
       description:
-        "Which profile operation to perform: save, set, capture_phone, set_reminder_preference, or configure_escalation.",
+        "Which profile operation to perform: save, capture_phone, set_reminder_preference, or configure_escalation. The legacy `set` alias is canonicalized to `save`.",
       required: false,
       schema: {
         type: "string" as const,
         enum: [
           "save",
-          "set",
           "capture_phone",
           "set_reminder_preference",
           "configure_escalation",

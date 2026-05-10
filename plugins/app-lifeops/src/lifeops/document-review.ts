@@ -287,7 +287,11 @@ export interface DocumentReviewValidationError {
 }
 
 export type DocumentReviewValidationResult<T> =
-  | { readonly ok: true; readonly value: T }
+  | {
+      readonly ok: true;
+      readonly value: T;
+      readonly errors: readonly DocumentReviewValidationError[];
+    }
   | {
       readonly ok: false;
       readonly errors: readonly DocumentReviewValidationError[];
@@ -358,7 +362,7 @@ function validationError(args: {
 }
 
 function ok<T>(value: T): DocumentReviewValidationResult<T> {
-  return { ok: true, value };
+  return { ok: true, value, errors: [] };
 }
 
 function invalid<T>(

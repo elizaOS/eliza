@@ -1,18 +1,16 @@
 /**
  * Customize-path question set for first-run.
  *
- * Frozen at 5 questions per `GAP_ASSESSMENT.md` §5.3. Q1/Q2/Q4 always asked;
- * Q3/Q5 conditional. Partial answers are persisted Q-by-Q via
- * `FirstRunStateStore.recordAnswer` so a user can abandon mid-flow and
- * resume without losing progress.
+ * Five questions: Q1/Q2/Q4 always asked; Q3/Q5 conditional. Partial answers
+ * are persisted Q-by-Q via `FirstRunStateStore.recordAnswer` so a user can
+ * abandon mid-flow and resume without losing progress.
  *
- * Channel-validation for Q4 (per `GAP_ASSESSMENT.md` §8.15): the chosen
- * channel must be registered AND have a connected dispatcher. If neither
- * is the case the answer is recorded with `fallbackToInApp: true` and a
- * warning surfaces back through the action result. The W1-F `ChannelRegistry`
- * is the eventual checker; until that lands the action wires in the local
- * inspector below which leans on `getDefaultTriageService` adapter
- * registration as a connectivity proxy.
+ * Channel-validation for Q4: the chosen channel must be registered AND have
+ * a connected dispatcher. If neither is the case the answer is recorded with
+ * `fallbackToInApp: true` and a warning surfaces back through the action
+ * result. The `ChannelRegistry` is the eventual checker; the local inspector
+ * below leans on `getDefaultTriageService` adapter registration as a
+ * connectivity proxy.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -168,9 +166,9 @@ export function parseTimezone(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (trimmed.length === 0 || trimmed.length > 64) return null;
-  // RFC-grade timezone validation lives at the W2-E layer; for first-run we
-  // accept any non-empty string and trust the IANA name. Catastrophically
-  // wrong names surface later via downstream resolution.
+  // RFC-grade timezone validation lives at the OwnerFactStore layer; for
+  // first-run we accept any non-empty string and trust the IANA name.
+  // Catastrophically wrong names surface later via downstream resolution.
   return trimmed;
 }
 
@@ -219,8 +217,8 @@ export interface ChannelValidationResult {
 }
 
 /**
- * Inspector contract — pluggable so the W1-F `ChannelRegistry` can replace
- * the default implementation without touching this module.
+ * Inspector contract — pluggable so the `ChannelRegistry` can replace the
+ * default implementation without touching this module.
  */
 export interface ChannelInspector {
   isRegistered(channel: string): boolean;
@@ -234,10 +232,10 @@ class FallbackChannelInspector implements ChannelInspector {
     );
   }
   /**
-   * Until W1-F lands, treat `in_app` as always connected and other channels
-   * as "registered but unconnected" so the validator returns the right
-   * fallback warning shape. The W1-F replacement reads the real connector
-   * status from `ConnectorRegistry`.
+   * Default: treat `in_app` as always connected and other channels as
+   * "registered but unconnected" so the validator returns the right fallback
+   * warning shape. The real `ChannelRegistry` reads connector status from
+   * `ConnectorRegistry`.
    */
   isConnected(channel: string): boolean {
     return channel === "in_app";

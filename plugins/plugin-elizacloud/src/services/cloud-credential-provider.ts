@@ -63,6 +63,25 @@ interface CloudClientLike {
   post?: (path: string, body?: unknown) => Promise<unknown>;
 }
 
+function isCloudAuthLike(value: unknown): value is CloudAuthLike {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  return typeof Reflect.get(value, "getClient") === "function";
+}
+
+function isCloudClientLike(value: unknown): value is CloudClientLike {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const get = Reflect.get(value, "get");
+  const post = Reflect.get(value, "post");
+  return (
+    (get === undefined || typeof get === "function") &&
+    (post === undefined || typeof post === "function")
+  );
+}
+
 export class CloudCredentialProvider extends Service {
   static override readonly serviceType = WORKFLOW_CREDENTIAL_PROVIDER_TYPE;
 
@@ -136,18 +155,15 @@ export class CloudCredentialProvider extends Service {
   // ─── internals ───────────────────────────────────────────────────────
 
   private getCloudClient(): CloudClientLike | null {
-    const runtimeWithService = this.runtime as unknown as {
-      getService?: (name: string) => unknown;
-    };
-    const cloudAuth = runtimeWithService.getService?.("CLOUD_AUTH") as CloudAuthLike | null;
-    if (!cloudAuth || typeof cloudAuth.getClient !== "function") {
+    const cloudAuth = this.runtime.getService("CLOUD_AUTH");
+    if (!isCloudAuthLike(cloudAuth)) {
       return null;
     }
-    const client = cloudAuth.getClient();
-    if (!client || typeof client !== "object") {
+    const client = cloudAuth.getClient?.();
+    if (!isCloudClientLike(client)) {
       return null;
     }
-    return client as CloudClientLike;
+    return client;
   }
 
   private async fetchConnectorStatus(

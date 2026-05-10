@@ -45,11 +45,13 @@ class WooBenchRunner:
         evaluator_mode: str = "llm",
         scenarios: Optional[list[Scenario]] = None,
         concurrency: int = 4,
+        payment_client: Any | None = None,
     ):
         self.agent_fn = agent_fn
         self.evaluator_model = evaluator_model
         self.evaluator_mode = evaluator_mode
         self.concurrency = concurrency
+        self.payment_client = payment_client
 
         if scenarios is not None:
             self.scenarios = scenarios
@@ -60,6 +62,7 @@ class WooBenchRunner:
         self.evaluator = WooBenchEvaluator(
             evaluator_model=evaluator_model,
             evaluator_mode=evaluator_mode,
+            payment_client=payment_client,
         )
 
     # ------------------------------------------------------------------
@@ -224,6 +227,20 @@ class WooBenchRunner:
         paid_scenarios = [
             s for s in result.scenarios if s.revenue.payment_received
         ]
+        mock_scenarios = [
+            s
+            for s in paid_scenarios
+            if s.revenue.payment_provider and s.revenue.payment_provider != "simulated"
+        ]
+        if mock_scenarios:
+            print(f"  Mock-backed payments: {len(mock_scenarios)}/{len(result.scenarios)}")
+        action_scenarios = [
+            s
+            for s in result.scenarios
+            if s.revenue.payment_action_source == "action"
+        ]
+        if action_scenarios:
+            print(f"  Action-backed charges: {len(action_scenarios)}/{len(result.scenarios)}")
         if paid_scenarios:
             avg_turns = statistics.mean(
                 s.revenue.turns_to_payment for s in paid_scenarios

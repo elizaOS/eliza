@@ -13,7 +13,7 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/real-runtime";
-import { relationshipAction } from "../src/actions/relationship.ts";
+import { relationshipAction } from "../src/actions/entity.ts";
 import { LifeOpsRepository } from "../src/lifeops/repository.ts";
 import { LifeOpsService } from "../src/lifeops/service.ts";
 import {

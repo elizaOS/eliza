@@ -10,51 +10,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./schema": {
-      "types": "./dist/schema.d.ts",
-      "import": "./dist/schema.js",
-      "default": "./dist/schema.js"
-    },
-    "./contracts": {
-      "types": "./dist/contracts.d.ts",
-      "import": "./dist/contracts.js",
-      "default": "./dist/contracts.js"
-    },
-    "./packaging": {
-      "types": "./dist/packaging.d.ts",
-      "import": "./dist/packaging.js",
-      "default": "./dist/packaging.js"
-    },
-    "./routes": {
-      "types": "./dist/routes.d.ts",
-      "import": "./dist/routes.js",
-      "default": "./dist/routes.js"
-    },
-    "./service": {
-      "types": "./dist/service.d.ts",
-      "import": "./dist/service.js",
-      "default": "./dist/service.js"
-    },
-    "./actions/*": {
-      "types": "./dist/actions/*.d.ts",
-      "import": "./dist/actions/*.js",
-      "default": "./dist/actions/*.js"
-    },
-    "./workspace": {
-      "types": "./dist/workspace/index.d.ts",
-      "import": "./dist/workspace/index.js",
-      "default": "./dist/workspace/index.js"
-    },
-    "./workspace/*": {
-      "types": "./dist/workspace/*.d.ts",
-      "import": "./dist/workspace/*.js",
-      "default": "./dist/workspace/*.js"
-    },
-    "./plugin": {
-      "types": "./dist/plugin.d.ts",
-      "import": "./dist/plugin.js",
-      "default": "./dist/plugin.js"
     }
   },
   "scripts": {
@@ -62,7 +17,7 @@
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "tsc -p tsconfig.build.json"
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

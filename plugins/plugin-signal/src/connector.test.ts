@@ -90,10 +90,12 @@ describe("Signal message connector", () => {
     const sendMessageSpy = vi.spyOn(service, "sendMessage").mockResolvedValue({ timestamp: 789 });
 
     SignalService.registerSendHandlers(runtime, service);
-    const registrations = vi.mocked(runtime.registerMessageConnector).mock.calls.map(
-      (call) => call[0]
+    const registrations = vi
+      .mocked(runtime.registerMessageConnector)
+      .mock.calls.map((call) => call[0]);
+    const workRegistration = registrations.find(
+      (registration) => registration.accountId === "work"
     );
-    const workRegistration = registrations.find((registration) => registration.accountId === "work");
 
     await workRegistration?.sendHandler?.(
       runtime,

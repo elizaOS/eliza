@@ -1,10 +1,31 @@
 import crypto from "node:crypto";
 import type { Content, IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import type {
-  TaskExecutor,
-  TaskResult,
-  TaskSpec,
-} from "@elizaos/agent";
+
+type TaskSpec = {
+  id: string;
+  description: string;
+  type: string;
+  metadata?: Record<string, unknown>;
+  agentType?: string;
+  message?: Memory;
+};
+
+type TaskResult = {
+  taskId: string;
+  success: boolean;
+  output?: string;
+  artifacts?: Array<{ name: string; path: string; type: string }>;
+  error?: string;
+  durationMs?: number;
+};
+
+type TaskExecutor = {
+  readonly type: string;
+  readonly description: string;
+  canHandle(spec: TaskSpec, runtime: IAgentRuntime): boolean;
+  execute(spec: TaskSpec, runtime: IAgentRuntime): Promise<TaskResult>;
+  abort(taskId: string): Promise<void>;
+};
 
 const CODING_PATTERNS =
   /\b(build|create|make|scaffold|generate|code|implement|develop|fix|debug|refactor|write)\b/i;

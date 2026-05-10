@@ -255,7 +255,8 @@ export const messageHandoffAction: Action = {
     const text = status.active
       ? `Handoff active in this room since ${status.enteredAt} (resume on: ${status.resumeOn?.kind ?? "?"}).`
       : "No handoff active in this room.";
-    await callback?.({ text, data: { verb, roomId, status } });
-    return { text, success: true, data: { verb, roomId, status } };
+    const data = { verb, roomId, status } as any;
+    await callback?.({ text, data });
+    return { text, success: true, data };
   },
 };

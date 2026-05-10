@@ -26,7 +26,7 @@ describe('Webhook Integration Scenarios', () => {
   let server: Server;
   let webhookUrl: string | null = null;
   let webhookPort: number;
-  let receivedWebhooks: any[] = [];
+  let receivedWebhooks: Array<Record<string, unknown>> = [];
   let skipTests = false;
 
   beforeAll(async () => {
@@ -343,8 +343,11 @@ describe('Webhook Integration Scenarios', () => {
 
           // Small delay between webhooks
           await testDelay(500);
-        } catch (error: any) {
-          console.error(`Webhook ${i} failed:`, error.message);
+        } catch (error) {
+          console.error(
+            `Webhook ${i} failed:`,
+            error instanceof Error ? error.message : String(error)
+          );
           // If a webhook fails, wait a bit longer before continuing
           await testDelay(2000);
 
@@ -381,8 +384,11 @@ describe('Webhook Integration Scenarios', () => {
         const healthData = await healthResponse.json();
         expect(healthData.status).toBe('ok');
         expect(healthData.webhooks).toBe(5);
-      } catch (error: any) {
-        console.error('Health check failed:', error.message);
+      } catch (error) {
+        console.error(
+          'Health check failed:',
+          error instanceof Error ? error.message : String(error)
+        );
         // Skip the health check if tunnel is having issues
         console.warn('⚠️  Skipping health check due to tunnel issues');
       }
@@ -394,9 +400,9 @@ describe('Webhook Integration Scenarios', () => {
 // Helper function to send webhooks
 async function sendWebhook(
   url: string,
-  payload: any,
+  payload: unknown,
   headers: Record<string, string> = {}
-): Promise<any> {
+): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
     const data = JSON.stringify(payload);
@@ -440,8 +446,12 @@ async function sendWebhook(
               reject(new Error(`Failed to parse response: ${body.substring(0, 100)}`));
             }
           }
-        } catch (error: any) {
-          reject(new Error(`Response handling error: ${error.message}`));
+        } catch (error) {
+          reject(
+            new Error(
+              `Response handling error: ${error instanceof Error ? error.message : String(error)}`
+            )
+          );
         }
       });
     });

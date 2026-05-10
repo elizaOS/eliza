@@ -18,6 +18,9 @@ export interface BlockRuleTestHarness {
 
 const BOOTSTRAP_STATEMENTS = [
   `CREATE SCHEMA IF NOT EXISTS app_lifeops`,
+  // Block-rule reader/writer reference `life_block_rules` unqualified, so the
+  // test database must include `app_lifeops` on its `search_path`.
+  `SET search_path TO app_lifeops, public`,
   `CREATE TABLE IF NOT EXISTS app_lifeops.life_task_definitions (
     id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,

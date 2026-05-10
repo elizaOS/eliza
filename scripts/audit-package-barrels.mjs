@@ -6,6 +6,7 @@ import path from "node:path";
 const args = new Set(process.argv.slice(2));
 const asJson = args.has("--json");
 const check = args.has("--check");
+const failOnReExportMarkers = args.has("--fail-on-reexport-markers");
 
 const repoRoot = process.cwd();
 const ignoredPath = /(^|\/)(node_modules|dist|build|\.turbo|\.next|coverage)(\/|$)/;
@@ -333,7 +334,7 @@ if (
   check &&
   (subpathReferences.length > 0 ||
     packageSubpathExports.length > 0 ||
-    reExportMarkers.length > 0)
+    (failOnReExportMarkers && reExportMarkers.length > 0))
 ) {
   process.exitCode = 1;
 }

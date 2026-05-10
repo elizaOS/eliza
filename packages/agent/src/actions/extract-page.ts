@@ -10,7 +10,7 @@ import { logger } from "@elizaos/core";
 import {
   extractHostedCloudPage,
   isHostedCloudToolingConfigured,
-} from "../services/hosted-tools.js";
+} from "../services/hosted-tools.ts";
 
 type ExtractPageParameters = {
   formats?: Array<"html" | "links" | "markdown" | "screenshot">;

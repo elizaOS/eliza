@@ -29,17 +29,17 @@ import {
   readJsonBody as parseJsonBody,
   resolveApiBindHost,
 } from "@elizaos/shared";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import type {
   DatabaseConfig,
   DatabaseProviderType,
   PostgresCredentials,
-} from "../config/types.eliza.js";
+} from "../config/types.eliza.ts";
 import {
   isLoopbackHost,
   normalizeHostLike,
   normalizeIpForPolicy,
-} from "../security/network-policy.js";
+} from "../security/network-policy.ts";
 
 // ---------------------------------------------------------------------------
 // Types

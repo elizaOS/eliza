@@ -241,6 +241,16 @@ function jsonlLineToExample(
 
 function resolveAdapter(input: PromptComparisonInput): LlmAdapter {
   if (input.adapter) return input.adapter;
+  // Standing direction: training-side comparison runs on Cerebras
+  // gpt-oss-120b unless the operator passes their own adapter.
+  const trainProvider =
+    process.env.TRAIN_MODEL_PROVIDER?.trim() ?? process.env.TRAINING_PROVIDER?.trim();
+  if (trainProvider === "cerebras") {
+    const { getTrainingUseModelAdapter } = require(
+      "../../../app-lifeops/test/helpers/lifeops-eval-model.ts",
+    ) as typeof import("../../../app-lifeops/test/helpers/lifeops-eval-model.ts");
+    return createRuntimeAdapter(getTrainingUseModelAdapter());
+  }
   if (!input.runtime) {
     throw new Error(
       "[prompt-compare] either `runtime` or `adapter` must be provided",
