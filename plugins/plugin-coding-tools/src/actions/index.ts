@@ -1,7 +1,9 @@
+export { fileAction } from "./file.js";
+export { shellAction, bashAction } from "./bash.js";
+export { worktreeAction } from "./worktree.js";
 export { readAction } from "./read.js";
 export { writeAction } from "./write.js";
 export { editAction } from "./edit.js";
-export { bashAction } from "./bash.js";
 export { grepAction } from "./grep.js";
 export { globAction } from "./glob.js";
 export { lsAction } from "./ls.js";

@@ -268,6 +268,7 @@ declare module "./client-base" {
       agentName: string;
       generated: boolean;
       persisted?: boolean;
+      localInference?: LocalInferenceChatMetadata;
     }>;
     renameConversation(
       id: string,
@@ -797,6 +798,7 @@ ElizaClient.prototype.requestGreeting = async function (
     agentName: string;
     generated: boolean;
     persisted?: boolean;
+    localInference?: LocalInferenceChatMetadata;
   }>(`/api/conversations/${encodeURIComponent(id)}/greeting${qs}`, {
     method: "POST",
   });

@@ -194,6 +194,8 @@ export function AccountCard({
   const health = deriveHealthLabel(account, t);
   const isAnthropic = account.providerId === "anthropic-subscription";
   const isCodex = account.providerId === "openai-codex";
+  const isCodingPlan =
+    account.providerId === "zai-coding" || account.providerId === "kimi-coding";
   const usage = account.usage;
   const lastUsed = formatRelativeTime(account.lastUsedAt);
 
@@ -219,9 +221,13 @@ export function AccountCard({
             })}
           />
           <Badge variant="outline" className="shrink-0 text-[10px] uppercase">
-            {account.source === "oauth"
-              ? t("accounts.source.oauth", { defaultValue: "OAuth" })
-              : t("accounts.source.apiKey", { defaultValue: "API key" })}
+            {isCodingPlan
+              ? t("accounts.source.codingPlan", {
+                  defaultValue: "Coding plan",
+                })
+              : account.source === "oauth"
+                ? t("accounts.source.oauth", { defaultValue: "OAuth" })
+                : t("accounts.source.apiKey", { defaultValue: "API key" })}
           </Badge>
           <span
             className="shrink-0 text-[10px] tabular-nums text-muted"

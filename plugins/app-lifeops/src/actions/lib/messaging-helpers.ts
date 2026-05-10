@@ -68,7 +68,22 @@ export async function dispatchCrossChannelSend(
     case "telegram": {
       try {
         const messagingService = service as LegacyMessagingService;
-        await messagingService.sendTelegramMessage?.({ target, message: body });
+        if (typeof messagingService.sendTelegramMessage === "function") {
+          try {
+            await messagingService.sendTelegramMessage({ target, message: body });
+            return ok(channel, target, body);
+          } catch {
+            // Fall through to the runtime connector path. Test and desktop
+            // runtimes often expose Telegram through sendMessageToTarget rather
+            // than LifeOpsService credentials.
+          }
+        }
+        await args.runtime.sendMessageToTarget(
+          { source: "telegram", channelId: target } as Parameters<
+            typeof args.runtime.sendMessageToTarget
+          >[0],
+          { text: body, source: "telegram" },
+        );
         return ok(channel, target, body);
       } catch (error) {
         return fail(

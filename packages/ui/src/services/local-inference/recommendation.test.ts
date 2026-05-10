@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findCatalogModel } from "./catalog";
+import { DEFAULT_ELIGIBLE_MODEL_IDS, findCatalogModel } from "./catalog";
 import {
   assessCatalogModelFit,
   chooseSmallerFallbackModel,
@@ -24,7 +24,7 @@ function hardware(overrides: Partial<HardwareProbe>): HardwareProbe {
 }
 
 describe("local inference recommendations", () => {
-  it("prefers the largest fitting DFlash target on Linux GPU", () => {
+  it("prefers the largest fitting Eliza-1 tier on Linux GPU", () => {
     const probe = hardware({
       totalRamGb: 64,
       freeRamGb: 48,
@@ -39,11 +39,32 @@ describe("local inference recommendations", () => {
     const recommended = selectRecommendedModels(probe);
 
     expect(classifyRecommendationPlatform(probe)).toBe("linux-gpu");
-    expect(recommended.TEXT_SMALL.model?.id).toBe("qwen3.5-4b-dflash");
-    expect(recommended.TEXT_LARGE.model?.id).toBe("qwen3.6-27b-dflash");
+    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-mobile-1_7b");
+    // assessFit on linux-gpu uses max(VRAM, RAM*0.5) = max(24, 32) = 32.
+    // pro-27b (minRam 32, size 16.8) fits; server-h200 (minRam 96) does
+    // not. Ladder is server → pro → desktop → mobile, picks pro-27b.
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-pro-27b");
   });
 
-  it("uses the mobile ladder and still prefers DFlash when it fits", () => {
+  it("picks the server tier on a >=96 GB-effective workstation", () => {
+    const probe = hardware({
+      totalRamGb: 128,
+      freeRamGb: 96,
+      gpu: {
+        backend: "cuda",
+        totalVramGb: 128,
+        freeVramGb: 110,
+      },
+      source: "node-llama-cpp",
+    });
+
+    const recommended = selectRecommendedModels(probe);
+
+    // effective = max(128, 64) = 128 ≥ server-h200 minRam (96).
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-server-h200");
+  });
+
+  it("uses the mobile ladder and prefers the Eliza-1 mobile tier when it fits", () => {
     const probe = hardware({
       totalRamGb: 8,
       freeRamGb: 5,
@@ -55,30 +76,16 @@ describe("local inference recommendations", () => {
     const recommended = selectRecommendedModels(probe);
 
     expect(classifyRecommendationPlatform(probe)).toBe("mobile");
-    expect(recommended.TEXT_SMALL.model?.id).toBe("qwen3.5-4b-dflash");
-    expect(recommended.TEXT_LARGE.model?.id).toBe("qwen3.5-4b-dflash");
+    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-lite-0_6b");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-mobile-1_7b");
   });
 
-  it("scales iOS pro-class devices to the largest fitting mobile DFlash target", () => {
-    const probe = hardware({
-      totalRamGb: 12,
-      freeRamGb: 8,
-      platform: "ios" as NodeJS.Platform,
-      arch: "arm64",
-      recommendedBucket: "mid",
-    });
-
-    const recommended = selectRecommendedModels(probe);
-
-    expect(classifyRecommendationPlatform(probe)).toBe("mobile");
-    expect(recommended.TEXT_SMALL.model?.id).toBe("qwen3.5-4b-dflash");
-    expect(recommended.TEXT_LARGE.model?.id).toBe("qwen3.5-9b-dflash");
-  });
-
-  it("falls back to the smallest TBQ/DFlash entry on minimal mobile", () => {
+  it("falls back to the lite tier on minimal mobile", () => {
+    // mobile-1_7b needs 4 GB minRam; below that the ladder collapses
+    // to lite-0_6b (2 GB minRam). Below 2 GB nothing fits.
     const cases: Array<[number, string | null]> = [
-      [4.9, "eliza-1-2b"],
-      [3.5, null],
+      [3.5, "eliza-1-lite-0_6b"],
+      [1.5, null],
     ];
 
     for (const [totalRamGb, expectedId] of cases) {
@@ -90,41 +97,117 @@ describe("local inference recommendations", () => {
         recommendedBucket: "small",
       });
 
-      expect(selectRecommendedModels(probe).TEXT_LARGE.model?.id ?? null).toBe(
-        expectedId,
-      );
+      expect(
+        selectRecommendedModels(probe).TEXT_LARGE.model?.id ?? null,
+        `totalRamGb=${totalRamGb}`,
+      ).toBe(expectedId);
     }
   });
 
-  it("rejects mobile DFlash when the target plus drafter exceeds the memory guardrail", () => {
+  it("rejects a tier when its bundle exceeds the mobile memory guardrail", () => {
     const probe = hardware({
-      totalRamGb: 11,
-      freeRamGb: 8,
+      totalRamGb: 6,
+      freeRamGb: 4,
       platform: "ios" as NodeJS.Platform,
       arch: "arm64",
       recommendedBucket: "mid",
     });
-    const model = findCatalogModel("qwen3.5-9b-dflash");
+    const desktop = findCatalogModel("eliza-1-desktop-9b");
 
-    if (!model) throw new Error("qwen3.5-9b-dflash missing from catalog");
-    expect(assessCatalogModelFit(probe, model)).toBe("wontfit");
+    if (!desktop) throw new Error("eliza-1-desktop-9b missing from catalog");
+    expect(assessCatalogModelFit(probe, desktop)).toBe("wontfit");
   });
 
   it("chooses a smaller fitting fallback from the same platform ladder", () => {
+    // linux-gpu host with enough effective memory for desktop-9b
+    // (effective = max(VRAM, RAM*0.5) = max(16, 16) = 16, desktop minRam 12).
     const probe = hardware({
-      totalRamGb: 16,
-      freeRamGb: 10,
+      totalRamGb: 32,
+      freeRamGb: 24,
       platform: "linux",
-      gpu: null,
+      gpu: { backend: "cuda", totalVramGb: 16, freeVramGb: 14 },
+      source: "node-llama-cpp",
       recommendedBucket: "mid",
     });
 
     const fallback = chooseSmallerFallbackModel(
-      "qwen3.6-27b-dflash",
+      "eliza-1-pro-27b",
       probe,
       "TEXT_LARGE",
     );
 
-    expect(fallback?.id).toBe("qwen3.5-4b-dflash");
+    expect(fallback?.id).toBe("eliza-1-desktop-9b");
+  });
+
+  it("ignores binaryKernels for default-eligible Eliza-1 tiers without catalog-level requiresKernel", () => {
+    // Kernel requirements are declared by the published bundle manifest,
+    // not by the visible catalog entry.
+    const probe = hardware({
+      totalRamGb: 64,
+      freeRamGb: 48,
+      gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 22 },
+      source: "node-llama-cpp",
+    });
+
+    const stockBinary = {
+      dflash: false,
+      turbo3: false,
+      turbo4: false,
+      turbo3_tcq: false,
+      qjl_full: false,
+      lookahead: true,
+      ngramDraft: true,
+    };
+
+    const recommended = selectRecommendedModels(probe, undefined, {
+      binaryKernels: stockBinary,
+    });
+
+    expect(recommended.TEXT_SMALL.model?.id).toMatch(/^eliza-1-/);
+    expect(recommended.TEXT_LARGE.model?.id).toMatch(/^eliza-1-/);
+  });
+
+  it("recommended entries are always default-eligible", () => {
+    const probe = hardware({
+      totalRamGb: 64,
+      freeRamGb: 48,
+      gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 22 },
+      source: "node-llama-cpp",
+    });
+
+    const recommended = selectRecommendedModels(probe);
+    expect(
+      DEFAULT_ELIGIBLE_MODEL_IDS.has(recommended.TEXT_SMALL.model!.id),
+    ).toBe(true);
+    expect(
+      DEFAULT_ELIGIBLE_MODEL_IDS.has(recommended.TEXT_LARGE.model!.id),
+    ).toBe(true);
+  });
+
+  it("prefers long-context entries within the ladder on hosts with >= 16 GB RAM/VRAM", () => {
+    // Workstation-class host should land on a tier with >= 64k context.
+    const probe = hardware({
+      totalRamGb: 64,
+      freeRamGb: 48,
+      gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 22 },
+      source: "node-llama-cpp",
+    });
+    const recommended = selectRecommendedModels(probe);
+    const top = recommended.TEXT_LARGE.alternatives[0];
+    expect(top?.contextLength ?? 0).toBeGreaterThanOrEqual(65536);
+  });
+
+  it("does NOT prefer long-context entries on memory-constrained hosts", () => {
+    // 12 GB RAM, no GPU — ladder ordering is the catalog default and
+    // the long-context bump should NOT kick in.
+    const probe = hardware({
+      totalRamGb: 12,
+      freeRamGb: 6,
+      gpu: null,
+      recommendedBucket: "small",
+      source: "os-fallback",
+    });
+    const recommended = selectRecommendedModels(probe);
+    expect(recommended.TEXT_SMALL.model).toBeTruthy();
   });
 });

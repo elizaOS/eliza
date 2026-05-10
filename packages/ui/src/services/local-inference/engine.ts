@@ -16,6 +16,7 @@
  * instead of crashing the process.
  */
 
+import type { LocalInferenceLoadArgs } from "./active-model";
 import { findCatalogModel } from "./catalog";
 import {
   type DflashServerPlan,
@@ -26,6 +27,10 @@ import {
 import { listInstalledModels } from "./registry";
 
 const NODE_LLAMA_CPP_MODULE_ID = "node-llama-cpp";
+
+function normalizeKvCacheTypeForBinding(name: string): string {
+  return name.trim().toUpperCase();
+}
 
 export interface GenerateArgs {
   prompt: string;
@@ -72,7 +77,12 @@ interface LlamaChatSessionCtor {
 }
 
 interface LlamaModel {
-  createContext(args?: { contextSize?: number }): Promise<LlamaContext>;
+  createContext(args?: {
+    contextSize?: number | "auto" | { min?: number; max?: number };
+    flashAttention?: boolean;
+    experimentalKvCacheKeyType?: string;
+    experimentalKvCacheValueType?: string;
+  }): Promise<LlamaContext>;
   dispose(): Promise<void>;
 }
 
@@ -80,6 +90,9 @@ interface Llama {
   loadModel(args: {
     modelPath: string;
     gpuLayers?: number | "max" | "auto";
+    useMmap?: boolean;
+    useMlock?: boolean;
+    defaultContextFlashAttention?: boolean;
   }): Promise<LlamaModel>;
 }
 
@@ -143,7 +156,10 @@ export class LocalInferenceEngine {
     await model.dispose();
   }
 
-  async load(modelPath: string): Promise<void> {
+  async load(
+    modelPath: string,
+    resolved?: LocalInferenceLoadArgs,
+  ): Promise<void> {
     if (this.loadedPath === modelPath && this.loadedModel) return;
     if (dflashLlamaServer.currentModelPath() === modelPath) return;
 
@@ -178,9 +194,21 @@ export class LocalInferenceEngine {
 
     const model = await this.llama.loadModel({
       modelPath,
-      gpuLayers: "auto",
+      gpuLayers: resolved?.gpuLayers ?? "auto",
+      useMmap: resolved?.mmap,
+      useMlock: resolved?.mlock,
+      defaultContextFlashAttention: resolved?.flashAttention,
     });
-    const context = await model.createContext();
+    const context = await model.createContext({
+      contextSize: resolved?.contextSize,
+      flashAttention: resolved?.flashAttention,
+      experimentalKvCacheKeyType: resolved?.cacheTypeK
+        ? normalizeKvCacheTypeForBinding(resolved.cacheTypeK)
+        : undefined,
+      experimentalKvCacheValueType: resolved?.cacheTypeV
+        ? normalizeKvCacheTypeForBinding(resolved.cacheTypeV)
+        : undefined,
+    });
     const sequence = context.getSequence();
     const session = new this.bindingModule.LlamaChatSession({
       contextSequence: sequence,

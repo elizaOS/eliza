@@ -3,6 +3,7 @@ export type PricingProductFamily =
   | "embedding"
   | "image"
   | "video"
+  | "music"
   | "tts"
   | "stt"
   | "voice_clone";
@@ -15,7 +16,8 @@ export type PricingBillingSource =
   | "openai"
   | "anthropic"
   | "fal"
-  | "elevenlabs";
+  | "elevenlabs"
+  | "suno";
 
 export type PricingChargeUnit =
   | "token"
@@ -165,11 +167,38 @@ export interface SupportedVideoModelDefinition {
   };
 }
 
+export interface SupportedMusicModelDefinition {
+  modelId: string;
+  provider: "fal" | "elevenlabs" | "suno";
+  billingSource: "fal" | "elevenlabs" | "suno";
+  label: string;
+  pageUrl: string;
+  defaultParameters: {
+    durationSeconds: number;
+  };
+}
+
+export interface MusicSnapshotEntry {
+  modelId: string;
+  provider: "fal" | "elevenlabs" | "suno";
+  billingSource: "fal" | "elevenlabs" | "suno";
+  productFamily: "music";
+  chargeType: string;
+  unit: PricingChargeUnit;
+  unitPrice: number;
+  sourceUrl: string;
+  dimensions?: Record<string, string | number | boolean | null>;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ElevenLabsSnapshotEntry {
   modelId: string;
   provider: "elevenlabs";
   billingSource: "elevenlabs";
-  productFamily: Exclude<PricingProductFamily, "language" | "embedding" | "image" | "video">;
+  productFamily: Exclude<
+    PricingProductFamily,
+    "language" | "embedding" | "image" | "video" | "music"
+  >;
   chargeType: string;
   unit: PricingChargeUnit;
   unitPrice: number;
@@ -433,6 +462,84 @@ export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
   },
 ] as const;
 
+export const SUPPORTED_MUSIC_MODELS: SupportedMusicModelDefinition[] = [
+  {
+    modelId: "fal-ai/minimax-music/v2.6",
+    provider: "fal",
+    billingSource: "fal",
+    label: "MiniMax Music 2.6",
+    pageUrl: "https://fal.ai/models/fal-ai/minimax-music/v2.6/api",
+    defaultParameters: {
+      durationSeconds: 60,
+    },
+  },
+  {
+    modelId: "elevenlabs/music_v1",
+    provider: "elevenlabs",
+    billingSource: "elevenlabs",
+    label: "ElevenLabs Music v1",
+    pageUrl: "https://elevenlabs.io/docs/api-reference/music/compose",
+    defaultParameters: {
+      durationSeconds: 60,
+    },
+  },
+  {
+    modelId: "suno/default",
+    provider: "suno",
+    billingSource: "suno",
+    label: "Suno-compatible provider",
+    pageUrl: "https://docs.sunoapi.org/suno-api/generate-music/",
+    defaultParameters: {
+      durationSeconds: 120,
+    },
+  },
+] as const;
+
+export const MUSIC_SNAPSHOT_PRICING: MusicSnapshotEntry[] = [
+  {
+    modelId: "fal-ai/minimax-music/v2.6",
+    provider: "fal",
+    billingSource: "fal",
+    productFamily: "music",
+    chargeType: "generation",
+    unit: "minute",
+    unitPrice: 0.1,
+    sourceUrl: "https://fal.ai/models/fal-ai/minimax-music/v2.6/api",
+    metadata: {
+      tier: "manual_override_recommended",
+      note: "Conservative fallback for MiniMax music generation until account-specific Fal pricing is refreshed.",
+    },
+  },
+  {
+    modelId: "elevenlabs/music_v1",
+    provider: "elevenlabs",
+    billingSource: "elevenlabs",
+    productFamily: "music",
+    chargeType: "generation",
+    unit: "minute",
+    unitPrice: 0.25,
+    sourceUrl: "https://elevenlabs.io/docs/api-reference/music/compose",
+    metadata: {
+      tier: "manual_override_recommended",
+      note: "ElevenLabs Music uses plan/download limits; override with account-specific effective cost before production.",
+    },
+  },
+  {
+    modelId: "suno/default",
+    provider: "suno",
+    billingSource: "suno",
+    productFamily: "music",
+    chargeType: "generation",
+    unit: "request",
+    unitPrice: 0.5,
+    sourceUrl: "https://docs.sunoapi.org/suno-api/generate-music/",
+    metadata: {
+      tier: "manual_override_required",
+      note: "Suno-compatible provider pricing depends on the configured third-party provider.",
+    },
+  },
+] as const;
+
 export const ELEVENLABS_SNAPSHOT_PRICING: ElevenLabsSnapshotEntry[] = [
   {
     modelId: "elevenlabs/eleven_flash_v2_5",
@@ -550,6 +657,7 @@ export const ELEVENLABS_SNAPSHOT_PRICING: ElevenLabsSnapshotEntry[] = [
 
 export const SUPPORTED_VIDEO_MODEL_IDS = SUPPORTED_VIDEO_MODELS.map((model) => model.modelId);
 export const SUPPORTED_IMAGE_MODEL_IDS = SUPPORTED_IMAGE_MODELS.map((model) => model.modelId);
+export const SUPPORTED_MUSIC_MODEL_IDS = SUPPORTED_MUSIC_MODELS.map((model) => model.modelId);
 
 export function getSupportedVideoModelDefinition(modelId: string) {
   return SUPPORTED_VIDEO_MODELS.find((model) => model.modelId === modelId);
@@ -557,4 +665,8 @@ export function getSupportedVideoModelDefinition(modelId: string) {
 
 export function getSupportedImageModelDefinition(modelId: string) {
   return SUPPORTED_IMAGE_MODELS.find((model) => model.modelId === modelId);
+}
+
+export function getSupportedMusicModelDefinition(modelId: string) {
+  return SUPPORTED_MUSIC_MODELS.find((model) => model.modelId === modelId);
 }

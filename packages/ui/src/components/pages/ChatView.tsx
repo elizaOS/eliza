@@ -28,6 +28,7 @@ import { fetchWithCsrf } from "../../api/csrf-client";
 import { isRoutineCodingAgentMessage } from "../../chat";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
+import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
 import {
   CodingAgentControlChip,
   PtyConsoleBase,
@@ -253,8 +254,11 @@ export function ChatView({
   // user hit send. Surfaced as a composer lock + a pointer to Settings.
   const agentModel =
     typeof agentStatus?.model === "string" ? agentStatus.model.trim() : "";
+  const isMobileLocalRuntime = readPersistedMobileRuntimeMode() === "local";
   const isMissingInferenceProvider =
-    agentStatus?.state === "running" && agentModel.length === 0;
+    agentStatus?.state === "running" &&
+    agentModel.length === 0 &&
+    !isMobileLocalRuntime;
   const isComposerLocked =
     (isAgentStarting && !hasCompletedLifecycleActivity) ||
     isMissingInferenceProvider;

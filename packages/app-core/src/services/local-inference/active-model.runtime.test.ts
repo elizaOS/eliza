@@ -69,23 +69,22 @@ function findFirstExistingPath(candidates: string[]): string | null {
 }
 
 /**
- * Locate a small GGUF that we can load quickly. Prefer the bundled
- * SmolLM2-360M (small, well-known) but fall back to any reasonable
- * 1B-class quant available in the standard model directories.
+ * Locate an Eliza-1 GGUF that we can load quickly from the standard
+ * local model directories.
  */
 function findTestGguf(): string | null {
   const home = os.homedir();
   return findFirstExistingPath([
     path.join(
       home,
-      ".eliza/local-inference/models/SmolLM2-360M-Instruct-Q4_K_M.gguf",
+      ".eliza/local-inference/models/eliza-1-lite-0_6b-32k.gguf",
     ),
     path.join(
       home,
-      ".milady/local-inference/models/SmolLM2-360M-Instruct-Q4_K_M.gguf",
+      ".milady/local-inference/models/eliza-1-lite-0_6b-32k.gguf",
     ),
-    path.join(home, ".eliza/models/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"),
-    path.join(home, ".eliza/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf"),
+    path.join(home, ".eliza/models/eliza-1-lite-0_6b-32k.gguf"),
+    path.join(home, ".eliza/models/eliza-1-mobile-1_7b-32k.gguf"),
   ]);
 }
 

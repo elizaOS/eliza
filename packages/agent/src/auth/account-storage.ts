@@ -20,6 +20,7 @@ import {
   type AccountCredentialProvider,
   isSubscriptionProvider,
   type OAuthCredentials,
+  SUBSCRIPTION_PROVIDER_IDS,
   type SubscriptionProvider,
 } from "./types.ts";
 
@@ -184,12 +185,8 @@ export function migrateLegacySingleAccount(): {
   migrated: SubscriptionProvider[];
 } {
   migrationRunAtLeastOnce = true;
-  const providers: SubscriptionProvider[] = [
-    "anthropic-subscription",
-    "openai-codex",
-  ];
   const migrated: SubscriptionProvider[] = [];
-  for (const p of providers) {
+  for (const p of SUBSCRIPTION_PROVIDER_IDS) {
     if (migrateProvider(p)) migrated.push(p);
   }
   return { migrated };

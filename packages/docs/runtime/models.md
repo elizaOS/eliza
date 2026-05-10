@@ -64,7 +64,7 @@ The primary model is stored in `agents.defaults.model.primary` as a `"provider/m
     "defaults": {
       "model": {
         "primary": "anthropic/claude-sonnet-4.6",
-        "fallbacks": ["openai/gpt-5", "groq/llama-3-70b"]
+        "fallbacks": ["openai/gpt-5", "groq/openai/gpt-oss-120b"]
       }
     }
   }

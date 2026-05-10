@@ -433,6 +433,9 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
                   text: data.text,
                   timestamp: Date.now(),
                   source: "agent_greeting",
+                  ...(data.localInference
+                    ? { localInference: data.localInference }
+                    : {}),
                 },
               ];
             });
@@ -610,6 +613,9 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
               text: greetingText,
               timestamp: Date.now(),
               source: "agent_greeting",
+              ...(inlineGreeting?.localInference
+                ? { localInference: inlineGreeting.localInference }
+                : {}),
             },
           ];
           greetingFiredRef.current = true;
@@ -800,6 +806,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         setCompanionMessageCutoffTs(nextCutoffTs);
         // Try inline greeting first; fall back to dedicated greeting endpoint
         let greetingText = inlineGreeting?.text?.trim() || "";
+        let greetingLocalInference = inlineGreeting?.localInference;
         if (!greetingText) {
           try {
             const resp = await client.requestGreeting(
@@ -807,6 +814,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
               uiLanguage,
             );
             greetingText = resp.text?.trim() || "";
+            greetingLocalInference = resp.localInference;
           } catch {
             // Greeting generation failed — continue without greeting
           }
@@ -821,6 +829,9 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
               text: greetingText,
               timestamp: Date.now(),
               source: "agent_greeting",
+              ...(greetingLocalInference
+                ? { localInference: greetingLocalInference }
+                : {}),
             },
           ];
           conversationMessagesRef.current = initMessages;

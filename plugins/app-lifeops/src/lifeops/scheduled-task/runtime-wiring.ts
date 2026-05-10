@@ -7,16 +7,29 @@
  * `RelationshipStore`, and connector / channel registries.
  */
 
+import crypto from "node:crypto";
+import { getAgentEventService } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 
 import { getChannelRegistry } from "../channels/index.js";
+import type { DispatchResult } from "../connectors/contract.js";
+import {
+  ownerFactsToView,
+  resolveOwnerFactStore,
+} from "../owner/fact-store.js";
+import {
+  createAnchorRegistry,
+  getAnchorRegistry,
+  registerAppLifeOpsAnchors,
+  registerAnchorRegistry,
+} from "../registries/anchor-registry.js";
 import { LifeOpsRepository } from "../repository.js";
+import { getSendPolicyRegistry } from "../send-policy/index.js";
 import {
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,
 } from "./completion-check-registry.js";
 import {
-  createAnchorRegistry,
   createConsolidationRegistry,
   registerStubAnchors,
 } from "./consolidation-policy.js";
@@ -43,6 +56,10 @@ import type {
   ScheduledTaskLogEntry,
   SubjectStoreView,
 } from "./types.js";
+import type {
+  ScheduledTaskDispatcher,
+  ScheduledTaskDispatchRecord,
+} from "./runner.js";
 
 interface RepositoryBackedStores {
   store: ScheduledTaskStore;
@@ -114,12 +131,13 @@ function makeRepositoryBackedStores(
   };
 }
 
-/**
- * Stub `OwnerFactsView` provider — returns an empty view so gates that
- * depend on owner facts no-op-allow.
- */
-function defaultOwnerFactsProvider(): () => Promise<OwnerFactsView> {
-  return async () => ({});
+function defaultOwnerFactsProvider(
+  runtime: IAgentRuntime,
+): () => Promise<OwnerFactsView> {
+  return async () => {
+    const store = resolveOwnerFactStore(runtime);
+    return ownerFactsToView(await store.read());
+  };
 }
 
 /** Stub `GlobalPauseView` — defaults to inactive. */
@@ -146,6 +164,142 @@ const noopSubjectStore: SubjectStoreView = {
   },
 };
 
+function normalizeChannelTarget(
+  channelKey: string,
+  target: string | undefined,
+): string | undefined {
+  if (!target) return undefined;
+  const prefix = `${channelKey}:`;
+  return target.startsWith(prefix) ? target.slice(prefix.length) : target;
+}
+
+function deniedDecisionToDispatchResult(
+  decision: Awaited<
+    ReturnType<NonNullable<ReturnType<typeof getSendPolicyRegistry>>["evaluate"]>
+  >,
+): DispatchResult | null {
+  if (decision.kind === "allow") return null;
+  if (decision.kind === "deny") {
+    return (
+      decision.asDispatchResult ?? {
+        ok: false,
+        reason: "auth_expired",
+        userActionable: decision.userActionable,
+        message: decision.reason,
+      }
+    );
+  }
+  return {
+    ok: false,
+    reason: "auth_expired",
+    userActionable: true,
+    message: decision.reason ?? "Send requires approval.",
+  };
+}
+
+export function createProductionScheduledTaskDispatcher(opts: {
+  runtime: IAgentRuntime;
+}): ScheduledTaskDispatcher {
+  return {
+    async dispatch(record: ScheduledTaskDispatchRecord): Promise<DispatchResult> {
+      const registry = getChannelRegistry(opts.runtime);
+      const channel = registry?.get(record.channelKey) ?? null;
+      if (!channel?.send) {
+        if (
+          record.channelKey === "in_app" ||
+          record.channelKey === "push" ||
+          record.output?.destination === "in_app_card"
+        ) {
+          const eventService = getAgentEventService(opts.runtime) as {
+            emit?: (event: {
+              runId: string;
+              stream: string;
+              data: Record<string, unknown>;
+              agentId?: string;
+            }) => void;
+          } | null;
+          eventService?.emit?.({
+            runId: crypto.randomUUID(),
+            stream: "assistant",
+            agentId: opts.runtime.agentId,
+            data: {
+              text: record.promptInstructions,
+              source: "lifeops-scheduled-task",
+              taskId: record.taskId,
+              firedAtIso: record.firedAtIso,
+              channelKey: record.channelKey,
+              target: normalizeChannelTarget(
+                record.channelKey,
+                record.output?.target,
+              ),
+              ...(record.intensity ? { intensity: record.intensity } : {}),
+              ...(record.contextRequest
+                ? { contextRequest: record.contextRequest }
+                : {}),
+            },
+          });
+          return {
+            ok: true,
+            messageId: `in_app:${record.taskId}:${record.firedAtIso}`,
+          };
+        }
+        return {
+          ok: false,
+          reason: "disconnected",
+          userActionable: true,
+          message: `Channel "${record.channelKey}" is not connected for send.`,
+        };
+      }
+
+      const payload = {
+        target: normalizeChannelTarget(
+          record.channelKey,
+          record.output?.target ?? record.channelKey,
+        ),
+        message: record.promptInstructions,
+        metadata: {
+          taskId: record.taskId,
+          firedAtIso: record.firedAtIso,
+          ...(record.intensity ? { intensity: record.intensity } : {}),
+          ...(record.contextRequest
+            ? { contextRequest: record.contextRequest }
+            : {}),
+          ...(record.consolidationBatchId
+            ? { consolidationBatchId: record.consolidationBatchId }
+            : {}),
+        },
+      };
+
+      const sendPolicies = getSendPolicyRegistry(opts.runtime);
+      const policyDecision = await sendPolicies?.evaluate({
+        source: { kind: "channel", key: record.channelKey },
+        capability: "send",
+        payload,
+        taskId: record.taskId,
+      });
+      if (policyDecision) {
+        const denied = deniedDecisionToDispatchResult(policyDecision);
+        if (denied) return denied;
+      }
+
+      return channel.send(payload);
+    },
+  };
+}
+
+function resolveRuntimeAnchorRegistry(runtime: IAgentRuntime) {
+  const existing = getAnchorRegistry(runtime);
+  if (existing) {
+    registerStubAnchors(existing);
+    return existing;
+  }
+  const registry = createAnchorRegistry();
+  registerAppLifeOpsAnchors(registry);
+  registerStubAnchors(registry);
+  registerAnchorRegistry(runtime, registry);
+  return registry;
+}
+
 export interface CreateRuntimeRunnerOptions {
   runtime: IAgentRuntime;
   agentId: string;
@@ -170,8 +324,7 @@ export function createRuntimeScheduledTaskRunner(
   const ladders = createEscalationLadderRegistry();
   registerDefaultEscalationLadders(ladders);
 
-  const anchors = createAnchorRegistry();
-  registerStubAnchors(anchors);
+  const anchors = resolveRuntimeAnchorRegistry(opts.runtime);
 
   const consolidation = createConsolidationRegistry();
 
@@ -184,7 +337,7 @@ export function createRuntimeScheduledTaskRunner(
     ladders,
     anchors,
     consolidation,
-    ownerFacts: opts.ownerFacts ?? defaultOwnerFactsProvider(),
+    ownerFacts: opts.ownerFacts ?? defaultOwnerFactsProvider(opts.runtime),
     globalPause: opts.globalPause ?? noopGlobalPause,
     activity: opts.activity ?? noopActivityBus,
     subjectStore: opts.subjectStore ?? noopSubjectStore,
@@ -193,5 +346,8 @@ export function createRuntimeScheduledTaskRunner(
       if (!registry) return new Set();
       return new Set(registry.list().map((c) => c.kind));
     },
+    dispatcher: createProductionScheduledTaskDispatcher({
+      runtime: opts.runtime,
+    }),
   });
 }

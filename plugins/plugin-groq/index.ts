@@ -44,7 +44,7 @@ const _globalThis = globalThis as typeof globalThis & {
   Buffer?: RuntimeBufferConstructor;
 };
 _globalThis.AI_SDK_LOG_WARNINGS ??= false;
-const DEFAULT_SMALL_MODEL = "openai/gpt-oss-20b";
+const DEFAULT_SMALL_MODEL = "openai/gpt-oss-120b";
 const DEFAULT_LARGE_MODEL = "openai/gpt-oss-120b";
 const DEFAULT_TTS_MODEL = "canopylabs/orpheus-v1-english";
 const DEFAULT_TTS_VOICE = "autumn";
@@ -588,7 +588,7 @@ function getTextModelForType(runtime: IAgentRuntime, modelType: string): string 
 
 export const groqPlugin: Plugin = {
   name: "groq",
-  description: "Groq LLM provider - fast inference with Llama and other models",
+  description: "Groq LLM provider - fast inference with GPT-OSS models",
   autoEnable: {
     envKeys: ["GROQ_API_KEY"],
   },

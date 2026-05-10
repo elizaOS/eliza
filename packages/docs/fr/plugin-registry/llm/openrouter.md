@@ -120,7 +120,6 @@ OpenRouter fournit l'accès aux modèles de tous les principaux fournisseurs. Ut
 
 | ID du modèle | Description |
 |--------------|-------------|
-| `meta-llama/llama-3.3-70b-instruct` | Llama 3.3 70B |
 | `meta-llama/llama-3.1-405b-instruct` | Llama 3.1 405B |
 
 <div id="google-via-openrouter">

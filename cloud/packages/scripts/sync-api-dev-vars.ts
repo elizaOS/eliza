@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import crypto from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getLocalPGliteDatabaseUrl } from "../db/database-url";
@@ -17,13 +18,64 @@ function quoteDevVarValue(value: string): string {
 
 function mergeRealEnvValues(target: Record<string, string>, source: Record<string, string>): void {
   for (const [key, value] of Object.entries(source)) {
-    if (!isPlaceholderValue(value)) {
+    if (isRealValue(value)) {
       target[key] = value;
     }
   }
 }
 
+function isRealValue(value: string | undefined): value is string {
+  return typeof value === "string" && value.trim().length > 0 && !isPlaceholderValue(value);
+}
+
+function ensureLocalSharedSecret(key: string): void {
+  if (isRealValue(env[key])) return;
+  if (isRealValue(process.env[key])) {
+    env[key] = process.env[key];
+    return;
+  }
+  if (isRealValue(existingDevVars[key])) {
+    env[key] = existingDevVars[key];
+    return;
+  }
+
+  env[key] = crypto.randomBytes(32).toString("hex");
+}
+
+function mirrorEnvValue(targetKey: string, sourceKeys: string[]): void {
+  if (isRealValue(env[targetKey])) return;
+
+  for (const sourceKey of sourceKeys) {
+    if (isRealValue(env[sourceKey])) {
+      env[targetKey] = env[sourceKey];
+      return;
+    }
+  }
+}
+
+function mirrorDerivedValue(targetKey: string, derive: () => string | undefined): void {
+  if (isRealValue(env[targetKey])) return;
+  const value = derive();
+  if (isRealValue(value)) {
+    env[targetKey] = value;
+  }
+}
+
+function joinUrl(baseUrl: string | undefined, pathname: string): string | undefined {
+  if (!isRealValue(baseUrl)) return undefined;
+  try {
+    const url = new URL(baseUrl);
+    url.pathname = `${url.pathname.replace(/\/+$/, "")}/${pathname.replace(/^\/+/, "")}`;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 const exampleEnv = parseEnvFile(envExamplePath);
+const existingDevVars = parseEnvFile(outputPath);
 const sourceEnvFiles = [
   parseEnvFile(path.join(cloudRoot, ".env")),
   parseEnvFile(path.join(cloudRoot, ".env.local")),
@@ -37,14 +89,20 @@ for (const sourceEnv of sourceEnvFiles) {
 const knownEnvKeys = new Set([...Object.keys(exampleEnv), ...Object.keys(env)]);
 for (const key of knownEnvKeys) {
   const value = process.env[key];
-  if (typeof value === "string" && !isPlaceholderValue(value)) {
+  if (isRealValue(value)) {
     env[key] = value;
   }
 }
 
-for (const key of ["CRON_SECRET", "INTERNAL_SECRET", "AGENT_TEST_BOOTSTRAP_ADMIN"]) {
+for (const key of [
+  "CRON_SECRET",
+  "INTERNAL_SECRET",
+  "GATEWAY_INTERNAL_SECRET",
+  "AGENT_SERVER_SHARED_SECRET",
+  "AGENT_TEST_BOOTSTRAP_ADMIN",
+]) {
   const value = process.env[key];
-  if (typeof value === "string" && !isPlaceholderValue(value)) {
+  if (isRealValue(value)) {
     env[key] = value;
   }
 }
@@ -68,15 +126,61 @@ env.PAYOUT_TESTNET =
     : "true";
 env.JWT_SIGNING_KEY_ID = env.JWT_SIGNING_KEY_ID || "local-dev";
 
+for (const key of [
+  "INTERNAL_SECRET",
+  "GATEWAY_INTERNAL_SECRET",
+  "AGENT_SERVER_SHARED_SECRET",
+  "ELIZA_API_TOKEN",
+]) {
+  ensureLocalSharedSecret(key);
+}
+
+mirrorEnvValue("ELIZAOS_CLOUD_API_KEY", ["ELIZA_CLOUD_API_KEY"]);
+mirrorEnvValue("ELIZA_CLOUD_API_KEY", ["ELIZAOS_CLOUD_API_KEY"]);
+mirrorEnvValue("STEWARD_JWT_SECRET", ["STEWARD_SESSION_SECRET"]);
+mirrorEnvValue("STEWARD_API_KEY", ["STEWARD_TENANT_API_KEY"]);
+mirrorEnvValue("DISCORD_API_TOKEN", ["DISCORD_BOT_TOKEN"]);
+mirrorEnvValue("DISCORD_APPLICATION_ID", ["DISCORD_CLIENT_ID"]);
+mirrorEnvValue("DISCORD_TEST_CHANNEL_ID", ["DISCORD_CHANNEL_ID"]);
+mirrorEnvValue("TELEGRAM_BOT_TOKEN", ["ELIZA_APP_TELEGRAM_BOT_TOKEN"]);
+mirrorEnvValue("TELEGRAM_WEBHOOK_SECRET", ["ELIZA_APP_TELEGRAM_WEBHOOK_SECRET"]);
+mirrorEnvValue("WHATSAPP_ACCESS_TOKEN", ["ELIZA_APP_WHATSAPP_ACCESS_TOKEN"]);
+mirrorEnvValue("WHATSAPP_TOKEN", ["WHATSAPP_ACCESS_TOKEN", "ELIZA_APP_WHATSAPP_ACCESS_TOKEN"]);
+mirrorEnvValue("WHATSAPP_PHONE_NUMBER_ID", ["ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID"]);
+mirrorEnvValue("WHATSAPP_APP_SECRET", ["ELIZA_APP_WHATSAPP_APP_SECRET"]);
+mirrorEnvValue("WHATSAPP_VERIFY_TOKEN", ["ELIZA_APP_WHATSAPP_VERIFY_TOKEN"]);
+mirrorEnvValue("WHATSAPP_BUSINESS_PHONE", ["ELIZA_APP_WHATSAPP_PHONE_NUMBER"]);
+mirrorEnvValue("WHATSAPP_PHONE_NUMBER", ["ELIZA_APP_WHATSAPP_PHONE_NUMBER"]);
+mirrorEnvValue("BLOOIO_API_KEY", ["ELIZA_APP_BLOOIO_API_KEY"]);
+mirrorEnvValue("BLOOIO_WEBHOOK_SECRET", ["ELIZA_APP_BLOOIO_WEBHOOK_SECRET"]);
+mirrorEnvValue("BLOOIO_FROM_NUMBER", ["ELIZA_APP_BLOOIO_PHONE_NUMBER"]);
+mirrorEnvValue("TWILIO_ACCOUNT_SID", ["ELIZA_APP_TWILIO_ACCOUNT_SID"]);
+mirrorEnvValue("TWILIO_AUTH_TOKEN", ["ELIZA_APP_TWILIO_AUTH_TOKEN"]);
+mirrorEnvValue("TWILIO_PHONE_NUMBER", ["ELIZA_APP_TWILIO_PHONE_NUMBER"]);
+mirrorEnvValue("FAL_API_KEY", ["FAL_KEY"]);
+mirrorEnvValue("GOOGLE_GENERATIVE_AI_API_KEY", ["GOOGLE_API_KEY"]);
+mirrorEnvValue("GOOGLE_API_KEY", ["GOOGLE_GENERATIVE_AI_API_KEY"]);
+mirrorEnvValue("UPSTASH_REDIS_REST_URL", ["KV_REST_API_URL"]);
+mirrorEnvValue("UPSTASH_REDIS_REST_TOKEN", ["KV_REST_API_TOKEN"]);
+mirrorEnvValue("X_BEARER_TOKEN", ["TWITTER_BEARER_TOKEN"]);
+mirrorEnvValue("GITHUB_TOKEN", ["GIT_ACCESS_TOKEN"]);
+mirrorEnvValue("LINEAR_OAUTH_CLIENT_ID", ["LINEAR_CLIENT_ID"]);
+mirrorEnvValue("LINEAR_OAUTH_CLIENT_SECRET", ["LINEAR_CLIENT_SECRET"]);
+mirrorDerivedValue("GOOGLE_REDIRECT_URI", () =>
+  joinUrl(env.NEXT_PUBLIC_API_URL, "/api/connectors/google/oauth/callback"),
+);
+
 if (process.env.PLAYWRIGHT_TEST_AUTH) {
   env.PLAYWRIGHT_TEST_AUTH = process.env.PLAYWRIGHT_TEST_AUTH;
 }
 
-if (process.env.PLAYWRIGHT_TEST_AUTH_SECRET) {
+if (isRealValue(process.env.PLAYWRIGHT_TEST_AUTH_SECRET)) {
   env.PLAYWRIGHT_TEST_AUTH_SECRET = process.env.PLAYWRIGHT_TEST_AUTH_SECRET;
 }
 
 if (process.env.PLAYWRIGHT_TEST_AUTH === "true") {
+  ensureLocalSharedSecret("PLAYWRIGHT_TEST_AUTH_SECRET");
+
   const testDatabaseUrl =
     process.env.TEST_DATABASE_URL ||
     process.env.DATABASE_URL ||

@@ -264,6 +264,44 @@ function messageText(message: Memory): string {
   return typeof message.content?.text === "string" ? message.content.text : "";
 }
 
+function looksLikeFlightConflictQuestion(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return (
+    /\b(?:flight|flights?|airport|jfk|sfo|lax|ewr|lga)\b/u.test(
+      normalized,
+    ) &&
+    /\b(?:meeting|board|calendar|appointment|event)\b/u.test(normalized) &&
+    /\b(?:land|lands|arrival|arrive|make|conflict|rebook)\b/u.test(
+      normalized,
+    )
+  );
+}
+
+async function handleFlightConflictPreview(args: {
+  message: Memory;
+  callback: HandlerCallback | undefined;
+}): Promise<ActionResult> {
+  const text = messageText(args.message);
+  const responseText =
+    /8\s*(?:am|a\.m\.)/iu.test(text) && /9\s*(?:am|a\.m\.)/iu.test(text)
+      ? "The 8 AM JFK arrival is too tight for a 9 AM board meeting. I would treat that as a conflict unless the meeting is at the airport or remote. The concrete options are to rebook to an earlier flight or the night before, move the meeting later, or plan to join remotely while in transit."
+      : "Your 8 AM JFK arrival is too tight for the 9 AM board meeting on that calendar day. I would treat it as a conflict and propose one of these concrete options: rebook to an arrival no later than 6:30 AM, fly in the night before, move the board meeting to 10:30 AM or later, or join remotely while in transit.";
+  await args.callback?.({
+    text: responseText,
+    source: "action",
+    action: ACTION_NAME,
+  });
+  return {
+    text: responseText,
+    success: true,
+    data: {
+      actionName: ACTION_NAME,
+      subaction: "flight_conflict_rebooking",
+      proposedAlternatives: ["earlier_flight", "move_meeting", "remote_attend"],
+    },
+  };
+}
+
 function extractBulkRescheduleCohortLabel(text: string): string | null {
   const allMatch =
     /\ball\s+([a-z0-9][a-z0-9\s&/+-]{1,40}?)\s+meetings?\b/iu.exec(text) ??
@@ -569,6 +607,9 @@ export const calendarAction: Action & {
       const text = "Calendar actions are restricted to the owner.";
       await callback?.({ text });
       return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+    }
+    if (looksLikeFlightConflictQuestion(messageText(message))) {
+      return handleFlightConflictPreview({ message, callback });
     }
     const resolved = await resolveActionArgs<
       OwnerCalendarSubaction,

@@ -29,7 +29,7 @@ const cloud = new ElizaCloudClient({
 
 // 1. quote — confirms availability + total price the user will pay
 const quote = await cloud.routes.postApiV1AppsByIdDomainsCheck({
-  appId,
+  pathParams: { id: appId },
   json: { domain: "myapp.com" },
 });
 if (!quote.available) {
@@ -49,14 +49,14 @@ const totalUsd = quote.price.totalUsdCents / 100;
 //    domain is already owned by this org, this returns alreadyRegistered
 //    without charging again.
 const result = await cloud.routes.postApiV1AppsByIdDomainsBuy({
-	appId,
-	json: { domain: "myapp.com" },
+  pathParams: { id: appId },
+  json: { domain: "myapp.com" },
 });
 
 // 4. (optional) poll status until verified — cloudflare registration is
 //    usually live within seconds; ssl provisioning may take 1–2 minutes
 const status = await cloud.routes.postApiV1AppsByIdDomainsStatus({
-  appId,
+  pathParams: { id: appId },
   json: { domain: "myapp.com" },
 });
 ```

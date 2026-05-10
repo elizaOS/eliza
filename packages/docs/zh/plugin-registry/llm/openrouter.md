@@ -120,7 +120,6 @@ OpenRouter 提供对所有主要提供者模型的访问。使用带有提供者
 
 | 模型 ID | 描述 |
 |---------|------|
-| `meta-llama/llama-3.3-70b-instruct` | Llama 3.3 70B |
 | `meta-llama/llama-3.1-405b-instruct` | Llama 3.1 405B |
 
 <div id="google-via-openrouter">

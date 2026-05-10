@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test vulkan vulkan-spirv metal clean
+.PHONY: all reference-test vulkan vulkan-spirv metal metal-bench cpu-bench bench clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -80,6 +80,42 @@ metal_verify: metal_verify.mm $(REF_OBJ) $(QJL_POLAR_OBJ)
 		-framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics \
 		-lm -o metal_verify
 
+# Metal performance harness (macOS only). Sibling of metal_verify; measures
+# end-to-end GPU latency, CPU wait, and bandwidth utilisation per kernel at
+# production-relevant sizes. Does NOT replace metal_verify — both build
+# independently against the same shader files.
+metal-bench: metal_bench
+metal_bench: metal_bench.mm
+	@which xcrun >/dev/null 2>&1 || { echo "xcrun not found — Metal bench needs macOS Xcode tools."; exit 1; }
+	clang++ $(CXXFLAGS) -ObjC++ -fobjc-arc \
+		metal_bench.mm \
+		-framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics \
+		-lm -o metal_bench
+
+# CPU reference baseline. Single-threaded scalar C, no GPU. Same workload
+# constants as metal_bench so the BENCHMARK doc can join the two tables.
+cpu-bench: cpu_bench
+cpu_bench: cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ)
+	$(CC) $(CFLAGS) -I../reference cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ) -lm -o cpu_bench
+
+# Umbrella: build (and run, into bench_results/) every available bench.
+# CPU bench always runs. Metal bench runs only on macOS with xcrun.
+bench: cpu-bench
+	@mkdir -p bench_results
+	@echo "[bench] running cpu_bench ..."
+	./cpu_bench --runs 3 --warmup 1 --out bench_results/cpu_m4max_2026-05-10.json
+	@if which xcrun >/dev/null 2>&1; then \
+	    echo "[bench] running metal_bench ..." ; \
+	    $(MAKE) metal-bench >/dev/null && \
+	    ./metal_bench --out bench_results/m4max_2026-05-10.json && \
+	    echo "[bench] running metal_bench --mode tgsweep ..." && \
+	    ./metal_bench --mode tgsweep --out bench_results/m4max_tgsweep_2026-05-10.json && \
+	    echo "[bench] running metal_bench --mode fp16ref ..." && \
+	    ./metal_bench --mode fp16ref --out bench_results/m4max_fp16ref_2026-05-10.json ; \
+	else \
+	    echo "[bench] skipping metal_bench (xcrun not found — macOS only)" ; \
+	fi
+
 # Compile the GLSL compute shaders to SPIR-V. The vulkan_verify harness loads
 # .spv files. glslc resolution: prefer system glslc, fall back to the Android
 # NDK's bundled glslc (same path the dflash build script uses).
@@ -115,5 +151,5 @@ else
 endif
 
 clean:
-	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify
+	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify metal_bench cpu_bench
 	rm -f ../vulkan/*.spv

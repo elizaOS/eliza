@@ -138,27 +138,6 @@ export function retrieveActions(
 			stageScores.embedding = roundScore(embedding);
 		}
 
-		// Context-match boost: when the messageHandler picked contexts that
-		// intersect this parent's declared `contexts`, give it a meaningful
-		// additive bump. The boost is large enough to reorder tier-A when a
-		// context-aligned candidate has a comparable raw retrieval score
-		// (e.g. LIFE vs BLOCK both keyword-match "every day" — context says
-		// the user is in tasks/general, so LIFE wins). Capped so a strong
-		// retrieval signal on a context-misaligned action can still surface.
-		const parentContexts = Array.isArray(parent.contexts)
-			? (parent.contexts as readonly unknown[])
-			: [];
-		let contextBoost = 0;
-		if (selectedContextSet.size > 0 && parentContexts.length > 0) {
-			const intersect = parentContexts.some((c) =>
-				selectedContextSet.has(String(c).toLowerCase()),
-			);
-			if (intersect) {
-				contextBoost = 0.3;
-				stageScores.contextMatch = contextBoost;
-			}
-		}
-
 		const baseScore = Math.max(
 			exact,
 			regex,
@@ -167,6 +146,31 @@ export function retrieveActions(
 			embedding > 0 ? 0.25 + embedding * 0.45 : 0,
 			rrf > 0 ? 0.2 + rrf * (isBareSingleTokenQuery ? 0.45 : 0.5) : 0,
 		);
+
+		// Context-match boost: when the messageHandler picked contexts that
+		// intersect this parent's declared `contexts`, give it a meaningful
+		// additive bump. The boost is large enough to reorder tier-A when a
+		// context-aligned candidate has a comparable raw retrieval score
+		// (e.g. LIFE vs BLOCK both keyword-match "every day" — context says
+		// the user is in tasks/general, so LIFE wins). It does not create a
+		// retrieval signal by itself.
+		const parentContexts = Array.isArray(parent.contexts)
+			? (parent.contexts as readonly unknown[])
+			: [];
+		let contextBoost = 0;
+		if (
+			baseScore > 0 &&
+			selectedContextSet.size > 0 &&
+			parentContexts.length > 0
+		) {
+			const intersect = parentContexts.some((c) =>
+				selectedContextSet.has(String(c).toLowerCase()),
+			);
+			if (intersect) {
+				contextBoost = 0.3;
+				stageScores.contextMatch = contextBoost;
+			}
+		}
 		const score = clampScore(baseScore + contextBoost);
 
 		return {

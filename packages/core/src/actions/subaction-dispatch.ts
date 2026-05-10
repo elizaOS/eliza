@@ -13,12 +13,26 @@ export type SubactionHandlerMap<TSubaction extends string, TContext = void> = {
 /**
  * Canonical project-wide discriminator field name for umbrella actions.
  *
- * Umbrella actions previously used a mix of `op`, `action`, `operation`,
- * and `subaction`. The canonical name is now `subaction`. The other names
- * remain accepted as input aliases so cached planner outputs do not break,
- * but new schema documentation, examples, and tests should use `subaction`.
+ * Umbrella actions previously used a mix of `subaction`, `op`, `operation`,
+ * `verb`, and `action`. The canonical name is now `action`. The other names
+ * remain accepted as input aliases so cached planner outputs do not break.
+ *
+ * Some existing parents already use `action` for a second-level choice
+ * (`TASKS` uses `subaction=control` and `action=pause`, for example). Those
+ * parents should keep their legacy discriminator until the nested field can be
+ * renamed; promotion helpers avoid overwriting a declared nested `action`
+ * parameter for this reason.
  */
-export const CANONICAL_SUBACTION_KEY = "subaction" as const;
+export const CANONICAL_SUBACTION_KEY = "action" as const;
+
+export const LEGACY_SUBACTION_KEYS: readonly string[] = [
+	"subaction",
+	"op",
+	"operation",
+	"verb",
+	"subAction",
+	"__subaction",
+];
 
 /**
  * Default ordered list of parameter keys that {@link readSubaction} consults
@@ -27,9 +41,7 @@ export const CANONICAL_SUBACTION_KEY = "subaction" as const;
  */
 export const DEFAULT_SUBACTION_KEYS: readonly string[] = [
 	CANONICAL_SUBACTION_KEY,
-	"op",
-	"action",
-	"operation",
+	...LEGACY_SUBACTION_KEYS,
 ];
 
 export function normalizeSubaction(value: unknown): string | undefined {

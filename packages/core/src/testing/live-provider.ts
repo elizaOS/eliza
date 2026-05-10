@@ -121,8 +121,8 @@ const PROVIDERS: Array<{
 		defaultBaseUrl: "https://api.groq.com/openai/v1",
 		smallModelEnvVar: "GROQ_SMALL_MODEL",
 		largeModelEnvVar: "GROQ_LARGE_MODEL",
-		defaultSmallModel: "llama-3.1-8b-instant",
-		defaultLargeModel: "llama-3.1-8b-instant",
+		defaultSmallModel: "openai/gpt-oss-120b",
+		defaultLargeModel: "openai/gpt-oss-120b",
 	},
 	{
 		name: "openai",

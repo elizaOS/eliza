@@ -40,12 +40,34 @@ export type ModelCategory =
 
 export type LocalRuntimeBackend = "node-llama-cpp" | "llama-server";
 
+export type LocalRuntimeKernel =
+  | "dflash"
+  | "turbo3"
+  | "turbo4"
+  | "turbo3_tcq"
+  | "qjl_full";
+
+export interface LocalRuntimeOptimizations {
+  lookahead?: number;
+  ngramDraft?: { min: number; max: number; minProb: number };
+  parallel?: number;
+  moeOffload?: "cpu" | "none";
+  mlock?: boolean;
+  noMmap?: boolean;
+  mmproj?: string;
+  alias?: string;
+  flashAttention?: boolean;
+  requiresKernel?: LocalRuntimeKernel[];
+}
+
 export interface LocalRuntimeAcceleration {
   /**
    * Prefer out-of-process llama-server over the node binding when the
    * required binary and companion files are available.
    */
   preferredBackend?: LocalRuntimeBackend;
+  /** Optimization knobs declared per-model. */
+  optimizations?: LocalRuntimeOptimizations;
   dflash?: {
     /** Catalog id of the hidden drafter GGUF companion. */
     drafterModelId: string;
@@ -60,7 +82,7 @@ export interface LocalRuntimeAcceleration {
     /** `--n-gpu-layers` and `--n-gpu-layers-draft` defaults. */
     gpuLayers: number | "auto";
     draftGpuLayers: number | "auto";
-    /** Qwen3.5/3.6 DFlash drafters are trained against non-thinking text. */
+    /** Some DFlash drafters are trained against non-thinking text. */
     disableThinking: boolean;
   };
   kvCache?: {
@@ -83,22 +105,15 @@ export interface LocalRuntimeAcceleration {
  * as the catalog grows.
  */
 export type TokenizerFamily =
-  | "qwen3"
-  | "qwen2"
-  | "llama3"
-  | "gpt2"
-  | "smollm2"
-  | "bge"
+  | "eliza1"
   | "sentencepiece"
-  | "deepseekv2"
-  | "mistral"
-  | "gemma";
+  | (string & {});
 
 export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
   id: string;
   displayName: string;
-  /** HuggingFace repo slug, e.g. "bartowski/Llama-3.2-3B-Instruct-GGUF". */
+  /** HuggingFace repo slug, e.g. "elizalabs/eliza-1-mobile-1_7b". */
   hfRepo: string;
   /** Exact GGUF filename in the repo. */
   ggufFile: string;
@@ -117,8 +132,7 @@ export interface CatalogModel {
     | "22B"
     | "24B"
     | "27B"
-    | "32B"
-    | "70B";
+    | "32B";
   quant: string;
   sizeGb: number;
   /** Minimum system RAM (GB) we recommend before offering this model. */
@@ -137,13 +151,13 @@ export interface CatalogModel {
   companionForModelId?: string;
   /** Extra catalog model ids to download alongside this model. */
   companionModelIds?: string[];
+  /** Maximum context length supported by the underlying GGUF, in tokens. */
+  contextLength?: number;
+  /** Default GPU offload strategy for this model. */
+  gpuLayers?: "auto" | number;
   /**
-   * Tokenizer/vocabulary family this GGUF emits. Optional today so existing
-   * non-paired entries do not all need to be backfilled at once, but
-   * **REQUIRED** for any entry that participates in DFlash pairing (target
-   * or drafter): the catalog test guard rejects pairs where target and
-   * drafter `tokenizerFamily` do not match. See
-   * `docs/porting/dflash-drafter-strategy.md`.
+   * Tokenizer/vocabulary family this GGUF emits. Required for any entry
+   * that participates in DFlash pairing.
    */
   tokenizerFamily?: TokenizerFamily;
   /** Runtime-specific acceleration metadata. */
@@ -235,6 +249,10 @@ export interface ActiveModelState {
    */
   status: "idle" | "loading" | "ready" | "error";
   error?: string;
+  loadedContextSize?: number | null;
+  loadedCacheTypeK?: string | null;
+  loadedCacheTypeV?: string | null;
+  loadedGpuLayers?: number | null;
 }
 
 export interface DownloadEvent {

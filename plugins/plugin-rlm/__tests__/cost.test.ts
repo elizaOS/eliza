@@ -29,7 +29,7 @@ describe("MODEL_PRICING", () => {
     expect(MODEL_PRICING.openai).toHaveProperty("gpt-5");
     expect(MODEL_PRICING.openai).toHaveProperty("gpt-5-preview");
     expect(MODEL_PRICING.openai).toHaveProperty("gpt-5-mini");
-    expect(MODEL_PRICING.openai).toHaveProperty("gpt-3.5-turbo");
+    expect(MODEL_PRICING.openai["gpt-3.5-turbo"]).toBeDefined();
   });
 
   it("should have Anthropic models", () => {
@@ -39,13 +39,12 @@ describe("MODEL_PRICING", () => {
   });
 
   it("should have Gemini models", () => {
-    expect(MODEL_PRICING.gemini).toHaveProperty("gemini-2.0-flash-exp");
-    expect(MODEL_PRICING.gemini).toHaveProperty("gemini-1.5-pro");
+    expect(MODEL_PRICING.gemini["gemini-2.0-flash-exp"]).toBeDefined();
+    expect(MODEL_PRICING.gemini["gemini-1.5-pro"]).toBeDefined();
   });
 
   it("should have Groq models", () => {
-    expect(MODEL_PRICING.groq).toHaveProperty("llama-3.1-70b-versatile");
-    expect(MODEL_PRICING.groq).toHaveProperty("mixtral-8x7b-32768");
+    expect(MODEL_PRICING.groq).toHaveProperty("openai/gpt-oss-120b");
   });
 
   it("should have input and output prices for each model", () => {

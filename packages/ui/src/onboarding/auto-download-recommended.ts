@@ -28,22 +28,15 @@
  */
 
 import { client } from "../api";
+import { selectRecommendedModelForSlot } from "../services/local-inference/recommendation";
 import type {
   CatalogModel,
-  ModelBucket,
   ModelHubSnapshot,
 } from "../services/local-inference/types";
 
 const AUTO_DOWNLOAD_MARKER_KEY = "eliza.localInference.autoDownloadAttempted";
 const HEALTH_POLL_INTERVAL_MS = 2_000;
 const HEALTH_POLL_DEADLINE_MS = 5 * 60 * 1000;
-
-const BUCKET_RANK: Record<ModelBucket, number> = {
-  small: 0,
-  mid: 1,
-  large: 2,
-  xl: 3,
-};
 
 function readMarker(): boolean {
   if (typeof window === "undefined") return true;
@@ -79,27 +72,13 @@ async function waitForLocalAgent(apiBase: string): Promise<boolean> {
 }
 
 function pickRecommendedModel(snapshot: ModelHubSnapshot): CatalogModel | null {
-  const bucket = snapshot.hardware.recommendedBucket;
   const installedIds = new Set(snapshot.installed.map((m) => m.id));
-  const notInstalled = snapshot.catalog.filter((m) => !installedIds.has(m.id));
-
-  const inBucketChat = notInstalled.filter(
-    (m) => m.bucket === bucket && m.category === "chat",
-  );
-  if (inBucketChat[0]) return inBucketChat[0];
-
-  const inBucketAny = notInstalled.filter((m) => m.bucket === bucket);
-  if (inBucketAny[0]) return inBucketAny[0];
-
-  // Smaller-than-recommended chat fallback: better to download something
-  // that runs than nothing. Skip larger buckets — they'll OOM the device.
-  const targetRank = BUCKET_RANK[bucket];
   return (
-    notInstalled
-      .filter(
-        (m) => m.category === "chat" && BUCKET_RANK[m.bucket] < targetRank,
-      )
-      .sort((a, b) => BUCKET_RANK[b.bucket] - BUCKET_RANK[a.bucket])[0] ?? null
+    selectRecommendedModelForSlot(
+      "TEXT_LARGE",
+      snapshot.hardware,
+      snapshot.catalog,
+    ).alternatives.find((model) => !installedIds.has(model.id)) ?? null
   );
 }
 

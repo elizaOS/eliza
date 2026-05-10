@@ -198,7 +198,7 @@ If your primary model is unavailable (rate limit, outage, billing issue), Eliza 
         primary: "anthropic/claude-sonnet-4.6",
         fallbacks: [
           "openai/gpt-5",
-          "groq/llama-3.3-70b-versatile",
+          "groq/openai/gpt-oss-120b",
         ],
       },
     },
@@ -264,9 +264,9 @@ Ollama lets you run models locally with no API key and full privacy. It does not
     curl -fsSL https://ollama.com/install.sh | sh
     ```
   </Step>
-  <Step title="Pull a model">
+  <Step title="Create an Eliza-1 model">
     ```bash
-    ollama pull llama3.3
+    ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m
     ```
   </Step>
   <Step title="Set the endpoint URL">
@@ -283,7 +283,7 @@ Ollama lets you run models locally with no API key and full privacy. It does not
       agents: {
         defaults: {
           model: {
-            primary: "ollama/llama3.3",
+            primary: "ollama/eliza-1-9b",
           },
         },
       },

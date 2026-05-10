@@ -176,7 +176,7 @@ function applyProviderSettings(
 			runtime.setSetting("GROQ_API_KEY", process.env.GROQ_API_KEY ?? "", true);
 			runtime.setSetting(
 				"GROQ_SMALL_MODEL",
-				process.env.GROQ_SMALL_MODEL ?? "openai/gpt-oss-20b",
+				process.env.GROQ_SMALL_MODEL ?? "openai/gpt-oss-120b",
 			);
 			runtime.setSetting(
 				"GROQ_LARGE_MODEL",

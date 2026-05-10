@@ -101,3 +101,22 @@ export {
   type ScheduledTaskRunnerHandle,
   type ScheduledTaskStore,
 } from "./runner.js";
+
+export {
+  expectedReplyKindForTask,
+  isCompletionTimeoutDue,
+  isRecurringTrigger,
+  isScheduledTaskDue,
+  markWindowFireIfNeeded,
+  pendingPromptRoomIdForTask,
+  type ScheduledTaskDueContext,
+  type ScheduledTaskDueDecision,
+} from "./due.js";
+
+export {
+  processDueScheduledTasks,
+  type ProcessDueScheduledTasksRequest,
+  type ProcessDueScheduledTasksResult,
+  type ScheduledTaskFireResult,
+  type ScheduledTaskProcessingError,
+} from "./scheduler.js";

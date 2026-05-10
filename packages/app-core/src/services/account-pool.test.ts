@@ -98,4 +98,132 @@ describe("AccountPool provider-scoped account resolution", () => {
     expect(writes[0]?.providerId).toBe("openai-codex");
     expect(writes[0]?.usage?.sessionPct).toBe(12);
   });
+
+  it("selects among multiple accounts for the same provider by priority", async () => {
+    const accounts = {
+      "openai-codex:personal": account("openai-codex", {
+        id: "personal",
+        priority: 5,
+        createdAt: 2,
+      }),
+      "openai-codex:work": account("openai-codex", {
+        id: "work",
+        priority: 1,
+        createdAt: 1,
+      }),
+      "anthropic-subscription:work": account("anthropic-subscription", {
+        id: "work",
+        priority: 0,
+      }),
+    };
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async () => {},
+    });
+
+    await expect(pool.select({ providerId: "openai-codex" })).resolves
+      .toMatchObject({
+        id: "work",
+        providerId: "openai-codex",
+      });
+  });
+
+  it("round-robins across multiple accounts for one provider", async () => {
+    const accounts = {
+      "openai-codex:first": account("openai-codex", {
+        id: "first",
+        priority: 0,
+        createdAt: 1,
+      }),
+      "openai-codex:second": account("openai-codex", {
+        id: "second",
+        priority: 1,
+        createdAt: 2,
+      }),
+    };
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async () => {},
+    });
+
+    await expect(
+      pool.select({ providerId: "openai-codex", strategy: "round-robin" }),
+    ).resolves.toMatchObject({ id: "first" });
+    await expect(
+      pool.select({ providerId: "openai-codex", strategy: "round-robin" }),
+    ).resolves.toMatchObject({ id: "second" });
+    await expect(
+      pool.select({ providerId: "openai-codex", strategy: "round-robin" }),
+    ).resolves.toMatchObject({ id: "first" });
+  });
+
+  it("keeps session affinity across multiple accounts for one provider", async () => {
+    const accounts = {
+      "openai-codex:first": account("openai-codex", {
+        id: "first",
+        priority: 0,
+        createdAt: 1,
+      }),
+      "openai-codex:second": account("openai-codex", {
+        id: "second",
+        priority: 1,
+        createdAt: 2,
+      }),
+    };
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async () => {},
+    });
+
+    const first = await pool.select({
+      providerId: "openai-codex",
+      strategy: "round-robin",
+      sessionKey: "agent-a",
+    });
+    const second = await pool.select({
+      providerId: "openai-codex",
+      strategy: "round-robin",
+      sessionKey: "agent-a",
+    });
+    const otherSession = await pool.select({
+      providerId: "openai-codex",
+      strategy: "round-robin",
+      sessionKey: "agent-b",
+    });
+
+    expect(first?.id).toBe("first");
+    expect(second?.id).toBe("first");
+    expect(otherSession?.id).toBe("second");
+  });
+
+  it("uses usage-aware strategies across same-provider accounts", async () => {
+    const accounts = {
+      "openai-codex:near-limit": account("openai-codex", {
+        id: "near-limit",
+        priority: 0,
+        usage: { sessionPct: 95, refreshedAt: 1 },
+      }),
+      "openai-codex:available": account("openai-codex", {
+        id: "available",
+        priority: 1,
+        usage: { sessionPct: 20, refreshedAt: 1 },
+      }),
+      "openai-codex:least-used": account("openai-codex", {
+        id: "least-used",
+        priority: 2,
+        usage: { sessionPct: 5, refreshedAt: 1 },
+      }),
+    };
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async () => {},
+    });
+
+    await expect(
+      pool.select({ providerId: "openai-codex", strategy: "quota-aware" }),
+    ).resolves.toMatchObject({ id: "available" });
+    await expect(
+      pool.select({ providerId: "openai-codex", strategy: "least-used" }),
+    ).resolves.toMatchObject({ id: "least-used" });
+  });
 });

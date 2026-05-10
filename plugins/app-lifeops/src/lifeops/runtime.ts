@@ -52,6 +52,12 @@ export async function executeLifeOpsSchedulerTask(
   workflowRuns: Awaited<
     ReturnType<LifeOpsService["processScheduledWork"]>
   >["workflowRuns"];
+  scheduledTaskFires: Awaited<
+    ReturnType<LifeOpsService["processScheduledWork"]>
+  >["scheduledTaskFires"];
+  scheduledTaskCompletionTimeouts: Awaited<
+    ReturnType<LifeOpsService["processScheduledWork"]>
+  >["scheduledTaskCompletionTimeouts"];
 }> {
   const now = resolveSchedulerNowIso(options);
 
@@ -72,6 +78,9 @@ export async function executeLifeOpsSchedulerTask(
     now: scheduledWork.now,
     reminderAttempts: scheduledWork.reminderAttempts,
     workflowRuns: scheduledWork.workflowRuns,
+    scheduledTaskFires: scheduledWork.scheduledTaskFires,
+    scheduledTaskCompletionTimeouts:
+      scheduledWork.scheduledTaskCompletionTimeouts,
   };
 }
 

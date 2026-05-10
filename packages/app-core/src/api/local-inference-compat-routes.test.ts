@@ -164,7 +164,7 @@ describe("POST /api/local-inference/active", () => {
 
   it("accepts the legacy { modelId } body shape (no overrides)", async () => {
     setActiveMock.mockResolvedValue({
-      modelId: "qwen3.5-4b-dflash",
+      modelId: "eliza-1-mobile-1_7b",
       loadedAt: "2026-05-09T00:00:00.000Z",
       status: "ready",
     });
@@ -174,7 +174,7 @@ describe("POST /api/local-inference/active", () => {
       fakeReq({
         method: "POST",
         pathname: "/api/local-inference/active",
-        body: { modelId: "qwen3.5-4b-dflash" },
+        body: { modelId: "eliza-1-mobile-1_7b" },
       }),
       res.res,
       STATE,
@@ -184,14 +184,14 @@ describe("POST /api/local-inference/active", () => {
     expect(res.status()).toBe(200);
     expect(setActiveMock).toHaveBeenCalledWith(
       null,
-      "qwen3.5-4b-dflash",
+      "eliza-1-mobile-1_7b",
       undefined,
     );
   });
 
   it("forwards a parsed overrides block to setActive", async () => {
     setActiveMock.mockResolvedValue({
-      modelId: "qwen3.5-4b-dflash",
+      modelId: "eliza-1-mobile-1_7b",
       loadedAt: "2026-05-09T00:00:00.000Z",
       status: "ready",
     });
@@ -202,7 +202,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "qwen3.5-4b-dflash",
+          modelId: "eliza-1-mobile-1_7b",
           overrides: {
             contextSize: 131072,
             cacheTypeK: "f16",
@@ -217,7 +217,7 @@ describe("POST /api/local-inference/active", () => {
     );
 
     expect(res.status()).toBe(200);
-    expect(setActiveMock).toHaveBeenCalledWith(null, "qwen3.5-4b-dflash", {
+    expect(setActiveMock).toHaveBeenCalledWith(null, "eliza-1-mobile-1_7b", {
       contextSize: 131072,
       cacheTypeK: "f16",
       cacheTypeV: "q8_0",
@@ -233,7 +233,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "bonsai-8b-1bit",
+          modelId: "eliza-1-mobile-1_7b",
           overrides: { cacheTypeK: "tbq4_0" },
         },
       }),
@@ -256,7 +256,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "qwen3.5-4b-dflash",
+          modelId: "eliza-1-mobile-1_7b",
           overrides: { contextSize: 100 },
         },
       }),
@@ -276,7 +276,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "qwen3.5-4b-dflash",
+          modelId: "eliza-1-mobile-1_7b",
           overrides: { kvOffload: "magic" },
         },
       }),
@@ -290,7 +290,7 @@ describe("POST /api/local-inference/active", () => {
 
   it("accepts kvOffload object form { gpuLayers: N }", async () => {
     setActiveMock.mockResolvedValue({
-      modelId: "qwen3.5-4b-dflash",
+      modelId: "eliza-1-mobile-1_7b",
       loadedAt: "2026-05-09T00:00:00.000Z",
       status: "ready",
     });
@@ -301,7 +301,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "qwen3.5-4b-dflash",
+          modelId: "eliza-1-mobile-1_7b",
           overrides: { kvOffload: { gpuLayers: 16 } },
         },
       }),
@@ -310,7 +310,7 @@ describe("POST /api/local-inference/active", () => {
     );
 
     expect(res.status()).toBe(200);
-    expect(setActiveMock).toHaveBeenCalledWith(null, "qwen3.5-4b-dflash", {
+    expect(setActiveMock).toHaveBeenCalledWith(null, "eliza-1-mobile-1_7b", {
       kvOffload: { gpuLayers: 16 },
     });
   });
@@ -321,7 +321,7 @@ describe("POST /api/local-inference/active", () => {
       fakeReq({
         method: "POST",
         pathname: "/api/local-inference/active",
-        body: { modelId: "qwen3.5-4b-dflash", overrides: "nope" },
+        body: { modelId: "eliza-1-mobile-1_7b", overrides: "nope" },
       }),
       res.res,
       STATE,

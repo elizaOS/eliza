@@ -30,7 +30,6 @@ export interface TokenUsageForCost {
 export const MODEL_PRICES_USD_PER_M_TOKENS: Record<string, ModelPriceUsdPerMTokens> = {
 	// Cerebras (gpt-oss family, served at https://api.cerebras.ai/v1)
 	"gpt-oss-120b": { input: 0.5, output: 0.8, cacheRead: 0, cacheWrite: 0 },
-	"gpt-oss-20b": { input: 0.1, output: 0.3, cacheRead: 0, cacheWrite: 0 },
 
 	// Anthropic
 	"claude-opus-4-7": { input: 15.0, output: 75.0, cacheRead: 1.5, cacheWrite: 18.75 },

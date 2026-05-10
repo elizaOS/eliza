@@ -38,6 +38,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 from _common import (  # noqa: E402
+    kernel_manifest_fragment,
     load_model_and_tokenizer,
     save_model,
 )
@@ -257,6 +258,7 @@ def quantize_checkpoint(
                 "average_block_mse": sum(mses) / max(1, len(mses)),
                 "max_block_mse": max(mses) if mses else 0.0,
                 "elapsed_seconds": time.perf_counter() - t0,
+                "kernel_manifest": kernel_manifest_fragment("polarquant"),
             },
             indent=2,
         ),

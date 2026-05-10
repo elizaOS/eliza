@@ -49,12 +49,18 @@ async function loadSelfControlApi(): Promise<SelfControlApi | null> {
   }
 }
 
+function currentPlatform(): "darwin" | "win32" | "linux" {
+  const p = process.platform;
+  return p === "darwin" || p === "win32" || p === "linux" ? p : "linux";
+}
+
 function unavailableWebsiteBlockingPermission(): PermissionState {
   return {
     id: WEBSITE_BLOCKING_PERMISSION_ID,
     status: "not-applicable",
     lastChecked: Date.now(),
     canRequest: false,
+    platform: currentPlatform(),
     reason: "Website blocking is available when the LifeOps app is installed.",
   };
 }
@@ -65,6 +71,7 @@ function unavailableSystemPermission(id: SystemPermissionId): PermissionState {
     status: "not-applicable",
     lastChecked: Date.now(),
     canRequest: false,
+    platform: currentPlatform(),
     reason: "Native permission checks are unavailable in this runtime.",
   };
 }
@@ -153,6 +160,7 @@ export async function handlePermissionRoutes(
       status: enabled ? "granted" : "denied",
       lastChecked: shellState?.lastChecked ?? Date.now(),
       canRequest: false,
+      platform: currentPlatform(),
     };
     state.permissionStates.shell = permission;
 
@@ -182,6 +190,7 @@ export async function handlePermissionRoutes(
         status: "not-applicable",
         lastChecked: Date.now(),
         canRequest: false,
+        platform: currentPlatform(),
       });
       return true;
     }
@@ -265,6 +274,7 @@ export async function handlePermissionRoutes(
       status: enabled ? "granted" : "denied",
       lastChecked: Date.now(),
       canRequest: false,
+      platform: currentPlatform(),
     };
 
     if (!state.config.features) {

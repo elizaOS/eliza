@@ -233,13 +233,13 @@ export const musicAction: Action = {
     ...(manageZones.similes ?? []),
   ],
   description:
-    "Unified music action. Use flat op for everything: library (playlist, play_query, search_youtube, download), playback transport (pause, resume, skip, stop, queue), play_audio, routing, zones. " +
+    "Unified music action. Use flat action for everything: library (playlist, play_query, search_youtube, download), playback transport (pause, resume, skip, stop, queue), play_audio, routing, zones. " +
     "Transport skip/stop/queue and library mutations require confirmed:true where the underlying operation requires it.",
   descriptionCompressed:
     "Flat op: playlist/play_query/search_youtube/download/pause/resume/skip/stop/queue/play_audio/routing/zones.",
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description:
         "Flat operation: playlist | play_query | search_youtube | download | pause | resume | skip | stop | queue | play_audio | routing | zones (hyphens and legacy aliases accepted).",
       required: false,
@@ -354,7 +354,7 @@ export const musicAction: Action = {
 
     if (!kind) {
       const text =
-        "Could not classify a music operation. Set op to one of: playlist, play_query, search_youtube, download, pause, resume, skip, stop, queue, play_audio, routing, or zones.";
+        "Could not classify a music operation. Set action to one of: playlist, play_query, search_youtube, download, pause, resume, skip, stop, queue, play_audio, routing, or zones.";
       if (callback) {
         await callback({ text, source: message.content.source });
       }

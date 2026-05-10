@@ -9,7 +9,7 @@
  *
  * Skip gate: requires `OLLAMA_API_ENDPOINT` (or `OLLAMA_API_URL`) pointing at a
  * reachable Ollama server. Set e.g. `OLLAMA_API_ENDPOINT=http://localhost:11434`
- * and run `ollama pull llama3.2:1b` (or set `OLLAMA_SMALL_MODEL` to a model you
+ * and run `ollama create eliza-1-2b -f packages/training/cloud/ollama/Modelfile.eliza-1-2b-q4_k_m` (or set `OLLAMA_SMALL_MODEL` to a model you
  * already have) to enable.
  */
 import type { GenerateTextResult, IAgentRuntime, TextStreamResult } from "@elizaos/core";
@@ -22,7 +22,7 @@ const RESET = "\x1b[0m";
 
 const OLLAMA_ENDPOINT =
   process.env.OLLAMA_API_ENDPOINT?.trim() || process.env.OLLAMA_API_URL?.trim() || "";
-const OLLAMA_SMALL_MODEL = process.env.OLLAMA_SMALL_MODEL?.trim() || "llama3.2:1b";
+const OLLAMA_SMALL_MODEL = process.env.OLLAMA_SMALL_MODEL?.trim() || "eliza-1-2b";
 
 function createRuntime(): IAgentRuntime {
   const settings: Record<string, string> = {
@@ -52,7 +52,7 @@ async function pingOllama(endpoint: string): Promise<boolean> {
 }
 
 const skipReason = !OLLAMA_ENDPOINT
-  ? "OLLAMA_API_ENDPOINT not set (set OLLAMA_API_ENDPOINT=http://localhost:11434 and `ollama pull llama3.2:1b` to enable)"
+  ? "OLLAMA_API_ENDPOINT not set (set OLLAMA_API_ENDPOINT=http://localhost:11434 and `ollama create eliza-1-2b -f packages/training/cloud/ollama/Modelfile.eliza-1-2b-q4_k_m` to enable)"
   : null;
 
 if (skipReason) {

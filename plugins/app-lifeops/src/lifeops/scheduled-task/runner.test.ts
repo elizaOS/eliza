@@ -629,6 +629,30 @@ describe("ScheduledTaskRunner — fire path + gates", () => {
     const fired = await h.runner.fire(task.taskId);
     expect(fired.state.status).toBe("fired");
   });
+
+  it("allows scheduler-owned refire for recurring tasks after an occurrence completed", async () => {
+    const h = makeHarness("2026-05-09T09:00:00.000Z");
+    const task = await h.runner.schedule(
+      baseInput({
+        trigger: { kind: "cron", expression: "0 9 * * *", tz: "UTC" },
+      }),
+    );
+    const first = await h.runner.fire(task.taskId);
+    expect(first.state.status).toBe("fired");
+    const completed = await h.runner.apply(task.taskId, "complete");
+    expect(completed.state.status).toBe("completed");
+
+    h.setNow("2026-05-10T09:00:00.000Z");
+    const idempotent = await h.runner.fire(task.taskId);
+    expect(idempotent.state.status).toBe("completed");
+
+    const refired = await h.runner.fire(task.taskId, {
+      allowTerminalRefire: true,
+    });
+    expect(refired.state.status).toBe("fired");
+    expect(refired.state.firedAt).toBe("2026-05-10T09:00:00.000Z");
+    expect(refired.state.completedAt).toBeUndefined();
+  });
 });
 
 describe("ScheduledTaskRunner — completion checks", () => {

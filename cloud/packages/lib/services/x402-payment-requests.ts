@@ -8,9 +8,14 @@ import {
   validateSvmAddress,
 } from "@x402/svm";
 import Decimal from "decimal.js";
+import { eq, sql } from "drizzle-orm";
 import { isAddress } from "viem";
+import { appEarningsRepository } from "@/db/repositories/app-earnings";
 import { memoriesRepository } from "@/db/repositories/agents/memories";
+import { appsRepository } from "@/db/repositories/apps";
 import { type CryptoPayment, cryptoPaymentsRepository } from "@/db/repositories/crypto-payments";
+import { dbWrite } from "@/db/helpers";
+import { apps } from "@/db/schemas/apps";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
 import { x402FacilitatorService } from "@/lib/services/x402-facilitator";
@@ -408,6 +413,81 @@ async function triggerChannelCallback(
   }
 }
 
+async function recordAppScopedPaymentEarnings(
+  payment: CryptoPayment,
+  appId: string,
+  amountUsd: number,
+  settlement: Awaited<ReturnType<typeof x402FacilitatorService.settle>>,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  if (amountUsd <= 0) return;
+
+  const app = await appsRepository.findById(appId);
+  if (!app?.created_by_user_id) {
+    logger.warn("[x402-payment-requests] app payment settled without a creator", {
+      paymentRequestId: payment.id,
+      appId,
+    });
+    return;
+  }
+
+  await appEarningsRepository.addPurchaseEarnings(appId, amountUsd);
+  await appEarningsRepository.createTransaction({
+    app_id: appId,
+    user_id: app.created_by_user_id,
+    type: "purchase_share",
+    amount: amountUsd.toFixed(6),
+    description: `x402 payment request ${payment.id}`,
+    metadata: {
+      paymentType: "x402_payment_request",
+      paymentRequestId: payment.id,
+      network: settlement.network,
+      transaction: settlement.transaction,
+      payer: settlement.payer,
+      platformFeeUsd: metadata.platformFeeUsd,
+      serviceFeeUsd: metadata.serviceFeeUsd,
+      totalChargedUsd: metadata.totalChargedUsd,
+    },
+  });
+
+  await dbWrite
+    .update(apps)
+    .set({
+      total_creator_earnings: sql`${apps.total_creator_earnings} + ${amountUsd}`,
+      updated_at: new Date(),
+    })
+    .where(eq(apps.id, appId));
+
+  const result = await redeemableEarningsService.addEarnings({
+    userId: app.created_by_user_id,
+    amount: amountUsd,
+    source: "miniapp",
+    sourceId: payment.id,
+    dedupeBySourceId: true,
+    description: `App x402 payment request ${payment.id}`,
+    metadata: {
+      appId,
+      paymentType: "x402_payment_request",
+      network: settlement.network,
+      transaction: settlement.transaction,
+      payer: settlement.payer,
+      platformFeeUsd: metadata.platformFeeUsd,
+      serviceFeeUsd: metadata.serviceFeeUsd,
+      totalChargedUsd: metadata.totalChargedUsd,
+    },
+  });
+
+  if (result && !result.success) {
+    logger.error("[x402-payment-requests] failed to credit app creator redeemable earnings", {
+      paymentRequestId: payment.id,
+      appId,
+      creatorUserId: app.created_by_user_id,
+      amountUsd,
+      error: result.error,
+    });
+  }
+}
+
 class X402PaymentRequestsService {
   async create(input: CreatePaymentRequestInput): Promise<{
     paymentRequest: X402PaymentRequestView;
@@ -572,7 +652,7 @@ class X402PaymentRequestsService {
           alreadySettled: true,
         }),
       ).toString("base64");
-      return { paymentRequest: this.toView(payment), paymentResponse };
+      return { paymentRequest: this.toPublicView(payment), paymentResponse };
     }
     if (payment.expires_at.getTime() < Date.now()) {
       const expired = (await cryptoPaymentsRepository.markAsExpired(payment.id)) ?? payment;
@@ -651,16 +731,17 @@ class X402PaymentRequestsService {
     const amountUsd = Number(metadata.amountUsd ?? payment.credits_to_add);
     const appId = typeof metadata.appId === "string" ? metadata.appId : undefined;
 
-    if (payment.user_id && amountUsd > 0) {
+    if (appId) {
+      await recordAppScopedPaymentEarnings(payment, appId, amountUsd, settlement, metadata);
+    } else if (payment.user_id && amountUsd > 0) {
       await redeemableEarningsService.addEarnings({
         userId: payment.user_id,
         amount: amountUsd,
-        source: appId ? "miniapp" : "creator_revenue_share",
+        source: "creator_revenue_share",
         sourceId: payment.id,
         dedupeBySourceId: true,
-        description: `${appId ? "App" : "x402"} payment request ${payment.id}`,
+        description: `x402 payment request ${payment.id}`,
         metadata: {
-          appId,
           paymentType: "x402_payment_request",
           network: settlement.network,
           transaction: settlement.transaction,
@@ -680,7 +761,7 @@ class X402PaymentRequestsService {
     await triggerChannelCallback(settledPayment, "paid");
 
     return {
-      paymentRequest: this.toView(settledPayment),
+      paymentRequest: this.toPublicView(settledPayment),
       paymentResponse: Buffer.from(JSON.stringify(settlement)).toString("base64"),
     };
   }
@@ -721,6 +802,12 @@ class X402PaymentRequestsService {
       expiresAt: payment.expires_at.toISOString(),
       paidAt: payment.confirmed_at?.toISOString() ?? null,
     };
+  }
+
+  toPublicView(payment: CryptoPayment): X402PaymentRequestView {
+    const view = this.toView(payment);
+    const { callbackUrl: _callbackUrl, ...publicView } = view;
+    return publicView;
   }
 }
 

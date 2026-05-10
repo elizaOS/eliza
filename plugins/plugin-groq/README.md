@@ -1,13 +1,13 @@
 # @elizaos/plugin-groq
 
-Groq LLM plugin for elizaOS - Fast inference with Llama, Qwen, and other models.
+Groq LLM plugin for elizaOS - Fast inference with GPT-OSS models.
 
 This plugin provides Groq API integration for elizaOS agents, enabling ultra-fast text generation, audio transcription, and text-to-speech synthesis.
 
 ## Features
 
 - 🚀 **Fast Inference** - Leverage Groq's LPU for industry-leading inference speeds
-- 📝 **Text Generation** - Generate text with Llama, Qwen, and other models
+- 📝 **Text Generation** - Generate text with GPT-OSS models
 - 🎤 **Audio Transcription** - Transcribe audio with Whisper models
 - 🔊 **Text-to-Speech** - Generate speech with PlayAI voices
 - 🔢 **Object Generation** - Generate structured JSON objects
@@ -42,7 +42,7 @@ Set the following environment variables:
 | ------------------ | -------- | -------------------------------- | --------------------- |
 | `GROQ_API_KEY`     | Yes      | -                                | Your Groq API key     |
 | `GROQ_BASE_URL`    | No       | `https://api.groq.com/openai/v1` | Custom API base URL   |
-| `GROQ_SMALL_MODEL` | No       | `openai/gpt-oss-20b`           | Model for small tasks |
+| `GROQ_SMALL_MODEL` | No       | `openai/gpt-oss-120b`           | Model for small tasks |
 | `GROQ_LARGE_MODEL` | No       | `openai/gpt-oss-120b`            | Model for large tasks |
 | `GROQ_TTS_MODEL`   | No       | `canopylabs/orpheus-v1-english`  | Text-to-speech model  |
 | `GROQ_TTS_VOICE`   | No       | `troy`                           | TTS voice name        |

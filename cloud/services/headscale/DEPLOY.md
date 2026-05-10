@@ -1,18 +1,18 @@
 # Deploying tunnel infrastructure
 
-End-to-end checklist to bring the customer-tunnel stack online. This is human-driven; the code lives in this repo but the Railway/DNS work is manual.
+End-to-end checklist to bring the customer-tunnel stack online. Railway owns the Headscale runtime; Wrangler owns the Eliza Cloud Worker config and secrets.
 
 ## 1. DNS
 
-- `headscale.elizacloud.ai` → A/AAAA → Railway public IP for the headscale service.
-- `tunnel.elizacloud.ai` AND `*.tunnel.elizacloud.ai` → A/AAAA → Railway public IP for the tunnel-proxy service.
+- `headscale.elizacloud.ai` → CNAME/ALIAS → Railway public domain for the headscale service.
+- `tunnel.elizacloud.ai` AND `*.tunnel.elizacloud.ai` → CNAME/ALIAS → Railway public domain for the tunnel-proxy service.
 - Delegate `_acme-challenge.tunnel.elizacloud.ai` to Cloudflare (or whichever DNS provider matches the Caddy `dns` directive in `services/tunnel-proxy/Caddyfile`).
 
 ## 2. Headscale Railway service
 
 ```
 cd cloud/services/headscale
-# Push to a Railway service backed by this Dockerfile
+# Push to a Railway service backed by this Dockerfile.
 railway up
 ```
 
@@ -24,13 +24,14 @@ headscale users create tunnel
 headscale apikeys create --expiration=8760h
 ```
 
-Mount a Railway volume at `/var/lib/headscale` so the SQLite DB and private keys persist across restarts.
+Mount a Railway volume at `/var/lib/headscale` so the SQLite DB and generated keys persist across restarts.
+Do not set a Railway start-command override; the Dockerfile starts Headscale with `CMD ["headscale", "serve"]`.
 
 ## 3. Long-lived headscale preauth key for the proxy
 
 ```
 # Run inside the headscale container
-headscale --user tunnel preauthkeys create --reusable --expiration 8760h --tags tag:eliza-proxy
+headscale preauthkeys create --reusable --expiration 8760h --tags tag:eliza-proxy
 ```
 
 Save the returned key as Railway secret `TUNNEL_PROXY_TS_AUTHKEY` on the tunnel-proxy service.
@@ -57,26 +58,20 @@ Required env vars on the proxy service:
 On the cloud-api Worker (Cloudflare):
 
 ```
-wrangler secret put HEADSCALE_PUBLIC_URL
-wrangler secret put HEADSCALE_API_URL          # same as above unless private network is wired
 wrangler secret put HEADSCALE_API_KEY          # from step 2
-wrangler secret put HEADSCALE_USER             # value: "tunnel"
-wrangler secret put TUNNEL_PROXY_HOST          # value: "tunnel.elizacloud.ai"
-wrangler secret put TUNNEL_TAILNET_DOMAIN      # value: "tunnel.eliza.local"  (matches headscale config)
 wrangler secret put CLOUD_INTERNAL_TOKEN       # same value as the proxy
+wrangler secret put HEADSCALE_INTERNAL_TOKEN   # same value as CLOUD_INTERNAL_TOKEN
 ```
 
-## 6. Database migration
+`HEADSCALE_PUBLIC_URL`, `HEADSCALE_API_URL`, `HEADSCALE_USER`, `TUNNEL_PROXY_HOST`, and `TUNNEL_TAILNET_DOMAIN` are non-secret Worker vars in `apps/api/wrangler.toml`.
+
+## 6. Worker deploy
 
 ```
 cd cloud
-bun run db:migrate
-```
-
-This applies `0105_add_tunnel_sessions.sql`. Verify with:
-
-```
-psql $DATABASE_URL -c '\d tunnel_sessions'
+bun run --cwd apps/api codegen
+bun run build:api
+bun run deploy:api -- --env production
 ```
 
 ## 7. Smoke test
@@ -89,17 +84,16 @@ From a machine with the tailscale CLI installed and `@elizaos/plugin-elizacloud`
 ```
 
 You should see:
-- A tunnel session row inserted into `tunnel_sessions`
-- The agent host appear under `headscale node list --user tunnel`
+- The agent host appear under `headscale nodes list`
 - A 200 response from `https://<sessionId>.tunnel.elizacloud.ai`
 - A debit row in `credit_transactions` after ~1 minute (the per-minute cron tick)
 
 ## 8. Verify ACL isolation
 
-The agent fleet (tag:agent) must NOT be reachable from a customer tunnel (tag:eliza-tunnel-*). After a tunnel is up, run from the agent's tailnet shell:
+The agent fleet (`tag:agent`) must NOT be reachable from a customer tunnel (`tag:eliza-tunnel`). After a tunnel is up, run from the tunnel node:
 
 ```
 tailscale ping -c 1 <some agent container's tailnet IP>
 ```
 
-This should fail with "no path". The headscale ACL test block in `acl.hujson` enforces this — keep it green.
+This should fail with "no path". Do not add Tailscale-style `tests` blocks to `acl.hujson`; Headscale v0.28 rejects that field at startup.

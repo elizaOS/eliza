@@ -107,28 +107,28 @@ describe("cache-bridge path layout", () => {
 
   it("buildModelHash is stable + sensitive to its inputs", () => {
     const a = buildModelHash({
-      targetModelPath: "/models/qwen.gguf",
-      drafterModelPath: "/models/qwen-drafter.gguf",
+      targetModelPath: "/models/eliza-1-lite.gguf",
+      drafterModelPath: "/models/eliza-1-lite-drafter.gguf",
       cacheTypeK: "f16",
       cacheTypeV: "f16",
     });
     const b = buildModelHash({
-      targetModelPath: "/models/qwen.gguf",
-      drafterModelPath: "/models/qwen-drafter.gguf",
+      targetModelPath: "/models/eliza-1-lite.gguf",
+      drafterModelPath: "/models/eliza-1-lite-drafter.gguf",
       cacheTypeK: "f16",
       cacheTypeV: "f16",
     });
     expect(a).toBe(b);
     const c = buildModelHash({
-      targetModelPath: "/models/qwen.gguf",
+      targetModelPath: "/models/eliza-1-lite.gguf",
       drafterModelPath: "/models/other-drafter.gguf",
       cacheTypeK: "f16",
       cacheTypeV: "f16",
     });
     expect(c).not.toBe(a);
     const d = buildModelHash({
-      targetModelPath: "/models/qwen.gguf",
-      drafterModelPath: "/models/qwen-drafter.gguf",
+      targetModelPath: "/models/eliza-1-lite.gguf",
+      drafterModelPath: "/models/eliza-1-lite-drafter.gguf",
       cacheTypeK: "q8_0",
       cacheTypeV: "f16",
     });

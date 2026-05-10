@@ -16,7 +16,6 @@
 export {
   __resetForTests,
   kvCacheTypeNameToEnum,
-  looksLikeBonsai,
   readEnvKvCacheType,
   registerAospLlamaLoader,
   resolveKvCacheType,
@@ -36,11 +35,11 @@ export { ensureAospLocalInferenceHandlers } from "./aosp-local-inference-bootstr
 // into an empty `init_X = () => {}`. Without this the on-device
 // mobile agent explodes with `ReferenceError: <name> is not defined`
 // when a consumer dereferences a re-exported binding at runtime.
-import { __resetForTests as _bs_1___resetForTests, kvCacheTypeNameToEnum as _bs_2_kvCacheTypeNameToEnum, looksLikeBonsai as _bs_3_looksLikeBonsai, readEnvKvCacheType as _bs_4_readEnvKvCacheType, registerAospLlamaLoader as _bs_5_registerAospLlamaLoader, resolveKvCacheType as _bs_6_resolveKvCacheType, resolveLibllamaPath as _bs_7_resolveLibllamaPath, resolveLlamaShimPath as _bs_8_resolveLlamaShimPath, resolveThreads as _bs_9_resolveThreads } from "./aosp-llama-adapter.js";
+import { __resetForTests as _bs_1___resetForTests, kvCacheTypeNameToEnum as _bs_2_kvCacheTypeNameToEnum, readEnvKvCacheType as _bs_3_readEnvKvCacheType, registerAospLlamaLoader as _bs_4_registerAospLlamaLoader, resolveKvCacheType as _bs_5_resolveKvCacheType, resolveLibllamaPath as _bs_6_resolveLibllamaPath, resolveLlamaShimPath as _bs_7_resolveLlamaShimPath, resolveThreads as _bs_8_resolveThreads } from "./aosp-llama-adapter.js";
 import { ensureAospLocalInferenceHandlers as _bs_10_ensureAospLocalInferenceHandlers } from "./aosp-local-inference-bootstrap.js";
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 // biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
-const __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__ = [_bs_1___resetForTests, _bs_2_kvCacheTypeNameToEnum, _bs_3_looksLikeBonsai, _bs_4_readEnvKvCacheType, _bs_5_registerAospLlamaLoader, _bs_6_resolveKvCacheType, _bs_7_resolveLibllamaPath, _bs_8_resolveLlamaShimPath, _bs_9_resolveThreads, _bs_10_ensureAospLocalInferenceHandlers];
+const __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__ = [_bs_1___resetForTests, _bs_2_kvCacheTypeNameToEnum, _bs_3_readEnvKvCacheType, _bs_4_registerAospLlamaLoader, _bs_5_resolveKvCacheType, _bs_6_resolveLibllamaPath, _bs_7_resolveLlamaShimPath, _bs_8_resolveThreads, _bs_10_ensureAospLocalInferenceHandlers];
 // biome-ignore lint/suspicious/noExplicitAny: bundle-safety sink.
 (globalThis as any).__bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__ = __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__;

@@ -2,7 +2,7 @@
  * AddAccountDialog — modal that walks the user through adding a new
  * credential to a provider's account pool.
  *
- * Two paths:
+ * Paths:
  *   - **OAuth** (subscription providers): start the server-side OAuth
  *     flow, open the auth URL in a real browser window via
  *     `preOpenWindow` + `navigatePreOpenedWindow` (preserves the user
@@ -12,11 +12,14 @@
  *     parent. On error / timeout / cancel, surface the message inline
  *     and let the user retry. If the dialog closes mid-flow we cancel
  *     the server-side listener so it doesn't leak.
+ *   - **Coding-plan key**: simple label + key form for dedicated coding
+ *     endpoints only. These credentials are not written to general API env vars.
+ *   - **External CLI**: show the first-party CLI login instruction; no token import.
+ *   - **Unavailable**: explain why the provider cannot be linked safely.
  *   - **API key**: simple label + key form, immediate POST.
  *
- * The dialog is provider-aware: OAuth-only providers
- * (`anthropic-subscription`, `openai-codex`) skip the chooser screen.
- * Direct API providers show only the API-key form.
+ * The dialog is provider-aware: subscription providers are intentionally
+ * constrained to their first-party coding surfaces.
  */
 
 import type {
@@ -61,6 +64,7 @@ type DialogStep =
   | "oauth-need-code"
   | "apikey"
   | "apikey-submitting"
+  | "unavailable"
   | "error";
 
 interface SseFlowState {
@@ -69,13 +73,37 @@ interface SseFlowState {
   error?: string;
 }
 
-const SUBSCRIPTION_PROVIDERS = new Set<LinkedAccountProviderId>([
-  "anthropic-subscription",
-  "openai-codex",
-]);
+type SubscriptionAddMode =
+  | "oauth"
+  | "api-key"
+  | "external-cli"
+  | "unavailable"
+  | "none";
 
-function isSubscriptionProvider(providerId: LinkedAccountProviderId): boolean {
-  return SUBSCRIPTION_PROVIDERS.has(providerId);
+const SUBSCRIPTION_ADD_MODE_BY_PROVIDER: Partial<
+  Record<LinkedAccountProviderId, SubscriptionAddMode>
+> = {
+  "anthropic-subscription": "oauth",
+  "openai-codex": "oauth",
+  "gemini-cli": "external-cli",
+  "zai-coding": "api-key",
+  "kimi-coding": "api-key",
+  "deepseek-coding": "unavailable",
+};
+
+function getSubscriptionAddMode(
+  providerId: LinkedAccountProviderId,
+): SubscriptionAddMode {
+  return SUBSCRIPTION_ADD_MODE_BY_PROVIDER[providerId] ?? "none";
+}
+
+function initialStepForProvider(
+  providerId: LinkedAccountProviderId,
+): DialogStep {
+  const mode = getSubscriptionAddMode(providerId);
+  if (mode === "oauth") return "choose";
+  if (mode === "external-cli" || mode === "unavailable") return "unavailable";
+  return "apikey";
 }
 
 function providerDisplayName(
@@ -90,6 +118,22 @@ function providerDisplayName(
     case "openai-codex":
       return t("accounts.provider.openaiCodex", {
         defaultValue: "OpenAI Codex subscription",
+      });
+    case "gemini-cli":
+      return t("accounts.provider.geminiCli", {
+        defaultValue: "Gemini CLI subscription",
+      });
+    case "zai-coding":
+      return t("accounts.provider.zaiCoding", {
+        defaultValue: "z.ai Coding Plan",
+      });
+    case "kimi-coding":
+      return t("accounts.provider.kimiCoding", {
+        defaultValue: "Kimi Code",
+      });
+    case "deepseek-coding":
+      return t("accounts.provider.deepseekCoding", {
+        defaultValue: "DeepSeek coding subscription",
       });
     case "anthropic-api":
       return t("accounts.provider.anthropicApi", {
@@ -123,10 +167,10 @@ export function AddAccountDialog({
   onCreated,
 }: AddAccountDialogProps) {
   const { t } = useApp();
-  const subscriptionProvider = isSubscriptionProvider(providerId);
+  const subscriptionAddMode = getSubscriptionAddMode(providerId);
 
   const [step, setStep] = useState<DialogStep>(
-    subscriptionProvider ? "choose" : "apikey",
+    initialStepForProvider(providerId),
   );
   const [label, setLabel] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -168,13 +212,13 @@ export function AddAccountDialog({
   const reset = useCallback(() => {
     closeEventSource();
     sessionIdRef.current = null;
-    setStep(subscriptionProvider ? "choose" : "apikey");
+    setStep(initialStepForProvider(providerId));
     setLabel("");
     setApiKey("");
     setOauthCode("");
     setErrorMessage(null);
     setSessionId(null);
-  }, [closeEventSource, subscriptionProvider]);
+  }, [closeEventSource, providerId]);
 
   // Dialog open/close side-effects: when closed, cancel any in-flight
   // OAuth flow so the server can release the loopback listener.
@@ -281,6 +325,10 @@ export function AddAccountDialog({
   );
 
   const startOAuth = useCallback(async () => {
+    if (subscriptionAddMode !== "oauth") {
+      setStep("unavailable");
+      return;
+    }
     setErrorMessage(null);
     setStep("oauth-starting");
 
@@ -337,7 +385,7 @@ export function AddAccountDialog({
         // Cross-origin — ignore.
       }
     }
-  }, [label, providerId, subscribeToFlow, t]);
+  }, [label, providerId, subscribeToFlow, subscriptionAddMode, t]);
 
   const submitOAuthCode = useCallback(
     async (event: FormEvent) => {
@@ -400,6 +448,62 @@ export function AddAccountDialog({
     onClose();
   }, [cancelInflightFlow, onClose]);
 
+  const dialogDescription =
+    subscriptionAddMode === "oauth"
+      ? t("accounts.add.subscriptionDescription", {
+          defaultValue:
+            "Sign in with the provider's first-party coding account flow to add another account to the rotation pool.",
+        })
+      : subscriptionAddMode === "api-key"
+        ? t("accounts.add.codingPlanDescription", {
+            defaultValue:
+              "Paste a coding-plan credential for the provider's dedicated coding endpoint. It will not be used as a general API key.",
+          })
+        : subscriptionAddMode === "external-cli"
+          ? t("accounts.add.externalCliDescription", {
+              defaultValue:
+                "This subscription is managed by the provider's CLI. The app does not import or replay CLI tokens.",
+            })
+          : subscriptionAddMode === "unavailable"
+            ? t("accounts.add.unavailableDescription", {
+                defaultValue:
+                  "This provider does not expose a safe first-party coding subscription surface for linking here.",
+              })
+            : t("accounts.add.apiDescription", {
+                defaultValue:
+                  "Paste your API key. The key is stored locally with mode 0600.",
+              });
+
+  const apiKeyLabel =
+    subscriptionAddMode === "api-key"
+      ? t("accounts.add.codingPlanKey", {
+          defaultValue: "Coding-plan key",
+        })
+      : t("accounts.add.apiKey", { defaultValue: "API key" });
+
+  const apiKeyPlaceholder =
+    providerId === "zai-coding"
+      ? "zai-..."
+      : providerId === "kimi-coding"
+        ? "sk-..."
+        : "sk-...";
+
+  const unavailableCopy =
+    providerId === "gemini-cli"
+      ? t("accounts.add.geminiCliHint", {
+          defaultValue:
+            "Run gemini auth login in your terminal. Task agents will use the authenticated Gemini CLI directly; no Gemini subscription token is copied into API settings.",
+        })
+      : providerId === "deepseek-coding"
+        ? t("accounts.add.deepseekUnavailableHint", {
+            defaultValue:
+              "DeepSeek is unavailable here because there is no first-party coding subscription endpoint to integrate safely. Use the DeepSeek API-key provider only if you have direct API billing.",
+          })
+        : t("accounts.add.providerUnavailableHint", {
+            defaultValue:
+              "This provider cannot be linked through this dialog right now.",
+          });
+
   const labelInput = (
     <div className="grid gap-1.5">
       <Label htmlFor="add-account-label">
@@ -433,17 +537,7 @@ export function AddAccountDialog({
               provider: providerDisplayName(providerId, t),
             })}
           </DialogTitle>
-          <DialogDescription>
-            {subscriptionProvider
-              ? t("accounts.add.subscriptionDescription", {
-                  defaultValue:
-                    "Sign in with your provider to add another account to the rotation pool.",
-                })
-              : t("accounts.add.apiDescription", {
-                  defaultValue:
-                    "Paste your API key. The key is stored locally with mode 0600.",
-                })}
-          </DialogDescription>
+          <DialogDescription>{dialogDescription}</DialogDescription>
         </DialogHeader>
 
         {step === "choose" ? (
@@ -529,15 +623,13 @@ export function AddAccountDialog({
           <form onSubmit={submitApiKey} className="grid gap-3 py-2">
             {labelInput}
             <div className="grid gap-1.5">
-              <Label htmlFor="add-account-apikey">
-                {t("accounts.add.apiKey", { defaultValue: "API key" })}
-              </Label>
+              <Label htmlFor="add-account-apikey">{apiKeyLabel}</Label>
               <Input
                 id="add-account-apikey"
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-…"
+                placeholder={apiKeyPlaceholder}
                 autoComplete="off"
                 spellCheck={false}
               />
@@ -559,6 +651,12 @@ export function AddAccountDialog({
           </form>
         ) : null}
 
+        {step === "unavailable" ? (
+          <div className="rounded-md border border-border/50 bg-bg-accent/50 px-3 py-2 text-sm text-muted">
+            {unavailableCopy}
+          </div>
+        ) : null}
+
         {step === "error" && errorMessage ? (
           <div
             className={cn(
@@ -577,7 +675,7 @@ export function AddAccountDialog({
               variant="ghost"
               onClick={() => {
                 setErrorMessage(null);
-                setStep(subscriptionProvider ? "choose" : "apikey");
+                setStep(initialStepForProvider(providerId));
               }}
             >
               {t("accounts.add.tryAgain", { defaultValue: "Try again" })}

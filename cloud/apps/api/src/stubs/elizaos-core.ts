@@ -200,6 +200,85 @@ export const ChannelType = {
   SELF: "SELF",
 } as const;
 
+type SensitiveRequestKind = "secret" | "payment" | "oauth" | "private_info";
+type SensitiveRequestPaymentContext = "verified_payer" | "any_payer";
+
+export function defaultSensitiveRequestPolicy(
+  kind: SensitiveRequestKind,
+  paymentContext: SensitiveRequestPaymentContext = "verified_payer",
+) {
+  if (kind === "payment" && paymentContext === "any_payer") {
+    return {
+      actor: "any_payer",
+      requirePrivateDelivery: false,
+      requireAuthenticatedLink: false,
+      allowInlineOwnerAppEntry: true,
+      allowPublicLink: true,
+      allowDmFallback: true,
+      allowTunnelLink: true,
+      allowCloudLink: true,
+    };
+  }
+
+  if (kind === "payment") {
+    return {
+      actor: "verified_payer",
+      requirePrivateDelivery: false,
+      requireAuthenticatedLink: true,
+      allowInlineOwnerAppEntry: true,
+      allowPublicLink: true,
+      allowDmFallback: true,
+      allowTunnelLink: true,
+      allowCloudLink: true,
+    };
+  }
+
+  if (kind === "oauth") {
+    return {
+      actor: "owner_or_linked_identity",
+      requirePrivateDelivery: false,
+      requireAuthenticatedLink: true,
+      allowInlineOwnerAppEntry: true,
+      allowPublicLink: true,
+      allowDmFallback: true,
+      allowTunnelLink: true,
+      allowCloudLink: true,
+    };
+  }
+
+  return {
+    actor: "owner_or_linked_identity",
+    requirePrivateDelivery: true,
+    requireAuthenticatedLink: true,
+    allowInlineOwnerAppEntry: true,
+    allowPublicLink: false,
+    allowDmFallback: true,
+    allowTunnelLink: true,
+    allowCloudLink: true,
+  };
+}
+
+const SENSITIVE_METADATA_KEY_RE =
+  /(^|[_-])(authorization|bearer|credential|jwt|password|private|secret|signature|token)([_-]|$)|api[_-]?key/i;
+
+export function redactSensitiveRequestMetadata(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSensitiveRequestMetadata(item));
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const redacted: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    redacted[key] = SENSITIVE_METADATA_KEY_RE.test(key)
+      ? "[redacted]"
+      : redactSensitiveRequestMetadata(item);
+  }
+  return redacted;
+}
+
 export const ModelType = {
   TEXT_SMALL: "TEXT_SMALL",
   TEXT_LARGE: "TEXT_LARGE",

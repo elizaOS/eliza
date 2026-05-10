@@ -46,13 +46,19 @@ export type LocalRuntimeBackend = "node-llama-cpp" | "llama-server";
  * Specialised llama.cpp kernels shipped by the buun-llama-cpp / DFlash fork.
  * Models that declare a `requiresKernel` advertise that they only run
  * correctly under llama-server when the matching kernel is present.
+ *
+ * The set must stay in sync with `inference/AGENTS.md` §3 mandatory
+ * optimizations and with `DflashBinaryCapabilities.kernels` below — the
+ * capability probe is the runtime gate that refuses to start if a required
+ * kernel is missing.
  */
 export type LocalRuntimeKernel =
   | "dflash"
   | "turbo3"
   | "turbo4"
   | "turbo3_tcq"
-  | "qjl_full";
+  | "qjl_full"
+  | "polarquant";
 
 /**
  * llama.cpp optimization knobs that the dispatcher can wire into a
@@ -122,7 +128,7 @@ export interface LocalRuntimeAcceleration {
     /** `--n-gpu-layers` and `--n-gpu-layers-draft` defaults. */
     gpuLayers: number | "auto";
     draftGpuLayers: number | "auto";
-    /** Qwen3.5/3.6 DFlash drafters are trained against non-thinking text. */
+    /** Some DFlash drafters are trained against non-thinking text. */
     disableThinking: boolean;
   };
   kvCache?: {
@@ -146,23 +152,15 @@ export interface LocalRuntimeAcceleration {
  * enumerated for tooling.
  */
 export type TokenizerFamily =
-  | "qwen3"
-  | "qwen2"
-  | "llama3"
-  | "gpt2"
-  | "smollm2"
-  | "bge"
+  | "eliza1"
   | "sentencepiece"
-  | "deepseekv2"
-  | "mistral"
-  | "gemma"
   | (string & {});
 
 export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
   id: string;
   displayName: string;
-  /** HuggingFace repo slug, e.g. "bartowski/Llama-3.2-3B-Instruct-GGUF". */
+  /** HuggingFace repo slug, e.g. "elizalabs/eliza-1-mobile-1_7b". */
   hfRepo: string;
   /** Exact GGUF filename in the repo. */
   ggufFile: string;
@@ -181,8 +179,7 @@ export interface CatalogModel {
     | "22B"
     | "24B"
     | "27B"
-    | "32B"
-    | "70B";
+    | "32B";
   quant: string;
   sizeGb: number;
   /** Minimum system RAM (GB) we recommend before offering this model. */

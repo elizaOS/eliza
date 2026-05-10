@@ -92,6 +92,18 @@ def write_sidecar(output_dir: Path, filename: str, payload: Mapping[str, object]
     return out
 
 
+# Re-export from the zero-dep _kernel_manifest module so existing recipe
+# imports (`from _common import kernel_manifest_fragment`) keep working
+# while unit tests can import the helper without pulling in transformers.
+from _kernel_manifest import (  # noqa: E402,F401
+    KERNEL_BLOCK_LAYOUT_VERSIONS,
+    KERNEL_CODEBOOK_HASHES,
+    KERNEL_PER_BLOCK_TOLERANCE,
+    KERNEL_TARGETS,
+    kernel_manifest_fragment,
+)
+
+
 def get_text_config(model_config: object) -> object:
     """Return the text-decoder sub-config for hybrid VLM/decoder models, else
     ``model_config`` itself.

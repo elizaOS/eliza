@@ -1056,6 +1056,23 @@ function mobileRecommendedBucket(
   return "small";
 }
 
+function positiveFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : null;
+}
+
+function fallbackMobileTotalRamGb(platform: "ios" | "android"): number {
+  const browserMemory =
+    typeof navigator === "undefined"
+      ? null
+      : positiveFiniteNumber(
+          (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
+        );
+  if (browserMemory) return browserMemory;
+  return platform === "ios" ? 8 : 4;
+}
+
 function normalizeMobilePlatform(
   platform: "ios" | "android" | "web" | undefined,
 ): "ios" | "android" {
@@ -1124,9 +1141,13 @@ async function listInstalledModels(): Promise<InstalledModel[]> {
 async function hardwareProbe(): Promise<HardwareProbe> {
   const llama = await loadCapacitorLlama();
   const hardware = await llama?.getHardwareInfo?.().catch(() => null);
-  const totalRamGb = hardware?.totalRamGb ?? 0;
   const cpuCores = hardware?.cpuCores ?? navigator.hardwareConcurrency ?? 0;
   const platform = normalizeMobilePlatform(hardware?.platform);
+  const totalRamGb =
+    positiveFiniteNumber(hardware?.totalRamGb) ??
+    fallbackMobileTotalRamGb(platform);
+  const availableRamGb =
+    positiveFiniteNumber(hardware?.availableRamGb) ?? totalRamGb;
   const gpu =
     hardware?.gpu?.available && hardware.gpuSupported !== false
       ? {
@@ -1137,7 +1158,7 @@ async function hardwareProbe(): Promise<HardwareProbe> {
       : null;
   return {
     totalRamGb,
-    freeRamGb: hardware?.availableRamGb ?? totalRamGb,
+    freeRamGb: availableRamGb,
     gpu,
     cpuCores,
     platform: platform as NodeJS.Platform,
@@ -1153,7 +1174,7 @@ async function hardwareProbe(): Promise<HardwareProbe> {
       ...(typeof hardware?.isSimulator === "boolean"
         ? { isSimulator: hardware.isSimulator }
         : {}),
-      availableRamGb: hardware?.availableRamGb ?? null,
+      availableRamGb,
       ...(typeof hardware?.freeStorageGb === "number"
         ? { freeStorageGb: hardware.freeStorageGb }
         : {}),
@@ -1504,6 +1525,22 @@ async function generateLocalReply(
       totalTokens: result.promptTokens + result.outputTokens,
       ...(activeState.modelId ? { model: activeState.modelId } : {}),
     },
+  };
+}
+
+async function generateLocalGreeting(): Promise<LocalReply> {
+  const setupReply = await localModelStatusReply(
+    "download the default local model",
+  );
+  if (setupReply && setupReply.localInference?.status !== "ready") {
+    return setupReply;
+  }
+  return {
+    text: "What would you like to work on?",
+    usage: emptyUsage(activeState.modelId),
+    ...(setupReply?.localInference
+      ? { localInference: setupReply.localInference }
+      : {}),
   };
 }
 
@@ -2306,11 +2343,15 @@ export async function handleIosLocalAgentRequest(
     /^\/api\/conversations\/([^/]+)\/greeting$/,
   );
   if (greetingMatch && method === "POST") {
+    const greeting = await generateLocalGreeting();
     return json({
-      text: "I'm running locally on this device.",
+      text: greeting.text,
       agentName: AGENT_NAME,
       generated: true,
       persisted: false,
+      ...(greeting.localInference
+        ? { localInference: greeting.localInference }
+        : {}),
     });
   }
 

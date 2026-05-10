@@ -819,7 +819,7 @@ const localAIManager = LocalAIManager.getInstance();
 
 export const localAiPlugin: Plugin = {
   name: "local-ai",
-  description: "Local AI plugin using LLaMA models",
+  description: "Local AI plugin using Eliza-1 GGUF models",
 
   async init(_config: Record<string, unknown> | undefined, _runtime: IAgentRuntime) {
     logger.info("🚀 Initializing Local AI plugin...");
@@ -833,7 +833,7 @@ export const localAiPlugin: Plugin = {
       logger.warn("- LOCAL_SMALL_MODEL: Path to small language model file");
       logger.warn("- LOCAL_LARGE_MODEL: Path to large language model file");
       logger.warn("- LOCAL_EMBEDDING_MODEL: Path to embedding model file");
-      logger.warn("Example: LOCAL_SMALL_MODEL=llama-3.2-1b-instruct-q8_0.gguf");
+      logger.warn("Example: LOCAL_SMALL_MODEL=text/eliza-1-mobile-1_7b-32k.gguf");
     }
 
     const modelsDir = config.MODELS_DIR || path.join(os.homedir(), ".eliza", "models");
@@ -914,7 +914,7 @@ export const localAiPlugin: Plugin = {
       const text = params?.text;
       if (!text) {
         logger.debug("Null or empty text input for embedding, returning zero vector");
-        return new Array(384).fill(0);
+        return new Array(1024).fill(0);
       }
 
       const embedding = await localAIManager.generateEmbedding(text);

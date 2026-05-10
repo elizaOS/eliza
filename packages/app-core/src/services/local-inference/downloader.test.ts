@@ -23,7 +23,7 @@ describe("local inference downloader status", () => {
         jobs: [
           {
             jobId: "job-1",
-            modelId: "qwen3.5-4b-dflash",
+            modelId: "eliza-1-mobile-1_7b",
             state: "failed",
             received: 64,
             total: 128,
@@ -40,7 +40,7 @@ describe("local inference downloader status", () => {
 
     const [job] = new Downloader().snapshot();
 
-    expect(job?.modelId).toBe("qwen3.5-4b-dflash");
+    expect(job?.modelId).toBe("eliza-1-mobile-1_7b");
     expect(job?.state).toBe("failed");
     expect(job?.error).toBe("network reset");
   });
