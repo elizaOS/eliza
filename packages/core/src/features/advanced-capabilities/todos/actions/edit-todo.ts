@@ -183,7 +183,10 @@ export const editTodoAction: Action = {
 		[
 			{
 				name: "{{name1}}",
-				content: { text: "Rename todo abc-123 to 'Submit final draft'.", source: "chat" },
+				content: {
+					text: "Rename todo abc-123 to 'Submit final draft'.",
+					source: "chat",
+				},
 			},
 			{
 				name: "{{agentName}}",
@@ -198,7 +201,10 @@ export const editTodoAction: Action = {
 		[
 			{
 				name: "{{name1}}",
-				content: { text: "Push the due date on todo abc-123 to next Friday.", source: "chat" },
+				content: {
+					text: "Push the due date on todo abc-123 to next Friday.",
+					source: "chat",
+				},
 			},
 			{
 				name: "{{agentName}}",

@@ -1509,7 +1509,9 @@ async function collectV5PlannerCandidateActions(args: {
 	const appendIfAllowed = async (
 		action: Action,
 		parentActionName?: string,
-		_activeContexts: readonly AgentContext[] | undefined = args.selectedContexts,
+		_activeContexts:
+			| readonly AgentContext[]
+			| undefined = args.selectedContexts,
 	): Promise<boolean> => {
 		const normalizedName = normalizeActionIdentifier(action.name);
 		if (!normalizedName || seen.has(normalizedName)) {
