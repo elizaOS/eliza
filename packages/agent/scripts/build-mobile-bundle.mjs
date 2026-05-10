@@ -732,28 +732,64 @@ if (!existsSync(bundlePath)) {
 // stubbed by `externalsAsStubs` or has a multi-entry-point exports map.
 // `apply*Override3` collisions come from the same path: a stubbed plugin
 // (e.g. `@elizaos/plugin-whatsapp`) leaves a numbered alias unbound.
+// Same root cause produces the `AutonomyService failed to start:
+// AutonomyService2 is not defined` warning at boot — the dedup'd alias
+// for the autonomy service class never gets bound when the consumer
+// `startAndRegisterAutonomyService2` runs before the second copy's init.
 //
 // The bundle still references these identifiers at runtime, so chat
 // completion crashes with "default10 is not defined". Prepend a polyfill
 // header that defines the few known offenders. Each one is either a uuid
-// generator (use the platform crypto) or a no-op for stubbed plugins.
+// generator (use the platform crypto), a no-op for stubbed plugins, or
+// (for AutonomyService2) an alias to the original class that DID get
+// bound by `init_service2`.
 //
 // The right long-term fix is to make Bun.build emit consistent bindings
 // for stubbed modules; until then, this prefix keeps the agent runnable.
+//
+// The polyfill is split into two phases:
+//   1. The header is prepended at the top of the bundle. These are
+//      `var X` declarations that get hoisted; consumers further down the
+//      bundle that read them before the underlying module's init runs
+//      see the polyfill value instead of `undefined`.
+//   2. The footer `if`-guard runs AFTER the bundle has finished loading
+//      (so the original module inits have run and `AutonomyService` etc.
+//      are populated). It reassigns the dedup'd alias to point at the
+//      now-bound original where one exists. No-op when the original
+//      isn't there either.
 const bundleSrc = await Bun.file(bundlePath).text();
+// `AutonomyService2` is the dedup'd consumer-side alias for the
+// autonomy Service class. The class itself (`class AutonomyService
+// extends Service { static async start(runtime) {...} }`) lives in a
+// lazy `init_service2()` body that doesn't run until something pulls
+// the autonomy module — but `startAndRegisterAutonomyService2` reads
+// `AutonomyService2` BEFORE that init runs. The bundle ships the alias
+// without a binding, so the runtime sees `AutonomyService2 is not
+// defined` at boot.
+//
+// Polyfill it as a no-op service class so `startAndRegisterAutonomyService2`
+// just returns null. Autonomy is opt-in, so a no-op class is safe.
 const polyfillHeader =
   "// auto-injected polyfills for Bun.build identifier-resolution gaps\n" +
   "var default10 = () => globalThis.crypto.randomUUID();\n" +
-  "var applyWhatsAppQrOverride3 = () => {};\n";
+  "var applyWhatsAppQrOverride3 = () => {};\n" +
+  "var applySignalQrOverride3 = () => {};\n" +
+  "var AutonomyService2 = class AutonomyServicePolyfill {\n" +
+  "  static serviceType = 'AUTONOMY';\n" +
+  "  static async start(_runtime) { return null; }\n" +
+  "  async stop() {}\n" +
+  "};\n";
+const polyfillFooter = "";
 let prefixed;
 if (bundleSrc.startsWith("#!")) {
   const nlIndex = bundleSrc.indexOf("\n");
   prefixed =
     bundleSrc.slice(0, nlIndex + 1) +
     polyfillHeader +
-    bundleSrc.slice(nlIndex + 1);
+    bundleSrc.slice(nlIndex + 1) +
+    polyfillFooter;
 } else {
-  prefixed = polyfillHeader + bundleSrc;
+  prefixed = polyfillHeader + bundleSrc + polyfillFooter;
 }
 await Bun.write(bundlePath, prefixed);
 
