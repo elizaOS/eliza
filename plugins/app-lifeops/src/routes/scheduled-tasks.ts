@@ -24,6 +24,7 @@ import {
   getBlockerRegistry,
   getEventKindRegistry,
   getFamilyRegistry,
+  getWorkflowStepRegistry,
 } from "../lifeops/registries/index.js";
 import type {
   ScheduledTask,
@@ -129,6 +130,12 @@ export interface DevRegistriesView {
     namespace: string | null;
   }>;
   blockers: Array<{ kind: string; label: string }>;
+  workflowSteps: Array<{
+    kind: string;
+    label: string;
+    description: string;
+    provider: string;
+  }>;
 }
 
 function composeDevRegistriesView(
@@ -144,6 +151,9 @@ function composeDevRegistriesView(
   const eventKindRegistry = runtime ? getEventKindRegistry(runtime) : null;
   const familyRegistry = runtime ? getFamilyRegistry(runtime) : null;
   const blockerRegistry = runtime ? getBlockerRegistry(runtime) : null;
+  const workflowStepRegistry = runtime
+    ? getWorkflowStepRegistry(runtime)
+    : null;
 
   return {
     gates: runnerView.gates,
@@ -193,6 +203,14 @@ function composeDevRegistriesView(
       ? blockerRegistry.list().map((b) => ({
           kind: b.kind,
           label: b.describe.label,
+        }))
+      : [],
+    workflowSteps: workflowStepRegistry
+      ? workflowStepRegistry.list().map((s) => ({
+          kind: s.kind,
+          label: s.describe.label,
+          description: s.describe.description,
+          provider: s.describe.provider,
         }))
       : [],
   };
