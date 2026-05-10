@@ -184,9 +184,7 @@ class PayoutStatusService {
   // ========================================
 
   private shouldSkipLiveBalanceChecks(env: NodeJS.ProcessEnv): boolean {
-    return (
-      env.PAYOUT_STATUS_SKIP_LIVE_BALANCE === "1" || env.SKIP_PAYOUT_BALANCE_CHECKS === "1"
-    );
+    return env.PAYOUT_STATUS_SKIP_LIVE_BALANCE === "1" || env.SKIP_PAYOUT_BALANCE_CHECKS === "1";
   }
 
   private buildSkippedBalanceStatus(
