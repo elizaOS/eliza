@@ -225,7 +225,11 @@ export function buildActionCatalog(
 			continue;
 		}
 
-		const parent = materializeParent(action, explicitChildren, localizedExamples);
+		const parent = materializeParent(
+			action,
+			explicitChildren,
+			localizedExamples,
+		);
 		parents.push(parent);
 		children.push(...explicitChildren);
 	}
