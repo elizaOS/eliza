@@ -17,9 +17,14 @@
 
 import { spawn } from "node:child_process";
 import process from "node:process";
+import {
+  resolveRuntimeExecutionMode,
+  type RuntimeExecutionMode,
+} from "@elizaos/shared";
+import { CapabilityBroker } from "./capability-broker.ts";
 import type { SandboxManager } from "./sandbox-manager.ts";
 
-export type ShellExecutionMode = "cloud" | "local-safe" | "local-yolo";
+export type ShellExecutionMode = RuntimeExecutionMode;
 
 export type ShellSandboxBackend =
   | "host"
@@ -61,41 +66,16 @@ export interface ShellRouterContext {
   resolveSandboxManager?: () => Promise<SandboxManager | null>;
 }
 
-const KNOWN_MODES: ReadonlySet<ShellExecutionMode> = new Set([
-  "cloud",
-  "local-safe",
-  "local-yolo",
-]);
-
-function normalizeMode(value: unknown): ShellExecutionMode | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return KNOWN_MODES.has(trimmed as ShellExecutionMode)
-    ? (trimmed as ShellExecutionMode)
-    : null;
-}
-
 export function resolveShellExecutionMode(
   ctx?: Pick<ShellRouterContext, "mode" | "runtime"> | null,
 ): ShellExecutionMode {
   if (ctx?.mode) return ctx.mode;
-  const runtime = ctx?.runtime ?? null;
-  const candidates: unknown[] = [
-    runtime?.getSetting?.("ELIZA_RUNTIME_MODE"),
-    runtime?.getSetting?.("RUNTIME_MODE"),
-    runtime?.getSetting?.("LOCAL_RUNTIME_MODE"),
-    process.env.ELIZA_RUNTIME_MODE,
-    process.env.RUNTIME_MODE,
-    process.env.LOCAL_RUNTIME_MODE,
-  ];
-  for (const candidate of candidates) {
-    const resolved = normalizeMode(candidate);
-    if (resolved) return resolved;
-  }
-  return "local-yolo";
+  return resolveRuntimeExecutionMode(ctx?.runtime ?? null);
 }
 
-function backendForSandboxManager(manager: SandboxManager): ShellSandboxBackend {
+function backendForSandboxManager(
+  manager: SandboxManager,
+): ShellSandboxBackend {
   // SandboxManager keeps its engine private; reach in only to label the
   // backend in ShellResult. If the shape ever changes, the fallback is the
   // safe "none" value and callers still see a well-formed result.
@@ -113,6 +93,34 @@ async function resolveSandboxManager(
   if (ctx?.sandboxManager !== undefined) return ctx.sandboxManager;
   if (ctx?.resolveSandboxManager) return await ctx.resolveSandboxManager();
   return null;
+}
+
+// Router-scoped broker so the shell.exec policy is driven by the same mode
+// resolver runShell uses for dispatch. The broker singleton in
+// capability-broker.ts hardcodes `local-safe` as its default mode, which is
+// correct for cloud-side callers but wrong for host-side runShell — those
+// must follow ELIZA_RUNTIME_MODE/RUNTIME_MODE/LOCAL_RUNTIME_MODE. The
+// internal mutable holder lets the broker re-read mode on every call without
+// constructing a new CapabilityBroker per runShell invocation.
+const routerModeHolder: { current: ShellExecutionMode } = {
+  current: "local-yolo",
+};
+let cachedRouterBroker: CapabilityBroker | null = null;
+function getRouterBroker(
+  modeSource: () => ShellExecutionMode,
+): CapabilityBroker {
+  routerModeHolder.current = modeSource();
+  if (cachedRouterBroker) return cachedRouterBroker;
+  cachedRouterBroker = new CapabilityBroker({
+    mode: () => routerModeHolder.current,
+  });
+  return cachedRouterBroker;
+}
+
+/** Test-only escape hatch — drops the cached router broker. */
+export function __resetShellRouterBrokerForTests(): void {
+  cachedRouterBroker = null;
+  routerModeHolder.current = "local-yolo";
 }
 
 async function runOnHost(req: ShellRequest): Promise<ShellResult> {
@@ -214,8 +222,20 @@ export async function runShell(
 
   const mode = resolveShellExecutionMode(ctx);
 
-  if (mode === "cloud") {
-    throw new Error("Local shell execution disabled in cloud mode.");
+  // Broker check uses the same mode source the router dispatches on, so the
+  // policy and the runtime path agree. Singleton-cached so the audit log is
+  // unified across all runShell calls in a process. The broker subsumes the
+  // legacy explicit cloud-mode rejection: shell.exec is hard-denied in the
+  // cloud profile, so any cloud-mode call fails here with a stable,
+  // policy-keyed error.
+  const decision = getRouterBroker(() => mode).check({
+    kind: "shell",
+    op: "exec",
+    target: req.command,
+    toolName: req.toolName,
+  });
+  if (decision.allowed !== true) {
+    throw new Error(`[shell] capability denied: ${decision.reason}`);
   }
 
   if (mode === "local-safe") {
