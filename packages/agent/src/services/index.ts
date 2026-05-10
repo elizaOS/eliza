@@ -1,3 +1,6 @@
+// Signal pairing helpers live in @elizaos/plugin-signal. Re-exported here
+// for backward compatibility with code that imports them from @elizaos/agent.
+
 export { CodingTaskExecutor } from "@elizaos/plugin-coding-tools";
 export {
   classifySignalPairingErrorStatus,

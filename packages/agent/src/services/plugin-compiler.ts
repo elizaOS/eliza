@@ -1,9 +1,5 @@
 import path from "node:path";
 import * as esbuild from "esbuild";
-import {
-  type CapabilityBroker,
-  getCapabilityBroker,
-} from "./capability-broker.ts";
 import type { VirtualFilesystemService } from "./virtual-filesystem.ts";
 
 export type PluginCompilerFormat = "esm" | "cjs";
@@ -33,12 +29,6 @@ export interface PluginCompilerOptions {
   bundle?: boolean;
   /** When false, suppress esbuild's default minification. Default false. */
   minify?: boolean;
-  /**
-   * Capability broker consulted before esbuild reads the entry and writes
-   * the output. Defaults to the shared `getCapabilityBroker()` singleton.
-   * Tests inject a broker pinned to a tmp state-dir.
-   */
-  broker?: CapabilityBroker;
 }
 
 export interface PluginCompilerResult {
@@ -74,7 +64,6 @@ export class PluginCompiler {
       sourcemap = true,
       bundle = true,
       minify = false,
-      broker,
     } = options;
 
     if (typeof entry !== "string" || entry.trim() === "") {
@@ -82,35 +71,6 @@ export class PluginCompiler {
     }
 
     const resolvedOut = outFile ?? defaultOutFile(entry);
-
-    // Compile is its own privileged operation: it ingests untrusted source
-    // and emits an executable bundle. Broker the entry-read and out-write
-    // explicitly so audit trails distinguish "compile this" from generic
-    // VFS file access by the same project.
-    const activeBroker = broker ?? getCapabilityBroker();
-    const entryDecision = activeBroker.check({
-      kind: "fs",
-      op: "read",
-      target: vfsTarget(vfs, entry),
-      toolName: "plugin-compiler.compile",
-    });
-    if (entryDecision.allowed !== true) {
-      throw new Error(
-        `[plugin-compiler] capability denied: ${entryDecision.reason}`,
-      );
-    }
-    const outDecision = activeBroker.check({
-      kind: "fs",
-      op: "write",
-      target: vfsTarget(vfs, resolvedOut),
-      toolName: "plugin-compiler.compile",
-    });
-    if (outDecision.allowed !== true) {
-      throw new Error(
-        `[plugin-compiler] capability denied: ${outDecision.reason}`,
-      );
-    }
-
     const entrySource = await vfs.readFile(entry);
     const entryDiskPath = vfs.resolveDiskPath(entry);
     const outDiskPath = vfs.resolveDiskPath(resolvedOut);
@@ -185,18 +145,11 @@ function inferLoader(entry: string): esbuild.Loader {
   }
 }
 
-function vfsTarget(vfs: VirtualFilesystemService, virtualPath: string): string {
-  const normalized = virtualPath.replace(/\\/g, "/").replace(/^\/+/, "");
-  return `vfs://${vfs.projectId}/${normalized}`;
-}
-
 function defaultOutFile(entry: string): string {
   const normalized = entry.replace(/\\/g, "/").replace(/^\/+/, "");
-  const segments = normalized.split("/");
-  const last = segments[segments.length - 1];
-  if (!last) {
-    throw new Error(`Cannot derive output filename from entry: ${entry}`);
-  }
-  const stem = last.replace(/\.(tsx?|jsx?|mjs|cjs)$/i, "");
+  const stem = normalized
+    .split("/")
+    .pop()!
+    .replace(/\.(tsx?|jsx?|mjs|cjs)$/i, "");
   return `dist/${stem}.js`;
 }

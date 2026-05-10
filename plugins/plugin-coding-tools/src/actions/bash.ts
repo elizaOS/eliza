@@ -172,8 +172,22 @@ export const bashAction: Action = {
     );
 
     const startedAt = Date.now();
+    const mode = resolveRuntimeExecutionMode(runtime);
+    if (mode === "cloud") {
+      coreLogger.error(
+        `${CODING_TOOLS_LOG_PREFIX} BASH cloud-mode denied: local exec disabled`,
+      );
+      return failureToActionResult(
+        {
+          reason: "internal",
+          message: "Local shell execution disabled in cloud mode.",
+        },
+        { cwd },
+      );
+    }
+
     coreLogger.info(
-      `${CODING_TOOLS_LOG_PREFIX} BASH mode=${resolveRuntimeExecutionMode(runtime)} cwd=${cwd}`,
+      `${CODING_TOOLS_LOG_PREFIX} BASH mode=${mode} cwd=${cwd}`,
     );
 
     let result: ShellResult;
