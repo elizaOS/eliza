@@ -26,6 +26,7 @@ const OWNER_LIFE_ACTIONS = [
 ] as const;
 
 type OwnerLifeAction = (typeof OWNER_LIFE_ACTIONS)[number];
+type ActionParameters = NonNullable<Action["parameters"]>;
 
 function readParam(options: unknown, key: string): unknown {
   if (!options || typeof options !== "object") return undefined;
@@ -60,6 +61,50 @@ function withParameters(
     ...record,
     parameters,
   };
+}
+
+function mirrorActionToSubaction(options: unknown): unknown {
+  const params = readParameters(options);
+  const action =
+    typeof params.action === "string"
+      ? params.action
+      : typeof params.subaction === "string"
+        ? params.subaction
+        : undefined;
+  return withParameters(options, {
+    ...params,
+    ...(action ? { action, subaction: action } : {}),
+  });
+}
+
+function canonicalizeActionParameters(
+  parameters: Action["parameters"],
+  description: string,
+): ActionParameters {
+  const source = parameters ?? [];
+  const converted = source
+    .filter((parameter) => parameter.name !== "op" && parameter.name !== "operation")
+    .map((parameter) =>
+      parameter.name === "subaction"
+        ? {
+            ...parameter,
+            name: "action",
+            description,
+          }
+        : parameter,
+    );
+  if (converted.some((parameter) => parameter.name === "action")) {
+    return converted;
+  }
+  return [
+    {
+      name: "action",
+      description,
+      required: false,
+      schema: { type: "string" as const },
+    },
+    ...converted,
+  ];
 }
 
 function normalizeOwnerLifeAction(options: unknown): OwnerLifeAction | undefined {
@@ -308,6 +353,19 @@ export const ownerHealthAction: Action = {
     "owner health: today|trend|by_metric|status; read-only telemetry",
   routingHint:
     'owner health/wearable reads ("step count", "sleep last night", heart rate, workouts) -> OWNER_HEALTH',
+  parameters: canonicalizeActionParameters(
+    healthAction.parameters,
+    "Owner health read action: today, trend, by_metric, or status.",
+  ),
+  handler: (runtime, message, state, options, callback) =>
+    delegateHandler(
+      healthAction,
+      runtime,
+      message,
+      state,
+      mirrorActionToSubaction(options),
+      callback,
+    ),
 };
 
 export const ownerScreenTimeAction: Action = {
@@ -318,6 +376,19 @@ export const ownerScreenTimeAction: Action = {
     "Owner screen-time and activity analytics across local activity, app usage, and browser reports.",
   descriptionCompressed:
     "owner screentime: summary|today|weekly|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
+  parameters: canonicalizeActionParameters(
+    screenTimeAction.parameters,
+    "Owner screentime read action.",
+  ),
+  handler: (runtime, message, state, options, callback) =>
+    delegateHandler(
+      screenTimeAction,
+      runtime,
+      message,
+      state,
+      mirrorActionToSubaction(options),
+      callback,
+    ),
 };
 
 export const ownerFinancesAction: Action = {
@@ -328,6 +399,19 @@ export const ownerFinancesAction: Action = {
     "Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
   descriptionCompressed:
     "owner finances: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
+  parameters: canonicalizeActionParameters(
+    moneyAction.parameters,
+    "Owner finance action.",
+  ),
+  handler: (runtime, message, state, options, callback) =>
+    delegateHandler(
+      moneyAction,
+      runtime,
+      message,
+      state,
+      mirrorActionToSubaction(options),
+      callback,
+    ),
 };
 
 const PERSONAL_ASSISTANT_ACTIONS = ["book_travel", "scheduling"] as const;

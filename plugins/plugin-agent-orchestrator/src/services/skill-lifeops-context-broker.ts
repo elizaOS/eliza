@@ -233,7 +233,7 @@ function createPlan(args: LifeOpsContextBrokerArgs): BrokerPlan {
       return {
         category,
         actionNames:
-          category === "priority" ? ["CHECKIN", "MESSAGE"] : ["MESSAGE"],
+          category === "priority" ? ["SCHEDULED_TASKS", "MESSAGE"] : ["MESSAGE"],
         intent,
         parameters: compactParameters({
           operation: category === "priority" ? "list_inbox" : "triage",
@@ -245,10 +245,10 @@ function createPlan(args: LifeOpsContextBrokerArgs): BrokerPlan {
     case "contacts":
       return {
         category,
-        actionNames: ["RELATIONSHIP"],
+        actionNames: ["CONTACT"],
         intent,
         parameters: compactParameters({
-          subaction: "list_contacts",
+          action: "search",
           intent,
           name: args.person ?? args.query,
         }),

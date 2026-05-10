@@ -11,13 +11,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/tunnel-
 FROM alpine:3.22
 
 RUN apk add --no-cache ca-certificates \
-  && adduser -D -H -u 10001 app \
-  && mkdir -p /var/lib/tunnel-proxy \
-  && chown -R app:app /var/lib/tunnel-proxy
+  && mkdir -p /var/lib/tunnel-proxy
 
 COPY --from=build /out/tunnel-proxy /usr/local/bin/tunnel-proxy
 
-USER app
 EXPOSE 8080
 ENV PORT=8080
 ENV TSNET_STATE_DIR=/var/lib/tunnel-proxy

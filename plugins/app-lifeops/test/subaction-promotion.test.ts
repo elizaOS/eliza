@@ -254,25 +254,25 @@ describe("promoteSubactionsToActions", () => {
   });
 });
 
-describe("TASKS promotion + alias normalization", () => {
+describe("SCHEDULED_TASKS promotion + alias normalization", () => {
   it("promotes the 12 task operations to virtual top-level Actions", () => {
     const promoted = promoteSubactionsToActions(scheduledTaskAction);
     expect(promoted[0]).toBe(scheduledTaskAction);
     const virtuals = promoted.slice(1);
     expect(virtuals).toHaveLength(12);
     expect(virtuals.map((a) => a.name)).toEqual([
-      "TASKS_LIST",
-      "TASKS_GET",
-      "TASKS_CREATE",
-      "TASKS_UPDATE",
-      "TASKS_SNOOZE",
-      "TASKS_SKIP",
-      "TASKS_COMPLETE",
-      "TASKS_ACKNOWLEDGE",
-      "TASKS_DISMISS",
-      "TASKS_CANCEL",
-      "TASKS_REOPEN",
-      "TASKS_HISTORY",
+      "SCHEDULED_SCHEDULED_TASKS_LIST",
+      "SCHEDULED_TASKS_GET",
+      "SCHEDULED_TASKS_CREATE",
+      "SCHEDULED_TASKS_UPDATE",
+      "SCHEDULED_TASKS_SNOOZE",
+      "SCHEDULED_TASKS_SKIP",
+      "SCHEDULED_TASKS_COMPLETE",
+      "SCHEDULED_TASKS_ACKNOWLEDGE",
+      "SCHEDULED_TASKS_DISMISS",
+      "SCHEDULED_TASKS_CANCEL",
+      "SCHEDULED_TASKS_REOPEN",
+      "SCHEDULED_TASKS_HISTORY",
     ]);
   });
 
@@ -294,7 +294,7 @@ describe("TASKS promotion + alias normalization", () => {
     }
   });
 
-  it("the TASKS_LIST virtual delegates to the parent handler with action=list injected", async () => {
+  it("the SCHEDULED_TASKS_LIST virtual delegates to the parent handler with action=list injected", async () => {
     const stubParent: typeof scheduledTaskAction = {
       ...scheduledTaskAction,
       validate: async () => true,
@@ -311,7 +311,7 @@ describe("TASKS promotion + alias normalization", () => {
       }),
     };
     const promoted = promoteSubactionsToActions(stubParent);
-    const list = promoted.find((a) => a.name === "TASKS_LIST");
+    const list = promoted.find((a) => a.name === "SCHEDULED_SCHEDULED_TASKS_LIST");
     expect(list).toBeDefined();
     const result = await list?.handler(
       STATIC_RUNTIME,

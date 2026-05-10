@@ -1268,6 +1268,69 @@ export const coreActionsSpec = {
 				"Assign role (Admin/Owner/None) to user(s) in channel.",
 		},
 		{
+			name: "ATTACHMENT",
+			description:
+				"Read current or recent attachments and link previews, or save readable attachment content as a document. Use action=read for extracted text, transcripts, page content, or media descriptions. Use action=save_as_document to store readable attachment content in the document store.",
+			similes: [
+				"READ_ATTACHMENT",
+				"SAVE_ATTACHMENT_AS_DOCUMENT",
+				"OPEN_ATTACHMENT",
+				"INSPECT_ATTACHMENT",
+				"READ_URL",
+				"OPEN_URL",
+				"READ_WEBPAGE",
+			],
+			parameters: [
+				{
+					name: "action",
+					description: "Attachment operation: read or save_as_document.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["read", "save_as_document"],
+					},
+					examples: ["read", "save_as_document"],
+					descriptionCompressed: "Attachment operation.",
+				},
+				{
+					name: "attachmentId",
+					description:
+						"Optional attachment ID to read or save. Omit to use the current or most recent attachment.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["attachment-123"],
+					descriptionCompressed: "Attachment id.",
+				},
+				{
+					name: "addToClipboard",
+					description:
+						"When true with action=read, store the attachment content in bounded task clipboard state.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					examples: [true, false],
+					descriptionCompressed: "Store read result in task clipboard.",
+				},
+				{
+					name: "title",
+					description:
+						"Optional title when saving attachment content as a document.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["Meeting notes"],
+					descriptionCompressed: "Saved document title.",
+				},
+			],
+			descriptionCompressed:
+				"Attachment action=read or save_as_document; current/recent files, link previews, extracted text, transcripts, media descriptions.",
+		},
+		{
 			name: "GENERATE_MEDIA",
 			description:
 				"Generates media based on a prompt and media type. Use GENERATE_MEDIA when the agent needs to create an image, video, music, sound effect, or speech audio for the user.",
@@ -2603,6 +2666,69 @@ export const allActionsSpec = {
 				"Assign role (Admin/Owner/None) to user(s) in channel.",
 		},
 		{
+			name: "ATTACHMENT",
+			description:
+				"Read current or recent attachments and link previews, or save readable attachment content as a document. Use action=read for extracted text, transcripts, page content, or media descriptions. Use action=save_as_document to store readable attachment content in the document store.",
+			similes: [
+				"READ_ATTACHMENT",
+				"SAVE_ATTACHMENT_AS_DOCUMENT",
+				"OPEN_ATTACHMENT",
+				"INSPECT_ATTACHMENT",
+				"READ_URL",
+				"OPEN_URL",
+				"READ_WEBPAGE",
+			],
+			parameters: [
+				{
+					name: "action",
+					description: "Attachment operation: read or save_as_document.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["read", "save_as_document"],
+					},
+					examples: ["read", "save_as_document"],
+					descriptionCompressed: "Attachment operation.",
+				},
+				{
+					name: "attachmentId",
+					description:
+						"Optional attachment ID to read or save. Omit to use the current or most recent attachment.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["attachment-123"],
+					descriptionCompressed: "Attachment id.",
+				},
+				{
+					name: "addToClipboard",
+					description:
+						"When true with action=read, store the attachment content in bounded task clipboard state.",
+					required: false,
+					schema: {
+						type: "boolean",
+						default: false,
+					},
+					examples: [true, false],
+					descriptionCompressed: "Store read result in task clipboard.",
+				},
+				{
+					name: "title",
+					description:
+						"Optional title when saving attachment content as a document.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["Meeting notes"],
+					descriptionCompressed: "Saved document title.",
+				},
+			],
+			descriptionCompressed:
+				"Attachment action=read or save_as_document; current/recent files, link previews, extracted text, transcripts, media descriptions.",
+		},
+		{
 			name: "GENERATE_MEDIA",
 			description:
 				"Generates media based on a prompt and media type. Use GENERATE_MEDIA when the agent needs to create an image, video, music, sound effect, or speech audio for the user.",
@@ -2743,69 +2869,6 @@ export const allActionsSpec = {
 			descriptionCompressed: "Generate image, video, or audio from prompt.",
 		},
 		{
-			name: "ASK_USER_QUESTION",
-			description:
-				"Broadcast 1-4 structured questions back to the user. Each question has a short header, a full question string, and optional multi-choice options with descriptions and previews. This is a structured-question broadcast surface — the action returns the question payload as data so a UI layer can render it; the action does NOT block waiting for an answer. UI integration is pending; for now treat the response as a published question, not as an interactive prompt.",
-			parameters: [
-				{
-					name: "questions",
-					description:
-						"Array of 1-4 question objects. Each: { question: string, header: string, options?: Array<{label, description?, preview?}>, multiSelect?: boolean }. If options is empty/undefined, the question is treated as freeform.",
-					required: true,
-					schema: {
-						type: "array",
-						items: {
-							type: "object",
-							properties: {
-								question: {
-									type: "string",
-								},
-								header: {
-									type: "string",
-								},
-								multiSelect: {
-									type: "boolean",
-								},
-								options: {
-									type: "array",
-									items: {
-										type: "object",
-										properties: {
-											label: {
-												type: "string",
-											},
-											description: {
-												type: "string",
-											},
-											preview: {
-												type: "string",
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-					descriptionCompressed:
-						"Array of 1-4 question objects. Each: { question: string, header: string, options?: Array<{label, description?, preview?}>, multiSelect?: boolean }. If...",
-				},
-			],
-			descriptionCompressed:
-				"Broadcast 1-4 structured questions to the user (UI integration pending; non-blocking).",
-			similes: ["ASK", "CLARIFY"],
-			exampleCalls: [
-				{
-					user: "Use ASK_USER_QUESTION with the provided parameters.",
-					actions: ["ASK_USER_QUESTION"],
-					params: {
-						ASK_USER_QUESTION: {
-							questions: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "BROWSER",
 			description:
 				"Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified. Use `subaction: \"autofill-login\"` with `domain` (and optional `username`, `submit`) to vault-gated autofill into an open workspace tab.",
@@ -2813,7 +2876,7 @@ export const allActionsSpec = {
 				{
 					name: "action",
 					description:
-						"Compatibility alias for subaction from older BROWSER_ACTION calls. Prefer subaction in new plans.",
+						"Browser action to perform. Legacy subaction is also accepted.",
 					required: false,
 					schema: {
 						type: "string",
@@ -2852,11 +2915,11 @@ export const allActionsSpec = {
 						],
 					},
 					descriptionCompressed:
-						"Compatibility alias for subaction from older BROWSER_ACTION calls. Prefer subaction in new plans.",
+						"Browser action to perform. Legacy subaction is also accepted.",
 				},
 				{
 					name: "subaction",
-					description: "Browser action to perform",
+					description: "Legacy alias for action.",
 					required: false,
 					schema: {
 						type: "string",
@@ -2887,7 +2950,7 @@ export const allActionsSpec = {
 							"autofill-login",
 						],
 					},
-					descriptionCompressed: "Browser action to perform",
+					descriptionCompressed: "Legacy alias for action.",
 				},
 				{
 					name: "tabAction",
@@ -3154,59 +3217,6 @@ export const allActionsSpec = {
 						CHECK_AVAILABILITY: {
 							startAt: "example",
 							endAt: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "CHECKIN",
-			description:
-				"Owner-only. Run a LifeOps morning or night check-in now by assembling the owner's todos, habits, goals, inbox, calendar, and recent signals into a briefing.",
-			parameters: [
-				{
-					name: "kind",
-					description:
-						"morning or night. Infer from the user request when omitted.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"morning or night. Infer from user request when omitted.",
-				},
-				{
-					name: "timezone",
-					description: "Optional IANA timezone override.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional IANA timezone override.",
-				},
-			],
-			descriptionCompressed:
-				"run owner LifeOps check-in now: kind morning|night; returns briefing summary",
-			similes: [
-				"CHECK_IN",
-				"LIFE_CHECK_IN",
-				"MORNING_CHECKIN",
-				"MORNING_CHECK_IN",
-				"NIGHT_CHECKIN",
-				"NIGHT_CHECK_IN",
-				"RUN_CHECKIN",
-				"RUN_MORNING_CHECKIN",
-				"RUN_NIGHT_CHECKIN",
-				"DAILY_BRIEF",
-			],
-			exampleCalls: [
-				{
-					user: "Use CHECKIN with the provided parameters.",
-					actions: ["CHECKIN"],
-					params: {
-						CHECKIN: {
-							kind: "example",
-							timezone: "example",
 						},
 					},
 				},
@@ -3844,55 +3854,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "DISCORD_SETUP_CREDENTIALS",
-			description:
-				"Start Discord credential setup or account pairing. Guides the user through setting up API credentials for supported third-party services, validates them when possible, and stores them securely.",
-			parameters: [
-				{
-					name: "service",
-					description: "Third-party service to configure from Discord.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "3p service to configure from Discord.",
-				},
-				{
-					name: "credentials",
-					description: "Credential values supplied by the user, when present.",
-					required: false,
-					schema: {
-						type: "object",
-					},
-					descriptionCompressed:
-						"Credential values supplied by user, when present.",
-				},
-			],
-			descriptionCompressed: "Set up Discord credentials.",
-			similes: [
-				"DISCORD_SETUP",
-				"DISCORD_PAIR",
-				"DISCORD_CONNECT",
-				"DISCORD_ADD_CREDENTIALS",
-				"DISCORD_CONFIGURE_SERVICE",
-				"DISCORD_CONNECT_SERVICE",
-				"DISCORD_ADD_API_KEY",
-				"DISCORD_SETUP_SERVICE",
-			],
-			exampleCalls: [
-				{
-					user: "Use DISCORD_SETUP_CREDENTIALS with the provided parameters.",
-					actions: ["DISCORD_SETUP_CREDENTIALS"],
-					params: {
-						DISCORD_SETUP_CREDENTIALS: {
-							service: "example",
-							credentials: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "EDIT",
 			description:
 				"Replace text in an existing file. Default behavior requires `old_string` to match exactly once; pass `replace_all=true` to substitute every occurrence. The file must have been READ in this session, must still match its recorded mtime, and the new content cannot introduce a detected secret pattern.",
@@ -3950,93 +3911,6 @@ export const allActionsSpec = {
 							old_string: "example",
 							new_string: "example",
 							replace_all: false,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "ENTER_WORKTREE",
-			description:
-				"Create a git worktree for the current repo and switch the session into it. The new worktree path becomes the session cwd and a sandbox root, so subsequent file operations land there until EXIT_WORKTREE pops it. Use to isolate a parallel branch of work without disturbing the main checkout.",
-			parameters: [
-				{
-					name: "name",
-					description:
-						"Optional worktree branch/dir name. Defaults to a random auto-* identifier.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional worktree branch/dir name. Defaults to a random auto-* id.",
-				},
-				{
-					name: "path",
-					description:
-						"Optional absolute worktree directory. Must lie within sandbox roots. Defaults to a per-call directory under the OS temp dir.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional absolute worktree directory. Must lie within sandbox roots. Defaults to a per-call directory under the OS temp dir.",
-				},
-				{
-					name: "base",
-					description: "Optional base ref for the new worktree (default HEAD).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional base ref for the new worktree (default HEAD).",
-				},
-			],
-			descriptionCompressed:
-				"Create and switch into a git worktree for parallel work.",
-			similes: ["GIT_WORKTREE_ADD", "ADD_WORKTREE", "OPEN_WORKTREE"],
-			exampleCalls: [
-				{
-					user: "Use ENTER_WORKTREE with the provided parameters.",
-					actions: ["ENTER_WORKTREE"],
-					params: {
-						ENTER_WORKTREE: {
-							name: "example",
-							path: "example",
-							base: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "EXIT_WORKTREE",
-			description:
-				"Pop the most recent ENTER_WORKTREE: restore the previous session cwd, drop the added sandbox root, and (with cleanup=true) run `git worktree remove --force` to delete the worktree directory.",
-			parameters: [
-				{
-					name: "cleanup",
-					description:
-						"If true, also `git worktree remove --force` the popped worktree directory.",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed:
-						"If true, also `git worktree remove --force` the popped worktree directory.",
-				},
-			],
-			descriptionCompressed:
-				"Exit current worktree, restore previous cwd, optionally git worktree remove --force.",
-			similes: ["LEAVE_WORKTREE", "POP_WORKTREE", "GIT_WORKTREE_REMOVE"],
-			exampleCalls: [
-				{
-					user: "Use EXIT_WORKTREE with the provided parameters.",
-					actions: ["EXIT_WORKTREE"],
-					params: {
-						EXIT_WORKTREE: {
-							cleanup: false,
 						},
 					},
 				},
@@ -4300,84 +4174,6 @@ export const allActionsSpec = {
 							offset: 1,
 							limit: 1,
 							ignore: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "FIRST_RUN",
-			description:
-				"Owner-only. Run the first-run capability with path = defaults | customize | replay. ",
-			parameters: [
-				{
-					name: "path",
-					description: "defaults | customize | replay",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "defaults | customize | replay",
-				},
-				{
-					name: "partialAnswers",
-					description:
-						"Optional object carrying answers from prior turns (resume support).",
-					required: false,
-					schema: {
-						type: "object",
-					},
-					descriptionCompressed:
-						"Optional object carrying answers from prior turns (resume support).",
-				},
-			],
-			descriptionCompressed:
-				"owner first-run: defaults|customize|replay; defaults asks wake time once",
-			similes: [
-				"RUN_FIRST_RUN",
-				"ONBOARDING",
-				"ONBOARD_USER",
-				"RUN_ONBOARDING",
-				"SETUP_DEFAULTS",
-				"RUN_SETUP",
-				"RESET_SETUP",
-			],
-			exampleCalls: [
-				{
-					user: "Use FIRST_RUN with the provided parameters.",
-					actions: ["FIRST_RUN"],
-					params: {
-						FIRST_RUN: {
-							path: "example",
-							partialAnswers: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "FORM_RESTORE",
-			description: "Restore a previously stashed form session",
-			parameters: [
-				{
-					name: "sessionId",
-					description: "Optional stashed form session id to restore.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional stashed form session id to restore.",
-				},
-			],
-			descriptionCompressed: "Restore stashed form session.",
-			similes: ["RESUME_FORM", "CONTINUE_FORM"],
-			exampleCalls: [
-				{
-					user: "Use FORM_RESTORE with the provided parameters.",
-					actions: ["FORM_RESTORE"],
-					params: {
-						FORM_RESTORE: {
-							sessionId: "example",
 						},
 					},
 				},
@@ -5517,10 +5313,10 @@ export const allActionsSpec = {
 		{
 			name: "MCP",
 			description:
-				"Single MCP entry point. Use op=call_tool to invoke an MCP tool, op=read_resource to read an MCP resource. Cloud runtimes also accept op=search_actions and op=list_connections.",
+				"Single MCP entry point. Use action=call_tool to invoke an MCP tool, action=read_resource to read an MCP resource. Cloud runtimes also accept action=search_actions and action=list_connections.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description:
 						"MCP operation: call_tool | read_resource | search_actions | list_connections",
 					required: false,
@@ -5550,77 +5346,78 @@ export const allActionsSpec = {
 				{
 					name: "toolName",
 					description:
-						"For op=call_tool: optional exact MCP tool name to call.",
+						"For action=call_tool: optional exact MCP tool name to call.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"For op=call_tool: optional exact MCP tool name to call.",
+						"For action=call_tool: optional exact MCP tool name to call.",
 				},
 				{
 					name: "arguments",
 					description:
-						"For op=call_tool: optional JSON arguments to pass to the selected MCP tool.",
+						"For action=call_tool: optional JSON arguments to pass to the selected MCP tool.",
 					required: false,
 					schema: {
 						type: "object",
 					},
 					descriptionCompressed:
-						"For op=call_tool: optional JSON arguments to pass to the selected MCP tool.",
+						"For action=call_tool: optional JSON arguments to pass to the selected MCP tool.",
 				},
 				{
 					name: "uri",
-					description: "For op=read_resource: exact MCP resource URI to read.",
+					description:
+						"For action=read_resource: exact MCP resource URI to read.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"For op=read_resource: exact MCP resource URI to read.",
+						"For action=read_resource: exact MCP resource URI to read.",
 				},
 				{
 					name: "query",
 					description:
-						"Natural-language description of the tool call or resource to select; for op=search_actions, the keyword query.",
+						"Natural-language description of the tool call or resource to select; for action=search_actions, the keyword query.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Natural-language description of the tool call or resource to select. for op=search_actions, the keyword query.",
+						"Natural-language description of the tool call or resource to select. for action=search_actions, the keyword query.",
 				},
 				{
 					name: "platform",
 					description:
-						"For op=search_actions: filter results to a single connected platform.",
+						"For action=search_actions: filter results to a single connected platform.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"For op=search_actions: filter results to a single connected platform.",
+						"For action=search_actions: filter results to a single connected platform.",
 				},
 				{
 					name: "limit",
-					description: "For op=search_actions: maximum results to return.",
+					description: "For action=search_actions: maximum results to return.",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					descriptionCompressed:
-						"For op=search_actions: max results to return.",
+						"For action=search_actions: max results to return.",
 				},
 				{
 					name: "offset",
 					description:
-						"For op=search_actions: skip first N results for pagination.",
+						"For action=search_actions: skip first N results for pagination.",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					descriptionCompressed:
-						"For op=search_actions: skip first N results for pagination.",
+						"For action=search_actions: skip first N results for pagination.",
 				},
 			],
 			descriptionCompressed:
@@ -5654,7 +5451,7 @@ export const allActionsSpec = {
 					actions: ["MCP"],
 					params: {
 						MCP: {
-							subaction: "call_tool",
+							action: "call_tool",
 							serverName: "example",
 							toolName: "example",
 							arguments: "example",
@@ -5663,101 +5460,6 @@ export const allActionsSpec = {
 							platform: "example",
 							limit: 1,
 							offset: 1,
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "MESSAGE_HANDOFF",
-			description:
-				"Hand off a multi-party room to the human owner. Verbs: enter (agent stops contributing until the resume condition fires), resume (agent rejoins), status (report current handoff state).",
-			parameters: [
-				{
-					name: "verb",
-					description: "enter | resume | status",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "enter | resume | status",
-				},
-				{
-					name: "reason",
-					description:
-						"Why the agent is stepping back (logged in HandoffStore).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Why agent is stepping back (logged in HandoffStore).",
-				},
-				{
-					name: "resumeKind",
-					description:
-						"mention | explicit_resume | silence_minutes | user_request_help",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"mention | explicit_resume | silence_minutes | user_request_help",
-				},
-				{
-					name: "silenceMinutes",
-					description: "Required when resumeKind=silence_minutes.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed: "Required when resumeKind=silence_minutes.",
-				},
-				{
-					name: "userId",
-					description: "Required when resumeKind=user_request_help.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Required when resumeKind=user_request_help.",
-				},
-				{
-					name: "roomId",
-					description:
-						"Override the room to operate on; defaults to message.roomId.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Override the room to operate on. defaults to msg. roomId.",
-				},
-			],
-			descriptionCompressed:
-				"room handoff: enter|resume|status; gates agent per resumeOn condition",
-			similes: [
-				"MESSAGE.handoff",
-				"HANDOFF",
-				"HAND_OFF",
-				"STEP_BACK",
-				"LET_HUMAN_TAKE_OVER",
-				"AGENT_STAND_DOWN",
-				"RESUME_AGENT",
-				"AGENT_COME_BACK",
-			],
-			exampleCalls: [
-				{
-					user: "Use MESSAGE_HANDOFF with the provided parameters.",
-					actions: ["MESSAGE_HANDOFF"],
-					params: {
-						MESSAGE_HANDOFF: {
-							verb: "example",
-							reason: "example",
-							resumeKind: "example",
-							silenceMinutes: 1,
-							userId: "example",
-							roomId: "example",
 						},
 					},
 				},
@@ -6105,89 +5807,12 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "NOSTR_PUBLISH_PROFILE",
+			name: "MYSTICISM_PAYMENT",
 			description:
-				"Publish or update the bot's Nostr profile (kind:0 metadata)",
+				"Payment router for the active mysticism reading session. Set action to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
 			parameters: [
 				{
-					name: "name",
-					description: "Display name for the Nostr profile.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Display name for the Nostr profile.",
-				},
-				{
-					name: "about",
-					description: "Profile bio/about text.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Profile bio/about text.",
-				},
-				{
-					name: "picture",
-					description: "Profile picture URL.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Profile picture URL.",
-				},
-			],
-			descriptionCompressed:
-				"publish update bot Nostr profile (kind: 0 metadata)",
-			similes: ["UPDATE_NOSTR_PROFILE", "SET_NOSTR_PROFILE", "NOSTR_PROFILE"],
-			exampleCalls: [
-				{
-					user: "Use NOSTR_PUBLISH_PROFILE with the provided parameters.",
-					actions: ["NOSTR_PUBLISH_PROFILE"],
-					params: {
-						NOSTR_PUBLISH_PROFILE: {
-							name: "example",
-							about: "example",
-							picture: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "OWNER_FINANCES",
-			description:
-				"Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
-			parameters: [],
-			descriptionCompressed:
-				"owner finances: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
-			similes: ["MONEY", "FINANCES", "PAYMENTS", "SUBSCRIPTIONS"],
-		},
-		{
-			name: "OWNER_HEALTH",
-			description:
-				"Owner health telemetry reads across HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura. Actions: today, trend, by_metric, status.",
-			parameters: [],
-			descriptionCompressed:
-				"owner health: today|trend|by_metric|status; read-only telemetry",
-			similes: ["HEALTH", "FITNESS", "WELLNESS"],
-		},
-		{
-			name: "OWNER_SCREENTIME",
-			description:
-				"Owner screen-time and activity analytics across local activity, app usage, and browser reports.",
-			parameters: [],
-			descriptionCompressed:
-				"owner screentime: summary|today|weekly|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
-			similes: ["SCREENTIME", "SCREEN_TIME", "ACTIVITY_REPORT"],
-		},
-		{
-			name: "PAYMENT",
-			description:
-				"Payment router for the active mysticism reading session. Set op to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
-			parameters: [
-				{
-					name: "subaction",
+					name: "action",
 					description: "Operation: check or request.",
 					required: true,
 					schema: {
@@ -6239,14 +5864,15 @@ export const allActionsSpec = {
 				"CHECK_PAYMENT",
 				"VERIFY_PAYMENT",
 				"PAYMENT_STATUS",
+				"PAYMENT",
 			],
 			exampleCalls: [
 				{
-					user: "Use PAYMENT with the provided parameters.",
-					actions: ["PAYMENT"],
+					user: "Use MYSTICISM_PAYMENT with the provided parameters.",
+					actions: ["MYSTICISM_PAYMENT"],
 					params: {
-						PAYMENT: {
-							subaction: "check",
+						MYSTICISM_PAYMENT: {
+							action: "check",
 							amount: "example",
 							entityId: "example",
 							roomId: "example",
@@ -6254,6 +5880,33 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "OWNER_FINANCES",
+			description:
+				"Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
+			parameters: [],
+			descriptionCompressed:
+				"owner finances: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
+			similes: ["MONEY", "FINANCES", "PAYMENTS", "SUBSCRIPTIONS"],
+		},
+		{
+			name: "OWNER_HEALTH",
+			description:
+				"Owner health telemetry reads across HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura. Actions: today, trend, by_metric, status.",
+			parameters: [],
+			descriptionCompressed:
+				"owner health: today|trend|by_metric|status; read-only telemetry",
+			similes: ["HEALTH", "FITNESS", "WELLNESS"],
+		},
+		{
+			name: "OWNER_SCREENTIME",
+			description:
+				"Owner screen-time and activity analytics across local activity, app usage, and browser reports.",
+			parameters: [],
+			descriptionCompressed:
+				"owner screentime: summary|today|weekly|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
+			similes: ["SCREENTIME", "SCREEN_TIME", "ACTIVITY_REPORT"],
 		},
 		{
 			name: "PERSONAL_ASSISTANT",
@@ -6285,38 +5938,6 @@ export const allActionsSpec = {
 					params: {
 						PERSONAL_ASSISTANT: {
 							action: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "PLACE_CALL",
-			description:
-				"Place a phone call to a given number using the Android Telecom service. ",
-			parameters: [
-				{
-					name: "phoneNumber",
-					description:
-						"Phone number to call. Accepts E.164 (`+15551234567`) or local ",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Phone number to call. Accepts E. 164 (`+15551234567`) or local",
-				},
-			],
-			descriptionCompressed:
-				"Place a phone call via Android Telecom. Requires CALL_PHONE permission.",
-			similes: ["CALL", "DIAL", "RING", "PHONE_CALL", "MAKE_CALL"],
-			exampleCalls: [
-				{
-					user: "Use PLACE_CALL with the provided parameters.",
-					actions: ["PLACE_CALL"],
-					params: {
-						PLACE_CALL: {
-							phoneNumber: "example",
 						},
 					},
 				},
@@ -6794,51 +6415,6 @@ export const allActionsSpec = {
 						SCAPE: {
 							subaction: "example",
 							params: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "SCHEDULE",
-			description:
-				"Owner-only. Inspect LifeOps passive schedule inference from local activity, screen-time, and optional health signals. ",
-			parameters: [
-				{
-					name: "subaction",
-					description:
-						"Optional. summary (high-level circadian answer; default) or inspect (evidence windows, sleep episodes, meal candidates).",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["summary", "inspect"],
-					},
-					examples: ["summary", "inspect"],
-					descriptionCompressed: "schedule op: summary | inspect",
-				},
-				{
-					name: "timezone",
-					description:
-						"Optional IANA timezone override (e.g. America/Los_Angeles).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["America/Los_Angeles", "UTC"],
-					descriptionCompressed: "IANA tz override",
-				},
-			],
-			descriptionCompressed:
-				"passive schedule inference activity+screen-time+health: summary | inspect(sleep meals evidence-windows)",
-			similes: ["SLEEP_INFERENCE", "MEAL_INFERENCE"],
-			exampleCalls: [
-				{
-					user: "Use SCHEDULE with the provided parameters.",
-					actions: ["SCHEDULE"],
-					params: {
-						SCHEDULE: {
-							subaction: "summary",
-							timezone: "America/Los_Angeles",
 						},
 					},
 				},
@@ -7482,42 +7058,39 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "WEB_FETCH",
+			name: "VOICE_CALL",
 			description:
-				"Fetch a single http(s) URL and return its body as text. HTML responses are stripped of tags and collapsed to plain text. Body is capped at 5MB; text is capped at 50000 chars. Loopback addresses (localhost, 127.0.0.1, 0.0.0.0, ::1, 169.254.*) are blocked by default; set CODING_TOOLS_WEB_FETCH_ALLOW_LOOPBACK=1 to permit them. Use for reading documentation, blog posts, or pasting in a URL the user referenced.",
+				"Place a phone call to a given number using the Android Telecom service. ",
 			parameters: [
 				{
-					name: "url",
-					description: "Absolute http:// or https:// URL to fetch.",
+					name: "phoneNumber",
+					description:
+						"Phone number to call. Accepts E.164 (`+15551234567`) or local ",
 					required: true,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Absolute http:// or https:// URL to fetch.",
-				},
-				{
-					name: "prompt",
-					description:
-						"Optional summary/extraction instruction. Echoed verbatim in the result text; no LLM is run on the body in v1.",
-					required: false,
-					schema: {
-						type: "string",
-					},
 					descriptionCompressed:
-						"Optional summary/extraction instruction. Echoed verbatim in the result text. no LLM is run on the body in v1.",
+						"Phone number to call. Accepts E. 164 (`+15551234567`) or local",
 				},
 			],
 			descriptionCompressed:
-				"Fetch http(s) URL and return body as plain text (HTML stripped, capped).",
-			similes: ["FETCH_URL", "GET_URL", "DOWNLOAD_PAGE"],
+				"Place a phone call via Android Telecom. Requires CALL_PHONE permission.",
+			similes: [
+				"PLACE_CALL",
+				"CALL",
+				"DIAL",
+				"RING",
+				"PHONE_CALL",
+				"MAKE_CALL",
+			],
 			exampleCalls: [
 				{
-					user: "Use WEB_FETCH with the provided parameters.",
-					actions: ["WEB_FETCH"],
+					user: "Use VOICE_CALL with the provided parameters.",
+					actions: ["VOICE_CALL"],
 					params: {
-						WEB_FETCH: {
-							url: "example",
-							prompt: "example",
+						VOICE_CALL: {
+							phoneNumber: "example",
 						},
 					},
 				},

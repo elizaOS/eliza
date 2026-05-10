@@ -509,15 +509,15 @@ function scheduleTaskEnsureAfterRuntimeInit(args: {
 const rawAppLifeOpsPlugin: Plugin = {
   name: "@elizaos/app-lifeops",
   description:
-    "LifeOps: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companions (Chrome/Safari), website blocking, app blocking, and related surfaces.",
+    "Owner operations: routines, goals, scheduled tasks, calendar, messaging, connectors, credentials, voice calls, browser companions, website/app blocking, and related owner-only surfaces.",
   dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE],
   schema: lifeOpsSchema,
   actions: [
-    // Audit B umbrella folds (D-1, D-4, D-5): one umbrella per folded pair.
-    // Each umbrella registers itself + its per-subaction virtuals via
+    // Canonical owner-operation umbrellas. Each umbrella registers itself + its
+    // per-action virtuals via
     // `promoteSubactionsToActions` so the planner sees a discoverable
-    // top-level entry for every flat subaction (e.g. `BLOCK_BLOCK`,
-    // `BLOCK_LIST_ACTIVE`, `MONEY_DASHBOARD`, `CREDENTIALS_FILL`, …).
+    // top-level entry for every flat child action (e.g. `BLOCK_BLOCK`,
+    // `BLOCK_LIST_ACTIVE`, `OWNER_FINANCES_DASHBOARD`, `CREDENTIALS_FILL`, ...).
     ...promoteSubactionsToActions(blockAction),
     ...promoteSubactionsToActions(ownerFinancesAction),
     ...promoteSubactionsToActions(credentialsAction),

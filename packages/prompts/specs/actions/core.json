@@ -1144,6 +1144,64 @@
       "descriptionCompressed": "Assign role (Admin/Owner/None) to user(s) in channel."
     },
     {
+      "name": "ATTACHMENT",
+      "description": "Read current or recent attachments and link previews, or save readable attachment content as a document. Use action=read for extracted text, transcripts, page content, or media descriptions. Use action=save_as_document to store readable attachment content in the document store.",
+      "similes": [
+        "READ_ATTACHMENT",
+        "SAVE_ATTACHMENT_AS_DOCUMENT",
+        "OPEN_ATTACHMENT",
+        "INSPECT_ATTACHMENT",
+        "READ_URL",
+        "OPEN_URL",
+        "READ_WEBPAGE"
+      ],
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Attachment operation: read or save_as_document.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["read", "save_as_document"]
+          },
+          "examples": ["read", "save_as_document"],
+          "descriptionCompressed": "Attachment operation."
+        },
+        {
+          "name": "attachmentId",
+          "description": "Optional attachment ID to read or save. Omit to use the current or most recent attachment.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["attachment-123"],
+          "descriptionCompressed": "Attachment id."
+        },
+        {
+          "name": "addToClipboard",
+          "description": "When true with action=read, store the attachment content in bounded task clipboard state.",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          },
+          "examples": [true, false],
+          "descriptionCompressed": "Store read result in task clipboard."
+        },
+        {
+          "name": "title",
+          "description": "Optional title when saving attachment content as a document.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["Meeting notes"],
+          "descriptionCompressed": "Saved document title."
+        }
+      ],
+      "descriptionCompressed": "Attachment action=read or save_as_document; current/recent files, link previews, extracted text, transcripts, media descriptions."
+    },
+    {
       "name": "GENERATE_MEDIA",
       "description": "Generates media based on a prompt and media type. Use GENERATE_MEDIA when the agent needs to create an image, video, music, sound effect, or speech audio for the user.",
       "similes": [
