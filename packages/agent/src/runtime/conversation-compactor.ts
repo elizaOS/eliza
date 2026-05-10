@@ -675,9 +675,14 @@ const LEDGER_SYSTEM_PROMPT =
   '  - "state": { "facts": string[], "decisions": string[],' +
   ' "pending_actions": string[], "entities": { [k: string]: string } }\n' +
   '  - "ledger": Array<{ "index": number, "note": string }>\n' +
-  "The ledger is a chronological list of important events, in order. The" +
-  " state is the structured summary at the end of the conversation. Output" +
-  " ONLY the JSON object, no prose, no markdown fences.";
+  "The ledger is a chronological list of LOAD-BEARING events only — not" +
+  " every turn. Skip greetings, filler, and acknowledgements. Each note must" +
+  " be a single short clause (≤ 15 words). Cap the ledger at 10 entries; if" +
+  " more events are load-bearing, merge nearby ones. The state is the" +
+  " structured summary at the end of the conversation. Output ONLY the" +
+  " JSON object, no prose, no markdown fences.";
+
+const HYBRID_LEDGER_MAX_ENTRIES = 10;
 
 type HybridParsed = {
   state: StructuredState;
@@ -726,6 +731,10 @@ function safeParseHybrid(raw: string): HybridParsed {
           note: typeof e.note === "string" ? e.note : "",
         }))
         .filter((e) => e.note.length > 0)
+        // Hard cap defends compression_ratio when the model ignores the
+        // "≤ 10 entries" instruction in the prompt. Without the cap, the
+        // ledger overhead can make the artifact larger than the input.
+        .slice(0, HYBRID_LEDGER_MAX_ENTRIES)
     : [];
   return { state, ledger };
 }
