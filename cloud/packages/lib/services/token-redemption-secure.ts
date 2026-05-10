@@ -47,6 +47,7 @@ import {
 } from "@/lib/config/redemption-addresses";
 import { ARBITRAGE_PROTECTION } from "@/lib/config/redemption-security";
 import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "@/lib/config/token-constants";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { logger } from "@/lib/utils/logger";
 import { ELIZA_TOKEN_ADDRESSES, type SupportedNetwork } from "./eliza-token-price";
 import { redeemableEarningsService } from "./redeemable-earnings";
@@ -873,8 +874,9 @@ export class SecureTokenRedemptionService {
     network: SupportedNetwork,
     requiredAmount: number,
   ): Promise<{ available: boolean; balance: number; error?: string }> {
+    const env = getCloudAwareEnv();
     if (network === "solana") {
-      const solanaAddress = process.env.SOLANA_PAYOUT_WALLET_ADDRESS;
+      const solanaAddress = env.SOLANA_PAYOUT_WALLET_ADDRESS;
       if (!solanaAddress) {
         return {
           available: false,
@@ -885,11 +887,11 @@ export class SecureTokenRedemptionService {
       return await this.checkSolanaBalance(solanaAddress, requiredAmount);
     } else {
       // Try explicit wallet address first, then derive from private key
-      let evmAddress = process.env.EVM_PAYOUT_WALLET_ADDRESS;
+      let evmAddress = env.EVM_PAYOUT_WALLET_ADDRESS;
 
       if (!evmAddress) {
         // Derive from private key (matches payout-processor.ts logic)
-        const evmKey = process.env.EVM_PAYOUT_PRIVATE_KEY || process.env.EVM_PRIVATE_KEY;
+        const evmKey = env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY;
         if (evmKey) {
           const formattedKey = evmKey.startsWith("0x")
             ? (evmKey as `0x${string}`)
@@ -958,7 +960,8 @@ export class SecureTokenRedemptionService {
     walletAddress: string,
     requiredAmount: number,
   ): Promise<{ available: boolean; balance: number; error?: string }> {
-    const solanaRpc = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+    const env = getCloudAwareEnv();
+    const solanaRpc = env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
     const { Connection, PublicKey } =
       require("@solana/web3.js") as typeof import("@solana/web3.js");
     const { getAssociatedTokenAddress, getAccount } =

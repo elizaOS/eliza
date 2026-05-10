@@ -1,6 +1,7 @@
 import Decimal from "decimal.js";
 import { isAddress } from "viem";
 import { type CryptoPayment, cryptoPaymentsRepository } from "@/db/repositories/crypto-payments";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
 import { x402FacilitatorService } from "@/lib/services/x402-facilitator";
 import { logger } from "@/lib/utils/logger";
@@ -125,7 +126,8 @@ export class X402PaymentRequestError extends Error {
 }
 
 function normalizeNetwork(raw?: string): NetworkConfig {
-  const value = raw?.trim() || process.env.X402_NETWORK || "base";
+  const env = getCloudAwareEnv();
+  const value = raw?.trim() || env.X402_NETWORK || "base";
   const byCaip = Object.values(NETWORKS).find((entry) => entry.caip2 === value);
   const config = byCaip ?? NETWORKS[value];
   if (!config) {
@@ -135,10 +137,11 @@ function normalizeNetwork(raw?: string): NetworkConfig {
 }
 
 function publicBaseUrl(): string {
+  const env = getCloudAwareEnv();
   return (
-    process.env.X402_PUBLIC_BASE_URL ??
-    process.env.X402_BASE_URL ??
-    process.env.NEXT_PUBLIC_API_URL ??
+    env.X402_PUBLIC_BASE_URL ??
+    env.X402_BASE_URL ??
+    env.NEXT_PUBLIC_API_URL ??
     "https://x402.elizaos.ai"
   ).replace(/\/$/, "");
 }
@@ -158,9 +161,9 @@ function usdToAtomic(amountUsd: Decimal, decimals: number): string {
 function validateCallbackUrl(callbackUrl?: string): string | undefined {
   if (!callbackUrl) return undefined;
   const url = new URL(callbackUrl);
+  const env = getCloudAwareEnv();
   const isLocalDev =
-    process.env.NODE_ENV !== "production" &&
-    (url.hostname === "localhost" || url.hostname === "127.0.0.1");
+    env.NODE_ENV !== "production" && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
   if (url.protocol !== "https:" && !(isLocalDev && url.protocol === "http:")) {
     throw new X402PaymentRequestError("callbackUrl must be https", 400, "bad_callback_url");
   }
@@ -168,7 +171,8 @@ function validateCallbackUrl(callbackUrl?: string): string | undefined {
 }
 
 async function resolvePaymentRecipient(): Promise<string> {
-  const configured = process.env.X402_RECIPIENT_ADDRESS?.trim();
+  const env = getCloudAwareEnv();
+  const configured = env.X402_RECIPIENT_ADDRESS?.trim();
   if (configured) return configured;
   await x402FacilitatorService.initialize();
   const signer = x402FacilitatorService.getSignerAddress();
@@ -234,6 +238,25 @@ function decodePaymentPayload(input: unknown): Parameters<typeof x402Facilitator
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isDecodedPaymentPayload(
+  value: unknown,
+): value is Parameters<typeof x402FacilitatorService.settle>[0] {
+  if (!isRecord(value) || typeof value.x402Version !== "number") return false;
+  if (!isRecord(value.accepted) || !isRecord(value.payload)) return false;
+  return (
+    typeof value.accepted.scheme === "string" &&
+    typeof value.accepted.network === "string" &&
+    typeof value.accepted.asset === "string" &&
+    typeof value.accepted.amount === "string" &&
+    typeof value.accepted.payTo === "string" &&
+    typeof value.payload.signature === "string"
+  );
+}
+
 async function triggerCallback(payment: CryptoPayment, event: Record<string, unknown>) {
   const callbackUrl = metadataOf(payment).callbackUrl;
   if (typeof callbackUrl !== "string") return;
@@ -296,8 +319,9 @@ class X402PaymentRequestsService {
 
     const callbackUrl = validateCallbackUrl(input.callbackUrl);
     const amount = new Decimal(input.amountUsd);
-    const platformFeeBps = new Decimal(process.env.X402_PLATFORM_FEE_BPS ?? "100");
-    const serviceFee = new Decimal(process.env.X402_SERVICE_FEE_USD ?? "0.01");
+    const env = getCloudAwareEnv();
+    const platformFeeBps = new Decimal(env.X402_PLATFORM_FEE_BPS ?? "100");
+    const serviceFee = new Decimal(env.X402_SERVICE_FEE_USD ?? "0.01");
     const platformFee = amount.mul(platformFeeBps).div(10_000).toDecimalPlaces(4, Decimal.ROUND_UP);
     const totalCharged = amount.plus(platformFee).plus(serviceFee).toDecimalPlaces(4);
     const amountAtomic = usdToAtomic(totalCharged, network.decimals);
@@ -402,7 +426,10 @@ class X402PaymentRequestsService {
       return { paymentRequest: this.toView(payment), paymentResponse };
     }
     if (payment.expires_at.getTime() < Date.now()) {
-      await cryptoPaymentsRepository.markAsExpired(payment.id);
+      const expired = (await cryptoPaymentsRepository.markAsExpired(payment.id)) ?? payment;
+      await this.triggerFailureCallback(expired, "expired", {
+        expiredAt: payment.expires_at.toISOString(),
+      });
       throw new X402PaymentRequestError(
         `Payment request expired at ${payment.expires_at.toISOString()}`,
         410,
@@ -418,9 +445,37 @@ class X402PaymentRequestsService {
       throw new X402PaymentRequestError("Payment request is missing requirements", 500);
     }
 
-    const paymentPayload = decodePaymentPayload(paymentPayloadInput);
-    const settlement = await x402FacilitatorService.settle(paymentPayload, requirements);
+    let paymentPayload: Parameters<typeof x402FacilitatorService.settle>[0];
+    try {
+      paymentPayload = decodePaymentPayload(paymentPayloadInput);
+    } catch (error) {
+      await this.triggerFailureCallback(payment, "invalid_payment_payload", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+    if (!isDecodedPaymentPayload(paymentPayload)) {
+      await this.triggerFailureCallback(payment, "invalid_payment_payload");
+      throw new X402PaymentRequestError(
+        "Invalid x402 payment payload",
+        400,
+        "invalid_payment_payload",
+      );
+    }
+
+    let settlement: Awaited<ReturnType<typeof x402FacilitatorService.settle>>;
+    try {
+      settlement = await x402FacilitatorService.settle(paymentPayload, requirements);
+    } catch (error) {
+      await this.triggerFailureCallback(payment, "settlement_error", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new X402PaymentRequestError("x402 settlement failed", 402, "settlement_failed");
+    }
     if (!settlement.success) {
+      await this.triggerFailureCallback(payment, settlement.errorReason ?? "settlement_failed", {
+        settlement,
+      });
       throw new X402PaymentRequestError(
         settlement.errorReason ?? "x402 settlement failed",
         402,
@@ -478,6 +533,19 @@ class X402PaymentRequestsService {
       paymentRequest: this.toView(settledPayment),
       paymentResponse: Buffer.from(JSON.stringify(settlement)).toString("base64"),
     };
+  }
+
+  private async triggerFailureCallback(
+    payment: CryptoPayment,
+    reason: string,
+    details?: Record<string, unknown>,
+  ): Promise<void> {
+    await triggerCallback(payment, {
+      type: "x402.payment_request.failed",
+      paymentRequest: this.toView(payment),
+      reason,
+      ...(details && { details }),
+    });
   }
 
   toView(payment: CryptoPayment): X402PaymentRequestView {

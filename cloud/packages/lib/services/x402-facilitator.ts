@@ -18,6 +18,7 @@
 import { type Chain, createPublicClient, type Hex, http, type PublicClient } from "viem";
 import { type PrivateKeyAccount, privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia, bsc, bscTestnet, mainnet, sepolia } from "viem/chains";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { logger } from "@/lib/utils/logger";
 
 // Types
@@ -124,8 +125,9 @@ export interface SupportedResponse {
 // Network Registry
 
 function buildNetworkRegistry(): Record<string, NetworkConfig> {
-  const alchemyKey = process.env.ALCHEMY_API_KEY ?? "";
-  const infuraKey = process.env.INFURA_API_KEY ?? "";
+  const env = getCloudAwareEnv();
+  const alchemyKey = env.ALCHEMY_API_KEY ?? "";
+  const infuraKey = env.INFURA_API_KEY ?? "";
 
   return {
     "eip155:8453": {
@@ -301,13 +303,14 @@ const PAYMENT_PERMIT_ADDRESSES: Record<string, Hex> = {
 };
 
 function getPaymentPermitAddress(network: string): Hex | null {
+  const env = getCloudAwareEnv();
   const envKey =
     network === "eip155:56"
       ? "X402_PAYMENT_PERMIT_ADDRESS_BSC"
       : network === "eip155:97"
         ? "X402_PAYMENT_PERMIT_ADDRESS_BSC_TESTNET"
         : "";
-  const configured = envKey ? process.env[envKey] : undefined;
+  const configured = envKey ? env[envKey] : undefined;
   return (configured as Hex | undefined) ?? PAYMENT_PERMIT_ADDRESSES[network] ?? null;
 }
 
@@ -375,8 +378,8 @@ class X402FacilitatorService {
     // Build network registry and RPC clients
     this.networks = buildNetworkRegistry();
 
-    const enabledStr =
-      process.env.X402_NETWORKS ?? process.env.EVM_NETWORKS ?? "base-sepolia,base,bsc,bsc-testnet";
+    const env = getCloudAwareEnv();
+    const enabledStr = env.X402_NETWORKS ?? env.EVM_NETWORKS ?? "base-sepolia,base,bsc,bsc-testnet";
     const enabledNames = enabledStr.split(",").map((n) => n.trim());
 
     for (const [caip2, config] of Object.entries(this.networks)) {
@@ -974,10 +977,11 @@ class X402FacilitatorService {
     }
 
     // Fallback to environment variable (development)
-    const envKey = process.env.FACILITATOR_PRIVATE_KEY ?? process.env.X402_FACILITATOR_PRIVATE_KEY;
+    const env = getCloudAwareEnv();
+    const envKey = env.FACILITATOR_PRIVATE_KEY ?? env.X402_FACILITATOR_PRIVATE_KEY;
 
     if (envKey) {
-      if (process.env.NODE_ENV === "production") {
+      if (env.NODE_ENV === "production") {
         logger.warn(
           "[x402-facilitator] Using env var for private key in production. " +
             "Consider using the secrets service for better security.",
