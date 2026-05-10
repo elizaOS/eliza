@@ -1,9 +1,3 @@
-declare module "@elizaos/plugin-elevenlabs" {
-  import type { Plugin } from "@elizaos/core";
-
-  export const elevenLabsPlugin: Plugin;
-}
-
 declare module "@elizaos/shared" {
   export interface WalletMarketPriceSnapshot {
     id: string;
