@@ -43,7 +43,35 @@ function isNativeAndroid(): boolean {
   }
 }
 
+type SyncNativeBridge = { getLocalAgentToken?: () => string | null };
+
+const NATIVE_BRIDGE_GLOBAL = "ElizaNative";
+const CAPACITOR_PLUGIN_TIMEOUT_MS = 1500;
+
+function readSyncNativeBridgeToken(): string | null {
+  try {
+    const bridge = (
+      globalThis as typeof globalThis & {
+        [NATIVE_BRIDGE_GLOBAL]?: SyncNativeBridge;
+      }
+    )[NATIVE_BRIDGE_GLOBAL];
+    const token = bridge?.getLocalAgentToken?.();
+    if (typeof token !== "string") return null;
+    const trimmed = token.trim();
+    return trimmed === "" ? null : trimmed;
+  } catch {
+    return null;
+  }
+}
+
 async function readNativeLocalAgentToken(): Promise<string | null> {
+  // Fast path: the AOSP/Milady WebView exposes the bearer via a
+  // synchronous JavascriptInterface (`window.ElizaNative`) so the
+  // request loop never depends on Capacitor's executor — which can
+  // deadlock when its worker thread is torn down.
+  const sync = readSyncNativeBridgeToken();
+  if (sync) return sync;
+
   let agent: AgentWithLocalToken | null = null;
   try {
     const capacitorWithPlugins = Capacitor as typeof Capacitor & {
@@ -63,9 +91,20 @@ async function readNativeLocalAgentToken(): Promise<string | null> {
       };
       agent = mod.Agent ?? null;
     }
-    const result = await agent?.getLocalAgentToken?.();
-    const token = result?.token?.trim();
-    return result?.available && token ? token : null;
+    if (!agent?.getLocalAgentToken) return null;
+    // Defensive timeout — Capacitor's Bridge can drop calls onto a dead
+    // Handler thread, in which case the Promise never resolves. Without
+    // this race the auth-status fetch hangs and the shell falls into the
+    // pairing UI on cold boot.
+    const result = await Promise.race([
+      agent.getLocalAgentToken(),
+      new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), CAPACITOR_PLUGIN_TIMEOUT_MS),
+      ),
+    ]);
+    if (!result) return null;
+    const token = result.token?.trim();
+    return result.available && token ? token : null;
   } catch {
     return null;
   }

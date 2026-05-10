@@ -73,6 +73,11 @@ public class MainActivity extends BridgeActivity {
             WebSettings settings = getBridge().getWebView().getSettings();
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
             applyBrandUserAgentMarkers(settings);
+            // Synchronous fast path for the on-device agent bearer that
+            // bypasses Capacitor's plugin executor. See ElizaNativeBridge
+            // for the dead-Handler bug it works around.
+            getBridge().getWebView().addJavascriptInterface(
+                new ElizaNativeBridge(), ElizaNativeBridge.JS_NAME);
         }
 
         // Auto-start the local Eliza agent runtime as a foreground service.
