@@ -10,7 +10,6 @@ export * from "./plugin-lifecycle.ts";
 export { getLastFailedPluginNames, resolvePlugins } from "./plugin-resolver.ts";
 export * from "./plugin-types.ts";
 export * from "./release-plugin-policy.ts";
-export * from "./restart.ts";
 export * from "./roles.ts";
 export * from "./trajectory-internals.ts";
 export * from "./trajectory-persistence.ts";

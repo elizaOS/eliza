@@ -166,7 +166,7 @@ describe("auth pairing pair-code route", () => {
   });
 
   it("returns the current pair code to loopback callers", async () => {
-    vi.spyOn(crypto, "randomInt").mockReturnValue(0);
+    vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
 
     const res = fakeRes();
     await handleAuthPairingCompatRoutes(

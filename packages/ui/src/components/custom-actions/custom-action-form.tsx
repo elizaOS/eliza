@@ -1,4 +1,4 @@
-import type { CustomActionHandler } from "../../api/agent-client-type-shim";
+import type { CustomActionHandler } from "@elizaos/shared";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 

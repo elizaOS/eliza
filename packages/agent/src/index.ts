@@ -135,7 +135,6 @@ export {
 } from "./runtime/plugin-resolver.ts";
 export * from "./runtime/plugin-types.ts";
 export * from "./runtime/release-plugin-policy.ts";
-export * from "./runtime/restart.ts";
 export * from "./runtime/trajectory-internals.ts";
 export * from "./runtime/trajectory-persistence.ts";
 export * from "./runtime/trajectory-query.ts";
@@ -147,22 +146,7 @@ export {
 } from "./services/external-bridge-state.ts";
 export * from "./services/index.ts";
 export * from "./services/plugin-installer";
-export {
-  type ClusterMemoriesQuery,
-  type ClusterSearchQuery,
-  createNativeRelationshipsGraphService,
-  getMemoriesForCluster,
-  type RelationshipsGraphEdge,
-  type RelationshipsGraphQuery,
-  type RelationshipsGraphService,
-  type RelationshipsGraphSnapshot,
-  type RelationshipsGraphStats,
-  type RelationshipsPersonDetail,
-  type RelationshipsPersonFact,
-  type RelationshipsPersonSummary,
-  resolveRelationshipsGraphService,
-  searchMemoriesForCluster,
-} from "./services/relationships-graph.ts";
+export { resolveRelationshipsGraphService } from "./services/relationships-graph.ts";
 export * from "./test-support/index.ts";
 export * from "./test-utils/sqlite-compat.ts";
 export * from "./triggers/runtime.ts";

@@ -43,6 +43,9 @@
       "@elizaos/ui": [
         "../ui/src/index.ts"
       ],
+      "@elizaos/ui/api/client-types-cloud": [
+        "../ui/src/api/client-types-cloud.ts"
+      ],
       "@elizaos/agent": [
         "../agent/src/index.ts"
       ],

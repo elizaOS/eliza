@@ -113,7 +113,7 @@
     "db:cloud:studio": "bun run --cwd cloud db:studio",
     "publish:dry-run": "bun scripts/publish-from-dist.mjs",
     "publish:packages": "bun scripts/publish-from-dist.mjs --apply",
-    "typecheck:dist": "tsc --noEmit -p tsconfig.dist-paths.json",
+    "typecheck:dist": "NODE_OPTIONS='--max-old-space-size=8192' tsc --noEmit -p tsconfig.dist-paths.json",
     "knip": "node scripts/knip-workspaces.mjs",
     "knip:strict": "node scripts/knip-workspaces.mjs --fail-on-issues"
   },

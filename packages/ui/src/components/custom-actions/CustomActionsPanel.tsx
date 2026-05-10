@@ -1,6 +1,6 @@
+import type { CustomActionDef } from "@elizaos/shared";
 import { Button, Input, Switch } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CustomActionDef } from "../../api/agent-client-type-shim";
 import { client } from "../../api/client";
 import { useApp } from "../../state/useApp";
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";

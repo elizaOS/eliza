@@ -3,7 +3,7 @@
  * share ingest, workbench, trajectories, database.
  */
 
-import type { DatabaseProviderType } from "./agent-client-type-shim";
+import type { DatabaseProviderType } from "@elizaos/shared";
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
