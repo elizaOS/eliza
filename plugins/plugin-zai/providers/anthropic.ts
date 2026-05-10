@@ -18,14 +18,18 @@ export function createAnthropicClientWithTopPSupport(runtime: IAgentRuntime) {
 
   const customFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     if (init && typeof init.body === "string") {
-      const body: Record<string, unknown> = JSON.parse(init.body);
+      try {
+        const body: Record<string, unknown> = JSON.parse(init.body);
 
-      const hasTopP = Object.hasOwn(body, "top_p") && body["top_p"] != null;
-      const hasZeroTemp = Object.hasOwn(body, "temperature") && body["temperature"] === 0;
+        const hasTopP = Object.hasOwn(body, "top_p") && body["top_p"] != null;
+        const hasZeroTemp = Object.hasOwn(body, "temperature") && body["temperature"] === 0;
 
-      if (hasTopP && hasZeroTemp) {
-        delete body["temperature"];
-        init.body = JSON.stringify(body);
+        if (hasTopP && hasZeroTemp) {
+          delete body["temperature"];
+          init.body = JSON.stringify(body);
+        }
+      } catch {
+        return fetch(input, init);
       }
     }
 

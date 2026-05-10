@@ -2,8 +2,9 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type { ModelName, ModelSize, ValidatedApiKey } from "../types";
 import { assertValidApiKey, createModelName } from "../types";
 
-// z.ai exposes an Anthropic-compatible API. The model identifiers are
-// Claude-style aliases that z.ai maps server-side to GLM models.
+// z.ai exposes an Anthropic-compatible API. These Claude-style model
+// aliases are intentionally identical because z.ai currently maps both
+// elizaOS text tiers to the same default GLM-backed model server-side.
 const DEFAULT_SMALL_MODEL = "claude-sonnet-4-20250514";
 const DEFAULT_LARGE_MODEL = "claude-sonnet-4-20250514";
 
