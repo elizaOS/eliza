@@ -11,6 +11,7 @@ import {
   type AppSessionActionResult,
   createGeneratedAppHeroSvg,
   hasAppInterface,
+  PutAppPermissionsRequestSchema,
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
   parseAppIsolation,
@@ -1331,24 +1332,25 @@ export async function handleAppsRoutes(
       return true;
     }
 
-    // PUT — replace granted namespaces.
-    const body = await readJsonBody<{ namespaces?: unknown }>(req, res);
-    if (!body) return true;
-    if (!Array.isArray(body.namespaces)) {
-      error(res, "body.namespaces must be a string array", 400);
+    // PUT — replace granted namespaces. Body validation goes through
+    // the zod schema in @elizaos/shared so the wire shape is the
+    // single source of truth (see contracts/app-permissions-routes.ts).
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null || rawBody === undefined) return true;
+    const parsed = PutAppPermissionsRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const path = issue?.path?.join(".") ?? "<root>";
+      error(
+        res,
+        `Invalid request body at ${path}: ${issue?.message ?? "validation failed"}`,
+        400,
+      );
       return true;
-    }
-    const namespaces: string[] = [];
-    for (const item of body.namespaces) {
-      if (typeof item !== "string") {
-        error(res, "body.namespaces must be a string array", 400);
-        return true;
-      }
-      namespaces.push(item);
     }
     const result = await registry.setGrantedNamespaces(
       slug,
-      namespaces,
+      parsed.data.namespaces,
       "user",
     );
     if (result.ok === false) {
