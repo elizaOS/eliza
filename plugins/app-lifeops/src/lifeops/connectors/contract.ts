@@ -50,6 +50,20 @@ export type DispatchResult =
       message?: string;
     };
 
+/**
+ * OAuth surface a connector contribution may advertise. URL provided by the
+ * connector contribution; the dispatcher does not hardcode. Audit C top-3
+ * (rigidity-hunt-audit.md §3) — externalising these URLs lets adding a
+ * fifth health provider register a contribution instead of editing
+ * dispatcher switches.
+ */
+export interface ConnectorOAuthConfig {
+  readonly authorizeUrl: string;
+  readonly tokenUrl: string;
+  readonly revokeUrl?: string | null;
+  readonly scopes?: readonly string[];
+}
+
 export interface ConnectorContribution {
   /**
    * Stable connector key — `"google"`, `"telegram"`, `"discord"`,
@@ -68,6 +82,19 @@ export interface ConnectorContribution {
   modes: ConnectorMode[];
 
   describe: { label: string };
+
+  /**
+   * Optional OAuth config — URL provided by the connector contribution; the
+   * dispatcher does not hardcode. Health-bridge connectors (Strava, Fitbit,
+   * Withings, Oura) populate this so the OAuth driver iterates the registry.
+   */
+  oauth?: ConnectorOAuthConfig;
+
+  /**
+   * Optional API base URL for authenticated requests — URL provided by the
+   * connector contribution; the dispatcher does not hardcode.
+   */
+  apiBaseUrl?: string;
 
   start(): Promise<void>;
   disconnect(): Promise<void>;
