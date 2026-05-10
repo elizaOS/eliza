@@ -21,16 +21,17 @@
  *   - `merge` (new): merge duplicate entities via
  *     `EntityStore.merge(targetId, sourceIds)`.
  *
- * Transitional follow-up subactions (deprecated):
+ * Transitional follow-up subactions (deprecated; one-release back-compat):
  *   - `add_follow_up`, `complete_follow_up`, `follow_up_list`,
  *     `days_since`, `list_overdue_followups`, `mark_followup_done`,
- *     `set_followup_threshold` — these collapse onto `SCHEDULED_TASK`
- *     queries (`list({ kind: "followup", subject: { kind:
- *     "relationship", id } })`) per IMPL §5.1. The user-visible verbs
- *     remain on `ENTITY` until a `SCHEDULED_TASK` umbrella action lands
- *     in Wave 3 W3-C; the standalone `LIST_OVERDUE_FOLLOWUPS` /
- *     `MARK_FOLLOWUP_DONE` / `SET_FOLLOWUP_THRESHOLD` actions are
- *     similes of this umbrella for one release.
+ *     `set_followup_threshold` — these collapsed onto the canonical
+ *     `SCHEDULED_TASK` umbrella in W3-C (`SCHEDULED_TASK.list({ kind:
+ *     "followup", subject: { kind: "relationship", id } })` etc). The
+ *     same verb names are registered as `SCHEDULED_TASK` similes so the
+ *     planner picks the canonical action for new prompts. ENTITY keeps
+ *     these subactions for one release as a planner-cache alias; the
+ *     handler logic stays here for that release and is removed in the
+ *     next wave.
  */
 
 import type {
