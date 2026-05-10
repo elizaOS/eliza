@@ -4,8 +4,12 @@ on:
   pull_request:
     branches: [main, develop]
     paths:
+      - "packages/agent/**"
       - "packages/app/**"
       - "packages/app-core/**"
+      - "packages/core/**"
+      - "packages/shared/**"
+      - "plugins/plugin-sql/**"
       - ".github/workflows/mobile-build-smoke.yml"
   workflow_dispatch:
 
@@ -165,6 +169,22 @@ jobs:
       # off the bundle here.
       - name: Build mobile agent bundle
         run: bun run --cwd packages/agent build:mobile
+
+      # Guard against the May-5 Bun.build TLA regression that required
+      # hot-patching `s/init_eliza()/await init_eliza()/` on every device
+      # bundle. The fix is in 12bfccb481 (lazy plugin-sql resolution from
+      # ensureCoreStaticPluginsRegistered); a regression would re-emit
+      # `var init_eliza = __esm(async () => {...})`. See
+      # docs/porting/on-device-quantization-porting-plan.md §"Current
+      # state on the AOSP image" for context.
+      - name: Verify init_eliza is sync (no TLA regression)
+        run: |
+          BUNDLE=packages/agent/dist-mobile/agent-bundle.js
+          if grep -qE 'var init_eliza\b[^=]*= __esm\(async ' "$BUNDLE"; then
+            echo "::error::init_eliza re-emitted as async __esm — Bun.build cross-module TLA regression"
+            exit 1
+          fi
+          echo "init_eliza sync emit confirmed; no TLA regression"
 
       - name: Build Android debug app
         run: node --max-old-space-size=8192 packages/app-core/scripts/run-mobile-build.mjs android
