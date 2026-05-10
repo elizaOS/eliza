@@ -3455,8 +3455,10 @@ function normalizeBlockPlannerParams(
 			? (toolCall.params as Record<string, unknown>)
 			: {};
 	return {
-		action: stringParam(params.action) ?? stringParam(params.subaction) ?? "block",
-		subaction: stringParam(params.action) ?? stringParam(params.subaction) ?? "block",
+		action:
+			stringParam(params.action) ?? stringParam(params.subaction) ?? "block",
+		subaction:
+			stringParam(params.action) ?? stringParam(params.subaction) ?? "block",
 		target,
 		intent: stringParam(params.intent) ?? getUserMessageText(message),
 		...(Array.isArray(params.hostnames) || typeof params.hostnames === "string"
@@ -3484,7 +3486,8 @@ function normalizePostPlannerParams(
 		toolCall.params && typeof toolCall.params === "object"
 			? (toolCall.params as Record<string, unknown>)
 			: {};
-	const rawSubaction = stringParam(params.action) ?? stringParam(params.subaction);
+	const rawSubaction =
+		stringParam(params.action) ?? stringParam(params.subaction);
 	const source = stringParam(params.source);
 	const op = /^(?:timeline|feed|read|read_feed|get_timeline|get_feed)$/i.test(
 		rawSubaction ?? "",
@@ -3708,8 +3711,10 @@ function normalizeAutofillPlannerParams(
 		stringParam(params.website) ??
 		/\b([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/i.exec(text)?.[1];
 	return {
-		action: stringParam(params.action) ?? stringParam(params.subaction) ?? "fill",
-		subaction: stringParam(params.action) ?? stringParam(params.subaction) ?? "fill",
+		action:
+			stringParam(params.action) ?? stringParam(params.subaction) ?? "fill",
+		subaction:
+			stringParam(params.action) ?? stringParam(params.subaction) ?? "fill",
 		field: stringParam(params.field) ?? "password",
 		...(domain
 			? {
@@ -3737,7 +3742,8 @@ function normalizePersonalAssistantPlannerParams(
 		toolCall.params && typeof toolCall.params === "object"
 			? (toolCall.params as Record<string, unknown>)
 			: {};
-	const raw = `${toolCall.name} ${stringParam(params.action) ?? ""}`.toLowerCase();
+	const raw =
+		`${toolCall.name} ${stringParam(params.action) ?? ""}`.toLowerCase();
 	const action = /\bschedul/.test(raw) ? "scheduling" : "book_travel";
 	return { ...params, action };
 }
@@ -3787,9 +3793,7 @@ function normalizeAliasedPlannerToolCall(
 				params: normalizeResolveRequestPlannerParams(toolCall, message),
 			};
 		}
-		if (
-			normalizedResolvedName === normalizeActionIdentifier("CREDENTIALS")
-		) {
+		if (normalizedResolvedName === normalizeActionIdentifier("CREDENTIALS")) {
 			const originalName = normalizeActionIdentifier(toolCall.name);
 			const rawAction =
 				toolCall.params && typeof toolCall.params === "object"

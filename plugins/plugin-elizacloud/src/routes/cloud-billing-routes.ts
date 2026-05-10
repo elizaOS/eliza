@@ -139,6 +139,19 @@ function readBoolean(value: unknown): boolean | undefined {
 }
 
 function readBody(req: http.IncomingMessage): Promise<string | undefined> {
+  const preParsedBody = (req as http.IncomingMessage & { body?: unknown }).body;
+  if (preParsedBody !== undefined) {
+    return Promise.resolve(
+      typeof preParsedBody === "string"
+        ? preParsedBody
+        : JSON.stringify(preParsedBody),
+    );
+  }
+
+  if (req.readableEnded) {
+    return Promise.resolve(undefined);
+  }
+
   return new Promise<string | undefined>((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -429,6 +442,98 @@ function sendJsonWithRetry(
   sendJson(res, payload, status);
 }
 
+function mirrorPaymentHeaders(
+  res: http.ServerResponse,
+  upstreamResponse: Response,
+): void {
+  for (const header of [
+    "PAYMENT-REQUIRED",
+    "Payment-Required",
+    "PAYMENT-RESPONSE",
+    "Payment-Response",
+    "Access-Control-Expose-Headers",
+  ]) {
+    const value = upstreamResponse.headers.get(header);
+    if (value) {
+      res.setHeader(header, value);
+    }
+  }
+}
+
+function isAllowedAppMoneyPath(pathname: string): boolean {
+  const appMoneyPath =
+    /^\/api\/cloud\/billing\/apps\/[^/]+\/(charges|earnings|monetization)(?:\/|$)/;
+  return appMoneyPath.test(pathname);
+}
+
+function mapBillingProxyPath(pathname: string): string | null {
+  if (pathname === "/api/cloud/billing/x402") return "/api/v1/x402";
+  if (pathname.startsWith("/api/cloud/billing/x402/")) {
+    return pathname.replace("/api/cloud/billing/x402", "/api/v1/x402");
+  }
+
+  if (pathname === "/api/cloud/billing/app-credits") {
+    return "/api/v1/app-credits";
+  }
+  if (pathname.startsWith("/api/cloud/billing/app-credits/")) {
+    return pathname.replace(
+      "/api/cloud/billing/app-credits",
+      "/api/v1/app-credits",
+    );
+  }
+
+  if (pathname === "/api/cloud/billing/affiliates") {
+    return "/api/v1/affiliates";
+  }
+  if (pathname.startsWith("/api/cloud/billing/affiliates/")) {
+    return pathname.replace(
+      "/api/cloud/billing/affiliates",
+      "/api/v1/affiliates",
+    );
+  }
+
+  if (pathname === "/api/cloud/billing/redemptions") {
+    return "/api/v1/redemptions";
+  }
+  if (pathname.startsWith("/api/cloud/billing/redemptions/")) {
+    return pathname.replace(
+      "/api/cloud/billing/redemptions",
+      "/api/v1/redemptions",
+    );
+  }
+
+  if (isAllowedAppMoneyPath(pathname)) {
+    return pathname.replace("/api/cloud/billing/apps", "/api/v1/apps");
+  }
+
+  return null;
+}
+
+async function forwardBillingProxy(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  method: string,
+  baseUrl: string,
+  headers: Record<string, string>,
+  upstreamPath: string,
+  search: string,
+): Promise<void> {
+  let body: string | undefined;
+  if (method !== "GET" && method !== "HEAD") {
+    body = await readBody(req);
+  }
+
+  const upstreamResponse = await fetchUpstream(
+    `${baseUrl}${upstreamPath}${search}`,
+    method,
+    headers,
+    body,
+  );
+  const responseData = await readJsonResponse(upstreamResponse);
+  mirrorPaymentHeaders(res, upstreamResponse);
+  sendJsonWithRetry(res, responseData, upstreamResponse.status);
+}
+
 export async function handleCloudBillingRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -458,6 +563,19 @@ export async function handleCloudBillingRoute(
   const headers = buildAuthHeaders(state.config, apiKey);
 
   const fullUrl = new URL(req.url ?? pathname, "http://localhost");
+  const proxiedMoneyPath = mapBillingProxyPath(pathname);
+  if (proxiedMoneyPath) {
+    await forwardBillingProxy(
+      req,
+      res,
+      method,
+      baseUrl,
+      headers,
+      proxiedMoneyPath,
+      fullUrl.search,
+    );
+    return true;
+  }
 
   if (pathname === "/api/cloud/billing/summary" && method === "GET") {
     const { status, payload } = await forwardSummary(baseUrl, headers);

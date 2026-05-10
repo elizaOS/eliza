@@ -354,7 +354,7 @@ function getFacilitatorEndpoint(
   const fu =
     typeof fuSetting === "string" && fuSetting.trim()
       ? fuSetting.trim()
-      : "https://x402.elizaos.ai/api/v1/x402";
+      : "https://x402.elizacloud.ai/api/v1/x402";
   try {
     const clean = fu.replace(/\/$/, "");
     const u = new URL(clean);
