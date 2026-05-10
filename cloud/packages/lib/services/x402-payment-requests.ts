@@ -193,7 +193,7 @@ function publicBaseUrl(): string {
     env.X402_PUBLIC_BASE_URL ??
     env.X402_BASE_URL ??
     env.NEXT_PUBLIC_API_URL ??
-    "https://x402.elizaos.ai"
+    "https://x402.elizacloud.ai"
   ).replace(/\/$/, "");
 }
 

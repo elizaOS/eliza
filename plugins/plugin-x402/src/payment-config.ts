@@ -124,7 +124,7 @@ export function getBaseUrl(): string {
     return process.env.X402_BASE_URL.replace(/\/$/, ""); // Remove trailing slash
   }
 
-  return "https://x402.elizaos.ai";
+  return "https://x402.elizacloud.ai";
 }
 
 /**
