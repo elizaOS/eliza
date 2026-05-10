@@ -146,6 +146,16 @@ export {
   setStewardEvmBridgeActive,
 } from "./services/external-bridge-state.ts";
 export * from "./services/index.ts";
+export {
+  type JsRuntimeBridge,
+  type JsRuntimeEvaluateOptions,
+  type JsRuntimeFactory,
+  type JsRuntimeImportOptions,
+  type JsRuntimeKind,
+  type JsValue,
+  registerJsRuntimeFactory,
+  resolveJsRuntimeBridge,
+} from "./services/js-runtime-bridge.ts";
 export * from "./services/plugin-installer";
 export {
   type ClusterMemoriesQuery,
