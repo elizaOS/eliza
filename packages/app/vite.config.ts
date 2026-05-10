@@ -908,6 +908,11 @@ export default defineConfig({
   publicDir: path.resolve(here, "public"),
   define: {
     global: "globalThis",
+    // Build variant — set at signing time by desktop-build.mjs and embedded
+    // here so the renderer can branch on store vs direct without an API call.
+    __MILADY_BUILD_VARIANT__: JSON.stringify(
+      process.env.MILADY_BUILD_VARIANT === "store" ? "store" : "direct",
+    ),
     // Mirror the branded TTS debug env into the client bundle so one env
     // enables UI + server TTS logs in dev.
     [`import.meta.env.${BRANDED_ENV.ttsDebug}`]: JSON.stringify(
