@@ -82,19 +82,13 @@ describe("resolveLocalInferenceLoadArgs", () => {
   });
 
   it("threads catalog contextLength into loader args when no override is given", async () => {
-    const target = makeInstalledModel(
-      "eliza-1-9b",
-      "/tmp/eliza-1-9b.gguf",
-    );
+    const target = makeInstalledModel("eliza-1-9b", "/tmp/eliza-1-9b.gguf");
     const args = await resolveLocalInferenceLoadArgs(target);
     expect(args.contextSize).toBe(131072);
   });
 
   it("per-load contextSize override beats catalog contextLength default", async () => {
-    const target = makeInstalledModel(
-      "eliza-1-9b",
-      "/tmp/eliza-1-9b.gguf",
-    );
+    const target = makeInstalledModel("eliza-1-9b", "/tmp/eliza-1-9b.gguf");
     const args = await resolveLocalInferenceLoadArgs(target, {
       contextSize: 32768,
     });

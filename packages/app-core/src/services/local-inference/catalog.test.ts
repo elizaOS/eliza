@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   ELIZA_1_PLACEHOLDER_IDS,
-  findCatalogModel,
   FIRST_RUN_DEFAULT_MODEL_ID,
+  findCatalogModel,
   MODEL_CATALOG,
 } from "./catalog";
 import { recommendForFirstRun } from "./recommendation";
