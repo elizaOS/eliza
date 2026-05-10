@@ -45,13 +45,26 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Build @elizaos/shared
+      - name: Generate protobuf types
+        # Restores the step that was on the last green Mobile Build Smoke
+        # run (52ab686a, 2026-05-09). Without these generated types in
+        # `packages/core/src/types/generated/`, `@elizaos/core`'s build
+        # fails downstream, which cascades into `@elizaos/shared` and
+        # vite config resolution.
+        run: |
+          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/core/src/types/generated ]; then
+            cd packages/schemas
+            node node_modules/@bufbuild/buf/install.js 2>/dev/null || true
+            bunx @bufbuild/buf@1.67.0 generate
+          fi
+
+      - name: Build @elizaos/shared (and dep chain)
         # vite.config.ts imports from `@elizaos/shared`. The package.json
         # `exports` map points at `./dist/index.js`, so Rollup/Vite cannot
         # resolve the package entry on a clean checkout until dist is
-        # built. Build it before mobile bundling so the vite config can
-        # be loaded.
-        run: bun run --cwd packages/shared build
+        # built. `turbo run build --filter=@elizaos/shared` handles the
+        # `@elizaos/core` → `@elizaos/shared` build order automatically.
+        run: bun turbo run build --filter=@elizaos/shared
 
       - name: Build iOS simulator app
         run: node --max-old-space-size=8192 packages/app-core/scripts/run-mobile-build.mjs ios
@@ -166,13 +179,26 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Build @elizaos/shared
+      - name: Generate protobuf types
+        # Restores the step that was on the last green Mobile Build Smoke
+        # run (52ab686a, 2026-05-09). Without these generated types in
+        # `packages/core/src/types/generated/`, `@elizaos/core`'s build
+        # fails downstream, which cascades into `@elizaos/shared` and
+        # vite config resolution.
+        run: |
+          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/core/src/types/generated ]; then
+            cd packages/schemas
+            node node_modules/@bufbuild/buf/install.js 2>/dev/null || true
+            bunx @bufbuild/buf@1.67.0 generate
+          fi
+
+      - name: Build @elizaos/shared (and dep chain)
         # vite.config.ts imports from `@elizaos/shared`. The package.json
         # `exports` map points at `./dist/index.js`, so Rollup/Vite cannot
         # resolve the package entry on a clean checkout until dist is
-        # built. Build it before mobile bundling so the vite config can
-        # be loaded.
-        run: bun run --cwd packages/shared build
+        # built. `turbo run build --filter=@elizaos/shared` handles the
+        # `@elizaos/core` → `@elizaos/shared` build order automatically.
+        run: bun turbo run build --filter=@elizaos/shared
 
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses >/dev/null 2>&1 || true
