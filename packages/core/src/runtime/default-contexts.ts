@@ -159,7 +159,7 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			id: "tasks",
 			label: "Tasks",
 			description:
-				"Todos, reminders, goals, habits, routines, follow-ups, due dates, priorities, check-ins, scheduled personal actions, and task reviews.",
+				"Personal-assistant action requests of any kind: any imperative ('remind me to…', 'set up a habit…', 'create a routine…', 'block apps when I work', 'every morning do X', 'twice a week', 'cancel that habit'), any habit/routine/reminder/alarm/goal/todo/recurring-task setup or change, any time-bound or recurring schedule the user owns, any 'every day / every week / on weekdays / at 9am / before bed / after lunch' framing, hygiene/health/exercise/medication/hydration routines, screen-time / app-block / focus rules, calendar event creation/move/cancel that the user explicitly asks for, follow-ups they want surfaced later, check-in cadence, status of their own todos and habits. Pick this whenever the user is asking the assistant to *do* something on their behalf (set, schedule, remind, cancel, complete, snooze, track) rather than chat or look up an external fact.",
 			sensitivity: "personal",
 			cacheScope: "agent",
 			subcontexts: ["todos", "productivity"],

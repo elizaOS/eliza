@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "generated_at": "2026-05-10T08:08:51.000Z",
+  "generated_at": "2026-05-10T09:25:39.200Z",
   "filter": {
     "include": [
       "app-contacts",
@@ -17,39 +17,84 @@
     {
       "type": "function",
       "function": {
-        "name": "APP_BLOCK",
-        "description": "phone app block native iOS-Family-Controls Android-Usage-Access: block(apps,duration) unblock status",
+        "name": "BLOCK",
+        "description": "block app|website (phone-Family-Controls|hosts-file/SelfControl): block unblock status request_permission(web) release(web,ruleId,confirmed) list_active(web)",
         "parameters": {
           "type": "object",
           "properties": {
+            "target": {
+              "type": "string",
+              "description": "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). Inferred from `subaction` (request_permission/release/list_active → website), from app/website-only param shape, or from the user's text when omitted.",
+              "enum": [
+                "app",
+                "website"
+              ]
+            },
             "subaction": {
               "type": "string",
-              "description": "One of: block, unblock, status."
+              "description": "One of: block, unblock, status, request_permission, release, list_active. request_permission, release, and list_active are website-only.",
+              "enum": [
+                "block",
+                "unblock",
+                "status",
+                "request_permission",
+                "release",
+                "list_active"
+              ]
             },
             "intent": {
               "type": "string",
-              "description": "Free-form description of which apps to block and for how long; used by the block subaction when explicit selection is missing."
+              "description": "Free-form description of what the owner wants. Used by the block subaction to extract apps/hostnames + duration."
+            },
+            "hostnames": {
+              "type": "array",
+              "description": "(target=website) Public hostnames or URLs to block, e.g. ['x.com','twitter.com'].",
+              "items": {
+                "type": "string"
+              }
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "(target=website) Set true only when the owner has explicitly confirmed the block. Without it, block returns a draft confirmation request. Required by release."
+            },
+            "ruleId": {
+              "type": "string",
+              "description": "(target=website, subaction=release) ID of the managed block rule to release."
+            },
+            "reason": {
+              "type": "string",
+              "description": "(target=website, subaction=release) Optional reason recorded on the rule when released."
+            },
+            "includeLiveStatus": {
+              "type": "boolean",
+              "description": "(target=website, subaction=list_active) Include the current hosts-file/SelfControl live block state. Default true."
+            },
+            "includeManagedRules": {
+              "type": "boolean",
+              "description": "(target=website, subaction=list_active) Include managed LifeOps block rules. Default true."
             },
             "packageNames": {
               "type": "array",
-              "description": "Android package names to block, e.g. ['com.twitter.android']. Used by block on Android.",
+              "description": "(target=app, Android) Package names to block, e.g. ['com.twitter.android'].",
               "items": {
                 "type": "string"
               }
             },
             "appTokens": {
               "type": "array",
-              "description": "iPhone app tokens from a previous selectApps() call. Used by block on iOS.",
+              "description": "(target=app, iOS) iPhone app tokens from a previous selectApps() call.",
               "items": {
                 "type": "string"
               }
             },
             "durationMinutes": {
               "type": "number",
-              "description": "How long to block the apps, in minutes. Omit for indefinite block."
+              "description": "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed."
             }
           },
-          "required": [],
+          "required": [
+            "subaction"
+          ],
           "additionalProperties": false
         },
         "strict": true
@@ -58,43 +103,95 @@
       "_tags": [],
       "_contexts": [
         "screen_time",
+        "browser",
         "automation",
-        "settings",
-        "tasks"
+        "tasks",
+        "settings"
       ],
       "_priority": 100,
-      "_examples_count": 3
+      "_examples_count": 4
     },
     {
       "type": "function",
       "function": {
-        "name": "AUTOFILL",
-        "description": "browser autofill: fill(field,domain) whitelist-add(domain,confirm) whitelist-list; allowlist-gated browser-feature-gated",
+        "name": "BLOCK_BLOCK",
+        "description": "block app|website (phone-Family-Controls|hosts-file/SelfControl): block unblock status request_permission(web) release(web,ruleId,confirmed) list_active(web)",
         "parameters": {
           "type": "object",
           "properties": {
+            "target": {
+              "type": "string",
+              "description": "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). Inferred from `subaction` (request_permission/release/list_active → website), from app/website-only param shape, or from the user's text when omitted.",
+              "enum": [
+                "app",
+                "website"
+              ]
+            },
             "subaction": {
               "type": "string",
-              "description": "One of: fill, whitelist_add, whitelist_list."
+              "description": "One of: block, unblock, status, request_permission, release, list_active. request_permission, release, and list_active are website-only.",
+              "enum": [
+                "block",
+                "unblock",
+                "status",
+                "request_permission",
+                "release",
+                "list_active"
+              ]
             },
-            "field": {
+            "intent": {
               "type": "string",
-              "description": "For fill: one of email, password, name, phone, custom. Tells the password manager which field to resolve."
+              "description": "Free-form description of what the owner wants. Used by the block subaction to extract apps/hostnames + duration."
             },
-            "domain": {
-              "type": "string",
-              "description": "Domain to act on. For fill, used as the tab URL when url is omitted. For whitelist_add, the domain to add."
-            },
-            "url": {
-              "type": "string",
-              "description": "Optional explicit tab URL for fill (used for whitelist enforcement)."
+            "hostnames": {
+              "type": "array",
+              "description": "(target=website) Public hostnames or URLs to block, e.g. ['x.com','twitter.com'].",
+              "items": {
+                "type": "string"
+              }
             },
             "confirmed": {
               "type": "boolean",
-              "description": "For whitelist_add: must be explicitly true. Required to ensure the user approved the addition, not the agent."
+              "description": "(target=website) Set true only when the owner has explicitly confirmed the block. Without it, block returns a draft confirmation request. Required by release."
+            },
+            "ruleId": {
+              "type": "string",
+              "description": "(target=website, subaction=release) ID of the managed block rule to release."
+            },
+            "reason": {
+              "type": "string",
+              "description": "(target=website, subaction=release) Optional reason recorded on the rule when released."
+            },
+            "includeLiveStatus": {
+              "type": "boolean",
+              "description": "(target=website, subaction=list_active) Include the current hosts-file/SelfControl live block state. Default true."
+            },
+            "includeManagedRules": {
+              "type": "boolean",
+              "description": "(target=website, subaction=list_active) Include managed LifeOps block rules. Default true."
+            },
+            "packageNames": {
+              "type": "array",
+              "description": "(target=app, Android) Package names to block, e.g. ['com.twitter.android'].",
+              "items": {
+                "type": "string"
+              }
+            },
+            "appTokens": {
+              "type": "array",
+              "description": "(target=app, iOS) iPhone app tokens from a previous selectApps() call.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "durationMinutes": {
+              "type": "number",
+              "description": "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed."
             }
           },
-          "required": [],
+          "required": [
+            "subaction"
+          ],
           "additionalProperties": false
         },
         "strict": true
@@ -102,13 +199,499 @@
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [],
       "_contexts": [
+        "screen_time",
         "browser",
-        "secrets",
-        "settings",
-        "automation"
+        "automation",
+        "tasks",
+        "settings"
       ],
       "_priority": 100,
-      "_examples_count": 3
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "BLOCK_LIST_ACTIVE",
+        "description": "block app|website (phone-Family-Controls|hosts-file/SelfControl): block unblock status request_permission(web) release(web,ruleId,confirmed) list_active(web)",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string",
+              "description": "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). Inferred from `subaction` (request_permission/release/list_active → website), from app/website-only param shape, or from the user's text when omitted.",
+              "enum": [
+                "app",
+                "website"
+              ]
+            },
+            "subaction": {
+              "type": "string",
+              "description": "One of: block, unblock, status, request_permission, release, list_active. request_permission, release, and list_active are website-only.",
+              "enum": [
+                "block",
+                "unblock",
+                "status",
+                "request_permission",
+                "release",
+                "list_active"
+              ]
+            },
+            "intent": {
+              "type": "string",
+              "description": "Free-form description of what the owner wants. Used by the block subaction to extract apps/hostnames + duration."
+            },
+            "hostnames": {
+              "type": "array",
+              "description": "(target=website) Public hostnames or URLs to block, e.g. ['x.com','twitter.com'].",
+              "items": {
+                "type": "string"
+              }
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "(target=website) Set true only when the owner has explicitly confirmed the block. Without it, block returns a draft confirmation request. Required by release."
+            },
+            "ruleId": {
+              "type": "string",
+              "description": "(target=website, subaction=release) ID of the managed block rule to release."
+            },
+            "reason": {
+              "type": "string",
+              "description": "(target=website, subaction=release) Optional reason recorded on the rule when released."
+            },
+            "includeLiveStatus": {
+              "type": "boolean",
+              "description": "(target=website, subaction=list_active) Include the current hosts-file/SelfControl live block state. Default true."
+            },
+            "includeManagedRules": {
+              "type": "boolean",
+              "description": "(target=website, subaction=list_active) Include managed LifeOps block rules. Default true."
+            },
+            "packageNames": {
+              "type": "array",
+              "description": "(target=app, Android) Package names to block, e.g. ['com.twitter.android'].",
+              "items": {
+                "type": "string"
+              }
+            },
+            "appTokens": {
+              "type": "array",
+              "description": "(target=app, iOS) iPhone app tokens from a previous selectApps() call.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "durationMinutes": {
+              "type": "number",
+              "description": "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "screen_time",
+        "browser",
+        "automation",
+        "tasks",
+        "settings"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "BLOCK_RELEASE",
+        "description": "block app|website (phone-Family-Controls|hosts-file/SelfControl): block unblock status request_permission(web) release(web,ruleId,confirmed) list_active(web)",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string",
+              "description": "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). Inferred from `subaction` (request_permission/release/list_active → website), from app/website-only param shape, or from the user's text when omitted.",
+              "enum": [
+                "app",
+                "website"
+              ]
+            },
+            "subaction": {
+              "type": "string",
+              "description": "One of: block, unblock, status, request_permission, release, list_active. request_permission, release, and list_active are website-only.",
+              "enum": [
+                "block",
+                "unblock",
+                "status",
+                "request_permission",
+                "release",
+                "list_active"
+              ]
+            },
+            "intent": {
+              "type": "string",
+              "description": "Free-form description of what the owner wants. Used by the block subaction to extract apps/hostnames + duration."
+            },
+            "hostnames": {
+              "type": "array",
+              "description": "(target=website) Public hostnames or URLs to block, e.g. ['x.com','twitter.com'].",
+              "items": {
+                "type": "string"
+              }
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "(target=website) Set true only when the owner has explicitly confirmed the block. Without it, block returns a draft confirmation request. Required by release."
+            },
+            "ruleId": {
+              "type": "string",
+              "description": "(target=website, subaction=release) ID of the managed block rule to release."
+            },
+            "reason": {
+              "type": "string",
+              "description": "(target=website, subaction=release) Optional reason recorded on the rule when released."
+            },
+            "includeLiveStatus": {
+              "type": "boolean",
+              "description": "(target=website, subaction=list_active) Include the current hosts-file/SelfControl live block state. Default true."
+            },
+            "includeManagedRules": {
+              "type": "boolean",
+              "description": "(target=website, subaction=list_active) Include managed LifeOps block rules. Default true."
+            },
+            "packageNames": {
+              "type": "array",
+              "description": "(target=app, Android) Package names to block, e.g. ['com.twitter.android'].",
+              "items": {
+                "type": "string"
+              }
+            },
+            "appTokens": {
+              "type": "array",
+              "description": "(target=app, iOS) iPhone app tokens from a previous selectApps() call.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "durationMinutes": {
+              "type": "number",
+              "description": "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "screen_time",
+        "browser",
+        "automation",
+        "tasks",
+        "settings"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "BLOCK_REQUEST_PERMISSION",
+        "description": "block app|website (phone-Family-Controls|hosts-file/SelfControl): block unblock status request_permission(web) release(web,ruleId,confirmed) list_active(web)",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string",
+              "description": "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). Inferred from `subaction` (request_permission/release/list_active → website), from app/website-only param shape, or from the user's text when omitted.",
+              "enum": [
+                "app",
+                "website"
+              ]
+            },
+            "subaction": {
+              "type": "string",
+              "description": "One of: block, unblock, status, request_permission, release, list_active. request_permission, release, and list_active are website-only.",
+              "enum": [
+                "block",
+                "unblock",
+                "status",
+                "request_permission",
+                "release",
+                "list_active"
+              ]
+            },
+            "intent": {
+              "type": "string",
+              "description": "Free-form description of what the owner wants. Used by the block subaction to extract apps/hostnames + duration."
+            },
+            "hostnames": {
+              "type": "array",
+              "description": "(target=website) Public hostnames or URLs to block, e.g. ['x.com','twitter.com'].",
+              "items": {
+                "type": "string"
+              }
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "(target=website) Set true only when the owner has explicitly confirmed the block. Without it, block returns a draft confirmation request. Required by release."
+            },
+            "ruleId": {
+              "type": "string",
+              "description": "(target=website, subaction=release) ID of the managed block rule to release."
+            },
+            "reason": {
+              "type": "string",
+              "description": "(target=website, subaction=release) Optional reason recorded on the rule when released."
+            },
+            "includeLiveStatus": {
+              "type": "boolean",
+              "description": "(target=website, subaction=list_active) Include the current hosts-file/SelfControl live block state. Default true."
+            },
+            "includeManagedRules": {
+              "type": "boolean",
+              "description": "(target=website, subaction=list_active) Include managed LifeOps block rules. Default true."
+            },
+            "packageNames": {
+              "type": "array",
+              "description": "(target=app, Android) Package names to block, e.g. ['com.twitter.android'].",
+              "items": {
+                "type": "string"
+              }
+            },
+            "appTokens": {
+              "type": "array",
+              "description": "(target=app, iOS) iPhone app tokens from a previous selectApps() call.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "durationMinutes": {
+              "type": "number",
+              "description": "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "screen_time",
+        "browser",
+        "automation",
+        "tasks",
+        "settings"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "BLOCK_STATUS",
+        "description": "block app|website (phone-Family-Controls|hosts-file/SelfControl): block unblock status request_permission(web) release(web,ruleId,confirmed) list_active(web)",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string",
+              "description": "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). Inferred from `subaction` (request_permission/release/list_active → website), from app/website-only param shape, or from the user's text when omitted.",
+              "enum": [
+                "app",
+                "website"
+              ]
+            },
+            "subaction": {
+              "type": "string",
+              "description": "One of: block, unblock, status, request_permission, release, list_active. request_permission, release, and list_active are website-only.",
+              "enum": [
+                "block",
+                "unblock",
+                "status",
+                "request_permission",
+                "release",
+                "list_active"
+              ]
+            },
+            "intent": {
+              "type": "string",
+              "description": "Free-form description of what the owner wants. Used by the block subaction to extract apps/hostnames + duration."
+            },
+            "hostnames": {
+              "type": "array",
+              "description": "(target=website) Public hostnames or URLs to block, e.g. ['x.com','twitter.com'].",
+              "items": {
+                "type": "string"
+              }
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "(target=website) Set true only when the owner has explicitly confirmed the block. Without it, block returns a draft confirmation request. Required by release."
+            },
+            "ruleId": {
+              "type": "string",
+              "description": "(target=website, subaction=release) ID of the managed block rule to release."
+            },
+            "reason": {
+              "type": "string",
+              "description": "(target=website, subaction=release) Optional reason recorded on the rule when released."
+            },
+            "includeLiveStatus": {
+              "type": "boolean",
+              "description": "(target=website, subaction=list_active) Include the current hosts-file/SelfControl live block state. Default true."
+            },
+            "includeManagedRules": {
+              "type": "boolean",
+              "description": "(target=website, subaction=list_active) Include managed LifeOps block rules. Default true."
+            },
+            "packageNames": {
+              "type": "array",
+              "description": "(target=app, Android) Package names to block, e.g. ['com.twitter.android'].",
+              "items": {
+                "type": "string"
+              }
+            },
+            "appTokens": {
+              "type": "array",
+              "description": "(target=app, iOS) iPhone app tokens from a previous selectApps() call.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "durationMinutes": {
+              "type": "number",
+              "description": "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "screen_time",
+        "browser",
+        "automation",
+        "tasks",
+        "settings"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "BLOCK_UNBLOCK",
+        "description": "block app|website (phone-Family-Controls|hosts-file/SelfControl): block unblock status request_permission(web) release(web,ruleId,confirmed) list_active(web)",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string",
+              "description": "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). Inferred from `subaction` (request_permission/release/list_active → website), from app/website-only param shape, or from the user's text when omitted.",
+              "enum": [
+                "app",
+                "website"
+              ]
+            },
+            "subaction": {
+              "type": "string",
+              "description": "One of: block, unblock, status, request_permission, release, list_active. request_permission, release, and list_active are website-only.",
+              "enum": [
+                "block",
+                "unblock",
+                "status",
+                "request_permission",
+                "release",
+                "list_active"
+              ]
+            },
+            "intent": {
+              "type": "string",
+              "description": "Free-form description of what the owner wants. Used by the block subaction to extract apps/hostnames + duration."
+            },
+            "hostnames": {
+              "type": "array",
+              "description": "(target=website) Public hostnames or URLs to block, e.g. ['x.com','twitter.com'].",
+              "items": {
+                "type": "string"
+              }
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "(target=website) Set true only when the owner has explicitly confirmed the block. Without it, block returns a draft confirmation request. Required by release."
+            },
+            "ruleId": {
+              "type": "string",
+              "description": "(target=website, subaction=release) ID of the managed block rule to release."
+            },
+            "reason": {
+              "type": "string",
+              "description": "(target=website, subaction=release) Optional reason recorded on the rule when released."
+            },
+            "includeLiveStatus": {
+              "type": "boolean",
+              "description": "(target=website, subaction=list_active) Include the current hosts-file/SelfControl live block state. Default true."
+            },
+            "includeManagedRules": {
+              "type": "boolean",
+              "description": "(target=website, subaction=list_active) Include managed LifeOps block rules. Default true."
+            },
+            "packageNames": {
+              "type": "array",
+              "description": "(target=app, Android) Package names to block, e.g. ['com.twitter.android'].",
+              "items": {
+                "type": "string"
+              }
+            },
+            "appTokens": {
+              "type": "array",
+              "description": "(target=app, iOS) iPhone app tokens from a previous selectApps() call.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "durationMinutes": {
+              "type": "number",
+              "description": "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "screen_time",
+        "browser",
+        "automation",
+        "tasks",
+        "settings"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
     },
     {
       "type": "function",
@@ -2364,6 +2947,582 @@
     {
       "type": "function",
       "function": {
+        "name": "CREDENTIALS",
+        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "fill | whitelist_add | whitelist_list (autofill) | search | list | inject_username | inject_password (password manager).",
+              "enum": [
+                "fill",
+                "whitelist_add",
+                "whitelist_list",
+                "search",
+                "list",
+                "inject_username",
+                "inject_password"
+              ]
+            },
+            "field": {
+              "type": "string",
+              "description": "(subaction=fill) One of email, password, name, phone, custom. Tells the password manager which field to resolve."
+            },
+            "domain": {
+              "type": "string",
+              "description": "(subaction=fill | whitelist_add) Domain to act on. For fill, used as the tab URL when url is omitted."
+            },
+            "url": {
+              "type": "string",
+              "description": "(subaction=fill) Optional explicit tab URL (used for whitelist enforcement)."
+            },
+            "intent": {
+              "type": "string",
+              "description": "(subaction=search) Natural-language description of the lookup intent."
+            },
+            "query": {
+              "type": "string",
+              "description": "(subaction=search) Search string matched against item title, URL, username, and tags."
+            },
+            "itemId": {
+              "type": "string",
+              "description": "(subaction=inject_username | inject_password) Password manager item id."
+            },
+            "limit": {
+              "type": "number",
+              "description": "(subaction=list) Optional item limit (default 20)."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "Required true for whitelist_add and for either inject_* subaction. Ensures the owner approved the change."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "browser",
+        "secrets",
+        "settings",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 4
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "CREDENTIALS_FILL",
+        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "fill | whitelist_add | whitelist_list (autofill) | search | list | inject_username | inject_password (password manager).",
+              "enum": [
+                "fill",
+                "whitelist_add",
+                "whitelist_list",
+                "search",
+                "list",
+                "inject_username",
+                "inject_password"
+              ]
+            },
+            "field": {
+              "type": "string",
+              "description": "(subaction=fill) One of email, password, name, phone, custom. Tells the password manager which field to resolve."
+            },
+            "domain": {
+              "type": "string",
+              "description": "(subaction=fill | whitelist_add) Domain to act on. For fill, used as the tab URL when url is omitted."
+            },
+            "url": {
+              "type": "string",
+              "description": "(subaction=fill) Optional explicit tab URL (used for whitelist enforcement)."
+            },
+            "intent": {
+              "type": "string",
+              "description": "(subaction=search) Natural-language description of the lookup intent."
+            },
+            "query": {
+              "type": "string",
+              "description": "(subaction=search) Search string matched against item title, URL, username, and tags."
+            },
+            "itemId": {
+              "type": "string",
+              "description": "(subaction=inject_username | inject_password) Password manager item id."
+            },
+            "limit": {
+              "type": "number",
+              "description": "(subaction=list) Optional item limit (default 20)."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "Required true for whitelist_add and for either inject_* subaction. Ensures the owner approved the change."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "browser",
+        "secrets",
+        "settings",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "CREDENTIALS_INJECT_PASSWORD",
+        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "fill | whitelist_add | whitelist_list (autofill) | search | list | inject_username | inject_password (password manager).",
+              "enum": [
+                "fill",
+                "whitelist_add",
+                "whitelist_list",
+                "search",
+                "list",
+                "inject_username",
+                "inject_password"
+              ]
+            },
+            "field": {
+              "type": "string",
+              "description": "(subaction=fill) One of email, password, name, phone, custom. Tells the password manager which field to resolve."
+            },
+            "domain": {
+              "type": "string",
+              "description": "(subaction=fill | whitelist_add) Domain to act on. For fill, used as the tab URL when url is omitted."
+            },
+            "url": {
+              "type": "string",
+              "description": "(subaction=fill) Optional explicit tab URL (used for whitelist enforcement)."
+            },
+            "intent": {
+              "type": "string",
+              "description": "(subaction=search) Natural-language description of the lookup intent."
+            },
+            "query": {
+              "type": "string",
+              "description": "(subaction=search) Search string matched against item title, URL, username, and tags."
+            },
+            "itemId": {
+              "type": "string",
+              "description": "(subaction=inject_username | inject_password) Password manager item id."
+            },
+            "limit": {
+              "type": "number",
+              "description": "(subaction=list) Optional item limit (default 20)."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "Required true for whitelist_add and for either inject_* subaction. Ensures the owner approved the change."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "browser",
+        "secrets",
+        "settings",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "CREDENTIALS_INJECT_USERNAME",
+        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "fill | whitelist_add | whitelist_list (autofill) | search | list | inject_username | inject_password (password manager).",
+              "enum": [
+                "fill",
+                "whitelist_add",
+                "whitelist_list",
+                "search",
+                "list",
+                "inject_username",
+                "inject_password"
+              ]
+            },
+            "field": {
+              "type": "string",
+              "description": "(subaction=fill) One of email, password, name, phone, custom. Tells the password manager which field to resolve."
+            },
+            "domain": {
+              "type": "string",
+              "description": "(subaction=fill | whitelist_add) Domain to act on. For fill, used as the tab URL when url is omitted."
+            },
+            "url": {
+              "type": "string",
+              "description": "(subaction=fill) Optional explicit tab URL (used for whitelist enforcement)."
+            },
+            "intent": {
+              "type": "string",
+              "description": "(subaction=search) Natural-language description of the lookup intent."
+            },
+            "query": {
+              "type": "string",
+              "description": "(subaction=search) Search string matched against item title, URL, username, and tags."
+            },
+            "itemId": {
+              "type": "string",
+              "description": "(subaction=inject_username | inject_password) Password manager item id."
+            },
+            "limit": {
+              "type": "number",
+              "description": "(subaction=list) Optional item limit (default 20)."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "Required true for whitelist_add and for either inject_* subaction. Ensures the owner approved the change."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "browser",
+        "secrets",
+        "settings",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "CREDENTIALS_LIST",
+        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "fill | whitelist_add | whitelist_list (autofill) | search | list | inject_username | inject_password (password manager).",
+              "enum": [
+                "fill",
+                "whitelist_add",
+                "whitelist_list",
+                "search",
+                "list",
+                "inject_username",
+                "inject_password"
+              ]
+            },
+            "field": {
+              "type": "string",
+              "description": "(subaction=fill) One of email, password, name, phone, custom. Tells the password manager which field to resolve."
+            },
+            "domain": {
+              "type": "string",
+              "description": "(subaction=fill | whitelist_add) Domain to act on. For fill, used as the tab URL when url is omitted."
+            },
+            "url": {
+              "type": "string",
+              "description": "(subaction=fill) Optional explicit tab URL (used for whitelist enforcement)."
+            },
+            "intent": {
+              "type": "string",
+              "description": "(subaction=search) Natural-language description of the lookup intent."
+            },
+            "query": {
+              "type": "string",
+              "description": "(subaction=search) Search string matched against item title, URL, username, and tags."
+            },
+            "itemId": {
+              "type": "string",
+              "description": "(subaction=inject_username | inject_password) Password manager item id."
+            },
+            "limit": {
+              "type": "number",
+              "description": "(subaction=list) Optional item limit (default 20)."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "Required true for whitelist_add and for either inject_* subaction. Ensures the owner approved the change."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "browser",
+        "secrets",
+        "settings",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "CREDENTIALS_SEARCH",
+        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "fill | whitelist_add | whitelist_list (autofill) | search | list | inject_username | inject_password (password manager).",
+              "enum": [
+                "fill",
+                "whitelist_add",
+                "whitelist_list",
+                "search",
+                "list",
+                "inject_username",
+                "inject_password"
+              ]
+            },
+            "field": {
+              "type": "string",
+              "description": "(subaction=fill) One of email, password, name, phone, custom. Tells the password manager which field to resolve."
+            },
+            "domain": {
+              "type": "string",
+              "description": "(subaction=fill | whitelist_add) Domain to act on. For fill, used as the tab URL when url is omitted."
+            },
+            "url": {
+              "type": "string",
+              "description": "(subaction=fill) Optional explicit tab URL (used for whitelist enforcement)."
+            },
+            "intent": {
+              "type": "string",
+              "description": "(subaction=search) Natural-language description of the lookup intent."
+            },
+            "query": {
+              "type": "string",
+              "description": "(subaction=search) Search string matched against item title, URL, username, and tags."
+            },
+            "itemId": {
+              "type": "string",
+              "description": "(subaction=inject_username | inject_password) Password manager item id."
+            },
+            "limit": {
+              "type": "number",
+              "description": "(subaction=list) Optional item limit (default 20)."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "Required true for whitelist_add and for either inject_* subaction. Ensures the owner approved the change."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "browser",
+        "secrets",
+        "settings",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "CREDENTIALS_WHITELIST_ADD",
+        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "fill | whitelist_add | whitelist_list (autofill) | search | list | inject_username | inject_password (password manager).",
+              "enum": [
+                "fill",
+                "whitelist_add",
+                "whitelist_list",
+                "search",
+                "list",
+                "inject_username",
+                "inject_password"
+              ]
+            },
+            "field": {
+              "type": "string",
+              "description": "(subaction=fill) One of email, password, name, phone, custom. Tells the password manager which field to resolve."
+            },
+            "domain": {
+              "type": "string",
+              "description": "(subaction=fill | whitelist_add) Domain to act on. For fill, used as the tab URL when url is omitted."
+            },
+            "url": {
+              "type": "string",
+              "description": "(subaction=fill) Optional explicit tab URL (used for whitelist enforcement)."
+            },
+            "intent": {
+              "type": "string",
+              "description": "(subaction=search) Natural-language description of the lookup intent."
+            },
+            "query": {
+              "type": "string",
+              "description": "(subaction=search) Search string matched against item title, URL, username, and tags."
+            },
+            "itemId": {
+              "type": "string",
+              "description": "(subaction=inject_username | inject_password) Password manager item id."
+            },
+            "limit": {
+              "type": "number",
+              "description": "(subaction=list) Optional item limit (default 20)."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "Required true for whitelist_add and for either inject_* subaction. Ensures the owner approved the change."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "browser",
+        "secrets",
+        "settings",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "CREDENTIALS_WHITELIST_LIST",
+        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "fill | whitelist_add | whitelist_list (autofill) | search | list | inject_username | inject_password (password manager).",
+              "enum": [
+                "fill",
+                "whitelist_add",
+                "whitelist_list",
+                "search",
+                "list",
+                "inject_username",
+                "inject_password"
+              ]
+            },
+            "field": {
+              "type": "string",
+              "description": "(subaction=fill) One of email, password, name, phone, custom. Tells the password manager which field to resolve."
+            },
+            "domain": {
+              "type": "string",
+              "description": "(subaction=fill | whitelist_add) Domain to act on. For fill, used as the tab URL when url is omitted."
+            },
+            "url": {
+              "type": "string",
+              "description": "(subaction=fill) Optional explicit tab URL (used for whitelist enforcement)."
+            },
+            "intent": {
+              "type": "string",
+              "description": "(subaction=search) Natural-language description of the lookup intent."
+            },
+            "query": {
+              "type": "string",
+              "description": "(subaction=search) Search string matched against item title, URL, username, and tags."
+            },
+            "itemId": {
+              "type": "string",
+              "description": "(subaction=inject_username | inject_password) Password manager item id."
+            },
+            "limit": {
+              "type": "number",
+              "description": "(subaction=list) Optional item limit (default 20)."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "Required true for whitelist_add and for either inject_* subaction. Ensures the owner approved the change."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "browser",
+        "secrets",
+        "settings",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
         "name": "DEVICE_INTENT",
         "description": "broadcast device intent/reminder: target all|mobile|desktop|specific title body kind routine_reminder|user_action_requested",
         "parameters": {
@@ -2408,7 +3567,7 @@
         "settings"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 2
     },
     {
       "type": "function",
@@ -3374,7 +4533,7 @@
         "parameters": {
           "type": "object",
           "properties": {
-            "operation": {
+            "subaction": {
               "type": "string",
               "description": "Message subaction. One of: send, read_channel, read_with_contact, search, list_channels, list_servers, join, leave, react, edit, delete, pin, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, manage.",
               "enum": [
@@ -3402,21 +4561,21 @@
                 "manage"
               ]
             },
-            "subaction": {
+            "operation": {
               "type": "string",
-              "description": "Alias for operation, accepted for planner compatibility."
+              "description": "Legacy alias for subaction, accepted for planner compatibility."
             },
             "subAction": {
               "type": "string",
-              "description": "Alias for operation, accepted for planner compatibility."
+              "description": "Legacy alias for subaction, accepted for planner compatibility."
             },
             "__subaction": {
               "type": "string",
-              "description": "Legacy alias for operation, accepted for planner compatibility."
+              "description": "Legacy alias for subaction, accepted for planner compatibility."
             },
             "op": {
               "type": "string",
-              "description": "Alias for operation, accepted for planner compatibility."
+              "description": "Legacy alias for subaction, accepted for planner compatibility."
             },
             "source": {
               "type": "string",
@@ -3712,41 +4871,39 @@
     {
       "type": "function",
       "function": {
-        "name": "PASSWORD_MANAGER",
-        "description": "password manager 1Password|ProtonPass: search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "name": "MESSAGE_HANDOFF",
+        "description": "MESSAGE_HANDOFF verb: enter|resume|status; gates agent contributions per resumeOn condition.",
         "parameters": {
           "type": "object",
           "properties": {
-            "subaction": {
+            "verb": {
               "type": "string",
-              "description": "One of: search, list, inject_username, inject_password."
+              "description": "enter | resume | status"
             },
-            "intent": {
+            "reason": {
               "type": "string",
-              "description": "Natural-language description of the lookup intent."
+              "description": "Why the agent is stepping back (logged in HandoffStore)."
             },
-            "query": {
+            "resumeKind": {
               "type": "string",
-              "description": "Search string matched against item title, URL, username, and tags."
+              "description": "mention | explicit_resume | silence_minutes | user_request_help"
             },
-            "itemId": {
-              "type": "string",
-              "description": "Password manager item id (required for inject_* subactions)."
-            },
-            "field": {
-              "type": "string",
-              "description": "Which field to inject when using a generic inject subaction. Ignored when subaction explicitly names the field."
-            },
-            "confirmed": {
-              "type": "boolean",
-              "description": "Must be explicitly true to copy a credential to the clipboard."
-            },
-            "limit": {
+            "silenceMinutes": {
               "type": "number",
-              "description": "Optional item limit for the `list` subaction (default 20)."
+              "description": "Required when resumeKind=silence_minutes."
+            },
+            "userId": {
+              "type": "string",
+              "description": "Required when resumeKind=user_request_help."
+            },
+            "roomId": {
+              "type": "string",
+              "description": "Override the room to operate on; defaults to message.roomId."
             }
           },
-          "required": [],
+          "required": [
+            "verb"
+          ],
           "additionalProperties": false
         },
         "strict": true
@@ -3754,24 +4911,36 @@
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [],
       "_contexts": [
-        "secrets",
-        "browser",
+        "messaging",
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 3
+      "_examples_count": 2
     },
     {
       "type": "function",
       "function": {
-        "name": "PAYMENTS",
-        "description": "payments+spending: dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges; bank/CSV/Plaid/PayPal",
+        "name": "MONEY",
+        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
         "parameters": {
           "type": "object",
           "properties": {
             "subaction": {
               "type": "string",
-              "description": "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges (defaults dashboard)."
+              "description": "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges | subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
+              "enum": [
+                "dashboard",
+                "list_sources",
+                "add_source",
+                "remove_source",
+                "import_csv",
+                "list_transactions",
+                "spending_summary",
+                "recurring_charges",
+                "subscription_audit",
+                "subscription_cancel",
+                "subscription_status"
+              ]
             },
             "sourceId": {
               "type": "string",
@@ -3836,9 +5005,39 @@
             "onlyDebits": {
               "type": "boolean",
               "description": "Exclude credits when listing transactions."
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Display name of the subscription service."
+            },
+            "serviceSlug": {
+              "type": "string",
+              "description": "Normalized slug for routing."
+            },
+            "candidateId": {
+              "type": "string",
+              "description": "Internal audit candidate identifier."
+            },
+            "cancellationId": {
+              "type": "string",
+              "description": "Ongoing cancellation id for status lookups."
+            },
+            "executor": {
+              "type": "string",
+              "description": "Browser executor: user_browser | agent_browser | desktop_native."
+            },
+            "queryWindowDays": {
+              "type": "number",
+              "description": "Days of history for audit queries."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "User confirmed cancellation prerequisites."
             }
           },
-          "required": [],
+          "required": [
+            "subaction"
+          ],
           "additionalProperties": false
         },
         "strict": true
@@ -3850,10 +5049,1541 @@
         "finance",
         "wallet",
         "crypto",
-        "subscriptions"
+        "subscriptions",
+        "browser",
+        "automation"
       ],
       "_priority": 100,
-      "_examples_count": 3
+      "_examples_count": 4
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_ADD_SOURCE",
+        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges | subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
+              "enum": [
+                "dashboard",
+                "list_sources",
+                "add_source",
+                "remove_source",
+                "import_csv",
+                "list_transactions",
+                "spending_summary",
+                "recurring_charges",
+                "subscription_audit",
+                "subscription_cancel",
+                "subscription_status"
+              ]
+            },
+            "sourceId": {
+              "type": "string",
+              "description": "Payment source UUID for scoped reads and CSV import."
+            },
+            "kind": {
+              "type": "string",
+              "description": "add_source kind: csv | plaid | manual | paypal."
+            },
+            "label": {
+              "type": "string",
+              "description": "Human label when adding a source."
+            },
+            "institution": {
+              "type": "string",
+              "description": "Institution display name."
+            },
+            "accountMask": {
+              "type": "string",
+              "description": "Last-four or mask string."
+            },
+            "csvText": {
+              "type": "string",
+              "description": "Raw CSV payload for import_csv."
+            },
+            "dateColumn": {
+              "type": "string",
+              "description": "CSV column hint for posting date."
+            },
+            "amountColumn": {
+              "type": "string",
+              "description": "CSV column hint for amount."
+            },
+            "merchantColumn": {
+              "type": "string",
+              "description": "CSV column hint for merchant."
+            },
+            "descriptionColumn": {
+              "type": "string",
+              "description": "CSV column hint for description."
+            },
+            "categoryColumn": {
+              "type": "string",
+              "description": "CSV column hint for category."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Rolling window for dashboard or spending summaries."
+            },
+            "sinceDays": {
+              "type": "number",
+              "description": "History window for recurring charge detection."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Transaction row cap for listings."
+            },
+            "merchantContains": {
+              "type": "string",
+              "description": "Filter transactions by merchant substring."
+            },
+            "onlyDebits": {
+              "type": "boolean",
+              "description": "Exclude credits when listing transactions."
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Display name of the subscription service."
+            },
+            "serviceSlug": {
+              "type": "string",
+              "description": "Normalized slug for routing."
+            },
+            "candidateId": {
+              "type": "string",
+              "description": "Internal audit candidate identifier."
+            },
+            "cancellationId": {
+              "type": "string",
+              "description": "Ongoing cancellation id for status lookups."
+            },
+            "executor": {
+              "type": "string",
+              "description": "Browser executor: user_browser | agent_browser | desktop_native."
+            },
+            "queryWindowDays": {
+              "type": "number",
+              "description": "Days of history for audit queries."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "User confirmed cancellation prerequisites."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "payments",
+        "finance",
+        "wallet",
+        "crypto",
+        "subscriptions",
+        "browser",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_DASHBOARD",
+        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges | subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
+              "enum": [
+                "dashboard",
+                "list_sources",
+                "add_source",
+                "remove_source",
+                "import_csv",
+                "list_transactions",
+                "spending_summary",
+                "recurring_charges",
+                "subscription_audit",
+                "subscription_cancel",
+                "subscription_status"
+              ]
+            },
+            "sourceId": {
+              "type": "string",
+              "description": "Payment source UUID for scoped reads and CSV import."
+            },
+            "kind": {
+              "type": "string",
+              "description": "add_source kind: csv | plaid | manual | paypal."
+            },
+            "label": {
+              "type": "string",
+              "description": "Human label when adding a source."
+            },
+            "institution": {
+              "type": "string",
+              "description": "Institution display name."
+            },
+            "accountMask": {
+              "type": "string",
+              "description": "Last-four or mask string."
+            },
+            "csvText": {
+              "type": "string",
+              "description": "Raw CSV payload for import_csv."
+            },
+            "dateColumn": {
+              "type": "string",
+              "description": "CSV column hint for posting date."
+            },
+            "amountColumn": {
+              "type": "string",
+              "description": "CSV column hint for amount."
+            },
+            "merchantColumn": {
+              "type": "string",
+              "description": "CSV column hint for merchant."
+            },
+            "descriptionColumn": {
+              "type": "string",
+              "description": "CSV column hint for description."
+            },
+            "categoryColumn": {
+              "type": "string",
+              "description": "CSV column hint for category."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Rolling window for dashboard or spending summaries."
+            },
+            "sinceDays": {
+              "type": "number",
+              "description": "History window for recurring charge detection."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Transaction row cap for listings."
+            },
+            "merchantContains": {
+              "type": "string",
+              "description": "Filter transactions by merchant substring."
+            },
+            "onlyDebits": {
+              "type": "boolean",
+              "description": "Exclude credits when listing transactions."
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Display name of the subscription service."
+            },
+            "serviceSlug": {
+              "type": "string",
+              "description": "Normalized slug for routing."
+            },
+            "candidateId": {
+              "type": "string",
+              "description": "Internal audit candidate identifier."
+            },
+            "cancellationId": {
+              "type": "string",
+              "description": "Ongoing cancellation id for status lookups."
+            },
+            "executor": {
+              "type": "string",
+              "description": "Browser executor: user_browser | agent_browser | desktop_native."
+            },
+            "queryWindowDays": {
+              "type": "number",
+              "description": "Days of history for audit queries."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "User confirmed cancellation prerequisites."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "payments",
+        "finance",
+        "wallet",
+        "crypto",
+        "subscriptions",
+        "browser",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_IMPORT_CSV",
+        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges | subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
+              "enum": [
+                "dashboard",
+                "list_sources",
+                "add_source",
+                "remove_source",
+                "import_csv",
+                "list_transactions",
+                "spending_summary",
+                "recurring_charges",
+                "subscription_audit",
+                "subscription_cancel",
+                "subscription_status"
+              ]
+            },
+            "sourceId": {
+              "type": "string",
+              "description": "Payment source UUID for scoped reads and CSV import."
+            },
+            "kind": {
+              "type": "string",
+              "description": "add_source kind: csv | plaid | manual | paypal."
+            },
+            "label": {
+              "type": "string",
+              "description": "Human label when adding a source."
+            },
+            "institution": {
+              "type": "string",
+              "description": "Institution display name."
+            },
+            "accountMask": {
+              "type": "string",
+              "description": "Last-four or mask string."
+            },
+            "csvText": {
+              "type": "string",
+              "description": "Raw CSV payload for import_csv."
+            },
+            "dateColumn": {
+              "type": "string",
+              "description": "CSV column hint for posting date."
+            },
+            "amountColumn": {
+              "type": "string",
+              "description": "CSV column hint for amount."
+            },
+            "merchantColumn": {
+              "type": "string",
+              "description": "CSV column hint for merchant."
+            },
+            "descriptionColumn": {
+              "type": "string",
+              "description": "CSV column hint for description."
+            },
+            "categoryColumn": {
+              "type": "string",
+              "description": "CSV column hint for category."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Rolling window for dashboard or spending summaries."
+            },
+            "sinceDays": {
+              "type": "number",
+              "description": "History window for recurring charge detection."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Transaction row cap for listings."
+            },
+            "merchantContains": {
+              "type": "string",
+              "description": "Filter transactions by merchant substring."
+            },
+            "onlyDebits": {
+              "type": "boolean",
+              "description": "Exclude credits when listing transactions."
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Display name of the subscription service."
+            },
+            "serviceSlug": {
+              "type": "string",
+              "description": "Normalized slug for routing."
+            },
+            "candidateId": {
+              "type": "string",
+              "description": "Internal audit candidate identifier."
+            },
+            "cancellationId": {
+              "type": "string",
+              "description": "Ongoing cancellation id for status lookups."
+            },
+            "executor": {
+              "type": "string",
+              "description": "Browser executor: user_browser | agent_browser | desktop_native."
+            },
+            "queryWindowDays": {
+              "type": "number",
+              "description": "Days of history for audit queries."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "User confirmed cancellation prerequisites."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "payments",
+        "finance",
+        "wallet",
+        "crypto",
+        "subscriptions",
+        "browser",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_LIST_SOURCES",
+        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges | subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
+              "enum": [
+                "dashboard",
+                "list_sources",
+                "add_source",
+                "remove_source",
+                "import_csv",
+                "list_transactions",
+                "spending_summary",
+                "recurring_charges",
+                "subscription_audit",
+                "subscription_cancel",
+                "subscription_status"
+              ]
+            },
+            "sourceId": {
+              "type": "string",
+              "description": "Payment source UUID for scoped reads and CSV import."
+            },
+            "kind": {
+              "type": "string",
+              "description": "add_source kind: csv | plaid | manual | paypal."
+            },
+            "label": {
+              "type": "string",
+              "description": "Human label when adding a source."
+            },
+            "institution": {
+              "type": "string",
+              "description": "Institution display name."
+            },
+            "accountMask": {
+              "type": "string",
+              "description": "Last-four or mask string."
+            },
+            "csvText": {
+              "type": "string",
+              "description": "Raw CSV payload for import_csv."
+            },
+            "dateColumn": {
+              "type": "string",
+              "description": "CSV column hint for posting date."
+            },
+            "amountColumn": {
+              "type": "string",
+              "description": "CSV column hint for amount."
+            },
+            "merchantColumn": {
+              "type": "string",
+              "description": "CSV column hint for merchant."
+            },
+            "descriptionColumn": {
+              "type": "string",
+              "description": "CSV column hint for description."
+            },
+            "categoryColumn": {
+              "type": "string",
+              "description": "CSV column hint for category."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Rolling window for dashboard or spending summaries."
+            },
+            "sinceDays": {
+              "type": "number",
+              "description": "History window for recurring charge detection."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Transaction row cap for listings."
+            },
+            "merchantContains": {
+              "type": "string",
+              "description": "Filter transactions by merchant substring."
+            },
+            "onlyDebits": {
+              "type": "boolean",
+              "description": "Exclude credits when listing transactions."
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Display name of the subscription service."
+            },
+            "serviceSlug": {
+              "type": "string",
+              "description": "Normalized slug for routing."
+            },
+            "candidateId": {
+              "type": "string",
+              "description": "Internal audit candidate identifier."
+            },
+            "cancellationId": {
+              "type": "string",
+              "description": "Ongoing cancellation id for status lookups."
+            },
+            "executor": {
+              "type": "string",
+              "description": "Browser executor: user_browser | agent_browser | desktop_native."
+            },
+            "queryWindowDays": {
+              "type": "number",
+              "description": "Days of history for audit queries."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "User confirmed cancellation prerequisites."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "payments",
+        "finance",
+        "wallet",
+        "crypto",
+        "subscriptions",
+        "browser",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_LIST_TRANSACTIONS",
+        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges | subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
+              "enum": [
+                "dashboard",
+                "list_sources",
+                "add_source",
+                "remove_source",
+                "import_csv",
+                "list_transactions",
+                "spending_summary",
+                "recurring_charges",
+                "subscription_audit",
+                "subscription_cancel",
+                "subscription_status"
+              ]
+            },
+            "sourceId": {
+              "type": "string",
+              "description": "Payment source UUID for scoped reads and CSV import."
+            },
+            "kind": {
+              "type": "string",
+              "description": "add_source kind: csv | plaid | manual | paypal."
+            },
+            "label": {
+              "type": "string",
+              "description": "Human label when adding a source."
+            },
+            "institution": {
+              "type": "string",
+              "description": "Institution display name."
+            },
+            "accountMask": {
+              "type": "string",
+              "description": "Last-four or mask string."
+            },
+            "csvText": {
+              "type": "string",
+              "description": "Raw CSV payload for import_csv."
+            },
+            "dateColumn": {
+              "type": "string",
+              "description": "CSV column hint for posting date."
+            },
+            "amountColumn": {
+              "type": "string",
+              "description": "CSV column hint for amount."
+            },
+            "merchantColumn": {
+              "type": "string",
+              "description": "CSV column hint for merchant."
+            },
+            "descriptionColumn": {
+              "type": "string",
+              "description": "CSV column hint for description."
+            },
+            "categoryColumn": {
+              "type": "string",
+              "description": "CSV column hint for category."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Rolling window for dashboard or spending summaries."
+            },
+            "sinceDays": {
+              "type": "number",
+              "description": "History window for recurring charge detection."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Transaction row cap for listings."
+            },
+            "merchantContains": {
+              "type": "string",
+              "description": "Filter transactions by merchant substring."
+            },
+            "onlyDebits": {
+              "type": "boolean",
+              "description": "Exclude credits when listing transactions."
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Display name of the subscription service."
+            },
+            "serviceSlug": {
+              "type": "string",
+              "description": "Normalized slug for routing."
+            },
+            "candidateId": {
+              "type": "string",
+              "description": "Internal audit candidate identifier."
+            },
+            "cancellationId": {
+              "type": "string",
+              "description": "Ongoing cancellation id for status lookups."
+            },
+            "executor": {
+              "type": "string",
+              "description": "Browser executor: user_browser | agent_browser | desktop_native."
+            },
+            "queryWindowDays": {
+              "type": "number",
+              "description": "Days of history for audit queries."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "User confirmed cancellation prerequisites."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "payments",
+        "finance",
+        "wallet",
+        "crypto",
+        "subscriptions",
+        "browser",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_RECURRING_CHARGES",
+        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges | subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
+              "enum": [
+                "dashboard",
+                "list_sources",
+                "add_source",
+                "remove_source",
+                "import_csv",
+                "list_transactions",
+                "spending_summary",
+                "recurring_charges",
+                "subscription_audit",
+                "subscription_cancel",
+                "subscription_status"
+              ]
+            },
+            "sourceId": {
+              "type": "string",
+              "description": "Payment source UUID for scoped reads and CSV import."
+            },
+            "kind": {
+              "type": "string",
+              "description": "add_source kind: csv | plaid | manual | paypal."
+            },
+            "label": {
+              "type": "string",
+              "description": "Human label when adding a source."
+            },
+            "institution": {
+              "type": "string",
+              "description": "Institution display name."
+            },
+            "accountMask": {
+              "type": "string",
+              "description": "Last-four or mask string."
+            },
+            "csvText": {
+              "type": "string",
+              "description": "Raw CSV payload for import_csv."
+            },
+            "dateColumn": {
+              "type": "string",
+              "description": "CSV column hint for posting date."
+            },
+            "amountColumn": {
+              "type": "string",
+              "description": "CSV column hint for amount."
+            },
+            "merchantColumn": {
+              "type": "string",
+              "description": "CSV column hint for merchant."
+            },
+            "descriptionColumn": {
+              "type": "string",
+              "description": "CSV column hint for description."
+            },
+            "categoryColumn": {
+              "type": "string",
+              "description": "CSV column hint for category."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Rolling window for dashboard or spending summaries."
+            },
+            "sinceDays": {
+              "type": "number",
+              "description": "History window for recurring charge detection."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Transaction row cap for listings."
+            },
+            "merchantContains": {
+              "type": "string",
+              "description": "Filter transactions by merchant substring."
+            },
+            "onlyDebits": {
+              "type": "boolean",
+              "description": "Exclude credits when listing transactions."
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Display name of the subscription service."
+            },
+            "serviceSlug": {
+              "type": "string",
+              "description": "Normalized slug for routing."
+            },
+            "candidateId": {
+              "type": "string",
+              "description": "Internal audit candidate identifier."
+            },
+            "cancellationId": {
+              "type": "string",
+              "description": "Ongoing cancellation id for status lookups."
+            },
+            "executor": {
+              "type": "string",
+              "description": "Browser executor: user_browser | agent_browser | desktop_native."
+            },
+            "queryWindowDays": {
+              "type": "number",
+              "description": "Days of history for audit queries."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "User confirmed cancellation prerequisites."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "payments",
+        "finance",
+        "wallet",
+        "crypto",
+        "subscriptions",
+        "browser",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_REMOVE_SOURCE",
+        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges | subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
+              "enum": [
+                "dashboard",
+                "list_sources",
+                "add_source",
+                "remove_source",
+                "import_csv",
+                "list_transactions",
+                "spending_summary",
+                "recurring_charges",
+                "subscription_audit",
+                "subscription_cancel",
+                "subscription_status"
+              ]
+            },
+            "sourceId": {
+              "type": "string",
+              "description": "Payment source UUID for scoped reads and CSV import."
+            },
+            "kind": {
+              "type": "string",
+              "description": "add_source kind: csv | plaid | manual | paypal."
+            },
+            "label": {
+              "type": "string",
+              "description": "Human label when adding a source."
+            },
+            "institution": {
+              "type": "string",
+              "description": "Institution display name."
+            },
+            "accountMask": {
+              "type": "string",
+              "description": "Last-four or mask string."
+            },
+            "csvText": {
+              "type": "string",
+              "description": "Raw CSV payload for import_csv."
+            },
+            "dateColumn": {
+              "type": "string",
+              "description": "CSV column hint for posting date."
+            },
+            "amountColumn": {
+              "type": "string",
+              "description": "CSV column hint for amount."
+            },
+            "merchantColumn": {
+              "type": "string",
+              "description": "CSV column hint for merchant."
+            },
+            "descriptionColumn": {
+              "type": "string",
+              "description": "CSV column hint for description."
+            },
+            "categoryColumn": {
+              "type": "string",
+              "description": "CSV column hint for category."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Rolling window for dashboard or spending summaries."
+            },
+            "sinceDays": {
+              "type": "number",
+              "description": "History window for recurring charge detection."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Transaction row cap for listings."
+            },
+            "merchantContains": {
+              "type": "string",
+              "description": "Filter transactions by merchant substring."
+            },
+            "onlyDebits": {
+              "type": "boolean",
+              "description": "Exclude credits when listing transactions."
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Display name of the subscription service."
+            },
+            "serviceSlug": {
+              "type": "string",
+              "description": "Normalized slug for routing."
+            },
+            "candidateId": {
+              "type": "string",
+              "description": "Internal audit candidate identifier."
+            },
+            "cancellationId": {
+              "type": "string",
+              "description": "Ongoing cancellation id for status lookups."
+            },
+            "executor": {
+              "type": "string",
+              "description": "Browser executor: user_browser | agent_browser | desktop_native."
+            },
+            "queryWindowDays": {
+              "type": "number",
+              "description": "Days of history for audit queries."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "User confirmed cancellation prerequisites."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "payments",
+        "finance",
+        "wallet",
+        "crypto",
+        "subscriptions",
+        "browser",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_SPENDING_SUMMARY",
+        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges | subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
+              "enum": [
+                "dashboard",
+                "list_sources",
+                "add_source",
+                "remove_source",
+                "import_csv",
+                "list_transactions",
+                "spending_summary",
+                "recurring_charges",
+                "subscription_audit",
+                "subscription_cancel",
+                "subscription_status"
+              ]
+            },
+            "sourceId": {
+              "type": "string",
+              "description": "Payment source UUID for scoped reads and CSV import."
+            },
+            "kind": {
+              "type": "string",
+              "description": "add_source kind: csv | plaid | manual | paypal."
+            },
+            "label": {
+              "type": "string",
+              "description": "Human label when adding a source."
+            },
+            "institution": {
+              "type": "string",
+              "description": "Institution display name."
+            },
+            "accountMask": {
+              "type": "string",
+              "description": "Last-four or mask string."
+            },
+            "csvText": {
+              "type": "string",
+              "description": "Raw CSV payload for import_csv."
+            },
+            "dateColumn": {
+              "type": "string",
+              "description": "CSV column hint for posting date."
+            },
+            "amountColumn": {
+              "type": "string",
+              "description": "CSV column hint for amount."
+            },
+            "merchantColumn": {
+              "type": "string",
+              "description": "CSV column hint for merchant."
+            },
+            "descriptionColumn": {
+              "type": "string",
+              "description": "CSV column hint for description."
+            },
+            "categoryColumn": {
+              "type": "string",
+              "description": "CSV column hint for category."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Rolling window for dashboard or spending summaries."
+            },
+            "sinceDays": {
+              "type": "number",
+              "description": "History window for recurring charge detection."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Transaction row cap for listings."
+            },
+            "merchantContains": {
+              "type": "string",
+              "description": "Filter transactions by merchant substring."
+            },
+            "onlyDebits": {
+              "type": "boolean",
+              "description": "Exclude credits when listing transactions."
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Display name of the subscription service."
+            },
+            "serviceSlug": {
+              "type": "string",
+              "description": "Normalized slug for routing."
+            },
+            "candidateId": {
+              "type": "string",
+              "description": "Internal audit candidate identifier."
+            },
+            "cancellationId": {
+              "type": "string",
+              "description": "Ongoing cancellation id for status lookups."
+            },
+            "executor": {
+              "type": "string",
+              "description": "Browser executor: user_browser | agent_browser | desktop_native."
+            },
+            "queryWindowDays": {
+              "type": "number",
+              "description": "Days of history for audit queries."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "User confirmed cancellation prerequisites."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "payments",
+        "finance",
+        "wallet",
+        "crypto",
+        "subscriptions",
+        "browser",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_SUBSCRIPTION_AUDIT",
+        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges | subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
+              "enum": [
+                "dashboard",
+                "list_sources",
+                "add_source",
+                "remove_source",
+                "import_csv",
+                "list_transactions",
+                "spending_summary",
+                "recurring_charges",
+                "subscription_audit",
+                "subscription_cancel",
+                "subscription_status"
+              ]
+            },
+            "sourceId": {
+              "type": "string",
+              "description": "Payment source UUID for scoped reads and CSV import."
+            },
+            "kind": {
+              "type": "string",
+              "description": "add_source kind: csv | plaid | manual | paypal."
+            },
+            "label": {
+              "type": "string",
+              "description": "Human label when adding a source."
+            },
+            "institution": {
+              "type": "string",
+              "description": "Institution display name."
+            },
+            "accountMask": {
+              "type": "string",
+              "description": "Last-four or mask string."
+            },
+            "csvText": {
+              "type": "string",
+              "description": "Raw CSV payload for import_csv."
+            },
+            "dateColumn": {
+              "type": "string",
+              "description": "CSV column hint for posting date."
+            },
+            "amountColumn": {
+              "type": "string",
+              "description": "CSV column hint for amount."
+            },
+            "merchantColumn": {
+              "type": "string",
+              "description": "CSV column hint for merchant."
+            },
+            "descriptionColumn": {
+              "type": "string",
+              "description": "CSV column hint for description."
+            },
+            "categoryColumn": {
+              "type": "string",
+              "description": "CSV column hint for category."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Rolling window for dashboard or spending summaries."
+            },
+            "sinceDays": {
+              "type": "number",
+              "description": "History window for recurring charge detection."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Transaction row cap for listings."
+            },
+            "merchantContains": {
+              "type": "string",
+              "description": "Filter transactions by merchant substring."
+            },
+            "onlyDebits": {
+              "type": "boolean",
+              "description": "Exclude credits when listing transactions."
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Display name of the subscription service."
+            },
+            "serviceSlug": {
+              "type": "string",
+              "description": "Normalized slug for routing."
+            },
+            "candidateId": {
+              "type": "string",
+              "description": "Internal audit candidate identifier."
+            },
+            "cancellationId": {
+              "type": "string",
+              "description": "Ongoing cancellation id for status lookups."
+            },
+            "executor": {
+              "type": "string",
+              "description": "Browser executor: user_browser | agent_browser | desktop_native."
+            },
+            "queryWindowDays": {
+              "type": "number",
+              "description": "Days of history for audit queries."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "User confirmed cancellation prerequisites."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "payments",
+        "finance",
+        "wallet",
+        "crypto",
+        "subscriptions",
+        "browser",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_SUBSCRIPTION_CANCEL",
+        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges | subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
+              "enum": [
+                "dashboard",
+                "list_sources",
+                "add_source",
+                "remove_source",
+                "import_csv",
+                "list_transactions",
+                "spending_summary",
+                "recurring_charges",
+                "subscription_audit",
+                "subscription_cancel",
+                "subscription_status"
+              ]
+            },
+            "sourceId": {
+              "type": "string",
+              "description": "Payment source UUID for scoped reads and CSV import."
+            },
+            "kind": {
+              "type": "string",
+              "description": "add_source kind: csv | plaid | manual | paypal."
+            },
+            "label": {
+              "type": "string",
+              "description": "Human label when adding a source."
+            },
+            "institution": {
+              "type": "string",
+              "description": "Institution display name."
+            },
+            "accountMask": {
+              "type": "string",
+              "description": "Last-four or mask string."
+            },
+            "csvText": {
+              "type": "string",
+              "description": "Raw CSV payload for import_csv."
+            },
+            "dateColumn": {
+              "type": "string",
+              "description": "CSV column hint for posting date."
+            },
+            "amountColumn": {
+              "type": "string",
+              "description": "CSV column hint for amount."
+            },
+            "merchantColumn": {
+              "type": "string",
+              "description": "CSV column hint for merchant."
+            },
+            "descriptionColumn": {
+              "type": "string",
+              "description": "CSV column hint for description."
+            },
+            "categoryColumn": {
+              "type": "string",
+              "description": "CSV column hint for category."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Rolling window for dashboard or spending summaries."
+            },
+            "sinceDays": {
+              "type": "number",
+              "description": "History window for recurring charge detection."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Transaction row cap for listings."
+            },
+            "merchantContains": {
+              "type": "string",
+              "description": "Filter transactions by merchant substring."
+            },
+            "onlyDebits": {
+              "type": "boolean",
+              "description": "Exclude credits when listing transactions."
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Display name of the subscription service."
+            },
+            "serviceSlug": {
+              "type": "string",
+              "description": "Normalized slug for routing."
+            },
+            "candidateId": {
+              "type": "string",
+              "description": "Internal audit candidate identifier."
+            },
+            "cancellationId": {
+              "type": "string",
+              "description": "Ongoing cancellation id for status lookups."
+            },
+            "executor": {
+              "type": "string",
+              "description": "Browser executor: user_browser | agent_browser | desktop_native."
+            },
+            "queryWindowDays": {
+              "type": "number",
+              "description": "Days of history for audit queries."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "User confirmed cancellation prerequisites."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "payments",
+        "finance",
+        "wallet",
+        "crypto",
+        "subscriptions",
+        "browser",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_SUBSCRIPTION_STATUS",
+        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges | subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
+              "enum": [
+                "dashboard",
+                "list_sources",
+                "add_source",
+                "remove_source",
+                "import_csv",
+                "list_transactions",
+                "spending_summary",
+                "recurring_charges",
+                "subscription_audit",
+                "subscription_cancel",
+                "subscription_status"
+              ]
+            },
+            "sourceId": {
+              "type": "string",
+              "description": "Payment source UUID for scoped reads and CSV import."
+            },
+            "kind": {
+              "type": "string",
+              "description": "add_source kind: csv | plaid | manual | paypal."
+            },
+            "label": {
+              "type": "string",
+              "description": "Human label when adding a source."
+            },
+            "institution": {
+              "type": "string",
+              "description": "Institution display name."
+            },
+            "accountMask": {
+              "type": "string",
+              "description": "Last-four or mask string."
+            },
+            "csvText": {
+              "type": "string",
+              "description": "Raw CSV payload for import_csv."
+            },
+            "dateColumn": {
+              "type": "string",
+              "description": "CSV column hint for posting date."
+            },
+            "amountColumn": {
+              "type": "string",
+              "description": "CSV column hint for amount."
+            },
+            "merchantColumn": {
+              "type": "string",
+              "description": "CSV column hint for merchant."
+            },
+            "descriptionColumn": {
+              "type": "string",
+              "description": "CSV column hint for description."
+            },
+            "categoryColumn": {
+              "type": "string",
+              "description": "CSV column hint for category."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Rolling window for dashboard or spending summaries."
+            },
+            "sinceDays": {
+              "type": "number",
+              "description": "History window for recurring charge detection."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Transaction row cap for listings."
+            },
+            "merchantContains": {
+              "type": "string",
+              "description": "Filter transactions by merchant substring."
+            },
+            "onlyDebits": {
+              "type": "boolean",
+              "description": "Exclude credits when listing transactions."
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Display name of the subscription service."
+            },
+            "serviceSlug": {
+              "type": "string",
+              "description": "Normalized slug for routing."
+            },
+            "candidateId": {
+              "type": "string",
+              "description": "Internal audit candidate identifier."
+            },
+            "cancellationId": {
+              "type": "string",
+              "description": "Ongoing cancellation id for status lookups."
+            },
+            "executor": {
+              "type": "string",
+              "description": "Browser executor: user_browser | agent_browser | desktop_native."
+            },
+            "queryWindowDays": {
+              "type": "number",
+              "description": "Days of history for audit queries."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "User confirmed cancellation prerequisites."
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/app-lifeops",
+      "_tags": [],
+      "_contexts": [
+        "payments",
+        "finance",
+        "wallet",
+        "crypto",
+        "subscriptions",
+        "browser",
+        "automation"
+      ],
+      "_priority": 100,
+      "_examples_count": 0
     },
     {
       "type": "function",
@@ -6170,264 +8900,12 @@
     {
       "type": "function",
       "function": {
-        "name": "SUBSCRIPTIONS",
-        "description": "paid sub audit+cancel via browser: audit | cancel(serviceSlug confirmed) | status(cancellationId); not email-list-unsubscribe",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "subaction": {
-              "type": "string",
-              "description": "audit | cancel | status when supplied.",
-              "enum": [
-                "audit",
-                "cancel",
-                "status"
-              ]
-            },
-            "serviceName": {
-              "type": "string",
-              "description": "Display name of the subscription service."
-            },
-            "serviceSlug": {
-              "type": "string",
-              "description": "Normalized slug for routing."
-            },
-            "candidateId": {
-              "type": "string",
-              "description": "Internal audit candidate identifier."
-            },
-            "cancellationId": {
-              "type": "string",
-              "description": "Ongoing cancellation id for status lookups."
-            },
-            "executor": {
-              "type": "string",
-              "description": "Browser executor: user_browser | agent_browser | desktop_native."
-            },
-            "queryWindowDays": {
-              "type": "number",
-              "description": "Days of history for audit queries."
-            },
-            "confirmed": {
-              "type": "boolean",
-              "description": "User confirmed cancellation prerequisites."
-            }
-          },
-          "required": [],
-          "additionalProperties": false
-        },
-        "strict": true
-      },
-      "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
-      "_contexts": [
-        "subscriptions",
-        "payments",
-        "finance",
-        "browser",
-        "automation"
-      ],
-      "_priority": 100,
-      "_examples_count": 6
-    },
-    {
-      "type": "function",
-      "function": {
-        "name": "SUBSCRIPTIONS_AUDIT",
-        "description": "paid sub audit+cancel via browser: audit | cancel(serviceSlug confirmed) | status(cancellationId); not email-list-unsubscribe",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "subaction": {
-              "type": "string",
-              "description": "audit | cancel | status when supplied.",
-              "enum": [
-                "audit",
-                "cancel",
-                "status"
-              ]
-            },
-            "serviceName": {
-              "type": "string",
-              "description": "Display name of the subscription service."
-            },
-            "serviceSlug": {
-              "type": "string",
-              "description": "Normalized slug for routing."
-            },
-            "candidateId": {
-              "type": "string",
-              "description": "Internal audit candidate identifier."
-            },
-            "cancellationId": {
-              "type": "string",
-              "description": "Ongoing cancellation id for status lookups."
-            },
-            "executor": {
-              "type": "string",
-              "description": "Browser executor: user_browser | agent_browser | desktop_native."
-            },
-            "queryWindowDays": {
-              "type": "number",
-              "description": "Days of history for audit queries."
-            },
-            "confirmed": {
-              "type": "boolean",
-              "description": "User confirmed cancellation prerequisites."
-            }
-          },
-          "required": [],
-          "additionalProperties": false
-        },
-        "strict": true
-      },
-      "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
-      "_contexts": [
-        "subscriptions",
-        "payments",
-        "finance",
-        "browser",
-        "automation"
-      ],
-      "_priority": 100,
-      "_examples_count": 0
-    },
-    {
-      "type": "function",
-      "function": {
-        "name": "SUBSCRIPTIONS_CANCEL",
-        "description": "paid sub audit+cancel via browser: audit | cancel(serviceSlug confirmed) | status(cancellationId); not email-list-unsubscribe",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "subaction": {
-              "type": "string",
-              "description": "audit | cancel | status when supplied.",
-              "enum": [
-                "audit",
-                "cancel",
-                "status"
-              ]
-            },
-            "serviceName": {
-              "type": "string",
-              "description": "Display name of the subscription service."
-            },
-            "serviceSlug": {
-              "type": "string",
-              "description": "Normalized slug for routing."
-            },
-            "candidateId": {
-              "type": "string",
-              "description": "Internal audit candidate identifier."
-            },
-            "cancellationId": {
-              "type": "string",
-              "description": "Ongoing cancellation id for status lookups."
-            },
-            "executor": {
-              "type": "string",
-              "description": "Browser executor: user_browser | agent_browser | desktop_native."
-            },
-            "queryWindowDays": {
-              "type": "number",
-              "description": "Days of history for audit queries."
-            },
-            "confirmed": {
-              "type": "boolean",
-              "description": "User confirmed cancellation prerequisites."
-            }
-          },
-          "required": [],
-          "additionalProperties": false
-        },
-        "strict": true
-      },
-      "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
-      "_contexts": [
-        "subscriptions",
-        "payments",
-        "finance",
-        "browser",
-        "automation"
-      ],
-      "_priority": 100,
-      "_examples_count": 0
-    },
-    {
-      "type": "function",
-      "function": {
-        "name": "SUBSCRIPTIONS_STATUS",
-        "description": "paid sub audit+cancel via browser: audit | cancel(serviceSlug confirmed) | status(cancellationId); not email-list-unsubscribe",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "subaction": {
-              "type": "string",
-              "description": "audit | cancel | status when supplied.",
-              "enum": [
-                "audit",
-                "cancel",
-                "status"
-              ]
-            },
-            "serviceName": {
-              "type": "string",
-              "description": "Display name of the subscription service."
-            },
-            "serviceSlug": {
-              "type": "string",
-              "description": "Normalized slug for routing."
-            },
-            "candidateId": {
-              "type": "string",
-              "description": "Internal audit candidate identifier."
-            },
-            "cancellationId": {
-              "type": "string",
-              "description": "Ongoing cancellation id for status lookups."
-            },
-            "executor": {
-              "type": "string",
-              "description": "Browser executor: user_browser | agent_browser | desktop_native."
-            },
-            "queryWindowDays": {
-              "type": "number",
-              "description": "Days of history for audit queries."
-            },
-            "confirmed": {
-              "type": "boolean",
-              "description": "User confirmed cancellation prerequisites."
-            }
-          },
-          "required": [],
-          "additionalProperties": false
-        },
-        "strict": true
-      },
-      "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
-      "_contexts": [
-        "subscriptions",
-        "payments",
-        "finance",
-        "browser",
-        "automation"
-      ],
-      "_priority": 100,
-      "_examples_count": 0
-    },
-    {
-      "type": "function",
-      "function": {
         "name": "TODO",
         "description": "todo manage list; op: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId).",
         "parameters": {
           "type": "object",
           "properties": {
-            "op": {
+            "subaction": {
               "type": "string",
               "description": "Operation: write, create, update, complete, cancel, delete, list, clear.",
               "enum": [
@@ -6509,7 +8987,7 @@
             }
           },
           "required": [
-            "op"
+            "subaction"
           ],
           "additionalProperties": false
         },
@@ -6523,7 +9001,7 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 3
     },
     {
       "type": "function",
@@ -6722,71 +9200,6 @@
       ],
       "_priority": 100,
       "_examples_count": 0
-    },
-    {
-      "type": "function",
-      "function": {
-        "name": "WEBSITE_BLOCK",
-        "description": "site block hosts-file: block(hosts,duration,confirm) unblock status request-permission release(ruleId,confirmed) list_active; macOS draft-then-confirm",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "subaction": {
-              "type": "string",
-              "description": "One of: block, unblock, status, request_permission, release, list_active. When omitted the resolver extracts it from intent + recent conversation."
-            },
-            "intent": {
-              "type": "string",
-              "description": "Free-form description of what the owner wants. Required by the block subaction so heuristic + LLM extractors can pull hostnames and duration out."
-            },
-            "hostnames": {
-              "type": "array",
-              "description": "Public hostnames or URLs to block for the block subaction, e.g. ['x.com','twitter.com'].",
-              "items": {
-                "type": "string"
-              }
-            },
-            "durationMinutes": {
-              "type": "number",
-              "description": "How long to block, in minutes. Omit for a manual block that stays active until unblocked. Null for indefinite."
-            },
-            "confirmed": {
-              "type": "boolean",
-              "description": "Set true only when the owner has explicitly confirmed the block. Without it, block returns a draft confirmation request. Also required by the release subaction."
-            },
-            "ruleId": {
-              "type": "string",
-              "description": "ID of the managed block rule to release. Required by the release subaction."
-            },
-            "reason": {
-              "type": "string",
-              "description": "Optional reason recorded on the rule when released. Used by the release subaction."
-            },
-            "includeLiveStatus": {
-              "type": "boolean",
-              "description": "Whether to include the current hosts-file/SelfControl live block state in the list_active response. Default true."
-            },
-            "includeManagedRules": {
-              "type": "boolean",
-              "description": "Whether to include managed LifeOps block rules in the list_active response. Default true."
-            }
-          },
-          "required": [],
-          "additionalProperties": false
-        },
-        "strict": true
-      },
-      "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
-      "_contexts": [
-        "screen_time",
-        "browser",
-        "automation",
-        "tasks",
-        "settings"
-      ],
-      "_priority": 100,
-      "_examples_count": 4
     }
   ]
 }

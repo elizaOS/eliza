@@ -992,6 +992,19 @@ type SchedulingSubaction =
   | "list_active"
   | "list_proposals";
 
+const SCHEDULING_SUBACTIONS: readonly SchedulingSubaction[] = [
+  "start",
+  "propose",
+  "respond",
+  "finalize",
+  "cancel",
+  "list_active",
+  "list_proposals",
+];
+
+const SCHEDULING_RESPONSES = ["accepted", "declined", "expired"] as const;
+const SCHEDULING_PROPOSED_BY = ["agent", "owner", "counterparty"] as const;
+
 type SchedulingActionParameters = {
   subaction?: SchedulingSubaction;
   intent?: string;
@@ -1468,56 +1481,115 @@ export const schedulingAction: Action & {
     {
       name: "subaction",
       description:
-        "Which step of the negotiation to run: start, propose, respond, finalize, cancel, list_active, list_proposals.",
-      schema: { type: "string" as const },
+        "Which step of the negotiation to run: start (open new negotiation), propose (submit candidate slot), respond (accept/decline a proposal), finalize (confirm the winning slot), cancel (close negotiation), list_active (show open negotiations), list_proposals (show proposals on one negotiation).",
+      descriptionCompressed:
+        "scheduling op: start | propose | respond | finalize | cancel | list_active | list_proposals",
+      schema: {
+        type: "string" as const,
+        enum: [...SCHEDULING_SUBACTIONS],
+      },
+      examples: ["start", "propose", "respond", "finalize"],
     },
     {
       name: "intent",
       description:
         "Free-text description of what the scheduling turn is trying to do.",
+      descriptionCompressed: "free-text intent",
       schema: { type: "string" as const },
     },
     {
       name: "negotiationId",
       description:
-        "Target negotiation ID for proposal, finalize, cancel, or list_proposals.",
+        "Target negotiation ID for propose, finalize, cancel, or list_proposals.",
+      descriptionCompressed:
+        "negotiation id (propose|finalize|cancel|list_proposals)",
       schema: { type: "string" as const },
+      examples: ["neg_2026_05_10_abc123"],
     },
     {
       name: "proposalId",
       description: "Target proposal ID for respond or finalize.",
+      descriptionCompressed: "proposal id (respond|finalize)",
       schema: { type: "string" as const },
+      examples: ["prop_xyz789"],
     },
     {
       name: "subject",
       description: "Subject of the meeting (used when starting a negotiation).",
+      descriptionCompressed: "meeting subject (start)",
       schema: { type: "string" as const },
+      examples: ["Q3 review with Alice"],
     },
     {
       name: "startAt",
-      description: "ISO-8601 proposed start time.",
+      description: "ISO-8601 proposed start time (UTC).",
+      descriptionCompressed: "ISO-8601 start UTC (propose)",
       schema: { type: "string" as const },
+      examples: ["2026-05-12T14:00:00Z"],
     },
     {
       name: "endAt",
-      description: "ISO-8601 proposed end time.",
+      description: "ISO-8601 proposed end time (UTC).",
+      descriptionCompressed: "ISO-8601 end UTC (propose)",
       schema: { type: "string" as const },
+      examples: ["2026-05-12T15:00:00Z"],
     },
     {
       name: "durationMinutes",
       description:
         "Meeting duration in minutes (defaults to 30 when starting).",
-      schema: { type: "number" as const },
+      descriptionCompressed: "duration mins default 30 (start)",
+      schema: { type: "number" as const, minimum: 5, maximum: 1440 },
+      examples: [30, 60, 90],
     },
     {
       name: "response",
       description: "Proposal response: accepted, declined, or expired.",
-      schema: { type: "string" as const },
+      descriptionCompressed: "respond: accepted|declined|expired",
+      schema: {
+        type: "string" as const,
+        enum: [...SCHEDULING_RESPONSES],
+      },
+      examples: ["accepted", "declined"],
     },
     {
       name: "confirmed",
       description: "Set true alongside a proposalId to finalize.",
+      descriptionCompressed: "true to finalize alongside proposalId",
       schema: { type: "boolean" as const },
+    },
+    {
+      name: "proposedBy",
+      description:
+        "Who is the source of the proposal: agent (Eliza emitted it), owner (user-emitted), counterparty (recorded from the other party).",
+      descriptionCompressed:
+        "proposedBy: agent | owner | counterparty (defaults agent)",
+      schema: {
+        type: "string" as const,
+        enum: [...SCHEDULING_PROPOSED_BY],
+      },
+      examples: ["agent", "counterparty"],
+    },
+    {
+      name: "relationshipId",
+      description:
+        "Optional relationship/contact id the negotiation is with (used by start).",
+      descriptionCompressed: "contact id (start)",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "timezone",
+      description: "IANA timezone (e.g. America/Los_Angeles) used by start.",
+      descriptionCompressed: "IANA tz (start)",
+      schema: { type: "string" as const },
+      examples: ["America/Los_Angeles", "UTC"],
+    },
+    {
+      name: "reason",
+      description:
+        "Optional reason note (cancel) or free-text annotation captured for audit.",
+      descriptionCompressed: "reason (cancel/audit)",
+      schema: { type: "string" as const },
     },
   ],
   examples: [
