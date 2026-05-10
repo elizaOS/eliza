@@ -19,7 +19,9 @@ import codingToolsPlugin, {
 import * as pluginModule from "../src/index.js";
 
 const EXPECTED_ACTIONS = [
-  "FILE",
+  "READ",
+  "WRITE",
+  "EDIT",
   "BASH",
   "GREP",
   "GLOB",
@@ -36,21 +38,24 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     expect(codingToolsPlugin.description).toBeTruthy();
   });
 
-  it("registers exactly the 9 expected top-level actions", () => {
+  it("registers READ/WRITE/EDIT as separate top-level actions (FILE umbrella was split)", () => {
     const actions = codingToolsPlugin.actions ?? [];
     const names = actions.map((a) => a.name).sort();
     expect(names).toEqual([...EXPECTED_ACTIONS].sort());
   });
 
-  it("routes file operations through hidden READ/WRITE/EDIT sub-actions", () => {
+  it("does NOT register a FILE umbrella action — it was split into READ/WRITE/EDIT", () => {
     const fileAction = (codingToolsPlugin.actions ?? []).find(
       (action) => action.name === "FILE",
     );
-    expect(fileAction).toBeTruthy();
-    const subActionNames = (fileAction?.subActions ?? []).map((action) =>
-      typeof action === "string" ? action : action.name,
+    expect(fileAction).toBeUndefined();
+  });
+
+  it("READ exposes FILE as a simile so cached planner outputs still resolve", () => {
+    const readAction = (codingToolsPlugin.actions ?? []).find(
+      (action) => action.name === "READ",
     );
-    expect(subActionNames).toEqual(["READ", "WRITE", "EDIT"]);
+    expect(readAction?.similes).toContain("FILE");
   });
 
   it("each action has the required fields", () => {
@@ -164,11 +169,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
 
   function findAction(name: string) {
     const actions = codingToolsPlugin.actions ?? [];
-    const fileAction = actions.find((x) => x.name === "FILE");
-    const fileSubActions = (fileAction?.subActions ?? []).flatMap((entry) =>
-      typeof entry === "string" ? [] : [entry],
-    );
-    const a = [...actions, ...fileSubActions].find((x) => x.name === name);
+    const a = actions.find((x) => x.name === name);
     if (!a) throw new Error(`action ${name} not found`);
     return a;
   }

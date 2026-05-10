@@ -35,7 +35,11 @@ export const readAction: Action = {
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
   roleGate: { minRole: "ADMIN" },
-  similes: ["READ_FILE", "CAT", "OPEN_FILE"],
+  // FILE retained as a one-release simile so cached planner outputs that
+  // routed through the legacy `FILE` umbrella still resolve. READ is the
+  // closest sibling: FILE's most common subaction was `read`. Drop after
+  // one release.
+  similes: ["READ_FILE", "CAT", "OPEN_FILE", "FILE", "FILE_OPERATION", "FILE_IO"],
   description:
     "Read the contents of a file at an absolute path. Returns numbered lines, capped by a per-call line limit and a per-file byte limit. Use offset/limit to paginate through large files. Required before WRITE/EDIT can mutate an existing file.",
   descriptionCompressed:
