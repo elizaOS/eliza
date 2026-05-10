@@ -1,3 +1,4 @@
+export * from "./app-permissions.js";
 export * from "./apps.js";
 export * from "./awareness.js";
 export * from "./cloud-topology.js";

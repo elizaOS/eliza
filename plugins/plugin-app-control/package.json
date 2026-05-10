@@ -16,8 +16,8 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "tsup src/index.ts --format esm --dts --clean",
-		"dev": "tsup src/index.ts --format esm --dts --watch",
+		"build": "tsup src/index.ts src/workers/app-worker-entry.ts --format esm --dts --clean",
+		"dev": "tsup src/index.ts src/workers/app-worker-entry.ts --format esm --dts --watch",
 		"test": "vitest run",
 		"clean": "rm -rf dist .turbo",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",

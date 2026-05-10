@@ -17,6 +17,7 @@ import { appAction, createAppAction } from "./actions/app.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { AppRegistryService } from "./services/app-registry-service.js";
 import { AppVerificationService } from "./services/app-verification.js";
+import { AppWorkerHostService } from "./services/app-worker-host-service.js";
 import { VerificationRoomBridgeService } from "./services/verification-room-bridge.js";
 
 export type { AppMode } from "./actions/app.js";
@@ -27,6 +28,11 @@ export {
 	type AppRegistryEntry,
 	AppRegistryService,
 } from "./services/app-registry-service.js";
+export {
+	APP_WORKER_HOST_SERVICE_TYPE,
+	AppWorkerHostService,
+	type SpawnedWorkerSnapshot,
+} from "./services/app-worker-host-service.js";
 export {
 	AppVerificationService,
 	type CheckResult,
@@ -57,6 +63,7 @@ export const appControlPlugin: Plugin = {
 	services: [
 		AppRegistryService,
 		AppVerificationService,
+		AppWorkerHostService,
 		VerificationRoomBridgeService,
 	],
 };
