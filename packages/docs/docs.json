@@ -679,7 +679,6 @@
               "plugin-registry/llm/xai",
               "plugin-registry/llm/deepseek",
               "plugin-registry/llm/ollama",
-              "plugin-registry/llm/qwen",
               "plugin-registry/llm/minimax",
               "plugin-registry/llm/together",
               "plugin-registry/llm/mistral",
@@ -950,7 +949,6 @@
               "plugin-registry/llm/together",
               "plugin-registry/llm/cohere",
               "plugin-registry/llm/perplexity",
-              "plugin-registry/llm/qwen",
               "plugin-registry/llm/minimax",
               "plugin-registry/llm/vercel-ai-gateway",
               "plugin-registry/llm/zai"
@@ -1285,7 +1283,6 @@
               "plugin-registry/llm/together",
               "plugin-registry/llm/cohere",
               "plugin-registry/llm/perplexity",
-              "plugin-registry/llm/qwen",
               "plugin-registry/llm/minimax",
               "plugin-registry/llm/vercel-ai-gateway",
               "plugin-registry/llm/zai"

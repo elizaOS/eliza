@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
 # run-ios.sh — Apple Silicon Mac runner: build the iOS xcframework for
 # milady-ai/llama.cpp, drop it into the patched llama-cpp-capacitor plugin,
-# and run a Capacitor instrumentation smoke test that loads Bonsai-8B with
-# a Qwen3-0.6B drafter and generates ten tokens.
+# and run a Capacitor instrumentation smoke test that loads Eliza-1 mobile
+# and generates ten tokens.
 #
 # Usage:
 #   bash scripts/apple-runner/run-ios.sh                # default: device + simulator builds, sim smoke
 #   bash scripts/apple-runner/run-ios.sh --skip-build   # reuse existing xcframework
 #   bash scripts/apple-runner/run-ios.sh --device-only  # skip simulator, no smoke
-#   APPLE_RUNNER_BONSAI_GGUF=/abs/path APPLE_RUNNER_DRAFTER_GGUF=/abs/path bash scripts/apple-runner/run-ios.sh
+#   APPLE_RUNNER_ELIZA1_GGUF=/abs/path bash scripts/apple-runner/run-ios.sh
 #
 # Env knobs (all optional):
 #   APPLE_RUNNER_REPO          fork remote (default: milady-ai/llama.cpp)
 #   APPLE_RUNNER_REF           tag/branch/SHA (default: v0.1.0-milady)
 #   APPLE_RUNNER_FALLBACK_REF  fallback ref (default: master)
-#   APPLE_RUNNER_BONSAI_GGUF   absolute path to Bonsai-8B Q4_K_M GGUF
-#   APPLE_RUNNER_DRAFTER_GGUF  absolute path to Qwen3-0.6B Q4_K_M GGUF
+#   APPLE_RUNNER_ELIZA1_GGUF   absolute path to Eliza-1 mobile GGUF
 #   APPLE_RUNNER_SIM_DEVICE    sim device name (default: "iPhone 15")
 #   APPLE_RUNNER_REPORT_DIR    override report output dir
 #   APPLE_RUNNER_DRY_RUN       1 = print xcodebuild command, don't run
@@ -290,8 +289,7 @@ else
           set +e
           xcodebuild "${XCB_ARGS[@]}" test \
             CODE_SIGNING_ALLOWED=NO \
-            APPLE_RUNNER_BONSAI_GGUF="${APPLE_RUNNER_BONSAI_GGUF:-}" \
-            APPLE_RUNNER_DRAFTER_GGUF="${APPLE_RUNNER_DRAFTER_GGUF:-}" \
+            APPLE_RUNNER_ELIZA1_GGUF="${APPLE_RUNNER_ELIZA1_GGUF:-}" \
             >"${SMOKE_LOG}" 2>&1
           TEST_RC=$?
           set -e
@@ -378,8 +376,7 @@ fi
   if [ -n "${SMOKE_GENERATED}" ]; then
     printf -- '- Generated tokens marker: `%s`\n' "${SMOKE_GENERATED}"
   fi
-  printf -- '- Bonsai GGUF: `%s`\n' "${APPLE_RUNNER_BONSAI_GGUF:-<unset>}"
-  printf -- '- Drafter GGUF: `%s`\n\n' "${APPLE_RUNNER_DRAFTER_GGUF:-<unset>}"
+  printf -- '- Eliza-1 GGUF: `%s`\n\n' "${APPLE_RUNNER_ELIZA1_GGUF:-<unset>}"
 
   printf '## Full log (tail)\n\n'
   printf '```\n'

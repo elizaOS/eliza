@@ -5,7 +5,7 @@
   "model_repo": "elizaos/eliza-1-9b-polarquant",
   "model_alias": "vast/eliza-1-9b",
   "served_model_name": "eliza-1-9b",
-  "registry_key": "qwen3.5-9b",
+  "registry_key": "eliza-1-9b",
   "gpu_target": "blackwell6000-2x",
   "image": "vllm/vllm-openai:v0.20.1",
   "min_disk_gb": 60,
@@ -20,8 +20,8 @@
   "kv_cache_dtype": "turboquant_k8v4",
   "enable_turboquant": true,
   "turboquant_preset": "quality",
-  "tool_parser": "qwen3_coder",
-  "reasoning_parser": "qwen3",
+  "tool_parser": "eliza1",
+  "reasoning_parser": "eliza1",
   "compilation_config": {
     "cudagraph_mode": "FULL_AND_PIECEWISE",
     "level": 3
@@ -38,7 +38,7 @@
   "vast_template_env": {
     "MODEL_REPO": "elizaos/eliza-1-9b-polarquant",
     "MODEL_ALIAS": "vast/eliza-1-9b",
-    "VLLM_REGISTRY_KEY": "qwen3.5-9b"
+    "VLLM_REGISTRY_KEY": "eliza-1-9b"
   },
   "onstart_script": "onstart-vllm.sh",
   "notes": "PolarQuant/AWQ-Marlin vLLM path for the 9B Eliza line. TurboQuant uses turboquant_k8v4 by default for quality; set VLLM_TURBOQUANT_PRESET=4bit or KV_CACHE_DTYPE=turboquant_4bit_nc only after a regression run."

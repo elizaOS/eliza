@@ -132,7 +132,7 @@ run_remote() {
     export HF_HOME=/opt/hf-cache
     sudo mkdir -p \$HF_HOME && sudo chown -R \$USER \$HF_HOME
     if [ -n \"\${HUGGING_FACE_HUB_TOKEN:-}\" ]; then
-      uv run huggingface-cli login --token \"\$HUGGING_FACE_HUB_TOKEN\"
+      uv run hf auth login --token \"\$HUGGING_FACE_HUB_TOKEN\"
     fi
     uv run --extra train accelerate launch \\
       --num_processes $FSDP_WORLD_SIZE \\

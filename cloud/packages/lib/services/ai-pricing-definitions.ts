@@ -3,6 +3,7 @@ export type PricingProductFamily =
   | "embedding"
   | "image"
   | "video"
+  | "music"
   | "tts"
   | "stt"
   | "voice_clone";
@@ -15,7 +16,8 @@ export type PricingBillingSource =
   | "openai"
   | "anthropic"
   | "fal"
-  | "elevenlabs";
+  | "elevenlabs"
+  | "suno";
 
 export type PricingChargeUnit =
   | "token"
@@ -39,7 +41,6 @@ export type PricingChargeUnit =
  * matches rows persisted under the old id until the next catalog refresh.
  */
 export const PRICING_MODEL_ALIASES = {
-  "alibaba/qwq-32b": ["alibaba/qwen-3-32b"],
   "anthropic/claude-3.5-sonnet": ["anthropic/claude-3.7-sonnet"],
   "anthropic/claude-3.7-sonnet-reasoning": ["anthropic/claude-3.7-sonnet"],
   "anthropic/claude-4-opus": ["anthropic/claude-opus-4"],
@@ -60,30 +61,10 @@ export const PRICING_MODEL_ALIASES = {
   "bedrock/claude-4-opus-20250514-v1": ["anthropic/claude-opus-4"],
   "bedrock/claude-4-sonnet-20250514-v1": ["anthropic/claude-sonnet-4"],
   "bedrock/deepseek.r1-v1": ["deepseek/deepseek-r1"],
-  "bedrock/meta.llama3-1-70b-instruct-v1": ["meta/llama-3.1-70b"],
-  "bedrock/meta.llama3-1-8b-instruct-v1": ["meta/llama-3.1-8b"],
-  "bedrock/meta.llama3-2-11b-instruct-v1": ["meta/llama-3.2-11b"],
-  "bedrock/meta.llama3-2-1b-instruct-v1": ["meta/llama-3.2-1b"],
-  "bedrock/meta.llama3-2-3b-instruct-v1": ["meta/llama-3.2-3b"],
-  "bedrock/meta.llama3-2-90b-instruct-v1": ["meta/llama-3.2-90b"],
-  "bedrock/meta.llama3-3-70b-instruct-v1": ["meta/llama-3.3-70b"],
-  "bedrock/meta.llama4-maverick-17b-instruct-v1": ["meta/llama-4-maverick"],
-  "bedrock/meta.llama4-scout-17b-instruct-v1": ["meta/llama-4-scout"],
   "deepseek/deepseek-r1-0528": ["deepseek/deepseek-r1"],
   "fireworks/deepseek-r1": ["deepseek/deepseek-r1"],
   "fireworks/deepseek-v3": ["deepseek/deepseek-v3"],
   "fireworks/mixtral-8x22b-instruct": ["mistral/mixtral-8x22b-instruct"],
-  "fireworks/qwen3-235b-a22b": ["alibaba/qwen-3-235b"],
-  "fireworks/qwq-32b": ["alibaba/qwen-3-32b"],
-  "groq/llama-3-70b-instruct": ["meta/llama-3.1-70b"],
-  "groq/llama-3-8b-instruct": ["meta/llama-3.1-8b"],
-  "groq/llama-3.1-8b": ["meta/llama-3.1-8b"],
-  "groq/llama-3.3-70b-versatile": ["meta/llama-3.3-70b"],
-  "groq/llama-4-scout-17b-16e-instruct": ["meta/llama-4-scout"],
-  "groq/deepseek-r1-distill-llama-70b": ["deepseek/deepseek-r1"],
-  "groq/qwen-qwq-32b": ["alibaba/qwen-3-32b"],
-  "meta/llama-3-70b": ["meta/llama-3.1-70b"],
-  "meta/llama-3-8b": ["meta/llama-3.1-8b"],
   "mistral/codestral-2501": ["mistral/codestral"],
   "mistral/ministral-3b-latest": ["mistral/ministral-3b"],
   "mistral/ministral-8b-latest": ["mistral/ministral-8b"],
@@ -101,8 +82,6 @@ export const PRICING_MODEL_ALIASES = {
   "vertex/claude-4-sonnet-20250514": ["anthropic/claude-sonnet-4"],
   "vertex/gemini-2.0-flash-001": ["google/gemini-2.0-flash"],
   "vertex/gemini-2.0-flash-lite-001": ["google/gemini-2.0-flash-lite"],
-  "vertex/llama-4-maverick-17b-128e-instruct-maas": ["meta/llama-4-maverick"],
-  "vertex/llama-4-scout-17b-16e-instruct-maas": ["meta/llama-4-scout"],
   "google/gemini-3-pro-image": ["google/gemini-3-pro-image-preview"],
   "openai/gpt-image-2": ["openai/gpt-5.4-image-2"],
   "xai/grok-2-1212": ["xai/grok-3"],
@@ -165,11 +144,38 @@ export interface SupportedVideoModelDefinition {
   };
 }
 
+export interface SupportedMusicModelDefinition {
+  modelId: string;
+  provider: "fal" | "elevenlabs" | "suno";
+  billingSource: "fal" | "elevenlabs" | "suno";
+  label: string;
+  pageUrl: string;
+  defaultParameters: {
+    durationSeconds: number;
+  };
+}
+
+export interface MusicSnapshotEntry {
+  modelId: string;
+  provider: "fal" | "elevenlabs" | "suno";
+  billingSource: "fal" | "elevenlabs" | "suno";
+  productFamily: "music";
+  chargeType: string;
+  unit: PricingChargeUnit;
+  unitPrice: number;
+  sourceUrl: string;
+  dimensions?: Record<string, string | number | boolean | null>;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ElevenLabsSnapshotEntry {
   modelId: string;
   provider: "elevenlabs";
   billingSource: "elevenlabs";
-  productFamily: Exclude<PricingProductFamily, "language" | "embedding" | "image" | "video">;
+  productFamily: Exclude<
+    PricingProductFamily,
+    "language" | "embedding" | "image" | "video" | "music"
+  >;
   chargeType: string;
   unit: PricingChargeUnit;
   unitPrice: number;
@@ -433,6 +439,84 @@ export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
   },
 ] as const;
 
+export const SUPPORTED_MUSIC_MODELS: SupportedMusicModelDefinition[] = [
+  {
+    modelId: "fal-ai/minimax-music/v2.6",
+    provider: "fal",
+    billingSource: "fal",
+    label: "MiniMax Music 2.6",
+    pageUrl: "https://fal.ai/models/fal-ai/minimax-music/v2.6/api",
+    defaultParameters: {
+      durationSeconds: 60,
+    },
+  },
+  {
+    modelId: "elevenlabs/music_v1",
+    provider: "elevenlabs",
+    billingSource: "elevenlabs",
+    label: "ElevenLabs Music v1",
+    pageUrl: "https://elevenlabs.io/docs/api-reference/music/compose",
+    defaultParameters: {
+      durationSeconds: 60,
+    },
+  },
+  {
+    modelId: "suno/default",
+    provider: "suno",
+    billingSource: "suno",
+    label: "Suno-compatible provider",
+    pageUrl: "https://docs.sunoapi.org/suno-api/generate-music/",
+    defaultParameters: {
+      durationSeconds: 120,
+    },
+  },
+] as const;
+
+export const MUSIC_SNAPSHOT_PRICING: MusicSnapshotEntry[] = [
+  {
+    modelId: "fal-ai/minimax-music/v2.6",
+    provider: "fal",
+    billingSource: "fal",
+    productFamily: "music",
+    chargeType: "generation",
+    unit: "minute",
+    unitPrice: 0.1,
+    sourceUrl: "https://fal.ai/models/fal-ai/minimax-music/v2.6/api",
+    metadata: {
+      tier: "manual_override_recommended",
+      note: "Conservative fallback for MiniMax music generation until account-specific Fal pricing is refreshed.",
+    },
+  },
+  {
+    modelId: "elevenlabs/music_v1",
+    provider: "elevenlabs",
+    billingSource: "elevenlabs",
+    productFamily: "music",
+    chargeType: "generation",
+    unit: "minute",
+    unitPrice: 0.25,
+    sourceUrl: "https://elevenlabs.io/docs/api-reference/music/compose",
+    metadata: {
+      tier: "manual_override_recommended",
+      note: "ElevenLabs Music uses plan/download limits; override with account-specific effective cost before production.",
+    },
+  },
+  {
+    modelId: "suno/default",
+    provider: "suno",
+    billingSource: "suno",
+    productFamily: "music",
+    chargeType: "generation",
+    unit: "request",
+    unitPrice: 0.5,
+    sourceUrl: "https://docs.sunoapi.org/suno-api/generate-music/",
+    metadata: {
+      tier: "manual_override_required",
+      note: "Suno-compatible provider pricing depends on the configured third-party provider.",
+    },
+  },
+] as const;
+
 export const ELEVENLABS_SNAPSHOT_PRICING: ElevenLabsSnapshotEntry[] = [
   {
     modelId: "elevenlabs/eleven_flash_v2_5",
@@ -550,6 +634,7 @@ export const ELEVENLABS_SNAPSHOT_PRICING: ElevenLabsSnapshotEntry[] = [
 
 export const SUPPORTED_VIDEO_MODEL_IDS = SUPPORTED_VIDEO_MODELS.map((model) => model.modelId);
 export const SUPPORTED_IMAGE_MODEL_IDS = SUPPORTED_IMAGE_MODELS.map((model) => model.modelId);
+export const SUPPORTED_MUSIC_MODEL_IDS = SUPPORTED_MUSIC_MODELS.map((model) => model.modelId);
 
 export function getSupportedVideoModelDefinition(modelId: string) {
   return SUPPORTED_VIDEO_MODELS.find((model) => model.modelId === modelId);
@@ -557,4 +642,8 @@ export function getSupportedVideoModelDefinition(modelId: string) {
 
 export function getSupportedImageModelDefinition(modelId: string) {
   return SUPPORTED_IMAGE_MODELS.find((model) => model.modelId === modelId);
+}
+
+export function getSupportedMusicModelDefinition(modelId: string) {
+  return SUPPORTED_MUSIC_MODELS.find((model) => model.modelId === modelId);
 }

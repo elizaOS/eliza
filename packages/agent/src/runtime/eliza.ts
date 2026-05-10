@@ -644,7 +644,7 @@ export function configureLocalEmbeddingPlugin(
 
   // Default Groq model names — plugin-groq still ships a deprecated large-model
   // fallback. Seed runtime defaults before plugin init so direct Groq provider
-  // sessions do not inherit the retired qwen-qwq-32b default.
+  // sessions use the approved GPT-OSS default.
   const currentSharedSmallModel =
     process.env.OPENAI_SMALL_MODEL ?? process.env.SMALL_MODEL;
   const currentSharedLargeModel =
@@ -653,7 +653,7 @@ export function configureLocalEmbeddingPlugin(
     "GROQ_SMALL_MODEL",
     currentSharedSmallModel && !isLikelyOpenAiTextModel(currentSharedSmallModel)
       ? currentSharedSmallModel
-      : "openai/gpt-oss-20b",
+      : "openai/gpt-oss-120b",
   );
   setEnvIfMissing(
     "GROQ_LARGE_MODEL",
@@ -846,13 +846,13 @@ export function normalizeOpenAiCompatibleProviderConfig(
     (currentSharedSmallModel &&
     !isLikelyOpenAiTextModel(currentSharedSmallModel)
       ? currentSharedSmallModel
-      : "llama-3.1-8b-instant");
+      : "openai/gpt-oss-120b");
   const normalizedGroqLargeModel =
     currentGroqLargeModel ??
     (currentSharedLargeModel &&
     !isLikelyOpenAiTextModel(currentSharedLargeModel)
       ? currentSharedLargeModel
-      : "qwen/qwen3-32b");
+      : "openai/gpt-oss-120b");
 
   env.GROQ_API_KEY = inheritedGroqApiKey;
   env.GROQ_SMALL_MODEL = normalizedGroqSmallModel;

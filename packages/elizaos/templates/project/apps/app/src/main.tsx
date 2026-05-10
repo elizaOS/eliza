@@ -36,22 +36,6 @@ import {
   TRAY_ACTION_EVENT,
 } from "@elizaos/app-core";
 import {
-  dispatchQueuedLifeOpsGithubCallbackFromUrl,
-  LifeOpsActivitySignalsEffect,
-} from "@elizaos/app-lifeops";
-// Side-effect: register LifeOps sidebar widgets into the app-core widget registry.
-import "@elizaos/app-lifeops";
-// Side-effect: register coding-agent (task-coordinator) slots so app-core
-// slot wrappers (CodingAgentControlChip, PtyConsoleBase, etc.) render the
-// real components instead of nulls.
-import "@elizaos/app-task-coordinator";
-// Side-effect: register game operator surfaces + detail extensions.
-import "@elizaos/app-babylon";
-import "@elizaos/app-scape";
-import "@elizaos/app-hyperscape";
-import "@elizaos/app-2004scape";
-import "@elizaos/app-defense-of-the-agents";
-import {
   AppProvider,
   applyUiTheme,
   DESKTOP_TRAY_MENU_ITEMS,
@@ -297,13 +281,8 @@ function handleDeepLink(url: string): void {
     case "chat":
       window.location.hash = "#chat";
       break;
-    case "lifeops":
-      window.location.hash = "#lifeops";
-      dispatchQueuedLifeOpsGithubCallbackFromUrl(url);
-      break;
     case "settings":
       window.location.hash = "#settings";
-      dispatchQueuedLifeOpsGithubCallbackFromUrl(url);
       break;
     case "connect": {
       const gatewayUrl = parsed.searchParams.get("url");
@@ -444,7 +423,6 @@ function mountReactApp(): void {
               <DesktopOnboardingRuntime />
               <DesktopSurfaceNavigationRuntime />
               <DesktopTrayRuntime />
-              <LifeOpsActivitySignalsEffect />
               <App />
             </>
           )}

@@ -29,7 +29,6 @@ Providers marked **bundled** are pre-installed with every Eliza release and load
 | [DeepSeek](https://deepseek.com) | `@elizaos/plugin-deepseek` | `DEEPSEEK_API_KEY` | On demand | Reasoning and code models. |
 | [Ollama](https://ollama.com) | `@elizaos/plugin-ollama` | `OLLAMA_BASE_URL` | Bundled | **Local models.** No API key needed. Requires a running [Ollama](https://ollama.com) server. |
 | [Local AI](https://localai.io) | `@elizaos/plugin-local-ai` | — | On demand | **Offline GGUF models.** No API key or server needed. Point `MODELS_DIR` at local model files. |
-| [Qwen](https://qwen.ai) | `@elizaos/plugin-qwen` | — | On demand | Alibaba's Qwen models. Configure via plugin entry. |
 | [MiniMax](https://minimaxi.com) | `@elizaos/plugin-minimax` | — | On demand | MiniMax language models. Configure via plugin entry. |
 | [Together AI](https://together.ai) | `@elizaos/plugin-together` | `TOGETHER_API_KEY` | On demand | Open-source model hosting. |
 | [Mistral](https://mistral.ai) | `@elizaos/plugin-mistral` | `MISTRAL_API_KEY` | On demand | Mistral and Mixtral models. |
@@ -39,7 +38,7 @@ Providers marked **bundled** are pre-installed with every Eliza release and load
 | [Eliza Cloud](https://elizacloud.ai) | `@elizaos/plugin-elizacloud` | `ELIZAOS_CLOUD_API_KEY` | Bundled | Cloud-managed inference route. Can be selected independently from where Eliza itself is running. |
 
 <Info>
-For providers without dedicated plugins (DeepSeek, Mistral, Cohere, Together AI, Perplexity, Qwen, MiniMax), use the **OpenRouter** plugin. OpenRouter provides unified access to 200+ models from these providers and more through a single API key. See the [OpenRouter plugin reference](/plugin-registry/llm/openrouter) for model ID format.
+For providers without dedicated plugins (DeepSeek, Mistral, Cohere, Together AI, Perplexity, MiniMax), use the **OpenRouter** plugin. OpenRouter provides unified access to 200+ models from these providers and more through a single API key. See the [OpenRouter plugin reference](/plugin-registry/llm/openrouter) for model ID format.
 </Info>
 
 ---
@@ -198,7 +197,7 @@ If your primary model is unavailable (rate limit, outage, billing issue), Eliza 
         primary: "anthropic/claude-sonnet-4.6",
         fallbacks: [
           "openai/gpt-5",
-          "groq/llama-3.3-70b-versatile",
+          "groq/openai/gpt-oss-120b",
         ],
       },
     },
@@ -264,9 +263,9 @@ Ollama lets you run models locally with no API key and full privacy. It does not
     curl -fsSL https://ollama.com/install.sh | sh
     ```
   </Step>
-  <Step title="Pull a model">
+  <Step title="Create an Eliza-1 model">
     ```bash
-    ollama pull llama3.3
+    ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m
     ```
   </Step>
   <Step title="Set the endpoint URL">
@@ -283,7 +282,7 @@ Ollama lets you run models locally with no API key and full privacy. It does not
       agents: {
         defaults: {
           model: {
-            primary: "ollama/llama3.3",
+            primary: "ollama/eliza-1-9b",
           },
         },
       },

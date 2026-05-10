@@ -16,13 +16,13 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
-import java.io.BufferedReader;
+import ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
@@ -779,7 +779,7 @@ public class ElizaAgentService extends Service {
             if (BuildConfig.AOSP_BUILD) {
                 agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
                 // CPU-only inference of a 12k-token prompt on cuttlefish
-                // x86_64 / Llama-3.2-1B lands well past the 180 s default
+                // x86_64 / Eliza-1 lands well past the 180 s default
                 // chat-generation timeout (chat-routes.ts). On cvd a
                 // single chat turn fires the planner (9k-token prefill
                 // ≈ 10 min on 4 vCPUs at 16 tok/s) plus an action
@@ -792,7 +792,7 @@ public class ElizaAgentService extends Service {
                 // matters for AOSP cvd runs.
                 agentEnv.put("ELIZA_CHAT_GENERATION_TIMEOUT_MS", "3600000");
 
-                // Llama-3.2-1B native context is 128k. We pin to 16k
+                // Eliza-1 native context is 128k. We pin to 16k
                 // because 16k easily fits the planner's ~12k-token
                 // prompts plus output reserve. KV-cache for 16k ctx on
                 // 1B-Q4_K_M / fp16 KV is ~512 MB (16384 cells × 16 layers
@@ -988,6 +988,14 @@ public class ElizaAgentService extends Service {
 
             env.putAll(agentEnv);
 
+            // Merge stderr into stdout so a single pump captures both streams
+            // and one failure mode — bun crashing mid-write before the buffered
+            // stderr line is flushed — can't lose the diagnostic. The previous
+            // BufferedReader.readLine() pump silently dropped any partial line
+            // that wasn't terminated with a newline, which is exactly what
+            // happens when a panic interrupts a Logger call mid-string.
+            pb.redirectErrorStream(true);
+
             Process started;
             try {
                 started = pb.start();
@@ -1002,7 +1010,9 @@ public class ElizaAgentService extends Service {
             agentProcess = started;
             File logFile = new File(root, AGENT_LOG_NAME);
             stdoutPump = startStreamPump(started.getInputStream(), logFile, "out");
-            stderrPump = startStreamPump(started.getErrorStream(), logFile, "err");
+            // stderrPump intentionally null — redirectErrorStream(true) merges
+            // both streams into getInputStream() so one pump captures everything.
+            stderrPump = null;
             currentStatus = "running";
             updateNotification();
             Log.i(TAG, "Agent process started (pid=" + safePid(started) + ").");
@@ -1096,20 +1106,48 @@ public class ElizaAgentService extends Service {
      */
     private Thread startStreamPump(InputStream stream, File logFile, String label) {
         Thread t = new Thread(() -> {
-            try (
-                BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
-                FileOutputStream logOut = new FileOutputStream(logFile, true)
-            ) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (Thread.currentThread().isInterrupted()) break;
-                    String stamped = "[" + label + "] " + line + "\n";
-                    logOut.write(stamped.getBytes());
-                    if ("err".equals(label)) {
-                        Log.w(TAG, line);
-                    } else {
-                        Log.i(TAG, line);
+            byte[] buf = new byte[4096];
+            try (FileOutputStream logOut = new FileOutputStream(logFile, true)) {
+                // Buffer raw bytes until '\n' so multi-byte UTF-8 sequences
+                // are decoded intact — newline (0x0A) never appears as a
+                // continuation byte in UTF-8, so splitting on it can't slice
+                // a codepoint. A char-level StringBuilder with `(char)(byte
+                // & 0xFF)` would mojibake non-ASCII output (emoji, CJK).
+                ByteArrayOutputStream lineBuf = new ByteArrayOutputStream(256);
+                int n;
+                // Interrupt check goes before read(): once read() has
+                // returned bytes we're committed to writing them, otherwise
+                // a graceful-shutdown interrupt during a successful read
+                // would silently drop the very tail this PR exists to save.
+                while (!Thread.currentThread().isInterrupted() && (n = stream.read(buf)) >= 0) {
+                    // Mirror raw bytes to the log immediately so a mid-write
+                    // panic in the agent doesn't lose its last diagnostic.
+                    // BufferedReader.readLine() dropped partial lines on
+                    // crash; the byte-level pump captures everything.
+                    logOut.write(buf, 0, n);
+                    logOut.flush();
+                    // For logcat readability, accumulate complete lines and
+                    // emit them tagged. The post-loop drain below handles the
+                    // unterminated tail when the stream closes mid-line.
+                    for (int i = 0; i < n; i += 1) {
+                        byte b = buf[i];
+                        if (b == (byte) '\n') {
+                            if (lineBuf.size() > 0) {
+                                String line = lineBuf.toString(StandardCharsets.UTF_8.name());
+                                lineBuf.reset();
+                                // Strip a trailing '\r' from CRLF without
+                                // a separate scan over `line`.
+                                if (line.endsWith("\r")) line = line.substring(0, line.length() - 1);
+                                if (!line.isEmpty()) Log.i(TAG, line);
+                            }
+                        } else {
+                            lineBuf.write(b);
+                        }
                     }
+                }
+                if (lineBuf.size() > 0) {
+                    String tail = lineBuf.toString(StandardCharsets.UTF_8.name());
+                    Log.w(TAG, tail + " <eof — no trailing newline>");
                 }
             } catch (IOException error) {
                 if (!shuttingDown) {

@@ -647,7 +647,7 @@ export async function startMockApiServer(
             llmText: {
               transport: "direct",
               backend: "ollama",
-              primaryModel: primaryModel || "llama3.2",
+              primaryModel: primaryModel || "eliza-1-9b",
             },
           },
         };

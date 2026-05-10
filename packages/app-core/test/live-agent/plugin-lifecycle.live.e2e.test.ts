@@ -185,6 +185,24 @@ async function getFreePort(): Promise<number> {
   });
 }
 
+const RETRYABLE_RM_ERROR_CODES = new Set(["EBUSY", "ENOTEMPTY", "EPERM"]);
+
+async function removeDirWithRetries(target: string): Promise<void> {
+  for (let attempt = 1; attempt <= 10; attempt += 1) {
+    try {
+      await rm(target, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const code =
+        error instanceof Error ? (error as Error & { code?: string }).code : "";
+      if (!RETRYABLE_RM_ERROR_CODES.has(code ?? "") || attempt === 10) {
+        throw error;
+      }
+      await sleep(attempt * 100);
+    }
+  }
+}
+
 import type { RuntimeHarness as Runtime } from "./helpers/runtime-harness";
 
 async function startRuntimeWithPlugins(
@@ -264,7 +282,7 @@ async function startRuntimeWithPlugins(
         setTimeout(() => resolve(), 10_000);
       });
     }
-    await rm(tmp, { recursive: true, force: true });
+    await removeDirWithRetries(tmp);
     const exitDetail = earlyExit
       ? ` (child exited early with code=${earlyExit.code} signal=${earlyExit.signal})`
       : "";
@@ -283,9 +301,15 @@ async function startRuntimeWithPlugins(
           child.once("exit", () => r());
           setTimeout(() => r(), 10_000);
         });
-        if (child.exitCode == null) child.kill("SIGKILL");
+        if (child.exitCode == null) {
+          child.kill("SIGKILL");
+          await new Promise<void>((r) => {
+            child.once("exit", () => r());
+            setTimeout(() => r(), 5_000);
+          });
+        }
       }
-      await rm(tmp, { recursive: true, force: true });
+      await removeDirWithRetries(tmp);
     },
   };
 }

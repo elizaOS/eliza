@@ -32,7 +32,7 @@ HEAD_DIM   = 128
 PROJ_DIM   = 256
 PROJ_SEED  = 42
 N_HEADS    = 8
-N_KV_HEADS = 2  # GQA factor 4 — matches Llama/Qwen3 sub-9B
+N_KV_HEADS = 2  # GQA factor 4 — matches Eliza-1 sub-9B
 
 
 def fp32_to_bf16(x: torch.Tensor) -> torch.Tensor:

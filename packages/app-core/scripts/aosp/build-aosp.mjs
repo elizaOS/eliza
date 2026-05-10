@@ -71,9 +71,8 @@ export function parseArgs(argv) {
     // --skip-libllama lets developers iterate on non-inference paths
     // without paying the llama.cpp cross-compile cost.
     skipLibllama: false,
-    // AOSP builds bundle a small chat model (SmolLM2 360M) and a small
-    // embedding model (BGE small en v1.5) into the APK assets so first-
-    // boot chat works offline. Off-by-default would mean every fresh
+    // AOSP builds bundle Eliza-1 chat and embedding GGUFs into the APK
+    // assets so first-boot chat works offline. Off-by-default would mean every fresh
     // install starts in "no model assigned" state and the user can't
     // chat until they download. ~400 MB APK growth; --skip-bundled-models
     // for builders who want runtime-download instead.

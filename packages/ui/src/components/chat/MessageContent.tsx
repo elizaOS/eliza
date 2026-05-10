@@ -1,5 +1,12 @@
 import { Button } from "@elizaos/ui";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { client } from "../../api/client";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
@@ -866,6 +873,140 @@ function UiSpecBlock({ spec, raw }: { spec: UiSpec; raw: string }) {
   );
 }
 
+function sensitiveRequestStatusLabel(
+  status: NonNullable<ConversationMessage["secretRequest"]>["status"],
+): string {
+  switch (status) {
+    case "saved":
+    case "submitted":
+    case "fulfilled":
+      return "Saved";
+    case "expired":
+      return "Expired";
+    case "cancelled":
+      return "Cancelled";
+    case "failed":
+      return "Failed";
+    default:
+      return "Pending";
+  }
+}
+
+function SensitiveRequestBlock({
+  request,
+}: {
+  request: NonNullable<ConversationMessage["secretRequest"]>;
+}) {
+  const [status, setStatus] = useState(request.status);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setStatus(request.status);
+    setValues({});
+    setSaving(false);
+    setError(null);
+  }, [request]);
+
+  const fields = request.form?.fields ?? [];
+  const canCollectSecret =
+    status === "pending" &&
+    request.form?.kind === "secret" &&
+    request.delivery?.canCollectValueInCurrentChannel === true &&
+    fields.length > 0;
+
+  const canSubmit = fields.every((field) => {
+    if (!field.required) return true;
+    return (values[field.name] ?? "").trim().length > 0;
+  });
+
+  const handleSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!canCollectSecret || !canSubmit) return;
+      setSaving(true);
+      setError(null);
+      try {
+        const secrets: Record<string, string> = {};
+        for (const field of fields) {
+          const value = values[field.name];
+          if (value != null && value !== "") {
+            secrets[field.name] = value;
+          }
+        }
+        await client.updateSecrets(secrets);
+        setValues({});
+        setStatus("saved");
+      } catch (caught) {
+        setError(
+          caught instanceof Error ? caught.message : "Could not save secret.",
+        );
+        setStatus("failed");
+      } finally {
+        setSaving(false);
+      }
+    },
+    [canCollectSecret, canSubmit, fields, values],
+  );
+
+  return (
+    <div
+      data-testid="sensitive-request"
+      className="my-2 border border-border bg-card p-3 text-sm space-y-3"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="font-medium">{request.key}</div>
+        <div
+          data-testid="sensitive-request-status"
+          className="text-xs text-muted"
+        >
+          {sensitiveRequestStatusLabel(status)}
+        </div>
+      </div>
+      {request.reason && (
+        <div className="text-xs text-muted">{request.reason}</div>
+      )}
+      {request.delivery?.instruction && (
+        <div className="text-xs text-muted">{request.delivery.instruction}</div>
+      )}
+      {canCollectSecret && (
+        <form className="space-y-3" onSubmit={handleSubmit}>
+          {fields.map((field) => {
+            const label = field.label ?? field.name;
+            return (
+              <label key={field.name} className="block text-xs space-y-1">
+                <span className="font-medium">{label}</span>
+                <input
+                  aria-label={label}
+                  className="w-full border border-border bg-bg px-2 py-1.5 text-sm"
+                  type={field.input === "secret" ? "password" : "text"}
+                  value={values[field.name] ?? ""}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.value;
+                    setValues((previous) => ({
+                      ...previous,
+                      [field.name]: nextValue,
+                    }));
+                  }}
+                  required={field.required}
+                />
+              </label>
+            );
+          })}
+          <div className="text-xs text-muted">
+            The value will not be sent as a chat message.
+          </div>
+          <Button type="submit" size="sm" disabled={saving || !canSubmit}>
+            {saving ? "Saving..." : (request.form?.submitLabel ?? "Save")}
+          </Button>
+        </form>
+      )}
+      {error && <div className="text-xs text-danger">{error}</div>}
+    </div>
+  );
+}
+
 // ── Main component ──────────────────────────────────────────────────
 
 export function MessageContent({
@@ -874,6 +1015,12 @@ export function MessageContent({
 }: MessageContentProps) {
   const app = useApp();
   const { sendActionMessage } = app;
+  const [localDownloadState, setLocalDownloadState] = useState<
+    "idle" | "busy" | "queued" | "failed"
+  >("idle");
+  const [localDownloadError, setLocalDownloadError] = useState<string | null>(
+    null,
+  );
 
   // Parse segments — memoize to avoid re-parsing on every render
   const segments = useMemo(() => {
@@ -895,6 +1042,75 @@ export function MessageContent({
   const handleOpenSettings = useCallback(() => {
     app.setTab?.("settings");
   }, [app.setTab]);
+
+  const handleDownloadDefaultLocalModel = useCallback(async () => {
+    const modelId = message.localInference?.modelId;
+    if (!modelId) {
+      handleOpenSettings();
+      return;
+    }
+    setLocalDownloadState("busy");
+    setLocalDownloadError(null);
+    try {
+      await client.startLocalInferenceDownload(modelId);
+      setLocalDownloadState("queued");
+    } catch (error) {
+      setLocalDownloadError(
+        error instanceof Error ? error.message : "Failed to start download",
+      );
+      setLocalDownloadState("failed");
+    }
+  }, [handleOpenSettings, message.localInference?.modelId]);
+
+  if (message.secretRequest) {
+    return <SensitiveRequestBlock request={message.secretRequest} />;
+  }
+
+  if (
+    message.localInference &&
+    message.localInference.status !== "ready" &&
+    message.localInference.status !== "routing"
+  ) {
+    const status = message.localInference.status;
+    const downloading = status === "downloading" || status === "loading";
+    const canStartDownload = Boolean(message.localInference.modelId);
+    return (
+      <div className="rounded-md border border-warn/30 bg-warn/5 p-3 text-sm">
+        <div className="mb-1 font-medium">
+          {downloading
+            ? "Local model download in progress"
+            : "Local model required"}
+        </div>
+        <div className="mb-2 whitespace-pre-wrap text-muted">
+          {message.text}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleDownloadDefaultLocalModel}
+            disabled={downloading || localDownloadState === "busy"}
+          >
+            {downloading
+              ? "Downloading"
+              : localDownloadState === "busy"
+                ? "Starting..."
+                : localDownloadState === "queued"
+                  ? "Download queued"
+                  : "Download default model"}
+          </Button>
+          {!canStartDownload ? (
+            <Button type="button" size="sm" onClick={handleOpenSettings}>
+              Open Local Models
+            </Button>
+          ) : null}
+        </div>
+        {localDownloadError ? (
+          <div className="mt-2 text-xs text-danger">{localDownloadError}</div>
+        ) : null}
+      </div>
+    );
+  }
 
   // The server flags failed assistant turns with `failureKind`. For
   // `no_provider` specifically the user can't make progress without

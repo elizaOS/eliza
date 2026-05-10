@@ -97,6 +97,7 @@ import {
   type LifeOpsScheduleObservationRecord,
 } from "./repository.js";
 import { refreshLifeOpsScheduleInsight } from "./schedule-insight.js";
+import { processDueScheduledTasks } from "./scheduled-task/scheduler.js";
 import {
   deriveLocalScheduleObservations,
   isFreshCloudMergedState,
@@ -211,6 +212,8 @@ import {
   sendTwilioSms,
   sendTwilioVoiceCall,
 } from "./twilio.js";
+
+const DEFAULT_SCHEDULED_TASK_PROCESS_LIMIT = 25;
 
 type AdaptiveWindowProfile = Pick<
   ActivityProfile,
@@ -356,10 +359,13 @@ export interface LifeOpsReminderService {
     now?: string;
     reminderLimit?: number;
     workflowLimit?: number;
+    scheduledTaskLimit?: number;
   }): Promise<{
     now: string;
     reminderAttempts: LifeOpsReminderAttempt[];
     workflowRuns: LifeOpsWorkflowRun[];
+    scheduledTaskFires: Array<Record<string, unknown>>;
+    scheduledTaskCompletionTimeouts: Array<Record<string, unknown>>;
   }>;
   relockWebsiteAccessGroup(groupKey: string, now?: Date): Promise<{ ok: true }>;
   resolveWebsiteAccessCallback(
@@ -1449,8 +1455,10 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         args.definition.cadence.kind !== "once"
       ) {
         if (previousReminderId) {
-          const deleteResult =
-            await deleteNativeAppleReminderLikeItem(previousReminderId);
+          const deleteResult = await deleteNativeAppleReminderLikeItem(
+            previousReminderId,
+            { runtime: this.runtime },
+          );
           if (deleteResult.ok === false) {
             this.logLifeOpsWarn(
               "native_apple_reminder_sync",
@@ -1458,8 +1466,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               {
                 definitionId: args.previousDefinition?.id ?? null,
                 reminderId: previousReminderId,
-                skippedReason: deleteResult.skippedReason,
-                error: deleteResult.error,
+                reason: deleteResult.reason,
+                detail:
+                  deleteResult.reason === "permission"
+                    ? `permission ${deleteResult.permission} (canRequest=${deleteResult.canRequest})`
+                    : deleteResult.reason === "native_error"
+                      ? deleteResult.message
+                      : `not_supported on ${deleteResult.platform}`,
               },
             );
           }
@@ -1486,11 +1499,12 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           dueAt: cadence.dueAt,
           notes: definition.description,
           originalIntent: definition.originalIntent,
+          runtime: this.runtime,
         });
         if (updateResult.ok === true) {
           return this.withNativeAppleReminderId(
             definition,
-            updateResult.reminderId ?? reminderId,
+            updateResult.data.reminderId ?? reminderId,
           );
         }
         this.logLifeOpsWarn(
@@ -1500,8 +1514,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             definitionId: definition.id,
             kind: nativeMetadata.kind,
             reminderId,
-            skippedReason: updateResult.skippedReason,
-            error: updateResult.error,
+            reason: updateResult.reason,
+            detail:
+              updateResult.reason === "permission"
+                ? `permission ${updateResult.permission} (canRequest=${updateResult.canRequest})`
+                : updateResult.reason === "native_error"
+                  ? updateResult.message
+                  : `not_supported on ${updateResult.platform}`,
           },
         );
         return this.withNativeAppleReminderId(definition, reminderId);
@@ -1513,6 +1532,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         dueAt: cadence.dueAt,
         notes: definition.description,
         originalIntent: definition.originalIntent,
+        runtime: this.runtime,
       });
       if (createResult.ok === false) {
         this.logLifeOpsWarn(
@@ -1521,15 +1541,20 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           {
             definitionId: definition.id,
             kind: nativeMetadata.kind,
-            skippedReason: createResult.skippedReason,
-            error: createResult.error,
+            reason: createResult.reason,
+            detail:
+              createResult.reason === "permission"
+                ? `permission ${createResult.permission} (canRequest=${createResult.canRequest})`
+                : createResult.reason === "native_error"
+                  ? createResult.message
+                  : `not_supported on ${createResult.platform}`,
           },
         );
         return definition;
       }
       return this.withNativeAppleReminderId(
         definition,
-        createResult.reminderId ?? null,
+        createResult.data.reminderId ?? null,
       );
     }
 
@@ -4985,11 +5010,18 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         now?: string;
         reminderLimit?: number;
         workflowLimit?: number;
+        scheduledTaskLimit?: number;
       } = {},
     ): Promise<{
       now: string;
       reminderAttempts: LifeOpsReminderAttempt[];
       workflowRuns: LifeOpsWorkflowRun[];
+      scheduledTaskFires: Awaited<
+        ReturnType<typeof processDueScheduledTasks>
+      >["fires"];
+      scheduledTaskCompletionTimeouts: Awaited<
+        ReturnType<typeof processDueScheduledTasks>
+      >["completionTimeouts"];
     }> {
       const now =
         request.now === undefined
@@ -5003,6 +5035,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         request.workflowLimit === undefined
           ? DEFAULT_WORKFLOW_PROCESS_LIMIT
           : normalizePositiveInteger(request.workflowLimit, "workflowLimit");
+      const scheduledTaskLimit =
+        request.scheduledTaskLimit === undefined
+          ? DEFAULT_SCHEDULED_TASK_PROCESS_LIMIT
+          : normalizePositiveInteger(
+              request.scheduledTaskLimit,
+              "scheduledTaskLimit",
+            );
       await this.syncWebsiteAccessState(now);
       const previousSchedule = await this.readEffectiveScheduleState({ now });
       const currentSchedule = await this.refreshEffectiveScheduleState({ now });
@@ -5112,6 +5151,12 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         limit: workflowLimit,
         lifeOpsEvents,
       });
+      const scheduledTaskResult = await processDueScheduledTasks({
+        runtime: this.runtime,
+        agentId: this.agentId(),
+        now,
+        limit: scheduledTaskLimit,
+      });
       await this.processSleepCycleCheckins({
         now,
         currentSchedule,
@@ -5121,6 +5166,9 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         now: now.toISOString(),
         reminderAttempts: reminderResult.attempts,
         workflowRuns: [...workflowRuns, ...eventWorkflowRuns],
+        scheduledTaskFires: scheduledTaskResult.fires,
+        scheduledTaskCompletionTimeouts:
+          scheduledTaskResult.completionTimeouts,
       };
     }
 

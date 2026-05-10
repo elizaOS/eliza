@@ -632,11 +632,11 @@ export type X402Config = {
 // --- Local embedding runtime config ---
 
 export type EmbeddingConfig = {
-  /** GGUF model filename (e.g. "bge-small-en-v1.5.Q4_K_M.gguf"). */
+  /** GGUF model filename (e.g. "text/eliza-1-lite-0_6b-32k.gguf"). */
   model?: string;
   /** Optional Hugging Face repo/source for model resolution. */
   modelRepo?: string;
-  /** Embedding vector dimension (default: 384). */
+  /** Embedding vector dimension (default: 1024). */
   dimensions?: number;
   /** Embedding context window size (must match the model; default: model hint). */
   contextSize?: number;

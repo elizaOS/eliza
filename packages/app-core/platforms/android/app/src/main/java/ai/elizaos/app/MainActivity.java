@@ -6,6 +6,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.webkit.WebSettings;
+import android.webkit.WebView;
 
 import androidx.core.content.ContextCompat;
 
@@ -56,6 +57,14 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Per Android docs, must precede the first WebView instantiation.
+        // BridgeActivity.super.onCreate constructs the Capacitor WebView,
+        // so the toggle is set first to stay race-proof against future
+        // Capacitor versions that eagerly start the renderer.
+        if (BuildConfig.DEBUG) {
+            WebView.setWebContentsDebuggingEnabled(true);
+        }
+
         registerPlugin(AgentPlugin.class);
         super.onCreate(savedInstanceState);
 

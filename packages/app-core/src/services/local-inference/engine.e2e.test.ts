@@ -26,7 +26,6 @@ const UNSUPPORTED_TEXT_E2E_MODEL_PATTERNS = [
   /\bclip\b/i,
   /\bembed(?:ding)?\b/i,
   /\bdeepseek-r1\b/i,
-  /\bgemma/i,
 ];
 
 function isTextGenerationCandidate(model: InstalledModel): boolean {

@@ -4,7 +4,7 @@ This creates an HF *model* repo (HF has no separate "pipeline" repo type)
 that bundles the training scripts so a fresh Vast.ai box can:
 
     git clone <nothing — straight HF download>
-    huggingface-cli download elizaos/eliza-1-pipeline --local-dir /workspace/training
+    hf download elizaos/eliza-1-pipeline --local-dir /workspace/training
     cd /workspace/training && uv sync --extra train
     bash scripts/train_vast.sh ...
 
@@ -163,8 +163,8 @@ def build_pipeline_card(repo_id: str) -> str:
         "-LsSf https://astral.sh/uv/install.sh | sh`):\n"
         "\n"
         "```bash\n"
-        f"huggingface-cli download {repo_id} --local-dir /workspace/training\n"
-        "huggingface-cli download elizaos/eliza-1-training --repo-type dataset \\\n"
+        f"hf download {repo_id} --local-dir /workspace/training\n"
+        "hf download elizaos/eliza-1-training --repo-type dataset \\\n"
         "    --local-dir /workspace/training/data/final\n"
         "cd /workspace/training\n"
         "uv sync --extra train\n"

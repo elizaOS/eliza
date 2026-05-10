@@ -279,7 +279,7 @@ def test_pipeline_card_mentions_companion_repos(publish_pipeline):
     assert "elizaos/eliza-1-pipeline" in card
     assert "uv sync --extra train" in card
     # Vast bootstrap instructions present
-    assert "huggingface-cli download" in card
+    assert "hf download" in card
 
 
 def test_dataset_card_includes_license(publish_dataset):

@@ -122,11 +122,9 @@ PY
 fi
 
 # ---- 2. Pull the model ------------------------------------------------------
-# huggingface_hub 1.x renamed the binary from `huggingface-cli` to `hf`. Keep
-# us aligned with the train-side `hf download` calls in scripts/train_vast.sh
-# so a single hub version pin is enough across train + serve. Both binaries
-# are content-aware caches, so re-runs on a warm instance hit the cache and
-# exit fast either way.
+# Use the current HuggingFace CLI (`hf`) to stay aligned with train-side
+# `hf download` calls in scripts/train_vast.sh. The CLI is content-aware,
+# so re-runs on a warm instance hit the cache and exit fast.
 if ! command -v hf >/dev/null 2>&1; then
   python3 -m pip install --no-cache-dir 'huggingface_hub[cli,hf_transfer]>=1.0.0' 'hf_xet>=1.0.0'
 fi

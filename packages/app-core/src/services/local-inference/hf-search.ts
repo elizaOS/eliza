@@ -83,7 +83,6 @@ function inferParams(
 ): { params: CatalogModel["params"]; bucket: ModelBucket } {
   const lower = `${name} ${tags.join(" ")}`.toLowerCase();
   const sizes: Array<[RegExp, CatalogModel["params"], ModelBucket]> = [
-    [/\b70b\b/, "70B", "xl"],
     [/\b32b\b/, "32B", "xl"],
     [/\b27b\b/, "27B", "large"],
     [/\b24b\b/, "24B", "large"],

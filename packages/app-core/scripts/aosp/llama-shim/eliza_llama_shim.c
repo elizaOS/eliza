@@ -40,7 +40,7 @@
  *   - llama_context_params gains type_k / type_v (ggml_type for K/V cache),
  *     samplers / n_samplers (sampler-seq config), swa_full, kv_unified.
  *     Setters for type_k / type_v are now exposed below to drive the
- *     TurboQuant KV-cache integration (Bonsai-8B-1bit ships a TBQ-trained
+ *     TurboQuant KV-cache integration (Eliza-1 uses explicit runtime metadata for
  *     1-bit GGUF that needs type_k=tbq4_0 / type_v=tbq3_0 for the memory
  *     win to materialise on phone CPU).
  *   - llama_model_params gains use_direct_io / use_extra_bufts / no_host /

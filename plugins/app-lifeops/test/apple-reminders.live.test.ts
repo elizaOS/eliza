@@ -150,10 +150,10 @@ describeLive("native Apple reminders live integration", () => {
     });
     expect(created).toMatchObject({
       ok: true,
-      provider: "apple_reminders",
+      data: { provider: "apple_reminders" },
     });
     const reminderId =
-      created.ok === true ? (created.reminderId ?? null) : null;
+      created.ok === true ? (created.data.reminderId ?? null) : null;
     expect(reminderId).toBeTruthy();
     if (!reminderId) {
       throw new Error("Live native reminder test did not return a reminder id");
@@ -179,8 +179,7 @@ describeLive("native Apple reminders live integration", () => {
       });
       expect(updated).toMatchObject({
         ok: true,
-        provider: "apple_reminders",
-        reminderId,
+        data: { provider: "apple_reminders", reminderId },
       });
 
       const updatedSnapshot = await waitForReminder(
@@ -197,7 +196,7 @@ describeLive("native Apple reminders live integration", () => {
       const deleted = await deleteNativeAppleReminderLikeItem(reminderId);
       expect(deleted).toMatchObject({
         ok: true,
-        provider: "apple_reminders",
+        data: { provider: "apple_reminders" },
       });
       await waitForReminderDeletion(reminderId);
     }

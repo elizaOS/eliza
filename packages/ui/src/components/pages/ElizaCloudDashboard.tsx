@@ -23,6 +23,7 @@ import {
   client,
   isRateLimitedError,
 } from "../../api";
+import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
 import { useApp } from "../../state";
 import { openExternalUrl, preOpenWindow } from "../../utils";
 import { StripeEmbeddedCheckout } from "../cloud/StripeEmbeddedCheckout";
@@ -85,6 +86,9 @@ export function CloudDashboard() {
     autoTopUpFormReducer,
     buildAutoTopUpFormState(null, null),
   );
+  const mobileRuntimeMode = readPersistedMobileRuntimeMode();
+  const cloudRuntimeLocked =
+    mobileRuntimeMode === "cloud" || mobileRuntimeMode === "cloud-hybrid";
   const [billingSettingsBusy, setBillingSettingsBusy] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutSession, setCheckoutSession] =
@@ -674,18 +678,20 @@ export function CloudDashboard() {
               className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
             />
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 rounded-lg border-danger/30 px-2.5 text-danger text-xs hover:bg-danger/10"
-            onClick={() => void handleCloudDisconnect()}
-            disabled={cloudDisconnecting}
-          >
-            {cloudDisconnecting
-              ? t("providerswitcher.disconnecting")
-              : t("common.disconnect")}
-          </Button>
+          {cloudRuntimeLocked ? null : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-lg border-danger/30 px-2.5 text-danger text-xs hover:bg-danger/10"
+              onClick={() => void handleCloudDisconnect()}
+              disabled={cloudDisconnecting}
+            >
+              {cloudDisconnecting
+                ? t("providerswitcher.disconnecting")
+                : t("common.disconnect")}
+            </Button>
+          )}
         </div>
       </div>
 

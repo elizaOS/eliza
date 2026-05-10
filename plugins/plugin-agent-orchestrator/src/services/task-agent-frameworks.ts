@@ -709,6 +709,9 @@ async function computeTaskAgentFrameworkState(
   const providerPrefersCodex =
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription";
+  const providerPrefersGemini =
+    configuredSubscriptionProvider === "gemini-cli" ||
+    configuredSubscriptionProvider === "gemini-subscription";
 
   const inventory: TaskAgentFrameworkAvailability[] = STANDARD_FRAMEWORKS.map(
     (id) => {
@@ -720,7 +723,9 @@ async function computeTaskAgentFrameworkState(
           ? claudeSubscriptionReady
           : id === "codex"
             ? codexSubscriptionReady
-            : false;
+            : id === "gemini"
+              ? providerPrefersGemini && geminiPreflightAuth === "authenticated"
+              : false;
       const authReady =
         id === "claude"
           ? claudeAuthReady
@@ -734,11 +739,13 @@ async function computeTaskAgentFrameworkState(
           ? "ready to use the user's Claude subscription"
           : id === "codex" && subscriptionReady
             ? "ready to use the user's OpenAI subscription"
-            : installed
-              ? authReady
-                ? "installed with credentials available"
-                : "installed but credentials were not detected"
-              : "CLI not detected";
+            : id === "gemini" && subscriptionReady
+              ? "ready to use the user's Gemini CLI subscription"
+              : installed
+                ? authReady
+                  ? "installed with credentials available"
+                  : "installed but credentials were not detected"
+                : "CLI not detected";
       return {
         id,
         label: FRAMEWORK_LABELS[id],
@@ -831,7 +838,11 @@ async function computeTaskAgentFrameworkState(
           ? framework.subscriptionReady
             ? 18
             : 6
-          : 0;
+          : providerPrefersGemini && framework.id === "gemini"
+            ? framework.subscriptionReady
+              ? 18
+              : 6
+            : 0;
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +
@@ -987,6 +998,9 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
   const providerPrefersCodex =
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription";
+  const providerPrefersGemini =
+    configuredSubscriptionProvider === "gemini-cli" ||
+    configuredSubscriptionProvider === "gemini-subscription";
   const explicitDefault = safeGetSetting(runtime, "PARALLAX_DEFAULT_AGENT_TYPE")
     ?.toLowerCase()
     .trim();
@@ -1014,7 +1028,11 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
           ? framework.subscriptionReady
             ? 18
             : 6
-          : 0;
+          : providerPrefersGemini && framework.id === "gemini"
+            ? framework.subscriptionReady
+              ? 18
+              : 6
+            : 0;
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +
@@ -1236,6 +1254,14 @@ function buildPreferredReason(
     framework.subscriptionReady
   ) {
     return `best fit for ${dominantSignals.join(" + ")} work while honoring the configured OpenAI subscription`;
+  }
+  if (
+    (configuredSubscriptionProvider === "gemini-cli" ||
+      configuredSubscriptionProvider === "gemini-subscription") &&
+    framework.id === "gemini" &&
+    framework.subscriptionReady
+  ) {
+    return `best fit for ${dominantSignals.join(" + ")} work while honoring the configured Gemini CLI subscription`;
   }
   if (framework.subscriptionReady) {
     return `best overall score for ${dominantSignals.join(" + ")} work with subscription-backed auth already available`;

@@ -174,9 +174,12 @@ def qjl_pure_pytorch_quantize(
     assert projection_dim % 8 == 0, "projection_dim must be byte-aligned"
     B, H, T, D = keys.shape
     g = torch.Generator(device=keys.device).manual_seed(seed)
+    # Canonical layout: (head_dim, proj_dim) row-major — matches the
+    # qjl-cpu / verify references and the recipe's _build_jl_projections.
     proj = torch.randn(D, projection_dim, generator=g, device=keys.device, dtype=torch.float32)
 
-    # x @ proj -> (B, H, T, projection_dim) fp32
+    # x @ proj -> (B, H, T, projection_dim) fp32. No transpose: Π is
+    # stored kernel-canonical, so this is the direct sketch math.
     sk = (keys.float() @ proj)
     bits = (sk > 0).to(torch.uint8)  # (B, H, T, projection_dim), uint8 0/1
 

@@ -72,11 +72,23 @@ void main() {
     uint bits   = read_byte(blk_off + byte_i);
     uint base   = byte_i * 8u;
 
-    float acc = 0.0;
-    for (uint k = 0u; k < 8u; ++k) {
-        float qv = q_sketch[base + k];
-        acc += ((bits >> k) & 1u) != 0u ? qv : -qv;
-    }
+    // Mirrors Wave-4-B Metal port: vec4 loads + branchless ±1 + chained fma.
+    vec4 q0 = vec4(q_sketch[base + 0u], q_sketch[base + 1u],
+                   q_sketch[base + 2u], q_sketch[base + 3u]);
+    vec4 q1 = vec4(q_sketch[base + 4u], q_sketch[base + 5u],
+                   q_sketch[base + 6u], q_sketch[base + 7u]);
+    vec4 s0 = vec4(
+        float(int(((bits >> 0) & 1u) << 1) - 1),
+        float(int(((bits >> 1) & 1u) << 1) - 1),
+        float(int(((bits >> 2) & 1u) << 1) - 1),
+        float(int(((bits >> 3) & 1u) << 1) - 1));
+    vec4 s1 = vec4(
+        float(int(((bits >> 4) & 1u) << 1) - 1),
+        float(int(((bits >> 5) & 1u) << 1) - 1),
+        float(int(((bits >> 6) & 1u) << 1) - 1),
+        float(int(((bits >> 7) & 1u) << 1) - 1));
+    vec4 acc4 = fma(q0, s0, fma(q1, s1, vec4(0.0)));
+    float acc = acc4.x + acc4.y + acc4.z + acc4.w;
 
     float sum = reduce_sum_32(acc, tid);
     if (tid == 0u) {

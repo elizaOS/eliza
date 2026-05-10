@@ -45,6 +45,13 @@ export {
 } from "./escalation.ts";
 export * from "./mcp-marketplace.ts";
 export * from "./overlay-app-presence.ts";
+export {
+  type IPermissionsRegistry,
+  type PermissionRegistryOptions,
+  PermissionRegistry,
+  PERMISSIONS_REGISTRY_SERVICE,
+  type Prober,
+} from "./permissions-registry.ts";
 export * from "./plugin-compiler.ts";
 // `plugin-manager-types` re-exports `RegistryPluginInfo` and
 // `RegistrySearchResult` from `./registry-client-types.js`, which collide with

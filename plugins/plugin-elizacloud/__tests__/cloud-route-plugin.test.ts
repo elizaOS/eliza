@@ -10,6 +10,8 @@ describe("elizaCloudRoutePlugin", () => {
 
     for (const route of [
       "POST /api/cloud/login",
+      "GET /api/cloud/billing/:path*",
+      "POST /api/cloud/billing/:path*",
       "GET /api/cloud/agents",
       "POST /api/cloud/agents",
       "POST /api/cloud/agents/:agentId/provision",

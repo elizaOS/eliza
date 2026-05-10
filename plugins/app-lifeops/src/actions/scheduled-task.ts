@@ -1,5 +1,5 @@
 /**
- * `SCHEDULED_TASK` umbrella action.
+ * `TASKS` umbrella action.
  *
  * Wave-3 W3-C: collapses the standalone follow-up + reminder verbs into one
  * user-visible umbrella that wraps `ScheduledTaskRunner`. The runner is the
@@ -15,6 +15,7 @@
  *   - `snooze`    — defer next fire (`apply snooze`); resets the ladder
  *   - `skip`      — `apply skip`; pipeline.onSkip propagates
  *   - `complete`  — `apply complete`; pipeline.onComplete propagates
+ *   - `acknowledge` — `apply acknowledge`, then completion-check evaluation
  *   - `dismiss`   — `apply dismiss`; terminal, no propagation
  *   - `cancel`    — alias for `dismiss` (planner-friendly verb)
  *   - `reopen`    — `apply reopen`; reopen-window enforced by the runner
@@ -37,6 +38,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
+import { createPendingPromptsStore } from "../lifeops/pending-prompts/store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import type {
   ScheduledTask,
@@ -60,6 +62,7 @@ const SUBACTIONS = [
   "snooze",
   "skip",
   "complete",
+  "acknowledge",
   "dismiss",
   "cancel",
   "reopen",
@@ -74,7 +77,10 @@ type ScheduledTaskSubjectKindParam = ScheduledTaskSubjectKind;
 type ScheduledTaskPriorityParam = ScheduledTaskPriority;
 
 interface ScheduledTaskParams {
+  action?: Subaction;
   subaction?: Subaction;
+  op?: Subaction;
+  operation?: Subaction;
   taskId?: string;
   kind?: ScheduledTaskKindParam;
   status?: ScheduledTaskStatusParam | ScheduledTaskStatusParam[];
@@ -85,6 +91,14 @@ interface ScheduledTaskParams {
   promptInstructions?: string;
   /** create-only: trigger spec (`once`, `cron`, `manual`, etc). */
   trigger?: ScheduledTaskTrigger;
+  contextRequest?: ScheduledTask["contextRequest"];
+  shouldFire?: ScheduledTask["shouldFire"];
+  completionCheck?: ScheduledTask["completionCheck"];
+  escalation?: ScheduledTask["escalation"];
+  output?: ScheduledTask["output"];
+  pipeline?: ScheduledTask["pipeline"];
+  metadata?: Record<string, unknown>;
+  idempotencyKey?: string;
   priority?: ScheduledTaskPriorityParam;
   respectsGlobalPause?: boolean;
   ownerVisible?: boolean;
@@ -93,7 +107,7 @@ interface ScheduledTaskParams {
   minutes?: number;
   /** snooze-only: ISO timestamp to defer next fire to. */
   untilIso?: string;
-  /** skip / complete / dismiss / reopen: free-form reason. */
+  /** skip / complete / acknowledge / dismiss / reopen: free-form reason. */
   reason?: string;
   /** update-only: shallow patch of editable fields. */
   patch?: Partial<Omit<ScheduledTask, "taskId" | "state">>;
@@ -147,16 +161,15 @@ function normalizeSubaction(value: unknown): Subaction | null {
 }
 
 /**
- * Resolve the umbrella subaction from `params.subaction` (canonical) or any
- * accepted legacy alias (`op`, `action`, `operation`). The canonical key is
- * always tried first; aliases preserve back-compat with cached planner output
- * that predates the project-wide standardization.
+ * Resolve the umbrella operation from `params.action` (canonical) or accepted
+ * legacy aliases. Aliases preserve back-compat with cached planner output that
+ * predates the project-wide standardization.
  */
 function resolveSubaction(params: ScheduledTaskParams): Subaction | null {
   const aliasKeys: readonly (keyof ScheduledTaskParams | string)[] = [
+    "action",
     "subaction",
     "op",
-    "action",
     "operation",
   ];
   for (const key of aliasKeys) {
@@ -236,12 +249,18 @@ interface RunnerScope {
   runtime: IAgentRuntime;
   runner: ScheduledTaskRunnerHandle;
   agentId: string;
+  roomId: string | null;
 }
 
-function makeRunnerScope(runtime: IAgentRuntime): RunnerScope {
+function makeRunnerScope(runtime: IAgentRuntime, message: Memory): RunnerScope {
   const agentId = runtime.agentId;
   const runner = createRuntimeScheduledTaskRunner({ runtime, agentId });
-  return { runtime, runner, agentId };
+  return {
+    runtime,
+    runner,
+    agentId,
+    roomId: typeof message.roomId === "string" ? message.roomId : null,
+  };
 }
 
 function getParams(options: HandlerOptions | undefined): ScheduledTaskParams {
@@ -335,11 +354,31 @@ async function handleCreate(
     normalizeSubjectKind(params.subjectKind),
     params.subjectId,
   );
+  const metadata = {
+    ...(params.metadata ?? {}),
+    ...(scope.roomId && params.completionCheck
+      ? { pendingPromptRoomId: scope.roomId }
+      : {}),
+  };
   const created = await scope.runner.schedule({
     kind,
     promptInstructions,
     trigger: params.trigger,
     priority,
+    ...(params.contextRequest ? { contextRequest: params.contextRequest } : {}),
+    ...(params.shouldFire ? { shouldFire: params.shouldFire } : {}),
+    ...(params.completionCheck
+      ? { completionCheck: params.completionCheck }
+      : {}),
+    ...(params.escalation ? { escalation: params.escalation } : {}),
+    ...(params.output
+      ? { output: params.output }
+      : scope.roomId
+        ? { output: { destination: "channel", target: `in_app:${scope.roomId}` } }
+        : {}),
+    ...(params.pipeline ? { pipeline: params.pipeline } : {}),
+    ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+    ...(params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : {}),
     respectsGlobalPause: params.respectsGlobalPause ?? true,
     source: params.source ?? "user_chat",
     createdBy: scope.agentId,
@@ -411,10 +450,35 @@ async function handleSnooze(
     ...(minutes !== undefined ? { minutes } : {}),
     ...(untilIso ? { untilIso } : {}),
   });
+  await createPendingPromptsStore(scope.runtime).forgetTask(taskId);
   return {
     success: true,
     text: `Snoozed scheduled task ${taskId}.`,
     data: { subaction: "snooze", task: snoozed },
+  };
+}
+
+async function handleAcknowledge(
+  scope: RunnerScope,
+  params: ScheduledTaskParams,
+): Promise<ActionResult> {
+  const taskId = params.taskId?.trim();
+  if (!taskId) {
+    return {
+      success: false,
+      text: "I need a taskId to acknowledge a scheduled task.",
+      data: { subaction: "acknowledge", error: "MISSING_TASK_ID" },
+    };
+  }
+  await scope.runner.apply(taskId, "acknowledge");
+  const updated = await scope.runner.evaluateCompletion(taskId, {
+    acknowledged: true,
+  });
+  await createPendingPromptsStore(scope.runtime).forgetTask(taskId);
+  return {
+    success: true,
+    text: `Acknowledged scheduled task ${taskId}.`,
+    data: { subaction: "acknowledge", task: updated },
   };
 }
 
@@ -437,6 +501,9 @@ async function handleVerbWithReason(
     verb,
     params.reason ? { reason: params.reason } : undefined,
   );
+  if (verb === "skip" || verb === "complete" || verb === "dismiss") {
+    await createPendingPromptsStore(scope.runtime).forgetTask(taskId);
+  }
   return {
     success: true,
     text: `${label.charAt(0).toUpperCase()}${label.slice(1)}d scheduled task ${taskId}.`,
@@ -488,7 +555,7 @@ const examples: ActionExample[][] = [
       name: "{{agentName}}",
       content: {
         text: "Listing scheduled tasks of kind=followup.",
-        action: "SCHEDULED_TASK",
+        action: "TASKS",
       },
     },
   ],
@@ -501,7 +568,7 @@ const examples: ActionExample[][] = [
       name: "{{agentName}}",
       content: {
         text: "Snoozing the active reminder for 30 minutes.",
-        action: "SCHEDULED_TASK",
+        action: "TASKS",
       },
     },
   ],
@@ -514,7 +581,7 @@ const examples: ActionExample[][] = [
       name: "{{agentName}}",
       content: {
         text: "Marking the check-in as completed.",
-        action: "SCHEDULED_TASK",
+        action: "TASKS",
       },
     },
   ],
@@ -523,18 +590,20 @@ const examples: ActionExample[][] = [
 export const scheduledTaskAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "SCHEDULED_TASK",
+  name: "TASKS",
   similes: [
+    "SCHEDULED_TASK",
     "SCHEDULED_TASKS",
     "REMINDER_TASK",
     "SCHEDULED_REMINDER",
     "SCHEDULED_FOLLOWUP",
     "TASK_SNOOZE",
     "TASK_COMPLETE",
+    "TASK_ACKNOWLEDGE",
     "TASK_DISMISS",
-    // W3-C drift D-2: collapse the 7 transitional ENTITY follow-up subactions
-    // onto SCHEDULED_TASK. ENTITY keeps the same simile names registered for
-    // one release; the canonical execution surface is here.
+    // W3-C drift D-2: collapse the 7 transitional ENTITY follow-up operations
+    // onto TASKS. ENTITY keeps the same simile names registered for one
+    // release; the canonical execution surface is here.
     "ADD_FOLLOW_UP",
     "COMPLETE_FOLLOW_UP",
     "FOLLOW_UP_LIST",
@@ -553,26 +622,26 @@ export const scheduledTaskAction: Action & {
     "surface:internal",
   ],
   description:
-    "Manage the owner's scheduled-task spine: reminders, check-ins, follow-ups, approvals, recaps, watchers, outputs, and custom tasks. Subactions: list, get, create, update, snooze, skip, complete, dismiss, cancel, reopen, history.",
+    "Manage the owner's scheduled-task spine: reminders, check-ins, follow-ups, approvals, recaps, watchers, outputs, and custom tasks. Actions: list, get, create, update, snooze, skip, complete, acknowledge, dismiss, cancel, reopen, history.",
   descriptionCompressed:
-    "scheduled tasks: list|get|create|update|snooze|skip|complete|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
+    "scheduled tasks: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
   routingHint:
-    'reminder/checkin/followup/approval/recap/watcher/output state ("snooze that", "what follow-ups today", "complete the check-in", "show task history") -> SCHEDULED_TASK; per-occurrence LifeOps verbs (complete/skip/snooze a definition\'s next occurrence) stay on LIFE',
+    'reminder/checkin/followup/approval/recap/watcher/output state ("snooze that", "what follow-ups today", "complete the check-in", "show task history") -> TASKS; per-occurrence LifeOps verbs (complete/skip/snooze a definition\'s next occurrence) stay on LIFE',
   contexts: ["tasks", "reminders", "followups", "calendar"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description:
-        "Which scheduled-task operation to run: list | get | create | update | snooze | skip | complete | dismiss | cancel | reopen | history.",
+        "Which scheduled-task operation to run: list | get | create | update | snooze | skip | complete | acknowledge | dismiss | cancel | reopen | history.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
       name: "taskId",
       description:
-        "Target taskId for get / update / snooze / skip / complete / dismiss / cancel / reopen / history.",
+        "Target taskId for get / update / snooze / skip / complete / acknowledge / dismiss / cancel / reopen / history.",
       schema: { type: "string" as const },
     },
     {
@@ -615,6 +684,51 @@ export const scheduledTaskAction: Action & {
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
+      name: "contextRequest",
+      description:
+        "create-only: structured context request for owner facts, entities, relationships, recent task states, or event payload.",
+      schema: { type: "object" as const, additionalProperties: true },
+    },
+    {
+      name: "shouldFire",
+      description:
+        "create-only: structural gate composition; use gate refs rather than prompt text conditions.",
+      schema: { type: "object" as const, additionalProperties: true },
+    },
+    {
+      name: "completionCheck",
+      description:
+        "create-only: structural completion check such as user_replied_within, user_acknowledged, subject_updated, or health_signal_observed.",
+      schema: { type: "object" as const, additionalProperties: true },
+    },
+    {
+      name: "output",
+      description:
+        "create-only: output destination/target, e.g. { destination: 'channel', target: 'in_app:<roomId>' }.",
+      schema: { type: "object" as const, additionalProperties: true },
+    },
+    {
+      name: "pipeline",
+      description:
+        "create-only: child ScheduledTask refs for onComplete/onSkip/onFail.",
+      schema: { type: "object" as const, additionalProperties: true },
+    },
+    {
+      name: "escalation",
+      description: "create-only: escalation ladder or explicit channel steps.",
+      schema: { type: "object" as const, additionalProperties: true },
+    },
+    {
+      name: "metadata",
+      description: "create-only: structured task metadata.",
+      schema: { type: "object" as const, additionalProperties: true },
+    },
+    {
+      name: "idempotencyKey",
+      description: "create-only: stable key for deduping repeated schedules.",
+      schema: { type: "string" as const },
+    },
+    {
       name: "priority",
       description: "create-only: low | medium | high (default medium).",
       schema: { type: "string" as const, enum: ["low", "medium", "high"] },
@@ -649,7 +763,7 @@ export const scheduledTaskAction: Action & {
     {
       name: "reason",
       description:
-        "skip / complete / dismiss / reopen: free-form reason recorded on the state log.",
+        "skip / complete / acknowledge / dismiss / reopen: free-form reason recorded on the state log.",
       schema: { type: "string" as const },
     },
     {
@@ -699,12 +813,12 @@ export const scheduledTaskAction: Action & {
     if (!subaction) {
       return {
         success: false,
-        text: "Tell me which scheduled-task operation you want: list, get, create, update, snooze, skip, complete, dismiss, cancel, reopen, or history.",
+        text: "Tell me which task operation you want: list, get, create, update, snooze, skip, complete, acknowledge, dismiss, cancel, reopen, or history.",
         data: { error: "MISSING_SUBACTION" },
       };
     }
 
-    const scope = makeRunnerScope(runtime);
+    const scope = makeRunnerScope(runtime, message);
     let result: ActionResult;
     switch (subaction) {
       case "list":
@@ -733,6 +847,9 @@ export const scheduledTaskAction: Action & {
           "complete",
         );
         break;
+      case "acknowledge":
+        result = await handleAcknowledge(scope, params);
+        break;
       case "dismiss":
       case "cancel":
         // `cancel` is a planner-friendly alias for the runner's `dismiss`
@@ -756,7 +873,7 @@ export const scheduledTaskAction: Action & {
       await callback?.({
         text: result.text,
         source: "action",
-        action: "SCHEDULED_TASK",
+        action: "TASKS",
       });
     }
     return result;

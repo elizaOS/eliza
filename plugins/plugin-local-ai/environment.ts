@@ -5,9 +5,9 @@
 import { logger } from "@elizaos/core";
 import { z } from "zod";
 
-const DEFAULT_SMALL_MODEL = "DeepHermes-3-Llama-3-3B-Preview-q4.gguf";
-const DEFAULT_LARGE_MODEL = "DeepHermes-3-Llama-3-8B-q4.gguf";
-const DEFAULT_EMBEDDING_MODEL = "bge-small-en-v1.5.Q4_K_M.gguf";
+const DEFAULT_SMALL_MODEL = "text/eliza-1-mobile-1_7b-32k.gguf";
+const DEFAULT_LARGE_MODEL = "text/eliza-1-desktop-9b-64k.gguf";
+const DEFAULT_EMBEDDING_MODEL = "text/eliza-1-lite-0_6b-32k.gguf";
 
 export const configSchema = z.object({
   LOCAL_SMALL_MODEL: z.string().optional().default(DEFAULT_SMALL_MODEL),
@@ -18,7 +18,7 @@ export const configSchema = z.object({
   LOCAL_EMBEDDING_DIMENSIONS: z
     .string()
     .optional()
-    .default("384")
+    .default("1024")
     .transform((val) => parseInt(val, 10)),
 });
 

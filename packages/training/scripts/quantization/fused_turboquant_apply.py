@@ -37,6 +37,7 @@ if str(_HERE) not in sys.path:
 
 from _common import (  # noqa: E402
     get_text_config,
+    kernel_manifest_fragment,
     load_model_and_tokenizer,
     save_model,
     write_sidecar,
@@ -203,6 +204,7 @@ def main(argv: list[str] | None = None) -> int:
         "architecture": report["architecture"],
         "calibration_file": str(args.calibration) if args.calibration else None,
         "calibration_samples": args.calibration_samples if args.calibration else 0,
+        "kernel_manifest": kernel_manifest_fragment("fused-turboquant"),
         "notes": (
             "fused-TurboQuant is a runtime KV-cache compressor. The weights "
             "in this directory are unchanged. To use the quantized cache at "

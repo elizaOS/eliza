@@ -47,7 +47,7 @@ const CHANNEL_DESCRIPTORS: readonly ChannelDescriptor[] = [
     label: "In-app card",
     capabilities: {
       ...NULL_CAPABILITIES,
-      send: true,
+      send: false,
       reminders: true,
       attachments: true,
       quietHoursAware: false,
@@ -59,7 +59,7 @@ const CHANNEL_DESCRIPTORS: readonly ChannelDescriptor[] = [
     label: "Push notification",
     capabilities: {
       ...NULL_CAPABILITIES,
-      send: true,
+      send: false,
       reminders: true,
       quietHoursAware: true,
     },

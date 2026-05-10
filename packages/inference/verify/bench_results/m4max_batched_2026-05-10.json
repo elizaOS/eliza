@@ -1,0 +1,67 @@
+{
+  "device": "Apple M4 Max",
+  "date": "2026-05-10",
+  "mode": "batched",
+  "description": "command-buffer batching sweep — N dispatches per MTLCommandBuffer to amortize launch overhead. N=1 is the single-dispatch baseline; larger N reduces per-dispatch GPU cost until launch floor disappears.",
+  "iters_per_N": 32,
+  "warmup": 16,
+  "batch_grid": [1, 4, 16, 64, 128, 256],
+  "bargein_note": "At batch=N, command-buffer cancellation latency ≈ total_us_med (worst case: just submitted) or total_us_med/2 (average). The GPU cannot preempt mid-buffer — it can only stop accepting new buffers. Voice scaffold barge-in <=1 kernel-tick contract holds at N=1 (~250µs ≈ one tick); breaks at N≥4 (~1ms per buffer).",
+  "kernels": [
+    {
+      "name": "turbo3",
+      "per_N": [
+        { "N": 1, "total_us_med": 270.8750, "total_us_p99": 805.4458, "per_disp_us": 270.8750, "throughput_disps_per_s": 3691.74, "bargein_worst_us": 270.8750, "bargein_avg_us": 135.4375 },
+        { "N": 4, "total_us_med": 1041.8542, "total_us_p99": 1614.2987, "per_disp_us": 260.4635, "throughput_disps_per_s": 3839.31, "bargein_worst_us": 1041.8542, "bargein_avg_us": 520.9271 },
+        { "N": 16, "total_us_med": 3697.0000, "total_us_p99": 3933.7288, "per_disp_us": 231.0625, "throughput_disps_per_s": 4327.83, "bargein_worst_us": 3697.0000, "bargein_avg_us": 1848.5000 },
+        { "N": 64, "total_us_med": 14553.3125, "total_us_p99": 15177.8138, "per_disp_us": 227.3955, "throughput_disps_per_s": 4397.62, "bargein_worst_us": 14553.3125, "bargein_avg_us": 7276.6563 },
+        { "N": 128, "total_us_med": 29520.5625, "total_us_p99": 30274.3496, "per_disp_us": 230.6294, "throughput_disps_per_s": 4335.96, "bargein_worst_us": 29520.5625, "bargein_avg_us": 14760.2813 },
+        { "N": 256, "total_us_med": 65014.6667, "total_us_p99": 66633.9046, "per_disp_us": 253.9635, "throughput_disps_per_s": 3937.57, "bargein_worst_us": 65014.6667, "bargein_avg_us": 32507.3333 }
+      ]
+    },
+    {
+      "name": "turbo4",
+      "per_N": [
+        { "N": 1, "total_us_med": 253.3125, "total_us_p99": 705.0746, "per_disp_us": 253.3125, "throughput_disps_per_s": 3947.69, "bargein_worst_us": 253.3125, "bargein_avg_us": 126.6563 },
+        { "N": 4, "total_us_med": 1012.8542, "total_us_p99": 1493.1775, "per_disp_us": 253.2135, "throughput_disps_per_s": 3949.24, "bargein_worst_us": 1012.8542, "bargein_avg_us": 506.4271 },
+        { "N": 16, "total_us_med": 4097.9583, "total_us_p99": 4443.4975, "per_disp_us": 256.1224, "throughput_disps_per_s": 3904.38, "bargein_worst_us": 4097.9583, "bargein_avg_us": 2048.9792 },
+        { "N": 64, "total_us_med": 16184.4375, "total_us_p99": 16879.9667, "per_disp_us": 252.8818, "throughput_disps_per_s": 3954.42, "bargein_worst_us": 16184.4375, "bargein_avg_us": 8092.2188 },
+        { "N": 128, "total_us_med": 32799.8750, "total_us_p99": 34027.0096, "per_disp_us": 256.2490, "throughput_disps_per_s": 3902.45, "bargein_worst_us": 32799.8750, "bargein_avg_us": 16399.9375 },
+        { "N": 256, "total_us_med": 64447.6042, "total_us_p99": 65544.4300, "per_disp_us": 251.7485, "throughput_disps_per_s": 3972.22, "bargein_worst_us": 64447.6042, "bargein_avg_us": 32223.8021 }
+      ]
+    },
+    {
+      "name": "turbo3_tcq",
+      "per_N": [
+        { "N": 1, "total_us_med": 236.3125, "total_us_p99": 464.6050, "per_disp_us": 236.3125, "throughput_disps_per_s": 4231.68, "bargein_worst_us": 236.3125, "bargein_avg_us": 118.1562 },
+        { "N": 4, "total_us_med": 945.4583, "total_us_p99": 1439.0771, "per_disp_us": 236.3646, "throughput_disps_per_s": 4230.75, "bargein_worst_us": 945.4583, "bargein_avg_us": 472.7292 },
+        { "N": 16, "total_us_med": 3868.6042, "total_us_p99": 4419.2667, "per_disp_us": 241.7878, "throughput_disps_per_s": 4135.86, "bargein_worst_us": 3868.6042, "bargein_avg_us": 1934.3021 },
+        { "N": 64, "total_us_med": 16028.1458, "total_us_p99": 16605.2046, "per_disp_us": 250.4398, "throughput_disps_per_s": 3992.98, "bargein_worst_us": 16028.1458, "bargein_avg_us": 8014.0729 },
+        { "N": 128, "total_us_med": 33040.3958, "total_us_p99": 33533.2346, "per_disp_us": 258.1281, "throughput_disps_per_s": 3874.05, "bargein_worst_us": 33040.3958, "bargein_avg_us": 16520.1979 },
+        { "N": 256, "total_us_med": 66857.7917, "total_us_p99": 67992.3712, "per_disp_us": 261.1632, "throughput_disps_per_s": 3829.02, "bargein_worst_us": 66857.7917, "bargein_avg_us": 33428.8958 }
+      ]
+    },
+    {
+      "name": "qjl",
+      "per_N": [
+        { "N": 1, "total_us_med": 255.6875, "total_us_p99": 538.2400, "per_disp_us": 255.6875, "throughput_disps_per_s": 3911.02, "bargein_worst_us": 255.6875, "bargein_avg_us": 127.8437 },
+        { "N": 4, "total_us_med": 995.9583, "total_us_p99": 1495.9996, "per_disp_us": 248.9896, "throughput_disps_per_s": 4016.23, "bargein_worst_us": 995.9583, "bargein_avg_us": 497.9792 },
+        { "N": 16, "total_us_med": 3974.6667, "total_us_p99": 4629.4775, "per_disp_us": 248.4167, "throughput_disps_per_s": 4025.49, "bargein_worst_us": 3974.6667, "bargein_avg_us": 1987.3333 },
+        { "N": 64, "total_us_med": 16261.8958, "total_us_p99": 16911.3038, "per_disp_us": 254.0921, "throughput_disps_per_s": 3935.58, "bargein_worst_us": 16261.8958, "bargein_avg_us": 8130.9479 },
+        { "N": 128, "total_us_med": 31523.0625, "total_us_p99": 32182.3637, "per_disp_us": 246.2739, "throughput_disps_per_s": 4060.52, "bargein_worst_us": 31523.0625, "bargein_avg_us": 15761.5313 },
+        { "N": 256, "total_us_med": 62995.2917, "total_us_p99": 65753.7600, "per_disp_us": 246.0754, "throughput_disps_per_s": 4063.80, "bargein_worst_us": 62995.2917, "bargein_avg_us": 31497.6458 }
+      ]
+    },
+    {
+      "name": "polar",
+      "per_N": [
+        { "N": 1, "total_us_med": 458.4375, "total_us_p99": 786.2742, "per_disp_us": 458.4375, "throughput_disps_per_s": 2181.32, "bargein_worst_us": 458.4375, "bargein_avg_us": 229.2187 },
+        { "N": 4, "total_us_med": 1977.0208, "total_us_p99": 2462.1937, "per_disp_us": 494.2552, "throughput_disps_per_s": 2023.25, "bargein_worst_us": 1977.0208, "bargein_avg_us": 988.5104 },
+        { "N": 16, "total_us_med": 9303.2292, "total_us_p99": 10722.0542, "per_disp_us": 581.4518, "throughput_disps_per_s": 1719.83, "bargein_worst_us": 9303.2292, "bargein_avg_us": 4651.6146 },
+        { "N": 64, "total_us_med": 56494.4375, "total_us_p99": 76729.4225, "per_disp_us": 882.7256, "throughput_disps_per_s": 1132.85, "bargein_worst_us": 56494.4375, "bargein_avg_us": 28247.2187 },
+        { "N": 128, "total_us_med": 137950.6042, "total_us_p99": 157154.8284, "per_disp_us": 1077.7391, "throughput_disps_per_s": 927.87, "bargein_worst_us": 137950.6042, "bargein_avg_us": 68975.3021 },
+        { "N": 256, "total_us_med": 278492.1042, "total_us_p99": 312133.0512, "per_disp_us": 1087.8598, "throughput_disps_per_s": 919.24, "bargein_worst_us": 278492.1042, "bargein_avg_us": 139246.0521 }
+      ]
+    }
+  ]
+}

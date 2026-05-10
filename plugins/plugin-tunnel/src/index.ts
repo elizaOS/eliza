@@ -1,4 +1,4 @@
-import { elizaLogger, type Plugin } from '@elizaos/core';
+import { elizaLogger, promoteSubactionsToActions, type Plugin } from '@elizaos/core';
 import { TunnelTestSuite } from './__tests__/TunnelTestSuite';
 import { tunnelAction } from './actions/tunnel';
 import { tunnelStateProvider } from './providers/tunnel-state';
@@ -21,7 +21,7 @@ export const tunnelPlugin: Plugin = {
   name: 'tunnel',
   description:
     'Local Tailscale-CLI tunnel backend (serve / funnel). Coexists with plugin-elizacloud and plugin-ngrok via first-active-wins registration.',
-  actions: [tunnelAction],
+  actions: [...promoteSubactionsToActions(tunnelAction)],
   providers: [tunnelStateProvider],
   tests: [new TunnelTestSuite()],
   init: async (_config, runtime) => {

@@ -50,6 +50,7 @@ from _common import (  # noqa: E402
     full_attention_layer_indices,
     get_text_config,
     head_dim_of,
+    kernel_manifest_fragment,
     load_calibration_prompts,
     load_model_and_tokenizer,
     save_model,
@@ -231,14 +232,36 @@ def _build_jl_projections(
     device: torch.device,
     dtype: torch.dtype,
 ) -> dict[int, torch.Tensor]:
-    """Per-layer (proj_dim, head_dim) JL projection matrices, deterministic in ``seed``."""
+    """Per-layer ``(head_dim, proj_dim)`` row-major JL projection matrices.
+
+    Layout matches the canonical kernel reference at
+    ``eliza/packages/native-plugins/qjl-cpu/include/qjl/qjl.h`` (Π row-major,
+    indexed as ``prj[i*proj_dim + j]``) and the verify harness reference at
+    ``eliza/packages/inference/verify/qjl_polar_ref.c``. A row of the matrix
+    is ``proj_dim`` floats; with the canonical (head_dim=128, proj_dim=256)
+    that's 1024 bytes per row and 131072 bytes (128 KiB) per matrix.
+
+    Bytes emitted by this function can be passed directly to qjl-cpu /
+    Metal / Vulkan / CUDA kernel call sites with no transpose at the
+    boundary. Sketch math is ``q_sketch = q @ pi`` where ``q`` has trailing
+    dim ``head_dim`` and ``pi`` is the returned ``(head_dim, proj_dim)``
+    matrix; the result has trailing dim ``proj_dim``.
+
+    Deterministic in ``seed`` — torch's Mersenne-Twister stream over
+    ``torch.randn(head_dim, proj_dim, ...)`` is invariant under the layout
+    swap (the buffer is the same fp32 numbers, only the interpretation of
+    rows-vs-columns differs). The legacy CUDA bridge that consumes
+    ``(sketch_dim, head_dim)`` gets a transpose at the call site (see
+    ``attach_qjl_to_cache``); the canonical training-side artifact stays
+    in ``(head_dim, proj_dim)``.
+    """
     projections: dict[int, torch.Tensor] = {}
     for layer_idx in full_attn_layer_indices:
         proj_dim = (
             proj_dim_initial if layer_idx < initial_layers_count else proj_dim_general
         )
         gen = torch.Generator(device="cpu").manual_seed(seed + int(layer_idx))
-        proj = torch.randn(proj_dim, head_dim, generator=gen, dtype=torch.float32)
+        proj = torch.randn(head_dim, proj_dim, generator=gen, dtype=torch.float32)
         projections[layer_idx] = proj.to(device=device, dtype=dtype)
     return projections
 
@@ -362,16 +385,25 @@ def attach_qjl_to_cache(model: nn.Module, cache: Cache, **qjl_cfg: object) -> Ca
             _, outlier_idx = group_norms.topk(outlier_count, dim=-1)
             outlier_idx_u8 = outlier_idx.to(torch.uint8).contiguous()
 
+            # The vendored CUDA / pure-PyTorch fallback in qjl/qjl_kernel.py
+            # expects ``rand_prj`` shaped ``(sketch_dim, head_dim)`` (it
+            # transposes internally). The training-side artifact is stored
+            # in the canonical ``(head_dim, proj_dim)`` row-major layout so
+            # the on-device qjl-cpu / Metal / Vulkan kernels can consume
+            # it with no transpose. Bridge the layout difference at the
+            # legacy-bridge boundary, not in the canonical store.
+            proj_legacy = proj.transpose(0, 1).contiguous()
+
             if backend == "cuda":
                 key_quant, key_outlier_quant, key_outliers_norm = (
                     kernel_module.qjl_quant(  # type: ignore[attr-defined]
-                        grouped, outlier_idx_u8, proj, outlier_sketch_dim,
+                        grouped, outlier_idx_u8, proj_legacy, outlier_sketch_dim,
                     )
                 )
             else:
                 key_quant, key_outlier_quant, key_outliers_norm = (
                     kernel_module.qjl_quantize_pytorch(  # type: ignore[attr-defined]
-                        grouped, outlier_idx_u8, proj, outlier_sketch_dim,
+                        grouped, outlier_idx_u8, proj_legacy, outlier_sketch_dim,
                     )
                 )
 
@@ -455,20 +487,24 @@ def attach_qjl_to_cache(model: nn.Module, cache: Cache, **qjl_cfg: object) -> Ca
                 f"decode_keys({layer_idx}) called but no compressed key exists yet."
             )
         packed = entry["packed"]
-        proj = entry["rand_prj"]
+        proj = entry["rand_prj"]  # (head_dim, proj_dim) row-major canonical
         norms = entry["norms"]
         B, H, G, GS, packed_dim = packed.shape
         sketch_dim = packed_dim * 8
         bit_idx = torch.arange(8, device=packed.device, dtype=torch.uint8)
         unpacked = ((packed.unsqueeze(-1) >> bit_idx) & 1).to(torch.float32)
         signs = unpacked.view(B, H, G, GS, sketch_dim) * 2.0 - 1.0
+        # Right pseudo-inverse of (head_dim, proj_dim) with head_dim < proj_dim:
+        # pinv(P) = P.T @ inv(P @ P.T), shape (proj_dim, head_dim).
+        # So k_hat = signs @ pinv(P), shape (..., head_dim).
         proj_f = proj.to(torch.float32)
-        gram = proj_f @ proj_f.transpose(0, 1)
-        proj_dagger = torch.linalg.solve(gram, proj_f)
-        k_hat = signs @ proj_dagger.transpose(0, 1)
+        gram = proj_f @ proj_f.transpose(0, 1)  # (head_dim, head_dim)
+        proj_dagger = proj_f.transpose(0, 1) @ torch.linalg.inv(gram)  # (proj_dim, head_dim)
+        k_hat = signs @ proj_dagger
         k_hat_norms = k_hat.norm(dim=-1, keepdim=True).clamp_min(1e-8)
         k_hat = k_hat * (norms.unsqueeze(-1) / k_hat_norms)
-        return k_hat.view(B, H, G * GS, proj.shape[1])
+        head_dim_out = proj.shape[0]
+        return k_hat.view(B, H, G * GS, head_dim_out)
 
     cache.get_compressed_key = _qjl_get_compressed_key  # type: ignore[attr-defined]
     cache.decode_keys = _qjl_decode_keys  # type: ignore[attr-defined]
@@ -592,6 +628,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
         "calibration_file": str(args.calibration) if args.calibration else None,
         "calibration": calibration_block,
+        "kernel_manifest": kernel_manifest_fragment("qjl"),
         "build_required_command": (
             "cd scripts/quantization/qjl && python setup.py build_ext --inplace"
         ),

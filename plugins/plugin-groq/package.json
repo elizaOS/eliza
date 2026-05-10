@@ -96,7 +96,7 @@
         "type": "string",
         "description": "Small model name",
         "required": false,
-        "default": "openai/gpt-oss-20b"
+        "default": "openai/gpt-oss-120b"
       },
       "GROQ_LARGE_MODEL": {
         "type": "string",

@@ -5,14 +5,14 @@
  * `TAILSCALE`-prefixed action names are kept as `similes` so older
  * characters and callers still resolve.
  *
- * Sub-ops (selected via the `op` parameter-enum):
+ * Sub-ops (selected via the `action` parameter-enum):
  *   - start  -> handleStartTunnel    (optional `port`, defaults to 3000)
  *   - stop   -> handleStopTunnel     (no parameters)
  *   - status -> handleGetTunnelStatus (no parameters)
  *
  * The handler accepts both call shapes:
- *   1. `{ op, ...subParams }`
- *   2. `{ parameters: { op, parameters: { ...subParams } } }` (LLM extraction)
+ *   1. `{ action, ...subParams }`
+ *   2. `{ parameters: { action, parameters: { ...subParams } } }` (LLM extraction)
  */
 
 import type {
@@ -37,16 +37,16 @@ function pickRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 function resolveDispatch(options: Record<string, unknown> | undefined): {
-  op: string | null;
+  action: string | null;
   subOptions: Record<string, unknown>;
 } {
   if (!options) {
-    return { op: null, subOptions: {} };
+    return { action: null, subOptions: {} };
   }
   const nested = pickRecord(options.parameters);
-  const opSource = nested ?? options;
-  const rawOp = opSource.op;
-  const op = typeof rawOp === 'string' ? rawOp.toLowerCase() : null;
+  const actionSource = nested ?? options;
+  const rawAction = actionSource.action ?? actionSource.subaction ?? actionSource.op;
+  const action = typeof rawAction === 'string' ? rawAction.toLowerCase() : null;
 
   let subOptions: Record<string, unknown>;
   if (nested) {
@@ -54,15 +54,21 @@ function resolveDispatch(options: Record<string, unknown> | undefined): {
     if (innerParams) {
       subOptions = { ...innerParams };
     } else {
-      const { op: _omitOp, parameters: _omitParams, ...rest } = nested;
+      const {
+        action: _omitAction,
+        subaction: _omitSubaction,
+        op: _omitOp,
+        parameters: _omitParams,
+        ...rest
+      } = nested;
       subOptions = rest;
     }
   } else {
-    const { op: _omitOp, ...rest } = options;
+    const { action: _omitAction, subaction: _omitSubaction, op: _omitOp, ...rest } = options;
     subOptions = rest;
   }
 
-  return { op, subOptions };
+  return { action, subOptions };
 }
 
 export const tunnelAction: Action = {
@@ -86,11 +92,11 @@ export const tunnelAction: Action = {
     'TUNNEL_STATUS',
   ],
   description:
-    'Tunnel operations dispatched by `op`: start, stop, status. The `start` op accepts an optional `port` (defaults to 3000); `stop` and `status` take no parameters. Backed by whichever tunnel plugin is active (local Tailscale CLI, Eliza Cloud headscale, or ngrok).',
+    'Tunnel operations dispatched by `action`: start, stop, status. The `start` action accepts an optional `port` (defaults to 3000); `stop` and `status` take no parameters. Backed by whichever tunnel plugin is active (local Tailscale CLI, Eliza Cloud headscale, or ngrok).',
 
   parameters: [
     {
-      name: 'op',
+      name: 'action',
       description: 'Which tunnel sub-operation to run. One of: start, stop, status.',
       required: true,
       schema: {
@@ -118,15 +124,15 @@ export const tunnelAction: Action = {
     options?: Record<string, unknown>,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const { op, subOptions } = resolveDispatch(options);
+    const { action, subOptions } = resolveDispatch(options);
 
-    if (!op) {
-      const err = `TUNNEL action requires \`op\` (one of: ${SUPPORTED_OPS.join(', ')})`;
+    if (!action) {
+      const err = `TUNNEL requires action=start|stop|status`;
       if (callback) await callback({ text: err });
       return { success: false, error: err };
     }
 
-    switch (op) {
+    switch (action) {
       case 'start':
         return handleStartTunnel(runtime, message, state, subOptions, callback);
       case 'stop':
@@ -134,7 +140,7 @@ export const tunnelAction: Action = {
       case 'status':
         return handleGetTunnelStatus(runtime, message, state, subOptions, callback);
       default: {
-        const err = `Unknown TUNNEL op "${op}". Supported: ${SUPPORTED_OPS.join(', ')}`;
+        const err = `Unknown TUNNEL action "${action}". Supported: ${SUPPORTED_OPS.join(', ')}`;
         if (callback) await callback({ text: err });
         return { success: false, error: err };
       }

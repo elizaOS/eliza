@@ -70,27 +70,32 @@ kernel void kernel_turbo3_dot(
         (device const block_turbo3_0 *)((device const uchar *)k_blocks + args.head_offset_bytes)
         + kv_idx * args.kv_stride_blocks;
 
-    // 32 threads × 4 elements = 128 head_dim entries. Loop must be unrolled
-    // by the compiler so the per-element block/byte/sign indices are constant
-    // expressions of (tid, local).
+    // 32 threads × 4 elements = 128 head_dim entries. Each thread's 4 elements
+    // (tid*4 + 0..3) lie wholly within ONE 32-element block (since 32 is a
+    // multiple of 4 and tid*4 ∈ {0,4,...,124}). Hoist block/norm/byte loads
+    // out of the inner loop — they are constant for the four `local` iters.
+    uint elem0   = tid * 4;                        // 0,4,...,124
+    uint blk_idx = elem0 >> 5;                     // 0..3
+    uint within0 = elem0 & 31;                     // 0,4,...,28
+    device const block_turbo3_0 & blk = grp[blk_idx];
+    float norm = float(blk.norm);
+    // All four elements of this thread share the same qs[] byte (within>>2 is
+    // constant for within = within0..within0+3) and the same signs[] byte
+    // (within>>3 is constant for within = within0..within0+3).
+    uint qb = blk.qs[within0 >> 2];
+    uint sb = blk.signs[within0 >> 3];
+    uint q_base = args.q_head * args.head_dim + elem0;
+
     float acc = 0.0f;
     for (uint local = 0; local < 4; ++local) {
-        uint elem = tid * 4 + local;          // 0..127
-        uint blk_idx = elem >> 5;             // 0..3
-        uint within  = elem & 31;             // 0..31
-
-        device const block_turbo3_0 & blk = grp[blk_idx];
-        float norm = float(blk.norm);
-
-        uint qb   = blk.qs[within >> 2];
+        uint within = within0 + local;            // within0..within0+3
         uint low2 = (qb >> ((within & 3) * 2)) & 0x3;
-        uint sb   = blk.signs[within >> 3];
         uint hi1  = (sb >> (within & 7)) & 0x1;
         uint idx  = low2 | (hi1 << 2);
 
         float k_val = TURBO_CENTROIDS_3BIT[idx] * norm;
-        float q_val = q[args.q_head * args.head_dim + elem];
-        acc += q_val * k_val;
+        float q_val = q[q_base + local];
+        acc = fma(q_val, k_val, acc);
     }
 
     // Threadgroup reduction. With threadgroup size == SIMD-group size == 32,
@@ -100,5 +105,67 @@ kernel void kernel_turbo3_dot(
     float sum = simd_sum(acc);
     if (tid == 0) {
         scores[args.q_head * args.n_kv + kv_idx] = sum;
+    }
+}
+
+// Multi-block-per-dispatch variant. Identical math; the threadgroup processes
+// `blocks_per_threadgroup` consecutive KV indices serially in a 32-thread loop,
+// trading dispatch grid breadth for amortised launch tax. Bench shape:
+//
+//     grid_x = ceil(n_kv / blocks_per_threadgroup)
+//     tg_x   = 32
+//
+// `args.q_head` / `args.head_offset_bytes` semantics unchanged. The shader
+// derives the absolute kv index from `tg_pos.x * blocks_per_threadgroup + b`
+// where `b` is the inner loop counter.
+struct turbo_dot_multi_args {
+    uint head_dim;
+    uint n_kv;
+    uint kv_stride_blocks;
+    uint q_head;
+    uint head_offset_bytes;
+    uint blocks_per_threadgroup;
+};
+
+kernel void kernel_turbo3_dot_multi(
+        device const float          * q             [[buffer(0)]],
+        device const block_turbo3_0 * k_blocks      [[buffer(1)]],
+        device       float          * scores        [[buffer(2)]],
+        constant     turbo_dot_multi_args & args    [[buffer(3)]],
+        uint                          tid           [[thread_position_in_threadgroup]],
+        uint                          tg_idx        [[threadgroup_position_in_grid]]) {
+    uint elem0   = tid * 4;
+    uint blk_idx = elem0 >> 5;
+    uint within0 = elem0 & 31;
+    uint q_base  = args.q_head * args.head_dim + elem0;
+
+    uint kv_base = tg_idx * args.blocks_per_threadgroup;
+    for (uint b = 0; b < args.blocks_per_threadgroup; ++b) {
+        uint kv_idx = kv_base + b;
+        if (kv_idx >= args.n_kv) return;
+
+        device const block_turbo3_0 * grp =
+            (device const block_turbo3_0 *)((device const uchar *)k_blocks + args.head_offset_bytes)
+            + kv_idx * args.kv_stride_blocks;
+        device const block_turbo3_0 & blk = grp[blk_idx];
+        float norm = float(blk.norm);
+        uint qb = blk.qs[within0 >> 2];
+        uint sb = blk.signs[within0 >> 3];
+
+        float acc = 0.0f;
+        for (uint local = 0; local < 4; ++local) {
+            uint within = within0 + local;
+            uint low2 = (qb >> ((within & 3) * 2)) & 0x3;
+            uint hi1  = (sb >> (within & 7)) & 0x1;
+            uint idx  = low2 | (hi1 << 2);
+            float k_val = TURBO_CENTROIDS_3BIT[idx] * norm;
+            float q_val = q[q_base + local];
+            acc = fma(q_val, k_val, acc);
+        }
+
+        float sum = simd_sum(acc);
+        if (tid == 0) {
+            scores[args.q_head * args.n_kv + kv_idx] = sum;
+        }
     }
 }

@@ -54,14 +54,14 @@ function formatStreams(stdout: string, stderr: string): string {
 }
 
 
-export const bashAction: Action = {
-  name: "BASH",
+export const shellAction: Action = {
+  name: "SHELL",
   contexts: [...CODING_TOOLS_CONTEXTS],
   roleGate: { minRole: "OWNER" },
   contextGate: { anyOf: ["code", "terminal", "automation"] },
-  similes: ["SHELL", "EXEC", "RUN_COMMAND"],
+  similes: ["BASH", "EXEC", "RUN_COMMAND"],
   description:
-    "Execute a shell command via /bin/bash -c <command>. Runs synchronously in the session cwd by default. Returns stdout, stderr, and exit code. Hard timeout kills the command. Paths under the configured blocklist are off-limits as cwd.",
+    "Execute a shell command via the configured local shell. Runs synchronously in the session cwd by default. Returns stdout, stderr, and exit code. Hard timeout kills the command. Paths under the configured blocklist are off-limits as cwd.",
   descriptionCompressed: "Run a shell command synchronously.",
   parameters: [
     {
@@ -103,7 +103,7 @@ export const bashAction: Action = {
     if (!command || command.trim().length === 0) {
       return failureToActionResult({
         reason: "missing_param",
-        message: "BASH requires 'command' (string)",
+        message: "SHELL requires 'command' (string)",
       });
     }
     const cwdParam = readStringParam(options, "cwd");
@@ -168,14 +168,14 @@ export const bashAction: Action = {
     );
 
     coreLogger.debug(
-      `${CODING_TOOLS_LOG_PREFIX} BASH cwd=${cwd} timeout=${timeout}ms`,
+      `${CODING_TOOLS_LOG_PREFIX} SHELL cwd=${cwd} timeout=${timeout}ms`,
     );
 
     const startedAt = Date.now();
     const mode = resolveRuntimeExecutionMode(runtime);
     if (mode === "cloud") {
       coreLogger.error(
-        `${CODING_TOOLS_LOG_PREFIX} BASH cloud-mode denied: local exec disabled`,
+        `${CODING_TOOLS_LOG_PREFIX} SHELL cloud-mode denied: local exec disabled`,
       );
       return failureToActionResult(
         {
@@ -187,7 +187,7 @@ export const bashAction: Action = {
     }
 
     coreLogger.info(
-      `${CODING_TOOLS_LOG_PREFIX} BASH mode=${mode} cwd=${cwd}`,
+      `${CODING_TOOLS_LOG_PREFIX} SHELL mode=${mode} cwd=${cwd}`,
     );
 
     let result: ShellResult;
@@ -195,7 +195,7 @@ export const bashAction: Action = {
       result = await runShell(runtime, { command, cwd, timeoutMs: timeout });
     } catch (err) {
       const message = (err as Error).message;
-      coreLogger.error(`${CODING_TOOLS_LOG_PREFIX} BASH dispatch failed: ${message}`);
+      coreLogger.error(`${CODING_TOOLS_LOG_PREFIX} SHELL dispatch failed: ${message}`);
       return failureToActionResult({ reason: "internal", message }, { cwd });
     }
 
@@ -243,9 +243,9 @@ export const bashAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "$ git status\n[exit 0]",
-          actions: ["BASH"],
+          actions: ["SHELL"],
           thought:
-            "Plain shell command request maps to BASH with command='git status' in the session cwd.",
+            "Plain shell command request maps to SHELL with command='git status' in the session cwd.",
         },
       },
     ],
@@ -261,11 +261,13 @@ export const bashAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "$ bun run build\n[exit 0]",
-          actions: ["BASH"],
+          actions: ["SHELL"],
           thought:
-            "Long-running build maps to BASH with command and timeout=300000 to fit the 5-minute window.",
+            "Long-running build maps to SHELL with command and timeout=300000 to fit the 5-minute window.",
         },
       },
     ],
   ],
 };
+
+export const bashAction = shellAction;

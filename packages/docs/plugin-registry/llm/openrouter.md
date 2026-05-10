@@ -96,12 +96,11 @@ OpenRouter provides access to models from all major providers. Use the full prov
 | `anthropic/claude-sonnet-4.6` | Balanced Claude |
 | `anthropic/claude-haiku-4.5` | Fastest Claude |
 
-### Meta via OpenRouter
+### OpenAI via OpenRouter
 
 | Model ID | Description |
 |---------|-------------|
-| `meta-llama/llama-3.3-70b-instruct` | Llama 3.3 70B |
-| `meta-llama/llama-3.1-405b-instruct` | Llama 3.1 405B |
+| `openai/gpt-oss-120b` | GPT-OSS 120B |
 
 ### Google via OpenRouter
 
@@ -158,8 +157,7 @@ OpenRouter supports routing preferences for cost, latency, or throughput:
 
 OpenRouter offers free access to a selection of open-source models (rate-limited):
 
-- `meta-llama/llama-3.2-3b-instruct:free`
-- `google/gemma-2-9b-it:free`
+- `openai/gpt-oss-120b:free`
 - `mistralai/mistral-7b-instruct:free`
 
 ## Rate Limits and Pricing

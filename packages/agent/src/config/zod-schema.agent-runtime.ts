@@ -233,6 +233,35 @@ export const ToolsWebSchema = z
   .strict()
   .optional();
 
+/**
+ * Top-level cross-tool cache config. Drives the two-tier `ToolCallCache`
+ * (in-memory LRU + on-disk persistent under ~/.milady/tool-cache).
+ *
+ * Per-tool TTL overrides live under `perTool` keyed by tool name; values
+ * are minutes for parity with the existing web search/fetch knobs. The
+ * `cacheTtlMinutes` fields on `tools.web.search` / `tools.web.fetch` are
+ * preserved for back-compat and feed into the same cache.
+ */
+export const ToolsCacheSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    memoryCapacity: z.number().int().positive().optional(),
+    diskRoot: z.string().optional(),
+    perTool: z
+      .record(
+        z.string(),
+        z
+          .object({
+            ttlMinutes: z.number().nonnegative().optional(),
+            version: z.string().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+  })
+  .strict()
+  .optional();
+
 export const ToolProfileSchema = z
   .union([
     z.literal("minimal"),
@@ -500,6 +529,7 @@ export const ToolsSchema = z
     deny: z.array(z.string()).optional(),
     byProvider: z.record(z.string(), ToolPolicyWithProfileSchema).optional(),
     web: ToolsWebSchema,
+    cache: ToolsCacheSchema,
     media: ToolsMediaSchema,
     links: ToolsLinksSchema,
     message: z

@@ -138,18 +138,32 @@ export function retrieveActions(
 			stageScores.embedding = roundScore(embedding);
 		}
 
+		const baseScore = Math.max(
+			exact,
+			regex,
+			keyword > 0 ? 0.35 + keyword * 0.5 : 0,
+			bm25 > 0 ? 0.28 + bm25 * (isBareSingleTokenQuery ? 0.38 : 0.49) : 0,
+			embedding > 0 ? 0.25 + embedding * 0.45 : 0,
+			rrf > 0 ? 0.2 + rrf * (isBareSingleTokenQuery ? 0.45 : 0.5) : 0,
+		);
+
 		// Context-match boost: when the messageHandler picked contexts that
 		// intersect this parent's declared `contexts`, give it a meaningful
 		// additive bump. The boost is large enough to reorder tier-A when a
 		// context-aligned candidate has a comparable raw retrieval score
 		// (e.g. LIFE vs BLOCK both keyword-match "every day" — context says
-		// the user is in tasks/general, so LIFE wins). Capped so a strong
-		// retrieval signal on a context-misaligned action can still surface.
+		// the user is in tasks/general, so LIFE wins). Context alone is not a
+		// retrieval signal; otherwise every action sharing a broad context can
+		// leak into Tier B without matching the turn.
 		const parentContexts = Array.isArray(parent.contexts)
 			? (parent.contexts as readonly unknown[])
 			: [];
 		let contextBoost = 0;
-		if (selectedContextSet.size > 0 && parentContexts.length > 0) {
+		if (
+			baseScore > 0 &&
+			selectedContextSet.size > 0 &&
+			parentContexts.length > 0
+		) {
 			const intersect = parentContexts.some((c) =>
 				selectedContextSet.has(String(c).toLowerCase()),
 			);
@@ -159,14 +173,6 @@ export function retrieveActions(
 			}
 		}
 
-		const baseScore = Math.max(
-			exact,
-			regex,
-			keyword > 0 ? 0.35 + keyword * 0.5 : 0,
-			bm25 > 0 ? 0.28 + bm25 * (isBareSingleTokenQuery ? 0.38 : 0.49) : 0,
-			embedding > 0 ? 0.25 + embedding * 0.45 : 0,
-			rrf > 0 ? 0.2 + rrf * (isBareSingleTokenQuery ? 0.45 : 0.5) : 0,
-		);
 		const score = clampScore(baseScore + contextBoost);
 
 		return {

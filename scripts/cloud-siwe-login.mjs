@@ -15,10 +15,10 @@
  *      → { apiKey, address, isNewAccount, user, organization }
  *
  * Usage:
- *   MILADY_TEST_WALLET_PRIVATE_KEY=0x... \
- *   node scripts/cloud-siwe-login.mjs [--base-url https://www.elizacloud.ai] [--chain-id 1] [--json]
+ *   ELIZA_CLOUD_WALLET_PRIVATE_KEY=0x... \
+ *   node scripts/cloud-siwe-login.mjs [--base-url https://api.elizacloud.ai] [--chain-id 1] [--json]
  *
- * The output (default) is a single line `MILADY_DEV_CLOUD_API_KEY=<key>` so it
+ * The output (default) is a single line `ELIZAOS_CLOUD_API_KEY=<key>` so it
  * can be eval'd into a shell. Pass --json for the full verify response.
  */
 
@@ -26,15 +26,16 @@ import { createSiweMessage } from "viem/siwe";
 import { privateKeyToAccount } from "viem/accounts";
 
 function parseArgs(argv) {
-  const args = { baseUrl: null, chainId: 1, json: false };
+  const args = { baseUrl: null, chainId: 1, envName: "ELIZAOS_CLOUD_API_KEY", json: false };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--base-url") args.baseUrl = argv[++i];
     else if (a === "--chain-id") args.chainId = Number.parseInt(argv[++i], 10);
+    else if (a === "--env-name") args.envName = argv[++i];
     else if (a === "--json") args.json = true;
     else if (a === "--help" || a === "-h") {
       console.error(
-        "Usage: MILADY_TEST_WALLET_PRIVATE_KEY=0x... node scripts/cloud-siwe-login.mjs [--base-url URL] [--chain-id N] [--json]",
+        "Usage: ELIZA_CLOUD_WALLET_PRIVATE_KEY=0x... node scripts/cloud-siwe-login.mjs [--base-url URL] [--chain-id N] [--env-name NAME] [--json]",
       );
       process.exit(0);
     } else {
@@ -45,17 +46,28 @@ function parseArgs(argv) {
   return args;
 }
 
+function normalizeApiAuthBaseUrl(value) {
+  return value.replace(/\/+$/, "").replace(/\/api\/v1$/, "");
+}
+
 async function main() {
   const args = parseArgs(process.argv);
-  const baseUrl =
+  const baseUrl = normalizeApiAuthBaseUrl(
     args.baseUrl ??
-    process.env.ELIZAOS_CLOUD_BASE_URL ??
-    "https://www.elizacloud.ai";
+      process.env.ELIZA_CLOUD_API_BASE_URL ??
+      process.env.ELIZAOS_CLOUD_API_BASE_URL ??
+      process.env.ELIZA_CLOUD_BASE_URL ??
+      process.env.ELIZAOS_CLOUD_BASE_URL ??
+      "https://api.elizacloud.ai",
+  );
 
-  const pk = process.env.MILADY_TEST_WALLET_PRIVATE_KEY;
+  const pk =
+    process.env.ELIZA_CLOUD_WALLET_PRIVATE_KEY ??
+    process.env.ELIZAOS_CLOUD_WALLET_PRIVATE_KEY ??
+    process.env.MILADY_TEST_WALLET_PRIVATE_KEY;
   if (!pk) {
     console.error(
-      "MILADY_TEST_WALLET_PRIVATE_KEY is required (0x-prefixed 32-byte hex).",
+      "ELIZA_CLOUD_WALLET_PRIVATE_KEY is required (0x-prefixed 32-byte hex). Legacy MILADY_TEST_WALLET_PRIVATE_KEY is still accepted.",
     );
     process.exit(2);
   }
@@ -106,7 +118,7 @@ async function main() {
   if (args.json) {
     process.stdout.write(`${JSON.stringify(verifyBody, null, 2)}\n`);
   } else {
-    process.stdout.write(`MILADY_DEV_CLOUD_API_KEY=${verifyBody.apiKey}\n`);
+    process.stdout.write(`${args.envName}=${verifyBody.apiKey}\n`);
     process.stderr.write(
       `[cloud-siwe-login] address=${verifyBody.address} isNewAccount=${verifyBody.isNewAccount} userId=${verifyBody.user?.id ?? "?"} orgId=${verifyBody.user?.organization_id ?? "?"}\n`,
     );

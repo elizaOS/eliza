@@ -486,8 +486,7 @@ function isRetryableCaseError(error: string | undefined): boolean {
 
 /**
  * Inter-case pause to prevent the benchmark from saturating TPM limits on
- * throughput-constrained providers (e.g. GROQ llama-3.1-8b-instant has a
- * 250k TPM ceiling that a 69-case run will otherwise wipe out). Override
+ * throughput-constrained providers. Override
  * with `ELIZA_BENCHMARK_CASE_PAUSE_MS`. Default is off for local non-TPM
  * providers; opt-in for rate-limited providers.
  */

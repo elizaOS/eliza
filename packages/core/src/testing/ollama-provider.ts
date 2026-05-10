@@ -24,9 +24,9 @@ const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 
 /** Default models for different types */
 const DEFAULT_MODELS = {
-	text_small: process.env.OLLAMA_SMALL_MODEL || "llama3.2:1b",
-	text_large: process.env.OLLAMA_LARGE_MODEL || "llama3.2:3b",
-	embedding: process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text",
+	text_small: process.env.OLLAMA_SMALL_MODEL || "eliza-1-2b",
+	text_large: process.env.OLLAMA_LARGE_MODEL || "eliza-1-9b",
+	embedding: process.env.OLLAMA_EMBEDDING_MODEL || "eliza-1-2b",
 } as const;
 
 /**

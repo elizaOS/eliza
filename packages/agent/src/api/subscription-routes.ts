@@ -19,6 +19,7 @@ export type SubscriptionAuthApi = Pick<
   | "saveCredentials"
   | "applySubscriptionCredentials"
   | "deleteCredentials"
+  | "deleteProviderCredentials"
 >;
 
 export interface SubscriptionRouteState {
@@ -270,8 +271,8 @@ export async function handleSubscriptionRoutes(
     const provider = pathname.split("/").pop();
     if (provider === "anthropic-subscription" || provider === "openai-codex") {
       try {
-        const { deleteCredentials } = await loadSubscriptionAuth();
-        deleteCredentials(provider);
+        const { deleteProviderCredentials } = await loadSubscriptionAuth();
+        deleteProviderCredentials(provider);
 
         if (provider === "anthropic-subscription" && state.config.env) {
           delete (state.config.env as Record<string, unknown>)

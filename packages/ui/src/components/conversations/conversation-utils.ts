@@ -133,7 +133,6 @@ export function estimateTokenCost(
     "gemini-2.5-pro": [1.25, 10.0],
     "gemini-2.0-flash": [0.1, 0.4],
     deepseek: [0.55, 2.19],
-    qwen: [0.35, 1.4],
     kimi: [0.2, 0.8],
     moonshot: [0.2, 0.8],
   };

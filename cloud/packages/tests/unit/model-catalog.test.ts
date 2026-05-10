@@ -27,10 +27,10 @@ describe("Groq catalog helpers", () => {
 
 describe("Vast catalog helpers", () => {
   test("recognizes static Vast native model ids", () => {
-    expect(isVastNativeModel("vast/qwen3.6-27b-neo-code")).toBe(true);
-    expect(isVastNativeModel("vast/qwen3.5-4b-dflash")).toBe(true);
-    expect(isVastNativeModel("vast/qwen3.5-9b-dflash")).toBe(true);
-    expect(isVastNativeModel("vast/qwen3.6-27b-dflash")).toBe(true);
+    expect(isVastNativeModel("vast/eliza-1-27b")).toBe(true);
+    expect(isVastNativeModel("vast/eliza-1-2b")).toBe(true);
+    expect(isVastNativeModel("vast/eliza-1-9b")).toBe(true);
+    expect(isVastNativeModel("vast/eliza-1-27b")).toBe(true);
     expect(isVastNativeModel("vast/eliza-1-9b")).toBe(true);
     expect(isVastNativeModel("vast/eliza-1-27b")).toBe(true);
     expect(isVastNativeModel("openai/gpt-5.4")).toBe(false);

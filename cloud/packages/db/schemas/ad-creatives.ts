@@ -71,6 +71,7 @@ export const adCreatives = pgTable(
           id: string;
           source: "generation" | "upload";
           url: string;
+          providerAssetId?: string;
           thumbnail_url?: string;
           type: "image" | "video";
           order: number;
@@ -85,6 +86,9 @@ export const adCreatives = pgTable(
         // Meta-specific
         facebook_page_id?: string;
         instagram_account_id?: string;
+        // TikTok-specific
+        tiktok_identity_id?: string;
+        tiktok_identity_type?: string;
         // Review feedback
         rejection_reason?: string;
         review_feedback?: string;

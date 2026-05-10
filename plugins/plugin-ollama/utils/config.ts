@@ -14,9 +14,9 @@ type SettingsProvider = {
 };
 
 export const DEFAULT_OLLAMA_URL = "http://localhost:11434";
-export const DEFAULT_SMALL_MODEL = "qwen3.5:latest";
-export const DEFAULT_LARGE_MODEL = "qwen3.6:latest";
-export const DEFAULT_EMBEDDING_MODEL = "nomic-embed-text:latest";
+export const DEFAULT_SMALL_MODEL = "eliza-1-2b";
+export const DEFAULT_LARGE_MODEL = "eliza-1-9b";
+export const DEFAULT_EMBEDDING_MODEL = "eliza-1-2b";
 
 function getEnvValue(key: string): string | undefined {
   if (typeof process === "undefined" || !process.env) {

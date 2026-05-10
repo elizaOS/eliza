@@ -5,7 +5,7 @@
   "model_repo": "elizaos/eliza-1-2b",
   "model_alias": "vast/eliza-1-2b",
   "served_model_name": "eliza-1-2b",
-  "registry_key": "qwen3.5-2b",
+  "registry_key": "eliza-1-2b",
   "gpu_target": "rtx5090-1x",
   "image": "vllm/vllm-openai:v0.20.1",
   "min_disk_gb": 30,
@@ -18,8 +18,8 @@
   "max_model_len": 131072,
   "weight_quantization": "awq_marlin",
   "kv_cache_dtype": "auto",
-  "tool_parser": "qwen3_coder",
-  "reasoning_parser": "qwen3",
+  "tool_parser": "eliza1",
+  "reasoning_parser": "eliza1",
   "search_params": {
     "gpu_name": ["RTX_5090", "RTX_4090", "RTX_PRO_5000", "L40S"],
     "gpu_ram": ">=24000",
@@ -31,7 +31,7 @@
   "vast_template_env": {
     "MODEL_REPO": "elizaos/eliza-1-2b",
     "MODEL_ALIAS": "vast/eliza-1-2b",
-    "VLLM_REGISTRY_KEY": "qwen3.5-2b"
+    "VLLM_REGISTRY_KEY": "eliza-1-2b"
   },
   "onstart_script": "onstart-vllm.sh",
   "notes": "Single-GPU vLLM serve for the 2B Eliza line. KV cache is left on auto by default because this tier is not memory-bound on 24 GB cards; set VLLM_ENABLE_TURBOQUANT=1 to use the quality preset."

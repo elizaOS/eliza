@@ -12,12 +12,20 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping
 
 import torch
 import torch.nn as nn
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+
+if TYPE_CHECKING:
+    # Static-only import. ``PretrainedConfig`` is the upstream type for
+    # every HF causal-LM config (``model.config``); importing it eagerly
+    # would force transformers at import time even for tests that just
+    # want the helpers below. Behind ``TYPE_CHECKING`` mypy/pyright still
+    # see the strong type and reject helpers that misuse the config.
+    from transformers import PretrainedConfig
 
 log = logging.getLogger(__name__)
 
@@ -90,6 +98,18 @@ def write_sidecar(output_dir: Path, filename: str, payload: Mapping[str, object]
     out = output_dir / filename
     out.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     return out
+
+
+# Re-export from the zero-dep _kernel_manifest module so existing recipe
+# imports (`from _common import kernel_manifest_fragment`) keep working
+# while unit tests can import the helper without pulling in transformers.
+from _kernel_manifest import (  # noqa: E402,F401
+    KERNEL_BLOCK_LAYOUT_VERSIONS,
+    KERNEL_CODEBOOK_HASHES,
+    KERNEL_PER_BLOCK_TOLERANCE,
+    KERNEL_TARGETS,
+    kernel_manifest_fragment,
+)
 
 
 def get_text_config(model_config: object) -> object:

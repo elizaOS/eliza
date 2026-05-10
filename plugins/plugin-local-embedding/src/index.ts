@@ -122,21 +122,15 @@ type EmbeddingModelHint = {
 
 const EMBEDDING_MODEL_HINTS: EmbeddingModelHint[] = [
   {
-    pattern: /nomic-embed-text-v1\.5/i,
-    repo: "nomic-ai/nomic-embed-text-v1.5-GGUF",
-    dimensions: 768,
-    contextSize: 8192,
+    pattern: /eliza-1-lite/i,
+    repo: "elizalabs/eliza-1-lite-0_6b",
+    dimensions: 1024,
+    contextSize: 32768,
   },
   {
-    pattern: /bge-small-en-v1\.5/i,
-    repo: "ChristianAzinn/bge-small-en-v1.5-gguf",
-    dimensions: 384,
-    contextSize: 512,
-  },
-  {
-    pattern: /e5-mistral-7b/i,
-    repo: "dranger003/e5-mistral-7b-instruct-GGUF",
-    dimensions: 4096,
+    pattern: /eliza-1-mobile/i,
+    repo: "elizalabs/eliza-1-mobile-1_7b",
+    dimensions: 2048,
     contextSize: 32768,
   },
 ];
@@ -239,9 +233,8 @@ function safeUnlink(filePath: string): void {
  * Sliding-window chunking with overlap, tuned for embedding models.
  *
  * WHY this is here (per CLAUDE.md, this is one of the rare load-bearing
- * comments): embedding models have a *hard* context window — bge-small
- * is 512 tokens, nomic-embed is 8k. Inputs longer than that have to be
- * split before embedding, then re-aggregated.
+ * comments): embedding models have a *hard* context window. Inputs longer
+ * than that have to be split before embedding, then re-aggregated.
  *
  * Strategy:
  *   1. Approximate token count as `Math.ceil(text.length / 4)` —

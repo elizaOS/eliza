@@ -12,7 +12,7 @@ This plugin connects [Ollama](https://ollama.com/) to ElizaOS so agents can use 
 
 - [Ollama](https://ollama.com/) installed and reachable (same machine or network).
 - ElizaOS runtime with this package enabled.
-- At least one pulled model, e.g. `ollama pull qwen3.5:latest`.
+- At least one Eliza-1 model created, e.g. `ollama create eliza-1-2b -f packages/training/cloud/ollama/Modelfile.eliza-1-2b-q4_k_m`.
 
 ## Installation
 
@@ -76,9 +76,9 @@ Environment variables (or character `settings` with the same keys—**why:** let
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `OLLAMA_API_ENDPOINT` | `http://localhost:11434` (normalized to `…/api`) | Ollama HTTP API base. |
-| `OLLAMA_SMALL_MODEL` / `SMALL_MODEL` | `qwen3.5:latest` | Small / fast text model. |
-| `OLLAMA_LARGE_MODEL` / `LARGE_MODEL` | `qwen3.6:latest` | Larger text model. |
-| `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text:latest` | Embedding model id. |
+| `OLLAMA_SMALL_MODEL` / `SMALL_MODEL` | `eliza-1-2b` | Small / fast text model. |
+| `OLLAMA_LARGE_MODEL` / `LARGE_MODEL` | `eliza-1-9b` | Larger text model. |
+| `OLLAMA_EMBEDDING_MODEL` | `eliza-1-2b` | Embedding model id. |
 | `OLLAMA_DISABLE_STRUCTURED_OUTPUT` | _unset_ | If `1` / `true` / `yes` / `on`, **disables** JSON-schema structured text (see below). |
 
 Optional model overrides: `OLLAMA_NANO_MODEL`, `OLLAMA_MEDIUM_MODEL`, `OLLAMA_MEGA_MODEL`, `OLLAMA_RESPONSE_HANDLER_MODEL`, `OLLAMA_ACTION_PLANNER_MODEL` (see `utils/config.ts`). **Why separate keys:** v5 Stage 1 (`RESPONSE_HANDLER`) is tool-heavy—you may want a larger tag than `TEXT_SMALL` without paying that cost on every `TEXT_LARGE` reply; planners often default to medium-sized models for latency.
@@ -87,9 +87,9 @@ Optional model overrides: `OLLAMA_NANO_MODEL`, `OLLAMA_MEDIUM_MODEL`, `OLLAMA_ME
 
 ```
 OLLAMA_API_ENDPOINT=http://localhost:11434/api
-OLLAMA_SMALL_MODEL=qwen3.5:latest
-OLLAMA_LARGE_MODEL=qwen3.6:latest
-OLLAMA_EMBEDDING_MODEL=nomic-embed-text:latest
+OLLAMA_SMALL_MODEL=eliza-1-2b
+OLLAMA_LARGE_MODEL=eliza-1-9b
+OLLAMA_EMBEDDING_MODEL=eliza-1-2b
 ```
 
 ### Example `settings` block
@@ -98,9 +98,9 @@ OLLAMA_EMBEDDING_MODEL=nomic-embed-text:latest
 {
   "settings": {
     "OLLAMA_API_ENDPOINT": "http://localhost:11434/api",
-    "OLLAMA_SMALL_MODEL": "qwen3.5:latest",
-    "OLLAMA_LARGE_MODEL": "qwen3.6:latest",
-    "OLLAMA_EMBEDDING_MODEL": "nomic-embed-text:latest"
+    "OLLAMA_SMALL_MODEL": "eliza-1-2b",
+    "OLLAMA_LARGE_MODEL": "eliza-1-9b",
+    "OLLAMA_EMBEDDING_MODEL": "eliza-1-2b"
   }
 }
 ```

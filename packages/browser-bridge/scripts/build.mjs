@@ -31,8 +31,24 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
   await fs.rm(outputDir, { recursive: true, force: true });
   await fs.mkdir(outputDir, { recursive: true });
 
+  // Inline the wallet-shim template so the wallet-shim content script is
+  // self-contained and can build the MAIN-world payload without filesystem
+  // access at runtime. Resolved relative to plugin-wallet's source tree.
+  const walletShimTemplatePath = path.resolve(
+    extensionRoot,
+    "..",
+    "..",
+    "plugins",
+    "plugin-wallet",
+    "src",
+    "browser-shim",
+    "shim.template.js",
+  );
+  const walletShimTemplate = await fs.readFile(walletShimTemplatePath, "utf8");
+
   const define = {
     __BROWSER_BRIDGE_KIND__: JSON.stringify(kind),
+    __WALLET_SHIM_TEMPLATE__: JSON.stringify(walletShimTemplate),
   };
 
   const buildResult = await Bun.build({
@@ -41,6 +57,7 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
       path.join(extensionRoot, "entrypoints", "content.ts"),
       path.join(extensionRoot, "entrypoints", "popup.ts"),
       path.join(extensionRoot, "entrypoints", "blocked.ts"),
+      path.join(extensionRoot, "entrypoints", "wallet-shim.ts"),
     ],
     outdir: outputDir,
     target: "browser",
@@ -102,6 +119,17 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
         matches: ["<all_urls>"],
         js: ["content.js"],
         run_at: "document_idle",
+      },
+      {
+        // wallet-shim must run before page scripts so window.solana /
+        // window.ethereum are present for the dApp's own provider-detection
+        // logic. It runs in the default isolated world (it just injects a
+        // <script>textContent=...></script> into the page DOM, which executes
+        // in MAIN world).
+        matches: ["<all_urls>"],
+        js: ["wallet-shim.js"],
+        run_at: "document_start",
+        all_frames: true,
       },
     ],
     icons: {

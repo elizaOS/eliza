@@ -57,6 +57,7 @@ import type { Service, ServiceTypeName } from "./service";
 import type { State } from "./state";
 import type { Task, TaskWorker } from "./task";
 import type { ToolPolicyConfig, ToolProfileId } from "./tools";
+import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 
 export {
 	type SearchCategoryEnumerationOptions,
@@ -447,6 +448,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	providers: Provider[];
 	actions: Action[];
 	evaluators: RegisteredEvaluator[];
+	responseHandlerEvaluators: ResponseHandlerEvaluator[];
 	plugins: Plugin[];
 	services: Map<ServiceTypeName, Service[]>;
 	events: RuntimeEventStorage;
@@ -589,6 +591,8 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	unregisterAction(name: string): boolean;
 	registerEvaluator(evaluator: RegisteredEvaluator): void;
 	unregisterEvaluator(name: string): boolean;
+	registerResponseHandlerEvaluator(evaluator: ResponseHandlerEvaluator): void;
+	unregisterResponseHandlerEvaluator(name: string): boolean;
 
 	/**
 	 * Get all registered actions.

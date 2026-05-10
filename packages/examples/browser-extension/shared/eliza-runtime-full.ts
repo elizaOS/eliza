@@ -305,11 +305,11 @@ function applySettings(
     runtime.setSetting("GROQ_BASE_URL", config.provider.groqBaseUrl ?? "");
     runtime.setSetting(
       "GROQ_SMALL_MODEL",
-      config.provider.groqSmallModel ?? "llama-3.1-8b-instant",
+      config.provider.groqSmallModel ?? "openai/gpt-oss-120b",
     );
     runtime.setSetting(
       "GROQ_LARGE_MODEL",
-      config.provider.groqLargeModel ?? "llama-3.3-70b-versatile",
+      config.provider.groqLargeModel ?? "openai/gpt-oss-120b",
     );
   }
 }

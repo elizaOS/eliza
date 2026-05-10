@@ -1,13 +1,13 @@
 # vast-pyworker — GGUF / DFlash on Vast Serverless
 
 PyWorker that fronts a `llama.cpp` `llama-server` hosting the Q6_K GGUF of
-[`DavidAU/Qwen3.6-27B-Heretic-Uncensored-FINETUNE-NEO-CODE-Di-IMatrix-MAX-GGUF`][1]
+[`elizaos/eliza-1-27b-fp8`][1]
 on a single RTX 5090 worker. Deployed by Vast.ai Serverless; the template
 defines the image and the on-start script, both committed in this repo.
-The same worker can serve Qwen3.5/3.6 DFlash target+drafter pairs when the
+The same worker can serve Eliza-1/3.6 DFlash target+drafter pairs when the
 template image provides a DFlash-capable `llama-server` fork.
 
-[1]: https://huggingface.co/DavidAU/Qwen3.6-27B-Heretic-Uncensored-FINETUNE-NEO-CODE-Di-IMatrix-MAX-GGUF
+[1]: https://huggingface.co/elizaos/eliza-1-27b-fp8
 
 ## Why GGUF + llama.cpp (not vLLM)
 
@@ -108,12 +108,12 @@ docker build -f cloud/services/vast-pyworker/Dockerfile.dflash \
   -t ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash .
 docker push ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash
 
-VAST_TEMPLATE_NAME=eliza-cloud-qwen3.6-27b-dflash \
+VAST_TEMPLATE_NAME=eliza-cloud-eliza-1-27b \
 VAST_IMAGE=ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash \
-MODEL_REPO=bartowski/Qwen_Qwen3.6-27B-GGUF \
-MODEL_FILE=Qwen_Qwen3.6-27B-Q4_K_M.gguf \
-MODEL_ALIAS=vast/qwen3.6-27b-dflash \
-DFLASH_DRAFTER_REPO=spiritbuun/Qwen3.6-27B-DFlash-GGUF \
+MODEL_REPO=elizaos/eliza-1-27b-gguf-q4_k_m \
+MODEL_FILE=text/eliza-1-pro-27b-128k.gguf \
+MODEL_ALIAS=vast/eliza-1-27b \
+DFLASH_DRAFTER_REPO=spiritbuun/Eliza-1-27B-DFlash-GGUF \
 DFLASH_DRAFTER_FILE=dflash-draft-3.6-q8_0.gguf \
 LLAMA_CONTEXT=8192 \
 LLAMA_DRAFT_CONTEXT=256 \
@@ -121,14 +121,14 @@ LLAMA_DRAFT_MAX=16 \
 bun cloud/scripts/vast/upsert-template.ts
 ```
 
-For Qwen3.5 4B/9B, use `bartowski/Qwen_Qwen3.5-{4B,9B}-GGUF` as the target
-repo and `psychopenguin/Qwen3.5-{4B,9B}-DFlash-FP16-GGUF` with the
-`*-DFlash-Q4_K_M.gguf` drafter. Those Qwen3.5 drafters are repaired on startup
+For smaller tiers, use the canonical `elizaos/eliza-1-*` GGUF repos as the
+target repo and the corresponding Eliza-1 DFlash drafter. Those drafters are
+repaired on startup
 when they are missing `tokenizer.ggml.merges`; bundle llama.cpp's `gguf-py`
 next to `llama-server` or set `GGUF_PYTHONPATH` in the template image.
 `LLAMA_CACHE_TYPE_K/V` can be set for TurboQuant-capable forks; stock upstream
 images will reject those cache types.
-The worker also disables Qwen thinking mode with
+The worker also disables thinking mode with
 `--chat-template-kwargs '{"enable_thinking":false}'`; the DFlash drafter was
 not trained on think-wrapped text and acceptance/throughput collapse when it is
 left on.
@@ -191,7 +191,7 @@ bun run vast:doctor
 
 ## Routing from eliza/cloud
 
-The cloud Worker routes `vast/qwen3.6-27b-neo-code` requests through
+The cloud Worker routes `vast/eliza-1-27b` requests through
 `VastProvider` (`packages/lib/providers/vast.ts`), which posts to
 `${VAST_BASE_URL}/v1/chat/completions` with `Authorization: Bearer
 ${VAST_API_KEY}`. Both secrets are wrangler-managed and listed in
@@ -201,11 +201,11 @@ ${VAST_API_KEY}`. Both secrets are wrangler-managed and listed in
 
 After the training pipeline (`/training/scripts/train_nebius.sh` or vast)
 emits a checkpoint and pushes it to HF as a GGUF (e.g.
-`elizaos/qwen3.6-27b-eliza-v0.1-gguf`):
+`elizaos/eliza-1-27b-eliza-v0.1-gguf`):
 
 1. Update the Vast template's `MODEL_REPO` / `MODEL_FILE` env (re-run
    `upsert-template.ts` with the new env, or change in the Vast UI).
-2. Optionally change `MODEL_ALIAS` to `vast/qwen3.6-27b-eliza-v0.1` and add
+2. Optionally change `MODEL_ALIAS` to `vast/eliza-1-27b-eliza-v0.1` and add
    the matching catalog entry in `cloud/packages/lib/models/catalog.ts`.
 3. Vast cycles workers automatically once the template is updated; the next
    cold-start downloads the new GGUF on first run, then caches it on the

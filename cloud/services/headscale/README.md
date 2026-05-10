@@ -7,21 +7,18 @@ Self-hosted [headscale](https://github.com/juanfont/headscale) deployment used a
 | Tag | Used by | Reach |
 |---|---|---|
 | `tag:agent` | Internal agent containers (set in [`headscale-integration.ts`](../../packages/lib/services/headscale-integration.ts:57)) | Internal services only — must NOT reach customer tunnels. |
-| `tag:eliza-tunnel-<orgId>` | Per-customer tunnel sessions minted by [`auth-key/route.ts`](../../apps/api/v1/apis/tunnels/headscale/auth-key/route.ts) | The reverse proxy and the customer's own node. Cross-tag traffic is denied. |
+| `tag:eliza-tunnel` | Customer tunnel sessions minted by [`auth-key/route.ts`](../../apps/api/v1/apis/tunnels/tailscale/auth-key/route.ts) | The reverse proxy and the customer's own node. Cross-customer routing is enforced by the proxy lookup layer. |
+| `tag:eliza-proxy` | The public reverse proxy node | Customer tunnel HTTPS endpoints only. |
 
 The exact ACL policy lives in `acl.hujson` next to this README. **Edit there, not in the headscale admin UI** — the file is committed and deployed.
 
 ## Deploy on Railway
 
-1. Create a new Railway service in the `cloud` project. Image: `headscale/headscale:0.26-stable` (verify the latest stable tag before pinning).
+1. Create a new Railway service in the `cloud` project from this directory. The Dockerfile downloads the pinned `headscale` v0.28.0 Linux release binary; verify the latest stable release before bumping it.
 2. Mount a Railway volume at `/var/lib/headscale` for the SQLite DB (or attach Railway PG and switch the config to `database.type: postgres`).
-3. Copy `config.yaml` and `acl.hujson` into the service via Railway's "Files" tab or a small init container.
+3. Deploy the Dockerfile. It copies `config.yaml` and `acl.hujson` into `/etc/headscale`.
 4. Expose port `8080` as a public TCP/HTTP port. Bind a custom domain like `headscale.elizacloud.ai` in Railway's Networking tab.
-5. Set the Worker secrets so the API can talk to it:
-   - `HEADSCALE_PUBLIC_URL=https://headscale.elizacloud.ai`
-   - `HEADSCALE_API_URL=https://headscale.elizacloud.ai` (same URL inside Railway's private network if you wire one up)
-   - `HEADSCALE_API_KEY=<key minted via 'headscale apikeys create'>`
-   - `HEADSCALE_USER=tunnel`
+5. Set the Worker config so the API can talk to it. Public URLs and user names live in `apps/api/wrangler.toml`; `HEADSCALE_API_KEY` remains a Wrangler secret.
 6. Inside the running container, create the two users that the API expects:
    ```sh
    headscale users create agent

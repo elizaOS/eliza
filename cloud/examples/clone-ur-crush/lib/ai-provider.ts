@@ -20,8 +20,8 @@ export function getAIProvider(): AIProvider {
       name: "groq",
       apiKey: groqKey,
       chatEndpoint: "https://api.groq.com/openai/v1/chat/completions",
-      visionModel: "llama-3.2-90b-vision-preview", // Groq's vision model
-      chatModel: "llama-3.3-70b-versatile", // Fast and good
+      visionModel: "openai/gpt-oss-120b",
+      chatModel: "openai/gpt-oss-120b",
     };
   }
 

@@ -38,7 +38,7 @@ try {
     hasApiKey = true;
     callLLM = async (prompt: string) => {
       const resp = await client.chat.completions.create({
-        model: isGroq ? "llama-3.3-70b-versatile" : "gpt-4o-mini",
+        model: isGroq ? "openai/gpt-oss-120b" : "gpt-4o-mini",
         max_tokens: 256,
         messages: [{ role: "user", content: prompt }],
       });

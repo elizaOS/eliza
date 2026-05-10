@@ -1,4 +1,6 @@
 export * from "./advanced-capabilities-config.ts";
+export * from "./conversation-compactor.ts";
+export * from "./conversation-compactor.types.ts";
 export * from "./agent-event-service.ts";
 export * from "./eliza.ts";
 export * from "./eliza-plugin.ts";

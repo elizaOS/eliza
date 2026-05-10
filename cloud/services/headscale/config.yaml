@@ -1,7 +1,7 @@
 # Headscale config — customer-tunnel coordination for Eliza Cloud.
 #
-# This is the canonical config; deployed to Railway via the service's Files
-# tab. Changes here require a service redeploy.
+# This is the canonical config; deployed to Railway from this service
+# directory. Changes here require a service redeploy.
 
 server_url: https://headscale.elizacloud.ai
 listen_addr: 0.0.0.0:8080
@@ -9,9 +9,6 @@ metrics_listen_addr: 127.0.0.1:9090
 grpc_listen_addr: 127.0.0.1:50443
 grpc_allow_insecure: false
 
-# Coordination server identity. Generated once by:
-#   headscale generate private-key > /var/lib/headscale/private.key
-private_key_path: /var/lib/headscale/private.key
 noise:
   private_key_path: /var/lib/headscale/noise_private.key
 
@@ -34,9 +31,17 @@ ephemeral_node_inactivity_timeout: 15m
 node_update_check_interval: 10s
 
 database:
-  type: sqlite3
+  type: sqlite
+  debug: false
+  gorm:
+    prepare_stmt: true
+    parameterized_queries: true
+    skip_err_record_not_found: true
+    slow_threshold: 1000
   sqlite:
     path: /var/lib/headscale/db.sqlite
+    write_ahead_log: true
+    wal_autocheckpoint: 1000
 
 log:
   level: info
@@ -53,4 +58,9 @@ dns:
       - 1.1.1.1
       - 9.9.9.9
 
-acl_policy_path: /etc/headscale/acl.hujson
+policy:
+  mode: file
+  path: /etc/headscale/acl.hujson
+
+unix_socket: /var/lib/headscale/headscale.sock
+unix_socket_permission: "0770"

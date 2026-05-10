@@ -2,11 +2,9 @@ import {
   elizaLogger,
   getConnectorAccountManager,
   type Plugin,
-  promoteSubactionsToActions,
 } from "@elizaos/core";
 import { tunnelSlotIsFree } from "@elizaos/plugin-tunnel";
 import { TailscaleTestSuite } from "./__tests__/TailscaleTestSuite";
-import { tailscaleAction } from "./actions/tailscale";
 import { createTailscaleConnectorAccountProvider } from "./connector-account-provider";
 import { tailscaleStatusProvider } from "./providers/tailscale-status";
 import { selectTunnelBackend } from "./services/TunnelBackendSelector";
@@ -21,15 +19,14 @@ import { selectTunnelBackend } from "./services/TunnelBackendSelector";
  * Consumers should stay backend-agnostic via `getTunnelService(runtime)` from
  * `@elizaos/plugin-tunnel`.
  *
- * Single TAILSCALE action handles start/stop. Live status flows through the
- * `tailscaleStatus` provider every turn, so reading tunnel state does not need
- * a dedicated action dispatch.
+ * The canonical TUNNEL action from `@elizaos/plugin-tunnel` handles start,
+ * stop, and status. This plugin only contributes a provider/backend.
  */
 export const tailscalePlugin: Plugin = {
   name: "tailscale",
   description:
     "Tunnel plugin with local Tailscale serve/funnel and cloud-proxy backends.",
-  actions: [...promoteSubactionsToActions(tailscaleAction)],
+  actions: [],
   providers: [tailscaleStatusProvider],
   tests: [new TailscaleTestSuite()],
   init: async (_config, runtime) => {

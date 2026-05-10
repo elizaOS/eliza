@@ -4,8 +4,8 @@ import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 const REMOTE_API_BASE =
   process.env.ELIZA_LIFEOPS_REMOTE_E2E_URL?.trim().replace(/\/+$/, "") ?? "";
 const REMOTE_API_TOKEN =
-  process.env.ELIZA_LIFEOPS_REMOTE_E2E_TOKEN?.trim() ??
   process.env.ELIZA_API_TOKEN?.trim() ??
+  process.env.ELIZA_LIFEOPS_REMOTE_E2E_TOKEN?.trim() ??
   "";
 const CAN_RUN_REMOTE_E2E =
   REMOTE_API_BASE.length > 0 && REMOTE_API_TOKEN.length > 0;
