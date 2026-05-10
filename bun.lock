@@ -1247,6 +1247,10 @@
         "vite": "^8.0.0",
       },
     },
+    "packages/inference": {
+      "name": "@elizaos/inference",
+      "version": "0.1.0",
+    },
     "packages/native-plugins/activity-tracker": {
       "name": "@elizaos/native-activity-tracker",
       "version": "2.0.0-beta.0",
@@ -4071,6 +4075,8 @@
     "@elizaos/example-xai-x": ["@elizaos/example-xai-x@workspace:packages/examples/twitter-xai"],
 
     "@elizaos/gcp-examples": ["@elizaos/gcp-examples@workspace:packages/examples/gcp"],
+
+    "@elizaos/inference": ["@elizaos/inference@workspace:packages/inference"],
 
     "@elizaos/macosalarm": ["@elizaos/macosalarm@workspace:packages/native-plugins/macosalarm"],
 
