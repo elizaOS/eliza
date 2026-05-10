@@ -22,12 +22,13 @@ import type {
 import {
   type EscalationLadderRegistry,
   resetLadderForSnooze,
+  resolveEffectiveLadder,
 } from "./escalation.js";
 import type { TaskGateRegistry } from "./gate-registry.js";
 import { createStateLogger, type ScheduledTaskLogStore } from "./state-log.js";
 import {
-  APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
   type ActivitySignalBusView,
+  APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
   type CompletionCheckContext,
   type GateDecision,
   type GateEvaluationContext,
@@ -201,25 +202,6 @@ function isTerminal(status: ScheduledTask["state"]["status"]): boolean {
   );
 }
 
-function asEscalationCursor(task: ScheduledTask): {
-  stepIndex: number;
-  lastDispatchedAt: string;
-} {
-  // The runner persists escalation cursor inside metadata under a
-  // reserved key. The cursor is opaque to other consumers.
-  const cursor = (task.metadata?.escalationCursor ?? null) as {
-    stepIndex?: number;
-    lastDispatchedAt?: string;
-  } | null;
-  return {
-    stepIndex: typeof cursor?.stepIndex === "number" ? cursor.stepIndex : -1,
-    lastDispatchedAt:
-      typeof cursor?.lastDispatchedAt === "string"
-        ? cursor.lastDispatchedAt
-        : (task.state.firedAt ?? new Date().toISOString()),
-  };
-}
-
 function setEscalationCursor(
   task: ScheduledTask,
   cursor: { stepIndex: number; lastDispatchedAt: string },
@@ -248,6 +230,29 @@ function stripServerManaged(
 // ---------------------------------------------------------------------------
 // Runner factory
 // ---------------------------------------------------------------------------
+
+/**
+ * Public read view of `metadata.escalationCursor`.
+ *
+ * The cursor is the runner's persistence channel for the snooze-resets-ladder
+ * rule. Consumers that need to surface "currently on step N of escalation"
+ * read it through {@link ScheduledTaskRunnerExtras.getEscalationCursor} so
+ * they don't reach into the metadata namespace directly.
+ *
+ * - `stepIndex` follows the {@link EscalationCursor} convention: `-1` means
+ *   the task was fired but no escalation step has been dispatched yet;
+ *   `0..n` is the index into the resolved ladder's `steps`.
+ * - `lastFiredAt` is the ISO of the most recent dispatch (or the initial
+ *   task fire when `stepIndex === -1`).
+ * - `channelKey` is resolved from the effective ladder. For `stepIndex === -1`
+ *   we surface the first step's channel when the ladder has steps, falling
+ *   back to `"in_app"` when the ladder is empty.
+ */
+export interface EscalationCursorView {
+  stepIndex: number;
+  lastFiredAt: string;
+  channelKey: string;
+}
 
 export interface ScheduledTaskRunnerExtras {
   /**
@@ -289,6 +294,11 @@ export interface ScheduledTaskRunnerExtras {
     anchors: string[];
     consolidationPolicies: string[];
   };
+  /**
+   * Read the public view of `metadata.escalationCursor` for a task. Returns
+   * `null` when the task is not found or has no cursor recorded yet.
+   */
+  getEscalationCursor(taskId: string): Promise<EscalationCursorView | null>;
 }
 
 export interface ScheduledTaskRunnerHandle
@@ -355,7 +365,9 @@ export function createScheduledTaskRunner(
     }
     if (compose === "any") {
       // No allow seen.
-      const lastDeny = decisions.reverse().find((d) => d.decision.kind === "deny");
+      const lastDeny = decisions
+        .reverse()
+        .find((d) => d.decision.kind === "deny");
       if (lastDeny) return lastDeny;
       const lastDefer = decisions.find((d) => d.decision.kind === "defer");
       if (lastDefer) return lastDefer;
@@ -460,9 +472,7 @@ export function createScheduledTaskRunner(
     };
   }
 
-  async function list(
-    filter?: ScheduledTaskFilter,
-  ): Promise<ScheduledTask[]> {
+  async function list(filter?: ScheduledTaskFilter): Promise<ScheduledTask[]> {
     return deps.store.list(filter);
   }
 
@@ -553,9 +563,7 @@ export function createScheduledTaskRunner(
     return task;
   }
 
-  async function applyAcknowledge(
-    task: ScheduledTask,
-  ): Promise<ScheduledTask> {
+  async function applyAcknowledge(task: ScheduledTask): Promise<ScheduledTask> {
     // §7.6: acknowledged is non-terminal. Pipeline.onComplete does NOT fire.
     task.state.status = "acknowledged";
     task.state.acknowledgedAt = now().toISOString();
@@ -903,6 +911,33 @@ export function createScheduledTaskRunner(
     };
   }
 
+  async function getEscalationCursor(
+    taskId: string,
+  ): Promise<EscalationCursorView | null> {
+    const task = await deps.store.get(taskId);
+    if (!task) return null;
+    const raw = task.metadata?.escalationCursor;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const cursor = raw as { stepIndex?: unknown; lastDispatchedAt?: unknown };
+    if (
+      typeof cursor.stepIndex !== "number" ||
+      typeof cursor.lastDispatchedAt !== "string"
+    ) {
+      return null;
+    }
+    const ladder = resolveEffectiveLadder(task, deps.ladders);
+    const stepIndex = cursor.stepIndex;
+    const channelKey =
+      stepIndex >= 0 && stepIndex < ladder.steps.length
+        ? (ladder.steps[stepIndex]?.channelKey ?? "in_app")
+        : (ladder.steps[0]?.channelKey ?? "in_app");
+    return {
+      stepIndex,
+      lastFiredAt: cursor.lastDispatchedAt,
+      channelKey,
+    };
+  }
+
   return {
     schedule,
     list,
@@ -912,5 +947,6 @@ export function createScheduledTaskRunner(
     evaluateCompletion,
     rolloverStateLog,
     inspectRegistries,
+    getEscalationCursor,
   };
 }
