@@ -242,6 +242,22 @@ export function selectLiveProvider(
     }
     if (!apiKey) continue;
 
+    // Cerebras gate: CEREBRAS_API_KEY alone is for *evaluation/training*
+    // (lifeops-eval-model.ts). The agent runtime should only opt into
+    // Cerebras when the operator explicitly says so via MILADY_PROVIDER or
+    // an explicit cerebras OPENAI_BASE_URL. Otherwise the eval key would
+    // silently switch the agent provider and we'd benchmark Cerebras
+    // grading itself instead of Anthropic-vs-Cerebras.
+    if (def.name === "cerebras" && !preferredProvider) {
+      const explicitProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
+      const explicitBaseUrl = process.env.OPENAI_BASE_URL?.trim();
+      const baseUrlIsCerebras =
+        !!explicitBaseUrl && /cerebras\.ai(?:\/|$)/i.test(explicitBaseUrl);
+      if (explicitProvider !== "cerebras" && !baseUrlIsCerebras) {
+        continue;
+      }
+    }
+
     const baseUrl = getLiveTestBaseUrlOverride(def.name) ?? def.defaultBaseUrl;
 
     const smallModel =

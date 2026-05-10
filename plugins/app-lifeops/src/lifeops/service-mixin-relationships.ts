@@ -24,7 +24,7 @@ function isoNow(): string {
 }
 
 async function projectRelationshipIntoGraph(
-  self: any,
+  self: LifeOpsServiceBase,
   record: LifeOpsRelationship,
 ): Promise<void> {
   try {
@@ -72,7 +72,7 @@ async function projectRelationshipIntoGraph(
 }
 
 async function projectInteractionIntoGraph(
-  self: any,
+  self: LifeOpsServiceBase,
   interaction: LifeOpsRelationshipInteraction,
 ): Promise<void> {
   try {

@@ -3987,6 +3987,14 @@ export async function runV5MessageRuntimeStage1(args: {
 			cacheProviderOptions({
 				prefixHash: stage1PrefixHash,
 				segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
+				promptSegments: messageHandlerInput.promptSegments,
+				// Use `roomId` as the conversation id for local-inference slot
+				// pinning. Cloud providers ignore it; local backends route
+				// every turn of the same room to the same KV slot, which is
+				// the dominant cache reuse signal for chat.
+				conversationId: args.message.roomId
+					? String(args.message.roomId)
+					: undefined,
 			}),
 			buildModelInputBudget({
 				messages: messageHandlerInput.messages,

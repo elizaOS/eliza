@@ -1,0 +1,32 @@
+{
+  "$schema": "../profile-config.schema.json",
+  "description": "iOS / iPadOS Metal profiling matrix. Targets the @elizaos/llama-cpp-capacitor build once the dylib lands (porting plan task #21). Excludes QJL until the MSL kernel is shipped. Includes DFlash because spec-decode is host-side and ports cleanly to Metal.",
+  "models": ["llama-3.2-1b", "bonsai-8b-1bit"],
+  "kvCacheConfigs": [
+    { "name": "baseline-fp16", "k": "f16", "v": "f16" },
+    { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" }
+  ],
+  "dflashConfigs": [
+    { "name": "no-dflash", "drafter": null },
+    { "name": "dflash-bonsai", "drafter": "bonsai-8b-dflash-drafter" }
+  ],
+  "prompts": [
+    {
+      "id": "short-q",
+      "text": "What is the capital of France?",
+      "maxTokens": 50
+    },
+    {
+      "id": "med-reason",
+      "text": "Explain in three sentences why the sky is blue.",
+      "maxTokens": 120
+    },
+    {
+      "id": "long-gen",
+      "text": "Write a 200-word story about a small robot who wants to learn to paint.",
+      "maxTokens": 250
+    }
+  ],
+  "iterations": 3,
+  "warmupIterations": 1
+}

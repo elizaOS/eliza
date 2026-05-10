@@ -1,6 +1,4 @@
 export interface ChainingLoopConfig {
-	/** Maximum planner model turns before the loop must stop. */
-	maxPlannerIterations: number;
 	/** Maximum tool calls executed during one planner loop. */
 	maxToolCalls: number;
 	/** Maximum repeated failures for the same tool/error signature. */
@@ -18,7 +16,6 @@ export interface ChainingLoopConfig {
 }
 
 export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
-	maxPlannerIterations: 8,
 	maxToolCalls: 16,
 	maxRepeatedFailures: 2,
 	maxTerminalOnlyContinuations: 2,
@@ -29,7 +26,6 @@ export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
 };
 
 export type TrajectoryLimitKind =
-	| "planner_iterations"
 	| "tool_calls"
 	| "repeated_failures"
 	| "terminal_only_continuations";

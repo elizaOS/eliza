@@ -1,3 +1,6 @@
+> [!NOTE]
+> **STATUS: SUPERSEDED — most items shipped.** See `eliza/docs/audits/lifeops-2026-05-09/REPORT.md` for the current state. The high-confidence cleanup recommendations in this doc (delete `seed-routines.ts`, delete `stretch-decider.ts`, strip Jill/Marco/Sarah from source, rename PII fixtures, fold helpers out of `actions/`, remove `CHECKIN`, relax 20-PRD-journey assertion) have all landed. Retained in place so commit-history references still resolve.
+
 # LifeOps — Hardcoding, Larp, and Misfactoring Audit
 
 **Scope:** `eliza/plugins/app-lifeops/src/` (~141 lifeops files, 28 actions, 8 providers, 7 routes), `eliza/packages/shared/src/contracts/lifeops*.ts`, `eliza/plugins/app-lifeops/scenarios/*.json`, `eliza/plugins/app-lifeops/test/scenarios/`, `eliza/test/mocks/environments/lifeops-*.json`.

@@ -589,7 +589,9 @@
       "persistent": true
     },
     "test": {
-      "dependsOn": [],
+      "dependsOn": [
+        "^build"
+      ],
       "outputs": [
         "coverage/**"
       ],

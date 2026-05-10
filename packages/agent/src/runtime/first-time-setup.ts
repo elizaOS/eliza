@@ -45,7 +45,13 @@ import { pickRandomNames } from "./onboarding-names.ts";
 // ---------------------------------------------------------------------------
 
 type FirstTimeSetupCloudResult = CloudOnboardingResult;
-const DEFAULT_ONBOARDING_AGENT_NAME = getStylePresets()[0]?.name ?? "Eliza";
+
+// Lazy: calling getStylePresets() at module init triggers a TDZ on
+// DEFAULT_LANGUAGE inside onboarding-presets.ts via a circular import. Defer
+// to first use so the import graph settles before the function runs.
+function getDefaultOnboardingAgentName(): string {
+  return getStylePresets()[0]?.name ?? "Eliza";
+}
 
 export function applyFirstTimeSetupTopology(
   config: ElizaConfig,
@@ -308,7 +314,7 @@ export async function runFirstTimeSetup(
 
     if (clack.isCancel(customName)) cancelOnboarding();
 
-    name = customName.trim() || DEFAULT_ONBOARDING_AGENT_NAME;
+    name = customName.trim() || getDefaultOnboardingAgentName();
   } else {
     name = nameChoice;
   }

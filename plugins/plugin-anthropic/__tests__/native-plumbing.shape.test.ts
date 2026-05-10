@@ -92,6 +92,68 @@ describe("Anthropic native text plumbing", () => {
     });
   }, 60_000);
 
+  it("normalizes AI SDK v6 usage shape (inputTokenDetails) into recorder cache fields and emits providerMetadata.modelName", async () => {
+    // Regression for audit F14 + F16: the AI SDK v6 LanguageModelUsage uses
+    // inputTokens/outputTokens and reports cache reads via
+    // inputTokenDetails.cacheReadTokens. Cache writes ride on
+    // providerMetadata.anthropic.cacheCreationInputTokens. The normalizer must
+    // surface both as `cacheReadInputTokens` / `cacheCreationInputTokens` on
+    // the returned `usage` so the trajectory recorder can persist them, and
+    // must populate `providerMetadata.modelName` so the recorder can resolve
+    // costUsd.
+    const generateText = vi.fn(async () => ({
+      text: "ok",
+      toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
+      finishReason: "tool-calls",
+      usage: {
+        inputTokens: 100,
+        outputTokens: 4,
+        totalTokens: 104,
+        inputTokenDetails: {
+          noCacheTokens: 20,
+          cacheReadTokens: 80,
+          // AI SDK v6 surface: `cacheWriteTokens` mirrors what Anthropic
+          // reports as cache_creation_input_tokens.
+          cacheWriteTokens: 20,
+        },
+      },
+      // Anthropic also exposes the same count through providerMetadata; the
+      // recorder must accept either source.
+      providerMetadata: {
+        anthropic: { cacheCreationInputTokens: 20 },
+      },
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelName }),
+    }));
+
+    const { handleTextSmall } = await import("../models/text");
+    const tools = { lookup: { description: "Lookup", inputSchema: { type: "object" } } };
+    const result = (await handleTextSmall(createRuntime(), {
+      prompt: "hello",
+      tools,
+    } as never)) as Record<string, unknown>;
+
+    expect(result).toMatchObject({
+      text: "ok",
+      finishReason: "tool-calls",
+      usage: {
+        promptTokens: 100,
+        completionTokens: 4,
+        totalTokens: 104,
+        cacheReadInputTokens: 80,
+        cacheCreationInputTokens: 20,
+      },
+    });
+    const providerMetadata = result.providerMetadata as Record<string, unknown>;
+    expect(typeof providerMetadata.modelName).toBe("string");
+    expect((providerMetadata.modelName as string).length).toBeGreaterThan(0);
+  });
+
   it("passes system separately and strips the duplicate leading system message", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",

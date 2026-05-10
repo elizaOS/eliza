@@ -209,6 +209,17 @@ const nativeStubs = {
   "@node-llama-cpp/mac-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
   "@node-llama-cpp/mac-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
   "@node-llama-cpp/win-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
+  // llama-cpp-capacitor is the WebView-side JNI binding for the Capacitor
+  // mobile build. The bun-side AOSP agent uses bun:ffi against libllama.so
+  // directly via aosp-llama-adapter.ts, never this package — but Bun.build
+  // still has to resolve the dynamic import in
+  // packages/native-plugins/llama/src/capacitor-llama-adapter.ts.
+  "llama-cpp-capacitor": path.join(stubsDir, "llama-cpp-capacitor.cjs"),
+  // zlib-sync is a discord.js optional native binding for compressed
+  // gateway frames. No AOSP prebuild ships, and discord.js falls back to
+  // uncompressed transport when the binding is missing. Stub keeps the
+  // bundle building.
+  "zlib-sync": path.join(stubsDir, "zlib-sync.cjs"),
   "onnxruntime-node": path.join(stubsDir, "onnxruntime-node.cjs"),
   "@huggingface/transformers": path.join(
     stubsDir,

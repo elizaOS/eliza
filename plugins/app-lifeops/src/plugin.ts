@@ -10,21 +10,22 @@ import { appBlockAction } from "./actions/app-block.js";
 import { autofillAction } from "./actions/autofill.js";
 import { bookTravelAction } from "./actions/book-travel.js";
 import { calendarAction } from "./actions/calendar.js";
-import { calendlyAction } from "./actions/lib/calendly-handler.js";
 import { connectorAction } from "./actions/connector.js";
 import { deviceIntentAction } from "./actions/device-intent.js";
+import { entityAction } from "./actions/entity.js";
 import { firstRunAction } from "./actions/first-run.js";
 import { healthAction } from "./actions/health.js";
+import { calendlyAction } from "./actions/lib/calendly-handler.js";
 import { lifeAction } from "./actions/life.js";
 import { lifeOpsPauseAction } from "./actions/lifeops-pause.js";
 import { messageHandoffAction } from "./actions/message-handoff.js";
 import { passwordManagerAction } from "./actions/password-manager.js";
 import { paymentsAction } from "./actions/payments.js";
 import { profileAction } from "./actions/profile.js";
-import { entityAction } from "./actions/entity.js";
 import { remoteDesktopAction } from "./actions/remote-desktop.js";
 import { resolveRequestAction } from "./actions/resolve-request.js";
 import { scheduleAction } from "./actions/schedule.js";
+import { scheduledTaskAction } from "./actions/scheduled-task.js";
 import { schedulingNegotiationAction } from "./actions/scheduling-negotiation.js";
 import { screenTimeAction } from "./actions/screen-time.js";
 import { subscriptionsAction } from "./actions/subscriptions.js";
@@ -53,6 +54,21 @@ import {
   registerConnectorRegistry,
   registerDefaultConnectorPack,
 } from "./lifeops/connectors/index.js";
+import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.js";
+import {
+  createMultilingualPromptRegistry,
+  registerDefaultPromptPack,
+  registerMultilingualPromptRegistry,
+} from "./lifeops/i18n/prompt-registry.js";
+import { BrowserBridgeAdapter } from "./lifeops/messaging/adapters/browser-bridge-adapter.js";
+import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
+import { LifeOpsGmailAdapter } from "./lifeops/messaging/adapters/gmail-adapter.js";
+import { XDmAdapter } from "./lifeops/messaging/adapters/x-dm-adapter.js";
+import { createOwnerSendPolicy } from "./lifeops/messaging/owner-send-policy.js";
+import {
+  createOwnerFactStore,
+  registerOwnerFactStore,
+} from "./lifeops/owner/fact-store.js";
 import {
   createAnchorRegistry,
   createEventKindRegistry,
@@ -66,29 +82,7 @@ import {
   registerEventKindRegistry,
   registerFamilyRegistry,
 } from "./lifeops/registries/index.js";
-import {
-  createActivitySignalBus,
-  registerActivitySignalBus,
-} from "./lifeops/signals/bus.js";
-import {
-  createOwnerFactStore,
-  registerOwnerFactStore,
-} from "./lifeops/owner/fact-store.js";
-import {
-  createMultilingualPromptRegistry,
-  registerDefaultPromptPack,
-  registerMultilingualPromptRegistry,
-} from "./lifeops/i18n/prompt-registry.js";
-import { BrowserBridgeAdapter } from "./lifeops/messaging/adapters/browser-bridge-adapter.js";
-import { CalendlyAdapter } from "./lifeops/messaging/adapters/calendly-adapter.js";
-import { LifeOpsGmailAdapter } from "./lifeops/messaging/adapters/gmail-adapter.js";
-import { XDmAdapter } from "./lifeops/messaging/adapters/x-dm-adapter.js";
-import { createOwnerSendPolicy } from "./lifeops/messaging/owner-send-policy.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
-import {
-  createSendPolicyRegistry,
-  registerSendPolicyRegistry,
-} from "./lifeops/send-policy/index.js";
 // LifeOps runtime (scheduler task worker + registration)
 import {
   ensureLifeOpsSchedulerTask,
@@ -96,6 +90,14 @@ import {
   registerLifeOpsTaskWorker,
 } from "./lifeops/runtime.js";
 import { lifeOpsSchema } from "./lifeops/schema.js";
+import {
+  createSendPolicyRegistry,
+  registerSendPolicyRegistry,
+} from "./lifeops/send-policy/index.js";
+import {
+  createActivitySignalBus,
+  registerActivitySignalBus,
+} from "./lifeops/signals/bus.js";
 import { browserBridgeProvider } from "./provider.js";
 // Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
@@ -329,6 +331,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     voiceCallAction,
     remoteDesktopAction,
     scheduleAction,
+    scheduledTaskAction,
     passwordManagerAction,
     autofillAction,
     healthAction,
@@ -362,6 +365,16 @@ const rawAppLifeOpsPlugin: Plugin = {
     pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,
   ) => {
+    // When LIFEOPS_USE_MOCKOON=1, redirect every external connector base URL
+    // to the matching Mockoon environment on localhost. No-op otherwise.
+    const mockoonApplied = applyMockoonEnvOverrides();
+    if (mockoonApplied.length > 0) {
+      logger.info(
+        { mockoonConnectors: mockoonApplied },
+        `[lifeops] LIFEOPS_USE_MOCKOON=1 — redirecting ${mockoonApplied.length} connector base URL(s) to mock servers`,
+      );
+    }
+
     await ensureLifeOpsGooglePluginRegistered(runtime);
 
     setSelfControlPluginConfig(pluginConfig as SelfControlPluginConfig);
@@ -548,6 +561,9 @@ const rawAppLifeOpsPlugin: Plugin = {
 
 export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;
 
+export { firstRunAction } from "./actions/first-run.js";
+export { lifeOpsPauseAction } from "./actions/lifeops-pause.js";
+export { messageHandoffAction } from "./actions/message-handoff.js";
 export {
   getAppBlockerPermissionState,
   getAppBlockerStatus,
@@ -590,45 +606,24 @@ export type {
   RecordAcknowledgementRequest,
   RunCheckinRequest,
 } from "./lifeops/checkin/types.js";
-// LifeOps runtime exports
 export {
-  ensureLifeOpsSchedulerTask,
-  executeLifeOpsSchedulerTask,
-  LIFEOPS_TASK_INTERVAL_MS,
-  LIFEOPS_TASK_JITTER_MS,
-  LIFEOPS_TASK_NAME,
-  LIFEOPS_TASK_TAGS,
-  registerLifeOpsTaskWorker,
-  resolveLifeOpsTaskIntervalMs,
-} from "./lifeops/runtime.js";
-export { appBlockerProvider } from "./providers/app-blocker.js";
-export { firstRunProvider } from "./providers/first-run.js";
-export type { FirstRunAffordance } from "./providers/first-run.js";
-export { healthProvider } from "./providers/health.js";
-export { inboxTriageProvider } from "./providers/inbox-triage.js";
-export { lifeOpsProvider } from "./providers/lifeops.js";
+  FirstRunService,
+  type ScheduledTaskRunnerLike,
+  setScheduledTaskRunner,
+} from "./lifeops/first-run/service.js";
 export {
-  createPendingPromptsProvider,
-  pendingPromptsProvider,
-} from "./providers/pending-prompts.js";
-export type {
-  PendingPrompt,
-  PendingPromptsProvider,
-} from "./providers/pending-prompts.js";
-export {
-  createRecentTaskStatesProvider,
-  recentTaskStatesProvider,
-} from "./providers/recent-task-states.js";
-export type {
-  RecentTaskStatesProvider,
-  RecentTaskStatesSummary,
-} from "./providers/recent-task-states.js";
-export { firstRunAction } from "./actions/first-run.js";
-export { lifeOpsPauseAction } from "./actions/lifeops-pause.js";
+  createFirstRunStateStore,
+  createOwnerFactStore,
+  type FirstRunRecord,
+  type FirstRunStateStore,
+  type OwnerFactStore,
+  type OwnerFacts,
+  type OwnerFactsPatch,
+} from "./lifeops/first-run/state.js";
 export {
   createGlobalPauseStore,
-  type GlobalPauseStore,
   type GlobalPauseStatus,
+  type GlobalPauseStore,
   type GlobalPauseWindow,
 } from "./lifeops/global-pause/store.js";
 export {
@@ -642,80 +637,54 @@ export {
   type ResumeEvaluation,
   type ResumeEvaluationInput,
 } from "./lifeops/handoff/store.js";
-export { messageHandoffAction } from "./actions/message-handoff.js";
-export { roomPolicyProvider } from "./providers/room-policy.js";
-export {
-  createPendingPromptsStore,
-  type PendingPromptsStore,
-  type PendingPromptRecordInput,
-} from "./lifeops/pending-prompts/store.js";
-export {
-  FirstRunService,
-  setScheduledTaskRunner,
-  type ScheduledTaskRunnerLike,
-} from "./lifeops/first-run/service.js";
-export {
-  createOwnerFactStore,
-  createFirstRunStateStore,
-  type FirstRunRecord,
-  type FirstRunStateStore,
-  type OwnerFactStore,
-  type OwnerFacts,
-  type OwnerFactsPatch,
-} from "./lifeops/first-run/state.js";
-export {
-  ownerFactsToView,
-  registerOwnerFactStore,
-  resolveOwnerFactStore,
-  getOwnerFactStore,
-  type EscalationRule,
-  type OwnerFactEntry,
-  type OwnerFactProvenance,
-  type OwnerFactProvenanceSource,
-  type OwnerFactWindow,
-  type OwnerQuietHours,
-  type PolicyPatchEscalationRule,
-  type PolicyPatchReminderIntensity,
-  type ReminderIntensity,
-} from "./lifeops/owner/fact-store.js";
 export {
   createMultilingualPromptRegistry,
   getDefaultPromptExamplePair,
   getDefaultPromptRegistry,
   getMultilingualPromptRegistry,
-  PROMPT_REGISTRY_DEFAULT_LOCALE,
-  registerDefaultPromptPack,
-  registerMultilingualPromptRegistry,
-  resolveActionExamplePairs,
   type MultilingualPromptRegistry,
+  PROMPT_REGISTRY_DEFAULT_LOCALE,
   type PromptExampleEntry,
   type PromptLocale,
   type PromptRegistryFilter,
+  registerDefaultPromptPack,
+  registerMultilingualPromptRegistry,
+  resolveActionExamplePairs,
 } from "./lifeops/i18n/prompt-registry.js";
-export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
-export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
-export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
-export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
 export {
-  createAnchorRegistry,
-  createCompletionCheckRegistry,
-  createConsolidationRegistry,
-  createEscalationLadderRegistry,
-  createInMemoryScheduledTaskLogStore,
-  createInMemoryScheduledTaskStore,
-  createScheduledTaskRunner,
-  createTaskGateRegistry,
-  DEFAULT_ESCALATION_LADDERS,
-  PRIORITY_DEFAULT_LADDER_KEYS,
-  registerBuiltInCompletionChecks,
-  registerBuiltInGates,
-  registerDefaultEscalationLadders,
-  registerStubAnchors,
-  STATE_LOG_DEFAULT_RETENTION_DAYS,
-} from "./lifeops/scheduled-task/index.js";
+  type EscalationRule,
+  getOwnerFactStore,
+  type OwnerFactEntry,
+  type OwnerFactProvenance,
+  type OwnerFactProvenanceSource,
+  type OwnerFactWindow,
+  type OwnerQuietHours,
+  ownerFactsToView,
+  type PolicyPatchEscalationRule,
+  type PolicyPatchReminderIntensity,
+  type ReminderIntensity,
+  registerOwnerFactStore,
+  resolveOwnerFactStore,
+} from "./lifeops/owner/fact-store.js";
+export {
+  createPendingPromptsStore,
+  type PendingPromptRecordInput,
+  type PendingPromptsStore,
+} from "./lifeops/pending-prompts/store.js";
+// LifeOps runtime exports
+export {
+  ensureLifeOpsSchedulerTask,
+  executeLifeOpsSchedulerTask,
+  LIFEOPS_TASK_INTERVAL_MS,
+  LIFEOPS_TASK_JITTER_MS,
+  LIFEOPS_TASK_NAME,
+  LIFEOPS_TASK_TAGS,
+  registerLifeOpsTaskWorker,
+  resolveLifeOpsTaskIntervalMs,
+} from "./lifeops/runtime.js";
 export type {
-  AnchorContribution,
   AnchorConsolidationPolicy,
+  AnchorContribution,
   AnchorRegistry,
   CompletionCheckContribution,
   CompletionCheckRegistry,
@@ -746,6 +715,50 @@ export type {
   TaskGateRegistry,
   TerminalState,
 } from "./lifeops/scheduled-task/index.js";
-export { createRuntimeScheduledTaskRunner } from "./lifeops/scheduled-task/runtime-wiring.js";
+export {
+  createAnchorRegistry,
+  createCompletionCheckRegistry,
+  createConsolidationRegistry,
+  createEscalationLadderRegistry,
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  createTaskGateRegistry,
+  DEFAULT_ESCALATION_LADDERS,
+  PRIORITY_DEFAULT_LADDER_KEYS,
+  registerBuiltInCompletionChecks,
+  registerBuiltInGates,
+  registerDefaultEscalationLadders,
+  registerStubAnchors,
+  STATE_LOG_DEFAULT_RETENTION_DAYS,
+} from "./lifeops/scheduled-task/index.js";
 export type { CreateRuntimeRunnerOptions } from "./lifeops/scheduled-task/runtime-wiring.js";
+export { createRuntimeScheduledTaskRunner } from "./lifeops/scheduled-task/runtime-wiring.js";
+export { appBlockerProvider } from "./providers/app-blocker.js";
+export type { FirstRunAffordance } from "./providers/first-run.js";
+export { firstRunProvider } from "./providers/first-run.js";
+export { healthProvider } from "./providers/health.js";
+export { inboxTriageProvider } from "./providers/inbox-triage.js";
+export { lifeOpsProvider } from "./providers/lifeops.js";
+export type {
+  PendingPrompt,
+  PendingPromptsProvider,
+} from "./providers/pending-prompts.js";
+export {
+  createPendingPromptsProvider,
+  pendingPromptsProvider,
+} from "./providers/pending-prompts.js";
+export type {
+  RecentTaskStatesProvider,
+  RecentTaskStatesSummary,
+} from "./providers/recent-task-states.js";
+export {
+  createRecentTaskStatesProvider,
+  recentTaskStatesProvider,
+} from "./providers/recent-task-states.js";
+export { roomPolicyProvider } from "./providers/room-policy.js";
+export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
+export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
+export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
+export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
 export { BrowserBridgePluginService, browserBridgeProvider };

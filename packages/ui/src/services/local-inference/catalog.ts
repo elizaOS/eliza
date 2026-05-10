@@ -22,6 +22,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 1,
     category: "tiny",
     bucket: "small",
+    tokenizerFamily: "smollm2",
     blurb:
       "Mobile-friendly default. ~270MB on disk, runs on phones and 1GB-RAM hosts.",
   },
@@ -36,6 +37,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 3,
     category: "tiny",
     bucket: "small",
+    tokenizerFamily: "smollm2",
     blurb:
       "Smallest genuinely useful chat model. Perfect for CI and smoke tests.",
   },
@@ -50,6 +52,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 2,
     category: "tiny",
     bucket: "small",
+    tokenizerFamily: "llama3",
     blurb: "Ultra-light Llama for edge devices and integration tests.",
   },
   {
@@ -63,6 +66,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 4,
     category: "chat",
     bucket: "small",
+    tokenizerFamily: "llama3",
     blurb: "Fast general chat for 8GB laptops; coherent summaries and Q&A.",
   },
   {
@@ -76,6 +80,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 5,
     category: "chat",
     bucket: "small",
+    tokenizerFamily: "qwen3",
     companionModelIds: ["qwen3.5-4b-dflash-drafter-q4"],
     runtime: {
       preferredBackend: "llama-server",
@@ -108,6 +113,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     hiddenFromCatalog: true,
     runtimeRole: "dflash-drafter",
     companionForModelId: "qwen3.5-4b-dflash",
+    tokenizerFamily: "qwen3",
     blurb: "Hidden DFlash drafter companion for Qwen3.5 4B.",
   },
 
@@ -123,6 +129,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 10,
     category: "chat",
     bucket: "mid",
+    tokenizerFamily: "llama3",
     blurb: "Battle-tested general chat; the default 8GB-VRAM daily driver.",
   },
   {
@@ -136,6 +143,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 12,
     category: "chat",
     bucket: "mid",
+    tokenizerFamily: "qwen3",
     companionModelIds: ["qwen3.5-9b-dflash-drafter-q4"],
     runtime: {
       preferredBackend: "llama-server",
@@ -168,6 +176,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     hiddenFromCatalog: true,
     runtimeRole: "dflash-drafter",
     companionForModelId: "qwen3.5-9b-dflash",
+    tokenizerFamily: "qwen3",
     blurb: "Hidden DFlash drafter companion for Qwen3.5 9B.",
   },
   {
@@ -181,6 +190,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 12,
     category: "chat",
     bucket: "mid",
+    tokenizerFamily: "gemma",
     blurb: "Google Gemma. Excellent writing quality and safety tuning.",
   },
   {
@@ -194,6 +204,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 10,
     category: "code",
     bucket: "mid",
+    tokenizerFamily: "qwen2",
     blurb:
       "Top small coder. Fill-in-the-middle, repo-level context, 128k window.",
   },
@@ -208,6 +219,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 10,
     category: "tools",
     bucket: "mid",
+    tokenizerFamily: "llama3",
     blurb: "Nous Hermes 3. Function calling, JSON mode, agentic tool use.",
   },
   {
@@ -221,6 +233,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 8,
     category: "chat",
     bucket: "mid",
+    tokenizerFamily: "qwen3",
     runtime: {
       kvCache: {
         typeK: "tbq4_0",
@@ -244,6 +257,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 20,
     category: "code",
     bucket: "large",
+    tokenizerFamily: "deepseekv2",
     blurb: "MoE coder. Near-32B coding quality with ~2.4B active params.",
   },
   {
@@ -257,6 +271,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 18,
     category: "code",
     bucket: "large",
+    tokenizerFamily: "qwen2",
     blurb: "Sweet-spot coder for 16GB VRAM. Fluent in most languages.",
   },
   {
@@ -270,6 +285,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 28,
     category: "chat",
     bucket: "large",
+    tokenizerFamily: "mistral",
     blurb: "Mistral's 2025 flagship small. Strong reasoning, creative writing.",
   },
   {
@@ -283,6 +299,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 32,
     category: "chat",
     bucket: "large",
+    tokenizerFamily: "gemma",
     blurb: "Largest Gemma 2. Excellent for long-form writing and reasoning.",
   },
   {
@@ -296,6 +313,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 32,
     category: "chat",
     bucket: "large",
+    tokenizerFamily: "qwen3",
     companionModelIds: ["qwen3.6-27b-dflash-drafter-q8"],
     runtime: {
       preferredBackend: "llama-server",
@@ -328,6 +346,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     hiddenFromCatalog: true,
     runtimeRole: "dflash-drafter",
     companionForModelId: "qwen3.6-27b-dflash",
+    tokenizerFamily: "qwen3",
     blurb: "Hidden DFlash drafter companion for Qwen3.6 27B.",
   },
 
@@ -343,6 +362,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 38,
     category: "reasoning",
     bucket: "xl",
+    tokenizerFamily: "qwen2",
     blurb:
       "Qwen reasoning model. Chain-of-thought, math, code. o1-class open model.",
   },
@@ -357,6 +377,8 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 38,
     category: "reasoning",
     bucket: "xl",
+    // R1 distill is a fine-tune of Qwen2.5-32B → inherits the Qwen2 tokenizer.
+    tokenizerFamily: "qwen2",
     blurb:
       "R1 reasoning distilled into Qwen-32B. 128k context, strong math/code.",
   },
@@ -375,6 +397,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 4,
     category: "chat",
     bucket: "small",
+    tokenizerFamily: "qwen3",
     blurb:
       "Milady's smallest fine-tune. 16GB-VRAM-friendly daily driver tuned for the elizaOS prompt and structured chat output.",
   },
@@ -389,6 +412,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 12,
     category: "chat",
     bucket: "mid",
+    tokenizerFamily: "qwen3",
     blurb:
       "Workstation-class Milady tune with 128k context, agentic tool calling, and structured output.",
   },
@@ -403,6 +427,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 32,
     category: "chat",
     bucket: "large",
+    tokenizerFamily: "qwen3",
     blurb:
       "Cloud-tier Milady tune. Best agentic + tool-calling quality in the eliza-1 series; 128k context, 256k native window.",
   },

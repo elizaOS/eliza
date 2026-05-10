@@ -8,18 +8,20 @@ import type {
   State,
 } from "@elizaos/core";
 import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import { INTERNAL_URL } from "../lifeops/access.js";
+import { messageText } from "../lifeops/google/format-helpers.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { PLAYBOOK_NOT_IMPLEMENTED_ERROR } from "../lifeops/subscriptions-playbooks.js";
 import type { LifeOpsSubscriptionExecutor } from "../lifeops/subscriptions-types.js";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { formatPromptSection } from "./lib/prompt-format.js";
 import { recentConversationTexts } from "./lib/recent-context.js";
-import { INTERNAL_URL } from "../lifeops/access.js";
-import { messageText } from "../lifeops/google/format-helpers.js";
 
 type SubscriptionSubaction = "audit" | "cancel" | "status";
 
 type SubscriptionActionParams = {
+  subaction?: SubscriptionSubaction;
+  /** One-release alias for `subaction`; planner cache hits keep working. */
   mode?: SubscriptionSubaction;
   serviceName?: string;
   serviceSlug?: string;
@@ -31,7 +33,7 @@ type SubscriptionActionParams = {
 };
 
 type SubscriptionActionPlan = {
-  mode?: SubscriptionSubaction | null;
+  subaction?: SubscriptionSubaction | null;
   serviceName?: string;
   serviceSlug?: string;
   executor?: LifeOpsSubscriptionExecutor;
@@ -63,7 +65,7 @@ function mergeParams(
   return params as SubscriptionActionParams;
 }
 
-function normalizeMode(value: unknown): SubscriptionSubaction | null {
+function normalizeSubaction(value: unknown): SubscriptionSubaction | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -142,7 +144,7 @@ async function resolveSubscriptionsPlanWithLlm(args: {
     "Plan the SUBSCRIPTIONS action for this request.",
     "Use the current request, recent conversation, and any already-extracted parameters.",
     "Return JSON only as a single object with exactly these fields:",
-    "  mode: one of audit, cancel, status, or null",
+    "  subaction: one of audit, cancel, status, or null",
     "  serviceName: subscription service display name or null",
     "  serviceSlug: normalized service slug or null",
     "  executor: one of user_browser, agent_browser, desktop_native, or null",
@@ -159,7 +161,7 @@ async function resolveSubscriptionsPlanWithLlm(args: {
     "- Use user_browser when the request explicitly says to use the user's browser. Otherwise prefer agent_browser.",
     "- Return only JSON.",
     "",
-    'Example: {"mode":"cancel","serviceName":"Netflix","serviceSlug":"netflix","executor":"agent_browser","queryWindowDays":null,"confirmed":true,"shouldAct":true,"response":null}',
+    'Example: {"subaction":"cancel","serviceName":"Netflix","serviceSlug":"netflix","executor":"agent_browser","queryWindowDays":null,"confirmed":true,"shouldAct":true,"response":null}',
     "",
     formatPromptSection("Current request", currentMessage),
     formatPromptSection("Existing parameters", args.params),
@@ -180,7 +182,8 @@ async function resolveSubscriptionsPlanWithLlm(args: {
       return {};
     }
     return {
-      mode: normalizeMode(parsed.mode),
+      subaction:
+        normalizeSubaction(parsed.subaction) ?? normalizeSubaction(parsed.mode),
       serviceName: normalizePlannerResponse(parsed.serviceName),
       serviceSlug: normalizePlannerResponse(parsed.serviceSlug),
       executor: normalizeExecutor(parsed.executor),
@@ -233,16 +236,15 @@ async function runSubscriptionsAction(
 ): Promise<ActionResult> {
   const params = mergeParams(message, options);
   const service = new LifeOpsService(runtime);
-  // Trust planner-supplied mode. The action planner has already chosen the
-  // subaction, and the shared LLM param extractor (in handlers that route
-  // here through an umbrella) has already filled in any missing mode field.
-  // Only fall back to the in-handler LLM planner when the mode is genuinely
-  // missing — running it unconditionally just throws away correct hints
-  // (this was the root cause of subscriptions-cancel-* never completing).
-  const trustedMode = normalizeMode(params.mode);
-  const planner = trustedMode
+  // Trust the planner-supplied subaction. Accept the legacy `mode` alias for
+  // one release so cached planner outputs keep resolving. Skip the in-handler
+  // LLM only when neither field is populated — running it unconditionally
+  // just throws away correct hints.
+  const trustedSubaction =
+    normalizeSubaction(params.subaction) ?? normalizeSubaction(params.mode);
+  const planner = trustedSubaction
     ? {
-        mode: trustedMode,
+        subaction: trustedSubaction,
         shouldAct: true as const,
         response: null,
         serviceName: null,
@@ -257,7 +259,7 @@ async function runSubscriptionsAction(
         state,
         params,
       });
-  const mode = trustedMode ?? planner.mode ?? null;
+  const subaction = trustedSubaction ?? planner.subaction ?? null;
 
   if (planner.shouldAct === false && planner.response) {
     return {
@@ -266,7 +268,7 @@ async function runSubscriptionsAction(
       data: { actionName: ACTION_NAME, acted: false },
     };
   }
-  if (!mode) {
+  if (!subaction) {
     return {
       success: false,
       text:
@@ -293,7 +295,7 @@ async function runSubscriptionsAction(
       ? params.confirmed
       : planner.confirmed === true;
 
-  switch (mode) {
+  switch (subaction) {
     case "audit": {
       const summary = await service.auditSubscriptions(INTERNAL_URL, {
         queryWindowDays: params.queryWindowDays ?? planner.queryWindowDays,
@@ -498,8 +500,15 @@ export const subscriptionsAction: Action & {
 
   parameters: [
     {
-      name: "mode",
+      name: "subaction",
       description: "audit | cancel | status when supplied.",
+      required: false,
+      schema: { type: "string" as const, enum: ["audit", "cancel", "status"] },
+    },
+    {
+      name: "mode",
+      description:
+        "Legacy alias for `subaction`. Accepted for one release so cached planner outputs keep resolving; new callers should use `subaction`.",
       required: false,
       schema: { type: "string" as const, enum: ["audit", "cancel", "status"] },
     },

@@ -1,3 +1,6 @@
+> [!NOTE]
+> **STATUS: SUPERSEDED — most items shipped.** See `eliza/docs/audits/lifeops-2026-05-09/REPORT.md` for the current state. The architectural prescriptions this doc game-throughs (PendingPromptsProvider, RecentTaskStatesProvider, GlobalPauseStore, multi-gate `shouldFire`) are implemented under `src/lifeops/scheduled-task/`, `src/lifeops/pending-prompts/`, `src/lifeops/global-pause/`. Retained in place so commit-history references still resolve.
+
 # LifeOps — End-to-End Journey Game-Through Against Proposed Architecture
 
 **Companion to:** `UX_JOURNEYS.md`, `GAP_ASSESSMENT.md`, `IMPLEMENTATION_PLAN.md`, `HARDCODING_AUDIT.md`.

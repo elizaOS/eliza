@@ -36,6 +36,7 @@ import {
   Textarea,
   useSetPageHeader,
 } from "@elizaos/cloud-ui";
+import { useQueryClient } from "@tanstack/react-query";
 import { Copy, Plus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -83,6 +84,10 @@ const permissionGroups = [
 ] as const;
 
 export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
+  const queryClient = useQueryClient();
+  const refreshApiKeys = () => {
+    void queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+  };
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [rateLimitPreset, setRateLimitPreset] =
     useState<(typeof rateLimitPresets)[number]["value"]>("standard");
@@ -147,14 +152,17 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
       throw new Error(data.error || "Failed to create API key");
     }
 
+    // Plaintext secret is only returned on this create response — persist it in
+    // local state so it remains visible after the list refetches.
     setCreatedKey({ plainKey: data.plainKey, name: data.apiKey.name });
     setFormData({ name: "", description: "", rate_limit: 1000 });
     setSelectedPermissions([]);
     setRateLimitPreset("standard");
+    setCreateDialogOpen(false);
     toast.success("API key created successfully", {
       description: `${data.apiKey.name} has been created and is ready to use.`,
     });
-    window.location.reload();
+    refreshApiKeys();
     setIsCreating(false);
   };
 
@@ -238,7 +246,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
       toast.success(`API key ${action}d`, {
         description: `The API key has been ${action}d successfully.`,
       });
-      window.location.reload();
+      refreshApiKeys();
     } else if (type === "delete") {
       const response = await fetch(`/api/v1/api-keys/${id}`, {
         method: "DELETE",
@@ -252,7 +260,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
       toast.success("API key deleted", {
         description: "The API key has been permanently deleted.",
       });
-      window.location.reload();
+      refreshApiKeys();
     } else if (type === "regenerate") {
       const response = await fetch(`/api/v1/api-keys/${id}/regenerate`, {
         method: "POST",
@@ -264,11 +272,13 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
         throw new Error(data.error || "Failed to regenerate API key");
       }
 
+      // Same as create: plaintext is only returned now — keep it on screen
+      // and refetch the list separately.
       setCreatedKey({ plainKey: data.plainKey, name: data.apiKey.name });
       toast.success("API key regenerated", {
         description: `${data.apiKey.name} has been regenerated. The old key is no longer valid.`,
       });
-      window.location.reload();
+      refreshApiKeys();
     }
   };
 
@@ -467,13 +477,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
               </div>
             </div>
             <DialogFooter>
-              <BrandButton
-                variant="primary"
-                onClick={() => {
-                  setCreatedKey(null);
-                  setCreateDialogOpen(false);
-                }}
-              >
+              <BrandButton variant="primary" onClick={() => setCreatedKey(null)}>
                 Done
               </BrandButton>
             </DialogFooter>

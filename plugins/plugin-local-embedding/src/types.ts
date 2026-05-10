@@ -157,14 +157,18 @@ export const MODEL_SPECS: ModelSpecs = {
     },
   },
   embedding: {
-    name: "bge-small-en-v1.5.Q4_K_M.gguf",
-    repo: "ChristianAzinn/bge-small-en-v1.5-gguf",
-    size: "133 MB",
+    // Default embedding model upgraded from bge-small-en-v1.5 (512 ctx,
+    // 384 dim — too small for any realistic doc-embedding workload, per
+    // the on-device porting audit) to nomic-embed-text-v1.5 (8k ctx,
+    // 768 dim). Override via LOCAL_EMBEDDING_MODEL when needed.
+    name: "nomic-embed-text-v1.5.Q4_K_M.gguf",
+    repo: "nomic-ai/nomic-embed-text-v1.5-GGUF",
+    size: "84 MB",
     quantization: "Q4_K_M",
-    contextSize: 512,
-    dimensions: 384,
+    contextSize: 8192,
+    dimensions: 768,
     tokenizer: {
-      name: "ChristianAzinn/bge-small-en-v1.5-gguf",
+      name: "nomic-ai/nomic-embed-text-v1.5-GGUF",
       type: "llama",
     },
   },

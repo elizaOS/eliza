@@ -1,14 +1,15 @@
 # polarquant-cpu
 
-Reference C scalar kernels and GGUF converter for the on-device
-PolarQuant Q4 weight format (`block_q4_polar`, GGML type tag
-`Q4_POLAR=45`).
+C reference + AVX2 + NEON kernels and a GGUF converter for the
+on-device PolarQuant Q4 weight format (`block_q4_polar`, GGML type
+tag `Q4_POLAR=45`).
 
-This is the foundation drop. NEON / AVX2 / Metal kernels and the
-upstream registration into the
+The standalone static library here is the behavioural source of truth
+for the kernels.  Drop-in patches for the
 [Apothic-AI/llama.cpp-1bit-turboquant](https://github.com/Apothic-AI/llama.cpp-1bit-turboquant)
-fork are explicitly out of scope for this session and tracked under
-"Next-session work" below.
+fork live under `fork-integration/` (separate `quants-polar.{h,c}` +
+`.patch` deltas for `ggml-common.h`, `ggml.h`, `ggml-cpu.c`,
+`ggml-quants.c`, and `ggml/src/ggml-cpu/CMakeLists.txt`).
 
 ## What is in here
 
@@ -16,17 +17,24 @@ fork are explicitly out of scope for this session and tracked under
 |---|---|
 | `include/polarquant/polar_centroids.h` | 16 Lloyd-Max centroids for N(0,1), generated. |
 | `include/polarquant/polar_block.h` | `block_q4_polar` layout (locked) + fp16<->fp32 helpers. |
-| `include/polarquant/polarquant.h` | Public API: encoder, decoder, dot product, QJL signs. |
-| `src/polar_hadamard.c` | In-place size-128 Walsh-Hadamard butterfly. |
+| `include/polarquant/polarquant.h` | Public API: encoder, decoder, dot product, QJL signs, SIMD dispatcher. |
+| `src/polar_hadamard.c` | In-place size-128 Walsh-Hadamard butterfly (scalar). |
 | `src/polar_qjl.c` | Deterministic per-block +/-1 sign vector (xorshift32). |
 | `src/polar_quantize_ref.c` | `quantize_row_q4_polar_ref` (norm -> WHT -> bucketize -> pack + 1-bit residual). |
 | `src/polar_dequantize_ref.c` | `dequantize_row_q4_polar_ref` (unpack -> centroid LUT -> inverse WHT -> rescale). |
 | `src/polar_dot_ref.c` | `ggml_vec_dot_q4_polar_q8_0_ref` (matmul kernel; mirrors `ggml_vec_dot_q4_K_q8_K`). |
+| `src/polar_dequantize_avx2.c` | AVX2 dequantizer (FMA-vectorised Hadamard butterfly). |
+| `src/polar_dot_avx2.c`        | AVX2 dot product against Q8_0 activations. |
+| `src/polar_dequantize_neon.c` | ARM NEON dequantizer (FMA-vectorised Hadamard butterfly). |
+| `src/polar_dot_neon.c`        | ARM NEON dot product against Q8_0 activations. |
+| `src/polar_dispatch.c`        | Compile-time `dequantize_row_q4_polar` / `ggml_vec_dot_q4_polar_q8_0` dispatcher. |
 | `test/polar_roundtrip_test.c` | Round-trip a float[128] and check rel-L2 against the Python reference's measured rate. |
-| `test/polar_dot_test.c` | Dot product against an unquantized fp32 reference, same tolerance. |
-| `scripts/gen_centroids.py` | Regenerates `polar_centroids.h` bit-for-bit from the Lloyd-Max solver in `polar_quant.py`. |
+| `test/polar_dot_test.c`       | Dot product against an unquantized fp32 reference, same tolerance. |
+| `test/polar_simd_parity_test.c` | SIMD-vs-scalar parity over 100 random blocks (dequant max-abs <= 5e-5, dot rel-err <= 1e-5). |
+| `scripts/gen_centroids.py`    | Regenerates `polar_centroids.h` bit-for-bit from the Lloyd-Max solver in `polar_quant.py`. |
 | `scripts/polarquant_to_gguf.py` | Pack a PolarQuant safetensors sidecar into a Q4_POLAR=45 GGUF. |
-| `scripts/test_converter.py` | Synthesize a 128x128 linear, encode + convert + read back. |
+| `scripts/test_converter.py`   | Synthesize a 128x128 linear, encode + convert + read back. |
+| `fork-integration/`           | In-fork drop-in: `quants-polar.{h,c}` + `*.patch` for the apothic llama.cpp fork. |
 
 ## Block format (locked)
 
@@ -110,53 +118,64 @@ encoder over it, drives the converter, and reads the GGUF back via
 `gguf.GGUFReader` (with `Q4_POLAR=45` patched into the enum to
 mirror what the upstream registration step will do).
 
-## Validation results (this session)
+## Validation results
 
 | Test | Status | Notes |
 |---|---|---|
 | `polar_roundtrip` | PASS | rel-L2 ~ 0.091 (no QJL) / 0.099 (with QJL); matches Python reference's measured per-block error. |
 | `polar_dot` | PASS | rel-error ~ 0.066 vs fp32 ref; same Python ref bound. |
+| `polar_simd_parity` | PASS | AVX2 vs scalar reference: dequant max_abs <= 5e-7, mean_abs <= 3e-8; dot rel-err <= 2e-7 across 100 random blocks (use_qjl on/off).  NEON path cross-compiles cleanly under `aarch64-linux-gnu`; runtime gate runs on aarch64 CI. |
 | `test_converter.py` | PASS | 1 layer, 128 blocks, 82-byte records bit-identical to direct `pack_layer()`. |
 
 The per-block reconstruction error (~9-10%) is *not* a quality knob.
 PolarQuant Q4's downstream perplexity claim (PPL Δ ≤ +0.05 vs FP16) is
-end-to-end and depends on the model's tolerance for that per-block
-distortion across many overlapping projections; that gate is the
-calibration parity test in next-session work.
+end-to-end and runs once a real Q4_POLAR model GGUF is built through
+the integration flow described in `fork-integration/README.md`.
 
-## Next-session work (NOT done in this session)
+## Architecture-specific kernels
 
-- **NEON SIMD encoder/decoder/dot.** The reference kernels here are
-  scalar.  NEON ports go in `src/polar_*_neon.c` and are guarded by
-  a build flag (`POLARQUANT_HAVE_NEON`) so this directory keeps
-  compiling on x86 dev hosts.
-- **AVX2 path** for cuttlefish + dev workstations.
-- **Apothic-AI/llama.cpp-1bit-turboquant integration.**
-  - Register `GGML_TYPE_Q4_POLAR = 45` in `ggml/src/ggml-common.h`.
-  - Wire the type traits in `ggml/src/ggml-cpu/ggml-cpu.c`
-    (`type_traits[GGML_TYPE_Q4_POLAR]`).
-  - Drop the C kernels here into `ggml/src/ggml-cpu/quants-polar.c`
-    (or analogous), preserving the function signatures so the
-    integration patch is a near-mechanical copy.
-  - If the matmul needs a custom `GGML_OP` (it shouldn't; Q4_POLAR
-    plugs into the existing mul_mat_q4_X paths), add the dispatch.
-- **Metal kernel** in the fork's `ggml-metal.metal`:
-  `kernel_get_rows_q4_polar`, `kernel_mul_mv_q4_polar_f32`.
-- **Calibration parity test** against `polarquant_apply.py` on a real
-  Qwen3-0.6B checkpoint: convert to GGUF, run llama.cpp on it, and
-  compare PPL on a fixed wikitext-2 chunk against the Python
-  reconstruction's PPL.
-- **QJL residual sign vector parity.** This session's reference uses a
-  C xorshift32 PRNG to derive the per-block +/-1 sign vector.  The
-  Python reference uses `torch.randint(seed=42)`, which is not
-  portable across torch versions.  The integration step must pick one
-  of:
-  1. Recompute the sign vector in Python during conversion using the
-     C xorshift32 algorithm and re-derive the residual bits, OR
-  2. Embed the sign vector in GGUF metadata (16 bytes) and have the
-     decoder use the embedded vector verbatim.
-  Path (2) is simpler and what the converter is wired to support
-  (see `polarquant.use_qjl` + the reserved 15 bytes in `qjl[]`).
+| Kernel | Scalar | AVX2 | NEON |
+|---|---|---|---|
+| `quantize_row_q4_polar` (encoder) | yes | -- (convert-time only) | -- |
+| `dequantize_row_q4_polar` (decoder) | yes | yes | yes |
+| `ggml_vec_dot_q4_polar_q8_0` (dot) | yes | yes | yes |
+
+The encoder stays scalar because it runs once per weight tensor at
+GGUF convert time, not in the inference hot path.  The decoder + dot
+are SIMD-dispatched.  The dispatcher itself
+(`src/polar_dispatch.c`) is `#if`-guarded by `POLARQUANT_HAVE_AVX2` /
+`POLARQUANT_HAVE_NEON` (set by `CMakeLists.txt`) and falls back to the
+scalar reference when neither is available — useful for non-x86 /
+non-aarch64 dev hosts.
+
+## In-fork integration
+
+The Apothic llama.cpp fork integration (registers `Q4_POLAR=45`,
+wires the type-traits dispatch) is staged in `fork-integration/`:
+
+- `quants-polar.{h,c}` — drop-in for `ggml/src/ggml-cpu/`,
+  scalar + AVX2 + NEON.
+- `*.patch` — the deltas for `ggml-common.h`, `ggml.h`, `ggml-cpu.c`,
+  `ggml-quants.c`, and `ggml/src/ggml-cpu/CMakeLists.txt`.
+- `fork-integration/README.md` — the order of operations + the
+  `test-quantize-fns` gate the vendor must run before we bump the
+  pin in `compile-libllama.mjs`.
+
+This standalone library remains the behavioural source of truth (it
+has the unit tests + parity gates).  The in-fork file is a
+transcription with llama.cpp's own typedefs (`ggml_fp16_t`,
+`block_q8_0`).  Math is identical; only the type names differ.
+
+## QJL residual sign vector parity
+
+The Python reference uses `torch.randint(seed=42)`, which is not
+portable across torch versions.  Both the standalone library and the
+in-fork TU (`fork-integration/quants-polar.c`) use the deterministic
+C xorshift32 stream defined in `src/polar_qjl.c`.  The GGUF converter
+at `scripts/polarquant_to_gguf.py` is responsible for recomputing the
+QJL bits against the same xorshift32 stream when packing the sidecar,
+so encoder + decoder + converter all agree on the same 128-bit sign
+vector.
 
 ## Related files in this repo
 
