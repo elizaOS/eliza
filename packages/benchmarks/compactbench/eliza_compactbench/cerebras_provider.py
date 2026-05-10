@@ -85,11 +85,11 @@ class CerebrasProvider(Provider):
                 (RateLimitError, APITimeoutError, APIConnectionError, InternalServerError),
             )
 
-        user_content = (
-            request.cached_prefix + request.prompt
-            if request.cached_prefix
-            else request.prompt
-        )
+        # compactbench v0.1.0's CompletionRequest is {model, prompt, system,
+        # max_tokens, temperature, response_format}. No cached_prefix.
+        # Use getattr so a future version that adds it Just Works.
+        cached_prefix = getattr(request, "cached_prefix", "") or ""
+        user_content = cached_prefix + request.prompt
         messages: list[dict[str, str]] = []
         if request.system:
             messages.append({"role": "system", "content": request.system})
@@ -100,6 +100,11 @@ class CerebrasProvider(Provider):
             "messages": messages,
             "temperature": request.temperature,
             "max_tokens": request.max_tokens,
+            # gpt-oss-* are reasoning models; without "low" they exhaust the
+            # token budget on internal reasoning. See bridge/drift fixes.
+            "reasoning_effort": os.environ.get(
+                "CEREBRAS_REASONING_EFFORT", "low"
+            ),
         }
         if request.response_format:
             kwargs["response_format"] = request.response_format
