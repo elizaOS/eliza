@@ -1,7 +1,7 @@
 {
   "$schema": "../profile-config.schema.json",
   "description": "AOSP arm64 profiling matrix. Targets the cuttlefish image (x86_64 emulation of arm64-v8a) and the connected real arm64 device (e.g. ZL8325M37K). Includes the qjl1_256 leg even though the kernel is not yet in the shipped fork — the harness records the failure so the report documents the gap until the kernel lands.",
-  "models": ["llama-3.2-1b", "bonsai-8b-1bit"],
+  "models": ["qwen3.5-4b-dflash", "bonsai-8b-1bit"],
   "kvCacheConfigs": [
     { "name": "baseline-fp16", "k": "f16", "v": "f16" },
     { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" },

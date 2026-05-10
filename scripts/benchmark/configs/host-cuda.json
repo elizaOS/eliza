@@ -1,7 +1,7 @@
 {
   "$schema": "../profile-config.schema.json",
   "description": "Host CUDA profiling matrix (Linux/Windows + NVIDIA). Adds the larger Bonsai-8B model and a DFlash drafter pairing — both are too slow to be useful on CPU.",
-  "models": ["llama-3.2-1b", "bonsai-8b-1bit"],
+  "models": ["qwen3.5-4b-dflash", "bonsai-8b-1bit"],
   "kvCacheConfigs": [
     { "name": "baseline-fp16", "k": "f16", "v": "f16" },
     { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" },
