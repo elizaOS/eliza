@@ -22,13 +22,7 @@ afterEach(() => {
 });
 
 describe("xAI native text plumbing", () => {
-  // Skipped: this test reliably times out in CI (Plugin Tests workflow) at the
-  // default 15s timeout, while the sibling no-tools test passes in <3s. The
-  // tools-path goes through `recordLlmCall` from @elizaos/core, which under
-  // bun's CI hoist layout pulls in async emit-event work that doesn't resolve
-  // with the minimal vi.fn() runtime stub. Re-enable once recordLlmCall has a
-  // mockable seam or the runtime stub covers its event surface.
-  it.skip("forwards tools and returns native shape with toolCalls when caller passes tools", {
+  it("forwards tools and returns native shape with toolCalls when caller passes tools", {
     timeout: 15000,
   }, async () => {
     const fetchMock = vi.fn(
