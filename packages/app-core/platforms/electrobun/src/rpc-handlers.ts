@@ -244,6 +244,8 @@ export function buildBunRpcHandlers({
 		},
 		agentStatus: async () => agent.getStatus(),
 		agentInspectExistingInstall: async () => agent.inspectExistingInstall(),
+		agentMigrateStateDir: async (params: { fromPath: string }) =>
+			agent.migrateStateDir(params),
 		/** Renderer `fetch` after native dialogs can stall; main POST matches menu reset pattern. */
 		agentPostReset: async (
 			params?: { apiBase?: string; bearerToken?: string } | null,
@@ -640,6 +642,11 @@ export function buildBunRpcHandlers({
 		desktopPickWorkspaceFolder: async (
 			params: Parameters<typeof desktop.pickWorkspaceFolder>[0],
 		) => desktop.pickWorkspaceFolder(params),
+		desktopResolveWorkspaceFolderBookmark: async (
+			params: Parameters<typeof desktop.resolveWorkspaceFolderBookmark>[0],
+		) => desktop.resolveWorkspaceFolderBookmark(params),
+		desktopReleaseWorkspaceFolderBookmarks: async () =>
+			desktop.releaseWorkspaceFolderBookmarks(),
 
 		// ---- Gateway ----
 		gatewayStartDiscovery: async (

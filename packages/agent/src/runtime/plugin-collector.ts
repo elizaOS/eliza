@@ -32,6 +32,12 @@ import {
 } from "./core-plugins.ts";
 
 const OPTIONAL_CORE_PLUGIN_NAMES = new Set<string>(OPTIONAL_CORE_PLUGINS);
+const STORE_BUILD_LOCAL_EXECUTION_PLUGINS = new Set<string>([
+  "agent-orchestrator",
+  "@elizaos/plugin-agent-orchestrator",
+  "@elizaos/plugin-shell",
+  "@elizaos/plugin-coding-tools",
+]);
 
 /**
  * Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package;
@@ -89,6 +95,13 @@ function isTruthyCloudEnvValue(raw: string | undefined): boolean {
   if (!raw) return false;
   const value = raw.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
+}
+
+function isStoreBuildVariant(): boolean {
+  const raw =
+    process.env.MILADY_BUILD_VARIANT?.trim() ||
+    process.env.ELIZA_BUILD_VARIANT?.trim();
+  return raw?.toLowerCase() === "store";
 }
 
 /** Maps Eliza channel names to plugin package names. */
@@ -266,6 +279,7 @@ export function collectPluginNames(
     config as Record<string, unknown>,
   );
   const isCloudContainer = process.env.ELIZA_CLOUD_PROVISIONED === "1";
+  const storeBuild = isStoreBuildVariant();
   const cloudExplicitlyDisabled = config.cloud?.enabled === false;
   // `ELIZA_LOCAL_LLAMA=1` is the AOSP / on-device signal that the in-process
   // llama.cpp loader is wired up and should be available as a routable
@@ -556,6 +570,11 @@ export function collectPluginNames(
   // Enforce feature gating last so allow-list entries cannot bypass it.
   if (shellPluginDisabled) {
     pluginsToLoad.delete("@elizaos/plugin-shell");
+  }
+  if (storeBuild) {
+    for (const pluginName of STORE_BUILD_LOCAL_EXECUTION_PLUGINS) {
+      pluginsToLoad.delete(pluginName);
+    }
   }
 
   for (const pluginName of Array.from(pluginsToLoad)) {
