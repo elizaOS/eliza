@@ -14,8 +14,11 @@ import {
   PostInstallAppRequestSchema,
   PostLaunchAppRequestSchema,
   PostLoadFromDirectoryRequestSchema,
+  PostRelaunchAppRequestSchema,
+  PostReplaceFavoritesRequestSchema,
   PostStopAppRequestSchema,
   PutAppPermissionsRequestSchema,
+  PutFavoriteAppRequestSchema,
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
   parseAppIsolation,
@@ -812,24 +815,23 @@ export async function handleAppsRoutes(
     }
 
     if (method === "PUT") {
-      const body = await readJsonBody<{
-        appName?: unknown;
-        isFavorite?: unknown;
-      }>(req, res);
-      if (!body) return true;
-      const rawName =
-        typeof body.appName === "string" ? body.appName.trim() : "";
-      if (!rawName) {
-        error(res, "appName is required", 400);
+      const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+      if (rawBody === null || rawBody === undefined) return true;
+      const parsed = PutFavoriteAppRequestSchema.safeParse(rawBody);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        const issuePath = issue?.path?.join(".") ?? "<root>";
+        error(
+          res,
+          `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+          400,
+        );
         return true;
       }
-      if (typeof body.isFavorite !== "boolean") {
-        error(res, "isFavorite must be a boolean", 400);
-        return true;
-      }
+      const { appName, isFavorite } = parsed.data;
       const current = store.read();
-      const filtered = current.filter((entry) => entry !== rawName);
-      const next = body.isFavorite ? [...filtered, rawName] : filtered;
+      const filtered = current.filter((entry) => entry !== appName);
+      const next = isFavorite ? [...filtered, appName] : filtered;
       const persisted = store.write(sanitizeFavoriteAppNames(next));
       json(res, { favoriteApps: persisted });
       return true;
@@ -842,13 +844,20 @@ export async function handleAppsRoutes(
       error(res, "Favorites store is not configured", 503);
       return true;
     }
-    const body = await readJsonBody<{ favoriteAppNames?: unknown }>(req, res);
-    if (!body) return true;
-    if (!Array.isArray(body.favoriteAppNames)) {
-      error(res, "favoriteAppNames must be an array of strings", 400);
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null || rawBody === undefined) return true;
+    const parsed = PostReplaceFavoritesRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const issuePath = issue?.path?.join(".") ?? "<root>";
+      error(
+        res,
+        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        400,
+      );
       return true;
     }
-    const sanitized = sanitizeFavoriteAppNames(body.favoriteAppNames);
+    const sanitized = sanitizeFavoriteAppNames(parsed.data.favoriteAppNames);
     const persisted = store.write(sanitized);
     json(res, { favoriteApps: persisted });
     return true;
@@ -1217,23 +1226,26 @@ export async function handleAppsRoutes(
   // -------------------------------------------------------------------------
 
   if (method === "POST" && pathname === "/api/apps/relaunch") {
-    const body = await readJsonBody<{
-      name?: string;
-      runId?: string;
-      verify?: boolean;
-    }>(req, res);
-    if (!body) return true;
-    const name = body.name?.trim();
-    if (!name) {
-      error(res, "name is required");
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null || rawBody === undefined) return true;
+    const parsed = PostRelaunchAppRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const issuePath = issue?.path?.join(".") ?? "<root>";
+      error(
+        res,
+        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        400,
+      );
       return true;
     }
+    const { name, runId, verify: verifyRequested } = parsed.data;
     const pluginManager = getPluginManager();
 
     try {
       // Stop matching runs first.
-      if (body.runId?.trim()) {
-        await appManager.stop(pluginManager, "", body.runId.trim(), null);
+      if (runId) {
+        await appManager.stop(pluginManager, "", runId, null);
       } else {
         await appManager.stop(pluginManager, name, undefined, null);
       }
@@ -1247,7 +1259,7 @@ export async function handleAppsRoutes(
 
       let verify: { verdict: string; retryablePromptForChild?: string } | null =
         null;
-      if (body.verify === true) {
+      if (verifyRequested === true) {
         const runtimeWithServices = runtime as {
           getService?: (type: string) => {
             verifyApp?: (opts: {
