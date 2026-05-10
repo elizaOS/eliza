@@ -240,6 +240,32 @@ function modelsFromLadder(
   });
 }
 
+/**
+ * True when this host has enough memory headroom to serve the long-context
+ * KV cache for a 64k+ window. Threshold mirrors the "16 GB workstation"
+ * line from the porting plan — a 64k context for an 8B model at fp16 KV
+ * occupies ~4 GB; with TurboQuant compression it fits inside 1 GB. Below
+ * 16 GB total we keep the historical short-context preference.
+ *
+ * For GPU hosts we look at total VRAM, since the KV cache lives wherever
+ * the layers do; for CPU-only hosts we look at total RAM.
+ */
+const LONG_CONTEXT_RAM_BUMP_THRESHOLD_GB = 16;
+const LONG_CONTEXT_MIN_LENGTH = 65536;
+
+function hasLongContextHeadroom(hardware: HardwareProbe): boolean {
+  const vramGb = hardware.gpu?.totalVramGb ?? 0;
+  if (vramGb >= LONG_CONTEXT_RAM_BUMP_THRESHOLD_GB) return true;
+  return hardware.totalRamGb >= LONG_CONTEXT_RAM_BUMP_THRESHOLD_GB;
+}
+
+function isLongContextModel(model: CatalogModel): boolean {
+  return (
+    typeof model.contextLength === "number" &&
+    model.contextLength >= LONG_CONTEXT_MIN_LENGTH
+  );
+}
+
 function fallbackCandidates(
   slot: TextGenerationSlot,
   hardware: HardwareProbe,
@@ -248,10 +274,16 @@ function fallbackCandidates(
   const candidates = chatCandidates(catalog).filter((model) =>
     canFit(hardware, model, catalog),
   );
+  const preferLongContext = hasLongContextHeadroom(hardware);
   return candidates.sort((left, right) => {
     const leftDflash = left.runtime?.dflash ? 1 : 0;
     const rightDflash = right.runtime?.dflash ? 1 : 0;
     if (leftDflash !== rightDflash) return rightDflash - leftDflash;
+    if (preferLongContext) {
+      const leftLong = isLongContextModel(left) ? 1 : 0;
+      const rightLong = isLongContextModel(right) ? 1 : 0;
+      if (leftLong !== rightLong) return rightLong - leftLong;
+    }
     const sizeDelta =
       catalogDownloadSizeGb(right, catalog) -
       catalogDownloadSizeGb(left, catalog);
@@ -285,9 +317,19 @@ export function selectRecommendedModelForSlot(
       canFit(hardware, model, catalog) &&
       kernelRequirementsSatisfied(model, binaryKernels),
   );
+
+  // On hosts with >= 16 GB RAM/VRAM, give long-context (>= 64k) ladder
+  // entries a small bump so we surface 128k models when they fit. The
+  // ladder order still wins when long-context availability is the same
+  // for every entry (or when the host doesn't have the headroom).
+  const ranked =
+    eligible.length > 0 && hasLongContextHeadroom(hardware)
+      ? rankLadderByLongContext(eligible)
+      : eligible;
+
   const alternatives =
-    eligible.length > 0
-      ? eligible
+    ranked.length > 0
+      ? ranked
       : fallbackCandidates(slot, hardware, catalog).filter((model) =>
           kernelRequirementsSatisfied(model, binaryKernels),
         );
@@ -303,6 +345,22 @@ export function selectRecommendedModelForSlot(
       : `${platformClass} ${slot} ladder has no fitting catalog model`,
     alternatives,
   };
+}
+
+/**
+ * Stable sort that pulls long-context models toward the front while
+ * preserving relative order within each group. Used only on hosts with
+ * the long-context RAM/VRAM headroom — the ladder order remains the
+ * tie-breaker so DFlash-first preferences survive.
+ */
+function rankLadderByLongContext(ladder: CatalogModel[]): CatalogModel[] {
+  return ladder
+    .map((model, idx) => ({ model, idx, long: isLongContextModel(model) }))
+    .sort((left, right) => {
+      if (left.long !== right.long) return right.long ? 1 : -1;
+      return left.idx - right.idx;
+    })
+    .map((entry) => entry.model);
 }
 
 export function selectRecommendedModels(

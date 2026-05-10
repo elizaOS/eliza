@@ -33,6 +33,24 @@
 import { findCatalogModel } from "./catalog";
 import type { CatalogModel, LocalRuntimeKernel } from "./types";
 
+/**
+ * Per-load runtime overrides forwarded by the dispatcher to whichever
+ * backend handles the load. Mirror of the relevant fields on
+ * `LocalInferenceLoadArgs` from `active-model.ts` — kept inline here so
+ * `backend.ts` stays free of cross-file circular imports (active-model
+ * imports engine, engine imports backend).
+ */
+export interface BackendLoadOverrides {
+  contextSize?: number;
+  cacheTypeK?: string;
+  cacheTypeV?: string;
+  gpuLayers?: number;
+  flashAttention?: boolean;
+  mmap?: boolean;
+  mlock?: boolean;
+  useGpu?: boolean;
+}
+
 export interface BackendPlan {
   /** Absolute path to the GGUF on disk. */
   modelPath: string;
@@ -44,6 +62,13 @@ export interface BackendPlan {
   modelId?: string;
   /** Catalog entry, when the caller already resolved it. */
   catalog?: CatalogModel;
+  /**
+   * Per-load runtime overrides resolved by the active-model coordinator.
+   * The dispatcher passes these through verbatim to the chosen backend
+   * so the in-process binding can honour cache-type and contextSize
+   * requests instead of silently dropping them.
+   */
+  overrides?: BackendLoadOverrides;
 }
 
 export interface GenerateArgs {
