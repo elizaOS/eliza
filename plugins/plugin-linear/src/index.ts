@@ -1,9 +1,5 @@
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import {
-  getConnectorAccountManager,
-  logger,
-  promoteSubactionsToActions,
-} from "@elizaos/core";
+import { getConnectorAccountManager, logger, promoteSubactionsToActions } from "@elizaos/core";
 import { linearAction } from "./actions/linear";
 import { createLinearConnectorAccountProvider } from "./connector-account-provider";
 import { linearActivityProvider } from "./providers/activity";

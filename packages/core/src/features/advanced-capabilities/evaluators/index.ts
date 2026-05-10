@@ -30,6 +30,7 @@ import {
 	skillProposalEvaluator as _bs_8_skillProposalEvaluator,
 	skillRefinementEvaluator as _bs_9_skillRefinementEvaluator,
 } from "./skill-items.ts";
+
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 // biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
