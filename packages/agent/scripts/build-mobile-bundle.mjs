@@ -777,16 +777,77 @@ const bundleSrc = await Bun.file(bundlePath).text();
 //
 // Polyfill it as a no-op service class so `startAndRegisterAutonomyService2`
 // just returns null. Autonomy is opt-in, so a no-op class is safe.
-const polyfillHeader =
-  "// auto-injected polyfills for Bun.build identifier-resolution gaps\n" +
-  "var default10 = () => globalThis.crypto.randomUUID();\n" +
-  "var applyWhatsAppQrOverride3 = () => {};\n" +
-  "var applySignalQrOverride3 = () => {};\n" +
+//
+// Generic phase: scan the bundle for identifiers that match known
+// rename patterns (`defaultN`, `applyXxxNN`) and ensure every called-but-
+// undeclared one gets a polyfill. UUID-shaped renames (most `defaultN`)
+// fall back to crypto.randomUUID. apply* renames fall back to no-ops.
+// Real declarations in the bundle shadow these polyfills via `var`
+// hoisting + same-name redeclaration semantics.
+function scanUndeclaredRenames(src) {
+  const declRegex =
+    /(?:\bvar\s+|\blet\s+|\bconst\s+|\bfunction\s+|\bclass\s+)([A-Za-z_$][\w$]*)/g;
+  const declared = new Set();
+  for (const m of src.matchAll(declRegex)) declared.add(m[1]);
+  const candidateRegex =
+    /\b(default\d+|apply[A-Za-z]+Override\d+|[A-Za-z]+Service\d+)\b/g;
+  const seen = new Set();
+  const undeclaredDefaults = new Set();
+  const undeclaredApplies = new Set();
+  const undeclaredServices = new Set();
+  for (const m of src.matchAll(candidateRegex)) {
+    const name = m[1];
+    if (seen.has(name)) continue;
+    seen.add(name);
+    if (declared.has(name)) continue;
+    if (name.startsWith("default")) undeclaredDefaults.add(name);
+    else if (name.startsWith("apply")) undeclaredApplies.add(name);
+    else undeclaredServices.add(name);
+  }
+  return { undeclaredDefaults, undeclaredApplies, undeclaredServices };
+}
+
+const renames = scanUndeclaredRenames(bundleSrc);
+const polyfillLines = [
+  "// auto-injected polyfills for Bun.build identifier-resolution gaps",
+];
+// Always-on: the few hand-curated overrides that need specific shapes.
+polyfillLines.push("var default10 = () => globalThis.crypto.randomUUID();");
+polyfillLines.push("var applyWhatsAppQrOverride3 = () => {};");
+polyfillLines.push("var applySignalQrOverride3 = () => {};");
+polyfillLines.push(
   "var AutonomyService2 = class AutonomyServicePolyfill {\n" +
-  "  static serviceType = 'AUTONOMY';\n" +
-  "  static async start(_runtime) { return null; }\n" +
-  "  async stop() {}\n" +
-  "};\n";
+    "  static serviceType = 'AUTONOMY';\n" +
+    "  static async start(_runtime) { return null; }\n" +
+    "  async stop() {}\n" +
+    "};",
+);
+const SKIP_DEFAULTS = new Set(["default10"]);
+const SKIP_APPLIES = new Set([
+  "applyWhatsAppQrOverride3",
+  "applySignalQrOverride3",
+]);
+const SKIP_SERVICES = new Set(["AutonomyService2"]);
+for (const name of renames.undeclaredDefaults) {
+  if (SKIP_DEFAULTS.has(name)) continue;
+  polyfillLines.push(`var ${name} = () => globalThis.crypto.randomUUID();`);
+}
+for (const name of renames.undeclaredApplies) {
+  if (SKIP_APPLIES.has(name)) continue;
+  polyfillLines.push(`var ${name} = () => {};`);
+}
+for (const name of renames.undeclaredServices) {
+  if (SKIP_SERVICES.has(name)) continue;
+  polyfillLines.push(
+    `var ${name} = class ${name}Polyfill { static async start(_runtime) { return null; } async stop() {} };`,
+  );
+}
+console.log(
+  `[build-mobile] polyfill: ${renames.undeclaredDefaults.size} default*, ` +
+    `${renames.undeclaredApplies.size} apply*, ` +
+    `${renames.undeclaredServices.size} *Service* identifiers covered`,
+);
+const polyfillHeader = polyfillLines.join("\n") + "\n";
 const polyfillFooter = "";
 let prefixed;
 if (bundleSrc.startsWith("#!")) {
