@@ -15,7 +15,7 @@ same registry so adapters can mix-and-match:
 
 1. **Umbrella verbs** (the canonical Eliza surface, also what Wave 2A
    scenarios author): a single name per domain (e.g. `CALENDAR`, `MESSAGE`,
-   `ENTITY`, `LIFE_CREATE`, `PAYMENTS`) with a discriminator inside kwargs:
+   `ENTITY`, `LIFE_CREATE`, `MONEY`) with a discriminator inside kwargs:
 
        Action(name="CALENDAR", kwargs={"subaction": "update_event", ...})
 
@@ -705,21 +705,32 @@ def _u_health(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, An
     return {"subaction": kw.get("subaction", "by_metric"), "ok": True, "noop": True}
 
 
-def _u_payments(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    """PAYMENTS umbrella covers read-only dashboards / list_transactions."""
+def _u_money_readonly(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
+    """MONEY_* read-only verbs — dashboard, list_transactions, list_sources, etc.
+
+    Covers the renamed ``PAYMENTS`` umbrella from Wave 4A: every MONEY_*
+    verb that doesn't mutate state lands here. The MONEY umbrella picks
+    the right behavior on ``subaction`` so the same handler is shared
+    between e.g. ``MONEY``, ``MONEY_DASHBOARD``, ``MONEY_LIST_TRANSACTIONS``.
+    """
     return {"subaction": kw.get("subaction", "dashboard"), "ok": True, "noop": True}
 
 
-def _u_subscriptions_audit(
+def _u_money_subscription_audit(
     _world: LifeWorld, kw: dict[str, Any], _name: str
 ) -> dict[str, Any]:
+    """MONEY_SUBSCRIPTION_AUDIT (renamed from SUBSCRIPTIONS_AUDIT in Wave 4A)."""
     return {"subaction": kw.get("subaction", "audit"), "ok": True, "noop": True}
 
 
-def _u_subscriptions_cancel(
+def _u_money_subscription_cancel(
     world: LifeWorld, kw: dict[str, Any], _name: str
 ) -> dict[str, Any]:
-    """Cancel a subscription. Resolves by serviceSlug first, then serviceName."""
+    """Cancel a subscription. Resolves by serviceSlug first, then serviceName.
+
+    Renamed from ``SUBSCRIPTIONS_CANCEL`` to ``MONEY_SUBSCRIPTION_CANCEL``
+    in Wave 4A; behavior unchanged.
+    """
     if not bool(kw.get("confirmed", False)):
         return {"subaction": "cancel", "ok": True, "noop": True, "reason": "unconfirmed"}
     slug = (kw.get("serviceSlug") or "").lower()
@@ -741,7 +752,7 @@ def _u_subscriptions_cancel(
                 break
     if target_id is None:
         raise KeyError(
-            f"SUBSCRIPTIONS_CANCEL: no subscription matched name='{kw.get('serviceName')}' "
+            f"MONEY_SUBSCRIPTION_CANCEL: no subscription matched name='{kw.get('serviceName')}' "
             f"slug='{kw.get('serviceSlug')}' (have {sorted(world.subscriptions)})"
         )
     sub = world.cancel_subscription(target_id)
@@ -753,12 +764,19 @@ def _u_book_travel(_world: LifeWorld, _kw: dict[str, Any], _name: str) -> dict[s
     return {"action": "BOOK_TRAVEL", "ok": True, "noop": True}
 
 
-def _u_app_block(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    """Focus blocks are not modeled in LifeWorld — read-only no-op."""
-    return {"subaction": kw.get("subaction", "block"), "ok": True, "noop": True}
+def _u_block(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
+    """BLOCK_* family — focus blocks (apps + websites).
 
+    Wave 4A collapsed ``APP_BLOCK`` and ``WEBSITE_BLOCK`` into the
+    unified ``BLOCK_*`` action family. The same handler honors both
+    ``packageNames`` (app blocks) and ``hostnames`` (website blocks) so
+    every BLOCK_* verb (BLOCK, BLOCK_BLOCK, BLOCK_LIST_ACTIVE,
+    BLOCK_RELEASE, BLOCK_STATUS, BLOCK_UNBLOCK, BLOCK_REQUEST_PERMISSION)
+    routes here.
 
-def _u_website_block(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
+    Focus-block sessions are not yet modeled in LifeWorld — every BLOCK_*
+    is a read-only no-op for state-hash purposes (Wave 4C tracking).
+    """
     return {"subaction": kw.get("subaction", "block"), "ok": True, "noop": True}
 
 
@@ -844,12 +862,28 @@ _ACTION_HANDLERS: dict[
     "LIFE_SNOOZE": _u_life_snooze,
     "LIFE_REVIEW": _u_life_review,
     "HEALTH": _u_health,
-    "PAYMENTS": _u_payments,
-    "SUBSCRIPTIONS_AUDIT": _u_subscriptions_audit,
-    "SUBSCRIPTIONS_CANCEL": _u_subscriptions_cancel,
+    # MONEY_* family (Wave 4A renamed PAYMENTS / SUBSCRIPTIONS_* → MONEY_*).
+    # Read-only verbs share `_u_money_readonly`; the cancel verb mutates state.
+    "MONEY": _u_money_readonly,
+    "MONEY_DASHBOARD": _u_money_readonly,
+    "MONEY_LIST_TRANSACTIONS": _u_money_readonly,
+    "MONEY_LIST_SOURCES": _u_money_readonly,
+    "MONEY_RECURRING_CHARGES": _u_money_readonly,
+    "MONEY_SPENDING_SUMMARY": _u_money_readonly,
+    "MONEY_SUBSCRIPTION_STATUS": _u_money_readonly,
+    "MONEY_SUBSCRIPTION_AUDIT": _u_money_subscription_audit,
+    "MONEY_SUBSCRIPTION_CANCEL": _u_money_subscription_cancel,
     "BOOK_TRAVEL": _u_book_travel,
-    "APP_BLOCK": _u_app_block,
-    "WEBSITE_BLOCK": _u_website_block,
+    # BLOCK_* family (Wave 4A renamed APP_BLOCK + WEBSITE_BLOCK → BLOCK_*).
+    # All BLOCK_* verbs share one handler — focus-block sessions aren't
+    # modeled in LifeWorld yet, so every BLOCK_* is a read-only no-op.
+    "BLOCK": _u_block,
+    "BLOCK_BLOCK": _u_block,
+    "BLOCK_UNBLOCK": _u_block,
+    "BLOCK_LIST_ACTIVE": _u_block,
+    "BLOCK_RELEASE": _u_block,
+    "BLOCK_STATUS": _u_block,
+    "BLOCK_REQUEST_PERMISSION": _u_block,
     "SCHEDULED_TASK_CREATE": _u_scheduled_task_create,
 }
 
@@ -924,6 +958,7 @@ class LifeOpsBenchRunner:
         judge_client: BaseClient | None = None,
         evaluator: LifeOpsEvaluator | None = None,
         live_judge_min_turn: int = 5,
+        abort_on_budget_exceeded: bool = True,
     ) -> None:
         self.agent_fn = agent_fn
         self.world_factory = world_factory
@@ -934,6 +969,7 @@ class LifeOpsBenchRunner:
         self.max_cost_usd = max_cost_usd
         self.per_scenario_timeout_s = per_scenario_timeout_s
         self.live_judge_min_turn = live_judge_min_turn
+        self.abort_on_budget_exceeded = abort_on_budget_exceeded
 
         if scenarios is not None:
             self.scenarios = scenarios
@@ -959,6 +995,11 @@ class LifeOpsBenchRunner:
         self._agent_spent_usd = 0.0
         self._eval_spent_usd = 0.0
         self._spent_lock = asyncio.Lock()
+        # Set to True the first time `_charge` raises CostBudgetExceeded so
+        # subsequent scenarios can short-circuit when
+        # ``abort_on_budget_exceeded`` is on. Avoids racing many in-flight
+        # scenarios past the cap before the gather sees the first failure.
+        self._budget_exhausted = False
 
     async def run_all(self) -> BenchmarkResult:
         """Run every configured scenario across `seeds` repetitions and aggregate."""
@@ -1013,6 +1054,19 @@ class LifeOpsBenchRunner:
         seed: int,
     ) -> ScenarioResult:
         async with semaphore:
+            # Short-circuit any scenario that hasn't started its agent_fn yet
+            # once another scenario has tripped the cost cap and abort is on.
+            # This keeps the run from racing pending scenarios past the cap
+            # in the time between the first failure and the gather collecting
+            # results.
+            if self.abort_on_budget_exceeded and self._budget_exhausted:
+                return self._failure_result(
+                    scenario,
+                    seed,
+                    "cost_exceeded",
+                    "skipped — cumulative cost cap "
+                    f"${self.max_cost_usd:.4f} already exceeded",
+                )
             try:
                 return await asyncio.wait_for(
                     self.run_one(scenario, seed),
@@ -1348,6 +1402,7 @@ class LifeOpsBenchRunner:
                 raise ValueError(f"unknown cost bucket: {bucket!r}")
             total = self._agent_spent_usd + self._eval_spent_usd
             if total > self.max_cost_usd:
+                self._budget_exhausted = True
                 raise CostBudgetExceeded(
                     f"spent ${total:.4f} exceeded cap "
                     f"${self.max_cost_usd:.4f} on {scenario_id}#{seed} (bucket={bucket})"

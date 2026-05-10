@@ -420,6 +420,14 @@ export const todoAction: Action = {
   contexts: [...TODOS_CONTEXTS],
   roleGate: { minRole: "ADMIN" },
   contextGate: { anyOf: [...TODOS_CONTEXTS] },
+  tags: [
+    "domain:reminders",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "capability:delete",
+    "surface:internal",
+  ],
   similes: [
     "TODO_WRITE",
     "WRITE_TODOS",
@@ -445,18 +453,9 @@ export const todoAction: Action = {
     "CLEAR_TODOS",
   ],
   description:
-    "Manage the user's todo list. Op-based dispatch — provide an `op` parameter:\n" +
-    "  write    — replace the user's list for this conversation with `todos: [{id?, content, status, activeForm?}]`.\n" +
-    "  create   — add one todo (`content`, optional `status`, `activeForm`, `parentTodoId`).\n" +
-    "  update   — change a todo by `id` (`content`/`status`/`activeForm`).\n" +
-    "  complete — mark `id` as completed (sugar for op=update with status=completed).\n" +
-    "  cancel   — mark `id` as cancelled.\n" +
-    "  delete   — hard-delete `id`.\n" +
-    "  list     — read the current user's todos (`includeCompleted?`, `limit?`).\n" +
-    "  clear    — remove all todos for this user in this conversation.\n" +
-    "Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
+    "Manage the user's todo list. Subactions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
   descriptionCompressed:
-    "todo manage list; op: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId).",
+    "todos: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId)",
   parameters: [
     {
       name: "subaction",

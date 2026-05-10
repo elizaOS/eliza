@@ -311,14 +311,20 @@ export const remoteDesktopAction: Action & {
     "CONNECT_FROM_PHONE",
   ],
   description:
-    "Owner-only. Manage remote-control desktop sessions so the owner can connect to this machine from another device. " +
-    "Subactions: start (open a session via RemoteSessionService — requires confirmed:true and may require a pairing code; local-mode skips the code), " +
-    "status (look up one session by id via the stored session backend), " +
-    "end (close a session by id via the stored session backend), " +
-    "list (enumerate active sessions via RemoteSessionService), " +
-    "revoke (revoke an active session by id via RemoteSessionService).",
+    "Manage remote-desktop sessions so the owner can connect to this machine from another device. " +
+    "Subactions: start (open a session — requires confirmed:true and a pairing code in cloud mode), status (lookup by sessionId), end (close by sessionId), list (active sessions), revoke (revoke an active session by sessionId).",
   descriptionCompressed:
-    "remote-desktop session lifecycle: start(confirmed,pairing-code) status(sessionId) end(sessionId) list revoke(sessionId)",
+    "remote-desktop sessions: start|status|end|list|revoke; start requires confirmed:true (+ pairing code in cloud mode)",
+  tags: [
+    "domain:meta",
+    "capability:read",
+    "capability:write",
+    "capability:execute",
+    "capability:delete",
+    "surface:device",
+    "surface:internal",
+    "risk:irreversible",
+  ],
   contexts: ["browser", "automation", "settings", "admin", "terminal"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,

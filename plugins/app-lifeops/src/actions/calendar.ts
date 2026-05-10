@@ -520,15 +520,22 @@ export const calendarAction: Action & {
 } = {
   name: ACTION_NAME,
   similes: ["CALENDAR", "SCHEDULE", "MEETING"],
-  tags: ["always-include", "calendar", "event", "scheduling"],
+  tags: [
+    "domain:calendar",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "capability:delete",
+    "surface:remote-api",
+    "surface:internal",
+  ],
   description:
-    "Owner's Google Calendar surface plus availability + meeting-preference helpers. Subactions: " +
+    "Manage Google Calendar plus availability and meeting preferences. Subactions: " +
     "feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, " +
     "check_availability, propose_times, update_preferences. " +
-    "Calendly is its own action (mention of calendly.com or 'Calendly' routes there). " +
-    "Multi-turn scheduling negotiations live in SCHEDULING_NEGOTIATION (start, propose, respond, finalize, cancel, list).",
+    "Use CALENDLY for calendly.com URLs and SCHEDULING_NEGOTIATION for multi-turn proposal/response flows.",
   descriptionCompressed:
-    "calendar+availability+prefs: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs",
+    "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
   // "general" included for the same reason as LIFE: messageHandler routes
   // most user-facing event/scheduling requests to "general" rather than
   // "calendar", so retrieval would otherwise filter CALENDAR out before
@@ -650,8 +657,33 @@ export const calendarAction: Action & {
       name: "details",
       description:
         "Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
+      descriptionCompressed:
+        "calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
       required: false,
-      schema: { type: "object" as const },
+      schema: {
+        type: "object" as const,
+        properties: {
+          calendarId: { type: "string" as const },
+          timeMin: { type: "string" as const },
+          timeMax: { type: "string" as const },
+          timeZone: { type: "string" as const },
+          forceSync: { type: "boolean" as const },
+          windowDays: { type: "number" as const },
+          windowPreset: { type: "string" as const },
+          startAt: { type: "string" as const },
+          endAt: { type: "string" as const },
+          durationMinutes: { type: "number" as const },
+          eventId: { type: "string" as const },
+          newTitle: { type: "string" as const },
+          description: { type: "string" as const },
+          location: { type: "string" as const },
+          travelOriginAddress: { type: "string" as const },
+          attendees: {
+            type: "array" as const,
+            items: { type: "string" as const },
+          },
+        },
+      },
     },
     {
       name: "durationMinutes",
@@ -735,8 +767,35 @@ export const calendarAction: Action & {
       name: "blackoutWindows",
       description:
         "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+      descriptionCompressed:
+        "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
       required: false,
-      schema: { type: "array" as const },
+      schema: {
+        type: "array" as const,
+        items: {
+          type: "object" as const,
+          properties: {
+            label: { type: "string" as const },
+            startLocal: {
+              type: "string" as const,
+              pattern: "^[0-2][0-9]:[0-5][0-9]$",
+            },
+            endLocal: {
+              type: "string" as const,
+              pattern: "^[0-2][0-9]:[0-5][0-9]$",
+            },
+            daysOfWeek: {
+              type: "array" as const,
+              items: {
+                type: "number" as const,
+                minimum: 0,
+                maximum: 6,
+              },
+            },
+          },
+          required: ["label", "startLocal", "endLocal"],
+        },
+      },
     },
   ],
   examples: [

@@ -125,9 +125,16 @@ export const messageHandoffAction: Action = {
     "AGENT_COME_BACK",
   ],
   description:
-    "Multi-party room handoff control. verb=enter flips the current room into handoff mode (agent stops contributing until the resume condition fires); verb=resume exits handoff; verb=status reports state.",
+    "Hand off a multi-party room to the human owner. Verbs: enter (agent stops contributing until the resume condition fires), resume (agent rejoins), status (report current handoff state).",
   descriptionCompressed:
-    "MESSAGE_HANDOFF verb: enter|resume|status; gates agent contributions per resumeOn condition.",
+    "room handoff: enter|resume|status; gates agent per resumeOn condition",
+  tags: [
+    "domain:meta",
+    "capability:execute",
+    "capability:update",
+    "capability:read",
+    "surface:internal",
+  ],
   contexts: ["messaging", "automation"],
   validate: async () => true,
   parameters: [

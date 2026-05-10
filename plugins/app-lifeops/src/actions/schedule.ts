@@ -143,6 +143,12 @@ export const scheduleAction: Action = {
   // See `12-real-root-cause.md` — "general" is the messageHandler's most
   // common context choice for ambiguous personal-assistant prompts; without
   // it here, SCHEDULE is filtered out of retrieval for routine-creation flows.
+  tags: [
+    "domain:meta",
+    "capability:read",
+    "surface:internal",
+    "cost:cheap",
+  ],
   contexts: ["general", "calendar", "tasks", "health", "screen_time"],
   roleGate: { minRole: "OWNER" },
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),

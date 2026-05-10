@@ -1440,12 +1440,21 @@ export const connectorAction: Action & {
     "CHECK_CONNECTION",
     "SERVICE_STATUS",
   ],
+  tags: [
+    "domain:meta",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "capability:delete",
+    "surface:remote-api",
+    "surface:internal",
+  ],
   description:
-    "Manage LifeOps connector lifecycle and active verification probes. " +
-    "Connector kinds resolve through the runtime ConnectorRegistry. " +
-    `Subactions: ${VALID_SUBACTIONS.join(" | ")}.`,
+    "Manage external service connections (Google, Telegram, Discord, Slack, etc.). " +
+    `Subactions: ${VALID_SUBACTIONS.join(", ")}. ` +
+    "Connector kinds resolve through the runtime ConnectorRegistry; verify runs an active probe against the upstream API.",
   descriptionCompressed:
-    "connector lifecycle+verify-probes (registry-driven): connect disconnect verify status list",
+    "connector lifecycle: connect|disconnect|verify|status|list; registry-driven kinds",
   contexts: [
     "connectors",
     "settings",

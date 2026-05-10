@@ -250,9 +250,15 @@ export const screenTimeAction: Action = {
     "DWELL_TIME",
   ],
   description:
-    "Owner-only. Quantitative screen-time and activity analytics across screen-time samples, the macOS native activity tracker, and browser extension reports. Subactions: summary, today, weekly, weekly_average_by_app, by_app, by_website (screen-time queries); activity_report, time_on_app, time_on_site (focus minutes from native tracker); browser_activity (per-domain pushed by browser extension).",
+    "Read screen-time and activity analytics across screen-time samples, the macOS native activity tracker, and browser-extension reports. Subactions: summary, today, weekly, weekly_average_by_app, by_app, by_website, activity_report, time_on_app, time_on_site, browser_activity. Read-only — never writes.",
   descriptionCompressed:
-    "screen-time+activity+browser focus mins: summary today weekly weekly-avg-by-app by-app by-website activity-report time-on-app time-on-site browser-activity owner macOS",
+    "screen-time+activity reads: summary|today|weekly|weekly_average_by_app|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity; read-only",
+  tags: [
+    "domain:focus",
+    "capability:read",
+    "surface:device",
+    "cost:cheap",
+  ],
   contexts: ["screen_time", "browser", "health", "tasks"],
   roleGate: { minRole: "OWNER" },
 

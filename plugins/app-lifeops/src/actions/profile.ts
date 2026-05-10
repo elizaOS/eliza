@@ -244,17 +244,16 @@ export const profileAction: Action & {
     "CAPTURE_PHONE",
   ],
   tags: [
-    "always-include",
-    "travel preferences",
-    "flight preferences",
-    "hotel preferences",
-    "booking preferences",
-    "owner profile",
+    "domain:meta",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "surface:internal",
   ],
   description:
-    "Owner-only. Persist stable owner facts and preferences: name, location, gender, age, relationship status, travel-booking preferences (save subaction); phone number (capture_phone). Reminder intensity and escalation rules live on LIFE.policy_set_reminder / LIFE.policy_configure_escalation.",
+    "Save durable owner facts and preferences. Subactions: save (name, location, gender, age, relationship status, travel-booking preferences), capture_phone (phone number for SMS/voice escalation). Reminder intensity and escalation rules live on LIFE.policy_set_reminder / LIFE.policy_configure_escalation.",
   descriptionCompressed:
-    "persist owner state: save(name,location,age,prefs) + capture_phone(number); reminder/escalation policy lives on LIFE.policy_*",
+    "save owner facts+prefs: subactions save|capture_phone; reminder/escalation policy → LIFE.policy_*",
   routingHint:
     'durable owner facts, reusable preferences, travel/booking preferences ("remember I prefer aisle seats", "save my hotel preferences") -> PROFILE; reminder intensity / escalation rules -> LIFE.policy_*; never use extraction/memory side effects/REPLY',
   // "general" included so "save my preference" / "remember I like X" prompts

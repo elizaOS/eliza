@@ -161,13 +161,24 @@ export const moneyAction: Action & {
     "CANCEL_HULU",
     "MANAGE_SUBSCRIPTIONS",
   ],
+  tags: [
+    "domain:finance",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "capability:delete",
+    "capability:execute",
+    "surface:remote-api",
+    "surface:internal",
+    "risk:financial",
+    "cost:expensive",
+  ],
   description:
-    "Track money: payment sources & transactions, spending summaries, recurring-charge detection, subscription audits & cancellations. " +
-    "Subactions: dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges " +
-    "| subscription_audit | subscription_cancel | subscription_status. " +
-    "Subscription cancellations route through the browser executor; payments live on bank/CSV/Plaid/PayPal.",
+    "Track payments and subscriptions. " +
+    "Subactions: dashboard, list_sources, add_source, remove_source, import_csv, list_transactions, spending_summary, recurring_charges, subscription_audit, subscription_cancel, subscription_status. " +
+    "Subscription cancellations route through the browser executor; payment data comes from bank, CSV, Plaid, or PayPal.",
   descriptionCompressed:
-    "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+    "payments+subscriptions: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
   contexts: [
     "payments",
     "finance",

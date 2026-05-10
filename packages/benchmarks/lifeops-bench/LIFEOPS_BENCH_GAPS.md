@@ -48,15 +48,24 @@ runtime surface; dispatched on `kwargs.subaction` or `kwargs.operation`):
 - `LIFE_COMPLETE`, `LIFE_SNOOZE` — operate on `reminder_*` ids only.
 - `LIFE_REVIEW` — read-only no-op.
 - `HEALTH` — read-only metric reads (no-op for state hash).
-- `PAYMENTS` — read-only dashboard / list_transactions (no-op).
-- `SUBSCRIPTIONS_AUDIT` — read-only no-op.
-- `SUBSCRIPTIONS_CANCEL` — mutates Subscription.status to `cancelled`
-  when `confirmed=True`. Resolves by `serviceSlug` first, then
-  case-insensitive `serviceName` (with substring fallback to handle
-  "Disney+" vs "Disney Plus").
+- `MONEY`, `MONEY_DASHBOARD`, `MONEY_LIST_TRANSACTIONS`,
+  `MONEY_LIST_SOURCES`, `MONEY_RECURRING_CHARGES`,
+  `MONEY_SPENDING_SUMMARY`, `MONEY_SUBSCRIPTION_STATUS` — read-only
+  finance verbs; no-op for state. Renamed from the legacy `PAYMENTS`
+  umbrella in Wave 4A.
+- `MONEY_SUBSCRIPTION_AUDIT` — read-only no-op (renamed from
+  `SUBSCRIPTIONS_AUDIT`).
+- `MONEY_SUBSCRIPTION_CANCEL` — mutates Subscription.status to
+  `cancelled` when `confirmed=True`. Resolves by `serviceSlug` first,
+  then case-insensitive `serviceName` (with substring fallback to
+  handle "Disney+" vs "Disney Plus"). Renamed from
+  `SUBSCRIPTIONS_CANCEL`.
 - `BOOK_TRAVEL` — returns offers without booking; no-op for state.
-- `APP_BLOCK`, `WEBSITE_BLOCK` — focus blocks not modeled in LifeWorld;
-  no-op for state.
+- `BLOCK`, `BLOCK_BLOCK`, `BLOCK_UNBLOCK`, `BLOCK_LIST_ACTIVE`,
+  `BLOCK_RELEASE`, `BLOCK_STATUS`, `BLOCK_REQUEST_PERMISSION` — focus
+  blocks not modeled in LifeWorld; no-op for state. Wave 4A unified
+  the legacy `APP_BLOCK` (apps via `packageNames`) and `WEBSITE_BLOCK`
+  (sites via `hostnames`) into one BLOCK_* family.
 - `SCHEDULED_TASK_CREATE` — modeled as a Reminder on `list_personal`
   with the trigger's `atIso` as the due time. The reminder id is derived
   deterministically from kwargs so replays produce identical state.
@@ -78,7 +87,7 @@ conformance rubric (the no-op replays match), but a *behavioral* check —
 e.g. "did the agent actually queue a focus block for the right duration?" —
 would need new entity support.
 
-- `APP_BLOCK / WEBSITE_BLOCK`: focus-block sessions. Suggested resolution:
+- `BLOCK_*`: focus-block sessions (apps + websites). Suggested resolution:
   add a `FocusBlock` entity with hostname/package/duration/start_at and
   bind to `EntityKind.FOCUS_BLOCK`. Wave 4C.
 - `ENTITY/log_interaction`: contact-touch log. Suggested resolution: add
@@ -93,8 +102,8 @@ would need new entity support.
   persisted. Wave 4D.
 - `HEALTH` (all subactions): manifest-level read-only. OK as no-op for
   state; the read payload is what scenarios actually score against.
-- `PAYMENTS/dashboard`, `PAYMENTS/list_transactions`,
-  `SUBSCRIPTIONS_AUDIT`: read-only listings. OK as no-op.
+- `MONEY_DASHBOARD`, `MONEY_LIST_TRANSACTIONS`,
+  `MONEY_SUBSCRIPTION_AUDIT`: read-only listings. OK as no-op.
 - `MESSAGE/triage`, `MESSAGE/search_inbox`, `MESSAGE/list_channels`,
   `MESSAGE/read_channel`, `MESSAGE/read_with_contact`: read-only. OK as
   no-op.

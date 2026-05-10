@@ -413,12 +413,17 @@ export const resolveRequestAction: Action & {
     "DENY_APPROVAL",
     "DECLINE_APPROVAL",
   ],
+  tags: [
+    "domain:meta",
+    "capability:execute",
+    "capability:update",
+    "surface:internal",
+    "risk:irreversible",
+  ],
   description:
-    "Owner-only. Approve or reject a pending action queued for human confirmation (send_email, send_message, " +
-    "book_travel, voice_call, etc.). Call this even when the owner omits the request id; the handler inspects " +
-    "the pending queue, picks the target request from user intent when possible, or asks a follow-up.",
+    "Approve or reject a pending action queued for owner confirmation (send_email, send_message, book_travel, voice_call, etc.). Subactions: approve, reject. requestId is optional — the handler inspects the pending queue and infers the target from owner intent, or asks a follow-up.",
   descriptionCompressed:
-    "approve|reject pending request from queue, requestId optional: send_email send_message book_travel voice_call multilingual",
+    "approve|reject queued action; requestId optional; covers send_email|send_message|book_travel|voice_call",
   contexts: [
     "email",
     "messaging",

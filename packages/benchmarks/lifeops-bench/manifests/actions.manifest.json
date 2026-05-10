@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "generated_at": "2026-05-10T09:25:39.200Z",
+  "generated_at": "2026-05-10T10:49:54.978Z",
   "filter": {
     "include": [
       "app-contacts",
@@ -11,14 +11,18 @@
       "plugin-todos"
     ],
     "exclude": [],
-    "tags": []
+    "tags": [],
+    "domains": [],
+    "capabilities": [],
+    "surfaces": [],
+    "excludeRisks": []
   },
   "actions": [
     {
       "type": "function",
       "function": {
         "name": "BLOCK",
-        "description": "block app|website (phone-Family-Controls|hosts-file/SelfControl): block unblock status request_permission(web) release(web,ruleId,confirmed) list_active(web)",
+        "description": "block/unblock apps+websites; subactions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
         "parameters": {
           "type": "object",
           "properties": {
@@ -100,7 +104,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:focus",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:read",
+        "capability:execute",
+        "surface:device",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "screen_time",
         "browser",
@@ -109,13 +122,26 @@
         "settings"
       ],
       "_priority": 100,
-      "_examples_count": 4
+      "_examples_count": 4,
+      "_domain": "domain:focus",
+      "_capabilities": [
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:read",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:device"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "BLOCK_BLOCK",
-        "description": "block app|website (phone-Family-Controls|hosts-file/SelfControl): block unblock status request_permission(web) release(web,ruleId,confirmed) list_active(web)",
+        "description": "block/unblock apps+websites; subactions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
         "parameters": {
           "type": "object",
           "properties": {
@@ -197,7 +223,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:focus",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:read",
+        "capability:execute",
+        "surface:device",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "screen_time",
         "browser",
@@ -206,13 +241,26 @@
         "settings"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:focus",
+      "_capabilities": [
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:read",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:device"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "BLOCK_LIST_ACTIVE",
-        "description": "block app|website (phone-Family-Controls|hosts-file/SelfControl): block unblock status request_permission(web) release(web,ruleId,confirmed) list_active(web)",
+        "description": "block/unblock apps+websites; subactions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
         "parameters": {
           "type": "object",
           "properties": {
@@ -294,7 +342,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:focus",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:read",
+        "capability:execute",
+        "surface:device",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "screen_time",
         "browser",
@@ -303,13 +360,26 @@
         "settings"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:focus",
+      "_capabilities": [
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:read",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:device"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "BLOCK_RELEASE",
-        "description": "block app|website (phone-Family-Controls|hosts-file/SelfControl): block unblock status request_permission(web) release(web,ruleId,confirmed) list_active(web)",
+        "description": "block/unblock apps+websites; subactions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
         "parameters": {
           "type": "object",
           "properties": {
@@ -391,7 +461,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:focus",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:read",
+        "capability:execute",
+        "surface:device",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "screen_time",
         "browser",
@@ -400,13 +479,26 @@
         "settings"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:focus",
+      "_capabilities": [
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:read",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:device"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "BLOCK_REQUEST_PERMISSION",
-        "description": "block app|website (phone-Family-Controls|hosts-file/SelfControl): block unblock status request_permission(web) release(web,ruleId,confirmed) list_active(web)",
+        "description": "block/unblock apps+websites; subactions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
         "parameters": {
           "type": "object",
           "properties": {
@@ -488,7 +580,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:focus",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:read",
+        "capability:execute",
+        "surface:device",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "screen_time",
         "browser",
@@ -497,13 +598,26 @@
         "settings"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:focus",
+      "_capabilities": [
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:read",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:device"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "BLOCK_STATUS",
-        "description": "block app|website (phone-Family-Controls|hosts-file/SelfControl): block unblock status request_permission(web) release(web,ruleId,confirmed) list_active(web)",
+        "description": "block/unblock apps+websites; subactions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
         "parameters": {
           "type": "object",
           "properties": {
@@ -585,7 +699,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:focus",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:read",
+        "capability:execute",
+        "surface:device",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "screen_time",
         "browser",
@@ -594,13 +717,26 @@
         "settings"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:focus",
+      "_capabilities": [
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:read",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:device"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "BLOCK_UNBLOCK",
-        "description": "block app|website (phone-Family-Controls|hosts-file/SelfControl): block unblock status request_permission(web) release(web,ruleId,confirmed) list_active(web)",
+        "description": "block/unblock apps+websites; subactions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
         "parameters": {
           "type": "object",
           "properties": {
@@ -682,7 +818,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:focus",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:read",
+        "capability:execute",
+        "surface:device",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "screen_time",
         "browser",
@@ -691,47 +836,110 @@
         "settings"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:focus",
+      "_capabilities": [
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:read",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:device"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "BOOK_TRAVEL",
-        "description": "approval-gated real travel booking flights/hotels missing-detail collection draft-confirm calendar-sync after-approval",
+        "description": "book real flights+hotels; drafts then requires owner approval; syncs calendar",
         "parameters": {
           "type": "object",
           "properties": {
             "offerId": {
               "type": "string",
-              "description": "Duffel offer id to book if a concrete offer was already chosen."
+              "description": "duffel offer id pre-selected (e.g. off_0000ABCdefGHI)",
+              "pattern": "^off_[A-Za-z0-9]+$"
             },
             "origin": {
               "type": "string",
-              "description": "Origin IATA airport code when searching for a flight."
+              "description": "origin IATA 3-letter uppercase (e.g. JFK, SFO, LHR)",
+              "pattern": "^[A-Z]{3}$"
             },
             "destination": {
               "type": "string",
-              "description": "Destination IATA airport code when searching for a flight."
+              "description": "destination IATA 3-letter uppercase (e.g. LHR, NRT, LAX)",
+              "pattern": "^[A-Z]{3}$"
             },
             "departureDate": {
               "type": "string",
-              "description": "Departure date in YYYY-MM-DD format."
+              "description": "departure YYYY-MM-DD (e.g. 2026-06-12)",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
             },
             "returnDate": {
               "type": "string",
-              "description": "Optional return date in YYYY-MM-DD format."
+              "description": "return YYYY-MM-DD optional (e.g. 2026-06-19)",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
             },
             "passengers": {
               "type": "array",
-              "description": "Passenger details required to create the booking after approval.",
+              "description": "passengers[]: givenName familyName bornOn gender email? phone?",
               "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "givenName": {
+                    "type": "string"
+                  },
+                  "familyName": {
+                    "type": "string"
+                  },
+                  "bornOn": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "gender": {
+                    "type": "string",
+                    "enum": [
+                      "m",
+                      "f"
+                    ]
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "phoneNumber": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "givenName",
+                  "familyName",
+                  "bornOn",
+                  "gender"
+                ],
+                "additionalProperties": false
               }
             },
             "calendarSync": {
               "type": "object",
-              "description": "Optional calendar sync metadata for the booked itinerary event.",
-              "properties": {},
+              "description": "calendarSync: calendarId? attendees[]? notes? for itinerary event",
+              "properties": {
+                "calendarId": {
+                  "type": "string"
+                },
+                "attendees": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "notes": {
+                  "type": "string"
+                }
+              },
               "required": [],
               "additionalProperties": false
             }
@@ -742,7 +950,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:travel",
+        "capability:read",
+        "capability:write",
+        "capability:execute",
+        "surface:remote-api",
+        "risk:financial",
+        "cost:expensive"
+      ],
       "_contexts": [
         "calendar",
         "contacts",
@@ -752,13 +968,24 @@
         "browser"
       ],
       "_priority": 100,
-      "_examples_count": 3
+      "_examples_count": 3,
+      "_domain": "domain:travel",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:remote-api"
+      ],
+      "_risk": "risk:financial",
+      "_cost": "cost:expensive"
     },
     {
       "type": "function",
       "function": {
         "name": "CALENDAR",
-        "description": "calendar+availability+prefs: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs",
+        "description": "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
         "parameters": {
           "type": "object",
           "properties": {
@@ -800,8 +1027,60 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
-              "properties": {},
+              "description": "calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+              "properties": {
+                "calendarId": {
+                  "type": "string"
+                },
+                "timeMin": {
+                  "type": "string"
+                },
+                "timeMax": {
+                  "type": "string"
+                },
+                "timeZone": {
+                  "type": "string"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowPreset": {
+                  "type": "string"
+                },
+                "startAt": {
+                  "type": "string"
+                },
+                "endAt": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "newTitle": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "travelOriginAddress": {
+                  "type": "string"
+                },
+                "attendees": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
               "required": [],
               "additionalProperties": false
             },
@@ -855,9 +1134,36 @@
             },
             "blackoutWindows": {
               "type": "array",
-              "description": "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+              "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
               "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "startLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "endLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "daysOfWeek": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 6
+                    }
+                  }
+                },
+                "required": [
+                  "label",
+                  "startLocal",
+                  "endLocal"
+                ],
+                "additionalProperties": false
               }
             }
           },
@@ -868,10 +1174,13 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "calendar",
-        "event",
-        "scheduling"
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
       ],
       "_contexts": [
         "general",
@@ -882,13 +1191,26 @@
         "web"
       ],
       "_priority": 100,
-      "_examples_count": 9
+      "_examples_count": 9,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CALENDAR_BULK_RESCHEDULE",
-        "description": "calendar+availability+prefs: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs",
+        "description": "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
         "parameters": {
           "type": "object",
           "properties": {
@@ -930,8 +1252,60 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
-              "properties": {},
+              "description": "calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+              "properties": {
+                "calendarId": {
+                  "type": "string"
+                },
+                "timeMin": {
+                  "type": "string"
+                },
+                "timeMax": {
+                  "type": "string"
+                },
+                "timeZone": {
+                  "type": "string"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowPreset": {
+                  "type": "string"
+                },
+                "startAt": {
+                  "type": "string"
+                },
+                "endAt": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "newTitle": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "travelOriginAddress": {
+                  "type": "string"
+                },
+                "attendees": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
               "required": [],
               "additionalProperties": false
             },
@@ -985,9 +1359,36 @@
             },
             "blackoutWindows": {
               "type": "array",
-              "description": "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+              "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
               "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "startLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "endLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "daysOfWeek": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 6
+                    }
+                  }
+                },
+                "required": [
+                  "label",
+                  "startLocal",
+                  "endLocal"
+                ],
+                "additionalProperties": false
               }
             }
           },
@@ -998,10 +1399,13 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "calendar",
-        "event",
-        "scheduling"
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
       ],
       "_contexts": [
         "general",
@@ -1012,13 +1416,26 @@
         "web"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CALENDAR_CHECK_AVAILABILITY",
-        "description": "calendar+availability+prefs: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs",
+        "description": "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1060,8 +1477,60 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
-              "properties": {},
+              "description": "calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+              "properties": {
+                "calendarId": {
+                  "type": "string"
+                },
+                "timeMin": {
+                  "type": "string"
+                },
+                "timeMax": {
+                  "type": "string"
+                },
+                "timeZone": {
+                  "type": "string"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowPreset": {
+                  "type": "string"
+                },
+                "startAt": {
+                  "type": "string"
+                },
+                "endAt": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "newTitle": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "travelOriginAddress": {
+                  "type": "string"
+                },
+                "attendees": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
               "required": [],
               "additionalProperties": false
             },
@@ -1115,9 +1584,36 @@
             },
             "blackoutWindows": {
               "type": "array",
-              "description": "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+              "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
               "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "startLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "endLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "daysOfWeek": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 6
+                    }
+                  }
+                },
+                "required": [
+                  "label",
+                  "startLocal",
+                  "endLocal"
+                ],
+                "additionalProperties": false
               }
             }
           },
@@ -1128,10 +1624,13 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "calendar",
-        "event",
-        "scheduling"
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
       ],
       "_contexts": [
         "general",
@@ -1142,13 +1641,26 @@
         "web"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CALENDAR_CREATE_EVENT",
-        "description": "calendar+availability+prefs: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs",
+        "description": "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1190,8 +1702,60 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
-              "properties": {},
+              "description": "calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+              "properties": {
+                "calendarId": {
+                  "type": "string"
+                },
+                "timeMin": {
+                  "type": "string"
+                },
+                "timeMax": {
+                  "type": "string"
+                },
+                "timeZone": {
+                  "type": "string"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowPreset": {
+                  "type": "string"
+                },
+                "startAt": {
+                  "type": "string"
+                },
+                "endAt": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "newTitle": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "travelOriginAddress": {
+                  "type": "string"
+                },
+                "attendees": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
               "required": [],
               "additionalProperties": false
             },
@@ -1245,9 +1809,36 @@
             },
             "blackoutWindows": {
               "type": "array",
-              "description": "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+              "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
               "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "startLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "endLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "daysOfWeek": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 6
+                    }
+                  }
+                },
+                "required": [
+                  "label",
+                  "startLocal",
+                  "endLocal"
+                ],
+                "additionalProperties": false
               }
             }
           },
@@ -1258,10 +1849,13 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "calendar",
-        "event",
-        "scheduling"
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
       ],
       "_contexts": [
         "general",
@@ -1272,13 +1866,26 @@
         "web"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CALENDAR_DELETE_EVENT",
-        "description": "calendar+availability+prefs: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs",
+        "description": "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1320,8 +1927,60 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
-              "properties": {},
+              "description": "calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+              "properties": {
+                "calendarId": {
+                  "type": "string"
+                },
+                "timeMin": {
+                  "type": "string"
+                },
+                "timeMax": {
+                  "type": "string"
+                },
+                "timeZone": {
+                  "type": "string"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowPreset": {
+                  "type": "string"
+                },
+                "startAt": {
+                  "type": "string"
+                },
+                "endAt": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "newTitle": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "travelOriginAddress": {
+                  "type": "string"
+                },
+                "attendees": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
               "required": [],
               "additionalProperties": false
             },
@@ -1375,9 +2034,36 @@
             },
             "blackoutWindows": {
               "type": "array",
-              "description": "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+              "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
               "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "startLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "endLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "daysOfWeek": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 6
+                    }
+                  }
+                },
+                "required": [
+                  "label",
+                  "startLocal",
+                  "endLocal"
+                ],
+                "additionalProperties": false
               }
             }
           },
@@ -1388,10 +2074,13 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "calendar",
-        "event",
-        "scheduling"
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
       ],
       "_contexts": [
         "general",
@@ -1402,13 +2091,26 @@
         "web"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CALENDAR_FEED",
-        "description": "calendar+availability+prefs: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs",
+        "description": "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1450,8 +2152,60 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
-              "properties": {},
+              "description": "calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+              "properties": {
+                "calendarId": {
+                  "type": "string"
+                },
+                "timeMin": {
+                  "type": "string"
+                },
+                "timeMax": {
+                  "type": "string"
+                },
+                "timeZone": {
+                  "type": "string"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowPreset": {
+                  "type": "string"
+                },
+                "startAt": {
+                  "type": "string"
+                },
+                "endAt": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "newTitle": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "travelOriginAddress": {
+                  "type": "string"
+                },
+                "attendees": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
               "required": [],
               "additionalProperties": false
             },
@@ -1505,9 +2259,36 @@
             },
             "blackoutWindows": {
               "type": "array",
-              "description": "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+              "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
               "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "startLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "endLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "daysOfWeek": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 6
+                    }
+                  }
+                },
+                "required": [
+                  "label",
+                  "startLocal",
+                  "endLocal"
+                ],
+                "additionalProperties": false
               }
             }
           },
@@ -1518,10 +2299,13 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "calendar",
-        "event",
-        "scheduling"
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
       ],
       "_contexts": [
         "general",
@@ -1532,13 +2316,26 @@
         "web"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CALENDAR_NEXT_EVENT",
-        "description": "calendar+availability+prefs: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs",
+        "description": "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1580,8 +2377,60 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
-              "properties": {},
+              "description": "calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+              "properties": {
+                "calendarId": {
+                  "type": "string"
+                },
+                "timeMin": {
+                  "type": "string"
+                },
+                "timeMax": {
+                  "type": "string"
+                },
+                "timeZone": {
+                  "type": "string"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowPreset": {
+                  "type": "string"
+                },
+                "startAt": {
+                  "type": "string"
+                },
+                "endAt": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "newTitle": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "travelOriginAddress": {
+                  "type": "string"
+                },
+                "attendees": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
               "required": [],
               "additionalProperties": false
             },
@@ -1635,9 +2484,36 @@
             },
             "blackoutWindows": {
               "type": "array",
-              "description": "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+              "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
               "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "startLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "endLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "daysOfWeek": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 6
+                    }
+                  }
+                },
+                "required": [
+                  "label",
+                  "startLocal",
+                  "endLocal"
+                ],
+                "additionalProperties": false
               }
             }
           },
@@ -1648,10 +2524,13 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "calendar",
-        "event",
-        "scheduling"
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
       ],
       "_contexts": [
         "general",
@@ -1662,13 +2541,26 @@
         "web"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CALENDAR_PROPOSE_TIMES",
-        "description": "calendar+availability+prefs: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs",
+        "description": "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1710,8 +2602,60 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
-              "properties": {},
+              "description": "calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+              "properties": {
+                "calendarId": {
+                  "type": "string"
+                },
+                "timeMin": {
+                  "type": "string"
+                },
+                "timeMax": {
+                  "type": "string"
+                },
+                "timeZone": {
+                  "type": "string"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowPreset": {
+                  "type": "string"
+                },
+                "startAt": {
+                  "type": "string"
+                },
+                "endAt": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "newTitle": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "travelOriginAddress": {
+                  "type": "string"
+                },
+                "attendees": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
               "required": [],
               "additionalProperties": false
             },
@@ -1765,9 +2709,36 @@
             },
             "blackoutWindows": {
               "type": "array",
-              "description": "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+              "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
               "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "startLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "endLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "daysOfWeek": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 6
+                    }
+                  }
+                },
+                "required": [
+                  "label",
+                  "startLocal",
+                  "endLocal"
+                ],
+                "additionalProperties": false
               }
             }
           },
@@ -1778,10 +2749,13 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "calendar",
-        "event",
-        "scheduling"
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
       ],
       "_contexts": [
         "general",
@@ -1792,13 +2766,26 @@
         "web"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CALENDAR_SEARCH_EVENTS",
-        "description": "calendar+availability+prefs: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs",
+        "description": "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1840,8 +2827,60 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
-              "properties": {},
+              "description": "calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+              "properties": {
+                "calendarId": {
+                  "type": "string"
+                },
+                "timeMin": {
+                  "type": "string"
+                },
+                "timeMax": {
+                  "type": "string"
+                },
+                "timeZone": {
+                  "type": "string"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowPreset": {
+                  "type": "string"
+                },
+                "startAt": {
+                  "type": "string"
+                },
+                "endAt": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "newTitle": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "travelOriginAddress": {
+                  "type": "string"
+                },
+                "attendees": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
               "required": [],
               "additionalProperties": false
             },
@@ -1895,9 +2934,36 @@
             },
             "blackoutWindows": {
               "type": "array",
-              "description": "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+              "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
               "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "startLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "endLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "daysOfWeek": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 6
+                    }
+                  }
+                },
+                "required": [
+                  "label",
+                  "startLocal",
+                  "endLocal"
+                ],
+                "additionalProperties": false
               }
             }
           },
@@ -1908,10 +2974,13 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "calendar",
-        "event",
-        "scheduling"
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
       ],
       "_contexts": [
         "general",
@@ -1922,13 +2991,26 @@
         "web"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CALENDAR_TRIP_WINDOW",
-        "description": "calendar+availability+prefs: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs",
+        "description": "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
         "parameters": {
           "type": "object",
           "properties": {
@@ -1970,8 +3052,60 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
-              "properties": {},
+              "description": "calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+              "properties": {
+                "calendarId": {
+                  "type": "string"
+                },
+                "timeMin": {
+                  "type": "string"
+                },
+                "timeMax": {
+                  "type": "string"
+                },
+                "timeZone": {
+                  "type": "string"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowPreset": {
+                  "type": "string"
+                },
+                "startAt": {
+                  "type": "string"
+                },
+                "endAt": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "newTitle": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "travelOriginAddress": {
+                  "type": "string"
+                },
+                "attendees": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
               "required": [],
               "additionalProperties": false
             },
@@ -2025,9 +3159,36 @@
             },
             "blackoutWindows": {
               "type": "array",
-              "description": "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+              "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
               "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "startLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "endLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "daysOfWeek": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 6
+                    }
+                  }
+                },
+                "required": [
+                  "label",
+                  "startLocal",
+                  "endLocal"
+                ],
+                "additionalProperties": false
               }
             }
           },
@@ -2038,10 +3199,13 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "calendar",
-        "event",
-        "scheduling"
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
       ],
       "_contexts": [
         "general",
@@ -2052,13 +3216,26 @@
         "web"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CALENDAR_UPDATE_EVENT",
-        "description": "calendar+availability+prefs: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs",
+        "description": "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
         "parameters": {
           "type": "object",
           "properties": {
@@ -2100,8 +3277,60 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
-              "properties": {},
+              "description": "calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+              "properties": {
+                "calendarId": {
+                  "type": "string"
+                },
+                "timeMin": {
+                  "type": "string"
+                },
+                "timeMax": {
+                  "type": "string"
+                },
+                "timeZone": {
+                  "type": "string"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowPreset": {
+                  "type": "string"
+                },
+                "startAt": {
+                  "type": "string"
+                },
+                "endAt": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "newTitle": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "travelOriginAddress": {
+                  "type": "string"
+                },
+                "attendees": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
               "required": [],
               "additionalProperties": false
             },
@@ -2155,9 +3384,36 @@
             },
             "blackoutWindows": {
               "type": "array",
-              "description": "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+              "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
               "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "startLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "endLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "daysOfWeek": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 6
+                    }
+                  }
+                },
+                "required": [
+                  "label",
+                  "startLocal",
+                  "endLocal"
+                ],
+                "additionalProperties": false
               }
             }
           },
@@ -2168,10 +3424,13 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "calendar",
-        "event",
-        "scheduling"
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
       ],
       "_contexts": [
         "general",
@@ -2182,13 +3441,26 @@
         "web"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CALENDAR_UPDATE_PREFERENCES",
-        "description": "calendar+availability+prefs: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs",
+        "description": "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
         "parameters": {
           "type": "object",
           "properties": {
@@ -2230,8 +3502,60 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
-              "properties": {},
+              "description": "calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+              "properties": {
+                "calendarId": {
+                  "type": "string"
+                },
+                "timeMin": {
+                  "type": "string"
+                },
+                "timeMax": {
+                  "type": "string"
+                },
+                "timeZone": {
+                  "type": "string"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowPreset": {
+                  "type": "string"
+                },
+                "startAt": {
+                  "type": "string"
+                },
+                "endAt": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "newTitle": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "travelOriginAddress": {
+                  "type": "string"
+                },
+                "attendees": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
               "required": [],
               "additionalProperties": false
             },
@@ -2285,9 +3609,36 @@
             },
             "blackoutWindows": {
               "type": "array",
-              "description": "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+              "description": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
               "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string"
+                  },
+                  "startLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "endLocal": {
+                    "type": "string",
+                    "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                  },
+                  "daysOfWeek": {
+                    "type": "array",
+                    "items": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 6
+                    }
+                  }
+                },
+                "required": [
+                  "label",
+                  "startLocal",
+                  "endLocal"
+                ],
+                "additionalProperties": false
               }
             }
           },
@@ -2298,10 +3649,13 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "calendar",
-        "event",
-        "scheduling"
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
       ],
       "_contexts": [
         "general",
@@ -2312,39 +3666,60 @@
         "web"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CALENDLY",
-        "description": "Work with Calendly specifically (calendly.com / api.calendly.com): list event types, check availability against a Calendly event type URI, list Calendly-scheduled events, generate Calendly single-use booking links. Subactions: list_event_types, availability, upcoming_events, single_use_link. Use this — NOT the Google-Calendar handler — whenever the user mentions Calendly by name or passes a calendly.com / api.calendly.com URL. Calendly is a separate third-party scheduling product with its own API, event-type URIs, and booking-link flow.",
+        "description": "calendly: list_event_types|availability|upcoming_events|single_use_link; route here for calendly.com URLs",
         "parameters": {
           "type": "object",
           "properties": {
             "subaction": {
               "type": "string",
-              "description": "One of: list_event_types, availability, upcoming_events, single_use_link. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it."
+              "description": "calendly op: list_event_types|availability|upcoming_events|single_use_link (e.g. list_event_types, availability)",
+              "enum": [
+                "list_event_types",
+                "availability",
+                "upcoming_events",
+                "single_use_link"
+              ]
             },
             "intent": {
               "type": "string",
-              "description": "Optional free-form description of the user's intent."
+              "description": "free-form intent"
             },
             "eventTypeUri": {
               "type": "string",
-              "description": "Calendly event type URI. Required for availability and single_use_link."
+              "description": "calendly event type URI (availability|single_use_link) (e.g. https://api.calendly.com/event_types/ABCDEFGH)"
             },
             "startDate": {
               "type": "string",
-              "description": "ISO date (YYYY-MM-DD) for range-based queries (availability, upcoming_events)."
+              "description": "YYYY-MM-DD range start (e.g. 2026-05-12)",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
             },
             "endDate": {
               "type": "string",
-              "description": "ISO date (YYYY-MM-DD) for range-based queries."
+              "description": "YYYY-MM-DD range end (e.g. 2026-05-19)",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
             },
             "timezone": {
               "type": "string",
-              "description": "IANA timezone, e.g. America/Los_Angeles."
+              "description": "IANA tz (e.g. America/Los_Angeles, UTC)"
             }
           },
           "required": [],
@@ -2353,20 +3728,35 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "surface:remote-api"
+      ],
       "_contexts": [
         "calendar",
         "contacts",
         "tasks"
       ],
       "_priority": 100,
-      "_examples_count": 3
+      "_examples_count": 3,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write"
+      ],
+      "_surfaces": [
+        "surface:remote-api"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CONNECTOR",
-        "description": "connector lifecycle+verify-probes (registry-driven): connect disconnect verify status list",
+        "description": "connector lifecycle: connect|disconnect|verify|status|list; registry-driven kinds",
         "parameters": {
           "type": "object",
           "properties": {
@@ -2445,7 +3835,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
+      ],
       "_contexts": [
         "connectors",
         "settings",
@@ -2457,13 +3855,26 @@
         "browser"
       ],
       "_priority": 100,
-      "_examples_count": 4
+      "_examples_count": 4,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CONNECTOR_CONNECT",
-        "description": "connector lifecycle+verify-probes (registry-driven): connect disconnect verify status list",
+        "description": "connector lifecycle: connect|disconnect|verify|status|list; registry-driven kinds",
         "parameters": {
           "type": "object",
           "properties": {
@@ -2542,7 +3953,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
+      ],
       "_contexts": [
         "connectors",
         "settings",
@@ -2554,13 +3973,26 @@
         "browser"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CONNECTOR_DISCONNECT",
-        "description": "connector lifecycle+verify-probes (registry-driven): connect disconnect verify status list",
+        "description": "connector lifecycle: connect|disconnect|verify|status|list; registry-driven kinds",
         "parameters": {
           "type": "object",
           "properties": {
@@ -2639,7 +4071,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
+      ],
       "_contexts": [
         "connectors",
         "settings",
@@ -2651,13 +4091,26 @@
         "browser"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CONNECTOR_LIST",
-        "description": "connector lifecycle+verify-probes (registry-driven): connect disconnect verify status list",
+        "description": "connector lifecycle: connect|disconnect|verify|status|list; registry-driven kinds",
         "parameters": {
           "type": "object",
           "properties": {
@@ -2736,7 +4189,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
+      ],
       "_contexts": [
         "connectors",
         "settings",
@@ -2748,13 +4209,26 @@
         "browser"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CONNECTOR_STATUS",
-        "description": "connector lifecycle+verify-probes (registry-driven): connect disconnect verify status list",
+        "description": "connector lifecycle: connect|disconnect|verify|status|list; registry-driven kinds",
         "parameters": {
           "type": "object",
           "properties": {
@@ -2833,7 +4307,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
+      ],
       "_contexts": [
         "connectors",
         "settings",
@@ -2845,13 +4327,26 @@
         "browser"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CONNECTOR_VERIFY",
-        "description": "connector lifecycle+verify-probes (registry-driven): connect disconnect verify status list",
+        "description": "connector lifecycle: connect|disconnect|verify|status|list; registry-driven kinds",
         "parameters": {
           "type": "object",
           "properties": {
@@ -2930,7 +4425,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:remote-api",
+        "surface:internal"
+      ],
       "_contexts": [
         "connectors",
         "settings",
@@ -2942,13 +4445,26 @@
         "browser"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CREDENTIALS",
-        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "description": "credentials: fill|whitelist_add|whitelist_list|search|list|inject_username|inject_password; clipboard-only; confirmed:true required for inject and whitelist_add",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3006,7 +4522,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute",
+        "surface:device",
+        "surface:internal",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "browser",
         "secrets",
@@ -3014,13 +4539,26 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 4
+      "_examples_count": 4,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:device",
+        "surface:internal"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CREDENTIALS_FILL",
-        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "description": "credentials: fill|whitelist_add|whitelist_list|search|list|inject_username|inject_password; clipboard-only; confirmed:true required for inject and whitelist_add",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3078,7 +4616,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute",
+        "surface:device",
+        "surface:internal",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "browser",
         "secrets",
@@ -3086,13 +4633,26 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:device",
+        "surface:internal"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CREDENTIALS_INJECT_PASSWORD",
-        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "description": "credentials: fill|whitelist_add|whitelist_list|search|list|inject_username|inject_password; clipboard-only; confirmed:true required for inject and whitelist_add",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3150,7 +4710,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute",
+        "surface:device",
+        "surface:internal",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "browser",
         "secrets",
@@ -3158,13 +4727,26 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:device",
+        "surface:internal"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CREDENTIALS_INJECT_USERNAME",
-        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "description": "credentials: fill|whitelist_add|whitelist_list|search|list|inject_username|inject_password; clipboard-only; confirmed:true required for inject and whitelist_add",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3222,7 +4804,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute",
+        "surface:device",
+        "surface:internal",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "browser",
         "secrets",
@@ -3230,13 +4821,26 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:device",
+        "surface:internal"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CREDENTIALS_LIST",
-        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "description": "credentials: fill|whitelist_add|whitelist_list|search|list|inject_username|inject_password; clipboard-only; confirmed:true required for inject and whitelist_add",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3294,7 +4898,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute",
+        "surface:device",
+        "surface:internal",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "browser",
         "secrets",
@@ -3302,13 +4915,26 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:device",
+        "surface:internal"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CREDENTIALS_SEARCH",
-        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "description": "credentials: fill|whitelist_add|whitelist_list|search|list|inject_username|inject_password; clipboard-only; confirmed:true required for inject and whitelist_add",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3366,7 +4992,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute",
+        "surface:device",
+        "surface:internal",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "browser",
         "secrets",
@@ -3374,13 +5009,26 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:device",
+        "surface:internal"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CREDENTIALS_WHITELIST_ADD",
-        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "description": "credentials: fill|whitelist_add|whitelist_list|search|list|inject_username|inject_password; clipboard-only; confirmed:true required for inject and whitelist_add",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3438,7 +5086,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute",
+        "surface:device",
+        "surface:internal",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "browser",
         "secrets",
@@ -3446,13 +5103,26 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:device",
+        "surface:internal"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "CREDENTIALS_WHITELIST_LIST",
-        "description": "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+        "description": "credentials: fill|whitelist_add|whitelist_list|search|list|inject_username|inject_password; clipboard-only; confirmed:true required for inject and whitelist_add",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3510,7 +5180,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute",
+        "surface:device",
+        "surface:internal",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "browser",
         "secrets",
@@ -3518,39 +5197,86 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:device",
+        "surface:internal"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "DEVICE_INTENT",
-        "description": "broadcast device intent/reminder: target all|mobile|desktop|specific title body kind routine_reminder|user_action_requested",
+        "description": "ONE-SHOT push fan-out to paired devices NOW. NOT for habits/routines/recurring schedules (use LIFE).",
         "parameters": {
           "type": "object",
           "properties": {
             "subaction": {
               "type": "string",
-              "description": "Only supported subaction: broadcast."
+              "description": "op: broadcast",
+              "enum": [
+                "broadcast"
+              ]
             },
             "kind": {
               "type": "string",
-              "description": "Intent kind: user_action_requested, routine_reminder, attention_request, or state_sync."
+              "description": "kind: user_action_requested|routine_reminder|attention_request|state_sync",
+              "enum": [
+                "user_action_requested",
+                "routine_reminder",
+                "attention_request",
+                "state_sync"
+              ]
             },
             "target": {
               "type": "string",
-              "description": "Target device group: all, mobile, desktop, or specific."
+              "description": "target: all|mobile|desktop|specific (e.g. mobile, all)",
+              "enum": [
+                "all",
+                "mobile",
+                "desktop",
+                "specific"
+              ]
             },
             "targetDeviceId": {
               "type": "string",
-              "description": "Specific device id when target=specific."
+              "description": "device id when target=specific"
             },
             "title": {
               "type": "string",
-              "description": "Short notification title."
+              "description": "notification title"
             },
             "body": {
               "type": "string",
-              "description": "Notification body."
+              "description": "notification body"
+            },
+            "priority": {
+              "type": "string",
+              "description": "priority: low|medium|high|urgent (default medium)",
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "urgent"
+              ]
+            },
+            "expiresInMinutes": {
+              "type": "number",
+              "description": "expires-in mins optional",
+              "minimum": 1
+            },
+            "actionUrl": {
+              "type": "string",
+              "description": "deep-link URL on tap"
             }
           },
           "required": [],
@@ -3559,39 +5285,73 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:execute",
+        "capability:send",
+        "surface:device",
+        "risk:user-visible"
+      ],
       "_contexts": [
         "automation",
         "connectors",
-        "tasks",
         "settings"
       ],
       "_priority": 100,
-      "_examples_count": 2
+      "_examples_count": 2,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:execute",
+        "capability:send"
+      ],
+      "_surfaces": [
+        "surface:device"
+      ],
+      "_risk": "risk:user-visible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "ENTITY",
-        "description": "ENTITY = people/relationships. subactions add list log_interaction set_identity set_relationship merge; follow-up cadence belongs to SCHEDULED_TASK; one-off dated call/text reminders belong to LIFE",
+        "description": "people+relationships: add|list|set_identity|set_relationship|log_interaction|merge; follow-up cadence → SCHEDULED_TASK",
         "parameters": {
           "type": "object",
           "properties": {
             "subaction": {
               "type": "string",
-              "description": "Which ENTITY operation to run: add, list, log_interaction, set_identity, set_relationship, merge. Follow-up cadence belongs to SCHEDULED_TASK."
+              "description": "ENTITY op: add | list | log_interaction | set_identity | set_relationship | merge (e.g. add, list, set_identity)",
+              "enum": [
+                "add",
+                "list",
+                "log_interaction",
+                "set_identity",
+                "set_relationship",
+                "merge"
+              ]
             },
             "intent": {
               "type": "string",
-              "description": "Free-form user intent used to infer subaction when not set."
+              "description": "free-form intent infer subaction"
             },
             "name": {
               "type": "string",
-              "description": "Contact display name. When relationshipId is omitted, the handler resolves an existing contact by this name."
+              "description": "contact display name"
             },
             "channel": {
               "type": "string",
-              "description": "Primary channel for the contact (email, telegram, discord, signal, sms, twilio_voice, imessage, whatsapp)."
+              "description": "primary channel: email|telegram|discord|signal|sms|twilio_voice|imessage|whatsapp (e.g. email, telegram, imessage)",
+              "enum": [
+                "email",
+                "telegram",
+                "discord",
+                "signal",
+                "sms",
+                "twilio_voice",
+                "imessage",
+                "whatsapp",
+                "x_dm"
+              ]
             },
             "handle": {
               "type": "string",
@@ -3627,7 +5387,7 @@
             },
             "platform": {
               "type": "string",
-              "description": "Identity platform for set_identity (e.g. telegram, slack, email, twitter). Combine with handle."
+              "description": "set_identity platform e.g. telegram|slack|email|twitter|phone (e.g. telegram, email, phone)"
             },
             "displayName": {
               "type": "string",
@@ -3643,7 +5403,7 @@
             },
             "relationshipType": {
               "type": "string",
-              "description": "Edge type label for set_relationship (e.g. manages, colleague_of, works_at)."
+              "description": "set_relationship edge type label e.g. manages|colleague_of|works_at|partner_of (e.g. manages, colleague_of, works_at)"
             },
             "sourceEntityIds": {
               "type": "array",
@@ -3663,7 +5423,14 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:contacts",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:internal"
+      ],
       "_contexts": [
         "contacts",
         "tasks",
@@ -3672,7 +5439,19 @@
         "memory"
       ],
       "_priority": 100,
-      "_examples_count": 4
+      "_examples_count": 4,
+      "_domain": "domain:contacts",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
@@ -3702,25 +5481,46 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:execute",
+        "capability:write",
+        "surface:internal"
+      ],
       "_contexts": [
         "tasks",
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 2
+      "_examples_count": 2,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:execute",
+        "capability:write"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "HEALTH",
-        "description": "health/fitness telemetry HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today | trend(days) | by_metric(steps heart-rate sleep calories distance workouts) | status",
+        "description": "read health/fitness telemetry; subactions today|trend|by_metric|status; metrics steps|heart-rate|sleep|calories|distance|workouts; read-only",
         "parameters": {
           "type": "object",
           "properties": {
             "subaction": {
               "type": "string",
-              "description": "Which health query to run: today, trend, by_metric, status."
+              "description": "health query: today | trend | by_metric | status (e.g. today, trend, by_metric)",
+              "enum": [
+                "today",
+                "trend",
+                "by_metric",
+                "status"
+              ]
             },
             "intent": {
               "type": "string",
@@ -3728,15 +5528,25 @@
             },
             "metric": {
               "type": "string",
-              "description": "Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters."
+              "description": "by_metric: steps|heart_rate|sleep_hours|calories|distance_meters|active_minutes (e.g. steps, sleep_hours, heart_rate)",
+              "enum": [
+                "steps",
+                "heart_rate",
+                "sleep_hours",
+                "calories",
+                "distance_meters",
+                "active_minutes"
+              ]
             },
             "date": {
               "type": "string",
-              "description": "YYYY-MM-DD for single-day queries."
+              "description": "YYYY-MM-DD single-day (e.g. 2026-05-10)"
             },
             "days": {
               "type": "number",
-              "description": "Window size for trend and by_metric queries."
+              "description": "window days trend|by_metric (e.g. 1, 7, 30)",
+              "minimum": 1,
+              "maximum": 365
             }
           },
           "required": [],
@@ -3745,7 +5555,12 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:health",
+        "capability:read",
+        "surface:remote-api",
+        "cost:cheap"
+      ],
       "_contexts": [
         "general",
         "health",
@@ -3753,13 +5568,22 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 3
+      "_examples_count": 3,
+      "_domain": "domain:health",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:remote-api"
+      ],
+      "_risk": null,
+      "_cost": "cost:cheap"
     },
     {
       "type": "function",
       "function": {
         "name": "LIFE",
-        "description": "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
+        "description": "manage personal habits+routines+reminders+alarms+todos+goals; subactions create|update|delete|complete|skip|snooze|review|policy_set_reminder|policy_configure_escalation; cadence once|daily|weekly|interval|times_per_day",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3816,7 +5640,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "general",
         "tasks",
@@ -3825,13 +5657,26 @@
         "health"
       ],
       "_priority": 100,
-      "_examples_count": 10
+      "_examples_count": 10,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "LIFE_COMPLETE",
-        "description": "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
+        "description": "manage personal habits+routines+reminders+alarms+todos+goals; subactions create|update|delete|complete|skip|snooze|review|policy_set_reminder|policy_configure_escalation; cadence once|daily|weekly|interval|times_per_day",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3888,7 +5733,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "general",
         "tasks",
@@ -3897,13 +5750,26 @@
         "health"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "LIFE_CREATE",
-        "description": "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
+        "description": "manage personal habits+routines+reminders+alarms+todos+goals; subactions create|update|delete|complete|skip|snooze|review|policy_set_reminder|policy_configure_escalation; cadence once|daily|weekly|interval|times_per_day",
         "parameters": {
           "type": "object",
           "properties": {
@@ -3960,7 +5826,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "general",
         "tasks",
@@ -3969,13 +5843,26 @@
         "health"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "LIFE_DELETE",
-        "description": "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
+        "description": "manage personal habits+routines+reminders+alarms+todos+goals; subactions create|update|delete|complete|skip|snooze|review|policy_set_reminder|policy_configure_escalation; cadence once|daily|weekly|interval|times_per_day",
         "parameters": {
           "type": "object",
           "properties": {
@@ -4032,7 +5919,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "general",
         "tasks",
@@ -4041,13 +5936,26 @@
         "health"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "LIFE_POLICY_CONFIGURE_ESCALATION",
-        "description": "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
+        "description": "manage personal habits+routines+reminders+alarms+todos+goals; subactions create|update|delete|complete|skip|snooze|review|policy_set_reminder|policy_configure_escalation; cadence once|daily|weekly|interval|times_per_day",
         "parameters": {
           "type": "object",
           "properties": {
@@ -4104,7 +6012,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "general",
         "tasks",
@@ -4113,13 +6029,26 @@
         "health"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "LIFE_POLICY_SET_REMINDER",
-        "description": "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
+        "description": "manage personal habits+routines+reminders+alarms+todos+goals; subactions create|update|delete|complete|skip|snooze|review|policy_set_reminder|policy_configure_escalation; cadence once|daily|weekly|interval|times_per_day",
         "parameters": {
           "type": "object",
           "properties": {
@@ -4176,7 +6105,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "general",
         "tasks",
@@ -4185,13 +6122,26 @@
         "health"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "LIFE_REVIEW",
-        "description": "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
+        "description": "manage personal habits+routines+reminders+alarms+todos+goals; subactions create|update|delete|complete|skip|snooze|review|policy_set_reminder|policy_configure_escalation; cadence once|daily|weekly|interval|times_per_day",
         "parameters": {
           "type": "object",
           "properties": {
@@ -4248,7 +6198,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "general",
         "tasks",
@@ -4257,13 +6215,26 @@
         "health"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "LIFE_SKIP",
-        "description": "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
+        "description": "manage personal habits+routines+reminders+alarms+todos+goals; subactions create|update|delete|complete|skip|snooze|review|policy_set_reminder|policy_configure_escalation; cadence once|daily|weekly|interval|times_per_day",
         "parameters": {
           "type": "object",
           "properties": {
@@ -4320,7 +6291,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "general",
         "tasks",
@@ -4329,13 +6308,26 @@
         "health"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "LIFE_SNOOZE",
-        "description": "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
+        "description": "manage personal habits+routines+reminders+alarms+todos+goals; subactions create|update|delete|complete|skip|snooze|review|policy_set_reminder|policy_configure_escalation; cadence once|daily|weekly|interval|times_per_day",
         "parameters": {
           "type": "object",
           "properties": {
@@ -4392,7 +6384,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "general",
         "tasks",
@@ -4401,13 +6401,26 @@
         "health"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "LIFE_UPDATE",
-        "description": "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
+        "description": "manage personal habits+routines+reminders+alarms+todos+goals; subactions create|update|delete|complete|skip|snooze|review|policy_set_reminder|policy_configure_escalation; cadence once|daily|weekly|interval|times_per_day",
         "parameters": {
           "type": "object",
           "properties": {
@@ -4464,7 +6477,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "general",
         "tasks",
@@ -4473,7 +6494,20 @@
         "health"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
@@ -4516,14 +6550,32 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:execute",
+        "capability:update",
+        "capability:delete",
+        "surface:internal",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "general",
         "tasks",
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 3
+      "_examples_count": 3,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:execute",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
@@ -4858,7 +6910,17 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:messages",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:send",
+        "capability:schedule",
+        "surface:remote-api",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "messaging",
         "email",
@@ -4866,13 +6928,27 @@
         "connectors"
       ],
       "_priority": 100,
-      "_examples_count": 1
+      "_examples_count": 1,
+      "_domain": "domain:messages",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:send",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:remote-api"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "MESSAGE_HANDOFF",
-        "description": "MESSAGE_HANDOFF verb: enter|resume|status; gates agent contributions per resumeOn condition.",
+        "description": "room handoff: enter|resume|status; gates agent per resumeOn condition",
         "parameters": {
           "type": "object",
           "properties": {
@@ -4909,19 +6985,36 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:execute",
+        "capability:update",
+        "capability:read",
+        "surface:internal"
+      ],
       "_contexts": [
         "messaging",
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 2
+      "_examples_count": 2,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:execute",
+        "capability:update",
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "MONEY",
-        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "description": "payments+subscriptions: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
         "parameters": {
           "type": "object",
           "properties": {
@@ -5043,7 +7136,18 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute",
+        "surface:remote-api",
+        "surface:internal",
+        "risk:financial",
+        "cost:expensive"
+      ],
       "_contexts": [
         "payments",
         "finance",
@@ -5054,13 +7158,27 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 4
+      "_examples_count": 4,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": "risk:financial",
+      "_cost": "cost:expensive"
     },
     {
       "type": "function",
       "function": {
         "name": "MONEY_ADD_SOURCE",
-        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "description": "payments+subscriptions: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
         "parameters": {
           "type": "object",
           "properties": {
@@ -5182,7 +7300,18 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute",
+        "surface:remote-api",
+        "surface:internal",
+        "risk:financial",
+        "cost:expensive"
+      ],
       "_contexts": [
         "payments",
         "finance",
@@ -5193,13 +7322,27 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": "risk:financial",
+      "_cost": "cost:expensive"
     },
     {
       "type": "function",
       "function": {
         "name": "MONEY_DASHBOARD",
-        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "description": "payments+subscriptions: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
         "parameters": {
           "type": "object",
           "properties": {
@@ -5321,7 +7464,18 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute",
+        "surface:remote-api",
+        "surface:internal",
+        "risk:financial",
+        "cost:expensive"
+      ],
       "_contexts": [
         "payments",
         "finance",
@@ -5332,13 +7486,27 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": "risk:financial",
+      "_cost": "cost:expensive"
     },
     {
       "type": "function",
       "function": {
         "name": "MONEY_IMPORT_CSV",
-        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "description": "payments+subscriptions: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
         "parameters": {
           "type": "object",
           "properties": {
@@ -5460,7 +7628,18 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute",
+        "surface:remote-api",
+        "surface:internal",
+        "risk:financial",
+        "cost:expensive"
+      ],
       "_contexts": [
         "payments",
         "finance",
@@ -5471,13 +7650,27 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": "risk:financial",
+      "_cost": "cost:expensive"
     },
     {
       "type": "function",
       "function": {
         "name": "MONEY_LIST_SOURCES",
-        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "description": "payments+subscriptions: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
         "parameters": {
           "type": "object",
           "properties": {
@@ -5599,7 +7792,18 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute",
+        "surface:remote-api",
+        "surface:internal",
+        "risk:financial",
+        "cost:expensive"
+      ],
       "_contexts": [
         "payments",
         "finance",
@@ -5610,13 +7814,27 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": "risk:financial",
+      "_cost": "cost:expensive"
     },
     {
       "type": "function",
       "function": {
         "name": "MONEY_LIST_TRANSACTIONS",
-        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "description": "payments+subscriptions: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
         "parameters": {
           "type": "object",
           "properties": {
@@ -5738,7 +7956,18 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute",
+        "surface:remote-api",
+        "surface:internal",
+        "risk:financial",
+        "cost:expensive"
+      ],
       "_contexts": [
         "payments",
         "finance",
@@ -5749,13 +7978,27 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": "risk:financial",
+      "_cost": "cost:expensive"
     },
     {
       "type": "function",
       "function": {
         "name": "MONEY_RECURRING_CHARGES",
-        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "description": "payments+subscriptions: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
         "parameters": {
           "type": "object",
           "properties": {
@@ -5877,7 +8120,18 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute",
+        "surface:remote-api",
+        "surface:internal",
+        "risk:financial",
+        "cost:expensive"
+      ],
       "_contexts": [
         "payments",
         "finance",
@@ -5888,13 +8142,27 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": "risk:financial",
+      "_cost": "cost:expensive"
     },
     {
       "type": "function",
       "function": {
         "name": "MONEY_REMOVE_SOURCE",
-        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "description": "payments+subscriptions: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
         "parameters": {
           "type": "object",
           "properties": {
@@ -6016,7 +8284,18 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute",
+        "surface:remote-api",
+        "surface:internal",
+        "risk:financial",
+        "cost:expensive"
+      ],
       "_contexts": [
         "payments",
         "finance",
@@ -6027,13 +8306,27 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": "risk:financial",
+      "_cost": "cost:expensive"
     },
     {
       "type": "function",
       "function": {
         "name": "MONEY_SPENDING_SUMMARY",
-        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "description": "payments+subscriptions: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
         "parameters": {
           "type": "object",
           "properties": {
@@ -6155,7 +8448,18 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute",
+        "surface:remote-api",
+        "surface:internal",
+        "risk:financial",
+        "cost:expensive"
+      ],
       "_contexts": [
         "payments",
         "finance",
@@ -6166,13 +8470,27 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": "risk:financial",
+      "_cost": "cost:expensive"
     },
     {
       "type": "function",
       "function": {
         "name": "MONEY_SUBSCRIPTION_AUDIT",
-        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "description": "payments+subscriptions: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
         "parameters": {
           "type": "object",
           "properties": {
@@ -6294,7 +8612,18 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute",
+        "surface:remote-api",
+        "surface:internal",
+        "risk:financial",
+        "cost:expensive"
+      ],
       "_contexts": [
         "payments",
         "finance",
@@ -6305,13 +8634,27 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": "risk:financial",
+      "_cost": "cost:expensive"
     },
     {
       "type": "function",
       "function": {
         "name": "MONEY_SUBSCRIPTION_CANCEL",
-        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "description": "payments+subscriptions: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
         "parameters": {
           "type": "object",
           "properties": {
@@ -6433,7 +8776,18 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute",
+        "surface:remote-api",
+        "surface:internal",
+        "risk:financial",
+        "cost:expensive"
+      ],
       "_contexts": [
         "payments",
         "finance",
@@ -6444,13 +8798,27 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": "risk:financial",
+      "_cost": "cost:expensive"
     },
     {
       "type": "function",
       "function": {
         "name": "MONEY_SUBSCRIPTION_STATUS",
-        "description": "money: payments(dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges) + subs(subscription_audit subscription_cancel subscription_status); browser-cancel + bank/CSV/Plaid/PayPal",
+        "description": "payments+subscriptions: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
         "parameters": {
           "type": "object",
           "properties": {
@@ -6572,7 +8940,18 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute",
+        "surface:remote-api",
+        "surface:internal",
+        "risk:financial",
+        "cost:expensive"
+      ],
       "_contexts": [
         "payments",
         "finance",
@@ -6583,7 +8962,21 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:execute"
+      ],
+      "_surfaces": [
+        "surface:remote-api",
+        "surface:internal"
+      ],
+      "_risk": "risk:financial",
+      "_cost": "cost:expensive"
     },
     {
       "type": "function",
@@ -6606,20 +8999,36 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-phone",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:execute",
+        "capability:send",
+        "surface:device",
+        "risk:user-visible"
+      ],
       "_contexts": [
         "phone",
         "contacts",
         "messaging"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:execute",
+        "capability:send"
+      ],
+      "_surfaces": [
+        "surface:device"
+      ],
+      "_risk": "risk:user-visible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "PROFILE",
-        "description": "persist owner state: save(name,location,age,prefs) + capture_phone(number); reminder/escalation policy lives on LIFE.policy_*",
+        "description": "save owner facts+prefs: subactions save|capture_phone; reminder/escalation policy → LIFE.policy_*",
         "parameters": {
           "type": "object",
           "properties": {
@@ -6707,12 +9116,11 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "travel preferences",
-        "flight preferences",
-        "hotel preferences",
-        "booking preferences",
-        "owner profile"
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "surface:internal"
       ],
       "_contexts": [
         "general",
@@ -6723,13 +9131,24 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 2
+      "_examples_count": 2,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "PROFILE_CAPTURE_PHONE",
-        "description": "persist owner state: save(name,location,age,prefs) + capture_phone(number); reminder/escalation policy lives on LIFE.policy_*",
+        "description": "save owner facts+prefs: subactions save|capture_phone; reminder/escalation policy → LIFE.policy_*",
         "parameters": {
           "type": "object",
           "properties": {
@@ -6817,12 +9236,11 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "travel preferences",
-        "flight preferences",
-        "hotel preferences",
-        "booking preferences",
-        "owner profile"
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "surface:internal"
       ],
       "_contexts": [
         "general",
@@ -6833,13 +9251,24 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "PROFILE_SAVE",
-        "description": "persist owner state: save(name,location,age,prefs) + capture_phone(number); reminder/escalation policy lives on LIFE.policy_*",
+        "description": "save owner facts+prefs: subactions save|capture_phone; reminder/escalation policy → LIFE.policy_*",
         "parameters": {
           "type": "object",
           "properties": {
@@ -6927,12 +9356,11 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "travel preferences",
-        "flight preferences",
-        "hotel preferences",
-        "booking preferences",
-        "owner profile"
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "surface:internal"
       ],
       "_contexts": [
         "general",
@@ -6943,39 +9371,58 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "REMOTE_DESKTOP",
-        "description": "remote-desktop session lifecycle: start(confirmed,pairing-code) status(sessionId) end(sessionId) list revoke(sessionId)",
+        "description": "remote-desktop sessions: start|status|end|list|revoke; start requires confirmed:true (+ pairing code in cloud mode)",
         "parameters": {
           "type": "object",
           "properties": {
             "subaction": {
               "type": "string",
-              "description": "One of: start, status, end, list, revoke."
+              "description": "remote-desktop op: start|status|end|list|revoke (e.g. start, list, revoke)",
+              "enum": [
+                "start",
+                "status",
+                "end",
+                "list",
+                "revoke"
+              ]
             },
             "sessionId": {
               "type": "string",
-              "description": "Session id — required for status, end, and revoke subactions."
+              "description": "session id (status|end|revoke) (e.g. rs_abc123)"
             },
             "confirmed": {
               "type": "boolean",
-              "description": "Must be true for start (security sensitive)."
+              "description": "true required for start (security)"
             },
             "pairingCode": {
               "type": "string",
-              "description": "6-digit one-time pairing code for start. Required unless ELIZA_REMOTE_LOCAL_MODE=1."
+              "description": "6-digit pairing code (start; skipped in local mode) (e.g. 482193)",
+              "pattern": "^[0-9]{6}$"
             },
             "requesterIdentity": {
               "type": "string",
-              "description": "Identifier for who is asking (entity id, friend name, device id). Logged for audit on start."
+              "description": "audit: requester id (start)"
             },
             "intent": {
               "type": "string",
-              "description": "Freeform owner intent / reason for the session. Logged for audit."
+              "description": "audit: owner reason"
             }
           },
           "required": [],
@@ -6984,7 +9431,16 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "capability:write",
+        "capability:execute",
+        "capability:delete",
+        "surface:device",
+        "surface:internal",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "browser",
         "automation",
@@ -6993,13 +9449,26 @@
         "terminal"
       ],
       "_priority": 100,
-      "_examples_count": 3
+      "_examples_count": 3,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:execute",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:device",
+        "surface:internal"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "RESOLVE_REQUEST",
-        "description": "approve|reject pending request from queue, requestId optional: send_email send_message book_travel voice_call multilingual",
+        "description": "approve|reject queued action; requestId optional; covers send_email|send_message|book_travel|voice_call",
         "parameters": {
           "type": "object",
           "properties": {
@@ -7026,7 +9495,13 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:execute",
+        "capability:update",
+        "surface:internal",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "email",
         "messaging",
@@ -7039,13 +9514,23 @@
         "general"
       ],
       "_priority": 100,
-      "_examples_count": 2
+      "_examples_count": 2,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:execute",
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "RESOLVE_REQUEST_APPROVE",
-        "description": "approve|reject pending request from queue, requestId optional: send_email send_message book_travel voice_call multilingual",
+        "description": "approve|reject queued action; requestId optional; covers send_email|send_message|book_travel|voice_call",
         "parameters": {
           "type": "object",
           "properties": {
@@ -7072,7 +9557,13 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:execute",
+        "capability:update",
+        "surface:internal",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "email",
         "messaging",
@@ -7085,13 +9576,23 @@
         "general"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:execute",
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "RESOLVE_REQUEST_REJECT",
-        "description": "approve|reject pending request from queue, requestId optional: send_email send_message book_travel voice_call multilingual",
+        "description": "approve|reject queued action; requestId optional; covers send_email|send_message|book_travel|voice_call",
         "parameters": {
           "type": "object",
           "properties": {
@@ -7118,7 +9619,13 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:execute",
+        "capability:update",
+        "surface:internal",
+        "risk:irreversible"
+      ],
       "_contexts": [
         "email",
         "messaging",
@@ -7131,7 +9638,17 @@
         "general"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:execute",
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": "risk:irreversible",
+      "_cost": null
     },
     {
       "type": "function",
@@ -7143,11 +9660,15 @@
           "properties": {
             "subaction": {
               "type": "string",
-              "description": "Optional. summary or inspect."
+              "description": "schedule op: summary | inspect (e.g. summary, inspect)",
+              "enum": [
+                "summary",
+                "inspect"
+              ]
             },
             "timezone": {
               "type": "string",
-              "description": "Optional IANA timezone override."
+              "description": "IANA tz override (e.g. America/Los_Angeles, UTC)"
             }
           },
           "required": [],
@@ -7156,7 +9677,12 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:read",
+        "surface:internal",
+        "cost:cheap"
+      ],
       "_contexts": [
         "general",
         "calendar",
@@ -7165,13 +9691,22 @@
         "screen_time"
       ],
       "_priority": 100,
-      "_examples_count": 2
+      "_examples_count": 2,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": "cost:cheap"
     },
     {
       "type": "function",
       "function": {
         "name": "SCHEDULED_TASK",
-        "description": "scheduled-task umbrella: list get create update snooze skip complete dismiss cancel reopen history; kinds=reminder|checkin|followup|approval|recap|watcher|output|custom",
+        "description": "scheduled tasks: list|get|create|update|snooze|skip|complete|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
         "parameters": {
           "type": "object",
           "properties": {
@@ -7290,7 +9825,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "tasks",
         "reminders",
@@ -7298,13 +9841,26 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 3
+      "_examples_count": 3,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "SCHEDULED_TASK_CANCEL",
-        "description": "scheduled-task umbrella: list get create update snooze skip complete dismiss cancel reopen history; kinds=reminder|checkin|followup|approval|recap|watcher|output|custom",
+        "description": "scheduled tasks: list|get|create|update|snooze|skip|complete|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
         "parameters": {
           "type": "object",
           "properties": {
@@ -7423,7 +9979,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "tasks",
         "reminders",
@@ -7431,13 +9995,26 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "SCHEDULED_TASK_COMPLETE",
-        "description": "scheduled-task umbrella: list get create update snooze skip complete dismiss cancel reopen history; kinds=reminder|checkin|followup|approval|recap|watcher|output|custom",
+        "description": "scheduled tasks: list|get|create|update|snooze|skip|complete|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
         "parameters": {
           "type": "object",
           "properties": {
@@ -7556,7 +10133,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "tasks",
         "reminders",
@@ -7564,13 +10149,26 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "SCHEDULED_TASK_CREATE",
-        "description": "scheduled-task umbrella: list get create update snooze skip complete dismiss cancel reopen history; kinds=reminder|checkin|followup|approval|recap|watcher|output|custom",
+        "description": "scheduled tasks: list|get|create|update|snooze|skip|complete|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
         "parameters": {
           "type": "object",
           "properties": {
@@ -7689,7 +10287,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "tasks",
         "reminders",
@@ -7697,13 +10303,26 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "SCHEDULED_TASK_DISMISS",
-        "description": "scheduled-task umbrella: list get create update snooze skip complete dismiss cancel reopen history; kinds=reminder|checkin|followup|approval|recap|watcher|output|custom",
+        "description": "scheduled tasks: list|get|create|update|snooze|skip|complete|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
         "parameters": {
           "type": "object",
           "properties": {
@@ -7822,7 +10441,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "tasks",
         "reminders",
@@ -7830,13 +10457,26 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "SCHEDULED_TASK_GET",
-        "description": "scheduled-task umbrella: list get create update snooze skip complete dismiss cancel reopen history; kinds=reminder|checkin|followup|approval|recap|watcher|output|custom",
+        "description": "scheduled tasks: list|get|create|update|snooze|skip|complete|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
         "parameters": {
           "type": "object",
           "properties": {
@@ -7955,7 +10595,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "tasks",
         "reminders",
@@ -7963,13 +10611,26 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "SCHEDULED_TASK_HISTORY",
-        "description": "scheduled-task umbrella: list get create update snooze skip complete dismiss cancel reopen history; kinds=reminder|checkin|followup|approval|recap|watcher|output|custom",
+        "description": "scheduled tasks: list|get|create|update|snooze|skip|complete|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
         "parameters": {
           "type": "object",
           "properties": {
@@ -8088,7 +10749,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "tasks",
         "reminders",
@@ -8096,13 +10765,26 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "SCHEDULED_TASK_LIST",
-        "description": "scheduled-task umbrella: list get create update snooze skip complete dismiss cancel reopen history; kinds=reminder|checkin|followup|approval|recap|watcher|output|custom",
+        "description": "scheduled tasks: list|get|create|update|snooze|skip|complete|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
         "parameters": {
           "type": "object",
           "properties": {
@@ -8221,7 +10903,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "tasks",
         "reminders",
@@ -8229,13 +10919,26 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "SCHEDULED_TASK_REOPEN",
-        "description": "scheduled-task umbrella: list get create update snooze skip complete dismiss cancel reopen history; kinds=reminder|checkin|followup|approval|recap|watcher|output|custom",
+        "description": "scheduled tasks: list|get|create|update|snooze|skip|complete|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
         "parameters": {
           "type": "object",
           "properties": {
@@ -8354,7 +11057,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "tasks",
         "reminders",
@@ -8362,13 +11073,26 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "SCHEDULED_TASK_SKIP",
-        "description": "scheduled-task umbrella: list get create update snooze skip complete dismiss cancel reopen history; kinds=reminder|checkin|followup|approval|recap|watcher|output|custom",
+        "description": "scheduled tasks: list|get|create|update|snooze|skip|complete|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
         "parameters": {
           "type": "object",
           "properties": {
@@ -8487,7 +11211,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "tasks",
         "reminders",
@@ -8495,13 +11227,26 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "SCHEDULED_TASK_SNOOZE",
-        "description": "scheduled-task umbrella: list get create update snooze skip complete dismiss cancel reopen history; kinds=reminder|checkin|followup|approval|recap|watcher|output|custom",
+        "description": "scheduled tasks: list|get|create|update|snooze|skip|complete|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
         "parameters": {
           "type": "object",
           "properties": {
@@ -8620,7 +11365,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "tasks",
         "reminders",
@@ -8628,13 +11381,26 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "SCHEDULED_TASK_UPDATE",
-        "description": "scheduled-task umbrella: list get create update snooze skip complete dismiss cancel reopen history; kinds=reminder|checkin|followup|approval|recap|watcher|output|custom",
+        "description": "scheduled tasks: list|get|create|update|snooze|skip|complete|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
         "parameters": {
           "type": "object",
           "properties": {
@@ -8753,7 +11519,15 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule",
+        "surface:internal"
+      ],
       "_contexts": [
         "tasks",
         "reminders",
@@ -8761,55 +11535,105 @@
         "calendar"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "SCHEDULING_NEGOTIATION",
-        "description": "Multi-turn scheduling negotiation lifecycle: start, propose, respond, finalize, cancel, and list negotiations/proposals.",
+        "description": "multi-turn meeting negotiation: start|propose|respond|finalize|cancel|list; only for existing proposal workflows",
         "parameters": {
           "type": "object",
           "properties": {
             "subaction": {
               "type": "string",
-              "description": "Which step of the negotiation to run: start, propose, respond, finalize, cancel, list_active, list_proposals."
+              "description": "scheduling op: start | propose | respond | finalize | cancel | list_active | list_proposals (e.g. start, propose, respond)",
+              "enum": [
+                "start",
+                "propose",
+                "respond",
+                "finalize",
+                "cancel",
+                "list_active",
+                "list_proposals"
+              ]
             },
             "intent": {
               "type": "string",
-              "description": "Free-text description of what the scheduling turn is trying to do."
+              "description": "free-text intent"
             },
             "negotiationId": {
               "type": "string",
-              "description": "Target negotiation ID for proposal, finalize, cancel, or list_proposals."
+              "description": "negotiation id (propose|finalize|cancel|list_proposals) (e.g. neg_2026_05_10_abc123)"
             },
             "proposalId": {
               "type": "string",
-              "description": "Target proposal ID for respond or finalize."
+              "description": "proposal id (respond|finalize) (e.g. prop_xyz789)"
             },
             "subject": {
               "type": "string",
-              "description": "Subject of the meeting (used when starting a negotiation)."
+              "description": "meeting subject (start) (e.g. Q3 review with Alice)"
             },
             "startAt": {
               "type": "string",
-              "description": "ISO-8601 proposed start time."
+              "description": "ISO-8601 start UTC (propose) (e.g. 2026-05-12T14:00:00Z)"
             },
             "endAt": {
               "type": "string",
-              "description": "ISO-8601 proposed end time."
+              "description": "ISO-8601 end UTC (propose) (e.g. 2026-05-12T15:00:00Z)"
             },
             "durationMinutes": {
               "type": "number",
-              "description": "Meeting duration in minutes (defaults to 30 when starting)."
+              "description": "duration mins default 30 (start) (e.g. 30, 60, 90)",
+              "minimum": 5,
+              "maximum": 1440
             },
             "response": {
               "type": "string",
-              "description": "Proposal response: accepted, declined, or expired."
+              "description": "respond: accepted|declined|expired (e.g. accepted, declined)",
+              "enum": [
+                "accepted",
+                "declined",
+                "expired"
+              ]
             },
             "confirmed": {
               "type": "boolean",
-              "description": "Set true alongside a proposalId to finalize."
+              "description": "true to finalize alongside proposalId"
+            },
+            "proposedBy": {
+              "type": "string",
+              "description": "proposedBy: agent | owner | counterparty (defaults agent) (e.g. agent, counterparty)",
+              "enum": [
+                "agent",
+                "owner",
+                "counterparty"
+              ]
+            },
+            "relationshipId": {
+              "type": "string",
+              "description": "contact id (start)"
+            },
+            "timezone": {
+              "type": "string",
+              "description": "IANA tz (start) (e.g. America/Los_Angeles, UTC)"
+            },
+            "reason": {
+              "type": "string",
+              "description": "reason (cancel/audit)"
             }
           },
           "required": [],
@@ -8818,7 +11642,13 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "surface:internal"
+      ],
       "_contexts": [
         "calendar",
         "contacts",
@@ -8826,23 +11656,50 @@
         "messaging"
       ],
       "_priority": 100,
-      "_examples_count": 4
+      "_examples_count": 4,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "SCREEN_TIME",
-        "description": "screen-time+activity+browser focus mins: summary today weekly weekly-avg-by-app by-app by-website activity-report time-on-app time-on-site browser-activity owner macOS",
+        "description": "screen-time+activity reads: summary|today|weekly|weekly_average_by_app|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity; read-only",
         "parameters": {
           "type": "object",
           "properties": {
             "subaction": {
               "type": "string",
-              "description": "One of: summary, today, weekly, weekly_average_by_app, by_app, by_website, activity_report, time_on_app, time_on_site, browser_activity."
+              "description": "screen-time op: summary|today|weekly|weekly_average_by_app|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity (e.g. today, weekly, time_on_app)",
+              "enum": [
+                "summary",
+                "today",
+                "weekly",
+                "weekly_average_by_app",
+                "by_app",
+                "by_website",
+                "activity_report",
+                "time_on_app",
+                "time_on_site",
+                "browser_activity"
+              ]
             },
             "source": {
               "type": "string",
-              "description": "Restrict screen-time subactions to 'app' or 'website'."
+              "description": "source filter: app|website",
+              "enum": [
+                "app",
+                "website"
+              ]
             },
             "identifier": {
               "type": "string",
@@ -8887,7 +11744,12 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:focus",
+        "capability:read",
+        "surface:device",
+        "cost:cheap"
+      ],
       "_contexts": [
         "screen_time",
         "browser",
@@ -8895,13 +11757,22 @@
         "tasks"
       ],
       "_priority": 100,
-      "_examples_count": 4
+      "_examples_count": 4,
+      "_domain": "domain:focus",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:device"
+      ],
+      "_risk": null,
+      "_cost": "cost:cheap"
     },
     {
       "type": "function",
       "function": {
         "name": "TODO",
-        "description": "todo manage list; op: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId).",
+        "description": "todos: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId)",
         "parameters": {
           "type": "object",
           "properties": {
@@ -8994,34 +11865,65 @@
         "strict": true
       },
       "_plugin": "@elizaos/plugin-todos",
-      "_tags": [],
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete",
+        "surface:internal"
+      ],
       "_contexts": [
         "tasks",
         "todos",
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 3
+      "_examples_count": 3,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
       "function": {
         "name": "TOGGLE_FEATURE",
-        "description": "toggle LifeOps feature flight-booking push-notifs browser-automation escalation: enable | disable; registry-driven feature key set",
+        "description": "enable|disable LifeOps feature flag; registry-driven keys (flight-booking, push-notifs, browser-automation, escalation)",
         "parameters": {
           "type": "object",
           "properties": {
             "featureKey": {
               "type": "string",
-              "description": "LifeOps feature key. Must be a key that has been registered in the FeatureFlagRegistry (see GET /api/lifeops/dev/registries → featureFlags for the live list)."
+              "description": "feature key (registry-driven) e.g. travel.book_flight|browser.automation|push.notifications (e.g. travel.book_flight, browser.automation)",
+              "enum": [
+                "travel.search_flight",
+                "travel.search_hotel",
+                "travel.book_flight",
+                "travel.book_hotel",
+                "notifications.push",
+                "cross_channel.escalate",
+                "browser.automation",
+                "email.draft",
+                "email.send",
+                "cloud.duffel"
+              ]
             },
             "enabled": {
               "type": "boolean",
-              "description": "True to enable, false to disable."
+              "description": "true=enable false=disable"
             },
             "reason": {
               "type": "string",
-              "description": "Optional short reason captured for the audit log."
+              "description": "audit reason short"
             }
           },
           "required": [],
@@ -9030,14 +11932,27 @@
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
-      "_tags": [],
+      "_tags": [
+        "domain:meta",
+        "capability:update",
+        "surface:internal"
+      ],
       "_contexts": [
         "settings",
         "automation",
         "connectors"
       ],
       "_priority": 100,
-      "_examples_count": 2
+      "_examples_count": 2,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
     },
     {
       "type": "function",
@@ -9093,22 +12008,11 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "call me",
-        "phone me",
-        "stuck in browser",
-        "unblock computer",
-        "standing escalation policy",
-        "call if stuck",
-        "book by phone",
-        "rebook by phone",
-        "call vendor",
-        "call airline",
-        "call dentist",
-        "call doctor",
-        "phone support",
-        "call cable company",
-        "reschedule appointment"
+        "domain:meta",
+        "capability:execute",
+        "capability:send",
+        "surface:remote-api",
+        "risk:user-visible"
       ],
       "_contexts": [
         "contacts",
@@ -9118,7 +12022,17 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 3
+      "_examples_count": 3,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:execute",
+        "capability:send"
+      ],
+      "_surfaces": [
+        "surface:remote-api"
+      ],
+      "_risk": "risk:user-visible",
+      "_cost": null
     },
     {
       "type": "function",
@@ -9174,22 +12088,11 @@
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [
-        "always-include",
-        "call me",
-        "phone me",
-        "stuck in browser",
-        "unblock computer",
-        "standing escalation policy",
-        "call if stuck",
-        "book by phone",
-        "rebook by phone",
-        "call vendor",
-        "call airline",
-        "call dentist",
-        "call doctor",
-        "phone support",
-        "call cable company",
-        "reschedule appointment"
+        "domain:meta",
+        "capability:execute",
+        "capability:send",
+        "surface:remote-api",
+        "risk:user-visible"
       ],
       "_contexts": [
         "contacts",
@@ -9199,7 +12102,17 @@
         "automation"
       ],
       "_priority": 100,
-      "_examples_count": 0
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:execute",
+        "capability:send"
+      ],
+      "_surfaces": [
+        "surface:remote-api"
+      ],
+      "_risk": "risk:user-visible",
+      "_cost": null
     }
   ]
 }

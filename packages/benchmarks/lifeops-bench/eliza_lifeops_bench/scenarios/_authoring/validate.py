@@ -12,12 +12,16 @@ auto-repair; it returns the issues so the operator chooses what to do.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from ...types import Domain
 from .._personas import ALL_PERSONAS
+from .taxonomy import (
+    META_DOMAIN_TAG,
+    expected_domain_tag_for_scenario,
+)
 
 VALID_DOMAIN_VALUES: frozenset[str] = frozenset(d.value for d in Domain)
 VALID_MODE_VALUES: frozenset[str] = frozenset({"static", "live"})
@@ -34,11 +38,16 @@ class ValidationIssue:
 
 @dataclass(frozen=True)
 class ValidationResult:
-    """Outcome of validating a single candidate."""
+    """Outcome of validating a single candidate.
+
+    ``warnings`` carries soft taxonomy mismatches (scenario domain vs.
+    ground-truth action ``domain:*`` tag) that should not fail the candidate.
+    """
 
     candidate_id: str
     is_valid: bool
     issues: list[ValidationIssue]
+    warnings: list[ValidationIssue] = field(default_factory=list)
 
 
 def _get(obj: dict[str, Any], key: str) -> Any:
@@ -59,6 +68,23 @@ def _load_action_manifest(manifest_path: Path) -> dict[str, dict[str, Any]]:
         params = function.get("parameters") or {}
         if isinstance(name, str) and name:
             out[name] = params
+    return out
+
+
+def _load_action_tags(manifest_path: Path) -> dict[str, list[str]]:
+    """Return ``{action_name: [_tags...]}`` from the JSON manifest.
+
+    Loaded separately from the parameters schema so the existing typed
+    validation path stays unchanged. Used by :func:`_check_taxonomy_alignment`.
+    """
+    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    out: dict[str, list[str]] = {}
+    for entry in raw.get("actions", []):
+        function = entry.get("function") or {}
+        name = function.get("name")
+        tags = entry.get("_tags") or []
+        if isinstance(name, str) and name and isinstance(tags, list):
+            out[name] = [t for t in tags if isinstance(t, str)]
     return out
 
 
@@ -327,22 +353,89 @@ def _check_id_references(
             _check_id_references(f"{path}.{k}", v, valid_world_ids, issues)
 
 
+def _check_taxonomy_alignment(
+    c: dict[str, Any],
+    valid_action_tags: dict[str, list[str]],
+    warnings: list[ValidationIssue],
+) -> None:
+    """Soft cross-check: ground-truth action's domain tag should match the
+    scenario's domain (or be ``domain:meta``).
+
+    Mismatches go into ``warnings`` (never ``issues``) so authoring stays
+    fast even when the planner picks an adjacent domain umbrella.
+    """
+    domain_value = _get(c, "domain")
+    if not isinstance(domain_value, str):
+        return
+    try:
+        scenario_domain = Domain(domain_value)
+    except ValueError:
+        return
+
+    expected = expected_domain_tag_for_scenario(scenario_domain)
+    if expected is None:
+        return
+
+    actions = _get(c, "ground_truth_actions")
+    if not isinstance(actions, list):
+        return
+
+    for i, action in enumerate(actions):
+        if not isinstance(action, dict):
+            continue
+        name = action.get("name")
+        if not isinstance(name, str):
+            continue
+        tags = valid_action_tags.get(name, [])
+        if not tags:
+            # Not in manifest, or manifest has no tags — separate issue surface.
+            continue
+        domain_tags = [t for t in tags if t.startswith("domain:")]
+        if not domain_tags:
+            continue
+        actual = domain_tags[0]
+        # Allow exact match or `domain:meta` (universally compatible).
+        if actual == expected.value or actual == META_DOMAIN_TAG.value:
+            continue
+        warnings.append(
+            ValidationIssue(
+                path=f"ground_truth_actions[{i}].name",
+                message=(
+                    f"action {name!r} carries {actual!r} but scenario domain "
+                    f"is {scenario_domain.value!r} (expected {expected.value!r}); "
+                    "soft warning — is the scenario domain or the action's "
+                    "domain tag wrong?"
+                ),
+            )
+        )
+
+
 def validate_candidate(
     candidate: dict[str, Any],
     *,
     valid_actions: dict[str, dict[str, Any]],
     valid_world_ids: dict[str, set[str]],
+    valid_action_tags: dict[str, list[str]] | None = None,
 ) -> ValidationResult:
-    """Validate one candidate. Returns the full set of issues, never raises."""
+    """Validate one candidate. Returns the full set of issues, never raises.
+
+    When ``valid_action_tags`` is provided, also produces soft taxonomy
+    warnings for ground-truth actions whose ``domain:*`` tag does not match
+    the scenario's ``Domain`` field.
+    """
     issues: list[ValidationIssue] = []
+    warnings: list[ValidationIssue] = []
     _check_top_level(candidate, issues)
     if not issues or all(i.path != "ground_truth_actions" for i in issues):
         _check_actions(candidate, valid_actions, valid_world_ids, issues)
+    if valid_action_tags is not None:
+        _check_taxonomy_alignment(candidate, valid_action_tags, warnings)
     candidate_id = candidate.get("id") if isinstance(candidate.get("id"), str) else "<unknown>"
     return ValidationResult(
         candidate_id=str(candidate_id),
         is_valid=not issues,
         issues=issues,
+        warnings=warnings,
     )
 
 
@@ -354,12 +447,14 @@ def validate_batch(
 ) -> list[ValidationResult]:
     """Convenience: validate every candidate in a batch against disk artifacts."""
     valid_actions = _load_action_manifest(manifest_path)
+    valid_action_tags = _load_action_tags(manifest_path)
     valid_world_ids = _load_world_ids(snapshot_path)
     return [
         validate_candidate(
             c,
             valid_actions=valid_actions,
             valid_world_ids=valid_world_ids,
+            valid_action_tags=valid_action_tags,
         )
         for c in candidates
     ]

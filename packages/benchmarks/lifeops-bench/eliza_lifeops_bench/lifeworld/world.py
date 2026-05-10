@@ -280,7 +280,7 @@ class LifeWorld:
     # ----------------------------------------------------- Subscription helpers
 
     def cancel_subscription(self, subscription_id: str) -> Subscription:
-        """Mark a subscription as cancelled. Used by SUBSCRIPTIONS_CANCEL."""
+        """Mark a subscription as cancelled. Used by MONEY_SUBSCRIPTION_CANCEL."""
         return self.update(
             EntityKind.SUBSCRIPTION, subscription_id, status="cancelled"
         )

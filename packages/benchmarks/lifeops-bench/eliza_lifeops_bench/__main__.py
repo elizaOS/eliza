@@ -94,6 +94,28 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Per-scenario wall-clock timeout in seconds (default: 300)",
     )
     parser.add_argument(
+        "--abort-on-budget-exceeded",
+        dest="abort_on_budget_exceeded",
+        action="store_true",
+        default=True,
+        help=(
+            "When the cumulative cost cap (`--max-cost-usd`) is hit, mark "
+            "every still-pending scenario as cost_exceeded and stop "
+            "scheduling new agent / judge calls. Default: enabled."
+        ),
+    )
+    parser.add_argument(
+        "--no-abort-on-budget-exceeded",
+        dest="abort_on_budget_exceeded",
+        action="store_false",
+        help=(
+            "Keep running every scenario even after the cost cap is hit. "
+            "Pending scenarios will still raise CostBudgetExceeded once they "
+            "actually try to charge against the cap; this is mostly useful "
+            "for debugging the ledger split."
+        ),
+    )
+    parser.add_argument(
         "--output-dir",
         default="lifeops_bench_results",
         help="Directory for result JSON (default: lifeops_bench_results)",
@@ -226,6 +248,7 @@ async def _run(args: argparse.Namespace) -> None:
         seeds=args.seeds,
         max_cost_usd=args.max_cost_usd,
         per_scenario_timeout_s=args.per_scenario_timeout_s,
+        abort_on_budget_exceeded=args.abort_on_budget_exceeded,
     )
 
     print(f"\nStarting LifeOpsBench with {len(scenarios)} scenarios x {args.seeds} seeds...")

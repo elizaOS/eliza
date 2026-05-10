@@ -112,6 +112,13 @@ export const deviceIntentAction: Action & {
     "Owner-only one-shot push notification fan-out across already-paired devices. Use ONLY when the owner explicitly asks to push/broadcast a notification right now to all/mobile/desktop/specific devices (e.g. 'ping all my devices', 'send a push to my phone'). Do NOT use for habits, routines, recurring reminders, alarms, or any time-bound schedule — those go through the LIFE action.",
   descriptionCompressed:
     "ONE-SHOT push fan-out to paired devices NOW. NOT for habits/routines/recurring schedules (use LIFE).",
+  tags: [
+    "domain:meta",
+    "capability:execute",
+    "capability:send",
+    "surface:device",
+    "risk:user-visible",
+  ],
   contexts: ["automation", "connectors", "settings"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,

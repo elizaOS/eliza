@@ -126,20 +126,22 @@ export const credentialsAction: Action & {
     "COPY_CREDENTIAL",
     "SHOW_LOGINS",
   ],
+  tags: [
+    "domain:meta",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "capability:execute",
+    "surface:device",
+    "surface:internal",
+    "risk:irreversible",
+  ],
   description:
-    "Owner-only. Manage credentials across browser autofill (LifeOps extension) and the OS password manager (1Password / ProtonPass). " +
-    "Subactions (autofill side): " +
-    "fill (one-field autofill on a whitelisted site), " +
-    "whitelist_add (add a domain to the autofill allowlist; requires confirmed:true), " +
-    "whitelist_list (list the effective allowlist). " +
-    "Subactions (password manager side): " +
-    "search (match items by query), " +
-    "list (return a bounded number of items), " +
-    "inject_username (copy username to OS clipboard; requires confirmed:true), " +
-    "inject_password (copy password to OS clipboard; requires confirmed:true). " +
-    "Plaintext credentials NEVER appear in chat — only clipboard.",
+    "Owner-only password and autofill operations across browser autofill (LifeOps extension) and the OS password manager (1Password / ProtonPass). " +
+    "Subactions: fill (one-field autofill on a whitelisted site), whitelist_add (add a domain; requires confirmed:true), whitelist_list, search (match items by query), list (bounded), inject_username, inject_password (copy to OS clipboard; both require confirmed:true). " +
+    "Plaintext credentials never appear in chat — only the OS clipboard.",
   descriptionCompressed:
-    "credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitelist_list — search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+    "credentials: fill|whitelist_add|whitelist_list|search|list|inject_username|inject_password; clipboard-only; confirmed:true required for inject and whitelist_add",
   routingHint:
     "credential search/list/copy/inject -> CREDENTIALS subaction=search|list|inject_*; on-page form fill -> CREDENTIALS subaction=fill",
   contexts: ["browser", "secrets", "settings", "automation"],

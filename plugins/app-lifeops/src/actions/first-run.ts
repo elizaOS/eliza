@@ -154,6 +154,12 @@ export const firstRunAction: Action = {
     "owner first-run: defaults|customize|replay; defaults asks wake time once",
   routingHint:
     "Use when the firstRun provider surfaces an affordance, OR when the user asks to (re)run setup/onboarding. Pick path=defaults for the quick path; path=customize for the question flow.",
+  tags: [
+    "domain:meta",
+    "capability:execute",
+    "capability:write",
+    "surface:internal",
+  ],
   contexts: ["tasks", "automation"],
   roleGate: { minRole: "OWNER" },
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
