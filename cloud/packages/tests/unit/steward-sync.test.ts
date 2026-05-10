@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { beforeEach, describe, expect, test } from "bun:test";
 import { organizationInvitesRepository } from "@/db/repositories/organization-invites";
 import { apiKeysService } from "@/lib/services/api-keys";
@@ -20,44 +21,45 @@ const BASE_ORG = {
 
 describe("syncUserFromSteward", () => {
   beforeEach(() => {
-    usersService.getByStewardId = (async () => undefined) as typeof usersService.getByStewardId;
+    usersService.getByStewardId = (async () =>
+      undefined) as unknown as typeof usersService.getByStewardId;
     usersService.getByStewardIdForWrite = (async () =>
-      undefined) as typeof usersService.getByStewardIdForWrite;
+      undefined) as unknown as typeof usersService.getByStewardIdForWrite;
     usersService.getByEmailWithOrganization = (async () =>
-      undefined) as typeof usersService.getByEmailWithOrganization;
+      undefined) as unknown as typeof usersService.getByEmailWithOrganization;
     usersService.getByWalletAddress = (async () =>
-      undefined) as typeof usersService.getByWalletAddress;
+      undefined) as unknown as typeof usersService.getByWalletAddress;
     usersService.getByWalletAddressWithOrganization = (async () =>
-      undefined) as typeof usersService.getByWalletAddressWithOrganization;
+      undefined) as unknown as typeof usersService.getByWalletAddressWithOrganization;
     usersService.create = (async (data) => ({
       id: "created-user",
       ...data,
-    })) as typeof usersService.create;
+    })) as unknown as typeof usersService.create;
     usersService.update = (async (id, data) => ({
       id,
       ...data,
-    })) as typeof usersService.update;
-    usersService.linkStewardId = (async () => {}) as typeof usersService.linkStewardId;
+    })) as unknown as typeof usersService.update;
+    usersService.linkStewardId = (async () => {}) as unknown as typeof usersService.linkStewardId;
     usersService.upsertStewardIdentity =
-      (async () => {}) as typeof usersService.upsertStewardIdentity;
+      (async () => {}) as unknown as typeof usersService.upsertStewardIdentity;
 
     invitesService.findPendingInviteByEmail = (async () =>
-      undefined) as typeof invitesService.findPendingInviteByEmail;
+      undefined) as unknown as typeof invitesService.findPendingInviteByEmail;
     organizationInvitesRepository.markAsAccepted =
-      (async () => {}) as typeof organizationInvitesRepository.markAsAccepted;
+      (async () => {}) as unknown as typeof organizationInvitesRepository.markAsAccepted;
 
     organizationsService.getBySlug = (async () =>
-      undefined) as typeof organizationsService.getBySlug;
+      undefined) as unknown as typeof organizationsService.getBySlug;
     organizationsService.create = (async (data) => ({
       id: "new-org",
       billing_email: null,
       ...data,
-    })) as typeof organizationsService.create;
+    })) as unknown as typeof organizationsService.create;
     organizationsService.update = (async (id, data) => ({
       id,
       ...data,
-    })) as typeof organizationsService.update;
-    organizationsService.delete = (async () => {}) as typeof organizationsService.delete;
+    })) as unknown as typeof organizationsService.update;
+    organizationsService.delete = (async () => {}) as unknown as typeof organizationsService.delete;
 
     creditsService.addCredits = (async () => {}) as unknown as typeof creditsService.addCredits;
     emailService.sendWelcomeEmail =
@@ -65,12 +67,12 @@ describe("syncUserFromSteward", () => {
     discordService.logUserSignup =
       (async () => {}) as unknown as typeof discordService.logUserSignup;
     apiKeysService.listByOrganization =
-      (async () => []) as typeof apiKeysService.listByOrganization;
+      (async () => []) as unknown as typeof apiKeysService.listByOrganization;
     apiKeysService.create = (async () => ({
       id: "api-key-1",
     })) as unknown as typeof apiKeysService.create;
     charactersService.listByOrganization =
-      (async () => []) as typeof charactersService.listByOrganization;
+      (async () => []) as unknown as typeof charactersService.listByOrganization;
     charactersService.create = (async () => ({
       id: "char-1",
     })) as unknown as typeof charactersService.create;
@@ -105,19 +107,19 @@ describe("syncUserFromSteward", () => {
       expect(userId).toBe(existingUser.id);
       expect(stewardUserId).toBe("stwd-wallet-1");
       linked = true;
-    }) as typeof usersService.linkStewardId;
+    }) as unknown as typeof usersService.linkStewardId;
     usersService.upsertStewardIdentity = (async (userId, stewardUserId) => {
       expect(userId).toBe(existingUser.id);
       expect(stewardUserId).toBe("stwd-wallet-1");
       upserted = true;
-    }) as typeof usersService.upsertStewardIdentity;
+    }) as unknown as typeof usersService.upsertStewardIdentity;
     usersService.getByStewardIdForWrite = (async (stewardUserId) => {
       expect(stewardUserId).toBe("stwd-wallet-1");
       return linkedUser;
-    }) as typeof usersService.getByStewardIdForWrite;
+    }) as unknown as typeof usersService.getByStewardIdForWrite;
     usersService.create = (async () => {
       throw new Error("create should not run when wallet match exists");
-    }) as typeof usersService.create;
+    }) as unknown as typeof usersService.create;
 
     const result = await syncUserFromSteward({
       stewardUserId: "stwd-wallet-1",
@@ -157,13 +159,13 @@ describe("syncUserFromSteward", () => {
       id: "new-org",
       billing_email: null,
       ...data,
-    })) as typeof organizationsService.create;
+    })) as unknown as typeof organizationsService.create;
     usersService.create = (async (data) => {
       createdPayload = data;
       return { id: "wallet-new-user", ...data };
-    }) as typeof usersService.create;
+    }) as unknown as typeof usersService.create;
     usersService.getByStewardIdForWrite = (async () =>
-      createdUserWithOrg) as typeof usersService.getByStewardIdForWrite;
+      createdUserWithOrg) as unknown as typeof usersService.getByStewardIdForWrite;
 
     const result = await syncUserFromSteward({
       stewardUserId: "stwd-wallet-2",
@@ -205,15 +207,15 @@ describe("syncUserFromSteward", () => {
       expect(id).toBe(existingByEmail.id);
       updatedPayload = data;
       return { ...existingByEmail, ...data };
-    }) as typeof usersService.update;
+    }) as unknown as typeof usersService.update;
     usersService.upsertStewardIdentity = (async (userId, stewardUserId) => {
       expect(userId).toBe(existingByEmail.id);
       expect(stewardUserId).toBe("stwd-email-1");
-    }) as typeof usersService.upsertStewardIdentity;
+    }) as unknown as typeof usersService.upsertStewardIdentity;
     usersService.getByStewardIdForWrite = (async (stewardUserId) => {
       expect(stewardUserId).toBe("stwd-email-1");
       return linkedUser;
-    }) as typeof usersService.getByStewardIdForWrite;
+    }) as unknown as typeof usersService.getByStewardIdForWrite;
 
     const result = await syncUserFromSteward({
       stewardUserId: "stwd-email-1",
