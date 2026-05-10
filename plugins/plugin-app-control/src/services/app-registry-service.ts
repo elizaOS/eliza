@@ -51,6 +51,15 @@ export interface AppRegistryEntry extends ElizaCuratedAppDefinition {
 	 * validate. See parser at `../permissions.ts`.
 	 */
 	requestedPermissions?: Record<string, unknown>;
+	/**
+	 * Source classification computed by the loader at register time
+	 * (in-tree first-party dir vs. external load). Persisted on the
+	 * entry so the views API and Settings UI can render the correct
+	 * trust label after a restart. Absent on entries written before
+	 * this field landed — `readPersisted` defaults those to
+	 * `"external"` for back-compat.
+	 */
+	trust?: AppTrust;
 }
 
 export interface RegisterContext {
@@ -164,31 +173,36 @@ async function readPersisted(file: string): Promise<PersistedShape> {
 		);
 		return { version: 1, entries: [] };
 	}
-	const entries = (parsed as { entries: unknown[] }).entries.filter(
-		(e): e is AppRegistryEntry => {
-			if (typeof e !== "object" || e === null) return false;
-			const candidate = e as AppRegistryEntry;
+	const entries: AppRegistryEntry[] = [];
+	for (const e of (parsed as { entries: unknown[] }).entries) {
+		if (typeof e !== "object" || e === null) continue;
+		const candidate = e as AppRegistryEntry;
+		if (
+			typeof candidate.slug !== "string" ||
+			typeof candidate.canonicalName !== "string" ||
+			typeof candidate.directory !== "string" ||
+			typeof candidate.displayName !== "string" ||
+			!Array.isArray(candidate.aliases)
+		) {
+			continue;
+		}
+		if (candidate.requestedPermissions !== undefined) {
 			if (
-				typeof candidate.slug !== "string" ||
-				typeof candidate.canonicalName !== "string" ||
-				typeof candidate.directory !== "string" ||
-				typeof candidate.displayName !== "string" ||
-				!Array.isArray(candidate.aliases)
+				typeof candidate.requestedPermissions !== "object" ||
+				candidate.requestedPermissions === null ||
+				Array.isArray(candidate.requestedPermissions)
 			) {
-				return false;
+				continue;
 			}
-			if (candidate.requestedPermissions !== undefined) {
-				if (
-					typeof candidate.requestedPermissions !== "object" ||
-					candidate.requestedPermissions === null ||
-					Array.isArray(candidate.requestedPermissions)
-				) {
-					return false;
-				}
-			}
-			return true;
-		},
-	);
+		}
+		// Default `trust` for back-compat with entries written before the
+		// trust field was persisted. Directory-loaded entries are by
+		// construction external; first-party entries (when added) get an
+		// explicit `trust: "first-party"` at register time.
+		const trust: AppTrust =
+			candidate.trust === "first-party" ? "first-party" : "external";
+		entries.push({ ...candidate, trust });
+	}
 	return { version: 1, entries };
 }
 
@@ -326,35 +340,44 @@ export class AppRegistryService extends Service {
 		entry: AppRegistryEntry,
 		ctx: RegisterContext = {},
 	): Promise<void> {
-		registerCuratedApp(entry);
+		const trust: AppTrust = ctx.trust ?? entry.trust ?? "external";
+		const persistedEntry: AppRegistryEntry = { ...entry, trust };
+		registerCuratedApp(persistedEntry);
 
 		const persisted = await readPersisted(this.registryPath);
-		const idx = persisted.entries.findIndex((e) => e.slug === entry.slug);
+		const idx = persisted.entries.findIndex(
+			(e) => e.slug === persistedEntry.slug,
+		);
 		if (idx >= 0) {
-			persisted.entries[idx] = entry;
+			persisted.entries[idx] = persistedEntry;
 		} else {
-			persisted.entries.push(entry);
+			persisted.entries.push(persistedEntry);
 		}
 		await writePersistedAtomic(this.registryPath, persisted);
 
-		const trust = ctx.trust ?? "external";
 		await appendAuditLine(this.auditPath, {
 			kind: "registered",
 			timestamp: new Date().toISOString(),
-			directory: entry.directory,
-			appName: entry.canonicalName,
-			slug: entry.slug,
-			displayName: entry.displayName,
+			directory: persistedEntry.directory,
+			appName: persistedEntry.canonicalName,
+			slug: persistedEntry.slug,
+			displayName: persistedEntry.displayName,
 			trust,
-			requestedPermissions: entry.requestedPermissions ?? null,
+			requestedPermissions: persistedEntry.requestedPermissions ?? null,
 			registeredByEntity: ctx.requesterEntityId ?? null,
 			registeredByRoom: ctx.requesterRoomId ?? null,
 		});
 
 		if (trust === "first-party") {
-			const declared = recognisedNamespacesForRaw(entry.requestedPermissions);
+			const declared = recognisedNamespacesForRaw(
+				persistedEntry.requestedPermissions,
+			);
 			if (declared.length > 0) {
-				await this.writeGrant(entry.slug, declared, "first-party-auto");
+				await this.writeGrant(
+					persistedEntry.slug,
+					declared,
+					"first-party-auto",
+				);
 			}
 		}
 	}
@@ -428,20 +451,25 @@ export class AppRegistryService extends Service {
 			};
 		}
 
-		await this.writeGrant(slug, valid, actor);
-		const view = await this.getPermissionsView(slug);
-		if (view === null) {
-			// Should never happen — entry existed at the top of this function.
-			return { ok: false, reason: "Race: app unregistered during grant" };
-		}
-		return { ok: true, view };
+		const updatedGrants = await this.writeGrant(slug, valid, actor);
+		// Build the view directly from the entry we already have and the
+		// grants snapshot we just wrote. Avoids re-reading both files
+		// (which would also widen the race window if a concurrent PUT
+		// landed between this write and the re-read).
+		return {
+			ok: true,
+			view: buildViewFromGrants(entry, updatedGrants),
+		};
 	}
 
 	async getPermissionsView(slug: string): Promise<AppPermissionsView | null> {
-		const persisted = await readPersisted(this.registryPath);
+		const [persisted, grants] = await Promise.all([
+			readPersisted(this.registryPath),
+			readGrants(this.grantsPath),
+		]);
 		const entry = persisted.entries.find((e) => e.slug === slug);
 		if (!entry) return null;
-		return this.buildView(entry, "external");
+		return buildViewFromGrants(entry, grants);
 	}
 
 	async listPermissionsViews(): Promise<AppPermissionsView[]> {
@@ -449,45 +477,14 @@ export class AppRegistryService extends Service {
 			readPersisted(this.registryPath),
 			readGrants(this.grantsPath),
 		]);
-		return persisted.entries.map((entry) =>
-			this.buildViewFromGrants(entry, "external", grants),
-		);
-	}
-
-	private async buildView(
-		entry: AppRegistryEntry,
-		trust: AppTrust,
-	): Promise<AppPermissionsView> {
-		const grants = await readGrants(this.grantsPath);
-		return this.buildViewFromGrants(entry, trust, grants);
-	}
-
-	private buildViewFromGrants(
-		entry: AppRegistryEntry,
-		trust: AppTrust,
-		grants: PersistedGrantsShape,
-	): AppPermissionsView {
-		const requestedPermissions = entry.requestedPermissions ?? null;
-		const recognised = recognisedNamespacesForRaw(requestedPermissions);
-		const grant = grants.grants[entry.slug] ?? null;
-		const grantedNamespaces = grant
-			? grant.namespaces.filter((ns) => recognised.includes(ns))
-			: [];
-		return {
-			slug: entry.slug,
-			trust,
-			requestedPermissions,
-			recognisedNamespaces: recognised,
-			grantedNamespaces,
-			grantedAt: grant?.grantedAt ?? null,
-		};
+		return persisted.entries.map((entry) => buildViewFromGrants(entry, grants));
 	}
 
 	private async writeGrant(
 		slug: string,
 		namespaces: RecognisedPermissionNamespace[],
 		actor: GrantActor,
-	): Promise<void> {
+	): Promise<PersistedGrantsShape> {
 		const grants = await readGrants(this.grantsPath);
 		const now = new Date().toISOString();
 		const previous = grants.grants[slug];
@@ -510,7 +507,7 @@ export class AppRegistryService extends Service {
 		}
 		await writeGrantsAtomic(this.grantsPath, grants);
 
-		if (namespacesUnchanged) return;
+		if (namespacesUnchanged) return grants;
 
 		const previousSet = new Set<string>(previousSorted);
 		const nextSet = new Set<string>(sortedNamespaces);
@@ -535,7 +532,28 @@ export class AppRegistryService extends Service {
 				actor,
 			});
 		}
+		return grants;
 	}
+}
+
+function buildViewFromGrants(
+	entry: AppRegistryEntry,
+	grants: PersistedGrantsShape,
+): AppPermissionsView {
+	const requestedPermissions = entry.requestedPermissions ?? null;
+	const recognised = recognisedNamespacesForRaw(requestedPermissions);
+	const grant = grants.grants[entry.slug] ?? null;
+	const grantedNamespaces = grant
+		? grant.namespaces.filter((ns) => recognised.includes(ns))
+		: [];
+	return {
+		slug: entry.slug,
+		trust: entry.trust ?? "external",
+		requestedPermissions,
+		recognisedNamespaces: recognised,
+		grantedNamespaces,
+		grantedAt: grant?.grantedAt ?? null,
+	};
 }
 
 export default AppRegistryService;
