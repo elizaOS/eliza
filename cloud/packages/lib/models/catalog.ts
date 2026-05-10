@@ -146,13 +146,13 @@ const MINIMAX_TEXT_MODEL_IDS = [
 ] as const;
 const QWEN_TEXT_MODEL_IDS = [
   "alibaba/qwen-3.6-max-preview",
-  "alibaba/qwen3.6-plus",
-  "alibaba/qwen3-max",
-  "alibaba/qwen3-max-thinking",
-  "alibaba/qwen3.5-plus",
-  "alibaba/qwen3.5-flash",
-  "alibaba/qwen3-coder-plus",
-  "alibaba/qwen3-coder-next",
+  "alibaba/eliza1.6-plus",
+  "alibaba/eliza1-max",
+  "alibaba/eliza1-max-thinking",
+  "alibaba/eliza1.5-plus",
+  "alibaba/eliza1.5-flash",
+  "alibaba/eliza1-coder-plus",
+  "alibaba/eliza1-coder-next",
   "alibaba/qwen-3-14b",
 ] as const;
 const DEEPSEEK_TEXT_MODEL_IDS = [
@@ -404,54 +404,7 @@ export const GROQ_NATIVE_MODEL_ID_MAP: Record<string, string> = {
 };
 
 export const VAST_NATIVE_MODELS: CatalogModel[] = [
-  {
-    id: "vast/qwen3.6-27b-neo-code",
-    object: "model",
-    created: 0,
-    owned_by: "vast",
-    name: "Qwen3.6 27B NEO-CODE (Q6_K)",
-    description:
-      "Qwen3.6 27B NEO-CODE (Q6_K GGUF, llama.cpp), self-hosted on Vast.ai Serverless on RTX 5090. Base: DavidAU/Qwen3.6-27B-Heretic-Uncensored-FINETUNE-NEO-CODE-Di-IMatrix-MAX-GGUF",
-    type: "language",
-    tags: ["self-hosted", "llama.cpp", "gguf"],
-  },
-  {
-    id: "vast/qwen3.5-4b-dflash",
-    object: "model",
-    created: 0,
-    owned_by: "vast",
-    name: "Qwen3.5 4B DFlash",
-    description:
-      "Qwen3.5 4B Q4_K_M target with Q4_K_M DFlash drafter, served by a DFlash-capable llama.cpp fork on Vast.ai. Target: bartowski/Qwen_Qwen3.5-4B-GGUF; drafter: psychopenguin/Qwen3.5-4B-DFlash-FP16-GGUF",
-    type: "language",
-    context_window: 8192,
-    tags: ["self-hosted", "llama.cpp", "gguf", "dflash", "qwen3.5"],
-  },
-  {
-    id: "vast/qwen3.5-9b-dflash",
-    object: "model",
-    created: 0,
-    owned_by: "vast",
-    name: "Qwen3.5 9B DFlash",
-    description:
-      "Qwen3.5 9B Q4_K_M target with Q4_K_M DFlash drafter, served by a DFlash-capable llama.cpp fork on Vast.ai. Target: bartowski/Qwen_Qwen3.5-9B-GGUF; drafter: psychopenguin/Qwen3.5-9B-DFlash-FP16-GGUF",
-    type: "language",
-    context_window: 8192,
-    tags: ["self-hosted", "llama.cpp", "gguf", "dflash", "qwen3.5"],
-  },
-  {
-    id: "vast/qwen3.6-27b-dflash",
-    object: "model",
-    created: 0,
-    owned_by: "vast",
-    name: "Qwen3.6 27B DFlash",
-    description:
-      "Qwen3.6 27B Q4_K_M target with recommended Q8_0 DFlash drafter, served by a DFlash-capable llama.cpp fork on Vast.ai. Target: bartowski/Qwen_Qwen3.6-27B-GGUF; drafter: spiritbuun/Qwen3.6-27B-DFlash-GGUF",
-    type: "language",
-    context_window: 8192,
-    tags: ["self-hosted", "llama.cpp", "gguf", "dflash", "qwen3.6"],
-  },
-  // ─── eliza-1 series — Milady's own fine-tunes of Qwen3.5/3.6 ───────
+  // ─── eliza-1 series ────────────────────────────────────────────────
   // Self-hosted on Vast.ai. Manifests live in
   // training/cloud/vast-pyworker/eliza-1-{2b,9b,27b}.json.
   {
@@ -459,7 +412,7 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     object: "model",
     created: 0,
     owned_by: "vast",
-    name: "Eliza-1 2B (Qwen3.5)",
+    name: "Eliza-1 2B",
     description:
       "Milady's smallest fine-tune (Q4_K_M GGUF, llama-server). Single GPU debug / latency-tolerant agent loops. HF: elizaos/eliza-1-2b-gguf-q4_k_m",
     type: "language",
@@ -471,7 +424,7 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     object: "model",
     created: 0,
     owned_by: "vast",
-    name: "Eliza-1 9B (Qwen3.5)",
+    name: "Eliza-1 9B",
     description:
       "Workstation-tier Milady fine-tune. Served via vLLM with PolarQuant + AWQ-Marlin and TurboQuant quality KV on 2× RTX PRO 6000 Blackwell. HF: elizaos/eliza-1-9b-polarquant",
     type: "language",
@@ -483,7 +436,7 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     object: "model",
     created: 0,
     owned_by: "vast",
-    name: "Eliza-1 27B (Qwen3.6)",
+    name: "Eliza-1 27B",
     description:
       "Cloud-tier Milady flagship. Served via vLLM with FP8 weights + TurboQuant quality KV on 2× H200 SXM. 4-bit KV is available as an explicit benchmark-gated runtime preset. HF: elizaos/eliza-1-27b-fp8",
     type: "language",

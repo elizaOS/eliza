@@ -1,7 +1,7 @@
 {
   "$schema": "../profile-config.schema.json",
-  "description": "Host CUDA profiling matrix (Linux/Windows + NVIDIA). Adds the larger Bonsai-8B model and a DFlash drafter pairing — both are too slow to be useful on CPU.",
-  "models": ["qwen3.5-4b-dflash", "bonsai-8b-1bit"],
+  "description": "Host CUDA profiling matrix (Linux/Windows + NVIDIA). Profiles the larger Eliza-1 desktop tier on GPU-capable hosts.",
+  "models": ["eliza-1-mobile-1_7b", "eliza-1-desktop-9b"],
   "kvCacheConfigs": [
     { "name": "baseline-fp16", "k": "f16", "v": "f16" },
     { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" },
@@ -9,7 +9,7 @@
   ],
   "dflashConfigs": [
     { "name": "no-dflash", "drafter": null },
-    { "name": "dflash-bonsai", "drafter": "bonsai-8b-dflash-drafter" }
+    { "name": "no-drafter", "drafter": null }
   ],
   "prompts": [
     {

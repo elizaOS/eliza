@@ -222,7 +222,7 @@ describe("v5 tiered action surface", () => {
 		const email = makeAction({
 			name: "SEND_EMAIL",
 			description: "Send an email.",
-			contexts: ["music" as AgentContext],
+			contexts: ["email" as AgentContext],
 		});
 		const runtime = makeRuntime({
 			actions: [music, playMusic, pauseMusic, email],

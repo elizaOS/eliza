@@ -1,5 +1,5 @@
 /**
- * Idempotent Vast.ai template upsert for the Qwen3.6 27B NEO-CODE serving
+ * Idempotent Vast.ai template upsert for the Eliza-1 27B serving
  * stack. The template is the per-worker spec that Vast Serverless instantiates
  * on each cold start: image, disk, env, on_start script.
  *
@@ -14,7 +14,7 @@
  *   VASTAI_API_KEY     — vast CLI key (starts with `vastai_`).
  *
  * Optional env:
- *   VAST_TEMPLATE_NAME — defaults to "eliza-cloud-qwen3.6-27b-neo-code".
+ *   VAST_TEMPLATE_NAME — defaults to "eliza-cloud-eliza-1-27b".
  *   VAST_RUNTIME       — "llama" (default) or "vllm".
  *   MILADY_VAST_MANIFEST — vLLM manifest name/path. Defaults to
  *                        eliza-1-2b.json when VAST_RUNTIME=vllm.
@@ -204,10 +204,10 @@ async function main(): Promise<void> {
   } else {
     env.MODEL_REPO = readEnv(
       "MODEL_REPO",
-      "DavidAU/Qwen3.6-27B-Heretic-Uncensored-FINETUNE-NEO-CODE-Di-IMatrix-MAX-GGUF",
+      "elizaos/eliza-1-27b-fp8",
     );
-    env.MODEL_FILE = readEnv("MODEL_FILE", "Qwen3.6-27B-NEO-CODE-HERE-2T-OT-Q6_K.gguf");
-    env.MODEL_ALIAS = readEnv("MODEL_ALIAS", "vast/qwen3.6-27b-neo-code");
+    env.MODEL_FILE = readEnv("MODEL_FILE", "text/eliza-1-pro-27b-128k.gguf");
+    env.MODEL_ALIAS = readEnv("MODEL_ALIAS", "vast/eliza-1-27b");
     env.LLAMA_CONTEXT = readEnv("LLAMA_CONTEXT", "32768");
     env.LLAMA_PARALLEL = readEnv("LLAMA_PARALLEL", "2");
     env.LLAMA_NGL = readEnv("LLAMA_NGL", "99");
@@ -236,7 +236,7 @@ async function main(): Promise<void> {
   const config: TemplateConfig = {
     name: readEnv(
       "VAST_TEMPLATE_NAME",
-      runtime === "vllm" ? "eliza-cloud-eliza-1-vllm" : "eliza-cloud-qwen3.6-27b-neo-code",
+      runtime === "vllm" ? "eliza-cloud-eliza-1-vllm" : "eliza-cloud-eliza-1-27b",
     ),
     // Official llama.cpp CUDA server image for stock GGUF. DFlash/TurboQuant
     // deployments must set VAST_IMAGE to a compatible fork/runtime image.

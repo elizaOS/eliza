@@ -152,8 +152,9 @@ export function retrieveActions(
 		// additive bump. The boost is large enough to reorder tier-A when a
 		// context-aligned candidate has a comparable raw retrieval score
 		// (e.g. LIFE vs BLOCK both keyword-match "every day" — context says
-		// the user is in tasks/general, so LIFE wins). It does not create a
-		// retrieval signal by itself.
+		// the user is in tasks/general, so LIFE wins). Context alone is not a
+		// retrieval signal; otherwise every action sharing a broad context can
+		// leak into Tier B without matching the turn.
 		const parentContexts = Array.isArray(parent.contexts)
 			? (parent.contexts as readonly unknown[])
 			: [];
@@ -171,6 +172,7 @@ export function retrieveActions(
 				stageScores.contextMatch = contextBoost;
 			}
 		}
+
 		const score = clampScore(baseScore + contextBoost);
 
 		return {

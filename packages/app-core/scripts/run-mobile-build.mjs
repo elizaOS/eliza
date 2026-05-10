@@ -1839,9 +1839,16 @@ export function prepareIosOverlay({ buildTarget = null } = {}) {
   const syncedFiles = syncPlatformTemplateFiles("ios");
   overlayIos();
   stripSpmIncompatiblePlugins();
-  if (isIosSimulatorBuildTarget(buildTarget)) {
+  const includeLlama =
+    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
+    isTruthyEnv(process.env.MILADY_IOS_INCLUDE_LLAMA);
+  if (isIosSimulatorBuildTarget(buildTarget) || !includeLlama) {
+    // Strip the SPM LlamaCppCapacitor entry whenever we're not bundling the
+    // pod — either because the simulator build replaces it with a CocoaPod
+    // (existing behavior) or because the build deliberately omits llama
+    // (cloud-only / App Store thin client).
     stripSpmPlugins(IOS_COCOAPODS_OWNED_SPM_PLUGINS, {
-      reason: "CocoaPods-owned",
+      reason: includeLlama ? "CocoaPods-owned" : "llama excluded",
     });
   }
   return syncedFiles;
@@ -2676,6 +2683,14 @@ async function buildIosLlamaCppSimulatorFramework(packageDir) {
 
 async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
   if (!isIosSimulatorBuildTarget(buildTarget)) return;
+  // When llama is excluded from the build (cloud-only / App Store thin
+  // client), the pod is not generated and the vendored framework is not
+  // referenced. Skipping here avoids spinning up xcodebuild for an
+  // xcframework that nothing consumes.
+  const includeLlama =
+    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
+    isTruthyEnv(process.env.MILADY_IOS_INCLUDE_LLAMA);
+  if (!includeLlama) return;
 
   const packageDir = resolvePackageAbsolutePath("llama-cpp-capacitor");
   if (!packageDir) return;

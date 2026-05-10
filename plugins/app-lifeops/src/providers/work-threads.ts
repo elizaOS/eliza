@@ -96,8 +96,19 @@ export const workThreadsProvider: Provider = {
     for (const thread of [...currentRoomThreads, ...ownerThreads]) {
       byId.set(thread.id, thread);
     }
+    const currentRoomThreadIds = new Set(
+      currentRoomThreads.map((thread) => thread.id),
+    );
     const threads = [...byId.values()]
-      .sort((a, b) => Date.parse(b.lastActivityAt) - Date.parse(a.lastActivityAt))
+      .sort((a, b) => {
+        const currentRoomDelta =
+          Number(currentRoomThreadIds.has(b.id)) -
+          Number(currentRoomThreadIds.has(a.id));
+        if (currentRoomDelta !== 0) {
+          return currentRoomDelta;
+        }
+        return Date.parse(b.lastActivityAt) - Date.parse(a.lastActivityAt);
+      })
       .slice(0, MAX_THREADS);
     if (threads.length === 0) {
       return EMPTY;

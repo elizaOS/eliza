@@ -126,8 +126,8 @@ function parseArgs(argv) {
   const args = {
     backend,
     binary: defaultBinary(backend),
-    model: defaultModelPath("qwen3.5-4b-dflash.gguf"),
-    drafter: defaultModelPath("qwen3.5-4b-dflash-drafter-q4.repaired.gguf"),
+    model: defaultModelPath("eliza-1-mobile-1_7b.gguf"),
+    drafter: defaultModelPath("eliza-1-mobile-1_7b-drafter-q4.repaired.gguf"),
     runs: 3,
     warmupTokens: 32,
     maxTokens: 256,

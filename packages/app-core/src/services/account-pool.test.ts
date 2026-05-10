@@ -121,11 +121,12 @@ describe("AccountPool provider-scoped account resolution", () => {
       writeAccount: async () => {},
     });
 
-    await expect(pool.select({ providerId: "openai-codex" })).resolves
-      .toMatchObject({
-        id: "work",
-        providerId: "openai-codex",
-      });
+    await expect(
+      pool.select({ providerId: "openai-codex" }),
+    ).resolves.toMatchObject({
+      id: "work",
+      providerId: "openai-codex",
+    });
   });
 
   it("round-robins across multiple accounts for one provider", async () => {

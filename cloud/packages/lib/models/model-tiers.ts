@@ -366,17 +366,17 @@ export const ADDITIONAL_MODELS: AdditionalModel[] = [
   },
   // Alibaba (Qwen)
   {
-    id: "qwen3-max",
+    id: "eliza1-max",
     name: "Qwen 3 Max",
     description: "Alibaba's most powerful",
-    modelId: "alibaba/qwen3-max",
+    modelId: "alibaba/eliza1-max",
     provider: "alibaba",
   },
   {
-    id: "qwen3.5-plus",
+    id: "eliza1.5-plus",
     name: "Qwen 3.5 Plus",
     description: "Latest Qwen generation",
-    modelId: "alibaba/qwen3.5-plus",
+    modelId: "alibaba/eliza1.5-plus",
     provider: "alibaba",
   },
   // Minimax
