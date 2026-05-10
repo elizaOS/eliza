@@ -53,7 +53,8 @@ export function resolveStateDir(
 	env: NodeJS.ProcessEnv = process.env,
 	getHome: () => string = homedir,
 ): string {
-	const explicit = readEnv(env, "MILADY_STATE_DIR") ?? readEnv(env, "ELIZA_STATE_DIR");
+	const explicit =
+		readEnv(env, "MILADY_STATE_DIR") ?? readEnv(env, "ELIZA_STATE_DIR");
 	if (explicit) return resolveUserPath(explicit);
 	return join(getHome(), `.${getElizaNamespace(env)}`);
 }
@@ -67,7 +68,9 @@ export function resolveOAuthDir(
 	stateDirPath: string = resolveStateDir(env),
 ): string {
 	const explicit = readEnv(env, "ELIZA_OAUTH_DIR");
-	return explicit ? resolveUserPath(explicit) : join(stateDirPath, "credentials");
+	return explicit
+		? resolveUserPath(explicit)
+		: join(stateDirPath, "credentials");
 }
 
 /**
