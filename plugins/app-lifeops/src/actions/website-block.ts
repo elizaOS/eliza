@@ -7,15 +7,13 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import {
   getSelfControlAccess,
   SELFCONTROL_ACCESS_ERROR,
 } from "../website-blocker/access.js";
+import { activateBlockRule } from "../website-blocker/chat-integration/block-activator.js";
 import {
   BlockRuleReader,
   BlockRuleWriter,
@@ -28,10 +26,8 @@ import {
   normalizeWebsiteTargets,
   parseSelfControlBlockRequest,
   requestSelfControlPermission,
-  startSelfControlBlock,
   stopSelfControlBlock,
 } from "../website-blocker/engine.js";
-import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.js";
 import {
   resolveActionArgs,
   type SubactionsMap,
@@ -653,54 +649,28 @@ async function handleBlock(
     };
   }
 
-  const result = await startSelfControlBlock({
-    ...parsed.request,
-    scheduledByAgentId: String(runtime.agentId),
+  const activation = await activateBlockRule({
+    runtime,
+    websites: parsed.request.websites,
+    durationMinutes: parsed.request.durationMinutes,
   });
-  if (result.success === false) {
+  if (activation.success === false) {
     return {
       success: false,
-      text: result.error,
-      data: result.status
-        ? {
-            active: result.status.active,
-            endsAt: result.status.endsAt,
-            websites: result.status.websites,
-            requiresElevation: result.status.requiresElevation,
-          }
-        : undefined,
+      text: activation.error,
     };
-  }
-
-  if (parsed.request.durationMinutes !== null) {
-    try {
-      const taskId = await syncWebsiteBlockerExpiryTask(runtime);
-      if (!taskId) {
-        await stopSelfControlBlock();
-        return {
-          success: false,
-          text: "Eliza started the website block but could not schedule its automatic unblock task, so it rolled the block back.",
-        };
-      }
-    } catch (error) {
-      await stopSelfControlBlock();
-      return {
-        success: false,
-        text: `Eliza could not schedule the automatic unblock task, so it rolled the website block back. ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
   }
 
   return {
     success: true,
     text:
-      result.endsAt === null
+      activation.endsAt === null
         ? `Started a website block for ${formatWebsiteList(parsed.request.websites)} until you unblock it.`
-        : `Started a website block for ${formatWebsiteList(parsed.request.websites)} until ${result.endsAt}.`,
+        : `Started a website block for ${formatWebsiteList(parsed.request.websites)} until ${activation.endsAt}.`,
     data: {
       websites: parsed.request.websites,
       durationMinutes: parsed.request.durationMinutes,
-      endsAt: result.endsAt,
+      endsAt: activation.endsAt,
     },
   };
 }
@@ -836,7 +806,8 @@ function formatLiveWebsiteBlockStatus(
 ): string {
   if (!status.available) {
     return (
-      status.reason ?? "The live website blocker is unavailable on this machine."
+      status.reason ??
+      "The live website blocker is unavailable on this machine."
     );
   }
   const permissionNote = status.reason ? ` ${status.reason}` : "";
@@ -905,9 +876,7 @@ async function handleListActive(
           null as Awaited<ReturnType<typeof getSelfControlStatus>> | null,
         ),
   ]);
-  const sections = liveStatus
-    ? [formatLiveWebsiteBlockStatus(liveStatus)]
-    : [];
+  const sections = liveStatus ? [formatLiveWebsiteBlockStatus(liveStatus)] : [];
   if (!includeManagedRules) {
     return {
       success: true,

@@ -77,13 +77,14 @@ describe("PAYMENTS action integration", () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
 
+    // Canonical `subaction` field for the new convention.
     const addResult = await paymentsAction.handler?.(
       runtime,
       ownerMessage(runtime.agentId, "add chase account"),
       undefined,
       {
         parameters: {
-          mode: "add_source",
+          subaction: "add_source",
           kind: "manual",
           label: "Chase Checking",
           institution: "Chase",
@@ -101,6 +102,7 @@ describe("PAYMENTS action integration", () => {
     expect(addedSource?.institution).toBe("Chase");
     expect(addedSource?.accountMask).toBe("1234");
 
+    // Legacy `mode` alias still resolves for one release.
     const listResult = await paymentsAction.handler?.(
       runtime,
       ownerMessage(runtime.agentId, "list payment sources"),

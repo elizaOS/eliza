@@ -3,6 +3,18 @@
  *
  * The runner deliberately does NOT pattern-match on `promptInstructions` or
  * on specific `kind` values — behavior is driven by the typed fields.
+ *
+ * Terminal-state vocabulary note:
+ *  - `completed`, `skipped`, `expired`, `dismissed` are reachable via the
+ *    public chat verbs in `ScheduledTaskVerb` (and via fire-time gate /
+ *    completion-check decisions).
+ *  - `failed` is a **dispatcher-runtime outcome**, not a chat verb. There is
+ *    no public `apply("failed")` entry point. The runner enters `failed`
+ *    when an infra-level dispatch error surfaces, when a child task
+ *    propagates `failed` upstream, or when callers invoke
+ *    `runner.pipeline(taskId, "failed")` directly. `pipeline.onFail` then
+ *    propagates the outcome to children and flips the parent's state to
+ *    `failed` so observers see one consistent terminal state per branch.
  */
 
 // ---------------------------------------------------------------------------
@@ -97,9 +109,21 @@ export interface ScheduledTaskCompletionCheck {
   /**
    * Mutually exclusive with `pipeline.onSkip`. If both set, runner uses
    * `pipeline.onSkip` and ignores this.
+   *
+   * For `kind === "approval"` tasks, the runner defaults this to
+   * {@link APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES} when the curator did
+   * not provide an explicit value (and `pipeline.onSkip` is empty).
    */
   followupAfterMinutes?: number;
 }
+
+/**
+ * Default `completionCheck.followupAfterMinutes` for approval-kind tasks
+ * when the curator did not set one explicitly. Approvals stale fast; a
+ * 60-minute followup is the documented baseline so curators do not need
+ * to repeat it on every approval definition.
+ */
+export const APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES = 60;
 
 export interface EscalationStep {
   delayMinutes: number;

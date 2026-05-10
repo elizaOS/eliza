@@ -164,12 +164,19 @@ for (const file of walkJson(trajectoryDir)) {
     continue;
   }
 
+  // eliza_native_v1 shape (matches plugins/app-training/src/backends/native.ts:parseJsonlDataset)
   const row = {
-    messages: [
-      { role: "system", content: PLANNER_BASELINE },
-      { role: "user", content: userPrompt },
-      { role: "model", content: modelOutput },
-    ],
+    format: "eliza_native_v1",
+    boundary: "vercel_ai_sdk.generateText",
+    request: {
+      system: PLANNER_BASELINE,
+      messages: [
+        { role: "user", content: userPrompt },
+      ],
+    },
+    response: {
+      text: modelOutput,
+    },
     reward: meta?.pass ? 1.0 : 0.0,
     metadata: {
       caseId: meta?.caseId ?? scenarioId,

@@ -1,17 +1,26 @@
 /**
  * Integration tests for LifeOps action registration and access gating.
  *
- * Two invariants the agent relies on:
+ * Invariants the agent relies on:
  *
- *   1. LifeOps umbrella actions (MESSAGE, CALENDAR, etc.) are visible to the LLM in any
- *      channel — no `gatePluginSessionForHostedApp` wrapper that hides them
- *      when the LifeOps UI isn't foregrounded. Previously the plugin wrapped
- *      every action's validate() to return false unless an AppManager run or
- *      dashboard overlay heartbeat existed, which meant Discord/Telegram users
- *      could not trigger owner inbox/calendar work at all.
+ *   1. LifeOps umbrella actions (MESSAGE, CALENDAR, etc.) are visible to the
+ *      LLM in any channel — no `gatePluginSessionForHostedApp` wrapper that
+ *      hides them when the LifeOps UI isn't foregrounded. Previously the
+ *      plugin wrapped every action's validate() to return false unless an
+ *      AppManager run or dashboard overlay heartbeat existed, which meant
+ *      Discord/Telegram users could not trigger owner inbox/calendar work
+ *      at all.
  *
- *   2. RELATIONSHIP is the single registered entry point for the
- *      follow-up surface, and it enforces owner-only access.
+ *   2. ENTITY is the canonical entry point for people / contacts / typed
+ *      relationships. The legacy `RELATIONSHIP` name is a one-release simile
+ *      so cached planner outputs keep resolving.
+ *
+ *   3. SCHEDULED_TASK is the canonical entry point for runner-managed
+ *      reminders / check-ins / follow-ups / approvals (W3-C drift D-2). The
+ *      transitional ENTITY follow-up verbs collapse onto its simile list.
+ *
+ *   4. LIFE.policy_* owns owner-policy writes (W3-C drift D-3). PROFILE
+ *      keeps the legacy simile names registered for one release.
  *
  * Uses a real AgentRuntime with PGLite (plugin-sql) — no SQL mocks — so the
  * access helpers (`resolveCanonicalOwnerIdForMessage`, `checkSenderRole`) and
@@ -99,6 +108,10 @@ describe("LifeOps plugin action gating", () => {
       "MESSAGE",
       "BOOK_TRAVEL",
       "RESOLVE_REQUEST",
+      // W3-C drift D-2: the SCHEDULED_TASK umbrella is the canonical home
+      // for the runner's verbs; ENTITY's transitional follow-up subactions
+      // collapse onto it.
+      "SCHEDULED_TASK",
     ]) {
       expect(actionNames).toContain(expected);
     }
@@ -121,6 +134,62 @@ describe("LifeOps plugin action gating", () => {
       "RELATIONSHIP",
     ]) {
       expect(actionNames).not.toContain(removed);
+    }
+  });
+
+  it("registers the 7 transitional ENTITY follow-up subactions as SCHEDULED_TASK similes", () => {
+    // W3-C drift D-2: the follow-up verbs collapse onto SCHEDULED_TASK; the
+    // simile registration is what lets the planner pick SCHEDULED_TASK when
+    // the user asks to add/list/complete a follow-up. ENTITY still keeps the
+    // simile names registered for one release as a planner-cache alias.
+    const scheduledTask = (appLifeOpsPlugin.actions ?? []).find(
+      (a) => a.name === "SCHEDULED_TASK",
+    );
+    if (!scheduledTask) {
+      throw new Error(
+        "SCHEDULED_TASK is not registered in appLifeOpsPlugin.actions",
+      );
+    }
+    for (const transitional of [
+      "ADD_FOLLOW_UP",
+      "COMPLETE_FOLLOW_UP",
+      "FOLLOW_UP_LIST",
+      "DAYS_SINCE",
+      "LIST_OVERDUE_FOLLOWUPS",
+      "MARK_FOLLOWUP_DONE",
+      "SET_FOLLOWUP_THRESHOLD",
+    ]) {
+      expect(scheduledTask.similes ?? []).toContain(transitional);
+    }
+  });
+
+  it("LIFE owns the canonical policy.* subactions (W3-C drift D-3)", () => {
+    // W3-C drift D-3: LIFE.policy_set_reminder + LIFE.policy_configure_escalation
+    // are the canonical homes for owner-policy writes; PROFILE keeps the legacy
+    // simile names registered for one release as a planner-cache alias.
+    const life = (appLifeOpsPlugin.actions ?? []).find((a) => a.name === "LIFE");
+    if (!life) throw new Error("LIFE is not registered in appLifeOpsPlugin.actions");
+    const subactionParam = (life.parameters ?? []).find(
+      (p) => p.name === "subaction",
+    );
+    if (!subactionParam) throw new Error("LIFE has no `subaction` parameter");
+    const enumValues =
+      (subactionParam.schema as { enum?: readonly string[] } | undefined)?.enum ?? [];
+    expect(enumValues).toContain("policy_set_reminder");
+    expect(enumValues).toContain("policy_configure_escalation");
+    expect(life.similes ?? []).toContain("SET_REMINDER_INTENSITY");
+    expect(life.similes ?? []).toContain("CONFIGURE_ESCALATION");
+  });
+
+  it("SUBSCRIPTIONS + PAYMENTS use canonical `subaction` parameter (W3-C drift D-5)", () => {
+    // W3-C drift D-5: rename `mode` → `subaction`; legacy `mode` stays as a
+    // one-release alias param so cached planner outputs keep resolving.
+    for (const name of ["SUBSCRIPTIONS", "PAYMENTS"]) {
+      const action = (appLifeOpsPlugin.actions ?? []).find((a) => a.name === name);
+      if (!action) throw new Error(`${name} is not registered in appLifeOpsPlugin.actions`);
+      const paramNames = (action.parameters ?? []).map((p) => p.name);
+      expect(paramNames).toContain("subaction");
+      expect(paramNames).toContain("mode");
     }
   });
 });

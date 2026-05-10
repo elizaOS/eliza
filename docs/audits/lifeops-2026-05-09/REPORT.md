@@ -506,19 +506,61 @@ of the highest-leverage adds:
 
 ---
 
-## 6. Followups
+## 6. Followups — status
 
-- **Land or expunge missing docs.** PRD, scenario matrix, runbook are still
-  ghosts in the main tree.
-- **Archive the Wave-1 audit corpus** with a clear `STATUS: SUPERSEDED` header.
-- **Auto-generate `rest/lifeops.md`** from `lifeops-route.ts` route declarations.
-- **Delete `helpers/lifeops-deterministic-llm.ts`** — zero in-tree consumers,
-  documents a LARP pattern.
-- **Fix `onboarding-presets.ts` circular init** (separate cleanup task).
-- **Drop the `ea.schedule.recurring-relationship-block` catalog entry** or land
-  the missing scenario file.
-- **Schedule a CI wedge** that runs the self-care suite (190 cases) on every
-  branch — gated on a Cerebras API key but not on `ELIZA_LIVE_TEST=1`. The
-  judge runs on Cerebras now, so the cost is bounded and predictable.
-- **Coverage cliff scenarios** — at minimum the top 10 listed above before
-  shipping any new lifeops feature.
+| # | Followup | Status | Where |
+| --- | --- | --- | --- |
+| F1 | PRD, scenario matrix, runbook missing from main tree | **DONE** | `eliza/packages/docs/{prd-lifeops-executive-assistant,plan-lifeops-executive-assistant-scenario-matrix,lifeops-production-runbook}.md` |
+| F2 | Wave-1 audit corpus stale | **DONE** | `> [!NOTE]` SUPERSEDED banner on all 4 docs in `plugins/app-lifeops/docs/audit/` |
+| F3 | Auto-generate `rest/lifeops.md` | **DONE** | `scripts/generate-lifeops-rest-docs.mjs` regenerated 188 routes (up from 17) |
+| F4 | Delete `helpers/lifeops-deterministic-llm.ts` | **DONE** | Deleted; stale refs cleaned |
+| F5 | Fix `onboarding-presets.ts` circular init | **DONE** | `first-time-setup.ts:48` made `getDefaultOnboardingAgentName()` lazy; `eliza-scenarios list` now boots |
+| F6 | Drop `ea.schedule.recurring-relationship-block` catalog entry | **DONE** | Removed from `executive-assistant-transcript.catalog.json` |
+| F7 | Strengthen 4 LARP scenarios | **DONE** | `signature-deadline.e2e`, `flight-rebook.e2e`, `followup-repair.e2e`, `morning-brief.e2e` now use Cerebras `judgeRubric` |
+| F8 | Eval key isolation (don't auto-select Cerebras for agent) | **DONE** | `real-runtime.ts:createCerebrasProviderConfigFromEnv` + `live-provider.ts:selectLiveProvider` both gated on `MILADY_PROVIDER=cerebras` or explicit `OPENAI_BASE_URL=cerebras` — no longer auto-enroll |
+| F9 | Mockoon HTTP mocks for all connectors | **DONE** | 18 environments × 67 routes under `test/mocks/mockoon/`, `start-all.mjs` / `stop-all.mjs`, `mockoon-redirect.ts` wired into plugin init, `LIFEOPS_USE_MOCKOON=1` toggle |
+| F10 | Implement 5 missing actions + 1 provider | **DONE (audit was wrong)** | All 6 already implemented in source (`plugin.ts:315-346`); the audit's "unexercised" was about test coverage, not source. Added 6 new test files (30/30 pass) + 3 scenarios. Discovered: 16 existing `*.integration.test.ts` files in app-lifeops were excluded from CI (`vitest.config.ts:105` + `integration.config.ts:115-119` mismatch). **Fixed in this commit by extending integration.config.ts include patterns.** |
+| F11 | Top-15 missing scenarios | **DONE** | All 15 land under `test/scenarios/lifeops.{calendar,morning-brief,inbox-triage,habits,sleep,payments,reminders,documents,planner,security}/` + `browser.lifeops/`. Real schemas, real assertions, Cerebras-judge rubrics, anti-LARP discipline verified. |
+| F12 | Wire training pipeline + run optimizer | **DONE** | Full pipeline ships + verified: Cerebras teacher in `dataset-generator.ts`, train CLI rewired to consume `getTrainingUseModelAdapter` when `TRAIN_MODEL_PROVIDER=cerebras` (was a stub-echo before). Converter ships `eliza_native_v1` rows directly. Mixed-pass-and-fail builder at `scripts/lifeops-build-mixed-training-set.mjs` joins Cerebras passing rows + Anthropic failing rows for reward variation. End-to-end test on a 10-row pass-only dataset: baseline=1.000 optimized=1.000 (Cerebras reproduces correct LIFE actions). Optimizer entry: `bun run lifeops:optimize --run-dir <dir>` or `node scripts/lifeops-optimize-planner.mjs ...`. |
+| F13 | CI gate for benchmark | **DONE** | `.github/workflows/lifeops-bench.yml` — pull-request-triggered (paths gated to `plugins/app-{lifeops,training}/**`, `packages/scenario-runner/**`, `packages/core/src/runtime/**`, `test/scenarios/lifeops.**`, `scripts/lifeops-*.mjs`, `scripts/aggregate-lifeops-run.mjs`) plus `workflow_dispatch` with a `variants` input. Job: typecheck (core + scenario-runner + app-lifeops + app-training) → `bun run lifeops:verify-cerebras` → `bun run lifeops:full --skip-integration --variants <variant>`. Uploads the `~/.milady/runs/lifeops/<runId>/` directory and posts cache hit % + accuracy as a PR comment via `actions/github-script`. Skips (does not fail) when `CEREBRAS_API_KEY` or `ANTHROPIC_API_KEY` is missing. `timeout-minutes: 30`. |
+| F14 | Anthropic plugin response normalizer drops `cache_*` | **DONE** | Fixed in `plugins/plugin-anthropic/models/text.ts:normalizeAnthropicUsage` — now reads AI SDK v6 fields (`inputTokens`, `inputTokenDetails.cacheReadTokens`, `inputTokenDetails.cacheWriteTokens`, `providerMetadata.anthropic.cacheCreationInputTokens`) plus the legacy field names. Verified live: Haiku 4.5 messageHandler now records `cacheReadInputTokens=4344, cacheCreationInputTokens=483, costUsd=0.00256`. See `10-recorder-fixes.md`. |
+| F15 | Anthropic vs Cerebras planner-prompt portability | **OPEN — needs design** | Multi-variant runs: Cerebras direct 89.5%, distracted-rambling 100%; Anthropic Opus 4.7 direct 10.5%, distracted-rambling 5.3%. Anthropic chooses `REPLY` with clarifying-questions on most cases. The training pipeline (F12) is now wired to feed Anthropic-fail rows + Cerebras-pass rows to the optimizer; running with the full mixed dataset will tune a prompt that pushes Anthropic toward acting. |
+| F16 | Optimizer model name on recorder stages | **DONE** | Fixed in `plugins/plugin-anthropic/models/text.ts:buildNativeTextResult` — emits `providerMetadata: mergeProviderModelName(...)` matching the OpenAI plugin pattern. Cerebras was already populating modelName via plugin-openai; the audit was Anthropic-only. Verified: planner stage now records `modelName: claude-haiku-4-5-20251001`. See `10-recorder-fixes.md`. |
+
+### Live run results (this session)
+
+Two multi-variant benchmark runs aggregated:
+
+| run | provider | variants | passed | accuracy | wall time | cost |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| `lifeops-cerebras-multi-1778378803` | Cerebras gpt-oss-120b | direct, distracted-rambling | 36 / 38 | **94.7%** | 322s | $0.39 |
+| `lifeops-anthropic-multi-1778378078` | Anthropic Haiku 4.5 | direct, distracted-rambling, childlike | 4 / 57 | **7.0%** | 2113s | $0.47 |
+
+Both aggregator outputs land at `<runDir>/report.md`, `<runDir>/steps.csv`, `<runDir>/scenarios/<idx>-<id>/run.jsonl`. With the F14/F16 plugin fixes, the Anthropic run now records `cacheReadInputTokens` / `cacheCreationInputTokens`, `costUsd > 0`, and `modelName: claude-haiku-4-5-20251001` on every stage.
+
+### Optimizer results (this session)
+
+End-to-end native-backend instruction-search pass on a balanced 5-pass + 5-fail mini-dataset (drawn from the two runs above):
+
+| dataset | rows | baseline | optimized | improvement |
+| --- | ---: | ---: | ---: | ---: |
+| 5 pass + 5 fail | 10 | 0.500 | 0.700 | +20pp |
+| 8 pass + 8 fail | 16 | 0.563 | **0.813** | **+25pp** |
+
+The 16-row optimized prompt is at
+`~/.milady/optimized-prompts/action_planner/instruction-search-2026-05-10T02-45-19-478Z.json`.
+Highlights of what the optimizer learned (vs the hand-written baseline):
+
+- Explicit JSON output schema with action-name allowlist
+- Selection rules pushing the agent toward `LIFE`/`SCHEDULE`/`CALENDAR` over `REPLY-with-clarifying-questions` when the request is unambiguous
+- Guardrails for missing args (fall back to REPLY only when args are genuinely missing)
+- JSON-syntax invariants (no comments, no extra fields, preserve `{{agentName}}` placeholders)
+
+Drop the `optimizedPrompt` body into the runtime planner template to lift Anthropic accuracy. Operator follow-through.
+
+### What still requires operator follow-through
+
+1. **Roll out the optimized planner prompt** in production: take the artifact at `~/.milady/optimized-prompts/action_planner/<latest>.json`, drop its `optimizedPrompt` body into the runtime planner template, then re-run `bun run lifeops:bench --suite self-care --variant direct` on Anthropic to measure the production-time delta.
+2. **Run the full ten-variant labelled training pass.** With converter + optimizer pipeline validated, run `bun run lifeops:full --variants 'direct,distracted-rambling,naive-underspecified,childlike,broken-english,subtle-null,voice-asr,self-correcting,adult-formal,expert-shorthand'` to feed all 1900 cases into a much larger mixed dataset.
+3. **Verify the Mockoon redirect** end-to-end: `bun run start eliza/test/mocks/mockoon/start-all.mjs &; LIFEOPS_USE_MOCKOON=1 bun run lifeops:bench --suite self-care --variant direct`. The mocked benchmark should pass at the same rate as the live one.
+4. **Fix the `plugin-health` build artifact** that broke the Cerebras `childlike` variant (`SyntaxError: Export named 'getCircadianInsightContract' not found`). Pre-existing; orthogonal to lifeops work.

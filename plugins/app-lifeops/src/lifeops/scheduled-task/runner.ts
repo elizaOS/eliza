@@ -22,25 +22,46 @@ import type {
 import {
   type EscalationLadderRegistry,
   resetLadderForSnooze,
+  resolveEffectiveLadder,
 } from "./escalation.js";
 import type { TaskGateRegistry } from "./gate-registry.js";
 import { createStateLogger, type ScheduledTaskLogStore } from "./state-log.js";
-import type {
-  ActivitySignalBusView,
-  CompletionCheckContext,
-  GateDecision,
-  GateEvaluationContext,
-  GlobalPauseView,
-  OwnerFactsView,
-  ScheduledTask,
-  ScheduledTaskFilter,
-  ScheduledTaskRef,
-  ScheduledTaskRunner,
-  ScheduledTaskState,
-  ScheduledTaskVerb,
-  SubjectStoreView,
-  TerminalState,
+import {
+  type ActivitySignalBusView,
+  APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
+  type CompletionCheckContext,
+  type GateDecision,
+  type GateEvaluationContext,
+  type GlobalPauseView,
+  type OwnerFactsView,
+  type ScheduledTask,
+  type ScheduledTaskFilter,
+  type ScheduledTaskRef,
+  type ScheduledTaskRunner,
+  type ScheduledTaskState,
+  type ScheduledTaskVerb,
+  type SubjectStoreView,
+  type TerminalState,
 } from "./types.js";
+
+/**
+ * Typed error thrown by `runner.schedule()` when an `escalation.steps[].channelKey`
+ * does not match a registered channel in the host runtime's `ChannelRegistry`.
+ * The runner stays decoupled from the channel registry implementation; the
+ * caller injects a `channelKeys()` lookup via {@link ScheduledTaskRunnerDeps}.
+ */
+export class ChannelKeyError extends Error {
+  readonly code = "channel_key_unknown";
+  constructor(
+    readonly channelKey: string,
+    readonly available: readonly string[],
+  ) {
+    super(
+      `escalation.steps[].channelKey "${channelKey}" is not registered (registered: ${available.join(", ") || "<none>"})`,
+    );
+    this.name = "ChannelKeyError";
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Store interface — DB-backed in production; in-memory in unit tests.
@@ -149,6 +170,13 @@ export interface ScheduledTaskRunnerDeps {
   activity: ActivitySignalBusView;
   subjectStore: SubjectStoreView;
   dispatcher?: ScheduledTaskDispatcher;
+  /**
+   * Lookup of registered `ChannelRegistry` keys. When supplied, `schedule()`
+   * validates each `escalation.steps[].channelKey` against this set and
+   * throws {@link ChannelKeyError} on miss. Decoupled from the channels
+   * module to keep the spine free of channel-layer dependencies.
+   */
+  channelKeys?: () => ReadonlySet<string>;
   /** Override for tests. */
   newTaskId?: () => string;
   /** Override for tests. */
@@ -172,25 +200,6 @@ function isTerminal(status: ScheduledTask["state"]["status"]): boolean {
     status === "failed" ||
     status === "dismissed"
   );
-}
-
-function asEscalationCursor(task: ScheduledTask): {
-  stepIndex: number;
-  lastDispatchedAt: string;
-} {
-  // The runner persists escalation cursor inside metadata under a
-  // reserved key. The cursor is opaque to other consumers.
-  const cursor = (task.metadata?.escalationCursor ?? null) as {
-    stepIndex?: number;
-    lastDispatchedAt?: string;
-  } | null;
-  return {
-    stepIndex: typeof cursor?.stepIndex === "number" ? cursor.stepIndex : -1,
-    lastDispatchedAt:
-      typeof cursor?.lastDispatchedAt === "string"
-        ? cursor.lastDispatchedAt
-        : (task.state.firedAt ?? new Date().toISOString()),
-  };
 }
 
 function setEscalationCursor(
@@ -221,6 +230,29 @@ function stripServerManaged(
 // ---------------------------------------------------------------------------
 // Runner factory
 // ---------------------------------------------------------------------------
+
+/**
+ * Public read view of `metadata.escalationCursor`.
+ *
+ * The cursor is the runner's persistence channel for the snooze-resets-ladder
+ * rule. Consumers that need to surface "currently on step N of escalation"
+ * read it through {@link ScheduledTaskRunnerExtras.getEscalationCursor} so
+ * they don't reach into the metadata namespace directly.
+ *
+ * - `stepIndex` follows the {@link EscalationCursor} convention: `-1` means
+ *   the task was fired but no escalation step has been dispatched yet;
+ *   `0..n` is the index into the resolved ladder's `steps`.
+ * - `lastFiredAt` is the ISO of the most recent dispatch (or the initial
+ *   task fire when `stepIndex === -1`).
+ * - `channelKey` is resolved from the effective ladder. For `stepIndex === -1`
+ *   we surface the first step's channel when the ladder has steps, falling
+ *   back to `"in_app"` when the ladder is empty.
+ */
+export interface EscalationCursorView {
+  stepIndex: number;
+  lastFiredAt: string;
+  channelKey: string;
+}
 
 export interface ScheduledTaskRunnerExtras {
   /**
@@ -262,6 +294,11 @@ export interface ScheduledTaskRunnerExtras {
     anchors: string[];
     consolidationPolicies: string[];
   };
+  /**
+   * Read the public view of `metadata.escalationCursor` for a task. Returns
+   * `null` when the task is not found or has no cursor recorded yet.
+   */
+  getEscalationCursor(taskId: string): Promise<EscalationCursorView | null>;
 }
 
 export interface ScheduledTaskRunnerHandle
@@ -328,7 +365,9 @@ export function createScheduledTaskRunner(
     }
     if (compose === "any") {
       // No allow seen.
-      const lastDeny = decisions.reverse().find((d) => d.decision.kind === "deny");
+      const lastDeny = decisions
+        .reverse()
+        .find((d) => d.decision.kind === "deny");
       if (lastDeny) return lastDeny;
       const lastDefer = decisions.find((d) => d.decision.kind === "defer");
       if (lastDefer) return lastDefer;
@@ -366,16 +405,32 @@ export function createScheduledTaskRunner(
       );
       if (existing) return existing;
     }
+
+    // A11: channel-key validation against the runtime ChannelRegistry.
+    if (deps.channelKeys && input.escalation?.steps) {
+      const registered = deps.channelKeys();
+      for (const step of input.escalation.steps) {
+        if (!registered.has(step.channelKey)) {
+          throw new ChannelKeyError(
+            step.channelKey,
+            Array.from(registered).sort(),
+          );
+        }
+      }
+    }
+
+    // A7: default `completionCheck.followupAfterMinutes` for approval-kind
+    // tasks when the curator did not set one explicitly and pipeline.onSkip
+    // is empty (which would otherwise win per §7.4 resolution rule).
+    const withApprovalDefaults = applyApprovalCompletionDefault(input);
+
     const initialState: ScheduledTaskState = {
       status: "scheduled",
       followupCount: 0,
     };
-    // Validation: pipeline.onSkip vs followupAfterMinutes — we keep both
-    // fields if set but record the resolution rule on creation so the
-    // state log shows the operator decision.
     const task: ScheduledTask = {
       taskId: newTaskId(),
-      ...input,
+      ...withApprovalDefaults,
       state: initialState,
     };
     await persist(task);
@@ -399,9 +454,25 @@ export function createScheduledTaskRunner(
     return task;
   }
 
-  async function list(
-    filter?: ScheduledTaskFilter,
-  ): Promise<ScheduledTask[]> {
+  function applyApprovalCompletionDefault(
+    input: Omit<ScheduledTask, "taskId" | "state">,
+  ): Omit<ScheduledTask, "taskId" | "state"> {
+    if (input.kind !== "approval") return input;
+    const onSkipEmpty =
+      !input.pipeline?.onSkip || input.pipeline.onSkip.length === 0;
+    if (!onSkipEmpty) return input;
+    if (input.completionCheck?.followupAfterMinutes !== undefined) return input;
+    const baseCheck = input.completionCheck ?? { kind: "user_acknowledged" };
+    return {
+      ...input,
+      completionCheck: {
+        ...baseCheck,
+        followupAfterMinutes: APPROVAL_DEFAULT_FOLLOWUP_AFTER_MINUTES,
+      },
+    };
+  }
+
+  async function list(filter?: ScheduledTaskFilter): Promise<ScheduledTask[]> {
     return deps.store.list(filter);
   }
 
@@ -492,9 +563,7 @@ export function createScheduledTaskRunner(
     return task;
   }
 
-  async function applyAcknowledge(
-    task: ScheduledTask,
-  ): Promise<ScheduledTask> {
+  async function applyAcknowledge(task: ScheduledTask): Promise<ScheduledTask> {
     // §7.6: acknowledged is non-terminal. Pipeline.onComplete does NOT fire.
     task.state.status = "acknowledged";
     task.state.acknowledgedAt = now().toISOString();
@@ -667,7 +736,29 @@ export function createScheduledTaskRunner(
   ): Promise<ScheduledTask[]> {
     const task = await deps.store.get(taskId);
     if (!task) throw new Error(`pipeline: task ${taskId} not found`);
+    // D12: when callers invoke pipeline("failed") (or any terminal state the
+    // runner did not yet record), bring the parent's terminal state into
+    // alignment with the dispatched outcome before propagating to children.
+    // `apply("complete" | "skip")` already writes the matching status, so we
+    // only flip when the parent is still live and the outcome differs.
+    if (!isTerminal(task.state.status) && task.state.status !== outcome) {
+      task.state.status = outcome;
+      task.state.lastDecisionLog = `pipeline: ${outcome}`;
+      if (outcome === "completed" && !task.state.completedAt) {
+        task.state.completedAt = now().toISOString();
+      }
+      await persist(task);
+      await logger.log(task.taskId, outcomeToLogTransition(outcome), {
+        reason: `pipeline: ${outcome}`,
+      });
+    }
     return runPipeline(task, outcome);
+  }
+
+  function outcomeToLogTransition(
+    outcome: TerminalState,
+  ): "completed" | "skipped" | "expired" | "failed" | "dismissed" {
+    return outcome;
   }
 
   // -------------------------------------------------------------------------
@@ -820,6 +911,33 @@ export function createScheduledTaskRunner(
     };
   }
 
+  async function getEscalationCursor(
+    taskId: string,
+  ): Promise<EscalationCursorView | null> {
+    const task = await deps.store.get(taskId);
+    if (!task) return null;
+    const raw = task.metadata?.escalationCursor;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const cursor = raw as { stepIndex?: unknown; lastDispatchedAt?: unknown };
+    if (
+      typeof cursor.stepIndex !== "number" ||
+      typeof cursor.lastDispatchedAt !== "string"
+    ) {
+      return null;
+    }
+    const ladder = resolveEffectiveLadder(task, deps.ladders);
+    const stepIndex = cursor.stepIndex;
+    const channelKey =
+      stepIndex >= 0 && stepIndex < ladder.steps.length
+        ? (ladder.steps[stepIndex]?.channelKey ?? "in_app")
+        : (ladder.steps[0]?.channelKey ?? "in_app");
+    return {
+      stepIndex,
+      lastFiredAt: cursor.lastDispatchedAt,
+      channelKey,
+    };
+  }
+
   return {
     schedule,
     list,
@@ -829,5 +947,6 @@ export function createScheduledTaskRunner(
     evaluateCompletion,
     rolloverStateLog,
     inspectRegistries,
+    getEscalationCursor,
   };
 }
