@@ -2586,7 +2586,9 @@ export class AgentRuntime implements IAgentRuntime {
 
 	registerResponseHandlerEvaluator(evaluator: ResponseHandlerEvaluator) {
 		if (
-			this.responseHandlerEvaluators.find((item) => item.name === evaluator.name)
+			this.responseHandlerEvaluators.find(
+				(item) => item.name === evaluator.name,
+			)
 		) {
 			this.logger.debug(
 				{
