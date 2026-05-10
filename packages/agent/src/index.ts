@@ -144,7 +144,6 @@ export {
 } from "./runtime/plugin-resolver.ts";
 export * from "./runtime/plugin-types.ts";
 export * from "./runtime/release-plugin-policy.ts";
-export * from "./runtime/restart.ts";
 export * from "./runtime/trajectory-internals.ts";
 export * from "./runtime/trajectory-persistence.ts";
 export * from "./runtime/trajectory-query.ts";
