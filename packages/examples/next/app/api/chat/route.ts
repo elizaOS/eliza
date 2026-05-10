@@ -5,53 +5,80 @@
  *
  * NOTE: If PGLite bundling fails with Next.js, set POSTGRES_URL for external database,
  * or connect to a running generated elizaOS project API.
+ *
+ * Heavy `@elizaos/*` imports are dynamic so `next build` does not execute native/GPU
+ * dependency graphs during route-module evaluation.
  */
 
-import {
-  AgentRuntime,
-  ChannelType,
-  type Character,
-  createCharacter,
-  createMessageMemory,
-  type IAgentRuntime,
-  stringToUuid,
-  type UUID,
+import type {
+  Character,
+  IAgentRuntime,
+  UUID,
 } from "@elizaos/core";
-import { openaiPlugin } from "@elizaos/plugin-openai";
-import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 
 import { v4 as uuidv4 } from "uuid";
-
-// Character configuration
-// Pass environment variables via character.secrets so getSetting() can find them
-const character: Character = createCharacter({
-  name: "Eliza",
-  bio: "A helpful AI assistant powered by elizaOS.",
-  system:
-    "You are Eliza, a helpful AI assistant. Be friendly, knowledgeable, and conversational.",
-  secrets: {
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
-    POSTGRES_URL: process.env.POSTGRES_URL || "",
-  },
-});
 
 // Runtime state (singleton for the Next.js server)
 let runtime: IAgentRuntime | null = null;
 let initPromise: Promise<IAgentRuntime> | null = null;
 let initError: string | null = null;
 
-// Session info
-const roomId = stringToUuid("chat-room");
-const worldId = stringToUuid("chat-world");
+let characterCache: Character | null = null;
+let roomIdCache: UUID | null = null;
+let worldIdCache: UUID | null = null;
+
+function skipRuntimeDuringNextBuild(): boolean {
+  return process.env.NEXT_BUILD_SKIP_RUNTIME === "1";
+}
+
+async function getCharacter(): Promise<Character> {
+  if (characterCache) {
+    return characterCache;
+  }
+  const { createCharacter } = await import("@elizaos/core");
+  characterCache = createCharacter({
+    name: "Eliza",
+    bio: "A helpful AI assistant powered by elizaOS.",
+    system:
+      "You are Eliza, a helpful AI assistant. Be friendly, knowledgeable, and conversational.",
+    secrets: {
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY || "",
+      POSTGRES_URL: process.env.POSTGRES_URL || "",
+    },
+  });
+  return characterCache;
+}
+
+async function getRoomWorldIds(): Promise<{ roomId: UUID; worldId: UUID }> {
+  if (roomIdCache && worldIdCache) {
+    return { roomId: roomIdCache, worldId: worldIdCache };
+  }
+  const { stringToUuid } = await import("@elizaos/core");
+  roomIdCache = stringToUuid("chat-room");
+  worldIdCache = stringToUuid("chat-world");
+  return { roomId: roomIdCache, worldId: worldIdCache };
+}
 
 async function getRuntime(): Promise<IAgentRuntime> {
-  if (runtime) return runtime;
+  if (runtime) {
+    return runtime;
+  }
 
-  if (initPromise) return initPromise;
+  if (initPromise) {
+    return initPromise;
+  }
 
   initPromise = (async () => {
     try {
       console.log("🚀 Initializing elizaOS runtime...");
+
+      const [{ AgentRuntime }, { openaiPlugin }, { plugin: sqlPlugin }, character] =
+        await Promise.all([
+          import("@elizaos/core"),
+          import("@elizaos/plugin-openai"),
+          import("@elizaos/plugin-sql"),
+          getCharacter(),
+        ]);
 
       const newRuntime = new AgentRuntime({
         character,
@@ -67,7 +94,6 @@ async function getRuntime(): Promise<IAgentRuntime> {
       const message = error instanceof Error ? error.message : "Unknown error";
       console.error("❌ Failed to initialize elizaOS runtime:", message);
 
-      // Check if it's the PGLite extension error
       if (
         message.includes("Extension bundle not found") ||
         message.includes("migrations")
@@ -94,7 +120,6 @@ export async function POST(request: Request) {
     userId?: string;
   };
 
-  // Handle initialization request
   if (body.action === "init") {
     try {
       await getRuntime();
@@ -112,14 +137,12 @@ export async function POST(request: Request) {
     }
   }
 
-  // Handle chat message
   const { message, userId: clientUserId } = body;
 
   if (!message || typeof message !== "string") {
     return Response.json({ error: "Message is required" }, { status: 400 });
   }
 
-  // Get or initialize runtime
   let rt: IAgentRuntime;
   try {
     rt = await getRuntime();
@@ -135,14 +158,15 @@ export async function POST(request: Request) {
     );
   }
 
+  const { ChannelType, createMessageMemory } = await import("@elizaos/core");
+  const { roomId, worldId } = await getRoomWorldIds();
+
   const userId = (clientUserId || uuidv4()) as UUID;
 
-  // Create streaming response
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        // Ensure connection for this user
         await rt.ensureConnection({
           entityId: userId,
           roomId,
@@ -154,7 +178,6 @@ export async function POST(request: Request) {
           type: ChannelType.DM,
         } as Parameters<typeof rt.ensureConnection>[0]);
 
-        // Create message memory using canonical helper
         const messageMemory = createMessageMemory({
           id: uuidv4() as UUID,
           entityId: userId,
@@ -166,7 +189,6 @@ export async function POST(request: Request) {
           },
         });
 
-        // Process through the FULL elizaOS pipeline
         await rt.messageService?.handleMessage(
           rt,
           messageMemory,
@@ -208,8 +230,15 @@ export async function POST(request: Request) {
   });
 }
 
-// Health check
 export async function GET() {
+  if (skipRuntimeDuringNextBuild()) {
+    return Response.json({
+      status: "build_skipped",
+      mode: "elizaos",
+      character: "Eliza",
+      messageServiceAvailable: false,
+    });
+  }
   try {
     const rt = await getRuntime();
     return Response.json({
@@ -219,10 +248,11 @@ export async function GET() {
       messageServiceAvailable: !!rt.messageService,
     });
   } catch {
+    const character = await getCharacter().catch(() => null);
     return Response.json({
       status: "error",
       mode: "unavailable",
-      character: character.name,
+      character: character?.name ?? "Eliza",
       error: initError,
     });
   }

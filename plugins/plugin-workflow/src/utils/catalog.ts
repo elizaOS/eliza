@@ -1,4 +1,4 @@
-import defaultNodesData from '../data/defaultNodes.json' with { type: 'json' };
+import defaultNodesData from '../data/defaultNodes.json';
 import type {
   IntegrationFilterResult,
   NodeDefinition,

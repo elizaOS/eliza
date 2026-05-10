@@ -23,7 +23,9 @@
       "@elizaos/core/testing": ["./packages/core/src/testing/index.ts"],
       "@elizaos/core/*": ["./packages/core/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["./packages/shared/src/*"]
+      "@elizaos/shared/*": ["./packages/shared/src/*"],
+      "@elizaos/app-wallet": ["./plugins/app-wallet/src/index.ts"],
+      "@elizaos/app-wallet/*": ["./plugins/app-wallet/src/*"]
     }
   },
   "exclude": [

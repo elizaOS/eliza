@@ -21,7 +21,7 @@ import type {
   TriggerHealthSnapshot,
   TriggerSummary,
   TriggerTaskMetadata,
-} from "@elizaos/agent";
+} from "@elizaos/agent/triggers";
 
 export type TriggerRouteHelpers = RouteHelpers;
 

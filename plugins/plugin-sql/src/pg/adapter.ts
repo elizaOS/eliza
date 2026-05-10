@@ -7,6 +7,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { Pool } from "pg";
 import { BaseDrizzleAdapter } from "../base";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "../schema/embedding";
 import type { PostgresConnectionManager } from "./manager";
@@ -94,7 +95,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     return this.db as NodePgDatabase;
   }
 
-  getRawConnection() {
+  getRawConnection(): Pool {
     return this.manager.getConnection();
   }
 

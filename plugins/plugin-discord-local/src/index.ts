@@ -24,7 +24,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { resolveStateDir } from "@elizaos/agent";
+import { resolveStateDir } from "@elizaos/agent/config/paths";
 
 const execFileAsync = promisify(execFile);
 

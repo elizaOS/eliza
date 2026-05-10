@@ -3,8 +3,8 @@
  * Uses pre-crawled schemaIndex.json with full schema content.
  */
 
-import schemaIndex from '../data/schemaIndex.json' with { type: 'json' };
-import triggerSchemaIndex from '../data/triggerSchemaIndex.json' with { type: 'json' };
+import schemaIndex from '../data/schemaIndex.json';
+import triggerSchemaIndex from '../data/triggerSchemaIndex.json';
 import type { ExpressionRef, SchemaContent } from '../types/index';
 
 type SchemasByResource = Record<string, Record<string, SchemaContent>>;

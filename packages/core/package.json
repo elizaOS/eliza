@@ -35,14 +35,11 @@
 				"default": "./dist/browser/index.browser.js"
 			},
 			"node": {
-				"types": "./dist/index.node.d.ts",
 				"import": "./dist/node/index.node.js",
-				"default": "./dist/node/index.node.js"
+				"default": "./dist/node/index.node.js",
+				"types": "./dist/index.node.d.ts"
 			},
-			"bun": {
-				"types": "./dist/index.node.d.ts",
-				"default": "./dist/node/index.node.js"
-			},
+			"bun": "./dist/node/index.node.js",
 			"default": "./dist/node/index.node.js"
 		},
 		"./node": {
@@ -81,7 +78,7 @@
 		"build:node": "bun run build.ts --node-only",
 		"build:watch": "bun run build.ts --watch",
 		"dev": "bun run build:watch",
-		"clean": "rm -rf dist .turbo .turbo-tsconfig.json *.tsbuildinfo && find src -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) ! -path 'src/types/generated/*' -delete 2>/dev/null || true",
+		"clean": "rm -rf dist .turbo .turbo-tsconfig.json *.tsbuildinfo && find src -type f \\( -name '*.js' -o -name '*.js.map' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) ! -path 'src/types/generated/*' -delete 2>/dev/null || true",
 		"perf:settings": "bun run scripts/perf-settings.ts",
 		"test": "node ../../scripts/run-vitest.mjs run",
 		"test:coverage": "mkdir -p coverage/.tmp && node ../../scripts/run-vitest.mjs run --coverage",

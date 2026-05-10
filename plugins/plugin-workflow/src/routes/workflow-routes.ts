@@ -74,9 +74,8 @@ function getWorkflowService(ctx: WorkflowRouteContext): WorkflowService | null {
 }
 
 function getConnectorTargetCatalog(ctx: WorkflowRouteContext): CatalogLike | null {
-  const candidate = ctx.runtime?.getService?.('connector_target_catalog') as
-    | CatalogLike
-    | undefined;
+  const raw = ctx.runtime?.getService?.('connector_target_catalog');
+  const candidate = raw as unknown as CatalogLike | undefined;
   return candidate && typeof candidate.listGroups === 'function' ? candidate : null;
 }
 
@@ -317,7 +316,7 @@ async function handleResolveClarification(
     return;
   }
   const result = applyResolutions(draftRecord, validResolutions);
-  if (!result.ok) {
+  if (result.ok === false) {
     sendJson(ctx, 400, { error: result.error, paramPath: result.paramPath });
     return;
   }

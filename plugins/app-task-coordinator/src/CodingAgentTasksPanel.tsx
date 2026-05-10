@@ -1,7 +1,9 @@
+import type {
+  CodingAgentSession,
+  CodingAgentTaskThread,
+  CodingAgentTaskThreadDetail,
+} from "@elizaos/ui/api/client-types-cloud";
 import {
-  type CodingAgentSession,
-  type CodingAgentTaskThread,
-  type CodingAgentTaskThreadDetail,
   client,
   EmptyWidgetState,
   PULSE_STATUSES,

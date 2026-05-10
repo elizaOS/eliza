@@ -38,9 +38,23 @@
 			],
 			"@elizaos/plugin-signal/*": [
 				"../../../../plugins/plugin-signal/src/*"
-			]
+			],
+			"@elizaos/plugin-whatsapp": [
+				"../../../../plugins/plugin-whatsapp/src/index.ts"
+			],
+			"@elizaos/plugin-whatsapp/*": [
+				"../../../../plugins/plugin-whatsapp/src/*"
+			],
+			"@elizaos/app-wallet": [
+				"../../../../plugins/app-wallet/src/index.ts"
+			],
+			"@elizaos/app-wallet/*": ["../../../../plugins/app-wallet/src/*"]
 		}
 	},
-	"include": ["src/**/*.ts", "scripts/**/*.ts"],
+	"include": [
+		"src/**/*.ts",
+		"scripts/**/*.ts",
+		"../../../agent/src/external-modules.d.ts"
+	],
 	"exclude": ["node_modules", "dist"]
 }

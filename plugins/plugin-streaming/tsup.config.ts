@@ -11,6 +11,8 @@ export default defineConfig({
   external: [
     "@elizaos/cloud-routing",
     "@elizaos/core",
+    "@elizaos/shared",
+    "@napi-rs/keyring",
     "dotenv",
     "fs",
     "path",

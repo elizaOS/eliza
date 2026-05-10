@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+console.error("[dev-ui LOCAL PATCH START] running patched local dev-ui.mjs");
 /**
  * Development script that starts:
  * 1. The Eliza dev server (\[(eliza|eliza)(?:-api)?\]|runtime + API on port 31337) with restart support
@@ -1007,7 +1008,12 @@ if (uiOnly) {
     );
   }
 
-  const devServerEntry = resolveDevServerEntryRelativePath(cwd);
+  let devServerEntry = resolveDevServerEntryRelativePath(cwd);
+  // Resolve to absolute so it stays valid when we anchor the API child cwd
+  // at eliza/ for workspace lookup (see apiSpawnCwd below).
+  if (!path.isAbsolute(devServerEntry)) {
+    devServerEntry = path.resolve(cwd, devServerEntry);
+  }
 
   let useWatch = !skipBunWatch;
   if (useWatch) {
@@ -1038,6 +1044,18 @@ if (uiOnly) {
         ...(useWatch ? ["--watch"] : []),
         devServerEntry,
       ];
+  // The API server resolves @elizaos/* deps via Bun workspace lookup, which
+  // walks up from cwd looking for a package.json with a `workspaces` field.
+  // When running from the milady-style outer repo (cwd contains an `eliza/`
+  // submodule), the outer package.json's `workspaces: ["apps/*"]` excludes
+  // eliza's workspace packages — so plugin-x402, plugin-streaming, etc. fail
+  // to resolve. Spawn the API child with cwd anchored at eliza/ so its
+  // workspaces ([packages/*, plugins/*]) are visible.
+  const elizaSubmoduleRoot = path.join(cwd, "eliza");
+  const apiSpawnCwd = existsSync(path.join(elizaSubmoduleRoot, "package.json"))
+    ? elizaSubmoduleRoot
+    : cwd;
+
   const childEnv = createDevChildEnv(process.env);
   const apiSpawnEnv = extendNodePathEnv(
     {
@@ -1051,13 +1069,13 @@ if (uiOnly) {
       ELIZA_DEV_AUTH_BYPASS: "1",
       LOG_LEVEL: devLogLevel,
     },
-    cwd,
+    apiSpawnCwd,
   );
 
   const apiSupervisor = createApiSupervisor({
     spawnChild: () =>
       spawn(apiCmd[0], apiCmd.slice(1), {
-        cwd,
+        cwd: apiSpawnCwd,
         env: apiSpawnEnv,
         stdio: ["inherit", "pipe", "pipe"],
       }),

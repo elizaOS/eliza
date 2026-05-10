@@ -6,6 +6,11 @@
 		"declarationMap": true,
 		"emitDeclarationOnly": true,
 		"outDir": "dist",
+		"rootDir": ".",
+		"paths": {
+			"@elizaos/plugin-browser": ["../plugin-browser/dist/index.d.ts"],
+			"@elizaos/plugin-browser/*": ["../plugin-browser/dist/*"]
+		},
 		"types": ["node", "bun-types"]
 	},
 	"include": ["**/*.ts"],

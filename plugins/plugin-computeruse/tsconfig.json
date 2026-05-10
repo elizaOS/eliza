@@ -1,5 +1,9 @@
 {
   "compilerOptions": {
+    "paths": {
+      "@elizaos/plugin-whatsapp": ["../plugin-whatsapp/src/index.ts"],
+      "@elizaos/plugin-whatsapp/*": ["../plugin-whatsapp/src/*"]
+    },
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -18,6 +22,9 @@
     "noUnusedParameters": false,
     "types": ["node", "bun-types"]
   },
-  "include": ["src"],
+  "include": [
+    "src",
+    "../../packages/agent/src/external-modules.d.ts"
+  ],
   "exclude": ["dist", "node_modules", "**/*.test.ts"]
 }

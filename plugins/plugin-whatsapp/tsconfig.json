@@ -1,5 +1,9 @@
 {
   "compilerOptions": {
+    "paths": {
+      "@elizaos/plugin-whatsapp": ["./src/index.ts"],
+      "@elizaos/plugin-whatsapp/*": ["./src/*"]
+    },
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
