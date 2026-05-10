@@ -25,6 +25,8 @@
     "plugin-submodules:restore": "bun scripts/plugin-submodules-dev.mjs --restore",
     "ensure-plugin-test-conventions": "bun scripts/ensure-plugin-test-conventions.mjs",
     "ensure-plugin-test-conventions:check": "bun scripts/ensure-plugin-test-conventions.mjs --check",
+    "trajectory:inspect": "node scripts/inspect-trajectory.mjs",
+    "trajectory:inspect:test": "node --test scripts/inspect-trajectory.test.mjs",
     "audit:duplicate-components": "node scripts/audit-duplicate-components.mjs",
     "audit:duplicate-components:self-check": "node scripts/audit-duplicate-components.mjs --self-check",
     "audit:action-availability": "node scripts/audit-action-availability.mjs",
