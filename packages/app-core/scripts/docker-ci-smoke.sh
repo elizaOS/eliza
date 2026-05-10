@@ -290,7 +290,11 @@ for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf; do
   fi
 done
 
+<<<<<<< HEAD
 log "Building all @elizaos/app workspace deps (turbo)"
+=======
+log "Building all @elizaos/app workspace deps (turbo, --force to bypass cache)"
+>>>>>>> 88873eae9c678b5da2e53d83a442639ac605ce31
 # apps/app's build:web (Vite) resolves every workspace package via its
 # `exports` map, which points at `dist/`. Without prior builds those
 # entry points don't exist and Vite errors with
@@ -299,7 +303,13 @@ log "Building all @elizaos/app workspace deps (turbo)"
 # build:docker-dist only emits the agent package, so we run the full
 # turbo build of @elizaos/app's dep graph (build:core covers a subset
 # but misses @elizaos/ui and the @elizaos/app-* surface packages).
+<<<<<<< HEAD
 "$BUN_BIN" run build:client
+=======
+# --force forces fresh builds, sidestepping any poisoned remote cache
+# that contains incomplete dist artifacts.
+"$BUN_BIN" run build:client -- --force
+>>>>>>> 88873eae9c678b5da2e53d83a442639ac605ce31
 
 log "Building agent workspace"
 pushd "$AGENT_DIR" >/dev/null

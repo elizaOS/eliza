@@ -11,6 +11,18 @@ const pluginElizaCloudSrc = path.join(
   "plugin-elizacloud",
   "src",
 );
+const pluginIMessageSrc = path.join(
+  repoRoot,
+  "plugins",
+  "plugin-imessage",
+  "src",
+);
+const pluginCodingToolsSrc = path.join(
+  repoRoot,
+  "plugins",
+  "plugin-coding-tools",
+  "src",
+);
 const vaultSrc = path.join(repoRoot, "packages", "vault", "src");
 const baseAliases = Array.isArray(baseConfig.resolve?.alias)
   ? baseConfig.resolve.alias
@@ -40,6 +52,26 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-elizacloud\/(.+)$/,
         replacement: path.join(pluginElizaCloudSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-imessage$/,
+        replacement: path.join(pluginIMessageSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-imessage\/(.+)$/,
+        replacement: path.join(pluginIMessageSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-discord$/,
+        replacement: path.join(here, "test", "plugin-discord.stub.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-coding-tools$/,
+        replacement: path.join(pluginCodingToolsSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-coding-tools\/(.+)$/,
+        replacement: path.join(pluginCodingToolsSrc, "$1"),
       },
       {
         find: /^@elizaos\/vault$/,

@@ -22,7 +22,7 @@
     "build": "tsc --noCheck -p tsconfig.json",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
+    "test": "bun run --cwd ../plugin-tunnel build && bun test",
     "test:unit": "bun test src/__tests__/unit/",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

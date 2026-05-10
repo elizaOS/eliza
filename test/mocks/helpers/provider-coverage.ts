@@ -64,7 +64,6 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     validation: [
       "test/mocks/__tests__/google-calendar-mock.test.ts",
       "plugins/app-lifeops/test/lifeops-simulator.test.ts",
-      "plugins/app-lifeops/test/helpers/lifeops-deterministic-llm.test.ts",
       "plugins/app-lifeops/test/scenarios/calendar-llm-eval-mutations.scenario.ts",
     ],
   },
@@ -92,7 +91,6 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     validation: [
       "test/mocks/__tests__/google-mock-fidelity.test.ts",
       "plugins/app-lifeops/test/lifeops-simulator.test.ts",
-      "plugins/app-lifeops/test/helpers/lifeops-deterministic-llm.test.ts",
       "plugins/app-lifeops/test/scenarios/gmail-llm-eval-search-priority.scenario.ts",
     ],
   },

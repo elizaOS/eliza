@@ -1,0 +1,10 @@
+{
+  "generatedAt": "2026-05-10T01:23:38.661Z",
+  "runDir": "/Users/shawwalters/.milady/runs/lifeops/lifeops-bench-1778373939",
+  "benchmarkReports": [
+    "/Users/shawwalters/.milady/runs/lifeops/lifeops-bench-1778373939/benchmark-report.json"
+  ],
+  "rows": 18,
+  "skipped": 1,
+  "casesLabeled": 19
+}

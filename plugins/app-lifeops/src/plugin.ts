@@ -8,6 +8,7 @@ import {
 } from "@elizaos/core";
 import { appBlockAction } from "./actions/app-block.js";
 import { autofillAction } from "./actions/autofill.js";
+import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.js";
 import { bookTravelAction } from "./actions/book-travel.js";
 import { calendarAction } from "./actions/calendar.js";
 import { calendlyAction } from "./actions/lib/calendly-handler.js";
@@ -362,6 +363,16 @@ const rawAppLifeOpsPlugin: Plugin = {
     pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,
   ) => {
+    // When LIFEOPS_USE_MOCKOON=1, redirect every external connector base URL
+    // to the matching Mockoon environment on localhost. No-op otherwise.
+    const mockoonApplied = applyMockoonEnvOverrides();
+    if (mockoonApplied.length > 0) {
+      logger.info(
+        { mockoonConnectors: mockoonApplied },
+        `[lifeops] LIFEOPS_USE_MOCKOON=1 — redirecting ${mockoonApplied.length} connector base URL(s) to mock servers`,
+      );
+    }
+
     await ensureLifeOpsGooglePluginRegistered(runtime);
 
     setSelfControlPluginConfig(pluginConfig as SelfControlPluginConfig);

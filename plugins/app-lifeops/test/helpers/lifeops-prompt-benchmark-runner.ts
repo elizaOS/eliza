@@ -35,6 +35,15 @@ export type PromptBenchmarkResult = {
   llmCallCount: number;
   plannerPrompt?: string;
   plannerResponse?: string;
+  // Per-case token + cache totals summed across every llmCall in the
+  // captured trajectory. Cache hit % uses the corrected denominator
+  // (input + cache_creation + cache_read) so it matches Anthropic semantics.
+  promptTokens?: number;
+  completionTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  totalInputTokens?: number;
+  cacheHitPct?: number;
 };
 
 export type PromptBenchmarkSliceStats = {
@@ -214,6 +223,12 @@ async function captureTrajectoryForCase(args: {
   plannerPrompt?: string;
   plannerResponse?: string;
   llmCallCount: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  totalInputTokens?: number;
+  cacheHitPct?: number;
 }> {
   const service = resolveTrajectoryService(args.runtime);
   if (!service) {
@@ -255,6 +270,26 @@ async function captureTrajectoryForCase(args: {
 
   const llmCalls = collectLlmCalls(bestDetail);
   const latestCall = llmCalls[llmCalls.length - 1];
+
+  // Sum token + cache fields across every llmCall on this trajectory.
+  // Cache hit % uses (input + cache_creation + cache_read) as denominator
+  // so it agrees with the corrected core formula.
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let cacheRead = 0;
+  let cacheCreate = 0;
+  for (const c of llmCalls) {
+    const cAny = c as Record<string, unknown>;
+    promptTokens += Number(cAny.promptTokens ?? cAny.inputTokens ?? 0) || 0;
+    completionTokens +=
+      Number(cAny.completionTokens ?? cAny.outputTokens ?? 0) || 0;
+    cacheRead +=
+      Number(cAny.cacheReadInputTokens ?? cAny.cachedInputTokens ?? 0) || 0;
+    cacheCreate += Number(cAny.cacheCreationInputTokens ?? 0) || 0;
+  }
+  const totalInput = promptTokens + cacheRead + cacheCreate;
+  const cacheHitPct = totalInput > 0 ? +((cacheRead / totalInput) * 100).toFixed(2) : 0;
+
   return {
     trajectoryId: bestDetail?.trajectoryId,
     plannerPrompt:
@@ -266,6 +301,12 @@ async function captureTrajectoryForCase(args: {
         ? latestCall.response
         : undefined,
     llmCallCount: llmCalls.length,
+    promptTokens,
+    completionTokens,
+    cacheReadInputTokens: cacheRead,
+    cacheCreationInputTokens: cacheCreate,
+    totalInputTokens: totalInput,
+    cacheHitPct,
   };
 }
 
@@ -353,6 +394,11 @@ async function runSinglePromptBenchmarkCase(args: {
     source: "dashboard",
   });
 
+  // Tag every trajectory landed during this case so the aggregator can
+  // group per-case JSONL bundles.
+  const previousScenarioId = process.env.MILADY_LIFEOPS_SCENARIO_ID;
+  process.env.MILADY_LIFEOPS_SCENARIO_ID = args.testCase.caseId;
+
   try {
     args.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", harness.userId, false);
     await harness.setup();
@@ -390,6 +436,12 @@ async function runSinglePromptBenchmarkCase(args: {
       plannerResponse: trajectory.plannerResponse,
       responseText: turn.responseText,
       trajectoryId: trajectory.trajectoryId,
+      promptTokens: trajectory.promptTokens,
+      completionTokens: trajectory.completionTokens,
+      cacheReadInputTokens: trajectory.cacheReadInputTokens,
+      cacheCreationInputTokens: trajectory.cacheCreationInputTokens,
+      totalInputTokens: trajectory.totalInputTokens,
+      cacheHitPct: trajectory.cacheHitPct,
     } satisfies Omit<PromptBenchmarkResult, "pass"> & { pass: boolean };
 
     return {
@@ -411,6 +463,11 @@ async function runSinglePromptBenchmarkCase(args: {
     return failed;
   } finally {
     await harness.cleanup();
+    if (previousScenarioId === undefined) {
+      delete process.env.MILADY_LIFEOPS_SCENARIO_ID;
+    } else {
+      process.env.MILADY_LIFEOPS_SCENARIO_ID = previousScenarioId;
+    }
   }
 }
 

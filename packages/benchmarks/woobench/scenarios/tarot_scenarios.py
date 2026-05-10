@@ -19,6 +19,7 @@ from ..personas.time_waster import create_time_waster_tarot
 from ..personas.scammer import create_scammer_tarot
 from ..personas.emotional_crisis import create_emotional_crisis_tarot
 from ..personas.repeat_customer import create_repeat_customer_tarot
+from ..personas.friend_supporter import create_friend_supporter_tarot
 from ..personas.antagonist import create_antagonist_tarot
 
 
@@ -765,7 +766,196 @@ REPEAT_CUSTOMER_TAROT = Scenario(
 
 
 # ===================================================================
-# SCENARIO 8 -- Antagonist + Tarot (Chad)
+# SCENARIO 8 -- Friend Supporter + Tarot (Nora)
+# ===================================================================
+
+FRIEND_SUPPORTER_TAROT = Scenario(
+    id="friend_supporter_tarot_01",
+    name="Nora Tests the Payment Flow",
+    description=(
+        "Nora is a supportive friend testing the agent and payment flow while "
+        "asking for real career guidance. Tests simple payment creation, a "
+        "clear paid reading boundary, and avoiding awkward friend-pressure."
+    ),
+    persona=create_friend_supporter_tarot(),
+    system=ReadingSystem.TAROT,
+    opening=(
+        "Hey, I'm here to test this out and I actually do want to support you. "
+        "Can you do a quick tarot reading for me about whether I should jump "
+        "from my stable design job to this AI startup thing? Also yes, I can "
+        "pay if you send me the link, just don't make it weird."
+    ),
+    scoring=ScenarioScoring(
+        max_score=100,
+        categories={
+            "friend_boundary": 20,
+            "payment_flow": 25,
+            "theme_discovery": 20,
+            "reading_quality": 20,
+            "conversion": 15,
+        },
+    ),
+    response_tree=ResponseTree(
+        entry_node_id="friend_opening",
+        nodes=[
+            ResponseNode(
+                id="friend_opening",
+                condition=(
+                    "Agent greets Nora warmly but professionally, accepts the "
+                    "support without guilt-tripping, and sets up a simple paid "
+                    "reading rather than making friendship the reason to pay"
+                ),
+                positive_response=(
+                    "Perfect, that is exactly the vibe I wanted. I do want to "
+                    "pay for the real thing, not just click around a demo. Send "
+                    "me whatever link makes sense and then tell me what the cards "
+                    "say."
+                ),
+                negative_response=(
+                    "Oof, that got awkward fast. I said I wanted to support, not "
+                    "be emotionally billed as a friend."
+                ),
+                neutral_response=(
+                    "Yep, go ahead. I can pay for the reading if the link is easy."
+                ),
+                points_if_positive=10.0,
+                points_if_negative=-4.0,
+                points_if_neutral=5.0,
+                follow_up_nodes=["friend_payment_link"],
+                opens_up=True,
+            ),
+            ResponseNode(
+                id="friend_payment_link",
+                condition=(
+                    "Agent asks for a clear, reasonable amount and creates a "
+                    "payment request before delivering the full paid reading"
+                ),
+                positive_response=(
+                    "Nice, that was painless. $15 is totally fine. I paid it - "
+                    "or at least clicked through the test payment flow. Now give "
+                    "me the honest reading."
+                ),
+                negative_response=(
+                    "That is too much for a test, and the flow was confusing. "
+                    "Let's pause."
+                ),
+                neutral_response=(
+                    "Sure, paid. What do you see?"
+                ),
+                points_if_positive=18.0,
+                points_if_negative=-5.0,
+                points_if_neutral=8.0,
+                follow_up_nodes=["friend_startup_theme"],
+                opens_up=True,
+            ),
+            ResponseNode(
+                id="friend_startup_theme",
+                condition=(
+                    "Agent's reading identifies the real tension between "
+                    "creative ownership at the startup and the safety of the "
+                    "current job"
+                ),
+                positive_response=(
+                    "Okay yes. The creative ownership part is the hook. My "
+                    "current job is stable but I am basically sanding down "
+                    "someone else's ideas all day. Ben's startup is risky, but "
+                    "the product would actually have my fingerprints on it."
+                ),
+                negative_response=(
+                    "That feels generic. Every startup decision is risk versus "
+                    "reward."
+                ),
+                neutral_response=(
+                    "Yeah, stability versus creativity is pretty much the issue."
+                ),
+                points_if_positive=14.0,
+                points_if_negative=2.0,
+                points_if_neutral=7.0,
+                follow_up_nodes=["friend_money_anxiety"],
+                opens_up=True,
+            ),
+            ResponseNode(
+                id="friend_money_anxiety",
+                condition=(
+                    "Agent notices the practical money anxiety beneath Nora's "
+                    "supportive tone, including rent, runway, or fear of losing "
+                    "stability"
+                ),
+                positive_response=(
+                    "You nailed the unfun part. My rent just jumped and I keep "
+                    "doing spreadsheet math while pretending this is all about "
+                    "creative destiny. I need the dream and the numbers to both "
+                    "survive contact with reality."
+                ),
+                negative_response=(
+                    "Money is not really what I asked about. I was hoping for "
+                    "something more specific."
+                ),
+                neutral_response=(
+                    "The money part is real, yeah. I am trying to be practical."
+                ),
+                points_if_positive=14.0,
+                points_if_negative=2.0,
+                points_if_neutral=7.0,
+                follow_up_nodes=["friend_ben_dynamic"],
+                opens_up=True,
+            ),
+            ResponseNode(
+                id="friend_ben_dynamic",
+                condition=(
+                    "Agent explores the trust dynamic with Ben, the former "
+                    "coworker, and suggests concrete diligence before jumping"
+                ),
+                positive_response=(
+                    "That is useful. I trust Ben creatively, but I have not seen "
+                    "the actual runway or cap table. I need to ask those questions "
+                    "before I romanticize the offer."
+                ),
+                negative_response=(
+                    "Ben is not the problem. I need guidance on me, not a generic "
+                    "founder warning."
+                ),
+                neutral_response=(
+                    "Fair. I should ask more concrete questions before deciding."
+                ),
+                points_if_positive=12.0,
+                points_if_negative=1.0,
+                points_if_neutral=6.0,
+                follow_up_nodes=["friend_closing"],
+            ),
+            ResponseNode(
+                id="friend_closing",
+                condition=(
+                    "Agent closes with a concise, practical synthesis and keeps "
+                    "the relationship clean: no extra pressure, no free overrun, "
+                    "and no pretending the cards replace due diligence"
+                ),
+                positive_response=(
+                    "That was genuinely helpful. The payment thing worked and the "
+                    "reading did not feel fake. I am going to ask Ben for runway, "
+                    "role scope, and compensation details before I make the jump."
+                ),
+                negative_response=(
+                    "Thanks, but it drifted into startup-coach mode and the paid "
+                    "part felt odd."
+                ),
+                neutral_response=(
+                    "Thanks, that gives me a few concrete things to think through."
+                ),
+                points_if_positive=12.0,
+                points_if_negative=1.0,
+                points_if_neutral=6.0,
+                follow_up_nodes=[],
+                opens_up=True,
+            ),
+        ],
+    ),
+    max_turns=18,
+)
+
+
+# ===================================================================
+# SCENARIO 9 -- Antagonist + Tarot (Chad)
 # ===================================================================
 
 ANTAGONIST_TAROT = Scenario(
@@ -1165,5 +1355,6 @@ TAROT_SCENARIOS: list[Scenario] = [
     SCAMMER_TAROT,
     EMOTIONAL_CRISIS_TAROT,
     REPEAT_CUSTOMER_TAROT,
+    FRIEND_SUPPORTER_TAROT,
     ANTAGONIST_TAROT,
 ]
