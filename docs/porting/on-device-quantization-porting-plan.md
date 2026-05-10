@@ -18,10 +18,21 @@
 > [`reports/porting/2026-05-09-unified/`](../../reports/porting/2026-05-09-unified/)
 > for the post-pin verification snapshot. The companion
 > [`milady-ai/node-llama-cpp`](https://github.com/milady-ai/node-llama-cpp)
-> @ `v3.18.1-milady.1` extends `experimentalKvCacheKey/ValueType` to
+> @ `v3.18.1-milady.3` extends `experimentalKvCacheKey/ValueType` to
 > accept the new lowercase aliases (`"tbq3_0"`, `"tbq4_0"`,
 > `"qjl1_256"`, `"q4_polar"`) so the desktop path stops rejecting them
-> at `createContext()`.
+> at `createContext()`. **Consumable as a github URL drop-in: bun
+> resolves `github:milady-ai/node-llama-cpp#v3.18.1-milady.3` directly
+> and gets pre-built `dist/` + `templates/packed/` (no devDeps + tsc
+> needed).** Milady's three pins (root `package.json`,
+> `eliza/packages/app-core/package.json`,
+> `eliza/plugins/plugin-local-embedding/package.json`) all point at
+> this tag. Native binaries still come from
+> `@node-llama-cpp/<platform>@3.18.1` on npm (upstream's prebuilds);
+> kernels for the milady-only enum slots (43/44/46/47) only resolve
+> against the milady-ai/llama.cpp fork binary, but the binding-level
+> acceptance is now correct so desktop W1-C plumbing
+> (`active-model.runtime.test.ts`) passes end-to-end.
 >
 > The on-device runtime is `bun:ffi` → `libllama.so` → forked llama.cpp
 > ([`milady-ai/llama.cpp`](https://github.com/milady-ai/llama.cpp) @
