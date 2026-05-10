@@ -46,17 +46,17 @@ const longTermMemorySchema: JSONSchema = {
 	additionalProperties: false,
 };
 
-interface SummaryOutput {
+export interface SummaryOutput {
 	text: string;
 	topics: string[];
 	keyPoints: string[];
 }
 
-interface LongTermMemoryOutput {
+export interface LongTermMemoryOutput {
 	memories: MemoryExtraction[];
 }
 
-interface SummaryPrepared {
+export interface SummaryPrepared {
 	memoryService: MemoryService;
 	allDialogueMessages: Memory[];
 	summarizationMessages: Memory[];
@@ -68,7 +68,7 @@ interface SummaryPrepared {
 	canSummarize: boolean;
 }
 
-interface LongTermMemoryPrepared {
+export interface LongTermMemoryPrepared {
 	memoryService: MemoryService;
 	recentMessages: Memory[];
 	existingMemories: string;
