@@ -22,7 +22,6 @@
   "unpkg": "dist/plugin.js",
   "files": [
     "dist/",
-    "electrobun/",
     "dist"
   ],
   "author": "elizaOS",
