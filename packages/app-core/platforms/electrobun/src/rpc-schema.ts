@@ -425,6 +425,22 @@ export interface FileDialogResult {
 	filePaths: string[];
 }
 
+/**
+ * Workspace folder pick result. Used by store builds (Mac App Store, etc.)
+ * where the agent's writable area is restricted to user-granted folders.
+ *
+ * `path` — resolved absolute path (empty string when canceled).
+ * `canceled` — user dismissed the dialog without choosing.
+ * `bookmark` — opaque, OS-specific persistence handle (macOS security-scoped
+ *   bookmark base64; null on platforms that do not require it, or until the
+ *   native bookmark bridge ships). Callers must persist it verbatim.
+ */
+export interface WorkspaceFolderPickResult {
+	canceled: boolean;
+	path: string;
+	bookmark: string | null;
+}
+
 // -- Screen / Display --
 export interface DisplayBounds {
 	x: number;
@@ -822,6 +838,10 @@ export type ElizaDesktopRPCSchema = {
 			desktopShowSaveDialog: {
 				params: FileDialogOptions;
 				response: FileDialogResult;
+			};
+			desktopPickWorkspaceFolder: {
+				params: { defaultPath?: string; promptTitle?: string };
+				response: WorkspaceFolderPickResult;
 			};
 
 			// ---- Gateway ----
@@ -1593,6 +1613,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	// Desktop: File Dialogs
 	"desktop:showOpenDialog": "desktopShowOpenDialog",
 	"desktop:showSaveDialog": "desktopShowSaveDialog",
+	"desktop:pickWorkspaceFolder": "desktopPickWorkspaceFolder",
 
 	// Gateway
 	"gateway:startDiscovery": "gatewayStartDiscovery",
