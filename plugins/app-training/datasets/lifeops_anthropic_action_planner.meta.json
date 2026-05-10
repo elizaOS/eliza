@@ -1,0 +1,10 @@
+{
+  "generatedAt": "2026-05-10T01:34:04.517Z",
+  "runDir": "/Users/shawwalters/.milady/runs/lifeops/lifeops-anthropic-1778375887",
+  "benchmarkReports": [
+    "/Users/shawwalters/.milady/runs/lifeops/lifeops-anthropic-1778375887/benchmark-report.json"
+  ],
+  "rows": 17,
+  "skipped": 2,
+  "casesLabeled": 19
+}

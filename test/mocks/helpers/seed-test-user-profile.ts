@@ -3,9 +3,15 @@ import {
   persistConfiguredOwnerName,
   updateLifeOpsOwnerProfile,
 } from "../../../plugins/app-lifeops/src/lifeops/owner-profile.ts";
-import { ROUTINE_SEED_TEMPLATES } from "../../../plugins/app-lifeops/src/lifeops/seed-routines.ts";
+import { HABIT_STARTER_RECORDS } from "../../../plugins/app-lifeops/src/default-packs/habit-starters.ts";
 import { LifeOpsService } from "../../../plugins/app-lifeops/src/lifeops/service.ts";
 import { ensureLifeOpsSchema } from "./seed-grants.ts";
+
+// `seed-routines.ts` was removed during the default-packs migration. The
+// HABIT_STARTER_RECORDS array now plays the role of the old templates: each
+// record is a `ScheduledTaskSeed` that the LifeOps service can persist via
+// createDefinition. Map by `metadata.recordKey` so existing callers that
+// reference template keys (`brush_teeth`, `invisalign`, ...) still resolve.
 
 const TEST_USER_PROFILE_NAME = "Eliza Test Owner";
 
@@ -47,24 +53,30 @@ async function seedTestUserProfileRoutines(
       .filter((seedKey): seedKey is string => typeof seedKey === "string"),
   );
 
+  // Map TEST_USER_PROFILE_ROUTINE_KEYS to the new HABIT_STARTER_RECORDS by
+  // metadata.recordKey. The records are already full ScheduledTaskSeed
+  // objects, so we override `timezone` and tag with the test `seedKey`
+  // before persisting.
   for (const key of TEST_USER_PROFILE_ROUTINE_KEYS) {
     const seedKey = routineSeedKey(key);
     if (existingSeedKeys.has(seedKey)) {
       continue;
     }
 
-    const template = ROUTINE_SEED_TEMPLATES.find(
-      (candidate) => candidate.key === key,
+    const record = HABIT_STARTER_RECORDS.find(
+      (candidate) => candidate.metadata?.recordKey === key,
     );
-    if (!template) {
-      throw new Error(`[mock-runtime] missing routine seed template: ${key}`);
+    if (!record) {
+      throw new Error(
+        `[mock-runtime] no habit-starter record found for key: ${key}`,
+      );
     }
 
     await service.createDefinition({
-      ...template.request,
+      ...record,
       timezone: TEST_USER_PROFILE_TIMEZONE,
       source: "seed",
-      metadata: { seedKey },
+      metadata: { ...record.metadata, seedKey },
     });
   }
 }

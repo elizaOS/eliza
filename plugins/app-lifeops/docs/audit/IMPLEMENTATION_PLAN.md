@@ -1,3 +1,6 @@
+> [!NOTE]
+> **STATUS: SUPERSEDED — most items shipped.** See `eliza/docs/audits/lifeops-2026-05-09/REPORT.md` for the current state. Wave-1 (W1-A through W1-G) has mostly shipped; Wave-2 partial; Wave-3 not started. Retained in place so commit-history references still resolve.
+
 # LifeOps — Implementation Plan
 
 **Companion document to:** `UX_JOURNEYS.md`, `HARDCODING_AUDIT.md`, `GAP_ASSESSMENT.md`, `JOURNEY_GAME_THROUGH.md`.
