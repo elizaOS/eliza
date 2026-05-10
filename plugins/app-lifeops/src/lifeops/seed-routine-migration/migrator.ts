@@ -1,5 +1,5 @@
 /**
- * Wave-2 W2-A — one-shot migrator from legacy `LifeOpsDefinition` rows
+ * One-shot migrator from legacy `LifeOpsDefinition` rows
  * (carrying the `metadata.seedKey === "load-test-user-profile:<key>"`
  * marker that the deleted `applySeedRoutines` API used to write) to the
  * new `default-packs/habit-starters.ts` `ScheduledTask` records.
@@ -95,8 +95,8 @@ export interface LegacyDefinitionReader {
 }
 
 /**
- * Subset of the W1-A `ScheduledTaskRunner` surface the migrator needs
- * during `--apply`.
+ * Subset of the `ScheduledTaskRunner` surface the migrator needs during
+ * `--apply`.
  */
 export interface ScheduledTaskScheduleSink {
   schedule(seed: ScheduledTaskSeed): Promise<{ taskId: string }>;

@@ -1,8 +1,8 @@
 /**
- * W2-B — WhatsApp connector contribution.
+ * WhatsApp connector contribution.
  *
- * Wraps the LifeOps WhatsApp mixin (`service-mixin-whatsapp.ts`).
- * The actual transport is owned by `@elizaos/plugin-whatsapp`.
+ * Wraps the LifeOps WhatsApp mixin (`service-mixin-whatsapp.ts`). The actual
+ * transport is owned by `@elizaos/plugin-whatsapp`.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { LifeOpsService } from "../service.js";

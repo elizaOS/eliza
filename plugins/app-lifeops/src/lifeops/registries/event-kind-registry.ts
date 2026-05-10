@@ -1,5 +1,5 @@
 /**
- * W2-D — EventKindRegistry.
+ * EventKindRegistry.
  *
  * `ScheduledTask.trigger.kind = "event"` carries an `eventKind: string` and
  * an opaque `filter: EventFilter`. The registry types each `eventKind` per
@@ -78,8 +78,8 @@ export function createEventKindRegistry(): EventKindRegistry {
 
 /**
  * Default app-lifeops event-kind contributions: calendar + time-window
- * events emitted by W2-C / W2-D anchors. plugin-health registers its own
- * `health.*` event kinds via its registration entry point.
+ * events emitted by the calendar / anchor surfaces. plugin-health registers
+ * its own `health.*` event kinds via its registration entry point.
  */
 export const APP_LIFEOPS_EVENT_KINDS: readonly EventKindContribution[] = [
   {

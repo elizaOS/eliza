@@ -3,13 +3,12 @@
  * policies, distinguishing facts (durable owner state) from policies
  * (preferences that gate behavior).
  *
- * Per `GAP_ASSESSMENT.md` §3.9 / `IMPLEMENTATION_PLAN.md` §5.5: the store
- * absorbs `LifeOpsOwnerProfile` plus the facts (`travelBookingPreferences`,
- * `quietHours`, `morningWindow`, `eveningWindow`,
- * `preferredNotificationChannel`, `locale`) that the W1-C interim wrapper
- * stored. Each entry carries a provenance record so call sites can
- * distinguish a value the user typed in first-run customize from one the
- * agent inferred from a connector — and so audits can trace the origin.
+ * The store holds `LifeOpsOwnerProfile` plus the facts
+ * (`travelBookingPreferences`, `quietHours`, `morningWindow`,
+ * `eveningWindow`, `preferredNotificationChannel`, `locale`). Each entry
+ * carries a provenance record so call sites can distinguish a value the user
+ * typed in first-run customize from one the agent inferred from a connector
+ * — and so audits can trace the origin.
  *
  * `set_reminder_preference` and `configure_escalation` (previously routed
  * through `PROFILE`) write into the store's policy entries.

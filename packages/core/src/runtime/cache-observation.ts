@@ -148,14 +148,21 @@ export function cacheHitRate(observation: {
 	inputTokens?: number;
 	cachedInputTokens?: number;
 	cacheReadInputTokens?: number;
+	cacheCreationInputTokens?: number;
 }): number | undefined {
-	const inputTokens = observation.inputTokens;
-	const cachedInputTokens =
-		observation.cachedInputTokens ?? observation.cacheReadInputTokens;
-	if (!inputTokens || inputTokens <= 0 || cachedInputTokens === undefined) {
-		return undefined;
-	}
-	return cachedInputTokens / inputTokens;
+	// Anthropic semantics: usage.input_tokens excludes cache_read_input_tokens
+	// and cache_creation_input_tokens. The total prompt this call paid for is
+	// input + cache_creation + cache_read, and the hit rate is cache_read /
+	// total. OpenAI's prompt_tokens already INCLUDES cached_tokens, so
+	// passing only inputTokens as the denominator (the previous behaviour)
+	// produced a too-large rate for Anthropic. Compute the union and use it.
+	const inputTokens = observation.inputTokens ?? 0;
+	const cacheRead =
+		observation.cacheReadInputTokens ?? observation.cachedInputTokens ?? 0;
+	const cacheCreation = observation.cacheCreationInputTokens ?? 0;
+	const denom = inputTokens + cacheRead + cacheCreation;
+	if (denom <= 0) return undefined;
+	return cacheRead / denom;
 }
 
 export function hasCacheUsage(observation: CacheUsageObservation): boolean {
@@ -191,9 +198,14 @@ export function summarizeCacheUsage(
 		summary.cachedInputTokens += observation.cachedInputTokens ?? 0;
 	}
 
-	summary.cacheHitRate =
-		summary.inputTokens > 0
-			? summary.cachedInputTokens / summary.inputTokens
-			: 0;
+	const denom =
+		summary.inputTokens +
+		summary.cacheCreationInputTokens +
+		summary.cacheReadInputTokens;
+	const cacheReads =
+		summary.cacheReadInputTokens > 0
+			? summary.cacheReadInputTokens
+			: summary.cachedInputTokens;
+	summary.cacheHitRate = denom > 0 ? cacheReads / denom : 0;
 	return summary;
 }

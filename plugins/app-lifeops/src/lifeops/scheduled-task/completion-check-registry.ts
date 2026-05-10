@@ -1,8 +1,5 @@
 /**
- * Wave-1 frozen registry: CompletionCheckRegistry (W1-A).
- *
- * Source of truth: `docs/audit/wave1-interfaces.md` §1.3 + IMPL §3.1.
- * Built-in kinds:
+ * CompletionCheckRegistry. Built-in kinds:
  *   - `user_acknowledged`
  *   - `user_replied_within { lookbackMinutes, requireSinceTaskFired }`
  *   - `subject_updated`

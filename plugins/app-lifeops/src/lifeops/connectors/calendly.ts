@@ -1,13 +1,9 @@
 /**
- * W2-B — Calendly connector contribution.
+ * Calendly connector contribution.
  *
  * Calendly is a scheduling-link provider — there is no outbound `send`. The
  * `read` verb lists scheduled events. The full Calendly API client is owned
  * by `@elizaos/plugin-calendly` and re-exported through `../calendly-client.ts`.
- *
- * **W2-B vs W2-C ownership split:** W2-B (this file) owns the connector
- * wrapper that registers Calendly with `ConnectorRegistry`. W2-C owns the
- * action-level extraction of `calendly_*` subactions from CALENDAR.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import {

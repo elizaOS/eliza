@@ -51,7 +51,7 @@ Source references:
 | 25 | REST API access flows | REST API access flows | api | `test/lifeops-feature-flags.integration.test.ts` | `UX §25` | covered |
 | 26 | Workflows (event-triggered) | Workflows (event-triggered) | ScheduledTask | `test/lifeops-signal-inbound.integration.test.ts` | `UX §26` | covered |
 | 27 | Multilingual coverage | Multilingual coverage | MultilingualPromptRegistry | `test/multilingual-action-routing.integration.test.ts` | `GAP §3.7 MultilingualPromptRegistry`, `UX §27` | covered |
-| 28 | Suspected-but-unconfirmed flows | Suspected-but-unconfirmed flows | scenario | `test/lifeops-action-gating.integration.test.ts` | `UX §28` | covered |
+| 28 | Suspected-but-unconfirmed flows | Suspected-but-unconfirmed flows | ScheduledTask | `test/journey-domain-coverage.test.ts` | `UX §28`, `IMPL §7.3` (W3-C 28-domain replay) | covered |
 
 ## Spine-coverage assertion (per `GAP §8.5`)
 
@@ -69,6 +69,26 @@ contract test confirms that at least one test exercises the W1-A
 - `covered (extension pending)` — base test file exists; an additional
   sub-scenario for this exact domain is staged for in-place extension.
   The contract test passes because the file exists.
+
+## W3-C cross-cutting journey-domain replay
+
+`test/journey-domain-coverage.test.ts` is the W3-C deliverable per
+`docs/audit/IMPLEMENTATION_PLAN.md` §7.3. It runs one `describe` block per
+UX_JOURNEYS chapter (Domains 1–28) plus a final block per game-through
+finding explicitly resolved in Wave 1/2 (multi-gate `shouldFire`,
+terminal-state taxonomy, `output` destination, `contextRequest`,
+`subject`, `idempotencyKey`, `respectsGlobalPause`, `reopen`,
+snooze-resets-ladder, priority→posture mapping).
+
+The file is anchored on row 28 above so the contract test still locks
+"every test file referenced by exactly one matrix row", while the
+journey-replay coverage cuts across the other 27 domains as a regression
+guard. Running `bun --cwd plugins/app-lifeops test journey-domain-coverage`
+exercises the W1-A `ScheduledTask` spine end-to-end against a synthetic
+input per domain: schedule → fire → verb → pipeline → terminal.
+
+Remaining ambiguity that surfaced during the replay is captured in
+`docs/audit/post-Wave-2-ambiguity-register.md`.
 
 ## Rationale for domain-anchored shape
 
