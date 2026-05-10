@@ -241,8 +241,8 @@ function readAppManagedAnthropicToken(): OAuthToken | null {
   const { join } = require("node:path") as typeof import("node:path");
   const { homedir } = require("node:os") as typeof import("node:os");
   const { readFileSync } = require("node:fs") as typeof import("node:fs");
-  const namespace = getEnvVar("ELIZA_NAMESPACE")?.trim() || "eliza";
-  const stateDir = getEnvVar("ELIZA_STATE_DIR")?.trim() || join(homedir(), `.${namespace}`);
+  const { resolveStateDir } = require("@elizaos/core") as typeof import("@elizaos/core");
+  const stateDir = resolveStateDir();
   const accountId = getEnvVar("ANTHROPIC_SUBSCRIPTION_ACCOUNT_ID")?.trim() || "default";
   const paths = [
     join(stateDir, "auth", "anthropic-subscription", `${accountId}.json`),

@@ -12,13 +12,13 @@
  */
 
 import { promises as fs } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
 	type ElizaCuratedAppDefinition,
 	logger,
 	registerCuratedApp,
+	resolveStateDir,
 	Service,
 } from "@elizaos/core";
 
@@ -37,31 +37,6 @@ export interface RegisterContext {
 interface PersistedShape {
 	version: 1;
 	entries: AppRegistryEntry[];
-}
-
-const STATE_DIR_KEYS = ["ELIZA_STATE_DIR", "ELIZA_STATE_DIR"] as const;
-const NAMESPACE_KEYS = ["ELIZA_NAMESPACE"] as const;
-
-function readEnv(
-	env: NodeJS.ProcessEnv,
-	keys: readonly string[],
-): string | null {
-	for (const key of keys) {
-		const value = env[key]?.trim();
-		if (value) return value;
-	}
-	return null;
-}
-
-function resolveStateDir(env: NodeJS.ProcessEnv = process.env): string {
-	const override = readEnv(env, STATE_DIR_KEYS);
-	if (override) {
-		return path.isAbsolute(override)
-			? override
-			: path.resolve(os.homedir(), override.replace(/^~\//, ""));
-	}
-	const namespace = readEnv(env, NAMESPACE_KEYS) ?? "eliza";
-	return path.join(os.homedir(), `.${namespace}`);
 }
 
 function registryFilePath(stateDir: string): string {

@@ -47,6 +47,7 @@ import {
   type IAgentRuntime,
   logger,
   ModelType,
+  resolveStateDir,
   type TextEmbeddingParams,
 } from "@elizaos/core";
 import { registerAospLlamaLoader } from "./aosp-llama-adapter.js";
@@ -207,16 +208,6 @@ function readBundledModelManifest(modelsDir: string): {
     );
     return { chat: null, embedding: null };
   }
-}
-
-function resolveStateDir(): string {
-  const explicit = process.env.ELIZA_STATE_DIR;
-  if (explicit?.trim()) return explicit;
-  // On AOSP we expect ELIZA_STATE_DIR to be set by ElizaAgentService.
-  // Fall back to $HOME/.eliza so dev / non-Android exercise paths still
-  // resolve.
-  const home = process.env.HOME ?? process.cwd();
-  return path.join(home, ".eliza");
 }
 
 // Recommended-model auto-download for the AOSP / bun:ffi path. Mirrors

@@ -25,10 +25,9 @@ import { execFile } from "node:child_process";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
-import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { logger } from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
 import { createSerialise, requestRestart } from "@elizaos/shared";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import { getPluginInfo, type RegistryPluginInfo } from "./registry-client.js";
@@ -121,9 +120,7 @@ export interface UninstallResult {
 // ---------------------------------------------------------------------------
 
 function pluginsBaseDir(): string {
-  const stateDir = process.env.ELIZA_STATE_DIR?.trim();
-  const base = stateDir || path.join(os.homedir(), ".eliza");
-  return path.join(base, "plugins", "installed");
+  return path.join(resolveStateDir(), "plugins", "installed");
 }
 
 function isWithinPluginsDir(targetPath: string): boolean {
