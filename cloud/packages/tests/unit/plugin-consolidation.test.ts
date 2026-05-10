@@ -6,7 +6,7 @@ import oauthPlugin, { oauthPlugin as namedOauthPlugin } from "@/lib/eliza/plugin
 function runtimeWithSetting(value: unknown): IAgentRuntime {
   return {
     getSetting: (key: string) => (key === "MCP_ENABLED_SERVERS" ? value : undefined),
-  } as IAgentRuntime;
+  } as unknown as IAgentRuntime;
 }
 
 describe("plugin consolidation", () => {

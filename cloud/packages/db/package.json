@@ -5,6 +5,7 @@
   "type": "module",
   "private": true,
   "exports": {
+    ".": "./index.ts",
     "./package.json": "./package.json"
   },
   "scripts": {
