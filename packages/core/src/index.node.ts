@@ -10,6 +10,7 @@ export * from "./actions";
 export * from "./api/http-helpers";
 export * from "./api/route-helpers";
 export * from "./app-registry";
+export * from "./app-core-runtime-hooks";
 // Export all core modules
 export * from "./app-route-plugin-registry";
 export * from "./boot-env";
