@@ -26,6 +26,7 @@ import {
 	updateRoleAction as _bs_4_updateRoleAction,
 } from "./role.ts";
 import { roomOpAction as _bs_5_roomOpAction } from "./room.ts";
+
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 // biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.

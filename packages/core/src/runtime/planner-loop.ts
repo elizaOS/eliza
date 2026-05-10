@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
@@ -2092,9 +2092,7 @@ function loadOptimizedPlannerFromDisk(): string | null {
 			) {
 				return parsed.prompt;
 			}
-		} catch {
-			continue;
-		}
+		} catch {}
 	}
 	return null;
 }

@@ -47,6 +47,7 @@ export * from "./runtime-route-context";
 export * from "./schemas/character";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
+export * from "./sensitive-request-policy";
 export * from "./services";
 export * from "./services/agentEvent";
 // Server/runtime entry points also register these; the browser bundle must

@@ -129,12 +129,12 @@ export const manageSecretAction: Action = {
 				? (_options.parameters as Record<string, unknown>)
 				: {};
 		const subactionField =
-			(typeof params.subaction === "string" && params.subaction.trim().length > 0
+			typeof params.subaction === "string" && params.subaction.trim().length > 0
 				? params.subaction
 				: typeof params.operation === "string" &&
 						params.operation.trim().length > 0
 					? params.operation
-					: undefined);
+					: undefined;
 		const hasStructuredOperation = typeof subactionField === "string";
 		return (
 			hasStructuredOperation ||
