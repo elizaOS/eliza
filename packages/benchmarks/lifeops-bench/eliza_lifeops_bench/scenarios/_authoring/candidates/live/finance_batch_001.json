@@ -1,0 +1,662 @@
+[
+  {
+    "id": "live.finance.transfer_check_01",
+    "name": "Check a $1,200 transfer to vendor",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "I need to send $1,200 to Acme Corp for services. Verify the amount and ask any needed details before creating the transfer.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Simple large transfer with hidden preference for account_00 and explicit approval needed.",
+    "success_criteria": [
+      "Executor asks for confirmation of the recipient's bank details.",
+      "Executor repeats the exact amount and asks for final approval before proceeding.",
+      "Executor creates a transaction record on account_00 after persona approval."
+    ],
+    "world_assertions": [
+      "A new transaction txn_* on account_00 for $1,200 to Acme Corp appears if approved; otherwise no new transaction."
+    ]
+  },
+  {
+    "id": "live.finance.subscription_audit_02",
+    "name": "Audit software subscriptions",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "List all software subscriptions, highlight any that overlap, and propose cancellations. I will give final go\u2011ahead for each cancellation.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will only approve cancellations after explicit consent.",
+    "success_criteria": [
+      "Executor lists each software subscription with monthly cost.",
+      "Executor identifies at least one overlapping service and suggests canceling it.",
+      "Executor only cancels a subscription after explicit persona approval."
+    ],
+    "world_assertions": [
+      "Any cancelled subscription is marked cancelled; no other subscriptions are altered without approval."
+    ]
+  },
+  {
+    "id": "live.finance.fraud_alert_03",
+    "name": "Investigate suspicious $300 transaction",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "There is a $300 charge I don't recognize. Find the transaction, ask if I want to dispute it, and proceed only with my consent.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Hidden constraint: only dispute after clear approval.",
+    "success_criteria": [
+      "Executor locates the $300 transaction and provides date and merchant.",
+      "Executor asks the persona whether to dispute the charge.",
+      "Executor creates a dispute note only after persona says yes."
+    ],
+    "world_assertions": [
+      "If dispute created, a new note note_* referencing the transaction appears; otherwise no new note."
+    ]
+  },
+  {
+    "id": "live.finance.tax_summary_04",
+    "name": "Prepare Q1 tax summary",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "Summarize my earnings and deductible expenses for Jan\u2011Mar 2026. I will review numbers before filing.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must present numbers before mutating the world.",
+    "success_criteria": [
+      "Executor reports total income from accounts.",
+      "Executor lists deductible expenses by category with totals.",
+      "Executor creates a note note_* containing the summary after persona confirms."
+    ],
+    "world_assertions": [
+      "A new note with title containing \"Q1 tax summary\" is added."
+    ]
+  },
+  {
+    "id": "live.finance.charity_donation_05",
+    "name": "Set up a charity donation",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I want to donate $250 to a children's charity next week. Ask which account to use and confirm date before creating the transaction.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will reveal preferred account only after being asked.",
+    "success_criteria": [
+      "Executor asks which account (e.g., account_01) to debit.",
+      "Executor confirms the donation date (e.g., 2026-05-17) and amount.",
+      "Executor creates a transaction on the chosen account after approval."
+    ],
+    "world_assertions": [
+      "A new transaction of $250 to the charity appears on the selected account if approved."
+    ]
+  },
+  {
+    "id": "live.finance.loan_payment_06",
+    "name": "Schedule monthly loan payment",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "My loan payment is $450 due on the 15th. Schedule it, but I might want to split it across two accounts.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must discover split preference via questioning.",
+    "success_criteria": [
+      "Executor asks which accounts to split the payment between.",
+      "Executor proposes a split plan and asks for confirmation.",
+      "Executor creates two transactions totalling $450 on the indicated accounts after approval."
+    ],
+    "world_assertions": [
+      "Two new transactions on the specified accounts sum to $450; no transaction created if persona declines."
+    ]
+  },
+  {
+    "id": "live.finance.credit_card_bill_07",
+    "name": "Pay credit card balance",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "My credit card shows a $1,050 balance. I prefer paying from my primary checking, but ask if I want to set up a reminder instead.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Hidden choice between immediate payment or reminder.",
+    "success_criteria": [
+      "Executor confirms the balance amount.",
+      "Executor offers either immediate payment or a reminder and asks for preference.",
+      "Executor either creates a payment transaction or a reminder accordingly."
+    ],
+    "world_assertions": [
+      "If payment chosen, a transaction of $1,050 on account_00 is created; if reminder chosen, a reminder in list_personal for the payment date is added."
+    ]
+  },
+  {
+    "id": "live.finance.investment_suggestion_08",
+    "name": "Suggest a small investment",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "I have $500 spare. Suggest one low\u2011risk investment option and ask if I want to proceed.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must propose and await explicit go\u2011ahead.",
+    "success_criteria": [
+      "Executor suggests a specific low\u2011risk investment with expected return.",
+      "Executor asks for confirmation before creating any transaction.",
+      "Executor creates a transaction only after persona says yes."
+    ],
+    "world_assertions": [
+      "A new transaction of $500 to the suggested investment appears if approved; otherwise none."
+    ]
+  },
+  {
+    "id": "live.finance.expense_report_09",
+    "name": "Compile expense report for client meeting",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I need an expense report for a client meeting on May 8. Gather meals, transport, and lodging costs, then ask me to approve before generating a note.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will approve only after seeing line items.",
+    "success_criteria": [
+      "Executor lists each expense with amount.",
+      "Executor asks for final approval to compile.",
+      "Executor creates a note with the report after approval."
+    ],
+    "world_assertions": [
+      "A note titled \"Client meeting expense report\" exists with correct line items."
+    ]
+  },
+  {
+    "id": "live.finance.budget_overrun_10",
+    "name": "Handle budget overrun in entertainment",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "My entertainment budget is exceeded by $120. Propose a reallocation and ask before adjusting any budget entries.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Hidden constraint: reallocation only after explicit consent.",
+    "success_criteria": [
+      "Executor identifies the $120 overrun.",
+      "Executor proposes a reallocation and asks for consent.",
+      "Executor updates a budget note only after approval."
+    ],
+    "world_assertions": [
+      "A note budget_* updated reflecting new allocation appears if approved."
+    ]
+  },
+  {
+    "id": "live.finance.savings_goal_11",
+    "name": "Set up a savings goal for vacation",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "I want to save $2,000 for a vacation by August. Ask which account to allocate and create a recurring transfer.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must discover target account and schedule.",
+    "success_criteria": [
+      "Executor asks which account to fund.",
+      "Executor proposes monthly transfer amount and schedule, and asks for confirmation.",
+      "Executor creates recurring transaction entries after approval."
+    ],
+    "world_assertions": [
+      "Recurring transfer notes or transactions totaling $2,000 by target date are created."
+    ]
+  },
+  {
+    "id": "live.finance.unexpected_fee_12",
+    "name": "Address unexpected bank fee",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "I see a $25 fee on my statement I didn't expect. Find it, explain, and ask if I want to dispute.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must surface fee details before any dispute.",
+    "success_criteria": [
+      "Executor locates the $25 fee transaction and provides details.",
+      "Executor explains possible reasons.",
+      "Executor only creates dispute note after persona says yes."
+    ],
+    "world_assertions": [
+      "A note referencing the fee transaction is added if dispute requested."
+    ]
+  },
+  {
+    "id": "live.finance.monthly_summary_13",
+    "name": "Generate monthly spending summary",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "Give me a summary of May spending broken down by category, and highlight any category over 20% of total.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must flag high\u2011percentage categories before note creation.",
+    "success_criteria": [
+      "Executor reports total spend and category breakdown.",
+      "Executor flags any category exceeding 20% and names it.",
+      "Executor creates a note with the summary after persona approval."
+    ],
+    "world_assertions": [
+      "Note titled \"May 2026 spending summary\" appears."
+    ]
+  },
+  {
+    "id": "live.finance.renovation_fund_14",
+    "name": "Allocate funds for home renovation",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I need $3,000 for a kitchen remodel next month. Ask which account to draw from and whether to set a reminder.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Hidden choice between immediate transfer or reminder.",
+    "success_criteria": [
+      "Executor asks which account to use.",
+      "Executor confirms amount and date.",
+      "Executor either creates transaction or reminder based on persona choice."
+    ],
+    "world_assertions": [
+      "Transaction of $3,000 on chosen account if approved; otherwise reminder entry."
+    ]
+  },
+  {
+    "id": "live.finance.subscription_renewal_15",
+    "name": "Confirm upcoming subscription renewal",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "My cloud storage subscription renews on May 20 for $12. Ask if I want to keep it or cancel.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must wait for keep/cancel decision.",
+    "success_criteria": [
+      "Executor reminds persona of renewal date and cost.",
+      "Executor asks for keep or cancel decision.",
+      "Executor cancels subscription only after explicit yes."
+    ],
+    "world_assertions": [
+      "Subscription status changed to cancelled if chosen; otherwise no change."
+    ]
+  },
+  {
+    "id": "live.finance.credit_score_check_16",
+    "name": "Check recent credit score change",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "I heard my credit score changed. Retrieve the latest score and ask if I want to set a reminder to monitor it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must propose reminder after delivering score.",
+    "success_criteria": [
+      "Executor reports the latest credit score value.",
+      "Executor asks if a monitoring reminder should be set.",
+      "Executor creates a reminder if persona agrees."
+    ],
+    "world_assertions": [
+      "Reminder in list_personal for monthly credit score check appears if approved."
+    ]
+  },
+  {
+    "id": "live.finance.income_projection_17",
+    "name": "Project next quarter income",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "Based on my recent freelance payments, project income for Q2. Ask if I want to create a budget note.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must wait for consent before persisting projection.",
+    "success_criteria": [
+      "Executor calculates projected Q2 income.",
+      "Executor shares projection amount.",
+      "Executor creates a note with projection after persona consent."
+    ],
+    "world_assertions": [
+      "Note titled \"Q2 income projection\" exists."
+    ]
+  },
+  {
+    "id": "live.finance.gift_budget_18",
+    "name": "Plan gift budget for upcoming birthdays",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "I have three birthdays next month. I want to allocate $150 total. Ask how to split and confirm before creating reminders.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Hidden constraint: total must equal $150 before reminders are set.",
+    "success_criteria": [
+      "Executor asks for split amounts per person.",
+      "Executor confirms total equals $150.",
+      "Executor creates three reminders for each birthday gift purchase."
+    ],
+    "world_assertions": [
+      "Three reminder entries in list_personal with correct dates and amounts."
+    ]
+  },
+  {
+    "id": "live.finance.tax_deduction_19",
+    "name": "Identify possible tax deductions",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "Review my recent transactions and suggest any that could be tax\u2011deductible. Ask before adding them to a deductions note.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must get approval before recording deductions.",
+    "success_criteria": [
+      "Executor scans recent transactions and lists at least two deductible candidates.",
+      "Executor asks for confirmation to record them.",
+      "Executor creates a note with deductible items after approval."
+    ],
+    "world_assertions": [
+      "Note titled \"Potential tax deductions\" contains listed items."
+    ]
+  },
+  {
+    "id": "live.finance.emergency_fund_20",
+    "name": "Top up emergency fund",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "My emergency fund is low; I want to add $800 this week. Ask which account to use and set up a one\u2011time transfer.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Hidden preference for a specific account will be disclosed when asked.",
+    "success_criteria": [
+      "Executor asks which account to debit.",
+      "Executor confirms amount and date.",
+      "Executor creates a transaction on the chosen account after approval."
+    ],
+    "world_assertions": [
+      "Transaction of $800 appears on selected account."
+    ]
+  },
+  {
+    "id": "live.finance.reimbursement_21",
+    "name": "Request reimbursement for office supplies",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I spent $45 on office supplies for a client project. Create a reimbursement request note and ask if I want to email HR.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must draft note and optionally email after consent.",
+    "success_criteria": [
+      "Executor drafts a reimbursement note with amount and description.",
+      "Executor asks whether to send email to HR.",
+      "Executor creates note and (optionally) drafts email if persona agrees."
+    ],
+    "world_assertions": [
+      "A note with \"Reimbursement request\" exists; an email draft to HR may be created if approved."
+    ]
+  },
+  {
+    "id": "live.finance.pension_contribution_22",
+    "name": "Increase pension contribution",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "I want to increase my monthly pension contribution by $200 starting next month. Confirm amount and create recurring transfer.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must verify start month before creating recurring transfer.",
+    "success_criteria": [
+      "Executor confirms new contribution amount.",
+      "Executor asks for start month.",
+      "Executor creates recurring transfer after consent."
+    ],
+    "world_assertions": [
+      "Recurring transfer of $200 on account_00 each month from next month exists."
+    ]
+  },
+  {
+    "id": "live.finance.credit_card_reward_23",
+    "name": "Redeem credit card rewards",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "My credit card has 5,000 points. Ask which redemption option I prefer and create the transaction.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must discover preferred redemption method.",
+    "success_criteria": [
+      "Executor lists at least two redemption options (e.g., travel, cash).",
+      "Executor asks for chosen option.",
+      "Executor creates a transaction reflecting redemption after approval."
+    ],
+    "world_assertions": [
+      "Transaction reflecting points redemption is recorded; no transaction if declined."
+    ]
+  },
+  {
+    "id": "live.finance.utility_bill_24",
+    "name": "Pay upcoming utility bill",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "My electricity bill of $120 is due on May 13. Ask if I want to pay now or schedule, then act accordingly.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Hidden decision between immediate payment and scheduling.",
+    "success_criteria": [
+      "Executor confirms amount and due date.",
+      "Executor offers immediate payment or scheduled payment and asks preference.",
+      "Executor creates transaction or reminder based on choice."
+    ],
+    "world_assertions": [
+      "Transaction of $120 on chosen date if paid now; otherwise reminder entry."
+    ]
+  },
+  {
+    "id": "live.finance.income_tax_filing_25",
+    "name": "Prepare documents for income tax filing",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "Gather all 2026 income documents and ask which ones I want to attach to the filing summary note.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must let persona select documents before note creation.",
+    "success_criteria": [
+      "Executor lists available income documents (e.g., W\u20112, 1099).",
+      "Executor asks which to include.",
+      "Executor creates a note with attached document references after approval."
+    ],
+    "world_assertions": [
+      "Note titled \"2026 tax filing documents\" includes selected attachments."
+    ]
+  },
+  {
+    "id": "live.finance.charity_receipt_26",
+    "name": "Request receipt for recent charity donation",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I donated $100 last month. Ask which charity and generate a receipt note.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must clarify charity before drafting receipt.",
+    "success_criteria": [
+      "Executor asks which charity received the donation.",
+      "Executor confirms amount and date.",
+      "Executor creates a receipt note after confirmation."
+    ],
+    "world_assertions": [
+      "Note titled \"Charity donation receipt\" with details exists."
+    ]
+  },
+  {
+    "id": "live.finance.investment_dividend_27",
+    "name": "Record dividend income",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "I received a $75 dividend from XYZ fund. Add it to my records and ask if I want to reinvest.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must ask before creating reinvestment transaction.",
+    "success_criteria": [
+      "Executor records dividend as a transaction.",
+      "Executor asks if reinvestment is desired.",
+      "Executor creates reinvestment transaction only after yes."
+    ],
+    "world_assertions": [
+      "Transaction of $75 dividend exists; optional second transaction for reinvestment appears if approved."
+    ]
+  },
+  {
+    "id": "live.finance.financial_goal_review_28",
+    "name": "Review progress on savings goal",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "Check my progress toward the $5,000 emergency fund goal. Ask if I want to adjust contributions.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must present current amount before suggesting changes.",
+    "success_criteria": [
+      "Executor reports current amount saved.",
+      "Executor compares to target and notes shortfall.",
+      "Executor updates goal note only after persona consents."
+    ],
+    "world_assertions": [
+      "Note titled \"Emergency fund goal\" updated with new contribution amount if approved."
+    ]
+  },
+  {
+    "id": "live.finance.credit_limit_increase_29",
+    "name": "Request credit limit increase",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "I want to request a $2,000 increase on my credit card. Ask which card and confirm before sending request.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must obtain card selection before drafting request note.",
+    "success_criteria": [
+      "Executor asks which credit card to increase.",
+      "Executor confirms increase amount.",
+      "Executor creates a note with request details after approval."
+    ],
+    "world_assertions": [
+      "Note titled \"Credit limit increase request\" exists with specified amount."
+    ]
+  },
+  {
+    "id": "live.finance.monthly_savings_plan_30",
+    "name": "Create monthly savings plan",
+    "domain": "finance",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I aim to save $300 each month for mental health retreat fund. Ask which account to use and set recurring transfer.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Agent must confirm account and start date before setting up recurring transfer.",
+    "success_criteria": [
+      "Executor asks which account to debit.",
+      "Executor confirms $300 monthly amount and start date.",
+      "Executor creates recurring transfer after consent."
+    ],
+    "world_assertions": [
+      "Recurring transfer of $300 on the chosen account each month exists; no transfer if declined."
+    ]
+  }
+]
