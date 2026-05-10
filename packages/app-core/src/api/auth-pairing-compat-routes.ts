@@ -2,13 +2,13 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
+import { findActiveSession, parseSessionCookie } from "./auth/sessions";
 import {
   ensureRouteAuthorized,
   getCompatApiToken,
   getProvidedApiToken,
   tokenMatches,
 } from "./auth.ts";
-import { findActiveSession, parseSessionCookie } from "./auth/sessions";
 import {
   type CompatRuntimeState,
   getCompatDrizzleDb,

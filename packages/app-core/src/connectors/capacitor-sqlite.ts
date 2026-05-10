@@ -3,7 +3,10 @@
 // app talks to a stable, parameterized API instead of touching the
 // community plugin's wider surface.
 
-import { CapacitorSQLite, type SQLiteDBConnection } from "@capacitor-community/sqlite";
+import {
+  CapacitorSQLite,
+  type SQLiteDBConnection,
+} from "@capacitor-community/sqlite";
 
 export interface SqliteOpenOptions {
   /** Database name (no path, no extension). */
@@ -125,8 +128,9 @@ export async function openDatabase(
  */
 export async function isSqliteAvailable(): Promise<boolean> {
   try {
-    const cap = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } })
-      .Capacitor;
+    const cap = (
+      globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }
+    ).Capacitor;
     if (!cap?.isNativePlatform?.()) return false;
     // `checkConnectionsConsistency` is a no-op on a clean install but
     // confirms the native bridge is wired up.

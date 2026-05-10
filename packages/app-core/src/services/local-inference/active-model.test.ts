@@ -102,10 +102,7 @@ describe("resolveLocalInferenceLoadArgs", () => {
   });
 
   it("per-load gpuLayers/flashAttention/mmap/mlock overrides flow into args", async () => {
-    const target = makeInstalledModel(
-      "llama-3.2-1b",
-      "/tmp/llama-3.2-1b.gguf",
-    );
+    const target = makeInstalledModel("llama-3.2-1b", "/tmp/llama-3.2-1b.gguf");
     const args = await resolveLocalInferenceLoadArgs(target, {
       gpuLayers: 16,
       flashAttention: true,
@@ -194,12 +191,12 @@ describe("validateLocalInferenceLoadArgs", () => {
   });
 
   it("rejects illegal contextSize / gpuLayers / kvOffload", () => {
-    expect(() =>
-      validateLocalInferenceLoadArgs({ contextSize: 100 }),
-    ).toThrow(/contextSize/);
-    expect(() =>
-      validateLocalInferenceLoadArgs({ gpuLayers: -1 }),
-    ).toThrow(/gpuLayers/);
+    expect(() => validateLocalInferenceLoadArgs({ contextSize: 100 })).toThrow(
+      /contextSize/,
+    );
+    expect(() => validateLocalInferenceLoadArgs({ gpuLayers: -1 })).toThrow(
+      /gpuLayers/,
+    );
     expect(() =>
       validateLocalInferenceLoadArgs({
         kvOffload: "magic" as never,

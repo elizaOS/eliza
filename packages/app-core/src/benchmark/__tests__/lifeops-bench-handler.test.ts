@@ -235,7 +235,11 @@ describe("LifeOpsBenchHandler", () => {
         now_iso: "2026-05-10T12:00:00Z",
       });
       const res = fakeRes();
-      const handled = await handler.tryHandle(req, res, "/api/benchmark/lifeops_bench/reset");
+      const handled = await handler.tryHandle(
+        req,
+        res,
+        "/api/benchmark/lifeops_bench/reset",
+      );
       expect(handled).toBe(true);
       expect(res.getStatus()).toBe(200);
       const parsed = JSON.parse(res.getBody());
@@ -270,7 +274,11 @@ describe("LifeOpsBenchHandler", () => {
         context: { tools: [] },
       });
       const res = fakeRes();
-      const handled = await handler.tryHandle(req, res, "/api/benchmark/lifeops_bench/message");
+      const handled = await handler.tryHandle(
+        req,
+        res,
+        "/api/benchmark/lifeops_bench/message",
+      );
       expect(handled).toBe(true);
       expect(res.getStatus()).toBe(200);
       const parsed = JSON.parse(res.getBody());
@@ -302,7 +310,11 @@ describe("LifeOpsBenchHandler", () => {
     {
       const req = fakeReq("POST", { task_id: "scn-1" });
       const res = fakeRes();
-      const handled = await handler.tryHandle(req, res, "/api/benchmark/lifeops_bench/teardown");
+      const handled = await handler.tryHandle(
+        req,
+        res,
+        "/api/benchmark/lifeops_bench/teardown",
+      );
       expect(handled).toBe(true);
       const parsed = JSON.parse(res.getBody());
       expect(parsed.removed).toBe(true);
