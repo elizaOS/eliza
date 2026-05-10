@@ -144,6 +144,45 @@ function rateLimitPairing(ip: string | null): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Identity bookkeeping for paired devices
+// ---------------------------------------------------------------------------
+
+const PAIRED_DEVICE_IDENTITY_DISPLAY_NAME = "paired-device";
+
+/**
+ * Resolve an identity id to bind a paired-device machine session to:
+ *   1. existing owner identity (typical password-configured deployments).
+ *   2. existing `paired-device` machine identity (idempotent on repeat pair).
+ *   3. otherwise create a fresh `paired-device` machine identity.
+ *
+ * The machine session itself is what authorizes requests; the identity is a
+ * stable parent row so audit logs + the security UI can group sessions
+ * minted by the pairing flow.
+ */
+async function ensurePairedDeviceIdentityId(
+  store: import("../services/auth-store").AuthStore,
+): Promise<string> {
+  const owner = (await store.listIdentitiesByKind("owner"))[0];
+  if (owner) return owner.id;
+
+  const existing = await store.findIdentityByDisplayName(
+    PAIRED_DEVICE_IDENTITY_DISPLAY_NAME,
+  );
+  if (existing) return existing.id;
+
+  const id = crypto.randomUUID();
+  await store.createIdentity({
+    id,
+    kind: "machine",
+    displayName: PAIRED_DEVICE_IDENTITY_DISPLAY_NAME,
+    createdAt: Date.now(),
+    passwordHash: null,
+    cloudUserId: null,
+  });
+  return id;
+}
+
+// ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
 

@@ -17,21 +17,19 @@
  * downloader.
  */
 
+import { ELIZA_1_TIERS, type Eliza1Tier } from "./manifest";
 import type { CatalogModel } from "./types";
 
 /**
- * Eliza-1 tier identifiers, in tier-matrix order. Source of truth for
- * the recommendation ladders and the default-eligible set.
+ * Eliza-1 tier identifiers, in tier-matrix order. Derived from the
+ * manifest module's `ELIZA_1_TIERS` so the bundle tier list and the
+ * catalog model-id list never drift.
  */
-export const ELIZA_1_TIER_IDS = [
-  "eliza-1-lite-0_6b",
-  "eliza-1-mobile-1_7b",
-  "eliza-1-desktop-9b",
-  "eliza-1-pro-27b",
-  "eliza-1-server-h200",
-] as const;
+export type Eliza1TierId = `eliza-1-${Eliza1Tier}`;
 
-export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
+export const ELIZA_1_TIER_IDS: ReadonlyArray<Eliza1TierId> = ELIZA_1_TIERS.map(
+  (tier) => `eliza-1-${tier}` as Eliza1TierId,
+);
 
 /**
  * The model id the engine auto-loads on first run when no preference is
