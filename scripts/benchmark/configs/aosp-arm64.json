@@ -1,7 +1,7 @@
 {
   "$schema": "../profile-config.schema.json",
-  "description": "AOSP arm64 profiling matrix. Targets the cuttlefish image (x86_64 emulation of arm64-v8a) and the connected real arm64 device (e.g. ZL8325M37K). Includes the qjl1_256 leg even though the kernel is not yet in the shipped fork — the harness records the failure so the report documents the gap until the kernel lands.",
-  "models": ["qwen3.5-4b-dflash", "bonsai-8b-1bit"],
+  "description": "AOSP arm64 profiling matrix. Targets the cuttlefish image (x86_64 emulation of arm64-v8a) and the connected real arm64 device (e.g. ZL8325M37K). Profiles Eliza-1 mobile/desktop tiers across supported KV-cache settings.",
+  "models": ["eliza-1-mobile-1_7b", "eliza-1-desktop-9b"],
   "kvCacheConfigs": [
     { "name": "baseline-fp16", "k": "f16", "v": "f16" },
     { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" },
@@ -9,7 +9,7 @@
   ],
   "dflashConfigs": [
     { "name": "no-dflash", "drafter": null },
-    { "name": "dflash-bonsai", "drafter": "bonsai-8b-dflash-drafter" }
+    { "name": "no-drafter", "drafter": null }
   ],
   "prompts": [
     {

@@ -1,7 +1,7 @@
 {
   "$schema": "../profile-config.schema.json",
   "description": "Desktop profiling matrix for the in-process node-llama-cpp path on Linux/macOS/Windows. Stock-build-only KV cache types (f16, q8_0, bf16) — fork-only types (tbq3_0/tbq4_0/qjl1_256) are rejected by the API validator on this path because the underlying libllama.so cannot honour them. Use scripts/benchmark/configs/aosp-default.json for the AOSP fork matrix.",
-  "models": ["qwen3.5-4b-dflash", "qwen3.5-9b-dflash"],
+  "models": ["eliza-1-mobile-1_7b", "eliza-1-desktop-9b"],
   "kvCacheConfigs": [
     {
       "name": "baseline-fp16-128k",

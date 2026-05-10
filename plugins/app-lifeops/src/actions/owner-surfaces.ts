@@ -83,7 +83,13 @@ function delegateHandler(
   options: unknown,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
-  return target.handler(runtime, message, state, options, callback);
+  return target.handler(
+    runtime,
+    message,
+    state,
+    options as Parameters<NonNullable<Action["handler"]>>[3],
+    callback,
+  );
 }
 
 function makeOwnerLifeAction(args: {
