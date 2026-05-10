@@ -23,5 +23,5 @@
 		"noUncheckedIndexedAccess": false
 	},
 	"include": ["./**/*.ts"],
-	"exclude": ["node_modules", "dist", "__tests__/model-usage.test.ts"]
+	"exclude": ["node_modules", "dist"]
 }

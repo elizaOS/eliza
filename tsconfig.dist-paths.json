@@ -502,12 +502,7 @@
   "exclude": [
     "**/node_modules/**",
     "**/dist/**",
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "**/*.spec.ts",
-    "**/*.spec.tsx",
     "**/*.stories.ts",
-    "**/*.stories.tsx",
-    "**/__tests__/**"
+    "**/*.stories.tsx"
   ]
 }

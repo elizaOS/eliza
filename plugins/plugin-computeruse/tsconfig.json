@@ -26,5 +26,5 @@
     "src",
     "../../packages/agent/src/external-modules.d.ts"
   ],
-  "exclude": ["dist", "node_modules", "**/*.test.ts"]
+  "exclude": ["dist", "node_modules"]
 }

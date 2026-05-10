@@ -55,9 +55,6 @@
       ]
     }
   },
-  "exclude": [
-    "src/**/*.test.ts"
-  ],
   "include": [
     "src",
     "../../plugins/app-companion/src/ambient-modules.d.ts"

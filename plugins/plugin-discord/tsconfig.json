@@ -31,9 +31,6 @@
 	"exclude": [
 		"node_modules",
 		"dist",
-		"test/**",
-		"**/__tests__/**",
-		"**/*.test.ts",
 		"build.ts",
 		"./generated/**"
 	]

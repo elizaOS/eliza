@@ -96,9 +96,7 @@
     "src/**/*.stories.ts",
     "src/**/*.stories.tsx",
     "../../plugins/app-companion/src/**/*.stories.tsx",
-    "../../plugins/app-companion/src/**/*.stories.ts",
-    "../../plugins/app-companion/src/**/*.test.ts",
-    "../../plugins/app-companion/src/**/*.test.tsx"
+    "../../plugins/app-companion/src/**/*.stories.ts"
   ],
   "include": [
     "src",

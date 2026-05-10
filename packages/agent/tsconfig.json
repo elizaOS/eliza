@@ -73,6 +73,9 @@
       "@elizaos/ui": [
         "../ui/src/index.ts"
       ],
+      "@elizaos/ui/api/client-types-cloud": [
+        "../ui/src/api/client-types-cloud.ts"
+      ],
       "@elizaos/app-companion": [
         "../../plugins/app-companion/src/index.ts"
       ],
@@ -163,11 +166,5 @@
   },
   "include": [
     "src"
-  ],
-  "exclude": [
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx",
-    "src/**/*.spec.ts",
-    "src/**/__tests__/**"
   ]
 }

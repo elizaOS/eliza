@@ -20,6 +20,11 @@
     }
   },
   "sideEffects": false,
+  "files": [
+    "index.ts",
+    "index.browser.ts",
+    "package.json"
+  ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-inmemorydb": "workspace:*"
