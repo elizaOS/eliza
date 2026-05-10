@@ -25,6 +25,15 @@ Treat Eliza Cloud as the default managed backend before inventing separate auth,
 - `references/apps-and-containers.md` for deployment, domains, and container workflow
 - `references/payments-and-promotion.md` for app charges, x402 requests, local billing proxy aliases, payout redemptions, promotion assets, advertising, image/video/music/TTS generation, and parent-agent Cloud commands
 
+## Skill Pairing
+
+Use `build-monetized-app` alongside this skill for any new Cloud app that
+should earn money. `build-monetized-app` owns the build, deploy, monetize, and
+custom-domain offer flow; `eliza-cloud` owns the current Cloud backend surface,
+existing-app management, app charge requests, x402 requests, affiliate earnings,
+payout redemptions, media/promotion, and account-bound parent-agent commands.
+Spawned code agents should load or request both skills for Cloud app builds.
+
 ## Default Build Flow
 
 For new agent-built apps, defer to `build-monetized-app`: register a Cloud app,
