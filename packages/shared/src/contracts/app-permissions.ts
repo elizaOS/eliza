@@ -20,6 +20,50 @@
 
 export const MAX_PATTERN_LENGTH = 256;
 
+/**
+ * Namespaces this Milady version recognises in `elizaos.app.permissions`.
+ * The parser surfaces only these as typed slices; other namespace keys
+ * declared by an app are preserved verbatim under `raw` for forward
+ * compatibility but cannot be granted (a future Milady version that
+ * recognises them adds them here).
+ *
+ * Source of truth for the granted-permission store's namespace
+ * intersection — see
+ * `eliza/packages/docs/architecture/app-permissions-granted-store.md`.
+ */
+export const RECOGNISED_PERMISSION_NAMESPACES = ["fs", "net"] as const;
+export type RecognisedPermissionNamespace =
+  (typeof RECOGNISED_PERMISSION_NAMESPACES)[number];
+
+/**
+ * Returns the recognised namespaces actually declared by a parsed
+ * manifest. This is what a consent UI should render as toggleable rows.
+ */
+export function recognisedNamespacesFor(
+  manifest: AppPermissionsManifest,
+): RecognisedPermissionNamespace[] {
+  const out: RecognisedPermissionNamespace[] = [];
+  if (manifest.fs !== undefined) out.push("fs");
+  if (manifest.net !== undefined) out.push("net");
+  return out;
+}
+
+/**
+ * Returns the recognised namespaces actually declared by a raw
+ * `requestedPermissions` object as persisted on `AppRegistryEntry`.
+ * Equivalent to `recognisedNamespacesFor(parseAppPermissions(raw))`
+ * when the raw shape is well-formed, but tolerant of malformed
+ * persisted state (returns `[]` rather than throwing).
+ */
+export function recognisedNamespacesForRaw(
+  raw: Record<string, unknown> | null | undefined,
+): RecognisedPermissionNamespace[] {
+  if (!raw) return [];
+  const result = parseAppPermissions(raw);
+  if (result.ok === false) return [];
+  return recognisedNamespacesFor(result.manifest);
+}
+
 export interface FsPermissions {
   read?: string[];
   write?: string[];
