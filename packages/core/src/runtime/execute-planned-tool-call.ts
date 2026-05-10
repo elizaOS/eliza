@@ -352,10 +352,55 @@ function actionResultToStreamingResult(
 	} as ToolCall["result"];
 }
 
+/**
+ * Operator-supplied override map from the `ACTION_ROLE_POLICY` env var.
+ *
+ * Shape: `{"<ACTION_NAME>": "<RoleGateRole>", ...}` — e.g.
+ * `{"BASH":"GUEST","WEB_FETCH":"MEMBER"}`.
+ *
+ * When an action name appears in this policy, its declared `contextGate` is
+ * bypassed and access is decided solely by whether the caller satisfies the
+ * policy's minimum role. Use it to whitelist actions whose upstream
+ * `contextGate` is narrower than a particular deployment needs.
+ */
+let cachedActionRolePolicy: Record<string, RoleGateRole> | undefined;
+function readActionRolePolicy(): Record<string, RoleGateRole> {
+	if (cachedActionRolePolicy !== undefined) {
+		return cachedActionRolePolicy;
+	}
+	const raw = process.env.ACTION_ROLE_POLICY;
+	if (!raw) {
+		cachedActionRolePolicy = {};
+		return cachedActionRolePolicy;
+	}
+	try {
+		const parsed = JSON.parse(raw);
+		cachedActionRolePolicy =
+			parsed && typeof parsed === "object" && !Array.isArray(parsed)
+				? (parsed as Record<string, RoleGateRole>)
+				: {};
+	} catch {
+		cachedActionRolePolicy = {};
+	}
+	return cachedActionRolePolicy;
+}
+
+/** Test seam — clears the cached `ACTION_ROLE_POLICY` parse. */
+export function _resetActionRolePolicyCacheForTests(): void {
+	cachedActionRolePolicy = undefined;
+}
+
 function getGateFailure(
 	action: Action,
 	ctx: ExecutePlannedToolCallContext,
 ): string | undefined {
+	const policyRole = readActionRolePolicy()[action.name];
+	if (policyRole) {
+		return satisfiesRoleGate(ctx.userRoles, { minRole: policyRole })
+			? undefined
+			: `Action ${action.name} is not allowed for the current role`;
+	}
+
 	const contextGate = action.contextGate ?? {
 		contexts: action.contexts,
 		roleGate: action.roleGate,

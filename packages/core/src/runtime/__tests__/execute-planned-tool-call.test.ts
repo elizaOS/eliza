@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	getConnectorAccountManager,
 	InMemoryConnectorAccountStorage,
@@ -9,7 +9,10 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "../../types";
-import { executePlannedToolCall } from "../execute-planned-tool-call";
+import {
+	_resetActionRolePolicyCacheForTests,
+	executePlannedToolCall,
+} from "../execute-planned-tool-call";
 
 type ExecuteToolCallTestRuntime = Pick<IAgentRuntime, "actions"> & {
 	logger: Pick<IAgentRuntime["logger"], "debug" | "warn" | "error">;
@@ -218,6 +221,114 @@ describe("executePlannedToolCall", () => {
 		expect(result.success).toBe(false);
 		expect(String(result.error)).toContain("not allowed");
 		expect(handler).not.toHaveBeenCalled();
+	});
+
+	describe("ACTION_ROLE_POLICY override", () => {
+		const ORIGINAL = process.env.ACTION_ROLE_POLICY;
+		afterEach(() => {
+			if (ORIGINAL === undefined) {
+				delete process.env.ACTION_ROLE_POLICY;
+			} else {
+				process.env.ACTION_ROLE_POLICY = ORIGINAL;
+			}
+			_resetActionRolePolicyCacheForTests();
+		});
+
+		it("allows a context-gated action when policy lists it and caller meets the role", async () => {
+			process.env.ACTION_ROLE_POLICY = JSON.stringify({ GATED: "GUEST" });
+			_resetActionRolePolicyCacheForTests();
+			const handler = vi.fn(async () => ({ success: true }));
+			const action = makeAction({
+				name: "GATED",
+				contextGate: { anyOf: ["admin"] },
+				roleGate: { minRole: "OWNER" },
+				handler,
+			});
+
+			const result = await executePlannedToolCall(
+				makeRuntime([action]),
+				{
+					message: makeMessage(),
+					activeContexts: ["general"],
+					userRoles: ["GUEST"],
+				},
+				{ name: "GATED", params: {} },
+			);
+
+			expect(result.success).toBe(true);
+			expect(handler).toHaveBeenCalledOnce();
+		});
+
+		it("rejects a policy-listed action when caller is below the policy role", async () => {
+			process.env.ACTION_ROLE_POLICY = JSON.stringify({ GATED: "ADMIN" });
+			_resetActionRolePolicyCacheForTests();
+			const handler = vi.fn(async () => ({ success: true }));
+			const action = makeAction({
+				name: "GATED",
+				contextGate: { anyOf: ["admin"] },
+				roleGate: { minRole: "OWNER" },
+				handler,
+			});
+
+			const result = await executePlannedToolCall(
+				makeRuntime([action]),
+				{
+					message: makeMessage(),
+					activeContexts: ["admin"],
+					userRoles: ["GUEST"],
+				},
+				{ name: "GATED", params: {} },
+			);
+
+			expect(result.success).toBe(false);
+			expect(String(result.error)).toContain("not allowed");
+			expect(handler).not.toHaveBeenCalled();
+		});
+
+		it("falls through to the normal contextGate when the action is absent from the policy", async () => {
+			process.env.ACTION_ROLE_POLICY = JSON.stringify({ OTHER: "GUEST" });
+			_resetActionRolePolicyCacheForTests();
+			const handler = vi.fn(async () => ({ success: true }));
+			const action = makeAction({
+				name: "GATED",
+				contextGate: { anyOf: ["admin"] },
+				roleGate: { minRole: "OWNER" },
+				handler,
+			});
+
+			const result = await executePlannedToolCall(
+				makeRuntime([action]),
+				{
+					message: makeMessage(),
+					activeContexts: ["general"],
+					userRoles: ["GUEST"],
+				},
+				{ name: "GATED", params: {} },
+			);
+
+			expect(result.success).toBe(false);
+			expect(String(result.error)).toContain("not allowed");
+			expect(handler).not.toHaveBeenCalled();
+		});
+
+		it("ignores malformed ACTION_ROLE_POLICY (treats as empty)", async () => {
+			process.env.ACTION_ROLE_POLICY = "not-json";
+			_resetActionRolePolicyCacheForTests();
+			const handler = vi.fn(async () => ({ success: true }));
+			const action = makeAction({
+				name: "PLAIN_ACTION",
+				handler,
+			});
+
+			const result = await executePlannedToolCall(
+				makeRuntime([action]),
+				{ message: makeMessage() },
+				{ name: "PLAIN_ACTION", params: {} },
+			);
+
+			expect(result.success).toBe(true);
+			expect(handler).toHaveBeenCalledOnce();
+		});
 	});
 
 	it("denies execution when connector account policy is not satisfied", async () => {
