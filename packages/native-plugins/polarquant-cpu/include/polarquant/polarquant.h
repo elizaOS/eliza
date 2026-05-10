@@ -11,9 +11,11 @@
  * Centroids live in polar_centroids.h and are committed to the tree
  * (regenerated bit-for-bit by scripts/gen_centroids.py).
  *
- * This is the scalar reference; NEON / AVX2 / Metal kernels are
- * separate files added in a follow-up.  See README.md for the
- * integration path into Apothic-AI/llama.cpp-1bit-turboquant.
+ * This header now covers the scalar reference *and* the SIMD ports
+ * (AVX2 + NEON, declared further down).  Metal kernels live in the
+ * fork's `ggml-metal.metal` and are out of scope for this library.
+ * See README.md for the integration path into the Apothic
+ * llama.cpp-1bit-turboquant fork.
  */
 
 #ifndef POLARQUANT_POLARQUANT_H
@@ -123,6 +125,63 @@ void ggml_vec_dot_q4_polar_q8_0_ref(
  * xorshift32 and reading 128 bits.  See polar_block.h for the impl.
  */
 void polar_qjl_signs(float * out);
+
+/* ----- SIMD variants (decoder + dot) -------------------------------- */
+
+/* AVX2 + NEON ports of the dequantizer and the dot kernel.  The encoder
+ * remains scalar (it runs once per weight tensor at convert time, not
+ * in the inference hot path); the decode + dot pair are the hot
+ * kernels and warrant SIMD.
+ *
+ * Each per-arch TU is gated by the matching predefined macro
+ * (`__AVX2__`, `__ARM_NEON`/`__ARM_NEON__`).  On a host that doesn't
+ * support the arch, the TU compiles to an empty object — so the
+ * library stays single-target without #ifdef gymnastics in CMake.
+ */
+void dequantize_row_q4_polar_avx2(
+    const block_q4_polar * x,
+    float * y,
+    int64_t k,
+    int use_qjl);
+void dequantize_row_q4_polar_neon(
+    const block_q4_polar * x,
+    float * y,
+    int64_t k,
+    int use_qjl);
+
+void ggml_vec_dot_q4_polar_q8_0_avx2(
+    int n,
+    float * s,
+    const block_q4_polar * x,
+    const struct block_q8_0 * y,
+    int use_qjl);
+void ggml_vec_dot_q4_polar_q8_0_neon(
+    int n,
+    float * s,
+    const block_q4_polar * x,
+    const struct block_q8_0 * y,
+    int use_qjl);
+
+/* Best-available dispatchers — the runtime entry points the
+ * llama.cpp integration patch wires into the type-traits table.
+ * These pick AVX2 / NEON / ref at compile time based on the active
+ * arch so callers never need an arch ifdef.
+ */
+void dequantize_row_q4_polar(
+    const block_q4_polar * x,
+    float * y,
+    int64_t k,
+    int use_qjl);
+
+void ggml_vec_dot_q4_polar_q8_0(
+    int n,
+    float * s,
+    const block_q4_polar * x,
+    const struct block_q8_0 * y,
+    int use_qjl);
+
+/* Active SIMD path string for diagnostics ("avx2" / "neon" / "ref"). */
+const char * polarquant_active_simd(void);
 
 #ifdef __cplusplus
 }

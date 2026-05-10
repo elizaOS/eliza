@@ -60,12 +60,13 @@ real error message; commit on `worktree-agent-af5238436024dfb1d`).
 | `looksLikeBonsai(modelPath)` auto-routing | `aosp-llama-adapter.ts` | Any GGUF whose filename matches `/bonsai/i` auto-selects `{k:"tbq4_0", v:"tbq3_0"}`. |
 | `looksLikeQjl(modelPath)` + `qjl1_256` cache type | `aosp-llama-adapter.ts` (worktree-agent-a55644a05aeeed035 commit `f674c14160`) | Set `ELIZA_LLAMA_CACHE_TYPE_K=qjl1_256` to compose with TBQ V. Auto-detect QJL > Bonsai precedence. |
 | `block_qjl1_256` + `GGML_OP_ATTN_SCORE_QJL` | `/tmp/llama-cpp-qjl @ qjl-kcache` (4 commits, NOT in shipped fork yet) | Not pushed to GitHub; vendor commit on Apothic side needed before next AOSP rebuild picks it up. |
-| `block_q4_polar` (`Q4_POLAR=45`) | `/tmp/llama-cpp-polar @ polarquant-q4` (4 commits, NOT in shipped fork yet) | Same — vendor + push to Apothic remote required. |
+| `block_q4_polar` (`Q4_POLAR=45`) — CPU kernels | `packages/native-plugins/polarquant-cpu/` (worktree-agent-afd1a696836234b22) | ✓ scalar + AVX2 + NEON dequantizer/dot land in the standalone library; SIMD-vs-scalar parity gated by `test/polar_simd_parity_test.c` (AVX2 path passes at max-abs ~5e-7 / dot rel-err ~2e-7 on 100 blocks; NEON cross-compiles cleanly under `aarch64-linux-gnu`). |
+| `block_q4_polar` — in-fork integration | `packages/native-plugins/polarquant-cpu/fork-integration/` | Staged but **not yet applied to the Apothic remote**. Drop-in `quants-polar.{h,c}` + 5 patches (`ggml-common.h`, `ggml.h`, `ggml-cpu.c`, `ggml-quants.c`, `ggml/src/ggml-cpu/CMakeLists.txt`). Vendor PR + Wikitext-2 PPL gate before `compile-libllama.mjs` pin bump. |
 | Speculative-decoding API | source landed (`aosp-dflash-adapter.ts`, llama-server cross-compile in `compile-libllama.mjs`); **not built** | Build env blocker (#16). |
 | Capacitor Android local-agent runtime | source landed (worktree-agent-a58ffa46f33215b6a) | ElizaAgentService gated on AOSP_BUILD; in-WebView local-agent kernel (`local-agent-kernel.ts`) generalized for both iOS and Android; shared TBQ resolver across adapters. |
 | Catalog `tokenizerFamily` field + DFlash pair guard | source landed (worktree-agent-a3b48813556536b5d commit `04a3fdb24d`) | Tests pass. |
 | QJL standalone kernel library | `packages/native-plugins/qjl-cpu/` (worktree-agent-a7e72f45ecf16deab) | 1100 LOC, scalar+AVX2+NEON, 100/100 bit-parity vs Python ref. |
-| PolarQuant standalone kernel library | `packages/native-plugins/polarquant-cpu/` (worktree-agent-a57094061cb3d026d) | 1871 LOC (C+Python), scalar kernels + safetensors→GGUF converter. |
+| PolarQuant standalone kernel library | `packages/native-plugins/polarquant-cpu/` (worktree-agent-a57094061cb3d026d → worktree-agent-afd1a696836234b22) | C+Python, scalar + AVX2 + NEON kernels, safetensors→GGUF converter, in-fork drop-in (`fork-integration/`). |
 | Benchmark harness | `scripts/benchmark/profile-inference.mjs` (commit `df5624f154`) | 48-combo matrix, stub-validated, ready when the build env unblocks. |
 | iOS / macOS Metal kernels | NOT done | Tasks #21, #22 — agents hit Anthropic usage cap. Resume after May 13 11pm PT reset. |
 
