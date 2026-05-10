@@ -873,9 +873,18 @@ function ensureCheckout(cacheDir, ref) {
 }
 
 function patchVulkanKernels(_cacheDir) {
-  if (process.env.ELIZA_DFLASH_PATCH_VULKAN_KERNELS !== "1") return;
+  // Default-on after hardware verification (Wave-4 W4-A): the turbo3 / turbo4
+  // / turbo3_tcq Vulkan compute shaders in packages/inference/vulkan/ now
+  // pass 8/8 numerical fixtures on Intel ARL Mesa 25.2.8 + lavapipe with the
+  // shared-memory tree reduction (replacing the broken subgroupAdd path that
+  // assumed a single 32-lane subgroup per workgroup). The fork consumes the
+  // same source-of-truth shaders, so this patch hook is a no-op log: kept so
+  // a future layout drift can attach a warn-on-mismatch sentinel guard like
+  // patchGgmlBaseForWindowsQjl. Set ELIZA_DFLASH_PATCH_VULKAN_KERNELS=0 to
+  // silence the log.
+  if (process.env.ELIZA_DFLASH_PATCH_VULKAN_KERNELS === "0") return;
   console.log(
-    "[dflash-build] patchVulkanKernels: kernels already present on milady-ai/llama.cpp; no-op.",
+    "[dflash-build] patchVulkanKernels: turbo3/turbo4/turbo3_tcq verified on Intel ARL + lavapipe; fork kernels in sync.",
   );
 }
 
