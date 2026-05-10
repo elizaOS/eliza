@@ -466,6 +466,33 @@ export async function runPlannerLoop(
 			finalMessage,
 		};
 	}
+	// Iteration cap reached without a synthesised user-facing message. Without a
+	// fallback the connector has nothing to send and the user sees silence — the
+	// same trajectory shows planner→tool→evaluation iterating with no progress.
+	// Prefer the planner's last explicit `messageToUser` if present; otherwise
+	// emit a deterministic, honest failure reply so the user knows what happened.
+	if (!evaluator.messageToUser) {
+		const cappedMessage =
+			lastPlannerExplicitMessageToUser ??
+			"I tried several steps but couldn't finish that. Try rephrasing the request or breaking it into smaller pieces.";
+		params.runtime.logger?.warn?.(
+			{
+				maxPlannerIterations: config.maxPlannerIterations,
+				steps: trajectory.steps.length,
+				usedExplicitPlannerMessage: typeof lastPlannerExplicitMessageToUser === "string",
+			},
+			"Planner loop reached iteration cap without a synthesised reply; emitting fallback messageToUser",
+		);
+		return {
+			status: "continued",
+			trajectory,
+			evaluator: {
+				...evaluator,
+				messageToUser: cappedMessage,
+			},
+			finalMessage: cappedMessage,
+		};
+	}
 	return {
 		status: "continued",
 		trajectory,
