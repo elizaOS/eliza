@@ -73,6 +73,8 @@ interface ListFilter {
 }
 
 interface PluginParams {
+  action?: PluginOp;
+  subaction?: PluginOp;
   op?: PluginOp;
   type?: PluginType;
   pluginId?: string;
@@ -809,10 +811,10 @@ export const pluginAction: Action = {
   ): Promise<ActionResult> => {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as PluginParams;
-    const op = params.op;
+    const op = params.action ?? params.subaction ?? params.op;
     if (!op || !PLUGIN_OPS.includes(op)) {
       return fail(
-        `op is required and must be one of ${PLUGIN_OPS.join(", ")}.`,
+        `action is required and must be one of ${PLUGIN_OPS.join(", ")}.`,
         "PLUGIN_INVALID",
       );
     }
@@ -867,7 +869,7 @@ export const pluginAction: Action = {
   },
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "Operation to perform.",
       required: true,
       schema: { type: "string" as const, enum: [...PLUGIN_OPS] },

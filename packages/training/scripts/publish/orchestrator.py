@@ -26,7 +26,7 @@ Stages, in order, with hard exits on failure:
    validator enforces the same rule.
 5. **README render.** Render ``templates/README.md.j2`` with the
    manifest as the data context. Same data, no marketing buzzwords, no
-   user-visible Qwen/Llama strings.
+   user-visible upstream model-family strings.
 6. **HF push.** Upload weights, manifest, README, licenses, eval blobs
    to ``elizaos/eliza-1-<tier>`` via ``huggingface_hub``. Tag the
    local training repo with ``eliza-1-<tier>-v<version>`` + the
@@ -518,12 +518,11 @@ def _build_lineage(
 ) -> dict[str, LineageEntry]:
     """Read lineage from ``bundle/lineage.json`` if present, else defaults.
 
-    The defaults are deliberately minimal — they reflect the public
-    backbones from inference/AGENTS.md §1. A real publish should ship
-    a hand-written ``lineage.json`` with exact upstream commits.
+    The defaults are deliberately minimal. A real publish should ship a
+    hand-written ``lineage.json`` with exact upstream commits.
     """
     defaults: dict[str, LineageEntry] = {
-        "text": LineageEntry(base="qwen3.5-family", license="apache-2.0"),
+        "text": LineageEntry(base="eliza-1-family", license="apache-2.0"),
         "voice": LineageEntry(
             base=VOICE_BACKBONE_BY_TIER[tier], license="apache-2.0"
         ),

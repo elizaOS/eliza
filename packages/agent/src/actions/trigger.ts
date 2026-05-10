@@ -68,6 +68,8 @@ const MAX_TRIGGERS_PER_CREATOR = 100;
 const DEFAULT_INTERVAL_MS = 12 * 60 * 60 * 1000;
 
 interface TriggerParameters {
+  action?: string;
+  subaction?: string;
   op?: string;
   taskId?: string;
   triggerType?: string;
@@ -533,7 +535,7 @@ export const triggerAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: [],
   description:
-    "Recurring/scheduled trigger lifecycle. Op-based dispatch (create / update / delete / run / toggle). Supports interval, once, and cron schedules with wakeMode control.",
+    "Recurring/scheduled trigger lifecycle. Action-based dispatch (create / update / delete / run / toggle). Supports interval, once, and cron schedules with wakeMode control.",
   descriptionCompressed:
     "trigger lifecycle: create update delete run toggle (interval|once|cron)",
   suppressPostActionContinuation: true,
@@ -544,7 +546,8 @@ export const triggerAction: Action = {
     _state?: State,
     options?: HandlerOptions,
   ): Promise<boolean> => {
-    const op = readString(readParams(options).op);
+    const params = readParams(options);
+    const op = readString(params.action ?? params.subaction ?? params.op);
     return op !== undefined && isTriggerOp(op);
   },
 
@@ -556,11 +559,11 @@ export const triggerAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = readParams(options);
-    const opRaw = readString(params.op)?.toLowerCase();
+    const opRaw = readString(params.action ?? params.subaction ?? params.op)?.toLowerCase();
     if (!opRaw || !isTriggerOp(opRaw)) {
       const result = failed(
         "invalid",
-        `Invalid op. Expected one of: ${TRIGGER_OPS.join(", ")}.`,
+        `Invalid action. Expected one of: ${TRIGGER_OPS.join(", ")}.`,
         "TRIGGER_INVALID",
       );
       if (callback) {
@@ -601,8 +604,8 @@ export const triggerAction: Action = {
 
   parameters: [
     {
-      name: "subaction",
-      description: `Sub-action: ${TRIGGER_OPS.join(", ")}.`,
+      name: "action",
+      description: `Action: ${TRIGGER_OPS.join(", ")}.`,
       required: true,
       schema: { type: "string" as const, enum: [...TRIGGER_OPS] },
     },

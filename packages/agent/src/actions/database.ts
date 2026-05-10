@@ -38,6 +38,8 @@ const DATABASE_OPS = [
 type DatabaseOp = (typeof DATABASE_OPS)[number];
 
 interface DatabaseParams {
+  action?: DatabaseOp;
+  subaction?: DatabaseOp;
   op?: DatabaseOp;
   // list_tables
   filter?: string;
@@ -666,12 +668,12 @@ async function databaseHandler(
   options: unknown,
 ): Promise<ActionResult> {
   const params = getParams(options);
-  const op = params.op;
+  const op = params.action ?? params.subaction ?? params.op;
 
   if (!isDatabaseOp(op)) {
     return {
       success: false,
-      text: `op is required and must be one of: ${DATABASE_OPS.join(", ")}.`,
+      text: `action is required and must be one of: ${DATABASE_OPS.join(", ")}.`,
       values: {
         error: "DATABASE_INVALID",
         received: typeof op === "string" ? op : null,
@@ -737,8 +739,8 @@ export const databaseAction: Action = {
     databaseHandler(runtime, options),
   parameters: [
     {
-      name: "subaction",
-      description: `Op to perform. One of: ${DATABASE_OPS.join(", ")}.`,
+      name: "action",
+      description: `Action to perform. One of: ${DATABASE_OPS.join(", ")}.`,
       required: true,
       schema: { type: "string" as const, enum: [...DATABASE_OPS] },
     },

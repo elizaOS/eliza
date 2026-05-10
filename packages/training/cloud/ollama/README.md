@@ -12,7 +12,7 @@ public `elizaos/eliza-1-Nb-gguf` sibling repos on HuggingFace.
 ## Build
 
 Each Modelfile ships with the canonical Eliza system prompt, the
-ChatML stop tokens used by Qwen3.5/3.6, and per-size context /
+ChatML stop tokens used by Eliza-1, and per-size context /
 sampling defaults.
 
 ```bash

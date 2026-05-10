@@ -22,6 +22,7 @@ const MEMORY_TYPES = ["messages", "memories", "facts", "documents"] as const;
 type MemoryType = (typeof MEMORY_TYPES)[number];
 
 interface MemoryParams {
+  action?: MemoryOp;
   op?: MemoryOp;
   subaction?: MemoryOp;
   text?: string;
@@ -51,7 +52,7 @@ function fail(text: string, error: string): ActionResult {
 }
 
 function normalizeMemoryOp(params: MemoryParams): MemoryOp | undefined {
-  const candidate = params.op ?? params.subaction;
+  const candidate = params.action ?? params.subaction ?? params.op;
   return candidate && MEMORY_OPS.includes(candidate) ? candidate : undefined;
 }
 
@@ -372,7 +373,7 @@ export const memoryAction: Action = {
   },
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "Operation to perform.",
       required: false,
       schema: { type: "string" as const, enum: [...MEMORY_OPS] },
@@ -380,7 +381,7 @@ export const memoryAction: Action = {
     {
       name: "op",
       description:
-        "Legacy alias for subaction. Use create, search, update, or delete.",
+        "Legacy alias for action. Use create, search, update, or delete.",
       required: false,
       schema: { type: "string" as const, enum: [...MEMORY_OPS] },
     },
