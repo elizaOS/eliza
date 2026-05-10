@@ -6,11 +6,6 @@ import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type {
-  SwarmEvent,
-  TaskCompletionSummary,
-  TaskContext,
-} from "@elizaos/app-task-coordinator";
 import {
   type AgentRuntime,
   ChannelType,
@@ -34,6 +29,49 @@ import {
 import { resolveAppUserName } from "./server-helpers.ts";
 import type { ConversationMeta, ServerState } from "./server-types.ts";
 import { routeTaskAgentTextToConnector } from "./task-agent-message-routing.ts";
+
+interface TaskContext {
+  threadId: string;
+  taskNodeId?: string;
+  sessionId: string;
+  agentType: string;
+  label: string;
+  originalTask: string;
+  workdir: string;
+  repo?: string;
+  originRoomId?: string;
+  originMetadata?: Record<string, unknown>;
+  status: string;
+  decisions: unknown[];
+  autoResolvedCount: number;
+  registeredAt: number;
+  lastActivityAt: number;
+  idleCheckCount: number;
+  taskDelivered: boolean;
+  completionSummary?: string;
+  validationSummary?: string;
+  lastSeenDecisionIndex: number;
+  lastInputSentAt?: number;
+  stoppedAt?: number;
+}
+
+interface SwarmEvent {
+  type: string;
+  sessionId: string;
+  timestamp: number;
+  data: unknown;
+}
+
+interface TaskCompletionSummary {
+  sessionId: string;
+  label: string;
+  agentType: string;
+  originalTask: string;
+  status: string;
+  completionSummary: string;
+  validationSummary?: string;
+  [key: string]: unknown;
+}
 
 // ---------------------------------------------------------------------------
 // Autonomy -> User message routing

@@ -257,6 +257,7 @@ export async function runShell(
   }
 
   if (mode === "local-safe") {
+    assertShellCapability(req, mode, `sandbox.${req.toolName}`);
     if (process.platform === "win32") {
       throw new Error(
         "[shell-router] Windows local-safe sandbox not yet implemented",
@@ -268,7 +269,6 @@ export async function runShell(
         "[shell-router] local-safe mode requires SandboxManager but none is available",
       );
     }
-    assertShellCapability(req, mode, `sandbox.${req.toolName}`);
     return await runInSandbox(req, manager);
   }
 
