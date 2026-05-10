@@ -23,6 +23,17 @@ export interface ProviderCachePlanArgs {
 	provider?: string;
 	model?: string;
 	hasTools?: boolean;
+	/**
+	 * Stable id for the long-lived conversation this generation belongs to,
+	 * when one exists (chat handler: `roomId`; planner loop: trajectory
+	 * id). Local backends consume it as the strongest possible cache key
+	 * — a single conversation always lands on the same KV slot, no matter
+	 * how the prompt evolves turn-to-turn.
+	 *
+	 * Cloud providers ignore it: they already get prefix caching from the
+	 * stable-prefix hash, and don't expose a slot-pinning concept.
+	 */
+	conversationId?: string;
 }
 
 export interface AnthropicCacheControl {
@@ -73,16 +84,34 @@ export function buildProviderCachePlan(
 		openaiOptions.promptCacheRetention = "24h";
 	}
 
-	const providerOptions: Record<string, JsonValue | object | undefined> = {
-		eliza: {
-			promptCacheKey,
-			prefixHash: args.prefixHash,
-			...(segmentHashes ? { segmentHashes } : {}),
-			cachePlan: {
-				version: 1,
-				anthropicBreakpoints,
-			},
+	const elizaOptions: Record<string, JsonValue | object | undefined> = {
+		promptCacheKey,
+		prefixHash: args.prefixHash,
+		...(segmentHashes ? { segmentHashes } : {}),
+		cachePlan: {
+			version: 1,
+			anthropicBreakpoints,
 		},
+	};
+	if (args.conversationId && args.conversationId.length > 0) {
+		elizaOptions.conversationId = args.conversationId;
+	}
+	if (args.promptSegments && args.promptSegments.length > 0) {
+		// Local backends use this to compute a stable-prefix-only hash
+		// without re-parsing the rendered prompt. We strip everything but
+		// `content` + `stable` so the planner schema stays narrow.
+		const annotated = (
+			args.promptSegments as readonly { stable?: boolean; content?: string }[]
+		)
+			.filter((s) => typeof s.content === "string")
+			.map((s) => ({ content: String(s.content), stable: Boolean(s.stable) }));
+		if (annotated.length > 0) {
+			elizaOptions.promptSegments = annotated;
+		}
+	}
+
+	const providerOptions: Record<string, JsonValue | object | undefined> = {
+		eliza: elizaOptions,
 		cerebras: {
 			promptCacheKey,
 			prompt_cache_key: promptCacheKey,

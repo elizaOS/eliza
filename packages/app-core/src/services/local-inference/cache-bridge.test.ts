@@ -3,14 +3,20 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  type AnnotatedPromptSegment,
   buildModelHash,
   cacheRoot,
   DEFAULT_CACHE_TTLS,
   deriveSlotId,
   evictExpired,
+  extractAnnotatedSegments,
+  extractConversationId,
+  extractPrefixHash,
   extractPromptCacheKey,
+  hashStablePrefix,
   llamaCacheRoot,
   readCacheStats,
+  resolveLocalCacheKey,
   slotSavePath,
   ttlMsForKey,
 } from "./cache-bridge";
@@ -245,5 +251,197 @@ describe("cache-bridge extractPromptCacheKey", () => {
     expect(extractPromptCacheKey({ eliza: {} })).toBeNull();
     expect(extractPromptCacheKey({ eliza: { promptCacheKey: "" } })).toBeNull();
     expect(extractPromptCacheKey({ eliza: { promptCacheKey: 42 } })).toBeNull();
+  });
+});
+
+describe("cache-bridge stable-prefix hashing", () => {
+  it("hashes only the stable prefix and ignores tail drift", () => {
+    const stablePrefix: AnnotatedPromptSegment[] = [
+      { content: "system: you are a helpful assistant", stable: true },
+      { content: "tools: search, calculator", stable: true },
+    ];
+    const withTimestampA: AnnotatedPromptSegment[] = [
+      ...stablePrefix,
+      { content: "now: 2026-05-09T18:00:00Z", stable: false },
+    ];
+    const withTimestampB: AnnotatedPromptSegment[] = [
+      ...stablePrefix,
+      { content: "now: 2026-05-09T18:00:01Z", stable: false },
+    ];
+    const hashA = hashStablePrefix(withTimestampA);
+    const hashB = hashStablePrefix(withTimestampB);
+    expect(hashA).not.toBeNull();
+    expect(hashB).toBe(hashA);
+  });
+
+  it("returns null when no stable segment exists", () => {
+    expect(
+      hashStablePrefix([
+        { content: "tail only", stable: false },
+        { content: "more tail", stable: false },
+      ]),
+    ).toBeNull();
+  });
+
+  it("stops at the first unstable segment so a later stable does not contribute", () => {
+    const a: AnnotatedPromptSegment[] = [
+      { content: "stable-1", stable: true },
+      { content: "unstable-1", stable: false },
+      { content: "stable-2-late", stable: true },
+    ];
+    const b: AnnotatedPromptSegment[] = [
+      { content: "stable-1", stable: true },
+      { content: "unstable-2-different", stable: false },
+      { content: "stable-2-late", stable: true },
+    ];
+    expect(hashStablePrefix(a)).toBe(hashStablePrefix(b));
+    expect(hashStablePrefix([{ content: "stable-1", stable: true }])).toBe(
+      hashStablePrefix(a),
+    );
+  });
+
+  it("returns 16 hex chars when input is non-empty stable", () => {
+    const hash = hashStablePrefix([{ content: "x", stable: true }]);
+    expect(hash).not.toBeNull();
+    expect(hash).toMatch(/^[0-9a-f]{16}$/);
+  });
+});
+
+describe("cache-bridge extractAnnotatedSegments", () => {
+  it("reads valid {content,stable} arrays from providerOptions.eliza", () => {
+    const input = {
+      eliza: {
+        promptSegments: [
+          { content: "a", stable: true },
+          { content: "b", stable: false },
+        ],
+      },
+    };
+    expect(extractAnnotatedSegments(input)).toEqual([
+      { content: "a", stable: true },
+      { content: "b", stable: false },
+    ]);
+  });
+
+  it("returns null on malformed segments", () => {
+    expect(extractAnnotatedSegments(null)).toBeNull();
+    expect(extractAnnotatedSegments({})).toBeNull();
+    expect(extractAnnotatedSegments({ eliza: {} })).toBeNull();
+    expect(
+      extractAnnotatedSegments({
+        eliza: { promptSegments: [{ stable: true }] },
+      }),
+    ).toBeNull();
+    expect(
+      extractAnnotatedSegments({
+        eliza: { promptSegments: [{ content: "x" }] },
+      }),
+    ).toBeNull();
+    expect(
+      extractAnnotatedSegments({
+        eliza: { promptSegments: "not-an-array" },
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("cache-bridge extractConversationId", () => {
+  it("reads from providerOptions.eliza.conversationId", () => {
+    expect(extractConversationId({ eliza: { conversationId: "room-1" } })).toBe(
+      "room-1",
+    );
+  });
+
+  it("returns null when missing or empty", () => {
+    expect(extractConversationId(null)).toBeNull();
+    expect(extractConversationId({})).toBeNull();
+    expect(extractConversationId({ eliza: {} })).toBeNull();
+    expect(extractConversationId({ eliza: { conversationId: "" } })).toBeNull();
+  });
+});
+
+describe("cache-bridge extractPrefixHash", () => {
+  it("reads from providerOptions.eliza.prefixHash", () => {
+    expect(extractPrefixHash({ eliza: { prefixHash: "abc123" } })).toBe(
+      "abc123",
+    );
+  });
+
+  it("returns null when missing or non-string", () => {
+    expect(extractPrefixHash(null)).toBeNull();
+    expect(extractPrefixHash({ eliza: { prefixHash: 42 } })).toBeNull();
+    expect(extractPrefixHash({ eliza: { prefixHash: "" } })).toBeNull();
+  });
+});
+
+describe("cache-bridge resolveLocalCacheKey precedence", () => {
+  it("prefers conversationId over everything else", () => {
+    const opts = {
+      eliza: {
+        conversationId: "room-1",
+        promptSegments: [{ content: "x", stable: true }],
+        prefixHash: "abc",
+        promptCacheKey: "v5:abc",
+      },
+    };
+    expect(resolveLocalCacheKey(opts)).toBe("conv:room-1");
+  });
+
+  it("falls through to stable-prefix hash when no conversationId", () => {
+    const opts = {
+      eliza: {
+        promptSegments: [
+          { content: "stable", stable: true },
+          { content: "now: 12345", stable: false },
+        ],
+        prefixHash: "abc",
+        promptCacheKey: "v5:abc",
+      },
+    };
+    const key = resolveLocalCacheKey(opts);
+    expect(key).not.toBeNull();
+    expect(key?.startsWith("seg:")).toBe(true);
+  });
+
+  it("falls through to prefixHash when no segments", () => {
+    expect(
+      resolveLocalCacheKey({
+        eliza: { prefixHash: "abc", promptCacheKey: "v5:abc" },
+      }),
+    ).toBe("pfx:abc");
+  });
+
+  it("falls through to promptCacheKey as last resort", () => {
+    expect(resolveLocalCacheKey({ eliza: { promptCacheKey: "v5:abc" } })).toBe(
+      "v5:abc",
+    );
+  });
+
+  it("returns null when nothing is provided", () => {
+    expect(resolveLocalCacheKey(null)).toBeNull();
+    expect(resolveLocalCacheKey({})).toBeNull();
+    expect(resolveLocalCacheKey({ eliza: {} })).toBeNull();
+  });
+
+  it("a runtime timestamp in the unstable tail does not change the cache key", () => {
+    const opts1 = {
+      eliza: {
+        promptSegments: [
+          { content: "system: you are helpful", stable: true },
+          { content: "tools: a, b, c", stable: true },
+          { content: "now: 2026-05-09T18:00:00Z", stable: false },
+        ],
+      },
+    };
+    const opts2 = {
+      eliza: {
+        promptSegments: [
+          { content: "system: you are helpful", stable: true },
+          { content: "tools: a, b, c", stable: true },
+          { content: "now: 2026-05-09T18:00:01Z", stable: false },
+        ],
+      },
+    };
+    expect(resolveLocalCacheKey(opts1)).toBe(resolveLocalCacheKey(opts2));
   });
 });
