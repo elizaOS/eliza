@@ -91,6 +91,14 @@ export interface SpawnOptions {
 	statePath?: string;
 	requestedPermissions?: Record<string, unknown> | null;
 	grantedNamespaces?: readonly string[];
+	/**
+	 * Absolute path to the app's plugin entry module. The worker
+	 * dynamically imports this and registers any actions the export
+	 * exposes. Omit to spawn a worker with only the in-line bridge
+	 * methods (ping/echo) — useful for tests that don't need plugin
+	 * loading.
+	 */
+	pluginEntryPath?: string;
 }
 
 export class AppWorkerHostService extends Service {
@@ -179,6 +187,7 @@ export class AppWorkerHostService extends Service {
 				statePath: options.statePath ?? null,
 				requestedPermissions: options.requestedPermissions ?? null,
 				grantedNamespaces: options.grantedNamespaces ?? [],
+				pluginEntryPath: options.pluginEntryPath ?? null,
 			},
 		});
 
@@ -200,9 +209,17 @@ export class AppWorkerHostService extends Service {
 					result?: unknown;
 					reason?: string;
 				};
-				if (msg.id === 0 && msg.ok === true) {
-					spawned.readyAt = Date.now();
-					resolve();
+				if (msg.id === 0) {
+					if (msg.ok === true) {
+						spawned.readyAt = Date.now();
+						resolve();
+					} else {
+						reject(
+							new Error(
+								msg.reason ?? "Worker boot failed (no reason supplied)",
+							),
+						);
+					}
 					return;
 				}
 				const pending = spawned.pending.get(msg.id);
