@@ -16,6 +16,7 @@
  * instead of crashing the process.
  */
 
+import type { LocalInferenceLoadArgs } from "./active-model";
 import type {
   GenerateArgs as BackendGenerateArgs,
   BackendPlan,
@@ -40,6 +41,45 @@ import {
 // from engine.ts without churn. backend.ts owns the canonical shape,
 // including the optional `cacheKey` for prefix reuse via the session pool.
 export type GenerateArgs = BackendGenerateArgs;
+
+/**
+ * Map a friendly KV cache type name (`"f16"`, `"q8_0"`, `"bf16"`, etc.) to
+ * the `keyof typeof GgmlType` shape node-llama-cpp expects for its
+ * experimental KV cache options. The binding's `resolveGgmlTypeOption`
+ * accepts case-sensitive keys (`F16`, `Q8_0`, `BF16`), so we uppercase
+ * the input.
+ *
+ * AOSP fork additions (`tbq3_0`, `tbq4_0`, `qjl1_256`) are caught by the
+ * desktop-only validation in active-model.ts before they reach here; this
+ * helper is intentionally agnostic so the same mapping can be reused if
+ * the in-process binding ever ships with the fork's GGML type table.
+ */
+function normalizeKvCacheTypeForBinding(name: string): string {
+  return name.trim().toUpperCase();
+}
+
+/**
+ * Project a fully-resolved `LocalInferenceLoadArgs` onto the subset that
+ * the dispatcher cares about. Keeps `BackendLoadOverrides` framework-free
+ * (no dependency on active-model.ts here) so backend.ts and engine.ts stay
+ * cycle-free.
+ */
+function toBackendLoadOverrides(
+  args: LocalInferenceLoadArgs,
+): BackendPlan["overrides"] {
+  const overrides: BackendPlan["overrides"] = {};
+  if (args.contextSize !== undefined) overrides.contextSize = args.contextSize;
+  if (args.cacheTypeK !== undefined) overrides.cacheTypeK = args.cacheTypeK;
+  if (args.cacheTypeV !== undefined) overrides.cacheTypeV = args.cacheTypeV;
+  if (args.gpuLayers !== undefined) overrides.gpuLayers = args.gpuLayers;
+  if (args.flashAttention !== undefined) {
+    overrides.flashAttention = args.flashAttention;
+  }
+  if (args.mmap !== undefined) overrides.mmap = args.mmap;
+  if (args.mlock !== undefined) overrides.mlock = args.mlock;
+  if (args.useGpu !== undefined) overrides.useGpu = args.useGpu;
+  return overrides;
+}
 
 interface LlamaContextSequence {
   dispose(): Promise<void>;
@@ -74,15 +114,35 @@ interface LlamaChatSessionCtor {
   new (args: { contextSequence: LlamaContextSequence }): LlamaChatSession;
 }
 
+/**
+ * KV cache type names accepted by the in-process binding. We pass the
+ * lowercase string name through to node-llama-cpp's `experimentalKvCache*`
+ * options — the binding's `resolveGgmlTypeOption` accepts either the enum
+ * value or the `keyof typeof GgmlType` string. Stock builds reject the
+ * apothic fork additions (`tbq3_0`, `tbq4_0`, `qjl1_256`); validation in
+ * `validateLocalInferenceLoadArgs` rejects those before they reach this
+ * layer on desktop.
+ */
+type StockKvCacheTypeName = string;
+
 interface LlamaModel {
   createContext(args?: {
-    contextSize?: number;
+    contextSize?: number | "auto" | { min?: number; max?: number };
     /**
      * Per-context sequence count. Each `LlamaChatSession` lives on its own
      * sequence, and the session pool needs at least `poolSize` sequences
      * available — otherwise `getSequence()` throws once the pool is full.
      */
     sequences?: number;
+    flashAttention?: boolean;
+    /**
+     * Experimental KV cache key/value type override. node-llama-cpp 3.18.x
+     * exposes these as deprecated/experimental on `LlamaContextOptions`;
+     * we rely on them so the desktop path can honour `cacheTypeK/V`.
+     * Stock builds only accept entries from the `GgmlType` enum.
+     */
+    experimentalKvCacheKeyType?: StockKvCacheTypeName;
+    experimentalKvCacheValueType?: StockKvCacheTypeName;
   }): Promise<LlamaContext>;
   dispose(): Promise<void>;
 }
@@ -91,6 +151,9 @@ interface Llama {
   loadModel(args: {
     modelPath: string;
     gpuLayers?: number | "max" | "auto";
+    useMmap?: boolean;
+    useMlock?: boolean;
+    defaultContextFlashAttention?: boolean;
   }): Promise<LlamaModel>;
 }
 
@@ -193,6 +256,18 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
       (plan.modelId
         ? findCatalogModel(plan.modelId)?.runtime?.optimizations
         : undefined);
+    const overrides = plan.overrides;
+
+    // Resolve gpuLayers. Per-load override wins over `useGpu` opt-out
+    // (explicit `gpuLayers: N` from the API beats both the env default
+    // and the implicit "GPU on for chat models" assumption).
+    let gpuLayers: number | "max" | "auto" = "auto";
+    if (overrides?.gpuLayers !== undefined) {
+      gpuLayers = overrides.gpuLayers;
+    } else if (overrides?.useGpu === false) {
+      gpuLayers = 0;
+    }
+
     const loadOptions: {
       modelPath: string;
       gpuLayers: number | "max" | "auto";
@@ -201,11 +276,25 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
       defaultContextFlashAttention?: boolean;
     } = {
       modelPath,
-      gpuLayers: "auto",
+      gpuLayers,
     };
-    if (optimizations?.noMmap) loadOptions.useMmap = false;
-    if (optimizations?.mlock) loadOptions.useMlock = true;
-    if (optimizations?.flashAttention !== undefined) {
+    // Per-load overrides win over catalog defaults. The validation in
+    // `validateLocalInferenceLoadArgs` (called from active-model.ts)
+    // already rejected illegal values, so any value reaching here is
+    // safe to forward.
+    if (overrides?.mmap !== undefined) {
+      loadOptions.useMmap = overrides.mmap;
+    } else if (optimizations?.noMmap) {
+      loadOptions.useMmap = false;
+    }
+    if (overrides?.mlock !== undefined) {
+      loadOptions.useMlock = overrides.mlock;
+    } else if (optimizations?.mlock) {
+      loadOptions.useMlock = true;
+    }
+    if (overrides?.flashAttention !== undefined) {
+      loadOptions.defaultContextFlashAttention = overrides.flashAttention;
+    } else if (optimizations?.flashAttention !== undefined) {
       loadOptions.defaultContextFlashAttention = optimizations.flashAttention;
     }
 
@@ -216,7 +305,35 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
     // Reserve one sequence per pool slot. node-llama-cpp throws on
     // `getSequence()` once `sequencesLeft` hits 0, so the context must
     // be sized to the pool from the start.
-    const context = await model.createContext({ sequences: poolSize });
+    //
+    // contextSize: thread the per-load override into the binding's
+    // `LlamaContextOptions.contextSize`. Without this, the binding falls
+    // back to `"auto"` which adapts to current VRAM but never exceeds
+    // the smallest fitting size — a 128k-trained model loaded on a host
+    // with plenty of RAM would still get a 4-8k window. That was the
+    // exact "claims-128k-but-actually-8k" larp this task is fixing.
+    const ctxOptions: {
+      sequences: number;
+      contextSize?: number;
+      flashAttention?: boolean;
+      experimentalKvCacheKeyType?: string;
+      experimentalKvCacheValueType?: string;
+    } = { sequences: poolSize };
+    if (overrides?.contextSize !== undefined) {
+      ctxOptions.contextSize = overrides.contextSize;
+    }
+    if (overrides?.flashAttention !== undefined) {
+      ctxOptions.flashAttention = overrides.flashAttention;
+    }
+    if (overrides?.cacheTypeK !== undefined) {
+      ctxOptions.experimentalKvCacheKeyType =
+        normalizeKvCacheTypeForBinding(overrides.cacheTypeK);
+    }
+    if (overrides?.cacheTypeV !== undefined) {
+      ctxOptions.experimentalKvCacheValueType =
+        normalizeKvCacheTypeForBinding(overrides.cacheTypeV);
+    }
+    const context = await model.createContext(ctxOptions);
 
     const bindingModule = this.bindingModule;
     const sessionPool = new SessionPool<LlamaChatSession>({
@@ -374,14 +491,29 @@ export class LocalInferenceEngine {
     await this.dispatcher.unload();
   }
 
-  async load(modelPath: string): Promise<void> {
+  async load(
+    modelPath: string,
+    resolved?: LocalInferenceLoadArgs,
+  ): Promise<void> {
     const installed = await listInstalledModels();
     const target = installed.find((m) => m.path === modelPath);
     const catalog = target ? findCatalogModel(target.id) : undefined;
+
+    // Resolved args (when provided) carry the merged catalog defaults +
+    // per-load overrides from the active-model coordinator. Project them
+    // onto the dispatcher-level overrides shape — engine.load is also
+    // called directly by legacy callers that pass only a `modelPath`,
+    // in which case `resolved` is undefined and we keep the historical
+    // behaviour of trusting catalog defaults inside the backend.
+    const overrides = resolved
+      ? toBackendLoadOverrides(resolved)
+      : undefined;
+
     const plan: BackendPlan = {
       modelPath,
       modelId: target?.id,
       catalog,
+      overrides,
     };
 
     // Backwards compat with the previous "DFlash configured = pre-build the

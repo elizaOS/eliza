@@ -41,16 +41,17 @@
  *   GET    /api/health
  *
  * Per-call cache type / drafter pairing override:
- *   The current /api/local-inference/active endpoint reads cacheTypeK,
- *   cacheTypeV, and the dflash drafter pairing from the catalog entry's
- *   `runtime` block (see services/local-inference/active-model.ts
- *   resolveLocalInferenceLoadArgs). It does NOT accept per-load overrides
- *   in the request body. If a kvCacheConfig in the matrix differs from
- *   the catalog default, the harness records the request as a "config gap"
- *   and falls back to whatever the agent loaded — env-var injection
- *   (ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V) on the agent
- *   side is the documented workaround until the load endpoint grows
- *   programmatic overrides. This is recorded per-run in the report.
+ *   POST /api/local-inference/active accepts a per-load `overrides` block
+ *   (contextSize, cacheTypeK, cacheTypeV, gpuLayers, kvOffload,
+ *   flashAttention, mmap, mlock). The harness threads kvCacheConfig.k /
+ *   .v values from the matrix into that block so a real KV-cache codec
+ *   choice lands at load time instead of silently falling back to fp16.
+ *
+ *   Drafter pairing is still read from the catalog entry's
+ *   `runtime.dflash.drafterModelId` block — the load endpoint does not
+ *   yet accept a per-load drafter override. dflashConfig entries whose
+ *   `drafter` differs from the catalog default are recorded as a
+ *   `configGaps[]` entry and run with the catalog drafter.
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -428,12 +429,16 @@ function estimateTokens(text) {
 
 // ─── core run loop ──────────────────────────────────────────────────
 
-async function loadModel(client, modelId, { loadTimeoutMs }) {
+async function loadModel(client, modelId, { loadTimeoutMs, overrides }) {
   const startedAt = performance.now();
+  const body = { modelId };
+  if (overrides && Object.keys(overrides).length > 0) {
+    body.overrides = overrides;
+  }
   const result = await client.json(
     "POST",
     "/api/local-inference/active",
-    { modelId },
+    body,
     { timeoutMs: loadTimeoutMs },
   );
   const elapsed = performance.now() - startedAt;
@@ -445,6 +450,31 @@ async function loadModel(client, modelId, { loadTimeoutMs }) {
     throw err;
   }
   return { result, loadMs: elapsed };
+}
+
+/**
+ * Map a kvCacheConfig entry from the matrix into the `overrides` body
+ * accepted by POST /api/local-inference/active. `null` / empty entries
+ * skip the field so the catalog default applies.
+ */
+function buildLoadOverrides(kvCache) {
+  const overrides = {};
+  if (kvCache && typeof kvCache.k === "string" && kvCache.k.length > 0) {
+    overrides.cacheTypeK = kvCache.k;
+  }
+  if (kvCache && typeof kvCache.v === "string" && kvCache.v.length > 0) {
+    overrides.cacheTypeV = kvCache.v;
+  }
+  if (kvCache && typeof kvCache.contextSize === "number") {
+    overrides.contextSize = kvCache.contextSize;
+  }
+  if (kvCache && typeof kvCache.gpuLayers === "number") {
+    overrides.gpuLayers = kvCache.gpuLayers;
+  }
+  if (kvCache && typeof kvCache.flashAttention === "boolean") {
+    overrides.flashAttention = kvCache.flashAttention;
+  }
+  return overrides;
 }
 
 async function unloadModel(client, { loadTimeoutMs }) {
@@ -546,23 +576,19 @@ async function runOneCombination({
     loadMs: null,
     loadResult: null,
     configGaps: [],
+    appliedOverrides: null,
     warmupIterations: [],
     iterations: [],
     summary: null,
     error: null,
   };
 
-  // Document the config gap up front: the load endpoint can't currently
-  // accept per-call kvCache/drafter overrides. Run with the catalog
-  // defaults, but make it explicit in the report.
-  if (kvCache.k !== null || kvCache.v !== null) {
-    record.configGaps.push({
-      kind: "kv-cache-override-not-supported",
-      requested: { k: kvCache.k, v: kvCache.v },
-      workaround:
-        "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply.",
-    });
-  }
+  // KV-cache overrides are now first-class on POST /api/local-inference/active
+  // (see services/local-inference/active-model.ts:resolveLocalInferenceLoadArgs
+  // and api/local-inference-compat-routes.ts). The harness sends them
+  // through the load body, so kvCache.k / .v take effect at load time
+  // instead of being silently ignored. Drafter pairing remains a
+  // catalog-only knob — record that as the only remaining gap.
   if (dflash.drafter) {
     record.configGaps.push({
       kind: "drafter-override-not-supported",
@@ -572,9 +598,17 @@ async function runOneCombination({
     });
   }
 
+  const loadOverrides = buildLoadOverrides(kvCache);
+  if (Object.keys(loadOverrides).length > 0) {
+    record.appliedOverrides = loadOverrides;
+  }
+
   let conversation = null;
   try {
-    const loaded = await loadModel(client, model, { loadTimeoutMs });
+    const loaded = await loadModel(client, model, {
+      loadTimeoutMs,
+      overrides: loadOverrides,
+    });
     record.loadMs = loaded.loadMs;
     record.loadResult = loaded.result;
     conversation = await createConversation(
