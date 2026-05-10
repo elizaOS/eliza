@@ -22,13 +22,13 @@ console.log(`${getLogPrefix()} Script starting...`);
  *        (or via the dev script: bun run dev)
  */
 import process from "node:process";
-import { setRestartHandler } from "@elizaos/shared";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   colorizeDevSettingsStartupBanner,
   resolveApiToken,
   resolveDesktopApiPort,
+  setRestartHandler,
   syncResolvedApiPort,
 } from "@elizaos/shared";
 import { ensureAuthPairingCodeForRemoteAccess } from "../api/auth-pairing-compat-routes";

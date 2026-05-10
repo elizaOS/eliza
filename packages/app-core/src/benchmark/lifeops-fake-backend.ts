@@ -421,13 +421,25 @@ export class LifeOpsFakeBackend {
   // ----- calendar handlers ---------------------------------------------
 
   private createEvent(kw: Record<string, unknown>): CalendarEvent {
-    const calendarId = pickString(kw, ["calendar_id", "calendarId"], "cal_primary");
+    const calendarId = pickString(
+      kw,
+      ["calendar_id", "calendarId"],
+      "cal_primary",
+    );
     if (!this.stores.calendar[calendarId]) {
       throw new Error(`unknown calendar_id: ${calendarId}`);
     }
-    const eventId = pickString(kw, ["event_id", "eventId", "id"], `event_${nextSeq(this.stores.calendar_event, "event_")}`);
+    const eventId = pickString(
+      kw,
+      ["event_id", "eventId", "id"],
+      `event_${nextSeq(this.stores.calendar_event, "event_")}`,
+    );
     const title = pickString(kw, ["title", "summary"], "");
-    const start = pickString(kw, ["start", "start_iso", "starts_at"], this.nowIso);
+    const start = pickString(
+      kw,
+      ["start", "start_iso", "starts_at"],
+      this.nowIso,
+    );
     const end = pickString(kw, ["end", "end_iso", "ends_at"], start);
     const cal = this.stores.calendar[calendarId];
     const event: CalendarEvent = {
@@ -502,7 +514,10 @@ export class LifeOpsFakeBackend {
       if (fromFilter && !email.from_email.toLowerCase().includes(fromFilter)) {
         return false;
       }
-      if (subjectFilter && !email.subject.toLowerCase().includes(subjectFilter)) {
+      if (
+        subjectFilter &&
+        !email.subject.toLowerCase().includes(subjectFilter)
+      ) {
         return false;
       }
       if (freeText) {
@@ -515,7 +530,11 @@ export class LifeOpsFakeBackend {
   }
 
   private createDraft(kw: Record<string, unknown>): EmailMessage {
-    const id = pickString(kw, ["message_id", "id"], `draft_${nextSeq(this.stores.email, "draft_")}`);
+    const id = pickString(
+      kw,
+      ["message_id", "id"],
+      `draft_${nextSeq(this.stores.email, "draft_")}`,
+    );
     const threadId = pickString(kw, ["thread_id", "threadId"], `thread_${id}`);
     const draft: EmailMessage = {
       id,
@@ -549,7 +568,11 @@ export class LifeOpsFakeBackend {
       return updated;
     }
     // No draft to send — create a new sent message.
-    const id = pickString(kw, ["message_id", "id"], `sent_${nextSeq(this.stores.email, "sent_")}`);
+    const id = pickString(
+      kw,
+      ["message_id", "id"],
+      `sent_${nextSeq(this.stores.email, "sent_")}`,
+    );
     const threadId = pickString(kw, ["thread_id", "threadId"], `thread_${id}`);
     const msg: EmailMessage = {
       id,
@@ -592,7 +615,11 @@ export class LifeOpsFakeBackend {
   // ----- reminder handlers ---------------------------------------------
 
   private createReminder(kw: Record<string, unknown>): Reminder {
-    const listId = pickString(kw, ["list_id", "listId"], Object.keys(this.stores.reminder_list)[0] ?? "list_default");
+    const listId = pickString(
+      kw,
+      ["list_id", "listId"],
+      Object.keys(this.stores.reminder_list)[0] ?? "list_default",
+    );
     if (!this.stores.reminder_list[listId]) {
       this.stores.reminder_list[listId] = {
         id: listId,
@@ -600,7 +627,11 @@ export class LifeOpsFakeBackend {
         source: "apple-reminders",
       };
     }
-    const id = pickString(kw, ["reminder_id", "id"], `rem_${nextSeq(this.stores.reminder, "rem_")}`);
+    const id = pickString(
+      kw,
+      ["reminder_id", "id"],
+      `rem_${nextSeq(this.stores.reminder, "rem_")}`,
+    );
     const reminder: Reminder = {
       id,
       list_id: listId,
@@ -608,7 +639,7 @@ export class LifeOpsFakeBackend {
       notes: pickString(kw, ["notes"], ""),
       due_at: pickStringOrNull(kw, ["due_at", "dueAt", "due"]),
       completed_at: null,
-      priority: (pickString(kw, ["priority"], "none") as ReminderPriority),
+      priority: pickString(kw, ["priority"], "none") as ReminderPriority,
       tags: pickStringArray(kw, ["tags"]),
     };
     this.stores.reminder[id] = reminder;
@@ -626,7 +657,11 @@ export class LifeOpsFakeBackend {
 
   private listReminders(kw: Record<string, unknown>): Reminder[] {
     const listId = pickStringOrNull(kw, ["list_id", "listId"]);
-    const includeCompleted = pickBool(kw, ["include_completed", "includeCompleted"], false);
+    const includeCompleted = pickBool(
+      kw,
+      ["include_completed", "includeCompleted"],
+      false,
+    );
     return Object.values(this.stores.reminder).filter((reminder) => {
       if (listId && reminder.list_id !== listId) return false;
       if (!includeCompleted && reminder.completed_at !== null) return false;
@@ -637,10 +672,18 @@ export class LifeOpsFakeBackend {
   // ----- chat handlers --------------------------------------------------
 
   private sendMessage(kw: Record<string, unknown>): ChatMessage {
-    const conversationId = pickString(kw, ["conversation_id", "conversationId"], "");
+    const conversationId = pickString(
+      kw,
+      ["conversation_id", "conversationId"],
+      "",
+    );
     const conv = this.stores.conversation[conversationId];
     if (!conv) throw new Error(`unknown conversation_id: ${conversationId}`);
-    const id = pickString(kw, ["message_id", "id"], `msg_${nextSeq(this.stores.chat_message, "msg_")}`);
+    const id = pickString(
+      kw,
+      ["message_id", "id"],
+      `msg_${nextSeq(this.stores.chat_message, "msg_")}`,
+    );
     const msg: ChatMessage = {
       id,
       channel: conv.channel,
@@ -664,7 +707,11 @@ export class LifeOpsFakeBackend {
   // ----- note handlers --------------------------------------------------
 
   private createNote(kw: Record<string, unknown>): Note {
-    const id = pickString(kw, ["note_id", "id"], `note_${nextSeq(this.stores.note, "note_")}`);
+    const id = pickString(
+      kw,
+      ["note_id", "id"],
+      `note_${nextSeq(this.stores.note, "note_")}`,
+    );
     const note: Note = {
       id,
       title: pickString(kw, ["title"], ""),
@@ -684,7 +731,8 @@ export class LifeOpsFakeBackend {
     const q = pickString(kw, ["query", "q", "name"], "").toLowerCase();
     if (!q) return Object.values(this.stores.contact);
     return Object.values(this.stores.contact).filter((contact) => {
-      const haystack = `${contact.display_name} ${contact.given_name} ${contact.family_name} ${contact.primary_email}`.toLowerCase();
+      const haystack =
+        `${contact.display_name} ${contact.given_name} ${contact.family_name} ${contact.primary_email}`.toLowerCase();
       return haystack.includes(q);
     });
   }

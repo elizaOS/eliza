@@ -16,9 +16,9 @@
  */
 
 import {
-  type SqliteDatabase,
   isSqliteAvailable,
   openDatabase,
+  type SqliteDatabase,
 } from "../connectors/capacitor-sqlite.ts";
 
 export interface PersistenceAdapter {

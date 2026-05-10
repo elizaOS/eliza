@@ -16,7 +16,6 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import type { DrizzleDatabase } from "@elizaos/plugin-sql";
 import { AuthStore } from "../services/auth-store";
-import { extractHeaderValue } from "./auth.ts";
 import {
   appendAuditEvent,
   bootstrapExchangeLimiter,
@@ -24,6 +23,7 @@ import {
   serializeSessionCookie,
   verifyBootstrapToken,
 } from "./auth/index";
+import { extractHeaderValue } from "./auth.ts";
 import {
   type CompatRuntimeState,
   isLoopbackRemoteAddress,
