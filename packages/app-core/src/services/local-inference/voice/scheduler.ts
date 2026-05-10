@@ -60,7 +60,10 @@ export class VoiceScheduler {
     deps: SchedulerDeps,
     events: SchedulerEvents = {},
   ) {
-    this.chunker = new PhraseChunker(config.chunkerConfig);
+    this.chunker = new PhraseChunker(
+      config.chunkerConfig,
+      deps.phonemeTokenizer ?? null,
+    );
     this.preset = config.preset;
     this.backend = deps.backend;
     this.phraseCache = deps.phraseCache ?? new PhraseCache();

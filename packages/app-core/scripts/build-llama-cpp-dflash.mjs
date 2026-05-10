@@ -1654,9 +1654,9 @@ function build(args) {
   } else {
     // Legacy single-target mode.
     const backend = args.backend || detectBackend();
-    const arch = process.arch === "x64" ? "x64" : process.arch;
     const platform =
       process.platform === "win32" ? "windows" : process.platform;
+    const arch = nodeArchToTripleArch(platform);
     const legacyTarget = `${platform}-${arch}-${backend}`;
     targets = [legacyTarget];
     if (!SUPPORTED_TARGETS.includes(legacyTarget)) {
