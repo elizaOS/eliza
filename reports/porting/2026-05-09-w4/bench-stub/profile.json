@@ -1,0 +1,506 @@
+{
+  "schemaVersion": 1,
+  "target": "http://127.0.0.1:31339",
+  "label": "w4-final",
+  "streaming": true,
+  "configPath": "scripts/benchmark/configs/host-cpu.json",
+  "startedAt": "2026-05-10T05:05:24.948Z",
+  "finishedAt": "2026-05-10T05:05:28.379Z",
+  "config": {
+    "$schema": "../profile-config.schema.json",
+    "description": "Host CPU profiling matrix. Runs against the dev server when no GPU is detected. Excludes DFlash drafter pairings (CPU-only inference doesn't benefit from speculative decoding when the drafter shares the same NEON/AVX kernels) and the 1-bit QJL config (kernel not yet on host).",
+    "models": [
+      "llama-3.2-1b"
+    ],
+    "kvCacheConfigs": [
+      {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      }
+    ],
+    "dflashConfigs": [
+      {
+        "name": "no-dflash",
+        "drafter": null
+      }
+    ],
+    "prompts": [
+      {
+        "id": "short-q",
+        "text": "What is the capital of France?",
+        "maxTokens": 50
+      },
+      {
+        "id": "med-reason",
+        "text": "Explain in three sentences why the sky is blue.",
+        "maxTokens": 120
+      }
+    ],
+    "iterations": 3,
+    "warmupIterations": 1
+  },
+  "runs": [
+    {
+      "key": "llama-3.2-1b__baseline-fp16__no-dflash__short-q",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "short-q",
+        "maxTokens": 50
+      },
+      "startedAt": "2026-05-10T05:05:24.948Z",
+      "finishedAt": "2026-05-10T05:05:25.752Z",
+      "loadMs": 126.016173,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T05:05:25.073Z",
+        "status": "ready",
+        "loadedContextSize": null,
+        "loadedCacheTypeK": "f16",
+        "loadedCacheTypeV": "f16"
+      },
+      "configGaps": [],
+      "appliedOverrides": {
+        "cacheTypeK": "f16",
+        "cacheTypeV": "f16"
+      },
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 72.74121499999998,
+          "totalLatencyMs": 171.798714,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 133.87760283234718,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 63.17870700000003,
+          "totalLatencyMs": 160.75331799999998,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 143.07636250469182,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 65.19467599999996,
+          "totalLatencyMs": 164.891661,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 139.48552559004182,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 78.08622100000002,
+          "totalLatencyMs": 174.78195500000004,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 131.59253196361144,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 164.891661,
+          "p95": 173.79292560000002,
+          "min": 160.75331799999998,
+          "max": 174.78195500000004
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 65.19467599999996,
+          "p95": 76.79706650000001,
+          "min": 63.17870700000003,
+          "max": 78.08622100000002
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 139.48552559004182,
+          "p95": 142.7172788132268,
+          "min": 131.59253196361144,
+          "max": 143.07636250469182
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 23,
+          "p95": 23,
+          "min": 23,
+          "max": 23
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__baseline-fp16__no-dflash__med-reason",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "med-reason",
+        "maxTokens": 120
+      },
+      "startedAt": "2026-05-10T05:05:25.752Z",
+      "finishedAt": "2026-05-10T05:05:26.616Z",
+      "loadMs": 122.11200900000006,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T05:05:25.874Z",
+        "status": "ready",
+        "loadedContextSize": null,
+        "loadedCacheTypeK": "f16",
+        "loadedCacheTypeV": "f16"
+      },
+      "configGaps": [],
+      "appliedOverrides": {
+        "cacheTypeK": "f16",
+        "cacheTypeV": "f16"
+      },
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 76.13617399999987,
+          "totalLatencyMs": 181.79153200000007,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 143.02096315465337,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 78.81581799999981,
+          "totalLatencyMs": 187.17001800000003,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 138.91113693219816,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 68.581185,
+          "totalLatencyMs": 173.05381899999998,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 150.24227809731264,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 88.54029700000001,
+          "totalLatencyMs": 195.893511,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 132.72517230037295,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 187.17001800000003,
+          "p95": 195.0211617,
+          "min": 173.05381899999998,
+          "max": 195.893511
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 78.81581799999981,
+          "p95": 87.56784909999999,
+          "min": 68.581185,
+          "max": 88.54029700000001
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 138.91113693219816,
+          "p95": 149.10916398080118,
+          "min": 132.72517230037295,
+          "max": 150.24227809731264
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__tbq4-tbq3__no-dflash__short-q",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "short-q",
+        "maxTokens": 50
+      },
+      "startedAt": "2026-05-10T05:05:26.616Z",
+      "finishedAt": "2026-05-10T05:05:27.498Z",
+      "loadMs": 121.67578700000013,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T05:05:26.737Z",
+        "status": "ready",
+        "loadedContextSize": null,
+        "loadedCacheTypeK": "tbq4_0",
+        "loadedCacheTypeV": "tbq3_0"
+      },
+      "configGaps": [],
+      "appliedOverrides": {
+        "cacheTypeK": "tbq4_0",
+        "cacheTypeV": "tbq3_0"
+      },
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 97.74172299999987,
+          "totalLatencyMs": 197.1408419999998,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 116.6678592150886,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 70.60888300000033,
+          "totalLatencyMs": 168.77321699999993,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 136.27754692855092,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 94.75190299999986,
+          "totalLatencyMs": 192.80603500000007,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 119.29087178209952,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 98.63384300000007,
+          "totalLatencyMs": 198.56855799999994,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 115.82901256703494,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 192.80603500000007,
+          "p95": 197.99230569999995,
+          "min": 168.77321699999993,
+          "max": 198.56855799999994
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 94.75190299999986,
+          "p95": 98.24564900000004,
+          "min": 70.60888300000033,
+          "max": 98.63384300000007
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 119.29087178209952,
+          "p95": 134.57887941390578,
+          "min": 115.82901256703494,
+          "max": 136.27754692855092
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 23,
+          "p95": 23,
+          "min": 23,
+          "max": 23
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__tbq4-tbq3__no-dflash__med-reason",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "med-reason",
+        "maxTokens": 120
+      },
+      "startedAt": "2026-05-10T05:05:27.498Z",
+      "finishedAt": "2026-05-10T05:05:28.379Z",
+      "loadMs": 121.39667899999995,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T05:05:27.619Z",
+        "status": "ready",
+        "loadedContextSize": null,
+        "loadedCacheTypeK": "tbq4_0",
+        "loadedCacheTypeV": "tbq3_0"
+      },
+      "configGaps": [],
+      "appliedOverrides": {
+        "cacheTypeK": "tbq4_0",
+        "cacheTypeV": "tbq3_0"
+      },
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 97.4004930000001,
+          "totalLatencyMs": 202.90396699999974,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 128.139436524669,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 83.4811520000003,
+          "totalLatencyMs": 190.70305300000018,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 136.3376180453701,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 79.61100600000009,
+          "totalLatencyMs": 185.37497900000017,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 140.25625324548238,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 72.47316899999987,
+          "totalLatencyMs": 178.094517,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 145.98989591577376,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 185.37497900000017,
+          "p95": 190.1702456000002,
+          "min": 178.094517,
+          "max": 190.70305300000018
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 79.61100600000009,
+          "p95": 83.09413740000028,
+          "min": 72.47316899999987,
+          "max": 83.4811520000003
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 140.25625324548238,
+          "p95": 145.41653164874464,
+          "min": 136.3376180453701,
+          "max": 145.98989591577376
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    }
+  ]
+}
