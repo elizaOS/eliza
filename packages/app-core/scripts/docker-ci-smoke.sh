@@ -290,6 +290,15 @@ for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf; do
   fi
 done
 
+log "Building core workspace dists (@elizaos/shared, @elizaos/core, …)"
+# Apps/UI Vite builds (build:web) resolve workspace packages via their
+# `exports` map, which points at `dist/`. Without this step those entry
+# points don't exist yet and Vite errors with
+#   "Failed to resolve entry for package \"@elizaos/shared\""
+# during build:web. build:docker-dist only emits the agent package, so we
+# build the shared core pre-reqs explicitly.
+"$BUN_BIN" run build:core
+
 log "Building agent workspace"
 pushd "$AGENT_DIR" >/dev/null
 "$BUN_BIN" run build:docker-dist
