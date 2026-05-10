@@ -2,7 +2,7 @@
  * Orchestrator-only settings table for `eliza/packages/app-core/scripts/dev-platform.mjs`.
  * Plain string (figlet heading + framed table + footer); TTY color applied by dev-platform.
  */
-import { prependDevSubsystemFigletHeading } from "@elizaos/shared";
+import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
 import { formatDevSettingsTable } from "@elizaos/shared";
 import {
   resolveDesktopApiPortPreference,
