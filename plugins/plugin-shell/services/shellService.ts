@@ -136,9 +136,11 @@ export class ShellService extends Service {
   }
 
   private getSandboxManager(): RuntimeSandboxManager | null {
-    const candidate = (this.runtime as unknown as {
-      getSandboxManager?: () => RuntimeSandboxManager | null;
-    }).getSandboxManager?.();
+    const candidate = (
+      this.runtime as unknown as {
+        getSandboxManager?: () => RuntimeSandboxManager | null;
+      }
+    ).getSandboxManager?.();
     return candidate ?? null;
   }
 
@@ -155,7 +157,7 @@ export class ShellService extends Service {
     command: string,
     workdir: string,
     timeoutMs: number,
-    env?: Record<string, string>,
+    env?: Record<string, string>
   ): Promise<CommandResult> {
     const sandboxManager = this.getSandboxManager();
     if (!sandboxManager) {
