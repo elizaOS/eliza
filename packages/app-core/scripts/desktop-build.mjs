@@ -50,9 +50,20 @@ const buildProfile =
   getArgValue(args, "profile") ?? process.env.ELIZA_DESKTOP_PROFILE ?? "full";
 const variant =
   getArgValue(args, "variant") ?? process.env.VITE_APP_VARIANT ?? "base";
+const buildVariant = resolveBuildVariant(
+  getArgValue(args, "build-variant") ?? process.env.MILADY_BUILD_VARIANT,
+);
 const buildEnv = getArgValue(args, "env") ?? process.env.BUILD_ENV ?? "";
 const buildWhisper = getBooleanArg(args, "build-whisper");
 const stageMacosReleaseApp = getBooleanArg(args, "stage-macos-release-app");
+
+function resolveBuildVariant(raw) {
+  if (raw === "store" || raw === "direct") return raw;
+  if (raw === undefined || raw === null || raw === "") return "direct";
+  fail(
+    `Unknown --build-variant value: ${raw}. Expected "store" or "direct".`,
+  );
+}
 const excludedOptionalPacks = [
   ...new Set([
     ...getProfileExcludedOptionalPacks(buildProfile),
@@ -498,8 +509,12 @@ function stageDesktopBuild() {
 
   runPackageBinary("vite", ["build"], {
     cwd: APP_DIR,
-    env: { ...process.env, VITE_APP_VARIANT: variant },
-    label: `Building renderer bundle (VITE_APP_VARIANT=${variant})`,
+    env: {
+      ...process.env,
+      VITE_APP_VARIANT: variant,
+      MILADY_BUILD_VARIANT: buildVariant,
+    },
+    label: `Building renderer bundle (VITE_APP_VARIANT=${variant}, MILADY_BUILD_VARIANT=${buildVariant})`,
   });
 
   runDesktopPreflight();
@@ -706,6 +721,7 @@ function packageDesktopBuild() {
   const packageEnv = {
     ...process.env,
     ELIZA_ELECTROBUN_REPO_ROOT: process.env.ELIZA_ELECTROBUN_REPO_ROOT ?? ROOT,
+    MILADY_BUILD_VARIANT: buildVariant,
     ...appIdentityEnv(APP_DIR),
     ...(stageMacosReleaseApp && process.platform === "darwin"
       ? { ELIZA_ELECTROBUN_NOTARIZE: "0" }
@@ -781,6 +797,10 @@ Commands:
 Options:
   --profile <full|no-streaming>    Optional desktop packaging profile (default: full)
   --variant <base|companion|full>  Renderer build variant (default: base)
+  --build-variant <store|direct>   Distribution variant (default: direct).
+                                   "store" wires macOS App Sandbox entitlements
+                                   and forces Cloud hosting at runtime; "direct"
+                                   keeps current unsandboxed behavior.
   --env <channel>                  Electrobun build env (e.g. canary, stable)
   --build-whisper                  Build whisper.cpp on macOS/Linux during stage
   --stage-macos-release-app        Stage a direct macOS .app + DMG from the Electrobun build output
