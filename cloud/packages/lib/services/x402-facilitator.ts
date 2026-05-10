@@ -15,6 +15,18 @@
  * (encrypted with KMS) — never stored as a plain environment variable in production.
  */
 
+import { createKeyPairSignerFromBytes } from "@solana/kit";
+import {
+  SOLANA_DEVNET_CAIP2,
+  SOLANA_MAINNET_CAIP2,
+  SOLANA_TESTNET_CAIP2,
+  toFacilitatorSvmSigner,
+  USDC_DEVNET_ADDRESS,
+  USDC_MAINNET_ADDRESS,
+  USDC_TESTNET_ADDRESS,
+} from "@x402/svm";
+import { ExactSvmScheme as ExactSvmFacilitator } from "@x402/svm/exact/facilitator";
+import bs58 from "bs58";
 import { type Chain, createPublicClient, type Hex, http, type PublicClient } from "viem";
 import { type PrivateKeyAccount, privateKeyToAccount } from "viem/accounts";
 import { base, baseSepolia, bsc, bscTestnet, mainnet, sepolia } from "viem/chains";
@@ -32,6 +44,13 @@ interface NetworkConfig {
   usdcDomainName: string;
   rpcUrl: string;
   chain: Chain;
+}
+
+interface SolanaNetworkConfig {
+  caip2: string;
+  name: string;
+  aliases: string[];
+  usdcAddress: string;
 }
 
 /** Payment authorization from the X-PAYMENT header */
@@ -76,7 +95,8 @@ interface PaymentPayload {
     payTo: string;
   };
   payload: {
-    signature: string;
+    signature?: string;
+    transaction?: string;
     authorization?: PaymentAuthorization;
     paymentPermit?: PaymentPermit;
   };
@@ -114,6 +134,7 @@ interface SupportedKind {
   x402Version: number;
   scheme: string;
   network: string;
+  extra?: Record<string, unknown>;
 }
 
 /** /supported endpoint response */
@@ -195,6 +216,29 @@ function buildNetworkRegistry(): Record<string, NetworkConfig> {
       usdcDomainName: "USD Coin",
       rpcUrl: "https://data-seed-prebsc-1-s1.binance.org:8545",
       chain: bscTestnet,
+    },
+  };
+}
+
+function buildSolanaNetworkRegistry(): Record<string, SolanaNetworkConfig> {
+  return {
+    [SOLANA_MAINNET_CAIP2]: {
+      caip2: SOLANA_MAINNET_CAIP2,
+      name: "solana",
+      aliases: ["solana-mainnet"],
+      usdcAddress: USDC_MAINNET_ADDRESS,
+    },
+    [SOLANA_DEVNET_CAIP2]: {
+      caip2: SOLANA_DEVNET_CAIP2,
+      name: "solana-devnet",
+      aliases: ["devnet"],
+      usdcAddress: USDC_DEVNET_ADDRESS,
+    },
+    [SOLANA_TESTNET_CAIP2]: {
+      caip2: SOLANA_TESTNET_CAIP2,
+      name: "solana-testnet",
+      aliases: ["testnet"],
+      usdcAddress: USDC_TESTNET_ADDRESS,
     },
   };
 }
@@ -318,6 +362,30 @@ function isExactPermitNetwork(network: string): boolean {
   return network === "eip155:56" || network === "eip155:97";
 }
 
+function isSolanaNetwork(network: string): boolean {
+  return network.startsWith("solana:");
+}
+
+function parseEnabledNetworkNames(enabledStr: string): string[] {
+  return enabledStr
+    .split(",")
+    .map((network) => network.trim())
+    .filter(Boolean);
+}
+
+function isNetworkEnabled(
+  enabledNames: string[],
+  config: { caip2: string; name: string; aliases?: string[] },
+): boolean {
+  const exact = new Set(enabledNames);
+  const normalized = new Set(enabledNames.map((name) => name.toLowerCase()));
+  return (
+    exact.has(config.caip2) ||
+    normalized.has(config.name.toLowerCase()) ||
+    (config.aliases ?? []).some((alias) => normalized.has(alias.toLowerCase()))
+  );
+}
+
 function normalizePermitForTypedData(permit: PaymentPermit) {
   if (!/^0x[0-9a-fA-F]{32}$/.test(permit.meta.paymentId)) {
     throw new Error("invalid_payment_permit_payment_id");
@@ -344,13 +412,31 @@ function normalizePermitForTypedData(permit: PaymentPermit) {
   };
 }
 
+function decodeSolanaPrivateKey(raw: string): Uint8Array {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error("empty_solana_private_key");
+  }
+  if (trimmed.startsWith("[")) {
+    const parsed = JSON.parse(trimmed);
+    if (!Array.isArray(parsed) || !parsed.every((value) => Number.isInteger(value))) {
+      throw new Error("invalid_solana_private_key_array");
+    }
+    return Uint8Array.from(parsed);
+  }
+  return bs58.decode(trimmed);
+}
+
 // Service Implementation
 
 class X402FacilitatorService {
   private account: PrivateKeyAccount | null = null;
   private networks: Record<string, NetworkConfig> = {};
+  private solanaNetworks: Record<string, SolanaNetworkConfig> = {};
   private clients: Map<string, PublicClient> = new Map();
   private enabledNetworks: string[] = [];
+  private enabledSolanaNetworks: string[] = [];
+  private svmScheme: ExactSvmFacilitator | null = null;
   private initialized = false;
 
   /**
@@ -360,42 +446,50 @@ class X402FacilitatorService {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
+    const env = getCloudAwareEnv();
+    const enabledStr =
+      env.X402_NETWORKS ??
+      env.EVM_NETWORKS ??
+      "base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana";
+    const enabledNames = parseEnabledNetworkNames(enabledStr);
+
     const privateKey = await this.loadFacilitatorKey();
     if (!privateKey) {
-      logger.warn("[x402-facilitator] No facilitator private key configured. Service disabled.");
-      return;
-    }
-
-    try {
-      this.account = privateKeyToAccount(privateKey as Hex);
-      logger.info(`[x402-facilitator] Signer initialized: ${this.account.address}`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.error(`[x402-facilitator] Failed to initialize signer: ${msg}`);
-      return;
+      logger.warn("[x402-facilitator] No EVM facilitator private key configured.");
+    } else {
+      try {
+        this.account = privateKeyToAccount(privateKey as Hex);
+        logger.info(`[x402-facilitator] EVM signer initialized: ${this.account.address}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error(`[x402-facilitator] Failed to initialize EVM signer: ${msg}`);
+      }
     }
 
     // Build network registry and RPC clients
     this.networks = buildNetworkRegistry();
+    this.solanaNetworks = buildSolanaNetworkRegistry();
 
-    const env = getCloudAwareEnv();
-    const enabledStr = env.X402_NETWORKS ?? env.EVM_NETWORKS ?? "base-sepolia,base,bsc,bsc-testnet";
-    const enabledNames = enabledStr.split(",").map((n) => n.trim());
-
-    for (const [caip2, config] of Object.entries(this.networks)) {
-      if (enabledNames.includes(config.name)) {
-        this.enabledNetworks.push(caip2);
-        this.clients.set(
-          caip2,
-          createPublicClient({
-            chain: config.chain,
-            transport: http(config.rpcUrl),
-          }),
-        );
+    if (this.account) {
+      for (const [caip2, config] of Object.entries(this.networks)) {
+        if (isNetworkEnabled(enabledNames, config)) {
+          this.enabledNetworks.push(caip2);
+          this.clients.set(
+            caip2,
+            createPublicClient({
+              chain: config.chain,
+              transport: http(config.rpcUrl),
+            }),
+          );
+        }
       }
     }
 
-    logger.info(`[x402-facilitator] Enabled networks: ${this.enabledNetworks.join(", ")}`);
+    await this.initializeSolanaFacilitator(enabledNames);
+
+    logger.info(
+      `[x402-facilitator] Enabled networks: ${[...this.enabledNetworks, ...this.enabledSolanaNetworks].join(", ")}`,
+    );
     this.initialized = true;
   }
 
@@ -403,7 +497,7 @@ class X402FacilitatorService {
    * Check if the service is ready to process payments.
    */
   isReady(): boolean {
-    return this.initialized && this.account !== null;
+    return this.initialized && (this.account !== null || this.svmScheme !== null);
   }
 
   /**
@@ -411,6 +505,16 @@ class X402FacilitatorService {
    */
   getSignerAddress(): string | null {
     return this.account?.address ?? null;
+  }
+
+  /**
+   * Get the signer/fee-payer address for a specific network.
+   */
+  getSignerAddressForNetwork(network: string): string | null {
+    if (isSolanaNetwork(network)) {
+      return this.svmScheme?.getSigners(network)[0] ?? null;
+    }
+    return this.getSignerAddress();
   }
 
   /**
@@ -435,6 +539,19 @@ class X402FacilitatorService {
     // Wildcard fallback
     if (this.account) {
       signers["eip155:*"] = [this.account.address];
+    }
+
+    if (this.svmScheme) {
+      for (const network of this.enabledSolanaNetworks) {
+        kinds.push({
+          x402Version: 2,
+          scheme: "exact",
+          network,
+          extra: this.svmScheme.getExtra(network),
+        });
+        signers[network] = this.svmScheme.getSigners(network);
+      }
+      signers["solana:*"] = this.svmScheme.getSigners("solana:*");
     }
 
     return { kinds, signers };
@@ -463,6 +580,18 @@ class X402FacilitatorService {
 
     const { accepted, payload } = paymentPayload;
     const { signature } = payload;
+
+    if (isSolanaNetwork(accepted.network)) {
+      return this.verifySolanaPayment(paymentPayload, paymentRequirements);
+    }
+
+    if (!this.account) {
+      return { isValid: false, invalidReason: "evm_facilitator_not_configured" };
+    }
+
+    if (typeof signature !== "string") {
+      return { isValid: false, invalidReason: "missing_signature" };
+    }
 
     // 1. Check network
     if (!this.enabledNetworks.includes(accepted.network)) {
@@ -709,6 +838,62 @@ class X402FacilitatorService {
     return { isValid: true, payer: payload.authorization?.from ?? payload.paymentPermit?.buyer };
   }
 
+  private async verifySolanaPayment(
+    paymentPayload: PaymentPayload,
+    paymentRequirements: PaymentRequirements,
+  ): Promise<VerifyResult> {
+    const { accepted } = paymentPayload;
+
+    if (!this.svmScheme) {
+      return { isValid: false, invalidReason: "solana_facilitator_not_configured" };
+    }
+
+    if (!this.enabledSolanaNetworks.includes(accepted.network)) {
+      return {
+        isValid: false,
+        invalidReason: `network_not_supported: ${accepted.network}`,
+      };
+    }
+
+    if (accepted.scheme !== "exact") {
+      return {
+        isValid: false,
+        invalidReason: `scheme_not_supported: ${accepted.scheme}`,
+      };
+    }
+
+    if (accepted.asset !== paymentRequirements.asset) {
+      return { isValid: false, invalidReason: "asset_mismatch" };
+    }
+
+    if (BigInt(accepted.amount) < BigInt(paymentRequirements.amount)) {
+      return { isValid: false, invalidReason: "insufficient_amount" };
+    }
+
+    if (accepted.payTo !== paymentRequirements.payTo) {
+      return { isValid: false, invalidReason: "payto_mismatch" };
+    }
+
+    try {
+      const result = await this.svmScheme.verify(
+        paymentPayload as Parameters<ExactSvmFacilitator["verify"]>[0],
+        paymentRequirements as Parameters<ExactSvmFacilitator["verify"]>[1],
+      );
+      return {
+        isValid: result.isValid,
+        payer: result.payer || undefined,
+        invalidReason: result.invalidReason ?? result.invalidMessage,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`[x402-facilitator] Solana verification failed: ${msg}`);
+      return {
+        isValid: false,
+        invalidReason: `solana_verification_error: ${msg}`,
+      };
+    }
+  }
+
   /**
    * Settle a verified payment on-chain.
    *
@@ -719,6 +904,13 @@ class X402FacilitatorService {
     paymentRequirements: PaymentRequirements,
   ): Promise<SettleResult> {
     await this.initialize();
+
+    if (
+      isSolanaNetwork(paymentRequirements.network) ||
+      isSolanaNetwork(paymentPayload.accepted.network)
+    ) {
+      return this.settleSolanaPayment(paymentPayload, paymentRequirements);
+    }
 
     if (!this.isReady() || !this.account) {
       return {
@@ -743,6 +935,15 @@ class X402FacilitatorService {
 
     const { accepted, payload } = paymentPayload;
     const { signature } = payload;
+    if (typeof signature !== "string") {
+      return {
+        success: false,
+        transaction: "",
+        network: accepted.network,
+        payer: verifyResult.payer,
+        errorReason: "missing_signature",
+      };
+    }
     const networkConfig = this.networks[accepted.network];
 
     if (!networkConfig) {
@@ -953,7 +1154,127 @@ class X402FacilitatorService {
     }
   }
 
+  private async settleSolanaPayment(
+    paymentPayload: PaymentPayload,
+    paymentRequirements: PaymentRequirements,
+  ): Promise<SettleResult> {
+    if (!this.svmScheme) {
+      return {
+        success: false,
+        transaction: "",
+        network: paymentRequirements.network,
+        errorReason: "solana_facilitator_not_configured",
+      };
+    }
+
+    if (!this.enabledSolanaNetworks.includes(paymentPayload.accepted.network)) {
+      return {
+        success: false,
+        transaction: "",
+        network: paymentPayload.accepted.network,
+        errorReason: `network_not_supported: ${paymentPayload.accepted.network}`,
+      };
+    }
+
+    try {
+      const result = await this.svmScheme.settle(
+        paymentPayload as Parameters<ExactSvmFacilitator["settle"]>[0],
+        paymentRequirements as Parameters<ExactSvmFacilitator["settle"]>[1],
+      );
+      if (!result.success) {
+        return {
+          success: false,
+          transaction: result.transaction,
+          network: result.network,
+          payer: result.payer || undefined,
+          errorReason: result.errorReason ?? result.errorMessage ?? "solana_settlement_failed",
+        };
+      }
+
+      logger.info("[x402-facilitator] Solana settlement TX submitted", {
+        txHash: result.transaction,
+        payer: result.payer,
+        network: result.network,
+      });
+
+      return {
+        success: true,
+        transaction: result.transaction,
+        network: result.network,
+        payer: result.payer,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`[x402-facilitator] Solana settlement failed: ${msg}`);
+      return {
+        success: false,
+        transaction: "",
+        network: paymentPayload.accepted.network,
+        errorReason: `solana_settlement_error: ${msg}`,
+      };
+    }
+  }
+
   // Private helpers
+
+  private async initializeSolanaFacilitator(enabledNames: string[]): Promise<void> {
+    const solanaKey = await this.loadSolanaFacilitatorKey();
+    if (!solanaKey) {
+      logger.warn("[x402-facilitator] No Solana facilitator private key configured.");
+      return;
+    }
+
+    try {
+      const secretKeyBytes = decodeSolanaPrivateKey(solanaKey);
+      const keypair = await createKeyPairSignerFromBytes(secretKeyBytes);
+      const signer = toFacilitatorSvmSigner(keypair);
+      this.svmScheme = new ExactSvmFacilitator(signer);
+
+      for (const [caip2, config] of Object.entries(this.solanaNetworks)) {
+        if (isNetworkEnabled(enabledNames, config)) {
+          this.enabledSolanaNetworks.push(caip2);
+        }
+      }
+
+      logger.info("[x402-facilitator] Solana signer initialized", {
+        address: this.svmScheme.getSigners("solana:*")[0],
+      });
+    } catch (err) {
+      this.svmScheme = null;
+      this.enabledSolanaNetworks = [];
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`[x402-facilitator] Failed to initialize Solana signer: ${msg}`);
+    }
+  }
+
+  private async loadSolanaFacilitatorKey(): Promise<string | null> {
+    try {
+      const { secretsService } = await import("@/lib/services/secrets");
+      if (secretsService) {
+        for (const keyName of [
+          "X402_SOLANA_FACILITATOR_PRIVATE_KEY",
+          "SOLANA_FACILITATOR_PRIVATE_KEY",
+          "SOLANA_PAYOUT_PRIVATE_KEY",
+        ]) {
+          const key = await secretsService.get("system", keyName).catch(() => null);
+          if (key) {
+            logger.info(`[x402-facilitator] Loaded ${keyName} from secrets service`);
+            return key;
+          }
+        }
+      }
+    } catch {
+      // Secrets service not available, fall through
+    }
+
+    const env = getCloudAwareEnv();
+    return (
+      env.X402_SOLANA_FACILITATOR_PRIVATE_KEY ??
+      env.SOLANA_FACILITATOR_PRIVATE_KEY ??
+      env.SOLANA_PAYOUT_PRIVATE_KEY ??
+      null
+    );
+  }
 
   /**
    * Load the facilitator private key from available sources (priority order):
