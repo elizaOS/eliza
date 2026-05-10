@@ -2181,7 +2181,7 @@ function getStage1CheckinRepairPlan(args: {
 			: morningIntent
 				? ["morning_checkin", "run_morning_checkin", "lifeops_morning_checkin"]
 				: ["run_checkin", "daily_checkin", "lifeops_checkin"],
-		parentActionHints: ["SCHEDULED_TASKS"],
+		parentActionHints: ["CHECKIN"],
 	};
 }
 
@@ -5126,15 +5126,15 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SET_GOAL", "OWNER_GOALS"],
 		["CREATE_REMINDER", "OWNER_REMINDERS"],
 		["SET_REMINDER_RULE", "OWNER_REMINDERS"],
-		["CHECK_IN", "REPLY"],
-		["LIFE_CHECK_IN", "REPLY"],
-		["MORNING_CHECKIN", "REPLY"],
-		["MORNING_CHECK_IN", "REPLY"],
-		["NIGHT_CHECKIN", "REPLY"],
-		["NIGHT_CHECK_IN", "REPLY"],
-		["RUN_CHECKIN", "REPLY"],
-		["RUN_MORNING_CHECKIN", "REPLY"],
-		["RUN_NIGHT_CHECKIN", "REPLY"],
+		["CHECK_IN", "CHECKIN"],
+		["LIFE_CHECK_IN", "CHECKIN"],
+		["MORNING_CHECKIN", "CHECKIN"],
+		["MORNING_CHECK_IN", "CHECKIN"],
+		["NIGHT_CHECKIN", "CHECKIN"],
+		["NIGHT_CHECK_IN", "CHECKIN"],
+		["RUN_CHECKIN", "CHECKIN"],
+		["RUN_MORNING_CHECKIN", "CHECKIN"],
+		["RUN_NIGHT_CHECKIN", "CHECKIN"],
 		["AUTOMATION_RUN", "REPLY"],
 		["DAILY_BRIEF", "REPLY"],
 		["MEMORY_SET", "REPLY"],
