@@ -413,10 +413,10 @@ stack the file expects. Schema:
     "requiresFork": "milady-ai/llama.cpp@v0.1.0-milady"
   },
   "drafter": {
-    "repo": "milady-ai/qwen3.5-4b-milady-drafter",
-    "file": "qwen3.5-4b-milady-drafter.gguf",
+    "repo": "elizaos/eliza-1-mobile-1_7b",
+    "file": "text/eliza-1-mobile-1_7b-drafter.gguf",
     "params": "0.6B",
-    "tokenizerFamily": "qwen3"
+    "tokenizerFamily": "eliza1"
   },
   "pipeline": {
     "publishedAt": "2026-05-10T00:00:00Z",
@@ -437,8 +437,8 @@ catalog sync script can walk either side and reconstruct pairings.
 # Dry-run — refuses to push anything, prints the manifest and what
 # would upload. No HF_TOKEN required.
 uv run python scripts/publish_milady_model.py \
-    --model-dir /path/to/qwen3.5-4b-milady-optimized \
-    --repo-id milady-ai/qwen3.5-4b-milady-optimized \
+    --model-dir /path/to/eliza-1-mobile-1_7b \
+    --repo-id elizaos/eliza-1-mobile-1_7b \
     --dry-run
 
 # Real push. The script refuses to ship a stock-format GGUF (one
@@ -447,8 +447,8 @@ uv run python scripts/publish_milady_model.py \
 # + size; subsequent runs skip re-upload when the sha matches the
 # existing remote LFS pointer.
 HF_TOKEN=hf_xxx uv run python scripts/publish_milady_model.py \
-    --model-dir /path/to/qwen3.5-4b-milady-optimized \
-    --repo-id milady-ai/qwen3.5-4b-milady-optimized
+    --model-dir /path/to/eliza-1-mobile-1_7b \
+    --repo-id elizaos/eliza-1-mobile-1_7b
 ```
 
 After a publish run, refresh the local-inference catalog so the phone
@@ -456,7 +456,7 @@ sees the new URLs:
 
 ```bash
 uv run python scripts/sync_catalog_from_hf.py \
-    --org milady-ai \
+    --org elizaos \
     --out reports/porting/$(date -u +%Y-%m-%d)/catalog-diff.json
 ```
 

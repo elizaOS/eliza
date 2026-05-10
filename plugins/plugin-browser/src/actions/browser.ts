@@ -65,9 +65,7 @@ type BrowserActionParameters = {
   script?: string;
   selector?: string;
   /**
-   * Compatibility alias for older browser-router calls. Prefer `subaction` in
-   * new plans, but accept this so BROWSER_ACTION-shaped tool calls can still
-   * execute when the model picks the consolidated BROWSER action.
+   * Canonical browser action. Legacy `subaction` remains accepted.
    */
   action?:
     | BrowserWorkspaceSubaction
@@ -80,7 +78,7 @@ type BrowserActionParameters = {
     | "close_tab"
     | "switch_tab";
   subaction?: BrowserActionSubaction;
-  /** Registrable hostname for `subaction: "autofill-login"`. */
+  /** Registrable hostname for `action: "autofill-login"`. */
   domain?: string;
   /** Saved login username for autofill-login (optional). */
   username?: string;
@@ -121,19 +119,16 @@ function inferBrowserSubaction(
   params: BrowserActionParameters | undefined,
   messageText: string,
 ): BrowserWorkspaceCommand["subaction"] | "autofill-login" {
-  if (
-    params?.subaction === "autofill-login" ||
-    params?.action === "autofill-login"
-  ) {
+  if (params?.action === "autofill-login" || params?.subaction === "autofill-login") {
     return "autofill-login";
-  }
-  if (params?.subaction) {
-    return params.subaction;
   }
 
   const legacySubaction = normalizeLegacyBrowserAction(params?.action);
   if (legacySubaction) {
     return legacySubaction;
+  }
+  if (params?.subaction) {
+    return params.subaction;
   }
 
   if (params?.tabAction) {
@@ -351,7 +346,7 @@ export const browserAction: Action = {
     {
       name: "action",
       description:
-        "Compatibility alias for subaction from older BROWSER_ACTION calls. Prefer subaction in new plans.",
+        "Browser action to perform. Legacy subaction is also accepted.",
       required: false,
       schema: {
         type: "string" as const,
@@ -392,7 +387,7 @@ export const browserAction: Action = {
     },
     {
       name: "subaction",
-      description: "Browser action to perform",
+      description: "Legacy alias for action.",
       required: false,
       schema: {
         type: "string" as const,

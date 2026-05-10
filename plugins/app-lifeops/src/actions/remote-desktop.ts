@@ -333,9 +333,9 @@ export const remoteDesktopAction: Action & {
 
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "One of: start, status, end, list, revoke.",
-      descriptionCompressed: "remote-desktop op: start|status|end|list|revoke",
+      descriptionCompressed: "remote-desktop action: start|status|end|list|revoke",
       required: false,
       schema: {
         type: "string" as const,
@@ -346,7 +346,7 @@ export const remoteDesktopAction: Action & {
     {
       name: "sessionId",
       description:
-        "Session id — required for status, end, and revoke subactions.",
+        "Session id - required for status, end, and revoke actions.",
       descriptionCompressed: "session id (status|end|revoke)",
       required: false,
       schema: { type: "string" as const },

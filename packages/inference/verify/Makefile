@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test vulkan vulkan-spirv vulkan-qjl-polar metal metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify verify-fork clean
+.PHONY: all reference-test vulkan vulkan-spirv vulkan-qjl-polar metal metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify verify-fork dispatch-smoke clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -381,6 +381,37 @@ else
 	@echo "[verify-fork] done. Compare the per-kernel pass/fail above against the standalone reference runs to detect drift."
 endif
 
+# MILADY-DISPATCH-V1 smoke test. Links against the BUILT libggml-metal.dylib /
+# libggml-base.dylib in the fork's build/darwin-arm64-metal/bin tree, so it
+# exercises the actual fork dispatch pipeline (not the JIT). Prerequisite:
+# `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target
+# darwin-arm64-metal` has succeeded and produced libggml-*.dylib + the
+# milady kernels in default.metallib.
+ELIZA_DFLASH_METAL_BUILD_DIR ?= $(ELIZA_DFLASH_LLAMA_DIR)/build/darwin-arm64-metal
+ELIZA_DFLASH_METAL_BIN_DIR   ?= $(ELIZA_DFLASH_METAL_BUILD_DIR)/bin
+
+dispatch-smoke: dispatch_smoke
+	@echo "[dispatch-smoke] running against $(ELIZA_DFLASH_METAL_BIN_DIR)"
+	GGML_METAL_PATH_RESOURCES=$(ELIZA_DFLASH_METAL_BIN_DIR) \
+	  DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
+	  ./dispatch_smoke
+
+dispatch_smoke: dispatch_smoke.mm
+	@which xcrun >/dev/null 2>&1 || { echo "xcrun not found — Metal dispatch-smoke needs macOS Xcode tools."; exit 1; }
+	@if [ ! -f "$(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib" ]; then \
+	    echo "[dispatch-smoke] missing $(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib"; \
+	    echo "[dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal' first."; \
+	    exit 1; \
+	fi
+	clang++ $(CXXFLAGS) -ObjC++ -fobjc-arc \
+	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include \
+	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/src \
+	    dispatch_smoke.mm \
+	    -L$(ELIZA_DFLASH_METAL_BIN_DIR) -lggml-base -lggml-metal -lggml-cpu -lggml \
+	    -framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics \
+	    -Wl,-rpath,$(ELIZA_DFLASH_METAL_BIN_DIR) \
+	    -lm -o dispatch_smoke
+
 clean:
-	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify metal_bench cpu_bench cuda_verify
+	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify metal_bench cpu_bench cuda_verify dispatch_smoke
 	rm -f ../vulkan/*.spv

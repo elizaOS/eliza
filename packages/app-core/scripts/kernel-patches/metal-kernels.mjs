@@ -356,8 +356,15 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_milady_mul_mv(gg
     }
     ggml_metal_pipeline_with_params res = ggml_metal_library_get_pipeline(lib, name);
     if (!res.pipeline) {
-        GGML_LOG_ERROR("milady_mul_mv: kernel '%s' missing from default.metallib (kernel-shipment regression)\\n", name);
-        GGML_ABORT("milady_mul_mv: kernel symbol missing");
+        // Cache miss — compile the pipeline by direct symbol name without
+        // any function constants. The standard get_pipeline_mul_mv helper
+        // would set an 'nsg' function constant which the standalones do not
+        // declare; we explicitly pass nullptr to bypass that.
+        res = ggml_metal_library_compile_pipeline(lib, name, name, nullptr);
+    }
+    if (!res.pipeline) {
+        GGML_LOG_ERROR("milady_mul_mv: kernel '%s' could not be compiled from default.metallib\\n", name);
+        GGML_ABORT("milady_mul_mv: kernel pipeline compile failed");
     }
     res.nr0 = 1;
     res.nr1 = 1;
@@ -378,8 +385,11 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_milady_get_rows(
     }
     ggml_metal_pipeline_with_params res = ggml_metal_library_get_pipeline(lib, name);
     if (!res.pipeline) {
-        GGML_LOG_ERROR("milady_get_rows: kernel '%s' missing from default.metallib\\n", name);
-        GGML_ABORT("milady_get_rows: kernel symbol missing");
+        res = ggml_metal_library_compile_pipeline(lib, name, name, nullptr);
+    }
+    if (!res.pipeline) {
+        GGML_LOG_ERROR("milady_get_rows: kernel '%s' could not be compiled from default.metallib\\n", name);
+        GGML_ABORT("milady_get_rows: kernel pipeline compile failed");
     }
     res.nr0 = 1; res.nr1 = 1; res.nsg = 1; res.smem = 0;
     return res;

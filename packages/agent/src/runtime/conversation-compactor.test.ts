@@ -696,7 +696,7 @@ describe("structured-state parsing tolerance", () => {
       // firstBrace..lastBrace which produces invalid JSON when prose has its
       // own braces — this regressed silently to an empty state.
       const callModel: CompactorModelCall = async () =>
-        '<reasoning>I considered {alt plans} and chose this one.</reasoning>\n' +
+        "<reasoning>I considered {alt plans} and chose this one.</reasoning>\n" +
         '{"facts":["chosen plan"],"decisions":[],"pending_actions":[],"entities":{}}';
       const out = await structuredStateCompactor.compact(
         buildTranscript(20),
@@ -727,8 +727,7 @@ describe("structured-state parsing tolerance", () => {
   });
 
   it("does not crash on completely unparseable model output", async () => {
-    const callModel: CompactorModelCall = async () =>
-      "I cannot do that, Dave.";
+    const callModel: CompactorModelCall = async () => "I cannot do that, Dave.";
     const out = await structuredStateCompactor.compact(
       buildTranscript(20),
       buildOptions({ callModel }),

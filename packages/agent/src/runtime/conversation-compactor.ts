@@ -352,25 +352,25 @@ const STRUCTURED_SYSTEM_PROMPT =
   "Output ONLY the JSON object, no prose, no markdown fences.";
 
 /**
- * Scan a string for the first balanced `{...}` block, respecting JSON string
- * literals so prose like `<reasoning>alt {plan}</reasoning>{ "facts": [] }`
- * resolves to the JSON object, not the prose-fragment range.
+ * Scan a string for all balanced top-level `{...}` blocks, respecting JSON
+ * string literals (so `<reasoning>alt {plan}</reasoning>{ "facts": [] }`
+ * yields BOTH `{plan}` and the outer JSON object as candidates).
  *
- * Returns the substring including the outer braces, or null if no balanced
- * block exists.
+ * Returns the substrings (each including its outer braces) in source order.
  */
-function extractFirstBalancedJsonObject(input: string): string | null {
+function findBalancedJsonObjectCandidates(input: string): string[] {
+  const out: string[] = [];
   let depth = 0;
   let start = -1;
   let inString = false;
-  let escape = false;
+  let escaped = false;
   for (let i = 0; i < input.length; i++) {
     const ch = input[i];
     if (inString) {
-      if (escape) {
-        escape = false;
+      if (escaped) {
+        escaped = false;
       } else if (ch === "\\") {
-        escape = true;
+        escaped = true;
       } else if (ch === '"') {
         inString = false;
       }
@@ -387,27 +387,50 @@ function extractFirstBalancedJsonObject(input: string): string | null {
       if (depth > 0) {
         depth--;
         if (depth === 0 && start !== -1) {
-          return input.slice(start, i + 1);
+          out.push(input.slice(start, i + 1));
+          start = -1;
         }
       }
     }
   }
-  return null;
+  return out;
 }
 
+/**
+ * Extract a parseable JSON object body from arbitrary model output.
+ *
+ * Handles:
+ *   - Bare JSON: `{ ... }`
+ *   - ```json fenced blocks (with or without language tag)
+ *   - JSON wrapped in <reasoning> / preface / trailing prose
+ *   - Prose that contains stray `{...}` fragments (picks the candidate that
+ *     actually parses, not the first balanced range)
+ *
+ * Returns the most likely JSON body — the FIRST candidate that successfully
+ * round-trips through JSON.parse. Falls back to the largest candidate (so
+ * the eventual JSON.parse will throw a useful error to the caller's catch),
+ * or the trimmed input if no balanced object exists.
+ */
 function extractJsonBody(raw: string): string {
   const trimmed = raw.trim();
-  // ```json ... ``` fence first — strict so prose-as-fence doesn't match.
+  let scan = trimmed;
   const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) {
-    const inside = fenceMatch[1].trim();
-    const balanced = extractFirstBalancedJsonObject(inside);
-    if (balanced) return balanced;
-    return inside;
+  if (fenceMatch) scan = fenceMatch[1].trim();
+
+  const candidates = findBalancedJsonObjectCandidates(scan);
+  if (candidates.length === 0) return scan;
+
+  for (const candidate of candidates) {
+    try {
+      JSON.parse(candidate);
+      return candidate;
+    } catch {
+      // Not parseable — try the next candidate.
+    }
   }
-  const balanced = extractFirstBalancedJsonObject(trimmed);
-  if (balanced) return balanced;
-  return trimmed;
+  // No candidate parsed — return the largest, so the upstream JSON.parse
+  // produces a meaningful error rather than swallowing input.
+  return candidates.reduce((a, b) => (b.length > a.length ? b : a));
 }
 
 function safeParseStructured(raw: string): StructuredState {
@@ -773,7 +796,10 @@ function safeParseHybrid(raw: string): HybridParsed {
         // Hard cap defends compression_ratio when the model ignores the
         // "≤ 10 entries" instruction in the prompt. Without the cap, the
         // ledger overhead can make the artifact larger than the input.
-        .slice(0, HYBRID_LEDGER_MAX_ENTRIES)
+        // Keep the MOST RECENT entries (chronologically last) — the model
+        // is instructed to emit chronologically and the newest events tend
+        // to be the most load-bearing for "what just happened" continuity.
+        .slice(-HYBRID_LEDGER_MAX_ENTRIES)
     : [];
   return { state, ledger };
 }
@@ -819,7 +845,11 @@ async function hybridCompact(
   // compaction cycle, prepend it to the prompt so the model can extend
   // rather than discard it. This is what gives hybrid-ledger its multi-cycle
   // entity coherence.
-  const priorLedger = (transcript.metadata?.priorLedger as string) ?? "";
+  const priorLedgerRaw = transcript.metadata?.priorLedger;
+  const priorLedger =
+    typeof priorLedgerRaw === "string" && priorLedgerRaw.length > 0
+      ? priorLedgerRaw
+      : "";
   const userBody = priorLedger
     ? `Existing ledger (do not lose these entries — extend them):\n${priorLedger}\n\nNew conversation to fold in:\n${renderRegionForPrompt(region)}`
     : `Conversation:\n${renderRegionForPrompt(region)}`;
