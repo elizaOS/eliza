@@ -33,8 +33,8 @@ function resolveTextParams(
   const presencePenalty = params.presencePenalty ?? 0.7;
 
   const rawParams = params as unknown as Record<string, unknown>;
-  const topPExplicit = "topP" in rawParams;
-  const temperatureExplicit = "temperature" in rawParams;
+  const topPExplicit = rawParams["topP"] != null;
+  const temperatureExplicit = rawParams["temperature"] != null;
 
   if (topPExplicit && temperatureExplicit) {
     throw new Error(
