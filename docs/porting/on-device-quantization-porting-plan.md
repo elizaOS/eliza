@@ -35,20 +35,26 @@
 > Anything that can't land via one of those routes is not "on device" for
 > the AOSP build, full stop.
 
-## Current state on the AOSP image (last verified 2026-05-09 by W1-G)
+## Current state on the AOSP image (last verified 2026-05-09 post-fork-unifier)
 
 `milady_cf_x86_64_phone-trunk_staging-userdebug` boots, Milady priv-app
 installs at `/system/priv-app/Milady/`, and `ElizaAgentService` spawns
-`bun + libllama.so + agent-bundle.js` correctly. The plugin-sql
-top-level-await race is fixed at the **source** level on develop
-(commit `12bfccb481`, originally landed on
-`worktree-agent-a1402895150138b18` as `b123b08cb9`): lazy memoized
-plugin loaders called from `startEliza`'s
-`ensureCoreStaticPluginsRegistered()`.
+`bun + libllama.so + agent-bundle.js` correctly. The native libs in
+the APK are now produced from the unified
+[`milady-ai/llama.cpp @ v0.1.0-milady`](https://github.com/milady-ai/llama.cpp)
+fork (commit `edd55d8b`); the May-5-era hot-patch workaround
+(`s/init_eliza()/await init_eliza()/` against the agent bundle, plus a
+vendored Apothic + 5 floating-patch series for QJL / Polar / Metal) is
+gone. `compile-libllama.mjs` is pinned at the unified fork ref;
+`scripts/aosp/llama-cpp-patches/` is a one-release archival
+deprecation per
+[`docs/porting/unified-fork-strategy.md`](./unified-fork-strategy.md).
 
-**AOSP unblock landed 2026-05-09 by W1-G.** Five script fixes plus two
-TLA deferrals let `bun run --cwd packages/agent build:mobile` produce a
-fresh `agent-bundle.js` without the May-5 hot-patch workaround:
+**Bundle build (W1-G).** `bun run --cwd packages/agent build:mobile`
+emits a fresh `agent-bundle.js` (md5
+`cbea0f4a066536d6fcd9e6b4e6a1e6ef`, ~31.4 MB on develop @ HEAD as of
+2026-05-09) with no hot-patching required. Five script fixes plus two
+TLA deferrals from W1-G are upstream:
 
   1. `packages/agent/scripts/build-mobile-bundle.mjs` — dedupe target
      for `@elizaos/plugin-sql` corrected from
@@ -75,22 +81,18 @@ fresh `agent-bundle.js` without the May-5 hot-patch workaround:
      `ensureDotenvLoaded()` helpers called from each test entry point.
      Bun.build's mobile bundler refuses to `require()` any module
      transitively reachable from a TLA, so deferring dotenv loading is
-     necessary for the entire `@elizaos/core` testing subtree to bundle.
+     necessary for the entire `@elizaos/core` testing subtree to
+     bundle.
 
-The previous Bun.build re-export init-order bug that required
-hot-patching `s/init_eliza()/await init_eliza()/` is gone now that
-plugin-sql resolution is lazy: the fresh bundle's `init_eliza`,
-`init_eliza2`, and `init_eliza_plugin` are all sync `__esm(() => {...})`
-emitters with no transitive TLA, so synchronous initialization
-callsites inside other `__esm` bodies (the symptom that triggered the
-hot-patch) are correct by construction.
-
-Reference fresh bundle (md5 `cbea0f4a066536d6fcd9e6b4e6a1e6ef`,
-~31.4 MB on develop @ HEAD as of 2026-05-09) replaces the hot-patched
-May-5 bundle (md5 `2874a0ef5bee39ff55ffec6205f82a61`, 22.9 MB). The
-size growth reflects the Capacitor app workspace plugins
-(`@elizaos/app-{wifi,contacts,phone}`, hosted-app session gating) and
-the DFlash adapter that landed since May.
+The plugin-sql top-level-await race is fixed at the **source** level
+on develop (commit `12bfccb481`, originally landed on
+`worktree-agent-a1402895150138b18` as `b123b08cb9`): lazy memoized
+plugin loaders called from `startEliza`'s
+`ensureCoreStaticPluginsRegistered()`. The fresh bundle's
+`init_eliza`, `init_eliza2`, and `init_eliza_plugin` are all sync
+`__esm(() => {...})` emitters with no transitive TLA, so the
+init-order bug that triggered the hot-patch is unreachable by
+construction.
 
 PGlite db corruption from prior crash-loops is bypassed by wiping
 `/data/user/0/ai.milady.milady/files/.eliza/workspace/.eliza/.elizadb`
@@ -99,7 +101,27 @@ non-Error throwables (was returning `"[object Object]"`, hiding the
 real error message; commit on `worktree-agent-af5238436024dfb1d` —
 already on develop).
 
-DFlash hardening landed in the same session (W1-G):
+**Native libs (fork-unifier + W1/W2/W3).** The unified fork bakes in
+TBQ3_0 / TBQ4_0 (Apothic), QJL1_256 (W1-A), Q4_POLAR (W1-B; slot
+bumped from 45 to 47 to keep 45 as a hole for back-compat), and the
+Metal kernel sources (W1-D, source-only — dispatcher wiring still
+pending Apple Silicon hardware). Symbol counts in the post-pin AOSP
+build (`reports/porting/2026-05-09-unified/symbol-counts.txt`):
+
+| Symbol family | arm64-v8a count | x86_64 count | Notes |
+|---|---|---|---|
+| TBQ (`*tbq*`) | 8 | 8 | TBQ3_0=43, TBQ4_0=44 in `libggml-base.so` |
+| QJL (`*qjl*`) | 19 | 15 (pre-W3-H) / 19 (post-W3-H) | NEON variants on arm64; AVX2 variants on x86_64 after the W3-H per-source `-mavx2 -mfma` flag fix |
+| Polar (`*polar*`) | 4 | 4 | Q4_POLAR=47 in `libggml-base.so` |
+
+Cross-architecture validation (W2-A, W2-B): the cross-built
+`libggml-cpu.so` for aarch64 was exercised under
+`qemu-aarch64-static` and the QJL NEON path matches the standalone
+reference 100/100 (signs + norms + full block). PolarQuant NEON
+dequant is bit-exact and the dot kernel rel-err is well inside
+budget for both `use_qjl=0` and `use_qjl=1`.
+
+DFlash hardening landed in W1-G:
 
   - `tokenizerFamily` field on every `CatalogModel`, with the test
     guard `it("DFlash pairs share a tokenizer family", ...)` enforcing
@@ -115,38 +137,60 @@ DFlash hardening landed in the same session (W1-G):
     so the merge-injection workaround is unreachable. See
     `docs/porting/dflash-drafter-strategy.md`.
 
+**node-llama-cpp gap.** The desktop binding is now forked at
+[`milady-ai/node-llama-cpp @ v3.18.1-milady.1`](https://github.com/milady-ai/node-llama-cpp);
+`GgmlType` accepts `tbq3_0`, `tbq4_0`, `qjl1_256`, `q4_polar`. The
+consumer side still pulls upstream `node-llama-cpp@3.18.1` because
+the milady fork ships only TS sources (no `dist/`); the unblock is to
+publish `@milady-ai/node-llama-cpp` to npm (path (b) in
+`reports/porting/2026-05-09-unified/INDEX.md` "What did NOT land").
+
 ### Symbols verified in shipped libs
 
 | Symbol family | Location | Notes |
 |---|---|---|
-| `quantize_tbq3_0`, `quantize_tbq4_0`, `dequantize_row_tbq{3,4}_0` | `libggml-base.so` (x86_64 + arm64-v8a in APK) | TBQ3_0=43, TBQ4_0=44. Active on cuttlefish + real arm64 phones today. |
+| `quantize_row_tbq3_0`, `quantize_row_tbq4_0`, `dequantize_row_tbq{3,4}_0` | `libggml-base.so` + `libggml-cpu.so` (x86_64 + arm64-v8a in APK) | TBQ3_0=43, TBQ4_0=44. Active on cuttlefish + real arm64 phones today. |
+| `quantize_row_qjl1_256`, `dequantize_row_qjl1_256`, `qjl_quantize_row_neon`, `qjl_score_qk_neon` | `libggml-cpu.so` (arm64-v8a) | NEON path verified 100/100 vs reference under QEMU (W2-A). |
+| `qjl_quantize_row_avx2`, `qjl_score_qk_avx2` | `libggml-cpu.so` (x86_64) | AVX2 path. **Post-W3-H only** — pre-W3-H the cuttlefish x86_64 build was missing these because `GGML_NATIVE=OFF` left `__AVX2__` undefined and the kernels `#if-out`'d to `_ref` only. |
+| `block_q4_polar`, `dequantize_row_q4_polar`, `dequantize_row_q4_polar_neon`, `ggml_vec_dot_q4_polar_q8_0_neon` | `libggml-base.so` + `libggml-cpu.so` | Q4_POLAR=47 (slot bumped from 45). NEON dequant bit-exact under QEMU (W2-B). |
+| `ggml_attn_score_qjl` + `GGML_OP_ATTN_SCORE_QJL` op dispatch | `libggml-cpu.so` | Custom op; QJL packed-K + query → unscaled scores. |
 | `eliza_llama_context_params_set_type_k` / `_set_type_v` | `libeliza-llama-shim.so` | KV cache type configurable per call from JS. |
 | `looksLikeBonsai(modelPath)` auto-routing | `aosp-llama-adapter.ts` | Any GGUF whose filename matches `/bonsai/i` auto-selects `{k:"tbq4_0", v:"tbq3_0"}`. |
-| `looksLikeQjl(modelPath)` + `qjl1_256` cache type | `aosp-llama-adapter.ts` (worktree-agent-a55644a05aeeed035 commit `f674c14160`) | Set `ELIZA_LLAMA_CACHE_TYPE_K=qjl1_256` to compose with TBQ V. Auto-detect QJL > Bonsai precedence. |
-| `block_qjl1_256` + `GGML_OP_ATTN_SCORE_QJL` | `/tmp/llama-cpp-qjl @ qjl-kcache` (4 commits, NOT in shipped fork yet) | Not pushed to GitHub; vendor commit on Apothic side needed before next AOSP rebuild picks it up. |
-| `block_q4_polar` (`Q4_POLAR=45`) | `/tmp/llama-cpp-polar @ polarquant-q4` (4 commits, NOT in shipped fork yet) | Same — vendor + push to Apothic remote required. |
-| Speculative-decoding API | source landed (`aosp-dflash-adapter.ts`, llama-server cross-compile in `compile-libllama.mjs`); build env unblocked 2026-05-09 (W1-G); cross-compile artifact still pending CI run | Bundle now builds; `bun run --cwd packages/agent build:mobile` produces a fresh `agent-bundle.js`. llama-server arm64-v8a/musl build is the next step. |
+| `looksLikeQjl(modelPath)` + `qjl1_256` cache type | `aosp-llama-adapter.ts` | Set `ELIZA_LLAMA_CACHE_TYPE_K=qjl1_256` to compose with TBQ V. Auto-detect QJL > Bonsai precedence. |
+| Speculative-decoding wiring | source landed (`aosp-dflash-adapter.ts`, llama-server cross-compile in `compile-libllama.mjs`) | Bundle builds; `llama-server` arm64-v8a/musl artifact pending the next CI rebuild. |
 | Capacitor Android local-agent runtime | source landed (worktree-agent-a58ffa46f33215b6a) | ElizaAgentService gated on AOSP_BUILD; in-WebView local-agent kernel (`local-agent-kernel.ts`) generalized for both iOS and Android; shared TBQ resolver across adapters. |
-| Catalog `tokenizerFamily` field + DFlash pair guard | source landed on develop (W1-G commit, originally worktree-agent-a3b48813556536b5d `04a3fdb24d`) + acceptance-rate telemetry + dflash-doctor parity check | Backfilled across every catalog entry. `maybeRepairDflashDrafter` deleted (dead — every DFlash pair is now Qwen3↔Qwen3 vocab). |
-| QJL standalone kernel library | `packages/native-plugins/qjl-cpu/` (worktree-agent-a7e72f45ecf16deab) | 1100 LOC, scalar+AVX2+NEON, 100/100 bit-parity vs Python ref. |
-| PolarQuant standalone kernel library | `packages/native-plugins/polarquant-cpu/` (worktree-agent-a57094061cb3d026d) | 1871 LOC (C+Python), scalar kernels + safetensors→GGUF converter. |
-| Benchmark harness | `scripts/benchmark/profile-inference.mjs` (commit `df5624f154`) | 48-combo matrix, stub-validated, ready when the build env unblocks. |
-| iOS / macOS Metal kernels | NOT done | Tasks #21, #22 — agents hit Anthropic usage cap. Resume after May 13 11pm PT reset. |
+| Catalog `tokenizerFamily` field + DFlash pair guard | source landed on develop (W1-G commit) | Backfilled across every catalog entry. `maybeRepairDflashDrafter` deleted (dead). |
+| QJL standalone kernel library | `packages/native-plugins/qjl-cpu/` | 1100 LOC, scalar+AVX2+NEON, 100/100 bit-parity vs Python ref. The kernel sources are also vendored under `ggml/src/ggml-cpu/qjl/` in the unified fork. |
+| PolarQuant standalone kernel library | `packages/native-plugins/polarquant-cpu/` | 1871 LOC (C+Python), scalar + AVX2 + NEON kernels + safetensors→GGUF converter. The kernel sources land at `ggml/src/ggml-cpu/quants-polar.c` in the unified fork. |
+| Benchmark harness | `scripts/benchmark/profile-inference.mjs` | 48-combo matrix, stub-validated. CI wired in `.github/workflows/local-inference-bench.yml`. |
+| iOS / macOS Metal dispatcher | source-only on the fork (`ggml/src/ggml-metal/milady-kernels/`); needs Apple Silicon | W3-G shipped a ready-to-run kit. The dispatcher patch (`ggml-metal.metal` updates so TBQ/QJL/Polar route to the new shaders) lands as soon as a self-hosted `apple-m3-pro` runner is available. |
+
+For the per-cell artifact status (build command, expected exported
+symbols, verification command, hardware required, and current
+verification state) across every (platform, ABI, GPU-backend) cell,
+see [`docs/porting/build-matrix.md`](./build-matrix.md). That doc is
+the canonical place to look up "is target X built and how do I
+verify it" — this section is the AOSP-image-specific summary.
 
 ## Target × technique matrix
 
-`✓` = working today. `□` = realistic port. `▲` = research-grade / blocked
-on upstream missing pieces. `✗` = not viable, won't be attempted.
+`✓` = shipped on the unified fork (`milady-ai/llama.cpp @ v0.1.0-milady`)
+and verified per
+[`docs/porting/build-matrix.md`](./build-matrix.md). `⚠` = artifact
+exists, runtime verification on matching silicon still pending. `□` =
+source landed in fork, not built / not wired yet. `▲` = research-grade
+or blocked on upstream missing pieces. `✗` = not viable, won't be
+attempted.
 
 | Target runtime | TurboQuant (KV cache) | DFlash (spec-decode) | QJL (K-side 1-bit) | PolarQuant (weight) |
 |---|---|---|---|---|
-| **Android arm64-v8a CPU** (NEON) | ✓ TBQ3_0/TBQ4_0 in libggml-base.so | □ port spec-decode entrypoint into shim | □ NEON port of JL-projection + sign-pack + GQA score kernel | □ new `block_q4_polar` GGML quant type + NEON dequant/dot |
-| **Android x86_64 CPU** (cuttlefish + emu) | ✓ same | □ same shim wiring | □ AVX2 port of QJL kernel (cuttlefish smoke only) | □ same block_q4_polar; reuse generic SIMD path |
+| **Android arm64-v8a CPU** (NEON) | ✓ TBQ3_0/TBQ4_0 in libggml-base.so + libggml-cpu.so | ⚠ source landed; `llama-server` arm64-v8a/musl artifact pending next CI build | ⚠ NEON kernel shipped in `libggml-cpu.so` (`qjl_quantize_row_neon`, `qjl_score_qk_neon`); 100/100 QEMU parity (W2-A); needs cuttlefish-arm64 / Pixel runtime gate | ⚠ Q4_POLAR=47 + NEON dequant/dot in `libggml-cpu.so`; bit-exact under QEMU (W2-B); needs real-hardware runtime gate |
+| **Android x86_64 CPU** (cuttlefish + emu) | ✓ same | ⚠ same DFlash status | ⚠ AVX2 path (`qjl_quantize_row_avx2`, `qjl_score_qk_avx2`) — present in unified-fork build **post-W3-H** only (pre-W3-H the cuttlefish x86_64 build was missing them; see "Symbols verified" note above) | ⚠ Q4_POLAR slot + ref dequant/dot; AVX2-vec-dot landing as a follow-up |
 | **Pixel Tensor TPU / NNAPI** | ✗ KV-cache quant is a per-step custom op, can't fit static graph | ✗ spec-decode is a control-flow problem, NNAPI is a tensor graph | ✗ same constraint as TBQ | ▲ only the dense matmul is delegate-able; sidecar codes have to be unpacked CPU-side first. **Not worth it** unless we abandon llama.cpp for TFLite/MediaPipe — out of scope for this plan. |
 | **Hexagon DSP (Snapdragon QDSP6)** | □ block-quant GEMM ports to HVX intrinsics; KV path needs careful threading | ▲ scheduling/control flow is hard on Hexagon; not high priority | □ JL projection is matmul + sign — a clean HVX target | □ same as android-arm64 but with HVX wide vectors |
-| **iOS / macOS Metal** | □ MSL kernel for TBQ3_0/TBQ4_0 (port of NEON dot product) | □ same shim wiring; spec-decode is host-side, not GPU-side | □ MSL port of JL-projection + bit-pack + score | □ MSL kernel for `block_q4_polar` |
-| **iOS / macOS Accelerate (CPU)** | ✓ falls back to CPU-NEON path automatically | □ same as Android arm64 | □ same | □ same |
-| **Linux/Mac/Windows CUDA (host rig)** | ✓ via fused-turboquant Triton (training only today) | ✓ via stock llama.cpp speculative example | ✓ vendored CUDA C++ kernel works on Ampere/Hopper, sm_120 via PTX | ✓ via Python codes-only path |
+| **iOS / macOS Metal** | □ TBQ3/TBQ4 `.metal` shaders staged on the fork at `ggml/src/ggml-metal/milady-kernels/` (W1-D); dispatcher wiring needs Apple Silicon (W3-G has the ready-to-run kit) | □ host-side spec-decode, no Metal-side work | □ QJL `.metal` staged; dispatcher needs Apple Silicon | □ Polar `.metal` staged; dispatcher needs Apple Silicon |
+| **iOS / macOS Accelerate (CPU)** | ⚠ inherits CPU-NEON path; needs Apple Silicon runtime gate | ⚠ same as Android arm64 once `llama-server` cross-builds for arm64 darwin | ⚠ NEON path inherits | ⚠ same |
+| **Linux/Mac/Windows CUDA (host rig)** | ✓ TBQ CUDA template instances inherited from apothic; W3-D walked the configure | ✓ via stock llama.cpp speculative example | □ port from `packages/training/scripts/quantization/qjl/csrc/` | □ port from `polarquant/csrc/` (codes-only training-side reference) |
 | **WebGPU (browser, future)** | ▲ blocked on llama.cpp WebGPU backend maturity | ▲ same | ▲ same | ▲ same |
 
 ### Realistic deliverable order
