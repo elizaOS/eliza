@@ -240,3 +240,135 @@ export function extractPromptCacheKey(providerOptions: unknown): string | null {
   if (typeof raw !== "string" || raw.length === 0) return null;
   return raw;
 }
+
+/**
+ * Resolve `prefixHash` from `providerOptions.eliza.prefixHash`. Mirrors
+ * `extractPromptCacheKey` — returns null when missing or not a non-empty
+ * string. The prefix hash covers ONLY the stable prompt prefix (system
+ * prompt + tool definitions + large constant context), so a runtime
+ * timestamp in the unstable tail does not invalidate it.
+ *
+ * Local backends prefer this over `promptCacheKey` when available because
+ * it gives the strongest "same prefix → same slot" guarantee: two
+ * conversations with byte-identical stable prefixes will land on the same
+ * slot regardless of how their tail content differs.
+ */
+export function extractPrefixHash(providerOptions: unknown): string | null {
+  if (!providerOptions || typeof providerOptions !== "object") return null;
+  const eliza = (providerOptions as Record<string, unknown>).eliza;
+  if (!eliza || typeof eliza !== "object") return null;
+  const raw = (eliza as Record<string, unknown>).prefixHash;
+  if (typeof raw !== "string" || raw.length === 0) return null;
+  return raw;
+}
+
+/**
+ * Stable annotation describing a single segment of the prompt as it was
+ * emitted by the runtime planner. The cache-bridge consumes this to
+ * compute a stable-prefix-only hash for slot pinning, without having to
+ * look at the (timestamp-laden) tail.
+ *
+ * Mirrors `PromptSegment` in @elizaos/core/src/types/model.ts but is kept
+ * standalone so the cache-bridge can be imported by the local-inference
+ * backends without a hard dep on `@elizaos/core`.
+ */
+export interface AnnotatedPromptSegment {
+  content: string;
+  stable: boolean;
+}
+
+/**
+ * Hash the longest stable prefix of `segments`. Stops at the first
+ * unstable segment, so a runtime timestamp in the unstable tail never
+ * shifts the hash. Returns `null` when no stable segment exists, signaling
+ * to the caller that prefix-cache reuse cannot be derived purely from the
+ * prompt structure (fall back to the prompt-cache-key path instead).
+ *
+ * The hash is sha256-truncated to 16 hex chars, matching `buildModelHash`
+ * — short enough for log lines, wide enough that collision is not a
+ * realistic concern for any plausible number of concurrent prefixes.
+ */
+export function hashStablePrefix(
+  segments: readonly AnnotatedPromptSegment[],
+): string | null {
+  if (segments.length === 0) return null;
+  const hash = createHash("sha256");
+  let consumed = 0;
+  for (const segment of segments) {
+    if (!segment.stable) break;
+    hash.update(segment.content);
+    hash.update("");
+    consumed += 1;
+  }
+  if (consumed === 0) return null;
+  return hash.digest("hex").slice(0, 16);
+}
+
+/**
+ * Extract the per-segment stable annotations from a `providerOptions`
+ * payload. The runtime emits these as `providerOptions.eliza.promptSegments`
+ * when a structured prompt is available — local backends use it to compute
+ * `hashStablePrefix` directly, without having to re-parse the prompt text.
+ *
+ * Returns `null` when the field is absent or malformed; callers fall back
+ * to `extractPromptCacheKey` / `extractPrefixHash`.
+ */
+export function extractAnnotatedSegments(
+  providerOptions: unknown,
+): AnnotatedPromptSegment[] | null {
+  if (!providerOptions || typeof providerOptions !== "object") return null;
+  const eliza = (providerOptions as Record<string, unknown>).eliza;
+  if (!eliza || typeof eliza !== "object") return null;
+  const raw = (eliza as Record<string, unknown>).promptSegments;
+  if (!Array.isArray(raw)) return null;
+  const out: AnnotatedPromptSegment[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") return null;
+    const content = (entry as { content?: unknown }).content;
+    const stable = (entry as { stable?: unknown }).stable;
+    if (typeof content !== "string" || typeof stable !== "boolean") return null;
+    out.push({ content, stable });
+  }
+  return out;
+}
+
+/**
+ * Resolve the conversation handle id from a `providerOptions` payload.
+ * The runtime stuffs it under `providerOptions.eliza.conversationId` when
+ * the calling context represents a long-lived conversation (chat handler,
+ * planner loop). When present, local backends should use it as the
+ * primary slot key — it's stable across turns regardless of prompt
+ * content drift, which gives the strongest possible cache reuse for
+ * agentic loops.
+ */
+export function extractConversationId(providerOptions: unknown): string | null {
+  if (!providerOptions || typeof providerOptions !== "object") return null;
+  const eliza = (providerOptions as Record<string, unknown>).eliza;
+  if (!eliza || typeof eliza !== "object") return null;
+  const raw = (eliza as Record<string, unknown>).conversationId;
+  if (typeof raw !== "string" || raw.length === 0) return null;
+  return raw;
+}
+
+/**
+ * Resolve the stable per-call cache key for the local backends. Order of
+ * precedence:
+ *   1. Conversation id — strongest signal, identical across turns.
+ *   2. Annotated stable-prefix hash — survives unstable-tail drift.
+ *   3. `prefixHash` from the runtime cache plan — already stable-only via
+ *      `cachePrefixSegments` upstream.
+ *   4. `promptCacheKey` (`v5:<prefixHash>`) — back-compat fallback.
+ * Returns null when none are available.
+ */
+export function resolveLocalCacheKey(providerOptions: unknown): string | null {
+  const conversationId = extractConversationId(providerOptions);
+  if (conversationId) return `conv:${conversationId}`;
+  const segments = extractAnnotatedSegments(providerOptions);
+  if (segments) {
+    const hashed = hashStablePrefix(segments);
+    if (hashed) return `seg:${hashed}`;
+  }
+  const prefixHash = extractPrefixHash(providerOptions);
+  if (prefixHash) return `pfx:${prefixHash}`;
+  return extractPromptCacheKey(providerOptions);
+}
