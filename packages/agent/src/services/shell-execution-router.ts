@@ -1,16 +1,25 @@
 /**
- * Single chokepoint for one-shot shell execution. Dispatches against
- * `ELIZA_RUNTIME_MODE`:
- *  - `cloud`      — denied by the broker (no host exec from cloud).
- *  - `local-safe` — routed through `SandboxManager` (Docker / Apple Container).
- *  - `local-yolo` — direct host exec via `child_process.spawn`.
+ * Single chokepoint for shell execution.
+ *
+ * The runtime has a 3-mode switch via `ELIZA_RUNTIME_MODE`:
+ *  - `cloud`        — agent code runs in the hosted backend; local exec is
+ *                     refused with a clear error.
+ *  - `local-safe`   — every shell exec is routed through `SandboxManager`
+ *                     (Docker / Apple Container) so the host filesystem is
+ *                     not directly touched.
+ *  - `local-yolo`   — direct host exec (the historical default).
+ *
+ * Plugins, services, and CLI helpers that previously called `child_process.spawn`
+ * for one-shot command execution should call `runShell()` instead. This keeps
+ * the mode dispatch in one place and lets the privacy/sandbox guarantees of
+ * `local-safe` actually hold.
  */
 
 import { spawn } from "node:child_process";
 import process from "node:process";
 import {
-  type RuntimeExecutionMode,
   resolveRuntimeExecutionMode,
+  type RuntimeExecutionMode,
 } from "@elizaos/shared";
 import { CapabilityBroker } from "./capability-broker.ts";
 import type { SandboxManager } from "./sandbox-manager.ts";
@@ -86,10 +95,13 @@ async function resolveSandboxManager(
   return null;
 }
 
-// Router-owned broker: a single CapabilityBroker that re-reads the runShell
-// mode on every check via the holder, so policy and dispatch agree without
-// rebuilding a broker per call. The shared `getCapabilityBroker()` singleton
-// defaults to `local-safe`, which is wrong for host-side runShell.
+// Router-scoped broker so the shell.exec policy is driven by the same mode
+// resolver runShell uses for dispatch. The broker singleton in
+// capability-broker.ts hardcodes `local-safe` as its default mode, which is
+// correct for cloud-side callers but wrong for host-side runShell — those
+// must follow ELIZA_RUNTIME_MODE/RUNTIME_MODE/LOCAL_RUNTIME_MODE. The
+// internal mutable holder lets the broker re-read mode on every call without
+// constructing a new CapabilityBroker per runShell invocation.
 const routerModeHolder: { current: ShellExecutionMode } = {
   current: "local-yolo",
 };
@@ -210,6 +222,12 @@ export async function runShell(
 
   const mode = resolveShellExecutionMode(ctx);
 
+  // Broker check uses the same mode source the router dispatches on, so the
+  // policy and the runtime path agree. Singleton-cached so the audit log is
+  // unified across all runShell calls in a process. The broker subsumes the
+  // legacy explicit cloud-mode rejection: shell.exec is hard-denied in the
+  // cloud profile, so any cloud-mode call fails here with a stable,
+  // policy-keyed error.
   const decision = getRouterBroker(() => mode).check({
     kind: "shell",
     op: "exec",

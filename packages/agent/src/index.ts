@@ -127,10 +127,10 @@ export * from "./runtime/embedding-presets.ts";
 export {
   isCloudExecutionMode,
   type LocalExecutionMode,
-  type RuntimeExecutionMode,
-  type RuntimeExecutionModeSource,
   resolveLocalExecutionMode,
   resolveRuntimeExecutionMode,
+  type RuntimeExecutionMode,
+  type RuntimeExecutionModeSource,
   shouldUseSandboxExecution,
 } from "./runtime/local-execution-mode.ts";
 export * from "./runtime/onboarding-names.ts";
@@ -182,14 +182,9 @@ export {
   resolveRelationshipsGraphService,
   searchMemoriesForCluster,
 } from "./services/relationships-graph.ts";
-export {
-  getLoadedVfsPlugins,
-  type LoadedVfsPlugin,
-  loadPluginFromVfs,
-  type LoadPluginFromVfsOptions,
-  unloadPluginFromVfs,
-  type UnloadPluginFromVfsOptions,
-} from "./runtime/load-plugin-from-vfs.ts";
+// Re-export the shell-execution router by name to keep a stable surface for
+// callers that consume the chokepoint directly without unpacking the wider
+// services barrel.
 export {
   runShell,
   type ShellExecutionMode,

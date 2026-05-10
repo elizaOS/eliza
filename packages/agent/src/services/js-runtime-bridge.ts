@@ -217,8 +217,13 @@ function toFileUrl(absolutePath: string): string {
 
 /**
  * Capacitor plugin facades register themselves through this hook so the
- * dependency direction stays connector → agent. The iOS/Android facades call
- * {@link registerJsRuntimeFactory} at import time.
+ * agent layer never has to import the connector layer directly (the
+ * dependency direction is connector → agent, not the other way around).
+ *
+ * `packages/app-core/src/connectors/capacitor-jsc.ts` and
+ * `packages/app-core/src/connectors/capacitor-quickjs.ts` call
+ * {@link registerJsRuntimeFactory} at import time so they participate in the
+ * fallback chain below.
  */
 export interface JsRuntimeFactory {
   /** Stable identifier used to pick a factory in {@link resolveJsRuntimeBridge}. */
@@ -270,8 +275,10 @@ let cachedBridge: JsRuntimeBridge | null = null;
 export async function resolveJsRuntimeBridge(): Promise<JsRuntimeBridge> {
   if (cachedBridge) return cachedBridge;
 
-  // Validate MILADY_DISTRIBUTION_PROFILE early — the resolver throws on an
-  // unrecognized value so a misconfigured build fails before any bridge runs.
+  // Distribution profile is queried so future logic can lock down dev-only
+  // bridges (e.g. host-node import of arbitrary file paths) on App Store
+  // builds. Currently informational only — the call also validates the env
+  // var and throws on an unrecognized value.
   resolveDistributionProfile();
 
   if (isNodeLikeRuntime()) {

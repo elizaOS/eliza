@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  __resetShellRouterBrokerForTests,
-  runShell,
-} from "./shell-execution-router.ts";
+import { runShell } from "./shell-execution-router.ts";
 
 const MODE_ENV_KEYS = [
   "ELIZA_RUNTIME_MODE",
@@ -11,9 +8,7 @@ const MODE_ENV_KEYS = [
 ] as const;
 
 describe("runShell", () => {
-  let saved: Partial<
-    Record<(typeof MODE_ENV_KEYS)[number], string | undefined>
-  > = {};
+  let saved: Partial<Record<(typeof MODE_ENV_KEYS)[number], string | undefined>> = {};
 
   beforeEach(() => {
     saved = {};
@@ -21,7 +16,6 @@ describe("runShell", () => {
       saved[key] = process.env[key];
       delete process.env[key];
     }
-    __resetShellRouterBrokerForTests();
   });
 
   afterEach(() => {
@@ -33,7 +27,6 @@ describe("runShell", () => {
         process.env[key] = previous;
       }
     }
-    __resetShellRouterBrokerForTests();
   });
 
   it("local-yolo runs commands on the host", async () => {
@@ -60,7 +53,7 @@ describe("runShell", () => {
     expect(result.stdout).toBe("hello\n");
   });
 
-  it("cloud rejects local shell execution via the capability broker", async () => {
+  it("cloud rejects local shell execution with the documented error", async () => {
     process.env.ELIZA_RUNTIME_MODE = "cloud";
     await expect(
       runShell({
@@ -68,7 +61,7 @@ describe("runShell", () => {
         args: ["nope"],
         toolName: "test:cloud",
       }),
-    ).rejects.toThrow(/capability denied.*shell\.exec is denied in cloud/);
+    ).rejects.toThrow("Local shell execution disabled in cloud mode.");
   });
 
   it("local-safe forwards command, args, env, cwd, and timeout to SandboxManager.run", async () => {
@@ -93,10 +86,7 @@ describe("runShell", () => {
         cwd: "/workspace",
         env: { GIT_TERMINAL_PROMPT: "0" },
         timeoutMs: 12_345,
-        // local-safe mode requires a sandbox.* tool name so the capability
-        // broker allows shell.exec through; the runtime path then routes the
-        // call through SandboxManager.
-        toolName: "sandbox.exec",
+        toolName: "test:safe",
       },
       // biome-ignore lint/suspicious/noExplicitAny: deliberate stub for unit test
       { sandboxManager: fakeManager as any },
@@ -122,24 +112,11 @@ describe("runShell", () => {
         {
           command: "echo",
           args: ["hi"],
-          // sandbox.* prefix lets the broker allow shell.exec; the actual
-          // SandboxManager-missing failure is what this test checks for.
-          toolName: "sandbox.exec",
+          toolName: "test:safe-missing",
         },
         { sandboxManager: null },
       ),
     ).rejects.toThrow("local-safe mode requires SandboxManager");
-  });
-
-  it("local-safe denies shell.exec without a sandbox.* tool name", async () => {
-    process.env.ELIZA_RUNTIME_MODE = "local-safe";
-    await expect(
-      runShell({
-        command: "echo",
-        args: ["hi"],
-        toolName: "test:host-tool",
-      }),
-    ).rejects.toThrow(/capability denied/);
   });
 
   it("honours timeoutMs by killing the child and reporting non-zero exit", async () => {
