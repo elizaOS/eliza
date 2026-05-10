@@ -49,7 +49,11 @@ function readPort(envPath) {
   return { port: data.port, name: data.name ?? basename(envPath, ".json") };
 }
 
-async function waitForPort(port, timeoutMs = 10_000) {
+async function waitForPort(port, timeoutMs = 60_000) {
+  // Default 60s — npx-based cold start of @mockoon/cli takes 20–40 seconds
+  // before the server actually binds, especially when running 18 instances
+  // in parallel. Smaller bins (`mockoon-cli` on PATH via `MOCKOON_BIN`) bind
+  // in <2s; the longer wait is harmless when the port is already listening.
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const ok = await new Promise((resolve) => {
@@ -104,7 +108,10 @@ async function main() {
 
   let failed = 0;
   for (const s of started) {
-    const ok = await waitForPort(s.port, 10_000);
+    // Use the helper's default (60s) so npx cold starts have time to bind.
+    // The wait short-circuits as soon as the port is listening, so this only
+    // matters on first launch.
+    const ok = await waitForPort(s.port);
     if (!ok) {
       failed += 1;
       console.error(`FAIL: ${s.name} did not bind port ${s.port} within 10s — see ${LOG_DIR}/${basename(s.envPath, ".json")}.log`);
