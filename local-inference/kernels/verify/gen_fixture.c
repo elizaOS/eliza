@@ -288,12 +288,36 @@ static int self_test(void) {
     eliza_qjl_score_qk(qsketch, &qblk, 1, 1, 1, &sqjl);
     if (!isfinite(sqjl)) { fprintf(stderr, "qjl self-test: non-finite score %g\n", (double)sqjl); return 1; }
 
+    /* QJL parity: score_qk and mul_mv must return the same scalar when
+     * n_heads = n_kv_heads = n_tokens = 1 (no GQA fanout). The two paths
+     * are intended to be equivalent up to that boundary. */
+    float sqjl_mv;
+    eliza_qjl_mul_mv(&qblk, qsketch, 1, &sqjl_mv);
+    if (fabsf(sqjl - sqjl_mv) > 1e-5f) {
+        fprintf(stderr, "qjl parity: score_qk=%g vs mul_mv=%g (diff=%g)\n",
+                (double)sqjl, (double)sqjl_mv, (double)fabsf(sqjl - sqjl_mv));
+        return 1;
+    }
+
     /* Polar self-test: encode one block, dot against q, expect finite. */
     eliza_block_q4_polar pblk;
     eliza_polar_quantize_row(x, &pblk, ELIZA_QK_POLAR, /*use_qjl=*/0);
     float spolar;
     eliza_polar_mul_mv(&pblk, q, 1, /*use_qjl=*/0, &spolar);
     if (!isfinite(spolar)) { fprintf(stderr, "polar self-test: non-finite score %g\n", (double)spolar); return 1; }
+
+    /* Polar parity: dequantize_row + manual dot should match mul_mv to fp32
+     * round-off. Catches any drift between the two paths the Metal shaders
+     * mirror (kernel_get_rows_q4_polar vs kernel_mul_mv_q4_polar_f32). */
+    float pdec[ELIZA_QK_POLAR];
+    eliza_polar_dequantize_row(&pblk, pdec, ELIZA_QK_POLAR, /*use_qjl=*/0);
+    double spolar_manual = 0.0;
+    for (int i = 0; i < ELIZA_QK_POLAR; i++) spolar_manual += (double)pdec[i] * (double)q[i];
+    if (fabs((double)spolar - spolar_manual) > 1e-3) {
+        fprintf(stderr, "polar parity: mul_mv=%g vs dequant·q=%g (diff=%g)\n",
+                (double)spolar, spolar_manual, fabs((double)spolar - spolar_manual));
+        return 1;
+    }
 
     printf("[self-test] turbo3=%.6f turbo4=%.6f turbo3_tcq=%.6f qjl=%.6f polar=%.6f (all finite)\n",
            (double)s3, (double)s4, (double)stcq, (double)sqjl, (double)spolar);
