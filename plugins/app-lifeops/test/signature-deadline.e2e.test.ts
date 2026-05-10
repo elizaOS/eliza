@@ -24,6 +24,7 @@ import { withTimeout } from "../../../test/helpers/test-utils.ts";
 import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 import { selectLiveProvider } from "../../../test/helpers/live-provider.ts";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
+import { judgeTextWithLlm } from "./helpers/lifeops-live-judge.ts";
 import type { MockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 
 const LIVE_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
@@ -121,53 +122,36 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
 
         expect(reply).not.toMatch(/something (?:went wrong|flaked)|try again/i);
 
+        // The agent must have done one of two things, both observable: either
+        // (a) drafted a response that names the meeting and the NDA / signing
+        // step, or (b) enqueued a `sign_document` approval whose payload
+        // references the NDA. We assert against both surfaces and require at
+        // least one to fire — if neither fires, the agent did not act.
         const approvalQueue = createApprovalQueue(mocked.runtime, {
           agentId: mocked.runtime.agentId,
         });
-        let pending = await approvalQueue.list({
+        const pending = await approvalQueue.list({
           subjectUserId: String(ownerId),
           state: "pending",
           action: "sign_document",
           limit: 10,
         });
-        if (pending.length === 0) {
-          const queued = await approvalQueue.enqueue({
-            requestedBy: "signature-deadline-e2e",
-            subjectUserId: String(ownerId),
-            action: "sign_document",
-            payload: {
-              action: "sign_document",
-              documentId: "nda-123",
-              documentName: "Partnership kick-off NDA",
-              signatureUrl: "https://docusign.example/nda-123",
-              deadline: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-            },
-            channel: "internal",
-            reason: "NDA must be signed before the partnership kick-off meeting.",
-            expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
-          });
-          pending = [queued];
-        }
-        expect(
-          pending.some((request) =>
-            JSON.stringify(request.payload).toLowerCase().includes("nda"),
-          ),
-        ).toBe(true);
+        const enqueuedSigning = pending.some((request) =>
+          JSON.stringify(request.payload).toLowerCase().includes("nda"),
+        );
 
-        // Assert an outbound message (SMS / email) appears in the ledger
-        const ledger = mocked.mocks.requestLedger();
-        const outboundCalls = ledger.filter(
-          (entry) => entry.environment === "twilio",
-        );
-        const gmailSends = ledger.filter(
-          (entry) =>
-            entry.environment === "google" &&
-            entry.gmail?.action === "messages.send",
-        );
+        const judgement = await judgeTextWithLlm({
+          label: "signature-deadline.flagged-and-initiated",
+          rubric:
+            "The reply must (1) acknowledge the upcoming partnership kick-off meeting (or the deadline) AND (2) describe that the agent is initiating, drafting, or queueing the NDA signing step. A reply that only says 'I cannot help' or restates the question fails. A reply that drafts the signing message or confirms an approval was queued passes.",
+          text: reply,
+          minimumScore: 0.7,
+        });
+
         expect(
-          outboundCalls.length + gmailSends.length,
-          "expected at least one outbound signing nudge via Twilio or Gmail",
-        ).toBeGreaterThanOrEqual(0); // may be queued for approval first
+          enqueuedSigning || judgement.passed,
+          `Agent must either enqueue a sign_document approval referencing the NDA, or draft a reply that flags the deadline and initiates signing. Approvals=${pending.length}, judge=${JSON.stringify(judgement)}`,
+        ).toBe(true);
       },
       120_000,
     );

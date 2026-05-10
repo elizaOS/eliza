@@ -352,41 +352,32 @@ describeIf(LIVE_SUITE_ENABLED)(
       const approvalQueue = createApprovalQueue(runtime, {
         agentId: runtime.agentId,
       });
-      let pending = await approvalQueue.list({
+      const pending = await approvalQueue.list({
         subjectUserId: String(ownerId),
         state: "pending",
         action: null,
         limit: 10,
       });
-      const repairDraft =
-        "Sorry I missed your call earlier. Thursday at 2pm or Friday at 11am works on my side if either helps for the walkthrough.";
-      const pendingRequest =
-        pending[0] ??
-        (await approvalQueue.enqueue({
-          requestedBy: "assistant-user-journeys-followup-repair",
-          subjectUserId: String(ownerId),
-          action: "send_message",
-          payload: {
-            action: "send_message",
-            recipient: "frontier-tower",
-            body: repairDraft,
-            replyToMessageId: null,
-          },
-          channel: "discord",
-          reason: "Repair the missed Frontier Tower walkthrough thread.",
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        }));
-      pending = [pendingRequest, ...pending.filter((entry) => entry.id !== pendingRequest.id)];
-      expect(pending.length).toBeGreaterThan(0);
-      expect(
-        pending.some((request) =>
-          `${request.reason} ${JSON.stringify(request.payload)}`
-            .toLowerCase()
-            .includes("frontier tower"),
-        ),
-      ).toBe(true);
 
-      const approved = await approvalQueue.approve(pendingRequest.id, {
+      // The agent must enqueue the repair note for owner approval. We do NOT
+      // enqueue it on the agent's behalf — if the agent failed to draft and
+      // queue, this test must fail.
+      expect(
+        pending.length,
+        "Agent must enqueue a repair-note approval after the user asks it to hold for approval",
+      ).toBeGreaterThan(0);
+      const pendingRequest = pending.find((request) =>
+        `${request.reason} ${JSON.stringify(request.payload)}`
+          .toLowerCase()
+          .includes("frontier tower"),
+      );
+      expect(
+        pendingRequest,
+        "Agent's queued approval must reference the Frontier Tower thread the user mentioned",
+      ).toBeDefined();
+      const targetRequest = pendingRequest!;
+
+      const approved = await approvalQueue.approve(targetRequest.id, {
         resolvedBy: String(ownerId),
         resolutionReason: "Owner approved the Frontier Tower repair note.",
       });
@@ -396,10 +387,19 @@ describeIf(LIVE_SUITE_ENABLED)(
         request: approved,
       });
       expect(execution.success).toBe(true);
+      // The dispatched repair note must reference the Frontier Tower thread or
+      // the missed-call repair semantically. We don't pin to a single word
+      // because the agent's draft varies; we look for any of a small set of
+      // phrases that all paraphrase the same intent.
+      const dispatchTexts = dispatches.map((dispatch) =>
+        dispatch.text.toLowerCase(),
+      );
+      const referencesRepair = dispatchTexts.some((text) =>
+        /frontier|walkthrough|missed|reschedul|sorry/.test(text),
+      );
       expect(
-        dispatches.some((dispatch) =>
-          dispatch.text.toLowerCase().includes("walkthrough"),
-        ),
+        referencesRepair,
+        `Dispatched repair note must reference the missed Frontier Tower thread; got: ${JSON.stringify(dispatchTexts)}`,
       ).toBe(true);
 
       const nonPending = await approvalQueue.list({

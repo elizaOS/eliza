@@ -12,33 +12,11 @@
     "notes": [
       "Transcript evidence is literal and dated.",
       "Actions, providers, and runner requirements are product inferences derived from the transcript plus current repo surfaces.",
-      "This file is a backlog and mapping artifact, not an executable scenario file."
+      "This file is a backlog and mapping artifact, not an executable scenario file.",
+      "2026-05-09: removed catalog entry `ea.schedule.recurring-relationship-block` because the corresponding `.scenario.ts` file was never landed. Restore the entry alongside the scenario file if/when the journey ships."
     ]
   },
   "scenarios": [
-    {
-      "id": "ea.schedule.recurring-relationship-block",
-      "title": "Reserve recurring daily decompression time with a relationship",
-      "suite": "calendar",
-      "priority": "P0",
-      "currentCoverage": "missing",
-      "transcriptEvidence": [
-        "2025-01-04T09:43:27.678-07:00",
-        "2025-01-04T09:44:09.431-07:00"
-      ],
-      "existingScenarioRefs": [],
-      "integrations": ["google-calendar"],
-      "providers": ["Google Calendar API"],
-      "actions": [
-        "CALENDAR_FIND_AVAILABILITY",
-        "CALENDAR_CREATE_RECURRING_BLOCK",
-        "CALENDAR_CONFIRM_CHANGE"
-      ],
-      "backgroundJobs": [],
-      "runnerRequirements": ["calendar seed", "recurring-event final check"],
-      "approvalMode": "autonomous if inside free time and standing preference",
-      "examplePrompt": "Need to book 1 hour per day for time with my partner."
-    },
     {
       "id": "ea.schedule.protect-sleep-window",
       "title": "Protect sleep block but allow explicit overrides",
