@@ -1,7 +1,12 @@
 /** Mystical reading systems for ElizaOS agents (tarot, I Ching, astrology). */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { logger, validateActionKeywords, validateActionRegex } from "@elizaos/core";
+import {
+  logger,
+  promoteSubactionsToActions,
+  validateActionKeywords,
+  validateActionRegex,
+} from "@elizaos/core";
 import { paymentOpAction } from "./actions/payment-op";
 import { readingOpAction } from "./actions/reading-op";
 import { createReadingRoutes } from "./routes/readings";
@@ -45,7 +50,10 @@ export const mysticismPlugin: Plugin = {
     logger.info("[mysticism] Plugin initialized");
   },
 
-  actions: [readingOpAction, paymentOpAction],
+  actions: [
+    ...promoteSubactionsToActions(readingOpAction),
+    ...promoteSubactionsToActions(paymentOpAction),
+  ],
 
   providers: [
     {

@@ -146,6 +146,27 @@ function normalizeSubaction(value: unknown): Subaction | null {
     : null;
 }
 
+/**
+ * Resolve the umbrella subaction from `params.subaction` (canonical) or any
+ * accepted legacy alias (`op`, `action`, `operation`). The canonical key is
+ * always tried first; aliases preserve back-compat with cached planner output
+ * that predates the project-wide standardization.
+ */
+function resolveSubaction(params: ScheduledTaskParams): Subaction | null {
+  const aliasKeys: readonly (keyof ScheduledTaskParams | string)[] = [
+    "subaction",
+    "op",
+    "action",
+    "operation",
+  ];
+  for (const key of aliasKeys) {
+    const candidate = (params as Record<string, unknown>)[key];
+    const normalized = normalizeSubaction(candidate);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
 function normalizeKind(value: unknown): ScheduledTaskKindParam | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim().toLowerCase();
@@ -665,7 +686,7 @@ export const scheduledTaskAction: Action & {
     }
 
     const params = getParams(options);
-    const subaction = normalizeSubaction(params.subaction);
+    const subaction = resolveSubaction(params);
     if (!subaction) {
       return {
         success: false,

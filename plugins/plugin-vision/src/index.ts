@@ -1,4 +1,5 @@
 import type { Plugin, TestSuite } from "@elizaos/core";
+import { promoteSubactionsToActions } from "@elizaos/core";
 import { visionAction } from "./action";
 import { visionProvider } from "./provider";
 import { VisionService } from "./service";
@@ -10,7 +11,7 @@ export const visionPlugin: Plugin = {
     "Provides visual perception through camera integration and scene analysis",
   services: [VisionService],
   providers: [visionProvider],
-  actions: [visionAction],
+  actions: [...promoteSubactionsToActions(visionAction)],
   tests: testSuites as TestSuite[],
   // Self-declared auto-enable: activate when features.vision is enabled OR
   // when media.vision.provider is configured.

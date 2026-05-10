@@ -1,11 +1,36 @@
 import { describe, expect, it } from "vitest";
 import {
+	CANONICAL_SUBACTION_KEY,
+	DEFAULT_SUBACTION_KEYS,
 	dispatchSubaction,
 	normalizeSubaction,
 	readSubaction,
 } from "../subaction-dispatch";
 
 describe("subaction-dispatch", () => {
+	it("documents subaction as the canonical key with legacy aliases", () => {
+		expect(CANONICAL_SUBACTION_KEY).toBe("subaction");
+		expect(DEFAULT_SUBACTION_KEYS).toEqual([
+			"subaction",
+			"op",
+			"action",
+			"operation",
+		]);
+	});
+
+	it("prefers subaction over legacy aliases when multiple are present", () => {
+		const allowed = ["list", "create"] as const;
+		expect(
+			readSubaction(
+				{ subaction: "list", op: "create", action: "create" },
+				{ allowed },
+			),
+		).toBe("list");
+		expect(readSubaction({ op: "list" }, { allowed })).toBe("list");
+		expect(readSubaction({ action: "create" }, { allowed })).toBe("create");
+		expect(readSubaction({ operation: "create" }, { allowed })).toBe("create");
+	});
+
 	it("normalizes planner-facing op names", () => {
 		expect(normalizeSubaction("Search YouTube")).toBe("search_youtube");
 		expect(normalizeSubaction("play-query")).toBe("play_query");

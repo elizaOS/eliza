@@ -1,6 +1,7 @@
 // Direct leaf-file imports — see comment in
 // ../features/advanced-capabilities/index.ts for the Bun.build mis-rewrite
 // that requires bypassing the barrels here too.
+import { promoteSubactionsToActions } from "../actions/promote-subactions";
 import { messageAction } from "../features/advanced-capabilities/actions/message";
 import { postAction } from "../features/advanced-capabilities/actions/post";
 import { reflectionItems } from "../features/advanced-capabilities/evaluators/reflection-items";
@@ -40,11 +41,13 @@ export const relationshipsPlugin: Plugin = {
 		// addContactAction / removeContactAction / searchContactsAction /
 		// updateContactAction / updateEntityAction leaves are no longer
 		// registered here — their similes live on CONTACT's similes list.
-		messageAction,
-		postAction,
-		// MESSAGE and POST use umbrella `operation`/`op` parameters instead of
-		// registering per-operation leaves. The planner unwraps those compact
-		// calls at benchmark/report time.
+		// MESSAGE and POST register the parent umbrella plus virtual
+		// MESSAGE_<SUB> / POST_<SUB> actions for every subaction. The
+		// virtuals delegate to the parent's handler with `subaction:`
+		// injected, so the planner can pick a specific verb directly OR
+		// call the parent with custom params.
+		...promoteSubactionsToActions(messageAction),
+		...promoteSubactionsToActions(postAction),
 	],
 	evaluators: [...reflectionItems, ...skillItems],
 	providers: [
