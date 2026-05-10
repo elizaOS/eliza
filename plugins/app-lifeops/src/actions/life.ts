@@ -1997,9 +1997,8 @@ export const lifeAction: Action & {
     "SET_REMINDER",
     "NEW_HABIT",
     "NEW_GOAL",
-    // W3-C drift D-3: PROFILE.set_reminder_preference + configure_escalation
-    // collapsed onto LIFE.policy_*. Old action-name aliases stay registered
-    // here for one release so cached planner outputs keep resolving.
+    // Owner-policy aliases — the canonical surface is
+    // `LIFE.policy_set_reminder` / `LIFE.policy_configure_escalation`.
     "SET_REMINDER_INTENSITY",
     "CONFIGURE_ESCALATION",
   ],
@@ -3419,7 +3418,7 @@ export const lifeAction: Action & {
     {
       name: "subaction",
       description:
-        "Which life operation to perform. Owner-policy verbs (policy_set_reminder, policy_configure_escalation) write to OwnerFactStore (per W3-C drift D-3).",
+        "Which life operation to perform. Owner-policy verbs (policy_set_reminder, policy_configure_escalation) write to OwnerFactStore.",
       required: false,
       schema: {
         type: "string" as const,
