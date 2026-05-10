@@ -233,7 +233,9 @@ function createPlan(args: LifeOpsContextBrokerArgs): BrokerPlan {
       return {
         category,
         actionNames:
-          category === "priority" ? ["SCHEDULED_TASKS", "MESSAGE"] : ["MESSAGE"],
+          category === "priority"
+            ? ["SCHEDULED_TASKS", "MESSAGE"]
+            : ["MESSAGE"],
         intent,
         parameters: compactParameters({
           operation: category === "priority" ? "list_inbox" : "triage",

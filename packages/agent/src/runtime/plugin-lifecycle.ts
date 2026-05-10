@@ -716,7 +716,11 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
     );
     const toolCache = getOrBuildToolCallCache(runtime);
     if (toolCache) {
-      effective = wrapActionWithCache(effective, toolCache.cache, toolCache.cfg);
+      effective = wrapActionWithCache(
+        effective,
+        toolCache.cache,
+        toolCache.cfg,
+      );
     }
     originalRegisterAction(effective);
     if (!capture || runtime.actions.length <= actionsBefore) return;

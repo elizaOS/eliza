@@ -2167,7 +2167,9 @@ export const contactAction: Action = {
     registerEntitySearchCategory(runtime);
     {
       const params = getParams(options);
-      if (readOp(params.action ?? params.subaction ?? params.op) === "followup") {
+      if (
+        readOp(params.action ?? params.subaction ?? params.op) === "followup"
+      ) {
         return true;
       }
     }

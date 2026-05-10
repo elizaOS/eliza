@@ -27,10 +27,7 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import {
-  compactors,
-  naiveSummaryCompactor,
-} from "./conversation-compactor.ts";
+import { compactors, naiveSummaryCompactor } from "./conversation-compactor.ts";
 import {
   approxCountTokens,
   type CompactorMessage,
@@ -386,15 +383,13 @@ export async function applyConversationCompaction(
   // The compactor returned only the replacement; we need to combine with
   // the boundary it computed. Easiest: re-split the original transcript
   // and rebuild here.
-  const systemOffset =
-    transcript.messages[0]?.role === "system" ? 1 : 0;
+  const systemOffset = transcript.messages[0]?.role === "system" ? 1 : 0;
   // The compactor uses findSafeCompactionBoundary internally; mirror its
   // default tail size unless the caller overrode it.
   const preserveTail = args.preserveTailMessages ?? 6;
   const total = transcript.messages.length;
   const naiveBoundary = Math.max(systemOffset, total - preserveTail);
-  const systemPrefix =
-    systemOffset === 1 ? [transcript.messages[0]] : [];
+  const systemPrefix = systemOffset === 1 ? [transcript.messages[0]] : [];
   const preservedTail = transcript.messages.slice(naiveBoundary);
   const compactedTranscript: CompactorTranscript = {
     messages: [
