@@ -2,11 +2,11 @@
 
 ## Status
 
-**Draft.** Phase 1, slice 1 — schema + parser only, no enforcement, no consent UI, no granted-permission store. Subsequent slices add consent persistence, then worker-isolation enforcement, then default-tightening.
+**Draft.** Phase 1 defines the permissions schema, parser, grant store, and Settings consent surface. Phase 2.1 adds the `elizaos.app.isolation` declaration and registry persistence, but still no runtime enforcement. Later Phase 2 slices add worker-isolation enforcement, then Phase 3 default-tightening.
 
 ## Scope
 
-This spec defines the declarative permission manifest carried by elizaOS apps in their `package.json` under `elizaos.app.permissions`. It applies to apps loaded via `APP load_from_directory` and to the `POST /api/apps/load_from_directory` HTTP route — i.e. every code path today that parses `package.json → elizaos.app` for third-party-app discovery.
+This spec defines the declarative app manifest fields carried by elizaOS apps in their `package.json` under `elizaos.app.permissions` and `elizaos.app.isolation`. It applies to apps loaded via `APP load_from_directory` and to the `POST /api/apps/load_from_directory` HTTP route — i.e. every code path today that parses `package.json → elizaos.app` for third-party-app discovery.
 
 It does **not** apply to elizaOS *plugins* (different surface, different enforcement story) or to first-party apps under `eliza/apps/` (auto-trusted by their source path; see "Trust tier", below).
 
@@ -15,18 +15,19 @@ It does **not** apply to elizaOS *plugins* (different surface, different enforce
 - Give third-party apps a declarative way to state what privileged surfaces they need.
 - Make the declaration the durable contract that future enforcement layers (consent UI, worker isolation, FS gating, network gating) read.
 - Persist the declared permissions alongside the registered app so a user can later inspect what was declared at register time.
+- Persist the requested execution isolation so Phase 2 worker hosting can decide how to run the app without re-reading package.json.
 - Forward-compatible: third-party app authors can declare permission namespaces that newer Milady versions will recognise; older Milady versions ignore unknown namespaces without rejecting the manifest.
 
-## Non-goals (this slice)
+## Non-goals
 
-- Enforcement of any declared permission. The manifest is *advisory* in this slice.
-- A consent UI or granted-permission store on disk.
+- Enforcement of any declared permission. The manifest and grants are advisory until Phase 2 worker execution reads them.
+- Detailed consent UI / granted-store semantics. Those live in [`app-permissions-granted-store.md`](./app-permissions-granted-store.md).
 - Trust tiering of first-party apps (out of scope; trust is encoded at the loader, not in the manifest).
 - A schema for elizaOS plugins (`@elizaos/plugin-*`). Plugins are runtime extensions, not sandboxed UI surfaces; if a permission story for plugins is needed, it gets its own spec.
 
 ## Manifest location
 
-The manifest is a `permissions` object inside the existing `elizaos.app` block in the app's `package.json`:
+The manifest fields live inside the existing `elizaos.app` block in the app's `package.json`:
 
 ```json
 {
@@ -35,6 +36,7 @@ The manifest is a `permissions` object inside the existing `elizaos.app` block i
     "app": {
       "displayName": "Foo",
       "category": "utility",
+      "isolation": "worker",
       "permissions": {
         "fs": {
           "read":  ["state/**", "config.json"],
@@ -49,7 +51,7 @@ The manifest is a `permissions` object inside the existing `elizaos.app` block i
 }
 ```
 
-Putting the block inside `elizaos.app` keeps every existing `discoverApps()` reader unchanged at the JSON-path level — the field is simply available to callers that ask for it.
+Putting the fields inside `elizaos.app` keeps every existing `discoverApps()` reader unchanged at the JSON-path level — the fields are simply available to callers that ask for them.
 
 ## Permission namespaces
 
@@ -94,11 +96,23 @@ Trust is a property of *how the app was loaded*, not something the app declares 
 
 Apps cannot lie about their trust by editing their `package.json`. The loader's classification is authoritative.
 
-In a later slice the consent flow will:
+The Phase 1 grant flow:
 - Auto-grant first-party apps every permission they declare (no consent prompt).
 - Require explicit user consent for external apps (per-namespace, persisted to a granted-permission store).
 
-In *this* slice the loader records `trust` and `requestedPermissions` in the audit log, but enforces nothing.
+In this phase the loader records `trust`, `isolation`, and `requestedPermissions` in the audit log, but enforces nothing.
+
+## Execution isolation
+
+Apps may declare an optional `elizaos.app.isolation` field:
+
+```ts
+type AppIsolation = "none" | "worker";
+```
+
+- Omitted or `"none"` means the app runs in-process. This is the current runtime behaviour.
+- `"worker"` means the app is requesting the Phase 2 worker execution path. Phase 2.1 persists this request and returns it in the permissions API, but does not yet spawn workers or enforce FS/network gates.
+- Unknown values are treated as `"none"` by this Milady version. This keeps older clients forward-compatible with future isolation modes while avoiding accidental enforcement claims for modes they do not understand.
 
 ## Forward compatibility
 
@@ -120,15 +134,21 @@ This rule means a third-party app that ships `permissions: { fs: {...}, capabili
 
 ### Per-app registry (`~/.<namespace>/app-registry.json`)
 
-`AppRegistryEntry` gains an optional `requestedPermissions: Record<string, unknown>` field, persisted alongside the existing `slug` / `canonicalName` / `aliases` / `directory` / `displayName` fields. Older entries written before this slice landed parse cleanly; the field is simply absent.
+`AppRegistryEntry` gains:
+
+- `requestedPermissions?: Record<string, unknown>` — raw declared permissions, absent for apps without a `permissions` block.
+- `isolation?: "none" | "worker"` — requested execution isolation, defaulted to `"none"` when absent.
+
+Both fields are persisted alongside the existing `slug` / `canonicalName` / `aliases` / `directory` / `displayName` fields. Older entries written before these fields landed parse cleanly; absent `requestedPermissions` means no permissions were declared, and absent `isolation` defaults to `"none"`.
 
 The persisted shape is the **raw** declared object, not the typed slice. This preserves forward compatibility through restarts: when a future Milady version recognises `capabilities`, it re-reads the same registry and the field is already there.
 
 ### Audit log (`~/.<namespace>/audit/app-loads.jsonl`)
 
-Each register call appends a JSON line. This slice adds two fields:
+Each register call appends a JSON line. The app-load audit line includes:
 
 - `trust`: `"first-party" | "external"` (string)
+- `isolation`: `"none" | "worker"` (string)
 - `requestedPermissions`: the raw declared object, or `null` if the manifest declared no `permissions` block
 
 Existing fields (`timestamp`, `directory`, `appName`, `slug`, `displayName`, `registeredByEntity`, `registeredByRoom`) are unchanged.
@@ -137,9 +157,11 @@ Existing fields (`timestamp`, `directory`, `appName`, `slug`, `displayName`, `re
 
 A manifest validation produces one of:
 
-1. **Empty** — no `permissions` block declared. Parser yields `{ raw: null, fs: undefined, net: undefined }`.
+1. **Empty** — no `permissions` block declared. Parser yields `{ raw: null, fs: undefined, net: undefined }`; `isolation` defaults to `"none"`.
 2. **Valid** — `permissions` declared and every recognised namespace is well-formed. Parser yields `{ raw, fs?, net? }` where `fs` / `net` are present iff the corresponding namespace was declared.
 3. **Invalid** — `permissions` declared but malformed. Parser yields a structured error: `{ ok: false, reason: string, path: string }`. The loader rejects the app and emits a single audit-log line of `kind: "rejected-manifest"`.
+
+`isolation` is parsed independently from `permissions`: `"worker"` is accepted, while absent / `"none"` / unknown values resolve to `"none"`.
 
 Specific invalid shapes:
 
@@ -209,18 +231,37 @@ Parser: `{ raw: {fs: {read: ["**"]}, capabilities: {...}}, fs: {read: ["**"]}, n
 
 Parser rejects: `{ ok: false, reason: "fs.read must be an array of glob strings", path: "permissions.fs.read" }`. The app does not register; an audit-log line records the rejection.
 
+### Worker isolation requested
+
+```json
+{
+  "elizaos": {
+    "app": {
+      "displayName": "Foo",
+      "isolation": "worker",
+      "permissions": {
+        "fs": { "read": ["state/**"] }
+      }
+    }
+  }
+}
+```
+
+The app registers with `isolation: "worker"` in `app-registry.json`, `app-loads.jsonl`, and `AppPermissionsView`. Runtime enforcement still waits for later Phase 2 slices.
+
 ## Phase mapping
 
 | Slice | What lands |
 |---|---|
-| **Phase 1, slice 1** (this slice) | This spec; parser + types; wired into both `app-load-from-directory.ts` and `apps-routes.ts` discovery; audit log gets `trust` + `requestedPermissions`; `AppRegistryEntry` persists `requestedPermissions`. No enforcement. |
-| Phase 1, slice 2 | Granted-permission store on disk; consent surface in Settings → Apps; per-app statePath assignment. |
+| Phase 1, slice 1 | This spec; parser + types; wired into both `app-load-from-directory.ts` and `apps-routes.ts` discovery; audit log gets `trust` + `requestedPermissions`; `AppRegistryEntry` persists `requestedPermissions`. No enforcement. |
+| Phase 1, slice 2 | Granted-permission store on disk; consent surface in Settings → Apps. |
+| Phase 2.1 | `elizaos.app.isolation` parser + registry/audit/API persistence; no worker spawning or enforcement yet. |
 | Phase 2 | Opt-in `isolation: "worker"` execution path; FS gating using declared `fs` globs; outbound network gating using declared `net.outbound`. |
 | Phase 3 | Default `isolation: "worker"` for `trust: "external"`; first-party stays in-process. |
 
 ## Cross-references
 
-- `eliza/plugins/plugin-app-control/src/permissions.ts` — parser implementation (this slice).
+- `eliza/packages/shared/src/contracts/app-permissions.ts` — parser implementation and shared contract types.
 - `eliza/plugins/plugin-app-control/src/actions/app-load-from-directory.ts` — registers external apps via the `APP` action.
 - `eliza/packages/agent/src/api/apps-routes.ts` — registers external apps via the HTTP API (`POST /api/apps/load_from_directory`).
 - `eliza/plugins/plugin-app-control/src/services/app-registry-service.ts` — persists registry + writes audit log.
