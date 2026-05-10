@@ -584,46 +584,89 @@ export const bookTravelAction: Action & {
       name: "offerId",
       description:
         "Duffel offer id to book if a concrete offer was already chosen.",
+      descriptionCompressed: "duffel offer id pre-selected",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: "^off_[A-Za-z0-9]+$" },
+      examples: ["off_0000ABCdefGHI"],
     },
     {
       name: "origin",
-      description: "Origin IATA airport code when searching for a flight.",
+      description:
+        "Origin IATA airport code (3-letter, uppercase) when searching for a flight.",
+      descriptionCompressed: "origin IATA 3-letter uppercase",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: "^[A-Z]{3}$" },
+      examples: ["JFK", "SFO", "LHR"],
     },
     {
       name: "destination",
-      description: "Destination IATA airport code when searching for a flight.",
+      description:
+        "Destination IATA airport code (3-letter, uppercase) when searching for a flight.",
+      descriptionCompressed: "destination IATA 3-letter uppercase",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: "^[A-Z]{3}$" },
+      examples: ["LHR", "NRT", "LAX"],
     },
     {
       name: "departureDate",
       description: "Departure date in YYYY-MM-DD format.",
+      descriptionCompressed: "departure YYYY-MM-DD",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+      examples: ["2026-06-12"],
     },
     {
       name: "returnDate",
       description: "Optional return date in YYYY-MM-DD format.",
+      descriptionCompressed: "return YYYY-MM-DD optional",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+      examples: ["2026-06-19"],
     },
     {
       name: "passengers",
       description:
-        "Passenger details required to create the booking after approval.",
+        "Passenger details required to create the booking after approval. Each entry: { givenName, familyName, bornOn (YYYY-MM-DD), gender (m|f), email?, phoneNumber? }.",
+      descriptionCompressed:
+        "passengers[]: givenName familyName bornOn gender email? phone?",
       required: false,
-      schema: { type: "array" as const },
+      schema: {
+        type: "array" as const,
+        items: {
+          type: "object" as const,
+          properties: {
+            givenName: { type: "string" as const },
+            familyName: { type: "string" as const },
+            bornOn: {
+              type: "string" as const,
+              pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+            },
+            gender: { type: "string" as const, enum: ["m", "f"] },
+            email: { type: "string" as const },
+            phoneNumber: { type: "string" as const },
+          },
+          required: ["givenName", "familyName", "bornOn", "gender"],
+        },
+      },
     },
     {
       name: "calendarSync",
       description:
-        "Optional calendar sync metadata for the booked itinerary event.",
+        "Optional calendar sync metadata for the booked itinerary event. Shape: { calendarId?, attendees? (array of email), notes? }.",
+      descriptionCompressed:
+        "calendarSync: calendarId? attendees[]? notes? for itinerary event",
       required: false,
-      schema: { type: "object" as const },
+      schema: {
+        type: "object" as const,
+        properties: {
+          calendarId: { type: "string" as const },
+          attendees: {
+            type: "array" as const,
+            items: { type: "string" as const },
+          },
+          notes: { type: "string" as const },
+        },
+      },
     },
   ],
   examples: [

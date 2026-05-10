@@ -263,14 +263,32 @@ export const screenTimeAction: Action = {
       name: "subaction",
       description:
         "One of: summary, today, weekly, weekly_average_by_app, by_app, by_website, activity_report, time_on_app, time_on_site, browser_activity.",
+      descriptionCompressed:
+        "screen-time op: summary|today|weekly|weekly_average_by_app|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
       required: false,
-      schema: { type: "string" as const },
+      schema: {
+        type: "string" as const,
+        enum: [
+          "summary",
+          "today",
+          "weekly",
+          "weekly_average_by_app",
+          "by_app",
+          "by_website",
+          "activity_report",
+          "time_on_app",
+          "time_on_site",
+          "browser_activity",
+        ],
+      },
+      examples: ["today", "weekly", "time_on_app"],
     },
     {
       name: "source",
       description: "Restrict screen-time subactions to 'app' or 'website'.",
+      descriptionCompressed: "source filter: app|website",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, enum: ["app", "website"] },
     },
     {
       name: "identifier",

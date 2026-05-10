@@ -647,8 +647,14 @@ export const healthAction: Action = {
     {
       name: "subaction",
       description:
-        "Which health query to run: today, trend, by_metric, status.",
-      schema: { type: "string" as const },
+        "Which health query to run: today (default daily summary), trend (multi-day), by_metric (single metric), status (backend connectivity).",
+      descriptionCompressed:
+        "health query: today | trend | by_metric | status",
+      schema: {
+        type: "string" as const,
+        enum: [...HEALTH_SUBACTIONS],
+      },
+      examples: ["today", "trend", "by_metric", "status"],
     },
     {
       name: "intent",
@@ -661,17 +667,27 @@ export const healthAction: Action = {
       name: "metric",
       description:
         "Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
-      schema: { type: "string" as const },
+      descriptionCompressed:
+        "by_metric: steps|heart_rate|sleep_hours|calories|distance_meters|active_minutes",
+      schema: {
+        type: "string" as const,
+        enum: [...HEALTH_METRICS],
+      },
+      examples: ["steps", "sleep_hours", "heart_rate"],
     },
     {
       name: "date",
       description: "YYYY-MM-DD for single-day queries.",
+      descriptionCompressed: "YYYY-MM-DD single-day",
       schema: { type: "string" as const },
+      examples: ["2026-05-10"],
     },
     {
       name: "days",
       description: "Window size for trend and by_metric queries.",
-      schema: { type: "number" as const },
+      descriptionCompressed: "window days trend|by_metric",
+      schema: { type: "number" as const, minimum: 1, maximum: 365 },
+      examples: [1, 7, 30],
     },
   ],
   examples: [

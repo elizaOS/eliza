@@ -1482,20 +1482,23 @@ async function collectV5PlannerCandidateActions(args: {
 	selectedContexts?: readonly AgentContext[];
 	userRoles?: readonly RoleGateRole[];
 }): Promise<Action[]> {
-	if (!args.selectedContexts?.length) {
-		return [];
-	}
-
-	const directlyGatedActions = filterByContextGate(
-		args.runtime.actions,
-		args.selectedContexts,
-		args.userRoles,
-	);
+	// We used to filter the candidate set by `action.contexts` against the
+	// messageHandler-picked `selectedContexts`. That filter excluded LIFE /
+	// CALENDAR / SCHEDULE / etc. whenever the messageHandler routed to
+	// "general" — even when the user clearly asked for a habit/event/etc.
+	// (See `docs/audits/lifeops-2026-05-09/12-real-root-cause.md`.)
+	//
+	// Now: every action is a candidate. Role gates and per-action validate /
+	// account-policy checks still apply (those are correctness/security, not
+	// relevance). Retrieval scoring then uses `selectedContexts` as a
+	// *weight* (boost actions whose contexts intersect the active set) but
+	// never as a hard filter.
+	const allRuntimeActions = args.runtime.actions;
 	const actionsByName = new Map(
-		args.runtime.actions.map((action) => [action.name, action]),
+		allRuntimeActions.map((action) => [action.name, action]),
 	);
 	const actionsByNormalizedName = new Map(
-		args.runtime.actions.map((action) => [
+		allRuntimeActions.map((action) => [
 			normalizeActionIdentifier(action.name),
 			action,
 		]),
@@ -1506,17 +1509,10 @@ async function collectV5PlannerCandidateActions(args: {
 	const appendIfAllowed = async (
 		action: Action,
 		parentActionName?: string,
-		activeContexts: readonly AgentContext[] | undefined = args.selectedContexts,
+		_activeContexts: readonly AgentContext[] | undefined = args.selectedContexts,
 	): Promise<boolean> => {
 		const normalizedName = normalizeActionIdentifier(action.name);
 		if (!normalizedName || seen.has(normalizedName)) {
-			return false;
-		}
-		const contextGate = action.contextGate ?? {
-			contexts: action.contexts,
-			roleGate: action.roleGate,
-		};
-		if (!satisfiesContextGate(activeContexts, contextGate, args.userRoles)) {
 			return false;
 		}
 		try {
@@ -1557,7 +1553,7 @@ async function collectV5PlannerCandidateActions(args: {
 		}
 	};
 
-	for (const action of directlyGatedActions) {
+	for (const action of allRuntimeActions) {
 		await appendIfAllowed(action);
 	}
 
@@ -1670,6 +1666,11 @@ function buildV5PlannerActionSurface(params: {
 	message: Memory;
 	state?: State;
 	messageHandler: MessageHandlerResult;
+	// The messageHandler-selected contexts for this turn. Passed through to
+	// `retrieveActions` as a *weight* (boost on-context candidates) — never
+	// as a filter. See `services/collectV5PlannerCandidateActions` for why
+	// we stopped filtering by context.
+	selectedContexts?: readonly AgentContext[];
 	// Optional recorder hook. When provided the function emits a `toolSearch`
 	// stage to the trajectory before returning. Fire-and-forget — the caller
 	// does not need to await.
@@ -1704,6 +1705,7 @@ function buildV5PlannerActionSurface(params: {
 			params.state,
 			params.message,
 		),
+		selectedContexts: params.selectedContexts,
 		candidateActions,
 		parentActionHints,
 	});
@@ -4355,6 +4357,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			message: args.message,
 			state: plannerState,
 			messageHandler,
+			selectedContexts,
 			recorder,
 			trajectoryId,
 			logger: args.runtime.logger,
