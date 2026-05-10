@@ -1094,9 +1094,7 @@ export const lifeFollowUps = appLifeopsPgSchema.table("life_follow_ups", {
   updatedAt: text("updated_at").notNull(),
 });
 
-// ---------------------------------------------------------------------------
-// W1-E knowledge graph: entities + relationships
-// ---------------------------------------------------------------------------
+// Knowledge graph: entities + relationships.
 //
 // `life_entities` stores nodes (person, organization, place, project,
 // concept, ...). Per-connector identity claims are stored in
@@ -1109,9 +1107,6 @@ export const lifeFollowUps = appLifeopsPgSchema.table("life_follow_ups", {
 // same triple may co-exist with a new active one). `cadence_days` is
 // surfaced as a column-level shortcut for the cadence-overdue filter
 // even though it also appears inside `metadata_json`.
-//
-// Legacy `life_relationships` is retained read-only until W2-D removes
-// the legacy reader.
 export const lifeEntities = appLifeopsPgSchema.table(
   "life_entities",
   {
@@ -1615,9 +1610,7 @@ export const lifeBlockRules = appLifeopsPgSchema.table("life_block_rules", {
   releasedReason: text("released_reason"),
 });
 
-// ---------------------------------------------------------------------------
-// W1-A — ScheduledTask spine + state log (`docs/audit/IMPLEMENTATION_PLAN.md`
-// §3.1, `docs/audit/wave1-interfaces.md` §1).
+// ScheduledTask spine + state log.
 //
 // `life_scheduled_tasks` stores the typed ScheduledTask record. The
 // runner is the only writer; each row's `state_json` carries the
@@ -1627,7 +1620,6 @@ export const lifeBlockRules = appLifeopsPgSchema.table("life_block_rules", {
 // `life_scheduled_task_log` is the append-only state-log; the nightly
 // rollup pass folds expired raw rows into a daily summary row keyed by
 // (task, day, transition).
-// ---------------------------------------------------------------------------
 
 export const lifeScheduledTasks = appLifeopsPgSchema.table(
   "life_scheduled_tasks",
@@ -1760,18 +1752,10 @@ export const lifeOpsSchema = {
   lifeopsFeaturesTable,
 } as const;
 
-// ---------------------------------------------------------------------------
-// W1-A — Zod schemas for `ScheduledTask`
-//
-// These are runtime validators used at the REST boundary
-// (`src/routes/scheduled-tasks.ts`). The runtime types live in
+// Zod schemas for `ScheduledTask`. Runtime validators used at the REST
+// boundary (`src/routes/scheduled-tasks.ts`). Runtime types live in
 // `./scheduled-task/types.ts`; Zod is the validator at the
 // untyped-input edge.
-//
-// IMPLEMENTATION_PLAN.md §3.1 explicitly assigns this file as the home
-// for the ScheduledTask Zod schemas. The file's other content is the
-// drizzle-orm table catalog; the two coexist.
-// ---------------------------------------------------------------------------
 import { z } from "zod";
 
 const isoString = z

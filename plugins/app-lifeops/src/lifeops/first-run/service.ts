@@ -4,19 +4,14 @@
  * Owns:
  *   - the lifecycle state machine (`pending` → `in_progress` → `complete`)
  *     via `FirstRunStateStore`
- *   - writes to the canonical `OwnerFactStore` (W2-E real store)
+ *   - writes to the canonical `OwnerFactStore`
  *   - emission of the defaults pack into the `ScheduledTaskRunner`
  *   - the replay path (re-run without destroying tasks)
  *
- * The runner is **injected** so the wave-1 boundary stays clean: if W1-A's
- * production runner is registered on the runtime by the time the action
- * fires, this service uses it; otherwise it falls back to an in-memory
- * recorder that is sufficient for unit/integration tests.
- *
- * Move target for `service-mixin-definitions.ts`'s legacy
- * `checkAndOfferSeeding` / `applySeedRoutines`: those methods are deprecated
- * once first-run lands. The legacy entry points stay on the mixin for
- * backwards compat but delegate to this service.
+ * The runner is injected: if the production runner is registered on the
+ * runtime by the time the action fires, this service uses it; otherwise it
+ * falls back to an in-memory recorder that is sufficient for unit /
+ * integration tests.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -60,10 +55,10 @@ export interface ScheduledTaskRunnerLike {
 }
 
 /**
- * Runtime-side hook used by W1-A to expose the production runner. The plugin
- * `init` registers an instance via `setScheduledTaskRunner`; the first-run
- * service calls `getScheduledTaskRunner` to fetch it. When unset, the service
- * uses the in-memory fallback which is sufficient for the wave-1 e2e tests.
+ * Runtime-side hook used to expose the production runner. The plugin `init`
+ * registers an instance via `setScheduledTaskRunner`; the first-run service
+ * calls `getScheduledTaskRunner` to fetch it. When unset, the service uses
+ * the in-memory fallback which is sufficient for tests.
  */
 let registeredRunner: ScheduledTaskRunnerLike | null = null;
 
@@ -430,8 +425,8 @@ export class FirstRunService {
       scheduledTasks.push(await runner.schedule(input));
     }
     // Categories that gate followups would create per-relationship watcher
-    // tasks in W1-D's followup-starter pack. Here we just record the
-    // selection on the answers; the W1-D pack reads those facts at boot.
+    // tasks via the followup-starter pack. Here we just record the
+    // selection on the answers; the pack reads those facts at boot.
 
     const completed = await this.stateStore.complete();
     const warnings: string[] = [];
@@ -452,9 +447,9 @@ export class FirstRunService {
   }
 
   /**
-   * Replay. Per `GAP_ASSESSMENT.md` §8.14: keeps existing tasks intact (the
-   * runner upserts by `idempotencyKey`); only OwnerFactStore facts the
-   * questions touch are updated.
+   * Replay. Keeps existing tasks intact (the runner upserts by
+   * `idempotencyKey`); only OwnerFactStore facts the questions touch are
+   * updated.
    */
   async runReplayPath(input: ReplayPathInput): Promise<FirstRunRunResult> {
     let record = await this.stateStore.read();

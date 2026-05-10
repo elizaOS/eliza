@@ -1,5 +1,5 @@
 /**
- * W2-D — FamilyRegistry.
+ * FamilyRegistry.
  *
  * Lifts the closed `LIFEOPS_TELEMETRY_FAMILIES` discriminated union into an
  * open registry of namespaced bus-family identifiers. The closed union still
@@ -118,10 +118,9 @@ export function registerBuiltinTelemetryFamilies(registry: FamilyRegistry): void
 
 /**
  * App-lifeops contributes the calendar / time-window namespaced families
- * surfaced by the W2-C calendar decomposition (`meeting.ended`) and the
- * existing time-of-day windows (`morning.start`, `lunch.start`,
- * `night.start`). plugin-health contributes its `health.*` families through
- * its own registration entry point.
+ * (`meeting.ended`, `morning.start`, `lunch.start`, `night.start`).
+ * plugin-health contributes its `health.*` families through its own
+ * registration entry point.
  */
 export const APP_LIFEOPS_BUS_FAMILIES: readonly BusFamilyContribution[] = [
   {

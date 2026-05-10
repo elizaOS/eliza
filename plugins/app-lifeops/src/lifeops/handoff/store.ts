@@ -1,6 +1,5 @@
 /**
- * `HandoffStore` — per-room handoff state per `GAP_ASSESSMENT.md` §3.14
- * (closes the J13 group-chat-handoff gap from `JOURNEY_GAME_THROUGH.md`).
+ * `HandoffStore` — per-room handoff state.
  *
  * When the agent says "I'll let you take it from here" in a multi-party
  * thread, the store flips the room into handoff mode; the
@@ -9,20 +8,6 @@
  *
  * Backing storage: runtime cache, keyed per-room. Multiple rooms can be in
  * handoff mode simultaneously (unlike `GlobalPauseStore`, which is global).
- *
- * Frozen interface (`GAP_ASSESSMENT.md` §3.14):
- *
- *   HandoffStore {
- *     enter(roomId, opts: { reason; resumeOn: ResumeCondition }): void
- *     exit(roomId): void
- *     status(roomId): { active; enteredAt?; resumeOn? }
- *   }
- *
- *   ResumeCondition =
- *     | { kind: "mention" }
- *     | { kind: "explicit_resume" }
- *     | { kind: "silence_minutes"; minutes: number }
- *     | { kind: "user_request_help"; userId: string }
  */
 
 import type { IAgentRuntime } from "@elizaos/core";

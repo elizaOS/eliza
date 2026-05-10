@@ -7,8 +7,7 @@ import type {
 
 /**
  * In-memory implementation of {@link ConnectorRegistry}. One instance per
- * runtime; populated by W1-B (`plugin-health`) and Wave 2 (W2-B) connector
- * migrations.
+ * runtime; populated by `plugin-health` and the connector default pack.
  */
 class InMemoryConnectorRegistry implements ConnectorRegistry {
   private readonly byKind = new Map<string, ConnectorContribution>();

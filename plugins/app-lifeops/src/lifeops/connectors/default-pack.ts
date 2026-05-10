@@ -1,9 +1,9 @@
 /**
- * W2-B — Default connector pack.
+ * Default connector pack.
  *
- * Registers the 10 LifeOps connector contributions with the W1-F
- * `ConnectorRegistry`. `plugin-health` registers its own 6 health connectors
- * directly; this pack does not touch them.
+ * Registers the LifeOps connector contributions with the `ConnectorRegistry`.
+ * `plugin-health` registers its own health connectors directly; this pack
+ * does not touch them.
  *
  * Channels (in_app, push, imessage, telegram, …) are registered separately
  * by `../channels/default-pack.ts`.
@@ -30,8 +30,8 @@ export type ConnectorContributionFactory = (
 ) => ConnectorContribution;
 
 /**
- * The 10 W2-B connector contributions, ordered by usage frequency for
- * deterministic registration logs. plugin-health registers
+ * Connector contributions ordered by usage frequency for deterministic
+ * registration logs. plugin-health registers
  * apple_health/google_fit/strava/fitbit/withings/oura on its own; they
  * are not part of this pack.
  */
@@ -49,9 +49,8 @@ export const DEFAULT_CONNECTOR_CONTRIBUTIONS: ReadonlyArray<ConnectorContributio
 ];
 
 /**
- * Wave-1 export retained for caller compatibility; populated against a
- * synthetic runtime would require constructing `LifeOpsService` without a
- * real runtime, so the array is empty at module load. Callers that want a
+ * Empty default — populating against a synthetic runtime would require
+ * constructing `LifeOpsService` without a real runtime. Callers that want a
  * concrete list should call {@link registerDefaultConnectorPack}.
  */
 export const DEFAULT_CONNECTOR_PACK: readonly ConnectorContribution[] = [];
@@ -68,7 +67,7 @@ export function registerDefaultConnectorPack(
   runtime?: IAgentRuntime,
 ): void {
   if (!runtime) {
-    // Wave-1 callsites passed only the registry; preserve that path so the
+    // Some callsites pass only the registry; preserve that path so the
     // plugin doesn't fail-fast before the rest of the boot sequence runs.
     return;
   }

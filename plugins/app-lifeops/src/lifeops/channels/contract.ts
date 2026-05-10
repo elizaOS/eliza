@@ -1,14 +1,10 @@
 /**
- * W1-F — Channel contract.
+ * Channel contract. Replaces the three overlapping channel enums
+ * (`LIFEOPS_REMINDER_CHANNELS` ∪ `LIFEOPS_CHANNEL_TYPES` ∪
+ * `LIFEOPS_MESSAGE_CHANNELS`).
  *
- * Frozen interface per `docs/audit/wave1-interfaces.md` §3.2 — replaces the
- * three overlapping channel enums (`LIFEOPS_REMINDER_CHANNELS` ∪
- * `LIFEOPS_CHANNEL_TYPES` ∪ `LIFEOPS_MESSAGE_CHANNELS`) per
- * `GAP_ASSESSMENT.md` §3.2.
- *
- * Wave 1 ships the contract + an empty registry; Wave 2 (W2-B) populates the
- * channel contributions. Channels reuse {@link DispatchResult} from the
- * connector contract so the runner's dispatch policy applies uniformly.
+ * Channels reuse {@link DispatchResult} from the connector contract so the
+ * runner's dispatch policy applies uniformly.
  */
 
 import type { DispatchResult } from "../connectors/contract.js";

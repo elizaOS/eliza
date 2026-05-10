@@ -1,8 +1,7 @@
 /**
- * W1-F — Runner-side dispatch fallback policy per `wave1-interfaces.md` §3.1
- * and `GAP_ASSESSMENT.md` §3.17.
+ * Runner-side dispatch fallback policy.
  *
- * Pure function. The W1-A runner calls {@link decideDispatchPolicy} with each
+ * Pure function. The runner calls {@link decideDispatchPolicy} with each
  * `DispatchResult` from a connector or channel `send` and applies the returned
  * decision against the active `ScheduledTask` escalation ladder.
  *
@@ -30,8 +29,8 @@ import type { DispatchResult } from "./contract.js";
  * - `advance` — the current step is permanently failed. Advance the ladder to
  *   the next step. If no further step exists the runner emits `fail`.
  * - `surface_degraded` — same as `advance`, plus the failure should be
- *   surfaced through the connector-degradation provider (W1-C / W1-F gates
- *   visibility in subsequent providers; W1-A consumes the flag).
+ *   surfaced through the connector-degradation provider (which gates
+ *   visibility in subsequent providers; the runner consumes the flag).
  * - `fail` — terminal: every step has failed (or the only step failed without
  *   a retry hint). Runner sets `state.status = "failed"` and fires
  *   `pipeline.onFail`.

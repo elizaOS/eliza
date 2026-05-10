@@ -1,17 +1,13 @@
 /**
- * W2-F — BlockerRegistry.
- *
- * Per `docs/audit/IMPLEMENTATION_PLAN.md` §5.6 + `HARDCODING_AUDIT.md` §6
- * high-confidence #6: blockers (hosts-file website blocker on macOS, iOS Family
+ * BlockerRegistry. Blockers (hosts-file website blocker on macOS, iOS Family
  * Controls / Android Usage Access for app blocking) are registry-driven so the
  * `WEBSITE_BLOCK` and `APP_BLOCK` umbrella actions dispatch through one
  * canonical surface instead of branching on `kind` inline.
  *
  * The registry is dispatcher-internal — `WEBSITE_BLOCK` / `APP_BLOCK` remain
- * the user-visible umbrella verbs (per `GAP_ASSESSMENT.md` §8.3
- * "registries are dispatcher-internal"). Adding a new blocker (e.g. a
- * router-level DNS blocker, a Bluetooth-tether blocker) is a registration
- * call, not a new action.
+ * the user-visible umbrella verbs. Adding a new blocker (e.g. a router-level
+ * DNS blocker, a Bluetooth-tether blocker) is a registration call, not a new
+ * action.
  *
  * Outbound contract (one entry per enforcer):
  *   - `kind`: stable enforcer key — `"website"` for the macOS hosts-file
@@ -19,16 +15,10 @@
  *   - `start(request)` / `stop()` / `status()`: enforcement primitives the
  *     umbrella action calls. Result types are blocker-specific (websites
  *     return host lists; apps return blocked package counts) so the
- *     registry surfaces them without a forced common shape — collapsing
- *     them into a single union would require runtime type-branching at the
- *     consumer side, violating CLAUDE.md commandment #5.
+ *     registry surfaces them without a forced common shape.
  *   - `verifyAvailable()`: unified availability probe used at first-run and
  *     before every dispatch. Returns reason text on failure so the action
  *     can surface it to the user verbatim.
- *
- * Wave-3 stretch (not in this PR): register `relock` callbacks as
- * `ScheduledTask` `after_task` triggers so unblock expiry rolls through the
- * spine instead of an in-process timer (see §5.6 "Stretch goal").
  */
 
 import type { IAgentRuntime } from "@elizaos/core";

@@ -1,9 +1,7 @@
 /**
- * W2-F — Registries barrel.
- *
- * Wave 2 lands the BlockerRegistry; W2-D lands AnchorRegistry,
- * EventKindRegistry, FamilyRegistry in this same directory. No cross-imports
- * between siblings — each registry stands alone.
+ * Registries barrel. BlockerRegistry, AnchorRegistry, EventKindRegistry,
+ * FamilyRegistry. No cross-imports between siblings — each registry stands
+ * alone.
  */
 
 export {
@@ -26,7 +24,7 @@ export {
   type WebsiteBlockerStartResult,
 } from "./website-blocker-contribution.js";
 
-// W2-D — anchor / event-kind / family registries.
+// Anchor / event-kind / family registries.
 export {
   __resetAnchorRegistryForTests,
   APP_LIFEOPS_ANCHORS,

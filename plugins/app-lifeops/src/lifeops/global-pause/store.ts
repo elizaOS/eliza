@@ -1,10 +1,7 @@
 /**
  * `GlobalPauseStore` — vacation / pause mode singleton.
  *
- * Frozen interface from `docs/audit/wave1-interfaces.md` §4.5 +
- * `GAP_ASSESSMENT.md` §3.15.
- *
- * Only ONE pause window can be active at a time. The W1-A runner consults
+ * Only ONE pause window can be active at a time. The runner consults
  * `current()` pre-fire; tasks with `respectsGlobalPause: true` skip with
  * reason `global_pause`; tasks with `respectsGlobalPause: false` (emergencies)
  * fire anyway. If `endIso` is set on the active window, the runner reschedules

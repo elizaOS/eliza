@@ -1,11 +1,5 @@
 /**
- * W1-F — Connector contract.
- *
- * Frozen interface per `docs/audit/wave1-interfaces.md` §3.1. The same shape is
- * called out in `docs/audit/GAP_ASSESSMENT.md` §3.1 / §3.17.
- *
- * Wave 1 ships the contract + an empty registry; Wave 2 (W2-B) populates the
- * 12 connector contributions.
+ * Connector contract.
  *
  * Capability strings are namespaced (e.g. `"google.calendar.read"`,
  * `"telegram.send"`, `"apple_health.read"`) so multiple connectors can advertise
@@ -22,7 +16,7 @@ export interface ConnectorStatus {
 }
 
 /**
- * Typed dispatch result. Frozen per §3.17.
+ * Typed dispatch result.
  *
  * Failure shapes carry enough information for the runner-side dispatch policy
  * (`./dispatch-policy.ts`) to choose between advance-escalation /
@@ -94,8 +88,7 @@ export interface ConnectorContribution {
 
   /**
    * When `true`, the runtime gates this connector's outbound `send` calls
-   * through the owner-send-policy (e.g. Gmail draft → owner approval). The
-   * field is consumed by the W2-B runner integration; W1-F only declares it.
+   * through the owner-send-policy (e.g. Gmail draft → owner approval).
    */
   requiresApproval?: boolean;
 }

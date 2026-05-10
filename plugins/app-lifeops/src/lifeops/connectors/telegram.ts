@@ -1,10 +1,10 @@
 /**
- * W2-B — Telegram connector contribution.
+ * Telegram connector contribution.
  *
  * Wraps the LifeOps Telegram mixin (`service-mixin-telegram.ts`). The actual
  * transport is owned by `@elizaos/plugin-telegram`; this contribution only
- * surfaces lifecycle hooks for the W1-F registry. `disconnect` resolves to
- * a no-op because account credentials are owned by the Telegram plugin.
+ * surfaces lifecycle hooks for the registry. `disconnect` resolves to a
+ * no-op because account credentials are owned by the Telegram plugin.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { LifeOpsService } from "../service.js";
