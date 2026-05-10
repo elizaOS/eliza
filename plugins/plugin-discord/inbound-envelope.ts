@@ -112,9 +112,15 @@ export async function formatInboundEnvelope(
 			const refContent = refMessage.content ?? "";
 			const truncated =
 				refContent.length > 200 ? `${refContent.slice(0, 200)}...` : refContent;
+			// Put the reply quote AFTER the user's actual message so Stage 1
+			// classification weights the user's current intent first. The previous
+			// order ("replying to @x:\n> <quote>\n<userText>") biased the
+			// classifier toward the quoted topic, which broke routing for turns
+			// where the user replied to a long bot message and asked for something
+			// unrelated (e.g. an app build after a tech-debt status update).
 			replyContext = truncated
-				? ` replying to @${refAuthor}:\n> ${truncated}\n`
-				: ` replying to @${refAuthor}:\n`;
+				? `\n(in reply to @${refAuthor}: "${truncated}")`
+				: `\n(in reply to @${refAuthor})`;
 		} catch {
 			// Reply context is best-effort only.
 		}
@@ -122,9 +128,7 @@ export async function formatInboundEnvelope(
 
 	const header = `[Discord ${channelLabel}] @${senderName} (${timestamp})`;
 	return {
-		formattedContent: replyContext
-			? `${header}${replyContext}${rawContent}`
-			: `${header}: ${rawContent}`,
+		formattedContent: `${header}: ${rawContent}${replyContext}`,
 		chatType,
 	};
 }
