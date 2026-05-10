@@ -633,8 +633,12 @@ export async function applyCompaction(args: {
   const originalTokens = approxTokensMessages(messages);
 
   if (strategy === "none") {
+    // Return a shallow copy — caller (run loop) does `history.length = 0`
+    // followed by re-pushing from `newMessages`. If we returned the same
+    // reference, the clear would empty newMessages too and history would
+    // end up empty. Same defensive copy for prompt-stripping below.
     return {
-      newMessages: messages,
+      newMessages: [...messages],
       originalTokens,
       compactedTokens: originalTokens,
       latencyMs: Date.now() - start,
@@ -695,15 +699,121 @@ function approxTokensMessages(messages: readonly ChatMessage[]): number {
 }
 
 /**
- * Default loader: imports the upstream compactor module if it exists,
- * returns null otherwise. Kept narrow so the harness never crashes when
- * the parallel agent's work has not yet landed.
+ * Build a loader that imports the upstream compactor module and wires its
+ * Compactor objects (`{name, version, compact}`) with a callModel backed by
+ * the supplied chat client. Returns null when the upstream module isn't
+ * present yet or when the strategy isn't exported.
+ *
+ * The loader needs `callModel` because all four runtime strategies are
+ * summarization-based — they throw `requires options.callModel` if one isn't
+ * provided.
+ */
+export function buildDefaultCompactorLoader(opts: {
+  client: ModelClient;
+  model: string;
+  /** Soft target token budget passed to compactors. Default: 1024. */
+  targetTokens?: number;
+}): (name: StrategyName) => Promise<{
+  compact: (messages: ChatMessage[]) => Promise<ChatMessage[]>;
+} | null> {
+  const targetTokens = opts.targetTokens ?? 1024;
+  return async (name) => {
+    try {
+      const mod = (await import(
+        "../../packages/agent/src/runtime/conversation-compactor.ts"
+      )) as Record<string, unknown>;
+      const lookup: Record<StrategyName, string> = {
+        "naive-summary": "naiveSummaryCompactor",
+        "structured-state": "structuredStateCompactor",
+        "hierarchical-summary": "hierarchicalSummaryCompactor",
+        "hybrid-ledger": "hybridLedgerCompactor",
+        none: "",
+        "prompt-stripping": "",
+      };
+      const key = lookup[name];
+      if (!key) return null;
+      const compactor = mod[key] as
+        | {
+            name: string;
+            version: string;
+            compact: (
+              t: { messages: { role: string; content: string }[] },
+              o: {
+                targetTokens: number;
+                preserveTailMessages?: number;
+                callModel: (params: {
+                  systemPrompt: string;
+                  messages: { role: string; content: string }[];
+                  maxOutputTokens?: number;
+                }) => Promise<string>;
+                summarizationModel?: string;
+              },
+            ) => Promise<{
+              replacementMessages: { role: string; content: string }[];
+            }>;
+          }
+        | undefined;
+      if (!compactor || typeof compactor.compact !== "function") return null;
+
+      // callModel adapts our ModelClient to the Compactor's expected shape.
+      const callModel = async (params: {
+        systemPrompt: string;
+        messages: { role: string; content: string }[];
+        maxOutputTokens?: number;
+      }): Promise<string> => {
+        const resp = await opts.client.chat({
+          model: opts.model,
+          messages: [
+            { role: "system", content: params.systemPrompt },
+            ...params.messages.map((m) => ({
+              role: m.role as ChatMessage["role"],
+              content: m.content,
+            })),
+          ],
+          // Reasoning models need headroom; a 1k cap is too tight for the
+          // structured-state JSON path.
+          maxTokens: params.maxOutputTokens ?? 4096,
+          temperature: 0,
+        });
+        return resp.content;
+      };
+
+      return {
+        async compact(messages) {
+          const transcript = {
+            messages: messages.map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+          };
+          const artifact = await compactor.compact(transcript, {
+            targetTokens,
+            preserveTailMessages: 0,
+            callModel,
+            summarizationModel: opts.model,
+          });
+          return artifact.replacementMessages.map((m) => ({
+            role: m.role as ChatMessage["role"],
+            content: m.content,
+          }));
+        },
+      };
+    } catch {
+      return null;
+    }
+  };
+}
+
+/**
+ * Back-compat shim used by tests. The real run loop uses
+ * `buildDefaultCompactorLoader` so the compactor gets a callModel wired in.
+ * This shim still resolves the import + export-key path and returns null on
+ * any failure, matching the pre-existing test contract.
  */
 export async function defaultCompactorLoader(name: StrategyName): Promise<{
   compact: (messages: ChatMessage[]) => Promise<ChatMessage[]>;
 } | null> {
   try {
-    // Dynamic import — path-resolution failure is treated as "not yet implemented".
     const mod = (await import(
       "../../packages/agent/src/runtime/conversation-compactor.ts"
     )) as Record<string, unknown>;
@@ -716,24 +826,24 @@ export async function defaultCompactorLoader(name: StrategyName): Promise<{
       "prompt-stripping": "",
     };
     const key = lookup[name];
-    const fn = key ? mod[key] : undefined;
-    if (typeof fn !== "function") return null;
+    if (!key) return null;
+    const compactor = mod[key] as
+      | { compact: (...a: unknown[]) => Promise<unknown> }
+      | undefined;
+    if (!compactor || typeof compactor.compact !== "function") return null;
     return {
       async compact(messages) {
-        // The upstream compactor exposes the Compactor interface from
-        // conversation-compactor.types.ts. We adapt our ChatMessage[] to
-        // its CompactorTranscript.
+        // No callModel — strategies that require one will throw and the
+        // error bubbles up. Tests that hit this path supply mocks.
         const transcript = {
           messages: messages.map((m) => ({ role: m.role, content: m.content })),
         };
-        const artifact = await (
-          fn as (
-            t: unknown,
-            o: unknown,
-          ) => Promise<{
-            replacementMessages: Array<{ role: string; content: string }>;
-          }>
-        )(transcript, { targetTokens: 1024, preserveTailMessages: 0 });
+        const artifact = (await compactor.compact(transcript, {
+          targetTokens: 1024,
+          preserveTailMessages: 0,
+        })) as {
+          replacementMessages: { role: string; content: string }[];
+        };
         return artifact.replacementMessages.map((m) => ({
           role: m.role as ChatMessage["role"],
           content: m.content,
@@ -787,7 +897,19 @@ export async function probeFact(args: {
   });
   const actual = resp.content.trim();
   if (fact.exactMatch) {
-    const correct = actual.includes(fact.expected);
+    // Normalize whitespace before substring check. gpt-oss-120b sometimes
+    // inserts U+202F (narrow no-break space) inside person names (e.g.
+    // "Ramon Ramirez"), which breaks a naive substring match against
+    // an expected with a regular space. We collapse all Unicode whitespace
+    // and zero-width chars to a single ASCII space on both sides.
+    const norm = (s: string) =>
+      s
+        // Collapse any run of Unicode whitespace (incl. NBSP, narrow NBSP,
+        // figure space, ideographic space) to a single ASCII space.
+        .replace(/\s+/gu, " ")
+        // Strip zero-width chars that some models emit inside identifiers.
+        .replace(/[​-‍﻿]/g, "");
+    const correct = norm(actual).includes(norm(fact.expected));
     return {
       factId: fact.id,
       turn: fact.turn,
@@ -1157,7 +1279,13 @@ export async function main(argv: readonly string[]): Promise<number> {
   const sink = await runDriftHarness({
     args,
     client,
-    loadCompactor: args.dryRun ? undefined : defaultCompactorLoader,
+    // In dry-run we keep the loader undefined so the harness uses its
+    // built-in naive summary fallback (no real model calls). For real
+    // runs we wire the upstream Compactor objects with a callModel that
+    // hits the same Cerebras client.
+    loadCompactor: args.dryRun
+      ? undefined
+      : buildDefaultCompactorLoader({ client, model: args.model }),
   });
   await Bun.write(args.output, sink.serialize());
   const summary = sink.events.find((e) => e.event === "summary");
