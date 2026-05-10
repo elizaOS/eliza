@@ -577,3 +577,345 @@ describe("multi-cycle drift", () => {
     expect(ledger3).toContain("BANANA-42");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Bug-hunt regressions (deep review).
+// ---------------------------------------------------------------------------
+
+describe("findSafeCompactionBoundary — edge cases", () => {
+  it("handles empty messages without throwing or returning negatives", () => {
+    expect(findSafeCompactionBoundary([], 6)).toBe(0);
+  });
+
+  it("handles preserveTailMessages > total cleanly", () => {
+    const msgs: CompactorMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "u" },
+      { role: "assistant", content: "a" },
+    ];
+    // tail=100, total=3 → boundary = -97 → clamped to systemOffset = 1.
+    const boundary = findSafeCompactionBoundary(msgs, 100);
+    expect(boundary).toBe(1);
+    // splitTranscript would yield region = slice(1,1) = [] which is correct.
+  });
+
+  it("handles preserveTailMessages = 0 (compact everything but system)", () => {
+    const msgs: CompactorMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "u" },
+      { role: "assistant", content: "a" },
+    ];
+    expect(findSafeCompactionBoundary(msgs, 0)).toBe(3);
+  });
+
+  it("handles negative preserveTailMessages by treating as 0", () => {
+    const msgs: CompactorMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "u" },
+      { role: "assistant", content: "a" },
+    ];
+    // Math.max(0, -5) = 0 → boundary = total = 3.
+    expect(findSafeCompactionBoundary(msgs, -5)).toBe(3);
+  });
+
+  it("does not split assistant message that has BOTH content and toolCalls", () => {
+    const msgs: CompactorMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "u0" },
+      { role: "assistant", content: "a0" },
+      { role: "user", content: "u1" },
+      {
+        role: "assistant",
+        content: "thinking out loud and then calling",
+        toolCalls: [{ id: "mix", name: "search", arguments: { q: "x" } }],
+      },
+      { role: "tool", content: "result", toolCallId: "mix" },
+      { role: "assistant", content: "done" },
+      { role: "user", content: "u2" },
+    ];
+    const boundary = findSafeCompactionBoundary(msgs, 4);
+    // Producer @4, consumer @5. tail=4 → boundary=4. The assistant @4 must be
+    // either fully in compact or fully in tail along with its tool result @5.
+    const producerSide = 4 < boundary ? "compact" : "tail";
+    const consumerSide = 5 < boundary ? "compact" : "tail";
+    expect(producerSide).toBe(consumerSide);
+  });
+
+  it("tool message with EMPTY toolCallId still triggers orphan walk-back", () => {
+    // toolCallId is empty string — older indexer skipped it. The orphan loop
+    // should still pull the preceding assistant in.
+    const msgs: CompactorMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "u0" },
+      { role: "assistant", content: "a-producer" },
+      { role: "tool", content: "r", toolCallId: "", toolName: "f" },
+      { role: "assistant", content: "a-after" },
+      { role: "user", content: "u" },
+    ];
+    const boundary = findSafeCompactionBoundary(msgs, 3);
+    // tool consumer @3 in tail (boundary=3). Preceding assistant @2 must come
+    // along — boundary should be <= 2.
+    expect(boundary).toBeLessThanOrEqual(2);
+  });
+
+  it(
+    "unmatched producer (assistant called tool, tool result missing) " +
+      "does not push boundary",
+    () => {
+      const msgs: CompactorMessage[] = [
+        { role: "system", content: "sys" },
+        { role: "user", content: "u0" },
+        {
+          role: "assistant",
+          content: "called",
+          toolCalls: [{ id: "lost", name: "f", arguments: {} }],
+        },
+        { role: "user", content: "u1" },
+        { role: "assistant", content: "moved on" },
+        { role: "user", content: "u2" },
+        { role: "assistant", content: "still going" },
+        { role: "user", content: "u3" },
+      ];
+      // No tool consumer for "lost" — boundary must just be total - tail.
+      expect(findSafeCompactionBoundary(msgs, 3)).toBe(5);
+    },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// safeParseStructured / safeParseHybrid robustness
+// (exposed indirectly via the compactor entry points).
+// ---------------------------------------------------------------------------
+
+describe("structured-state parsing tolerance", () => {
+  it(
+    "extracts JSON when model wraps it in <reasoning>...</reasoning> with " +
+      "stray braces in the reasoning",
+    async () => {
+      // The reasoning prose contains a `{` that is NOT JSON. The parser used
+      // firstBrace..lastBrace which produces invalid JSON when prose has its
+      // own braces — this regressed silently to an empty state.
+      const callModel: CompactorModelCall = async () =>
+        '<reasoning>I considered {alt plans} and chose this one.</reasoning>\n' +
+        '{"facts":["chosen plan"],"decisions":[],"pending_actions":[],"entities":{}}';
+      const out = await structuredStateCompactor.compact(
+        buildTranscript(20),
+        buildOptions({ callModel }),
+      );
+      expect(out.replacementMessages[0].content).toContain("chosen plan");
+    },
+  );
+
+  it("extracts JSON when there is trailing prose AFTER the JSON object", async () => {
+    const callModel: CompactorModelCall = async () =>
+      '{"facts":["alpha"],"decisions":[],"pending_actions":[],"entities":{}}\n\nNote: extra prose appended {by mistake}.';
+    const out = await structuredStateCompactor.compact(
+      buildTranscript(20),
+      buildOptions({ callModel }),
+    );
+    expect(out.replacementMessages[0].content).toContain("alpha");
+  });
+
+  it("extracts JSON from a fenced ```json block followed by extra prose", async () => {
+    const callModel: CompactorModelCall = async () =>
+      '```json\n{"facts":["fenced fact"],"decisions":[],"pending_actions":[],"entities":{}}\n```\n\nDone.';
+    const out = await structuredStateCompactor.compact(
+      buildTranscript(20),
+      buildOptions({ callModel }),
+    );
+    expect(out.replacementMessages[0].content).toContain("fenced fact");
+  });
+
+  it("does not crash on completely unparseable model output", async () => {
+    const callModel: CompactorModelCall = async () =>
+      "I cannot do that, Dave.";
+    const out = await structuredStateCompactor.compact(
+      buildTranscript(20),
+      buildOptions({ callModel }),
+    );
+    // Empty state — but valid replacement structure.
+    expect(out.replacementMessages).toHaveLength(1);
+    expect(out.replacementMessages[0].role).toBe("system");
+  });
+
+  it("does not crash when callModel returns the empty string", async () => {
+    const callModel: CompactorModelCall = async () => "";
+    const out = await structuredStateCompactor.compact(
+      buildTranscript(20),
+      buildOptions({ callModel }),
+    );
+    expect(out.replacementMessages).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hybrid-ledger ledger-cap behavior
+// ---------------------------------------------------------------------------
+
+describe("hybrid-ledger cap semantics", () => {
+  it(
+    "when the model returns >10 entries, the cap keeps the MOST RECENT " +
+      "entries (chronologically last), not the oldest",
+    async () => {
+      // Model returns 15 chronologically-ordered entries. The hard cap dropped
+      // the most recently-acquired entries, which is the wrong half to drop
+      // for multi-cycle drift carryover (newest events are usually the most
+      // load-bearing for "what just happened").
+      const ledger = Array.from({ length: 15 }, (_, i) => ({
+        index: i,
+        note: `event-${i}`,
+      }));
+      const callModel = fakeHybrid({ ledger });
+      const out = await hybridLedgerCompactor.compact(
+        buildTranscript(20),
+        buildOptions({ callModel }),
+      );
+      const rendered = out.stats.extra?.renderedLedger as string;
+      // The newest entry must survive the cap.
+      expect(rendered).toContain("event-14");
+      // The oldest, beyond the cap window, should be dropped.
+      expect(rendered).not.toContain("event-0:");
+    },
+  );
+
+  it("priorLedger metadata of non-string type is handled safely", async () => {
+    const callModel = fakeHybrid({
+      state: { facts: ["x"] },
+      ledger: [{ index: 0, note: "e" }],
+    });
+    // Pass a number — old code did `as string` then template-string-coerced.
+    const transcript: CompactorTranscript = {
+      messages: buildTranscript(20).messages,
+      // biome-ignore lint/suspicious/noExplicitAny: deliberate wrong-type input
+      metadata: { priorLedger: 12345 as any },
+    };
+    const out = await hybridLedgerCompactor.compact(
+      transcript,
+      buildOptions({ callModel }),
+    );
+    // Should not crash, should still produce an artifact.
+    expect(out.replacementMessages).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Determinism + degenerate inputs
+// ---------------------------------------------------------------------------
+
+describe("compactor degenerate inputs", () => {
+  it("transcript with only a system message yields an empty replacement", async () => {
+    const transcript: CompactorTranscript = {
+      messages: [{ role: "system", content: "sys" }],
+    };
+    const out = await naiveSummaryCompactor.compact(
+      transcript,
+      buildOptions({ callModel: fakeNaive() }),
+    );
+    expect(out.replacementMessages).toHaveLength(0);
+    // System prompt is preserved separately by the runtime; the artifact
+    // must NOT include it.
+    expect(out.replacementMessages.some((m) => m.role === "system")).toBe(
+      false,
+    );
+  });
+
+  it("artifact replacementMessages MUST NOT include the system prefix", async () => {
+    // Even when there IS work to compact, the runtime concatenates
+    // [systemPrefix, replacement, preservedTail] itself. Including the system
+    // message in replacementMessages would double it.
+    const out = await naiveSummaryCompactor.compact(
+      buildTranscript(50),
+      buildOptions({ callModel: fakeNaive() }),
+    );
+    // The system summary message from naive is role="assistant", not system.
+    expect(out.replacementMessages.every((m) => m.role !== "system")).toBe(
+      true,
+    );
+  });
+
+  it("artifact replacementMessages MUST NOT include the preserved tail", async () => {
+    const transcript = buildTranscript(50);
+    const out = await naiveSummaryCompactor.compact(
+      transcript,
+      buildOptions({ callModel: fakeNaive(), preserveTailMessages: 6 }),
+    );
+    // Tail is the last 6 messages of the input. None of them should appear
+    // verbatim in replacementMessages.
+    const tailContents = transcript.messages.slice(-6).map((m) => m.content);
+    for (const content of tailContents) {
+      for (const r of out.replacementMessages) {
+        expect(r.content).not.toBe(content);
+      }
+    }
+  });
+
+  it("hierarchical-summary handles a single-message region without crashing", async () => {
+    let leafCalls = 0;
+    let rollupCalls = 0;
+    const callModel: CompactorModelCall = async ({ systemPrompt }) => {
+      if (systemPrompt.includes("aggregator")) {
+        rollupCalls += 1;
+        return "rolled";
+      }
+      leafCalls += 1;
+      return "leaf";
+    };
+    // 7 messages + 1 system = 8 total, tail=6 → region of 1 message.
+    const out = await hierarchicalSummaryCompactor.compact(
+      buildTranscript(7),
+      buildOptions({ callModel }),
+    );
+    expect(leafCalls).toBe(1);
+    expect(rollupCalls).toBe(0); // single chunk, no rollup needed
+    expect(out.replacementMessages).toHaveLength(1);
+  });
+
+  it("is deterministic given the same deterministic callModel", async () => {
+    const callModel = fakeStructured({
+      facts: ["a", "b", "c"],
+      entities: { x: "1", y: "2", z: "3" },
+    });
+    const t = buildTranscript(20);
+    const o1 = await structuredStateCompactor.compact(
+      t,
+      buildOptions({ callModel }),
+    );
+    const o2 = await structuredStateCompactor.compact(
+      t,
+      buildOptions({ callModel }),
+    );
+    expect(o1.replacementMessages[0].content).toBe(
+      o2.replacementMessages[0].content,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stats sanity
+// ---------------------------------------------------------------------------
+
+describe("CompactionArtifact.stats", () => {
+  it("compactedTokens reflects [system + replacement + tail], not just replacement", async () => {
+    const transcript = buildTranscript(50);
+    const out = await naiveSummaryCompactor.compact(
+      transcript,
+      buildOptions({ callModel: fakeNaive() }),
+    );
+    // compactedTokens must be > 0 because system + tail alone are non-empty.
+    expect(out.stats.compactedTokens).toBeGreaterThan(0);
+  });
+
+  it("originalTokens equals countTranscriptTokens of the input", async () => {
+    const transcript = buildTranscript(20);
+    const out = await naiveSummaryCompactor.compact(
+      transcript,
+      buildOptions({ callModel: fakeNaive() }),
+    );
+    // Compute expected via the same heuristic.
+    let expected = 0;
+    for (const m of transcript.messages) {
+      expected += approxCountTokens(m.content);
+    }
+    expect(out.stats.originalTokens).toBe(expected);
+  });
+});

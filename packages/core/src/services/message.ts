@@ -5643,7 +5643,7 @@ Examples:
 	- "I can go ahead and start booking the flights and hotel today if that's good with you" -> BOOK_TRAVEL
 	- "when I'm done with the PPT, upload it to the speaker portal for me" -> COMPUTER_USE
 	- "if you get stuck in the browser or on my computer, call me" -> VOICE_CALL
-	- "check disk space on this VPS with df -h" -> SHELL_COMMAND
+- "check disk space on this VPS with df -h" -> SHELL
 	- "what is the current BTC price in USD?" -> SEARCH
 
 ${draftSection}Return JSON only:
@@ -5886,6 +5886,7 @@ function findDirectOwnedActionSuggestion(
 ): ActionOwnershipSuggestion | null {
 	if (looksLikeLocalShellRequest(messageText)) {
 		const shellAction = findRuntimeActionByNames(runtime, [
+			"SHELL",
 			"SHELL_COMMAND",
 			"RUN_IN_TERMINAL",
 			"RUN_COMMAND",
@@ -6139,8 +6140,10 @@ function _hasSelectedShellCommandAction(
 		responseContent?.actions?.some(
 			(actionName) =>
 				typeof actionName === "string" &&
-				normalizeActionIdentifier(actionName) ===
+				[
+					normalizeActionIdentifier("SHELL"),
 					normalizeActionIdentifier("SHELL_COMMAND"),
+				].includes(normalizeActionIdentifier(actionName)),
 		) ?? false
 	);
 }
@@ -6173,8 +6176,8 @@ function _mergeLocalShellCommandParams(
 	) {
 		return {
 			...(existingParams as Record<string, unknown>),
-			SHELL_COMMAND: {
-				...(((existingParams as Record<string, unknown>).SHELL_COMMAND as
+			SHELL: {
+				...(((existingParams as Record<string, unknown>).SHELL as
 					| Record<string, unknown>
 					| undefined) ?? {}),
 				command,
@@ -6183,7 +6186,7 @@ function _mergeLocalShellCommandParams(
 	}
 
 	return {
-		SHELL_COMMAND: { command },
+		SHELL: { command },
 	} as Content["params"];
 }
 

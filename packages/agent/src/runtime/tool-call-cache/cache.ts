@@ -114,10 +114,12 @@ export class ToolCallCache {
 
   /**
    * Drop entries from the cache. With no arguments this purges everything.
-   * With a tool name it purges all entries for that tool from the in-memory
-   * tier (the disk tier scrubs only the matching key when an argHash is
-   * provided — full per-tool disk purge would require an index we do not
-   * keep, so version-bump remains the canonical full-purge mechanism).
+   * With a tool name it purges every in-memory entry whose toolName matches,
+   * and removes the disk-tier file for each matching key. Disk entries
+   * written from a previous process that never made it into this LRU are
+   * not enumerable (we deliberately do not maintain a disk index) — for a
+   * full per-tool disk purge, bump the tool's `version` in its descriptor,
+   * which forces every prior entry to miss on lookup.
    */
   invalidate(toolName?: string, argHash?: string): void {
     if (!toolName) {
@@ -130,8 +132,13 @@ export class ToolCallCache {
       this.disk.delete(argHash);
       return;
     }
+    const toDelete: string[] = [];
     for (const [key, entry] of this.memory.entries()) {
-      if (entry.toolName === toolName) this.memory.delete(key);
+      if (entry.toolName === toolName) toDelete.push(key);
+    }
+    for (const key of toDelete) {
+      this.memory.delete(key);
+      this.disk.delete(key);
     }
   }
 

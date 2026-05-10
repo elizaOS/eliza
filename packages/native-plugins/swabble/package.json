@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-swabble",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Detects wake words and transcribes live speech with microphone state events.",
   "keywords": [
     "voice",
@@ -32,7 +32,7 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/app-core": "workspace:*"
+    "@elizaos/app-core": "2.0.0-beta.1"
   },
   "repository": {
     "type": "git",

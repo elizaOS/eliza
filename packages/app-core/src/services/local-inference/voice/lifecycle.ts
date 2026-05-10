@@ -211,6 +211,16 @@ export class VoiceLifecycle {
     // still drop the pages. If eviction fails we still proceed to
     // release; the failure is captured and re-thrown after release so
     // the registry stays consistent.
+    //
+    // `evictPages()` on production handles wires through to the
+    // `libelizainference` FFI (`ffi.mmapEvict(ctx, "tts" | "asr")`,
+    // declared in `scripts/omnivoice-fuse/ffi.h`). The fused build
+    // implements that as `madvise(MADV_DONTNEED)` on POSIX or
+    // `VirtualUnlock + OfferVirtualMemory` on Windows. The stub
+    // library returns ELIZA_ERR_NOT_IMPLEMENTED, which the binding
+    // raises as `VoiceLifecycleError({code:"kernel-missing"})` — this
+    // method captures it and re-classifies as `disarm-failed` after
+    // release runs (so registry refs don't leak on a bad eviction).
     const evictResults = await Promise.allSettled([
       resources.tts.evictPages(),
       resources.asr.evictPages(),

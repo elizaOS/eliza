@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-llama",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Eliza mobile llama.cpp adapter — wraps llama-cpp-capacitor and maps its contextId-based API onto Eliza's LocalInferenceLoader contract.",
   "keywords": [
     "llama",

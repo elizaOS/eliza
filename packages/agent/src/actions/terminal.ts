@@ -1,5 +1,5 @@
 /**
- * SHELL_COMMAND action — runs a shell command on the server.
+ * SHELL action — runs a shell command on the server.
  *
  * When triggered the action:
  *   1. Extracts the command from parameters or MCP-style JSON
@@ -25,7 +25,7 @@ import { hasOwnerAccess } from "../security/access.ts";
 
 /** API port for posting terminal requests. */
 const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
-const TERMINAL_ACTION_NAME = "SHELL_COMMAND";
+const TERMINAL_ACTION_NAME = "SHELL";
 const MAX_TERMINAL_DATA_CHARS = 16000;
 
 const FAIL = { success: false, text: "" } as const;
@@ -267,7 +267,7 @@ export const terminalAction: Action = {
     "RUN_COMMAND",
     "EXECUTE_COMMAND",
     "TERMINAL",
-    "SHELL",
+    "SHELL_COMMAND",
     "RUN_SHELL",
     "EXEC",
     "CALL_MCP_TOOL",

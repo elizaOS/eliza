@@ -143,7 +143,7 @@ const CATALOG: CatalogModel[] = [
 	{
 		id: "eliza-1-mobile-1_7b",
 		displayName: "Eliza-1 mobile 1.7B",
-		hfRepo: "elizalabs/eliza-1-mobile-1_7b",
+		hfRepo: "elizaos/eliza-1-mobile-1_7b",
 		ggufFile: "text/eliza-1-mobile-1_7b-32k.gguf",
 		params: "1.7B",
 		quant: "fused GGUF",
@@ -157,7 +157,7 @@ const CATALOG: CatalogModel[] = [
 	{
 		id: "eliza-1-desktop-9b",
 		displayName: "Eliza-1 desktop 9B",
-		hfRepo: "elizalabs/eliza-1-desktop-9b",
+		hfRepo: "elizaos/eliza-1-desktop-9b",
 		ggufFile: "text/eliza-1-desktop-9b-64k.gguf",
 		params: "9B",
 		quant: "fused GGUF",
@@ -171,7 +171,7 @@ const CATALOG: CatalogModel[] = [
 	{
 		id: "eliza-1-lite-0_6b",
 		displayName: "Eliza-1 lite embeddings",
-		hfRepo: "elizalabs/eliza-1-lite-0_6b",
+		hfRepo: "elizaos/eliza-1-lite-0_6b",
 		ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
 		params: "0.6B",
 		quant: "fused GGUF",

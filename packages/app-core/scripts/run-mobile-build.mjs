@@ -21,7 +21,7 @@
  *                             docs/agent-on-mobile.md).
  *   6. Native build         — gradlew / xcodebuild
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

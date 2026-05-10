@@ -41,6 +41,14 @@ export const KNOWN_STRATEGIES: readonly StrategyName[] = [
   "hybrid-ledger",
 ] as const;
 
+export type ReasoningEffort = "low" | "medium" | "high";
+
+export const KNOWN_REASONING_EFFORTS: readonly ReasoningEffort[] = [
+  "low",
+  "medium",
+  "high",
+] as const;
+
 export type CliArgs = {
   strategy: StrategyName;
   turns: number;
@@ -52,6 +60,12 @@ export type CliArgs = {
   model: string;
   baseUrl: string;
   judgeModel: string;
+  agentReasoningEffort: ReasoningEffort;
+  judgeReasoningEffort: ReasoningEffort;
+  compactorReasoningEffort: ReasoningEffort;
+  realisticSystemPrompt: boolean;
+  withToolCalls: boolean;
+  probeMaxTokens: number;
   help: boolean;
 };
 
@@ -66,6 +80,12 @@ export const DEFAULT_ARGS: CliArgs = {
   model: "gpt-oss-120b",
   baseUrl: "https://api.cerebras.ai/v1",
   judgeModel: "gpt-oss-120b",
+  agentReasoningEffort: "medium",
+  judgeReasoningEffort: "medium",
+  compactorReasoningEffort: "low",
+  realisticSystemPrompt: false,
+  withToolCalls: false,
+  probeMaxTokens: 600,
   help: false,
 };
 
@@ -75,20 +95,31 @@ Usage:
   bun run scripts/benchmark/drift-harness.ts [flags]
 
 Flags:
-  --strategy <name>      Compaction strategy: ${KNOWN_STRATEGIES.join(" | ")} (default: none)
-  --turns <n>            Total conversation turns (default: 50)
-  --compact-every <n>    Compact every N turns (default: 10)
-  --plant-facts <n>      Number of facts to plant across the run (default: 5)
-  --output <path>        JSONL output path (default: drift-results.jsonl)
-  --seed <n>             Deterministic seed (default: 1337)
-  --model <id>           Agent model id (default: gpt-oss-120b)
-  --judge-model <id>     Judge model id (default: gpt-oss-120b)
-  --base-url <url>       OpenAI-compatible endpoint (default: Cerebras)
-  --dry-run              Use a fake model (no API calls); for plumbing tests
-  --help, -h             Show this help
+  --strategy <name>            Compaction strategy: ${KNOWN_STRATEGIES.join(" | ")} (default: none)
+  --turns <n>                  Total conversation turns (default: 50)
+  --compact-every <n>          Compact every N turns (default: 10)
+  --plant-facts <n>            Number of facts to plant across the run (default: 5)
+  --output <path>              JSONL output path (default: drift-results.jsonl)
+  --seed <n>                   Deterministic seed (default: 1337)
+  --model <id>                 Agent model id (default: gpt-oss-120b)
+  --judge-model <id>           Judge model id (defaults to --model; set
+                               distinct to avoid same-model judge bias)
+  --base-url <url>             OpenAI-compatible endpoint (default: Cerebras)
+  --agent-reasoning-effort <e> Reasoning effort for agent turns (low|medium|high, default: medium)
+  --judge-reasoning-effort <e> Reasoning effort for judge calls (low|medium|high, default: medium)
+  --compactor-reasoning-effort <e>
+                               Reasoning effort for compactor callModel
+                               (low|medium|high, default: low)
+  --realistic-system-prompt    Use a ~5KB Eliza-style system prompt with action
+                               and plugin context (default: minimal one-liner)
+  --with-tool-calls            Interleave a synthetic tool-call/tool-result pair
+                               every 5 turns and probe its preservation
+  --probe-max-tokens <n>       Max tokens for probe answers (default: 600)
+  --dry-run                    Use a fake model (no API calls); for plumbing tests
+  --help, -h                   Show this help
 
 Env:
-  CEREBRAS_API_KEY       Required unless --dry-run
+  CEREBRAS_API_KEY             Required unless --dry-run
 `;
 
 export function parseArgs(argv: readonly string[]): CliArgs {
@@ -152,6 +183,28 @@ export function parseArgs(argv: readonly string[]): CliArgs {
         out.baseUrl = need(i, a);
         i++;
         break;
+      case "--agent-reasoning-effort":
+        out.agentReasoningEffort = parseEffort(need(i, a), a);
+        i++;
+        break;
+      case "--judge-reasoning-effort":
+        out.judgeReasoningEffort = parseEffort(need(i, a), a);
+        i++;
+        break;
+      case "--compactor-reasoning-effort":
+        out.compactorReasoningEffort = parseEffort(need(i, a), a);
+        i++;
+        break;
+      case "--realistic-system-prompt":
+        out.realisticSystemPrompt = true;
+        break;
+      case "--with-tool-calls":
+        out.withToolCalls = true;
+        break;
+      case "--probe-max-tokens":
+        out.probeMaxTokens = parseIntStrict(need(i, a), a);
+        i++;
+        break;
       default:
         if (a.startsWith("--")) {
           throw new Error(`unknown flag ${a}`);
@@ -165,7 +218,18 @@ export function parseArgs(argv: readonly string[]): CliArgs {
   if (out.plantFacts > out.turns) {
     throw new Error("--plant-facts cannot exceed --turns");
   }
+  if (out.probeMaxTokens <= 0)
+    throw new Error("--probe-max-tokens must be positive");
   return out;
+}
+
+function parseEffort(raw: string, flag: string): ReasoningEffort {
+  if (!KNOWN_REASONING_EFFORTS.includes(raw as ReasoningEffort)) {
+    throw new Error(
+      `flag ${flag} expects one of ${KNOWN_REASONING_EFFORTS.join("|")}, got ${raw}`,
+    );
+  }
+  return raw as ReasoningEffort;
 }
 
 function parseIntStrict(raw: string, flag: string): number {
@@ -195,12 +259,38 @@ export function rng(seed: number): () => number {
 // Fact planting
 // ---------------------------------------------------------------------------
 
+// Fact kinds rotate round-robin so a small N still gets balanced coverage.
+// `api_key` was intentionally removed: forcing the model to recall `sk_*`
+// strings tripped safety training on gpt-oss-120b. The replacement kinds are
+// memorable, high-information, and safety-neutral.
 export type FactKind =
   | "aws_account"
-  | "api_key"
   | "person_name"
   | "address"
-  | "code";
+  | "code"
+  | "book_title"
+  | "project_codename"
+  | "isbn"
+  | "date_iso"
+  | "birthday"
+  | "flight_number"
+  | "uuid"
+  | "zipcode";
+
+export const FACT_KINDS: readonly FactKind[] = [
+  "aws_account",
+  "person_name",
+  "address",
+  "code",
+  "book_title",
+  "project_codename",
+  "isbn",
+  "date_iso",
+  "birthday",
+  "flight_number",
+  "uuid",
+  "zipcode",
+] as const;
 
 export type PlantedFact = {
   id: string;
@@ -247,10 +337,15 @@ export function planFacts(args: {
   }
   const sorted = [...turns].sort((a, b) => a - b);
 
+  // Balanced kind distribution: rotate through FACT_KINDS in seeded order
+  // so a 4-fact run gets 4 distinct kinds; an 8-fact run gets 2 of each of
+  // the first 8 kinds; etc. This keeps per-kind accuracy interpretable.
+  const kindOrder = shuffleKinds(rand);
+
   const out: PlantedFact[] = [];
   for (let i = 0; i < sorted.length; i++) {
     const t = sorted[i]!;
-    const kind = pickKind(rand);
+    const kind = kindOrder[i % kindOrder.length]!;
     const fact = makeFact(kind, rand);
     out.push({
       id: `fact_${i + 1}`,
@@ -265,15 +360,16 @@ export function planFacts(args: {
   return out;
 }
 
-function pickKind(rand: () => number): FactKind {
-  const kinds: FactKind[] = [
-    "aws_account",
-    "api_key",
-    "person_name",
-    "address",
-    "code",
-  ];
-  return kinds[Math.floor(rand() * kinds.length)]!;
+function shuffleKinds(rand: () => number): FactKind[] {
+  const arr = [...FACT_KINDS];
+  // Fisher–Yates with the supplied rand source — deterministic per seed.
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    const tmp = arr[i]!;
+    arr[i] = arr[j]!;
+    arr[j] = tmp;
+  }
+  return arr;
 }
 
 function makeFact(
@@ -292,15 +388,6 @@ function makeFact(
         utterance: `By the way, my AWS account ID is ${id}. Please remember it.`,
         expected: id,
         question: "What is my AWS account ID?",
-        exactMatch: true,
-      };
-    }
-    case "api_key": {
-      const key = `sk_${randHex(rand, 24)}`;
-      return {
-        utterance: `Note: my staging API key is ${key}. Keep it on file.`,
-        expected: key,
-        question: "What is my staging API key?",
         exactMatch: true,
       };
     }
@@ -345,6 +432,128 @@ function makeFact(
         utterance: `Project codename for this quarter: ${code}.`,
         expected: code,
         question: "What is this quarter's project codename?",
+        exactMatch: true,
+      };
+    }
+    case "book_title": {
+      const adj = pick(rand, [
+        "Silver",
+        "Hidden",
+        "Distant",
+        "Quiet",
+        "Crimson",
+        "Final",
+      ]);
+      const noun = pick(rand, [
+        "Compass",
+        "Garden",
+        "Lighthouse",
+        "Atlas",
+        "Equation",
+        "Harbor",
+      ]);
+      const title = `The ${adj} ${noun}`;
+      return {
+        utterance: `The book my friend recommended is called "${title}". Hold onto that.`,
+        expected: title,
+        question: "What is the book my friend recommended?",
+        exactMatch: false,
+      };
+    }
+    case "project_codename": {
+      const left = pick(rand, [
+        "Blue",
+        "Iron",
+        "Velvet",
+        "Glass",
+        "Copper",
+        "Echo",
+      ]);
+      const right = pick(rand, [
+        "Falcon",
+        "Lantern",
+        "Meadow",
+        "Cipher",
+        "Harbor",
+        "Quartz",
+      ]);
+      const name = `${left} ${right}`;
+      return {
+        utterance: `Internal codename for the new initiative is "${name}". Don't share it externally.`,
+        expected: name,
+        question: "What is the internal codename for the new initiative?",
+        exactMatch: true,
+      };
+    }
+    case "isbn": {
+      // ISBN-13: 13 digits. We don't compute a valid checksum; we just need a
+      // unique, memorable identifier that the model has to reproduce.
+      let digits = "978";
+      for (let i = 0; i < 10; i++) digits += Math.floor(rand() * 10);
+      return {
+        utterance: `For reference, the ISBN of that book is ${digits}.`,
+        expected: digits,
+        question: "What is the ISBN of that book?",
+        exactMatch: true,
+      };
+    }
+    case "date_iso": {
+      const year = 2024 + Math.floor(rand() * 4);
+      const month = String(1 + Math.floor(rand() * 12)).padStart(2, "0");
+      const day = String(1 + Math.floor(rand() * 28)).padStart(2, "0");
+      const date = `${year}-${month}-${day}`;
+      return {
+        utterance: `The contract effective date is ${date}. Make a note.`,
+        expected: date,
+        question: "What is the contract effective date?",
+        exactMatch: true,
+      };
+    }
+    case "birthday": {
+      const month = String(1 + Math.floor(rand() * 12)).padStart(2, "0");
+      const day = String(1 + Math.floor(rand() * 28)).padStart(2, "0");
+      const date = `${month}/${day}`;
+      const who = pick(rand, [
+        "my sister",
+        "my mom",
+        "my partner",
+        "my best friend",
+      ]);
+      return {
+        utterance: `${who[0]!.toUpperCase()}${who.slice(1)}'s birthday is ${date}. Don't let me forget.`,
+        expected: date,
+        question: `When is ${who}'s birthday?`,
+        exactMatch: true,
+      };
+    }
+    case "flight_number": {
+      const airline = pick(rand, ["UA", "DL", "AA", "BA", "LH", "AF"]);
+      const num = 100 + Math.floor(rand() * 9000);
+      const flight = `${airline}${num}`;
+      return {
+        utterance: `My flight is ${flight} on Tuesday — please remember.`,
+        expected: flight,
+        question: "What is my flight number on Tuesday?",
+        exactMatch: true,
+      };
+    }
+    case "uuid": {
+      // RFC 4122-ish v4 layout; we only care about the literal string.
+      const seg = (n: number) => randHex(rand, n);
+      const uuid = `${seg(8)}-${seg(4)}-4${seg(3)}-${pick(rand, ["8", "9", "a", "b"])}${seg(3)}-${seg(12)}`;
+      return {
+        utterance: `The ticket UUID is ${uuid}. Keep that handy.`,
+        expected: uuid,
+        question: "What is the ticket UUID?",
+        exactMatch: true,
+      };
+    }
+    case "zipcode": {
+      const zip = String(10000 + Math.floor(rand() * 89999));
+      return {
+        utterance: `The warehouse ZIP code is ${zip}. Save that for shipping.`,
+        expected: zip,
+        question: "What is the warehouse ZIP code?",
         exactMatch: true,
       };
     }

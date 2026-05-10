@@ -1,5 +1,5 @@
 /**
- * PLACE_CALL action — agent-initiated phone call placement.
+ * Android VOICE_CALL provider implementation — agent-initiated phone call placement.
  *
  * Delegates to `@elizaos/capacitor-phone`'s `placeCall` method. Android-only;
  * any other platform's web fallback rejects, which surfaces as a failed action
@@ -101,11 +101,11 @@ function hasPlaceCallIntent(
 }
 
 export const placeCallAction: Action = {
-  name: "PLACE_CALL",
+  name: "VOICE_CALL",
   contexts: [...PLACE_CALL_CONTEXTS],
   contextGate: { anyOf: [...PLACE_CALL_CONTEXTS] },
   roleGate: { minRole: "USER" },
-  similes: ["CALL", "DIAL", "RING", "PHONE_CALL", "MAKE_CALL"],
+  similes: ["PLACE_CALL", "CALL", "DIAL", "RING", "PHONE_CALL", "MAKE_CALL"],
   tags: [
     "domain:meta",
     "capability:execute",

@@ -2,7 +2,7 @@
 
 End-to-end pipeline that takes a directory containing already-quantized
 weights + sidecars and ships an Eliza-1 bundle to
-``elizalabs/eliza-1-<tier>``. This is the single entry point referenced
+``elizaos/eliza-1-<tier>``. This is the single entry point referenced
 by ``packages/training/AGENTS.md`` §6.
 
 Stages, in order, with hard exits on failure:
@@ -28,7 +28,7 @@ Stages, in order, with hard exits on failure:
    manifest as the data context. Same data, no marketing buzzwords, no
    user-visible Qwen/Llama strings.
 6. **HF push.** Upload weights, manifest, README, licenses, eval blobs
-   to ``elizalabs/eliza-1-<tier>`` via ``huggingface_hub``. Tag the
+   to ``elizaos/eliza-1-<tier>`` via ``huggingface_hub``. Tag the
    local training repo with ``eliza-1-<tier>-v<version>`` + the
    training commit hash.
 
@@ -1056,7 +1056,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
     ap.add_argument(
         "--repo-id",
         default=None,
-        help="Override HF repo id (default: elizalabs/eliza-1-<tier>).",
+        help="Override HF repo id (default: elizaos/eliza-1-<tier>).",
     )
     ap.add_argument(
         "--public",
@@ -1085,7 +1085,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
     )
     args = ap.parse_args(argv)
 
-    repo_id = args.repo_id or f"elizalabs/eliza-1-{args.tier}"
+    repo_id = args.repo_id or f"elizaos/eliza-1-{args.tier}"
     template_path = (
         Path(__file__).resolve().parent / "templates" / "README.md.j2"
     )

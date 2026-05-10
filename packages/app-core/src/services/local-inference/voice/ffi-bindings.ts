@@ -228,23 +228,27 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
   const ffi = loadBunFfiModule();
   const T = ffi.FFIType;
 
+  // All `char *` arguments are typed as T.ptr — Bun's `T.cstring` is a
+  // RETURN-only type for "library hands back a NUL-terminated string".
+  // For inputs we encode UTF-8 to a NUL-terminated Buffer on the JS
+  // side and pass `ffi.ptr(buffer)`.
   const lib = ffi.dlopen(dylibPath, {
     eliza_inference_abi_version: { args: [], returns: T.cstring },
     eliza_inference_create: {
-      args: [T.cstring, T.ptr],
+      args: [T.ptr, T.ptr],
       returns: T.ptr,
     },
     eliza_inference_destroy: { args: [T.ptr], returns: T.void },
     eliza_inference_mmap_acquire: {
-      args: [T.ptr, T.cstring, T.ptr],
+      args: [T.ptr, T.ptr, T.ptr],
       returns: T.i32,
     },
     eliza_inference_mmap_evict: {
-      args: [T.ptr, T.cstring, T.ptr],
+      args: [T.ptr, T.ptr, T.ptr],
       returns: T.i32,
     },
     eliza_inference_tts_synthesize: {
-      args: [T.ptr, T.cstring, T.usize, T.cstring, T.ptr, T.usize, T.ptr],
+      args: [T.ptr, T.ptr, T.usize, T.ptr, T.ptr, T.usize, T.ptr],
       returns: T.i32,
     },
     eliza_inference_asr_transcribe: {
@@ -286,6 +290,20 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
     return { buf, ptr: ffi.ptr(buf) };
   }
 
+  /**
+   * Encode a JS string to a NUL-terminated UTF-8 buffer and return a
+   * `T.ptr`-compatible pointer suitable for `const char *` arguments.
+   * Returns null when the input is null — the C ABI accepts NULL for
+   * optional arguments like `speaker_preset_id`.
+   */
+  function cstr(value: string | null): { ptr: unknown; bytes: number } {
+    if (value === null) return { ptr: null, bytes: 0 };
+    const bytes = Buffer.from(value, "utf8");
+    const buf = Buffer.alloc(bytes.byteLength + 1);
+    bytes.copy(buf);
+    return { ptr: ffi.ptr(buf), bytes: bytes.byteLength };
+  }
+
   function failureCode(rc: number): VoiceLifecycleError["code"] {
     if (rc === ELIZA_ERR_OOM) return "ram-pressure";
     if (rc === ELIZA_ERR_FFI_FAULT) return "mmap-fail";
@@ -301,7 +319,10 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
     create(bundleDir: string): ElizaInferenceContextHandle {
       const err = makeOutErr();
-      const handle = lib.symbols.eliza_inference_create(bundleDir, err.ptr);
+      const handle = lib.symbols.eliza_inference_create(
+        cstr(bundleDir).ptr,
+        err.ptr,
+      );
       if (handle === 0n) {
         const message =
           takeError(err.buf) ??
@@ -317,7 +338,11 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
     mmapAcquire(ctx, region) {
       const err = makeOutErr();
-      const rc = lib.symbols.eliza_inference_mmap_acquire(ctx, region, err.ptr);
+      const rc = lib.symbols.eliza_inference_mmap_acquire(
+        ctx,
+        cstr(region).ptr,
+        err.ptr,
+      );
       if (rc !== ELIZA_OK) {
         const message =
           takeError(err.buf) ??
@@ -328,7 +353,11 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
     mmapEvict(ctx, region) {
       const err = makeOutErr();
-      const rc = lib.symbols.eliza_inference_mmap_evict(ctx, region, err.ptr);
+      const rc = lib.symbols.eliza_inference_mmap_evict(
+        ctx,
+        cstr(region).ptr,
+        err.ptr,
+      );
       if (rc !== ELIZA_OK) {
         const message =
           takeError(err.buf) ??
@@ -339,12 +368,13 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
     ttsSynthesize({ ctx, text, speakerPresetId, out }) {
       const err = makeOutErr();
-      const textBytes = Buffer.from(text, "utf8");
+      const textArg = cstr(text);
+      const speakerArg = cstr(speakerPresetId);
       const rc = lib.symbols.eliza_inference_tts_synthesize(
         ctx,
-        text,
-        BigInt(textBytes.byteLength),
-        speakerPresetId,
+        textArg.ptr,
+        BigInt(textArg.bytes),
+        speakerArg.ptr,
         ffi.ptr(out),
         BigInt(out.length),
         err.ptr,

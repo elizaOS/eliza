@@ -16,7 +16,7 @@ export interface EmbeddingPreset {
 
 const COMPACT_ELIZA_1_EMBEDDING = {
   model: "text/eliza-1-lite-0_6b-32k.gguf",
-  modelRepo: "elizalabs/eliza-1-lite-0_6b",
+  modelRepo: "elizaos/eliza-1-lite-0_6b",
   dimensions: 1024,
   contextSize: 32768,
   downloadSizeMB: 512,

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-bluesky",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "",
   "type": "module",
   "main": "dist/cjs/index.node.cjs",
@@ -54,7 +54,7 @@
     "@atproto/lexicon": "^0.6.0",
     "@atproto/syntax": "^0.5.0",
     "@atproto/xrpc": "^0.7.0",
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "lru-cache": "^11.1.0",
     "zod": "^4.4.3"
   },
@@ -64,7 +64,7 @@
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "resolutions": {
     "@noble/hashes": "2.2.0"

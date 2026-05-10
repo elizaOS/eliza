@@ -193,7 +193,9 @@ function inferMode(
 	options?: Record<string, unknown>,
 ): PluginSubaction | null {
 	const explicit =
-		readStringOption(options, "subaction") ?? readStringOption(options, "mode");
+		readStringOption(options, "action") ??
+		readStringOption(options, "subaction") ??
+		readStringOption(options, "mode");
 	if (explicit) return normalizeSubaction(explicit);
 
 	const trimmed = text.trim();
@@ -326,20 +328,20 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 		],
 
 		description:
-			"Unified plugin control. subaction=install installs from registry; eject clones a registry plugin locally; sync pulls upstream into an ejected plugin; reinject removes the local copy; list shows loaded/installed; list_ejected shows ejected; search queries the registry; details shows registry/runtime details; status reports plugin state; enable/disable load or unload runtime-registered plugins; core_status reports @elizaos/core ejection state; create runs the multi-turn create-or-edit flow that scaffolds from the min-plugin template and dispatches a coding agent with AppVerificationService validator.",
+			"Unified plugin control. action=install installs from registry; eject clones a registry plugin locally; sync pulls upstream into an ejected plugin; reinject removes the local copy; list shows loaded/installed; list_ejected shows ejected; search queries the registry; details shows registry/runtime details; status reports plugin state; enable/disable load or unload runtime-registered plugins; core_status reports @elizaos/core ejection state; create runs the multi-turn create-or-edit flow that scaffolds from the min-plugin template and dispatches a coding agent with AppVerificationService validator.",
 
 		parameters: [
 			{
-				name: "subaction",
+				name: "action",
 				description:
-					"Subaction: install | eject | sync | reinject | list | list_ejected | search | details | status | enable | disable | core_status | create.",
+					"Action: install | eject | sync | reinject | list | list_ejected | search | details | status | enable | disable | core_status | create.",
 				required: true,
 				schema: { type: "string", enum: [...SUBACTIONS] },
 			},
 			{
 				name: "mode",
 				description:
-					"Legacy alias for subaction. Prefer subaction in new calls.",
+					"Legacy alias for action. Prefer action in new calls.",
 				required: false,
 				schema: { type: "string", enum: [...SUBACTIONS] },
 			},
@@ -406,7 +408,8 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			if (!(await canManagePlugins(runtime, message))) return false;
 			const text = message.content?.text ?? "";
 			const hasStructuredMode = Boolean(
-				readStringOption(options, "subaction") ||
+				readStringOption(options, "action") ||
+					readStringOption(options, "subaction") ||
 					readStringOption(options, "mode"),
 			);
 

@@ -48,16 +48,30 @@ SYSTEM_LIBVULKAN := $(firstword \
     $(wildcard /usr/lib64/libvulkan.so.1) \
     $(wildcard /usr/lib/libvulkan.so.1))
 
+# Homebrew Vulkan SDK on macOS (vulkan-headers + vulkan-loader + molten-vk).
+# Detected by the loader dylib + headers under /opt/homebrew.
+HOMEBREW_VULKAN_HEADERS := $(wildcard /opt/homebrew/include/vulkan/vulkan.h)
+HOMEBREW_VULKAN_LIB     := $(wildcard /opt/homebrew/opt/vulkan-loader/lib/libvulkan.dylib)
+
 vulkan: vulkan_verify
 vulkan_verify: vulkan_verify.cpp $(REF_OBJ) $(QJL_POLAR_OBJ)
 ifdef VULKAN_SDK
 	$(CXX) $(CXXFLAGS) -I$(VULKAN_SDK)/include -I../reference -I. \
 		vulkan_verify.cpp $(REF_OBJ) $(QJL_POLAR_OBJ) \
 		-L$(VULKAN_SDK)/lib -lvulkan -lm -o vulkan_verify
+else ifneq ($(strip $(HOMEBREW_VULKAN_HEADERS)$(HOMEBREW_VULKAN_LIB)),)
+	$(CXX) $(CXXFLAGS) -I/opt/homebrew/include -I../reference -I. \
+		vulkan_verify.cpp $(REF_OBJ) $(QJL_POLAR_OBJ) \
+		-L/opt/homebrew/opt/vulkan-loader/lib -lvulkan -lm -o vulkan_verify
+	@echo "[vulkan_verify] Built against Homebrew vulkan-loader (macOS / MoltenVK)."
+	@echo "[vulkan_verify] Run with:"
+	@echo "  export VK_ICD_FILENAMES=/opt/homebrew/etc/vulkan/icd.d/MoltenVK_icd.json"
+	@echo "  export DYLD_LIBRARY_PATH=/opt/homebrew/opt/vulkan-loader/lib:/opt/homebrew/opt/molten-vk/lib"
 else
 ifeq ($(wildcard $(ELIZA_DFLASH_VULKAN_HEADERS_DIR)/vulkan/vulkan.hpp),)
-	@echo "Vulkan harness needs either:"
+	@echo "Vulkan harness needs one of:"
 	@echo "  - VULKAN_SDK pointing at LunarG, or"
+	@echo "  - macOS: brew install molten-vk vulkan-headers vulkan-loader, or"
 	@echo "  - Fetched Khronos headers at $(ELIZA_DFLASH_VULKAN_HEADERS_DIR)"
 	@echo "    (run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-vulkan' to fetch them)"
 	@false
@@ -306,6 +320,65 @@ else
 	@echo "[cuda-verify] turbo3_tcq ..." ; ./cuda_verify fixtures/turbo3_tcq.json
 	@echo "[cuda-verify] qjl ..."        ; ./cuda_verify fixtures/qjl.json
 	@echo "[cuda-verify] polar ..."      ; ./cuda_verify fixtures/polar.json
+endif
+
+# Drift check between the standalone shaders in packages/inference/{metal,vulkan}/
+# and the fork's in-tree shaders. Both ship the same kernel symbols and decode
+# math (the standalones add perf-only divergence; see PATCH_AUDIT_2026-05-10.md
+# §"Standalone-vs-fork shader drift"). The reference runs of metal_verify /
+# vulkan_verify validated the standalones; this target re-runs the same harness
+# against the fork's in-tree variants so we can confirm 8/8 PASS still holds
+# before signing off a bundle.
+#
+# The fork is the milady-ai/llama.cpp checkout the build script clones into
+# ~/.cache/eliza-dflash/milady-llama-cpp. If the cache dir is absent, this
+# target prints a clear "fork not present, please run build first" message
+# rather than failing cryptically.
+ELIZA_DFLASH_FORK_METAL_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-metal/milady-kernels
+ELIZA_DFLASH_FORK_VULKAN_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-vulkan/vulkan-shaders
+
+verify-fork:
+ifeq ($(wildcard $(ELIZA_DFLASH_LLAMA_DIR)/.git),)
+	@echo "[verify-fork] fork not present at $(ELIZA_DFLASH_LLAMA_DIR)"
+	@echo "[verify-fork] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal'"
+	@echo "[verify-fork] (or any other target) first to clone it, then re-run this target."
+	@false
+else
+	@if which xcrun >/dev/null 2>&1; then \
+	  if [ ! -d "$(ELIZA_DFLASH_FORK_METAL_DIR)" ]; then \
+	    echo "[verify-fork] fork present but $(ELIZA_DFLASH_FORK_METAL_DIR) missing — fork layout drift."; \
+	    exit 1; \
+	  fi; \
+	  $(MAKE) metal_verify >/dev/null && \
+	  echo "[verify-fork] metal/turbo3   (fork: tbq3_0.metal)"     && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/tbq3_0.metal     kernel_turbo3_dot          fixtures/turbo3.json     && \
+	  echo "[verify-fork] metal/turbo4   (fork: tbq4_0.metal)"     && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/tbq4_0.metal     kernel_turbo4_dot          fixtures/turbo4.json     && \
+	  echo "[verify-fork] metal/turbo3_tcq (fork: tbq3_tcq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/tbq3_tcq.metal   kernel_turbo3_tcq_dot      fixtures/turbo3_tcq.json && \
+	  echo "[verify-fork] metal/qjl     (fork: qjl.metal)"         && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/qjl.metal       kernel_attn_score_qjl1_256 fixtures/qjl.json        && \
+	  echo "[verify-fork] metal/polar   (fork: polar.metal)"       && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal     kernel_mul_mv_q4_polar_f32 fixtures/polar.json      && \
+	  echo "[verify-fork] metal: 5/5 fork shaders verified against the same fixtures as the standalones"; \
+	else \
+	  echo "[verify-fork] xcrun not found — skipping Metal fork verification (macOS only)"; \
+	fi
+	@if [ -d "$(ELIZA_DFLASH_FORK_VULKAN_DIR)" ] && ls $(ELIZA_DFLASH_FORK_VULKAN_DIR)/turbo3.comp >/dev/null 2>&1; then \
+	  if [ -z "$(GLSLC)" ]; then \
+	    echo "[verify-fork] vulkan: glslc not found — cannot compile fork .comp -> .spv; skipping"; \
+	  elif $(MAKE) vulkan_verify >/dev/null 2>&1 && [ -x ./vulkan_verify ]; then \
+	    mkdir -p bench_results/fork-spv; \
+	    echo "[verify-fork] vulkan: compiling fork .comp -> .spv with $(GLSLC)"; \
+	    for f in turbo3 turbo4 turbo3_tcq; do \
+	      $(GLSLC) --target-env=vulkan1.1 --target-spv=spv1.3 -fshader-stage=compute \
+	        $(ELIZA_DFLASH_FORK_VULKAN_DIR)/$$f.comp -o bench_results/fork-spv/$$f.spv || exit 1; \
+	      echo "[verify-fork] vulkan/$$f (fork: vulkan-shaders/$$f.comp)"; \
+	      ./vulkan_verify bench_results/fork-spv/$$f.spv fixtures/$$f.json || exit 1; \
+	    done; \
+	    echo "[verify-fork] vulkan: 3/3 turbo* fork shaders verified (qjl/polar pending harness extension — see ROADMAP.md)"; \
+	  else \
+	    echo "[verify-fork] vulkan_verify not buildable on this host — skipping Vulkan fork verification"; \
+	  fi; \
+	else \
+	  echo "[verify-fork] $(ELIZA_DFLASH_FORK_VULKAN_DIR) not staged with milady shaders (run a *-vulkan build target first); skipping Vulkan fork verification"; \
+	fi
+	@echo "[verify-fork] done. Compare the per-kernel pass/fail above against the standalone reference runs to detect drift."
 endif
 
 clean:

@@ -128,6 +128,7 @@ import {
 } from "./website-blocker/engine.js";
 import { WebsiteBlockerService } from "./website-blocker/service.js";
 import { workThreadResponseHandlerEvaluator } from "./lifeops/work-threads/response-handler-evaluator.js";
+import { ownerProfileExtractionEvaluator } from "./lifeops/profile/response-handler-evaluator.js";
 import { InboxTriageRepository } from "./inbox/repository.js";
 import { createApprovalQueue } from "./lifeops/approval-queue.js";
 import type { ApprovalChannel } from "./lifeops/approval-queue.types.js";
@@ -559,7 +560,10 @@ const rawAppLifeOpsPlugin: Plugin = {
     ActivityTrackerService,
     PresenceSignalBridgeService,
   ],
-  responseHandlerEvaluators: [workThreadResponseHandlerEvaluator],
+  responseHandlerEvaluators: [
+    ownerProfileExtractionEvaluator,
+    workThreadResponseHandlerEvaluator,
+  ],
   init: async (
     pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,

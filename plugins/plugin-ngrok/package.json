@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-ngrok",
-  "version": "0.1.0",
+  "version": "2.0.0-beta.1",
   "description": "Ngrok tunnel plugin for elizaOS — third-party backend implementing the @elizaos/plugin-tunnel ITunnelService contract.",
   "type": "module",
   "main": "dist/index.js",
@@ -37,12 +37,12 @@
     "networking"
   ],
   "peerDependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-tunnel": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-tunnel": "2.0.0-beta.1"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-tunnel": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-tunnel": "2.0.0-beta.1",
     "@ngrok/ngrok": "^1.5.1",
     "zod": "^4.4.2"
   },

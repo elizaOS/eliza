@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-wechat",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "WeChat connector plugin for elizaOS via proxy API",
   "type": "module",
   "license": "MIT",
@@ -41,13 +41,13 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "publishConfig": {
     "access": "public"
   },
   "devDependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "tsdown": "^0.21.10",
     "typescript": "^6.0.3",
     "vitest": "^4.0.18"

@@ -37,8 +37,8 @@ Status legend (do not soften):
 | 1 | Apple Silicon Mac, M4 Max                     | desktop-9b, pro-27b    | metal    | `darwin-arm64-metal`                      | **VERIFIED**            | [`README.md` lines 7–10, 308–312](README.md); [`bench_M4Max_2026-05-10.md`](bench_M4Max_2026-05-10.md). 5/5 shaders 8/8 PASS via `MTLDevice.newLibraryWithSource` (Wave-3, Darwin 25.2.0).                                                                                     |
 | 2 | Apple Silicon Mac, M1 / M2 / M3               | desktop-9b, pro-27b    | metal    | `darwin-arm64-metal`                      | **VERIFIED-ADJACENT**   | Same Apple GPU family, Metal 3 / Family-Apple7+, same 32-thread SIMD-group assumption ([`README.md` line 51, 209–212](README.md)). Untested on M1/M2/M3; should retest before flipping `defaultEligible: true` on the desktop manifest for these chips.                        |
 | 3 | Intel/AMD Mac (x64 + AMD/Intel GPU)           | desktop-9b             | metal    | `darwin-x64-metal`                        | **TARGET-ONLY**         | Triple parses ([`build-llama-cpp-dflash.mjs:90`](../app-core/scripts/build-llama-cpp-dflash.mjs)) and `cmakeFlagsForTarget` honors it, but no Intel-Mac hardware in lab. AMD Radeon Pro / Intel Iris Metal driver behavior on `simd_sum` over 32-lane TG is **not** verified.  |
-| 4 | iOS arm64 (iPhone 14+)                        | lite-0_6b, mobile-1_7b | metal    | `ios-arm64-metal`                         | **COMPILE-ONLY (orphaned)** | Triple parses, `cmakeFlagsForTarget` emits valid iOS flags ([`build-llama-cpp-dflash.mjs:735–763`](../app-core/scripts/build-llama-cpp-dflash.mjs)). **The Capacitor app does NOT consume this archive.** `run-mobile-build.mjs:2608–2726` builds llama.cpp from the npm package's `ios/` source directly and stuffs it into `LlamaCpp.xcframework`. The "follow-up packaging step" referenced in [`README.md` line 429](README.md) has never landed. |
-| 5 | iOS arm64 simulator (Apple Silicon Mac)       | lite-0_6b, mobile-1_7b | metal    | `ios-arm64-simulator-metal`               | **COMPILE-ONLY (orphaned)** | Same as row 4 — no consumer. `run-mobile-build.mjs:2682` calls `buildIosLlamaCppSimulatorFramework` against the upstream `llama-cpp-capacitor@0.1.5` package, NOT this build script.                                                                                           |
+| 4 | iOS arm64 (iPhone 14+)                        | lite-0_6b, mobile-1_7b | metal    | `ios-arm64-metal`                         | **PARTIALLY-RESOLVED** (Wave-4-F) | `run-mobile-build.mjs ensureIosLlamaCppVendoredFramework()` now delegates to `build-llama-cpp-dflash.mjs --target ios-arm64-metal`, then `packages/app-core/scripts/ios-xcframework/build-xcframework.mjs --verify` glues the produced static archives into `node_modules/llama-cpp-capacitor/ios/Frameworks-xcframework/LlamaCpp.xcframework`. The npm-bundled stock `LlamaCpp.framework` is archived out of `FRAMEWORK_SEARCH_PATHS`. **Build verified end-to-end on this M4 Max host (Xcode 26.4 / iPhoneOS26.4.sdk):** QJL + PolarQuant + DFlash symbols present in both slices (`nm -g` PASS for `_ggml_attn_score_qjl`, `_ggml_fused_attn_qjl_tbq`, `_quantize_q4_polar`, `_dequantize_row_qjl1_256`, `_llama_decode`). **TurboQuant variants (turbo3/turbo4/turbo3_tcq) still missing** — `kernel-patches/metal-kernels.mjs` does not yet handle the `GGML_METAL_EMBED_LIBRARY=ON` branch iOS uses. `build-xcframework.mjs --verify` correctly hard-fails on this gap (no silent fallback). Real-iPhone runtime verification still pending an XCTest harness. |
+| 5 | iOS arm64 simulator (Apple Silicon Mac)       | lite-0_6b, mobile-1_7b | metal    | `ios-arm64-simulator-metal`               | **PARTIALLY-RESOLVED** (Wave-4-F) | Same wiring as row 4. Simulator slice is the second `--framework` argument to `xcodebuild -create-xcframework`, packaged with its own static `LlamaCpp.framework` containing matching kernel symbols. Verified via `lsbom`-equivalent inspection of the produced `Info.plist` (`AvailableLibraries` lists both `ios-arm64` and `ios-arm64-simulator` slices). Same TurboQuant EMBED-path gap as row 4 blocks full-kernel coverage. |
 | 6 | Android arm64 (Adreno 6xx+ / Mali-G7x+)       | lite-0_6b, mobile-1_7b | vulkan   | `android-arm64-vulkan`                    | **TARGET-ONLY**         | Build target exists, NDK toolchain wired ([`build-llama-cpp-dflash.mjs:670–689`](../app-core/scripts/build-llama-cpp-dflash.mjs)). Vulkan turbo* shaders verified on Mesa lavapipe + Intel ARL only. **No on-device Adreno/Mali run.** Android API floor `android-28` (line 680). |
 | 7 | Android arm64 (CPU fallback)                  | lite-0_6b              | cpu      | `android-arm64-cpu`                       | **TARGET-ONLY**         | Build target exists; runtime CPU NEON paths from `qjl-cpu` / `polarquant-cpu` referenced in `patchGgmlBaseForWindowsQjl`. No on-device Snapdragon/Tensor run logged.                                                                                                            |
 | 8 | Linux x64 + NVIDIA (RTX/A100)                 | desktop-9b, pro-27b    | cuda     | `linux-x64-cuda`                          | **TARGET-ONLY**         | Triple compiles; `-DGGML_CUDA_FA=ON -DGGML_CUDA_FA_ALL_QUANTS=ON` set ([`build-llama-cpp-dflash.mjs:638`](../app-core/scripts/build-llama-cpp-dflash.mjs)). No `CMAKE_CUDA_ARCHITECTURES` pin (relies on llama.cpp default = host probe / native). No CUDA host in lab; W4-B CUDA QJL/Polar/TBQ3_TCQ kernels in v0.4.0-milady fork are unverified end-to-end.        |
@@ -66,19 +66,21 @@ in this document's status vocabulary:
 
 ## 2. Top 5 blockers (ranked by user-impact)
 
-1. **iOS path is orphaned.** `ios-arm64-metal` is in `SUPPORTED_TARGETS`
-   but its output is never consumed; the actual iOS app links against the
-   stock `LlamaCpp.xcframework` shipped with the upstream
-   `llama-cpp-capacitor@0.1.5` npm package. That framework has none of the
-   milady kernels (TurboQuant / QJL / Polar / DFlash). Per AGENTS.md §3
-   *"the runtime MUST refuse to load a bundle that is missing any required
-   artifact"*. Today's iOS build silently lacks all of them — `lite-0_6b`
-   and `mobile-1_7b` cannot satisfy their kernel contract on iOS until
-   the `--target ios-arm64-metal` archive is glued into the xcframework
-   layout (the "follow-up packaging step" mentioned in
-   [`README.md` line 429](README.md)).
-   Owner: build team.
-   Effort: M.
+1. **iOS path is orphaned.** ~~RESOLVED IN WIRING (Wave-4-F)~~ — see
+   `packages/app-core/scripts/ios-xcframework/README.md`. The
+   `--target ios-arm64-metal` and `--target ios-arm64-simulator-metal`
+   archives are now glued into `LlamaCpp.xcframework` by
+   `ios-xcframework/build-xcframework.mjs`, invoked from
+   `run-mobile-build.mjs ensureIosLlamaCppVendoredFramework()`. The
+   stock npm-bundled framework is archived out of `FRAMEWORK_SEARCH_PATHS`.
+   QJL + PolarQuant + DFlash symbols are confirmed present in both
+   xcframework slices on this M4 Max host. **Residual:** the TurboQuant
+   metallib EMBED-path patcher (`kernel-patches/metal-kernels.mjs`) still
+   needs to learn the `GGML_METAL_EMBED_LIBRARY=ON` branch — currently
+   `--verify` hard-fails on `turbo3` / `turbo4`. Once that lands the iOS
+   row flips fully RESOLVED.
+   Owner: kernel team (EMBED-path patch) → device-lab (real-iPhone XCTest harness).
+   Effort: S (EMBED-path patch) + S (XCTest harness).
 
 2. **No `linux-aarch64-*` target = no GH200 / `server-h200` path.** The
    tier matrix mandates a `server-h200` tier and the manifest schema
@@ -120,19 +122,18 @@ in this document's status vocabulary:
    L (procure a host or a CI runner).
 
 5. **iOS Capacitor patch claims the xcframework slot but the milady
-   archive never lands there.** The patch at
-   `packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch` rewrites
-   the podspec to point at `ios/Frameworks-xcframework/LlamaCpp.xcframework`,
-   but `run-mobile-build.mjs:2608–2726` populates that path by building
-   the **stock** llama.cpp from the npm package's bundled `ios/` source —
-   not from `--target ios-arm64-metal`. End result: even with the patch
-   active, the framework users get is the stock build with no Eliza-1
-   kernels. (Pairs with blocker #1, but called out separately because
-   the disconnect is in mobile-build.mjs, not the dflash script.)
-   Owner: build team.
-   Effort: S (replace the cmake call in
-   `buildIosLlamaCppSimulatorFramework` with a delegation to
-   `build-llama-cpp-dflash.mjs --target ios-arm64-…`).
+   archive never lands there.** ~~RESOLVED IN WIRING (Wave-4-F)~~ — the
+   `buildIosLlamaCppSimulatorFramework()` in-process cmake call is gone.
+   `ensureIosLlamaCppVendoredFramework()` now invokes
+   `build-llama-cpp-dflash.mjs --target ios-arm64-{metal,simulator-metal}`
+   and pipes the produced `libllama.a` / `libggml*.a` / public headers
+   through `ios-xcframework/build-xcframework.mjs --verify`. The
+   patched podspec still points at the same
+   `ios/Frameworks-xcframework/LlamaCpp.xcframework` slot, but the slot
+   is now filled with the milady-kernel xcframework, not a stock build.
+   Pairs with blocker #1's residual TurboQuant gap.
+   Owner: kernel team (EMBED-path patcher to fully close).
+   Effort: S.
 
 ---
 

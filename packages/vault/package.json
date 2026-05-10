@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/vault",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Simple secrets/config vault for Eliza agents. One API for sensitive credentials and non-sensitive configuration; routes to OS keychain, file, or password manager based on the user's choice.",
   "type": "module",
   "license": "MIT",

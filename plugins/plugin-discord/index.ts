@@ -4,7 +4,6 @@ import {
 	logger,
 	type Plugin,
 } from "@elizaos/core";
-import setupCredentials from "./actions/setup-credentials";
 import { printBanner } from "./banner";
 import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
@@ -24,7 +23,7 @@ const discordPlugin: Plugin = {
 		DiscordUserAccountScraperImpl,
 	],
 	routes: discordSetupRoutes,
-	actions: [setupCredentials],
+	actions: [],
 	providers: [],
 	tests: [new DiscordTestSuite()],
 	autoEnable: {

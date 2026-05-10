@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-groq",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -52,7 +52,7 @@
   },
   "dependencies": {
     "@ai-sdk/groq": "^3.0.4",
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "ai": "^6.0.0"
   },
   "devDependencies": {

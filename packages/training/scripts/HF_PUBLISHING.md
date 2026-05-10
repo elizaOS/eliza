@@ -8,7 +8,7 @@ machine. This document is the operational runbook.
 
 ## Eliza-1 bundle publish (orchestrator)
 
-Eliza-1 device-tier bundles ship to `elizalabs/eliza-1-<tier>`. The
+Eliza-1 device-tier bundles ship to `elizaos/eliza-1-<tier>`. The
 canonical entry point is the publish orchestrator:
 
 ```bash
@@ -59,7 +59,7 @@ with a specific code (see "Exit codes" below):
    No marketing copy. No user-visible Qwen/Llama strings — the upstream
    lineage is recorded in the manifest's `lineage` block.
 6. **HF push + git tag.** Uploads weights, manifest, README, licenses,
-   and eval blobs to `elizalabs/eliza-1-<tier>` via
+   and eval blobs to `elizaos/eliza-1-<tier>` via
    `huggingface_hub.HfApi.create_commit`, then tags the local training
    repo with `eliza-1-<tier>-v<version>`. In `--dry-run` neither side
    effect happens; the would-be commands are logged.
@@ -138,7 +138,7 @@ The publish flow writes the manifest + README into the bundle dir
 `create_commit` but before `git tag`, the HF repo is consistent and the
 local repo is missing only the tag. To recover:
 
-1. Confirm the upload at `https://huggingface.co/elizalabs/eliza-1-<tier>`
+1. Confirm the upload at `https://huggingface.co/elizaos/eliza-1-<tier>`
    — every file from `_build_upload_list` plus `README.md` and
    `eliza-1.manifest.json` should be present.
 2. Re-tag manually:

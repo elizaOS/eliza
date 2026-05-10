@@ -741,7 +741,7 @@ const FIELD_HELP: Record<string, string> = {
   "embedding.model":
     "GGUF model filename for local embeddings (default: text/eliza-1-lite-0_6b-32k.gguf).",
   "embedding.modelRepo":
-    "HuggingFace repo for auto-downloading the embedding model (default: elizalabs/eliza-1-lite-0_6b).",
+    "HuggingFace repo for auto-downloading the embedding model (default: elizaos/eliza-1-lite-0_6b).",
   "embedding.dimensions":
     "Embedding vector dimensions (must match the model; default: 1024).",
   "embedding.contextSize":

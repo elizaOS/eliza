@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-localdb",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "description": "File-backed (Node) and localStorage (browser) persistence via plugin-inmemorydb; ships compiled ESM in dist/.",
   "main": "./dist/index.js",
@@ -39,8 +39,8 @@
     "test": "echo \"No tests\""
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-inmemorydb": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-inmemorydb": "2.0.0-beta.1"
   },
   "devDependencies": {
     "@types/node": "25.6.2",
@@ -48,8 +48,8 @@
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-inmemorydb": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-inmemorydb": "2.0.0-beta.1"
   },
   "publishConfig": {
     "access": "public"

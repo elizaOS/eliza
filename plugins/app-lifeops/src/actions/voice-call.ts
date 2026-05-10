@@ -149,6 +149,7 @@ function buildCallUserPolicyAcknowledgement(
     },
     data: {
       actionName: ACTION_NAME,
+      action: "dial",
       subaction: "dial",
       recipientKind: "owner",
       policyRecorded: true,
@@ -348,6 +349,7 @@ function deliveryToResult(
     },
     data: {
       actionName: ACTION_NAME,
+      action: "dial",
       subaction: "dial",
       recipientKind,
       to,
@@ -376,6 +378,7 @@ function invalidPhoneResult(
     values: { success: false, error: errorCode, to, contact: contact ?? null },
     data: {
       actionName: ACTION_NAME,
+      action: "dial",
       subaction: "dial",
       recipientKind,
       error: errorCode,
@@ -397,6 +400,7 @@ async function dialE164(
       values: { success: false, error: "TWILIO_NOT_CONFIGURED" },
       data: {
         actionName: ACTION_NAME,
+        action: "dial",
         subaction: "dial",
         recipientKind: "e164",
       },
@@ -411,6 +415,7 @@ async function dialE164(
       values: { success: false, error: "MISSING_TO" },
       data: {
         actionName: ACTION_NAME,
+        action: "dial",
         subaction: "dial",
         recipientKind: "e164",
       },
@@ -436,6 +441,7 @@ async function dialE164(
       values: { success: false, error: "MISSING_MESSAGE" },
       data: {
         actionName: ACTION_NAME,
+        action: "dial",
         subaction: "dial",
         recipientKind: "e164",
       },
@@ -455,6 +461,7 @@ async function dialE164(
       },
       data: {
         actionName: ACTION_NAME,
+        action: "dial",
         subaction: "dial",
         recipientKind: "e164",
         draft: true,
@@ -481,6 +488,7 @@ async function dialE164(
       },
       data: {
         actionName: ACTION_NAME,
+        action: "dial",
         subaction: "dial",
         recipientKind: "e164",
         to,
@@ -497,6 +505,7 @@ async function dialE164(
     values: { success: true, to, sid: result.sid ?? null },
     data: {
       actionName: ACTION_NAME,
+      action: "dial",
       subaction: "dial",
       recipientKind: "e164",
       to,
@@ -537,6 +546,7 @@ async function dialOwner(
       },
       data: {
         actionName: ACTION_NAME,
+        action: "dial",
         subaction: "dial",
         recipientKind: "owner",
         policyRecorded: true,
@@ -573,6 +583,7 @@ async function dialOwner(
       values: { success: false, requiresConfirmation: true },
       data: {
         actionName: ACTION_NAME,
+        action: "dial",
         subaction: "dial",
         recipientKind: "owner",
         requiresConfirmation: true,
@@ -593,6 +604,7 @@ async function dialOwner(
       values: { success: false, error: "OWNER_NUMBER_NOT_CONFIGURED" },
       data: {
         actionName: ACTION_NAME,
+        action: "dial",
         subaction: "dial",
         recipientKind: "owner",
         error: "OWNER_NUMBER_NOT_CONFIGURED",
@@ -618,6 +630,7 @@ async function dialOwner(
       values: { success: false, error: "TWILIO_NOT_CONFIGURED" },
       data: {
         actionName: ACTION_NAME,
+        action: "dial",
         subaction: "dial",
         recipientKind: "owner",
         error: "TWILIO_NOT_CONFIGURED",
@@ -674,6 +687,7 @@ async function dialExternal(
       },
       data: {
         actionName: ACTION_NAME,
+        action: "dial",
         subaction: "dial",
         recipientKind: "external",
         error: "MISSING_RECIPIENT",
@@ -727,6 +741,7 @@ async function dialExternal(
       values: { success: false, requiresConfirmation: true, to },
       data: {
         actionName: ACTION_NAME,
+        action: "dial",
         subaction: "dial",
         recipientKind: "external",
         requiresConfirmation: true,
@@ -753,6 +768,7 @@ async function dialExternal(
       values: { success: false, reason: "disallowed-recipient", to },
       data: {
         actionName: ACTION_NAME,
+        action: "dial",
         subaction: "dial",
         recipientKind: "external",
         reason: "disallowed-recipient",
@@ -770,6 +786,7 @@ async function dialExternal(
       values: { success: false, error: "TWILIO_NOT_CONFIGURED" },
       data: {
         actionName: ACTION_NAME,
+        action: "dial",
         subaction: "dial",
         recipientKind: "external",
         error: "TWILIO_NOT_CONFIGURED",
@@ -833,7 +850,7 @@ export const voiceCallAction: Action & {
     "risk:user-visible",
   ],
   description:
-    "Owner-only. Place an outbound voice call via Twilio. Subactions: `dial` with recipientKind=owner|external|e164. Owner uses the env-configured owner number + standing escalation policy; external resolves a contact name via relationships then checks the allow-list; e164 dials a raw phone number. All paths draft first, require confirmed:true to dispatch, and use the approval queue.",
+    "Owner-only. Place an outbound voice call via a registered provider. Action: `dial` with recipientKind=owner|external|e164. Current dispatch provider is Twilio; Android/app-phone is implementation-only until wired as a VOICE_CALL provider. Owner uses the env-configured owner number + standing escalation policy; external resolves a contact name via relationships then checks the allow-list; e164 dials a raw phone number. All paths draft first, require confirmed:true to dispatch, and use the approval queue.",
   descriptionCompressed:
     "Twilio voice dial: recipientKind=owner|external|e164; draft-confirm; approval-queue",
   contexts: ["contacts", "messaging", "phone", "tasks", "automation"],
@@ -843,7 +860,7 @@ export const voiceCallAction: Action & {
 
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "Single canonical verb: `dial`.",
       required: false,
       schema: { type: "string" as const, enum: ["dial"] },
@@ -924,6 +941,7 @@ export const voiceCallAction: Action & {
         values: { success: false, error: "MISSING_RECIPIENT_KIND" },
         data: {
           actionName: ACTION_NAME,
+          action: "dial",
           subaction: "dial",
           error: "MISSING_RECIPIENT_KIND",
         },

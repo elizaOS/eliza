@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-local-embedding",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Local AI model embedding and inference plugin for ElizaOS",
   "type": "module",
   "main": "dist/index.js",
@@ -27,7 +27,7 @@
     "typecheck": "tsc --noEmit --noCheck"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "@huggingface/transformers": "^4.0.0",
     "node-llama-cpp": "github:milady-ai/node-llama-cpp#v3.18.1-milady.3",
     "uuid": "^14.0.0",

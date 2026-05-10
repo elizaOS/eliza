@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-x",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "elizaOS X (formerly Twitter) connector: posting, mentions, replies, DMs, and timeline interactions.",
   "type": "module",
   "main": "dist/index.js",
@@ -389,6 +389,6 @@
     }
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   }
 }

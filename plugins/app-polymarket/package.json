@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-polymarket",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -16,10 +16,10 @@
     }
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*",
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1",
     "lucide-react": "^1.0.0"
   },
   "elizaos": {

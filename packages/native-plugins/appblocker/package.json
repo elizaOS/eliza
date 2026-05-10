@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-appblocker",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Blocks selected apps on Android with Usage Access and an overlay shield, and on iPhone with Family Controls.",
   "keywords": [
     "app-blocker",

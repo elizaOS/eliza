@@ -29,6 +29,11 @@
 
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
+import type {
+  ElizaInferenceContextHandle,
+  ElizaInferenceFfi,
+} from "./ffi-bindings";
+import { loadElizaInferenceFfi } from "./ffi-bindings";
 import {
   VoiceLifecycle,
   type VoiceLifecycleLoaders,
@@ -122,37 +127,60 @@ export class StubOmniVoiceBackend implements OmniVoiceBackend {
 }
 
 /**
- * Planned fused omnivoice FFI shape. Not implemented: the
- * `libelizainference.{dylib,so}` binary is produced by the fused-target
- * build hook in `packages/app-core/scripts/build-llama-cpp-dflash.mjs`
- * once the omnivoice-fuse target is wired through. Until that artifact
- * exists at runtime, every `synthesize()` call throws
- * `VoiceStartupError("missing-fused-build", ...)` instead of returning
- * fake audio. There is intentionally no try/catch around this — see
- * `packages/inference/AGENTS.md` §3 + §9.
+ * FFI-backed TTS backend. Forwards each `synthesize()` call through the
+ * fused `libelizainference` ABI declared in
+ * `packages/app-core/scripts/omnivoice-fuse/ffi.h`. The library handle
+ * + a per-engine context pointer are held by the bridge and passed in
+ * at construction so this backend stays a thin adapter.
  *
- * TODO(omnivoice-fuse): replace this stub with a Bun FFI binding once
- * the fused build emits `libelizainference.{dylib,so}` and the
- * `eliza_omnivoice_synthesize` symbol it exports.
+ * Until the real fused build ships, the binding is exercised against
+ * the C stub at `scripts/omnivoice-fuse/ffi-stub.c`, which returns
+ * `ELIZA_ERR_NOT_IMPLEMENTED` for `tts_synthesize` — the binding then
+ * raises `VoiceLifecycleError({code:"kernel-missing"})`. The adapter
+ * re-wraps that as `VoiceStartupError("missing-fused-build", ...)` so
+ * the engine layer's startup-error taxonomy stays unified. No silent
+ * fallback (AGENTS.md §3 + §9).
  */
 export class FfiOmniVoiceBackend implements OmniVoiceBackend {
   readonly id = "ffi" as const;
-  private readonly libraryPath: string;
+  private readonly ffi: ElizaInferenceFfi;
+  private readonly ctx: ElizaInferenceContextHandle;
+  private readonly sampleRate: number;
+  private readonly maxSecondsPerPhrase: number;
 
-  constructor(libraryPath: string) {
-    this.libraryPath = libraryPath;
+  constructor(args: {
+    ffi: ElizaInferenceFfi;
+    ctx: ElizaInferenceContextHandle;
+    sampleRate?: number;
+    maxSecondsPerPhrase?: number;
+  }) {
+    this.ffi = args.ffi;
+    this.ctx = args.ctx;
+    this.sampleRate = args.sampleRate ?? SAMPLE_RATE_DEFAULT;
+    this.maxSecondsPerPhrase = args.maxSecondsPerPhrase ?? 6;
   }
 
-  async synthesize(_args: {
+  async synthesize(args: {
     phrase: Phrase;
     preset: SpeakerPreset;
     cancelSignal: { cancelled: boolean };
     onKernelTick?: () => void;
   }): Promise<AudioChunk> {
-    throw new VoiceStartupError(
-      "missing-fused-build",
-      `[voice] Fused omnivoice FFI not implemented. Expected library at ${this.libraryPath}. Build via packages/app-core/scripts/build-llama-cpp-dflash.mjs (omnivoice-fuse target).`,
-    );
+    args.onKernelTick?.();
+    const out = new Float32Array(this.sampleRate * this.maxSecondsPerPhrase);
+    const samples = this.ffi.ttsSynthesize({
+      ctx: this.ctx,
+      text: args.phrase.text,
+      speakerPresetId: args.preset.voiceId,
+      out,
+    });
+    return {
+      phraseId: args.phrase.id,
+      fromIndex: args.phrase.fromIndex,
+      toIndex: args.phrase.toIndex,
+      pcm: out.subarray(0, samples),
+      sampleRate: this.sampleRate,
+    };
   }
 }
 
@@ -225,6 +253,10 @@ export class EngineVoiceBridge {
   readonly scheduler: VoiceScheduler;
   readonly backend: OmniVoiceBackend;
   readonly lifecycle: VoiceLifecycle;
+  /** Loaded FFI handle when running against the fused build (else null). */
+  readonly ffi: ElizaInferenceFfi | null;
+  /** FFI context this bridge owns; destroyed in `dispose()`. */
+  readonly ffiCtx: ElizaInferenceContextHandle | null;
   private readonly bundleRoot: string;
 
   private constructor(
@@ -232,11 +264,27 @@ export class EngineVoiceBridge {
     backend: OmniVoiceBackend,
     bundleRoot: string,
     lifecycle: VoiceLifecycle,
+    ffi: ElizaInferenceFfi | null,
+    ffiCtx: ElizaInferenceContextHandle | null,
   ) {
     this.scheduler = scheduler;
     this.backend = backend;
     this.bundleRoot = bundleRoot;
     this.lifecycle = lifecycle;
+    this.ffi = ffi;
+    this.ffiCtx = ffiCtx;
+  }
+
+  /**
+   * Tear down the FFI context the bridge owns. Idempotent; safe to call
+   * multiple times. Callers should `disarm()` first to drop voice
+   * resources, then `dispose()` to close the FFI handle.
+   */
+  dispose(): void {
+    if (this.ffi && this.ffiCtx !== null) {
+      this.ffi.destroy(this.ffiCtx);
+      this.ffi.close();
+    }
   }
 
   /**
@@ -278,6 +326,16 @@ export class EngineVoiceBridge {
       phraseCache.put(entry);
     }
 
+    // FFI binding + per-bridge context. When the bridge runs against
+    // the real fused build, the same `ffi`/`ctx` pair is shared by:
+    //   - the TTS backend (`FfiOmniVoiceBackend.synthesize`),
+    //   - the lifecycle loaders (`MmapRegionHandle.evictPages` calls
+    //     `ffi.mmapEvict(ctx, "tts" | "asr")`).
+    // Tests can opt out by either passing `lifecycleLoaders` (mocks
+    // `evictPages`) or `backendOverride` (mocks the backend) or
+    // setting `useFfiBackend: false` (stub TTS + no-op evict).
+    let ffiHandle: ElizaInferenceFfi | null = null;
+    let ffiCtx: ElizaInferenceContextHandle | null = null;
     let backend: OmniVoiceBackend;
     if (opts.backendOverride) {
       backend = opts.backendOverride;
@@ -289,7 +347,13 @@ export class EngineVoiceBridge {
           `[voice] Fused omnivoice library not found at ${libPath}. Build via packages/app-core/scripts/build-llama-cpp-dflash.mjs (omnivoice-fuse target).`,
         );
       }
-      backend = new FfiOmniVoiceBackend(libPath);
+      ffiHandle = loadElizaInferenceFfi(libPath);
+      ffiCtx = ffiHandle.create(opts.bundleRoot);
+      backend = new FfiOmniVoiceBackend({
+        ffi: ffiHandle,
+        ctx: ffiCtx,
+        sampleRate,
+      });
     } else {
       backend = new StubOmniVoiceBackend(sampleRate);
     }
@@ -322,7 +386,8 @@ export class EngineVoiceBridge {
     // `lifecycleLoaders` to assert the disarm path.
     const registry = opts.sharedResources ?? new SharedResourceRegistry();
     const loaders =
-      opts.lifecycleLoaders ?? defaultLifecycleLoaders(opts.bundleRoot);
+      opts.lifecycleLoaders ??
+      defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiCtx);
     const lifecycle = new VoiceLifecycle({ registry, loaders });
 
     return new EngineVoiceBridge(
@@ -330,6 +395,8 @@ export class EngineVoiceBridge {
       backend,
       opts.bundleRoot,
       lifecycle,
+      ffiHandle,
+      ffiCtx,
     );
   }
 
@@ -410,26 +477,31 @@ export class EngineVoiceBridge {
 
 /**
  * Default lifecycle loaders derived from the bundle layout (per
- * AGENTS.md §2: `tts/omnivoice-<size>.gguf` + `asr/...`). The mmap
- * handle returned by `loadTtsRegion` / `loadAsrRegion` represents the
- * heavy weight files; the actual mmap call lives behind the FFI when
- * the fused build lands. Until then `evictPages()` is a documented
- * no-op (the pages aren't actually mapped from JS) — the test
- * lifecycle injects mocks that assert the call shape.
+ * AGENTS.md §2: `tts/omnivoice-<size>.gguf` + `asr/...`).
  *
- * Real platform `evictPages()` paths once the FFI binding ships:
- *   - Linux/Android:    `madvise(addr, len, MADV_DONTNEED)`
- *   - macOS background: `madvise(addr, len, MADV_DONTNEED)`
- *   - macOS / iOS fg:   `madvise(addr, len, MADV_FREE_REUSABLE)`
- *   - Windows:          `VirtualUnlock(addr, len)` then
- *                       `OfferVirtualMemory(addr, len, VmOfferPriorityLow)`
+ * When a live `ffi`/`ctx` pair is passed in, the returned mmap handles'
+ * `evictPages()` calls forward to `ffi.mmapEvict(ctx, "tts" | "asr")` —
+ * the C ABI declared in `scripts/omnivoice-fuse/ffi.h`. The real fused
+ * build implements this against `madvise(MADV_DONTNEED)` on POSIX and
+ * `VirtualUnlock + OfferVirtualMemory` on Windows. The stub library
+ * returns `ELIZA_ERR_NOT_IMPLEMENTED`, which the binding raises as
+ * `VoiceLifecycleError({code:"kernel-missing"})`.
+ *
+ * When `ffi` is null, `evictPages()` is a documented no-op — used by
+ * the stub TTS path in tests + dev (no real mmap exists, nothing to
+ * evict). The lifecycle test still asserts the call shape via injected
+ * mocks (`lifecycleLoaders` opt).
  */
-function defaultLifecycleLoaders(bundleRoot: string): VoiceLifecycleLoaders {
+function defaultLifecycleLoaders(
+  bundleRoot: string,
+  ffi: ElizaInferenceFfi | null,
+  ctx: ElizaInferenceContextHandle | null,
+): VoiceLifecycleLoaders {
   return {
     loadTtsRegion: async () =>
-      bundleMmapRegion(path.join(bundleRoot, "tts"), "tts"),
+      bundleMmapRegion(path.join(bundleRoot, "tts"), "tts", ffi, ctx),
     loadAsrRegion: async () =>
-      bundleMmapRegion(path.join(bundleRoot, "asr"), "asr"),
+      bundleMmapRegion(path.join(bundleRoot, "asr"), "asr", ffi, ctx),
     loadVoiceCaches: async () => ({
       id: `voice-caches:${bundleRoot}`,
       async release() {
@@ -450,15 +522,21 @@ function defaultLifecycleLoaders(bundleRoot: string): VoiceLifecycleLoaders {
 }
 
 /**
- * Build an `MmapRegionHandle` for the largest file in a bundle
- * subdirectory. Refuses to fabricate a region when the directory or
- * its target file is missing — that surfaces as `VoiceLifecycleError`
- * via the lifecycle's `arm-failed`/`mmap-fail` mapping (no silent
- * fallback to a smaller voice model — AGENTS.md §3).
+ * Build an `MmapRegionHandle` for a bundle subdirectory. Refuses to
+ * fabricate a region when the directory is missing — that surfaces as
+ * `VoiceLifecycleError` via the lifecycle's `arm-failed`/`mmap-fail`
+ * mapping (no silent fallback to a smaller voice model — AGENTS.md §3).
+ *
+ * `evictPages()` forwards to the FFI binding when one is supplied. With
+ * no FFI handle (stub mode), the call is a deliberate no-op — there is
+ * nothing to evict because no real mmap was made. The lifecycle test
+ * still asserts the call shape via injected mocks.
  */
 function bundleMmapRegion(
   dir: string,
   kind: "tts" | "asr",
+  ffi: ElizaInferenceFfi | null,
+  ctx: ElizaInferenceContextHandle | null,
 ): MmapRegionHandle {
   if (!existsSync(dir)) {
     throw new Error(
@@ -474,14 +552,19 @@ function bundleMmapRegion(
     path: dir,
     sizeBytes: st.size,
     async evictPages() {
-      // No-op until the FFI binding lands. The real platform paths are
-      // documented above the loader factory. The test lifecycle injects
-      // mocks that assert this call happens, so the contract is
-      // observable from outside.
+      if (ffi && ctx !== null) {
+        // Real fused build: madvise / VirtualUnlock through the C ABI.
+        // Throws VoiceLifecycleError on a negative return — the
+        // lifecycle catches and re-classifies via `disarm-failed`.
+        ffi.mmapEvict(ctx, kind);
+      }
+      // Else: no FFI handle (stub TTS / no fused build) — nothing to
+      // evict. Documented no-op.
     },
     async release() {
       // The FFI owns the actual mmap; release is a refcount drop on
-      // the JS side. Once the FFI lands, this also calls `munmap`.
+      // the JS side. The fused build's destroy path flushes any
+      // remaining pages when the context is destroyed.
     },
   };
 }

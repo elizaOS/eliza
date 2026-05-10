@@ -23,8 +23,6 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-import torch
-
 _HERE = Path(__file__).resolve().parent
 # vendored hf/__init__.py imports as `quantization.fused_turboquant_vendored.*`
 # so we need `scripts/` on the path. Put it FIRST so `quantization.*` resolves
@@ -36,10 +34,12 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 from _common import (  # noqa: E402
+    add_quantization_cli_args,
     get_text_config,
     kernel_manifest_fragment,
     load_model_and_tokenizer,
     save_model,
+    validate_quantization_args,
     write_sidecar,
 )
 
@@ -95,36 +95,15 @@ def _format_compat_report(report: dict[str, object]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
-    ap.add_argument(
-        "--model",
-        required=True,
-        help="HF repo id or local path. LoRA adapter dirs are merged automatically.",
-    )
-    ap.add_argument("--output", required=True, type=Path)
-    ap.add_argument(
-        "--calibration",
-        type=Path,
-        default=None,
-        help="Accepted for CLI parity but unused; validated for existence.",
-    )
-    ap.add_argument("--calibration-samples", type=int, default=128)
+    add_quantization_cli_args(ap)
+    # Recipe-specific knobs.
     ap.add_argument("--bits", type=int, default=4, choices=(3, 4))
     ap.add_argument("--no-compress-v", action="store_true")
     ap.add_argument("--head-dim", type=int, default=None)
     ap.add_argument("--no-verify", action="store_true")
-    ap.add_argument("--device", default="cuda")
-    ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
-    if not torch.cuda.is_available() and args.device == "cuda":
-        raise RuntimeError("CUDA requested but not available")
-
-    if args.calibration is not None and not args.calibration.exists():
-        raise FileNotFoundError(
-            f"--calibration path does not exist: {args.calibration}. "
-            "fused-TurboQuant doesn't read it, but if you pass the flag it "
-            "still has to point at a real file."
-        )
+    validate_quantization_args(args)
 
     if args.dry_run:
         print(json.dumps(vars(args), indent=2, default=str))

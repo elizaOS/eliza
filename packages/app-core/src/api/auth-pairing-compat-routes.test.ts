@@ -287,13 +287,9 @@ describe("auth pairing pair-code route", () => {
       pathname: "/api/auth/pair",
       ip: "203.0.113.10",
     });
-    // Inject the request body the route reads via `readCompatJsonBody`.
-    const remoteSocket = remote.socket as unknown as {
-      push: (chunk: string | null) => void;
-    };
-    remoteSocket.push(JSON.stringify({ code: "AAAA-AAAA-AAAA" }));
-    remoteSocket.push(null);
-    remote.headers["content-type"] = "application/json";
+    // `readCompatJsonBody` honours `req.body` when set (used by the runtime
+    // plugin-route adapter), which lets us bypass the streaming path here.
+    (remote as unknown as { body: unknown }).body = { code: "AAAA-AAAA-AAAA" };
 
     const res = fakeRes();
     await handleAuthPairingCompatRoutes(remote, res.res, STATE_WITH_DB);
@@ -349,12 +345,7 @@ describe("auth pairing pair-code route", () => {
       pathname: "/api/auth/pair",
       ip: "203.0.113.10",
     });
-    const remoteSocket = remote.socket as unknown as {
-      push: (chunk: string | null) => void;
-    };
-    remoteSocket.push(JSON.stringify({ code: "AAAA-AAAA-AAAA" }));
-    remoteSocket.push(null);
-    remote.headers["content-type"] = "application/json";
+    (remote as unknown as { body: unknown }).body = { code: "AAAA-AAAA-AAAA" };
 
     const res = fakeRes();
     await handleAuthPairingCompatRoutes(remote, res.res, STATE_WITH_DB);

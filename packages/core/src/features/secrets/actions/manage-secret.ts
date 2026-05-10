@@ -58,7 +58,7 @@ export const manageSecretAction: Action = {
 		"Manage secrets - get, set, delete, or list secrets at various levels",
 	parameters: [
 		{
-			name: "subaction",
+			name: "action",
 			description: "Secret operation: get, set, delete, list, or check.",
 			required: false,
 			schema: {
@@ -69,7 +69,7 @@ export const manageSecretAction: Action = {
 		{
 			name: "operation",
 			description:
-				"Legacy alias for subaction, accepted for planner compatibility.",
+				"Legacy alias for action, accepted for planner compatibility.",
 			required: false,
 			schema: { type: "string" as const },
 		},
@@ -129,7 +129,9 @@ export const manageSecretAction: Action = {
 				? (_options.parameters as Record<string, unknown>)
 				: {};
 		const subactionField =
-			typeof params.subaction === "string" && params.subaction.trim().length > 0
+			typeof params.action === "string" && params.action.trim().length > 0
+				? params.action
+				: typeof params.subaction === "string" && params.subaction.trim().length > 0
 				? params.subaction
 				: typeof params.operation === "string" &&
 						params.operation.trim().length > 0
@@ -259,6 +261,7 @@ export const manageSecretAction: Action = {
 			// Transform and validate result
 			operation = {
 				operation:
+					(params.action as SecretOperation["operation"]) ||
 					(params.subaction as SecretOperation["operation"]) ||
 					(params.operation as SecretOperation["operation"]) ||
 					(result?.operation as SecretOperation["operation"]) ||
