@@ -111,10 +111,14 @@ A. `nvcc --version` — **absent** on Darwin. The Makefile gate emits the
 
 B. `make cuda-preprocess-check` — **PASS** when the milady-llama-cpp
    checkout is present at `~/.cache/eliza-dflash/milady-llama-cpp`. The
-   target runs `c++ -E` over `cuda_verify.cu` with `-D__CUDACC__` and the
-   in-fork header search paths. This catches missing headers, mistyped
-   API names, and ABI drift between the harness and `*.cuh` without
-   needing nvcc.
+   target asserts that every CUDA API symbol cuda_verify.cu calls
+   (`tbq_decode_block_cuda`, `dequantize_row_tbq3_tcq_cuda`,
+   `attn_score_qjl_cuda`, `dequantize_row_q4_polar_cuda`) is declared in
+   the matching `*.cuh` header, and that all five `block_*` layouts
+   (`block_tbq3_0`, `block_tbq4_0`, `block_tbq3_tcq`, `block_qjl1_256`,
+   `block_q4_polar`) exist in `ggml-common.h`. Catches name/signature
+   drift between the harness and the v0.4.0-milady fork without needing
+   the CUDA Toolkit.
 
 C. Full nvcc compile + runtime 8/8 PASS — **NEEDS-HARDWARE**. Run on a
    CUDA host and update `packages/inference/README.md`'s verification

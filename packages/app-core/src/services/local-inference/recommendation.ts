@@ -5,10 +5,17 @@ import {
   MODEL_CATALOG,
 } from "./catalog";
 import { assessFit } from "./hardware";
+import {
+  type ManifestLoader,
+  type RamBudget,
+  defaultManifestLoader,
+  resolveRamBudget,
+} from "./ram-budget";
 import type {
   CatalogModel,
   HardwareFitLevel,
   HardwareProbe,
+  InstalledModel,
   TextGenerationSlot,
 } from "./types";
 
@@ -127,14 +134,23 @@ export function catalogDownloadSizeBytes(
   return Math.round(catalogDownloadSizeGb(model, catalog) * BYTES_PER_GB);
 }
 
+const MB_PER_GB = 1024;
+
 function mobileFit(
   hardware: HardwareProbe,
   model: CatalogModel,
   catalog: CatalogModel[],
+  budget: RamBudget,
 ): HardwareFitLevel {
   const sizeGb = catalogDownloadSizeGb(model, catalog);
-  if (hardware.totalRamGb < model.minRamGb) return "wontfit";
+  const totalRamMb = hardware.totalRamGb * MB_PER_GB;
+  // `minMb` is the won't-fit floor (catalog scalar by default; manifest
+  // override when an installed Eliza-1 bundle declared one).
+  if (totalRamMb < budget.minMb) return "wontfit";
   if (sizeGb > hardware.totalRamGb * 0.8) return "wontfit";
+  // `recommendedMb` is the fits-vs-tight cutoff. Catalog fallback collapses
+  // recommended === min so the new line never tightens prior behavior.
+  if (totalRamMb < budget.recommendedMb) return "tight";
   if (sizeGb > hardware.totalRamGb * 0.65) return "tight";
   return "fits";
 }
@@ -143,27 +159,53 @@ export function assessCatalogModelFit(
   hardware: HardwareProbe,
   model: CatalogModel,
   catalog: CatalogModel[] = MODEL_CATALOG,
+  options: { installed?: InstalledModel; manifestLoader?: ManifestLoader } = {},
 ): HardwareFitLevel {
   if (model.runtime?.dflash) {
     const byId = catalogById(catalog);
     if (!byId.has(model.runtime.dflash.drafterModelId)) return "wontfit";
   }
+  const budget = resolveRamBudget(
+    model,
+    options.installed,
+    options.manifestLoader ?? defaultManifestLoader,
+  );
   if (classifyRecommendationPlatform(hardware) === "mobile") {
-    return mobileFit(hardware, model, catalog);
+    return mobileFit(hardware, model, catalog, budget);
   }
-  return assessFit(
+  // `assessFit` historically takes minRamGb. Use the manifest-derived
+  // floor (minMb) when available; fall back to the catalog scalar
+  // otherwise. The manifest's `recommendedMb` further tightens the
+  // "fits" line via the wrapper below.
+  const baseline = assessFit(
     hardware,
     catalogDownloadSizeGb(model, catalog),
-    model.minRamGb,
+    budget.minMb / MB_PER_GB,
   );
+  if (baseline === "wontfit") return "wontfit";
+  if (budget.source === "manifest") {
+    const effectiveGb = effectiveMemoryGb(hardware);
+    if (effectiveGb * MB_PER_GB < budget.recommendedMb) return "tight";
+  }
+  return baseline;
+}
+
+/** Mirrors the effective-memory math in `assessFit`. */
+function effectiveMemoryGb(probe: HardwareProbe): number {
+  if (probe.appleSilicon) return probe.totalRamGb;
+  if (probe.gpu) {
+    return Math.max(probe.gpu.totalVramGb, probe.totalRamGb * 0.5);
+  }
+  return probe.totalRamGb * 0.5;
 }
 
 function canFit(
   hardware: HardwareProbe,
   model: CatalogModel,
   catalog: CatalogModel[],
+  options: { installed?: InstalledModel; manifestLoader?: ManifestLoader } = {},
 ): boolean {
-  return assessCatalogModelFit(hardware, model, catalog) !== "wontfit";
+  return assessCatalogModelFit(hardware, model, catalog, options) !== "wontfit";
 }
 
 /**
@@ -187,7 +229,7 @@ function kernelRequirementsSatisfied(
 }
 
 function modelsFromLadder(
-  ids: string[],
+  ids: ReadonlyArray<string>,
   catalog: CatalogModel[],
 ): CatalogModel[] {
   const byId = catalogById(catalog);
@@ -227,11 +269,12 @@ function fallbackCandidates(
   slot: TextGenerationSlot,
   hardware: HardwareProbe,
   catalog: CatalogModel[],
+  budgetOptions: BudgetOptions,
 ): CatalogModel[] {
   const candidates = chatCandidates(catalog).filter(
     (model) =>
       DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id) &&
-      canFit(hardware, model, catalog),
+      canFit(hardware, model, catalog, budgetOptionsForModel(model, budgetOptions)),
   );
   const preferLongContext = hasLongContextHeadroom(hardware);
   return candidates.sort((left, right) => {
@@ -257,6 +300,40 @@ export interface RecommendationOptions {
    * trusts the catalog and the dispatcher's load-time check.
    */
   binaryKernels?: Partial<Record<string, boolean>> | null;
+  /**
+   * Models the user has already installed. When an Eliza-1 tier in this
+   * list has a published `eliza-1.manifest.json` next to its bundle,
+   * the recommender consults `manifest.ramBudgetMb` instead of the
+   * catalog's coarse `minRamGb` scalar. See `./ram-budget.ts`.
+   */
+  installed?: ReadonlyArray<InstalledModel>;
+  /**
+   * Test-only override for the manifest reader. Production callers leave
+   * this unset and the helper reads `eliza-1.manifest.json` from disk.
+   */
+  manifestLoader?: ManifestLoader;
+}
+
+interface BudgetOptions {
+  installed: ReadonlyArray<InstalledModel>;
+  manifestLoader: ManifestLoader;
+}
+
+function budgetOptionsForModel(
+  model: CatalogModel,
+  budget: BudgetOptions,
+): { installed?: InstalledModel; manifestLoader: ManifestLoader } {
+  return {
+    installed: budget.installed.find((m) => m.id === model.id),
+    manifestLoader: budget.manifestLoader,
+  };
+}
+
+function resolveBudgetOptions(options: RecommendationOptions): BudgetOptions {
+  return {
+    installed: options.installed ?? [],
+    manifestLoader: options.manifestLoader ?? defaultManifestLoader,
+  };
 }
 
 export function selectRecommendedModelForSlot(
@@ -268,9 +345,10 @@ export function selectRecommendedModelForSlot(
   const platformClass = classifyRecommendationPlatform(hardware);
   const ladder = modelsFromLadder(SLOT_LADDERS[platformClass][slot], catalog);
   const binaryKernels = options.binaryKernels ?? null;
+  const budget = resolveBudgetOptions(options);
   const eligible = ladder.filter(
     (model) =>
-      canFit(hardware, model, catalog) &&
+      canFit(hardware, model, catalog, budgetOptionsForModel(model, budget)) &&
       kernelRequirementsSatisfied(model, binaryKernels),
   );
 
@@ -286,11 +364,18 @@ export function selectRecommendedModelForSlot(
   const alternatives =
     ranked.length > 0
       ? ranked
-      : fallbackCandidates(slot, hardware, catalog).filter((model) =>
+      : fallbackCandidates(slot, hardware, catalog, budget).filter((model) =>
           kernelRequirementsSatisfied(model, binaryKernels),
         );
   const model = alternatives[0] ?? null;
-  const fit = model ? assessCatalogModelFit(hardware, model, catalog) : null;
+  const fit = model
+    ? assessCatalogModelFit(
+        hardware,
+        model,
+        catalog,
+        budgetOptionsForModel(model, budget),
+      )
+    : null;
   return {
     slot,
     platformClass,
@@ -378,6 +463,7 @@ export function chooseSmallerFallbackModel(
   hardware: HardwareProbe,
   slot: TextGenerationSlot = "TEXT_LARGE",
   catalog: CatalogModel[] = MODEL_CATALOG,
+  options: RecommendationOptions = {},
 ): CatalogModel | null {
   const byId = catalogById(catalog);
   const current = byId.get(currentModelId);
@@ -385,17 +471,20 @@ export function chooseSmallerFallbackModel(
     ? catalogDownloadSizeGb(current, catalog)
     : Number.POSITIVE_INFINITY;
   const platformClass = classifyRecommendationPlatform(hardware);
+  const budget = resolveBudgetOptions(options);
   const ladderFallback = modelsFromLadder(
     SLOT_LADDERS[platformClass][slot],
     catalog,
   )
     .filter((model) => model.id !== currentModelId)
     .filter((model) => catalogDownloadSizeGb(model, catalog) < currentSize)
-    .filter((model) => canFit(hardware, model, catalog))[0];
+    .filter((model) =>
+      canFit(hardware, model, catalog, budgetOptionsForModel(model, budget)),
+    )[0];
   if (ladderFallback) return ladderFallback;
 
   return (
-    fallbackCandidates(slot, hardware, catalog)
+    fallbackCandidates(slot, hardware, catalog, budget)
       .filter((model) => model.id !== currentModelId)
       .filter(
         (model) => catalogDownloadSizeGb(model, catalog) < currentSize,

@@ -51,7 +51,12 @@ def _write(p: Path, content: str | bytes) -> Path:
 
 
 def _passing_eval_blob(tier: str = "desktop-9b") -> dict[str, Any]:
-    """Eval blob whose results pass every desktop-9b gate."""
+    """Eval blob whose results pass every desktop-9b gate.
+
+    Carries both ``thirty_turn_ok`` and ``e2e_loop_ok`` because
+    AGENTS.md §6 declares them as independent contract gates. The
+    orchestrator now refuses to silently alias one to the other.
+    """
     return {
         "tier": tier,
         "results": {
@@ -62,6 +67,7 @@ def _passing_eval_blob(tier: str = "desktop-9b") -> dict[str, Any]:
             "first_audio_latency_ms": 280,
             "barge_in_cancel_ms": 55,
             "thirty_turn_ok": True,
+            "e2e_loop_ok": True,
             "dflash_acceptance": 0.71,
         },
     }
@@ -369,6 +375,46 @@ def test_dry_run_tag_is_printed_not_executed(
 # ---------------------------------------------------------------------------
 # CLI smoke — --help should not crash and should mention the choice set.
 # ---------------------------------------------------------------------------
+
+
+def test_missing_e2e_loop_ok_blocks_publish_without_opt_in(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The orchestrator refuses to silently alias e2e_loop_ok ← thirty_turn_ok.
+
+    AGENTS.md §6 declares the two manifest fields as independent
+    contract gates; without the explicit ``ELIZA_PUBLISH_ALLOW_GATE_ALIAS``
+    opt-in, a missing ``e2e_loop_ok`` is publish-blocking.
+    """
+    blob = _passing_eval_blob()
+    blob["results"].pop("e2e_loop_ok")
+    bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
+    metal = _metal_report(tmp_path)
+    monkeypatch.delenv("ELIZA_PUBLISH_ALLOW_GATE_ALIAS", raising=False)
+
+    rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_EVAL_GATE_FAIL
+    assert not (bundle / "eliza-1.manifest.json").is_file()
+
+
+def test_alias_opt_in_allows_publish_with_warning(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:
+    """With the opt-in env var, e2e_loop_ok aliases thirty_turn_ok and warns."""
+    blob = _passing_eval_blob()
+    blob["results"].pop("e2e_loop_ok")
+    bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
+    metal = _metal_report(tmp_path)
+    monkeypatch.setenv("ELIZA_PUBLISH_ALLOW_GATE_ALIAS", "1")
+
+    with caplog.at_level(logging.WARNING, logger="publish.orchestrator"):
+        rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_OK
+    assert "aliasing results.e2e_loop_ok" in caplog.text
+    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
+    assert manifest["evals"]["e2eLoopOk"] is True
+    assert manifest["evals"]["thirtyTurnOk"] is True
 
 
 def test_cli_help(monkeypatch, capsys) -> None:

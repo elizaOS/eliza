@@ -50,7 +50,7 @@ The kit auto-discovers the GGUF in:
 If it is not found, download it with:
 
 ```bash
-huggingface-cli download elizalabs/eliza-1-mobile-1_7b \
+hf download elizalabs/eliza-1-mobile-1_7b \
   text/eliza-1-mobile-1_7b-32k.gguf \
   --local-dir ~/.cache/eliza/local-inference/models/eliza-1-mobile-1_7b
 ```

@@ -208,7 +208,7 @@ bash scripts/train_vast.sh provision-and-train \
     --registry-key qwen3.5-9b --epochs 1 --bootstrap hf
 ```
 
-`--bootstrap hf` swaps the local rsync for two `huggingface-cli download`
+`--bootstrap hf` swaps the local rsync for two `hf download`
 calls on the remote: the pipeline repo lands at `/workspace/training/`
 and the active dataset subset (`train.jsonl`, `val.jsonl`, `test.jsonl`,
 `manifest.json`) lands at `/workspace/training/data/final/`.

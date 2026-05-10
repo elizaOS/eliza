@@ -184,7 +184,7 @@ Update the Status column to `published` once each repo lands.
 
 ```bash
 # Either log in interactively (writes ~/.cache/huggingface/token)
-huggingface-cli login
+hf auth login
 
 # Or export the token in the current shell
 export HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxx

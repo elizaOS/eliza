@@ -46,7 +46,7 @@ shape on the held-out trajectory split.
 ## Cloning the pipeline on a fresh machine
 
 ```bash
-huggingface-cli download elizaos/eliza-training-pipeline --repo-type model --local-dir ./training
+hf download elizaos/eliza-training-pipeline --repo-type model --local-dir ./training
 cd training
 uv sync --extra train
 ```

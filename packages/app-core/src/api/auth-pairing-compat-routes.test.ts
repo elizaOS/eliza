@@ -65,9 +65,55 @@ vi.mock("./auth", () => ({
   tokenMatches: (expected: string, provided: string) => expected === provided,
 }));
 
+const sessionMocks = vi.hoisted(() => ({
+  createMachineSession: vi.fn(async () => ({
+    session: {
+      id: "test-machine-session-id",
+      identityId: "test-identity-id",
+      kind: "machine" as const,
+      createdAt: 0,
+      lastSeenAt: 0,
+      expiresAt: 0,
+      rememberDevice: false,
+      csrfSecret: "csrf",
+      ip: null,
+      userAgent: null,
+      scopes: [] as string[],
+      revokedAt: null,
+    },
+    csrfToken: "csrf-token",
+  })),
+}));
+
 vi.mock("./auth/sessions", () => ({
   findActiveSession: vi.fn(async () => null),
   parseSessionCookie: vi.fn(() => null),
+  createMachineSession: sessionMocks.createMachineSession,
+}));
+
+const authStoreMocks = vi.hoisted(() => ({
+  ctor: vi.fn(),
+  listIdentitiesByKind: vi.fn(async (_kind: "owner" | "machine") => []),
+  findIdentityByDisplayName: vi.fn(async () => null),
+  createIdentity: vi.fn(async (input: { id: string; kind: string }) => ({
+    id: input.id,
+    kind: input.kind,
+    displayName: "paired-device",
+    createdAt: 0,
+    passwordHash: null,
+    cloudUserId: null,
+  })),
+}));
+
+vi.mock("../services/auth-store", () => ({
+  AuthStore: class MockAuthStore {
+    constructor(...args: unknown[]) {
+      authStoreMocks.ctor(...args);
+    }
+    listIdentitiesByKind = authStoreMocks.listIdentitiesByKind;
+    findIdentityByDisplayName = authStoreMocks.findIdentityByDisplayName;
+    createIdentity = authStoreMocks.createIdentity;
+  },
 }));
 
 vi.mock("./server-onboarding-compat", () => ({
@@ -76,6 +122,15 @@ vi.mock("./server-onboarding-compat", () => ({
 
 const STATE: CompatRuntimeState = {
   current: null,
+  pendingAgentName: null,
+  pendingRestartReasons: [],
+};
+
+// State that simulates a runtime with a backing AuthStore-capable adapter.
+// The compat-route code reads `state.current?.adapter?.db`; presence of any
+// non-null value is sufficient because the AuthStore is mocked above.
+const STATE_WITH_DB: CompatRuntimeState = {
+  current: { adapter: { db: {} } } as unknown as CompatRuntimeState["current"],
   pendingAgentName: null,
   pendingRestartReasons: [],
 };
@@ -206,6 +261,109 @@ describe("auth pairing pair-code route", () => {
         error: "Pair code visible on loopback only",
       });
     }
+  });
+
+  it("mints a machine session on successful pair (returns session id, not the static API token)", async () => {
+    vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
+    sessionMocks.createMachineSession.mockClear();
+    authStoreMocks.listIdentitiesByKind.mockClear();
+    authStoreMocks.findIdentityByDisplayName.mockClear();
+    authStoreMocks.createIdentity.mockClear();
+
+    // Prime the in-memory pair code via the loopback fetch.
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/auth/pair-code",
+        ip: "127.0.0.1",
+        host: "localhost:2138",
+      }),
+      fakeRes().res,
+      STATE_WITH_DB,
+    );
+
+    const remote = fakeReq({
+      method: "POST",
+      pathname: "/api/auth/pair",
+      ip: "203.0.113.10",
+    });
+    // Inject the request body the route reads via `readCompatJsonBody`.
+    const remoteSocket = remote.socket as unknown as {
+      push: (chunk: string | null) => void;
+    };
+    remoteSocket.push(JSON.stringify({ code: "AAAA-AAAA-AAAA" }));
+    remoteSocket.push(null);
+    remote.headers["content-type"] = "application/json";
+
+    const res = fakeRes();
+    await handleAuthPairingCompatRoutes(remote, res.res, STATE_WITH_DB);
+
+    expect(res.status()).toBe(200);
+    expect(res.body()).toEqual({ token: "test-machine-session-id" });
+    expect(sessionMocks.createMachineSession).toHaveBeenCalledTimes(1);
+    expect(authStoreMocks.createIdentity).toHaveBeenCalledTimes(1);
+    expect(authStoreMocks.createIdentity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "machine",
+        displayName: "paired-device",
+      }),
+    );
+    expect(sessionMocks.createMachineSession.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        identityId: expect.any(String),
+        scopes: [],
+        label: "paired-device",
+        ip: "203.0.113.10",
+      }),
+    );
+  });
+
+  it("reuses an existing owner identity when one is configured", async () => {
+    vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
+    sessionMocks.createMachineSession.mockClear();
+    authStoreMocks.createIdentity.mockClear();
+    authStoreMocks.listIdentitiesByKind.mockImplementationOnce(async () => [
+      {
+        id: "owner-id",
+        kind: "owner",
+        displayName: "Operator",
+        createdAt: 0,
+        passwordHash: "hash",
+        cloudUserId: null,
+      },
+    ]);
+
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/auth/pair-code",
+        ip: "127.0.0.1",
+        host: "localhost:2138",
+      }),
+      fakeRes().res,
+      STATE_WITH_DB,
+    );
+
+    const remote = fakeReq({
+      method: "POST",
+      pathname: "/api/auth/pair",
+      ip: "203.0.113.10",
+    });
+    const remoteSocket = remote.socket as unknown as {
+      push: (chunk: string | null) => void;
+    };
+    remoteSocket.push(JSON.stringify({ code: "AAAA-AAAA-AAAA" }));
+    remoteSocket.push(null);
+    remote.headers["content-type"] = "application/json";
+
+    const res = fakeRes();
+    await handleAuthPairingCompatRoutes(remote, res.res, STATE_WITH_DB);
+
+    expect(res.status()).toBe(200);
+    expect(authStoreMocks.createIdentity).not.toHaveBeenCalled();
+    expect(sessionMocks.createMachineSession.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ identityId: "owner-id" }),
+    );
   });
 
   it("does not reveal a code when pairing is disabled", async () => {

@@ -21,6 +21,7 @@ import {
   type DeploymentTargetConfig,
   normalizeDeploymentTargetConfig,
 } from "@elizaos/shared";
+import { z } from "zod";
 
 export const RUNTIME_MODES = [
   "local",
@@ -41,9 +42,33 @@ export interface RuntimeModeSnapshot {
   remoteAccessToken: string | null;
 }
 
-interface RuntimeModeConfigShape {
-  deploymentTarget?: unknown;
-  cloud?: { enabled?: unknown } | unknown;
+// Strong schema for the slice of `eliza.json` this resolver consumes.
+// The shared `DeploymentTargetConfig` is already validated by
+// `normalizeDeploymentTargetConfig`, so we keep that field as `unknown`
+// and let the normalizer enforce the contract. The `cloud` block is the
+// only opaque-typed surface this module needs to read.
+const RuntimeModeConfigSchema = z
+  .object({
+    deploymentTarget: z.unknown().optional(),
+    cloud: z
+      .object({
+        enabled: z.boolean().optional(),
+      })
+      .optional(),
+  })
+  .passthrough();
+
+type RuntimeModeConfigShape = z.infer<typeof RuntimeModeConfigSchema>;
+
+function parseRuntimeModeConfig(
+  config: unknown,
+): RuntimeModeConfigShape | null {
+  if (config == null) return null;
+  const parsed = RuntimeModeConfigSchema.safeParse(config);
+  // Unknown shape ⇒ behave as "no config" so the resolver returns the
+  // default `local` mode rather than throwing. Writers that produce
+  // garbage are caught at their own boundary; the resolver stays pure.
+  return parsed.success ? parsed.data : null;
 }
 
 /**
@@ -54,8 +79,7 @@ export function resolveRuntimeMode(
   config: RuntimeModeConfigShape | null | undefined,
 ): RuntimeModeSnapshot {
   const deploymentTarget = normalizeDeploymentTargetConfig(
-    (config as { deploymentTarget?: unknown } | null | undefined)
-      ?.deploymentTarget,
+    config?.deploymentTarget,
   );
 
   if (deploymentTarget?.runtime === "remote") {
@@ -76,15 +100,10 @@ export function resolveRuntimeMode(
     };
   }
 
-  // Default and explicit `local` — check the local-only sub-state.
-  const cloudConfig =
-    config && typeof config === "object" && "cloud" in config
-      ? (config as { cloud?: { enabled?: unknown } }).cloud
-      : null;
-  const cloudExplicitlyDisabled =
-    !!cloudConfig &&
-    typeof cloudConfig === "object" &&
-    (cloudConfig as { enabled?: unknown }).enabled === false;
+  // Default and explicit `local` — `cloud.enabled === false` collapses
+  // to `local-only`. The strong schema above means we can read the
+  // field directly without a `typeof === "object"` guard.
+  const cloudExplicitlyDisabled = config?.cloud?.enabled === false;
 
   return {
     mode: cloudExplicitlyDisabled ? "local-only" : "local",
@@ -100,12 +119,12 @@ export function resolveRuntimeMode(
  * for the lifetime of the agent runtime.
  */
 export function getRuntimeMode(): RuntimeMode {
-  return resolveRuntimeMode(loadElizaConfig() as RuntimeModeConfigShape).mode;
+  return resolveRuntimeMode(parseRuntimeModeConfig(loadElizaConfig())).mode;
 }
 
 /** Disk-backed snapshot. */
 export function getRuntimeModeSnapshot(): RuntimeModeSnapshot {
-  return resolveRuntimeMode(loadElizaConfig() as RuntimeModeConfigShape);
+  return resolveRuntimeMode(parseRuntimeModeConfig(loadElizaConfig()));
 }
 
 /** True for both `local` and `local-only`. */

@@ -13,7 +13,12 @@
  * config block (see `zod-schema.agent-runtime.ts`).
  */
 
-import type { Action, Handler, HandlerOptions } from "@elizaos/core";
+import type {
+  Action,
+  ActionResult,
+  Handler,
+  HandlerOptions,
+} from "@elizaos/core";
 import {
   CACHEABLE_TOOL_REGISTRY,
   type CacheableToolDescriptor,
@@ -22,7 +27,7 @@ import {
   resolveToolDescriptor,
   ToolCallCache,
   type ToolOutput,
-} from "@elizaos/app-core/services/tool-call-cache";
+} from "./tool-call-cache/index.ts";
 
 interface PerToolOverride {
   ttlMinutes?: number;
@@ -90,10 +95,12 @@ export function wrapActionWithCache(
   const wrapped: Handler = async (runtime, message, state, options, ...rest) => {
     const args = extractArgs(options);
     const hit = cache.get(descriptor, args);
-    if (hit) return hit.output as unknown;
+    if (hit) return hit.output as unknown as ActionResult;
 
     const result = await original(runtime, message, state, options, ...rest);
-    cache.set(descriptor, args, result as ToolOutput);
+    if (result !== undefined) {
+      cache.set(descriptor, args, result as unknown as ToolOutput);
+    }
     return result;
   };
 

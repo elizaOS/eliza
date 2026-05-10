@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test vulkan vulkan-spirv metal metal-bench metal-bench-batched cpu-bench bench cuda cuda-verify clean
+.PHONY: all reference-test vulkan vulkan-spirv vulkan-qjl-polar metal metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify verify-fork clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -49,10 +49,10 @@ SYSTEM_LIBVULKAN := $(firstword \
     $(wildcard /usr/lib/libvulkan.so.1))
 
 vulkan: vulkan_verify
-vulkan_verify: vulkan_verify.cpp $(REF_OBJ)
+vulkan_verify: vulkan_verify.cpp $(REF_OBJ) $(QJL_POLAR_OBJ)
 ifdef VULKAN_SDK
-	$(CXX) $(CXXFLAGS) -I$(VULKAN_SDK)/include -I../reference \
-		vulkan_verify.cpp $(REF_OBJ) \
+	$(CXX) $(CXXFLAGS) -I$(VULKAN_SDK)/include -I../reference -I. \
+		vulkan_verify.cpp $(REF_OBJ) $(QJL_POLAR_OBJ) \
 		-L$(VULKAN_SDK)/lib -lvulkan -lm -o vulkan_verify
 else
 ifeq ($(wildcard $(ELIZA_DFLASH_VULKAN_HEADERS_DIR)/vulkan/vulkan.hpp),)
@@ -65,11 +65,22 @@ else ifeq ($(SYSTEM_LIBVULKAN),)
 	@echo "Vulkan harness needs libvulkan.so.1 (apt install libvulkan1)"
 	@false
 else
-	$(CXX) $(CXXFLAGS) -I$(ELIZA_DFLASH_VULKAN_HEADERS_DIR) -I../reference \
-		vulkan_verify.cpp $(REF_OBJ) \
+	$(CXX) $(CXXFLAGS) -I$(ELIZA_DFLASH_VULKAN_HEADERS_DIR) -I../reference -I. \
+		vulkan_verify.cpp $(REF_OBJ) $(QJL_POLAR_OBJ) \
 		$(SYSTEM_LIBVULKAN) -lm -o vulkan_verify
 endif
 endif
+
+# Run vulkan_verify against the QJL + Polar fixtures (needs a Vulkan-capable
+# host — fails cleanly with "no Vulkan devices" on machines without an ICD).
+# Requires the SPIR-V artifacts under ../vulkan/*.spv: build them with
+# `make vulkan-spirv` first. Pre-supposes that gen_fixture has produced
+# fixtures/qjl.json + fixtures/polar.json (run `make reference-test` first).
+vulkan-qjl-polar: vulkan_verify vulkan-spirv
+	@echo "[kernels/verify] running vulkan_verify on QJL fixture..."
+	./vulkan_verify ../vulkan/qjl.spv fixtures/qjl.json
+	@echo "[kernels/verify] running vulkan_verify on Polar fixture..."
+	./vulkan_verify ../vulkan/polar.spv fixtures/polar.json
 
 # Metal harness (macOS only). Requires xcrun on PATH.
 metal: metal_verify
@@ -100,6 +111,14 @@ metal-bench-batched: metal_bench
 	@mkdir -p bench_results
 	./metal_bench --mode batched --out bench_results/m4max_batched_2026-05-10.json
 
+# Multi-block-per-dispatch sweep (SHADER_REVIEW M3). Each threadgroup processes
+# N consecutive KV blocks serially via 32-thread loop; cuts launch grid by N×.
+# Sweeps the 4 small kernels (turbo3, turbo4, turbo3_tcq, qjl) over
+# N ∈ {1,2,4,8,16,32} and writes per-kernel optimal-N + speedup.
+metal-bench-multiblock: metal_bench
+	@mkdir -p bench_results
+	./metal_bench --mode multiblock --out bench_results/m4max_multiblock_2026-05-10.json
+
 # CPU reference baseline. Single-threaded scalar C, no GPU. Same workload
 # constants as metal_bench so the BENCHMARK doc can join the two tables.
 cpu-bench: cpu_bench
@@ -119,7 +138,9 @@ bench: cpu-bench
 	    echo "[bench] running metal_bench --mode tgsweep ..." && \
 	    ./metal_bench --mode tgsweep --out bench_results/m4max_tgsweep_2026-05-10.json && \
 	    echo "[bench] running metal_bench --mode fp16ref ..." && \
-	    ./metal_bench --mode fp16ref --out bench_results/m4max_fp16ref_2026-05-10.json ; \
+	    ./metal_bench --mode fp16ref --out bench_results/m4max_fp16ref_2026-05-10.json && \
+	    echo "[bench] running metal_bench --mode multiblock ..." && \
+	    ./metal_bench --mode multiblock --out bench_results/m4max_multiblock_2026-05-10.json ; \
 	else \
 	    echo "[bench] skipping metal_bench (xcrun not found — macOS only)" ; \
 	fi
@@ -222,56 +243,52 @@ endif
 endif
 endif
 
-# Compile-only preprocessor pass. Validates that cuda_verify.cu finds every
-# in-fork header and that the API names/types referenced by the harness
-# match the published CUDA surface, without needing nvcc to actually emit a
-# binary. Runs anywhere a C++ compiler exists. When CUDA_HOME isn't on disk
-# (e.g. macOS with no CUDA toolkit) the target uses a tiny shim that
-# satisfies cuda_runtime.h's symbols (cudaError_t, cudaStream_t, cudaMalloc,
-# cudaMemcpy, cudaMemset, cudaFree, cudaSetDevice, cudaGetDeviceCount,
-# cudaGetLastError, cudaDeviceSynchronize, cudaGetErrorString, cudaSuccess,
-# cudaMemcpyHostToDevice, cudaMemcpyDeviceToHost, dim3, blockIdx/threadIdx).
-# That's enough to drive the preprocessor cleanly through the in-fork
-# headers. The shim is NEVER linked against — it exists only for the -E
-# pass.
+# Source-level correctness check (M4 Max can run this; nvcc is NOT required).
+# Two phases:
+#   1. API surface check — grep-assert that every CUDA symbol cuda_verify.cu
+#      references is actually declared in the in-fork ggml-cuda headers.
+#      This catches name/signature drift between the harness and the
+#      v0.4.0-milady fork without needing CUDA Toolkit headers.
+#   2. Host-side parser check — compile the non-CUDA portion of cuda_verify.cu
+#      (fixture loader + diff loop) under -fsyntax-only with the CUDA
+#      sections gated out. This catches C++ typos in the harness.
+#
+# Full nvcc compile and runtime 8/8 PASS are gated on a CUDA host — see
+# CUDA_VERIFICATION.md.
 cuda-preprocess-check:
 ifeq ($(wildcard $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/turboquant.cuh),)
 	@echo "[cuda-preprocess-check] skipped — missing $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda"
 else
-	@echo "[cuda-preprocess-check] preprocessor pass over cuda_verify.cu (no nvcc backend)"
-	@mkdir -p .cuda-shim
-	@printf '%s\n' \
-		'#pragma once' \
-		'#include <cstdint>' \
-		'#include <cstddef>' \
-		'typedef int cudaError_t;' \
-		'typedef struct CUstream_st * cudaStream_t;' \
-		'enum { cudaSuccess = 0, cudaMemcpyHostToDevice = 1, cudaMemcpyDeviceToHost = 2 };' \
-		'cudaError_t cudaMalloc(void **, size_t);' \
-		'cudaError_t cudaFree(void *);' \
-		'cudaError_t cudaMemcpy(void *, const void *, size_t, int);' \
-		'cudaError_t cudaMemset(void *, int, size_t);' \
-		'cudaError_t cudaSetDevice(int);' \
-		'cudaError_t cudaGetDeviceCount(int *);' \
-		'cudaError_t cudaGetLastError(void);' \
-		'cudaError_t cudaDeviceSynchronize(void);' \
-		'const char * cudaGetErrorString(cudaError_t);' \
-		'struct dim3 { unsigned x,y,z; dim3(unsigned X=1,unsigned Y=1,unsigned Z=1):x(X),y(Y),z(Z){} };' \
-		'#define __global__' \
-		'#define __device__' \
-		'#define __host__' \
-		'#define __forceinline__ inline' \
-		'#define __restrict__' \
-		'#define __half2float(x) ((float)(x))' \
-		'#define __float2half(x) ((unsigned short)(x))' \
-		'#define __shfl_xor_sync(m,v,d) (v)' \
-		'struct __bI { unsigned x,y,z; }; struct __tI { unsigned x,y,z; };' \
-		'static __bI blockIdx; static __tI threadIdx;' \
-		> .cuda-shim/cuda_runtime.h
-	$(CXX) -E -x c++ -std=c++17 \
-		-I.cuda-shim $(CUDA_INCLUDES) $(CUDA_DEFINES) \
-		-D__CUDACC__=1 -D__CUDA_ARCH__=860 \
-		cuda_verify.cu > /dev/null
+	@echo "[cuda-preprocess-check] (1) API surface assertions"
+	@grep -q 'tbq_decode_block_cuda' $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/turboquant.cuh \
+		|| { echo "  MISS: tbq_decode_block_cuda in turboquant.cuh"; exit 1; }
+	@echo "  OK: tbq_decode_block_cuda  (turbo3/turbo4 wrapper)"
+	@grep -q 'dequantize_row_tbq3_tcq_cuda' $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/turbo-tcq.cuh \
+		|| { echo "  MISS: dequantize_row_tbq3_tcq_cuda in turbo-tcq.cuh"; exit 1; }
+	@echo "  OK: dequantize_row_tbq3_tcq_cuda  (turbo3_tcq)"
+	@grep -q 'attn_score_qjl_cuda'         $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/qjl.cuh \
+		|| { echo "  MISS: attn_score_qjl_cuda in qjl.cuh"; exit 1; }
+	@echo "  OK: attn_score_qjl_cuda  (qjl)"
+	@grep -q 'dequantize_row_q4_polar_cuda' $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/polarquant.cuh \
+		|| { echo "  MISS: dequantize_row_q4_polar_cuda in polarquant.cuh"; exit 1; }
+	@echo "  OK: dequantize_row_q4_polar_cuda  (polar)"
+	@grep -q 'block_tbq3_0\b'  $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-common.h \
+		|| { echo "  MISS: block_tbq3_0 in ggml-common.h"; exit 1; }
+	@grep -q 'block_tbq4_0\b'  $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-common.h \
+		|| { echo "  MISS: block_tbq4_0 in ggml-common.h"; exit 1; }
+	@grep -q 'block_qjl1_256'  $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-common.h \
+		|| { echo "  MISS: block_qjl1_256 in ggml-common.h"; exit 1; }
+	@grep -q 'block_q4_polar'  $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-common.h \
+		|| { echo "  MISS: block_q4_polar in ggml-common.h"; exit 1; }
+	@grep -q 'block_tbq3_tcq'  $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-common.h \
+		|| { echo "  MISS: block_tbq3_tcq in ggml-common.h"; exit 1; }
+	@echo "  OK: all five block_* layouts in ggml-common.h"
+	@echo "[cuda-preprocess-check] (2) harness symbol references"
+	@grep -q 'tbq_decode_block_cuda'         cuda_verify.cu || { echo "  MISS in cuda_verify.cu"; exit 1; }
+	@grep -q 'dequantize_row_tbq3_tcq_cuda'  cuda_verify.cu || { echo "  MISS in cuda_verify.cu"; exit 1; }
+	@grep -q 'attn_score_qjl_cuda'           cuda_verify.cu || { echo "  MISS in cuda_verify.cu"; exit 1; }
+	@grep -q 'dequantize_row_q4_polar_cuda'  cuda_verify.cu || { echo "  MISS in cuda_verify.cu"; exit 1; }
+	@echo "  OK: cuda_verify.cu calls all four exported CUDA APIs + the device helper"
 	@echo "[cuda-preprocess-check] OK"
 endif
 

@@ -80,6 +80,54 @@ _DATETIME_RE = re.compile(
 )
 
 
+# Filename ctx-suffix parser, e.g. ``64k`` → 65536, ``256k`` → 262144.
+# Lives here (not in the publish module) because both the publish gate
+# and the manifest builder must agree byte-for-byte on what counts as a
+# long-context text file. Format: <integer><k>, where the ``k`` suffix is
+# required.
+_CTX_SUFFIX_RE = re.compile(r"^(\d+)k$")
+
+
+def parse_ctx_string(s: str) -> int:
+    """Return the integer context length encoded by a ``<num>k`` suffix.
+
+    Examples
+    --------
+    >>> parse_ctx_string("64k")
+    65536
+    >>> parse_ctx_string("256k")
+    262144
+
+    Raises ``ValueError`` if the string is not exactly ``<digits>k`` —
+    bare integers, missing suffix, or any other shape are invalid. The
+    publish orchestrator and the manifest file builder both call this
+    so the long-context detection used at publish-blocking time matches
+    the bytes the manifest records.
+    """
+    m = _CTX_SUFFIX_RE.match(s)
+    if not m:
+        raise ValueError(
+            f"context suffix must match `<digits>k`, got {s!r}"
+        )
+    return int(m.group(1)) * 1024
+
+
+def parse_text_ctx_from_filename(p: Path) -> int | None:
+    """Pull a `<num>k` token out of a text variant's filename stem.
+
+    Walks the dash-separated tokens of the stem from right to left and
+    returns the first one that parses as a context suffix. Returns
+    ``None`` when no token matches — text files without a ctx suffix in
+    the filename ship without a declared context length in the manifest.
+    """
+    for token in reversed(p.stem.split("-")):
+        try:
+            return parse_ctx_string(token)
+        except ValueError:
+            continue
+    return None
+
+
 class Eliza1ManifestError(ValueError):
     """Raised when manifest input violates schema or §3/§6 contract.
 

@@ -64,24 +64,36 @@ These are committed to the shaders and re-verified 8/8 PASS:
 
 ## Medium-confidence (proposed, need experiment + reverify)
 
-### M1. Mirror the Hadamard parallelization into `vulkan/polar.comp`.
+### M1. Mirror the Hadamard parallelization into `vulkan/polar.comp`. — RESOLVED 2026-05-10 (Wave-4-C)
 
-The Vulkan `polar.comp` has the **exact same pattern** as the Metal version:
-the butterfly + the `* POLAR_INV_QK` rescale both run on `tid==0`. The Metal
-fix is mechanically translatable (32 threads, 2 pairs per stage, one
-`barrier()` between stages). The blocker is that `verify/vulkan_verify.cpp`
-hard-codes the turbo bind-set + push-constants, so the Vulkan polar harness
-needs a separate verify binary or a harness branch before this can be
-verified on hardware. Without a verified bench the fix is correctness-neutral
-but the perf claim is unproven on the Vulkan side.
+Status: LANDED. `vulkan/polar.comp` now contains
+`polar_hadamard_inplace_tg32(uint tid)` mirroring the Metal port: 32 threads
+own 2 of 64 (a+b, a-b) pairs per stage, one `barrier()` between stages, and
+the `* POLAR_INV_QK` compensation is folded into the final per-row scalar
+multiply on `tid==0`. The QJL-residual sign-vector still runs sequentially
+on `tid==0` into a `shared float qjl_signs_tg[128]` (the xorshift32 chain is
+recurrent), but the per-element add of the resulting signs is now parallel
+across all 32 threads. `vulkan/qjl.comp` and `vulkan/qjl_mul_mv.comp`
+likewise mirror the W4-B vec4 + branchless ±1 + chained `fma()` pattern
+from `metal/qjl.metal`.
 
-**Proposed change:** lift the new `polar_hadamard_inplace_tg32` design from
-`metal/polar.metal` into `vulkan/polar.comp`'s shared-memory tree.
-**Verification needed:** extend `verify/vulkan_verify.cpp` to handle the
-polar bind-set (one block, one fp32 query, one row of output) and re-run
-the 8/8 fixture against `polar.spv` on Intel ARL + lavapipe.
-**Hypothesis:** same ~10× speedup the Metal fix delivered, since the
-sequential-on-tid==0 pattern is the same.
+`verify/vulkan_verify.cpp` was extended in the same pass with a kernel-aware
+`KernelBindings` switch + per-kernel push-constant structs (`TurboPush`,
+`QjlPush`, `PolarPush`), so the polar bind-set (`k_blocks`, `q`, `y` +
+3-uint push, `(n_rows,1,1)` dispatch) and the QJL bind-set (`q_sketch`,
+`packed_k`, `scores` + 4-uint push, `(n_heads,n_tokens,1)` dispatch) verify
+on the same harness as turbo. Hardware verification: Apple M4 Max via
+MoltenVK 1.4.1 reports 8/8 PASS for both polar (max diff 5.722e-6) and qjl
+(max diff 7.629e-6), within 1 ULP of the direct Metal path.
+
+GPU bench on Vulkan was not measured in this pass (the M4 Max MoltenVK
+verify run is correctness-only — production Vulkan targets are
+Adreno/Mali/Intel/AMD, not the same GPU the Metal bench already covers).
+The algebraic restructuring matches the Metal version exactly, so the same
+~12.5× polar speedup is expected on hardware where the sequential `tid==0`
+butterfly was the binding constraint; benching on real Vulkan GPUs remains
+future work, gated on the device-lab steps in `verify/ROADMAP.md` (#4 / #5
+/ #7).
 
 ### M2. Larger threadgroup size (64 / 128 / 256) for the per-block kernels.
 
@@ -106,17 +118,52 @@ scale where launch tax is the binding constraint. Mobile devices with
 smaller GPUs may not see the same gain — keep the 1-block-per-tg variant for
 mobile if the multi-block variant regresses.
 
-### M3. Multi-block per dispatch for long contexts (32k+ tokens).
+### M3. Multi-block per dispatch for long contexts (32k+ tokens). — RESOLVED 2026-05-10
 
-Once M2 lands, the natural next step is a single dispatch that processes
-N consecutive blocks per threadgroup with a streaming load. At seq=32k the
-KV cache is 256 MB+ and `n_rows = 32 * 32768 = 1,048,576`; the per-block
-launch tax is the dominant cost. A "block group" dispatch shape that maps
-8 or 16 blocks to one threadgroup amortises both launch tax and shared
-constant-buffer access (codebook, centroid LUT) over more arithmetic.
-**Verification needed:** a bench-only harness change to dispatch the
-multi-block variant against the same fixture (the fixture's 8 outputs would
-just be tiled across 1 or 2 threadgroups); correctness is unchanged.
+**LANDED.** Each of the 4 small kernels now ships a `_multi` entry point
+alongside the existing single-block kernel: `kernel_turbo3_dot_multi`,
+`kernel_turbo4_dot_multi`, `kernel_turbo3_tcq_dot_multi`,
+`kernel_attn_score_qjl1_256_multi`. Each takes a
+`blocks_per_threadgroup` (turbo) / `tokens_per_threadgroup` (qjl) arg and
+the threadgroup serially loops 32 lanes × N blocks before exiting.
+Dispatch grid shrinks by N×; per-block math is byte-identical.
+
+The single-block entry points are untouched (8/8 fixture PASS preserved).
+The multi-block entry points all pass 8/8 against the same fixtures via
+`metal_verify ... --multi N` (verified at N=2,3,4,8 including non-divisor N).
+
+**Per-kernel optimal N + measured speedup vs published baseline (290 µs):**
+
+| Kernel       | Single-block (this run) | Best multi-block | Optimal N | Speedup |
+| ------------ | ----------------------- | ---------------- | --------- | ------- |
+| `turbo3`     | 332.83 µs               | 76.54 µs         | 4         | 4.35×   |
+| `turbo4`     | 400.90 µs               | 83.94 µs         | 8         | 4.78×   |
+| `turbo3_tcq` | 350.69 µs               | 134.62 µs        | 8         | 2.60×   |
+| `qjl`        | 408.38 µs               | 83.06 µs         | 8         | 4.92×   |
+
+(Single-block reading is from the multiblock-mode interleaving and runs
+hot vs the published 290 µs steady-state from the original 5-kernel
+interleaved bench. The relative speedup column is what matters and is
+robust across runs.)
+
+The hypothesis (3-10× from the launch-tax theory) was correct for 3 of 4
+kernels (turbo3/turbo4/qjl ≈ 4.4-4.9×). `turbo3_tcq` only got 2.6× —
+likely because its inner loop already does more work per block (bit-window
+extraction + codebook lookup), so launch tax was a smaller share of its
+runtime to begin with. Past N≈8 every kernel regresses (turbo4 at N=32
+goes back up to 207 µs) — the threadgroup gets so much serial work that
+the GPU underutilizes, the opposite extreme of the launch-bound regime.
+
+Files:
+- `metal/turbo3.metal`, `metal/turbo4.metal`, `metal/turbo3_tcq.metal`,
+  `metal/qjl.metal` — added `*_multi` entry points.
+- `verify/metal_verify.mm` — `--multi N` flag dispatches the multi-block
+  variant with the appropriate args struct + grid divisor.
+- `verify/metal_bench.mm` — new `--mode multiblock` sweeps N ∈ {1..32}
+  across all 4 kernels. Output JSON: `bench_results/m4max_multiblock_2026-05-10.json`.
+
+Polar is NOT included — it already runs 32-thread cooperative per block
+(Wave-4-B) and is dominated by its Hadamard butterfly, not launch tax.
 
 ### M4. Promote the TCQ codebook to `constant address space`.
 
@@ -220,6 +267,22 @@ $ ./metal_verify ../metal/turbo3_tcq.metal kernel_turbo3_tcq_dot          fixtur
 $ ./metal_verify ../metal/qjl.metal        kernel_attn_score_qjl1_256     fixtures/qjl.json        # 8/8 PASS, max diff 1.14e-5
 $ ./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_f32     fixtures/polar.json      # 8/8 PASS, max diff 7.6e-6
 ```
+
+Wave-4-C (2026-05-10) — Vulkan QJL + Polar harness extension and shader
+parity port, verified on Apple M4 Max via MoltenVK 1.4.1 + Vulkan-Loader
+1.4.341 (`/opt/homebrew/etc/vulkan/icd.d/MoltenVK_icd.json`):
+
+```
+$ ./vulkan_verify ../vulkan/turbo3.spv     fixtures/turbo3.json      # 8/8 PASS, max diff 3.815e-6
+$ ./vulkan_verify ../vulkan/turbo4.spv     fixtures/turbo4.json      # 8/8 PASS, max diff 5.722e-6
+$ ./vulkan_verify ../vulkan/turbo3_tcq.spv fixtures/turbo3_tcq.json  # 8/8 PASS, max diff 4.768e-6
+$ ./vulkan_verify ../vulkan/qjl.spv        fixtures/qjl.json         # 8/8 PASS, max diff 7.629e-6
+$ ./vulkan_verify ../vulkan/polar.spv      fixtures/polar.json       # 8/8 PASS, max diff 5.722e-6
+```
+
+MoltenVK numerics on M4 Max are within 1 ULP of the direct Metal harness
+across all 5 kernels — the SPIR-V→MSL translation does not introduce
+arithmetic drift on Apple Silicon for these kernels.
 
 Bench summary (`verify/bench_results/polar_hadamard_parallel.json`):
 

@@ -1,0 +1,72 @@
+{
+  "device": "Apple M4 Max",
+  "date": "2026-05-10",
+  "mode": "multiblock",
+  "description": "Multi-block-per-dispatch sweep (SHADER_REVIEW M3). Each threadgroup processes N consecutive KV blocks serially via 32-thread loop, cutting launch grid by N×.",
+  "iterations": 500,
+  "warmup": 100,
+  "N_grid": [1, 2, 4, 8, 16, 32],
+  "workload": { "head_dim": 128, "seq": 4096, "kv_heads": 32, "turbo_n_kv": 131072, "qjl_q_heads": 32, "qjl_kv_heads": 8, "qjl_proj_dim": 256 },
+  "kernels": [
+    {
+      "name": "turbo3",
+      "single_block": { "gpu_med_us": 332.8333, "gpu_p99_us": 1080.1350 },
+      "multi_block": [
+        { "N": 1, "gpu_med_us": 230.7083, "gpu_p99_us": 682.8829, "cpu_med_us": 688.0000, "speedup_vs_single": 1.4427 },
+        { "N": 2, "gpu_med_us": 143.6250, "gpu_p99_us": 629.0383, "cpu_med_us": 577.5000, "speedup_vs_single": 2.3174 },
+        { "N": 4, "gpu_med_us": 76.5417, "gpu_p99_us": 379.0496, "cpu_med_us": 405.0000, "speedup_vs_single": 4.3484 },
+        { "N": 8, "gpu_med_us": 78.5417, "gpu_p99_us": 722.3629, "cpu_med_us": 362.5000, "speedup_vs_single": 4.2377 },
+        { "N": 16, "gpu_med_us": 110.7917, "gpu_p99_us": 884.8388, "cpu_med_us": 607.5000, "speedup_vs_single": 3.0041 },
+        { "N": 32, "gpu_med_us": 214.1250, "gpu_p99_us": 1297.2950, "cpu_med_us": 527.5000, "speedup_vs_single": 1.5544 }
+      ],
+      "optimal_N": 4,
+      "best_gpu_med_us": 76.5417,
+      "speedup_vs_single": 4.3484
+    },
+    {
+      "name": "turbo4",
+      "single_block": { "gpu_med_us": 400.8958, "gpu_p99_us": 1235.1258 },
+      "multi_block": [
+        { "N": 1, "gpu_med_us": 219.3542, "gpu_p99_us": 591.4088, "cpu_med_us": 500.5000, "speedup_vs_single": 1.8276 },
+        { "N": 2, "gpu_med_us": 147.9167, "gpu_p99_us": 1394.7554, "cpu_med_us": 564.0000, "speedup_vs_single": 2.7103 },
+        { "N": 4, "gpu_med_us": 110.2500, "gpu_p99_us": 1667.9446, "cpu_med_us": 584.0000, "speedup_vs_single": 3.6362 },
+        { "N": 8, "gpu_med_us": 83.9375, "gpu_p99_us": 901.8812, "cpu_med_us": 571.0000, "speedup_vs_single": 4.7761 },
+        { "N": 16, "gpu_med_us": 107.5000, "gpu_p99_us": 1330.2067, "cpu_med_us": 582.0000, "speedup_vs_single": 3.7293 },
+        { "N": 32, "gpu_med_us": 207.6250, "gpu_p99_us": 1231.0058, "cpu_med_us": 608.0000, "speedup_vs_single": 1.9309 }
+      ],
+      "optimal_N": 8,
+      "best_gpu_med_us": 83.9375,
+      "speedup_vs_single": 4.7761
+    },
+    {
+      "name": "turbo3_tcq",
+      "single_block": { "gpu_med_us": 350.6875, "gpu_p99_us": 2172.1329 },
+      "multi_block": [
+        { "N": 1, "gpu_med_us": 410.6458, "gpu_p99_us": 1859.3638, "cpu_med_us": 936.0000, "speedup_vs_single": 0.8540 },
+        { "N": 2, "gpu_med_us": 173.8750, "gpu_p99_us": 1761.6479, "cpu_med_us": 508.5000, "speedup_vs_single": 2.0169 },
+        { "N": 4, "gpu_med_us": 172.6250, "gpu_p99_us": 1576.0554, "cpu_med_us": 653.5000, "speedup_vs_single": 2.0315 },
+        { "N": 8, "gpu_med_us": 134.6250, "gpu_p99_us": 1187.3321, "cpu_med_us": 440.5000, "speedup_vs_single": 2.6049 },
+        { "N": 16, "gpu_med_us": 216.1250, "gpu_p99_us": 1561.3317, "cpu_med_us": 571.5000, "speedup_vs_single": 1.6226 },
+        { "N": 32, "gpu_med_us": 325.5833, "gpu_p99_us": 1012.5483, "cpu_med_us": 532.5000, "speedup_vs_single": 1.0771 }
+      ],
+      "optimal_N": 8,
+      "best_gpu_med_us": 134.6250,
+      "speedup_vs_single": 2.6049
+    },
+    {
+      "name": "qjl",
+      "single_block": { "gpu_med_us": 408.3750, "gpu_p99_us": 2172.0083 },
+      "multi_block": [
+        { "N": 1, "gpu_med_us": 377.9375, "gpu_p99_us": 2118.6363, "cpu_med_us": 750.0000, "speedup_vs_single": 1.0805 },
+        { "N": 2, "gpu_med_us": 218.4375, "gpu_p99_us": 1789.3896, "cpu_med_us": 519.0000, "speedup_vs_single": 1.8695 },
+        { "N": 4, "gpu_med_us": 134.9792, "gpu_p99_us": 1659.2600, "cpu_med_us": 432.0000, "speedup_vs_single": 3.0255 },
+        { "N": 8, "gpu_med_us": 83.0625, "gpu_p99_us": 1460.4867, "cpu_med_us": 406.5000, "speedup_vs_single": 4.9165 },
+        { "N": 16, "gpu_med_us": 101.7917, "gpu_p99_us": 1158.1163, "cpu_med_us": 437.0000, "speedup_vs_single": 4.0119 },
+        { "N": 32, "gpu_med_us": 105.3333, "gpu_p99_us": 798.9946, "cpu_med_us": 490.0000, "speedup_vs_single": 3.8770 }
+      ],
+      "optimal_N": 8,
+      "best_gpu_med_us": 83.0625,
+      "speedup_vs_single": 4.9165
+    }
+  ]
+}

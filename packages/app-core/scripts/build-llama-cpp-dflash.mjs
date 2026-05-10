@@ -1194,11 +1194,47 @@ function probeKernels(target, buildDir, outDir) {
       const help = `${result.stdout || ""}\n${result.stderr || ""}`;
       const lc = help.toLowerCase();
       kernels.dflash = /dflash/.test(lc);
-      kernels.turbo3 = /turbo3/.test(lc);
-      kernels.turbo4 = /turbo4/.test(lc);
-      kernels.turbo3_tcq = /turbo3[_-]?tcq|tcq/.test(lc);
-      kernels.qjl_full = /qjl[_-]?full|qjl/.test(lc);
+      // The fork's CLI advertises tbq3_0/tbq4_0 as cache-type names (the
+      // user-facing identifier for GGML_TYPE_TBQ3_0/_TBQ4_0). Also accept
+      // the legacy `turbo3`/`turbo4` strings the original probe expected,
+      // in case a future fork rev renames them back.
+      kernels.turbo3 = /turbo3|tbq3_0/.test(lc);
+      kernels.turbo4 = /turbo4|tbq4_0/.test(lc);
+      kernels.turbo3_tcq = /turbo3[_-]?tcq|tcq|tbq3_tcq/.test(lc);
+      kernels.qjl_full = /qjl[_-]?full|qjl|qjl1_256/.test(lc);
       kernels.polarquant = /polar(?:quant)?|q4[_-]?polar/.test(lc);
+      // For Metal targets, also inspect default.metallib for kernel symbols.
+      // This is the source of truth for "the kernel is shipped" — the help
+      // text only proves the GGML_TYPE_* enum is registered. Symbol presence
+      // proves the Metal compile actually produced .air for our standalones.
+      // Reachability via dispatch is a separate concern documented in
+      // packages/inference/README.md (Wave-6 audit).
+      if (backend === "metal") {
+        const metallibPath = path.join(outDir, "default.metallib");
+        if (fs.existsSync(metallibPath)) {
+          const metallibBytes = fs.readFileSync(metallibPath);
+          // .metallib is a Mach-O archive with embedded function names; a
+          // straight buffer .indexOf works because the function names are
+          // stored as zero-terminated C strings.
+          const has = (sym) => metallibBytes.indexOf(sym) !== -1;
+          if (has("kernel_turbo3_dot")) kernels.turbo3 = true;
+          if (has("kernel_turbo4_dot")) kernels.turbo4 = true;
+          if (has("kernel_turbo3_tcq_dot")) kernels.turbo3_tcq = true;
+          if (
+            has("kernel_attn_score_qjl1_256") ||
+            has("kernel_get_rows_qjl1_256") ||
+            has("kernel_mul_mv_qjl1_256_f32")
+          ) {
+            kernels.qjl_full = true;
+          }
+          if (
+            has("kernel_get_rows_q4_polar") ||
+            has("kernel_mul_mv_q4_polar_f32")
+          ) {
+            kernels.polarquant = true;
+          }
+        }
+      }
     }
   } else {
     // Fall back to scanning compiled object files in the build directory.
@@ -1291,13 +1327,15 @@ function requiredKernelsMissing(target, kernels) {
   // (see kernel-patches/metal-kernels.mjs); the help-text probe still works
   // because the fork's CLI lists the quant types regardless of backend.
   if (backend === "vulkan") {
-    // The fork at v0.4.0-milady has zero turbo/qjl/polar Vulkan dispatch.
-    // Even with our standalones staged under milady-shipped/, the runtime
-    // cannot select them — see kernel-patches/vulkan-kernels.mjs. Allow the
-    // build to proceed only when the operator has explicitly acknowledged
-    // the gap; the gate then reports the missing kernels into
-    // CAPABILITIES.json so the runtime layer can refuse to load Eliza-1
-    // bundles on this binary.
+    // After kernel-patches/vulkan-dispatch-patches/, the 8 milady SPV blobs
+    // and pipeline_milady_* slots are linked into libggml-vulkan.so. What is
+    // still missing is op-level dispatch routing (GGML_OP_ATTN_SCORE_QJL and
+    // milady GGML_TYPE_* case branches) — without it, llama-server --help
+    // still won't show qjl/polar/turbo as user-visible cache types. Allow
+    // the build to proceed when the operator explicitly acknowledges the
+    // routing gap; CAPABILITIES.json then records `kernels.qjl_full=false`
+    // so the runtime layer can refuse to load Eliza-1 bundles on this
+    // binary. Once op routing lands, drop this branch.
     if (process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN === "1") {
       return [];
     }
@@ -1434,6 +1472,18 @@ function buildTarget({ target, args, ctx }) {
     : fused
       ? fusedCmakeBuildTargets()
       : ["llama-server", "llama-cli", "llama-speculative-simple"];
+
+  // The non-EMBED Metal CMakeLists creates an `add_custom_target(ggml-metal-lib
+  // ALL DEPENDS .../default.metallib)` but `cmake --build --target X Y Z`
+  // builds ONLY the listed targets and skips everything in ALL. Without
+  // ggml-metal-lib in the explicit target list the metallib never gets
+  // assembled and the Wave-5 milady-shipped/*.air merge step never fires —
+  // even though llama-server links and runs. Add it for darwin Metal builds
+  // (iOS uses EMBED_LIBRARY=ON which bakes the metallib into the static
+  // archive directly via .incbin, no separate target needed).
+  if (backend === "metal" && !isIos) {
+    cmakeBuildTargets.push("ggml-metal-lib");
+  }
 
   // MSVC + Xcode are multi-config generators — cmake --build needs an
   // explicit --config flag, otherwise it defaults to Debug and the install

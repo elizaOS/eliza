@@ -217,6 +217,52 @@ These are not landed; they are flagged to whoever picks up `SHADER_REVIEW_2026-0
 
 ---
 
+## 9. Multi-block dispatch (SHADER_REVIEW M3) — landed 2026-05-10
+
+The four small kernels were launch-tax bound at the published 290 µs
+median (one threadgroup per output block × 131072 tiny dispatches). Each
+kernel now ships a sibling `_multi` entry point that keeps 32 threads per
+threadgroup but loops serially over N consecutive KV blocks before
+exiting, cutting the launch grid by N×.
+
+| Kernel       | Single-block GPU median (µs)* | Best multi-block GPU median (µs) | Optimal N | Speedup |
+| ------------ | ----------------------------- | -------------------------------- | --------- | ------- |
+| `turbo3`     | 332.8                         | 76.5                             | 4         | 4.35×   |
+| `turbo4`     | 400.9                         | 83.9                             | 8         | 4.78×   |
+| `turbo3_tcq` | 350.7                         | 134.6                            | 8         | 2.60×   |
+| `qjl`        | 408.4                         | 83.1                             | 8         | 4.92×   |
+
+*Single-block readings are from the multiblock-mode harness running each
+kernel in isolation (not interleaved with the other 4 + polar like §3),
+so the absolute baseline is hotter than the §3 290 µs steady state. The
+relative speedup column is what's robust.
+
+**Key findings:**
+
+- **3 of 4 small kernels hit ~4.5× speedup at N=4-8**, confirming the
+  launch-tax hypothesis for `turbo3`, `turbo4`, `qjl`.
+- **`turbo3_tcq` got 2.6×** — smaller than predicted because its inner
+  loop already does more arithmetic per block (9-bit window extraction +
+  codebook lookup), so launch tax was a smaller fraction of its runtime.
+- **All four kernels regress past N=8-16.** At N=32 the threadgroup has
+  so much serial work that the GPU's parallel slots starve. Sweet spot is
+  N=4 for `turbo3`, N=8 for the rest.
+- **The multi-block kernel at N=1 ≈ single-block kernel** (within a few
+  percent), so the loop overhead itself is negligible — the entire win
+  comes from amortising launch tax.
+- **GPU p99 also drops** at the optimal N (e.g. `qjl`: 2172 µs → 1158 µs
+  at N=16, 798 µs at N=32). Fewer threadgroups → fewer worst-case
+  scheduling stragglers.
+
+**Pre-existing single-block kernels are unchanged.** The `_multi` entries
+are additive — `metal_verify` continues to pass 8/8 against the single-
+block fixtures, and a new `--multi N` flag verifies the multi-block entries
+against the same fixtures (also 8/8 PASS at N=2,3,4,8).
+
+Raw JSON: `verify/bench_results/m4max_multiblock_2026-05-10.json`. Reproduce
+via `make -C packages/inference/verify metal-bench-multiblock` or the
+umbrella `make -C packages/inference/verify bench`.
+
 ## How to reproduce
 
 ```bash

@@ -934,6 +934,319 @@ static int run_mode_batched(id<MTLDevice> device, id<MTLCommandQueue> queue,
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+// MODE: multiblock — multi-block-per-dispatch sweep (Wave-5 SHADER_REVIEW M3).
+//
+// The four small kernels (turbo3, turbo4, turbo3_tcq, qjl) all converge to
+// ~290 µs median GPU time at the desktop-9b workload because each launches
+// 131072 tiny threadgroups — they're launch-tax bound. The multi-block
+// kernel variants (kernel_*_dot_multi, kernel_attn_score_qjl1_256_multi) keep
+// 32 threads per threadgroup but loop over N consecutive KV blocks per
+// threadgroup before exiting. This cuts the launch grid by N× while
+// preserving per-block math.
+//
+// For each of the 4 small kernels × N ∈ {1, 2, 4, 8, 16, 32} we record:
+//   - GPU median µs / dispatch (entire kernel completion, all N×grid blocks)
+//   - GPU p99 µs
+//   - speedup vs N=1 baseline
+//   - which N is the per-kernel sweet spot
+//
+// N=1 here uses the same multi-block kernel with blocks_per_threadgroup=1,
+// so the comparison is apples-to-apples against the multi shape. We also
+// report the actual single-block kernel's median (separately) for absolute
+// reference.
+// ---------------------------------------------------------------------------
+
+struct MultiResult {
+    int N;
+    double gpu_med_us;
+    double gpu_p99_us;
+    double cpu_med_us;
+};
+
+struct MultiKernelBench {
+    std::string name;
+    std::string source_path;
+    std::string kernel_single;   // existing single-block entry (baseline)
+    std::string kernel_multi;    // new multi-block entry
+    bool is_qjl;                 // false → turbo* (1D grid), true → QJL (2D grid)
+    bool is_tcq;                 // turbo3_tcq has codebook at buffer(3); args at buffer(4)
+};
+
+static int run_mode_multiblock(id<MTLDevice> device, id<MTLCommandQueue> queue,
+                               int iters, int warmup, const char * out_path) {
+    std::vector<MultiKernelBench> mkbs = {
+        { "turbo3",     "../metal/turbo3.metal",     "kernel_turbo3_dot",          "kernel_turbo3_dot_multi",          false, false },
+        { "turbo4",     "../metal/turbo4.metal",     "kernel_turbo4_dot",          "kernel_turbo4_dot_multi",          false, false },
+        { "turbo3_tcq", "../metal/turbo3_tcq.metal", "kernel_turbo3_tcq_dot",      "kernel_turbo3_tcq_dot_multi",      false, true  },
+        { "qjl",        "../metal/qjl.metal",        "kernel_attn_score_qjl1_256", "kernel_attn_score_qjl1_256_multi", true,  false },
+    };
+
+    // Buffers (same shapes as default mode; reused across all N).
+    std::vector<float>   q_turbo   = randn_floats(kHeadDim, 0xA1);
+    std::vector<uint8_t> k_turbo3  = rand_bytes((size_t)kTurboNkv * kTurbo3BlockBytes    * kTurbo3BlocksPerKv,    0xA2);
+    std::vector<uint8_t> k_turbo4  = rand_bytes((size_t)kTurboNkv * kTurbo4BlockBytes    * kTurbo4BlocksPerKv,    0xA3);
+    std::vector<uint8_t> k_turbo3t = rand_bytes((size_t)kTurboNkv * kTurbo3TcqBlockBytes * kTurbo3TcqBlocksPerKv, 0xA4);
+    std::vector<float>   tcq_cb    = make_tcq_codebook();
+    std::vector<float>   q_qjl     = randn_floats((size_t)kQjlHeads * kQjlProjDim, 0xB1);
+    std::vector<uint8_t> k_qjl     = rand_bytes((size_t)kQjlKvHeads * kSeq * kQjlBlockBytes, 0xB2);
+
+    auto make_buf = [&](const void * data, size_t bytes) {
+        return [device newBufferWithBytes:data length:bytes options:MTLResourceStorageModeShared];
+    };
+    auto zero_buf = [&](size_t bytes) {
+        id<MTLBuffer> b = [device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+        std::memset([b contents], 0, [b length]);
+        return b;
+    };
+
+    id<MTLBuffer> qbuf_turbo   = make_buf(q_turbo.data(),  q_turbo.size()  * sizeof(float));
+    id<MTLBuffer> kbuf_turbo3  = make_buf(k_turbo3.data(), k_turbo3.size());
+    id<MTLBuffer> kbuf_turbo4  = make_buf(k_turbo4.data(), k_turbo4.size());
+    id<MTLBuffer> kbuf_turbo3t = make_buf(k_turbo3t.data(), k_turbo3t.size());
+    id<MTLBuffer> cbbuf_tcq    = make_buf(tcq_cb.data(),    tcq_cb.size()    * sizeof(float));
+    id<MTLBuffer> qbuf_qjl     = make_buf(q_qjl.data(),    q_qjl.size()    * sizeof(float));
+    id<MTLBuffer> kbuf_qjl     = make_buf(k_qjl.data(),    k_qjl.size());
+
+    id<MTLBuffer> scores_turbo = zero_buf((size_t)kTurboNkv * sizeof(float));
+    id<MTLBuffer> scores_qjl   = zero_buf((size_t)kQjlHeads * kSeq * sizeof(float));
+
+    const int N_grid[] = { 1, 2, 4, 8, 16, 32 };
+    const int N_GRID = sizeof(N_grid) / sizeof(N_grid[0]);
+
+    std::printf("[multiblock] iters=%d warmup=%d N_grid={1,2,4,8,16,32}\n", iters, warmup);
+
+    struct PerKernelOut {
+        std::string name;
+        double single_block_med_us = 0.0;   // existing kernel_*_dot @ N=1 grid
+        double single_block_p99_us = 0.0;
+        std::vector<MultiResult> per_N;
+        int    optimal_N = 1;
+        double best_us   = 0.0;
+        double speedup_vs_single = 1.0;
+    };
+    std::vector<PerKernelOut> outs(mkbs.size());
+
+    struct timespec t_start{}; clock_gettime(CLOCK_MONOTONIC, &t_start);
+
+    for (size_t ki = 0; ki < mkbs.size(); ki++) {
+        auto & mk = mkbs[ki];
+        outs[ki].name = mk.name;
+
+        // Compile single + multi pipelines.
+        id<MTLComputePipelineState> pso_single =
+            compile_kernel(device, mk.source_path.c_str(), mk.kernel_single.c_str());
+        id<MTLComputePipelineState> pso_multi  =
+            compile_kernel(device, mk.source_path.c_str(), mk.kernel_multi.c_str());
+        if (!pso_single || !pso_multi) {
+            std::fprintf(stderr, "[multiblock] %s: compile failed\n", mk.name.c_str());
+            return 1;
+        }
+
+        // Pick buffers.
+        id<MTLBuffer> qbuf = mk.is_qjl ? qbuf_qjl : qbuf_turbo;
+        id<MTLBuffer> kbuf = mk.is_qjl ? kbuf_qjl
+                          : (mk.name == "turbo3"     ? kbuf_turbo3
+                          : (mk.name == "turbo4"     ? kbuf_turbo4
+                          : /*turbo3_tcq*/             kbuf_turbo3t));
+        id<MTLBuffer> sbuf = mk.is_qjl ? scores_qjl : scores_turbo;
+
+        // Args setup.
+        uint32_t kv_stride = (mk.name == "turbo3") ? kTurbo3BlocksPerKv
+                          : (mk.name == "turbo4") ? kTurbo4BlocksPerKv
+                          : kTurbo3TcqBlocksPerKv;
+
+        auto encode_single = [&](double & gpu_us, double & cpu_us) {
+            @autoreleasepool {
+                id<MTLCommandBuffer> cmd = [queue commandBuffer];
+                id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
+                [enc setComputePipelineState:pso_single];
+                if (mk.is_qjl) {
+                    QjlScoreArgs a{ (uint32_t)kQjlHeads, (uint32_t)kQjlKvHeads,
+                                    (uint32_t)kSeq, (uint32_t)kQjlProjDim };
+                    [enc setBuffer:qbuf offset:0 atIndex:0];
+                    [enc setBuffer:kbuf offset:0 atIndex:1];
+                    [enc setBuffer:sbuf offset:0 atIndex:2];
+                    [enc setBytes:&a length:sizeof(a) atIndex:3];
+                    MTLSize tg   = MTLSizeMake(32, 1, 1);
+                    MTLSize grid = MTLSizeMake((NSUInteger)kQjlHeads, (NSUInteger)kSeq, 1);
+                    [enc dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+                } else {
+                    TurboArgs a{ kHeadDim, (uint32_t)kTurboNkv, kv_stride, 0u, 0u };
+                    [enc setBuffer:qbuf offset:0 atIndex:0];
+                    [enc setBuffer:kbuf offset:0 atIndex:1];
+                    [enc setBuffer:sbuf offset:0 atIndex:2];
+                    if (mk.is_tcq) {
+                        [enc setBuffer:cbbuf_tcq offset:0 atIndex:3];
+                        [enc setBytes:&a length:sizeof(a) atIndex:4];
+                    } else {
+                        [enc setBytes:&a length:sizeof(a) atIndex:3];
+                    }
+                    MTLSize tg   = MTLSizeMake(32, 1, 1);
+                    MTLSize grid = MTLSizeMake((NSUInteger)kTurboNkv, 1, 1);
+                    [enc dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+                }
+                [enc endEncoding];
+                struct timespec t0{}, t1{};
+                clock_gettime(CLOCK_MONOTONIC, &t0);
+                [cmd commit];
+                [cmd waitUntilCompleted];
+                clock_gettime(CLOCK_MONOTONIC, &t1);
+                cpu_us = (double)(t1.tv_sec - t0.tv_sec) * 1.0e6
+                       + (double)(t1.tv_nsec - t0.tv_nsec) * 1.0e-3;
+                gpu_us = ([cmd GPUEndTime] - [cmd GPUStartTime]) * 1.0e6;
+            }
+        };
+
+        auto encode_multi = [&](int N, double & gpu_us, double & cpu_us) {
+            @autoreleasepool {
+                id<MTLCommandBuffer> cmd = [queue commandBuffer];
+                id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
+                [enc setComputePipelineState:pso_multi];
+                if (mk.is_qjl) {
+                    QjlScoreArgsMulti a{ (uint32_t)kQjlHeads, (uint32_t)kQjlKvHeads,
+                                         (uint32_t)kSeq, (uint32_t)kQjlProjDim, (uint32_t)N };
+                    [enc setBuffer:qbuf offset:0 atIndex:0];
+                    [enc setBuffer:kbuf offset:0 atIndex:1];
+                    [enc setBuffer:sbuf offset:0 atIndex:2];
+                    [enc setBytes:&a length:sizeof(a) atIndex:3];
+                    MTLSize tg   = MTLSizeMake(32, 1, 1);
+                    NSUInteger gy = ((NSUInteger)kSeq + (NSUInteger)N - 1) / (NSUInteger)N;
+                    MTLSize grid = MTLSizeMake((NSUInteger)kQjlHeads, gy, 1);
+                    [enc dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+                } else {
+                    TurboArgsMulti a{ kHeadDim, (uint32_t)kTurboNkv, kv_stride, 0u, 0u, (uint32_t)N };
+                    [enc setBuffer:qbuf offset:0 atIndex:0];
+                    [enc setBuffer:kbuf offset:0 atIndex:1];
+                    [enc setBuffer:sbuf offset:0 atIndex:2];
+                    if (mk.is_tcq) {
+                        [enc setBuffer:cbbuf_tcq offset:0 atIndex:3];
+                        [enc setBytes:&a length:sizeof(a) atIndex:4];
+                    } else {
+                        [enc setBytes:&a length:sizeof(a) atIndex:3];
+                    }
+                    MTLSize tg   = MTLSizeMake(32, 1, 1);
+                    NSUInteger gx = ((NSUInteger)kTurboNkv + (NSUInteger)N - 1) / (NSUInteger)N;
+                    MTLSize grid = MTLSizeMake(gx, 1, 1);
+                    [enc dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+                }
+                [enc endEncoding];
+                struct timespec t0{}, t1{};
+                clock_gettime(CLOCK_MONOTONIC, &t0);
+                [cmd commit];
+                [cmd waitUntilCompleted];
+                clock_gettime(CLOCK_MONOTONIC, &t1);
+                cpu_us = (double)(t1.tv_sec - t0.tv_sec) * 1.0e6
+                       + (double)(t1.tv_nsec - t0.tv_nsec) * 1.0e-3;
+                gpu_us = ([cmd GPUEndTime] - [cmd GPUStartTime]) * 1.0e6;
+            }
+        };
+
+        // Single-block baseline.
+        for (int w = 0; w < warmup; w++) { double g, c; encode_single(g, c); }
+        std::vector<double> sg, sc;
+        for (int it = 0; it < iters; it++) {
+            double g, c; encode_single(g, c);
+            sg.push_back(g); sc.push_back(c);
+        }
+        outs[ki].single_block_med_us = median(sg);
+        outs[ki].single_block_p99_us = percentile(sg, 0.99);
+
+        // Multi sweep.
+        for (int ni = 0; ni < N_GRID; ni++) {
+            int N = N_grid[ni];
+            for (int w = 0; w < warmup; w++) { double g, c; encode_multi(N, g, c); }
+            std::vector<double> mg, mc;
+            for (int it = 0; it < iters; it++) {
+                double g, c; encode_multi(N, g, c);
+                mg.push_back(g); mc.push_back(c);
+            }
+            MultiResult r{};
+            r.N = N;
+            r.gpu_med_us = median(mg);
+            r.gpu_p99_us = percentile(mg, 0.99);
+            r.cpu_med_us = median(mc);
+            outs[ki].per_N.push_back(r);
+        }
+        // Pick the optimal N (lowest GPU median).
+        outs[ki].best_us   = outs[ki].per_N[0].gpu_med_us;
+        outs[ki].optimal_N = outs[ki].per_N[0].N;
+        for (auto & r : outs[ki].per_N) {
+            if (r.gpu_med_us < outs[ki].best_us) {
+                outs[ki].best_us = r.gpu_med_us;
+                outs[ki].optimal_N = r.N;
+            }
+        }
+        outs[ki].speedup_vs_single = (outs[ki].best_us > 0.0)
+            ? (outs[ki].single_block_med_us / outs[ki].best_us) : 1.0;
+
+        std::printf("  [%s] single=%-8.2f µs  best=%-8.2f µs @ N=%-2d  speedup=%.2fx\n",
+                    mk.name.c_str(), outs[ki].single_block_med_us, outs[ki].best_us,
+                    outs[ki].optimal_N, outs[ki].speedup_vs_single);
+    }
+
+    struct timespec t_end{}; clock_gettime(CLOCK_MONOTONIC, &t_end);
+    double total_s = (double)(t_end.tv_sec - t_start.tv_sec)
+                   + (double)(t_end.tv_nsec - t_start.tv_nsec) * 1.0e-9;
+    std::printf("[multiblock] total measurement wall: %.2fs\n", total_s);
+
+    std::printf("\n%-12s | %4s | %12s | %12s | %12s | %8s\n",
+                "kernel", "N", "gpu_med_us", "gpu_p99_us", "cpu_med_us", "speedup");
+    std::printf("-------------+------+--------------+--------------+--------------+---------\n");
+    for (auto & o : outs) {
+        std::printf("%-12s | %4s | %12.2f | %12.2f | %12s | %8s\n",
+                    o.name.c_str(), "1*", o.single_block_med_us, o.single_block_p99_us, "—", "1.00x");
+        for (auto & r : o.per_N) {
+            double sp = (r.gpu_med_us > 0.0) ? o.single_block_med_us / r.gpu_med_us : 0.0;
+            std::printf("%-12s | %4d | %12.2f | %12.2f | %12.2f | %7.2fx\n",
+                        o.name.c_str(), r.N, r.gpu_med_us, r.gpu_p99_us, r.cpu_med_us, sp);
+        }
+    }
+    std::printf("\nNote: the '1*' row is the existing single-block kernel (kernel_*_dot); "
+                "the N=1 row is the new multi-block kernel with blocks_per_threadgroup=1 "
+                "(should be ≈ single-block, used for shape-matched baseline).\n");
+
+    FILE * fp = std::fopen(out_path, "w");
+    if (!fp) { std::fprintf(stderr, "[multiblock] cannot open %s\n", out_path); return 1; }
+    std::fprintf(fp, "{\n");
+    std::fprintf(fp, "  \"device\": \"%s\",\n", [[device name] UTF8String]);
+    std::fprintf(fp, "  \"date\": \"2026-05-10\",\n");
+    std::fprintf(fp, "  \"mode\": \"multiblock\",\n");
+    std::fprintf(fp, "  \"description\": \"Multi-block-per-dispatch sweep (SHADER_REVIEW M3). Each threadgroup processes N consecutive KV blocks serially via 32-thread loop, cutting launch grid by N×.\",\n");
+    std::fprintf(fp, "  \"iterations\": %d,\n", iters);
+    std::fprintf(fp, "  \"warmup\": %d,\n", warmup);
+    std::fprintf(fp, "  \"N_grid\": [1, 2, 4, 8, 16, 32],\n");
+    std::fprintf(fp, "  \"workload\": { \"head_dim\": %d, \"seq\": %d, \"kv_heads\": %d, \"turbo_n_kv\": %d, \"qjl_q_heads\": %d, \"qjl_kv_heads\": %d, \"qjl_proj_dim\": %d },\n",
+                 kHeadDim, kSeq, kKvHeads, kTurboNkv, kQjlHeads, kQjlKvHeads, kQjlProjDim);
+    std::fprintf(fp, "  \"kernels\": [\n");
+    for (size_t i = 0; i < outs.size(); i++) {
+        auto & o = outs[i];
+        std::fprintf(fp, "    {\n");
+        std::fprintf(fp, "      \"name\": \"%s\",\n", o.name.c_str());
+        std::fprintf(fp, "      \"single_block\": { \"gpu_med_us\": %.4f, \"gpu_p99_us\": %.4f },\n",
+                     o.single_block_med_us, o.single_block_p99_us);
+        std::fprintf(fp, "      \"multi_block\": [\n");
+        for (size_t j = 0; j < o.per_N.size(); j++) {
+            auto & r = o.per_N[j];
+            double sp = (r.gpu_med_us > 0.0) ? o.single_block_med_us / r.gpu_med_us : 0.0;
+            std::fprintf(fp,
+                "        { \"N\": %d, \"gpu_med_us\": %.4f, \"gpu_p99_us\": %.4f, \"cpu_med_us\": %.4f, \"speedup_vs_single\": %.4f }%s\n",
+                r.N, r.gpu_med_us, r.gpu_p99_us, r.cpu_med_us, sp,
+                j + 1 == o.per_N.size() ? "" : ",");
+        }
+        std::fprintf(fp, "      ],\n");
+        std::fprintf(fp, "      \"optimal_N\": %d,\n", o.optimal_N);
+        std::fprintf(fp, "      \"best_gpu_med_us\": %.4f,\n", o.best_us);
+        std::fprintf(fp, "      \"speedup_vs_single\": %.4f\n", o.speedup_vs_single);
+        std::fprintf(fp, "    }%s\n", i + 1 == outs.size() ? "" : ",");
+    }
+    std::fprintf(fp, "  ]\n");
+    std::fprintf(fp, "}\n");
+    std::fclose(fp);
+    std::printf("\n[multiblock] wrote %s\n", out_path);
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, const char * argv[]) {
@@ -978,6 +1291,12 @@ int main(int argc, const char * argv[]) {
             int wm = warmup_override >= 0 ? warmup_override : 16;
             const char * out = out_path ? out_path : "bench_results/m4max_batched_2026-05-10.json";
             return run_mode_batched(device, queue, it, wm, out);
+        }
+        if (std::strcmp(mode, "multiblock") == 0) {
+            int it = iters_override > 0 ? iters_override : 200;
+            int wm = warmup_override >= 0 ? warmup_override : 30;
+            const char * out = out_path ? out_path : "bench_results/m4max_multiblock_2026-05-10.json";
+            return run_mode_multiblock(device, queue, it, wm, out);
         }
         // Fall through: default mode.
         if (!out_path) out_path = "bench_results/m4max_2026-05-10.json";
