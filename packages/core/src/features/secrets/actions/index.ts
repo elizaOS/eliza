@@ -17,6 +17,11 @@ import { setSecretAction as _bs_3_setSecretAction } from "./set-secret.ts";
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 // biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
-const __bundle_safety_FEATURES_SECRETS_ACTIONS_INDEX__ = [_bs_1_manageSecretAction, _bs_2_requestSecretAction, _bs_3_setSecretAction];
+const __bundle_safety_FEATURES_SECRETS_ACTIONS_INDEX__ = [
+	_bs_1_manageSecretAction,
+	_bs_2_requestSecretAction,
+	_bs_3_setSecretAction,
+];
 // biome-ignore lint/suspicious/noExplicitAny: bundle-safety sink.
-(globalThis as any).__bundle_safety_FEATURES_SECRETS_ACTIONS_INDEX__ = __bundle_safety_FEATURES_SECRETS_ACTIONS_INDEX__;
+(globalThis as any).__bundle_safety_FEATURES_SECRETS_ACTIONS_INDEX__ =
+	__bundle_safety_FEATURES_SECRETS_ACTIONS_INDEX__;

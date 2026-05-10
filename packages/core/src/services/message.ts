@@ -4260,8 +4260,14 @@ export async function runV5MessageRuntimeStage1(args: {
 				thought: messageHandler.thought,
 			},
 		});
+		const runtimeWithOptionalServices = args.runtime as typeof args.runtime & {
+			getService?: (service: string) => unknown;
+		};
 		const plannerRuntime: PlannerRuntime = {
-			getService: (service) => args.runtime.getService(service),
+			getService: (service) =>
+				typeof runtimeWithOptionalServices.getService === "function"
+					? runtimeWithOptionalServices.getService(service)
+					: null,
 			useModel: (modelType, modelParams, provider) =>
 				args.runtime.useModel(
 					modelType,

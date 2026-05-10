@@ -19,6 +19,12 @@ import { userPersonalityProvider as _bs_2_userPersonalityProvider } from "./prov
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 // biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
-const __bundle_safety_FEATURES_ADVANCED_CAPABILITIES_PERSONALITY_INDEX__ = [_bs_1_characterAction, _bs_2_userPersonalityProvider];
+const __bundle_safety_FEATURES_ADVANCED_CAPABILITIES_PERSONALITY_INDEX__ = [
+	_bs_1_characterAction,
+	_bs_2_userPersonalityProvider,
+];
 // biome-ignore lint/suspicious/noExplicitAny: bundle-safety sink.
-(globalThis as any).__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_PERSONALITY_INDEX__ = __bundle_safety_FEATURES_ADVANCED_CAPABILITIES_PERSONALITY_INDEX__;
+(
+	globalThis as any
+).__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_PERSONALITY_INDEX__ =
+	__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_PERSONALITY_INDEX__;
