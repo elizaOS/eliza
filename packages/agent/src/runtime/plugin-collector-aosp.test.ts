@@ -10,6 +10,9 @@ const ENV_KEYS = [
   "ELIZAOS_CLOUD_ENABLED",
   "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
   "ELIZA_CLOUD_PROVISIONED",
+  "MILADY_BUILD_VARIANT",
+  "ELIZA_BUILD_VARIANT",
+  "ELIZA_AGENT_ORCHESTRATOR",
 ] as const;
 
 let savedEnv: Record<string, string | undefined>;
@@ -70,5 +73,25 @@ describe("collectPluginNames AOSP terminal plugins", () => {
     const names = collectPluginNames(config);
     expect(names.has("@elizaos/plugin-shell")).toBe(false);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(true);
+  });
+
+  it("removes local execution plugins from store desktop builds even when config asks for them", () => {
+    process.env.MILADY_BUILD_VARIANT = "store";
+    process.env.ELIZA_AGENT_ORCHESTRATOR = "1";
+    const config: ElizaConfig = {
+      features: { codingTools: true },
+      plugins: {
+        allow: ["coding-tools", "shell"],
+        entries: {
+          "coding-tools": { enabled: true },
+          shell: { enabled: true },
+        },
+      },
+    } as ElizaConfig;
+    const names = collectPluginNames(config);
+    expect(names.has("@elizaos/plugin-shell")).toBe(false);
+    expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
+    expect(names.has("agent-orchestrator")).toBe(false);
+    expect(names.has("@elizaos/plugin-agent-orchestrator")).toBe(false);
   });
 });
