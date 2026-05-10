@@ -24,6 +24,7 @@ const CreatePaymentRequestSchema = z.object({
   network: z.string().optional(),
   description: z.string().trim().min(1).max(240).optional(),
   callbackUrl: z.string().url().optional(),
+  callback_channel: z.record(z.string(), z.unknown()).optional(),
   appId: z.string().uuid().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   expiresInSeconds: z.number().int().min(60).max(86_400).optional(),
@@ -43,7 +44,7 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       );
     }
 
-    const { appId } = parsed.data;
+    const { appId, callback_channel, ...paymentRequestInput } = parsed.data;
     if (appId) {
       const targetApp = await appsService.getById(appId);
       if (!targetApp) return c.json({ success: false, error: "App not found" }, 404);
@@ -55,7 +56,9 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     const result = await x402PaymentRequestsService.create({
       organizationId: user.organization_id,
       userId: user.id,
-      ...parsed.data,
+      ...paymentRequestInput,
+      appId,
+      callbackChannel: callback_channel,
     });
 
     return c.json(

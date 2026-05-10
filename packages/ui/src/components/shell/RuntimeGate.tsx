@@ -123,6 +123,35 @@ function resolveLocalAgentApiBase(): string {
 }
 
 /**
+ * Branded native shells (AOSP/MiladyOS, where the device IS the on-device
+ * agent) expose the agent's per-boot bearer through a synchronous
+ * `window.ElizaNative.getLocalAgentToken()` JavascriptInterface. Reading
+ * it during the local-mode wire-up means `/api/auth/status` can
+ * authenticate on the very first poll, skipping the legacy "type the
+ * pair code from the agent log" prompt on devices that own the bearer
+ * locally.
+ *
+ * Stock Capacitor builds never register the bridge (the global is
+ * undefined), so this returns null and the existing pair-code path
+ * continues to run unchanged.
+ */
+function readSyncOnDeviceAgentBearer(): string | null {
+  try {
+    const bridge = (
+      globalThis as typeof globalThis & {
+        ElizaNative?: { getLocalAgentToken?: () => string | null };
+      }
+    ).ElizaNative;
+    const token = bridge?.getLocalAgentToken?.();
+    if (typeof token !== "string") return null;
+    const trimmed = token.trim();
+    return trimmed === "" ? null : trimmed;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * URL query flag that deliberately re-opens the RuntimeGate picker on
  * ElizaOS, which is otherwise bypassed in favour of the pre-seeded
  * on-device agent.
@@ -668,8 +697,15 @@ export function RuntimeGate() {
       // Persisting it as a `remote` active server keeps the existing startup
       // restore branch working while `local` mobile runtime mode records the
       // user-visible distinction.
+      //
+      // AOSP / branded native shells expose the on-device agent's per-boot
+      // bearer through `window.ElizaNative.getLocalAgentToken()` so the
+      // first /api/auth/status fetch can authenticate without showing the
+      // pair-code prompt. Stock Capacitor builds don't register the bridge
+      // (the call returns null), preserving the legacy "user types the pair
+      // code from the agent log" flow on those targets.
       client.setBaseUrl(localApiBase);
-      client.setToken(null);
+      client.setToken(readSyncOnDeviceAgentBearer());
       savePersistedActiveServer({
         id: isAndroid
           ? ANDROID_LOCAL_AGENT_SERVER_ID

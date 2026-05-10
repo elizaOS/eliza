@@ -122,7 +122,7 @@ message):
 
 ```jsonc
 {
-  "models": ["llama-3.2-1b", "bonsai-8b-1bit"],
+  "models": ["qwen3.5-4b-dflash", "bonsai-8b-1bit"],
   "kvCacheConfigs": [
     { "name": "baseline-fp16", "k": "f16", "v": "f16" },
     { "name": "tbq4-tbq3",     "k": "tbq4_0", "v": "tbq3_0" },
@@ -184,7 +184,7 @@ Full structured matrix output. Schema:
   "runs": [
     {
       "key": "<model>__<kvCache>__<dflash>__<prompt>",
-      "model": "llama-3.2-1b",
+      "model": "qwen3.5-4b-dflash",
       "kvCache": { "name": "baseline-fp16", "k": "f16", "v": "f16" },
       "dflash":  { "name": "no-dflash", "drafter": null },
       "prompt":  { "id": "short-q", "maxTokens": 50 },

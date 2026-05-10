@@ -250,7 +250,7 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).not.toContain("SEND_EMAIL");
 	});
 
-	it("repairs owner travel preference memory away from documents", async () => {
+	it("repairs owner travel preference memory toward profile", async () => {
 		const profile = makeAction({
 			name: "PROFILE",
 			description:
@@ -310,7 +310,10 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).not.toMatch(/selected_contexts:[^\n]*documents/);
 		const actions = availableActionsSection(runtime);
 		expect(actions).toContain("PROFILE");
-		expect(actions).not.toContain("DOCUMENT");
+		expect(actions).toContain("DOCUMENT");
+		expect(actions.indexOf("PROFILE")).toBeLessThan(
+			actions.indexOf("DOCUMENT"),
+		);
 	});
 
 	it("falls back to PROFILE routing when Stage 1 emits malformed preference output", async () => {
@@ -368,7 +371,10 @@ describe("v5 tiered action surface", () => {
 		expect(prompt).toMatch(/selected_contexts:[^\n]*memory/);
 		const actions = availableActionsSection(runtime);
 		expect(actions).toContain("PROFILE");
-		expect(actions).not.toContain("DOCUMENT");
+		expect(actions).toContain("DOCUMENT");
+		expect(actions.indexOf("PROFILE")).toBeLessThan(
+			actions.indexOf("DOCUMENT"),
+		);
 	});
 
 	it("repairs pending approval decisions away from connector lifecycle", async () => {

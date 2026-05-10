@@ -35,7 +35,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-
+import type { AgentRuntime } from "@elizaos/core";
 import {
   createDatabaseAdapter,
   DatabaseMigrationService,
@@ -49,7 +49,6 @@ import {
   type KeyObject,
   SignJWT,
 } from "jose";
-import type { AgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { _resetSensitiveLimiters } from "./auth/index";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";

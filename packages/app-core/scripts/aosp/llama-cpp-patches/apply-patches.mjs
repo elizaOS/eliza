@@ -73,6 +73,31 @@ const seriesNames = seriesArg
 console.log(`[patches] applying series: ${seriesNames.join(", ")}`);
 console.log(`[patches] target repo: ${repo}`);
 
+// Quick gate: when the target repo already contains the upstream
+// markers for a series (e.g. v0.4.0-milady has QJL baked in via a merge
+// commit, so subject-grep won't match the original patch subjects),
+// skip the entire series rather than trying to apply patches that
+// would conflict with the already-present source.
+const SERIES_BAKED_IN_MARKERS = {
+  qjl: {
+    file: "ggml/include/ggml.h",
+    needle: "GGML_TYPE_QJL1_256",
+  },
+};
+
+function seriesAlreadyBakedIn(seriesName) {
+  const marker = SERIES_BAKED_IN_MARKERS[seriesName];
+  if (!marker) return false;
+  const filePath = path.join(repo, marker.file);
+  if (!existsSync(filePath)) return false;
+  try {
+    const text = readFileSync(filePath, "utf8");
+    return text.includes(marker.needle);
+  } catch {
+    return false;
+  }
+}
+
 const git = (cwd, ...gitArgs) => {
   const res = spawnSync("git", gitArgs, { cwd, stdio: ["ignore", "pipe", "pipe"] });
   return {
@@ -96,6 +121,13 @@ for (const series of seriesNames) {
   const seriesDir = path.join(here, series);
   if (!existsSync(seriesDir) || !statSync(seriesDir).isDirectory()) {
     console.warn(`[patches] series dir missing: ${seriesDir}; skipping`);
+    continue;
+  }
+  if (seriesAlreadyBakedIn(series)) {
+    const marker = SERIES_BAKED_IN_MARKERS[series];
+    console.log(
+      `[patches] series '${series}' already in source (${marker.file} contains ${marker.needle}); skipping`,
+    );
     continue;
   }
   const patches = readdirSync(seriesDir)

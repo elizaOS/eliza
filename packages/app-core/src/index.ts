@@ -30,6 +30,7 @@ export * from "./services/auth-store";
 export * from "./services/github-credentials";
 export * from "./services/plugin-installer";
 export * from "./services/steward-credentials";
+export * from "./services/steward-sidecar/helpers";
 // Explicit .ts extension on steward-sidecar.ts disambiguates from the
 // sibling steward-sidecar/ directory: `tsc --rewriteRelativeImportExtensions`
 // emits `./services/steward-sidecar.js` in dist, which Node ESM can resolve
@@ -37,6 +38,5 @@ export * from "./services/steward-credentials";
 // dist/services/steward-sidecar/index.json fallback (the Docker production
 // smoke regression observed on PR #7528 / #7530).
 export * from "./services/steward-sidecar.ts";
-export * from "./services/steward-sidecar/helpers";
 export * from "./services/vault-bootstrap";
 export * from "./services/vault-mirror";

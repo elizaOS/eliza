@@ -24,12 +24,17 @@ on:
     # 05:00 UTC — runs after the nightly publish job at 04:00 UTC so
     # the dev server gets the latest packages.
     - cron: "0 5 * * *"
+    # 04:30 UTC Sunday — weekly milady-ai publish window.
+    - cron: "30 4 * * 0"
   pull_request:
     paths:
       - "scripts/benchmark/**"
       - ".github/workflows/local-inference-bench.yml"
       - "plugins/plugin-local-embedding/**"
       - "packages/app-core/scripts/build-llama-cpp-dflash.mjs"
+      - "packages/training/scripts/publish_milady_model.py"
+      - "packages/training/scripts/sync_catalog_from_hf.py"
+      - "scripts/verify-phone-download.mjs"
   workflow_dispatch:
     inputs:
       run_real_agent:
@@ -47,14 +52,20 @@ on:
         required: false
         type: boolean
         default: false
+      run_publish_models:
+        description: "Run the milady-ai publish + catalog-sync job on-demand (gated by secrets.MILADY_HF_TOKEN)."
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: local-inference-bench-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
   issues: write
+  pull-requests: write
 
 env:
   BUN_VERSION: "1.3.13"
@@ -472,3 +483,160 @@ jobs:
           path: build-output/windows-x64-cpu
           if-no-files-found: error
           retention-days: 14
+
+  publish-models-nightly:
+    # Weekly nightly publish to the milady-ai HF org. Walks W5-Pipeline's
+    # output, calls publish_milady_model.py for each fused-kernel GGUF,
+    # then runs sync_catalog_from_hf.py to produce the catalog diff and
+    # opens a PR with the update.
+    #
+    # Gated behind secrets.MILADY_HF_TOKEN. When the secret is unset
+    # (forks, dry-test branches), the job no-ops with an explicit
+    # warning so unrelated workflow runs don't fail.
+    name: Publish milady-ai models (weekly)
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '30 4 * * 0') ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_publish_models == true)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      # W5-Pipeline drops finished checkpoints under this path. The
+      # nightly publish step expects each subdirectory to be a complete
+      # `<base>-milady-optimized` (or `-milady-drafter`) bundle —
+      # i.e. a single .gguf + manifest.json + README.md.
+      W5_PIPELINE_OUTPUT_ROOT: ${{ vars.W5_PIPELINE_OUTPUT_ROOT || '/mnt/w5-pipeline-output' }}
+      HF_TOKEN: ${{ secrets.MILADY_HF_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Guard — require MILADY_HF_TOKEN
+        run: |
+          set -euo pipefail
+          if [ -z "${HF_TOKEN:-}" ]; then
+            echo "::warning ::secrets.MILADY_HF_TOKEN not configured; publish job will no-op."
+            echo "PUBLISH_SKIPPED=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "PUBLISH_SKIPPED=0" >> "$GITHUB_ENV"
+
+      - name: Setup Python
+        if: ${{ env.PUBLISH_SKIPPED != '1' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install huggingface_hub
+        if: ${{ env.PUBLISH_SKIPPED != '1' }}
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install "huggingface_hub[cli]>=0.24"
+
+      - name: Setup Node.js
+        if: ${{ env.PUBLISH_SKIPPED != '1' }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        if: ${{ env.PUBLISH_SKIPPED != '1' }}
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Probe W5-Pipeline output
+        if: ${{ env.PUBLISH_SKIPPED != '1' }}
+        run: |
+          set -euo pipefail
+          if [ ! -d "$W5_PIPELINE_OUTPUT_ROOT" ]; then
+            echo "::warning ::no W5-Pipeline output at $W5_PIPELINE_OUTPUT_ROOT; nothing to publish"
+            echo "NO_PIPELINE_OUTPUT=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "Pipeline output:"
+          ls -la "$W5_PIPELINE_OUTPUT_ROOT"
+
+      - name: Publish each milady-ai bundle
+        if: ${{ env.PUBLISH_SKIPPED != '1' && env.NO_PIPELINE_OUTPUT != '1' }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          FAILURES=0
+          for dir in "$W5_PIPELINE_OUTPUT_ROOT"/*/; do
+            name=$(basename "$dir")
+            # Bundle naming: <base>-milady-optimized or <base>-milady-drafter.
+            # Anything else is rejected — milady-ai is for fused builds only.
+            if [[ "$name" != *-milady-optimized && "$name" != *-milady-drafter ]]; then
+              echo "::warning ::skipping $name (not a milady-ai bundle name)"
+              continue
+            fi
+            repo_id="milady-ai/$name"
+            echo "::group::publish $repo_id"
+            if ! python packages/training/scripts/publish_milady_model.py \
+                --model-dir "$dir" \
+                --repo-id "$repo_id"; then
+              echo "::error ::publish failed for $name"
+              FAILURES=$((FAILURES + 1))
+            fi
+            echo "::endgroup::"
+          done
+          if [ "$FAILURES" -gt 0 ]; then
+            echo "::error ::$FAILURES bundle(s) failed to publish"
+            exit 1
+          fi
+
+      - name: Sync catalog diff from milady-ai
+        if: ${{ env.PUBLISH_SKIPPED != '1' }}
+        run: |
+          set -euo pipefail
+          DATE="$(date -u +%Y-%m-%d)"
+          OUT_DIR="reports/porting/${DATE}"
+          mkdir -p "$OUT_DIR"
+          python packages/training/scripts/sync_catalog_from_hf.py \
+            --org milady-ai \
+            --out "$OUT_DIR/catalog-diff.json"
+          echo "DIFF_PATH=$OUT_DIR/catalog-diff.json" >> "$GITHUB_ENV"
+
+      - name: Verify a sample download (round-trip from HF)
+        if: ${{ env.PUBLISH_SKIPPED != '1' && env.DIFF_PATH != '' }}
+        run: |
+          set -euo pipefail
+          # Pick the first published id from the diff and round-trip it
+          # through the phone-equivalent Downloader.
+          SAMPLE_ID=$(python -c 'import json,os,sys; d=json.load(open(os.environ["DIFF_PATH"])); ids=[e["id"] for e in d.get("entries",[])]; print(ids[0] if ids else "")')
+          if [ -z "${SAMPLE_ID:-}" ]; then
+            echo "::warning ::diff has no published entries; skipping verify-phone-download"
+            exit 0
+          fi
+          bun install --frozen-lockfile
+          node scripts/verify-phone-download.mjs \
+            --model-id "$SAMPLE_ID" \
+            --catalog-diff "$DIFF_PATH"
+
+      - name: Open catalog-update PR
+        if: ${{ env.PUBLISH_SKIPPED != '1' && env.DIFF_PATH != '' }}
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ci/milady-ai-catalog-${{ github.run_id }}
+          base: develop
+          commit-message: "chore(catalog): refresh milady-ai pointers (auto)"
+          title: "chore(catalog): refresh milady-ai pointers"
+          body: |
+            Auto-generated catalog diff from `sync_catalog_from_hf.py`.
+
+            - Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            - Diff path: `${{ env.DIFF_PATH }}`
+
+            W5-Catalog: please apply the diff to `packages/app-core/src/services/local-inference/catalog.ts`.
+          add-paths: |
+            reports/porting/**/catalog-diff.json
+          delete-branch: true
+          labels: |
+            milady-ai
+            local-inference
+            automated

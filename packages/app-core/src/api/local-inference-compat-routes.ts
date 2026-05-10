@@ -119,12 +119,12 @@ function stringBody(
  * after merging with catalog defaults to catch any catalog-side rule
  * we haven't taught the route layer yet.
  */
-function parseLocalInferenceLoadOverrides(
-  raw: unknown,
-): { overrides: LocalInferenceLoadOverrides; error: null } | {
-  overrides: null;
-  error: string;
-} {
+function parseLocalInferenceLoadOverrides(raw: unknown):
+  | { overrides: LocalInferenceLoadOverrides; error: null }
+  | {
+      overrides: null;
+      error: string;
+    } {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return { overrides: null, error: "overrides must be an object" };
   }
@@ -174,7 +174,8 @@ function parseLocalInferenceLoadOverrides(
       if (value !== "cpu" && value !== "gpu" && value !== "split") {
         return {
           overrides: null,
-          error: 'overrides.kvOffload must be "cpu", "gpu", "split", or { gpuLayers: number }',
+          error:
+            'overrides.kvOffload must be "cpu", "gpu", "split", or { gpuLayers: number }',
         };
       }
       out.kvOffload = value as KvOffloadMode;
@@ -191,7 +192,8 @@ function parseLocalInferenceLoadOverrides(
     } else {
       return {
         overrides: null,
-        error: 'overrides.kvOffload must be "cpu", "gpu", "split", or { gpuLayers: number }',
+        error:
+          'overrides.kvOffload must be "cpu", "gpu", "split", or { gpuLayers: number }',
       };
     }
   }

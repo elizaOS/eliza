@@ -28,7 +28,7 @@
     "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --config ./vitest.config.ts",
+    "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage\" vitest run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
@@ -81,6 +81,7 @@
     "@testing-library/react": "^16.3.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "jsdom": "^29.0.0",
     "storybook": "^10.3.5",
     "typescript": "^6.0.3",
     "vitest": "^4.0.18"

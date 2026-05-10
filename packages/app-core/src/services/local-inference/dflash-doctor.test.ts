@@ -5,9 +5,8 @@ vi.mock("./registry", () => ({
 }));
 
 vi.mock("./dflash-server", async () => {
-  const actual = await vi.importActual<typeof import("./dflash-server")>(
-    "./dflash-server",
-  );
+  const actual =
+    await vi.importActual<typeof import("./dflash-server")>("./dflash-server");
   return {
     ...actual,
     getDflashRuntimeStatus: () => ({

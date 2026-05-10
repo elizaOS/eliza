@@ -332,12 +332,14 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
       ctxOptions.flashAttention = overrides.flashAttention;
     }
     if (overrides?.cacheTypeK !== undefined) {
-      ctxOptions.experimentalKvCacheKeyType =
-        normalizeKvCacheTypeForBinding(overrides.cacheTypeK);
+      ctxOptions.experimentalKvCacheKeyType = normalizeKvCacheTypeForBinding(
+        overrides.cacheTypeK,
+      );
     }
     if (overrides?.cacheTypeV !== undefined) {
-      ctxOptions.experimentalKvCacheValueType =
-        normalizeKvCacheTypeForBinding(overrides.cacheTypeV);
+      ctxOptions.experimentalKvCacheValueType = normalizeKvCacheTypeForBinding(
+        overrides.cacheTypeV,
+      );
     }
     const context = await model.createContext(ctxOptions);
 
@@ -511,9 +513,7 @@ export class LocalInferenceEngine {
     // called directly by legacy callers that pass only a `modelPath`,
     // in which case `resolved` is undefined and we keep the historical
     // behaviour of trusting catalog defaults inside the backend.
-    const overrides = resolved
-      ? toBackendLoadOverrides(resolved)
-      : undefined;
+    const overrides = resolved ? toBackendLoadOverrides(resolved) : undefined;
 
     const plan: BackendPlan = {
       modelPath,

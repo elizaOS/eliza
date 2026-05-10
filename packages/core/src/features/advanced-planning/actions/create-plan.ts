@@ -144,7 +144,10 @@ export const createPlanAction: Action = {
 		[
 			{
 				name: "{{name1}}",
-				content: { text: "Plan a project to migrate our auth service.", source: "chat" },
+				content: {
+					text: "Plan a project to migrate our auth service.",
+					source: "chat",
+				},
 			},
 			{
 				name: "{{agentName}}",
@@ -159,7 +162,10 @@ export const createPlanAction: Action = {
 		[
 			{
 				name: "{{name1}}",
-				content: { text: "Build me a 3-phase plan for the website redesign.", source: "chat" },
+				content: {
+					text: "Build me a 3-phase plan for the website redesign.",
+					source: "chat",
+				},
 			},
 			{
 				name: "{{agentName}}",

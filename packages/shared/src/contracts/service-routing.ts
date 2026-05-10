@@ -366,6 +366,11 @@ export function normalizeLinkedAccountFlagsConfig(
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
+// Compat alias used by the published `@elizaos/app-core@2.0.0-alpha.5xx`
+// bundle (embedded under `eliza-dist/` for packaged Electrobun) which
+// imports `normalizeLinkedAccountsConfig` from `@elizaos/shared`.
+export const normalizeLinkedAccountsConfig = normalizeLinkedAccountFlagsConfig;
+
 export function isLinkedAccountProviderId(
   value: unknown,
 ): value is LinkedAccountProviderId {

@@ -157,7 +157,10 @@ export const listTodosAction: Action = {
 		[
 			{
 				name: "{{name1}}",
-				content: { text: "Show all completed todos from the last week.", source: "chat" },
+				content: {
+					text: "Show all completed todos from the last week.",
+					source: "chat",
+				},
 			},
 			{
 				name: "{{agentName}}",

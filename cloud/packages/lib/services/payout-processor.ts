@@ -37,6 +37,7 @@ import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { type Address, createPublicClient, createWalletClient, http, parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { dbRead, dbWrite } from "@/db/client";
+import { redeemableEarnings, redeemableEarningsLedger } from "@/db/schemas/redeemable-earnings";
 import { tokenRedemptions } from "@/db/schemas/token-redemptions";
 import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "@/lib/config/token-constants";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
@@ -226,7 +227,7 @@ export class PayoutProcessorService {
       const result = await this.processRedemption(redemption);
 
       if (result.success) {
-        await this.markCompleted(redemption.id, result.txHash!);
+        await this.markCompleted(redemption, result.txHash!);
         stats.succeeded++;
       } else {
         await this.markFailed(redemption.id, result.error!, result.retryable ?? true);
@@ -509,16 +510,55 @@ export class PayoutProcessorService {
   /**
    * Mark redemption as completed.
    */
-  private async markCompleted(redemptionId: string, txHash: string): Promise<void> {
-    await dbWrite
-      .update(tokenRedemptions)
-      .set({
-        status: "completed",
-        tx_hash: txHash,
-        completed_at: new Date(),
-        updated_at: new Date(),
-      })
-      .where(eq(tokenRedemptions.id, redemptionId));
+  private async markCompleted(
+    redemption: typeof tokenRedemptions.$inferSelect,
+    txHash: string,
+  ): Promise<void> {
+    const completedAt = new Date();
+    const usdValue = redemption.usd_value.toString();
+    const usdNumber = Number(redemption.usd_value);
+
+    await dbWrite.transaction(async (tx) => {
+      await tx
+        .update(tokenRedemptions)
+        .set({
+          status: "completed",
+          tx_hash: txHash,
+          completed_at: completedAt,
+          updated_at: completedAt,
+        })
+        .where(eq(tokenRedemptions.id, redemption.id));
+
+      const [updatedEarnings] = await tx
+        .update(redeemableEarnings)
+        .set({
+          total_pending: sql`GREATEST(0, ${redeemableEarnings.total_pending} - ${usdValue})`,
+          total_redeemed: sql`${redeemableEarnings.total_redeemed} + ${usdValue}`,
+          last_redemption_at: completedAt,
+          version: sql`${redeemableEarnings.version} + 1`,
+          updated_at: completedAt,
+        })
+        .where(eq(redeemableEarnings.user_id, redemption.user_id))
+        .returning();
+
+      if (!updatedEarnings) {
+        throw new Error("Earnings record not found for completed redemption");
+      }
+
+      await tx.insert(redeemableEarningsLedger).values({
+        user_id: redemption.user_id,
+        entry_type: "redemption",
+        amount: "0",
+        balance_after: updatedEarnings.available_balance,
+        redemption_id: redemption.id,
+        description: `Redemption completed: $${usdNumber.toFixed(2)} sent as elizaOS`,
+        metadata: {
+          completed_at: completedAt.toISOString(),
+          network: redemption.network,
+          tx_hash: txHash,
+        },
+      });
+    });
   }
 
   /**

@@ -293,3 +293,245 @@ def test_dataset_card_includes_license(publish_dataset):
     syn = publish_dataset._spec_synthesized()
     assert "cc-by-4.0" in syn.card.lower()
     assert "claude" in syn.card.lower()
+
+
+# ---------------------------------------------------------------------------
+# milady-ai publisher (publish_milady_model.py)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def publish_milady():
+    return _load("publish_milady_model", SCRIPTS / "publish_milady_model.py")
+
+
+def _make_fused_gguf(path: Path) -> None:
+    """Write a tiny file that carries the required fused-kernel markers.
+
+    The publisher only scans the first 4 MB and the trailing 1 MB for
+    the marker strings; a few KB is enough to drive the validation path
+    in tests without producing an actual llama.cpp-loadable GGUF.
+    """
+    path.write_bytes(
+        b"GGUF\x03\x00\x00\x00"
+        + b"\x00" * 64
+        + b"tensor_type: q4_polar block_type qjl1_256\n"
+        + b"\x00" * 1024,
+    )
+
+
+def _make_stock_gguf(path: Path) -> None:
+    path.write_bytes(
+        b"GGUF\x03\x00\x00\x00"
+        + b"\x00" * 64
+        + b"tensor_type: q4_K_M block_type q4_k\n"
+        + b"\x00" * 1024,
+    )
+
+
+def _make_milady_bundle(model_dir: Path, *, fused: bool, kind: str = "milady-optimized") -> None:
+    model_dir.mkdir(parents=True, exist_ok=True)
+    gguf = model_dir / f"{model_dir.name}.gguf"
+    (_make_fused_gguf if fused else _make_stock_gguf)(gguf)
+    manifest = {
+        "version": 1,
+        "kind": kind,
+        "modelId": "qwen3.5-4b",
+        "base": {
+            "name": "qwen3.5-4b",
+            "displayName": "Qwen3.5 4B",
+            "params": "4B",
+            "tokenizerFamily": "qwen3",
+            "contextLength": 131072,
+        },
+        "gguf": {
+            "file": gguf.name,
+            "sha256": None,
+            "sizeBytes": 0,
+            "quant": "Q4_POLAR + QJL1_256 K + TBQ4_0 V",
+        },
+        "optimization": {
+            "weights": "Q4_POLAR",
+            "kvK": "QJL1_256",
+            "kvV": "TBQ4_0",
+            "speculativeDecode": "DFlash",
+            "kernels": ["q4_polar", "qjl1_256", "tbq3_0", "tbq4_0", "dflash"],
+            "requiresFork": "milady-ai/llama.cpp@v0.1.0-milady",
+        },
+        "pipeline": {
+            "publishedAt": "2026-05-10T00:00:00Z",
+            "trainedFrom": "Qwen/Qwen3.5-4B",
+            "trainingPipeline": "elizaos/eliza-1-pipeline",
+            "buildScript": "packages/training/scripts/publish_milady_model.py",
+        },
+    }
+    import json as _json
+    (model_dir / "manifest.json").write_text(_json.dumps(manifest, indent=2))
+    (model_dir / "README.md").write_text("# placeholder\n")
+
+
+def test_milady_dry_run_accepts_fused_gguf(publish_milady, tmp_path, monkeypatch):
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
+    bundle = tmp_path / "qwen3.5-4b-milady-optimized"
+    _make_milady_bundle(bundle, fused=True)
+
+    rc = publish_milady.main([
+        "--model-dir", str(bundle),
+        "--repo-id", "milady-ai/qwen3.5-4b-milady-optimized",
+        "--dry-run",
+    ])
+    assert rc == 0
+
+
+def test_milady_refuses_stock_gguf(publish_milady, tmp_path, monkeypatch):
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    bundle = tmp_path / "qwen3.5-4b-milady-optimized"
+    _make_milady_bundle(bundle, fused=False)
+
+    with pytest.raises(SystemExit) as excinfo:
+        publish_milady.main([
+            "--model-dir", str(bundle),
+            "--repo-id", "milady-ai/qwen3.5-4b-milady-optimized",
+            "--dry-run",
+        ])
+    msg = str(excinfo.value)
+    assert "q4_polar" in msg.lower() or "qjl1_256" in msg.lower()
+
+
+def test_milady_refuses_non_milady_org(publish_milady, tmp_path):
+    bundle = tmp_path / "qwen3.5-4b-milady-optimized"
+    _make_milady_bundle(bundle, fused=True)
+
+    with pytest.raises(SystemExit) as excinfo:
+        publish_milady.main([
+            "--model-dir", str(bundle),
+            "--repo-id", "elizaos/qwen3.5-4b",
+            "--dry-run",
+        ])
+    assert "milady-ai" in str(excinfo.value)
+
+
+def test_milady_refuses_zero_byte_gguf(publish_milady, tmp_path):
+    bundle = tmp_path / "qwen3.5-4b-milady-optimized"
+    bundle.mkdir()
+    (bundle / "qwen3.5-4b-milady-optimized.gguf").touch()  # zero bytes
+    (bundle / "manifest.json").write_text('{"version":1,"kind":"milady-optimized","modelId":"x","base":{},"gguf":{},"optimization":{}}')
+    (bundle / "README.md").write_text("# x")
+
+    with pytest.raises(SystemExit) as excinfo:
+        publish_milady.main([
+            "--model-dir", str(bundle),
+            "--repo-id", "milady-ai/qwen3.5-4b-milady-optimized",
+            "--dry-run",
+        ])
+    assert "zero bytes" in str(excinfo.value)
+
+
+def test_milady_publish_writes_published_sidecar(publish_milady, tmp_path, monkeypatch):
+    """End-to-end: HfApi mocked, publisher writes published.json idempotency
+    sidecar with the canonical resolve URL + sha256."""
+    monkeypatch.setenv("HF_TOKEN", "hf_fake_token")
+    bundle = tmp_path / "qwen3.5-4b-milady-optimized"
+    _make_milady_bundle(bundle, fused=True)
+
+    fake_api = MagicMock()
+    fake_api.repo_info.return_value = SimpleNamespace(siblings=[])
+
+    with patch("huggingface_hub.HfApi", return_value=fake_api):
+        rc = publish_milady.main([
+            "--model-dir", str(bundle),
+            "--repo-id", "milady-ai/qwen3.5-4b-milady-optimized",
+        ])
+    assert rc == 0
+
+    sidecar = bundle / "published.json"
+    assert sidecar.exists(), "published.json was not written"
+    import json as _json
+    data = _json.loads(sidecar.read_text())
+    assert data["repoId"] == "milady-ai/qwen3.5-4b-milady-optimized"
+    assert data["resolveUrl"].startswith(
+        "https://huggingface.co/milady-ai/qwen3.5-4b-milady-optimized/resolve/main/"
+    )
+    assert data["ggufFile"] == "qwen3.5-4b-milady-optimized.gguf"
+    assert isinstance(data["sha256"], str) and len(data["sha256"]) == 64
+    assert data["sizeBytes"] > 0
+
+    # Atomic commit path: README + manifest + GGUF in one create_commit().
+    assert fake_api.create_commit.call_count == 1
+    ops = fake_api.create_commit.call_args.kwargs["operations"]
+    op_paths = sorted(op.path_in_repo for op in ops)
+    assert op_paths == [
+        "README.md",
+        "manifest.json",
+        "qwen3.5-4b-milady-optimized.gguf",
+    ]
+
+
+def test_milady_publish_skips_when_remote_sha_matches(publish_milady, tmp_path, monkeypatch):
+    """If the remote LFS pointer's sha256 matches the local GGUF, the GGUF
+    upload is skipped and only README + manifest get refreshed."""
+    monkeypatch.setenv("HF_TOKEN", "hf_fake_token")
+    bundle = tmp_path / "qwen3.5-4b-milady-optimized"
+    _make_milady_bundle(bundle, fused=True)
+    gguf_path = bundle / "qwen3.5-4b-milady-optimized.gguf"
+    expected_sha = publish_milady._sha256_file(gguf_path)
+
+    sibling = SimpleNamespace(
+        rfilename="qwen3.5-4b-milady-optimized.gguf",
+        lfs={"sha256": expected_sha},
+    )
+    fake_api = MagicMock()
+    fake_api.repo_info.side_effect = [
+        SimpleNamespace(siblings=[sibling]),  # existence probe
+        SimpleNamespace(siblings=[sibling]),  # _remote_sha256 probe
+    ]
+
+    with patch("huggingface_hub.HfApi", return_value=fake_api):
+        rc = publish_milady.main([
+            "--model-dir", str(bundle),
+            "--repo-id", "milady-ai/qwen3.5-4b-milady-optimized",
+        ])
+    assert rc == 0
+
+    ops = fake_api.create_commit.call_args.kwargs["operations"]
+    op_paths = sorted(op.path_in_repo for op in ops)
+    # GGUF is NOT in the operations list — sha matched.
+    assert op_paths == ["README.md", "manifest.json"]
+
+
+# ---------------------------------------------------------------------------
+# milady-ai catalog sync (sync_catalog_from_hf.py)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sync_catalog():
+    return _load("sync_catalog_from_hf", SCRIPTS / "sync_catalog_from_hf.py")
+
+
+def test_sync_catalog_writes_diff(sync_catalog, tmp_path, monkeypatch):
+    """The diff format is { version, generatedAt, org, entries[] }."""
+    out = tmp_path / "diff.json"
+    entries = [
+        sync_catalog.CatalogEntry(
+            id="qwen3.5-4b-milady-optimized",
+            hf_repo="milady-ai/qwen3.5-4b-milady-optimized",
+            gguf_file="qwen3.5-4b-milady-optimized.gguf",
+            sha256="a" * 64,
+            size_bytes=1234567,
+            manifest={"version": 1, "kind": "milady-optimized"},
+        ),
+    ]
+    sync_catalog.write_diff(entries, out, org="milady-ai")
+    import json as _json
+    payload = _json.loads(out.read_text())
+    assert payload["version"] == 1
+    assert payload["org"] == "milady-ai"
+    assert len(payload["entries"]) == 1
+    e = payload["entries"][0]
+    assert e["id"] == "qwen3.5-4b-milady-optimized"
+    assert e["hfRepo"] == "milady-ai/qwen3.5-4b-milady-optimized"
+    assert e["sha256"] == "a" * 64
+    assert e["sizeBytes"] == 1234567
+    assert e["manifest"]["kind"] == "milady-optimized"

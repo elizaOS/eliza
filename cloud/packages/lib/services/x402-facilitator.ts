@@ -152,6 +152,30 @@ function buildNetworkRegistry(): Record<string, NetworkConfig> {
   const env = getCloudAwareEnv();
   const alchemyKey = env.ALCHEMY_API_KEY ?? "";
   const infuraKey = env.INFURA_API_KEY ?? "";
+  const baseMainnetRpc =
+    env.X402_BASE_RPC_URL ??
+    env.BASE_RPC_URL ??
+    (alchemyKey ? `https://base-mainnet.g.alchemy.com/v2/${alchemyKey}` : undefined);
+  const baseSepoliaRpc =
+    env.X402_BASE_SEPOLIA_RPC_URL ??
+    env.BASE_SEPOLIA_RPC_URL ??
+    (alchemyKey ? `https://base-sepolia.g.alchemy.com/v2/${alchemyKey}` : undefined);
+  const ethereumRpc =
+    env.X402_ETHEREUM_RPC_URL ??
+    env.ETHEREUM_RPC_URL ??
+    (alchemyKey
+      ? `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`
+      : infuraKey
+        ? `https://mainnet.infura.io/v3/${infuraKey}`
+        : undefined);
+  const sepoliaRpc =
+    env.X402_SEPOLIA_RPC_URL ??
+    env.SEPOLIA_RPC_URL ??
+    (alchemyKey
+      ? `https://eth-sepolia.g.alchemy.com/v2/${alchemyKey}`
+      : infuraKey
+        ? `https://sepolia.infura.io/v3/${infuraKey}`
+        : undefined);
 
   return {
     "eip155:8453": {
@@ -159,10 +183,8 @@ function buildNetworkRegistry(): Record<string, NetworkConfig> {
       caip2: "eip155:8453",
       name: "base",
       usdcAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-      usdcDomainName: "USDC",
-      rpcUrl: alchemyKey
-        ? `https://base-mainnet.g.alchemy.com/v2/${alchemyKey}`
-        : "https://mainnet.base.org",
+      usdcDomainName: "USD Coin",
+      rpcUrl: baseMainnetRpc ?? "https://mainnet.base.org",
       chain: base,
     },
     "eip155:84532": {
@@ -171,9 +193,7 @@ function buildNetworkRegistry(): Record<string, NetworkConfig> {
       name: "base-sepolia",
       usdcAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       usdcDomainName: "USDC",
-      rpcUrl: alchemyKey
-        ? `https://base-sepolia.g.alchemy.com/v2/${alchemyKey}`
-        : "https://sepolia.base.org",
+      rpcUrl: baseSepoliaRpc ?? "https://sepolia.base.org",
       chain: baseSepolia,
     },
     "eip155:1": {
@@ -182,11 +202,7 @@ function buildNetworkRegistry(): Record<string, NetworkConfig> {
       name: "ethereum",
       usdcAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
       usdcDomainName: "USD Coin",
-      rpcUrl: alchemyKey
-        ? `https://eth-mainnet.g.alchemy.com/v2/${alchemyKey}`
-        : infuraKey
-          ? `https://mainnet.infura.io/v3/${infuraKey}`
-          : "https://cloudflare-eth.com",
+      rpcUrl: ethereumRpc ?? "https://cloudflare-eth.com",
       chain: mainnet,
     },
     "eip155:11155111": {
@@ -195,11 +211,7 @@ function buildNetworkRegistry(): Record<string, NetworkConfig> {
       name: "sepolia",
       usdcAddress: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
       usdcDomainName: "USDC",
-      rpcUrl: alchemyKey
-        ? `https://eth-sepolia.g.alchemy.com/v2/${alchemyKey}`
-        : infuraKey
-          ? `https://sepolia.infura.io/v3/${infuraKey}`
-          : "https://rpc.sepolia.org",
+      rpcUrl: sepoliaRpc ?? "https://rpc.sepolia.org",
       chain: sepolia,
     },
     "eip155:56": {
@@ -208,7 +220,7 @@ function buildNetworkRegistry(): Record<string, NetworkConfig> {
       name: "bsc",
       usdcAddress: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", // Official Binance-Peg BUSD/USDC (BEP20 USDC)
       usdcDomainName: "USD Coin",
-      rpcUrl: "https://bsc-dataseed.binance.org",
+      rpcUrl: env.X402_BSC_RPC_URL ?? env.BSC_RPC_URL ?? "https://bsc-dataseed.binance.org",
       chain: bsc,
     },
     "eip155:97": {
@@ -217,7 +229,10 @@ function buildNetworkRegistry(): Record<string, NetworkConfig> {
       name: "bsc-testnet",
       usdcAddress: "0x64544969ed7EBf5f083679233325356EBe738930", // Standard Testnet USDC
       usdcDomainName: "USD Coin",
-      rpcUrl: "https://data-seed-prebsc-1-s1.binance.org:8545",
+      rpcUrl:
+        env.X402_BSC_TESTNET_RPC_URL ??
+        env.BSC_TESTNET_RPC_URL ??
+        "https://data-seed-prebsc-1-s1.binance.org:8545",
       chain: bscTestnet,
     },
   };

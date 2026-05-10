@@ -28,8 +28,19 @@
  * a logged no-op.
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+} from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import {
   type AgentRuntime,
   type GenerateTextParams,
@@ -208,6 +219,103 @@ function resolveStateDir(): string {
   return path.join(home, ".eliza");
 }
 
+// Recommended-model auto-download for the AOSP / bun:ffi path. Mirrors
+// the helper in plugin-capacitor-bridge/mobile-device-bridge-bootstrap.ts:
+// when no GGUF is staged on the device, fetch a known-good default from
+// HuggingFace into the agent state dir so first-chat-works without
+// requiring a manual `stage-default-models.mjs + APK rebuild` round.
+//
+// `ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1` opts out for offline / kiosk
+// builds — callers see the original "stage one via stage-default-models"
+// error in that mode.
+type AospRecommendedModel = {
+  id: string;
+  hfRepo: string;
+  ggufFile: string;
+  expectedSizeBytes?: number;
+};
+
+const AOSP_RECOMMENDED_MODELS: Record<"chat" | "embedding", AospRecommendedModel> = {
+  chat: {
+    id: "llama-3.2-1b",
+    hfRepo: "bartowski/Llama-3.2-1B-Instruct-GGUF",
+    ggufFile: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+    expectedSizeBytes: 807_694_464,
+  },
+  embedding: {
+    id: "bge-small-en-v1.5",
+    hfRepo: "ChristianAzinn/bge-small-en-v1.5-gguf",
+    ggufFile: "bge-small-en-v1.5.Q4_K_M.gguf",
+    expectedSizeBytes: 24_808_576,
+  },
+};
+
+const aospInflightDownloads = new Map<string, Promise<string>>();
+
+async function downloadRecommendedAospModel(
+  role: "chat" | "embedding",
+  modelsDir: string,
+): Promise<string> {
+  const model = AOSP_RECOMMENDED_MODELS[role];
+  mkdirSync(modelsDir, { recursive: true });
+  const finalPath = path.join(modelsDir, model.ggufFile);
+  if (existsSync(finalPath)) {
+    const sz = statSync(finalPath).size;
+    if (!model.expectedSizeBytes || sz === model.expectedSizeBytes) {
+      return finalPath;
+    }
+    logger.warn(
+      `[aosp-local-inference] ${model.ggufFile} present but size ${sz} != expected ${model.expectedSizeBytes}; re-downloading.`,
+    );
+    try {
+      unlinkSync(finalPath);
+    } catch {}
+  }
+  const dedupKey = `${role}:${model.id}`;
+  const existing = aospInflightDownloads.get(dedupKey);
+  if (existing) return existing;
+  const promise = (async () => {
+    const url = `https://huggingface.co/${model.hfRepo}/resolve/main/${model.ggufFile}`;
+    const stagingPath = `${finalPath}.part`;
+    try {
+      unlinkSync(stagingPath);
+    } catch {}
+    logger.info(
+      `[aosp-local-inference] Auto-downloading recommended ${role} model ${model.id} from ${url}`,
+    );
+    const response = await fetch(url, { redirect: "follow" });
+    if (!response.ok || !response.body) {
+      throw new Error(
+        `[aosp-local-inference] Recommended-model download failed (${role}): HTTP ${response.status} ${response.statusText} from ${url}`,
+      );
+    }
+    await pipeline(
+      Readable.fromWeb(response.body as never),
+      createWriteStream(stagingPath),
+    );
+    const stagedSize = statSync(stagingPath).size;
+    if (model.expectedSizeBytes && stagedSize !== model.expectedSizeBytes) {
+      try {
+        unlinkSync(stagingPath);
+      } catch {}
+      throw new Error(
+        `[aosp-local-inference] Downloaded ${model.ggufFile} size ${stagedSize} != expected ${model.expectedSizeBytes}.`,
+      );
+    }
+    renameSync(stagingPath, finalPath);
+    logger.info(
+      `[aosp-local-inference] Auto-download complete: ${finalPath} (${stagedSize} bytes)`,
+    );
+    return finalPath;
+  })();
+  aospInflightDownloads.set(dedupKey, promise);
+  try {
+    return await promise;
+  } finally {
+    aospInflightDownloads.delete(dedupKey);
+  }
+}
+
 function resolveBundledModelsDir(): string {
   return path.join(resolveStateDir(), "local-inference", "models");
 }
@@ -277,11 +385,19 @@ function makeLoaderLifecycle(loader: AospLoader): {
   async function loadRole(role: "chat" | "embedding"): Promise<void> {
     if (currentRole === role) return;
     if (inflight) return inflight;
-    const target = role === "chat" ? resolved.chat : resolved.embedding;
+    let target = role === "chat" ? resolved.chat : resolved.embedding;
     if (!target) {
-      throw new Error(
-        `[aosp-local-inference] No bundled ${role} model found under ${modelsDir}. Stage one via scripts/elizaos/stage-default-models.mjs and rebuild the APK.`,
-      );
+      if (process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() === "1") {
+        throw new Error(
+          `[aosp-local-inference] No bundled ${role} model found under ${modelsDir} and auto-download is disabled (ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1).`,
+        );
+      }
+      target = await downloadRecommendedAospModel(role, modelsDir);
+      if (role === "chat") {
+        resolved.chat = target;
+      } else {
+        resolved.embedding = target;
+      }
     }
     inflight = (async () => {
       logger.info(

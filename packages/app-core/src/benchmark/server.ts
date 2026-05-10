@@ -977,7 +977,10 @@ export async function startBenchmarkServer() {
 
       const callbackTexts: string[] = [];
       const callback = async (content: Content) => {
-        if (typeof content.text === "string" && content.text.trim().length > 0) {
+        if (
+          typeof content.text === "string" &&
+          content.text.trim().length > 0
+        ) {
           callbackTexts.push(content.text.trim());
         }
         return [];
@@ -1020,7 +1023,9 @@ export async function startBenchmarkServer() {
       const toolCalls = actions.map((name, index) => {
         const paramsForAction = params[name];
         const argumentsObj: Record<string, unknown> =
-          paramsForAction && typeof paramsForAction === "object" && !Array.isArray(paramsForAction)
+          paramsForAction &&
+          typeof paramsForAction === "object" &&
+          !Array.isArray(paramsForAction)
             ? (paramsForAction as Record<string, unknown>)
             : {};
         return {
@@ -1032,7 +1037,10 @@ export async function startBenchmarkServer() {
 
       const usage = {
         promptTokens: turnUsageBuffer.reduce((s, c) => s + c.promptTokens, 0),
-        completionTokens: turnUsageBuffer.reduce((s, c) => s + c.completionTokens, 0),
+        completionTokens: turnUsageBuffer.reduce(
+          (s, c) => s + c.completionTokens,
+          0,
+        ),
         totalTokens: turnUsageBuffer.reduce((s, c) => s + c.totalTokens, 0),
       };
 

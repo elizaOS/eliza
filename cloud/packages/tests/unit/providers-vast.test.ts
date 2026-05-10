@@ -32,7 +32,7 @@ describe("VastProvider", () => {
     expect(res.status).toBe(200);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://run.vast.ai/route/abc123/v1/chat/completions");
 
     const body = JSON.parse(init.body as string);
