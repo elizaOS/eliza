@@ -415,6 +415,32 @@ export async function createRealTestRuntime(
     }
 
     await runtime.initialize();
+
+    // Eagerly start the OptimizedPromptService so the planner-loop's
+    // synchronous `runtime.getService('optimized_prompt')` call hits an
+    // already-instantiated service. Without this the service is registered
+    // lazy (via basicServices) and the first N planner calls fall back to
+    // the baseline template before lazy start completes.
+    try {
+      const { OptimizedPromptService, OPTIMIZED_PROMPT_SERVICE } = await import(
+        "@elizaos/core"
+      );
+      const existing = runtime.getService(OPTIMIZED_PROMPT_SERVICE);
+      if (!existing) {
+        const optimized = await OptimizedPromptService.start(runtime);
+        const services = (runtime as unknown as {
+          services: Map<string, unknown[]>;
+        }).services;
+        const list = services.get(OPTIMIZED_PROMPT_SERVICE) ?? [];
+        list.push(optimized);
+        services.set(OPTIMIZED_PROMPT_SERVICE, list);
+      }
+    } catch (err) {
+      logger.warn(
+        `[real-runtime] OptimizedPromptService eager start failed: ${err}`,
+      );
+    }
+
     runtime.registerSendHandler(
       "client_chat",
       async (_rt, _target, _content) => {
