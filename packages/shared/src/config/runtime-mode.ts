@@ -82,6 +82,11 @@ export function runtimeExecutionModeForDeploymentTarget(
   return deploymentTarget?.runtime === "cloud" ? "cloud" : "local-safe";
 }
 
+export interface RuntimeExecutionModeConfigSource {
+  runtime?: RuntimeModeConfig | Record<string, unknown> | null;
+  deploymentTarget?: DeploymentTargetConfig | null;
+}
+
 export function readRuntimeExecutionModeConfig(
   config: RuntimeExecutionModeConfigSource | null | undefined,
 ): RuntimeExecutionMode {
