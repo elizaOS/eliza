@@ -6,7 +6,16 @@
  * Reads app identity from the host's app.config.ts so web, desktop, and
  * native builds share one canonical app contract.
  *
- * Usage: node scripts/run-mobile-build.mjs <android|android-system|ios|ios-overlay>
+ * Usage: node scripts/run-mobile-build.mjs <android|android-cloud|android-system|ios|ios-overlay>
+ *
+ * Android targets:
+ *   - android         Sideload-only debug APK with the on-device agent runtime
+ *                     and AOSP/system-only permissions. NOT Play-Store-shippable.
+ *   - android-cloud   Play-Store-compliant thin Capacitor client backed by
+ *                     Eliza Cloud. No on-device agent, no default-role
+ *                     activities, no system-only permissions.
+ *   - android-system  Privileged platform-signed AOSP release APK for
+ *                     Milady OS / ElizaOS device builds.
  *
  * Phases:
  *   1. Resolve config       — read app.config.ts for appId / appName
@@ -536,15 +545,32 @@ export function applyIosAppIdentity({
 
 async function buildWeb(platform) {
   const capacitorTarget =
-    platform === "android-system"
+    platform === "android-system" || platform === "android-cloud"
       ? "android"
       : platform === "ios-overlay"
         ? "ios"
         : platform;
+  // Android runtime mode mirrors the iOS runtime mode pattern: `cloud`
+  // means the renderer should treat Eliza Cloud as the only hosting target
+  // (Play-Store-compliant thin client; no on-device agent), while `local`
+  // is the default sideload/AOSP behavior. Surfaced to the renderer via
+  // VITE_ELIZA_ANDROID_RUNTIME_MODE so it can hide the Local picker option.
+  const androidRuntimeMode =
+    platform === "android-cloud"
+      ? "cloud"
+      : platform === "android" || platform === "android-system"
+        ? "local"
+        : null;
   const env = {
     ...process.env,
     ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
     MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
+    ...(androidRuntimeMode
+      ? {
+          VITE_ELIZA_ANDROID_RUNTIME_MODE: androidRuntimeMode,
+          VITE_MILADY_ANDROID_RUNTIME_MODE: androidRuntimeMode,
+        }
+      : {}),
   };
   const bun = resolveBunExecutable();
   if (bun) {
@@ -2735,6 +2761,204 @@ export function resolveIosBuildTarget({
   };
 }
 
+// ── Android cloud (Play-Store) strip set ────────────────────────────────
+//
+// The default Android target injects an on-device agent runtime, default
+// roles (dialer, SMS, browser, contacts, camera, calendar, clock,
+// assistant, in-call), a boot receiver, and the privileged appop /
+// usage-stats permissions that AOSP needs but Play Store rejects. The
+// `android-cloud` target produces a thin Capacitor client backed by Eliza
+// Cloud and must not ship any of those components.
+//
+// Components deleted from the manifest (and from app/src/main/java/...):
+const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
+  "ElizaAgentService",
+  "ElizaDialActivity",
+  "ElizaAssistActivity",
+  "ElizaInCallService",
+  "ElizaSmsReceiver",
+  "ElizaMmsReceiver",
+  "ElizaRespondViaMessageService",
+  "ElizaSmsComposeActivity",
+  "ElizaBootReceiver",
+  "ElizaBrowserActivity",
+  "ElizaContactsActivity",
+  "ElizaCameraActivity",
+  "ElizaClockActivity",
+  "ElizaCalendarActivity",
+];
+
+// Permissions removed from the manifest. Anything that triggers a Play
+// Store policy review (sensitive runtime perms, system-only signature
+// perms, default-role / call / SMS perms, background location) gets
+// dropped. The remainder — INTERNET, POST_NOTIFICATIONS, FOREGROUND_SERVICE
+// + FOREGROUND_SERVICE_DATA_SYNC for the Gateway sync service, WAKE_LOCK,
+// scoped storage SDK fallbacks, RECORD_AUDIO/CAMERA/LOCATION needed for
+// Capacitor plugins the cloud renderer still uses — stays in place.
+const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
+  "READ_CONTACTS",
+  "WRITE_CONTACTS",
+  "CALL_PHONE",
+  "READ_PHONE_STATE",
+  "ANSWER_PHONE_CALLS",
+  "MANAGE_OWN_CALLS",
+  "READ_CALL_LOG",
+  "WRITE_CALL_LOG",
+  "READ_SMS",
+  "SEND_SMS",
+  "RECEIVE_SMS",
+  "RECEIVE_MMS",
+  "RECEIVE_WAP_PUSH",
+  "ACCESS_BACKGROUND_LOCATION",
+  "FOREGROUND_SERVICE_SPECIAL_USE",
+  "RECEIVE_BOOT_COMPLETED",
+  "SYSTEM_ALERT_WINDOW",
+  "PACKAGE_USAGE_STATS",
+  "MANAGE_APP_OPS_MODES",
+  "BIND_DEVICE_ADMIN",
+];
+
+// Java sources removed from the merged sources tree so they don't
+// reference manifest-stripped classes and break compilation.
+const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
+  "ElizaAgentService.java",
+  "ElizaAssistActivity.java",
+  "ElizaBootReceiver.java",
+  "ElizaBrowserActivity.java",
+  "ElizaCalendarActivity.java",
+  "ElizaCameraActivity.java",
+  "ElizaClockActivity.java",
+  "ElizaContactsActivity.java",
+  "ElizaDialActivity.java",
+  "ElizaInCallService.java",
+  "ElizaMmsReceiver.java",
+  "ElizaRespondViaMessageService.java",
+  "ElizaSmsComposeActivity.java",
+  "ElizaSmsReceiver.java",
+];
+
+/**
+ * Strip the Play-Store-noncompliant manifest components, permissions, and
+ * Java sources, plus any previously-staged on-device agent runtime
+ * artifacts (assets/agent + jniLibs/libeliza_*.so), from a freshly
+ * overlaid Android project.
+ *
+ * Idempotent: safe to re-run on an already-stripped tree.
+ */
+function stripAndroidForCloud() {
+  const androidPackage = APP.appId;
+
+  // 1. Strip manifest components, permissions, and BootReceiver/SMS/etc.
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
+  if (fs.existsSync(manifestPath)) {
+    let xml = fs.readFileSync(manifestPath, "utf8");
+    const original = xml;
+
+    for (const component of ANDROID_CLOUD_STRIPPED_COMPONENTS) {
+      xml = removeApplicationComponentBlock(
+        xml,
+        `${androidPackage}.${component}`,
+      );
+      xml = removeApplicationComponentClassBlock(xml, component);
+    }
+
+    for (const perm of ANDROID_CLOUD_STRIPPED_PERMISSIONS) {
+      const escaped = escapeRegExp(`android.permission.${perm}`);
+      const re = new RegExp(
+        `\\n\\s*<uses-permission\\b[^>]*android:name="${escaped}"[^>]*/>\\s*`,
+        "g",
+      );
+      xml = xml.replace(re, "\n");
+    }
+
+    if (xml !== original) {
+      fs.writeFileSync(manifestPath, xml, "utf8");
+      console.log(
+        "[mobile-build] Stripped Play-Store-noncompliant components and permissions from AndroidManifest.xml.",
+      );
+    }
+  }
+
+  // 2. Remove the matching Java sources so the build doesn't reference
+  //    manifest-stripped classes. The merged sources live under
+  //    app/src/main/java/<package-path>/, and overlayAndroid() may also
+  //    have left a legacy ai/elizaos/app copy if the Java rename ran on a
+  //    fresh tree — wipe both.
+  const javaRoots = [
+    path.join(
+      androidDir,
+      "app",
+      "src",
+      "main",
+      "java",
+      packageNameToPath(androidPackage),
+    ),
+    path.join(androidDir, "app", "src", "main", "java", "ai", "elizaos", "app"),
+  ];
+  let removedJavaCount = 0;
+  for (const root of javaRoots) {
+    if (!fs.existsSync(root)) continue;
+    for (const file of ANDROID_CLOUD_STRIPPED_JAVA_FILES) {
+      const target = path.join(root, file);
+      if (fs.existsSync(target)) {
+        fs.rmSync(target);
+        removedJavaCount += 1;
+      }
+    }
+  }
+  if (removedJavaCount > 0) {
+    console.log(
+      `[mobile-build] Removed ${removedJavaCount} Play-Store-noncompliant Java source(s).`,
+    );
+  }
+
+  // 3. Wipe any previously-staged on-device agent runtime. These are
+  //    build artifacts (.gitignore covers them) — the cloud APK must not
+  //    embed bun, musl, libstdc++, libgcc, llama-server, or the
+  //    libeliza_*.so jniLibs disguise.
+  const stagedAgentAssets = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "assets",
+    "agent",
+  );
+  if (fs.existsSync(stagedAgentAssets)) {
+    fs.rmSync(stagedAgentAssets, { recursive: true, force: true });
+    console.log(
+      "[mobile-build] Removed staged on-device agent runtime under assets/agent/.",
+    );
+  }
+
+  const stagedJniLibs = path.join(androidDir, "app", "src", "main", "jniLibs");
+  if (fs.existsSync(stagedJniLibs)) {
+    let libelizaCount = 0;
+    for (const abi of fs.readdirSync(stagedJniLibs)) {
+      const abiDir = path.join(stagedJniLibs, abi);
+      const stat = fs.statSync(abiDir);
+      if (!stat.isDirectory()) continue;
+      for (const lib of fs.readdirSync(abiDir)) {
+        if (lib.startsWith("libeliza_") || lib === "libsigsys-handler.so") {
+          fs.rmSync(path.join(abiDir, lib));
+          libelizaCount += 1;
+        }
+      }
+    }
+    if (libelizaCount > 0) {
+      console.log(
+        `[mobile-build] Removed ${libelizaCount} disguised native runtime library(s) from jniLibs/.`,
+      );
+    }
+  }
+}
+
 async function buildAndroid() {
   const sdk = resolveAndroidSdkRoot();
   const jdk = resolveJavaHome();
@@ -2743,6 +2967,15 @@ async function buildAndroid() {
       "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
     );
   if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
+
+  console.warn(
+    "[mobile-build] WARNING: target `android` produces an APK that embeds " +
+      "the on-device agent runtime (libeliza_bun.so disguise) and requests " +
+      "system-only permissions (MANAGE_APP_OPS_MODES, PACKAGE_USAGE_STATS). " +
+      "It is SIDELOAD-ONLY and will be rejected by the Play Store. Use " +
+      "`build:android:cloud` for a Play-Store-compliant thin client, or " +
+      "`build:android:system` for the AOSP privileged platform-signed APK.",
+  );
 
   await buildWeb("android");
   await ensurePlatform("android");
@@ -2786,6 +3019,74 @@ async function buildAndroid() {
   ) {
     gradleArgs.unshift("-PelizaAospBuild=true");
   }
+  await run(
+    "./gradlew",
+    [":capacitor-cordova-android-plugins:writeDebugAarMetadata"],
+    {
+      cwd: androidDir,
+      env,
+    },
+  );
+  await run("./gradlew", gradleArgs, {
+    cwd: androidDir,
+    env,
+  });
+}
+
+async function buildAndroidCloud() {
+  const sdk = resolveAndroidSdkRoot();
+  const jdk = resolveJavaHome();
+  if (!sdk)
+    throw new Error(
+      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
+    );
+  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
+
+  await buildWeb("android-cloud");
+  await ensurePlatform("android");
+  await runCapacitor(["sync", "android"]);
+
+  patchAndroidGradle();
+  await generateAndroidBrandAssets();
+  overlayAndroid();
+  sanitizeAndroidManifestWhenPlatformTemplatesMissing();
+  // The cloud target is a thin Capacitor client backed by Eliza Cloud.
+  // It must NOT embed the on-device agent runtime, NOT declare default
+  // role activities (dialer, SMS, browser, contacts, camera, calendar,
+  // clock, assistant, in-call), NOT register a BootReceiver, and NOT
+  // request system-only permissions (MANAGE_APP_OPS_MODES,
+  // PACKAGE_USAGE_STATS) or sensitive runtime permissions
+  // (READ/SEND/RECEIVE_SMS, CALL_PHONE, ACCESS_BACKGROUND_LOCATION).
+  // overlayAndroid() injects all of these unconditionally; we strip them
+  // here as a post-overlay pass so the merge logic remains a single
+  // source of truth across all three Android targets.
+  stripAndroidForCloud();
+
+  const env = {
+    ...process.env,
+    ANDROID_HOME: sdk,
+    ANDROID_SDK_ROOT: sdk,
+    JAVA_HOME: jdk,
+    PATH: prependPath(process.env, [
+      path.join(jdk, "bin"),
+      path.join(sdk, "platform-tools"),
+    ]),
+  };
+
+  // The Play-Store target intentionally builds without `-PelizaAospBuild`,
+  // so BuildConfig.AOSP_BUILD = false at runtime — ElizaAgentService is
+  // already stripped from the manifest and the related `assets/agent/`
+  // tree is gone, but turning off the AOSP gradle flag also drops any
+  // Soong/AOSP-only resource paths from the APK.
+  const settingsGradle = fs.readFileSync(
+    path.join(androidDir, "capacitor.settings.gradle"),
+    "utf8",
+  );
+  const gradleArgs = [];
+  if (settingsGradle.includes(":elizaos-capacitor-websiteblocker")) {
+    gradleArgs.push(":elizaos-capacitor-websiteblocker:testDebugUnitTest");
+  }
+  gradleArgs.push(":app:assembleDebug");
   await run(
     "./gradlew",
     [":capacitor-cordova-android-plugins:writeDebugAarMetadata"],
@@ -2958,17 +3259,20 @@ export async function main(argv = process.argv.slice(2)) {
   const target = argv[0];
   if (
     target !== "android" &&
+    target !== "android-cloud" &&
     target !== "android-system" &&
     target !== "ios" &&
     target !== "ios-overlay"
   ) {
     console.error(
-      "Usage: node scripts/run-mobile-build.mjs <android|android-system|ios|ios-overlay>",
+      "Usage: node scripts/run-mobile-build.mjs <android|android-cloud|android-system|ios|ios-overlay>",
     );
     process.exit(1);
   }
   if (target === "android") {
     await buildAndroid();
+  } else if (target === "android-cloud") {
+    await buildAndroidCloud();
   } else if (target === "android-system") {
     await buildAndroidSystem();
   } else if (target === "ios") {

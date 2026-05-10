@@ -15,6 +15,7 @@ import {
   type RuntimePickerTarget,
   reloadIntoRuntimePicker,
 } from "../../onboarding/reload-into-runtime-picker";
+import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { useApp } from "../../state";
 import { inferAgentRuntimeTarget } from "../../state/agent-runtime-target";
 import { loadPersistedActiveServer } from "../../state/persistence";
@@ -38,8 +39,15 @@ export function RuntimeSettingsSection() {
     [],
   );
 
-  const actions = useMemo<RuntimeAction[]>(
-    () => [
+  // The Play-Store-compliant Android build (`build:android:cloud`) ships
+  // without the on-device agent runtime, so the Local option must be
+  // hidden — selecting it would point the renderer at a loopback agent
+  // that physically isn't there. The default sideload Android build, the
+  // AOSP system build, iOS, and desktop all keep the full picker.
+  const cloudOnly = isAndroidCloudBuild();
+
+  const actions = useMemo<RuntimeAction[]>(() => {
+    const base: RuntimeAction[] = [
       {
         target: "cloud",
         label: t("settings.runtime.cloudLabel", {
@@ -50,7 +58,9 @@ export function RuntimeSettingsSection() {
         }),
         icon: Cloud,
       },
-      {
+    ];
+    if (!cloudOnly) {
+      base.push({
         target: "local",
         label: t("settings.runtime.localLabel", {
           defaultValue: "Local",
@@ -59,20 +69,20 @@ export function RuntimeSettingsSection() {
           defaultValue: "Use the agent running on this device.",
         }),
         icon: Laptop,
-      },
-      {
-        target: "remote",
-        label: t("settings.runtime.remoteLabel", {
-          defaultValue: "Remote",
-        }),
-        description: t("settings.runtime.remoteDescription", {
-          defaultValue: "Connect to an agent on another machine.",
-        }),
-        icon: RadioTower,
-      },
-    ],
-    [t],
-  );
+      });
+    }
+    base.push({
+      target: "remote",
+      label: t("settings.runtime.remoteLabel", {
+        defaultValue: "Remote",
+      }),
+      description: t("settings.runtime.remoteDescription", {
+        defaultValue: "Connect to an agent on another machine.",
+      }),
+      icon: RadioTower,
+    });
+    return base;
+  }, [t, cloudOnly]);
 
   const handleSwitch = useCallback((target: RuntimePickerTarget) => {
     reloadIntoRuntimePicker(target);
@@ -94,7 +104,13 @@ export function RuntimeSettingsSection() {
           })}
         </p>
       </div>
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div
+        className={
+          actions.length === 2
+            ? "grid gap-2 sm:grid-cols-2"
+            : "grid gap-2 sm:grid-cols-3"
+        }
+      >
         {actions.map((action) => {
           const Icon = action.icon;
           const active = currentRuntime.kind === action.target;
