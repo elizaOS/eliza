@@ -11,14 +11,14 @@ afterEach(() => {
 function captureFetches(): Request[] {
   const requests: Request[] = [];
 
-  globalThis.fetch = (async (input, init) => {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(input, init);
     requests.push(request);
 
     return new Response("ok", {
       headers: { "x-target": request.url },
     });
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
 
   return requests;
 }

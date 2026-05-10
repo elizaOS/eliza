@@ -329,7 +329,7 @@ describe("Action validation cache", () => {
     })) as unknown as typeof setTimeout;
     globalThis.clearTimeout = ((handle?: ReturnType<typeof setTimeout>) => {
       clearedHandles.push(handle);
-    }) as typeof clearTimeout;
+    }) as unknown as typeof clearTimeout;
 
     try {
       await actionsProvider.get!(runtime, message, emptyState);

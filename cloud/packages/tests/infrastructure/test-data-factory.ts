@@ -20,6 +20,7 @@ export interface TestUser {
   id: string;
   email: string;
   name: string;
+  stewardUserId: string;
   organizationId: string;
   isAnonymous: boolean;
 }
@@ -100,7 +101,6 @@ export async function createTestDataSet(
 
     // Create user
     const userId = uuidv4();
-
     const stewardUserId = `test:${userId}`;
 
     await client.query(
@@ -113,6 +113,7 @@ export async function createTestDataSet(
       id: userId,
       email: userEmail,
       name: userName,
+      stewardUserId,
       organizationId: orgId,
       isAnonymous: false,
     };
@@ -234,6 +235,7 @@ export async function createAnonymousSession(
     const userId = uuidv4();
     const orgId = uuidv4();
     const sessionToken = `anon_${uuidv4().replace(/-/g, "")}`;
+    const stewardUserId = `anonymous:${userId}`;
 
     // Create org for anonymous user
     await client.query(
@@ -246,7 +248,7 @@ export async function createAnonymousSession(
     await client.query(
       `INSERT INTO users (id, is_anonymous, organization_id, role, is_active, anonymous_session_id, steward_user_id)
        VALUES ($1, true, $2, 'member', true, $3, $4)`,
-      [userId, orgId, sessionToken, `anonymous:${userId}`],
+      [userId, orgId, sessionToken, stewardUserId],
     );
 
     // Create anonymous session
