@@ -17,9 +17,9 @@ import {
   BrandButton,
   BrandCard,
   CornerBrackets,
+  Image,
   Input,
 } from "@elizaos/cloud-ui";
-import { Image } from "@elizaos/cloud-ui";
 import { Check, ImagePlus, Loader2, Mail, Shield, Upload, User, X } from "lucide-react";
 import { useCallback, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";

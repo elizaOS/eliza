@@ -4,10 +4,10 @@ import {
   DashboardLoadingState,
 } from "@elizaos/cloud-ui";
 import { Helmet } from "react-helmet-async";
-import { VoicePageClient } from "./_components/voice-page-client";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useCreditsBalance } from "../../lib/data/credits";
 import { useVoices } from "../../lib/data/voices";
+import { VoicePageClient } from "./_components/voice-page-client";
 
 export default function VoicesPage() {
   const { ready, authenticated } = useRequireAuth();

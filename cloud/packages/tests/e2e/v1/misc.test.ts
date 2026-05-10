@@ -1,6 +1,6 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import * as api from "../helpers/api-client";
-import { readJson, type JsonValue } from "../helpers/json-body";
+import { type JsonValue, readJson } from "../helpers/json-body";
 import { NONEXISTENT_UUID } from "../helpers/test-data";
 
 /**

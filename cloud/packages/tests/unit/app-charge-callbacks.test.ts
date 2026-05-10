@@ -19,6 +19,7 @@ function installMocks(harness: Harness): void {
               kind: "app_charge_request",
               app_id: APP_ID,
               amount_usd: 5,
+              payment_context: "verified_payer",
               description: "Please send me $5",
               payment_url: `https://cloud.test/payment/app-charge/${APP_ID}/${CHARGE_ID}`,
               callback_channel: {

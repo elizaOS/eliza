@@ -5,15 +5,7 @@
 
 "use client";
 
-import {
-  ArrowRight,
-  BookOpen,
-  Bot,
-  Code,
-  Key,
-  MessageSquare,
-  Wallet,
-} from "lucide-react";
+import { ArrowRight, BookOpen, Bot, Code, Key, MessageSquare, Wallet } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 

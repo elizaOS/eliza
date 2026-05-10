@@ -9,12 +9,7 @@
 
 "use client";
 
-import {
-  BrandButton,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@elizaos/cloud-ui";
+import { BrandButton, Tooltip, TooltipContent, TooltipTrigger } from "@elizaos/cloud-ui";
 import { Check, Copy, Info, Terminal } from "lucide-react";
 import * as React from "react";
 import { Link } from "react-router-dom";

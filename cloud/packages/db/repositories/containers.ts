@@ -154,7 +154,9 @@ export class ContainersRepository {
       .orderBy(desc(containers.created_at));
   }
 
-  async listForAdminInfrastructure(limit: number): Promise<
+  async listForAdminInfrastructure(
+    limit: number,
+  ): Promise<
     Array<
       Pick<
         Container,

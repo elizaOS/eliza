@@ -43,10 +43,6 @@ For a longer rationale (CLI session public split, crypto GET/POST, key managemen
 - **Auth**: Bearer JWT validated by `validateInternalJWTAsync` / `withInternalAuth` in `packages/lib/auth/internal-api.ts`.
 - **Purpose**: Service-to-service calls (e.g. gateways); not end-user API keys.
 
-### App registry keys
-
-- **Flow**: `validateAppAuth` in `packages/lib/middleware/app-auth.ts` — API key must be tied to an app; optional origin checks against `allowed_origins`.
-
 ### Webhooks and cron
 
 - Paths under `/api/webhooks`, `/api/cron`, `/api/v1/cron`, provider callbacks, etc. are public at the edge; each handler verifies signatures, secrets, or tokens as appropriate.

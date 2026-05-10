@@ -94,7 +94,11 @@ function getMemoryStringField(memory: Memory, key: string): string | undefined {
 }
 
 export function isStoredDocumentMemory(memory: Memory | null): memory is Memory & { id: string } {
-  return !!memory && typeof memory.id === "string" && getMemoryStringField(memory, "type") === "documents";
+  return (
+    !!memory &&
+    typeof memory.id === "string" &&
+    getMemoryStringField(memory, "type") === "documents"
+  );
 }
 
 export function toDocumentRecord(memory: Memory) {

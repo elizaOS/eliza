@@ -1859,9 +1859,7 @@ export class ElizaSandboxService {
     body?: string | null,
     query?: string,
   ): Promise<Response | null> {
-    if (
-      !ElizaSandboxService.ALLOWED_WORKFLOW_PATH_PATTERNS.some((re) => re.test(workflowPath))
-    ) {
+    if (!ElizaSandboxService.ALLOWED_WORKFLOW_PATH_PATTERNS.some((re) => re.test(workflowPath))) {
       logger.warn("[agent-sandbox] Rejected workflow proxy: invalid path", {
         agentId,
         workflowPath,

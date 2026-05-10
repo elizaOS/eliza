@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { ForbiddenError } from "../../lib/api/errors";
 import { handleCompatError } from "../../../apps/api/compat/_lib/error-handler";
+import { ForbiddenError } from "../../lib/api/errors";
 
 describe("handleCompatError", () => {
   test("maps ForbiddenError to 403", async () => {
