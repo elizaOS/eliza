@@ -84,7 +84,13 @@ export function runtimeExecutionModeForDeploymentTarget(
 }
 
 export function readRuntimeExecutionModeConfig(
-  config: Pick<ElizaConfig, "runtime" | "deploymentTarget"> | null | undefined,
+  // Structural — the keys we read off the eliza config. Avoid `Pick`-from-
+  // `ElizaConfig` since `runtime` and `deploymentTarget` are not declared
+  // top-level on that type yet (they live under nested namespaces).
+  config:
+    | { runtime?: unknown; deploymentTarget?: unknown }
+    | null
+    | undefined,
 ): RuntimeExecutionMode {
   const runtimeConfig = isPlainObject(config?.runtime)
     ? config.runtime
