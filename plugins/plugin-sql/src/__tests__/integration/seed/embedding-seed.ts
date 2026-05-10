@@ -89,8 +89,8 @@ export const embeddingTestMemories: TestMemory[] = [
       type: "text",
     },
     unique: true,
-    type: "test",
-    metadata: { type: "test" },
+    type: "custom",
+    metadata: { type: "custom" },
   },
   {
     id: fixedUuid(11),
@@ -103,8 +103,8 @@ export const embeddingTestMemories: TestMemory[] = [
       type: "text",
     },
     unique: true,
-    type: "test",
-    metadata: { type: "test" },
+    type: "custom",
+    metadata: { type: "custom" },
   },
   {
     id: fixedUuid(12),
@@ -117,8 +117,8 @@ export const embeddingTestMemories: TestMemory[] = [
       type: "text",
     },
     unique: true,
-    type: "test",
-    metadata: { type: "test" },
+    type: "custom",
+    metadata: { type: "custom" },
   },
 ];
 

@@ -21,7 +21,7 @@ function makeRuntime(registrations: MessageConnectorRegistration[]): IAgentRunti
     getMemoryById: vi.fn(async () => null),
   };
 
-  return runtime as IAgentRuntime;
+  return runtime as never as IAgentRuntime;
 }
 
 describe("WhatsApp message connector registration", () => {
@@ -48,7 +48,7 @@ describe("WhatsApp message connector registration", () => {
       searchConnectorMessages: vi.fn(async () => []),
       reactConnectorMessage: vi.fn(async () => undefined),
       getConnectorUser: vi.fn(async () => null),
-    } as WhatsAppConnectorService;
+    } as never as WhatsAppConnectorService;
 
     WhatsAppConnectorService.registerSendHandlers(runtime, service);
 
@@ -101,7 +101,7 @@ describe("WhatsApp message connector registration", () => {
       searchConnectorMessages: vi.fn(async () => []),
       reactConnectorMessage: vi.fn(async () => undefined),
       getConnectorUser: vi.fn(async () => null),
-    } as WhatsAppConnectorService;
+    } as never as WhatsAppConnectorService;
 
     WhatsAppConnectorService.registerSendHandlers(runtime, service);
     await registrations[0].sendHandler?.(

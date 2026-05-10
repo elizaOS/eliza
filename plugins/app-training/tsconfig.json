@@ -10,12 +10,8 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
-      "drizzle-orm": [
-        "../plugin-sql/node_modules/drizzle-orm"
-      ],
-      "drizzle-orm/*": [
-        "../plugin-sql/node_modules/drizzle-orm/*"
-      ],
+      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
@@ -37,7 +33,5 @@
       ]
     }
   },
-  "include": [
-    "src"
-  ]
+  "include": ["src"]
 }

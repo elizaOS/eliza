@@ -9,17 +9,10 @@
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
-    "types": [
-      "bun-types",
-      "node"
-    ],
+    "types": ["bun-types", "node"],
     "paths": {
-      "drizzle-orm": [
-        "../plugin-sql/node_modules/drizzle-orm"
-      ],
-      "drizzle-orm/*": [
-        "../plugin-sql/node_modules/drizzle-orm/*"
-      ],
+      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
@@ -36,10 +29,6 @@
       "@elizaos/ui/*": ["../../packages/ui/src/*"]
     }
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "src/**/*.d.ts"
-  ],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
   "exclude": []
 }

@@ -24,6 +24,10 @@
 		"node_modules",
 		"dist",
 		"**/node_modules/**",
-		"vitest.config.ts"
+		"vitest.config.ts",
+		"**/__tests__/**",
+		"**/*.test.ts",
+		"**/*.test.tsx",
+		"**/*.e2e.test.ts"
 	]
 }

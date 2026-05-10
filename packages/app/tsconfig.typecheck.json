@@ -1,10 +1,9 @@
 {
-  "extends": "./tsconfig.json",
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@elizaos/app-core": [
-        "../app-core/dist/index.d.ts"
-      ],
+      "@elizaos/app-core": ["../app-core/dist/index.d.ts"],
       "@elizaos/app-elizamaker": [
         "../../plugins/app-elizamaker/dist/index.d.ts"
       ],
@@ -59,9 +58,7 @@
       "@elizaos/plugin-sql": [
         "../../plugins/plugin-sql/src/dist/index.node.d.ts"
       ],
-      "@elizaos/agent": [
-        "./src/types/typecheck-package-shims.d.ts"
-      ],
+      "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/plugin-video": [
         "../../plugins/plugin-video/dist/index.d.ts"
       ],
@@ -84,14 +81,13 @@
         "../../plugins/plugin-google/dist/index.d.ts"
       ],
       "@elizaos/plugin-telegram": [
-        "../../plugins/plugin-telegram/dist/index.d.ts"
+        "../../plugins/plugin-telegram/dist/index"
       ],
-      "@elizaos/core": [
-        "../core/dist/index.d.ts"
+      "@elizaos/plugin-local-inference": [
+        "../../plugins/plugin-local-inference/dist/index"
       ],
-      "@elizaos/shared": [
-        "../shared/dist/index.d.ts"
-      ],
+      "@elizaos/core": ["../core/dist/index.d.ts"],
+      "@elizaos/shared": ["../shared/dist/index.d.ts"],
       "@elizaos/capacitor-agent": [
         "../native-plugins/agent/src/index.ts"
       ],
@@ -110,27 +106,19 @@
       "@elizaos/capacitor-mobile-signals": [
         "../native-plugins/mobile-signals/src/index.ts"
       ],
-      "@elizaos/ui": [
-        "../ui/dist/index.d.ts"
-      ],
-      "react": [
-        "../../node_modules/@types/react/index.d.ts"
-      ],
+      "@elizaos/ui": ["../ui/dist/index.d.ts"],
+      "react": ["../../node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "../../node_modules/@types/react/jsx-runtime.d.ts"
       ],
       "react/jsx-dev-runtime": [
         "../../node_modules/@types/react/jsx-dev-runtime.d.ts"
       ],
-      "react-dom": [
-        "../../node_modules/@types/react-dom/index.d.ts"
-      ],
+      "react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
       "react-dom/client": [
         "../../node_modules/@types/react-dom/client.d.ts"
       ],
-      "@clawville/app-clawville": [
-        "../../plugins/app-clawville/src/index.ts"
-      ]
+      "@clawville/app-clawville": ["../../plugins/app-clawville/src/index.ts"]
     }
   }
 }

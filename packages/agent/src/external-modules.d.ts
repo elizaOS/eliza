@@ -309,14 +309,6 @@ declare module "@elizaos/app-contacts" {
   export const appContactsPlugin: Plugin;
 }
 
-declare module "@elizaos/app-phone" {
-  import type { Action, Plugin, Provider } from "@elizaos/core";
-
-  export const phoneCallLogProvider: Provider;
-  export const placeCallAction: Action;
-  export const appPhonePlugin: Plugin;
-}
-
 declare module "@elizaos/app-wifi" {
   import type { Plugin, Provider } from "@elizaos/core";
 
@@ -327,24 +319,6 @@ declare module "@elizaos/app-wifi" {
 declare module "@elizaos/plugin-discord-local" {
   const plugin: unknown;
   export default plugin;
-}
-
-declare module "@elizaos/app-task-coordinator" {
-  export interface TaskCompletionSummary {
-    sessionId: string;
-    label: string;
-    agentType: string;
-    originalTask: string;
-    status: string;
-    completionSummary: string;
-    validationSummary?: string;
-    roomId?: string;
-    workdir?: string;
-    replyToExternalMessageId?: string;
-  }
-
-  export interface SwarmEvent extends Record<string, unknown> {}
-  export interface TaskContext extends Record<string, unknown> {}
 }
 
 declare module "@elizaos/plugin-edge-tts";

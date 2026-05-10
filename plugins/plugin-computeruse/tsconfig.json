@@ -22,9 +22,13 @@
     "noUnusedParameters": false,
     "types": ["node", "bun-types"]
   },
-  "include": [
-    "src",
-    "../../packages/agent/src/external-modules.d.ts"
-  ],
-  "exclude": ["dist", "node_modules"]
+  "include": ["src", "../../packages/agent/src/external-modules.d.ts"],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
+  ]
 }

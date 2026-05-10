@@ -10,11 +10,7 @@
  * dependency graphs during route-module evaluation.
  */
 
-import type {
-  Character,
-  IAgentRuntime,
-  UUID,
-} from "@elizaos/core";
+import type { Character, IAgentRuntime, UUID } from "@elizaos/core";
 
 import { v4 as uuidv4 } from "uuid";
 
@@ -72,13 +68,17 @@ async function getRuntime(): Promise<IAgentRuntime> {
     try {
       console.log("🚀 Initializing elizaOS runtime...");
 
-      const [{ AgentRuntime }, { openaiPlugin }, { plugin: sqlPlugin }, character] =
-        await Promise.all([
-          import("@elizaos/core"),
-          import("@elizaos/plugin-openai"),
-          import("@elizaos/plugin-sql"),
-          getCharacter(),
-        ]);
+      const [
+        { AgentRuntime },
+        { openaiPlugin },
+        { plugin: sqlPlugin },
+        character,
+      ] = await Promise.all([
+        import("@elizaos/core"),
+        import("@elizaos/plugin-openai"),
+        import("@elizaos/plugin-sql"),
+        getCharacter(),
+      ]);
 
       const newRuntime = new AgentRuntime({
         character,

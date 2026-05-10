@@ -26,5 +26,5 @@
     "types": ["node", "bun-types"]
   },
   "include": ["**/*.ts"],
-  "exclude": []
+  "exclude": ["__tests__", "**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]
 }

@@ -2,11 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": [
-      "DOM",
-      "DOM.Iterable",
-      "ESNext"
-    ],
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "allowJs": false,
     "jsx": "react-jsx",
     "skipLibCheck": true,
@@ -20,9 +16,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "typeRoots": [
       "../app-core/node_modules/@types",
       "../../node_modules/@types",
@@ -35,18 +29,10 @@
       "../../../node_modules/.bun/node_modules"
     ],
     "paths": {
-      "@elizaos/plugin-browser": [
-        "./src/index.ts"
-      ],
-      "@elizaos/core": [
-        "../../packages/core/src/index.node.ts"
-      ],
-      "@elizaos/app-lifeops": [
-        "../../plugins/app-lifeops/src/index.ts"
-      ],
-      "@elizaos/app-companion": [
-        "../../plugins/app-companion/src/index.ts"
-      ],
+      "@elizaos/plugin-browser": ["./src/index.ts"],
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
+      "@elizaos/app-companion": ["../../plugins/app-companion/src/index.ts"],
       "@elizaos/capacitor-appblocker": [
         "../../packages/native-plugins/appblocker/src/index.ts"
       ],
@@ -55,9 +41,12 @@
       ]
     }
   },
-  "include": [
-    "src",
-    "../../plugins/app-companion/src/ambient-modules.d.ts"
-  ],
-  "references": []
+  "include": ["src", "../../plugins/app-companion/src/ambient-modules.d.ts"],
+  "references": [],
+  "exclude": [
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
+  ]
 }

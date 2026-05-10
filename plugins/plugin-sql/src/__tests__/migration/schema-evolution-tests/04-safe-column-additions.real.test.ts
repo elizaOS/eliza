@@ -5,6 +5,10 @@ import { RuntimeMigrator } from "../../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../../runtime-migrator/types";
 import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-helpers";
 
+type AgentRow = Record<string, unknown>;
+type EntityRow = Record<string, unknown>;
+type ColumnRow = Record<string, unknown>;
+
 /**
  * Schema Evolution Test 4 & 5: Safe Column Additions
  *

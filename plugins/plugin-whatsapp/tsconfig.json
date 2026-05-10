@@ -34,6 +34,10 @@
     "node_modules",
     "dist",
     "build.ts",
-    "./generated/**"
+    "./generated/**",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
   ]
 }

@@ -1,4 +1,10 @@
-import { type Agent, ChannelType, stringToUuid, type UUID } from "@elizaos/core";
+import {
+  type Agent,
+  ChannelType,
+  type CharacterSettings,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
@@ -193,7 +199,7 @@ describe("Agent Integration Tests", () => {
           ...testAgent,
           id: uuidv4() as UUID,
           name: "Integration Test Complex Settings",
-          settings: complexSettings as Record<string, unknown>,
+          settings: complexSettings as unknown as CharacterSettings,
         };
 
         const result = await adapter.createAgent(newAgent);
@@ -383,7 +389,7 @@ describe("Agent Integration Tests", () => {
               password: "secret123",
               token: "token123",
             },
-          },
+          } as unknown as CharacterSettings,
         };
 
         await adapter.createAgent(newAgent);
@@ -396,7 +402,7 @@ describe("Agent Integration Tests", () => {
               password: null, // This should be removed
               token: "newToken", // This should be updated
             },
-          } as Record<string, unknown>,
+          } as unknown as CharacterSettings,
         };
 
         await adapter.updateAgent(newAgent.id, updateData);
@@ -500,7 +506,7 @@ describe("Agent Integration Tests", () => {
               prop1: "value1",
               propToRemove: "will be removed",
             },
-          },
+          } as unknown as CharacterSettings,
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
@@ -516,7 +522,7 @@ describe("Agent Integration Tests", () => {
             nestedObject: {
               propToRemove: null,
             },
-          } as Record<string, unknown>,
+          } as unknown as CharacterSettings,
         };
 
         await adapter.updateAgent(agentId, updateData);
@@ -780,7 +786,7 @@ describe("Agent Integration Tests", () => {
             id: worldId,
             name: "Test World",
             agentId: agentId,
-            serverId: uuidv4() as UUID,
+            messageServerId: uuidv4() as UUID,
           });
 
           // Create rooms
@@ -817,13 +823,13 @@ describe("Agent Integration Tests", () => {
               id: entityId1,
               agentId: agentId,
               names: ["Entity 1"],
-              metadata: { type: "test" },
+              metadata: { type: "custom" },
             },
             {
               id: entityId2,
               agentId: agentId,
               names: ["Entity 2"],
-              metadata: { type: "test" },
+              metadata: { type: "custom" },
             },
           ]);
 
@@ -976,25 +982,27 @@ describe("Agent Integration Tests", () => {
             simpleValue: "hello",
           },
           messageExamples: [
-            [
-              {
-                name: "user",
-                content: {
-                  text: "Hello there",
+            {
+              examples: [
+                {
+                  name: "user",
+                  content: {
+                    text: "Hello there",
+                  },
                 },
-              },
-              {
-                name: "assistant",
-                content: {
-                  text: "Hi, how can I help you?",
+                {
+                  name: "assistant",
+                  content: {
+                    text: "Hi, how can I help you?",
+                  },
                 },
-              },
-            ],
+              ],
+            },
           ],
           postExamples: ["Example post"],
           topics: ["topic1", "topic2"],
           adjectives: ["smart", "helpful"],
-        };
+        } as Agent;
 
         await adapter.createAgent(complexAgent);
 

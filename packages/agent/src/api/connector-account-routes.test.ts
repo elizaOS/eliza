@@ -341,7 +341,9 @@ function createConnectorAccountHarness(options: {
       _req: IncomingMessage,
       _res: ServerResponse,
       _options?: ReadJsonBodyOptions,
-    ): Promise<T | null> => (options.body ?? {}) as T) as ConnectorAccountRouteContext["readJsonBody"],
+    ): Promise<T | null> =>
+      (options.body ??
+        {}) as T) as ConnectorAccountRouteContext["readJsonBody"],
     json: (_res, data, status = 200) => {
       captured.status = status;
       captured.body = data;

@@ -1,8 +1,9 @@
-import type { IAgentRuntime, Memory, State } from '@elizaos/core';
+import type { IAgentRuntime, Memory, Service, ServiceTypeName, State } from '@elizaos/core';
+import { MockNgrokService } from './mocks/NgrokServiceMock';
 
 type MockRuntimeOverrides = Partial<IAgentRuntime> & {
   settings?: Record<string, string>;
-  services?: Record<string, unknown>;
+  services?: Record<string, Service | null | undefined>;
 };
 
 // Local mock implementations until core test-utils build issue is resolved
@@ -39,7 +40,13 @@ const createCoreMockState = (overrides: Partial<State> = {}) => ({
  * @param overrides - Optional overrides for the default mock methods and properties
  * @returns A mock runtime for testing
  */
-export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
+export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentRuntime {
+  const {
+    settings: extraSettings = {},
+    services: extraServices = {},
+    ...runtimeOverrides
+  } = overrides;
+
   // Use the unified mock runtime from core with ngrok-specific overrides
   return createCoreMockRuntime({
     character: {
@@ -51,38 +58,39 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
       topics: ['ngrok', 'tunneling', 'webhooks'],
       knowledge: [],
       plugins: ['@elizaos/plugin-ngrok'],
-      ...overrides.character,
+      ...runtimeOverrides.character,
     },
 
     // Ngrok-specific settings
-    getSetting: (key: string) => {
+    getSetting: (key: string): string | boolean | number | null => {
       const settings: Record<string, string> = {
         NGROK_AUTH_TOKEN: process.env.NGROK_AUTH_TOKEN || 'test-ngrok-auth-token',
         NGROK_DOMAIN: process.env.NGROK_DOMAIN || '',
         NGROK_REGION: 'us',
         LOG_LEVEL: 'info',
-        ...overrides.settings,
+        ...extraSettings,
       };
-      // Pass through environment variables for real integration tests
-      return settings[key] || process.env[key];
+      const direct = settings[key];
+      if (direct !== undefined) return direct;
+      const envVal = process.env[key];
+      return envVal === undefined ? null : envVal;
     },
 
     // Ngrok-specific services
-    getService: (name: string) => {
-      const services: Record<string, unknown> = {
-        'ngrok-tunnel': {
-          start: async () => {},
-          stop: async () => {},
-          isActive: () => false,
-          getUrl: () => null,
-          getStatus: () => ({ active: false, url: null }),
-        },
-        ...overrides.services,
+    getService: <T extends Service>(name: ServiceTypeName | string): T | null => {
+      const placeholderRuntime = { agentId: 'mock' } as IAgentRuntime;
+      const defaults: Record<string, Service> = {
+        'ngrok-tunnel': new MockNgrokService(placeholderRuntime),
       };
-      return services[name];
+      const merged: Record<string, Service | null | undefined> = {
+        ...defaults,
+        ...extraServices,
+      };
+      const resolved = merged[String(name)];
+      return (resolved ?? null) as T | null;
     },
 
-    ...overrides,
+    ...runtimeOverrides,
   }) as IAgentRuntime;
 }
 

@@ -8,7 +8,10 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { ActiveModelCoordinator } from "./active-model";
+import {
+  ActiveModelCoordinator,
+  type LocalInferenceLoadOverrides,
+} from "./active-model";
 import { readEffectiveAssignments, setAssignment } from "./assignments";
 import { registerBundledModels } from "./bundled-models";
 import type { CacheStatsEntry } from "./cache-bridge";
@@ -257,12 +260,13 @@ export class LocalInferenceService {
   async setActive(
     runtime: AgentRuntime | null,
     modelId: string,
+    overrides?: LocalInferenceLoadOverrides,
   ): Promise<ActiveModelState> {
     const installed = (await this.getInstalled()).find((m) => m.id === modelId);
     if (!installed) {
       throw new Error(`Model not installed: ${modelId}`);
     }
-    return this.activeModel.switchTo(runtime, installed);
+    return this.activeModel.switchTo(runtime, installed, overrides);
   }
 
   async clearActive(runtime: AgentRuntime | null): Promise<ActiveModelState> {

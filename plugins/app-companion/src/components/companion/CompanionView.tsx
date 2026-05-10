@@ -1,4 +1,4 @@
-import { PtyConsoleSidePanel } from "@elizaos/app-task-coordinator";
+import { PtyConsoleSidePanel } from "../../../../app-task-coordinator/src/PtyConsoleSidePanel";
 // Static import: CharacterEditor is statically re-exported by app-core's
 // browser entry, so the previous lazy() was eagerly merged back into the
 // main chunk. Drop the wrapper to silence the dynamic↔static collision

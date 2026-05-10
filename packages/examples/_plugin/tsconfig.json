@@ -34,6 +34,10 @@
   "include": [
     "src/**/*.ts"
   ],
-  "exclude": [],
+  "exclude": [
+    "src/**/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ],
   "extends": "../../../tsconfig.dist-paths.json"
 }
