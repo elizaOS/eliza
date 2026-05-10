@@ -3167,29 +3167,25 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "operation",
-		description:
-			"Legacy alias for action, accepted for planner compatibility.",
+		description: "Legacy alias for action, accepted for planner compatibility.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "subAction",
-		description:
-			"Legacy alias for action, accepted for planner compatibility.",
+		description: "Legacy alias for action, accepted for planner compatibility.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "__subaction",
-		description:
-			"Legacy alias for action, accepted for planner compatibility.",
+		description: "Legacy alias for action, accepted for planner compatibility.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "op",
-		description:
-			"Legacy alias for action, accepted for planner compatibility.",
+		description: "Legacy alias for action, accepted for planner compatibility.",
 		required: false,
 		schema: { type: "string" },
 	},

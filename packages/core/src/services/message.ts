@@ -2854,7 +2854,11 @@ function unwrapPlanActionsToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 			? (rawActionParameters as Record<string, unknown>)
 			: {};
 	const mergedParameters: Record<string, unknown> = subaction
-		? { ...baseParameters, action: baseParameters.action ?? subaction, subaction }
+		? {
+				...baseParameters,
+				action: baseParameters.action ?? subaction,
+				subaction,
+			}
 		: baseParameters;
 	return {
 		id: toolCall.id,
@@ -3797,8 +3801,8 @@ function normalizeAliasedPlannerToolCall(
 			const originalName = normalizeActionIdentifier(toolCall.name);
 			const rawAction =
 				toolCall.params && typeof toolCall.params === "object"
-					? stringParam((toolCall.params as Record<string, unknown>).action) ??
-						stringParam((toolCall.params as Record<string, unknown>).subaction)
+					? (stringParam((toolCall.params as Record<string, unknown>).action) ??
+						stringParam((toolCall.params as Record<string, unknown>).subaction))
 					: undefined;
 			const params =
 				originalName.includes("AUTOFILL") ||
@@ -3994,7 +3998,7 @@ async function executeV5PlannedToolCall(
 								subaction: "fill",
 							},
 						}
-			: unwrappedToolCall;
+					: unwrappedToolCall;
 	const toolCall = normalizeAliasedPlannerToolCall(
 		toolCallForNormalization,
 		effectiveResolvedName,
