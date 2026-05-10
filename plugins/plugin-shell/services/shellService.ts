@@ -56,7 +56,7 @@ import {
   markBackgrounded,
   markExited,
 } from "./processRegistry";
-import { isCloudExecutionMode, shouldUseSandboxExecution } from "../utils/executionMode";
+import { isCloudExecutionMode, shouldUseSandboxExecution } from "@elizaos/shared";
 
 const DEFAULT_MAX_OUTPUT = clampNumber(
   readEnvInt("SHELL_MAX_OUTPUT_CHARS"),

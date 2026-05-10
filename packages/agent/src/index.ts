@@ -124,6 +124,15 @@ export * from "./runtime/core-plugins.ts";
 export * from "./runtime/eliza.ts";
 export * from "./runtime/eliza-plugin.ts";
 export * from "./runtime/embedding-presets.ts";
+export {
+  isCloudExecutionMode,
+  type LocalExecutionMode,
+  resolveLocalExecutionMode,
+  resolveRuntimeExecutionMode,
+  type RuntimeExecutionMode,
+  type RuntimeExecutionModeSource,
+  shouldUseSandboxExecution,
+} from "./runtime/local-execution-mode.ts";
 export * from "./runtime/onboarding-names.ts";
 export * from "./runtime/operations/vault-bridge.ts";
 export * from "./runtime/owner-entity.ts";
@@ -146,17 +155,6 @@ export {
   setStewardEvmBridgeActive,
 } from "./services/external-bridge-state.ts";
 export * from "./services/index.ts";
-// Re-export the shell-execution router by name to keep a stable surface for
-// callers that consume the chokepoint directly without unpacking the wider
-// services barrel.
-export {
-  runShell,
-  type ShellExecutionMode,
-  type ShellRequest,
-  type ShellResult,
-  type ShellRouterContext,
-  type ShellSandboxBackend,
-} from "./services/shell-execution-router.ts";
 export {
   type JsRuntimeBridge,
   type JsRuntimeEvaluateOptions,
@@ -184,6 +182,17 @@ export {
   resolveRelationshipsGraphService,
   searchMemoriesForCluster,
 } from "./services/relationships-graph.ts";
+// Re-export the shell-execution router by name to keep a stable surface for
+// callers that consume the chokepoint directly without unpacking the wider
+// services barrel.
+export {
+  runShell,
+  type ShellExecutionMode,
+  type ShellRequest,
+  type ShellResult,
+  type ShellRouterContext,
+  type ShellSandboxBackend,
+} from "./services/shell-execution-router.ts";
 export * from "./test-support/index.ts";
 export * from "./test-utils/sqlite-compat.ts";
 export * from "./triggers/runtime.ts";
