@@ -26,7 +26,11 @@ import { describe, expect, it, vi } from "vitest";
  * default so CI doesn't have to bundle a 90MB GGUF.
  */
 describe("embedding pipeline parity", () => {
-  it("single-input and batched paths produce identical vectors", async () => {
+  // Cold-start jitter: vitest's first transform of `../src/index.ts` plus
+  // the singleton's `validateConfig()` zod walk can punch through the
+  // default 5s timeout on a cold cache (W2-H observed ~21s transform).
+  // Warm runs are <100ms — bump only this test, not the whole file.
+  it("single-input and batched paths produce identical vectors", { timeout: 30_000 }, async () => {
     const mod = await import("../src/index.ts");
     const manager = mod.LocalEmbeddingManager.getInstance();
 
