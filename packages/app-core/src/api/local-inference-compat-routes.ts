@@ -41,7 +41,7 @@ import {
   getCompatApiToken,
   getProvidedApiToken,
   tokenMatches,
-} from "./auth";
+} from "./auth.ts";
 import {
   type CompatRuntimeState,
   readCompatJsonBody,

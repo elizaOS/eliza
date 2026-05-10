@@ -58,13 +58,20 @@ export const manageSecretAction: Action = {
 		"Manage secrets - get, set, delete, or list secrets at various levels",
 	parameters: [
 		{
-			name: "operation",
+			name: "subaction",
 			description: "Secret operation: get, set, delete, list, or check.",
 			required: false,
 			schema: {
 				type: "string" as const,
 				enum: ["get", "set", "delete", "list", "check"],
 			},
+		},
+		{
+			name: "operation",
+			description:
+				"Legacy alias for subaction, accepted for planner compatibility.",
+			required: false,
+			schema: { type: "string" as const },
 		},
 		{
 			name: "key",
@@ -121,9 +128,14 @@ export const manageSecretAction: Action = {
 			_options?.parameters && typeof _options.parameters === "object"
 				? (_options.parameters as Record<string, unknown>)
 				: {};
-		const hasStructuredOperation =
-			typeof params.operation === "string" &&
-			params.operation.trim().length > 0;
+		const subactionField =
+			typeof params.subaction === "string" && params.subaction.trim().length > 0
+				? params.subaction
+				: typeof params.operation === "string" &&
+						params.operation.trim().length > 0
+					? params.operation
+					: undefined;
+		const hasStructuredOperation = typeof subactionField === "string";
 		return (
 			hasStructuredOperation ||
 			hasActionContext(message, _state, {
@@ -247,6 +259,7 @@ export const manageSecretAction: Action = {
 			// Transform and validate result
 			operation = {
 				operation:
+					(params.subaction as SecretOperation["operation"]) ||
 					(params.operation as SecretOperation["operation"]) ||
 					(result?.operation as SecretOperation["operation"]) ||
 					"list",

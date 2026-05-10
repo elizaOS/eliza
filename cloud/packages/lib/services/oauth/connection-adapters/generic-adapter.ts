@@ -15,8 +15,8 @@ import { incrementOAuthVersion } from "../cache-version";
 import { Errors } from "../errors";
 import { getProvider } from "../provider-registry";
 import { refreshOAuth2Token } from "../providers";
-import { formatOAuthConnectionRole } from "../types";
 import type { OAuthConnection, TokenResult } from "../types";
+import { formatOAuthConnectionRole } from "../types";
 import type { ConnectionAdapter } from "./types";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -8,10 +8,10 @@
  * their social platforms for promotion automation.
  */
 
-import { BrandCard, Button } from "../primitives";
 import { ArrowRight, Bot, MessageSquare, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { BrandCard, Button } from "../primitives";
 
 const STORAGE_KEY_DISCORD = "eliza_dismiss_discord_hint";
 const STORAGE_KEY_TELEGRAM = "eliza_dismiss_telegram_hint";

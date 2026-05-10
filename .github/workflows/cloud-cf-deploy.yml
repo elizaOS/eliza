@@ -73,7 +73,7 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bun install --no-save && git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS workspaces
         run: bun run build:linked-workspaces
@@ -139,7 +139,7 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bun install --no-save && git diff --exit-code -- bun.lock
 
       - name: Build linked elizaOS core workspace
         run: bun run build:linked-core

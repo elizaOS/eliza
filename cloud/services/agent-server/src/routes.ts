@@ -110,6 +110,7 @@ async function withWorkflowService<T>(
   fn: (service: WorkflowServiceLike) => Promise<T>,
 ): Promise<T | { error: string }> {
   try {
+    // biome-ignore lint/correctness/useHookAtTopLevel: AgentManager.useRuntime is a server runtime helper, not a React hook.
     return await manager.useRuntime(agentId, async (runtime) => {
       const service = runtime.getService?.("workflow") as WorkflowServiceLike | null | undefined;
       if (!service) {
@@ -301,23 +302,26 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
       const denial = requireInternalAuth(headers as HeaderMap, set, sharedSecret);
       if (denial) return denial;
 
-      return await manager.useRuntime(params.id, async (runtime) => {
-        const service = runtime.getService?.("workflow");
-        return {
-          mode: service ? "local" : "disabled",
-          host: "in-process",
-          status: service ? "ready" : "error",
-          cloudConnected: true,
-          localEnabled: Boolean(service),
-          platform: "cloud",
-          cloudHealth: "ok",
-          errorMessage: service ? null : "Workflow service is not registered",
-        };
-      }).catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err);
-        set.status = message === "Agent not found" || message === "Agent not running" ? 404 : 500;
-        return { error: message };
-      });
+      // biome-ignore lint/correctness/useHookAtTopLevel: AgentManager.useRuntime is a server runtime helper, not a React hook.
+      return await manager
+        .useRuntime(params.id, async (runtime) => {
+          const service = runtime.getService?.("workflow");
+          return {
+            mode: service ? "local" : "disabled",
+            host: "in-process",
+            status: service ? "ready" : "error",
+            cloudConnected: true,
+            localEnabled: Boolean(service),
+            platform: "cloud",
+            cloudHealth: "ok",
+            errorMessage: service ? null : "Workflow service is not registered",
+          };
+        })
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          set.status = message === "Agent not found" || message === "Agent not running" ? 404 : 500;
+          return { error: message };
+        });
     })
 
     .get("/agents/:id/workflows", async ({ params, headers, set }) => {
@@ -342,7 +346,10 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
       }
 
       return await withWorkflowService(manager, params.id, set, async (service) => {
-        const deployed = await service.deployWorkflow(payload.workflow, readUserId(headerMap, body));
+        const deployed = await service.deployWorkflow(
+          payload.workflow,
+          readUserId(headerMap, body),
+        );
         const deployedRecord = isRecord(deployed) ? deployed : {};
         const deployedId = typeof deployedRecord.id === "string" ? deployedRecord.id : undefined;
         if (payload.activate === false && deployedId && deployedRecord.active === true) {

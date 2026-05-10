@@ -6,6 +6,8 @@ import { Pool, type PoolClient, type PoolConfig } from "pg";
 export class PostgresConnectionManager {
   private pool: Pool;
   private db: NodePgDatabase;
+  private closePromise: Promise<void> | null = null;
+  private shuttingDown = false;
 
   constructor(connectionString: string, rlsServerId?: string) {
     const poolConfig: PoolConfig = {
@@ -46,13 +48,25 @@ export class PostgresConnectionManager {
     return this.pool;
   }
 
+  public isShuttingDown(): boolean {
+    return this.shuttingDown || this.pool.ending || this.pool.ended;
+  }
+
   public async getClient(): Promise<PoolClient> {
+    if (this.isShuttingDown()) {
+      throw new Error("Database pool is shutting down - client acquisition rejected");
+    }
+
     return this.pool.connect();
   }
 
   public async testConnection(): Promise<boolean> {
     let client: PoolClient | null = null;
     try {
+      if (this.isShuttingDown()) {
+        return false;
+      }
+
       client = await this.pool.connect();
       await client.query("SELECT 1");
       return true;
@@ -76,6 +90,10 @@ export class PostgresConnectionManager {
     entityId: UUID | null,
     callback: (tx: NodePgDatabase) => Promise<T>
   ): Promise<T> {
+    if (this.isShuttingDown()) {
+      throw new Error("Database pool is shutting down - operation rejected");
+    }
+
     const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
 
     return await this.db.transaction(async (tx) => {
@@ -105,6 +123,19 @@ export class PostgresConnectionManager {
   }
 
   public async close(): Promise<void> {
-    await this.pool.end();
+    if (this.closePromise) {
+      return this.closePromise;
+    }
+
+    this.shuttingDown = true;
+    if (this.pool.ended) {
+      return;
+    }
+
+    this.closePromise = this.pool.end().finally(() => {
+      this.shuttingDown = true;
+    });
+
+    return this.closePromise;
   }
 }

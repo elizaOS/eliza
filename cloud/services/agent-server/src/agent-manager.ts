@@ -410,7 +410,11 @@ export class AgentManager {
     for (const [, entry] of this.agents) {
       if (entry.state === "running") {
         await entry.runtime.stop();
-        entry.state = "stopped";
+        this.agents.set(entry.agentId, {
+          agentId: entry.agentId,
+          characterRef: entry.characterRef,
+          state: "stopped",
+        });
       }
     }
   }

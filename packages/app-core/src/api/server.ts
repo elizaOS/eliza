@@ -39,7 +39,7 @@ import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
-} from "./auth";
+} from "./auth.ts";
 import { handleAutomationsCompatRoutes } from "./automations-compat-routes";
 import {
   type CompatRuntimeState,

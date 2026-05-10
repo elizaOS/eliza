@@ -46,14 +46,26 @@ export interface InstructionSearchInput {
   options?: InstructionSearchOptions;
 }
 
-const REWRITE_INSTRUCTIONS = `You are a prompt engineer. Improve the SYSTEM PROMPT below for the task it describes.
+const REWRITE_INSTRUCTIONS = `Rewrite the SYSTEM PROMPT to make a task planner work better. The planner sees a tool list, conversation context, and a user message; it returns one JSON object with toolCalls or messageToUser.
 
-Constraints:
-- Preserve the original task contract (inputs, outputs, format).
-- Keep all literal placeholders like {{agentName}} or {{providers}} intact.
-- Do not invent new fields, do not remove existing ones.
-- Tighten language, add guardrails for failure modes, reorder for clarity.
-- Output ONLY the rewritten prompt. No commentary, no fenced code blocks.`;
+Hard constraints:
+- Preserve every input/output requirement from the original (placeholders, JSON schema, terminal-message rules).
+- Keep all literal placeholders like {{contextObject}}, {{trajectory}}, {{agentName}}, {{providers}} byte-identical and in the same locations.
+- The planner must use only the tool names that appear in the runtime-injected tool list. Do NOT enumerate any specific tool names, action names, or connector names in the rewrite — those are dynamically scoped per turn and hardcoding them in the prompt teaches the model to invent or stick to a stale list.
+- Output length must not exceed 1.3x the original prompt's character count. Aim for shorter than the original when possible.
+
+Style rules (anti-meme):
+- Imperative voice. No "You are X", no "Your job is", no role-playing framing.
+- No markdown headers, no fenced code blocks, no decorative bullets, no emojis.
+- No instructions to "still output the action with empty args" — actions need real arguments.
+- No restriction to a single tool call when the original allows a queue.
+
+Do:
+- Add concise task-specific guardrails grounded in observed failure modes.
+- Tighten phrasing of existing rules.
+- Preserve plural tool-call behaviour when the original mentions a "queue" or multiple tools.
+
+Output the rewritten prompt body only. No commentary, no preamble, no code fences.`;
 
 export async function runInstructionSearch(
   input: InstructionSearchInput,
@@ -99,6 +111,34 @@ export async function runInstructionSearch(
           variant,
           score: 0,
           notes: "empty rewrite — skipped",
+        });
+        continue;
+      }
+      // Reject variants that violate the anti-meme rules. These patterns
+      // have been shown to reduce planner accuracy on Anthropic Haiku/Opus
+      // (role-play framing primes chat-completion behaviour over tool-use).
+      const memeViolations = [
+        /^\s*you are\b/i,
+        /^\s*your job is\b/i,
+        /^\s*you're\b/i,
+      ];
+      const memeHit = memeViolations.find((re) => re.test(cleaned));
+      if (memeHit) {
+        lineage.push({
+          round,
+          variant,
+          score: 0,
+          notes: `rejected: role-play opener (${memeHit})`,
+        });
+        continue;
+      }
+      const lengthCap = Math.ceil(currentBaseline.length * 1.3);
+      if (cleaned.length > lengthCap) {
+        lineage.push({
+          round,
+          variant,
+          score: 0,
+          notes: `rejected: length ${cleaned.length} > cap ${lengthCap}`,
         });
         continue;
       }

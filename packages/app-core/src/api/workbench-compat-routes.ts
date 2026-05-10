@@ -5,7 +5,7 @@
  */
 import type http from "node:http";
 import { type AgentRuntime, logger, type Task } from "@elizaos/core";
-import { ensureRouteAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth.ts";
 import {
   type CompatRuntimeState,
   readCompatJsonBody,

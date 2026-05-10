@@ -34,14 +34,18 @@
 //
 // llama.cpp pin (matches plugins/plugin-aosp-local-inference/src/aosp-llama-adapter.ts):
 //   fork:   https://github.com/milady-ai/llama.cpp
-//   tag:    v0.2.0-milady          (milady/integration HEAD)
-//   commit: 7c7818aafc7599996268226e2e56099f4f38e972
+//   tag:    v0.4.0-milady          (milady/integration HEAD)
+//   commit: 08032d57e15574f2a7ca19fc3f29510c8673d590
 //
-//   v0.2.0-milady adds DFlash speculative decoding CLI surface
-//   (--spec-type dflash, --draft-min-prob alias, n_drafted_total /
-//   n_drafted_accepted_total Prometheus counters) on top of v0.1.0-milady.
-//   Both AOSP and host (build-llama-cpp-dflash.mjs) now pin to the same
-//   unified-fork commit — the previous spiritbuun split is retired.
+//   v0.4.0-milady adds W4-B CUDA QJL + PolarQuant Q4 + TBQ3_TCQ kernels
+//   on top of v0.3.0-milady. The CUDA paths only matter for the
+//   linux-x64-cuda host target (the AOSP arm64 path stays CPU-only),
+//   but the pin is shared so both AOSP and host build paths land on
+//   identical kernel sources.
+//
+//   v0.2.0-milady (subset of this pin) added DFlash speculative decoding
+//   CLI surface (--spec-type dflash, --draft-min-prob alias, n_drafted_total
+//   / n_drafted_accepted_total Prometheus counters) on top of v0.1.0-milady.
 //
 // Why this fork (not stock ggml-org/llama.cpp b8198):
 //   The Milady fork composes four techniques onto upstream b8198:
@@ -173,10 +177,11 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // inside the elizaOS source checkout it's the elizaOS repo root.
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 
-// milady-ai/llama.cpp @ v0.1.0-milady (milady/integration HEAD).
+// milady-ai/llama.cpp @ v0.4.0-milady (milady/integration HEAD).
 // Composes TBQ (apothic) + QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources
-// (W1-D) onto upstream b8198. See docs/porting/unified-fork-strategy.md
-// for the full migration story.
+// (W1-D) + DFlash spec-decode (W2) + W3-B fused CPU kernels + W4-B CUDA
+// QJL/Polar/TBQ3_TCQ kernels onto upstream b8198. See
+// docs/porting/unified-fork-strategy.md for the full migration story.
 //
 // Pre-2026-05-09 the AOSP path consumed apothic/llama.cpp-1bit-turboquant
 // directly and applied vendored QJL + PolarQuant patch series via
@@ -184,8 +189,8 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 // flow is now replaced by a single canonical fork — the patches are
 // baked in. apply-patches.mjs is kept around for one release as a
 // rollback path; see scripts/aosp/llama-cpp-patches/README.md.
-export const LLAMA_CPP_TAG = "v0.2.0-milady";
-export const LLAMA_CPP_COMMIT = "7c7818aafc7599996268226e2e56099f4f38e972";
+export const LLAMA_CPP_TAG = "v0.4.0-milady";
+export const LLAMA_CPP_COMMIT = "08032d57e15574f2a7ca19fc3f29510c8673d590";
 export const LLAMA_CPP_REMOTE =
   "https://github.com/milady-ai/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";

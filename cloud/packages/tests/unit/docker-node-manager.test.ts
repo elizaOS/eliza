@@ -40,7 +40,7 @@ async function withImmediateRetryDelays<T>(fn: () => Promise<T>): Promise<T> {
     ...args: unknown[]
   ) => {
     callback(...args);
-    return { unref: () => undefined } as ReturnType<typeof setTimeout>;
+    return { unref: () => undefined } as unknown as ReturnType<typeof setTimeout>;
   }) as typeof setTimeout;
 
   try {

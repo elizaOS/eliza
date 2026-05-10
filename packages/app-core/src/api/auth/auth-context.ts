@@ -19,7 +19,7 @@ import type {
   AuthSessionRow,
   AuthStore,
 } from "../../services/auth-store";
-import { getProvidedApiToken } from "../auth";
+import { getProvidedApiToken } from "../auth.ts";
 import { findActiveSession, parseSessionCookie } from "./sessions";
 
 export type AuthContextSource =

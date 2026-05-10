@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-import { loadEnvFiles } from "./local-dev-helpers";
 import type { StewardUserBackfillOptions } from "@/lib/services/steward-user-migration";
+import { loadEnvFiles } from "./local-dev-helpers";
 
 loadEnvFiles();
 

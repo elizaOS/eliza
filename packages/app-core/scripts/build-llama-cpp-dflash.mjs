@@ -41,16 +41,18 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-// milady-ai/llama.cpp @ v0.2.0-milady (commit 7c7818aa) — the unified fork
+// milady-ai/llama.cpp @ v0.4.0-milady (commit 08032d57) — the unified fork
 // that composes TBQ + QJL + Q4_POLAR + Metal kernels + DFlash spec-decode
-// onto upstream b8198. Same repo + commit lineage as compile-libllama.mjs
-// (AOSP cross-compile path) so both build paths land on identical kernels.
+// + W4-B CUDA QJL/Polar/TBQ3_TCQ kernels onto upstream b8198. Same repo +
+// commit lineage as compile-libllama.mjs (AOSP cross-compile path) so both
+// build paths land on identical kernels.
 const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
   "https://github.com/milady-ai/llama.cpp.git";
-const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v0.2.0-milady";
+const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v0.4.0-milady";
 // Minimum commit on milady/integration that contains the DFlash CLI
 // surface (--spec-type dflash, --draft-min-prob, Prometheus counters).
+// Also satisfied by the W4-B v0.4.0-milady CUDA kernel additions.
 const MIN_COMMIT = "7c7818aafc7599996268226e2e56099f4f38e972";
 
 const SUPPORTED_TARGETS = [
@@ -873,9 +875,18 @@ function ensureCheckout(cacheDir, ref) {
 }
 
 function patchVulkanKernels(_cacheDir) {
-  if (process.env.ELIZA_DFLASH_PATCH_VULKAN_KERNELS !== "1") return;
+  // Default-on after hardware verification (Wave-4 W4-A): the turbo3 / turbo4
+  // / turbo3_tcq Vulkan compute shaders in packages/inference/vulkan/ now
+  // pass 8/8 numerical fixtures on Intel ARL Mesa 25.2.8 + lavapipe with the
+  // shared-memory tree reduction (replacing the broken subgroupAdd path that
+  // assumed a single 32-lane subgroup per workgroup). The fork consumes the
+  // same source-of-truth shaders, so this patch hook is a no-op log: kept so
+  // a future layout drift can attach a warn-on-mismatch sentinel guard like
+  // patchGgmlBaseForWindowsQjl. Set ELIZA_DFLASH_PATCH_VULKAN_KERNELS=0 to
+  // silence the log.
+  if (process.env.ELIZA_DFLASH_PATCH_VULKAN_KERNELS === "0") return;
   console.log(
-    "[dflash-build] patchVulkanKernels: kernels already present on milady-ai/llama.cpp; no-op.",
+    "[dflash-build] patchVulkanKernels: turbo3/turbo4/turbo3_tcq verified on Intel ARL + lavapipe; fork kernels in sync.",
   );
 }
 

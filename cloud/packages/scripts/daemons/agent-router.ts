@@ -124,7 +124,6 @@ let shuttingDown = false;
 async function main(): Promise<void> {
   loadLocalEnv(import.meta.url);
   const config = readRouterConfig();
-  const { logger } = await loadDeps();
 
   const { createServer } = await import("node:http");
   server = createServer((req, res) => {
@@ -139,9 +138,14 @@ async function main(): Promise<void> {
         res.end(body);
       })
       .catch((err) => {
-        logger.error("[agent-router] handler error", {
-          error: err instanceof Error ? err.message : String(err),
-        });
+        const error = err instanceof Error ? err.message : String(err);
+        void loadDeps()
+          .then(({ logger }) => {
+            logger.error("[agent-router] handler error", { error });
+          })
+          .catch(() => {
+            console.error(`[agent-router] handler error: ${error}`);
+          });
         if (!res.headersSent) {
           res.statusCode = 500;
           res.setHeader("content-type", "application/json");
@@ -151,16 +155,21 @@ async function main(): Promise<void> {
   });
 
   server.listen(config.port, config.bindHost, () => {
-    logger.info("[agent-router] starting", {
+    console.log("[agent-router] starting", {
       port: config.port,
       bindHost: config.bindHost,
     });
   });
 
   server.on("error", (err) => {
-    logger.error("[agent-router] server error", {
-      error: err instanceof Error ? err.message : String(err),
-    });
+    const error = err instanceof Error ? err.message : String(err);
+    void loadDeps()
+      .then(({ logger }) => {
+        logger.error("[agent-router] server error", { error });
+      })
+      .catch(() => {
+        console.error(`[agent-router] server error: ${error}`);
+      });
     process.exitCode = 1;
   });
 }

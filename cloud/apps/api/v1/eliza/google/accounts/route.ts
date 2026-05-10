@@ -14,8 +14,8 @@ import {
 } from "@/lib/services/agent-google-connector";
 import {
   OAUTH_CONNECTION_ROLES,
-  parseOAuthConnectionRole,
   type OAuthStandardConnectionRole,
+  parseOAuthConnectionRole,
 } from "@/lib/services/oauth";
 import type { AppEnv } from "@/types/cloud-worker-env";
 

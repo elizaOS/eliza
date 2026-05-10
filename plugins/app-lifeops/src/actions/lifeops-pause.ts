@@ -76,7 +76,9 @@ export const lifeOpsPauseAction: Action = {
     "global-pause state, and reset first-run; requires confirmed: true).",
   descriptionCompressed:
     "owner LIFEOPS verb: pause|resume|wipe; wipe requires confirmed:true",
-  contexts: ["tasks", "automation"],
+  // "general" so "pause my agent for 2 hours" / "stop reminders for the day"
+  // prompts retain LIFEOPS_PAUSE in retrieval. See `12-real-root-cause.md`.
+  contexts: ["general", "tasks", "automation"],
   roleGate: { minRole: "OWNER" },
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   parameters: [

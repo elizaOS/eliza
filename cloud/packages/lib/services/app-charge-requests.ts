@@ -19,6 +19,7 @@ const DEFAULT_CHARGE_LIFETIME_SECONDS = 7 * 24 * 60 * 60;
 const MAX_CHARGE_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 
 export type AppChargeProvider = "stripe" | "oxapay";
+export type AppChargePaymentContext = "verified_payer" | "any_payer";
 
 interface ChargeRequestMetadata {
   kind?: string;
@@ -37,6 +38,7 @@ interface ChargeRequestMetadata {
   paid_provider_payment_id?: string;
   payer_user_id?: string;
   payer_organization_id?: string;
+  payment_context?: AppChargePaymentContext;
   callback_url?: string;
   callback_secret?: string;
   callback_channel?: Record<string, unknown>;
@@ -50,6 +52,7 @@ export interface CreateAppChargeRequestParams {
   amountUsd: number;
   description?: string;
   providers?: AppChargeProvider[];
+  paymentContext?: AppChargePaymentContext;
   successUrl?: string;
   cancelUrl?: string;
   callbackUrl?: string;
@@ -66,6 +69,7 @@ export interface AppChargeRequest {
   amountUsd: number;
   description: string | null;
   providers: AppChargeProvider[];
+  paymentContext: AppChargePaymentContext;
   paymentUrl: string;
   status: string;
   paidAt: Date | null;
@@ -110,6 +114,7 @@ function toChargeRequest(payment: CryptoPayment): AppChargeRequest | null {
     amountUsd: Number(payment.expected_amount),
     description: typeof metadata.description === "string" ? metadata.description : null,
     providers,
+    paymentContext: metadata.payment_context === "any_payer" ? "any_payer" : "verified_payer",
     paymentUrl:
       typeof metadata.payment_url === "string"
         ? metadata.payment_url
@@ -245,6 +250,7 @@ export class AppChargeRequestsService {
         amount_usd: amount.toNumber(),
         description: params.description,
         providers,
+        payment_context: params.paymentContext ?? "verified_payer",
         payment_url: paymentUrl,
         success_url: redirects.successUrl,
         cancel_url: redirects.cancelUrl,

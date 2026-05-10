@@ -4,7 +4,7 @@
  * Handles all database operations for participants without spinning up runtime.
  */
 
-import { and, eq, inArray, type InferSelectModel, sql } from "drizzle-orm";
+import { and, eq, type InferSelectModel, inArray, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "@/db/helpers";
 import { participantTable } from "@/db/schemas/eliza";
 
@@ -20,7 +20,10 @@ export interface CreateParticipantInput {
   roomState?: Record<string, unknown>;
 }
 
-function requireParticipant(row: ParticipantRecord | undefined, context: string): ParticipantRecord {
+function requireParticipant(
+  row: ParticipantRecord | undefined,
+  context: string,
+): ParticipantRecord {
   if (!row) {
     throw new Error(`Participant not found after ${context}`);
   }

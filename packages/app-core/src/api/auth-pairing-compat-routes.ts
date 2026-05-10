@@ -7,7 +7,7 @@ import {
   getCompatApiToken,
   getProvidedApiToken,
   tokenMatches,
-} from "./auth";
+} from "./auth.ts";
 import { findActiveSession, parseSessionCookie } from "./auth/sessions";
 import {
   type CompatRuntimeState,

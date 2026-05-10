@@ -22,7 +22,12 @@ async function resolveAgentServerUrl(c: AppContext, agentId: string): Promise<st
   return typeof serverUrl === "string" && serverUrl.trim() ? serverUrl.trim() : null;
 }
 
-function buildTargetUrl(serverUrl: string, requestUrl: string, agentId: string, suffix: string): URL {
+function buildTargetUrl(
+  serverUrl: string,
+  requestUrl: string,
+  agentId: string,
+  suffix: string,
+): URL {
   const request = new URL(requestUrl);
   const target = new URL(serverUrl);
   const normalizedSuffix = suffix ? `/${suffix.replace(/^\/+/, "")}` : "";
@@ -61,7 +66,8 @@ async function forwardWorkflowToAgentServer(params: {
   headers.set("x-eliza-organization-id", params.user.organization_id);
 
   const method = params.request.method.toUpperCase();
-  const body = method === "GET" || method === "HEAD" ? undefined : await params.request.arrayBuffer();
+  const body =
+    method === "GET" || method === "HEAD" ? undefined : await params.request.arrayBuffer();
   return fetch(buildTargetUrl(serverUrl, params.request.url, params.agentId, params.suffix), {
     method,
     headers,

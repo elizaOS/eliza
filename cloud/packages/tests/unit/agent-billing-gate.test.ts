@@ -5,9 +5,7 @@ let mockedBalance: number | null = null;
 mock.module("@/db/repositories", () => ({
   organizationsRepository: {
     findById: async () =>
-      mockedBalance === null
-        ? null
-        : { id: "org-1", credit_balance: String(mockedBalance) },
+      mockedBalance === null ? null : { id: "org-1", credit_balance: String(mockedBalance) },
   },
 }));
 
@@ -24,9 +22,7 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
-const { checkAgentCreditGate } = await import(
-  "@/lib/services/agent-billing-gate"
-);
+const { checkAgentCreditGate } = await import("@/lib/services/agent-billing-gate");
 
 async function runGateScenario(balance: number | null) {
   mockedBalance = balance;

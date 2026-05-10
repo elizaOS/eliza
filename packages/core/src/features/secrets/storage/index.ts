@@ -22,6 +22,7 @@ import {
 } from "./interface.ts";
 import { MemorySecretStorage as _bs_5_MemorySecretStorage } from "./memory-store.ts";
 import { WorldMetadataStorage as _bs_6_WorldMetadataStorage } from "./world-store.ts";
+
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 // biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
