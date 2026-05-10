@@ -1,26 +1,27 @@
 /**
  * @module plugin-app-control/workers/app-worker-entry
  *
- * Bun worker entry point spawned by AppWorkerHostService for apps that
- * declare `isolation: "worker"` in their manifest. Phase 2.2 surface:
- * a minimal typed RPC bridge that proves a round-trip can carry a
- * method invocation across the worker boundary and return a result.
- *
- * Subsequent slices (2.3+) replace the in-line `BRIDGE_METHODS` map
- * with a dynamic import of the app's plugin entry-point and a typed
- * `invokeAction(name, params)` dispatch; this slice keeps the wire
- * format small so the latency can be measured against a stable
- * baseline before the heavier plugin-loading path lands.
+ * Bun worker entry point spawned by AppWorkerHostService for apps
+ * that declare `isolation: "worker"`. Phase 2.3 surface: dynamically
+ * imports the app's plugin module from `workerData.pluginEntryPath`,
+ * builds an action registry, and dispatches `invokeAction` requests
+ * across the postMessage bridge.
  *
  * Wire format (parentPort messages):
  *
- *   host -> worker:  { id, method: "ping" }                 → { id, ok: true, result: { pong: true, slug, isolation } }
- *   host -> worker:  { id, method: "echo", params }         → { id, ok: true, result: params }
- *   host -> worker:  { id, method: "shutdown" }             → exits the worker (no response)
- *   host -> worker:  { id, method: "<unknown>", params }    → { id, ok: false, reason: "unknown method" }
+ *   host -> worker:  { id, method: "ping" }                          → { id, ok: true, result: { pong: true, slug, isolation, actions: [...] } }
+ *   host -> worker:  { id, method: "echo", params }                  → { id, ok: true, result: params }
+ *   host -> worker:  { id, method: "invokeAction", params: {...} }   → { id, ok: true, result } | { id, ok: false, reason }
+ *   host -> worker:  { id, method: "shutdown" }                      → exits the worker (no response)
+ *   host -> worker:  { id, method: "<unknown>", params }             → { id, ok: false, reason: "unknown method" }
  *
- *   worker -> host:  { id, ok: true, result }
- *                |   { id, ok: false, reason }
+ * `invokeAction` params: { actionName: string, content?: unknown, options?: Record<string, unknown> }
+ *
+ * The runtime + message + state arguments to the action handler are
+ * **stubbed** for Phase 2.3. Actions that need real `IAgentRuntime`
+ * methods will fail with "not implemented in worker sandbox" until
+ * Phase 2.4 wires the runtime-bridge surface that gates fs/net + a
+ * subset of memory/action APIs across the worker boundary.
  */
 
 import { isMainThread, parentPort, workerData } from "node:worker_threads";
@@ -28,6 +29,8 @@ import { isMainThread, parentPort, workerData } from "node:worker_threads";
 interface WorkerBootData {
 	slug: string;
 	isolation: "none" | "worker";
+	/** Absolute path to the app's plugin entry (a JS or TS module). */
+	pluginEntryPath?: string | null;
 }
 
 interface RpcRequest {
@@ -39,6 +42,18 @@ interface RpcRequest {
 type RpcResponse =
 	| { id: number; ok: true; result: unknown }
 	| { id: number; ok: false; reason: string };
+
+interface InvokeActionParams {
+	actionName: string;
+	content?: unknown;
+	options?: Record<string, unknown>;
+}
+
+interface LoadedAction {
+	name: string;
+	// biome-ignore lint/suspicious/noExplicitAny: action handler signature is plugin-defined, only narrowed at the call site
+	handler: (...args: any[]) => unknown | Promise<unknown>;
+}
 
 if (isMainThread) {
 	throw new Error(
@@ -53,18 +68,139 @@ if (!parentPort) {
 const boot = (workerData ?? {}) as Partial<WorkerBootData>;
 const slug = typeof boot.slug === "string" ? boot.slug : "unknown";
 const isolation = boot.isolation === "worker" ? "worker" : "none";
+const pluginEntryPath =
+	typeof boot.pluginEntryPath === "string" ? boot.pluginEntryPath : null;
 
-type BridgeHandler = (params: unknown) => unknown | Promise<unknown>;
+const actionRegistry = new Map<string, LoadedAction>();
+
+async function loadPlugin(entryPath: string): Promise<{
+	loaded: number;
+	error?: string;
+}> {
+	try {
+		const mod = (await import(entryPath)) as Record<string, unknown>;
+		// Plugins are commonly exported as `default`, `plugin`, or
+		// matching the package's name. Be lenient.
+		const candidates: unknown[] = [
+			mod.default,
+			mod.plugin,
+			mod.appPlugin,
+			mod.sandboxPlugin,
+		];
+		let plugin: { actions?: LoadedAction[] } | null = null;
+		for (const c of candidates) {
+			if (
+				c &&
+				typeof c === "object" &&
+				Array.isArray((c as { actions?: unknown }).actions)
+			) {
+				plugin = c as { actions: LoadedAction[] };
+				break;
+			}
+		}
+		if (!plugin) {
+			return { loaded: 0, error: "no plugin export found in module" };
+		}
+		const actions = plugin.actions ?? [];
+		for (const action of actions) {
+			if (
+				action &&
+				typeof action === "object" &&
+				typeof action.name === "string" &&
+				typeof action.handler === "function"
+			) {
+				actionRegistry.set(action.name, action);
+			}
+		}
+		return { loaded: actionRegistry.size };
+	} catch (error) {
+		return {
+			loaded: 0,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+/**
+ * Phase 2.3 stub: worker-side runtime that satisfies the parameter
+ * shape of an Action handler but throws on any property access. Phase
+ * 2.4 replaces this with a typed RPC proxy back to the host that
+ * gates each runtime method against the granted permissions.
+ */
+function makeRuntimeStub(): unknown {
+	return new Proxy(
+		{},
+		{
+			get(_target, prop: string | symbol) {
+				if (prop === "then") return undefined; // not a thenable
+				throw new Error(
+					`runtime.${String(prop)} is not implemented in the worker sandbox (Phase 2.3 stub)`,
+				);
+			},
+		},
+	);
+}
+
+async function dispatchInvokeAction(
+	params: unknown,
+): Promise<{ ok: true; result: unknown } | { ok: false; reason: string }> {
+	if (
+		typeof params !== "object" ||
+		params === null ||
+		typeof (params as InvokeActionParams).actionName !== "string"
+	) {
+		return {
+			ok: false,
+			reason:
+				"invokeAction params must be { actionName: string, content?, options? }",
+		};
+	}
+	const { actionName, content, options } = params as InvokeActionParams;
+	const action = actionRegistry.get(actionName);
+	if (!action) {
+		return { ok: false, reason: `unknown action: ${actionName}` };
+	}
+	try {
+		const message = {
+			id: `worker-msg-${Date.now()}`,
+			content: content ?? {},
+		};
+		const result = await action.handler(
+			makeRuntimeStub(),
+			message,
+			undefined,
+			options ?? {},
+		);
+		return { ok: true, result };
+	} catch (error) {
+		return {
+			ok: false,
+			reason: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+type BridgeHandler = (
+	params: unknown,
+) =>
+	| unknown
+	| Promise<unknown>
+	| { ok: false; reason: string }
+	| Promise<{ ok: false; reason: string }>;
 
 const BRIDGE_METHODS: Record<string, BridgeHandler> = {
-	ping: () => ({ pong: true, slug, isolation }),
+	ping: () => ({
+		pong: true,
+		slug,
+		isolation,
+		actions: Array.from(actionRegistry.keys()),
+	}),
 	echo: (params) => params,
+	invokeAction: (params) => dispatchInvokeAction(params),
 };
 
 async function dispatch(req: RpcRequest): Promise<RpcResponse> {
 	if (req.method === "shutdown") {
-		// Acknowledge via process exit; no response. Host treats the
-		// "exit" event from the Worker handle as confirmation.
 		process.exit(0);
 	}
 	const handler = BRIDGE_METHODS[req.method];
@@ -77,6 +213,32 @@ async function dispatch(req: RpcRequest): Promise<RpcResponse> {
 	}
 	try {
 		const result = await handler(req.params);
+		// Bridge handlers can return a structured failure ({ ok: false, reason }).
+		if (
+			result &&
+			typeof result === "object" &&
+			(result as { ok?: unknown }).ok === false &&
+			typeof (result as { reason?: unknown }).reason === "string"
+		) {
+			return {
+				id: req.id,
+				ok: false,
+				reason: (result as { reason: string }).reason,
+			};
+		}
+		// invokeAction wraps its success as { ok: true, result }.
+		if (
+			result &&
+			typeof result === "object" &&
+			(result as { ok?: unknown }).ok === true &&
+			"result" in (result as object)
+		) {
+			return {
+				id: req.id,
+				ok: true,
+				result: (result as { result: unknown }).result,
+			};
+		}
 		return { id: req.id, ok: true, result };
 	} catch (error) {
 		return {
@@ -102,7 +264,32 @@ parentPort.on("message", (raw: unknown) => {
 	});
 });
 
-// Signal readiness so the host knows the worker is alive and the
-// message handler is wired. `{id: 0}` is reserved for this boot
-// notification and is never sent by the host's `invoke()`.
-parentPort.postMessage({ id: 0, ok: true, result: { ready: true, slug } });
+// Single id=0 ready notification fires once the optional plugin
+// import has settled (or immediately if no pluginEntryPath was
+// supplied). The host's spawn() resolves on this message and reads
+// `actionsLoaded` to verify the dispatch surface is wired.
+async function bootSequence() {
+	let pluginLoaded = false;
+	let actionsLoaded = 0;
+	let error: string | undefined;
+	if (pluginEntryPath) {
+		const result = await loadPlugin(pluginEntryPath);
+		actionsLoaded = result.loaded;
+		pluginLoaded = !result.error;
+		if (result.error) error = result.error;
+	}
+	parentPort?.postMessage({
+		id: 0,
+		ok: error ? false : true,
+		result: {
+			ready: true,
+			slug,
+			pluginLoaded,
+			actionsLoaded,
+			...(error ? { error } : {}),
+		},
+		...(error ? { reason: error } : {}),
+	});
+}
+
+void bootSequence();

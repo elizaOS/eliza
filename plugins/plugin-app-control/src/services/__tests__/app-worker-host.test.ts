@@ -19,8 +19,16 @@
  * lands.
  */
 
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AppWorkerHostService } from "../app-worker-host-service.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const FIXTURE_PLUGIN_PATH = path.resolve(
+	path.dirname(__filename),
+	"../../../test/fixtures/sandbox-plugin/plugin.ts",
+);
 
 describe("AppWorkerHostService — Phase 2.2 bridge", () => {
 	let service: AppWorkerHostService;
@@ -126,5 +134,81 @@ describe("AppWorkerHostService — Phase 2.2 bridge", () => {
 		});
 		expect(second.pid).toBe(first.pid);
 		expect(second.bootedAt).toBe(first.bootedAt);
+	});
+
+	describe("Phase 2.3 — plugin loading + action dispatch", () => {
+		it("loads the fixture plugin and reports its actions in ping", async () => {
+			await service.spawn({
+				slug: "fixture-plugin-load",
+				isolation: "worker",
+				pluginEntryPath: FIXTURE_PLUGIN_PATH,
+			});
+			const reply = await service.invoke<{
+				pong: boolean;
+				actions: string[];
+			}>("fixture-plugin-load", "ping");
+			expect(reply.ok).toBe(true);
+			if (!reply.ok) return;
+			expect(reply.result.pong).toBe(true);
+			expect(reply.result.actions.sort()).toEqual(["ECHO", "RUNTIME_PROBE"]);
+		});
+
+		it("invokeAction routes content to the fixture's ECHO handler and returns the result", async () => {
+			await service.spawn({
+				slug: "fixture-invoke-echo",
+				isolation: "worker",
+				pluginEntryPath: FIXTURE_PLUGIN_PATH,
+			});
+			const reply = await service.invoke<{ echoed: { msg: string } }>(
+				"fixture-invoke-echo",
+				"invokeAction",
+				{ actionName: "ECHO", content: { msg: "hi from host" } },
+			);
+			expect(reply.ok).toBe(true);
+			if (!reply.ok) return;
+			expect(reply.result).toEqual({ echoed: { msg: "hi from host" } });
+		});
+
+		it("invokeAction surfaces the runtime stub's failure when an action touches IAgentRuntime", async () => {
+			await service.spawn({
+				slug: "fixture-invoke-probe",
+				isolation: "worker",
+				pluginEntryPath: FIXTURE_PLUGIN_PATH,
+			});
+			const reply = await service.invoke(
+				"fixture-invoke-probe",
+				"invokeAction",
+				{ actionName: "RUNTIME_PROBE" },
+			);
+			expect(reply.ok).toBe(false);
+			if (reply.ok) return;
+			expect(reply.reason).toContain("worker sandbox");
+		});
+
+		it("invokeAction returns a structured failure for unknown actions", async () => {
+			await service.spawn({
+				slug: "fixture-invoke-unknown",
+				isolation: "worker",
+				pluginEntryPath: FIXTURE_PLUGIN_PATH,
+			});
+			const reply = await service.invoke(
+				"fixture-invoke-unknown",
+				"invokeAction",
+				{ actionName: "DOES_NOT_EXIST" },
+			);
+			expect(reply.ok).toBe(false);
+			if (reply.ok) return;
+			expect(reply.reason).toContain("unknown action");
+		});
+
+		it("rejects spawn if the plugin entry path does not resolve", async () => {
+			await expect(
+				service.spawn({
+					slug: "fixture-bad-plugin",
+					isolation: "worker",
+					pluginEntryPath: "/nonexistent/plugin.ts",
+				}),
+			).rejects.toThrow();
+		});
 	});
 });
