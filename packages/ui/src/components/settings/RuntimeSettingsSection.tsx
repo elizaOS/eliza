@@ -34,11 +34,8 @@ type RuntimeAction = {
   disabledReason?: string;
 };
 
-// Placeholder anchor for the eventual sandbox/local-build explainer page.
-// Wired here as a string constant per the foundation task — the docs page
-// itself is out of scope for this change.
 const STORE_LOCAL_DISABLED_DOCS_URL =
-  "https://docs.milady.ai/desktop/build-variants";
+  "https://github.com/milady-ai/milady/blob/develop/docs/desktop/build-variants.md";
 
 export function RuntimeSettingsSection() {
   const { t } = useApp();
