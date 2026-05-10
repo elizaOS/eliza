@@ -125,6 +125,7 @@ jobs:
             # linked workspace packages through their built `node` exports, so
             # refresh linked package dist files after installing dependencies.
             bun run --cwd cloud build:linked-core
+            bun run --cwd cloud build:linked-billing
             mkdir -p plugins/plugin-sql/node_modules/@elizaos
             rm -rf plugins/plugin-sql/node_modules/@elizaos/core
             ln -s ../../../../packages/core plugins/plugin-sql/node_modules/@elizaos/core
