@@ -87,7 +87,7 @@ export const clearHistory: Action = {
     }
     return { success: true, text: response.text };
   },
-  examples: ((spec.examples?.length
+  examples: (spec.examples?.length
     ? spec.examples
     : [
         [
@@ -120,7 +120,7 @@ export const clearHistory: Action = {
             },
           },
         ],
-      ]) as ActionExample[][]),
+      ]) as ActionExample[][],
 };
 
 export default clearHistory;
