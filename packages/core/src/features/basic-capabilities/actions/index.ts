@@ -21,6 +21,14 @@ import { replyAction as _bs_4_replyAction } from "./reply.ts";
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 // biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
-const __bundle_safety_FEATURES_BASIC_CAPABILITIES_ACTIONS_INDEX__ = [_bs_1_choiceAction, _bs_2_ignoreAction, _bs_3_noneAction, _bs_4_replyAction];
+const __bundle_safety_FEATURES_BASIC_CAPABILITIES_ACTIONS_INDEX__ = [
+	_bs_1_choiceAction,
+	_bs_2_ignoreAction,
+	_bs_3_noneAction,
+	_bs_4_replyAction,
+];
 // biome-ignore lint/suspicious/noExplicitAny: bundle-safety sink.
-(globalThis as any).__bundle_safety_FEATURES_BASIC_CAPABILITIES_ACTIONS_INDEX__ = __bundle_safety_FEATURES_BASIC_CAPABILITIES_ACTIONS_INDEX__;
+(
+	globalThis as any
+).__bundle_safety_FEATURES_BASIC_CAPABILITIES_ACTIONS_INDEX__ =
+	__bundle_safety_FEATURES_BASIC_CAPABILITIES_ACTIONS_INDEX__;

@@ -21,11 +21,23 @@ export { roomOpAction } from "./room.ts";
 // when a consumer dereferences a re-exported binding at runtime.
 import { messageAction as _bs_1_messageAction } from "./message.ts";
 import { postAction as _bs_2_postAction } from "./post.ts";
-import { roleAction as _bs_3_roleAction, updateRoleAction as _bs_4_updateRoleAction } from "./role.ts";
+import {
+	roleAction as _bs_3_roleAction,
+	updateRoleAction as _bs_4_updateRoleAction,
+} from "./role.ts";
 import { roomOpAction as _bs_5_roomOpAction } from "./room.ts";
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 // biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
-const __bundle_safety_FEATURES_ADVANCED_CAPABILITIES_ACTIONS_INDEX__ = [_bs_1_messageAction, _bs_2_postAction, _bs_3_roleAction, _bs_4_updateRoleAction, _bs_5_roomOpAction];
+const __bundle_safety_FEATURES_ADVANCED_CAPABILITIES_ACTIONS_INDEX__ = [
+	_bs_1_messageAction,
+	_bs_2_postAction,
+	_bs_3_roleAction,
+	_bs_4_updateRoleAction,
+	_bs_5_roomOpAction,
+];
 // biome-ignore lint/suspicious/noExplicitAny: bundle-safety sink.
-(globalThis as any).__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_ACTIONS_INDEX__ = __bundle_safety_FEATURES_ADVANCED_CAPABILITIES_ACTIONS_INDEX__;
+(
+	globalThis as any
+).__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_ACTIONS_INDEX__ =
+	__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_ACTIONS_INDEX__;
