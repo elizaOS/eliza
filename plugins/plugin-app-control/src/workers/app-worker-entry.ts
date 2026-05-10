@@ -24,6 +24,8 @@
  * subset of memory/action APIs across the worker boundary.
  */
 
+import { promises as fsPromises } from "node:fs";
+import nodePath from "node:path";
 import { isMainThread, parentPort, workerData } from "node:worker_threads";
 
 interface WorkerBootData {
@@ -31,6 +33,12 @@ interface WorkerBootData {
 	isolation: "none" | "worker";
 	/** Absolute path to the app's plugin entry (a JS or TS module). */
 	pluginEntryPath?: string | null;
+	/** Per-app sandbox FS root the worker may read/write under. */
+	statePath?: string | null;
+	/** Raw `elizaos.app.permissions` block from the manifest. */
+	requestedPermissions?: Record<string, unknown> | null;
+	/** Subset of recognised namespaces the user has granted. */
+	grantedNamespaces?: readonly string[];
 }
 
 interface RpcRequest {
@@ -70,6 +78,107 @@ const slug = typeof boot.slug === "string" ? boot.slug : "unknown";
 const isolation = boot.isolation === "worker" ? "worker" : "none";
 const pluginEntryPath =
 	typeof boot.pluginEntryPath === "string" ? boot.pluginEntryPath : null;
+const statePath =
+	typeof boot.statePath === "string" ? nodePath.resolve(boot.statePath) : null;
+const grantedSet = new Set(
+	Array.isArray(boot.grantedNamespaces)
+		? boot.grantedNamespaces.filter((s): s is string => typeof s === "string")
+		: [],
+);
+const requestedPermissions =
+	boot.requestedPermissions &&
+	typeof boot.requestedPermissions === "object" &&
+	!Array.isArray(boot.requestedPermissions)
+		? boot.requestedPermissions
+		: null;
+
+function declaredHosts(): string[] {
+	const block = requestedPermissions?.net;
+	if (!block || typeof block !== "object" || Array.isArray(block)) return [];
+	const outbound = (block as { outbound?: unknown }).outbound;
+	if (!Array.isArray(outbound)) return [];
+	return outbound.filter((v): v is string => typeof v === "string");
+}
+
+function hostMatches(hostname: string, pattern: string): boolean {
+	if (pattern === "*") return true;
+	if (pattern.startsWith("*.")) {
+		const suffix = pattern.slice(2);
+		return hostname.endsWith(`.${suffix}`);
+	}
+	return hostname === pattern;
+}
+
+/**
+ * Phase 2.4 worker-side gated capabilities. Plugins that opt into the
+ * sandbox model call `runtime.fetch(...)` and `runtime.fs.readFile(...)`
+ * instead of reaching for `globalThis.fetch` / `node:fs` directly.
+ *
+ * `runtime.fetch` is allowed iff:
+ *   - `grantedNamespaces` includes "net"
+ *   - the URL's hostname matches at least one declared
+ *     `requestedPermissions.net.outbound` pattern
+ *
+ * `runtime.fs.readFile` / `writeFile` are allowed iff:
+ *   - `grantedNamespaces` includes "fs"
+ *   - a `statePath` was assigned at boot
+ *   - the resolved absolute path is contained in `statePath`
+ *
+ * Phase 2.4 keeps the gate dumb on purpose — exact-host or `*.suffix`
+ * matching for net, statePath-prefix containment for fs. The full
+ * glob-against-`fs.read`/`fs.write` patterns from the manifest land
+ * when there's a real third-party app exercising the contract.
+ */
+async function gatedFetch(
+	url: string | URL,
+	init?: RequestInit,
+): Promise<Response> {
+	if (!grantedSet.has("net")) {
+		throw new Error(
+			"net access not granted by user (sandbox: grantedNamespaces does not include 'net')",
+		);
+	}
+	const parsed = url instanceof URL ? url : new URL(url);
+	const allowed = declaredHosts();
+	if (!allowed.some((p) => hostMatches(parsed.hostname, p))) {
+		throw new Error(
+			`net access to ${parsed.hostname} not allowed by manifest (declared outbound: ${allowed.join(", ") || "<none>"})`,
+		);
+	}
+	return fetch(parsed, init);
+}
+
+function checkFsAccess(absolutePath: string): void {
+	if (!grantedSet.has("fs")) {
+		throw new Error(
+			"fs access not granted by user (sandbox: grantedNamespaces does not include 'fs')",
+		);
+	}
+	if (!statePath) {
+		throw new Error(
+			"fs access requires a statePath to be assigned to the app at spawn time",
+		);
+	}
+	const resolved = nodePath.resolve(absolutePath);
+	const root = `${statePath}${nodePath.sep}`;
+	if (resolved !== statePath && !resolved.startsWith(root)) {
+		throw new Error(
+			`fs access to ${resolved} escapes the sandbox statePath (${statePath})`,
+		);
+	}
+}
+
+const gatedFs = {
+	async readFile(path: string): Promise<string> {
+		checkFsAccess(path);
+		return fsPromises.readFile(path, "utf8");
+	},
+	async writeFile(path: string, content: string): Promise<void> {
+		checkFsAccess(path);
+		await fsPromises.mkdir(nodePath.dirname(path), { recursive: true });
+		await fsPromises.writeFile(path, content, "utf8");
+	},
+};
 
 const actionRegistry = new Map<string, LoadedAction>();
 
@@ -122,19 +231,26 @@ async function loadPlugin(entryPath: string): Promise<{
 }
 
 /**
- * Phase 2.3 stub: worker-side runtime that satisfies the parameter
- * shape of an Action handler but throws on any property access. Phase
- * 2.4 replaces this with a typed RPC proxy back to the host that
- * gates each runtime method against the granted permissions.
+ * Worker-side runtime exposed to action handlers. Selectively returns
+ * gated capabilities (`fetch`, `fs`, `slug`, `statePath`) and throws
+ * on any other property access so plugins can't accidentally leak
+ * the sandbox by touching an un-gated `runtime.*` member.
  */
 function makeRuntimeStub(): unknown {
+	const exposed: Record<string | symbol, unknown> = {
+		slug,
+		statePath,
+		fetch: gatedFetch,
+		fs: gatedFs,
+	};
 	return new Proxy(
 		{},
 		{
 			get(_target, prop: string | symbol) {
 				if (prop === "then") return undefined; // not a thenable
+				if (prop in exposed) return exposed[prop];
 				throw new Error(
-					`runtime.${String(prop)} is not implemented in the worker sandbox (Phase 2.3 stub)`,
+					`runtime.${String(prop)} is not implemented in the worker sandbox (Phase 2 stub)`,
 				);
 			},
 		},

@@ -19,6 +19,9 @@
  * lands.
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
+import http from "node:http";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -150,7 +153,13 @@ describe("AppWorkerHostService — Phase 2.2 bridge", () => {
 			expect(reply.ok).toBe(true);
 			if (!reply.ok) return;
 			expect(reply.result.pong).toBe(true);
-			expect(reply.result.actions.sort()).toEqual(["ECHO", "RUNTIME_PROBE"]);
+			expect(reply.result.actions.sort()).toEqual([
+				"ECHO",
+				"FS_ESCAPE_ATTEMPT",
+				"FS_WRITE_THEN_READ",
+				"NET_FETCH",
+				"RUNTIME_PROBE",
+			]);
 		});
 
 		it("invokeAction routes content to the fixture's ECHO handler and returns the result", async () => {
@@ -209,6 +218,149 @@ describe("AppWorkerHostService — Phase 2.2 bridge", () => {
 					pluginEntryPath: "/nonexistent/plugin.ts",
 				}),
 			).rejects.toThrow();
+		});
+	});
+
+	describe("Phase 2.4 — fs + net capability gates", () => {
+		let httpServer: http.Server;
+		let httpServerUrl: string;
+		let stateRoot: string;
+
+		beforeEach(async () => {
+			httpServer = http.createServer((_req, res) => {
+				res.writeHead(204);
+				res.end();
+			});
+			await new Promise<void>((resolve) =>
+				httpServer.listen(0, "127.0.0.1", () => resolve()),
+			);
+			const addr = httpServer.address();
+			if (typeof addr === "string" || addr === null) {
+				throw new Error("expected AddressInfo");
+			}
+			httpServerUrl = `http://127.0.0.1:${addr.port}/`;
+			stateRoot = mkdtempSync(path.join(tmpdir(), "app-worker-fs-"));
+		});
+
+		afterEach(async () => {
+			await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+			rmSync(stateRoot, { recursive: true, force: true });
+		});
+
+		it("net: rejects when grantedNamespaces does not include 'net'", async () => {
+			await service.spawn({
+				slug: "fixture-net-not-granted",
+				isolation: "worker",
+				pluginEntryPath: FIXTURE_PLUGIN_PATH,
+				requestedPermissions: { net: { outbound: ["127.0.0.1"] } },
+				grantedNamespaces: [],
+			});
+			const reply = await service.invoke(
+				"fixture-net-not-granted",
+				"invokeAction",
+				{ actionName: "NET_FETCH", content: { url: httpServerUrl } },
+			);
+			expect(reply.ok).toBe(false);
+			if (reply.ok) return;
+			expect(reply.reason).toContain("net access not granted");
+		});
+
+		it("net: rejects when host does not match manifest outbound list", async () => {
+			await service.spawn({
+				slug: "fixture-net-wrong-host",
+				isolation: "worker",
+				pluginEntryPath: FIXTURE_PLUGIN_PATH,
+				requestedPermissions: { net: { outbound: ["api.example.com"] } },
+				grantedNamespaces: ["net"],
+			});
+			const reply = await service.invoke(
+				"fixture-net-wrong-host",
+				"invokeAction",
+				{ actionName: "NET_FETCH", content: { url: httpServerUrl } },
+			);
+			expect(reply.ok).toBe(false);
+			if (reply.ok) return;
+			expect(reply.reason).toContain("not allowed by manifest");
+		});
+
+		it("net: succeeds when grant + manifest both allow", async () => {
+			await service.spawn({
+				slug: "fixture-net-allowed",
+				isolation: "worker",
+				pluginEntryPath: FIXTURE_PLUGIN_PATH,
+				requestedPermissions: { net: { outbound: ["127.0.0.1"] } },
+				grantedNamespaces: ["net"],
+			});
+			const reply = await service.invoke<{ status: number }>(
+				"fixture-net-allowed",
+				"invokeAction",
+				{ actionName: "NET_FETCH", content: { url: httpServerUrl } },
+			);
+			expect(reply.ok).toBe(true);
+			if (!reply.ok) return;
+			expect(reply.result.status).toBe(204);
+		});
+
+		it("fs: round-trips a write+read inside statePath", async () => {
+			await service.spawn({
+				slug: "fixture-fs-ok",
+				isolation: "worker",
+				pluginEntryPath: FIXTURE_PLUGIN_PATH,
+				statePath: stateRoot,
+				requestedPermissions: { fs: { read: ["**"], write: ["**"] } },
+				grantedNamespaces: ["fs"],
+			});
+			const reply = await service.invoke<{ read: string }>(
+				"fixture-fs-ok",
+				"invokeAction",
+				{
+					actionName: "FS_WRITE_THEN_READ",
+					content: { relPath: "hello.txt", payload: "from worker" },
+				},
+			);
+			expect(reply.ok).toBe(true);
+			if (!reply.ok) return;
+			expect(reply.result.read).toBe("from worker");
+		});
+
+		it("fs: rejects when grantedNamespaces does not include 'fs'", async () => {
+			await service.spawn({
+				slug: "fixture-fs-not-granted",
+				isolation: "worker",
+				pluginEntryPath: FIXTURE_PLUGIN_PATH,
+				statePath: stateRoot,
+				requestedPermissions: { fs: { read: ["**"], write: ["**"] } },
+				grantedNamespaces: [],
+			});
+			const reply = await service.invoke(
+				"fixture-fs-not-granted",
+				"invokeAction",
+				{
+					actionName: "FS_WRITE_THEN_READ",
+					content: { relPath: "x.txt", payload: "denied" },
+				},
+			);
+			expect(reply.ok).toBe(false);
+			if (reply.ok) return;
+			expect(reply.reason).toContain("fs access not granted");
+		});
+
+		it("fs: rejects path-escape attempts outside statePath", async () => {
+			await service.spawn({
+				slug: "fixture-fs-escape",
+				isolation: "worker",
+				pluginEntryPath: FIXTURE_PLUGIN_PATH,
+				statePath: stateRoot,
+				requestedPermissions: { fs: { read: ["**"] } },
+				grantedNamespaces: ["fs"],
+			});
+			const reply = await service.invoke("fixture-fs-escape", "invokeAction", {
+				actionName: "FS_ESCAPE_ATTEMPT",
+				content: { absolutePath: "/etc/passwd" },
+			});
+			expect(reply.ok).toBe(false);
+			if (reply.ok) return;
+			expect(reply.reason).toContain("escapes the sandbox statePath");
 		});
 	});
 });
