@@ -1,8 +1,14 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import * as mammoth from "mammoth";
-import { extractText } from "unpdf";
 import { v5 as uuidv5 } from "uuid";
+
+// mammoth and unpdf are heavy Node-side document extractors that pull
+// fs/util/path internals into the bundle. They are only reachable from
+// extractTextFromFileBuffer / convertPdfToTextFromBuffer, both of which
+// are document-ingestion entry points exclusive to Node-side flows.
+// Lazy-import via dynamic `import()` so Bun's bundler tree-shakes them
+// out of the @elizaos/core browser bundle (where they crash on first
+// access — see commit message for the exact failure modes).
 
 const PLAIN_TEXT_CONTENT_TYPES = [
 	"application/typescript",
@@ -32,7 +38,8 @@ export async function extractTextFromFileBuffer(
 		"application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 	) {
 		try {
-			const result = await mammoth.extractRawText({ buffer: fileBuffer });
+			const { extractRawText } = await import("mammoth");
+			const result = await extractRawText({ buffer: fileBuffer });
 			return result.value;
 		} catch (docxError) {
 			const errorMessage =
@@ -96,6 +103,7 @@ export async function convertPdfToTextFromBuffer(
 			),
 		);
 
+		const { extractText } = await import("unpdf");
 		const result = await extractText(uint8Array, {
 			mergePages: true,
 		});

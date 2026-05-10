@@ -627,6 +627,14 @@ const browserExternals = [
 	"node:diagnostics_channel", // Node.js built-in module
 	"node:async_hooks", // Node.js built-in module
 	"fs-extra", // Node-only fs library; host bundlers stub this for browser/Capacitor
+	// Document extractors are Node-only (mammoth uses fs.readFile.bind, unpdf
+	// pulls in Node fs/util internals). Reachable from
+	// features/documents/utils.ts which is dynamic-imported lazily — but
+	// Bun's `target: "node"` build still inlines dynamic imports unless the
+	// module is declared external. Hosts that need DOCX/PDF extraction load
+	// these at runtime via dynamic import on the Node side.
+	"mammoth",
+	"unpdf",
 ];
 
 // Node-specific externals (native modules and node-specific packages)
