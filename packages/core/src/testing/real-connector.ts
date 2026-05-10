@@ -61,7 +61,8 @@ export async function createDiscordTestClient(): Promise<DiscordTestClient | nul
 	if (!token) return null;
 
 	try {
-		const { Client, GatewayIntentBits } = await import("discord.js");
+		const discordJsModuleName: string = "discord.js";
+		const { Client, GatewayIntentBits } = await import(discordJsModuleName);
 		const client = new Client({
 			intents: [
 				GatewayIntentBits.Guilds,

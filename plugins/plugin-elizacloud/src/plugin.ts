@@ -22,6 +22,10 @@ import { getRuntimeRouteHostContext } from "@elizaos/core";
 import type { ElizaConfig } from "./lib/config-like";
 import { sendJson } from "./lib/http";
 import {
+  type CloudBillingRouteState,
+  handleCloudBillingRoute,
+} from "./routes/cloud-billing-routes";
+import {
   type CloudRouteState,
   handleCloudRoute,
 } from "./routes/cloud-routes";
@@ -116,8 +120,35 @@ function makeCloudRouteHandler() {
   };
 }
 
+function makeBillingRouteHandler() {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const url = new URL(httpReq.url ?? "/", "http://localhost");
+    const method = (httpReq.method ?? "GET").toUpperCase();
+    const hostContext = getHostContext(runtime);
+    const state: CloudBillingRouteState = {
+      config: (hostContext?.config ?? {}) as ElizaConfig,
+      runtime: runtime as CloudBillingRouteState["runtime"],
+    };
+
+    await handleCloudBillingRoute(
+      httpReq,
+      httpRes,
+      url.pathname,
+      method,
+      state,
+    );
+  };
+}
+
 const cloudStatusHandler = makeStatusHandler();
 const cloudRouteHandler = makeCloudRouteHandler();
+const cloudBillingRouteHandler = makeBillingRouteHandler();
 
 const cloudRoutes: Route[] = [
   // Status surface (read-only). Note: server.ts may exempt this from auth on
@@ -140,6 +171,12 @@ const cloudRoutes: Route[] = [
     rawPath: true,
     handler: cloudRouteHandler,
   },
+  ...(["GET", "POST", "PUT", "PATCH", "DELETE"] as const).map((type) => ({
+    type,
+    path: "/api/cloud/billing/:path*",
+    rawPath: true,
+    handler: cloudBillingRouteHandler,
+  })),
   {
     type: "POST",
     path: "/api/cloud/disconnect",

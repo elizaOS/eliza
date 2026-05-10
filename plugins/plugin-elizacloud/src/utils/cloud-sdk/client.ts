@@ -1,12 +1,16 @@
 import { CloudApiClient, ElizaCloudHttpClient } from "./http.js";
 import { ElizaCloudPublicRoutesClient } from "./public-routes.js";
 import {
+  type AffiliateCodeResponse,
   type AgentLifecycleResponse,
   type AgentListResponse,
   type AgentResponse,
   type ApiKeyCreateRequest,
   type ApiKeyCreateResponse,
   type ApiKeyListResponse,
+  type AppCreditsBalanceResponse,
+  type AppEarningsHistoryResponse,
+  type AppEarningsResponse,
   type AuthPairResponse,
   type ChatCompletionRequest,
   type ChatCompletionResponse,
@@ -21,11 +25,24 @@ import {
   type ContainerQuotaResponse,
   type CreateAgentRequest,
   type CreateAgentResponse,
+  type CreateAppChargeCheckoutRequest,
+  type CreateAppChargeCheckoutResponse,
+  type CreateAppChargeRequest,
+  type CreateAppChargeResponse,
+  type CreateAppCreditsCheckoutRequest,
+  type CreateAppCreditsCheckoutResponse,
   type CreateContainerRequest,
   type CreateContainerResponse,
+  type CreateCreditsCheckoutRequest,
+  type CreateCreditsCheckoutResponse,
+  type CreateRedemptionRequest,
+  type CreateRedemptionResponse,
+  type CreateX402PaymentRequest,
+  type CreateX402PaymentRequestResponse,
   type CreditBalanceResponse,
   type CreditSummaryResponse,
   DEFAULT_ELIZA_CLOUD_API_BASE_URL,
+  DEFAULT_ELIZA_CLOUD_API_ORIGIN,
   DEFAULT_ELIZA_CLOUD_BASE_URL,
   type ElizaCloudClientOptions,
   type EmbeddingsRequest,
@@ -34,19 +51,38 @@ import {
   type GatewayRelayResponse,
   type GenerateImageRequest,
   type GenerateImageResponse,
+  type GetAppChargeResponse,
+  type GetX402PaymentRequestResponse,
   type HttpMethod,
   type JobStatus,
+  type LinkAffiliateRequest,
+  type LinkAffiliateResponse,
+  type ListAppChargesResponse,
+  type ListRedemptionsResponse,
+  type ListX402PaymentRequestsResponse,
   type ModelListResponse,
   type OpenApiSpec,
   type PairingTokenResponse,
   type PollGatewayRelayResponse,
+  type RedemptionBalanceResponse,
+  type RedemptionQuoteResponse,
+  type RedemptionStatusResponse,
   type RegisterGatewayRelaySessionResponse,
   type ResponsesCreateRequest,
   type ResponsesCreateResponse,
+  type SettleX402PaymentRequestResponse,
   type SnapshotListResponse,
   type SnapshotType,
   type UpdateContainerRequest,
+  type UpsertAffiliateCodeRequest,
   type UserProfileResponse,
+  type VerifyAppCreditsCheckoutResponse,
+  type WithdrawAppEarningsRequest,
+  type WithdrawAppEarningsResponse,
+  type X402FacilitatorPaymentRequest,
+  type X402SettleResponse,
+  type X402SupportedResponse,
+  type X402VerifyResponse,
 } from "./types.js";
 
 function trimTrailingSlash(value: string): string {
@@ -56,6 +92,10 @@ function trimTrailingSlash(value: string): string {
 function normalizeBaseUrl(value: string | undefined, fallback: string): string {
   const trimmed = value?.trim();
   return trimTrailingSlash(trimmed && trimmed.length > 0 ? trimmed : fallback);
+}
+
+function apiOriginFromApiBaseUrl(value: string): string {
+  return value.replace(/\/api\/v1\/?$/, "");
 }
 
 function encodePathParam(value: string | number): string {
@@ -89,10 +129,18 @@ export class ElizaCloudClient {
 
   constructor(options: ElizaCloudClientOptions = {}) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl, DEFAULT_ELIZA_CLOUD_BASE_URL);
-    this.apiBaseUrl = normalizeBaseUrl(options.apiBaseUrl, DEFAULT_ELIZA_CLOUD_API_BASE_URL);
+    this.apiBaseUrl = normalizeBaseUrl(
+      options.apiBaseUrl,
+      options.baseUrl ? `${this.baseUrl}/api/v1` : DEFAULT_ELIZA_CLOUD_API_BASE_URL,
+    );
+    const apiOrigin = options.apiBaseUrl
+      ? apiOriginFromApiBaseUrl(this.apiBaseUrl)
+      : options.baseUrl
+        ? this.baseUrl
+        : DEFAULT_ELIZA_CLOUD_API_ORIGIN;
     this.http = new ElizaCloudHttpClient({
       ...options,
-      baseUrl: this.baseUrl,
+      baseUrl: apiOrigin,
     });
     this.v1 = new CloudApiClient(this.apiBaseUrl, options.apiKey, {
       bearerToken: options.bearerToken,
@@ -203,6 +251,198 @@ export class ElizaCloudClient {
 
   getCreditsSummary(): Promise<CreditSummaryResponse> {
     return this.request<CreditSummaryResponse>("GET", "/api/v1/credits/summary");
+  }
+
+  createCreditsCheckout(
+    request: CreateCreditsCheckoutRequest,
+  ): Promise<CreateCreditsCheckoutResponse> {
+    return this.request<CreateCreditsCheckoutResponse>("POST", "/api/v1/credits/checkout", {
+      json: request,
+    });
+  }
+
+  getAppCreditsBalance(appId: string): Promise<AppCreditsBalanceResponse> {
+    return this.request<AppCreditsBalanceResponse>("GET", "/api/v1/app-credits/balance", {
+      query: { app_id: appId },
+    });
+  }
+
+  createAppCreditsCheckout(
+    request: CreateAppCreditsCheckoutRequest,
+  ): Promise<CreateAppCreditsCheckoutResponse> {
+    return this.request<CreateAppCreditsCheckoutResponse>("POST", "/api/v1/app-credits/checkout", {
+      json: request,
+    });
+  }
+
+  verifyAppCreditsCheckout(sessionId: string): Promise<VerifyAppCreditsCheckoutResponse> {
+    return this.request<VerifyAppCreditsCheckoutResponse>("GET", "/api/v1/app-credits/verify", {
+      query: { session_id: sessionId },
+    });
+  }
+
+  getX402Supported(): Promise<X402SupportedResponse> {
+    return this.request<X402SupportedResponse>("GET", "/api/v1/x402", { skipAuth: true });
+  }
+
+  verifyX402Payment(request: X402FacilitatorPaymentRequest): Promise<X402VerifyResponse> {
+    return this.request<X402VerifyResponse>("POST", "/api/v1/x402/verify", {
+      json: request,
+      skipAuth: true,
+    });
+  }
+
+  settleX402Payment(request: X402FacilitatorPaymentRequest): Promise<X402SettleResponse> {
+    return this.request<X402SettleResponse>("POST", "/api/v1/x402/settle", {
+      json: request,
+      skipAuth: true,
+    });
+  }
+
+  createX402PaymentRequest(
+    request: CreateX402PaymentRequest,
+  ): Promise<CreateX402PaymentRequestResponse> {
+    return this.request<CreateX402PaymentRequestResponse>("POST", "/api/v1/x402/requests", {
+      json: request,
+    });
+  }
+
+  listX402PaymentRequests(): Promise<ListX402PaymentRequestsResponse> {
+    return this.request<ListX402PaymentRequestsResponse>("GET", "/api/v1/x402/requests");
+  }
+
+  getX402PaymentRequest(id: string): Promise<GetX402PaymentRequestResponse> {
+    return this.request<GetX402PaymentRequestResponse>(
+      "GET",
+      `/api/v1/x402/requests/${encodePathParam(id)}`,
+      { skipAuth: true },
+    );
+  }
+
+  settleX402PaymentRequest(
+    id: string,
+    paymentPayload: unknown,
+  ): Promise<SettleX402PaymentRequestResponse> {
+    return this.request<SettleX402PaymentRequestResponse>(
+      "POST",
+      `/api/v1/x402/requests/${encodePathParam(id)}/settle`,
+      { json: { paymentPayload }, skipAuth: true },
+    );
+  }
+
+  createAppCharge(
+    appId: string,
+    request: CreateAppChargeRequest,
+  ): Promise<CreateAppChargeResponse> {
+    return this.request<CreateAppChargeResponse>(
+      "POST",
+      `/api/v1/apps/${encodePathParam(appId)}/charges`,
+      { json: request },
+    );
+  }
+
+  listAppCharges(appId: string, options: { limit?: number } = {}): Promise<ListAppChargesResponse> {
+    return this.request<ListAppChargesResponse>(
+      "GET",
+      `/api/v1/apps/${encodePathParam(appId)}/charges`,
+      { query: options.limit === undefined ? undefined : { limit: options.limit } },
+    );
+  }
+
+  getAppCharge(appId: string, chargeId: string): Promise<GetAppChargeResponse> {
+    return this.request<GetAppChargeResponse>(
+      "GET",
+      `/api/v1/apps/${encodePathParam(appId)}/charges/${encodePathParam(chargeId)}`,
+      { skipAuth: true },
+    );
+  }
+
+  createAppChargeCheckout(
+    appId: string,
+    chargeId: string,
+    request: CreateAppChargeCheckoutRequest,
+  ): Promise<CreateAppChargeCheckoutResponse> {
+    return this.request<CreateAppChargeCheckoutResponse>(
+      "POST",
+      `/api/v1/apps/${encodePathParam(appId)}/charges/${encodePathParam(chargeId)}/checkout`,
+      { json: request },
+    );
+  }
+
+  getAffiliateCode(): Promise<AffiliateCodeResponse> {
+    return this.request<AffiliateCodeResponse>("GET", "/api/v1/affiliates");
+  }
+
+  createAffiliateCode(request: UpsertAffiliateCodeRequest): Promise<AffiliateCodeResponse> {
+    return this.request<AffiliateCodeResponse>("POST", "/api/v1/affiliates", { json: request });
+  }
+
+  updateAffiliateCode(request: UpsertAffiliateCodeRequest): Promise<AffiliateCodeResponse> {
+    return this.request<AffiliateCodeResponse>("PUT", "/api/v1/affiliates", { json: request });
+  }
+
+  linkAffiliateCode(request: LinkAffiliateRequest): Promise<LinkAffiliateResponse> {
+    return this.request<LinkAffiliateResponse>("POST", "/api/v1/affiliates/link", {
+      json: request,
+    });
+  }
+
+  getAppEarnings(appId: string, options: { days?: number } = {}): Promise<AppEarningsResponse> {
+    return this.request<AppEarningsResponse>(
+      "GET",
+      `/api/v1/apps/${encodePathParam(appId)}/earnings`,
+      { query: options.days === undefined ? undefined : { days: options.days } },
+    );
+  }
+
+  getAppEarningsHistory(
+    appId: string,
+    options: { limit?: number; offset?: number; type?: string } = {},
+  ): Promise<AppEarningsHistoryResponse> {
+    return this.request<AppEarningsHistoryResponse>(
+      "GET",
+      `/api/v1/apps/${encodePathParam(appId)}/earnings/history`,
+      { query: options },
+    );
+  }
+
+  withdrawAppEarnings(
+    appId: string,
+    request: WithdrawAppEarningsRequest,
+  ): Promise<WithdrawAppEarningsResponse> {
+    return this.request<WithdrawAppEarningsResponse>(
+      "POST",
+      `/api/v1/apps/${encodePathParam(appId)}/earnings/withdraw`,
+      { json: request },
+    );
+  }
+
+  getRedemptionBalance(): Promise<RedemptionBalanceResponse> {
+    return this.request<RedemptionBalanceResponse>("GET", "/api/v1/redemptions/balance");
+  }
+
+  getRedemptionQuote(network: string, pointsAmount?: number): Promise<RedemptionQuoteResponse> {
+    return this.request<RedemptionQuoteResponse>("GET", "/api/v1/redemptions/quote", {
+      query: { network, pointsAmount },
+    });
+  }
+
+  getRedemptionStatus(): Promise<RedemptionStatusResponse> {
+    return this.request<RedemptionStatusResponse>("GET", "/api/v1/redemptions/status", {
+      skipAuth: true,
+    });
+  }
+
+  createRedemption(request: CreateRedemptionRequest): Promise<CreateRedemptionResponse> {
+    return this.request<CreateRedemptionResponse>("POST", "/api/v1/redemptions", {
+      json: request,
+    });
+  }
+
+  listRedemptions(options: { limit?: number } = {}): Promise<ListRedemptionsResponse> {
+    return this.request<ListRedemptionsResponse>("GET", "/api/v1/redemptions", {
+      query: options.limit === undefined ? undefined : { limit: options.limit },
+    });
   }
 
   listContainers(): Promise<ContainerListResponse> {

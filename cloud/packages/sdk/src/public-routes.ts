@@ -264,6 +264,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "POST /api/v1/api-keys/{id}/regenerate": { method: "POST", path: "/api/v1/api-keys/{id}/regenerate", methodName: "postApiV1ApiKeysByIdRegenerate", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/api-keys/[id]/regenerate/route.ts" },
   "POST /api/v1/apis/storage/presign": { method: "POST", path: "/api/v1/apis/storage/presign", methodName: "postApiV1ApisStoragePresign", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/apis/storage/presign/route.ts" },
   "POST /api/v1/apis/streaming/sessions": { method: "POST", path: "/api/v1/apis/streaming/sessions", methodName: "postApiV1ApisStreamingSessions", responseMode: "stream", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/apis/streaming/sessions/route.ts" },
+  "POST /api/v1/apis/tunnels/tailscale/auth-key": { method: "POST", path: "/api/v1/apis/tunnels/tailscale/auth-key", methodName: "postApiV1ApisTunnelsTailscaleAuthKey", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/apis/tunnels/tailscale/auth-key/route.ts" },
   "POST /api/v1/app-auth/connect": { method: "POST", path: "/api/v1/app-auth/connect", methodName: "postApiV1AppAuthConnect", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/app-auth/connect/route.ts" },
   "POST /api/v1/app-credits/checkout": { method: "POST", path: "/api/v1/app-credits/checkout", methodName: "postApiV1AppCreditsCheckout", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/app-credits/checkout/route.ts" },
   "POST /api/v1/app/agents": { method: "POST", path: "/api/v1/app/agents", methodName: "postApiV1AppAgents", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/app/agents/route.ts" },
@@ -695,6 +696,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/api-keys/{id}/regenerate": { "id": string | number };
   "POST /api/v1/apis/storage/presign": Record<never, never>;
   "POST /api/v1/apis/streaming/sessions": Record<never, never>;
+  "POST /api/v1/apis/tunnels/tailscale/auth-key": Record<never, never>;
   "POST /api/v1/app-auth/connect": Record<never, never>;
   "POST /api/v1/app-credits/checkout": Record<never, never>;
   "POST /api/v1/app/agents": Record<never, never>;
@@ -2512,6 +2514,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/apis/streaming/sessions"> = {}
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/apis/streaming/sessions", options);
+  }
+
+  postApiV1ApisTunnelsTailscaleAuthKey<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apis/tunnels/tailscale/auth-key"> = {}
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/apis/tunnels/tailscale/auth-key", TResponse>("POST /api/v1/apis/tunnels/tailscale/auth-key", options);
   }
 
   postApiV1AppAuthConnect<TResponse = unknown>(
@@ -4450,6 +4458,10 @@ export class ElizaCloudPublicRoutesClient {
 
   postApiV1ApisStreamingSessionsRaw(options: PublicRouteCallOptions<"POST /api/v1/apis/streaming/sessions"> = {}): Promise<Response> {
     return this.callRaw("POST /api/v1/apis/streaming/sessions", options);
+  }
+
+  postApiV1ApisTunnelsTailscaleAuthKeyRaw(options: PublicRouteCallOptions<"POST /api/v1/apis/tunnels/tailscale/auth-key"> = {}): Promise<Response> {
+    return this.callRaw("POST /api/v1/apis/tunnels/tailscale/auth-key", options);
   }
 
   postApiV1AppAuthConnectRaw(options: PublicRouteCallOptions<"POST /api/v1/app-auth/connect"> = {}): Promise<Response> {

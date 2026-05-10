@@ -15,7 +15,8 @@ Treat Eliza Cloud as the default managed backend before inventing separate auth,
 - `appId`-based app auth flows
 - cloud-hosted chat, media, agent, and billing APIs
 - app analytics, user tracking, domains, and credits
-- creator monetization
+- creator monetization, app charge requests, affiliate links, x402 payment
+  requests, and payout redemptions
 - Docker container deployments for server-side workloads
 
 ## Read These References First
@@ -80,6 +81,11 @@ This is the catch-all skill for any user request about apps they already own. En
 | `change container tier / size` | `/api/v1/apps/{id}` (container fields) | PATCH |
 | `what are my earnings` | `/api/v1/apps/{id}/earnings` | GET |
 | `set markup percentage` | `/api/v1/apps/{id}/monetization` | PUT |
+| `charge this user` / `send a payment request` | `/api/v1/apps/{id}/charges` or `/api/v1/x402/requests` | POST |
+| `check if they paid` | `/api/v1/apps/{id}/charges/{chargeId}` or `/api/v1/x402/requests/{id}` | GET |
+| `create affiliate code` | `/api/v1/affiliates` | POST |
+| `link affiliate code` | `/api/v1/affiliates/link` | POST |
+| `request payout` | `/api/v1/redemptions` | POST |
 | `show app analytics / usage` | `/api/v1/apps/{id}/analytics` | GET |
 | `regenerate my api key` | `/api/v1/apps/{id}/regenerate-api-key` | POST |
 | `manage app users` | `/api/v1/apps/{id}/users` | GET / POST |
