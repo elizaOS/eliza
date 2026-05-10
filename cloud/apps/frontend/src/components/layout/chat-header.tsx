@@ -317,21 +317,19 @@ export function ChatHeader({ onToggleSidebar }: ChatHeaderProps) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64 bg-[#0A0A0A] border-white/10">
         {availableCharacters.length > 0 ? (
-          <>
-            {availableCharacters.map((character) => (
-              <DropdownMenuItem
-                key={character.id}
-                onClick={() => handleAgentChange(character.id)}
-                className={cn(
-                  "flex items-center gap-2 px-3 py-2 cursor-pointer",
-                  "hover:bg-white/5 focus:bg-white/5",
-                  selectedCharacterId === character.id && "bg-white/10",
-                )}
-              >
-                <AgentDisplay agent={character} />
-              </DropdownMenuItem>
-            ))}
-          </>
+          availableCharacters.map((character) => (
+            <DropdownMenuItem
+              key={character.id}
+              onClick={() => handleAgentChange(character.id)}
+              className={cn(
+                "flex items-center gap-2 px-3 py-2 cursor-pointer",
+                "hover:bg-white/5 focus:bg-white/5",
+                selectedCharacterId === character.id && "bg-white/10",
+              )}
+            >
+              <AgentDisplay agent={character} />
+            </DropdownMenuItem>
+          ))
         ) : (
           <DropdownMenuItem disabled className="px-3 py-2 text-white/40">
             No agents available
