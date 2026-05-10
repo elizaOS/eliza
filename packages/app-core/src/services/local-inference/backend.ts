@@ -44,7 +44,7 @@ export interface BackendLoadOverrides {
   contextSize?: number;
   cacheTypeK?: string;
   cacheTypeV?: string;
-  gpuLayers?: number;
+  gpuLayers?: number | "auto" | "max";
   flashAttention?: boolean;
   mmap?: boolean;
   mlock?: boolean;
