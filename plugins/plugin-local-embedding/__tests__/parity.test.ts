@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { LocalEmbeddingManager } from "../src/index.ts";
 
 /**
  * Parity test for the embedding pipeline.
@@ -27,8 +28,7 @@ import { describe, expect, it, vi } from "vitest";
  */
 describe("embedding pipeline parity", () => {
   it("single-input and batched paths produce identical vectors", async () => {
-    const mod = await import("../src/index.ts");
-    const manager = mod.LocalEmbeddingManager.getInstance();
+    const manager = LocalEmbeddingManager.getInstance();
 
     const dim = 768;
     const internal = manager as unknown as {
@@ -76,8 +76,7 @@ describe("embedding pipeline parity", () => {
   });
 
   it("output is L2-normalised by default", async () => {
-    const mod = await import("../src/index.ts");
-    const manager = mod.LocalEmbeddingManager.getInstance();
+    const manager = LocalEmbeddingManager.getInstance();
     const dim = 384;
     const internal = manager as unknown as {
       embeddingContext: { getEmbeddingFor: ReturnType<typeof vi.fn> };
@@ -105,8 +104,7 @@ describe("embedding pipeline parity", () => {
   });
 
   it("output matches declared dimension when binding returns wrong size", async () => {
-    const mod = await import("../src/index.ts");
-    const manager = mod.LocalEmbeddingManager.getInstance();
+    const manager = LocalEmbeddingManager.getInstance();
     const declaredDim = 768;
     const bindingDim = 384;
     const internal = manager as unknown as {

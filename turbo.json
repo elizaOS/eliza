@@ -58,7 +58,6 @@
     "@elizaos/ui#build": {
       "dependsOn": [
         "^build",
-        "@elizaos/agent#build",
         "@elizaos/core#build",
         "@elizaos/shared#build",
         "@elizaos/plugin-pdf#build"
