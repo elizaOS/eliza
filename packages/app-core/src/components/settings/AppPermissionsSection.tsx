@@ -123,20 +123,28 @@ export function AppPermissionsSection() {
 
   const onToggle = useCallback(
     async (slug: string, ns: RecognisedPermissionNamespace, next: boolean) => {
-      const targetView = rowsRef.current.find(
-        (row) => row.view.slug === slug,
-      )?.view;
-      if (!targetView) return;
-      const current = targetView.grantedNamespaces;
+      const targetRow = rowsRef.current.find((row) => row.view.slug === slug);
+      if (!targetRow) return;
+      const previousGranted = targetRow.view.grantedNamespaces;
       const nextSet: RecognisedPermissionNamespace[] = next
-        ? Array.from(new Set<RecognisedPermissionNamespace>([...current, ns]))
-        : current.filter(
+        ? Array.from(
+            new Set<RecognisedPermissionNamespace>([...previousGranted, ns]),
+          )
+        : previousGranted.filter(
             (existing: RecognisedPermissionNamespace) => existing !== ns,
           );
 
+      // Optimistically flip the granted set so the Switch snaps to the
+      // new position immediately. Reverted on error below.
       setRows((prev) =>
         prev.map((row) =>
-          row.view.slug === slug ? { ...row, pending: true, error: null } : row,
+          row.view.slug === slug
+            ? {
+                view: { ...row.view, grantedNamespaces: nextSet },
+                pending: true,
+                error: null,
+              }
+            : row,
         ),
       );
       try {
@@ -152,10 +160,15 @@ export function AppPermissionsSection() {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (!mountedRef.current) return;
+        // Revert the optimistic flip.
         setRows((prev) =>
           prev.map((row) =>
             row.view.slug === slug
-              ? { ...row, pending: false, error: message }
+              ? {
+                  view: { ...row.view, grantedNamespaces: previousGranted },
+                  pending: false,
+                  error: message,
+                }
               : row,
           ),
         );

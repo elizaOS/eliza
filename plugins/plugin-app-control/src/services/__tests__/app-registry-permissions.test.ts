@@ -291,6 +291,77 @@ describe("AppRegistryService permissions surface", () => {
 		});
 	});
 
+	describe("trust persistence (regression: PR #7554 review P1)", () => {
+		it("stores trust on the entry so first-party labels survive a restart", async () => {
+			const first = new AppRegistryService(NOOP_RUNTIME);
+			await first.register(
+				makeEntry({
+					requestedPermissions: { fs: { read: ["**"] } },
+				}),
+				{ trust: "first-party" },
+			);
+			const viewSameProcess = await first.getPermissionsView("demo");
+			expect(viewSameProcess?.trust).toBe("first-party");
+
+			const second = new AppRegistryService(NOOP_RUNTIME);
+			const viewAfterRestart = await second.getPermissionsView("demo");
+			expect(viewAfterRestart?.trust).toBe("first-party");
+		});
+
+		it("defaults missing trust to 'external' for back-compat with pre-fix entries", async () => {
+			// Simulate an older registry file (pre-fix shape: no trust field).
+			const fs = await import("node:fs/promises");
+			const registryPath = path.join(state.stateDir, "app-registry.json");
+			await fs.writeFile(
+				registryPath,
+				JSON.stringify({
+					version: 1,
+					entries: [
+						{
+							slug: "legacy",
+							canonicalName: "@example/app-legacy",
+							aliases: [],
+							directory: "/tmp/legacy",
+							displayName: "Legacy",
+						},
+					],
+				}),
+			);
+
+			const service = new AppRegistryService(NOOP_RUNTIME);
+			const view = await service.getPermissionsView("legacy");
+			expect(view?.trust).toBe("external");
+		});
+
+		it("listPermissionsViews returns the right trust per app", async () => {
+			const service = new AppRegistryService(NOOP_RUNTIME);
+			await service.register(
+				makeEntry({
+					slug: "first",
+					canonicalName: "@example/app-first",
+					requestedPermissions: { fs: { read: ["**"] } },
+				}),
+				{ trust: "first-party" },
+			);
+			await service.register(
+				makeEntry({
+					slug: "ext",
+					canonicalName: "@example/app-ext",
+					requestedPermissions: { net: { outbound: ["*"] } },
+				}),
+				{ trust: "external" },
+			);
+			const views = await service.listPermissionsViews();
+			const trustBySlug = Object.fromEntries(
+				views.map((v) => [v.slug, v.trust]),
+			);
+			expect(trustBySlug).toEqual({
+				first: "first-party",
+				ext: "external",
+			});
+		});
+	});
+
 	describe("persistence round-trip", () => {
 		it("survives service restart", async () => {
 			const first = new AppRegistryService(NOOP_RUNTIME);
