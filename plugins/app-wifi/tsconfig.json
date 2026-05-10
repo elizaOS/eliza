@@ -4,12 +4,9 @@
     "composite": false,
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
-    "strict": true,
+    "strict": false,
     "skipLibCheck": true,
-    "types": [
-      "node",
-      "bun"
-    ],
+    "types": ["node", "bun"],
     "typeRoots": [
       "./node_modules/@types",
       "../../node_modules/@types",
@@ -24,51 +21,45 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "drizzle-orm": [
-        "../plugin-sql/node_modules/drizzle-orm"
-      ],
-      "drizzle-orm/*": [
-        "../plugin-sql/node_modules/drizzle-orm/*"
-      ],
-      "@elizaos/app-core": [
-        "../../packages/app-core/src/index.ts"
-      ],
-      "@elizaos/agent": [
-        "../../packages/agent/src/index.ts"
-      ],
-      "@elizaos/core": [
-        "../../packages/core/src/index.node.ts"
-      ],
-      "@elizaos/ui": [
-        "../../packages/ui/src/index.ts"
-      ],
-      "@elizaos/shared": [
-        "../../packages/shared/src/index.ts"
-      ],
+      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
+      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
+      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/capacitor-wifi": [
         "../../packages/native-plugins/wifi/src/index.ts"
+      ],
+      "@elizaos/plugin-discord-local": [
+        "../../plugins/plugin-discord-local/src/index.ts"
+      ],
+      "@elizaos/plugin-discord-local/*": [
+        "../../plugins/plugin-discord-local/src/*"
+      ],
+      "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
+      "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
+      "@elizaos/app-task-coordinator": [
+        "../../plugins/app-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/app-task-coordinator/*": [
+        "../../plugins/app-task-coordinator/src/*"
       ],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/src/index.ts"
-      ],
+      "@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
+      "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
+      "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
       ],
-      "@elizaos/plugin-signal": [
-        "../../plugins/plugin-signal/src/index.ts"
-      ],
-      "@elizaos/app-task-coordinator": [
-        "../../plugins/app-task-coordinator/src/index.ts"
-      ],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],
-      "react": [
-        "../../packages/app-core/node_modules/@types/react/index.d.ts"
-      ],
+      "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
       ],
@@ -78,9 +69,22 @@
       "react-dom": [
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
       ],
-      "lucide-react": [
-        "../app-companion/node_modules/lucide-react"
-      ]
+      "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
+      "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
+      "@elizaos/plugin-workflow": [
+        "../../plugins/plugin-workflow/src/index.ts"
+      ],
+      "@elizaos/plugin-workflow/*": ["../../plugins/plugin-workflow/src/*"],
+      "@elizaos/plugin-streaming": [
+        "../../plugins/plugin-streaming/src/index.ts"
+      ],
+      "@elizaos/plugin-streaming/*": ["../../plugins/plugin-streaming/src/*"],
+      "@elizaos/plugin-music": ["../../plugins/plugin-music/src/index.ts"],
+      "@elizaos/plugin-music/*": ["../../plugins/plugin-music/src/*"],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
+      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
+      "@elizaos/*": ["../../node_modules/@elizaos/*"],
+      "lucide-react": ["../app-companion/node_modules/lucide-react"]
     }
   },
   "include": [
@@ -90,10 +94,5 @@
     "../../packages/agent/src/external-modules.d.ts",
     "../../packages/app-core/src/ambient-modules.d.ts"
   ],
-  "exclude": [
-    "src/**/*.stories.ts",
-    "src/**/*.stories.tsx",
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx"
-  ]
+  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
 }

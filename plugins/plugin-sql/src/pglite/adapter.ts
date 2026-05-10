@@ -1,3 +1,4 @@
+import type { PGlite } from "@electric-sql/pglite";
 import { type Agent, type Entity, logger, type Memory, type UUID } from "@elizaos/core";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
 import { BaseDrizzleAdapter } from "../base";
@@ -113,7 +114,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     return this.db as PgliteDatabase;
   }
 
-  getRawConnection() {
+  getRawConnection(): PGlite {
     return this.manager.getConnection();
   }
 }

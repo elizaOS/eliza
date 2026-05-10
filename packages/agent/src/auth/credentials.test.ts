@@ -8,7 +8,7 @@ describe("applySubscriptionCredentials", () => {
 
   it("does not expose Codex subscription credentials as OPENAI_API_KEY", async () => {
     vi.stubEnv("OPENAI_API_KEY", "");
-    const config = {
+    const config: Parameters<typeof applySubscriptionCredentials>[0] = {
       agents: {
         defaults: {
           subscriptionProvider: "openai-codex",
@@ -19,12 +19,12 @@ describe("applySubscriptionCredentials", () => {
     await applySubscriptionCredentials(config);
 
     expect(process.env.OPENAI_API_KEY).toBe("");
-    expect(config.agents.defaults.model?.primary).toBe("codex-cli");
+    expect(config.agents?.defaults?.model?.primary).toBe("codex-cli");
   });
 
   it("leaves a direct OpenAI API key untouched", async () => {
     vi.stubEnv("OPENAI_API_KEY", "sk-direct-openai-key");
-    const config = {
+    const config: Parameters<typeof applySubscriptionCredentials>[0] = {
       agents: {
         defaults: {
           subscriptionProvider: "openai-codex",
@@ -35,6 +35,6 @@ describe("applySubscriptionCredentials", () => {
     await applySubscriptionCredentials(config);
 
     expect(process.env.OPENAI_API_KEY).toBe("sk-direct-openai-key");
-    expect(config.agents.defaults.model?.primary).toBe("codex-cli");
+    expect(config.agents?.defaults?.model?.primary).toBe("codex-cli");
   });
 });

@@ -6,6 +6,7 @@ import { DatabaseMigrationService } from "../../../migration-service";
 import { PgliteDatabaseAdapter } from "../../../pglite/adapter";
 import { PGliteClientManager } from "../../../pglite/manager";
 import * as schema from "../../../schema";
+import type { DrizzleDatabase } from "../../../types";
 
 describe("PostgreSQL Adapter Integration Tests", () => {
   let adapter: PgliteDatabaseAdapter;
@@ -22,7 +23,7 @@ describe("PostgreSQL Adapter Integration Tests", () => {
 
     // Run migrations
     const migrationService = new DatabaseMigrationService();
-    const db = adapter.getDatabase();
+    const db = adapter.getDatabase() as DrizzleDatabase;
     await migrationService.initializeWithDatabase(db);
     migrationService.discoverAndRegisterPluginSchemas([
       { name: "@elizaos/plugin-sql", description: "SQL plugin", schema },

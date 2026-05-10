@@ -23,9 +23,11 @@
   "exclude": [
     "node_modules",
     "dist",
+    "build.ts",
+    "vitest.config.ts",
     "**/__tests__/**",
     "**/*.test.ts",
-    "build.ts",
-    "vitest.config.ts"
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
   ]
 }

@@ -1869,6 +1869,7 @@ export class IMessageService extends Service implements IIMessageService {
             timestamp: Date.now(),
           } as EventPayload
         );
+        return { nextInterval: heartbeatIntervalMs };
       },
       shouldRun: async () => true,
     });

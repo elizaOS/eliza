@@ -45,9 +45,17 @@ export function getAllOverlayApps(): OverlayApp[] {
 
 /**
  * Get overlay apps that are available on the current platform. Filters
- * out `androidOnly: true` apps unless this is the MiladyOS Android build.
- * Used by the apps catalog UI so stock Android, iOS, desktop, and web users
- * don't see privileged OS-control tiles that launch into permanent error states.
+ * out `androidOnly: true` apps unless this is an AOSP Eliza-derived Android
+ * build (ElizaOS, MiladyOS, or any other white-label fork). Used by the apps
+ * catalog UI so stock Android, iOS, desktop, and web users don't see
+ * privileged OS-control tiles that launch into permanent error states.
+ *
+ * AOSP detection: the framework's `MainActivity.applyElizaOSUserAgentSuffix`
+ * appends an `ElizaOS/<tag>` token to the WebView UA when `ro.elizaos.product`
+ * is set by the product makefile. Every Eliza-derived AOSP image carries this
+ * marker; white-label brands (MiladyOS, …) layer additional brand-specific
+ * markers on top via `app.config.ts > android.userAgentMarkers`. Stock Android
+ * APKs leave the UA untouched.
  *
  * Platform detection: when `Capacitor.getPlatform()` is available it is
  * preferred; otherwise the user-agent is inspected. Tests can pass an
@@ -55,7 +63,12 @@ export function getAllOverlayApps(): OverlayApp[] {
  */
 export interface OverlayAppAvailabilityContext {
   platform?: string;
-  miladyOS?: boolean;
+  /**
+   * True when this is an AOSP Eliza-derived Android build (any fork). When
+   * unspecified, derived from `userAgent` by checking for the framework
+   * `ElizaOS/` marker.
+   */
+  aospAndroid?: boolean;
   userAgent?: string;
 }
 
@@ -66,10 +79,10 @@ export function getAvailableOverlayApps(
 ): OverlayApp[] {
   const availability =
     typeof context === "string"
-      ? { platform: context, miladyOS: false }
+      ? { platform: context, aospAndroid: false }
       : normalizeOverlayAvailabilityContext(context);
   const canShowAndroidOnly =
-    availability.platform === "android" && availability.miladyOS === true;
+    availability.platform === "android" && availability.aospAndroid === true;
   return getAllOverlayApps().filter(
     (app) => canShowAndroidOnly || app.androidOnly !== true,
   );
@@ -84,9 +97,9 @@ function normalizeOverlayAvailabilityContext(
   const platform = context.platform ?? detectPlatformForCatalog(userAgent);
   return {
     platform,
-    miladyOS:
-      context.miladyOS ??
-      (platform === "android" && hasMiladyOSMarker(userAgent)),
+    aospAndroid:
+      context.aospAndroid ??
+      (platform === "android" && hasElizaOSAospMarker(userAgent)),
     userAgent,
   };
 }
@@ -96,7 +109,7 @@ function detectOverlayAvailabilityContext(): Required<OverlayAppAvailabilityCont
   const platform = detectPlatformForCatalog(userAgent);
   return {
     platform,
-    miladyOS: platform === "android" && hasMiladyOSMarker(userAgent),
+    aospAndroid: platform === "android" && hasElizaOSAospMarker(userAgent),
     userAgent,
   };
 }
@@ -114,8 +127,23 @@ function detectPlatformForCatalog(userAgent: string): string {
   return "web";
 }
 
-function hasMiladyOSMarker(userAgent: string): boolean {
-  return /\bMiladyOS\//.test(userAgent);
+function hasElizaOSAospMarker(userAgent: string): boolean {
+  return /\bElizaOS\//.test(userAgent);
+}
+
+/**
+ * True when running on an AOSP Eliza-derived Android build (ElizaOS, MiladyOS,
+ * any white-label fork). Tests may pass an explicit context. Shared with
+ * `catalog-loader.ts` so it can apply the same gate to installed/static apps,
+ * not just overlay apps that happen to be registered already.
+ */
+export function isAospAndroid(
+  context: OverlayAppAvailabilityContext = {},
+): boolean {
+  const availability = normalizeOverlayAvailabilityContext(context);
+  return (
+    availability.platform === "android" && availability.aospAndroid === true
+  );
 }
 
 /** Check if an app name belongs to a registered overlay app. */

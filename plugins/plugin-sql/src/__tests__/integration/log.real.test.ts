@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { logTable } from "../../schema";
+import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("Log Integration Tests", () => {
@@ -52,7 +53,7 @@ describe("Log Integration Tests", () => {
 
   describe("Log Tests", () => {
     beforeEach(async () => {
-      await adapter.getDatabase().delete(logTable);
+      await (adapter.getDatabase() as DrizzleDatabase).delete(logTable);
     });
 
     it("should create and retrieve a log entry", async () => {
@@ -64,7 +65,7 @@ describe("Log Integration Tests", () => {
       };
       await adapter.log(logData);
       const logs = await adapter.getLogs({
-        ownerEntityId: testEntityId,
+        entityId: testEntityId,
         roomId: testRoomId,
       });
       expect(logs).toHaveLength(1);
@@ -92,7 +93,7 @@ describe("Log Integration Tests", () => {
       });
 
       const logs = await adapter.getLogs({
-        ownerEntityId: testEntityId,
+        entityId: testEntityId,
         roomId: testRoomId,
         type: "typeA",
       });

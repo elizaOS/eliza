@@ -35,12 +35,9 @@
     "src/**/*.ts"
   ],
   "exclude": [
-    "e2e/**/*",
-    "src/__tests__/**",
-    "**/*.test.ts",
-    "**/*.spec.ts",
-    "**/*.cy.tsx",
-    "**/cypress/**/*"
+    "src/**/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
   ],
   "extends": "../../../tsconfig.dist-paths.json"
 }

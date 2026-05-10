@@ -1,16 +1,10 @@
-import {
-  ChannelType,
-  type Entity,
-  type Room,
-  type Task,
-  type UUID,
-  type World,
-} from "@elizaos/core";
+import { ChannelType, type Entity, type Room, type Task, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { taskTable } from "../../schema";
+import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("Task Integration Tests", () => {
@@ -37,8 +31,8 @@ describe("Task Integration Tests", () => {
       id: testWorldId,
       agentId: testAgentId,
       name: "Test World",
-      serverId: "test-server",
-    } as World);
+      messageServerId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID,
+    });
 
     // Create test room
     await adapter.createRooms([
@@ -72,7 +66,7 @@ describe("Task Integration Tests", () => {
 
   describe("Task Tests", () => {
     beforeEach(async () => {
-      await adapter.getDatabase().delete(taskTable);
+      await (adapter.getDatabase() as DrizzleDatabase).delete(taskTable);
     });
     it("should create and retrieve a task", async () => {
       const taskId = uuidv4() as UUID;

@@ -11,6 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { embeddingTable, memoryTable } from "../../schema";
+import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("Embedding Integration Tests", () => {
@@ -56,8 +57,9 @@ describe("Embedding Integration Tests", () => {
 
   describe("Embedding Tests", () => {
     beforeEach(async () => {
-      await adapter.getDatabase().delete(embeddingTable);
-      await adapter.getDatabase().delete(memoryTable);
+      const db = adapter.getDatabase() as DrizzleDatabase;
+      await db.delete(embeddingTable);
+      await db.delete(memoryTable);
     });
 
     it("should create a memory with an embedding and retrieve it", async () => {

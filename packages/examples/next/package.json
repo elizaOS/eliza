@@ -18,7 +18,8 @@
     "next": "^15.1.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "zlib-sync": "^0.1.10"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

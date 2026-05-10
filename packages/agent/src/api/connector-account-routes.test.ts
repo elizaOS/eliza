@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const coreMocks = vi.hoisted(() => {
@@ -322,13 +323,13 @@ function createConnectorAccountHarness(options: {
   const req = {
     url: options.pathname,
     on: vi.fn(),
-  } as IncomingMessage;
+  } as unknown as IncomingMessage;
   const res = {
     statusCode: 200,
     setHeader: vi.fn(),
     write: vi.fn(),
     end: vi.fn(),
-  } as ServerResponse;
+  } as unknown as ServerResponse;
   const pathname = options.pathname.split("?")[0];
   const ctx: ConnectorAccountRouteContext = {
     req,
@@ -336,7 +337,13 @@ function createConnectorAccountHarness(options: {
     method: options.method,
     pathname,
     state: { runtime: runtime as never },
-    readJsonBody: vi.fn(async () => options.body ?? {}),
+    readJsonBody: (async <T extends object>(
+      _req: IncomingMessage,
+      _res: ServerResponse,
+      _options?: ReadJsonBodyOptions,
+    ): Promise<T | null> =>
+      (options.body ??
+        {}) as T) as ConnectorAccountRouteContext["readJsonBody"],
     json: (_res, data, status = 200) => {
       captured.status = status;
       captured.body = data;

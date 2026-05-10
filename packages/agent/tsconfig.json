@@ -73,6 +73,9 @@
       "@elizaos/ui": [
         "../ui/src/index.ts"
       ],
+      "@elizaos/ui/api/client-types-cloud": [
+        "../ui/src/api/client-types-cloud.ts"
+      ],
       "@elizaos/app-companion": [
         "../../plugins/app-companion/src/index.ts"
       ],
@@ -135,16 +138,33 @@
       ],
       "react-dom": [
         "../app-core/node_modules/@types/react-dom/index.d.ts"
-      ]
+      ],
+      "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
+      "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
+      "@elizaos/plugin-elizacloud": [
+        "../../plugins/plugin-elizacloud/src/index.node.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": [
+        "../../plugins/plugin-elizacloud/src/*"
+      ],
+      "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
+      "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
+      "@elizaos/plugin-local-inference": [
+        "../../plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/*": [
+        "../../plugins/plugin-local-inference/src/*"
+      ],
+      "@elizaos/plugin-discord-local": [
+        "../../plugins/plugin-discord-local/src/index.ts"
+      ],
+      "@elizaos/plugin-discord-local/*": [
+        "../../plugins/plugin-discord-local/src/*"
+      ],
+      "@elizaos/*": ["../../node_modules/@elizaos/*"]
     }
   },
   "include": [
     "src"
-  ],
-  "exclude": [
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx",
-    "src/**/*.spec.ts",
-    "src/**/__tests__/**"
   ]
 }

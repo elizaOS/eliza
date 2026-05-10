@@ -113,7 +113,6 @@ export interface LocalRuntimeAcceleration {
 }
 
 /**
-<<<<<<< HEAD
  * Tokenizer family — names match the upstream model family the GGUF was
  * trained against. Used by the DFlash drafter pair guard, by the catalog
  * blurbs, and by any downstream code that needs to make tokenizer-aware
@@ -121,23 +120,6 @@ export interface LocalRuntimeAcceleration {
  * the exact vocabulary). Open string union so new families can be added
  * without a code change in every consumer; the canonical members are
  * enumerated for tooling.
- */
-export type TokenizerFamily =
-  | "qwen3"
-  | "qwen2.5"
-  | "llama3"
-  | "smol"
-  | "gemma2"
-  | "mistral"
-  | "deepseek"
-  | (string & {});
-=======
- * Tokenizer family identifier used to verify that a DFlash target and its
- * paired drafter share a vocabulary. Speculative decoding requires the
- * target and drafter to emit token ids drawn from the same vocabulary —
- * see `docs/porting/dflash-drafter-strategy.md` for why mismatched
- * tokenizers cannot be bridged by metadata repair. Add new families here
- * as the catalog grows.
  */
 export type TokenizerFamily =
   | "qwen3"
@@ -149,8 +131,8 @@ export type TokenizerFamily =
   | "sentencepiece"
   | "deepseekv2"
   | "mistral"
-  | "gemma";
->>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
+  | "gemma"
+  | (string & {});
 
 export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
@@ -196,7 +178,6 @@ export interface CatalogModel {
   /** Extra catalog model ids to download alongside this model. */
   companionModelIds?: string[];
   /**
-<<<<<<< HEAD
    * Maximum context length supported by the underlying GGUF, in tokens.
    * This is the GGUF ceiling — actual load-time `contextSize` may be
    * smaller (capped by the loader's runtime budget). When unset, callers
@@ -220,14 +201,6 @@ export interface CatalogModel {
    * drafter pair guard (drafter and target MUST share the same family
    * for spec-decode to work) and by recommendation/UI code that needs
    * to surface family-aware messaging.
-=======
-   * Tokenizer/vocabulary family this GGUF emits. Optional today so existing
-   * non-paired entries do not all need to be backfilled at once, but
-   * **REQUIRED** for any entry that participates in DFlash pairing (target
-   * or drafter): the catalog test guard rejects pairs where target and
-   * drafter `tokenizerFamily` do not match. See
-   * `docs/porting/dflash-drafter-strategy.md`.
->>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
    */
   tokenizerFamily?: TokenizerFamily;
   /** Runtime-specific acceleration metadata. */

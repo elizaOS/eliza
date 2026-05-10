@@ -417,7 +417,7 @@ export function registerPluginsCli(program: Command): void {
             console.log(
               chalk.dim("Agent is restarting to load the new plugin..."),
             );
-            const { requestRestart } = await import("@elizaos/agent");
+            const { requestRestart } = await import("@elizaos/shared");
             await Promise.resolve(
               requestRestart(`Plugin ${result.pluginName} installed`),
             );

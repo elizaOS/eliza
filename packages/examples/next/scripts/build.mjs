@@ -104,7 +104,12 @@ try {
     }, 100);
     const child = spawn(process.execPath, [nextCliPath, "build"], {
       cwd: pkgRoot,
-      env: { ...process.env, NEXT_DIST_DIR: tempDistDir },
+      env: {
+        ...process.env,
+        NEXT_DIST_DIR: tempDistDir,
+        // Avoid booting AgentRuntime + DB during static analysis / route collection.
+        NEXT_BUILD_SKIP_RUNTIME: "1",
+      },
       stdio: "inherit",
     });
 

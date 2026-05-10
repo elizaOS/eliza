@@ -6,7 +6,7 @@
 import type {
   ConversationMetadata,
   ConversationScope,
-} from "./agent-client-type-shim";
+} from "./client-types-core";
 
 // Conversations
 export interface Conversation {

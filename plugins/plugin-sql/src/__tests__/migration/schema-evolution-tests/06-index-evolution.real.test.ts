@@ -5,6 +5,10 @@ import { RuntimeMigrator } from "../../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../../runtime-migrator/types";
 import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-helpers";
 
+type IndexRow = Record<string, unknown>;
+type IndexDefRow = Record<string, unknown>;
+type CountRow = { count: number };
+
 /**
  * Schema Evolution Test 9 & 10: Index Evolution
  *
@@ -248,7 +252,7 @@ describe("Schema Evolution Test: Index Evolution", () => {
 
     // Verify data is intact
     const dataCount = await db.execute(sql`SELECT COUNT(*) as count FROM test_index_changes`);
-    expect(Number((dataCount.rows[0] as CountRow).count)).toBe(3);
+    expect(Number((dataCount.rows[0] as unknown as CountRow).count)).toBe(3);
     console.log("\n✅ All data preserved during index changes");
   });
 

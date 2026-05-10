@@ -480,7 +480,7 @@ function readParam(
       typeof v === "boolean" ||
       v === null
     ) {
-      return v;
+      return v as string | number | boolean | null;
     }
   }
   const flat = options as Record<string, unknown>;
@@ -491,7 +491,7 @@ function readParam(
     typeof v === "boolean" ||
     v === null
   ) {
-    return v;
+    return v as string | number | boolean | null;
   }
   return undefined;
 }
