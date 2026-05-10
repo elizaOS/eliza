@@ -157,3 +157,36 @@ export * from "./triggers/types.ts";
 export * from "./types/index.ts";
 export * from "./utils/number-parsing.ts";
 export * from "./version-resolver.ts";
+
+// ── Compat re-exports for the published `@elizaos/app-core` alpha bundle ──
+//
+// `@elizaos/app-core@2.0.0-alpha.537` (the version embedded in
+// `eliza-dist` for packaged Electrobun and the AOSP installer) imports
+// these names from `@elizaos/agent`. The agent's API surface was reorganised
+// in commit 334a6ea2 — the symbols moved out into
+// `@elizaos/plugin-elizacloud`, `./api/provider-switch-config`,
+// `./config/config`, `./config/paths`, `./api/wallet`, and
+// `./shared/workspace-resolution` without the corresponding agent-side
+// re-exports. Until app-core is republished against the new surface the
+// embedded runtime fails to start with `SyntaxError: Export named ...`,
+// so we restore them here as a thin compat layer.
+//
+// New code should import each from its real home:
+//   • cloud helpers → `@elizaos/plugin-elizacloud`
+//   • provider/onboarding config helpers → `./api/provider-switch-config`
+//   • elizaConfig file IO → `./config/config`
+//   • wallet helpers → `./api/wallet`
+//   • workspace resolution → `./shared/workspace-resolution`
+//   • user path resolution → `./config/paths`
+export {
+  resolveCloudApiBaseUrl,
+  validateCloudBaseUrl,
+} from "@elizaos/plugin-elizacloud";
+export {
+  applyCanonicalOnboardingConfig,
+  clearPersistedOnboardingConfig,
+} from "./api/provider-switch-config.ts";
+export { loadElizaConfig, saveElizaConfig } from "./config/config.ts";
+export { resolveUserPath } from "./config/paths.ts";
+export { initStewardWalletCache } from "./api/wallet.ts";
+export { resolveDefaultAgentWorkspaceDir } from "./shared/workspace-resolution.ts";
