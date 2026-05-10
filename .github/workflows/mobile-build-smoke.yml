@@ -45,6 +45,14 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      - name: Build @elizaos/shared
+        # vite.config.ts imports from `@elizaos/shared`. The package.json
+        # `exports` map points at `./dist/index.js`, so Rollup/Vite cannot
+        # resolve the package entry on a clean checkout until dist is
+        # built. Build it before mobile bundling so the vite config can
+        # be loaded.
+        run: bun run --cwd packages/shared build
+
       - name: Build iOS simulator app
         run: node --max-old-space-size=8192 packages/app-core/scripts/run-mobile-build.mjs ios
         env:
@@ -157,6 +165,14 @@ jobs:
           run-postinstall: "true"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+
+      - name: Build @elizaos/shared
+        # vite.config.ts imports from `@elizaos/shared`. The package.json
+        # `exports` map points at `./dist/index.js`, so Rollup/Vite cannot
+        # resolve the package entry on a clean checkout until dist is
+        # built. Build it before mobile bundling so the vite config can
+        # be loaded.
+        run: bun run --cwd packages/shared build
 
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses >/dev/null 2>&1 || true

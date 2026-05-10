@@ -18,14 +18,14 @@ describe("parseAppPermissions", () => {
     it("rejects an array", () => {
       const result = parseAppPermissions([]);
       expect(result.ok).toBe(false);
-      if (result.ok) return;
+      if (result.ok === true) return;
       expect(result.path).toBe("permissions");
     });
 
     it("rejects a primitive", () => {
       const result = parseAppPermissions("yes please");
       expect(result.ok).toBe(false);
-      if (result.ok) return;
+      if (result.ok === true) return;
       expect(result.reason).toContain("must be an object");
     });
   });
@@ -34,7 +34,7 @@ describe("parseAppPermissions", () => {
     it("yields an empty manifest with raw preserved", () => {
       const result = parseAppPermissions({});
       expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (result.ok === false) return;
       expect(result.manifest.raw).toEqual({});
       expect(result.manifest.fs).toBeUndefined();
       expect(result.manifest.net).toBeUndefined();
@@ -47,7 +47,7 @@ describe("parseAppPermissions", () => {
         fs: { read: ["state/**"], write: ["state/cache/*"] },
       });
       expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (result.ok === false) return;
       expect(result.manifest.fs).toEqual({
         read: ["state/**"],
         write: ["state/cache/*"],
@@ -57,14 +57,14 @@ describe("parseAppPermissions", () => {
     it("preserves an empty array distinctly from absence", () => {
       const result = parseAppPermissions({ fs: { read: [] } });
       expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (result.ok === false) return;
       expect(result.manifest.fs).toEqual({ read: [] });
     });
 
     it("omits fs when no recognised sub-keys are declared", () => {
       const result = parseAppPermissions({ fs: { unknown: 42 } });
       expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (result.ok === false) return;
       expect(result.manifest.fs).toBeUndefined();
       expect(result.manifest.raw).toEqual({ fs: { unknown: 42 } });
     });
@@ -72,14 +72,14 @@ describe("parseAppPermissions", () => {
     it("rejects fs when not an object", () => {
       const result = parseAppPermissions({ fs: "all of it" });
       expect(result.ok).toBe(false);
-      if (result.ok) return;
+      if (result.ok === true) return;
       expect(result.path).toBe("permissions.fs");
     });
 
     it("rejects fs.read when not an array", () => {
       const result = parseAppPermissions({ fs: { read: "state/**" } });
       expect(result.ok).toBe(false);
-      if (result.ok) return;
+      if (result.ok === true) return;
       expect(result.reason).toBe("fs.read must be an array of glob strings");
       expect(result.path).toBe("permissions.fs.read");
     });
@@ -87,7 +87,7 @@ describe("parseAppPermissions", () => {
     it("rejects fs.read when an element is non-string", () => {
       const result = parseAppPermissions({ fs: { read: ["ok", 42] } });
       expect(result.ok).toBe(false);
-      if (result.ok) return;
+      if (result.ok === true) return;
       expect(result.path).toBe("permissions.fs.read[1]");
     });
 
@@ -95,7 +95,7 @@ describe("parseAppPermissions", () => {
       const tooLong = "a".repeat(MAX_PATTERN_LENGTH + 1);
       const result = parseAppPermissions({ fs: { read: [tooLong] } });
       expect(result.ok).toBe(false);
-      if (result.ok) return;
+      if (result.ok === true) return;
       expect(result.reason).toContain(`exceeds ${MAX_PATTERN_LENGTH}`);
       expect(result.path).toBe("permissions.fs.read[0]");
     });
@@ -103,7 +103,7 @@ describe("parseAppPermissions", () => {
     it("accepts fs.write while fs.read is absent", () => {
       const result = parseAppPermissions({ fs: { write: ["state/**"] } });
       expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (result.ok === false) return;
       expect(result.manifest.fs).toEqual({ write: ["state/**"] });
     });
   });
@@ -114,7 +114,7 @@ describe("parseAppPermissions", () => {
         net: { outbound: ["api.example.com", "*.example.com"] },
       });
       expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (result.ok === false) return;
       expect(result.manifest.net).toEqual({
         outbound: ["api.example.com", "*.example.com"],
       });
@@ -123,14 +123,14 @@ describe("parseAppPermissions", () => {
     it("rejects net when not an object", () => {
       const result = parseAppPermissions({ net: ["a", "b"] });
       expect(result.ok).toBe(false);
-      if (result.ok) return;
+      if (result.ok === true) return;
       expect(result.path).toBe("permissions.net");
     });
 
     it("rejects net.outbound when an element is non-string", () => {
       const result = parseAppPermissions({ net: { outbound: [true] } });
       expect(result.ok).toBe(false);
-      if (result.ok) return;
+      if (result.ok === true) return;
       expect(result.reason).toBe(
         "net.outbound must be an array of host pattern strings",
       );
@@ -147,7 +147,7 @@ describe("parseAppPermissions", () => {
       };
       const result = parseAppPermissions(input);
       expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (result.ok === false) return;
       expect(result.manifest.raw).toEqual(input);
       expect(result.manifest.fs).toEqual({ read: ["**"] });
       expect(result.manifest.net).toBeUndefined();
@@ -157,7 +157,7 @@ describe("parseAppPermissions", () => {
       const input = { fs: { read: ["**"], future: { whatever: 1 } } };
       const result = parseAppPermissions(input);
       expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (result.ok === false) return;
       // The recognised slice only surfaces `read`; the unknown sub-key
       // is preserved under raw via the slice's own object.
       expect(result.manifest.fs).toEqual({ read: ["**"] });
@@ -172,7 +172,7 @@ describe("parseAppPermissions", () => {
         net: { outbound: ["api.foo.com"] },
       });
       expect(result.ok).toBe(true);
-      if (!result.ok) return;
+      if (result.ok === false) return;
       expect(result.manifest.fs).toEqual({
         read: ["state/**"],
         write: ["state/**"],
@@ -186,7 +186,7 @@ describe("parseAppPermissions", () => {
         net: { outbound: 99 },
       });
       expect(result.ok).toBe(false);
-      if (result.ok) return;
+      if (result.ok === true) return;
       expect(result.path).toBe("permissions.fs.read");
     });
   });
