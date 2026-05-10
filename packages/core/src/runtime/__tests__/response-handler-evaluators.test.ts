@@ -8,9 +8,7 @@ import {
 	type ResponseHandlerEvaluator,
 } from "../response-handler-evaluators";
 
-function runtimeWith(
-	evaluators: ResponseHandlerEvaluator[],
-): IAgentRuntime {
+function runtimeWith(evaluators: ResponseHandlerEvaluator[]): IAgentRuntime {
 	return {
 		agentId: "00000000-0000-0000-0000-000000000001",
 		responseHandlerEvaluators: evaluators,
@@ -116,8 +114,6 @@ describe("response-handler evaluators", () => {
 
 		expect(messageHandler.plan.candidateActions).toEqual(["first", "second"]);
 		expect(result.activeEvaluators).toEqual(["a", "broken", "b"]);
-		expect(result.errors).toEqual([
-			{ evaluatorName: "broken", error: "boom" },
-		]);
+		expect(result.errors).toEqual([{ evaluatorName: "broken", error: "boom" }]);
 	});
 });
