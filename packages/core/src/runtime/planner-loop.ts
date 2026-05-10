@@ -1,5 +1,10 @@
 import { PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
+import {
+	OPTIMIZED_PROMPT_SERVICE,
+	type OptimizedPromptService,
+} from "../services/optimized-prompt";
+import { resolveOptimizedPrompt } from "../services/optimized-prompt-resolver";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { ActionResult, ProviderDataRecord } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
@@ -2039,4 +2044,26 @@ function getNonEmptyString(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim().length > 0
 		? value
 		: undefined;
+}
+
+/**
+ * Look up the optimized `action_planner` prompt from the runtime's
+ * OptimizedPromptService, fall back to the baseline `plannerTemplate`. Keeps
+ * the planner loop using the latest artifact written by
+ * `bun run train -- --backend native --task action_planner` without any
+ * additional plumbing at the call site.
+ *
+ * `PlannerRuntime` is the minimal shape this module accepts; the full
+ * `IAgentRuntime` (with `getService`) flows in via the message handler at
+ * `services/message.ts`. Cast structurally so we don't widen `PlannerRuntime`
+ * just to read one optional service.
+ */
+function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {
+	const candidate = runtime as PlannerRuntime & {
+		getService?: <T>(name: string) => T | null | undefined;
+	};
+	const service =
+		candidate.getService?.<OptimizedPromptService>(OPTIMIZED_PROMPT_SERVICE) ??
+		null;
+	return resolveOptimizedPrompt(service, "action_planner", plannerTemplate);
 }
