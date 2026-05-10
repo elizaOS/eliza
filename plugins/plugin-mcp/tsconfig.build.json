@@ -8,6 +8,7 @@
     "noEmit": false,
     "emitDeclarationOnly": true,
     "rootDir": "src",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@elizaos/core": ["../../packages/core/dist/index.node.d.ts"]
     }

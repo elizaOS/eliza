@@ -129,7 +129,11 @@ describe("twitter oauth routes", () => {
     expect(response.status).toBe(200);
     expect(cacheSet).toHaveBeenCalledTimes(1);
 
-    const [cacheKey, cacheValue, ttlSeconds] = cacheSet.mock.calls[0] as [string, string, number];
+    const [cacheKey, cacheValue, ttlSeconds] = cacheSet.mock.calls[0] as unknown as [
+      string,
+      string,
+      number,
+    ];
     expect(cacheKey).toBe("twitter_oauth2:state-123");
     expect(ttlSeconds).toBe(600);
     expect(JSON.parse(cacheValue)).toMatchObject({

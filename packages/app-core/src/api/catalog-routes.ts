@@ -13,7 +13,7 @@ import type http from "node:http";
 import { resolveAppHeroImage } from "@elizaos/agent";
 import type { RegistryAppInfo } from "@elizaos/shared";
 import { type AppEntry, getApps, loadRegistry } from "../registry";
-import { ensureRouteAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth.ts";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
 

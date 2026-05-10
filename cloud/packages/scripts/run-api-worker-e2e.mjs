@@ -164,6 +164,8 @@ async function main() {
       ...testEnv,
       NODE_ENV: "development",
       TEST_API_BASE_URL: baseUrl,
+      TEST_BASE_URL: baseUrl,
+      TEST_REUSE_SERVER: "1",
     };
 
     if (!(await healthOk())) {

@@ -5,6 +5,7 @@
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": true,
+    "ignoreDeprecations": "6.0",
     "outDir": "./dist",
     "rootDir": ".",
     "paths": {

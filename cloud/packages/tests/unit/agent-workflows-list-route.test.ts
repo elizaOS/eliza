@@ -63,7 +63,8 @@ function installMocks(h: Harness): void {
   mock.module("@/lib/api/cloud-worker-errors", () => ({
     failureResponse: (_c: unknown, error: unknown) => {
       const e = error as { name?: string; message?: string };
-      const status = e?.name === "AuthenticationError" ? 401 : e?.name === "NotFoundError" ? 404 : 500;
+      const status =
+        e?.name === "AuthenticationError" ? 401 : e?.name === "NotFoundError" ? 404 : 500;
       return new Response(JSON.stringify({ error: e?.message ?? String(error) }), {
         status,
         headers: { "Content-Type": "application/json" },

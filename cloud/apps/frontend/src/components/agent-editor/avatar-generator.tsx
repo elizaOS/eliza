@@ -12,8 +12,7 @@
 
 "use client";
 
-import { Button, ScrollArea } from "@elizaos/cloud-ui";
-import { Image } from "@elizaos/cloud-ui";
+import { Button, Image, ScrollArea } from "@elizaos/cloud-ui";
 import { ImagePlus, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";

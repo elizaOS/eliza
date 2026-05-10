@@ -7,6 +7,7 @@ const USER_ID = "22222222-2222-4222-8222-222222222222";
 const ORG_ID = "11111111-1111-4111-8111-111111111111";
 
 type AppChargeProvider = "stripe" | "oxapay";
+type AppChargePaymentContext = "verified_payer" | "any_payer";
 
 interface CreateCall {
   appId: string;
@@ -15,6 +16,7 @@ interface CreateCall {
   amountUsd: number;
   description?: string;
   providers?: AppChargeProvider[];
+  paymentContext?: AppChargePaymentContext;
   callbackChannel?: Record<string, unknown>;
   callbackMetadata?: Record<string, unknown>;
 }
@@ -43,6 +45,7 @@ function charge(amountUsd = 5) {
     amountUsd,
     description: "Please send me $5",
     providers: ["stripe", "oxapay"] satisfies AppChargeProvider[],
+    paymentContext: "verified_payer" satisfies AppChargePaymentContext,
     paymentUrl: `https://cloud.test/payment/app-charge/${APP_ID}/${CHARGE_ID}`,
     status: "requested",
     paidAt: null,
@@ -182,6 +185,7 @@ describe("app charge routes", () => {
         amount: 5,
         description: "Please send me $5",
         providers: ["stripe", "oxapay"],
+        payment_context: "any_payer",
         callback_channel: {
           source: "woobench",
           roomId: "room-1",
@@ -207,6 +211,7 @@ describe("app charge routes", () => {
       creatorOrganizationId: ORG_ID,
       amountUsd: 5,
       providers: ["stripe", "oxapay"],
+      paymentContext: "any_payer",
       callbackChannel: { source: "woobench", roomId: "room-1", agentId: "agent-1" },
       callbackMetadata: { scenario: "send_me_five" },
     });

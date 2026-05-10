@@ -5,7 +5,7 @@
  */
 
 import type { Content, ContentValue, Memory } from "@elizaos/core";
-import { and, desc, eq, inArray, type InferSelectModel, sql } from "drizzle-orm";
+import { and, desc, eq, type InferSelectModel, inArray, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "@/db/helpers";
 import { memoryTable } from "@/db/schemas/eliza";
 

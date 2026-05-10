@@ -11,6 +11,7 @@
 
 import {
   Button,
+  Image,
   Label,
   Select,
   SelectContent,
@@ -25,7 +26,6 @@ import {
   Slider,
   Switch,
 } from "@elizaos/cloud-ui";
-import { Image } from "@elizaos/cloud-ui";
 import { Bot, CheckCircle, Hash, Loader2, RefreshCw, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";

@@ -2,19 +2,11 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "target": "ES2022",
-    "lib": [
-      "ES2023",
-      "WebWorker",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2023", "WebWorker", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "noEmit": true,
-    "types": [
-      "@cloudflare/workers-types",
-      "node",
-      "bun-types"
-    ],
+    "types": ["@cloudflare/workers-types", "node", "bun-types"],
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "isolatedModules": true,
@@ -22,46 +14,19 @@
     "strict": true,
     "resolveJsonModule": true,
     "paths": {
-      "@/api-app/*": [
-        "./src/*"
-      ],
-      "@/api-queue/*": [
-        "./src/queue/*"
-      ],
-      "@/lib/*": [
-        "../../packages/lib/*"
-      ],
-      "@/db/*": [
-        "../../packages/db/*"
-      ],
-      "@/types/*": [
-        "../../packages/types/*"
-      ],
-      "@/api/*": [
-        "./*"
-      ],
-      "@elizaos/plugin-sql": [
-        "../../../plugins/plugin-sql/src/index.ts"
-      ],
-      "drizzle-orm": [
-        "../../../plugins/plugin-sql/node_modules/drizzle-orm"
-      ],
-      "drizzle-orm/*": [
-        "../../../plugins/plugin-sql/node_modules/drizzle-orm/*"
-      ],
-      "@/*": [
-        "../../*"
-      ]
+      "@/api-app/*": ["./src/*"],
+      "@/api-queue/*": ["./src/queue/*"],
+      "@/lib/*": ["../../packages/lib/*"],
+      "@/db/*": ["../../packages/db/*"],
+      "@/types/*": ["../../packages/types/*"],
+      "@/api/*": ["./*"],
+      "@elizaos/billing": ["../../packages/billing/src/index.ts"],
+      "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
+      "drizzle-orm": ["../../../plugins/plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
+      "@/*": ["../../*"]
     }
   },
-  "include": [
-    "./**/*.ts",
-    "./**/*.tsx",
-    "../../packages/db/**/*.ts",
-    "../../packages/types/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "../../node_modules"
-  ]
+  "include": ["./**/*.ts", "./**/*.tsx", "../../packages/db/**/*.ts", "../../packages/types/**/*"],
+  "exclude": ["node_modules", "../../node_modules"]
 }

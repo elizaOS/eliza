@@ -73,9 +73,8 @@ export function withX402Payment<T = Record<string, string>>(
   const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null;
 
-  const isFacilitatorPaymentPayload = (
-    value: Record<string, unknown>,
-  ): value is FacilitatorPaymentPayload => {
+  const isFacilitatorPaymentPayload = (value: unknown): value is FacilitatorPaymentPayload => {
+    if (!isRecord(value)) return false;
     if (typeof value.x402Version !== "number" || !isRecord(value.accepted)) return false;
     if (!isRecord(value.payload) || typeof value.payload.signature !== "string") return false;
     const authorization = value.payload.authorization;
@@ -117,7 +116,7 @@ export function withX402Payment<T = Record<string, string>>(
     }
 
     // 2. Decode the payment payload
-    let paymentPayload: Record<string, unknown>;
+    let paymentPayload: unknown;
     try {
       const decoded = Buffer.from(paymentHeader, "base64").toString("utf-8");
       paymentPayload = JSON.parse(decoded) as Record<string, unknown>;

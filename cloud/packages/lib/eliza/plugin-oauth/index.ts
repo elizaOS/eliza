@@ -6,8 +6,7 @@ export { oauthAction, userAuthStatusProvider };
 
 export const oauthPlugin: Plugin = {
   name: "eliza-cloud-oauth",
-  description:
-    "Cloud OAuth connection actions and user authentication context",
+  description: "Cloud OAuth connection actions and user authentication context",
   actions: [oauthAction],
   providers: [userAuthStatusProvider],
   evaluators: [],

@@ -2,8 +2,15 @@
  * Containers skeleton loading component displaying placeholder table rows.
  * Shows loading state for containers table with skeleton elements.
  */
-import { Skeleton } from "@elizaos/cloud-ui";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@elizaos/cloud-ui";
+import {
+  Skeleton,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@elizaos/cloud-ui";
 
 export function ContainersSkeleton() {
   return (
