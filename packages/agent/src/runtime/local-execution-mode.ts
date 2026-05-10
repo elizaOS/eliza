@@ -1,28 +1,19 @@
-export type LocalExecutionMode = "local-safe" | "local-yolo";
+/**
+ * Re-export shim for the canonical runtime execution-mode resolvers.
+ *
+ * The shared package owns the source of truth (`@elizaos/shared`'s
+ * `config/runtime-mode.ts`) because it is the inward-most layer that both
+ * `@elizaos/agent` and the plugins (`plugin-shell`, `plugin-coding-tools`)
+ * can depend on without creating a cycle. This file keeps the historical
+ * import path stable for callers inside the agent package.
+ */
 
-const SAFE_MODE = "local-safe";
-
-function normalizeExecutionMode(value: unknown): LocalExecutionMode {
-  return typeof value === "string" && value.trim() === SAFE_MODE
-    ? SAFE_MODE
-    : "local-yolo";
-}
-
-export function resolveLocalExecutionMode(
-  source?: { getSetting?: (key: string) => unknown } | null,
-): LocalExecutionMode {
-  const setting =
-    source?.getSetting?.("ELIZA_RUNTIME_MODE") ??
-    source?.getSetting?.("RUNTIME_MODE") ??
-    source?.getSetting?.("LOCAL_RUNTIME_MODE") ??
-    process.env.ELIZA_RUNTIME_MODE ??
-    process.env.RUNTIME_MODE ??
-    process.env.LOCAL_RUNTIME_MODE;
-  return normalizeExecutionMode(setting);
-}
-
-export function shouldUseSandboxExecution(
-  source?: { getSetting?: (key: string) => unknown } | null,
-): boolean {
-  return resolveLocalExecutionMode(source) === SAFE_MODE;
-}
+export {
+  isCloudExecutionMode,
+  type LocalExecutionMode,
+  resolveLocalExecutionMode,
+  resolveRuntimeExecutionMode,
+  type RuntimeExecutionMode,
+  type RuntimeExecutionModeSource,
+  shouldUseSandboxExecution,
+} from "@elizaos/shared";

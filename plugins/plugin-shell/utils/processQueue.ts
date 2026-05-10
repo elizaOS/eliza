@@ -14,7 +14,7 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
-import { resolveRuntimeExecutionMode } from "./executionMode";
+import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 
 // ============================================================================
 // Command Lanes
@@ -131,7 +131,7 @@ export async function runCommandWithTimeout(
   }
   if (mode === "local-safe") {
     throw new Error(
-      "[shell] runCommandWithTimeout cannot route through SandboxManager from this code path; use the runtime-aware shell action.",
+      "[shell] runCommandWithTimeout cannot route through SandboxManager from this code path; use the runtime-aware shell action."
     );
   }
 

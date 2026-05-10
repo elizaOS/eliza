@@ -17,9 +17,14 @@
 
 import { spawn } from "node:child_process";
 import process from "node:process";
+import {
+  resolveRuntimeExecutionMode,
+  type RuntimeExecutionMode,
+} from "@elizaos/shared";
+import { CapabilityBroker } from "./capability-broker.ts";
 import type { SandboxManager } from "./sandbox-manager.ts";
 
-export type ShellExecutionMode = "cloud" | "local-safe" | "local-yolo";
+export type ShellExecutionMode = RuntimeExecutionMode;
 
 export type ShellSandboxBackend =
   | "host"
@@ -61,41 +66,16 @@ export interface ShellRouterContext {
   resolveSandboxManager?: () => Promise<SandboxManager | null>;
 }
 
-const KNOWN_MODES: ReadonlySet<ShellExecutionMode> = new Set([
-  "cloud",
-  "local-safe",
-  "local-yolo",
-]);
-
-function normalizeMode(value: unknown): ShellExecutionMode | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return KNOWN_MODES.has(trimmed as ShellExecutionMode)
-    ? (trimmed as ShellExecutionMode)
-    : null;
-}
-
 export function resolveShellExecutionMode(
   ctx?: Pick<ShellRouterContext, "mode" | "runtime"> | null,
 ): ShellExecutionMode {
   if (ctx?.mode) return ctx.mode;
-  const runtime = ctx?.runtime ?? null;
-  const candidates: unknown[] = [
-    runtime?.getSetting?.("ELIZA_RUNTIME_MODE"),
-    runtime?.getSetting?.("RUNTIME_MODE"),
-    runtime?.getSetting?.("LOCAL_RUNTIME_MODE"),
-    process.env.ELIZA_RUNTIME_MODE,
-    process.env.RUNTIME_MODE,
-    process.env.LOCAL_RUNTIME_MODE,
-  ];
-  for (const candidate of candidates) {
-    const resolved = normalizeMode(candidate);
-    if (resolved) return resolved;
-  }
-  return "local-yolo";
+  return resolveRuntimeExecutionMode(ctx?.runtime ?? null);
 }
 
-function backendForSandboxManager(manager: SandboxManager): ShellSandboxBackend {
+function backendForSandboxManager(
+  manager: SandboxManager,
+): ShellSandboxBackend {
   // SandboxManager keeps its engine private; reach in only to label the
   // backend in ShellResult. If the shape ever changes, the fallback is the
   // safe "none" value and callers still see a well-formed result.
@@ -115,26 +95,68 @@ async function resolveSandboxManager(
   return null;
 }
 
+// Router-scoped broker so the shell.exec policy is driven by the same mode
+// resolver runShell uses for dispatch. The broker singleton in
+// capability-broker.ts hardcodes `local-safe` as its default mode, which is
+// correct for cloud-side callers but wrong for host-side runShell — those
+// must follow ELIZA_RUNTIME_MODE/RUNTIME_MODE/LOCAL_RUNTIME_MODE. The
+// internal mutable holder lets the broker re-read mode on every call without
+// constructing a new CapabilityBroker per runShell invocation.
+const routerModeHolder: { current: ShellExecutionMode } = {
+  current: "local-yolo",
+};
+let cachedRouterBroker: CapabilityBroker | null = null;
+function getRouterBroker(
+  modeSource: () => ShellExecutionMode,
+): CapabilityBroker {
+  routerModeHolder.current = modeSource();
+  if (cachedRouterBroker) return cachedRouterBroker;
+  cachedRouterBroker = new CapabilityBroker({
+    mode: () => routerModeHolder.current,
+  });
+  return cachedRouterBroker;
+}
+
+/** Test-only escape hatch — drops the cached router broker. */
+export function __resetShellRouterBrokerForTests(): void {
+  cachedRouterBroker = null;
+  routerModeHolder.current = "local-yolo";
+}
+
 async function runOnHost(req: ShellRequest): Promise<ShellResult> {
   const start = Date.now();
   return await new Promise<ShellResult>((resolve) => {
     const timeoutMs = req.timeoutMs ?? 30_000;
+    const useDetachedProcessGroup = process.platform !== "win32";
     const child = spawn(req.command, req.args.slice(), {
       cwd: req.cwd,
       env: req.env ? { ...process.env, ...req.env } : process.env,
+      detached: useDetachedProcessGroup,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
     let stderr = "";
     let timedOut = false;
 
-    const timer = setTimeout(() => {
-      timedOut = true;
+    const killChildTree = () => {
+      try {
+        if (useDetachedProcessGroup && child.pid !== undefined) {
+          process.kill(-child.pid, "SIGKILL");
+          return;
+        }
+      } catch {
+        // Fall back to killing the direct child below.
+      }
       try {
         child.kill("SIGKILL");
       } catch {
         // child may already have exited
       }
+    };
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killChildTree();
     }, timeoutMs);
     if (typeof timer.unref === "function") timer.unref();
 
@@ -190,6 +212,22 @@ async function runInSandbox(
   };
 }
 
+function assertShellCapability(
+  req: ShellRequest,
+  mode: ShellExecutionMode,
+  toolName: string,
+): void {
+  const decision = getRouterBroker(() => mode).check({
+    kind: "shell",
+    op: "exec",
+    target: req.command,
+    toolName,
+  });
+  if (decision.allowed !== true) {
+    throw new Error(`[shell] capability denied: ${decision.reason}`);
+  }
+}
+
 /**
  * Single entry point for one-shot shell execution. Mode dispatch:
  *   - `cloud`      → throws.
@@ -230,8 +268,10 @@ export async function runShell(
         "[shell-router] local-safe mode requires SandboxManager but none is available",
       );
     }
+    assertShellCapability(req, mode, `sandbox.${req.toolName}`);
     return await runInSandbox(req, manager);
   }
 
+  assertShellCapability(req, mode, req.toolName);
   return await runOnHost(req);
 }

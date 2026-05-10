@@ -88,6 +88,14 @@ function jniLoaderName(ldName) {
   return `libeliza_${ldName.replace(/[^a-zA-Z0-9]+/g, "_")}.so`;
 }
 
+// Sibling JNI-lib name for the SIGSYS-shim'd "real" musl loader. The
+// loader-wrap binary at jniLoaderName(ldName) detects this layout (".so"
+// → "_real.so") so it can find the underlying musl loader without falling
+// back to the agent data dir (untrusted_app SELinux denies execve there).
+function jniRealLoaderName(ldName) {
+  return jniLoaderName(ldName).replace(/\.so$/, "_real.so");
+}
+
 /**
  * Adapted from scripts/spike-android-agent/launch-on-device.sh. The script
  * ships *inside* the APK and is copied (with executable bit set) into the
@@ -525,6 +533,29 @@ export async function stageAndroidAgentRuntime({
         path.join(abiJniDir, "libeliza_gcc_s.so"),
       ],
     ];
+    // When the seccomp-shim is in play (x86_64), `<ldName>` in
+    // `abiAssetsDir/` is the loader-wrap binary and the real musl loader
+    // sits next to it as `<ldName>.real`. ElizaAgentService swaps the
+    // wrapper for its packaged JNI-lib copy at exec time, so the wrapper
+    // ends up running from `<install>/lib/<abi>/` where `<ldName>.real`
+    // does not exist; the fallback `_real.so` JNI sibling fixes that.
+    // `libsigsys-handler.so` follows the same logic — same dirname,
+    // unchanged basename so the wrapper's existing `<dir>/libsigsys-handler.so`
+    // heuristic finds it.
+    const realLoaderSrc = path.join(abiAssetsDir, `${ldName}.real`);
+    if (fs.existsSync(realLoaderSrc)) {
+      jniSources.push([
+        realLoaderSrc,
+        path.join(abiJniDir, jniRealLoaderName(ldName)),
+      ]);
+    }
+    const sigsysShimSrc = path.join(abiAssetsDir, "libsigsys-handler.so");
+    if (fs.existsSync(sigsysShimSrc)) {
+      jniSources.push([
+        sigsysShimSrc,
+        path.join(abiJniDir, "libsigsys-handler.so"),
+      ]);
+    }
     for (const [src, dst] of jniSources) {
       if (copyIfDifferent(src, dst)) abiChanges += 1;
     }

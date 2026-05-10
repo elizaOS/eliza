@@ -388,40 +388,38 @@ const LLAMA_POOLING_TYPE_MEAN = 1;
 
 /**
  * GGML type ids used for KV-cache configuration. The base set comes from
- * ggml.h; TBQ3_0 / TBQ4_0 / QJL1_256 are the apothic/llama.cpp-1bit-turboquant
- * fork additions and only valid against the fork-built libllama.so + matching
- * trained-sidecar models.
+ * ggml.h; TBQ3_0 / TBQ4_0 are the apothic/llama.cpp-1bit-turboquant fork
+ * additions and only valid against the fork-built libllama.so + matching
+ * Bonsai-8B-1bit GGUF model.
  *
  * Verified against
  *   ~/.cache/eliza-android-agent/llama-cpp-main-b8198-b2b5273/ggml/include/ggml.h
- * (lines 420-435 — Q1_0 = 42 sits next to TBQ3_0 = 43, TBQ4_0 = 44, with
- * 45 reserved as a hole and QJL1_256 = 46 added by the vendored
- * llama-cpp-patches/qjl/ series applied at build time by compile-libllama.mjs).
- *
- * QJL1_256 is the K-side of the QJL+TBQ KV cache combo: 1-bit JL-transform
- * sketch (34 B per cached key vector at head_dim=128, vs 256 B fp16 K),
- * paired with TBQ on V for an end-to-end ~10x KV-cache reduction at
- * long context. The fork's quantize/score path uses a default
- * MT-seeded projection matrix Π (head_dim=128 × proj_dim=256, seed=42);
- * production deployments inject Π via the per-layer sidecar (see
- * packages/training/scripts/quantization/qjl_apply.py).
+ * (lines 420-435 — Q1_0 = 42 sits next to TBQ3_0 = 43, TBQ4_0 = 44).
  */
 const GGML_TYPE_F16 = 1;
 const GGML_TYPE_TBQ3_0 = 43;
 const GGML_TYPE_TBQ4_0 = 44;
+// QJL1_256 + Q4_POLAR are landed on milady-ai/llama.cpp @ v0.1.0-milady.
+// Slot 45 is an intentional reserved hole on the fork.
 const GGML_TYPE_QJL1_256 = 46;
+const GGML_TYPE_Q4_POLAR = 47;
 
 /**
  * Map a friendly KV-cache type name to its ggml_type enum value. Keep the
  * table small — only types we actually intend to drive end up here. F16
- * is the upstream default; tbq3_0 / tbq4_0 / qjl1_256 are the fork
- * additions used by Bonsai (TBQ) and QJL-trained models. Unknown names
+ * is the upstream default; tbq3_0 / tbq4_0 / qjl1_256 / q4_polar are the
+ * fork additions on milady-ai/llama.cpp @ v0.1.0-milady. Unknown names
  * throw rather than silently degrade.
  *
  * Exported for unit tests so we can assert mapping correctness without
  * reaching into the adapter internals.
  */
-export type KvCacheTypeName = "f16" | "tbq3_0" | "tbq4_0" | "qjl1_256";
+export type KvCacheTypeName =
+  | "f16"
+  | "tbq3_0"
+  | "tbq4_0"
+  | "qjl1_256"
+  | "q4_polar";
 
 export function kvCacheTypeNameToEnum(name: KvCacheTypeName): number {
   switch (name) {
@@ -433,6 +431,8 @@ export function kvCacheTypeNameToEnum(name: KvCacheTypeName): number {
       return GGML_TYPE_TBQ4_0;
     case "qjl1_256":
       return GGML_TYPE_QJL1_256;
+    case "q4_polar":
+      return GGML_TYPE_Q4_POLAR;
     default: {
       // Exhaustive switch — fall here only if a future type is added without
       // updating the map. Throw with the offending name so a future caller
@@ -461,31 +461,11 @@ export function looksLikeBonsai(modelPath: string): boolean {
 }
 
 /**
- * Auto-detect when a model path indicates a QJL-trained build, in which
- * case the K-side cache should default to qjl1_256. The JL-projection
- * sidecar (`Π`) ships next to the GGUF and is loaded by the apothic
- * fork's QJL kernel; the filename match is a loose substring on
- * "qjl" (case-insensitive) since the sidecar pin is keyed by basename.
- *
- * V-side defaults to tbq3_0 when the same model is also TurboQuant-trained
- * (the documented K=QJL + V=TBQ endgame). Models that only carry a Π
- * sidecar without a TBQ-trained V codebook fall back to fp16 V; the env
- * override `ELIZA_LLAMA_CACHE_TYPE_V=tbq3_0` lets the user opt in
- * explicitly.
- *
- * Exported for unit tests.
- */
-export function looksLikeQjl(modelPath: string): boolean {
-  const base = modelPath.split(/[/\\]/).pop() ?? modelPath;
-  return /qjl/i.test(base);
-}
-
-/**
  * Read a `KvCacheTypeName` from an env var, returning undefined when the var
  * is unset, blank, or not a recognised type name. Recognised values are
- * exactly `"f16"`, `"tbq3_0"`, `"tbq4_0"`, `"qjl1_256"` (case-insensitive).
- * An unrecognised value logs a warning and returns undefined rather than
- * throwing — env-var typos shouldn't crash the loader.
+ * exactly `"f16"`, `"tbq3_0"`, `"tbq4_0"` (case-insensitive). An unrecognised
+ * value logs a warning and returns undefined rather than throwing — env-var
+ * typos shouldn't crash the loader.
  *
  * Exported for unit tests.
  */
@@ -499,12 +479,13 @@ export function readEnvKvCacheType(
     raw === "f16" ||
     raw === "tbq3_0" ||
     raw === "tbq4_0" ||
-    raw === "qjl1_256"
+    raw === "qjl1_256" ||
+    raw === "q4_polar"
   ) {
     return raw;
   }
   logger.warn(
-    `[aosp-llama] ${name}=${raw} is not a recognised KV cache type; ignoring (use f16 / tbq3_0 / tbq4_0 / qjl1_256).`,
+    `[aosp-llama] ${name}=${raw} is not a recognised KV cache type; ignoring (use f16 / tbq3_0 / tbq4_0 / qjl1_256 / q4_polar).`,
   );
   return undefined;
 }
@@ -536,18 +517,9 @@ export function resolveKvCacheType(
   // Auto-detection only kicks in when neither an explicit override nor an
   // env override is set. Catalog blurb references this contract directly —
   // change here = update catalog.ts blurb in the same commit.
-  //
-  // Precedence between auto-detect heuristics: QJL takes priority over
-  // Bonsai because a qjl-trained Bonsai derivative ships with both
-  // markers in its filename and the QJL+TBQ combo is the documented
-  // endgame (see packages/native-plugins/qjl-cpu/README.md and the
-  // porting plan §"3. QJL NEON kernel + GGML K-cache hook").
-  let auto: { k?: KvCacheTypeName; v?: KvCacheTypeName } | undefined;
-  if (looksLikeQjl(modelPath)) {
-    auto = { k: "qjl1_256", v: "tbq3_0" };
-  } else if (looksLikeBonsai(modelPath)) {
-    auto = { k: "tbq4_0", v: "tbq3_0" };
-  }
+  const auto = looksLikeBonsai(modelPath)
+    ? { k: "tbq4_0" as const, v: "tbq3_0" as const }
+    : undefined;
   const k = explicitK ?? envK ?? auto?.k;
   const v = explicitV ?? envV ?? auto?.v;
   if (k === undefined && v === undefined) return undefined;

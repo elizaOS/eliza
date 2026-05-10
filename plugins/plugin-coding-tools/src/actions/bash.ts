@@ -17,7 +17,7 @@ import {
   successActionResult,
   truncate,
 } from "../lib/format.js";
-import { resolveRuntimeExecutionMode } from "../lib/execution-mode.js";
+import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 import { runShell, type ShellResult } from "../lib/run-shell.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";

@@ -209,10 +209,15 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       const path = await import("node:path");
       const fs = await import("node:fs/promises");
       const os = await import("node:os");
+      // Match the runtime OptimizedPromptService precedence
+      // (`ELIZA_STATE_DIR` → `~/.eliza`). Honour `MILADY_STATE_DIR` first
+      // for operators that point both at the same dir; else default to
+      // `~/.eliza` so the artifact is automatically picked up by the
+      // production runtime without an extra copy step.
       const stateDir =
         process.env.MILADY_STATE_DIR?.trim() ||
         process.env.ELIZA_STATE_DIR?.trim() ||
-        path.join(os.homedir(), ".milady");
+        path.join(os.homedir(), ".eliza");
       const artifactDir = path.join(stateDir, "optimized-prompts", task);
       await fs.mkdir(artifactDir, { recursive: true });
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
