@@ -246,11 +246,20 @@ function readToolSet(value: GenerateTextParams["tools"]): ToolSet | undefined {
   // Walk both forms and rebuild keyed by tool.name when present. Heterogeneous
   // Records (raw ToolDefinitions mixed with already-built AI SDK Tool objects
   // that lack `.name`) preserve the SDK Tool entries under their original key
-  // so we don't silently drop them.
+  // so we don't silently drop them. Two passes so named-tool keys always win
+  // deterministically over an SDK passthrough at the same key, regardless of
+  // iteration order.
   const isArr = Array.isArray(value);
-  const entries: Iterable<[string, unknown]> = isArr
+  const entries: Array<[string, unknown]> = isArr
     ? (value as unknown[]).map((v, i) => [String(i), v] as [string, unknown])
     : Object.entries(value as Record<string, unknown>);
+
+  const namedKeys = new Set<string>();
+  for (const [, rawTool] of entries) {
+    if (isRecord(rawTool) && typeof rawTool.name === "string" && rawTool.name) {
+      namedKeys.add(rawTool.name);
+    }
+  }
 
   const tools: Record<string, unknown> = {};
   let sawNamedTool = false;
@@ -269,9 +278,11 @@ function readToolSet(value: GenerateTextParams["tools"]): ToolSet | undefined {
         ...(typeof rawTool.description === "string" ? { description: rawTool.description } : {}),
         inputSchema: jsonSchema(schema),
       };
-    } else if (!isArr) {
+    } else if (!isArr && !namedKeys.has(origKey)) {
       // Pre-built AI SDK Tool entry inside a Record — pass through under its
-      // original string key so heterogeneous callers don't lose tools.
+      // original string key, but only if no named tool will claim that key
+      // later in the same pass; otherwise the named tool would silently
+      // overwrite (or be overwritten by) this entry depending on order.
       tools[origKey] = rawTool;
     }
   }
