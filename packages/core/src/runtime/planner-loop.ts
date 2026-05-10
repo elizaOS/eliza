@@ -817,7 +817,6 @@ async function callPlanner(params: {
 	let renderedInput = renderPlannerModelInput({
 		context: params.context,
 		trajectory: params.trajectory,
-		template: resolveOptimizedPlannerTemplate(params.runtime),
 	});
 	let modelInputBudget = buildModelInputBudget({
 		messages: renderedInput.messages,
@@ -841,7 +840,6 @@ async function callPlanner(params: {
 			renderedInput = renderPlannerModelInput({
 				context: params.trajectory.context,
 				trajectory: params.trajectory,
-				template: resolveOptimizedPlannerTemplate(params.runtime),
 			});
 			modelInputBudget = buildModelInputBudget({
 				messages: renderedInput.messages,
@@ -877,9 +875,6 @@ async function callPlanner(params: {
 				promptSegments: renderedInput.promptSegments,
 				provider: params.provider,
 				hasTools,
-				// Pin local-inference slots per trajectory so a multi-turn
-				// planner loop reuses the same KV cache across iterations.
-				conversationId: params.trajectoryId,
 			}),
 			modelInputBudget,
 		),
