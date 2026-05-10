@@ -754,6 +754,139 @@ function resolveLocalLoadArgs(slot: string): LocalInferenceLoadArgs | null {
 	return firstGguf ? { modelPath: firstGguf } : null;
 }
 
+// Recommended-model auto-download. The downloader in app-core
+// (services/local-inference/downloader.ts) is the canonical
+// implementation, but this plugin doesn't import from app-core to keep the
+// dependency graph one-directional. A minimal in-process resumable HF
+// fetch is enough for first-run UX: pick a known-good default for the
+// slot, download under the agent's state dir, and let
+// resolveLocalModelPath() pick it up on the next pass.
+//
+// Models are tracked in a per-slot map so concurrent generate() calls
+// share the in-flight download instead of racing.
+type RecommendedModel = {
+	id: string;
+	hfRepo: string;
+	ggufFile: string;
+	expectedSizeBytes?: number;
+};
+
+const RECOMMENDED_MODELS: Record<"TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING", RecommendedModel> = {
+	// Llama-3.2-1B-Q4_K_M: ~770 MB, fits in ~1.6 GB total on a 4 GB cvd or
+	// ~600 MB free on an 8 GB phone. Has tool-calling support and good
+	// instruction-following at this size; the safe default for "first chat
+	// works without further setup".
+	TEXT_SMALL: {
+		id: "llama-3.2-1b",
+		hfRepo: "bartowski/Llama-3.2-1B-Instruct-GGUF",
+		ggufFile: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+		expectedSizeBytes: 807_694_464,
+	},
+	TEXT_LARGE: {
+		id: "llama-3.2-1b",
+		hfRepo: "bartowski/Llama-3.2-1B-Instruct-GGUF",
+		ggufFile: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+		expectedSizeBytes: 807_694_464,
+	},
+	// bge-small-en-v1.5: 384-dim sentence embedding, ~24 MB. Standard
+	// pairing with any chat model when the runtime needs embeddings for
+	// memory recall / RAG.
+	TEXT_EMBEDDING: {
+		id: "bge-small-en-v1.5",
+		hfRepo: "ChristianAzinn/bge-small-en-v1.5-gguf",
+		ggufFile: "bge-small-en-v1.5.Q4_K_M.gguf",
+		expectedSizeBytes: 24_808_576,
+	},
+};
+
+const inflightDownloads = new Map<string, Promise<string>>();
+
+function buildHfResolveUrl(model: RecommendedModel): string {
+	return `https://huggingface.co/${model.hfRepo}/resolve/main/${model.ggufFile}`;
+}
+
+async function downloadRecommendedModelFor(
+	slot: "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
+): Promise<string> {
+	const model = RECOMMENDED_MODELS[slot];
+	const dir = modelsDir();
+	mkdirSync(dir, { recursive: true });
+	const finalPath = path.join(dir, model.ggufFile);
+	if (existsSync(finalPath)) {
+		const sz = statSync(finalPath).size;
+		if (!model.expectedSizeBytes || sz === model.expectedSizeBytes) {
+			return finalPath;
+		}
+		// Size mismatch — bad partial. Treat as not-installed and re-download.
+		logger.warn(
+			`[mobile-device-bridge] ${model.ggufFile} present but size ${sz} != expected ${model.expectedSizeBytes}; re-downloading.`,
+		);
+		try {
+			unlinkSync(finalPath);
+		} catch {}
+	}
+
+	const dedupKey = `${slot}:${model.id}`;
+	const existing = inflightDownloads.get(dedupKey);
+	if (existing) return existing;
+
+	const promise = (async () => {
+		const url = buildHfResolveUrl(model);
+		const stagingPath = `${finalPath}.part`;
+		try {
+			unlinkSync(stagingPath);
+		} catch {}
+		logger.info(
+			`[mobile-device-bridge] Auto-downloading recommended ${slot} model ${model.id} from ${url}`,
+		);
+		const response = await fetch(url, { redirect: "follow" });
+		if (!response.ok || !response.body) {
+			throw new Error(
+				`[mobile-device-bridge] Recommended-model download failed (${slot}): HTTP ${response.status} ${response.statusText} from ${url}`,
+			);
+		}
+		await pipeline(
+			Readable.fromWeb(response.body as never),
+			createWriteStream(stagingPath),
+		);
+		const stagedSize = statSync(stagingPath).size;
+		if (
+			model.expectedSizeBytes &&
+			stagedSize !== model.expectedSizeBytes
+		) {
+			try {
+				unlinkSync(stagingPath);
+			} catch {}
+			throw new Error(
+				`[mobile-device-bridge] Downloaded ${model.ggufFile} size ${stagedSize} != expected ${model.expectedSizeBytes}; aborting and removing partial file.`,
+			);
+		}
+		renameSync(stagingPath, finalPath);
+		logger.info(
+			`[mobile-device-bridge] Auto-download complete: ${finalPath} (${stagedSize} bytes)`,
+		);
+		return finalPath;
+	})();
+	inflightDownloads.set(dedupKey, promise);
+	try {
+		return await promise;
+	} finally {
+		inflightDownloads.delete(dedupKey);
+	}
+}
+
+async function resolveLoadArgsWithAutoDownload(
+	slot: "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
+): Promise<LocalInferenceLoadArgs | null> {
+	const existing = resolveLocalLoadArgs(slot);
+	if (existing) return existing;
+	if (process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() === "1") {
+		return null;
+	}
+	const downloaded = await downloadRecommendedModelFor(slot);
+	return { modelPath: downloaded };
+}
+
 function resolveEmbeddingDimension(): number {
 	const assigned = resolveAssignedRegistryModel("TEXT_EMBEDDING");
 	return (
@@ -769,10 +902,10 @@ function resolveEmbeddingDimension(): number {
 
 function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 	return async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
-		const loadArgs = resolveLocalLoadArgs(slot);
+		const loadArgs = await resolveLoadArgsWithAutoDownload(slot);
 		if (!loadArgs) {
 			throw new Error(
-				`[mobile-device-bridge] No local GGUF model installed under ${modelsDir()}. Download a local model before using the on-device agent.`,
+				`[mobile-device-bridge] No local GGUF model installed under ${modelsDir()} and auto-download is disabled (ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD=1). Install a model or unset the disable flag.`,
 			);
 		}
 		await mobileDeviceBridge.loadModel(loadArgs);
@@ -802,11 +935,14 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 			// so this startup probe must not try to load the native model.
 			return new Array(resolveEmbeddingDimension()).fill(0);
 		}
-		const modelPath = resolveLocalModelPath("TEXT_EMBEDDING");
+		let modelPath = resolveLocalModelPath("TEXT_EMBEDDING");
 		if (!modelPath) {
-			throw new Error(
-				`[mobile-device-bridge] No local GGUF embedding model installed under ${modelsDir()}. Download a local embedding model before using the on-device agent.`,
-			);
+			if (process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() === "1") {
+				throw new Error(
+					`[mobile-device-bridge] No local GGUF embedding model installed under ${modelsDir()} and auto-download is disabled.`,
+				);
+			}
+			modelPath = await downloadRecommendedModelFor("TEXT_EMBEDDING");
 		}
 		await mobileDeviceBridge.loadModel({ modelPath });
 		return mobileDeviceBridge.embed({
@@ -876,17 +1012,39 @@ export async function ensureMobileDeviceBridgeInferenceHandlers(
 		PROVIDER,
 		LOCAL_INFERENCE_PRIORITY,
 	);
-	const embeddingModelPath = resolveLocalModelPath("TEXT_EMBEDDING");
-	if (embeddingModelPath) {
-		runtimeWithRegistration.registerModel(
-			ModelType.TEXT_EMBEDDING,
-			makeEmbeddingHandler(),
-			PROVIDER,
-			LOCAL_INFERENCE_PRIORITY,
+
+	// Pre-warm the chat-model download in the background so the user
+	// doesn't pay the multi-hundred-MB latency on their first turn. Same
+	// idempotency guard inside downloadRecommendedModelFor() prevents a
+	// duplicate fetch if a real generate() call races us.
+	if (
+		!resolveLocalLoadArgs("TEXT_SMALL") &&
+		process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() !== "1"
+	) {
+		downloadRecommendedModelFor("TEXT_SMALL").catch((err) =>
+			logger.warn(
+				`[mobile-device-bridge] Background chat-model download failed: ${(err as Error).message}`,
+			),
 		);
-	} else {
-		logger.warn(
-			`[mobile-device-bridge] No local GGUF embedding model installed under ${modelsDir()}; TEXT_EMBEDDING will stay unregistered until a local model is installed and the agent restarts.`,
+	}
+	// Always register the TEXT_EMBEDDING handler. If the GGUF isn't on disk
+	// yet, the handler itself will trigger the auto-downloader on first
+	// real call (the null-params startup probe still returns zeros). This
+	// way the embedding slot becomes available without an agent restart.
+	runtimeWithRegistration.registerModel(
+		ModelType.TEXT_EMBEDDING,
+		makeEmbeddingHandler(),
+		PROVIDER,
+		LOCAL_INFERENCE_PRIORITY,
+	);
+	const embeddingModelPath = resolveLocalModelPath("TEXT_EMBEDDING");
+	if (!embeddingModelPath && process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() !== "1") {
+		// Kick off the embedding-model download in the background so it's
+		// ready by the time the WebView issues a real embed request.
+		downloadRecommendedModelFor("TEXT_EMBEDDING").catch((err) =>
+			logger.warn(
+				`[mobile-device-bridge] Background embedding-model download failed: ${(err as Error).message}`,
+			),
 		);
 	}
 
