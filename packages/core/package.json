@@ -89,6 +89,7 @@
     "vitest": "^4.0.0"
   },
   "dependencies": {
+    "@ai-sdk/gateway": "3.0.109",
     "@ai-sdk/anthropic": "^3.0.13",
     "@ai-sdk/gateway": "^3.0.109",
     "@ai-sdk/google": "^3.0.8",
