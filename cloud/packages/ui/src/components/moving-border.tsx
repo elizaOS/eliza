@@ -30,18 +30,22 @@ export function Button({
   className,
   ...otherProps
 }: MovingBorderButtonProps) {
-  const Component = as ?? "button";
-  return (
-    <Component
-      className={cn(
-        "relative h-16 w-40 overflow-hidden bg-transparent p-[1px] text-xl",
-        containerClassName,
-      )}
-      style={{
-        borderRadius: borderRadius,
-      }}
-      {...otherProps}
-    >
+  const Component = (as ?? "button") as React.ElementType;
+  const componentProps = {
+    className: cn(
+      "relative h-16 w-40 overflow-hidden bg-transparent p-[1px] text-xl",
+      containerClassName,
+    ),
+    style: {
+      borderRadius: borderRadius,
+    },
+    ...otherProps,
+  };
+
+  return React.createElement(
+    Component,
+    componentProps,
+    <>
       <div className="absolute inset-0" style={{ borderRadius: `calc(${borderRadius} * 0.96)` }}>
         <MovingBorder duration={duration} rx="30%" ry="30%">
           <div
@@ -64,7 +68,7 @@ export function Button({
       >
         {children}
       </div>
-    </Component>
+    </>,
   );
 }
 

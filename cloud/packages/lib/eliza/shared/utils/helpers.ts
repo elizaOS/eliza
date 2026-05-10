@@ -4,6 +4,7 @@
 
 import {
   type AgentContext,
+  type Content,
   type ActionResult as CoreActionResult,
   createUniqueUuid,
   executePlannedToolCall,
@@ -701,14 +702,28 @@ export async function runEvaluatorsWithTimeout(
   responseMemory: Memory,
   callback: HandlerCallback,
 ): Promise<void> {
-  if (typeof runtime.evaluate !== "function") return;
+  type RuntimeWithEvaluate = IAgentRuntime & {
+    evaluate: (
+      message: Memory,
+      state: State,
+      didRespond: boolean,
+      callback: (content: Content) => Promise<Memory[]>,
+      responses: Memory[],
+    ) => Promise<unknown>;
+  };
+
+  const runtimeWithEvaluate = runtime as IAgentRuntime & {
+    evaluate?: RuntimeWithEvaluate["evaluate"];
+  };
+
+  if (typeof runtimeWithEvaluate.evaluate !== "function") return;
 
   await Promise.race([
-    runtime.evaluate(
+    runtimeWithEvaluate.evaluate(
       message,
       { ...state },
       true,
-      async (content) => {
+      async (content: Content) => {
         const result = await callback?.(content);
         return result ?? [];
       },

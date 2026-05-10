@@ -7,6 +7,9 @@
   "exclude": [
     "node_modules",
     "dist",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
     "**/*.stories.ts",
     "**/*.stories.tsx"
   ]
