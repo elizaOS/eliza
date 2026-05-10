@@ -5,7 +5,7 @@
 // (||k|| * sqrt(pi/2)/proj_dim * sum_j sign(j)*q_sketch[j]) are bit-identical.
 //
 // Hardware verification still required — see
-// local-inference/kernels/README.md "Verification matrix".
+// packages/inference/README.md "Verification matrix".
 //
 // QJL = K-side compression: store sign(Π·k) packed 8-per-byte plus per-token
 // bf16 norm. Q is sketched once via the same Π and the score per

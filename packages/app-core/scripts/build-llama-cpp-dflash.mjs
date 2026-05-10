@@ -2,8 +2,19 @@
 /**
  * Build the DFlash-capable llama-server fork used by local inference.
  *
- * Upstream ggml-org/llama.cpp does not yet ship DFlash. This script builds
- * spiritbuun/buun-llama-cpp into:
+ * As of v0.2.0-milady, DFlash speculative decoding lives in the unified
+ * milady-ai/llama.cpp fork (the same repo as the AOSP cross-compile).
+ * Pre-2026-05-09 this script consumed spiritbuun/buun-llama-cpp directly
+ * (which itself was 8,988 commits ahead of upstream b8198 with quant
+ * type IDs that conflicted with apothic's TBQ slots). Wave-3 agent A
+ * surgically ported the DFlash CLI surface (--spec-type dflash,
+ * --draft-min-prob, n_drafted_total/n_drafted_accepted_total Prometheus
+ * counters) onto the unified fork and retired the dual-fork situation.
+ * See docs/porting/unified-fork-strategy.md §H step 8 for the migration
+ * story. Override via ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF if you need
+ * to point at the legacy spiritbuun pin during a rollback.
+ *
+ * The script builds the unified fork into:
  *   $ELIZA_STATE_DIR/local-inference/bin/dflash/<platform>-<arch>-<backend>/
  *
  * Multi-target build matrix (see SUPPORTED_TARGETS below):
@@ -30,11 +41,17 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
+// milady-ai/llama.cpp @ v0.2.0-milady (commit 7c7818aa) — the unified fork
+// that composes TBQ + QJL + Q4_POLAR + Metal kernels + DFlash spec-decode
+// onto upstream b8198. Same repo + commit lineage as compile-libllama.mjs
+// (AOSP cross-compile path) so both build paths land on identical kernels.
 const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
-  "https://github.com/spiritbuun/buun-llama-cpp.git";
-const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "master";
-const MIN_COMMIT = "b9d01582b";
+  "https://github.com/milady-ai/llama.cpp.git";
+const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v0.2.0-milady";
+// Minimum commit on milady/integration that contains the DFlash CLI
+// surface (--spec-type dflash, --draft-min-prob, Prometheus counters).
+const MIN_COMMIT = "7c7818aafc7599996268226e2e56099f4f38e972";
 
 const SUPPORTED_TARGETS = [
   "linux-x64-cpu",
@@ -491,11 +508,14 @@ function defaultTarget() {
 
 function parseArgs(argv) {
   const args = {
+    // Renamed from buun-llama-cpp to milady-llama-cpp on the unified-fork
+    // migration. Old caches stay around harmlessly under the prior name —
+    // the new directory busts the cache so a fresh ref pull is forced.
     cacheDir: path.join(
       os.homedir(),
       ".cache",
       "eliza-dflash",
-      "buun-llama-cpp",
+      "milady-llama-cpp",
     ),
     outDirOverride: null,
     targets: null, // null => single legacy target, otherwise an array
@@ -600,264 +620,31 @@ function ensureCheckout(cacheDir, ref) {
   return head;
 }
 
-function patchMetalTurbo4(cacheDir) {
-  const metalPath = path.join(
-    cacheDir,
-    "ggml",
-    "src",
-    "ggml-metal",
-    "ggml-metal.metal",
-  );
-  if (!fs.existsSync(metalPath)) return;
-
-  let source = fs.readFileSync(metalPath, "utf8");
-  const original = source;
-
-  const constantsAnchor =
-    "constant float turbo_mid_3bit[7] = { -0.154259f, -0.091775f, -0.043589f, 0.0f, 0.043589f, 0.091775f, 0.154259f };\n";
-  if (!source.includes("turbo_centroids_4bit")) {
-    source = source.replace(
-      constantsAnchor,
-      `${constantsAnchor}constant float turbo_centroids_4bit[16] = {
-    -0.241556f, -0.182907f, -0.143047f, -0.111065f,
-    -0.083317f, -0.058069f, -0.034311f, -0.011353f,
-     0.011353f,  0.034311f,  0.058069f,  0.083317f,
-     0.111065f,  0.143047f,  0.182907f,  0.241556f,
-};
-constant float turbo_mid_4bit[15] = {
-    -0.212232f, -0.162977f, -0.127056f, -0.097191f, -0.070693f,
-    -0.046190f, -0.022832f,  0.000000f,  0.022832f,  0.046190f,
-     0.070693f,  0.097191f,  0.127056f,  0.162977f,  0.212232f,
-};
-`,
-    );
-  }
-
-  source = source.replace(
-    / {4}\/\/ Step 3: 3-bit quantization[\s\S]*? {4}\/\/ Step 5: QJL WHT signs[\s\S]*? {4}for \(int i = 0; i < 128; i\+\+\) \{\n {8}if \(x\[i\] >= 0\.0f\) \{\n {12}dst\.signs\[i \/ 8\] \|= \(1 << \(i % 8\)\);\n {8}\}\n {4}\}\n/,
-    `    // Step 3: 4-bit quantization
-
-    float recon[128];
-    float recon_sq = 0.0f;
-    for (int j = 0; j < QK_TURBO4 / 2; j++) dst.qs[j] = 0;
-    for (int j = 0; j < 128; j++) {
-        float val = x[j];
-        uint8_t idx = 15;
-        for (int m = 0; m < 15; m++) {
-            if (val < turbo_mid_4bit[m]) {
-                idx = (uint8_t)m;
-                break;
-            }
-        }
-        recon[j] = turbo_centroids_4bit[idx];
-        recon_sq += recon[j] * recon[j];
-
-        if ((j & 1) == 0) {
-            dst.qs[j / 2] = idx & 0x0F;
-        } else {
-            dst.qs[j / 2] |= (idx & 0x0F) << 4;
-        }
-    }
-
-    const float recon_norm = sqrt(recon_sq);
-    dst.norm = half(recon_norm > 1e-10f ? norm / recon_norm : norm);
-`,
-  );
-
-  source = source.replace(
-    /static void turbo4_dequantize_full_block\(device const block_turbo4_0 \* xb, thread float \* cache\) \{[\s\S]*?\n\}\n\ntemplate <typename type4x4>\nvoid dequantize_turbo4_0/,
-    `static void turbo4_dequantize_full_block(device const block_turbo4_0 * xb, thread float * cache) {
-    const float norm = float(xb->norm);
-
-    // Unpack 4-bit indices. The graph pre-rotates queries for TurboQuant,
-    // so this path mirrors the CPU implementation's packed block layout.
-    for (int j = 0; j < 128; j++) {
-        const uint8_t packed = xb->qs[j / 2];
-        const uint8_t idx = (j & 1) ? (packed >> 4) : (packed & 0x0F);
-        cache[j] = turbo_centroids_4bit[idx] * norm;
-    }
-}
-
-template <typename type4x4>
-void dequantize_turbo4_0`,
-  );
-
-  const turbo4SetRowsKernel = `template<typename TI>
-kernel void kernel_set_rows_turbo4(
-        constant ggml_metal_kargs_set_rows & args,
-        device const  void * src0,
-        device const  void * src1,
-        device       float * dst,
-        uint3                tgpig[[threadgroup_position_in_grid]],
-        uint                 tiitg[[thread_index_in_threadgroup]],
-        uint3                tptg [[threads_per_threadgroup]]) {
-    const int32_t i03 = tgpig.z;
-    const int32_t i02 = tgpig.y;
-    const int32_t i12 = i03%args.ne12;
-    const int32_t i11 = i02%args.ne11;
-    const int32_t i01 = tgpig.x*tptg.y + tiitg/tptg.x;
-    if (i01 >= args.ne01) return;
-
-    const int32_t i10 = i01;
-    const TI      i1  = ((const device TI *) ((const device char *) src1 + i10*args.nb10 + i11*args.nb11 + i12*args.nb12))[0];
-
-          device block_turbo4_0 * dst_row = (      device block_turbo4_0 *) ((      device char *) dst  +  i1*args.nb1  + i02*args.nb2  + i03*args.nb3);
-    const device float          * src_row = (const device float          *) ((const device char *) src0 + i01*args.nb01 + i02*args.nb02 + i03*args.nb03);
-
-    for (int ind = tiitg%tptg.x; ind < args.nk0; ind += tptg.x) {
-        quantize_turbo4_0(src_row + QK_TURBO4*ind, dst_row[ind]);
-    }
-}
-
-`;
-  if (!source.includes("kernel void kernel_set_rows_turbo4(")) {
-    source = source.replace(
-      "\n// TurboQuant set_rows instantiations (block size 128)",
-      `\n${turbo4SetRowsKernel}// TurboQuant set_rows instantiations (block size 128)`,
-    );
-  }
-
-  const turbo4Instantiations = `typedef decltype(kernel_set_rows_turbo4<int64_t>) set_rows_turbo4_t;
-
-template [[host_name("kernel_set_rows_turbo4_i64")]] kernel set_rows_turbo4_t kernel_set_rows_turbo4<int64_t>;
-template [[host_name("kernel_set_rows_turbo4_i32")]] kernel set_rows_turbo4_t kernel_set_rows_turbo4<int32_t>;`;
-
-  source = source.replace(
-    /typedef decltype\(kernel_set_rows_turbo<int64_t, block_turbo4_0, QK_TURBO4, quantize_turbo4_0>\) set_rows_turbo4_t;\n\ntemplate \[\[host_name\("kernel_set_rows_turbo4_i64"\)\]\] kernel set_rows_turbo4_t kernel_set_rows_turbo<int64_t, block_turbo4_0, QK_TURBO4, quantize_turbo4_0>;\ntemplate \[\[host_name\("kernel_set_rows_turbo4_i32"\)\]\] kernel set_rows_turbo4_t kernel_set_rows_turbo<int32_t, block_turbo4_0, QK_TURBO4, quantize_turbo4_0>;/,
-    turbo4Instantiations,
-  );
-
-  if (!source.includes('host_name("kernel_set_rows_turbo4_i64")')) {
-    const disabledTurbo4Comment = `// Disabled for Metal until the fork's Turbo4 set_rows path is updated for the
-// current block_turbo4_0 layout (norm + packed 4-bit indices, no residual signs).
-// The stale specialization prevents the whole Metal library from compiling.`;
-    if (source.includes(disabledTurbo4Comment)) {
-      source = source.replace(disabledTurbo4Comment, turbo4Instantiations);
-    } else {
-      source = source.replace(
-        /template \[\[host_name\("kernel_set_rows_turbo3_i32"\)\]\] kernel set_rows_turbo_t kernel_set_rows_turbo<int32_t, block_turbo3_0, QK_TURBO3, quantize_turbo3_0>;/,
-        (match) => `${match}\n${turbo4Instantiations}`,
-      );
-    }
-  }
-
-  if (source !== original) {
-    fs.writeFileSync(metalPath, source);
-    console.log("[dflash-build] patched Metal Turbo4 shader support");
-  }
-}
-
-// DRAFT: copies repo-local Vulkan compute shaders into the fork's source tree
-// so a custom build can experiment with the turbo3 / turbo4 / turbo3_tcq
-// kernel ports under local-inference/kernels/vulkan/. Default OFF — the user
-// must set ELIZA_DFLASH_PATCH_VULKAN_KERNELS=1 to opt in for hardware testing.
-// See local-inference/kernels/README.md.
-function patchVulkanKernels(cacheDir) {
+function patchVulkanKernels(_cacheDir) {
   if (process.env.ELIZA_DFLASH_PATCH_VULKAN_KERNELS !== "1") return;
-  console.warn(
-    "[dflash-build] WARNING: ELIZA_DFLASH_PATCH_VULKAN_KERNELS=1 injects DRAFT Vulkan shaders that are KNOWN-BROKEN on Mesa llvmpipe (0/8 numerical match). Run kernels/verify/vulkan_verify against the resulting build before trusting it. See local-inference/kernels/README.md.",
-  );
-  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
-  const srcDir = path.join(repoRoot, "local-inference", "kernels", "vulkan");
-  if (!fs.existsSync(srcDir)) {
-    console.warn(`[dflash-build] patchVulkanKernels: ${srcDir} missing, skipping`);
-    return;
-  }
-  const dstDir = path.join(cacheDir, "ggml", "src", "ggml-vulkan", "vulkan-shaders");
-  if (!fs.existsSync(dstDir)) {
-    console.warn(`[dflash-build] patchVulkanKernels: ${dstDir} missing in fork, skipping`);
-    return;
-  }
-  for (const name of ["turbo3.comp", "turbo4.comp", "turbo3_tcq.comp"]) {
-    const src = path.join(srcDir, name);
-    if (!fs.existsSync(src)) continue;
-    fs.copyFileSync(src, path.join(dstDir, name));
-  }
   console.log(
-    "[dflash-build] DRAFT patchVulkanKernels applied — kernels NOT validated on hardware",
+    "[dflash-build] patchVulkanKernels: kernels already present on milady-ai/llama.cpp; no-op.",
   );
 }
 
-// DRAFT: copies the repo-local Metal turbo3 / turbo3_tcq shader sources into
-// the fork. Default OFF — set ELIZA_DFLASH_PATCH_METAL_TURBO3=1 to opt in.
-// patchMetalTurbo4 above is unrelated and always runs in metal builds.
-//
-// IMPORTANT: keep gated until W1-D's metal_verify harness reports 8/8 PASS
-// against CUDA-derived fixtures on real Apple Silicon hardware. The fork's
-// in-tree dequantize_turbo3_0_t4 is the production path today; replacing it
-// with this standalone shader before hardware proof would risk a regression.
-function patchMetalTurbo3Tcq(cacheDir) {
+function patchMetalTurbo3Tcq(_cacheDir) {
   if (process.env.ELIZA_DFLASH_PATCH_METAL_TURBO3 !== "1") return;
-  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
-  const srcDir = path.join(repoRoot, "local-inference", "kernels", "metal");
-  if (!fs.existsSync(srcDir)) {
-    console.warn(`[dflash-build] patchMetalTurbo3Tcq: ${srcDir} missing, skipping`);
-    return;
-  }
-  const dstDir = path.join(cacheDir, "ggml", "src", "ggml-metal");
-  if (!fs.existsSync(dstDir)) {
-    console.warn(`[dflash-build] patchMetalTurbo3Tcq: ${dstDir} missing in fork, skipping`);
-    return;
-  }
-  for (const name of ["turbo3.metal", "turbo3_tcq.metal"]) {
-    const src = path.join(srcDir, name);
-    if (!fs.existsSync(src)) continue;
-    fs.copyFileSync(src, path.join(dstDir, name));
-  }
   console.log(
-    "[dflash-build] DRAFT patchMetalTurbo3Tcq applied — kernels NOT validated on hardware",
+    "[dflash-build] patchMetalTurbo3Tcq: kernels already present on milady-ai/llama.cpp; no-op.",
   );
 }
 
-// DRAFT: copies the repo-local QJL Metal shader source into the fork. Default
-// OFF — set ELIZA_DFLASH_PATCH_METAL_QJL=1 to opt in. Depends on the on-fork
-// `block_qjl1_256` definition that W1-A is responsible for landing in
-// ggml-common.h (currently absent from upstream buun-llama-cpp); this hook
-// drops only the .metal source. Wiring the dispatcher in `ggml-metal.m` and
-// the cache-type plumbing happens in a separate PR once the CPU side lands.
-function patchMetalQjl(cacheDir) {
+function patchMetalQjl(_cacheDir) {
   if (process.env.ELIZA_DFLASH_PATCH_METAL_QJL !== "1") return;
-  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
-  const srcDir = path.join(repoRoot, "local-inference", "kernels", "metal");
-  if (!fs.existsSync(srcDir)) {
-    console.warn(`[dflash-build] patchMetalQjl: ${srcDir} missing, skipping`);
-    return;
-  }
-  const dstDir = path.join(cacheDir, "ggml", "src", "ggml-metal");
-  if (!fs.existsSync(dstDir)) {
-    console.warn(`[dflash-build] patchMetalQjl: ${dstDir} missing in fork, skipping`);
-    return;
-  }
-  const src = path.join(srcDir, "qjl.metal");
-  if (!fs.existsSync(src)) return;
-  fs.copyFileSync(src, path.join(dstDir, "qjl.metal"));
   console.log(
-    "[dflash-build] DRAFT patchMetalQjl applied — depends on W1-A's block_qjl1_256 in fork; kernels NOT validated on hardware",
+    "[dflash-build] patchMetalQjl: kernels already present on milady-ai/llama.cpp; no-op.",
   );
 }
 
-// DRAFT: copies the repo-local PolarQuant Metal shader source into the fork.
-// Default OFF — set ELIZA_DFLASH_PATCH_METAL_POLAR=1 to opt in. Depends on
-// W1-B's `block_q4_polar` in the fork's ggml-common.h. Same staged approach:
-// drop the .metal source first, wire the dispatcher in a follow-up.
-function patchMetalPolar(cacheDir) {
+function patchMetalPolar(_cacheDir) {
   if (process.env.ELIZA_DFLASH_PATCH_METAL_POLAR !== "1") return;
-  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
-  const srcDir = path.join(repoRoot, "local-inference", "kernels", "metal");
-  if (!fs.existsSync(srcDir)) {
-    console.warn(`[dflash-build] patchMetalPolar: ${srcDir} missing, skipping`);
-    return;
-  }
-  const dstDir = path.join(cacheDir, "ggml", "src", "ggml-metal");
-  if (!fs.existsSync(dstDir)) {
-    console.warn(`[dflash-build] patchMetalPolar: ${dstDir} missing in fork, skipping`);
-    return;
-  }
-  const src = path.join(srcDir, "polar.metal");
-  if (!fs.existsSync(src)) return;
-  fs.copyFileSync(src, path.join(dstDir, "polar.metal"));
   console.log(
-    "[dflash-build] DRAFT patchMetalPolar applied — depends on W1-B's block_q4_polar in fork; kernels NOT validated on hardware",
+    "[dflash-build] patchMetalPolar: kernels already present on milady-ai/llama.cpp; no-op.",
   );
 }
 
@@ -1026,7 +813,7 @@ function writeCapabilities({
     arch,
     backend,
     builtAt: new Date().toISOString(),
-    fork: "spiritbuun/buun-llama-cpp",
+    fork: "milady-ai/llama.cpp",
     forkCommit,
     kernels,
     binaries,

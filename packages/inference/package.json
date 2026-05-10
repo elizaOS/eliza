@@ -1,0 +1,35 @@
+{
+  "name": "@elizaos/inference",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native on-device inference kernels (Metal, Vulkan, reference C) and the cross-backend verification harness shared with milady-ai/llama.cpp.",
+  "keywords": [
+    "llama.cpp",
+    "ggml",
+    "metal",
+    "vulkan",
+    "neon",
+    "avx2",
+    "quantization",
+    "qjl",
+    "polarquant",
+    "turboquant",
+    "dflash",
+    "on-device-inference"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "files": [
+    "metal/",
+    "vulkan/",
+    "reference/",
+    "verify/",
+    "README.md"
+  ],
+  "scripts": {
+    "verify:reference": "make -C verify reference-test",
+    "verify:vulkan": "make -C verify vulkan && cd verify && ./vulkan_verify",
+    "verify:metal": "make -C verify metal && cd verify && ./metal_verify",
+    "clean": "make -C verify clean"
+  }
+}

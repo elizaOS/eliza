@@ -2,7 +2,7 @@
 // SOURCE-LEVEL VERIFIED against the always-on patchMetalTurbo4 hook in
 // scripts/build-llama-cpp-dflash.mjs (current pure-4-bit PolarQuant layout,
 // no QJL residuals). Hardware verification still required —
-// see local-inference/kernels/README.md "Verification matrix".
+// see packages/inference/README.md "Verification matrix".
 //
 // turbo4 KV cache dequant + Q·K dot product (Metal Shading Language).
 //

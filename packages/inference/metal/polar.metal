@@ -8,7 +8,7 @@
 // into the orthonormal inverse are all bit-identical.
 //
 // Hardware verification still required — see
-// local-inference/kernels/README.md "Verification matrix".
+// packages/inference/README.md "Verification matrix".
 //
 // Block layout (block_q4_polar in polar_block.h, 82 bytes, packed):
 //     fp16     d                          // [0..1]   per-block L2 norm

@@ -204,7 +204,7 @@ Each shader file annotates the CUDA function it ports. Key correspondences:
 
 ```bash
 # In this repo's worktree:
-cd local-inference/kernels/verify
+cd packages/inference/verify
 
 # 1) Build the reference + fixture generator (no GPU needed):
 make reference-test
@@ -245,16 +245,16 @@ bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs \
 ```bash
 # Host-side: build SPIR-V from the .comp files using glslc from the Vulkan
 # SDK (https://vulkan.lunarg.com/sdk/home).
-glslc -fshader-stage=compute local-inference/kernels/vulkan/turbo3.comp     -o turbo3.spv
-glslc -fshader-stage=compute local-inference/kernels/vulkan/turbo4.comp     -o turbo4.spv
-glslc -fshader-stage=compute local-inference/kernels/vulkan/turbo3_tcq.comp -o turbo3_tcq.spv
+glslc -fshader-stage=compute packages/inference/vulkan/turbo3.comp     -o turbo3.spv
+glslc -fshader-stage=compute packages/inference/vulkan/turbo4.comp     -o turbo4.spv
+glslc -fshader-stage=compute packages/inference/vulkan/turbo3_tcq.comp -o turbo3_tcq.spv
 
 # Or with glslangValidator if you don't have glslc:
-glslangValidator -V -S comp local-inference/kernels/vulkan/turbo3.comp -o turbo3.spv
+glslangValidator -V -S comp packages/inference/vulkan/turbo3.comp -o turbo3.spv
 
 # 1) On a workstation with a Vulkan-capable GPU (NVIDIA / AMD / Intel),
 #    run the host harness:
-cd local-inference/kernels/verify
+cd packages/inference/verify
 VULKAN_SDK=/opt/vulkan-sdk make vulkan
 ./vulkan_verify ../vulkan/turbo3.spv     fixtures/turbo3.json
 ./vulkan_verify ../vulkan/turbo4.spv     fixtures/turbo4.json

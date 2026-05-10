@@ -6,6 +6,28 @@ import {
 } from "../services/optimized-prompt";
 import { resolveOptimizedPrompt } from "../services/optimized-prompt-resolver";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
+
+/**
+ * Resolve the planner system prompt for `runtime`. Looks up the optimised
+ * planner template from `OptimizedPromptService` if one has been loaded
+ * (artefact for `"action_planner"` task), and falls back to the static
+ * `plannerTemplate` baseline otherwise.
+ *
+ * Two call sites use this — the initial render and the post-compaction
+ * re-render — and both need to read the same template. The runtime arg
+ * is typed as `unknown` because `PlannerRuntime` is structural and may
+ * not surface `getService`; we narrow at the call site.
+ */
+function resolveOptimizedPlannerTemplate(runtime: unknown): string {
+	const svc =
+		typeof (runtime as { getService?: (name: string) => unknown })
+			?.getService === "function"
+			? ((runtime as { getService: (name: string) => unknown }).getService(
+					OPTIMIZED_PROMPT_SERVICE,
+				) as OptimizedPromptService | null | undefined)
+			: null;
+	return resolveOptimizedPrompt(svc, "action_planner", plannerTemplate);
+}
 import type { ActionResult, ProviderDataRecord } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
 import {
@@ -810,6 +832,7 @@ async function callPlanner(params: {
 	let renderedInput = renderPlannerModelInput({
 		context: params.context,
 		trajectory: params.trajectory,
+		template: resolveOptimizedPlannerTemplate(params.runtime),
 	});
 	let modelInputBudget = buildModelInputBudget({
 		messages: renderedInput.messages,
@@ -833,6 +856,7 @@ async function callPlanner(params: {
 			renderedInput = renderPlannerModelInput({
 				context: params.trajectory.context,
 				trajectory: params.trajectory,
+				template: resolveOptimizedPlannerTemplate(params.runtime),
 			});
 			modelInputBudget = buildModelInputBudget({
 				messages: renderedInput.messages,
