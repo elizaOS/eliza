@@ -33,21 +33,21 @@ function createRuntimeWithPluginRegistration(initialPlugins: Plugin[] = []): {
 }
 
 describe("LifeOps Google plugin registration", () => {
-  it("exposes the LIFE action for todos-routed planner turns", () => {
-    const lifeAction = appLifeOpsPlugin.actions?.find(
-      (action) => action.name === "LIFE",
+  it("exposes the owner todo action for todos-routed planner turns", () => {
+    const todoAction = appLifeOpsPlugin.actions?.find(
+      (action) => action.name === "OWNER_TODOS",
     );
 
-    expect(lifeAction?.contexts).toContain("todos");
+    expect(todoAction?.contexts).toContain("todos");
   });
 
-  it("validates normal owner todo requests for the LIFE action", async () => {
-    const lifeAction = appLifeOpsPlugin.actions?.find(
-      (action) => action.name === "LIFE",
+  it("validates normal owner todo requests for the owner todo action", async () => {
+    const todoAction = appLifeOpsPlugin.actions?.find(
+      (action) => action.name === "OWNER_TODOS",
     );
 
     await expect(
-      lifeAction?.validate?.(
+      todoAction?.validate?.(
         { getRoom: async () => null } as IAgentRuntime,
         { content: { text: "add a todo: pick up dry cleaning tomorrow" } } as never,
       ),

@@ -84,7 +84,7 @@
     "migrate:generate": "turbo run migrate:generate --filter=./plugins/plugin-sql",
     "test": "node scripts/run-all-tests.mjs",
     "test:all": "node scripts/run-all-tests.mjs",
-    "test:plugins": "bun run build:core && turbo run test --concurrency 3 --filter='./plugins/*' --filter='!@elizaos/plugin-agent-orchestrator' && turbo run test --concurrency 1 --filter='@elizaos/plugin-agent-orchestrator'",
+    "test:plugins": "bun run build:core && turbo run test --concurrency 3 --filter='./plugins/*' --filter='!@elizaos/app-lifeops' --filter='!@elizaos/plugin-agent-orchestrator' && bun run --cwd plugins/app-lifeops test && turbo run test --concurrency 1 --filter='@elizaos/plugin-agent-orchestrator'",
     "test:client": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/app|packages/ui|plugins/app-lifeops|plugins/app-companion|plugins/app-training)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs --no-cloud",
     "test:core": "node scripts/with-test-runtime.mjs turbo run test --filter=./packages/core",
     "test:server": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/agent|packages/app-core|packages/shared|packages/core|packages/vault|packages/elizaos|packages/skills|packages/scenario-runner)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs --no-cloud",
