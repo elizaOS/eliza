@@ -21,7 +21,6 @@
     },
     "@elizaos/agent#build": {
       "dependsOn": [
-        "^build",
         "@elizaos/core#build",
         "@elizaos/shared#build",
         "@elizaos/plugin-agent-skills#build",
@@ -42,7 +41,6 @@
     },
     "@elizaos/app-core#build": {
       "dependsOn": [
-        "^build",
         "@elizaos/core#build",
         "@elizaos/agent#build",
         "@elizaos/shared#build",
@@ -57,8 +55,6 @@
     },
     "@elizaos/ui#build": {
       "dependsOn": [
-        "^build",
-        "@elizaos/agent#build",
         "@elizaos/core#build",
         "@elizaos/shared#build",
         "@elizaos/plugin-pdf#build"
