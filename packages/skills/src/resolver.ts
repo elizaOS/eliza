@@ -5,18 +5,14 @@ import {
   renameSync,
   statSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveStateDir } from "@elizaos/core";
 
 /**
  * Cached skills directory path
  */
 let cachedSkillsDir: string | undefined;
-
-function resolveStateDir(): string {
-  return process.env.ELIZA_STATE_DIR?.trim() || join(homedir(), ".eliza");
-}
 
 /**
  * Check if a directory looks like a skills directory

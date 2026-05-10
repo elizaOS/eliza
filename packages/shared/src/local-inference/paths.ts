@@ -1,25 +1,23 @@
 /**
  * Path resolution for the local-inference service.
  *
- * All Eliza-owned files live under `$STATE_DIR/local-inference/` to match
+ * All Eliza-owned files live under `<state-dir>/local-inference/` to match
  * the convention established by `plugin-installer.ts` and the rest of
  * app-core. We never write to paths outside of this root.
  *
- * The state dir is resolved in `ELIZA_STATE_DIR` → `ELIZA_STATE_DIR` →
- * `~/.eliza` order. The `.eliza` fallback is preserved for desktop
- * backward-compat with existing installs; on AOSP `ELIZA_STATE_DIR` is
- * set by `ElizaAgentService.java` to `/data/data/<pkg>/files/.eliza`,
- * so models land at `<that>/local-inference/models/` and not under a
- * stray homedir-derived path.
+ * `<state-dir>` follows the canonical `MILADY_STATE_DIR` >
+ * `ELIZA_STATE_DIR` > `~/.${ELIZA_NAMESPACE ?? "eliza"}` precedence;
+ * on AOSP, `ELIZA_STATE_DIR` is set by `ElizaAgentService.java` to
+ * `/data/data/<pkg>/files/.eliza` so models land at
+ * `<that>/local-inference/models/` and not under a stray homedir-derived
+ * path.
  */
 
-import os from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 
 export function localInferenceRoot(): string {
-  const stateDir = process.env.ELIZA_STATE_DIR?.trim();
-  const base = stateDir || path.join(os.homedir(), ".eliza");
-  return path.join(base, "local-inference");
+  return path.join(resolveStateDir(), "local-inference");
 }
 
 /** Directory for models Eliza downloaded itself. Safe to delete. */
