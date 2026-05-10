@@ -74,11 +74,17 @@ async function cerebrasChat(params: {
     messages.push({ role: m.role, content: m.content });
   }
 
+  // gpt-oss-120b is a reasoning model. Without `reasoning_effort:"low"`
+  // it spends most of its token budget on internal reasoning tokens and
+  // routinely hits finish_reason:"length" before producing visible content.
+  // For compaction work — extract facts, write a summary — there's no deep
+  // reasoning required, so "low" is the right default.
   const body = {
     model: CEREBRAS_MODEL,
     messages,
     temperature: 0,
-    max_tokens: params.maxOutputTokens ?? 1024,
+    max_tokens: params.maxOutputTokens ?? 8192,
+    reasoning_effort: process.env.CEREBRAS_REASONING_EFFORT ?? "low",
   };
 
   const res = await fetch(`${CEREBRAS_BASE_URL}/chat/completions`, {
@@ -98,12 +104,20 @@ async function cerebrasChat(params: {
   }
 
   const json = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
+    choices?: {
+      message?: { content?: string; reasoning?: string };
+      finish_reason?: string;
+    }[];
   };
-  const text = json.choices?.[0]?.message?.content;
-  if (typeof text !== "string") {
+  const choice = json.choices?.[0];
+  // gpt-oss-120b on Cerebras returns the visible answer in message.content
+  // when present, but for short responses the model sometimes routes the
+  // entire answer through message.reasoning with no separate content.
+  // Prefer content; fall back to reasoning so we don't lose the response.
+  const text = choice?.message?.content || choice?.message?.reasoning;
+  if (typeof text !== "string" || text.length === 0) {
     throw new Error(
-      `Cerebras chat completion returned no text: ${JSON.stringify(json).slice(0, 500)}`,
+      `Cerebras chat completion returned no text (finish_reason=${choice?.finish_reason}): ${JSON.stringify(json).slice(0, 500)}`,
     );
   }
   return text;
