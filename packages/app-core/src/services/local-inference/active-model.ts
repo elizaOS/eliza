@@ -182,7 +182,7 @@ export function validateLocalInferenceLoadArgs(
     }
     if (!allowFork && isForkOnlyKvCacheType(value)) {
       throw new Error(
-        `${field}="${value}" requires the milady-ai/llama.cpp kernel. The milady-ai/node-llama-cpp binding accepts the string at the TS layer, but the upstream @node-llama-cpp/<platform> prebuild does not implement the underlying ggml type. Pass through the AOSP path or load the milady-ai/llama.cpp prebuilt binary. Stock-only types accepted here: ${[...STOCK_KV_CACHE_TYPES].join(", ")}.`,
+        `${field}="${value}" requires the milady-ai/llama.cpp kernel from the milady fork. The milady-ai/node-llama-cpp binding accepts the string at the TS layer, but the upstream @node-llama-cpp/<platform> prebuild does not implement the underlying ggml type. Pass through the AOSP path or load the milady-ai/llama.cpp prebuilt binary. Stock-only types accepted here: ${[...STOCK_KV_CACHE_TYPES].join(", ")}.`,
       );
     }
     if (!allowFork && !isStockKvCacheType(value)) {

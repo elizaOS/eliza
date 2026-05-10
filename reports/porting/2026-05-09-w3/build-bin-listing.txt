@@ -1,0 +1,22 @@
+total 1158752
+drwxrwxr-x 2 shaw shaw       4096 May  9 21:29 .
+drwxrwxr-x 9 shaw shaw       4096 May  9 20:44 ..
+lrwxrwxrwx 1 shaw shaw         17 May  9 20:45 libggml-base.so -> libggml-base.so.0
+lrwxrwxrwx 1 shaw shaw         21 May  9 20:45 libggml-base.so.0 -> libggml-base.so.0.9.7
+-rwxrwxr-x 1 shaw shaw     776096 May  9 20:45 libggml-base.so.0.9.7
+lrwxrwxrwx 1 shaw shaw         16 May  9 21:28 libggml-cpu.so -> libggml-cpu.so.0
+lrwxrwxrwx 1 shaw shaw         20 May  9 21:28 libggml-cpu.so.0 -> libggml-cpu.so.0.9.7
+-rwxrwxr-x 1 shaw shaw    1116632 May  9 21:28 libggml-cpu.so.0.9.7
+lrwxrwxrwx 1 shaw shaw         17 May  9 21:24 libggml-cuda.so -> libggml-cuda.so.0
+lrwxrwxrwx 1 shaw shaw         21 May  9 21:24 libggml-cuda.so.0 -> libggml-cuda.so.0.9.7
+-rwxrwxr-x 1 shaw shaw 1172610168 May  9 21:24 libggml-cuda.so.0.9.7
+lrwxrwxrwx 1 shaw shaw         12 May  9 21:28 libggml.so -> libggml.so.0
+lrwxrwxrwx 1 shaw shaw         16 May  9 21:28 libggml.so.0 -> libggml.so.0.9.7
+-rwxrwxr-x 1 shaw shaw      56016 May  9 21:28 libggml.so.0.9.7
+lrwxrwxrwx 1 shaw shaw         13 May  9 21:28 libllama.so -> libllama.so.0
+lrwxrwxrwx 1 shaw shaw         17 May  9 21:28 libllama.so.0 -> libllama.so.0.0.1
+-rwxrwxr-x 1 shaw shaw    3358712 May  9 21:28 libllama.so.0.0.1
+lrwxrwxrwx 1 shaw shaw         12 May  9 21:28 libmtmd.so -> libmtmd.so.0
+lrwxrwxrwx 1 shaw shaw         16 May  9 21:28 libmtmd.so.0 -> libmtmd.so.0.0.1
+-rwxrwxr-x 1 shaw shaw     995584 May  9 21:28 libmtmd.so.0.0.1
+-rwxrwxr-x 1 shaw shaw    7625080 May  9 21:29 llama-server
