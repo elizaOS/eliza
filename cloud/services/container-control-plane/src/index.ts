@@ -1,30 +1,23 @@
 import { type Context, Hono } from "hono";
-import { userCharactersRepository } from "@elizaos/cloud-db";
-import {
-  type DockerNode,
-  dockerNodesRepository,
-} from "@elizaos/cloud-db";
-import {
-  envelope,
-  errorEnvelope,
-  toCompatOpResult,
-} from "@elizaos/cloud-lib";
-import { containersEnv } from "@elizaos/cloud-lib";
-import { runWithCloudBindingsAsync } from "@elizaos/cloud-lib";
-import { WarmPoolManager } from "@elizaos/cloud-lib";
-import { getHetznerPoolContainerCreator } from "@elizaos/cloud-lib";
+import { userCharactersRepository } from "@/db/repositories/characters";
+import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
+import type { DockerNode } from "@/db/schemas/docker-nodes";
+import { envelope, errorEnvelope, toCompatOpResult } from "@/lib/api/compat-envelope";
+import { containersEnv } from "@/lib/config/containers-env";
+import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { WarmPoolManager } from "@/lib/services/containers/agent-warm-pool";
+import { getHetznerPoolContainerCreator } from "@/lib/services/containers/agent-warm-pool-creator";
 import {
   type CreateContainerInput,
   getHetznerContainersClient,
   HetznerClientError,
-} from "@elizaos/cloud-lib";
-import { getNodeAutoscaler } from "@elizaos/cloud-lib";
-import { dockerNodeManager } from "@elizaos/cloud-lib";
-import { reusesExistingElizaCharacter } from "@elizaos/cloud-lib";
-import type { BridgeRequest } from "@elizaos/cloud-lib";
-import { elizaSandboxService } from "@elizaos/cloud-lib";
-import { provisioningJobService } from "@elizaos/cloud-lib";
-import { logger } from "@elizaos/cloud-lib";
+} from "@/lib/services/containers/hetzner-client";
+import { getNodeAutoscaler } from "@/lib/services/containers/node-autoscaler";
+import { dockerNodeManager } from "@/lib/services/docker-node-manager";
+import { reusesExistingElizaCharacter } from "@/lib/services/eliza-agent-config";
+import { type BridgeRequest, elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import { logger } from "@/lib/utils/logger";
 
 let cachedWarmPoolManager: WarmPoolManager | null = null;
 function getWarmPoolManager(): WarmPoolManager {

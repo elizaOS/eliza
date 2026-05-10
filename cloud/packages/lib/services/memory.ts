@@ -144,7 +144,9 @@ export class MemoryService {
       JSON.stringify(results, null, 2),
     );
 
-    const roomIds = new Set(results.map((r) => r.roomId));
+    const roomIds = new Set(
+      results.flatMap((r) => (typeof r.roomId === "string" ? [r.roomId] : [])),
+    );
     logger.info(
       `[Memory Service] Found ${roomIds.size} rooms for organization ${organizationId}: ${Array.from(roomIds).join(", ")}`,
     );
