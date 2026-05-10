@@ -10,6 +10,7 @@
 import { Button } from "@elizaos/ui";
 import { Cloud, Laptop, type LucideIcon, RadioTower } from "lucide-react";
 import { useCallback, useMemo } from "react";
+import { isStoreBuild } from "../../build-variant";
 import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
 import {
   type RuntimePickerTarget,
@@ -24,7 +25,15 @@ type RuntimeAction = {
   label: string;
   description: string;
   icon: LucideIcon;
+  disabled?: boolean;
+  disabledReason?: string;
 };
+
+// Placeholder anchor for the eventual sandbox/local-build explainer page.
+// Wired here as a string constant per the foundation task — the docs page
+// itself is out of scope for this change.
+const STORE_LOCAL_DISABLED_DOCS_URL =
+  "https://docs.milady.ai/desktop/build-variants";
 
 export function RuntimeSettingsSection() {
   const { t } = useApp();
@@ -37,6 +46,14 @@ export function RuntimeSettingsSection() {
       }),
     [],
   );
+
+  const storeBuild = isStoreBuild();
+  const localDisabledReason = storeBuild
+    ? t("settings.runtime.localDisabledStore", {
+        defaultValue:
+          "Local agent requires the direct download build. Open docs for details.",
+      })
+    : undefined;
 
   const actions = useMemo<RuntimeAction[]>(
     () => [
@@ -59,6 +76,8 @@ export function RuntimeSettingsSection() {
           defaultValue: "Use the agent running on this device.",
         }),
         icon: Laptop,
+        disabled: storeBuild,
+        disabledReason: localDisabledReason,
       },
       {
         target: "remote",
@@ -71,7 +90,7 @@ export function RuntimeSettingsSection() {
         icon: RadioTower,
       },
     ],
-    [t],
+    [t, storeBuild, localDisabledReason],
   );
 
   const handleSwitch = useCallback((target: RuntimePickerTarget) => {
@@ -98,12 +117,15 @@ export function RuntimeSettingsSection() {
         {actions.map((action) => {
           const Icon = action.icon;
           const active = currentRuntime.kind === action.target;
+          const disabled = action.disabled === true;
           return (
             <Button
               key={action.target}
               onClick={() => handleSwitch(action.target)}
               variant={active ? "default" : "outline"}
               size="sm"
+              disabled={disabled}
+              title={action.disabledReason}
               className="h-auto justify-start gap-2 px-3 py-2 text-left"
             >
               <Icon className="size-4 shrink-0" aria-hidden="true" />
@@ -119,6 +141,24 @@ export function RuntimeSettingsSection() {
           );
         })}
       </div>
+      {storeBuild ? (
+        <p className="text-xs text-foreground/60">
+          {t("settings.runtime.localDisabledStoreNote", {
+            defaultValue:
+              "This is the store-distributed build, which runs in a sandbox. ",
+          })}
+          <a
+            href={STORE_LOCAL_DISABLED_DOCS_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            {t("settings.runtime.localDisabledStoreLink", {
+              defaultValue: "Why?",
+            })}
+          </a>
+        </p>
+      ) : null}
       <p className="text-xs text-foreground/60">
         {t("settings.runtime.switchNote", {
           defaultValue:
