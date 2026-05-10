@@ -334,14 +334,18 @@ function mergeOverrides(
   overrides: LocalInferenceLoadOverrides | undefined,
 ): void {
   if (!overrides) return;
-  for (const key of Object.keys(overrides) as Array<
-    keyof LocalInferenceLoadOverrides
-  >) {
-    const value = overrides[key];
-    if (value === undefined) continue;
-    // Per-load override always wins over catalog default.
-    (args as Record<string, unknown>)[key] = value;
+  if (overrides.contextSize !== undefined) args.contextSize = overrides.contextSize;
+  if (overrides.cacheTypeK !== undefined) args.cacheTypeK = overrides.cacheTypeK;
+  if (overrides.cacheTypeV !== undefined) args.cacheTypeV = overrides.cacheTypeV;
+  if (overrides.gpuLayers !== undefined) args.gpuLayers = overrides.gpuLayers;
+  if (overrides.kvOffload !== undefined) args.kvOffload = overrides.kvOffload;
+  if (overrides.flashAttention !== undefined) {
+    args.flashAttention = overrides.flashAttention;
   }
+  if (overrides.mmap !== undefined) args.mmap = overrides.mmap;
+  if (overrides.mlock !== undefined) args.mlock = overrides.mlock;
+  if (overrides.useGpu !== undefined) args.useGpu = overrides.useGpu;
+  if (overrides.maxThreads !== undefined) args.maxThreads = overrides.maxThreads;
 }
 
 export async function resolveLocalInferenceLoadArgs(
@@ -467,10 +471,19 @@ export class ActiveModelCoordinator {
       } else {
         await localInferenceEngine.load(installed.path, resolved);
       }
+      // Surface the effective load config so consumers (the benchmark
+      // harness, the Settings UI, the active-model SSE) can verify the
+      // requested overrides actually took hold instead of silently
+      // falling back to a smaller context or fp16 KV.
       this.state = {
         modelId: installed.id,
         loadedAt: new Date().toISOString(),
         status: "ready",
+        loadedContextSize: resolved.contextSize ?? null,
+        loadedCacheTypeK: resolved.cacheTypeK ?? null,
+        loadedCacheTypeV: resolved.cacheTypeV ?? null,
+        loadedGpuLayers:
+          typeof resolved.gpuLayers === "number" ? resolved.gpuLayers : null,
       };
       if (installed.source === "eliza-download") {
         await touchElizaModel(installed.id);
@@ -502,11 +515,23 @@ export class ActiveModelCoordinator {
         loadedAt: null,
         status: "error",
         error: err instanceof Error ? err.message : String(err),
+        loadedContextSize: null,
+        loadedCacheTypeK: null,
+        loadedCacheTypeV: null,
+        loadedGpuLayers: null,
       };
       this.emit();
       return this.snapshot();
     }
-    this.state = { modelId: null, loadedAt: null, status: "idle" };
+    this.state = {
+      modelId: null,
+      loadedAt: null,
+      status: "idle",
+      loadedContextSize: null,
+      loadedCacheTypeK: null,
+      loadedCacheTypeV: null,
+      loadedGpuLayers: null,
+    };
     this.emit();
     return this.snapshot();
   }

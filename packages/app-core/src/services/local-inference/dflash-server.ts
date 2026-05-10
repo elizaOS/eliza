@@ -656,15 +656,30 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       );
     }
 
+    // Per-load overrides win over catalog defaults. The active-model
+    // coordinator merges these in before the dispatcher is called; this
+    // keeps the same precedence on the llama-server path so a benchmark
+    // run that asks for `contextSize: 131072` actually starts the server
+    // with `--ctx-size 131072` instead of the smaller catalog default.
+    const overrides = plan.overrides;
+    const contextSize =
+      typeof overrides?.contextSize === "number"
+        ? overrides.contextSize
+        : dflash.contextSize;
+    const gpuLayers =
+      typeof overrides?.gpuLayers === "number"
+        ? overrides.gpuLayers
+        : dflash.gpuLayers;
+
     await this.start(
       {
         targetModelPath: target.path,
         drafterModelPath: drafter.path,
-        contextSize: dflash.contextSize,
+        contextSize,
         draftContextSize: dflash.draftContextSize,
         draftMin: dflash.draftMin,
         draftMax: dflash.draftMax,
-        gpuLayers: dflash.gpuLayers,
+        gpuLayers,
         draftGpuLayers: dflash.draftGpuLayers,
         disableThinking: dflash.disableThinking,
       },

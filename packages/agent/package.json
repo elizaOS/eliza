@@ -47,7 +47,8 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts"
   },
   "publishConfig": {
     "access": "public",
