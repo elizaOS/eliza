@@ -220,16 +220,31 @@ export async function runTrainCli(argv: string[]): Promise<number> {
         path.join(os.homedir(), ".eliza");
       const artifactDir = path.join(stateDir, "optimized-prompts", task);
       await fs.mkdir(artifactDir, { recursive: true });
-      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const artifactPath = path.join(artifactDir, `${optimizer}-${stamp}.json`);
+      // generatedAt must be a valid ISO timestamp (`Date.parse`-able). Don't
+      // hyphen-quote the colons — the OptimizedPromptService at
+      // `core/src/services/optimized-prompt.ts:345` uses `Date.parse` to
+      // pick the most recent artifact and silently drops files whose
+      // generatedAt doesn't parse. The filename uses a sanitized variant.
+      const stamp = new Date().toISOString();
+      const stampForFilename = stamp.replace(/[:.]/g, "-");
+      const artifactPath = path.join(
+        artifactDir,
+        `${optimizer}-${stampForFilename}.json`,
+      );
+      // Schema must match `OptimizedPromptArtifact` in
+      // `packages/core/src/services/optimized-prompt.ts:82`. Fields the
+      // service reads strictly: { task, optimizer, baseline, prompt,
+      // score, baselineScore, datasetId, datasetSize, generatedAt,
+      // lineage[] }. Don't rename them or the service drops the artifact
+      // with a "failed strict parse" warning.
       await fs.writeFile(
         artifactPath,
         JSON.stringify(
           {
             task,
             optimizer,
-            baselinePrompt,
-            optimizedPrompt: result.result.optimizedPrompt,
+            baseline: baselinePrompt,
+            prompt: result.result.optimizedPrompt,
             baselineScore: result.baselineScore,
             score: result.score,
             datasetSize: result.datasetSize,
