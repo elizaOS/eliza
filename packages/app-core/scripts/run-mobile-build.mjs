@@ -1099,6 +1099,7 @@ function overlayAndroid() {
     for (const file of [
       "GatewayConnectionService.java",
       "AgentPlugin.java",
+      "ElizaNativeBridge.java",
       "MainActivity.java",
       "ElizaAgentService.java",
       "ElizaAssistActivity.java",
