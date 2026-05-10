@@ -55,9 +55,20 @@ const generatedDir =
   generatedDirCandidates[0];
 
 if (!fs.existsSync(generatedDir)) {
-  throw new Error(
-    `Missing generated proto source directory: ${path.relative(repoRoot, generatedDir)}`,
+  // Nothing in the repo currently generates these proto files (no .proto
+  // sources, no buf config), and no source file imports them. The Docker
+  // CI build invokes this script unconditionally, so missing-dir was
+  // failing the whole build for a directory that's a no-op. Skip cleanly
+  // when the dir doesn't exist; throw only on the genuine error case
+  // where the dir exists but has no `_pb.ts` files (which would mean
+  // someone ran the proto generator partially).
+  console.warn(
+    `[ensure-generated-core-proto-js] Skipped: ${path.relative(
+      repoRoot,
+      generatedDir,
+    )} not present (no proto sources in tree).`,
   );
+  process.exit(0);
 }
 
 const files = fs
