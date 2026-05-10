@@ -354,9 +354,8 @@ describe("VoiceScheduler end-to-end", () => {
         ringBufferCapacity: 4096,
         sampleRate: 24000,
       },
-      { backend, sink },
+      { backend, sink, phonemeTokenizer: tokenizer },
       { onRollback: (id) => rollbacks.push(id) },
-      tokenizer,
     );
 
     // Each token is 4 chars => 4 phonemes => exactly one chunk per token.
@@ -401,5 +400,163 @@ describe("VoiceScheduler end-to-end", () => {
     for (const v of sink.chunks[0].pcm) {
       expect(v).toBeCloseTo(0.42, 5);
     }
+  });
+});
+
+describe("VoicePresetFormat", () => {
+  it("round-trips a synthetic preset (embedding + phrase cache seed)", () => {
+    const embedding = new Float32Array([0.1, -0.2, 0.3, 0.4]);
+    const phrases = [
+      {
+        text: "sure.",
+        sampleRate: 24000,
+        pcm: new Float32Array([0.1, 0.2, 0.3]),
+      },
+      {
+        text: "one moment.",
+        sampleRate: 24000,
+        pcm: new Float32Array([0.4, 0.5, 0.6, 0.7]),
+      },
+    ];
+    const blob = writeVoicePresetFile({ embedding, phrases });
+    const parsed = readVoicePresetFile(blob);
+    expect(parsed.version).toBe(1);
+    expect(Array.from(parsed.embedding)).toEqual(Array.from(embedding));
+    expect(parsed.phrases).toHaveLength(2);
+    expect(parsed.phrases[0].text).toBe("sure.");
+    expect(parsed.phrases[0].sampleRate).toBe(24000);
+    expect(Array.from(parsed.phrases[0].pcm)).toEqual([0.1, 0.2, 0.3]);
+    expect(parsed.phrases[1].text).toBe("one moment.");
+    expect(Array.from(parsed.phrases[1].pcm)).toEqual([
+      0.4, 0.5, 0.6, 0.7,
+    ]);
+  });
+
+  it("round-trips an empty phrase cache seed (N=0)", () => {
+    const embedding = new Float32Array([1, 2, 3]);
+    const blob = writeVoicePresetFile({ embedding, phrases: [] });
+    const parsed = readVoicePresetFile(blob);
+    expect(parsed.phrases).toHaveLength(0);
+    expect(Array.from(parsed.embedding)).toEqual([1, 2, 3]);
+  });
+
+  it("rejects bad magic with VoicePresetFormatError", () => {
+    const bytes = new Uint8Array(24);
+    expect(() => readVoicePresetFile(bytes)).toThrow(VoicePresetFormatError);
+  });
+
+  it("rejects truncated header", () => {
+    const bytes = new Uint8Array(8);
+    expect(() => readVoicePresetFile(bytes)).toThrow(VoicePresetFormatError);
+  });
+
+  it("rejects unsupported version", () => {
+    const blob = writeVoicePresetFile({
+      embedding: new Float32Array([0]),
+      phrases: [],
+    });
+    new DataView(blob.buffer).setUint32(4, 999, true);
+    expect(() => readVoicePresetFile(blob)).toThrow(VoicePresetFormatError);
+  });
+});
+
+describe("PhraseCache.seed", () => {
+  it("pre-populates the cache from voice-preset seed entries", () => {
+    const cache = new PhraseCache();
+    cache.seed([
+      {
+        text: "sure.",
+        pcm: new Float32Array([0.1]),
+        sampleRate: 24000,
+      },
+      {
+        text: "one moment.",
+        pcm: new Float32Array([0.2]),
+        sampleRate: 24000,
+      },
+    ]);
+    expect(cache.size()).toBe(2);
+    expect(cache.has("Sure.")).toBe(true);
+    expect(cache.get("ONE MOMENT.")?.pcm[0]).toBe(0.2);
+  });
+});
+
+describe("PhraseChunker IPA mode", () => {
+  it("punctuation mode (default) is unchanged when no tokenizer is passed", () => {
+    const tokens: TextToken[] = [
+      tok(0, "Hello"),
+      tok(1, " world"),
+      tok(2, "."),
+    ];
+    const phrases = chunkTokens(tokens, { maxTokensPerPhrase: 100 });
+    expect(phrases).toHaveLength(1);
+    expect(phrases[0].terminator).toBe("punctuation");
+    expect(phrases[0].text).toBe("Hello world.");
+  });
+
+  it("phoneme-stream mode emits sub-phrase chunks at phoneme boundaries", () => {
+    _resetStubWarnLatchForTests();
+    const tokenizer = new CharacterPhonemeStub();
+    // 'abcde' = 5 phonemes, 'fgh' = 3 phonemes, 'ij' = 2 phonemes.
+    // Cumulative phoneme count after each: 5, 8, 10.
+    // With phonemesPerChunk=4: token 0 alone => 5 ≥ 4 => chunk #0 (token 0).
+    // Then token 1 (3) + token 2 (2) = 5 ≥ 4 after token 2 => chunk #1.
+    const tokens: TextToken[] = [
+      tok(0, "abcde"),
+      tok(1, "fgh"),
+      tok(2, "ij"),
+    ];
+    const phrases = chunkTokens(
+      tokens,
+      {
+        maxTokensPerPhrase: 100,
+        chunkOn: "phoneme-stream",
+        phonemesPerChunk: 4,
+      },
+      0,
+      tokenizer,
+    );
+    expect(phrases).toHaveLength(2);
+    expect(phrases[0].terminator).toBe("phoneme-stream");
+    expect(phrases[0].fromIndex).toBe(0);
+    expect(phrases[0].toIndex).toBe(0);
+    expect(phrases[0].text).toBe("abcde");
+    expect(phrases[1].fromIndex).toBe(1);
+    expect(phrases[1].toIndex).toBe(2);
+    expect(phrases[1].text).toBe("fghij");
+  });
+
+  it("phoneme-stream mode still respects punctuation as a hard boundary", () => {
+    const tokenizer = new CharacterPhonemeStub();
+    const tokens: TextToken[] = [tok(0, "hi"), tok(1, ".")];
+    const phrases = chunkTokens(
+      tokens,
+      {
+        maxTokensPerPhrase: 100,
+        chunkOn: "phoneme-stream",
+        phonemesPerChunk: 16,
+      },
+      0,
+      tokenizer,
+    );
+    expect(phrases).toHaveLength(1);
+    expect(phrases[0].terminator).toBe("punctuation");
+  });
+
+  it("throws if phoneme-stream mode is selected without a tokenizer", () => {
+    expect(() =>
+      chunkTokens(
+        [tok(0, "x")],
+        { maxTokensPerPhrase: 100, chunkOn: "phoneme-stream" },
+        0,
+        null,
+      ),
+    ).toThrow();
+  });
+
+  it("CharacterPhonemeStub flags itself as a stub", () => {
+    const t = new CharacterPhonemeStub();
+    expect(t.isStub).toBe(true);
+    expect(t.name).toBe("CharacterPhonemeStub");
   });
 });

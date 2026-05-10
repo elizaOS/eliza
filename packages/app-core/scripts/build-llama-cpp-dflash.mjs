@@ -1087,11 +1087,17 @@ function ensureCheckout(cacheDir, ref) {
 //     is a separate patch tracked in kernel-patches/metal-kernels.mjs's
 //     module comment.
 //
-//   * Vulkan: the .comp files are staged at ggml/src/ggml-vulkan/milady-shipped/
-//     but vulkan-shaders-gen does not yet know about them. patchVulkanKernels
-//     hard-throws if a *-vulkan target is queued unless
-//     ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN=1 is set as an audit-loggable
-//     escape hatch.
+//   * Vulkan: the 8 standalone .comp files are staged into
+//     ggml/src/ggml-vulkan/vulkan-shaders/ (picked up by file(GLOB)),
+//     vulkan-shaders-gen.cpp registers them via 8 string_to_spv() calls,
+//     and ggml-vulkan.cpp now declares + creates 8 milady_* pipelines so the
+//     SPV blobs are linked into libggml-vulkan.so. Symbol audit (`nm
+//     libggml-vulkan.so | grep milady_`) passes; op-level dispatch routing
+//     for GGML_OP_ATTN_SCORE_QJL and the milady GGML_TYPE_* values is the
+//     remaining gap and is the next agent's mission. Until it lands, the
+//     ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN=1 env var still applies — the
+//     help-text probe in probeKernels() can't yet see qjl/polar via CLI
+//     flags because the runtime can't select them.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   if (backend === "metal") {
     patchMetalKernelsImpl(cacheDir, { dryRun });
@@ -1623,10 +1629,14 @@ function build(args) {
       )) ||
     (!args.targets && (args.backend ?? detectBackend()) === "vulkan");
   // Same idea for the Windows cross path — only probe + write the
-  // mingw-w64 toolchain file when at least one windows target is queued.
+  // mingw-w64 toolchain file when at least one windows-x64 target is
+  // queued. windows-arm64 targets do NOT trigger mingw probing because
+  // the bundled discovery only handles x86_64-w64-mingw32; arm64 needs
+  // either a native MSVC arm64 host or a user-supplied
+  // MINGW_TOOLCHAIN_FILE pointing at clang/LLVM aarch64-w64-mingw32.
   const willBuildWindows =
     args.all ||
-    (args.targets && args.targets.some((t) => t.startsWith("windows-"))) ||
+    (args.targets && args.targets.some((t) => t.startsWith("windows-x64-"))) ||
     (!args.targets &&
       process.platform !== "win32" &&
       (args.backend ?? detectBackend()) === "cpu" &&
