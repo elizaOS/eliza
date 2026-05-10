@@ -6,6 +6,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.webkit.WebSettings;
+import android.webkit.WebView;
 
 import androidx.core.content.ContextCompat;
 
@@ -58,6 +59,12 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(AgentPlugin.class);
         super.onCreate(savedInstanceState);
+
+        // chrome://inspect access for debug builds. Off in release.
+        // BuildConfig is gradle-generated per package; the import is implicit.
+        if (BuildConfig.DEBUG) {
+            WebView.setWebContentsDebuggingEnabled(true);
+        }
 
         // The Capacitor WebView serves the renderer at https://localhost
         // (its default secure-context origin); the on-device Eliza agent
