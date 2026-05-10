@@ -170,6 +170,55 @@ describe("Phase 2.5 — registry → auto-spawn → invoke end-to-end", () => {
 		}
 	});
 
+	it("stops and restarts worker-isolated apps when grants change", async () => {
+		const calls: string[] = [];
+		const services = new Map<string, unknown>();
+		const runtime = makeRuntime(services);
+		const localRegistry = new AppRegistryService(runtime);
+		services.set("app-worker-host", {
+			startForRegisteredApp: async (slug: string) => {
+				calls.push(`start:${slug}`);
+				return { ok: true };
+			},
+			stopWorker: async (slug: string) => {
+				calls.push(`stop:${slug}`);
+			},
+		});
+
+		await localRegistry.register(
+			{
+				slug: "e2e-refresh-grants",
+				canonicalName: "@example/app-e2e-refresh-grants",
+				aliases: [],
+				directory: path.dirname(FIXTURE_PLUGIN_PATH),
+				displayName: "E2E Refresh Grants",
+				isolation: "worker",
+				requestedPermissions: { net: { outbound: ["127.0.0.1"] } },
+			},
+			{ trust: "external" },
+		);
+		expect(calls).toEqual(["start:e2e-refresh-grants"]);
+
+		await localRegistry.setGrantedNamespaces(
+			"e2e-refresh-grants",
+			["net"],
+			"user",
+		);
+		expect(calls).toEqual([
+			"start:e2e-refresh-grants",
+			"stop:e2e-refresh-grants",
+			"start:e2e-refresh-grants",
+		]);
+
+		await localRegistry.setGrantedNamespaces("e2e-refresh-grants", [], "user");
+		expect(calls).toEqual([
+			"start:e2e-refresh-grants",
+			"stop:e2e-refresh-grants",
+			"start:e2e-refresh-grants",
+			"stop:e2e-refresh-grants",
+		]);
+	});
+
 	it("manual spawn with explicit pluginEntryPath + grant + invoke round-trips an action through the worker", async () => {
 		await registry.register(
 			{
