@@ -72,6 +72,16 @@ function readPluginPackageJson(pluginsDir, name) {
   }
 }
 
+function hasBuildScript(pkg) {
+  return (
+    pkg &&
+    typeof pkg === "object" &&
+    pkg.scripts &&
+    typeof pkg.scripts === "object" &&
+    typeof pkg.scripts.build === "string"
+  );
+}
+
 function run(command, args, cwd) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -118,6 +128,10 @@ async function main() {
 
   const buildablePluginNames = pluginNames.filter((name) => {
     const pkg = readPluginPackageJson(pluginsDir, name);
+    if (!hasBuildScript(pkg)) {
+      logVerbose(`[plugin:${name}] skipping — no build script`);
+      return false;
+    }
     if (shouldBuildPluginForHost(pkg, process.platform)) {
       return true;
     }
