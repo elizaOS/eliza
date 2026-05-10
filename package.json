@@ -106,6 +106,7 @@
     "lifeops:full": "node scripts/lifeops-full-run.mjs",
     "lifeops:aggregate": "node scripts/aggregate-lifeops-run.mjs",
     "lifeops:bench-to-dataset": "node scripts/lifeops-benchmark-to-training-dataset.mjs",
+    "lifeops:optimize": "node scripts/lifeops-optimize-planner.mjs",
     "test:plugin": "node scripts/run-all-tests.mjs --only=e2e --pattern",
     "test:lint:no-vi-mocks": "node scripts/lint-no-vi-mocks.mjs",
     "test:lint:lane-coverage": "node scripts/lint-lane-coverage.mjs",

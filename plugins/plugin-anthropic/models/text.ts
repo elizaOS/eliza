@@ -92,13 +92,26 @@ type AnthropicCacheBreakpoint = {
 };
 
 interface AnthropicUsageWithCache {
+  // Legacy (older AI SDK / direct Anthropic SDK) field names — kept for
+  // back-compat with stream usage emitted in pre-v6 callers.
   promptTokens?: number;
   completionTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  // AI SDK v6 LanguageModelUsage shape — what `generateText`/`streamText`
+  // actually return today. The Anthropic provider populates
+  // `inputTokenDetails.cacheReadTokens` for cache hits, and exposes
+  // `cacheCreationInputTokens` via `providerMetadata.anthropic` (read by the
+  // caller, not on the usage object directly).
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
-  cacheReadInputTokens?: number;
-  cacheCreationInputTokens?: number;
+  cachedInputTokens?: number;
+  inputTokenDetails?: {
+    noCacheTokens?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+  };
 }
 
 interface AnthropicNormalizedUsage {
@@ -114,6 +127,7 @@ interface NativeGenerateTextResult {
   toolCalls?: unknown[];
   finishReason?: string;
   usage?: AnthropicNormalizedUsage;
+  providerMetadata?: Record<string, unknown>;
 }
 
 const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as ModelTypeName;
@@ -489,26 +503,71 @@ function stripLocalAnthropicCacheOptions(
     : undefined;
 }
 
+function firstNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function readAnthropicCacheCreationFromProviderMetadata(
+  providerMetadata: unknown
+): number | undefined {
+  if (
+    !providerMetadata ||
+    typeof providerMetadata !== "object" ||
+    Array.isArray(providerMetadata)
+  ) {
+    return undefined;
+  }
+  const anthropic = (providerMetadata as Record<string, unknown>).anthropic;
+  if (!anthropic || typeof anthropic !== "object" || Array.isArray(anthropic)) {
+    return undefined;
+  }
+  const value = (anthropic as Record<string, unknown>).cacheCreationInputTokens;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 function normalizeAnthropicUsage(
-  usage: AnthropicUsageWithCache | undefined
+  usage: AnthropicUsageWithCache | undefined,
+  providerMetadata?: unknown
 ): AnthropicNormalizedUsage | undefined {
   if (!usage) {
     return undefined;
   }
 
-  const promptTokens = usage.promptTokens ?? usage.inputTokens ?? 0;
-  const completionTokens = usage.completionTokens ?? usage.outputTokens ?? 0;
+  const promptTokens = firstNumber(usage.promptTokens, usage.inputTokens) ?? 0;
+  const completionTokens = firstNumber(usage.completionTokens, usage.outputTokens) ?? 0;
+
+  // The AI SDK v6 Anthropic provider reports cache reads via
+  // `inputTokenDetails.cacheReadTokens` (and the deprecated `cachedInputTokens`
+  // mirror). Older callers may still pass the legacy `cacheReadInputTokens`
+  // field directly. Read both.
+  const cacheRead = firstNumber(
+    usage.cacheReadInputTokens,
+    usage.inputTokenDetails?.cacheReadTokens,
+    usage.cachedInputTokens
+  );
+
+  // Cache writes ride on `inputTokenDetails.cacheWriteTokens` in the v6 SDK
+  // shape, with the canonical count exposed via
+  // `providerMetadata.anthropic.cacheCreationInputTokens`. Either source is
+  // authoritative; fall back to the legacy direct field for callers that still
+  // emit the pre-v6 shape (e.g. our streaming usage promise).
+  const cacheCreation = firstNumber(
+    usage.cacheCreationInputTokens,
+    usage.inputTokenDetails?.cacheWriteTokens,
+    readAnthropicCacheCreationFromProviderMetadata(providerMetadata)
+  );
 
   return {
     promptTokens,
     completionTokens,
     totalTokens: usage.totalTokens ?? promptTokens + completionTokens,
-    ...(usage.cacheReadInputTokens !== undefined
-      ? { cacheReadInputTokens: usage.cacheReadInputTokens }
-      : {}),
-    ...(usage.cacheCreationInputTokens !== undefined
-      ? { cacheCreationInputTokens: usage.cacheCreationInputTokens }
-      : {}),
+    ...(cacheRead !== undefined ? { cacheReadInputTokens: cacheRead } : {}),
+    ...(cacheCreation !== undefined ? { cacheCreationInputTokens: cacheCreation } : {}),
   };
 }
 
@@ -551,18 +610,47 @@ function usesNativeTextResult(params: GenerateTextParamsWithProviderOptions): bo
   return Boolean(params.messages || params.tools || params.toolChoice || params.responseSchema);
 }
 
-function buildNativeTextResult(result: {
-  text: string;
-  toolCalls?: unknown[];
-  finishReason?: string;
-  usage?: AnthropicUsageWithCache;
-}): NativeGenerateTextResult {
+function buildNativeTextResult(
+  result: {
+    text: string;
+    toolCalls?: unknown[];
+    finishReason?: string;
+    usage?: AnthropicUsageWithCache;
+    providerMetadata?: unknown;
+  },
+  modelName?: string
+): NativeGenerateTextResult {
   return {
     text: result.text,
     toolCalls: result.toolCalls ?? [],
     finishReason: result.finishReason,
-    usage: normalizeAnthropicUsage(result.usage),
+    usage: normalizeAnthropicUsage(result.usage, result.providerMetadata),
+    providerMetadata: mergeProviderModelName(result.providerMetadata, modelName),
   };
+}
+
+function mergeProviderModelName(
+  providerMetadata: unknown,
+  modelName?: string
+): Record<string, unknown> | undefined {
+  if (!modelName) {
+    return providerMetadata &&
+      typeof providerMetadata === "object" &&
+      !Array.isArray(providerMetadata)
+      ? (providerMetadata as Record<string, unknown>)
+      : undefined;
+  }
+  if (
+    providerMetadata &&
+    typeof providerMetadata === "object" &&
+    !Array.isArray(providerMetadata)
+  ) {
+    return {
+      ...(providerMetadata as Record<string, unknown>),
+      modelName,
+    };
+  }
+  return { modelName };
 }
 
 function resolveTextParams(
@@ -799,7 +887,10 @@ async function generateTextWithModel(
   if (params.stream) {
     try {
       const streamResult = streamText(generateParams);
-      const usagePromise = Promise.resolve(streamResult.usage).then((usage) => {
+      const providerMetadataPromise: Promise<unknown> = Promise.resolve(
+        (streamResult as { providerMetadata?: PromiseLike<unknown> }).providerMetadata
+      ).catch((): undefined => undefined);
+      const usagePromise = Promise.resolve(streamResult.usage).then(async (usage) => {
         if (!usage) {
           return undefined;
         }
@@ -811,7 +902,8 @@ async function generateTextWithModel(
           usage as AnthropicUsageWithCache,
           modelName
         );
-        return normalizeAnthropicUsage(usage as AnthropicUsageWithCache);
+        const providerMetadata = await providerMetadataPromise;
+        return normalizeAnthropicUsage(usage as AnthropicUsageWithCache, providerMetadata);
       });
       const ignoreUsageError = (): undefined => undefined;
       async function* textStreamWithUsage(): AsyncIterable<string> {
@@ -856,7 +948,7 @@ async function generateTextWithModel(
     }
 
     if (shouldReturnNativeResult) {
-      return buildNativeTextResult(response) as string & NativeGenerateTextResult;
+      return buildNativeTextResult(response, modelName) as string & NativeGenerateTextResult;
     }
 
     return response.text;
