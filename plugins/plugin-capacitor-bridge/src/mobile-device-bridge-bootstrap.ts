@@ -771,7 +771,10 @@ type RecommendedModel = {
 	expectedSizeBytes?: number;
 };
 
-const RECOMMENDED_MODELS: Record<"TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING", RecommendedModel> = {
+const RECOMMENDED_MODELS: Record<
+	"TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
+	RecommendedModel
+> = {
 	// Llama-3.2-1B-Q4_K_M: ~770 MB, fits in ~1.6 GB total on a 4 GB cvd or
 	// ~600 MB free on an 8 GB phone. Has tool-calling support and good
 	// instruction-following at this size; the safe default for "first chat
@@ -850,10 +853,7 @@ async function downloadRecommendedModelFor(
 			createWriteStream(stagingPath),
 		);
 		const stagedSize = statSync(stagingPath).size;
-		if (
-			model.expectedSizeBytes &&
-			stagedSize !== model.expectedSizeBytes
-		) {
+		if (model.expectedSizeBytes && stagedSize !== model.expectedSizeBytes) {
 			try {
 				unlinkSync(stagingPath);
 			} catch {}
@@ -1038,7 +1038,10 @@ export async function ensureMobileDeviceBridgeInferenceHandlers(
 		LOCAL_INFERENCE_PRIORITY,
 	);
 	const embeddingModelPath = resolveLocalModelPath("TEXT_EMBEDDING");
-	if (!embeddingModelPath && process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() !== "1") {
+	if (
+		!embeddingModelPath &&
+		process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() !== "1"
+	) {
 		// Kick off the embedding-model download in the background so it's
 		// ready by the time the WebView issues a real embed request.
 		downloadRecommendedModelFor("TEXT_EMBEDDING").catch((err) =>
