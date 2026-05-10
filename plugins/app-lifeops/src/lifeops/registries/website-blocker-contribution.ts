@@ -1,5 +1,5 @@
 /**
- * W2-F — Website-blocker enforcer.
+ * Website-blocker enforcer.
  *
  * Wraps the `website-blocker` engine (hosts-file editor + iOS/Android native
  * backends when registered) as a {@link BlockerContribution}. The umbrella

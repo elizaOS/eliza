@@ -1,8 +1,5 @@
 /**
- * Wave-1 state-log writer (W1-A).
- *
- * Source of truth: IMPL §3.1 ("State-log volume" risk-and-tradeoff) +
- * GAP_ASSESSMENT §8.6.
+ * State-log writer.
  *
  * The runner writes one row per state transition. The user-visible
  * `GET /api/lifeops/scheduled-tasks/:id/history` endpoint reads from

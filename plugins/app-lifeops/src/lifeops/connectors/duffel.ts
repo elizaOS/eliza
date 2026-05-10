@@ -1,5 +1,5 @@
 /**
- * W2-B — Duffel (travel) connector contribution.
+ * Duffel (travel) connector contribution.
  *
  * Wraps the Duffel travel adapter (`../travel-adapters/duffel.ts`).
  * Duffel is a travel-booking provider; like Calendly it has no outbound

@@ -16,14 +16,14 @@
  *     at 09:00 local; `completionCheck.kind = "user_replied_within"`.
  *   - **morning brief stub** — `kind: "watcher"` triggered on the
  *     `wake.confirmed` anchor; `priority: "medium"`. The actual brief
- *     assembler is W1-D's morning-brief default pack — this entry is the
- *     shim that signals "the user opted into a morning brief" so the W1-D
- *     pack does not double-schedule.
+ *     assembler lives in the morning-brief default pack — this entry is the
+ *     shim that signals "the user opted into a morning brief" so the morning
+ *     brief pack does not double-schedule.
  *
- * Per the wave-1 boundary, this module emits the spec; the action calls
- * `ScheduledTaskRunner.schedule` for each entry. When W1-A's runner is not
- * yet wired in (e.g. during integration tests), the action falls back to
- * an in-memory recorder so the contract remains testable.
+ * This module emits the spec; the action calls `ScheduledTaskRunner.schedule`
+ * for each entry. When the runner is not wired in (e.g. during integration
+ * tests), the action falls back to an in-memory recorder so the contract
+ * remains testable.
  */
 
 import type {
@@ -107,9 +107,8 @@ export interface DefaultsPackContext {
 }
 
 /**
- * Stable idempotency keys. Replay (per `GAP_ASSESSMENT.md` §8.14) keeps
- * existing tasks intact; the runner is expected to upsert by idempotencyKey
- * if the same key is presented twice.
+ * Stable idempotency keys. Replay keeps existing tasks intact; the runner is
+ * expected to upsert by idempotencyKey if the same key is presented twice.
  */
 export const DEFAULT_PACK_IDEMPOTENCY_KEYS = {
   gm: "lifeops:first-run:default:gm",

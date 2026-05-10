@@ -1,8 +1,5 @@
 /**
- * Wave-1 escalation evaluator (W1-A).
- *
- * Source of truth: `docs/audit/wave1-interfaces.md` §1.5 + §3.4 +
- * GAP_ASSESSMENT §8.11.
+ * Escalation evaluator.
  *
  * Snooze policy: snooze RESETS the ladder to step 0 at the new fire time.
  * Default ladders by priority (when `escalation` is undefined):
@@ -10,9 +7,8 @@
  *   - medium → 1 retry @ 30 min
  *   - high   → 3-step cross-channel
  *
- * Wave-1 ships a self-contained default-ladder catalog inside W1-A so the
- * runner is testable without W1-D wiring; W1-D may register additional
- * named ladders that override `priority_<level>_default` keys.
+ * Callers may register additional named ladders that override
+ * `priority_<level>_default` keys.
  */
 
 import type {

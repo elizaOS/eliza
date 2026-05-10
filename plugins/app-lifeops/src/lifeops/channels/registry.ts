@@ -8,7 +8,7 @@ import type {
 
 /**
  * In-memory implementation of {@link ChannelRegistry}. One instance per
- * runtime; populated by Wave 2 (W2-B) channel migration.
+ * runtime.
  */
 class InMemoryChannelRegistry implements ChannelRegistry {
   private readonly byKind = new Map<string, ChannelContribution>();

@@ -1,9 +1,6 @@
 /**
- * Wave-1 frozen registry: TaskGateRegistry (W1-A).
- *
- * Source of truth: `docs/audit/wave1-interfaces.md` §1.3 + IMPL §3.1.
- * Built-in kinds: `weekend_skip`, `weekend_only`, `weekday_only`,
- * `late_evening_skip`, `quiet_hours`, `during_travel`.
+ * TaskGateRegistry. Built-in kinds: `weekend_skip`, `weekend_only`,
+ * `weekday_only`, `late_evening_skip`, `quiet_hours`, `during_travel`.
  *
  * The runner uses these gates in `shouldFire.gates`; composition is
  * the responsibility of the runner (`compose: "all" | "any" | "first_deny"`).

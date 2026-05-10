@@ -316,10 +316,6 @@ const rawAppLifeOpsPlugin: Plugin = {
     calendarAction,
     calendlyAction,
     schedulingNegotiationAction,
-    // Wave-2 W2-A removed `CHECKIN` as a discrete action. The
-    // morning-checkin assembly is now driven from the
-    // `daily-rhythm` default pack's `ScheduledTask` record (W1-D),
-    // which delegates to `CheckinService.runMorningCheckin`.
     resolveRequestAction,
     deviceIntentAction,
     firstRunAction,
@@ -381,8 +377,6 @@ const rawAppLifeOpsPlugin: Plugin = {
       );
     }
 
-    // W1-F connector / channel / send-policy registries; W2-B populates the
-    // default packs with the 10 connector contributions and the 13 channels.
     const connectorRegistry = createConnectorRegistry();
     registerDefaultConnectorPack(connectorRegistry, runtime);
     registerConnectorRegistry(runtime, connectorRegistry);
@@ -394,19 +388,8 @@ const rawAppLifeOpsPlugin: Plugin = {
     const sendPolicyRegistry = createSendPolicyRegistry();
     registerSendPolicyRegistry(runtime, sendPolicyRegistry);
 
-    // W2-F BlockerRegistry — registers website-blocker (hosts-file / native)
-    // and app-blocker (iOS Family Controls / Android Usage Access) enforcers
-    // so the WEBSITE_BLOCK / APP_BLOCK umbrella actions dispatch through one
-    // registry instead of branching on `kind` inline. Adding a new blocker
-    // backend (router DNS, Bluetooth-tether, etc.) is a registration call.
     registerDefaultBlockerPack(runtime);
 
-    // W2-D — anchor / event-kind / bus-family registries + ActivitySignalBus.
-    // Lifts the closed `LIFEOPS_TELEMETRY_FAMILIES` union into a runtime
-    // registry so plugins like `@elizaos/plugin-health` can contribute new
-    // namespaced families (`health.sleep.detected`, etc.) without growing a
-    // closed type union. plugin-health calls `registerHealthAnchors` /
-    // `registerHealthBusFamilies` against these same registries.
     const anchorRegistry = createAnchorRegistry();
     registerAppLifeOpsAnchors(anchorRegistry);
     registerAnchorRegistry(runtime, anchorRegistry);
@@ -423,12 +406,6 @@ const rawAppLifeOpsPlugin: Plugin = {
     const activitySignalBus = createActivitySignalBus({ familyRegistry });
     registerActivitySignalBus(runtime, activitySignalBus);
 
-    // W2-E — real `OwnerFactStore` (canonical typed-with-provenance store
-    // for owner facts and policies; replaces the W1-C interim wrapper) and
-    // `MultilingualPromptRegistry` (action-example translation table;
-    // ships with the en+es brush-teeth pair the planner regression-tests
-    // against). PROFILE / first-run / scheduled-task gates read through
-    // the registered store instead of `LifeOpsOwnerProfile` directly.
     const ownerFactStore = createOwnerFactStore(runtime);
     registerOwnerFactStore(runtime, ownerFactStore);
 
@@ -686,10 +663,6 @@ export {
   type OwnerFacts,
   type OwnerFactsPatch,
 } from "./lifeops/first-run/state.js";
-// W2-E — canonical OwnerFactStore (typed entries with provenance) +
-// runtime-registry surface. Re-exports the same `createOwnerFactStore`
-// the first-run state.ts re-exports; here the additional registry /
-// policy-patch surfaces show through.
 export {
   ownerFactsToView,
   registerOwnerFactStore,
@@ -705,9 +678,6 @@ export {
   type PolicyPatchReminderIntensity,
   type ReminderIntensity,
 } from "./lifeops/owner/fact-store.js";
-// W2-E — MultilingualPromptRegistry. Localized `ActionExample` table;
-// other actions resolve example pairs by `exampleKey` instead of
-// inlining locale-specific strings.
 export {
   createMultilingualPromptRegistry,
   getDefaultPromptExamplePair,
@@ -726,10 +696,6 @@ export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";
 export { handleLifeOpsRoutes } from "./routes/lifeops-routes.js";
 export type { WebsiteBlockerRouteContext } from "./routes/website-blocker-routes.js";
 export { handleWebsiteBlockerRoutes } from "./routes/website-blocker-routes.js";
-// W1-A — ScheduledTask spine. Source of truth:
-// `docs/audit/wave1-interfaces.md` §1.
-// Other Wave-1 agents import from `@elizaos/app-lifeops` to consume
-// these types and the runtime wiring helper.
 export {
   createAnchorRegistry,
   createCompletionCheckRegistry,

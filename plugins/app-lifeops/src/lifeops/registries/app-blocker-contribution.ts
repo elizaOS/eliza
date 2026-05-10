@@ -1,5 +1,5 @@
 /**
- * W2-F — App-blocker enforcer.
+ * App-blocker enforcer.
  *
  * Wraps the `app-blocker` engine (iOS Family Controls / Android Usage Access)
  * as a {@link BlockerContribution}. The umbrella `APP_BLOCK` action dispatches

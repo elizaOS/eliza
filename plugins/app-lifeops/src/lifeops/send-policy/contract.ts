@@ -1,16 +1,10 @@
 /**
- * W1-F — Send-policy contract.
- *
- * Frozen per `wave1-interfaces.md` §3 (W1-F deliverable).
+ * Send-policy contract.
  *
  * A send-policy contribution gates outbound dispatch on a connector or
  * channel. The canonical example is the owner-send-policy: Gmail drafts
  * require explicit owner approval; everything else passes straight through
  * (see `src/lifeops/messaging/owner-send-policy.ts`).
- *
- * Wave 1 ships the contract + an empty registry. Wave 2 (W2-B) migrates
- * existing send policies onto this contract; Wave 1 callers continue to use
- * the legacy `registerSendPolicy(runtime, ...)` helper from `@elizaos/core`.
  */
 
 import type { DispatchResult } from "../connectors/contract.js";

@@ -6,11 +6,8 @@
 // Refactoring requires either declaration-merging every cross-mixin method
 // or moving to a single composed interface — tracked as separate work.
 //
-// Wave-1 W1-E: in addition to the legacy-table writes, this mixin
-// projects each write into the new (Entity, Relationship) graph so both
-// surfaces stay in sync during the migration window. Wave-2 W2-A
-// deletes this file; callers move to `repository.entityStore()` /
-// `repository.relationshipStore()` accessors.
+// In addition to the legacy-table writes, this mixin projects each write
+// into the (Entity, Relationship) graph so both surfaces stay in sync.
 import crypto from "node:crypto";
 import type {
   LifeOpsFollowUp,
@@ -70,8 +67,7 @@ async function projectRelationshipIntoGraph(
       source: "import",
     });
   } catch {
-    // Projection is best-effort during the W1-E migration window.
-    // The legacy table is the source of truth until W2-A flips.
+    // Secondary projection; legacy table is the source of truth.
   }
 }
 

@@ -1,5 +1,5 @@
 /**
- * W1-A consolidation-policy unit tests.
+ * Consolidation-policy unit tests.
  *
  * Covers the AnchorConsolidationPolicy `merge` mode (multiple tasks
  * fire on the same anchor → one combined batch) and `sequential` /
@@ -127,7 +127,7 @@ describe("AnchorRegistry", () => {
     ).toThrow(/duplicate/);
   });
 
-  it("allows override when explicitly opted in (W1-B replaces stub)", () => {
+  it("allows override when explicitly opted in (real anchor replaces stub)", () => {
     const reg = createAnchorRegistry();
     reg.register({
       anchorKey: "wake.confirmed",

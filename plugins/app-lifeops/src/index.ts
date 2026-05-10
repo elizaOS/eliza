@@ -3,8 +3,6 @@ export { appBlockAction } from "./actions/app-block.js";
 export { autofillAction } from "./actions/autofill.js";
 export { bookTravelAction } from "./actions/book-travel.js";
 export { calendarAction } from "./actions/calendar.js";
-// Wave-2 W2-A: `checkinAction` was deleted; the morning check-in is now
-// driven from the `daily-rhythm` default pack's `ScheduledTask` record.
 export { connectorAction } from "./actions/connector.js";
 export { deviceIntentAction } from "./actions/device-intent.js";
 export { healthAction } from "./actions/health.js";
@@ -13,9 +11,6 @@ export { lifeAction } from "./actions/life.js";
 export { passwordManagerAction } from "./actions/password-manager.js";
 export { paymentsAction } from "./actions/payments.js";
 export { profileAction } from "./actions/profile.js";
-// Wave-2 W2-A: `RELATIONSHIP` umbrella renamed to `ENTITY`. The
-// `relationshipAction` export remains for one release as a re-export
-// alias of `entityAction`.
 export { entityAction, relationshipAction } from "./actions/entity.js";
 export { remoteDesktopAction } from "./actions/remote-desktop.js";
 export { resolveRequestAction } from "./actions/resolve-request.js";

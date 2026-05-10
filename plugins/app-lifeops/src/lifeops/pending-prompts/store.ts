@@ -2,20 +2,17 @@
  * `PendingPromptsStore` — backing store for `PendingPromptsProvider`.
  *
  * When a `ScheduledTask` whose `completionCheck.kind === "user_replied_within"`
- * (or implicit `user_acknowledged`) fires, the W1-A runner records the open
- * prompt here keyed by `roomId`. When an inbound message arrives the planner
- * uses `list(roomId)` to decide whether to route to `complete` / `acknowledge`
- * on the open task instead of treating it as a fresh request.
+ * (or implicit `user_acknowledged`) fires, the runner records the open prompt
+ * here keyed by `roomId`. When an inbound message arrives the planner uses
+ * `list(roomId)` to decide whether to route to `complete` / `acknowledge` on
+ * the open task instead of treating it as a fresh request.
  *
  * Retention: open prompts are retained for `expiresAt + reopenWindowHours`
- * (default 24h per `wave1-interfaces.md` §1.5) so late inbound replies still
- * correlate. After the reopen window the entry is purged.
+ * (default 24h) so late inbound replies still correlate. After the reopen
+ * window the entry is purged.
  *
  * Backing storage: runtime cache, keyed per room. Bounded per-room slot count
  * to defend against unbounded growth in a noisy chat.
- *
- * Source of truth for the contract: `wave1-interfaces.md` §4.3 +
- * `GAP_ASSESSMENT.md` §3.11.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";

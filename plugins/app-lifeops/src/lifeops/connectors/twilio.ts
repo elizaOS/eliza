@@ -1,5 +1,5 @@
 /**
- * W2-B — Twilio connector contribution.
+ * Twilio connector contribution.
  *
  * Twilio doesn't have a `service-mixin-twilio.ts`; the transport functions
  * live in `../twilio.ts`. Credentials are read from `process.env` per the

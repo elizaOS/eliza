@@ -1,13 +1,9 @@
 /**
- * Wave-1 type stubs reproduced from `docs/audit/wave1-interfaces.md` §1.
+ * Type stubs that mirror the canonical `ScheduledTask` / `TerminalState` /
+ * `ScheduledTaskRunner` types under `src/lifeops/scheduled-task/`. Importers
+ * may migrate to the real module path; the shapes here are byte-identical.
  *
- * These mirror the canonical W1-A `ScheduledTask` / `TerminalState` /
- * `ScheduledTaskRunner` types. W1-A will land the production source-of-truth
- * under `src/lifeops/scheduled-task/`. When that happens, every `import` from
- * this file should be replaced with the real path; nothing else needs to
- * change because the shapes here are byte-identical to the frozen contract.
- *
- * No runtime behaviour lives here — types only.
+ * Types only — no runtime behaviour.
  */
 
 export type TerminalState =

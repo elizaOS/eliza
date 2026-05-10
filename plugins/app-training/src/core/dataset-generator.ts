@@ -413,6 +413,59 @@ export function createOpenAITeacher(
   };
 }
 
+/**
+ * Create a teacher model that talks to Cerebras (gpt-oss-120b by default).
+ *
+ * This is the standing default for lifeops training: the teacher generates
+ * synthetic conversations, not the agent's responses. The agent under test
+ * still runs on Anthropic Opus 4.7. We never use the agent's provider to
+ * generate training data for itself.
+ */
+export function createCerebrasTeacher(runtime?: IAgentRuntime): TeacherModel {
+  // Lazy-load to avoid forcing eval-helper imports on operators that don't
+  // use the Cerebras path.
+  const { getTrainingModelClient } = require(
+    "../../../app-lifeops/test/helpers/lifeops-eval-model.ts",
+  ) as typeof import("../../../app-lifeops/test/helpers/lifeops-eval-model.ts");
+  const client = getTrainingModelClient();
+  const model = process.env.TRAIN_MODEL?.trim() ?? process.env.CEREBRAS_MODEL?.trim() ?? "gpt-oss-120b";
+  return {
+    name: `cerebras/${model}`,
+    async generate(systemPrompt: string, userPrompt: string): Promise<string> {
+      return await withStandaloneTrajectory(
+        runtime,
+        {
+          source: "training",
+          metadata: { provider: "cerebras", model, purpose: "teacher" },
+        },
+        async () => {
+          const details: RecordLlmCallDetails = {
+            model: `cerebras/${model}`,
+            modelVersion: model,
+            systemPrompt,
+            userPrompt,
+            temperature: 0.9,
+            maxTokens: 4096,
+            purpose: "training.teacher",
+            actionType: "training.teacher.cerebras.generate",
+          };
+          return await recordLlmCall(runtime, details, async () => {
+            const result = await client({
+              prompt: userPrompt,
+              systemPrompt,
+              temperature: 0.9,
+              maxTokens: 4096,
+            });
+            details.promptTokens = result.usage?.promptTokens;
+            details.completionTokens = result.usage?.completionTokens;
+            return result.text;
+          });
+        },
+      );
+    },
+  };
+}
+
 // ==================== Randomization utilities ====================
 
 function pickRandom<T>(arr: T[]): T {
