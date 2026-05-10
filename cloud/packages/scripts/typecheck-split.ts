@@ -41,7 +41,7 @@ async function splitIntoSubdirectories(dir: string): Promise<string[]> {
   try {
     const entries = await readdir(dir, { withFileTypes: true });
     const subdirs = entries
-      .filter((entry) => entry.isDirectory())
+      .filter((entry) => entry.isDirectory() && entry.name !== "node_modules")
       .map((entry) => join(dir, entry.name))
       .sort();
 

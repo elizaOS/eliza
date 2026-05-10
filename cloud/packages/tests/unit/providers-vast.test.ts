@@ -25,7 +25,7 @@ describe("VastProvider", () => {
         headers: { "Content-Type": "application/json" },
       });
     });
-    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 
     const provider = new VastProvider("test-key", "https://run.vast.ai/route/abc123");
     const res = await provider.chatCompletions(baseChatRequest);
@@ -54,12 +54,12 @@ describe("VastProvider", () => {
           headers: { "Content-Type": "application/json" },
         }),
     );
-    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 
     const provider = new VastProvider("k", "https://run.vast.ai/route/abc123/");
     await provider.chatCompletions(baseChatRequest);
 
-    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://run.vast.ai/route/abc123/v1/chat/completions");
   });
 

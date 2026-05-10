@@ -170,7 +170,7 @@ async function generateTitleInBackground(runtime: IAgentRuntime, message: Memory
 /**
  * Room Title Evaluator Export
  */
-export const roomTitleEvaluator: Evaluator = {
+const legacyRoomTitleEvaluator = {
   name: "ROOM_TITLE",
   similes: ["GENERATE_ROOM_TITLE", "CONVERSATION_TITLE"],
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
@@ -207,3 +207,5 @@ export const roomTitleEvaluator: Evaluator = {
   handler,
   examples: [],
 };
+
+export const roomTitleEvaluator = legacyRoomTitleEvaluator as unknown as Evaluator;

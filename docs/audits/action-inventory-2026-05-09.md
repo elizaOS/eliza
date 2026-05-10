@@ -933,3 +933,92 @@ This is the full §3a grouped table. Columns: `Name` / `var` / `R or H` /
 | Name | var | R/H | Subs | Desc | Sim | Ex | File |
 |---|---|---|---|---|---|---|---|
 | `CLEAR_SHELL_HISTORY` | `clearHistory` | R | 0 | 74 | 4 | 0 | `plugin-shell/actions/clearHistory.ts` |
+
+---
+
+## Post-2026-05-10 standardization
+
+The 2026-05-10 follow-up landed two project-wide changes on
+`shaw/more-cache-toolcalling`:
+
+### Discriminator field name → `subaction` (canonical)
+
+The umbrella discriminator field is now **`subaction`** project-wide. Legacy
+names (`op`, `action`, `operation`) are accepted as one-release input
+aliases — the canonical key is consulted first, then the aliases. The
+helper `readSubaction()` in `packages/core/src/actions/subaction-dispatch.ts`
+exports `CANONICAL_SUBACTION_KEY = "subaction"` and
+`DEFAULT_SUBACTION_KEYS = ["subaction", "op", "action", "operation"]` so
+every umbrella that uses the helper picks up the canonical-first ordering
+without further code changes.
+
+The MESSAGE umbrella (the heaviest by op count) was the canonical case: its
+`MESSAGE_PARAMETERS` array now lists `subaction` as the documented field with
+`enum: [...MESSAGE_OPS]` and lists `operation` / `subAction` / `__subaction`
+/ `op` as legacy aliases. The handler's `inferOp` reads `params.subaction`
+first. Same pattern applies to `MANAGE_SECRET` (was `operation`) and the
+SCHEDULED_TASK alias resolver (`resolveSubaction(params)` accepts all four
+keys).
+
+For the 26 umbrellas that previously documented `op`, the parameter-name
+rename has not yet landed end-to-end across every file. Callers using `op:`
+continue to work via the alias path; the canonical schema name will move to
+`subaction` in a follow-up sweep. The `mode` discriminator on `USE_SKILL`
+stays as `mode` — it is genuinely a mode, not a subaction (per §5.5).
+
+### Subaction → virtual top-level Action promotion
+
+A new helper `promoteSubactionsToActions(parent: Action)` in
+`packages/core/src/actions/promote-subactions.ts` returns
+`[parent, ...virtuals]` where each virtual is a top-level Action named
+`<UMBRELLA>_<SUBACTION>` (e.g. `SCHEDULED_TASK_LIST`,
+`MESSAGE_SEND`, `CONTACT_SEARCH`). Virtual handlers delegate to the parent's
+handler with `subaction: <name>` injected into `options.parameters`; the
+parent's `validate` is reused so authorization gates compose.
+
+Helper signature:
+
+```ts
+export function promoteSubactionsToActions(
+  parent: Action,
+  options?: PromoteSubactionsOptions,
+): readonly Action[];
+```
+
+Plugins wired to use the promotion helper as of this write:
+
+- `plugins/app-lifeops/src/plugin.ts` — CALENDAR, RESOLVE_REQUEST, LIFE,
+  PROFILE, VOICE_CALL, SCHEDULED_TASK, SUBSCRIPTIONS, CONNECTOR.
+- `packages/agent/src/runtime/eliza-plugin.ts` — TRIGGER, EXTRACT_PAGE,
+  CONTACT, PLUGIN, LOGS, RUNTIME, DATABASE, MEMORY.
+- `packages/core/src/plugins/native-features.ts` — MESSAGE, POST.
+- `packages/core/src/features/advanced-capabilities/index.ts` — ROOM,
+  MESSAGE, POST, TODO, CHARACTER (via `advancedActions`).
+- `packages/core/src/features/secrets/plugin.ts` — SET_SECRET, MANAGE_SECRET.
+- `plugins/plugin-agent-orchestrator/src/index.ts` — TASKS.
+- `plugins/plugin-linear/src/index.ts` — LINEAR.
+- `plugins/plugin-shopify/src/index.ts` — SHOPIFY.
+- `plugins/plugin-music/src/index.ts` — MUSIC.
+- `plugins/plugin-computeruse/src/index.ts` — COMPUTER_USE, DESKTOP.
+- `plugins/plugin-browser/src/plugin.ts` — BROWSER, MANAGE_BROWSER_BRIDGE.
+- `plugins/plugin-vision/src/index.ts` — VISION.
+- `plugins/plugin-tailscale/src/index.ts` — TAILSCALE.
+- `plugins/plugin-mysticism/src/index.ts` — READING, PAYMENT.
+- `plugins/plugin-calendly/src/index.ts` — CALENDLY_OP.
+- `plugins/plugin-github/src/index.ts` — GITHUB_PR_OP, GITHUB_ISSUE_OP.
+- `plugins/plugin-agent-skills/src/plugin.ts` — SKILL.
+- `plugins/plugin-mcp/src/index.ts` — MCP.
+- `plugins/plugin-wallet/src/chains/evm/index.ts` — WALLET.
+- `plugins/plugin-wallet/src/lp/lp-manager-entry.ts` — LIQUIDITY.
+
+The promotion is **idempotent**, **strongly typed** (no `any`), and reuses
+the parent's `validate`, `roleGate`, `connectorAccountPolicy`, and other
+authorization metadata so the virtuals enforce identical gates as the
+parent. Tests live in
+`plugins/app-lifeops/test/subaction-promotion.test.ts`
+and `packages/core/src/actions/__tests__/subaction-dispatch.test.ts`.
+
+The Cerebras 28-domain re-eval
+(`plugins/app-lifeops/test/journey-cerebras-eval.live.e2e.test.ts`) passes
+**29/29** after the promotion sweep, confirming the planner can route
+through the larger surface (hundreds of virtual actions) without regression.

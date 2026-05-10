@@ -21,7 +21,11 @@
 
 import type http from "node:http";
 import type { IAgentRuntime, Plugin, Route } from "@elizaos/core";
-import { getConnectorAccountManager, logger } from "@elizaos/core";
+import {
+  getConnectorAccountManager,
+  logger,
+  promoteSubactionsToActions,
+} from "@elizaos/core";
 import { issueOpAction } from "./actions/issue-op.js";
 import { notificationTriageAction } from "./actions/notification-triage.js";
 import { prOpAction } from "./actions/pr-op.js";
@@ -87,7 +91,11 @@ export const githubPlugin: Plugin = {
   description:
     "GitHub integration for pull requests, issues, and notification triage",
   services: [GitHubService],
-  actions: [prOpAction, issueOpAction, notificationTriageAction],
+  actions: [
+    ...promoteSubactionsToActions(prOpAction),
+    ...promoteSubactionsToActions(issueOpAction),
+    notificationTriageAction,
+  ],
   routes: githubRoutes,
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     registerGitHubSearchCategory(runtime);

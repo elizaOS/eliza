@@ -1,4 +1,6 @@
-// DRAFT: NOT VALIDATED ON HARDWARE — see kernels/README.md
+// Hardware-verified on Intel ARL (Mesa 25.2.8) + lavapipe (Mesa 25.2.8 LLVMpipe)
+// — 8/8 PASS for the 8-token fixture (see packages/inference/README.md
+// "Verification matrix" and reports/porting/2026-05-09-w4/vulkan-turbo-fix.md).
 //
 // turbo4 KV cache dequant + Q·K dot product (Vulkan compute shader, GLSL 450).
 //
@@ -20,7 +22,6 @@
 #extension GL_EXT_shader_16bit_storage  : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
-#extension GL_KHR_shader_subgroup_arithmetic : require
 
 layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
@@ -81,6 +82,23 @@ uint read_u16(uint b) {
     return read_byte(b) | (read_byte(b + 1u) << 8u);
 }
 
+// 32-thread tree reduction over a workgroup-shared scratch. Driver-portable:
+// does NOT depend on any specific subgroup size, unlike subgroupAdd (which is
+// only correct when a single 32-lane subgroup covers the whole workgroup).
+shared float partials[32];
+
+float reduce_sum_32(float v, uint tid) {
+    partials[tid] = v;
+    barrier();
+    for (uint stride = 16u; stride > 0u; stride >>= 1) {
+        if (tid < stride) {
+            partials[tid] += partials[tid + stride];
+        }
+        barrier();
+    }
+    return partials[0];
+}
+
 void main() {
     uint tid = gl_LocalInvocationID.x;
     uint kv_idx = gl_WorkGroupID.x;
@@ -107,7 +125,7 @@ void main() {
         acc += q_val * k_val;
     }
 
-    float sum = subgroupAdd(acc);
+    float sum = reduce_sum_32(acc, tid);
     if (tid == 0u) {
         scores[push.q_head * push.n_kv + kv_idx] = sum;
     }

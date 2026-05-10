@@ -235,8 +235,8 @@ function normalizeOp(value: unknown): MessageOperation | undefined {
 
 function inferOp(message: Memory, params: ParamRecord): MessageOperation {
 	const explicit =
-		normalizeOp(params.operation) ??
 		normalizeOp(params.subaction) ??
+		normalizeOp(params.operation) ??
 		normalizeOp(params.subAction) ??
 		normalizeOp(params.__subaction) ??
 		normalizeOp(params.op) ??
@@ -3159,33 +3159,36 @@ async function delegateToTriage(
 
 export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
-		name: "operation",
+		name: "subaction",
 		description: `Message subaction. One of: ${MESSAGE_OPS.join(", ")}.`,
 		required: false,
 		schema: { type: "string", enum: [...MESSAGE_OPS] },
 	},
 	{
-		name: "subaction",
-		description: "Alias for operation, accepted for planner compatibility.",
+		name: "operation",
+		description:
+			"Legacy alias for subaction, accepted for planner compatibility.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "subAction",
-		description: "Alias for operation, accepted for planner compatibility.",
+		description:
+			"Legacy alias for subaction, accepted for planner compatibility.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "__subaction",
 		description:
-			"Legacy alias for operation, accepted for planner compatibility.",
+			"Legacy alias for subaction, accepted for planner compatibility.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "op",
-		description: "Alias for operation, accepted for planner compatibility.",
+		description:
+			"Legacy alias for subaction, accepted for planner compatibility.",
 		required: false,
 		schema: { type: "string" },
 	},

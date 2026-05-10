@@ -149,19 +149,20 @@ export class AiPricingRepository {
   }
 
   async createManualOverride(input: {
-    billingSource:
-      | "gateway"
-      | "openrouter"
-      | "openai"
-      | "groq"
-      | "vast"
-      | "fal"
-      | "elevenlabs";
+    billingSource: "gateway" | "openrouter" | "openai" | "groq" | "vast" | "fal" | "elevenlabs";
     provider: string;
     model: string;
     productFamily: "language" | "embedding" | "image" | "video" | "tts" | "stt" | "voice_clone";
     chargeType: string;
-    unit: "token" | "image" | "request" | "second" | "minute" | "hour" | "character" | "1k_requests";
+    unit:
+      | "token"
+      | "image"
+      | "request"
+      | "second"
+      | "minute"
+      | "hour"
+      | "character"
+      | "1k_requests";
     unitPrice: number;
     dimensionKey: string;
     dimensions: Record<string, string | number | boolean | null>;

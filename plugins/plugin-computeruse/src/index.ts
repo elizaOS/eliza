@@ -21,6 +21,7 @@
  */
 
 import type { Plugin, Route } from "@elizaos/core";
+import { promoteSubactionsToActions } from "@elizaos/core";
 import { desktopAction } from "./actions/desktop.js";
 import { useComputerAction } from "./actions/use-computer.js";
 import { computerStateProvider } from "./providers/computer-state.js";
@@ -69,7 +70,13 @@ export const computerUsePlugin: Plugin = {
   // COMPUTER_USE (canonical desktop interaction: screenshot/click/key/etc.)
   // and DESKTOP (parent action dispatching file/window/terminal ops) stay
   // registered as distinct top-level actions — they cover different surfaces.
-  actions: [useComputerAction, desktopAction],
+  // Each umbrella's subactions are promoted to virtual top-level actions
+  // (e.g. COMPUTER_USE_CLICK, DESKTOP_OPEN) so the planner can pick a
+  // specific verb directly from the action catalogue.
+  actions: [
+    ...promoteSubactionsToActions(useComputerAction),
+    ...promoteSubactionsToActions(desktopAction),
+  ],
 
   providers: [computerStateProvider],
 

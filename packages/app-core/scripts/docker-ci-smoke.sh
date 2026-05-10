@@ -262,6 +262,21 @@ else
   log "No local @elizaos/core source package found at $TYPESCRIPT_DIR; using installed package"
 fi
 
+log "Building shared/cloud package artifacts"
+for package_dir in packages/shared cloud/packages/sdk packages/cloud-routing; do
+  if [[ -f "$package_dir/package.json" ]] && jq -e '.scripts.build' "$package_dir/package.json" >/dev/null; then
+    log "Building $(node -p "require('./$package_dir/package.json').name") workspace artifacts"
+    pushd "$package_dir" >/dev/null
+    "$BUN_BIN" run build
+    popd >/dev/null
+  fi
+done
+mkdir -p node_modules/@elizaos
+rm -rf node_modules/@elizaos/shared node_modules/@elizaos/cloud-sdk node_modules/@elizaos/cloud-routing
+ln -s ../../packages/shared node_modules/@elizaos/shared
+ln -s ../../cloud/packages/sdk node_modules/@elizaos/cloud-sdk
+ln -s ../../packages/cloud-routing node_modules/@elizaos/cloud-routing
+
 log "Building Capacitor plugins"
 "$BUN_BIN" packages/app-core/scripts/build-native-plugins.mjs
 
@@ -278,7 +293,26 @@ fi
 # inside the COPY-into-Docker tree or the runtime fails with
 # ERR_MODULE_NOT_FOUND. Build them explicitly here — `bun install
 # --ignore-scripts` skipped per-package postinstall hooks.
-for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf plugin-capacitor-bridge; do
+for plugin in \
+  plugin-sql \
+  plugin-video \
+  plugin-agent-skills \
+  plugin-pdf \
+  plugin-browser \
+  plugin-capacitor-bridge \
+  plugin-coding-tools \
+  plugin-computeruse \
+  plugin-discord \
+  plugin-elizacloud \
+  plugin-imessage \
+  plugin-local-inference \
+  plugin-mcp \
+  plugin-signal \
+  plugin-streaming \
+  plugin-telegram \
+  plugin-whatsapp \
+  plugin-workflow \
+  plugin-x402; do
   plugin_dir="$PLUGINS_DIR/$plugin"
   if [[ -f "$plugin_dir/package.json" ]]; then
     if jq -e '.scripts.build' "$plugin_dir/package.json" >/dev/null; then

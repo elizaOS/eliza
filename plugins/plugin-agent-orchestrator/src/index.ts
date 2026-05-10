@@ -9,6 +9,7 @@
  */
 
 import type { Plugin, ServiceClass } from "@elizaos/core";
+import { promoteSubactionsToActions } from "@elizaos/core";
 // Side-effect: register coding-agent HTTP routes with the runtime route registry.
 import "./register-routes.js";
 import { tasksAction } from "./actions/tasks.js";
@@ -53,7 +54,7 @@ export const agentOrchestratorPlugin: Plugin = {
     "Spawn and orchestrate coding agents via the Agent Client Protocol (acpx) with workspace lifecycle, GitHub integration, task history, sub-agent routing, and skill-recommender support. Single TASKS parent action covers create / spawn_agent / send / stop_agent / list_agents / cancel / history / control / share / provision_workspace / submit_workspace / manage_issues / archive / reopen.",
   // Services manage ACPX subprocesses, PTY sessions, workspaces, and sub-agent routing.
   services: orchestratorServices,
-  actions: [tasksAction],
+  actions: [...promoteSubactionsToActions(tasksAction)],
   providers: [
     availableAgentsProvider, // Adapter inventory + raw session list
     activeSubAgentsProvider, // Cache-stable view of routed sub-agent sessions

@@ -6,7 +6,11 @@ import { nextStyleParams } from "@/lib/api/hono-next-style-params";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import { isStoredDocumentMemory, resolveDocumentScope, toDocumentRecord } from "../_worker-documents";
+import {
+  isStoredDocumentMemory,
+  resolveDocumentScope,
+  toDocumentRecord,
+} from "../_worker-documents";
 
 const ROUTE_PARAM_SPEC = [{ name: "id", splat: false }] as const;
 const app = new Hono<AppEnv>();

@@ -1,5 +1,9 @@
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { getConnectorAccountManager, logger } from "@elizaos/core";
+import {
+  getConnectorAccountManager,
+  logger,
+  promoteSubactionsToActions,
+} from "@elizaos/core";
 import { shopifyAction } from "./actions/shopify.js";
 import { createShopifyConnectorAccountProvider } from "./connector-account-provider.js";
 import { storeContextProvider } from "./providers/store-context.js";
@@ -9,7 +13,7 @@ const shopifyPlugin: Plugin = {
   name: "shopify",
   description:
     "Manage Shopify stores -- products, orders, inventory, customers",
-  actions: [shopifyAction],
+  actions: [...promoteSubactionsToActions(shopifyAction)],
   providers: [storeContextProvider],
   services: [ShopifyService],
   // Self-declared auto-enable: activate when the SHOPIFY_ACCESS_TOKEN env var

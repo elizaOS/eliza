@@ -1,7 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { EmptyState } from "@elizaos/cloud-ui";
+import type { ReactNode } from "react";
 
 interface AppsEmptyStateProps {
   /** Override the default agent-first messaging if needed. */

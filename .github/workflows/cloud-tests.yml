@@ -9,13 +9,13 @@ on:
     paths:
       - "cloud/**"
       - ".github/workflows/cloud-tests.yml"
-      - ".github/actions/cloud-setup-test-env/**"
+      - "cloud/.github/actions/setup-test-env/**"
   push:
     branches: [develop, main]
     paths:
       - "cloud/**"
       - ".github/workflows/cloud-tests.yml"
-      - ".github/actions/cloud-setup-test-env/**"
+      - "cloud/.github/actions/setup-test-env/**"
 
 concurrency:
   group: cloud-tests-${{ github.event.pull_request.number || github.ref }}

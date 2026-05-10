@@ -12,6 +12,8 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import dotenv from "dotenv";
+import { LifeOpsBenchHandler } from "./lifeops-bench-handler.js";
+import type { LifeOpsFakeBackend } from "./lifeops-fake-backend.js";
 import {
   clearCapturedAction,
   createBenchmarkPlugin,
@@ -934,6 +936,115 @@ export async function startBenchmarkServer() {
     return created;
   };
 
+  // ────────────────────────────────────────────────────────────────────────
+  // LifeOpsBench routes — runs Eliza's planner against an in-process fake
+  // backend that mirrors the LifeWorld snapshot. See
+  // `lifeops-bench-handler.ts` for the route contract.
+  // ────────────────────────────────────────────────────────────────────────
+  const lifeopsBenchHandler = new LifeOpsBenchHandler({
+    checkAuth: checkBenchAuth,
+    invokePlanner: async ({ taskId, userText, toolManifest, backend }) => {
+      const session = resolveSession(taskId, "lifeops_bench", true);
+      if (!session) throw new Error("Failed to resolve lifeops_bench session");
+      await ensureBenchmarkSessionContext(runtime, session);
+
+      const benchmarkContext = normalizeBenchmarkContext(session, {
+        benchmark: "lifeops_bench",
+        task_id: taskId,
+        ...(Array.isArray(toolManifest) ? { tools: toolManifest } : {}),
+      });
+
+      const composedPrompt = composeBenchmarkPrompt({
+        text: userText,
+        context: benchmarkContext,
+      });
+
+      const incomingMessage: Memory = {
+        id: stringToUuid(`lifeops-msg:${Date.now()}:${Math.random()}`),
+        content: {
+          text: composedPrompt,
+          source: "benchmark",
+          metadata: {
+            benchmark: "lifeops_bench",
+            taskId,
+          },
+        },
+        entityId: session.userEntityId,
+        agentId: runtime.agentId,
+        roomId: session.roomId,
+        createdAt: Date.now(),
+      };
+
+      const callbackTexts: string[] = [];
+      const callback = async (content: Content) => {
+        if (typeof content.text === "string" && content.text.trim().length > 0) {
+          callbackTexts.push(content.text.trim());
+        }
+        return [];
+      };
+
+      if (!runtime.messageService) {
+        throw new Error("Runtime message service is not available");
+      }
+
+      clearCapturedAction();
+      setBenchmarkContext(benchmarkContext);
+      const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
+      activeUsageBuffer = turnUsageBuffer;
+
+      let result;
+      try {
+        result = await runtime.messageService.handleMessage(
+          runtime,
+          incomingMessage,
+          callback,
+        );
+      } finally {
+        setBenchmarkContext(null);
+        activeUsageBuffer = null;
+      }
+
+      const responseText =
+        typeof result.responseContent?.text === "string"
+          ? result.responseContent.text
+          : callbackTexts.join("\n\n");
+      const actions = coerceActions(result.responseContent?.actions);
+      const params = coerceParams(result.responseContent?.params);
+
+      // Map captured Eliza actions into lifeops_bench tool calls.
+      // Strategy: each action name in `actions` is treated as a tool name;
+      // its arguments come from `params[actionName]` when present, otherwise
+      // an empty object. This matches how OpenClaw/Hermes adapters expose
+      // their tool-call traces. The fake-backend rejects unsupported names
+      // with a clear error so scenario authors learn about gaps quickly.
+      const toolCalls = actions.map((name, index) => {
+        const paramsForAction = params[name];
+        const argumentsObj: Record<string, unknown> =
+          paramsForAction && typeof paramsForAction === "object" && !Array.isArray(paramsForAction)
+            ? (paramsForAction as Record<string, unknown>)
+            : {};
+        return {
+          id: `call_${index}`,
+          name,
+          arguments: argumentsObj,
+        };
+      });
+
+      const usage = {
+        promptTokens: turnUsageBuffer.reduce((s, c) => s + c.promptTokens, 0),
+        completionTokens: turnUsageBuffer.reduce((s, c) => s + c.completionTokens, 0),
+        totalTokens: turnUsageBuffer.reduce((s, c) => s + c.totalTokens, 0),
+      };
+
+      // Touch the backend so unused-import linters do not strip the
+      // LifeOpsFakeBackend type — and so future planner integrations can
+      // pre-warm the backend before action execution.
+      void (backend as LifeOpsFakeBackend);
+
+      return { text: responseText, toolCalls, usage };
+    },
+  });
+
   const server = http.createServer(async (req, res) => {
     // Security: restrict CORS to localhost origins only.
     const allowedOrigin = resolveAllowedOrigin(req);
@@ -951,6 +1062,10 @@ export async function startBenchmarkServer() {
     if (req.method === "OPTIONS") {
       res.writeHead(200);
       res.end();
+      return;
+    }
+
+    if (await lifeopsBenchHandler.tryHandle(req, res, pathname)) {
       return;
     }
 

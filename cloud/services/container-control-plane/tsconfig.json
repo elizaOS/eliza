@@ -7,7 +7,10 @@
     "strict": true,
     "skipLibCheck": true,
     "types": ["node", "bun-types"],
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@/*": ["../../packages/*"]
+    }
   },
   "include": ["src/**/*", "../../packages/types/**/*.d.ts"],
   "exclude": ["node_modules", "dist"]

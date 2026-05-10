@@ -77,6 +77,16 @@ function shouldReusePgliteManager(manager: PGliteClientManager | undefined): boo
   return !manager.isShuttingDown();
 }
 
+function shouldReusePostgresManager(
+  manager: PostgresConnectionManager | undefined
+): manager is PostgresConnectionManager {
+  if (!manager) {
+    return false;
+  }
+
+  return !manager.isShuttingDown();
+}
+
 export function createDatabaseAdapter(
   config: {
     dataDir?: string;
@@ -115,7 +125,7 @@ export function createDatabaseAdapter(
 
     // Get or create connection manager for this server_id
     let manager = globalSingletons.postgresConnectionManagers.get(managerKey);
-    if (!manager) {
+    if (!shouldReusePostgresManager(manager)) {
       logger.debug(
         { src: "plugin:sql", managerKey: managerKey.slice(0, 8) },
         "Creating new connection pool"

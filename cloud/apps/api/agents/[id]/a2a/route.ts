@@ -103,9 +103,7 @@ function getAnthropicCotEnv(env: AppEnv["Bindings"]): AnthropicCotEnv {
     ANTHROPIC_COT_BUDGET:
       typeof env.ANTHROPIC_COT_BUDGET === "string" ? env.ANTHROPIC_COT_BUDGET : undefined,
     ANTHROPIC_COT_BUDGET_MAX:
-      typeof env.ANTHROPIC_COT_BUDGET_MAX === "string"
-        ? env.ANTHROPIC_COT_BUDGET_MAX
-        : undefined,
+      typeof env.ANTHROPIC_COT_BUDGET_MAX === "string" ? env.ANTHROPIC_COT_BUDGET_MAX : undefined,
   };
 }
 

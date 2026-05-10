@@ -294,7 +294,10 @@ export const healthAction: Action = {
     "health/fitness telemetry HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today | trend(days) | by_metric(steps heart-rate sleep calories distance workouts) | status",
   routingHint:
     "health/wearable reads (\"step count\", \"sleep last night\", heart rate, workouts) -> HEALTH; never answer from provider summaries or REPLY",
-  contexts: ["health", "tasks", "calendar"],
+  // See `12-real-root-cause.md` — "general" widening so HEALTH stays
+  // retrievable when the messageHandler routes wearable / sleep / steps
+  // questions through the conversational frame.
+  contexts: ["general", "health", "tasks", "calendar"],
   roleGate: { minRole: "OWNER" },
   validate: async () => true,
   handler: async (

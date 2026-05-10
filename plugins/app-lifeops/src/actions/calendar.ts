@@ -529,7 +529,11 @@ export const calendarAction: Action & {
     "Multi-turn scheduling negotiations live in SCHEDULING_NEGOTIATION (start, propose, respond, finalize, cancel, list).",
   descriptionCompressed:
     "calendar+availability+prefs: feed next-event search create update delete trip-window bulk-reschedule propose-times check-availability update-prefs",
-  contexts: ["calendar", "contacts", "tasks", "connectors", "web"],
+  // "general" included for the same reason as LIFE: messageHandler routes
+  // most user-facing event/scheduling requests to "general" rather than
+  // "calendar", so retrieval would otherwise filter CALENDAR out before
+  // the planner sees it. See `12-real-root-cause.md`.
+  contexts: ["general", "calendar", "contacts", "tasks", "connectors", "web"],
   roleGate: { minRole: "OWNER" },
   subActions: [
     googleCalendarAction,

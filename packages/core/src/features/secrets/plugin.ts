@@ -9,6 +9,7 @@
  * - Conversational onboarding flow (Discord, Telegram)
  */
 
+import { promoteSubactionsToActions } from "../../actions/promote-subactions.ts";
 import { logger } from "../../logger.ts";
 import type { Plugin } from "../../types/index.ts";
 import {
@@ -88,10 +89,12 @@ export const secretsManagerPlugin: Plugin = {
 	// Services
 	services: [SecretsService, PluginActivatorService, OnboardingService],
 
-	// Actions for natural language secret management and onboarding
+	// Actions for natural language secret management and onboarding.
+	// SET_SECRET and MANAGE_SECRET are umbrellas; their subactions are
+	// promoted to virtual top-level actions for direct planner picking.
 	actions: [
-		setSecretAction,
-		manageSecretAction,
+		...promoteSubactionsToActions(setSecretAction),
+		...promoteSubactionsToActions(manageSecretAction),
 		updateSettingsAction,
 		requestSecretAction,
 	],

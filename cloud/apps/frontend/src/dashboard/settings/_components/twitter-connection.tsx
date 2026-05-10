@@ -17,8 +17,8 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Image,
 } from "@elizaos/cloud-ui";
-import { Image } from "@elizaos/cloud-ui";
 import { CheckCircle, ExternalLink, Loader2, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";

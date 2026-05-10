@@ -5,7 +5,7 @@
  * error responses and proper HTTP status codes.
  */
 
-import { ApiError as CanonicalApiError, type ApiErrorCode } from "@/lib/api/cloud-worker-errors";
+import { type ApiErrorCode, ApiError as CanonicalApiError } from "@/lib/api/cloud-worker-errors";
 
 // Avoid framework-specific response helpers in the Worker bundle; use native `Response.json`.
 type JsonResponse = Response;

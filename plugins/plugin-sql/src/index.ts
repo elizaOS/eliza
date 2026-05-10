@@ -83,6 +83,16 @@ function shouldReusePgliteManager(manager: PGliteClientManager | undefined): boo
   return !manager.isShuttingDown();
 }
 
+function shouldReusePostgresManager(
+  manager: PostgresConnectionManager | undefined
+): manager is PostgresConnectionManager {
+  if (!manager) {
+    return false;
+  }
+
+  return !manager.isShuttingDown();
+}
+
 export function createDatabaseAdapter(
   config: {
     dataDir?: string;
@@ -91,7 +101,8 @@ export function createDatabaseAdapter(
   agentId: UUID
 ): IDatabaseAdapter {
   if (config.postgresUrl) {
-    if (!globalSingletons.postgresConnectionManager) {
+    let manager = globalSingletons.postgresConnectionManager;
+    if (!shouldReusePostgresManager(manager)) {
       const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
       let rlsServerId: string | undefined;
       if (dataIsolationEnabled) {
@@ -112,12 +123,10 @@ export function createDatabaseAdapter(
         );
       }
 
-      globalSingletons.postgresConnectionManager = new PostgresConnectionManager(
-        config.postgresUrl,
-        rlsServerId
-      );
+      manager = new PostgresConnectionManager(config.postgresUrl, rlsServerId);
+      globalSingletons.postgresConnectionManager = manager;
     }
-    return new PgDatabaseAdapter(agentId, globalSingletons.postgresConnectionManager);
+    return new PgDatabaseAdapter(agentId, manager);
   }
 
   const dataDir = resolvePgliteDir(config.dataDir);

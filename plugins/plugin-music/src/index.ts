@@ -1,4 +1,9 @@
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+  promoteSubactionsToActions,
+} from "@elizaos/core";
 import { musicAction } from "./actions/music";
 import { musicInfoProvider } from "./providers/musicInfoProvider";
 import musicLibraryProvider from "./providers/musicLibraryProvider";
@@ -131,7 +136,7 @@ const musicPlugin: Plugin = {
   description:
     "Music library, discovery, playlists, analytics, playback engine, queue, routing API, and streaming routes — unified under the MUSIC action.",
   services: [MusicLibraryService, MusicService],
-  actions: [musicAction],
+  actions: [...promoteSubactionsToActions(musicAction)],
   providers: [
     musicInfoProvider,
     wikipediaProvider,

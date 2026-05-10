@@ -16,6 +16,7 @@ export * from "./types.ts";
 // when a consumer dereferences a re-exported binding at runtime.
 import { characterAction as _bs_1_characterAction } from "./actions/character.ts";
 import { userPersonalityProvider as _bs_2_userPersonalityProvider } from "./providers/user-personality.ts";
+
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 // biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.

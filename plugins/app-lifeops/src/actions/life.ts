@@ -2008,7 +2008,12 @@ export const lifeAction: Action & {
     "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
   routingHint:
     'live LifeOps status (todos, tasks, reminders, habits, routines, goals, alarms, "what\'s on my list today") -> LIFE; never answer from provider summaries; one-off dated reminders to call/text someone ("remember to call mom Sunday") also belong here',
-  contexts: ["tasks", "todos", "calendar", "health"],
+  // Include "general" so habit/routine/reminder requests still surface LIFE
+  // when the messageHandler picks "general" as the conversational frame
+  // (which it does for ~90% of self-care prompts in the benchmark — phrases
+  // like "remind me to brush my teeth" route to general first, and the
+  // tool-retrieval filter would otherwise exclude LIFE entirely).
+  contexts: ["general", "tasks", "todos", "calendar", "health"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {

@@ -35,7 +35,7 @@ describe("OpenAIDirectProvider.chatCompletions", () => {
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     });
-    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 
     const provider = new OpenAIDirectProvider("test-key");
     const res = await provider.chatCompletions(baseChatRequest);
@@ -66,7 +66,7 @@ describe("OpenAIDirectProvider.chatCompletions", () => {
       });
       return new Response(null, { status: 200 });
     });
-    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 
     const provider = new OpenAIDirectProvider("test-key");
     let thrown: unknown;
@@ -96,7 +96,7 @@ describe("AnthropicDirectProvider.chatCompletions", () => {
           headers: { "Content-Type": "application/json" },
         }),
     );
-    globalThis.fetch = fetchMock as typeof globalThis.fetch;
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 
     const provider = new AnthropicDirectProvider("anthropic-key");
     const res = await provider.chatCompletions({

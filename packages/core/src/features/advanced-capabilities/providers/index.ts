@@ -22,6 +22,7 @@ import { followUpsProvider as _bs_3_followUpsProvider } from "./followUps.ts";
 import { relationshipsProvider as _bs_4_relationshipsProvider } from "./relationships.ts";
 import { roleProvider as _bs_5_roleProvider } from "./roles.ts";
 import { settingsProvider as _bs_6_settingsProvider } from "./settings.ts";
+
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 // biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.

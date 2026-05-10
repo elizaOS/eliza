@@ -11,6 +11,7 @@
  */
 
 import type { Action, IAgentRuntime, Plugin, Provider } from "@elizaos/core";
+import { promoteSubactionsToActions } from "@elizaos/core";
 
 // Actions
 import { skillAction } from "./actions/skill";
@@ -36,7 +37,8 @@ const ALL_SERVICES: PluginServiceClass[] = [
 
 const ALL_ACTIONS: Action[] = [
 	useSkillAction, // Canonical entry point — invoke an enabled skill by slug
-	skillAction, // Catalog management: search/details/sync/toggle/install/uninstall
+	// SKILL is promoted: parent + virtual SKILL_<OP> actions per subaction.
+	...promoteSubactionsToActions(skillAction),
 ];
 
 const ALL_PROVIDERS: Provider[] = [

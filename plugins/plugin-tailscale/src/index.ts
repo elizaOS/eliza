@@ -2,6 +2,7 @@ import {
   elizaLogger,
   getConnectorAccountManager,
   type Plugin,
+  promoteSubactionsToActions,
 } from "@elizaos/core";
 import { tunnelSlotIsFree } from "@elizaos/plugin-tunnel";
 import { TailscaleTestSuite } from "./__tests__/TailscaleTestSuite";
@@ -28,7 +29,7 @@ export const tailscalePlugin: Plugin = {
   name: "tailscale",
   description:
     "Tunnel plugin with local Tailscale serve/funnel and cloud-proxy backends.",
-  actions: [tailscaleAction],
+  actions: [...promoteSubactionsToActions(tailscaleAction)],
   providers: [tailscaleStatusProvider],
   tests: [new TailscaleTestSuite()],
   init: async (_config, runtime) => {
