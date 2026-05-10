@@ -81,19 +81,46 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
  * a smaller file (e.g. partial download, repo deleted, replaced) the
  * staging step fails loudly rather than shipping a broken APK.
  */
+// Bundle profile selector. The default ("full") bundles Llama-3.2-1B
+// — Shaw's architectural pick (see comment at top of this file: 128k
+// ctx, smallest model that reliably follows planner output schema).
+// `MILADYOS_BUNDLE_PROFILE=vm` opts INTO SmolLM2-360M as a smaller
+// model for low-RAM emulators. Empirically tested on Cuttlefish
+// (2026-05-10): SmolLM2 ran at ~0.14 tok/s vs Llama-3.2-1B at
+// ~0.9 tok/s on the same x86_64 CPU. SmolLM2 has more transformer
+// layers (per-token cost is sequential across layers), so its smaller
+// param count does NOT translate to speed at this context size. The
+// vm profile is preserved for future use cases (extreme low-RAM
+// devices, models that benefit from the smaller weights), not for
+// dev-loop speed.
+const VM_DEV_PROFILE = process.env.MILADYOS_BUNDLE_PROFILE === "vm";
+
+const CHAT_MODEL_LLAMA_3_2_1B = {
+  id: "llama-3.2-1b",
+  displayName: "Llama 3.2 1B Instruct",
+  hfRepo: "bartowski/Llama-3.2-1B-Instruct-GGUF",
+  ggufFile: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+  // Q4_K_M quant of Llama-3.2-1B is ~808 MB on HuggingFace
+  // (807,694,464 bytes observed on 2026-04-29). Bracket loosely so
+  // a future re-quant of slightly different size still passes.
+  expectedMinBytes: 700 * 1024 * 1024, // 700 MB lower bound
+  expectedMaxBytes: 900 * 1024 * 1024, // 900 MB upper bound
+  role: "chat",
+};
+
+const CHAT_MODEL_SMOLLM2_360M = {
+  id: "smollm2-360m",
+  displayName: "SmolLM2 360M Instruct",
+  hfRepo: "bartowski/SmolLM2-360M-Instruct-GGUF",
+  ggufFile: "SmolLM2-360M-Instruct-Q4_K_M.gguf",
+  // Q4_K_M of SmolLM2-360M is ~270 MB on HuggingFace.
+  expectedMinBytes: 200 * 1024 * 1024, // 200 MB lower bound
+  expectedMaxBytes: 350 * 1024 * 1024, // 350 MB upper bound
+  role: "chat",
+};
+
 export const DEFAULT_MODELS = [
-  {
-    id: "llama-3.2-1b",
-    displayName: "Llama 3.2 1B Instruct",
-    hfRepo: "bartowski/Llama-3.2-1B-Instruct-GGUF",
-    ggufFile: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
-    // Q4_K_M quant of Llama-3.2-1B is ~808 MB on HuggingFace
-    // (807,694,464 bytes observed on 2026-04-29). Bracket loosely so
-    // a future re-quant of slightly different size still passes.
-    expectedMinBytes: 700 * 1024 * 1024, // 700 MB lower bound
-    expectedMaxBytes: 900 * 1024 * 1024, // 900 MB upper bound
-    role: "chat",
-  },
+  VM_DEV_PROFILE ? CHAT_MODEL_SMOLLM2_360M : CHAT_MODEL_LLAMA_3_2_1B,
   {
     id: "bge-small-en-v1.5",
     displayName: "BGE Small EN v1.5 (embedding)",
