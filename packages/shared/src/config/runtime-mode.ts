@@ -83,11 +83,22 @@ export function runtimeExecutionModeForDeploymentTarget(
   return deploymentTarget?.runtime === "cloud" ? "cloud" : "local-safe";
 }
 
+// `ElizaConfig` doesn't formally declare a `runtime` field — it's an
+// optional, host-injected escape hatch some forks set in `milady.json`
+// to override the deployment-target-derived mode (handy for putting a
+// "local-yolo" override on a single dev box). Type the input with an
+// extra optional `runtime` slot rather than `Pick`-ing a non-existent
+// member off `ElizaConfig`, so the export typechecks without forcing
+// every consumer to widen their config object.
+export type RuntimeExecutionModeConfigInput =
+  & Pick<ElizaConfig, "deploymentTarget">
+  & { runtime?: unknown };
+
 export function readRuntimeExecutionModeConfig(
-  config: Pick<ElizaConfig, "runtime" | "deploymentTarget"> | null | undefined,
+  config: RuntimeExecutionModeConfigInput | null | undefined,
 ): RuntimeExecutionMode {
   const runtimeConfig = isPlainObject(config?.runtime)
-    ? config.runtime
+    ? (config.runtime as { executionMode?: unknown })
     : undefined;
   const explicitMode = normalizeRuntimeExecutionMode(
     runtimeConfig?.executionMode,
