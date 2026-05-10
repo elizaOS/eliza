@@ -489,7 +489,11 @@ export const appBlockActionImpl: Action & {
     "Do NOT use it for screen-time analytics (SCREEN_TIME) or remote desktop sessions (REMOTE_DESKTOP).",
   descriptionCompressed:
     "phone app block native iOS-Family-Controls Android-Usage-Access: block(apps,duration) unblock status",
-  contexts: ["screen_time", "automation", "settings", "tasks"],
+  // Drop "tasks" — APP_BLOCK is a focus/screen-time tool, not a personal-
+  // task tool. Including "tasks" made it compete on context-boost with
+  // LIFE on every habit prompt and blew up tier-A on benign self-care
+  // requests. Belongs to screen_time / automation / settings only.
+  contexts: ["screen_time", "automation", "settings"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 

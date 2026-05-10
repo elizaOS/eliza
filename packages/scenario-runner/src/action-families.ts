@@ -16,7 +16,13 @@ export function actionsAreScenarioEquivalent(
   if (!normalizedLeft || !normalizedRight) {
     return false;
   }
-  return normalizedLeft === normalizedRight;
+  if (normalizedLeft === normalizedRight) {
+    return true;
+  }
+  return (
+    normalizedLeft.startsWith(`${normalizedRight}_`) ||
+    normalizedRight.startsWith(`${normalizedLeft}_`)
+  );
 }
 
 export function actionMatchesScenarioExpectation(

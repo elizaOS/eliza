@@ -350,7 +350,17 @@ export async function createRealTestRuntime(
       providerConfig ??= createCerebrasProviderConfigFromEnv();
       if (providerConfig) {
         providerName = providerConfig.name;
-        // Set provider env vars so the plugin picks them up
+        const COMPETING_KEYS_BY_PROVIDER: Record<string, readonly string[]> = {
+          cerebras: ["ANTHROPIC_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY"],
+          openai: ["ANTHROPIC_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "CEREBRAS_API_KEY"],
+          anthropic: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "CEREBRAS_API_KEY"],
+          google: ["ANTHROPIC_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "CEREBRAS_API_KEY"],
+          groq: ["ANTHROPIC_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY", "CEREBRAS_API_KEY"],
+          openrouter: ["ANTHROPIC_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY"],
+        };
+        for (const competingKey of COMPETING_KEYS_BY_PROVIDER[providerName] ?? []) {
+          delete process.env[competingKey];
+        }
         for (const [key, value] of Object.entries(providerConfig.env)) {
           process.env[key] = value;
         }

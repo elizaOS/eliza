@@ -109,10 +109,10 @@ export const deviceIntentAction: Action & {
     "INTENT_SYNC",
   ],
   description:
-    "Owner-only cross-device intent broadcast. Use for requests to broadcast a reminder or routine reminder to all devices, mobile, desktop, or a specific device.",
+    "Owner-only one-shot push notification fan-out across already-paired devices. Use ONLY when the owner explicitly asks to push/broadcast a notification right now to all/mobile/desktop/specific devices (e.g. 'ping all my devices', 'send a push to my phone'). Do NOT use for habits, routines, recurring reminders, alarms, or any time-bound schedule — those go through the LIFE action.",
   descriptionCompressed:
-    "broadcast device intent/reminder: target all|mobile|desktop|specific title body kind routine_reminder|user_action_requested",
-  contexts: ["automation", "connectors", "tasks", "settings"],
+    "ONE-SHOT push fan-out to paired devices NOW. NOT for habits/routines/recurring schedules (use LIFE).",
+  contexts: ["automation", "connectors", "settings"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async () => true,
