@@ -58,13 +58,12 @@ jobs:
             bunx @bufbuild/buf@1.67.0 generate
           fi
 
-      - name: Build @elizaos/shared (and dep chain)
-        # vite.config.ts imports from `@elizaos/shared`. The package.json
-        # `exports` map points at `./dist/index.js`, so Rollup/Vite cannot
-        # resolve the package entry on a clean checkout until dist is
-        # built. `turbo run build --filter=@elizaos/shared` handles the
-        # `@elizaos/core` → `@elizaos/shared` build order automatically.
-        run: bun turbo run build --filter=@elizaos/shared
+      - name: Build Vite config package deps
+        # vite.config.ts imports dist-only workspace packages
+        # (`@elizaos/shared` and `@elizaos/ui/config/app-config`), and the
+        # app aliases plugin-browser source which imports `@elizaos/vault`.
+        # Build those package chains before Vite evaluates/bundles the app.
+        run: bun turbo run build --filter=@elizaos/ui --filter=@elizaos/vault
 
       - name: Build iOS simulator app
         run: node --max-old-space-size=8192 packages/app-core/scripts/run-mobile-build.mjs ios
@@ -192,13 +191,12 @@ jobs:
             bunx @bufbuild/buf@1.67.0 generate
           fi
 
-      - name: Build @elizaos/shared (and dep chain)
-        # vite.config.ts imports from `@elizaos/shared`. The package.json
-        # `exports` map points at `./dist/index.js`, so Rollup/Vite cannot
-        # resolve the package entry on a clean checkout until dist is
-        # built. `turbo run build --filter=@elizaos/shared` handles the
-        # `@elizaos/core` → `@elizaos/shared` build order automatically.
-        run: bun turbo run build --filter=@elizaos/shared
+      - name: Build Vite config package deps
+        # vite.config.ts imports dist-only workspace packages
+        # (`@elizaos/shared` and `@elizaos/ui/config/app-config`), and the
+        # app aliases plugin-browser source which imports `@elizaos/vault`.
+        # Build those package chains before Vite evaluates/bundles the app.
+        run: bun turbo run build --filter=@elizaos/ui --filter=@elizaos/vault
 
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses >/dev/null 2>&1 || true
