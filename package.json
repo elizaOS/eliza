@@ -278,6 +278,7 @@
     "@elizaos/plugin-local-ai": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-zai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elysiajs/cors": "^1.4.1",
     "elysia": "^1.4.21",
