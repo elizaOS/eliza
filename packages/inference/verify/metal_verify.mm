@@ -151,11 +151,28 @@ struct TurboArgs {
     uint32_t head_offset_bytes;
 };
 
+struct TurboArgsMulti {
+    uint32_t head_dim;
+    uint32_t n_kv;
+    uint32_t kv_stride_blocks;
+    uint32_t q_head;
+    uint32_t head_offset_bytes;
+    uint32_t blocks_per_threadgroup;
+};
+
 struct QjlScoreArgs {
     uint32_t n_heads;
     uint32_t n_kv_heads;
     uint32_t n_tokens;
     uint32_t proj_dim;
+};
+
+struct QjlScoreArgsMulti {
+    uint32_t n_heads;
+    uint32_t n_kv_heads;
+    uint32_t n_tokens;
+    uint32_t proj_dim;
+    uint32_t tokens_per_threadgroup;
 };
 
 struct PolarMvArgs {
@@ -168,13 +185,21 @@ struct PolarMvArgs {
 
 int main(int argc, const char * argv[]) {
     if (argc < 4) {
-        std::fprintf(stderr, "usage: %s <shader.metal> <kernel_name> <fixture.json> [tol=1e-3]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <shader.metal> <kernel_name> <fixture.json> [tol=1e-3] [--multi N]\n", argv[0]);
         return 2;
     }
     const char * metal_path  = argv[1];
     const char * kernel_name = argv[2];
     const char * fx_path     = argv[3];
-    float tol = argc >= 5 ? std::strtof(argv[4], nullptr) : 1e-3f;
+    float tol = 1e-3f;
+    int multi_n = 0;        // 0 = single-block dispatch (legacy), >0 = multi-block
+    for (int i = 4; i < argc; i++) {
+        if (std::strcmp(argv[i], "--multi") == 0 && i + 1 < argc) {
+            multi_n = std::atoi(argv[++i]);
+        } else if (argv[i][0] != '-') {
+            tol = std::strtof(argv[i], nullptr);
+        }
+    }
 
     Fixture fx = load_fixture(fx_path);
     const bool is_turbo3_tcq = (fx.kernel == "turbo3_tcq");
@@ -234,45 +259,80 @@ int main(int argc, const char * argv[]) {
             id<MTLBuffer> q_buf = [device newBufferWithBytes:fx.q.data()
                                                       length:fx.q.size() * sizeof(float)
                                                      options:MTLResourceStorageModeShared];
-            TurboArgs args{};
-            args.head_dim          = (uint32_t)fx.head_dim;
-            args.n_kv              = (uint32_t)fx.n_kv;
-            args.kv_stride_blocks  = (uint32_t)fx.blocks_per_kv;
-            args.q_head            = 0;
-            args.head_offset_bytes = 0;
 
             [enc setBuffer:q_buf offset:0 atIndex:0];
             [enc setBuffer:k_buf offset:0 atIndex:1];
             [enc setBuffer:scores_buf offset:0 atIndex:2];
 
-            if (is_turbo3_tcq) {
-                id<MTLBuffer> cb_buf =
-                    [device newBufferWithBytes:ELIZA_TURBO3_TCQ_CODEBOOK
-                                        length:512 * sizeof(float)
-                                       options:MTLResourceStorageModeShared];
-                [enc setBuffer:cb_buf offset:0 atIndex:3];
-                [enc setBytes:&args length:sizeof(args) atIndex:4];
+            if (multi_n > 0) {
+                TurboArgsMulti args{};
+                args.head_dim               = (uint32_t)fx.head_dim;
+                args.n_kv                   = (uint32_t)fx.n_kv;
+                args.kv_stride_blocks       = (uint32_t)fx.blocks_per_kv;
+                args.q_head                 = 0;
+                args.head_offset_bytes      = 0;
+                args.blocks_per_threadgroup = (uint32_t)multi_n;
+                if (is_turbo3_tcq) {
+                    id<MTLBuffer> cb_buf =
+                        [device newBufferWithBytes:ELIZA_TURBO3_TCQ_CODEBOOK
+                                            length:512 * sizeof(float)
+                                           options:MTLResourceStorageModeShared];
+                    [enc setBuffer:cb_buf offset:0 atIndex:3];
+                    [enc setBytes:&args length:sizeof(args) atIndex:4];
+                } else {
+                    [enc setBytes:&args length:sizeof(args) atIndex:3];
+                }
+                tg   = MTLSizeMake(32, 1, 1);
+                NSUInteger n_groups = ((NSUInteger)fx.n_kv + (NSUInteger)multi_n - 1) / (NSUInteger)multi_n;
+                grid = MTLSizeMake(n_groups, 1, 1);
             } else {
-                [enc setBytes:&args length:sizeof(args) atIndex:3];
+                TurboArgs args{};
+                args.head_dim          = (uint32_t)fx.head_dim;
+                args.n_kv              = (uint32_t)fx.n_kv;
+                args.kv_stride_blocks  = (uint32_t)fx.blocks_per_kv;
+                args.q_head            = 0;
+                args.head_offset_bytes = 0;
+                if (is_turbo3_tcq) {
+                    id<MTLBuffer> cb_buf =
+                        [device newBufferWithBytes:ELIZA_TURBO3_TCQ_CODEBOOK
+                                            length:512 * sizeof(float)
+                                           options:MTLResourceStorageModeShared];
+                    [enc setBuffer:cb_buf offset:0 atIndex:3];
+                    [enc setBytes:&args length:sizeof(args) atIndex:4];
+                } else {
+                    [enc setBytes:&args length:sizeof(args) atIndex:3];
+                }
+                tg   = MTLSizeMake(32, 1, 1);
+                grid = MTLSizeMake((NSUInteger)fx.n_kv, 1, 1);
             }
-            tg   = MTLSizeMake(32, 1, 1);
-            grid = MTLSizeMake((NSUInteger)fx.n_kv, 1, 1);
         } else if (is_qjl) {
             id<MTLBuffer> qs_buf = [device newBufferWithBytes:fx.q_sketch.data()
                                                        length:fx.q_sketch.size() * sizeof(float)
                                                       options:MTLResourceStorageModeShared];
-            QjlScoreArgs args{};
-            args.n_heads    = (uint32_t)fx.n_heads;
-            args.n_kv_heads = (uint32_t)fx.n_kv_heads;
-            args.n_tokens   = (uint32_t)fx.n_tokens;
-            args.proj_dim   = (uint32_t)fx.proj_dim;
             [enc setBuffer:qs_buf offset:0 atIndex:0];
             [enc setBuffer:k_buf offset:0 atIndex:1];
             [enc setBuffer:scores_buf offset:0 atIndex:2];
-            [enc setBytes:&args length:sizeof(args) atIndex:3];
-            // 32 threads per group (one byte = 8 bits per thread × 32 = 256 bits).
-            tg   = MTLSizeMake(32, 1, 1);
-            grid = MTLSizeMake((NSUInteger)fx.n_heads, (NSUInteger)fx.n_tokens, 1);
+            if (multi_n > 0) {
+                QjlScoreArgsMulti args{};
+                args.n_heads                = (uint32_t)fx.n_heads;
+                args.n_kv_heads             = (uint32_t)fx.n_kv_heads;
+                args.n_tokens               = (uint32_t)fx.n_tokens;
+                args.proj_dim               = (uint32_t)fx.proj_dim;
+                args.tokens_per_threadgroup = (uint32_t)multi_n;
+                [enc setBytes:&args length:sizeof(args) atIndex:3];
+                tg = MTLSizeMake(32, 1, 1);
+                NSUInteger n_groups = ((NSUInteger)fx.n_tokens + (NSUInteger)multi_n - 1) / (NSUInteger)multi_n;
+                grid = MTLSizeMake((NSUInteger)fx.n_heads, n_groups, 1);
+            } else {
+                QjlScoreArgs args{};
+                args.n_heads    = (uint32_t)fx.n_heads;
+                args.n_kv_heads = (uint32_t)fx.n_kv_heads;
+                args.n_tokens   = (uint32_t)fx.n_tokens;
+                args.proj_dim   = (uint32_t)fx.proj_dim;
+                [enc setBytes:&args length:sizeof(args) atIndex:3];
+                tg   = MTLSizeMake(32, 1, 1);
+                grid = MTLSizeMake((NSUInteger)fx.n_heads, (NSUInteger)fx.n_tokens, 1);
+            }
         } else if (is_polar) {
             id<MTLBuffer> q_buf = [device newBufferWithBytes:fx.q.data()
                                                       length:fx.q.size() * sizeof(float)

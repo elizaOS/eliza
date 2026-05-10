@@ -62,7 +62,7 @@ describe("applySubscriptionCredentials", () => {
 
   it("stores, resolves, reports, and deletes multiple accounts per provider", async () => {
     useTempElizaHome();
-    const expires = Date.now() + 60_000;
+    const expires = Date.now() + 60 * 60_000;
 
     saveCredentials(
       "openai-codex",

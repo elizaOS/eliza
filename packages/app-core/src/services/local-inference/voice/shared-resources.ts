@@ -5,7 +5,7 @@
  * Per `packages/inference/AGENTS.md` §4 ("shared KV cache scheduling,
  * not shared KV memory" + "one process, one llama.cpp build, one GGML
  * pin"), text and voice MUST share:
- *   - the tokenizer (Qwen/OmniVoice share a vocabulary in this lineage),
+ *   - the tokenizer (Eliza-1/OmniVoice share a vocabulary in this lineage),
  *   - the mmap regions for weights (deduplicated by absolute path),
  *   - the kernel set (same shipped llama.cpp library after fusion),
  *   - the scheduler queue (one queue, prioritised),

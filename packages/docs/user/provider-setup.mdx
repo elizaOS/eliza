@@ -42,10 +42,10 @@ Make sure Ollama is running before you test it. Verify with:
 curl http://127.0.0.1:11434/api/tags
 ```
 
-If the model is not downloaded yet, pull it first:
+If the model is not available yet, create it from the Eliza-1 Modelfile:
 
 ```bash
-ollama pull llama3.3
+ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m
 ```
 
 To see which models you already have: `ollama list`.

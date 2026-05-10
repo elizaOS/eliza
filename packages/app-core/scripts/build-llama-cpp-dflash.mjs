@@ -56,14 +56,8 @@ import {
   fusedCmakeBuildTargets,
 } from "./omnivoice-fuse/cmake-graft.mjs";
 import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
-import {
-  patchMetalKernels as patchMetalKernelsImpl,
-  METAL_KERNEL_FILES,
-} from "./kernel-patches/metal-kernels.mjs";
-import {
-  patchVulkanKernels as patchVulkanKernelsImpl,
-  VULKAN_KERNEL_FILES,
-} from "./kernel-patches/vulkan-kernels.mjs";
+import { patchMetalKernels as patchMetalKernelsImpl } from "./kernel-patches/metal-kernels.mjs";
+import { patchVulkanKernels as patchVulkanKernelsImpl } from "./kernel-patches/vulkan-kernels.mjs";
 
 // milady-ai/llama.cpp @ v0.4.0-milady (commit 08032d57) — the unified fork
 // that composes TBQ + QJL + Q4_POLAR + Metal kernels + DFlash spec-decode
@@ -84,6 +78,13 @@ const SUPPORTED_TARGETS = [
   "linux-x64-cuda",
   "linux-x64-rocm",
   "linux-x64-vulkan",
+  // Linux aarch64. Required for the `server-h200` tier (GH200 = aarch64
+  // host + H100/H200 GPU) and for Ampere Altra / AWS Graviton CPU-only
+  // deployments. Both targets require a real arm64 Linux host (or a
+  // sysroot + cross-toolchain for arm64) — there is no aarch64-cross
+  // wiring on x64 hosts in this script.
+  "linux-aarch64-cpu",
+  "linux-aarch64-cuda",
   "android-arm64-cpu",
   "android-arm64-vulkan",
   "darwin-arm64-metal",
@@ -95,6 +96,13 @@ const SUPPORTED_TARGETS = [
   "ios-arm64-simulator-metal",
   "windows-x64-cpu",
   "windows-x64-cuda",
+  // Windows arm64 (Snapdragon X Elite / Copilot+ PC, 2024+). Adreno X1
+  // GPU is Vulkan 1.3; the 12-core ARM CPU runs the NEON paths in
+  // qjl-cpu/polarquant-cpu. Both targets require an MSVC arm64
+  // cross-toolchain (or a native Windows arm64 host); there is no
+  // mingw arm64 cross-toolchain wiring here.
+  "windows-arm64-cpu",
+  "windows-arm64-vulkan",
   // Fused text+TTS targets — source-level fusion of
   // github.com/ServeurpersoCom/omnivoice.cpp into the same llama.cpp
   // build. Produce one shared library (libelizainference) and one
@@ -651,6 +659,17 @@ function cmakeFlagsForTarget(target, ctx) {
   } else if (backend === "cuda") {
     flags[flags.indexOf("-DGGML_CUDA=OFF")] = "-DGGML_CUDA=ON";
     flags.push("-DGGML_CUDA_FA=ON", "-DGGML_CUDA_FA_ALL_QUANTS=ON");
+    // Pin a multi-arch fat-binary so a build host without a GPU does not
+    // emit a `sm_52`-only artifact (CMake's default = native probe).
+    //   90a → H200 / GH200 (sm_90a, the only arch with the new TMA / WGMMA paths)
+    //   90  → H100
+    //   89  → Ada / RTX 4090 / L4
+    //   86  → Ampere consumer / RTX 30xx
+    //   80  → A100 / data-center Ampere
+    // Operators that target an older card (sm_75 Turing, sm_70 Volta) can
+    // override via ELIZA_DFLASH_CMAKE_FLAGS=-DCMAKE_CUDA_ARCHITECTURES=...
+    // which appends after this list and wins.
+    flags.push('-DCMAKE_CUDA_ARCHITECTURES=90a;90;89;86;80');
   } else if (backend === "rocm") {
     flags[flags.indexOf("-DGGML_HIP=OFF")] = "-DGGML_HIP=ON";
   } else if (backend === "vulkan") {
@@ -708,16 +727,28 @@ function cmakeFlagsForTarget(target, ctx) {
     // found on PATH or under ~/.local/x86_64-w64-mingw32/. Operators on
     // Windows itself bypass this and use the native MSVC/MinGW host
     // toolchain — pass MINGW_TOOLCHAIN_FILE to override either path.
+    //
+    // arm64 Windows (Snapdragon X Elite, Copilot+ PC) requires either an
+    // MSVC arm64 cross-toolchain (CMake `-A ARM64` on a Windows host with
+    // MSVC build tools), or a clang/LLVM mingw arm64 cross-toolchain on
+    // a Linux host. There is no x86_64-w64-mingw32 → arm64 path, so
+    // arm64 builds on Linux hosts must pass MINGW_TOOLCHAIN_FILE
+    // explicitly pointing at a clang/LLVM arm64 toolchain file.
     if (process.env.MINGW_TOOLCHAIN_FILE) {
       flags.push(`-DCMAKE_TOOLCHAIN_FILE=${process.env.MINGW_TOOLCHAIN_FILE}`);
-    } else if (ctx.mingwToolchainFile) {
+    } else if (ctx.mingwToolchainFile && arch === "x64") {
       flags.push(`-DCMAKE_TOOLCHAIN_FILE=${ctx.mingwToolchainFile}`);
+    }
+    if (arch === "arm64" && process.platform === "win32") {
+      // Native MSVC arm64 build. CMake's default (Visual Studio generator)
+      // honors -A ARM64 to select the arm64 toolset.
+      flags.push("-A", "ARM64");
     }
     // CURL isn't part of the cross-toolchain sysroot. cpp-httplib is
     // statically vendored under llama.cpp/vendor/ and provides the HTTP
     // surface llama-server needs.
     flags.push("-DLLAMA_CURL=OFF");
-    if (backend === "cpu") {
+    if (backend === "cpu" && arch === "x64") {
       // Enable AVX/AVX2/FMA/F16C explicitly. -DGGML_NATIVE=OFF is the
       // right default for cross-builds (you can't sniff -march for a
       // different machine), but AVX2 is the de-facto baseline for
@@ -737,6 +768,15 @@ function cmakeFlagsForTarget(target, ctx) {
         // pre-build step makes the QJL symbols resolve against ggml-base
         // so the DLL link succeeds (PE/COFF doesn't allow unresolved DSO
         // symbols at link time the way ELF does).
+        "-DBUILD_SHARED_LIBS=ON",
+      );
+    } else if (backend === "cpu" && arch === "arm64") {
+      // Snapdragon X Elite ships ARMv8.4-A + dotprod + i8mm + sve2.
+      // qjl-cpu/polarquant-cpu's NEON paths cover the dot-product
+      // primitive; OpenMP is still off because the mingw/clang arm64
+      // cross-toolchain doesn't ship libomp without extra setup.
+      flags.push(
+        "-DGGML_OPENMP=OFF",
         "-DBUILD_SHARED_LIBS=ON",
       );
     }
@@ -763,8 +803,14 @@ function cmakeFlagsForTarget(target, ctx) {
       // CURL isn't part of the iOS SDK and llama-server's HTTP isn't used
       // on-device — disable to keep the static archive minimal.
       "-DLLAMA_CURL=OFF",
-      // Don't try to build llama-server on iOS (no networking sandbox path).
+      // Don't try to build llama-server / llama-cli on iOS — they install
+      // as console executables and CMake's install(TARGETS …) errors with
+      // "no BUNDLE DESTINATION for MACOSX_BUNDLE executable" under the
+      // CMAKE_SYSTEM_NAME=iOS generator. Disable the entire tools and
+      // examples trees; iOS only needs the static llama / ggml libraries.
       "-DLLAMA_BUILD_EXAMPLES=OFF",
+      "-DLLAMA_BUILD_TOOLS=OFF",
+      "-DLLAMA_BUILD_SERVER=OFF",
     );
     if (isSimulator) {
       flags.push("-DCMAKE_OSX_SYSROOT=iphonesimulator");
@@ -797,7 +843,7 @@ function cmakeFlagsForTarget(target, ctx) {
 // Inspect compatibility from the host point of view. Returns either
 // { ok: true } or { ok: false, reason: string } so --all can skip cleanly.
 function targetCompatibility(target, ctx) {
-  const { platform, backend, fused } = parseTarget(target);
+  const { platform, arch, backend, fused } = parseTarget(target);
   if (fused && (platform === "android" || platform === "ios")) {
     return {
       ok: false,
@@ -814,7 +860,31 @@ function targetCompatibility(target, ctx) {
   if (platform === "linux" && process.platform !== "linux") {
     return { ok: false, reason: "linux target requires linux host" };
   }
+  // linux-aarch64-* requires an arm64 Linux host. There is no aarch64 cross
+  // toolchain wired in this script, so x64 hosts cannot produce aarch64
+  // binaries here. The GH200 / Graviton path is to run this on an arm64
+  // build runner.
+  if (platform === "linux" && arch === "aarch64" && process.arch !== "arm64") {
+    return {
+      ok: false,
+      reason:
+        "linux-aarch64 target requires an arm64 Linux host (no aarch64 cross-toolchain wired here; run on a real arm64 build runner)",
+    };
+  }
   if (platform === "windows") {
+    // arm64 Windows builds need either a native MSVC arm64 host or an
+    // operator-supplied MINGW_TOOLCHAIN_FILE pointing at clang/LLVM
+    // arm64 cross-tools — the bundled mingw discovery only handles
+    // x86_64-w64-mingw32.
+    if (arch === "arm64") {
+      if (process.platform === "win32") return { ok: true };
+      if (process.env.MINGW_TOOLCHAIN_FILE) return { ok: true };
+      return {
+        ok: false,
+        reason:
+          "windows-arm64 target requires a native Windows arm64 host (MSVC -A ARM64) or MINGW_TOOLCHAIN_FILE pointing at a clang/LLVM aarch64-w64-mingw32 toolchain file",
+      };
+    }
     if (process.platform === "win32") return { ok: true };
     if (process.env.MINGW_TOOLCHAIN_FILE) return { ok: true };
     if (ctx.mingwToolchainFile) return { ok: true };
@@ -851,11 +921,20 @@ function targetCompatibility(target, ctx) {
   return { ok: true };
 }
 
+// Map Node's process.arch to the triple's arch token. Linux uses
+// `aarch64` in its triples (linux-aarch64-cuda); every other platform
+// uses `arm64` (darwin-arm64-metal, windows-arm64-vulkan, android-arm64-*).
+function nodeArchToTripleArch(platform) {
+  if (process.arch === "x64") return "x64";
+  if (process.arch === "arm64") return platform === "linux" ? "aarch64" : "arm64";
+  return process.arch;
+}
+
 function defaultTarget() {
   const backend = detectBackend();
-  const arch = process.arch === "x64" ? "x64" : process.arch;
   const platform =
     process.platform === "win32" ? "windows" : process.platform;
+  const arch = nodeArchToTripleArch(platform);
   return `${platform}-${arch}-${backend}`;
 }
 
@@ -1023,6 +1102,24 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   if (target && target.startsWith("windows-")) {
     patchGgmlBaseForWindowsQjl(cacheDir);
   }
+  // The same broken cross-library reference that bites Windows shared-lib
+  // builds also bites darwin shared-lib builds: ggml.c (in ggml-base) calls
+  // quantize_qjl1_256 / dequantize_row_qjl1_256 / quantize_row_qjl1_256_ref,
+  // which live in ggml-cpu/qjl/. On darwin the BUILD_SHARED_LIBS_DEFAULT is
+  // ON and ggml-base is linked with `-undefined error`, so the link fails
+  // before a single Metal kernel can run. Folding the QJL TUs into ggml-base
+  // resolves the symbols at link time without breaking the ggml-cpu build
+  // (the duplicate object files in two libraries link cleanly because they
+  // are part of the same .dylib at runtime). The same fix is independently
+  // safe to apply to iOS static-archive builds. Idempotent via the
+  // existing `# MILADY-WINDOWS-QJL-IN-GGML-BASE` sentinel inside
+  // patchGgmlBaseForWindowsQjl().
+  if (
+    target &&
+    (target.startsWith("darwin-") || target.startsWith("ios-"))
+  ) {
+    patchGgmlBaseForWindowsQjl(cacheDir);
+  }
 }
 
 function isRuntimeLibrary(name) {
@@ -1143,7 +1240,11 @@ function canRunTargetOnHost(target) {
   if (platform === "windows" && process.platform !== "win32") return false;
   if (platform === "darwin" && process.platform !== "darwin") return false;
   if (platform === "linux" && process.platform !== "linux") return false;
-  if (arch === "arm64" && process.arch !== "arm64") return false;
+  // arm64 (Apple, Windows, Android) and aarch64 (Linux) both map to
+  // process.arch === "arm64" on Node. x64 maps to "x64".
+  if ((arch === "arm64" || arch === "aarch64") && process.arch !== "arm64") {
+    return false;
+  }
   if (arch === "x64" && process.arch !== "x64") return false;
   return true;
 }

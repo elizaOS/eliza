@@ -13,7 +13,7 @@ Synthetic-graph test that exercises the full QJL wiring:
      from_float entry (pulls in qjl_quantize_rows via the dispatcher).
   3. Calls ggml_attn_score_qjl(q_sketch, K_quant, n_kv_heads).
   4. Asserts the resulting score tensor is finite and non-degenerate
-     (Qwen3-0.6B-shaped: 8 heads, 2 kv-heads, 100 cached tokens).
+     (Eliza-1-lite-shaped: 8 heads, 2 kv-heads, 100 cached tokens).
 
 Avoids requiring a real GGUF download — the kernel-library bit-parity
 parity test under packages/native-plugins/qjl-cpu/test/qjl_bench.c
@@ -130,7 +130,7 @@ index 00000000..3107b482
 +constexpr int kHeadDim     = 128;          // QJL_HEAD_DIM
 +constexpr int kSketchDim   = 256;          // QK_QJL
 +constexpr int kBlockBytes  = 34;           // sizeof(block_qjl1_256)
-+constexpr int kNHeads      = 8;            // q-heads (Qwen3-0.6B-shaped)
++constexpr int kNHeads      = 8;            // q-heads (Eliza-1-lite-shaped)
 +constexpr int kNKvHeads    = 2;            // GQA share = 4
 +constexpr int kNTokens     = 100;          // KV-cache decode length
 +constexpr int kProjSeed    = 42;           // matches the default Π in the shim

@@ -268,9 +268,12 @@ export class EngineVoiceBridge {
 
     const sampleRate = opts.sampleRate ?? SAMPLE_RATE_DEFAULT;
     const presetCache = new SpeakerPresetCache();
-    const preset = presetCache.loadFromBundle({ bundleRoot: opts.bundleRoot });
+    const { preset, phrases: seedPhrases } = presetCache.loadFromBundle({
+      bundleRoot: opts.bundleRoot,
+    });
 
     const phraseCache = new PhraseCache();
+    phraseCache.seed(seedPhrases);
     for (const entry of opts.prewarmedPhrases ?? []) {
       phraseCache.put(entry);
     }

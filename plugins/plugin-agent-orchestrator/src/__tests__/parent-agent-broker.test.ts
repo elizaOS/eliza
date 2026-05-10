@@ -187,4 +187,31 @@ describe("runParentAgentBroker", () => {
       JSON.stringify({ name: "Test App", description: "integration test" }),
     );
   });
+
+  it("does not leak Cloud path params into inferred request bodies", async () => {
+    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "test-key");
+    vi.stubEnv("ELIZA_CLOUD_BASE_URL", "https://cloud.test");
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ success: true, available: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await runParentAgentBroker({
+      runtime: createRuntime(),
+      sessionId: "session-1",
+      args: {
+        mode: "cloud-command",
+        command: "domains.check",
+        params: { id: "app-1", domain: "example.com" },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/apps/app-1/domains/check");
+    expect(init.body).toBe(JSON.stringify({ domain: "example.com" }));
+  });
 });

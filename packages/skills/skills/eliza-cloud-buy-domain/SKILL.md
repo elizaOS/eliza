@@ -13,7 +13,9 @@ The cloud handles everything: domain availability check, registration through cl
 
 - An app registered on Eliza Cloud (use `build-monetized-app` first if you haven't shipped one yet)
 - Enough cloud credit balance to cover the domain (cloudflare wholesale + a fixed eliza cloud margin; a `.com` is roughly $14–15 USD/year)
-- `ELIZAOS_CLOUD_API_KEY` in env (provided by the runtime)
+- Either the parent-agent Cloud command bridge in an orchestrated worker, or
+  `ELIZAOS_CLOUD_API_KEY` in the parent/app runtime. Do not pass wallet private
+  keys or owner Cloud API keys into a spawned child process.
 
 ## Default flow
 
@@ -59,6 +61,15 @@ const status = await cloud.routes.postApiV1AppsByIdDomainsStatus({
   pathParams: { id: appId },
   json: { domain: "myapp.com" },
 });
+```
+
+When this flow runs inside an orchestrated worker, prefer the deterministic
+parent-agent commands instead of direct SDK credentials:
+
+```text
+USE_SKILL parent-agent {"mode":"list-cloud-commands","query":"domains"}
+USE_SKILL parent-agent {"mode":"cloud-command","command":"domains.check","params":{"id":"<appId>","body":{"domain":"myapp.com"}}}
+USE_SKILL parent-agent {"mode":"cloud-command","command":"domains.buy","confirmed":true,"params":{"id":"<appId>","body":{"domain":"myapp.com"}}}
 ```
 
 ## Failure modes

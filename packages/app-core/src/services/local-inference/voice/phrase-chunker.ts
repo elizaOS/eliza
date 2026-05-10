@@ -1,3 +1,4 @@
+import type { PhonemeTokenizer } from "./phoneme-tokenizer";
 import type {
   AcceptedToken,
   Phrase,
@@ -6,22 +7,52 @@ import type {
 } from "./types";
 
 const DEFAULT_TERMINATORS: ReadonlySet<string> = new Set([".", "!", "?"]);
+const DEFAULT_PHONEMES_PER_CHUNK = 8;
 
 export class PhraseChunker {
   private buffer: AcceptedToken[] = [];
   private nextPhraseId = 0;
   private readonly terminators: ReadonlySet<string>;
+  private readonly chunkOn: "punctuation" | "phoneme-stream";
+  private readonly phonemesPerChunk: number;
+  private readonly tokenizer: PhonemeTokenizer | null;
+  private phonemeCount = 0;
 
-  constructor(private readonly config: PhraseChunkerConfig) {
+  constructor(
+    private readonly config: PhraseChunkerConfig,
+    tokenizer: PhonemeTokenizer | null = null,
+  ) {
     this.terminators = config.sentenceTerminators ?? DEFAULT_TERMINATORS;
+    this.chunkOn = config.chunkOn ?? "punctuation";
+    this.phonemesPerChunk = Math.max(
+      1,
+      config.phonemesPerChunk ?? DEFAULT_PHONEMES_PER_CHUNK,
+    );
+    this.tokenizer = tokenizer;
+    if (this.chunkOn === "phoneme-stream" && this.tokenizer === null) {
+      throw new Error(
+        "PhraseChunker: chunkOn='phoneme-stream' requires a PhonemeTokenizer (pass CharacterPhonemeStub for testing or a real tokenizer for production)",
+      );
+    }
   }
 
   push(token: AcceptedToken): Phrase | null {
     this.buffer.push(token);
 
+    // Punctuation always wins — a sentence-final marker forces a flush
+    // even in phoneme-stream mode.
     if (this.endsWithTerminator(token.text)) {
       return this.flushAs("punctuation");
     }
+
+    if (this.chunkOn === "phoneme-stream" && this.tokenizer !== null) {
+      const phonemes = this.tokenizer.tokenize(token.text, token.index);
+      this.phonemeCount += phonemes.length;
+      if (this.phonemeCount >= this.phonemesPerChunk) {
+        return this.flushAs("phoneme-stream");
+      }
+    }
+
     if (this.buffer.length >= this.config.maxTokensPerPhrase) {
       return this.flushAs("max-cap");
     }
@@ -35,6 +66,7 @@ export class PhraseChunker {
 
   reset(): void {
     this.buffer = [];
+    this.phonemeCount = 0;
   }
 
   private endsWithTerminator(text: string): boolean {
@@ -46,6 +78,7 @@ export class PhraseChunker {
   private flushAs(terminator: Phrase["terminator"]): Phrase {
     const tokens = this.buffer;
     this.buffer = [];
+    this.phonemeCount = 0;
     const fromIndex = tokens[0].index;
     const toIndex = tokens[tokens.length - 1].index;
     const text = tokens.map((t) => t.text).join("");
@@ -64,8 +97,9 @@ export function chunkTokens(
   tokens: TextToken[],
   config: PhraseChunkerConfig,
   acceptedAt = 0,
+  tokenizer: PhonemeTokenizer | null = null,
 ): Phrase[] {
-  const chunker = new PhraseChunker(config);
+  const chunker = new PhraseChunker(config, tokenizer);
   const phrases: Phrase[] = [];
   for (const t of tokens) {
     const p = chunker.push({ ...t, acceptedAt });

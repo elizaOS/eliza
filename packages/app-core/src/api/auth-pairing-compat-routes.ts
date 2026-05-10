@@ -2,7 +2,11 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
-import { findActiveSession, parseSessionCookie } from "./auth/sessions";
+import {
+  createMachineSession,
+  findActiveSession,
+  parseSessionCookie,
+} from "./auth/sessions";
 import {
   ensureRouteAuthorized,
   getCompatApiToken,
@@ -300,6 +304,45 @@ export async function handleAuthPairingCompatRoutes(
 
     pairingCode = null;
     pairingExpiresAt = 0;
+
+    // Mint a machine session so the paired client gets a session-id bearer
+    // token that authenticates against `ensureCompatApiAuthorizedAsync`.
+    // Returning the raw connection key here would auth `/api/auth/status`
+    // (static-token branch) but get rejected on every other route once the
+    // runtime DB is up. Sessions are TTL-bound and revocable; the static
+    // connection key is forever-valid until the operator rotates it.
+    const db = getCompatDrizzleDb(state);
+    if (db) {
+      try {
+        const { AuthStore } = await import("../services/auth-store");
+        const store = new AuthStore(
+          db as ConstructorParameters<typeof AuthStore>[0],
+        );
+        const identityId = await ensurePairedDeviceIdentityId(store);
+        const { session } = await createMachineSession(store, {
+          identityId,
+          scopes: [],
+          label: "paired-device",
+          ip: remoteAddress,
+        });
+        sendJsonResponse(res, 200, { token: session.id });
+        return true;
+      } catch (err) {
+        // Surface the failure rather than silently falling back to a path
+        // that mints a forever-valid static-token bearer. Operators should
+        // see the underlying error and fix it; clients retry pairing.
+        logger.error(
+          `[api] pair: failed to mint machine session: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        sendJsonErrorResponse(res, 500, "Failed to mint session");
+        return true;
+      }
+    }
+
+    // No DB yet — extremely unlikely once the runtime is up enough to serve
+    // requests, but preserve the legacy static-token return as a fallback.
     sendJsonResponse(res, 200, { token });
     return true;
   }

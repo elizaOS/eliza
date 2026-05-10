@@ -17,7 +17,7 @@ export interface Phrase {
   text: string;
   fromIndex: number;
   toIndex: number;
-  terminator: "punctuation" | "max-cap";
+  terminator: "punctuation" | "max-cap" | "phoneme-stream";
 }
 
 export interface AudioChunk {
@@ -52,6 +52,18 @@ export interface OmniVoiceBackend {
 export interface PhraseChunkerConfig {
   maxTokensPerPhrase: number;
   sentenceTerminators?: ReadonlySet<string>;
+  /**
+   * Where the chunker emits a phrase boundary.
+   *   'punctuation'    — default. Wait for sentence-final punctuation or
+   *                      the max-token cap.
+   *   'phoneme-stream' — additionally emit a sub-phrase chunk every
+   *                      `phonemesPerChunk` phonemes. Cuts first-audio
+   *                      latency by handing partial phrases to TTS at
+   *                      phoneme boundaries.
+   */
+  chunkOn?: "punctuation" | "phoneme-stream";
+  /** Phonemes per chunk in `phoneme-stream` mode. Default 8. */
+  phonemesPerChunk?: number;
 }
 
 export interface VerifierStreamEvent {

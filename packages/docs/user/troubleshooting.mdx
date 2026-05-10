@@ -109,7 +109,7 @@ See [Chat Commands](/chat-commands) for the full reference.
 ## Eliza is slow
 
 - slow before the first token: choose a faster model or provider (Groq and Anthropic Haiku are fast options)
-- slow throughout: check network limits or local model size (smaller Ollama models like `llama3.2:3b` are faster)
+- slow throughout: check network limits or local model size (`eliza-1-2b` is faster than `eliza-1-9b`)
 - check if fallback models are being used (slower providers may be engaged if the primary is rate-limited)
 - for local models, ensure you have enough RAM for the model size
 

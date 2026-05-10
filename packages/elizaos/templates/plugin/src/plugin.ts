@@ -13,7 +13,7 @@ import type {
   RouteResponse,
   State,
 } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { logger, ModelType, Service } from "@elizaos/core";
 import { z } from "zod";
 import { StarterPluginTestSuite } from "./e2e/plugin-starter.e2e";
 
@@ -132,6 +132,25 @@ const helloWorldProvider: Provider = {
   },
 };
 
+/**
+ * Example Service
+ * Services hold long-lived resources or background work tied to the agent's lifecycle.
+ * Register them on the plugin's `services` array; access them via `runtime.getService(serviceType)`.
+ */
+class StarterService extends Service {
+  static serviceType = "starter";
+  capabilityDescription =
+    "This is a starter service which is attached to the agent through the starter plugin.";
+
+  static async start(runtime: IAgentRuntime): Promise<StarterService> {
+    return new StarterService(runtime);
+  }
+
+  async stop(): Promise<void> {
+    logger.debug("StarterService stopped");
+  }
+}
+
 export const starterPlugin: Plugin = {
   name: "plugin-starter",
   description: "Plugin starter for elizaOS",
@@ -240,6 +259,7 @@ export const starterPlugin: Plugin = {
   },
   actions: [helloWorldAction],
   providers: [helloWorldProvider],
+  services: [StarterService],
   tests: [StarterPluginTestSuite],
   // dependencies: [], <--- plugin dependencies go here (if requires another plugin)
 };

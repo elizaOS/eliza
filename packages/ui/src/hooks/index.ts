@@ -10,6 +10,7 @@ export { COMMON_SHORTCUTS, useShortcutsHelp } from "./useKeyboardShortcuts";
 export * from "./useLinkedSidebarSelection";
 export * from "./useMediaQuery";
 export * from "./useRenderGuard";
+export * from "./useRuntimeMode";
 export * from "./useSignalPairing";
 export * from "./useStreamPopoutNavigation";
 export * from "./useTimeout";

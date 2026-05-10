@@ -1455,8 +1455,10 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         args.definition.cadence.kind !== "once"
       ) {
         if (previousReminderId) {
-          const deleteResult =
-            await deleteNativeAppleReminderLikeItem(previousReminderId);
+          const deleteResult = await deleteNativeAppleReminderLikeItem(
+            previousReminderId,
+            { runtime: this.runtime },
+          );
           if (deleteResult.ok === false) {
             this.logLifeOpsWarn(
               "native_apple_reminder_sync",
@@ -1464,8 +1466,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               {
                 definitionId: args.previousDefinition?.id ?? null,
                 reminderId: previousReminderId,
-                skippedReason: deleteResult.skippedReason,
-                error: deleteResult.error,
+                reason: deleteResult.reason,
+                detail:
+                  deleteResult.reason === "permission"
+                    ? `permission ${deleteResult.permission} (canRequest=${deleteResult.canRequest})`
+                    : deleteResult.reason === "native_error"
+                      ? deleteResult.message
+                      : `not_supported on ${deleteResult.platform}`,
               },
             );
           }
@@ -1492,11 +1499,12 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           dueAt: cadence.dueAt,
           notes: definition.description,
           originalIntent: definition.originalIntent,
+          runtime: this.runtime,
         });
         if (updateResult.ok === true) {
           return this.withNativeAppleReminderId(
             definition,
-            updateResult.reminderId ?? reminderId,
+            updateResult.data.reminderId ?? reminderId,
           );
         }
         this.logLifeOpsWarn(
@@ -1506,8 +1514,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             definitionId: definition.id,
             kind: nativeMetadata.kind,
             reminderId,
-            skippedReason: updateResult.skippedReason,
-            error: updateResult.error,
+            reason: updateResult.reason,
+            detail:
+              updateResult.reason === "permission"
+                ? `permission ${updateResult.permission} (canRequest=${updateResult.canRequest})`
+                : updateResult.reason === "native_error"
+                  ? updateResult.message
+                  : `not_supported on ${updateResult.platform}`,
           },
         );
         return this.withNativeAppleReminderId(definition, reminderId);
@@ -1519,6 +1532,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         dueAt: cadence.dueAt,
         notes: definition.description,
         originalIntent: definition.originalIntent,
+        runtime: this.runtime,
       });
       if (createResult.ok === false) {
         this.logLifeOpsWarn(
@@ -1527,15 +1541,20 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           {
             definitionId: definition.id,
             kind: nativeMetadata.kind,
-            skippedReason: createResult.skippedReason,
-            error: createResult.error,
+            reason: createResult.reason,
+            detail:
+              createResult.reason === "permission"
+                ? `permission ${createResult.permission} (canRequest=${createResult.canRequest})`
+                : createResult.reason === "native_error"
+                  ? createResult.message
+                  : `not_supported on ${createResult.platform}`,
           },
         );
         return definition;
       }
       return this.withNativeAppleReminderId(
         definition,
-        createResult.reminderId ?? null,
+        createResult.data.reminderId ?? null,
       );
     }
 

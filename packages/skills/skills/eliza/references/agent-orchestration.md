@@ -51,7 +51,7 @@ Eliza Cloud actions. Prefer these when the worker knows the exact API operation:
 ```text
 USE_SKILL parent-agent {"mode":"list-cloud-commands","query":"x402"}
 USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}
-USE_SKILL parent-agent {"mode":"cloud-command","command":"domains.check","params":{"id":"<appId>","domain":"example.com"}}
+USE_SKILL parent-agent {"mode":"cloud-command","command":"domains.check","params":{"id":"<appId>","body":{"domain":"example.com"}}}
 ```
 
 Paid, mutating, or destructive Cloud commands return `confirmation_required`

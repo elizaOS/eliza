@@ -779,7 +779,7 @@ public class ElizaAgentService extends Service {
             if (BuildConfig.AOSP_BUILD) {
                 agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
                 // CPU-only inference of a 12k-token prompt on cuttlefish
-                // x86_64 / Llama-3.2-1B lands well past the 180 s default
+                // x86_64 / Eliza-1 lands well past the 180 s default
                 // chat-generation timeout (chat-routes.ts). On cvd a
                 // single chat turn fires the planner (9k-token prefill
                 // ≈ 10 min on 4 vCPUs at 16 tok/s) plus an action
@@ -792,7 +792,7 @@ public class ElizaAgentService extends Service {
                 // matters for AOSP cvd runs.
                 agentEnv.put("ELIZA_CHAT_GENERATION_TIMEOUT_MS", "3600000");
 
-                // Llama-3.2-1B native context is 128k. We pin to 16k
+                // Eliza-1 native context is 128k. We pin to 16k
                 // because 16k easily fits the planner's ~12k-token
                 // prompts plus output reserve. KV-cache for 16k ctx on
                 // 1B-Q4_K_M / fp16 KV is ~512 MB (16384 cells × 16 layers

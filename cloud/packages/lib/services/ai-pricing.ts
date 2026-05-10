@@ -736,7 +736,6 @@ const OPENROUTER_EMBEDDING_MODEL_IDS = [
   "openai/text-embedding-3-small",
   "openai/text-embedding-3-large",
   "openai/text-embedding-ada-002",
-  "qwen/qwen3-embedding-8b",
 ] as const;
 
 async function fetchOpenRouterEmbeddingEndpointEntries(): Promise<PreparedPricingEntry[]> {

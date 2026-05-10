@@ -288,10 +288,8 @@ async function validateThreadAction(
 export const workThreadAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "LIFEOPS_THREAD_CONTROL",
+  name: "WORK_THREAD",
   similes: [
-    "lifeops_thread_control",
-    "WORK_THREAD",
     "THREAD_CONTROL",
     "STEER_THREAD",
     "STOP_THREAD",
@@ -299,9 +297,9 @@ export const workThreadAction: Action & {
     "SCHEDULE_THREAD_FOLLOWUP",
   ],
   description:
-    "Create, steer, stop, wait, complete, merge, attach source refs to, or schedule follow-up work for LifeOps work threads. Use only for thread lifecycle/routing; domain work stays on existing task/messaging/workflow actions.",
+    "Create, steer, stop, wait, complete, merge, attach source refs to, or schedule follow-up work for owner work threads. Use only for thread lifecycle/routing; domain work stays on existing task/messaging/workflow actions.",
   descriptionCompressed:
-    "LifeOps work-thread lifecycle: create|steer|stop|mark_waiting|mark_completed|merge|attach_source|schedule_followup",
+    "work-thread lifecycle: create|steer|stop|mark_waiting|mark_completed|merge|attach_source|schedule_followup",
   contexts: ["tasks", "messaging", "automation"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -692,7 +690,7 @@ export const workThreadAction: Action & {
         await callback?.({
           text,
           source: "action",
-          action: "LIFEOPS_THREAD_CONTROL",
+          action: "WORK_THREAD",
         });
         return { success: ok, text, data: { operations: results } };
       }),

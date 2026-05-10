@@ -125,6 +125,72 @@ kernel void kernel_attn_score_qjl1_256(
     }
 }
 
+// ---------- multi-block-per-dispatch attention score (launch-tax fix) ----------
+//
+// Same math as kernel_attn_score_qjl1_256; the threadgroup processes
+// `tokens_per_threadgroup` consecutive tokens along the t axis serially in a
+// 32-thread loop to amortise dispatch launch tax. Dispatch shape:
+//
+//     grid = (n_heads, ceil(n_tokens / tokens_per_threadgroup))
+//     tg   = (32, 1, 1)
+
+struct qjl_score_multi_args {
+    uint n_heads;
+    uint n_kv_heads;
+    uint n_tokens;
+    uint proj_dim;
+    uint tokens_per_threadgroup;
+};
+
+kernel void kernel_attn_score_qjl1_256_multi(
+        device const float          * q_sketch     [[buffer(0)]],
+        device const block_qjl1_256 * packed_k     [[buffer(1)]],
+        device       float          * scores       [[buffer(2)]],
+        constant     qjl_score_multi_args & args   [[buffer(3)]],
+        uint3                         tid3         [[thread_position_in_threadgroup]],
+        uint3                         tg_pos       [[threadgroup_position_in_grid]]) {
+    uint tid = tid3.x;
+    uint h_q = tg_pos.x;
+    if (h_q >= args.n_heads) return;
+
+    uint gqa = args.n_heads / args.n_kv_heads;
+    uint h_k = h_q / gqa;
+    uint t_base = tg_pos.y * args.tokens_per_threadgroup;
+
+    device const float          * qs  = q_sketch + h_q * QJL_PROJECTION_DIM;
+    uint byte_i = tid;
+    uint base   = byte_i * 8;
+    device const float4 * qs4 = (device const float4 *)(qs + base);
+    float4 q0 = qs4[0];
+    float4 q1 = qs4[1];
+
+    for (uint b = 0; b < args.tokens_per_threadgroup; ++b) {
+        uint t = t_base + b;
+        if (t >= args.n_tokens) return;
+
+        device const block_qjl1_256 * blk = packed_k + h_k * args.n_tokens + t;
+        uint bits = blk->qs[byte_i];
+        float4 s0 = float4(
+            float(int(((bits >> 0) & 1u) << 1) - 1),
+            float(int(((bits >> 1) & 1u) << 1) - 1),
+            float(int(((bits >> 2) & 1u) << 1) - 1),
+            float(int(((bits >> 3) & 1u) << 1) - 1));
+        float4 s1 = float4(
+            float(int(((bits >> 4) & 1u) << 1) - 1),
+            float(int(((bits >> 5) & 1u) << 1) - 1),
+            float(int(((bits >> 6) & 1u) << 1) - 1),
+            float(int(((bits >> 7) & 1u) << 1) - 1));
+        float4 acc4 = fma(q0, s0, fma(q1, s1, float4(0.0f)));
+        float acc = acc4.x + acc4.y + acc4.z + acc4.w;
+
+        float sum = simd_sum(acc);
+        if (tid == 0) {
+            float norm_k = qjl_bf16_to_fp32(blk->norm_bf16);
+            scores[h_q * args.n_tokens + t] = QJL_SCORE_SCALE * norm_k * sum;
+        }
+    }
+}
+
 // ---------- dequantize one row (debug / dequant-then-fp32 fallback) ----------
 //
 // recon[i] = (||k|| * sqrt(pi/2) / proj_dim) * sum_j sign(j) * prj[i*proj_dim + j]

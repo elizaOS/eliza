@@ -1,5 +1,4 @@
 import type { ComponentType } from "react";
-import * as THREE from "three";
 
 const EmptyComponent: ComponentType = () => null;
 const optionalPlugin = Object.freeze({
@@ -121,5 +120,4 @@ export function setActiveTrainingService() {}
 export async function stewardEvmPostBoot() {}
 export async function stewardEvmPreBoot() {}
 
-export { THREE };
 export default optionalPlugin;

@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test vulkan vulkan-spirv metal metal-bench cpu-bench bench clean
+.PHONY: all reference-test vulkan vulkan-spirv metal metal-bench metal-bench-batched cpu-bench bench cuda cuda-verify clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -92,6 +92,14 @@ metal_bench: metal_bench.mm
 		-framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics \
 		-lm -o metal_bench
 
+# Convenience target: build metal_bench then run --mode batched. The batched
+# sweep dispatches N ∈ {1,4,16,64,128,256} into a single MTLCommandBuffer
+# per kernel and reports per-dispatch GPU cost vs N. See
+# bench_M4Max_batched_2026-05-10.md for the Wave-6 finding.
+metal-bench-batched: metal_bench
+	@mkdir -p bench_results
+	./metal_bench --mode batched --out bench_results/m4max_batched_2026-05-10.json
+
 # CPU reference baseline. Single-threaded scalar C, no GPU. Same workload
 # constants as metal_bench so the BENCHMARK doc can join the two tables.
 cpu-bench: cpu_bench
@@ -150,6 +158,102 @@ else
 		-fshader-stage=compute $< -o $@
 endif
 
+# CUDA harness. Sibling of metal/vulkan_verify. Verifies the in-fork
+# v0.4.0-milady CUDA kernels (turboquant.cuh, turbo-tcq.cu(h), qjl.cu(h),
+# polarquant.cu(h)) against the canonical fixtures.
+#
+# Resolution order:
+#   1. nvcc on PATH               — required to compile (.cu -> ELF).
+#   2. CUDA_HOME/include          — defaults to /usr/local/cuda; overridable.
+#   3. ELIZA_DFLASH_LLAMA_DIR     — root of the milady-llama-cpp checkout
+#                                   (defaults to ~/.cache/eliza-dflash/milady-llama-cpp)
+#                                   so we can include ggml-cuda/*.cuh.
+#   4. ELIZA_DFLASH_LIBGGML_CUDA  — path to libggml-cuda.so. The harness LINKS
+#                                   against the SHIPPED CUDA library so qjl,
+#                                   polar, and turbo3_tcq exercise the actual
+#                                   production kernel symbols. turbo3 / turbo4
+#                                   are verified through a per-block dot
+#                                   wrapper in cuda_verify.cu that calls the
+#                                   shipped device-side `tbq_decode_block_cuda`
+#                                   helpers (the fork ships no exported
+#                                   turbo3_score / turbo4_score symbol).
+NVCC ?= $(shell command -v nvcc 2>/dev/null)
+CUDA_HOME ?= /usr/local/cuda
+ELIZA_DFLASH_LLAMA_DIR ?= $(HOME)/.cache/eliza-dflash/milady-llama-cpp
+ELIZA_DFLASH_LIBGGML_CUDA ?= $(ELIZA_DFLASH_LLAMA_DIR)/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so
+
+CUDA_INCLUDES = \
+    -I$(CUDA_HOME)/include \
+    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include \
+    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/src \
+    -I.
+
+CUDA_DEFINES = \
+    -DGGML_CUDA_TBQ3_TCQ=1 \
+    -DGGML_CUDA_QJL=1 \
+    -DGGML_CUDA_POLARQUANT=1
+
+cuda: cuda_verify
+cuda_verify: cuda_verify.cu $(QJL_POLAR_OBJ)
+ifeq ($(NVCC),)
+	@echo "CUDA toolchain not found — install via 'apt install nvidia-cuda-toolkit' (Linux) or download the CUDA Toolkit (macOS not supported)."
+	@false
+else
+ifeq ($(wildcard $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/turboquant.cuh),)
+	@echo "CUDA harness needs the milady-llama-cpp checkout at"
+	@echo "  $(ELIZA_DFLASH_LLAMA_DIR)"
+	@echo "Run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda --no-build'"
+	@echo "to fetch it (or override ELIZA_DFLASH_LLAMA_DIR)."
+	@false
+else
+ifeq ($(wildcard $(ELIZA_DFLASH_LIBGGML_CUDA)),)
+	@echo "CUDA harness needs libggml-cuda.so at"
+	@echo "  $(ELIZA_DFLASH_LIBGGML_CUDA)"
+	@echo "Build via 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda',"
+	@echo "or override ELIZA_DFLASH_LIBGGML_CUDA."
+	@false
+else
+	$(NVCC) -O2 -std=c++17 \
+		$(CUDA_INCLUDES) $(CUDA_DEFINES) \
+		cuda_verify.cu $(QJL_POLAR_OBJ) \
+		$(ELIZA_DFLASH_LIBGGML_CUDA) \
+		-lcudart -lm -o cuda_verify
+endif
+endif
+endif
+
+# Compile-only preprocessor pass. Validates that cuda_verify.cu finds every
+# header and that the in-fork API surface is reachable, without needing nvcc
+# to actually emit a binary. Runs anywhere a C++ compiler exists. We pretend
+# to be nvcc by defining __CUDACC__ and giving cuda_runtime.h a stub.
+cuda-preprocess-check:
+ifeq ($(wildcard $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/turboquant.cuh),)
+	@echo "[cuda-preprocess-check] skipped — missing $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda"
+else
+	@echo "[cuda-preprocess-check] preprocessor pass over cuda_verify.cu (no nvcc backend)"
+	$(CXX) -E -x c++ -std=c++17 \
+		$(CUDA_INCLUDES) $(CUDA_DEFINES) \
+		-D__CUDACC__=1 -D__CUDA_ARCH__=860 \
+		cuda_verify.cu > /dev/null
+	@echo "[cuda-preprocess-check] OK"
+endif
+
+# `cuda-verify` runs the harness against all five fixtures, same shape as
+# `bench` does for the perf harness. Gated on nvcc presence so it stays
+# safe on hosts without a CUDA toolchain.
+cuda-verify:
+ifeq ($(NVCC),)
+	@echo "CUDA toolchain not found — install via 'apt install nvidia-cuda-toolkit' (Linux) or download the CUDA Toolkit (macOS not supported)."
+	@false
+else
+	$(MAKE) cuda
+	@echo "[cuda-verify] turbo3 ..."     ; ./cuda_verify fixtures/turbo3.json
+	@echo "[cuda-verify] turbo4 ..."     ; ./cuda_verify fixtures/turbo4.json
+	@echo "[cuda-verify] turbo3_tcq ..." ; ./cuda_verify fixtures/turbo3_tcq.json
+	@echo "[cuda-verify] qjl ..."        ; ./cuda_verify fixtures/qjl.json
+	@echo "[cuda-verify] polar ..."      ; ./cuda_verify fixtures/polar.json
+endif
+
 clean:
-	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify metal_bench cpu_bench
+	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify metal_bench cpu_bench cuda_verify
 	rm -f ../vulkan/*.spv

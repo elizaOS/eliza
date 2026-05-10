@@ -133,21 +133,21 @@ interface BridgeDeps {
    * Optional: per-session allow-list of skill slugs. The bridge consults the
    * registry below when dispatching a child USE_SKILL directive. A directive
    * whose slug is not on the session's allow-list is rejected back into the
-   * child with an error message listing the recommended slugs.
+   * child with an error message listing the slugs that were rendered into that
+   * session's SKILLS.md.
    *
    * If omitted (or no entry is registered for the session), the bridge falls
    * back to permissive behavior — any enabled skill may be invoked. This
    * preserves backwards-compatible behavior for callers that do not yet wire
-   * per-spawn recommendations.
+   * per-spawn manifests.
    */
   sessionAllowList?: SkillSessionAllowList;
 }
 
 /**
  * Session-scoped allow-list registry. Callers register a session's allow-list
- * at spawn time (see `coding-task-handlers.ts` after
- * `recommendSkillsForTask`). The bridge reads the entry when a USE_SKILL
- * directive arrives.
+ * at spawn time from the generated SKILLS.md manifest. The bridge reads the
+ * entry when a USE_SKILL directive arrives.
  *
  * Using a plain Map instead of a WeakMap — the key is the PTY sessionId
  * string assigned at spawn time, which we must explicitly clear on session

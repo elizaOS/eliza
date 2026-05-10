@@ -63,13 +63,21 @@ class PayoutStatusService {
     const networks: NetworkStatus[] = [];
     const warnings: string[] = [];
     const env = getCloudAwareEnv();
+    const skipLiveBalanceChecks = this.shouldSkipLiveBalanceChecks(env);
 
     // Check EVM networks (support both naming conventions)
     const evmPrivateKey = env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY;
-    const evmWalletAddress = evmPrivateKey ? this.getEvmWalletAddress(evmPrivateKey) : null;
+    const evmConfigured = Boolean(evmPrivateKey || env.EVM_PAYOUT_WALLET_ADDRESS);
+    const evmWalletAddress = skipLiveBalanceChecks
+      ? (env.EVM_PAYOUT_WALLET_ADDRESS ?? (evmPrivateKey ? "configured" : null))
+      : evmPrivateKey
+        ? this.getEvmWalletAddress(evmPrivateKey)
+        : null;
 
     for (const network of ["ethereum", "base", "bnb"] as const) {
-      const status = await this.checkEvmNetwork(network, evmWalletAddress);
+      const status = skipLiveBalanceChecks
+        ? this.buildSkippedBalanceStatus(network, evmConfigured, evmWalletAddress)
+        : await this.checkEvmNetwork(network, evmWalletAddress);
       networks.push(status);
 
       if (status.status !== "operational") {
@@ -79,11 +87,16 @@ class PayoutStatusService {
 
     // Check Solana
     const solanaPrivateKey = env.SOLANA_PAYOUT_PRIVATE_KEY;
-    const solanaWalletAddress = solanaPrivateKey
-      ? this.getSolanaWalletAddress(solanaPrivateKey)
-      : null;
+    const solanaConfigured = Boolean(solanaPrivateKey || env.SOLANA_PAYOUT_WALLET_ADDRESS);
+    const solanaWalletAddress = skipLiveBalanceChecks
+      ? (env.SOLANA_PAYOUT_WALLET_ADDRESS ?? (solanaPrivateKey ? "configured" : null))
+      : solanaPrivateKey
+        ? this.getSolanaWalletAddress(solanaPrivateKey)
+        : null;
 
-    const solanaStatus = await this.checkSolanaNetwork(solanaWalletAddress);
+    const solanaStatus = skipLiveBalanceChecks
+      ? this.buildSkippedBalanceStatus("solana", solanaConfigured, solanaWalletAddress)
+      : await this.checkSolanaNetwork(solanaWalletAddress);
     networks.push(solanaStatus);
 
     if (solanaStatus.status !== "operational") {
@@ -169,6 +182,43 @@ class PayoutStatusService {
   // ========================================
   // Private methods
   // ========================================
+
+  private shouldSkipLiveBalanceChecks(env: NodeJS.ProcessEnv): boolean {
+    return (
+      env.PAYOUT_STATUS_SKIP_LIVE_BALANCE === "1" || env.SKIP_PAYOUT_BALANCE_CHECKS === "1"
+    );
+  }
+
+  private buildSkippedBalanceStatus(
+    network: SupportedNetwork,
+    configured: boolean,
+    walletAddress: string | null,
+  ): NetworkStatus {
+    if (!configured) {
+      return {
+        network,
+        configured: false,
+        walletAddress: null,
+        balance: 0,
+        hasBalance: false,
+        status: "not_configured",
+        message:
+          network === "solana"
+            ? "Solana payout wallet not configured"
+            : "EVM payout wallet not configured",
+      };
+    }
+
+    return {
+      network,
+      configured: true,
+      walletAddress: walletAddress ? this.maskAddress(walletAddress) : null,
+      balance: 0,
+      hasBalance: false,
+      status: "no_balance",
+      message: "Live payout balance check skipped",
+    };
+  }
 
   private getEvmWalletAddress(privateKey: string): string | null {
     const key = privateKey.startsWith("0x")

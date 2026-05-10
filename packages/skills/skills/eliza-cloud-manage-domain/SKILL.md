@@ -75,6 +75,15 @@ await cloud.routes.deleteApiV1AppsByIdDomainsByDomainDnsByRecordId({
 });
 ```
 
+In an orchestrated worker, do not request or handle the parent's Cloud API key.
+Use parent-agent Cloud commands for account-bound domain operations:
+
+```text
+USE_SKILL parent-agent {"mode":"list-cloud-commands","query":"domains"}
+USE_SKILL parent-agent {"mode":"cloud-command","command":"domains.app.list","params":{"id":"<appId>"}}
+USE_SKILL parent-agent {"mode":"cloud-command","command":"domains.dns.list","params":{"id":"<appId>","domain":"myapp.com"}}
+```
+
 ## Where the boundaries are
 
 **Cloudflare-registered domains (registrar=cloudflare):** full CRUD on every record type (A, AAAA, CNAME, TXT, MX, SRV, CAA). Cloudflare is the nameserver, so changes propagate within ~minutes.

@@ -119,14 +119,14 @@ où obtenir les identifiants, les champs minimum requis et des conseils pour les
 </div>
 
 **Obtenir les identifiants :** Aucune clé API nécessaire — installez Ollama localement
-**Installation :** https://ollama.com — exécutez `ollama pull llama3.2` pour télécharger un modèle
+**Installation :** https://ollama.com — exécutez `ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m` pour télécharger un modèle
 **Minimum requis :** `OLLAMA_BASE_URL` = `http://localhost:11434` (déclencheur d'activation automatique) ou `OLLAMA_API_ENDPOINT` = `http://localhost:11434/api`
 **Variables :**
 - `OLLAMA_BASE_URL` — Déclencheur d'activation automatique. Par défaut : `http://localhost:11434`
 - `OLLAMA_API_ENDPOINT` — Point de terminaison du plugin. Par défaut : `http://localhost:11434/api`
-- `OLLAMA_SMALL_MODEL` — ex. `llama3.2:3b`
-- `OLLAMA_MEDIUM_MODEL` — ex. `llama3.2`
-- `OLLAMA_LARGE_MODEL` — ex. `llama3.2`
+- `OLLAMA_SMALL_MODEL` — ex. `eliza-1-2b`
+- `OLLAMA_MEDIUM_MODEL` — ex. `eliza-1-9b`
+- `OLLAMA_LARGE_MODEL` — ex. `eliza-1-9b`
 - `OLLAMA_EMBEDDING_MODEL` — ex. `nomic-embed-text`
 **Conseils :** Entièrement gratuit et privé. Nécessite qu'Ollama soit en cours d'exécution sur votre machine ou un serveur. Téléchargez les modèles avec `ollama pull <model>`. Pour les embeddings, utilisez `nomic-embed-text`.
 
@@ -182,7 +182,7 @@ où obtenir les identifiants, les champs minimum requis et des conseils pour les
 **Minimum requis :** `TOGETHER_API_KEY`
 **Variables :**
 - `TOGETHER_API_KEY` — Depuis api.together.xyz
-- `TOGETHER_SMALL_MODEL` — ex. `meta-llama/Llama-3.2-3B-Instruct-Turbo`
+- `TOGETHER_SMALL_MODEL` — ex. `mistralai/Mixtral-8x22B-Instruct-v0.1`
 - `TOGETHER_LARGE_MODEL` — ex. `deepseek-ai/DeepSeek-V3`
 - `TOGETHER_EMBEDDING_MODEL` — ex. `togethercomputer/m2-bert-80M-8k-retrieval`
 - `TOGETHER_IMAGE_MODEL` — ex. `black-forest-labs/FLUX.1-schnell`
@@ -225,8 +225,8 @@ où obtenir les identifiants, les champs minimum requis et des conseils pour les
 **Minimum requis :** `PERPLEXITY_API_KEY`
 **Variables :**
 - `PERPLEXITY_API_KEY` — Depuis les paramètres de perplexity.ai
-- `PERPLEXITY_SMALL_MODEL` — ex. `llama-3.1-sonar-small-128k-online`
-- `PERPLEXITY_LARGE_MODEL` — ex. `llama-3.1-sonar-large-128k-online`
+- `PERPLEXITY_SMALL_MODEL` — ex. `sonar`
+- `PERPLEXITY_LARGE_MODEL` — ex. `sonar-pro`
 **Conseils :** Les modèles Perplexity intègrent la recherche web — idéal pour les tâches nécessitant des informations à jour.
 
 <div id="google-antigravity">
@@ -239,16 +239,6 @@ où obtenir les identifiants, les champs minimum requis et des conseils pour les
 **Variables :**
 - `GOOGLE_CLOUD_API_KEY` — Clé API Google Cloud
 **Conseils :** Google Antigravity est un fournisseur de modèles Google spécialisé. Nécessite des identifiants Google Cloud distincts de ceux de Google Gemini.
-
-<div id="qwen">
-
-### Qwen
-</div>
-
-**Minimum requis :** Configurer via la configuration des plugins de fournisseur dans `eliza.json`
-**Variables :**
-- Définissez les identifiants de modèle via le bloc de configuration `providers.qwen` dans `eliza.json`
-**Conseils :** Modèles Qwen d'Alibaba Cloud. Configurez via la section providers de votre configuration.
 
 <div id="minimax">
 

@@ -33,7 +33,6 @@ Les fournisseurs marqués **bundled** sont pré-installés et se chargent instan
 | [DeepSeek](https://deepseek.com) | `@elizaos/plugin-deepseek` | `DEEPSEEK_API_KEY` | À la demande | Modèles de raisonnement et de code. |
 | [Ollama](https://ollama.com) | `@elizaos/plugin-ollama` | `OLLAMA_BASE_URL` | Inclus | **Modèles locaux.** Aucune clé API nécessaire. Nécessite un serveur [Ollama](https://ollama.com) en cours d'exécution. |
 | [Local AI](https://github.com/elizaos-plugins/plugin-local-ai) | `@elizaos/plugin-local-ai` | — | À la demande | **Modèles locaux en processus.** Exécute des modèles GGUF directement sans serveur externe. |
-| [Qwen](https://qwen.ai) | `@elizaos/plugin-qwen` | — | À la demande | Modèles Qwen d'Alibaba. Configuration via l'entrée du plugin. |
 | [MiniMax](https://minimaxi.com) | `@elizaos/plugin-minimax` | — | À la demande | Modèles de langage MiniMax. Configuration via l'entrée du plugin. |
 | [Together AI](https://together.ai) | `@elizaos/plugin-together` | `TOGETHER_API_KEY` | À la demande | Hébergement de modèles open source. |
 | [Mistral](https://mistral.ai) | `@elizaos/plugin-mistral` | `MISTRAL_API_KEY` | À la demande | Modèles Mistral et Mixtral. |
@@ -322,7 +321,7 @@ Ollama vous permet d'exécuter des modèles localement sans clé API et avec une
   </Step>
   <Step title="Télécharger un modèle">
     ```bash
-    ollama pull llama3.3
+    ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m
     ```
   </Step>
   <Step title="Définir l'URL de base">
@@ -338,7 +337,7 @@ Ollama vous permet d'exécuter des modèles localement sans clé API et avec une
       agents: {
         defaults: {
           model: {
-            primary: "ollama/llama3.3",
+            primary: "ollama/eliza-1-9b",
           },
         },
       },

@@ -17,12 +17,29 @@ vi.mock("@elizaos/agent", () => ({
 }));
 
 vi.mock("@elizaos/shared", () => ({
+  AGENT_MODEL_SLOTS: ["primary", "small", "embedding"],
+  DEFAULT_ROUTING_POLICY: "auto",
+  downloadsStagingDir: () => "/tmp/eliza-local-inference/downloads",
+  elizaModelsDir: () => "/tmp/eliza-local-inference/models",
+  isWithinElizaRoot: () => true,
   isLoopbackBindHost: () => true,
+  localInferenceRoot: () => "/tmp/eliza-local-inference",
   normalizeOnboardingProviderId: (value: unknown) =>
     typeof value === "string" ? value.trim().toLowerCase() : null,
+  registryPath: () => "/tmp/eliza-local-inference/registry.json",
   resolveApiToken: () => null,
   resolveDeploymentTargetInConfig: () => ({}),
   resolveServiceRoutingInConfig: () => ({}),
+  readRoutingPreferences: vi.fn(async () => ({})),
+  setPolicy: vi.fn(),
+  setPreferredProvider: vi.fn(),
+  writeRoutingPreferences: vi.fn(),
+  __registryPathForTests: () => "/tmp/eliza-local-inference/registry.json",
+  hashFile: vi.fn(async () => "sha256"),
+  verifyInstalledModel: vi.fn(async () => ({
+    ok: true,
+    checkedAt: new Date(0).toISOString(),
+  })),
 }));
 
 vi.mock("./auth", () => ({
