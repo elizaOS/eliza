@@ -26,6 +26,7 @@ import type { ElizaConfig } from "../config/config.ts";
 import {
   CORE_PLUGINS,
   ELIZAOS_ANDROID_CORE_PLUGINS,
+  ELIZAOS_ANDROID_TERMINAL_PLUGINS,
   MOBILE_CORE_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
 } from "./core-plugins.ts";
@@ -354,6 +355,10 @@ export function collectPluginNames(
       pluginsToLoad.add(name);
       track(name, "ELIZAOS_ANDROID_CORE_PLUGINS");
     }
+    for (const name of ELIZAOS_ANDROID_TERMINAL_PLUGINS) {
+      pluginsToLoad.add(name);
+      track(name, "ELIZAOS_ANDROID_TERMINAL_PLUGINS");
+    }
   }
   // Agent orchestrator depends on PTY / coding-swarm subprocesses (none of
   // which exist on Android / iOS), so always skip it on mobile regardless of
@@ -569,6 +574,7 @@ export function collectPluginNames(
     const mobileAllowed = new Set<string>([
       ...MOBILE_CORE_PLUGINS,
       ...(onElizaOsAndroid ? ELIZAOS_ANDROID_CORE_PLUGINS : []),
+      ...(onElizaOsAndroid ? ELIZAOS_ANDROID_TERMINAL_PLUGINS : []),
       "@elizaos/plugin-anthropic",
       "@elizaos/plugin-openai",
       "@elizaos/plugin-ollama",
