@@ -1,5 +1,5 @@
 {
-  "generatedAtIso": "2026-05-10T04:23:15.222Z",
+  "generatedAtIso": "2026-05-10T08:25:51.347Z",
   "provider": "cerebras",
   "model": "gpt-oss-120b",
   "domainsGraded": 28,
@@ -18,7 +18,7 @@
         "promptTokens": 1984,
         "completionTokens": 55,
         "totalTokens": 2039,
-        "cachedTokens": 0
+        "cachedTokens": 1024
       },
       "tasksObserved": 4,
       "logEntriesObserved": 4
@@ -32,7 +32,7 @@
         "promptTokens": 2502,
         "completionTokens": 45,
         "totalTokens": 2547,
-        "cachedTokens": 1024
+        "cachedTokens": 2432
       },
       "tasksObserved": 8,
       "logEntriesObserved": 8
@@ -46,7 +46,7 @@
         "promptTokens": 1881,
         "completionTokens": 67,
         "totalTokens": 1948,
-        "cachedTokens": 1024
+        "cachedTokens": 1792
       },
       "tasksObserved": 2,
       "logEntriesObserved": 5
@@ -60,7 +60,7 @@
         "promptTokens": 2064,
         "completionTokens": 129,
         "totalTokens": 2193,
-        "cachedTokens": 1024
+        "cachedTokens": 2048
       },
       "tasksObserved": 3,
       "logEntriesObserved": 6
@@ -74,7 +74,7 @@
         "promptTokens": 1460,
         "completionTokens": 121,
         "totalTokens": 1581,
-        "cachedTokens": 0
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 2
@@ -88,7 +88,7 @@
         "promptTokens": 1431,
         "completionTokens": 65,
         "totalTokens": 1496,
-        "cachedTokens": 1024
+        "cachedTokens": 1408
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -102,7 +102,7 @@
         "promptTokens": 1386,
         "completionTokens": 105,
         "totalTokens": 1491,
-        "cachedTokens": 1024
+        "cachedTokens": 1280
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -172,7 +172,7 @@
         "promptTokens": 1752,
         "completionTokens": 88,
         "totalTokens": 1840,
-        "cachedTokens": 1024
+        "cachedTokens": 1664
       },
       "tasksObserved": 2,
       "logEntriesObserved": 3
@@ -228,7 +228,7 @@
         "promptTokens": 1717,
         "completionTokens": 104,
         "totalTokens": 1821,
-        "cachedTokens": 1024
+        "cachedTokens": 1664
       },
       "tasksObserved": 1,
       "logEntriesObserved": 4
@@ -256,7 +256,7 @@
         "promptTokens": 1471,
         "completionTokens": 67,
         "totalTokens": 1538,
-        "cachedTokens": 1024
+        "cachedTokens": 1408
       },
       "tasksObserved": 1,
       "logEntriesObserved": 2
@@ -284,7 +284,7 @@
         "promptTokens": 1403,
         "completionTokens": 78,
         "totalTokens": 1481,
-        "cachedTokens": 1024
+        "cachedTokens": 1280
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -354,7 +354,7 @@
         "promptTokens": 1347,
         "completionTokens": 83,
         "totalTokens": 1430,
-        "cachedTokens": 0
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -382,7 +382,7 @@
         "promptTokens": 1380,
         "completionTokens": 72,
         "totalTokens": 1452,
-        "cachedTokens": 1024
+        "cachedTokens": 1280
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1

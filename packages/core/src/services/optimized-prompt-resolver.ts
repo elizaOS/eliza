@@ -39,6 +39,32 @@ export function resolveOptimizedPrompt(
 	return injectDemonstrations(optimized.prompt, optimized.fewShotExamples);
 }
 
+/**
+ * Trim a recorded planner input down to the bits that meaningfully teach
+ * the model in-context. Recorded inputs include the full provider block +
+ * tool catalog (often ~30K chars); for ICL we only need the user's
+ * current-turn request. Mirrors the same heuristic in
+ * `plugins/app-training/src/optimizers/bootstrap-fewshot.ts:trimDemonstrationInput`.
+ */
+function trimDemonstrationInput(rawInput: string): string {
+	const userMatch =
+		rawInput.match(
+			/(?:^|\n)user(?:\s+message)?\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i,
+		) ??
+		rawInput.match(
+			/(?:^|\n)user_message\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i,
+		);
+	const candidate = userMatch?.[1]?.trim();
+	if (candidate && candidate.length > 0 && candidate.length <= 600) {
+		return candidate;
+	}
+	if (candidate && candidate.length > 0) {
+		return `${candidate.slice(0, 600).trimEnd()} …`;
+	}
+	if (rawInput.length <= 600) return rawInput;
+	return `${rawInput.slice(0, 400).trimEnd()}\n…\n${rawInput.slice(-200).trimStart()}`;
+}
+
 function injectDemonstrations(
 	prompt: string,
 	examples: OptimizedPromptFewShotExample[],
@@ -53,7 +79,7 @@ function injectDemonstrations(
 	let idx = 1;
 	for (const example of examples) {
 		lines.push(`Example ${idx}:`);
-		lines.push(`Input:\n${example.input.user}`);
+		lines.push(`Input:\n${trimDemonstrationInput(example.input.user)}`);
 		lines.push(`Expected:\n${example.expectedOutput}`);
 		lines.push("");
 		idx += 1;
