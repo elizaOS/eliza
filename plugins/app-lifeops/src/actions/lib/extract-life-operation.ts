@@ -1,12 +1,9 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import {
-  ModelType,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
-import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import { resolveContextWindow } from "../../lifeops/defaults.js";
 import { runExtractorPipeline } from "../../lifeops/llm/extractor-pipeline.js";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 
 export const LIFE_OPERATION_VALUES = [
   "create",
@@ -16,6 +13,12 @@ export const LIFE_OPERATION_VALUES = [
   "skip",
   "snooze",
   "review",
+  // Owner policy verbs (W3-C: PROFILE.set_reminder_preference and
+  // PROFILE.configure_escalation collapsed onto LIFE.policy.* per
+  // HARDCODING_AUDIT §6 #8). Storage lives on OwnerFactStore; the legacy
+  // PROFILE subactions remain for one release as similes that route here.
+  "policy_set_reminder",
+  "policy_configure_escalation",
   "query_calendar_today",
   "query_calendar_next",
   "query_email",

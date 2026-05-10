@@ -6,11 +6,12 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
+import { getCircadianInsightContract } from "@elizaos/plugin-health";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
+import { toActionData } from "../lifeops/google/format-helpers.js";
 import type { LifeOpsScheduleInspection } from "../lifeops/schedule-insight.js";
 import { LifeOpsService } from "../lifeops/service.js";
-import { hasLifeOpsAccess } from "../lifeops/access.js";
-import { toActionData } from "../lifeops/google/format-helpers.js";
 
 type ScheduleSubaction = "summary" | "inspect";
 
@@ -200,18 +201,34 @@ export const scheduleAction: Action = {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerScheduleParameters;
     const subaction = coerceSubaction(params.subaction, messageText(message));
+    const timezone =
+      typeof params.timezone === "string" && params.timezone.trim().length > 0
+        ? params.timezone.trim()
+        : resolveDefaultTimeZone();
+
+    // W3-C drift D-4: consult the CircadianInsightContract registered by
+    // plugin-health for high-level sleep / scheduling reads. The contract
+    // is the typed seam between this action and plugin-health's circadian
+    // domain; the detailed inspection view still goes through
+    // LifeOpsService.inspectSchedule because the inspection record is
+    // produced by app-lifeops's own scheduler tick.
+    const circadianContract = getCircadianInsightContract(runtime);
+    const sleepWindow = circadianContract
+      ? await circadianContract.getCurrentSleepWindow({ timezone })
+      : null;
+
     const service = new LifeOpsService(runtime);
-    const inspection = await service.inspectSchedule({
-      timezone:
-        typeof params.timezone === "string" && params.timezone.trim().length > 0
-          ? params.timezone.trim()
-          : resolveDefaultTimeZone(),
-    });
+    const inspection = await service.inspectSchedule({ timezone });
     const text =
       subaction === "inspect"
         ? formatScheduleInspection(inspection)
         : formatScheduleSummary(inspection);
-    const data = toActionData(scheduleInspectionActionData(inspection));
+    const data = toActionData({
+      ...scheduleInspectionActionData(inspection),
+      ...(sleepWindow
+        ? { circadianContractView: sleepWindow }
+        : { circadianContractView: null }),
+    });
     await callback?.({
       text,
       data: data as any,

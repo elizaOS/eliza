@@ -6,21 +6,17 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import type {
-  LifeOpsDomain,
-  LifeOpsReminderStep,
-  SetLifeOpsReminderPreferenceRequest,
-} from "../contracts/index.js";
-import {
-  normalizeLifeOpsOwnerProfilePatch,
-} from "../lifeops/owner-profile.js";
 import {
   type OwnerFactProvenance,
   type OwnerFactsPatch,
   resolveOwnerFactStore,
 } from "../lifeops/owner/fact-store.js";
+import { normalizeLifeOpsOwnerProfilePatch } from "../lifeops/owner-profile.js";
 import { LifeOpsService } from "../lifeops/service.js";
-import { extractReminderIntensityWithLlm } from "./lib/extract-task-plan.js";
+import {
+  applyOwnerPolicyConfigureEscalation,
+  applyOwnerPolicySetReminder,
+} from "./lib/owner-policy-writes.js";
 import {
   resolveActionArgs,
   type SubactionsMap,
@@ -120,38 +116,6 @@ const SUBACTIONS = {
     optional: ["target", "timeoutMinutes", "callAfterMinutes", "details"],
   },
 } as const satisfies SubactionsMap<ProfileSubaction>;
-
-function detailRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-function detailString(
-  source: Record<string, unknown> | undefined,
-  key: string,
-): string | undefined {
-  const value = source?.[key];
-  return typeof value === "string" && value.trim().length > 0
-    ? value
-    : undefined;
-}
-
-function _detailBoolean(
-  source: Record<string, unknown> | undefined,
-  key: string,
-): boolean | undefined {
-  const value = source?.[key];
-  return typeof value === "boolean" ? value : undefined;
-}
-
-function detailArray(
-  source: Record<string, unknown> | undefined,
-  key: string,
-): unknown[] | undefined {
-  const value = source?.[key];
-  return Array.isArray(value) ? value : undefined;
-}
 
 function formatGenericProfileValue(value: unknown): string | undefined {
   if (typeof value === "string" && value.trim().length > 0) {
@@ -308,83 +272,26 @@ async function handleCapturePhone(
   };
 }
 
-function makePolicyProvenance(intent: string): OwnerFactProvenance {
-  const provenance: OwnerFactProvenance = {
-    source: "policy_action",
-    recordedAt: new Date().toISOString(),
-  };
-  if (intent.length > 0) {
-    provenance.note = intent.slice(0, 200);
-  }
-  return provenance;
-}
-
 async function handleSetReminderPreference(
   runtime: IAgentRuntime,
   params: ProfileParams,
   message: Memory,
 ): Promise<ReturnType<NonNullable<Action["handler"]>>> {
-  const details = detailRecord(params.details);
-  const intent =
-    params.intent?.trim() ||
-    (typeof message.content?.text === "string"
-      ? message.content.text.trim()
-      : "");
-
-  let intensity: SetLifeOpsReminderPreferenceRequest["intensity"] | "unknown" =
-    params.intensity ?? "unknown";
-  if (intensity === "unknown") {
-    const plan = await extractReminderIntensityWithLlm({ runtime, intent });
-    intensity = plan.intensity;
-  }
-  if (intensity === "unknown") {
-    return {
-      success: false,
-      text: "I need to know whether you want reminders minimal, normal, persistent, or high priority only.",
-    };
-  }
-
-  const service = new LifeOpsService(runtime);
-  const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
-  const target = await resolveDefinitionFromIntent(
-    service,
-    params.target,
-    intent,
-    domain,
-  );
-  const request: SetLifeOpsReminderPreferenceRequest = {
-    intensity,
-    definitionId: target?.definition.id ?? null,
-    note: intent,
-  };
-  const preference = await service.setReminderPreference(request);
-  // Mirror the global setting onto OwnerFactStore so the planner can read
-  // intensity from the canonical policy surface (per W2-E: PROFILE → OFS).
-  // Per-definition overrides remain on the definition; only the global
-  // default lands on OFS.
-  if (!target) {
-    const factStore = resolveOwnerFactStore(runtime);
-    await factStore.setReminderIntensity(
-      { intensity, note: intent },
-      makePolicyProvenance(intent),
-    );
-  }
-  const intensityLabel =
-    intensity === "high_priority_only"
-      ? "high priority only"
-      : preference.effective.intensity;
-  if (target) {
-    return {
-      success: true,
-      text: `Reminder intensity for "${target.definition.title}" is now ${intensityLabel}.`,
-      data: { preference },
-    };
-  }
-  return {
-    success: true,
-    text: `Global LifeOps reminders are now ${intensityLabel}.`,
-    data: { preference },
-  };
+  // PROFILE.set_reminder_preference is a one-release simile that delegates
+  // to the canonical LIFE.policy_set_reminder writer (W3-C drift D-3).
+  return applyOwnerPolicySetReminder({
+    runtime,
+    message,
+    intent:
+      params.intent?.trim() ||
+      (typeof message.content?.text === "string"
+        ? message.content.text.trim()
+        : ""),
+    resolveDefinition: resolveDefinitionFromIntent,
+    intensity: params.intensity,
+    target: params.target,
+    details: params.details,
+  });
 }
 
 async function handleConfigureEscalation(
@@ -392,102 +299,19 @@ async function handleConfigureEscalation(
   params: ProfileParams,
   message: Memory,
 ): Promise<ReturnType<NonNullable<Action["handler"]>>> {
-  const details = detailRecord(params.details);
-  const service = new LifeOpsService(runtime);
-  const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
-  const intent =
-    typeof message.content?.text === "string" ? message.content.text : "";
-
-  // No target supplied → policy applies globally. Persist the rule on the
-  // OwnerFactStore so the planner reads escalation policy from the
-  // canonical owner-policy surface (W2-E: PROFILE → OFS for policy).
-  if (!params.target) {
-    const timeoutMinutes =
-      typeof params.timeoutMinutes === "number" ? params.timeoutMinutes : null;
-    const callAfterMinutes =
-      typeof params.callAfterMinutes === "number"
-        ? params.callAfterMinutes
-        : null;
-    if (timeoutMinutes === null && callAfterMinutes === null) {
-      return {
-        success: true,
-        text: "No target supplied and no escalation timing provided; global escalation defaults are unchanged.",
-        data: {
-          timeoutMinutes: null,
-          callAfterMinutes: null,
-        },
-      };
-    }
-    const factStore = resolveOwnerFactStore(runtime);
-    const facts = await factStore.upsertEscalationRule(
-      {
-        rule: {
-          definitionId: null,
-          timeoutMinutes,
-          callAfterMinutes,
-        },
-        note: intent,
-      },
-      makePolicyProvenance(intent),
-    );
-    return {
-      success: true,
-      text: `Global escalation policy updated (timeout=${timeoutMinutes ?? "unset"}m, voice-after=${callAfterMinutes ?? "unset"}m).`,
-      data: {
-        facts,
-        timeoutMinutes,
-        callAfterMinutes,
-      },
-    };
-  }
-  const target = await resolveDefinitionFromIntent(
-    service,
-    params.target,
-    params.target,
-    domain,
-  );
-  if (!target) {
-    return {
-      success: false,
-      text: "I could not find that item to configure its escalation.",
-    };
-  }
-  const ownership =
-    target.definition.domain === "agent_ops"
-      ? { domain: "agent_ops" as const, subjectType: "agent" as const }
-      : { domain: "user_lifeops" as const, subjectType: "owner" as const };
-  const rawSteps =
-    detailArray(details, "steps") ?? detailArray(details, "escalationSteps");
-  const steps: LifeOpsReminderStep[] = rawSteps
-    ? rawSteps
-        .filter(
-          (s): s is Record<string, unknown> =>
-            typeof s === "object" && s !== null,
-        )
-        .map((s) => ({
-          channel: String(
-            s.channel ?? "in_app",
-          ) as LifeOpsReminderStep["channel"],
-          offsetMinutes:
-            typeof s.offsetMinutes === "number" ? s.offsetMinutes : 0,
-          label:
-            typeof s.label === "string"
-              ? s.label
-              : String(s.channel ?? "reminder"),
-        }))
-    : [{ channel: "in_app", offsetMinutes: 0, label: "In-app reminder" }];
-  const updated = await service.updateDefinition(target.definition.id, {
-    ownership,
-    reminderPlan: { steps },
+  // PROFILE.configure_escalation is a one-release simile that delegates
+  // to the canonical LIFE.policy_configure_escalation writer (W3-C drift D-3).
+  return applyOwnerPolicyConfigureEscalation({
+    runtime,
+    message,
+    intent:
+      typeof message.content?.text === "string" ? message.content.text : "",
+    resolveDefinition: resolveDefinitionFromIntent,
+    target: params.target,
+    timeoutMinutes: params.timeoutMinutes,
+    callAfterMinutes: params.callAfterMinutes,
+    details: params.details,
   });
-  const summary = steps
-    .map((s) => `${s.channel} at +${s.offsetMinutes}m`)
-    .join(", ");
-  return {
-    success: true,
-    text: `Updated reminder plan for "${updated.definition.title}": ${summary}.`,
-    data: { updated },
-  };
 }
 
 export const profileAction: Action & {

@@ -30,7 +30,18 @@ import {
   resolveDefaultTimeZone,
   resolveDefaultWindowPolicy,
 } from "../lifeops/defaults.js";
+import {
+  detailBoolean,
+  detailNumber,
+  detailObject,
+  detailString,
+  formatOverviewForQuery,
+  messageText,
+  toActionData,
+} from "../lifeops/google/format-helpers.js";
+import { getDefaultPromptExamplePair } from "../lifeops/i18n/prompt-registry.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { normalizeExplicitTimeZoneToken } from "../lifeops/time/timezone.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
@@ -66,20 +77,13 @@ import {
   latestDeferredLifeDraft,
 } from "./lib/lifeops-deferred-draft.js";
 import {
+  applyOwnerPolicyConfigureEscalation,
+  applyOwnerPolicySetReminder,
+} from "./lib/owner-policy-writes.js";
+import {
   resolveActionArgs,
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
-import {
-  detailBoolean,
-  detailNumber,
-  detailObject,
-  detailString,
-  formatOverviewForQuery,
-  messageText,
-  toActionData,
-} from "../lifeops/google/format-helpers.js";
-import { normalizeExplicitTimeZoneToken } from "../lifeops/time/timezone.js";
-import { getDefaultPromptExamplePair } from "../lifeops/i18n/prompt-registry.js";
 
 // ── Types ─────────────────────────────────────────────
 
@@ -154,6 +158,22 @@ const SUBACTIONS = {
     descriptionCompressed: "review goal progress",
     required: ["target"],
   },
+  policy_set_reminder: {
+    description:
+      "Set reminder intensity policy on the OwnerFactStore: minimal | normal | persistent | high_priority_only. Optional per-definition target.",
+    descriptionCompressed:
+      "policy.set_reminder: intensity=minimal|normal|persistent|high_priority_only",
+    required: [],
+    optional: ["intent", "details"],
+  },
+  policy_configure_escalation: {
+    description:
+      "Configure escalation policy on the OwnerFactStore (timeoutMinutes, callAfterMinutes). Optional per-definition target.",
+    descriptionCompressed:
+      "policy.configure_escalation: timeout-minutes call-after-no-response",
+    required: [],
+    optional: ["intent", "details"],
+  },
 } as const satisfies SubactionsMap<LifeOwnedOperation>;
 
 /**
@@ -173,7 +193,9 @@ type InternalLifeOp =
   | "complete_occurrence"
   | "skip_occurrence"
   | "snooze_occurrence"
-  | "review_goal";
+  | "review_goal"
+  | "policy_set_reminder"
+  | "policy_configure_escalation";
 
 function toInternalLifeOp(
   operation: LifeOwnedOperation,
@@ -194,6 +216,10 @@ function toInternalLifeOp(
       return "snooze_occurrence";
     case "review":
       return "review_goal";
+    case "policy_set_reminder":
+      return "policy_set_reminder";
+    case "policy_configure_escalation":
+      return "policy_configure_escalation";
   }
 }
 
@@ -1971,9 +1997,14 @@ export const lifeAction: Action & {
     "SET_REMINDER",
     "NEW_HABIT",
     "NEW_GOAL",
+    // W3-C drift D-3: PROFILE.set_reminder_preference + configure_escalation
+    // collapsed onto LIFE.policy_*. Old action-name aliases stay registered
+    // here for one release so cached planner outputs keep resolving.
+    "SET_REMINDER_INTENSITY",
+    "CONFIGURE_ESCALATION",
   ],
   description:
-    "Owner-only personal life-management surface for the LifeOps app. Subactions: create / update / delete a life-item (kind=definition for habit/routine/reminder/alarm/todo, or kind=goal for a long-term aspiration); complete / skip / snooze the next occurrence of a definition; review progress on a goal. Cadence (once / daily / weekly / interval / times_per_day) is parsed from the natural-language intent. Owner profile persistence (phone, escalation rules, reminder preferences) lives in PROFILE; calendar/email/overview queries belong to CALENDAR.",
+    "Owner-only personal life-management surface for the LifeOps app. Subactions: create / update / delete a life-item (kind=definition for habit/routine/reminder/alarm/todo, or kind=goal for a long-term aspiration); complete / skip / snooze the next occurrence of a definition; review progress on a goal; policy_set_reminder (set reminder intensity on the OwnerFactStore) and policy_configure_escalation (set timeout / call-after rules). Cadence (once / daily / weekly / interval / times_per_day) is parsed from the natural-language intent. Owner profile fields (name, phone, location) live in PROFILE; calendar/email/overview queries belong to CALENDAR.",
   descriptionCompressed:
     "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
   routingHint:
@@ -3325,6 +3356,39 @@ export const lifeAction: Action & {
         };
       }
 
+      if (internalOp === "policy_set_reminder") {
+        const intensityDetail = detailString(details, "intensity");
+        const intensity =
+          intensityDetail === "minimal" ||
+          intensityDetail === "normal" ||
+          intensityDetail === "persistent" ||
+          intensityDetail === "high_priority_only"
+            ? intensityDetail
+            : undefined;
+        return applyOwnerPolicySetReminder({
+          runtime,
+          message,
+          intent,
+          resolveDefinition: resolveDefinitionFromIntent,
+          intensity,
+          target: targetName,
+          details,
+        });
+      }
+
+      if (internalOp === "policy_configure_escalation") {
+        return applyOwnerPolicyConfigureEscalation({
+          runtime,
+          message,
+          intent,
+          resolveDefinition: resolveDefinitionFromIntent,
+          target: targetName,
+          timeoutMinutes: detailNumber(details, "timeoutMinutes"),
+          callAfterMinutes: detailNumber(details, "callAfterMinutes"),
+          details,
+        });
+      }
+
       return {
         success: false,
         text: "I didn't understand that life management request.",
@@ -3354,7 +3418,8 @@ export const lifeAction: Action & {
   parameters: [
     {
       name: "subaction",
-      description: "Which life operation to perform.",
+      description:
+        "Which life operation to perform. Owner-policy verbs (policy_set_reminder, policy_configure_escalation) write to OwnerFactStore (per W3-C drift D-3).",
       required: false,
       schema: {
         type: "string" as const,
@@ -3366,6 +3431,8 @@ export const lifeAction: Action & {
           "skip",
           "snooze",
           "review",
+          "policy_set_reminder",
+          "policy_configure_escalation",
         ],
       },
     },
