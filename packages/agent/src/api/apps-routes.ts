@@ -13,6 +13,7 @@ import {
   hasAppInterface,
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
+  parseAppIsolation,
   parseAppPermissions,
 } from "@elizaos/shared";
 import {
@@ -1462,6 +1463,7 @@ export async function handleAppsRoutes(
           aliases,
           directory: subdir,
           displayName,
+          isolation: parseAppIsolation(appMeta.isolation),
         };
         if (permissionsResult.manifest.raw !== null) {
           entryRecord.requestedPermissions = permissionsResult.manifest.raw;

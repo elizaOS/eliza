@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { MAX_PATTERN_LENGTH, parseAppPermissions } from "./app-permissions.js";
+import {
+  MAX_PATTERN_LENGTH,
+  parseAppIsolation,
+  parseAppPermissions,
+} from "./app-permissions.js";
+
+describe("parseAppIsolation", () => {
+  it("returns 'worker' when value is 'worker'", () => {
+    expect(parseAppIsolation("worker")).toBe("worker");
+  });
+
+  it("returns 'none' when value is 'none'", () => {
+    expect(parseAppIsolation("none")).toBe("none");
+  });
+
+  it("defaults to 'none' for undefined / null / unknown values", () => {
+    expect(parseAppIsolation(undefined)).toBe("none");
+    expect(parseAppIsolation(null)).toBe("none");
+    expect(parseAppIsolation("subprocess")).toBe("none");
+    expect(parseAppIsolation(42)).toBe("none");
+  });
+});
 
 describe("parseAppPermissions", () => {
   describe("absent / null / undefined", () => {

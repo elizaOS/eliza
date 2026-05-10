@@ -16,7 +16,9 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
+	type AppIsolation,
 	type AppPermissionsManifest,
+	parseAppIsolation,
 	parseAppPermissions,
 } from "@elizaos/shared";
 import { readStringOption } from "../params.js";
@@ -38,6 +40,7 @@ interface DiscoveredApp {
 	slug: string;
 	aliases: string[];
 	permissions: AppPermissionsManifest;
+	isolation: AppIsolation;
 }
 
 async function readPackageJson(
@@ -130,6 +133,7 @@ async function discoverApps(directory: string): Promise<DiscoveryResult> {
 			slug,
 			aliases,
 			permissions: permissionsResult.manifest,
+			isolation: parseAppIsolation(appMeta.isolation),
 		});
 	}
 
@@ -242,6 +246,7 @@ export async function runLoadFromDirectory({
 			aliases: app.aliases,
 			directory: app.directory,
 			displayName: app.displayName,
+			isolation: app.isolation,
 			...(app.permissions.raw !== null
 				? { requestedPermissions: app.permissions.raw }
 				: {}),

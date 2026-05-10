@@ -81,6 +81,33 @@ export interface NetPermissions {
 export type AppTrust = "first-party" | "external";
 
 /**
+ * Execution-isolation mode an app can request in `elizaos.app.isolation`.
+ *
+ * - `"none"` (default): app runs in-process with the agent runtime, with
+ *   full access. Fast path; intended for first-party and trusted apps.
+ * - `"worker"`: app runs in an isolated Bun worker. FS and network calls
+ *   are gated against the app's declared + granted permissions at the
+ *   bridge boundary. Phase 2 enforcement.
+ *
+ * Apps can request *more* isolation than the loader's policy ("worker"
+ * is always honoured if declared) but never *less* — Phase 3 may force
+ * `"worker"` for `trust: "external"` apps regardless of what they
+ * declared.
+ */
+export type AppIsolation = "none" | "worker";
+
+/**
+ * Parses a raw `isolation` field from `elizaos.app.isolation` into the
+ * typed enum, defaulting to `"none"` when absent. Unknown values
+ * (including future modes a later Milady version might add) are
+ * coerced to `"none"` to keep the parser forward-compatible.
+ */
+export function parseAppIsolation(value: unknown): AppIsolation {
+  if (value === "worker") return "worker";
+  return "none";
+}
+
+/**
  * Merged view of declared + recognised + granted permission state for one
  * app. Returned by the registry service and the
  * `GET/PUT /api/apps/permissions/:slug` HTTP routes.
@@ -88,6 +115,8 @@ export type AppTrust = "first-party" | "external";
 export interface AppPermissionsView {
   slug: string;
   trust: AppTrust;
+  /** Execution isolation mode declared by the app (defaults to "none"). */
+  isolation: AppIsolation;
   /** Raw `elizaos.app.permissions` block from the app's package.json. */
   requestedPermissions: Record<string, unknown> | null;
   /** Intersection of declared namespaces with what this Milady recognises. */

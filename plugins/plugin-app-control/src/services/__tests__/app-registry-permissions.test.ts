@@ -291,6 +291,56 @@ describe("AppRegistryService permissions surface", () => {
 		});
 	});
 
+	describe("isolation persistence (Phase 2.1)", () => {
+		it("defaults isolation to 'none' when entry omits it", async () => {
+			const service = new AppRegistryService(NOOP_RUNTIME);
+			await service.register(makeEntry({}), { trust: "external" });
+			const view = await service.getPermissionsView("demo");
+			expect(view?.isolation).toBe("none");
+		});
+
+		it("persists isolation:'worker' across service restart", async () => {
+			const first = new AppRegistryService(NOOP_RUNTIME);
+			await first.register(
+				makeEntry({
+					isolation: "worker",
+					requestedPermissions: { fs: { read: ["**"] } },
+				}),
+				{ trust: "external" },
+			);
+			const sameProcess = await first.getPermissionsView("demo");
+			expect(sameProcess?.isolation).toBe("worker");
+
+			const fresh = new AppRegistryService(NOOP_RUNTIME);
+			const afterRestart = await fresh.getPermissionsView("demo");
+			expect(afterRestart?.isolation).toBe("worker");
+		});
+
+		it("defaults missing isolation to 'none' for back-compat with pre-Phase-2 entries", async () => {
+			const fs = await import("node:fs/promises");
+			const registryPath = path.join(state.stateDir, "app-registry.json");
+			await fs.writeFile(
+				registryPath,
+				JSON.stringify({
+					version: 1,
+					entries: [
+						{
+							slug: "legacy",
+							canonicalName: "@example/app-legacy",
+							aliases: [],
+							directory: "/tmp/legacy",
+							displayName: "Legacy",
+							// No isolation field
+						},
+					],
+				}),
+			);
+			const service = new AppRegistryService(NOOP_RUNTIME);
+			const view = await service.getPermissionsView("legacy");
+			expect(view?.isolation).toBe("none");
+		});
+	});
+
 	describe("trust persistence (regression: PR #7554 review P1)", () => {
 		it("stores trust on the entry so first-party labels survive a restart", async () => {
 			const first = new AppRegistryService(NOOP_RUNTIME);
