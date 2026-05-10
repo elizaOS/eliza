@@ -57,14 +57,16 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        registerPlugin(AgentPlugin.class);
-        super.onCreate(savedInstanceState);
-
-        // chrome://inspect access for debug builds. Off in release.
-        // BuildConfig is gradle-generated per package; the import is implicit.
+        // Per Android docs, must precede the first WebView instantiation.
+        // BridgeActivity.super.onCreate constructs the Capacitor WebView,
+        // so the toggle is set first to stay race-proof against future
+        // Capacitor versions that eagerly start the renderer.
         if (BuildConfig.DEBUG) {
             WebView.setWebContentsDebuggingEnabled(true);
         }
+
+        registerPlugin(AgentPlugin.class);
+        super.onCreate(savedInstanceState);
 
         // The Capacitor WebView serves the renderer at https://localhost
         // (its default secure-context origin); the on-device Eliza agent
