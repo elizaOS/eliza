@@ -737,7 +737,7 @@ export const databaseAction: Action = {
     databaseHandler(runtime, options),
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: `Op to perform. One of: ${DATABASE_OPS.join(", ")}.`,
       required: true,
       schema: { type: "string" as const, enum: [...DATABASE_OPS] },

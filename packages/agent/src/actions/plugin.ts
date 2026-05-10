@@ -867,7 +867,7 @@ export const pluginAction: Action = {
   },
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: "Operation to perform.",
       required: true,
       schema: { type: "string" as const, enum: [...PLUGIN_OPS] },

@@ -2152,7 +2152,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
   suppressPostActionContinuation: true,
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description:
         "Task operation: create, spawn_agent, send, stop_agent, list_agents, cancel, history, control, share, provision_workspace, submit_workspace, manage_issues, archive, reopen.",
       required: false,

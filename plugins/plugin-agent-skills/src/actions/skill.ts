@@ -138,7 +138,7 @@ export const skillAction: Action = {
 	roleGate: { minRole: "USER" },
 	parameters: [
 		{
-			name: "op",
+			name: "subaction",
 			description:
 				"Operation to perform. One of: search, details, sync, toggle, install, uninstall. Inferred from message text when omitted.",
 			required: false,

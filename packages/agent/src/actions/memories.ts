@@ -366,7 +366,7 @@ export const memoryAction: Action = {
   },
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: "Operation to perform.",
       required: true,
       schema: { type: "string" as const, enum: [...MEMORY_OPS] },

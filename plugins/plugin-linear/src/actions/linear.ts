@@ -207,7 +207,7 @@ export const linearAction: Action = {
   roleGate: { minRole: "USER" },
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description:
         "Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
       required: false,
