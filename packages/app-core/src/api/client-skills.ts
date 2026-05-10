@@ -5,6 +5,7 @@
 
 import type { CustomActionDef } from "@elizaos/agent";
 import { packageNameToAppRouteSlug } from "@elizaos/shared";
+import type { AppPermissionsView } from "@elizaos/shared/contracts/app-permissions";
 import { ElizaClient } from "./client-base";
 import type {
   AppLaunchResult,
@@ -225,6 +226,26 @@ declare module "./client-base" {
     ): Promise<{ ok: boolean; run: AppRunSummary }>;
     getAppInfo(name: string): Promise<RegistryAppInfo>;
     launchApp(name: string): Promise<AppLaunchResult>;
+    /**
+     * Returns one permissions view per registered app. Cheap enough to
+     * call on Settings panel mount; the registry only stores
+     * directory-loaded apps (typically <20 in practice).
+     */
+    listAppPermissions(): Promise<AppPermissionsView[]>;
+    /**
+     * Returns the merged declared + recognised + granted permission view
+     * for an app. 404 if no app is registered under that slug.
+     */
+    getAppPermissions(slug: string): Promise<AppPermissionsView>;
+    /**
+     * Replaces the granted-namespace set for an app. Idempotent. Server
+     * rejects unknown namespace names and namespaces the app's manifest
+     * did not declare.
+     */
+    setAppPermissions(
+      slug: string,
+      namespaces: readonly string[],
+    ): Promise<AppPermissionsView>;
     sendAppRunMessage(
       runId: string,
       content: string,
@@ -899,6 +920,28 @@ ElizaClient.prototype.launchApp = async function (this: ElizaClient, name) {
   return this.fetch("/api/apps/launch", {
     method: "POST",
     body: JSON.stringify({ name }),
+  });
+};
+
+ElizaClient.prototype.listAppPermissions = async function (this: ElizaClient) {
+  return this.fetch("/api/apps/permissions");
+};
+
+ElizaClient.prototype.getAppPermissions = async function (
+  this: ElizaClient,
+  slug,
+) {
+  return this.fetch(`/api/apps/permissions/${encodeURIComponent(slug)}`);
+};
+
+ElizaClient.prototype.setAppPermissions = async function (
+  this: ElizaClient,
+  slug,
+  namespaces,
+) {
+  return this.fetch(`/api/apps/permissions/${encodeURIComponent(slug)}`, {
+    method: "PUT",
+    body: JSON.stringify({ namespaces }),
   });
 };
 

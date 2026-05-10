@@ -26,6 +26,8 @@ import {
 	registerCuratedApp,
 } from "@elizaos/shared";
 import {
+	type AppPermissionsView,
+	type AppTrust,
 	RECOGNISED_PERMISSION_NAMESPACES,
 	type RecognisedPermissionNamespace,
 	recognisedNamespacesForRaw,
@@ -33,13 +35,10 @@ import {
 
 export const APP_REGISTRY_SERVICE_TYPE = "app-registry";
 
-/**
- * Source classification computed by the loader at register time. NOT
- * declared by the app — encoded by the caller based on where the
- * directory came from (in-tree first-party dir vs. external load). See
- * `eliza/packages/docs/architecture/app-permissions-manifest.md`.
- */
-export type AppTrust = "first-party" | "external";
+// Re-export the canonical shared types so existing local importers
+// (action handlers, tests) keep working without an import-site rewrite.
+// See `eliza/packages/docs/architecture/app-permissions-manifest.md`.
+export type { AppPermissionsView, AppTrust };
 
 export interface AppRegistryEntry extends ElizaCuratedAppDefinition {
 	directory: string;
@@ -88,15 +87,6 @@ interface PersistedGrant {
 interface PersistedGrantsShape {
 	version: 1;
 	grants: Record<string, PersistedGrant>;
-}
-
-export interface AppPermissionsView {
-	slug: string;
-	trust: AppTrust;
-	requestedPermissions: Record<string, unknown> | null;
-	recognisedNamespaces: RecognisedPermissionNamespace[];
-	grantedNamespaces: RecognisedPermissionNamespace[];
-	grantedAt: string | null;
 }
 
 export type GrantActor = "user" | "first-party-auto";

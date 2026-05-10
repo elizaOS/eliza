@@ -1275,6 +1275,22 @@ export async function handleAppsRoutes(
     return true;
   }
 
+  if (method === "GET" && pathname === "/api/apps/permissions") {
+    const runtimeWithList = runtime as {
+      getService?: (type: string) => {
+        listPermissionsViews?: () => Promise<unknown[]>;
+      } | null;
+    } | null;
+    const registry = runtimeWithList?.getService?.("app-registry") ?? null;
+    if (!registry?.listPermissionsViews) {
+      error(res, "AppRegistryService is not registered on the runtime", 503);
+      return true;
+    }
+    const views = await registry.listPermissionsViews();
+    json(res, views);
+    return true;
+  }
+
   if (
     (method === "GET" || method === "PUT") &&
     pathname.startsWith("/api/apps/permissions/")
