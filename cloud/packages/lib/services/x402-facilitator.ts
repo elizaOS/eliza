@@ -521,7 +521,7 @@ class X402FacilitatorService {
     const enabledStr =
       env.X402_NETWORKS ??
       env.EVM_NETWORKS ??
-      "base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana";
+      "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana";
     const enabledNames = parseEnabledNetworkNames(enabledStr);
 
     const privateKey = await this.loadFacilitatorKey();
