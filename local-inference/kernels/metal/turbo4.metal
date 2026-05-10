@@ -1,21 +1,25 @@
-// DRAFT: NOT VALIDATED ON HARDWARE — see kernels/README.md
+// DRAFT: COMPILED locally NOT YET — agent runs on Linux without xcrun metal.
+// SOURCE-LEVEL VERIFIED against the always-on patchMetalTurbo4 hook in
+// scripts/build-llama-cpp-dflash.mjs (current pure-4-bit PolarQuant layout,
+// no QJL residuals). Hardware verification still required —
+// see local-inference/kernels/README.md "Verification matrix".
 //
 // turbo4 KV cache dequant + Q·K dot product (Metal Shading Language).
 //
-// Companion to the in-tree patch at
-// scripts/build-llama-cpp-dflash.mjs:181 (`patchMetalTurbo4`), which rewrites
-// the fork's stale Metal turbo4 path to the current pure-4-bit PolarQuant
-// layout (norm + qs[64], no QJL residuals).
-//
-// This standalone shader is for offline numerical verification: same block
-// decode, same constants, isolated from the rest of the Metal library.
-//
-// Block layout (block_turbo4_0 in ggml-common.h, 66 bytes):
-//     half     norm        // fp16 corrected norm = (norm/recon_norm) * alpha
+// Block layout (block_turbo4_0 in ggml-common.h, 66 bytes, alignment 2):
+//     half     norm        // fp16 corrected norm = (orig_norm/recon_norm) * alpha
 //     uchar    qs[64]      // 4-bit indices, 2 per byte (low nibble first)
 //
+// Element decode (matches reference / Python ground truth):
+//     elem 0..127:
+//         qb  = qs[elem >> 1]
+//         idx = (elem & 1) == 0 ? (qb & 0xF) : (qb >> 4)
+//         k   = TURBO_CENTROIDS_4BIT[idx] * norm
+//
 // Graph pre-rotates Q so we accumulate (rotated_Q · centroids) * norm.
-// CUDA: dequantize_turbo4_0 in turbo-quant-cuda.cuh.
+//
+// Dispatch: one threadgroup per (n_kv, n_head). Threadgroup size MUST equal
+// 32 (one Apple SIMD-group). Each thread handles 4 of the 128 elements.
 
 #include <metal_stdlib>
 using namespace metal;
@@ -37,7 +41,7 @@ struct turbo_dot_args {
     uint n_kv;
     uint kv_stride_blocks;  // 1 for d=128 (one block IS the group)
     uint q_head;
-    uint head_offset_bytes;
+    uint head_offset_bytes; // must be a multiple of sizeof(block_turbo4_0) (66)
 };
 
 kernel void kernel_turbo4_dot(
@@ -58,8 +62,8 @@ kernel void kernel_turbo4_dot(
     float acc = 0.0f;
     for (uint local = 0; local < 4; ++local) {
         uint elem = tid * 4 + local;          // 0..127
-        uint qb = blk->qs[elem >> 1];
-        uint idx = ((elem & 1) == 0) ? (qb & 0xF) : (qb >> 4);
+        uint qb   = blk->qs[elem >> 1];
+        uint idx  = ((elem & 1) == 0) ? (qb & 0xF) : (qb >> 4);
         float k_val = TURBO_CENTROIDS_4BIT[idx] * norm;
         float q_val = q[args.q_head * args.head_dim + elem];
         acc += q_val * k_val;

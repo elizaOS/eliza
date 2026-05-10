@@ -10,6 +10,8 @@ CXXFLAGS?= -O2 -Wall -Wextra -std=c++17
 
 REF_SRC = ../reference/turbo_kernels.c
 REF_OBJ = turbo_kernels.o
+QJL_POLAR_SRC = qjl_polar_ref.c
+QJL_POLAR_OBJ = qjl_polar_ref.o
 
 .PHONY: all reference-test vulkan vulkan-spirv metal clean
 
@@ -21,12 +23,15 @@ all: reference-test
 $(REF_OBJ): $(REF_SRC) ../reference/turbo_kernels.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(QJL_POLAR_OBJ): $(QJL_POLAR_SRC) qjl_polar_ref.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
 reference-test: gen_fixture
 	@echo "[kernels/verify] reference vs reference (fixture sanity)..."
 	./gen_fixture --self-test
 
-gen_fixture: gen_fixture.c $(REF_OBJ)
-	$(CC) $(CFLAGS) -I../reference $< $(REF_OBJ) -lm -o $@
+gen_fixture: gen_fixture.c $(REF_OBJ) $(QJL_POLAR_OBJ)
+	$(CC) $(CFLAGS) -I../reference $< $(REF_OBJ) $(QJL_POLAR_OBJ) -lm -o $@
 
 # Vulkan harness. Resolution order:
 #   1. VULKAN_SDK env var (LunarG SDK install) — preferred, gives glslangValidator
@@ -68,10 +73,10 @@ endif
 
 # Metal harness (macOS only). Requires xcrun on PATH.
 metal: metal_verify
-metal_verify: metal_verify.mm $(REF_OBJ)
+metal_verify: metal_verify.mm $(REF_OBJ) $(QJL_POLAR_OBJ)
 	@which xcrun >/dev/null 2>&1 || { echo "xcrun not found — Metal harness needs macOS Xcode tools."; exit 1; }
 	clang++ $(CXXFLAGS) -ObjC++ -fobjc-arc -I../reference \
-		metal_verify.mm $(REF_OBJ) \
+		metal_verify.mm $(REF_OBJ) $(QJL_POLAR_OBJ) \
 		-framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics \
 		-lm -o metal_verify
 
@@ -102,5 +107,5 @@ else
 endif
 
 clean:
-	rm -f $(REF_OBJ) gen_fixture vulkan_verify metal_verify
+	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify
 	rm -f ../vulkan/*.spv

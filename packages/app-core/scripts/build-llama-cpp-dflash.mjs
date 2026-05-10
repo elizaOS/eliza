@@ -45,6 +45,11 @@ const SUPPORTED_TARGETS = [
   "android-arm64-vulkan",
   "darwin-arm64-metal",
   "darwin-x64-metal",
+  // iOS targets (require macOS host with Xcode). Output is a static .a +
+  // headers that the LlamaCpp.xcframework patch in
+  // packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch consumes.
+  "ios-arm64-metal",
+  "ios-arm64-simulator-metal",
   "windows-x64-cpu",
   "windows-x64-cuda",
 ];
@@ -290,10 +295,31 @@ function safelyPrepareVulkanHeaders() {
 //   * Android cross-compile uses the NDK's bundled cmake toolchain.
 //   * GGML_NATIVE is on for host targets and OFF for cross-compiles
 //     (you can't sniff -march for a different ABI).
+// Split a target triple into (platform, arch, backend, isSimulator).
+// Handles the special-case 4-part `ios-arm64-simulator-metal` triple.
+function parseTarget(target) {
+  const parts = target.split("-");
+  if (parts[0] === "ios" && parts[2] === "simulator") {
+    return {
+      platform: parts[0],
+      arch: parts[1],
+      backend: parts[3],
+      isSimulator: true,
+    };
+  }
+  return {
+    platform: parts[0],
+    arch: parts[1],
+    backend: parts[2],
+    isSimulator: false,
+  };
+}
+
 function cmakeFlagsForTarget(target, ctx) {
-  const [platform, arch, backend] = target.split("-");
+  const { platform, arch, backend, isSimulator } = parseTarget(target);
   const flags = ["-DLLAMA_BUILD_TESTS=OFF", "-DLLAMA_BUILD_EXAMPLES=ON"];
-  const isCross = platform === "android" || platform === "windows";
+  const isCross =
+    platform === "android" || platform === "windows" || platform === "ios";
   flags.push(`-DGGML_NATIVE=${isCross ? "OFF" : "ON"}`);
 
   // Disable backends we don't want by default; flip the chosen one back on.
@@ -363,6 +389,36 @@ function cmakeFlagsForTarget(target, ctx) {
     if (process.env.MINGW_TOOLCHAIN_FILE) {
       flags.push(`-DCMAKE_TOOLCHAIN_FILE=${process.env.MINGW_TOOLCHAIN_FILE}`);
     }
+  } else if (platform === "ios") {
+    // iOS cross-compile (host must be macOS with Xcode). The Capacitor
+    // plugin's xcframework patch consumes the resulting static archive +
+    // headers; we emit a static lib here so the patch can drop it into
+    // ios/Frameworks-xcframework/LlamaCpp.xcframework/ios-arm64{-simulator}/
+    // LlamaCpp.framework/.
+    flags.push(
+      "-DCMAKE_SYSTEM_NAME=iOS",
+      "-DCMAKE_OSX_ARCHITECTURES=arm64",
+      // iOS 14 covers every supported Capacitor target.
+      "-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0",
+      // Capacitor plugin links the native code statically.
+      "-DBUILD_SHARED_LIBS=OFF",
+      // CURL isn't part of the iOS SDK and llama-server's HTTP isn't used
+      // on-device — disable to keep the static archive minimal.
+      "-DLLAMA_CURL=OFF",
+      // Don't try to build llama-server on iOS (no networking sandbox path).
+      "-DLLAMA_BUILD_EXAMPLES=OFF",
+    );
+    if (isSimulator) {
+      flags.push("-DCMAKE_OSX_SYSROOT=iphonesimulator");
+    } else {
+      flags.push("-DCMAKE_OSX_SYSROOT=iphoneos");
+    }
+    if (backend === "metal") {
+      // Metal kernels work on both iOS device and simulator (since macOS 10.15
+      // / iOS 13). Embed the .metallib into the bundle so runtime AIR JIT
+      // doesn't have to read sources from the app sandbox.
+      flags.push("-DGGML_METAL_EMBED_LIBRARY=ON");
+    }
   }
 
   const extra = process.env.ELIZA_DFLASH_CMAKE_FLAGS?.trim();
@@ -373,9 +429,12 @@ function cmakeFlagsForTarget(target, ctx) {
 // Inspect compatibility from the host point of view. Returns either
 // { ok: true } or { ok: false, reason: string } so --all can skip cleanly.
 function targetCompatibility(target, ctx) {
-  const [platform, , backend] = target.split("-");
+  const { platform, backend } = parseTarget(target);
   if (platform === "darwin" && process.platform !== "darwin") {
     return { ok: false, reason: "darwin target requires macOS host" };
+  }
+  if (platform === "ios" && process.platform !== "darwin") {
+    return { ok: false, reason: "ios target requires macOS host with Xcode" };
   }
   if (platform === "linux" && process.platform !== "linux") {
     return { ok: false, reason: "linux target requires linux host" };
@@ -715,6 +774,11 @@ function patchVulkanKernels(cacheDir) {
 // DRAFT: copies the repo-local Metal turbo3 / turbo3_tcq shader sources into
 // the fork. Default OFF — set ELIZA_DFLASH_PATCH_METAL_TURBO3=1 to opt in.
 // patchMetalTurbo4 above is unrelated and always runs in metal builds.
+//
+// IMPORTANT: keep gated until W1-D's metal_verify harness reports 8/8 PASS
+// against CUDA-derived fixtures on real Apple Silicon hardware. The fork's
+// in-tree dequantize_turbo3_0_t4 is the production path today; replacing it
+// with this standalone shader before hardware proof would risk a regression.
 function patchMetalTurbo3Tcq(cacheDir) {
   if (process.env.ELIZA_DFLASH_PATCH_METAL_TURBO3 !== "1") return;
   const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
@@ -738,10 +802,64 @@ function patchMetalTurbo3Tcq(cacheDir) {
   );
 }
 
+// DRAFT: copies the repo-local QJL Metal shader source into the fork. Default
+// OFF — set ELIZA_DFLASH_PATCH_METAL_QJL=1 to opt in. Depends on the on-fork
+// `block_qjl1_256` definition that W1-A is responsible for landing in
+// ggml-common.h (currently absent from upstream buun-llama-cpp); this hook
+// drops only the .metal source. Wiring the dispatcher in `ggml-metal.m` and
+// the cache-type plumbing happens in a separate PR once the CPU side lands.
+function patchMetalQjl(cacheDir) {
+  if (process.env.ELIZA_DFLASH_PATCH_METAL_QJL !== "1") return;
+  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
+  const srcDir = path.join(repoRoot, "local-inference", "kernels", "metal");
+  if (!fs.existsSync(srcDir)) {
+    console.warn(`[dflash-build] patchMetalQjl: ${srcDir} missing, skipping`);
+    return;
+  }
+  const dstDir = path.join(cacheDir, "ggml", "src", "ggml-metal");
+  if (!fs.existsSync(dstDir)) {
+    console.warn(`[dflash-build] patchMetalQjl: ${dstDir} missing in fork, skipping`);
+    return;
+  }
+  const src = path.join(srcDir, "qjl.metal");
+  if (!fs.existsSync(src)) return;
+  fs.copyFileSync(src, path.join(dstDir, "qjl.metal"));
+  console.log(
+    "[dflash-build] DRAFT patchMetalQjl applied — depends on W1-A's block_qjl1_256 in fork; kernels NOT validated on hardware",
+  );
+}
+
+// DRAFT: copies the repo-local PolarQuant Metal shader source into the fork.
+// Default OFF — set ELIZA_DFLASH_PATCH_METAL_POLAR=1 to opt in. Depends on
+// W1-B's `block_q4_polar` in the fork's ggml-common.h. Same staged approach:
+// drop the .metal source first, wire the dispatcher in a follow-up.
+function patchMetalPolar(cacheDir) {
+  if (process.env.ELIZA_DFLASH_PATCH_METAL_POLAR !== "1") return;
+  const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
+  const srcDir = path.join(repoRoot, "local-inference", "kernels", "metal");
+  if (!fs.existsSync(srcDir)) {
+    console.warn(`[dflash-build] patchMetalPolar: ${srcDir} missing, skipping`);
+    return;
+  }
+  const dstDir = path.join(cacheDir, "ggml", "src", "ggml-metal");
+  if (!fs.existsSync(dstDir)) {
+    console.warn(`[dflash-build] patchMetalPolar: ${dstDir} missing in fork, skipping`);
+    return;
+  }
+  const src = path.join(srcDir, "polar.metal");
+  if (!fs.existsSync(src)) return;
+  fs.copyFileSync(src, path.join(dstDir, "polar.metal"));
+  console.log(
+    "[dflash-build] DRAFT patchMetalPolar applied — depends on W1-B's block_q4_polar in fork; kernels NOT validated on hardware",
+  );
+}
+
 function applyForkPatches(cacheDir, backend) {
   if (backend === "metal") {
     patchMetalTurbo4(cacheDir);
     patchMetalTurbo3Tcq(cacheDir);
+    patchMetalQjl(cacheDir);
+    patchMetalPolar(cacheDir);
   }
   if (backend === "vulkan") {
     patchVulkanKernels(cacheDir);
@@ -778,7 +896,7 @@ function makeDarwinInstallSelfContained(outDir, names, buildBinDir) {
 // object files instead (e.g. ggml-cuda/turbo3.cu.o,
 // ggml-metal/turbo3.metal.air, etc.).
 function probeKernels(target, buildDir, outDir) {
-  const [platform, , backend] = target.split("-");
+  const { platform, backend } = parseTarget(target);
   const canRunOnHost = canRunTargetOnHost(target);
   const kernels = {
     dflash: false,
@@ -847,8 +965,8 @@ function probeKernels(target, buildDir, outDir) {
 }
 
 function canRunTargetOnHost(target) {
-  const [platform, arch] = target.split("-");
-  if (platform === "android") return false;
+  const { platform, arch } = parseTarget(target);
+  if (platform === "android" || platform === "ios") return false;
   if (platform === "windows" && process.platform !== "win32") return false;
   if (platform === "darwin" && process.platform !== "darwin") return false;
   if (platform === "linux" && process.platform !== "linux") return false;
@@ -885,7 +1003,7 @@ function writeCapabilities({
   forkCommit,
   binaries,
 }) {
-  const [platform, arch, backend] = target.split("-");
+  const { platform, arch, backend } = parseTarget(target);
   const kernels = probeKernels(target, buildDir, outDir);
   const capabilities = {
     target,
@@ -912,7 +1030,7 @@ function targetOutDir(target, override) {
 
 // Build a single target. Returns the resulting CAPABILITIES.json object.
 function buildTarget({ target, args, ctx }) {
-  const [, , backend] = target.split("-");
+  const { platform, backend } = parseTarget(target);
   const outDir = targetOutDir(target, args.outDirOverride);
   const buildDir = path.join(args.cacheDir, "build", target);
   const flags = cmakeFlagsForTarget(target, ctx);
@@ -934,59 +1052,105 @@ function buildTarget({ target, args, ctx }) {
 
   fs.mkdirSync(buildDir, { recursive: true });
   run("cmake", ["-B", buildDir, ...flags], { cwd: args.cacheDir });
+
+  // iOS targets emit a static archive used by the Capacitor xcframework
+  // patch; everything else builds the executables we use directly on host.
+  const isIos = platform === "ios";
+  const cmakeBuildTargets = isIos
+    ? ["llama", "ggml", "ggml-base", "ggml-cpu", "ggml-metal"]
+    : ["llama-server", "llama-cli", "llama-speculative-simple"];
+
   run(
     "cmake",
     [
       "--build",
       buildDir,
       "--target",
-      "llama-server",
-      "llama-cli",
-      "llama-speculative-simple",
+      ...cmakeBuildTargets,
       "-j",
       String(args.jobs),
     ],
     { cwd: args.cacheDir },
   );
 
-  const binDir = path.join(buildDir, "bin");
   fs.mkdirSync(outDir, { recursive: true });
-  const executableNames = [
-    "llama-server",
-    "llama-cli",
-    "llama-speculative-simple",
-  ];
-  // Cross-compiled binaries can have a host-specific suffix (.exe). Match by
-  // base name so windows builds still install the right files.
+
   const installedNames = [];
-  if (fs.existsSync(binDir)) {
-    for (const name of fs.readdirSync(binDir)) {
-      const base = name.replace(/\.(exe)$/i, "");
-      if (executableNames.includes(base) || isRuntimeLibrary(name)) {
-        installedNames.push(name);
+  const installedBaseNames = [];
+  if (isIos) {
+    // Collect every static archive produced by the iOS build into the output
+    // directory. The Capacitor patch script glues these into a single
+    // LlamaCpp.framework alongside the public headers.
+    const archives = collectFilesUnder(buildDir, /\.a$/);
+    for (const archive of archives) {
+      const name = path.basename(archive);
+      fs.copyFileSync(archive, path.join(outDir, name));
+      installedNames.push(name);
+      installedBaseNames.push(name.replace(/^lib|\.a$/g, ""));
+    }
+    // Stage the headers needed by cap-bridge.cpp / the public llama.cpp API
+    // so the xcframework patch can include them under
+    // LlamaCpp.framework/Headers/. Mirrors what packages/app-core/patches/
+    // llama-cpp-capacitor@0.1.5.patch's `ios/CMakeLists*.txt` PUBLIC_HEADERS
+    // list expects.
+    const headerOut = path.join(outDir, "include");
+    fs.mkdirSync(headerOut, { recursive: true });
+    const headerSources = [
+      path.join(args.cacheDir, "include", "llama.h"),
+      path.join(args.cacheDir, "ggml", "include", "ggml.h"),
+      path.join(args.cacheDir, "ggml", "include", "ggml-alloc.h"),
+      path.join(args.cacheDir, "ggml", "include", "ggml-backend.h"),
+      path.join(args.cacheDir, "ggml", "include", "ggml-cpu.h"),
+      path.join(args.cacheDir, "ggml", "include", "ggml-metal.h"),
+    ];
+    for (const src of headerSources) {
+      if (fs.existsSync(src)) {
+        fs.copyFileSync(src, path.join(headerOut, path.basename(src)));
       }
     }
-  }
-  for (const name of installedNames) {
-    const src = path.join(binDir, name);
-    const dst = path.join(outDir, name);
-    fs.copyFileSync(src, dst);
-    if (executableNames.includes(name.replace(/\.(exe)$/i, ""))) {
-      fs.chmodSync(dst, 0o755);
+    // Stage the embedded Metal library if the build produced one.
+    for (const candidate of collectFilesUnder(buildDir, /\.metallib$/)) {
+      fs.copyFileSync(candidate, path.join(outDir, path.basename(candidate)));
+    }
+  } else {
+    const binDir = path.join(buildDir, "bin");
+    const executableNames = [
+      "llama-server",
+      "llama-cli",
+      "llama-speculative-simple",
+    ];
+    // Cross-compiled binaries can have a host-specific suffix (.exe). Match
+    // by base name so Windows builds still install the right files.
+    if (fs.existsSync(binDir)) {
+      for (const name of fs.readdirSync(binDir)) {
+        const base = name.replace(/\.(exe)$/i, "");
+        if (executableNames.includes(base) || isRuntimeLibrary(name)) {
+          installedNames.push(name);
+        }
+      }
+    }
+    for (const name of installedNames) {
+      const src = path.join(binDir, name);
+      const dst = path.join(outDir, name);
+      fs.copyFileSync(src, dst);
+      if (executableNames.includes(name.replace(/\.(exe)$/i, ""))) {
+        fs.chmodSync(dst, 0o755);
+      }
+    }
+
+    const ggufPySrc = path.join(args.cacheDir, "gguf-py");
+    const ggufPyDst = path.join(outDir, "gguf-py");
+    if (fs.existsSync(ggufPySrc)) {
+      fs.rmSync(ggufPyDst, { recursive: true, force: true });
+      fs.cpSync(ggufPySrc, ggufPyDst, { recursive: true });
+    }
+    makeDarwinInstallSelfContained(outDir, installedNames, binDir);
+
+    for (const name of installedNames) {
+      const base = name.replace(/\.(exe)$/i, "");
+      if (executableNames.includes(base)) installedBaseNames.push(base);
     }
   }
-
-  const ggufPySrc = path.join(args.cacheDir, "gguf-py");
-  const ggufPyDst = path.join(outDir, "gguf-py");
-  if (fs.existsSync(ggufPySrc)) {
-    fs.rmSync(ggufPyDst, { recursive: true, force: true });
-    fs.cpSync(ggufPySrc, ggufPyDst, { recursive: true });
-  }
-  makeDarwinInstallSelfContained(outDir, installedNames, binDir);
-
-  const installedBaseNames = installedNames
-    .map((name) => name.replace(/\.(exe)$/i, ""))
-    .filter((name) => executableNames.includes(name));
 
   const capabilities = writeCapabilities({
     outDir,
