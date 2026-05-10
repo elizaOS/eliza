@@ -2555,7 +2555,10 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Spawn a coding agent to refactor the auth module.", source: "chat" },
+        content: {
+          text: "Spawn a coding agent to refactor the auth module.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",
@@ -2570,7 +2573,10 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     [
       {
         name: "{{name1}}",
-        content: { text: "What's the status of my running tasks?", source: "chat" },
+        content: {
+          text: "What's the status of my running tasks?",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",
@@ -2603,7 +2609,10 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Show me the worktree for task TASK-12.", source: "chat" },
+        content: {
+          text: "Show me the worktree for task TASK-12.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",
