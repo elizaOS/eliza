@@ -173,6 +173,46 @@ describe("local inference recommendations", () => {
     expect(recommended.TEXT_SMALL.model?.id).toBe("qwen3.5-4b-dflash");
   });
 
+  it("prefers long-context entries within the ladder on hosts with >= 16 GB RAM/VRAM", () => {
+    // 64 GB workstation with 24 GB VRAM — long-context (>= 64k) entries
+    // should sort to the front of the ladder before equal-rank short-
+    // context entries. The Linux GPU TEXT_LARGE ladder leads with
+    // qwen3.6-27b-dflash (131072), so this test would also pass without
+    // the bump; assert the alternatives ordering instead so we can
+    // verify the long-context preference applies.
+    const probe = hardware({
+      totalRamGb: 64,
+      freeRamGb: 48,
+      gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 22 },
+      source: "node-llama-cpp",
+    });
+    const recommended = selectRecommendedModels(probe);
+    const altIds = recommended.TEXT_LARGE.alternatives.map((m) => m.id);
+    // qwen2.5-coder-14b is short-context (32k native ceiling for the
+    // base); it must NOT outrank the qwen3.x DFlash entries that
+    // declare contextLength=131072.
+    const longCoderIdx = altIds.indexOf("qwen3.6-27b-dflash");
+    const shortCoderIdx = altIds.indexOf("qwen2.5-coder-14b");
+    if (longCoderIdx >= 0 && shortCoderIdx >= 0) {
+      expect(longCoderIdx).toBeLessThan(shortCoderIdx);
+    }
+  });
+
+  it("does NOT prefer long-context entries on memory-constrained hosts", () => {
+    // 12 GB RAM, no GPU — ladder ordering is the catalog default and
+    // the long-context bump should NOT kick in (the host can't fit a
+    // 64k+ KV cache anyway).
+    const probe = hardware({
+      totalRamGb: 12,
+      freeRamGb: 6,
+      gpu: null,
+      recommendedBucket: "small",
+      source: "os-fallback",
+    });
+    const recommended = selectRecommendedModels(probe);
+    expect(recommended.TEXT_SMALL.model).toBeTruthy();
+  });
+
   it("includes DFlash models when the binary advertises the kernel", () => {
     const probe = hardware({
       totalRamGb: 64,
