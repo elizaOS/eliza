@@ -122,11 +122,58 @@ W2-? sample (initial PoC):
 ## Bulk pass coverage (current state)
 
 Every example-bearing action under `plugins/app-lifeops/src/actions/` now
-has Spanish + French translation packs registered. **29 actions × 2
-locales × up to 2 pairs each = ~110 Cerebras calls total** for the bulk
-pass on top of the original 8 from the proof-of-concept.
+has Spanish + French + **Japanese** translation packs registered, and the
+top external plugins under `plugins/plugin-*/` ship es + fr + ja packs as
+well. The current bulk-pass total (cumulative, not just the latest round):
 
-Action × locale matrix shipped (each row × {`es`, `fr`}):
+- W2-G original es/fr proof-of-concept: ~110 Cerebras calls.
+- Japanese expansion for app-lifeops: 29 actions × 1 locale × 2 pairs =
+  **58 Cerebras calls**.
+- External plugin sweep (es + fr + ja): 35 distinct actions × 3 locales ×
+  2 pairs ≈ **210 Cerebras calls** + 12 retry calls for actions that
+  needed an explicit `--action-name=` (the harness's auto-name detector
+  silently fails when an action's `name:` is an identifier reference like
+  `WORKFLOW_ACTION` or `ACTION_NAME` rather than a string literal — Agent
+  45 is upgrading the extractor to resolve those).
+
+**Net:** every example-bearing app-lifeops action has all three target
+locales (`es`/`fr`/`ja`); the external sweep covers the most-used plugins
+(coding-tools, linear, agent-skills, music, computeruse, todos, workflow,
+browser) with all three locales each.
+
+### Where the packs live (Option B)
+
+All generated `<action>.<locale>.ts` packs land in a single global
+location: `plugins/app-lifeops/src/lifeops/i18n/generated/`. The
+`prompt-registry.ts` next to it imports + arrays each one into
+`GENERATED_TRANSLATION_PACKS`. External-plugin packs use a
+`<plugin-prefix>-<action>.<locale>.ts` filename to disambiguate (e.g.
+`ct-bash.ja.ts` for `plugin-coding-tools/actions/bash.ts`,
+`linear-create-issue.fr.ts` for `plugin-linear/actions/createIssue.ts`).
+
+The original brief proposed Option A (per-plugin `i18n/` directories with
+their own `prompt-registry.ts` files). We chose Option B because:
+
+- Packs are pure declarative data — the runtime needs the entries on a
+  single registry instance, not split across plugin boundaries.
+- Option A would require adding `@elizaos/app-lifeops` (or a shared
+  `@elizaos/i18n-types` package) as a workspace dependency to nine
+  plugins purely so they could re-import the `PromptExampleEntry` type.
+- Option A also requires each plugin's `index.ts` to wire a per-plugin
+  registration hook into runtime init. With nine plugins that's nine
+  small but easy-to-forget call sites.
+- Option B keeps the registry as the single canonical surface (matches
+  the W2-E pattern) and makes it trivial to verify coverage with a
+  `bun test translation-harness` smoke run.
+
+**Trade-off:** the `app-lifeops` package's `i18n/generated/` directory is
+no longer scoped to lifeops actions. The `<plugin-prefix>-<action>`
+naming convention keeps it readable, but if a downstream plugin really
+needs to ship its own translations independently of app-lifeops it would
+need to either (a) add a per-plugin registry along the lines of Option A
+or (b) duplicate its packs into this directory.
+
+Action × locale matrix shipped (each row × {`es`, `fr`, `ja`}):
 
 | Action | Source file | Action name |
 |--------|-------------|-------------|
@@ -164,21 +211,73 @@ Action × locale matrix shipped (each row × {`es`, `fr`}):
 `examples: ActionExample[][]` array (the planner builds its prompt purely
 from offer-set state).
 
+External-plugin coverage (each row × {`es`, `fr`, `ja`}):
+
+| Pack file (in `i18n/generated/`) | Source plugin / file | Action name |
+|---|---|---|
+| `ct-ask-user-question.<locale>.ts` | `plugin-coding-tools/actions/ask-user-question.ts` | `ASK_USER_QUESTION` |
+| `ct-bash.<locale>.ts` | `plugin-coding-tools/actions/bash.ts` | `BASH` |
+| `ct-edit.<locale>.ts` | `plugin-coding-tools/actions/edit.ts` | `EDIT` |
+| `ct-enter-worktree.<locale>.ts` | `plugin-coding-tools/actions/enter-worktree.ts` | `ENTER_WORKTREE` |
+| `ct-exit-worktree.<locale>.ts` | `plugin-coding-tools/actions/exit-worktree.ts` | `EXIT_WORKTREE` |
+| `ct-glob.<locale>.ts` | `plugin-coding-tools/actions/glob.ts` | `GLOB` |
+| `ct-grep.<locale>.ts` | `plugin-coding-tools/actions/grep.ts` | `GREP` |
+| `ct-ls.<locale>.ts` | `plugin-coding-tools/actions/ls.ts` | `LS` |
+| `ct-read.<locale>.ts` | `plugin-coding-tools/actions/read.ts` | `READ` |
+| `ct-web-fetch.<locale>.ts` | `plugin-coding-tools/actions/web-fetch.ts` | `WEB_FETCH` |
+| `ct-write.<locale>.ts` | `plugin-coding-tools/actions/write.ts` | `WRITE` |
+| `linear-clear-activity.<locale>.ts` | `plugin-linear/actions/clearActivity.ts` | `CLEAR_LINEAR_ACTIVITY` |
+| `linear-create-comment.<locale>.ts` | `plugin-linear/actions/createComment.ts` | `CREATE_LINEAR_COMMENT` |
+| `linear-create-issue.<locale>.ts` | `plugin-linear/actions/createIssue.ts` | `CREATE_LINEAR_ISSUE` |
+| `linear-delete-comment.<locale>.ts` | `plugin-linear/actions/deleteComment.ts` | `DELETE_LINEAR_COMMENT` |
+| `linear-delete-issue.<locale>.ts` | `plugin-linear/actions/deleteIssue.ts` | `DELETE_LINEAR_ISSUE` |
+| `linear-get-activity.<locale>.ts` | `plugin-linear/actions/getActivity.ts` | `GET_LINEAR_ACTIVITY` |
+| `linear-get-issue.<locale>.ts` | `plugin-linear/actions/getIssue.ts` | `GET_LINEAR_ISSUE` |
+| `linear-linear.<locale>.ts` | `plugin-linear/actions/linear.ts` | `LINEAR` |
+| `linear-list-comments.<locale>.ts` | `plugin-linear/actions/listComments.ts` | `LIST_LINEAR_COMMENTS` |
+| `linear-search-issues.<locale>.ts` | `plugin-linear/actions/searchIssues.ts` | `SEARCH_LINEAR_ISSUES` |
+| `linear-update-issue.<locale>.ts` | `plugin-linear/actions/updateIssue.ts` | `UPDATE_LINEAR_ISSUE` |
+| `as-skill.<locale>.ts` | `plugin-agent-skills/actions/skill.ts` | `SKILL` |
+| `as-use-skill.<locale>.ts` | `plugin-agent-skills/actions/use-skill.ts` | `USE_SKILL` |
+| `workflow-workflow.<locale>.ts` | `plugin-workflow/actions/workflow.ts` | `WORKFLOW` |
+| `todos-todo.<locale>.ts` | `plugin-todos/actions/todo.ts` | `TODO` |
+| `music-manage-routing.<locale>.ts` | `plugin-music/actions/manageRouting.ts` | `MANAGE_ROUTING` |
+| `music-manage-zones.<locale>.ts` | `plugin-music/actions/manageZones.ts` | `MANAGE_ZONES` |
+| `music-music.<locale>.ts` | `plugin-music/actions/music.ts` | `MUSIC` |
+| `music-music-library.<locale>.ts` | `plugin-music/actions/musicLibrary.ts` | `MUSIC_LIBRARY` |
+| `music-play-audio.<locale>.ts` | `plugin-music/actions/playAudio.ts` | `PLAY_AUDIO` |
+| `music-playback-op.<locale>.ts` | `plugin-music/actions/playbackOp.ts` | `PLAYBACK` |
+| `browser-manage-bridge.<locale>.ts` | `plugin-browser/actions/manage-browser-bridge.ts` | `MANAGE_BROWSER_BRIDGE` |
+| `cu-desktop.<locale>.ts` | `plugin-computeruse/actions/desktop.ts` | `DESKTOP` |
+| `cu-use-computer.<locale>.ts` | `plugin-computeruse/actions/use-computer.ts` | `COMPUTER_USE` |
+
 ## Still pending — future bulk passes
 
 Out of scope for this round (does not violate the conservative budget cap):
 
-- Japanese (`ja`) for any app-lifeops action.
-- Translation packs for example-bearing actions in plugins outside
-  `plugins/app-lifeops/`. The full project has ~110 example-bearing
-  actions; the cross-plugin sweep is a separate, larger budget item.
+- Translation packs for the long tail of plugins beyond the top external
+  set (e.g. `plugin-twitter`, `plugin-discord`, `plugin-bluebubbles`,
+  the various `plugin-{telegram,slack,whatsapp,…}` connectors). Their
+  example-bearing actions are not yet covered.
+- `plugin-shell/actions/clearHistory.ts` is **not** covered: its action
+  is constructed dynamically from a `requireActionSpec("CLEAR_SHELL_HISTORY")`
+  call (`spec.examples`), and the harness's literal-only AST extractor
+  cannot statically reach the example pairs. Fix path: either inline the
+  examples literal in the action source, or extend the harness to
+  resolve `requireActionSpec` references via the ts-morph type checker.
+- The agent-skills plugin ships eight action source files but they all
+  declare `name: "SKILL"` (op-fanout pattern) — only `as-skill.{es,fr,ja}.ts`
+  + `as-use-skill.{es,fr,ja}.ts` are kept; the other six would have
+  collided on the registry's `<actionName>.example.<index>` composite
+  key. If the SKILL family is ever split into per-op action names, the
+  retired files can be regenerated.
 - Identifier-resolved `action: ACTION_NAME` references. The harness's
   literal-only AST extractor silently drops `action: ACTION_NAME`
   (constant identifier) values, which is why some generated entries lack
   a structured `action` field even when the source had one. Resolving
-  identifiers via ts-morph type checker is a follow-up enhancement; the
-  inline action-token tests guard against translation regressions in the
-  meantime.
+  identifiers via ts-morph type checker is a follow-up enhancement
+  (Agent 45's work); the inline action-token tests guard against
+  translation regressions in the meantime.
 
 ## Test coverage
 
