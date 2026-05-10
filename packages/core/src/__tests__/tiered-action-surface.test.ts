@@ -437,9 +437,9 @@ describe("v5 tiered action surface", () => {
 		expect(actions).not.toContain("CONNECTOR");
 	});
 
-	it("repairs password lookups to the password manager instead of autofill", async () => {
-		const passwordManager = makeAction({
-			name: "PASSWORD_MANAGER",
+	it("repairs password lookups to credentials instead of autofill", async () => {
+		const credentials = makeAction({
+			name: "CREDENTIALS",
 			description:
 				"Look up, list, or copy credentials from the password manager.",
 			contexts: ["secrets", "browser", "automation"],
@@ -450,7 +450,7 @@ describe("v5 tiered action surface", () => {
 			contexts: ["settings", "secrets", "browser", "automation"],
 		});
 		const runtime = makeRuntime({
-			actions: [passwordManager, autofill],
+			actions: [credentials, autofill],
 			responses: [
 				stage1Response({
 					contexts: ["settings"],
@@ -463,8 +463,8 @@ describe("v5 tiered action surface", () => {
 						toolCalls: [
 							{
 								id: "password-1",
-								name: "PASSWORD_MANAGER",
-								arguments: { subaction: "search", query: "GitHub" },
+								name: "CREDENTIALS",
+								arguments: { action: "search", query: "GitHub" },
 							},
 						],
 					},
@@ -489,9 +489,9 @@ describe("v5 tiered action surface", () => {
 
 		const prompt = plannerUserContent(runtime);
 		expect(prompt).toMatch(/selected_contexts:[^\n]*secrets/);
-		expect(prompt).toContain('"parentActionHints":["PASSWORD_MANAGER"]');
+		expect(prompt).toContain('"parentActionHints":["CREDENTIALS"]');
 		const actions = availableActionsSection(runtime);
-		expect(actions).toContain("PASSWORD_MANAGER");
+		expect(actions).toContain("CREDENTIALS");
 	});
 
 	it("repairs direct night check-ins away from the simple reply shortcut", async () => {
