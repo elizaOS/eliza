@@ -170,15 +170,6 @@ export const ONBOARDING_PERMISSION_LABELS: Record<SystemPermissionId, string> =
     shell: "Full Disk Access",
     "website-blocking": "Website Blocking",
     location: "Location",
-    reminders: "Reminders",
-    calendar: "Calendar",
-    health: "Health",
-    screentime: "Screen Time",
-    contacts: "Contacts",
-    notes: "Notes",
-    notifications: "Notifications",
-    "full-disk": "Full Disk Access",
-    automation: "Automation",
   };
 
 import type { ActionNotice } from "./action-notice";

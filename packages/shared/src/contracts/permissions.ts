@@ -26,10 +26,19 @@ export type PermissionId =
   | "automation";
 
 /**
- * Back-compat alias. Existing callers spell this `SystemPermissionId`. Now a
- * pure alias of `PermissionId` so the new ids are accepted everywhere.
+ * Legacy narrow alias for the original seven permission ids that the
+ * dashboard API (`AllPermissionsState`) and existing UI callers depend on.
+ * Kept as a strict subset of `PermissionId` so existing record-keyed lookups
+ * compile. New code should use `PermissionId` for the full 16-id union.
  */
-export type SystemPermissionId = PermissionId;
+export type SystemPermissionId =
+  | "accessibility"
+  | "screen-recording"
+  | "microphone"
+  | "camera"
+  | "shell"
+  | "website-blocking"
+  | "location";
 
 export type PermissionStatus =
   | "granted"
