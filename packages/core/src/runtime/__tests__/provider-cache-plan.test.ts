@@ -106,4 +106,46 @@ describe("ProviderCachePlan", () => {
 	it("caps prompt cache keys at 1024 characters", () => {
 		expect(buildPromptCacheKey("x".repeat(2000))).toHaveLength(1024);
 	});
+
+	it("emits conversationId on providerOptions.eliza when provided", () => {
+		const plan = buildProviderCachePlan({
+			prefixHash: "abc123",
+			conversationId: "room-1",
+		});
+		expect(plan.providerOptions.eliza).toMatchObject({
+			conversationId: "room-1",
+			promptCacheKey: "v5:abc123",
+		});
+	});
+
+	it("omits conversationId when blank or unset", () => {
+		const noneProvided = buildProviderCachePlan({ prefixHash: "abc" });
+		expect(noneProvided.providerOptions.eliza).not.toHaveProperty(
+			"conversationId",
+		);
+		const empty = buildProviderCachePlan({
+			prefixHash: "abc",
+			conversationId: "",
+		});
+		expect(empty.providerOptions.eliza).not.toHaveProperty("conversationId");
+	});
+
+	it("forwards stable promptSegments on providerOptions.eliza for local backends", () => {
+		const plan = buildProviderCachePlan({
+			prefixHash: "abc123",
+			promptSegments: [
+				{ content: "system: stable", stable: true } as unknown as {
+					stable?: boolean;
+				},
+				{ content: "now: timestamp", stable: false } as unknown as {
+					stable?: boolean;
+				},
+			],
+		});
+		const eliza = plan.providerOptions.eliza as Record<string, unknown>;
+		expect(eliza.promptSegments).toEqual([
+			{ content: "system: stable", stable: true },
+			{ content: "now: timestamp", stable: false },
+		]);
+	});
 });

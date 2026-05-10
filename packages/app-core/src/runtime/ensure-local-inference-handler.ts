@@ -36,7 +36,11 @@ import {
   autoAssignAtBoot,
   readEffectiveAssignments,
 } from "../services/local-inference/assignments";
-import { extractPromptCacheKey } from "../services/local-inference/cache-bridge";
+import {
+  extractConversationId,
+  extractPromptCacheKey,
+  resolveLocalCacheKey,
+} from "../services/local-inference/cache-bridge";
 import { deviceBridge } from "../services/local-inference/device-bridge";
 import { localInferenceEngine } from "../services/local-inference/engine";
 import { handlerRegistry } from "../services/local-inference/handler-registry";
@@ -164,15 +168,18 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
     // expensive; the user is expected to assign a small number of models.
     await ensureAssignedModelLoaded(loader, slot);
 
-    // Forward the runtime-emitted prompt cache key to the local backend
-    // so the engine / llama-server can pin to a stable slot and reuse
-    // its prefix KV. Cloud providers consume the same key from
-    // `providerOptions.{provider}.promptCacheKey`; here we read the
-    // canonical form from `providerOptions.eliza.promptCacheKey`.
+    // Resolve the strongest cache key the runtime can give us. Order of
+    // precedence (see `resolveLocalCacheKey`):
+    //   1. Conversation id   — survives any prompt drift
+    //   2. Stable-prefix hash — survives unstable-tail timestamps
+    //   3. Provider plan hashes — back-compat
+    const providerOptions = (params as { providerOptions?: unknown })
+      .providerOptions;
+    const conversationId = extractConversationId(providerOptions);
     const cacheKey =
-      extractPromptCacheKey(
-        (params as { providerOptions?: unknown }).providerOptions,
-      ) ?? undefined;
+      resolveLocalCacheKey(providerOptions) ??
+      extractPromptCacheKey(providerOptions) ??
+      undefined;
 
     // Prefer a runtime-registered loader that implements `generate` — that's
     // the mobile / device-bridge path. On desktop we fall back to the
@@ -194,6 +201,49 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
         `[local-inference] No local model is active. Assign a model to ${slot} or activate one in Settings → Local models.`,
       );
     }
+
+    // Long-lived conversation? Open / reuse a registry handle so this
+    // turn lands on the same slot every time, regardless of prompt
+    // hash drift. The handle API additionally returns Anthropic-shape
+    // usage telemetry, which we surface at INFO once per generation.
+    if (conversationId) {
+      const modelId =
+        localInferenceEngine.currentModelPath() ?? "default-local-model";
+      const handle =
+        localInferenceEngine.conversation(conversationId, modelId) ??
+        localInferenceEngine.openConversation({
+          conversationId,
+          modelId,
+        });
+      const result = await localInferenceEngine.generateInConversation(handle, {
+        prompt: params.prompt ?? "",
+        stopSequences: params.stopSequences,
+      });
+      // Per-generation usage log. Match the Anthropic plugin's
+      // observability surface so cloud and local share the same
+      // mental model. Cache hit rate is reported when input_tokens > 0.
+      const u = result.usage;
+      const hitRate =
+        u.cache_hit_rate !== undefined
+          ? `${Math.round(u.cache_hit_rate * 100)}%`
+          : "n/a";
+      const dflashRate =
+        u.dflash_acceptance_rate !== undefined
+          ? ` dflash=${Math.round(u.dflash_acceptance_rate * 100)}%`
+          : "";
+      logger.info(
+        `[local-inference] usage conv=${conversationId} slot=${result.slotId} in=${u.input_tokens} out=${u.output_tokens} cache_read=${u.cache_read_input_tokens} cache_create=${u.cache_creation_input_tokens} hit=${hitRate}${dflashRate}`,
+      );
+      // Auto-tune signal — emits a one-line warn if the high-water mark
+      // outgrew the configured slot count this turn. Cheap to call,
+      // and the warning is what the operator needs to see.
+      localInferenceEngine.warnIfParallelTooLow({ warn: logger.warn });
+      return result.text;
+    }
+
+    // No conversation context: fall through to the existing hash-based
+    // slot allocation. Doesn't break any caller that wasn't aware of
+    // conversation handles.
     return localInferenceEngine.generate({
       prompt: params.prompt ?? "",
       stopSequences: params.stopSequences,

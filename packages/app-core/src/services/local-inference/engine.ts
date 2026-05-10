@@ -25,11 +25,17 @@ import type {
 import { BackendDispatcher } from "./backend";
 import { findCatalogModel } from "./catalog";
 import {
+  type ConversationHandle,
+  conversationRegistry,
+} from "./conversation-registry";
+import {
+  type DflashGenerateResult,
   type DflashServerPlan,
   dflashLlamaServer,
   dflashRequired,
   getDflashRuntimeStatus,
 } from "./dflash-server";
+import type { LocalUsageBlock } from "./llama-server-metrics";
 import { listInstalledModels } from "./registry";
 import {
   DEFAULT_SESSION_KEY,
@@ -559,6 +565,184 @@ export class LocalInferenceEngine {
     keys: string[];
   } | null {
     return this.nodeBackend.describeSessionPool();
+  }
+
+  /**
+   * Reserve a slot for a long-lived conversation. Subsequent
+   * `generateInConversation` calls reuse the same slot, so the prefix
+   * KV survives across turns regardless of hash collisions with other
+   * concurrent conversations.
+   *
+   * Idempotent for the same (conversationId, modelId): repeated open
+   * calls return the same handle. The runtime side should call this
+   * lazily on the first turn of a conversation and `closeConversation`
+   * when the chat session ends.
+   */
+  openConversation(args: {
+    conversationId: string;
+    modelId: string;
+    ttlMs?: number;
+  }): ConversationHandle {
+    const parallel = this.activeParallel();
+    const handle = conversationRegistry.open({
+      conversationId: args.conversationId,
+      modelId: args.modelId,
+      parallel,
+      ttlMs: args.ttlMs,
+    });
+    // Lazy-restore previously-persisted KV state for this conversation.
+    // Fire-and-forget — a missing or unreadable file just means the
+    // conversation cold-prefills on the next request, which is the
+    // pre-restore default. Only meaningful for the llama-server backend;
+    // node-llama-cpp owns its own session pool.
+    if (this.activeBackendId() === "llama-server") {
+      void dflashLlamaServer
+        .restoreConversationKv(args.conversationId, handle.slotId)
+        .catch(() => {
+          // KV restore failures must never break the open call — the
+          // conversation just doesn't get its old prefix back.
+        });
+    }
+    return handle;
+  }
+
+  /**
+   * Run one generation pinned to a previously-opened conversation
+   * handle. Cache key, slot id, and (for llama-server) kv-restore are
+   * all owned by the registry — callers don't need to thread them.
+   *
+   * Returns the Anthropic-shape `LocalUsageBlock` alongside the text so
+   * agentic callers can surface cache-hit telemetry without re-scraping
+   * `/metrics` themselves. Falls back to a zero-counter usage block on
+   * the node-llama-cpp backend (which doesn't expose Prometheus
+   * metrics).
+   */
+  async generateInConversation(
+    handle: ConversationHandle,
+    args: Omit<GenerateArgs, "cacheKey">,
+  ): Promise<{ text: string; usage: LocalUsageBlock; slotId: number }> {
+    if (handle.closed) {
+      throw new Error(
+        `[local-inference] Conversation ${handle.conversationId} has been closed; reopen before generating`,
+      );
+    }
+    handle.lastUsedMs = Date.now();
+    const cacheKey = `conv:${handle.conversationId}`;
+    if (this.activeBackendId() === "llama-server") {
+      const result: DflashGenerateResult =
+        await dflashLlamaServer.generateWithUsage({
+          ...args,
+          cacheKey,
+          slotId: handle.slotId,
+        });
+      return result;
+    }
+    // node-llama-cpp path: forward via the dispatcher and synthesize a
+    // zero-counter usage block. The session pool already pins by
+    // cacheKey, so cache reuse still works — we just don't have
+    // observability on this backend.
+    const text = await this.dispatcher.generate({
+      ...args,
+      cacheKey,
+    });
+    return {
+      text,
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
+      slotId: handle.slotId,
+    };
+  }
+
+  /**
+   * Close + drop a conversation handle. Persists the final KV state to
+   * disk so a future open with the same id can lazy-restore. Idempotent;
+   * closing an unknown id is a no-op.
+   */
+  async closeConversation(handle: ConversationHandle): Promise<void> {
+    if (handle.closed) return;
+    if (this.activeBackendId() === "llama-server") {
+      // Snapshot KV before deregistering so the slot id is still valid.
+      await dflashLlamaServer
+        .persistConversationKv(handle.conversationId, handle.slotId)
+        .catch(() => {
+          // A failed save must not block close — the slot will fall back
+          // to the in-RAM-only path on next open.
+        });
+    }
+    conversationRegistry.close(handle.conversationId, handle.modelId);
+  }
+
+  /**
+   * Read-side accessor for the conversation registry. The runtime handler
+   * uses this to look up an existing handle before opening a new one,
+   * avoiding the need to thread a handle through every layer.
+   */
+  conversation(
+    conversationId: string,
+    modelId: string,
+  ): ConversationHandle | null {
+    return conversationRegistry.get(conversationId, modelId);
+  }
+
+  /**
+   * Largest concurrent open-conversation count seen this process lifetime.
+   * The auto-tune-parallel path consults this and warns when it exceeds
+   * the running server's slot count.
+   */
+  conversationHighWaterMark(): number {
+    return conversationRegistry.highWater();
+  }
+
+  /**
+   * Auto-tune diagnostic. Returns the recommended `--parallel` value
+   * given the current high-water mark plus a small headroom (max(2,
+   * 25%)). When the active backend is llama-server and this exceeds the
+   * running server's `parallelSlots()`, callers should restart the
+   * server with the new value to pick up the higher slot count — or
+   * surface a warning when restart is too expensive.
+   */
+  recommendedParallel(): number {
+    const highWater = conversationRegistry.highWater();
+    const headroom = Math.max(2, Math.ceil(highWater * 0.25));
+    return Math.max(1, highWater + headroom);
+  }
+
+  /**
+   * Convenience: emit a one-line warning when the running parallel slot
+   * count is below the recommended value. Returns true when a warning
+   * was emitted (caller can use this signal to drive a restart, or just
+   * for diagnostics). No-op for the node-llama-cpp backend, which has
+   * its own session-pool sizing.
+   */
+  warnIfParallelTooLow(logger?: { warn: (msg: string) => void }): boolean {
+    if (this.activeBackendId() !== "llama-server") return false;
+    const recommended = this.recommendedParallel();
+    const actual = dflashLlamaServer.parallelSlots();
+    if (recommended <= actual) return false;
+    const message = `[local-inference] Conversation high-water mark (${conversationRegistry.highWater()}) exceeds running --parallel ${actual}. Recommended: ${recommended}. Restart llama-server with ELIZA_LOCAL_PARALLEL=${recommended} or higher to avoid slot thrashing.`;
+    if (logger?.warn) {
+      logger.warn(message);
+    } else {
+      console.warn(message);
+    }
+    return true;
+  }
+
+  /**
+   * Active server's parallel slot count, or 1 when no llama-server
+   * backend is running (the node-llama-cpp path has its own pool).
+   */
+  private activeParallel(): number {
+    if (this.activeBackendId() === "llama-server") {
+      return dflashLlamaServer.parallelSlots();
+    }
+    // node-llama-cpp: each session pool slot is effectively a "parallel"
+    // for slot allocation purposes.
+    return resolveDefaultPoolSize(process.env.ELIZA_LOCAL_SESSION_POOL_SIZE);
   }
 
   /**

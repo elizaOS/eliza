@@ -908,6 +908,9 @@ async function callPlanner(params: {
 				promptSegments: renderedInput.promptSegments,
 				provider: params.provider,
 				hasTools,
+				// Pin local-inference slots per trajectory so a multi-turn
+				// planner loop reuses the same KV cache across iterations.
+				conversationId: params.trajectoryId,
 			}),
 			modelInputBudget,
 		),
