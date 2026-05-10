@@ -246,6 +246,8 @@ export function createElectrobunConfig(): ElectrobunConfig {
 	const appName = (process.env.ELIZA_APP_NAME ?? "").trim() || "Eliza";
 	const appId = (process.env.ELIZA_APP_ID ?? "").trim() || "ai.elizaos.app";
 	const urlScheme = (process.env.ELIZA_URL_SCHEME ?? "").trim() || "elizaos";
+	const appVersion =
+		(process.env.ELIZA_APP_VERSION ?? "").trim() || "2.0.0-beta.0";
 	const releaseUrl = (process.env.ELIZA_RELEASE_URL ?? "").trim() || "";
 	const runtimeDistDir =
 		(process.env.ELIZA_RUNTIME_DIST_DIR ?? "").trim() || "eliza-dist";
@@ -264,7 +266,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
 		app: {
 			name: appName,
 			identifier: appId,
-			version: "2.0.0-beta.0",
+			version: appVersion,
 			description: "AI agents for the desktop",
 			urlSchemes: [urlScheme],
 		},
