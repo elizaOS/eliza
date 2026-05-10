@@ -238,12 +238,12 @@ type AospRecommendedModel = {
 const AOSP_RECOMMENDED_MODELS: Record<"chat" | "embedding", AospRecommendedModel> = {
   chat: {
     id: "eliza-1-mobile-1_7b",
-    hfRepo: "elizalabs/eliza-1-mobile-1_7b",
+    hfRepo: "elizaos/eliza-1-mobile-1_7b",
     ggufFile: "text/eliza-1-mobile-1_7b-32k.gguf",
   },
   embedding: {
     id: "eliza-1-lite-0_6b",
-    hfRepo: "elizalabs/eliza-1-lite-0_6b",
+    hfRepo: "elizaos/eliza-1-lite-0_6b",
     ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
   },
 };

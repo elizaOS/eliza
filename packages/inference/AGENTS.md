@@ -90,7 +90,7 @@ A bundle on HuggingFace is a single repo with this layout. The manifest
 is the source of truth; never derive contents from filenames.
 
 ```
-elizalabs/eliza-1-<tier>/
+elizaos/eliza-1-<tier>/
   eliza-1.manifest.json          # canonical schema, see §6
   text/
     eliza-1-<tier>-<ctx>.gguf    # text + vision (mmproj inlined where supported)
@@ -341,7 +341,7 @@ catalogs drift from it — generate them.
   required kernel is verified on every supported backend for that tier
   AND every eval has `passed: true`. The recommendation engine MUST
   refuse to surface a bundle with `defaultEligible: false` as a default.
-- HF-search results from outside `elizalabs/eliza-1-*` MUST never set
+- HF-search results from outside `elizaos/eliza-1-*` MUST never set
   `defaultEligible: true`. They are user-installed customs only.
 - The runtime MUST validate the manifest against `kernels.required`
   before activating the bundle. A capability mismatch is a hard error.

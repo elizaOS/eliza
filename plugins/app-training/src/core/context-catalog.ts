@@ -47,7 +47,7 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
   CHECKIN: ["automation"],
   MODIFY_CHARACTER: ["social", "system"],
   PLAY_EMOTE: ["social"],
-  SHELL_COMMAND: ["code", "system"],
+  SHELL: ["code", "system"],
   RESTART_AGENT: ["system"],
   LIFE: ["automation"],
   GO_LIVE: ["media", "social"],

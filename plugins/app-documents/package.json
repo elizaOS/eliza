@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-documents",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -12,9 +12,9 @@
     }
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/agent": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

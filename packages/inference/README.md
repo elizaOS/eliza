@@ -49,14 +49,35 @@
 >     in `metal-kernels.mjs`. `requiredKernelsMissing()` will refuse the
 >     iOS artifact accordingly.
 >
->   * The Vulkan `patchVulkanKernels` hook now copies the eight standalone
->     `.comp` files from `packages/inference/vulkan/` into the fork at
->     `ggml/src/ggml-vulkan/milady-shipped/<name>.comp`. It also
->     hard-throws when a `*-vulkan` target is queued because the fork at
->     v0.4.0-milady has neither registration in `vulkan-shaders-gen` nor
->     dispatch sites in `ggml-vulkan.cpp` for the milady quant types.
->     `ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN=1` exists as an audit-loggable
->     escape hatch.
+>   * The Vulkan `patchVulkanKernels` hook (Wave-6, 2026-05-10) now stages
+>     the eight standalone `.comp` files from `packages/inference/vulkan/`
+>     directly into `ggml/src/ggml-vulkan/vulkan-shaders/` (where the fork's
+>     `file(GLOB CONFIGURE_DEPENDS *.comp)` picks them up), plus applies two
+>     anchor-driven idempotent patches under
+>     `kernel-patches/vulkan-dispatch-patches/`:
+>
+>       1. `01-vulkan-shaders-gen.patch` — adds 8 `string_to_spv()` calls at
+>          the bottom of `process_shaders()` so the gen tool emits
+>          `milady_<name>_data[]` + `milady_<name>_len` symbols into
+>          `ggml-vulkan-shaders.hpp`.
+>       2. `02-ggml-vulkan-pipelines.patch` — extends `vk_device_struct` with
+>          8 `vk_pipeline pipeline_milady_*` slots and adds 8
+>          `ggml_vk_create_pipeline()` calls at the bottom of
+>          `ggml_vk_load_shaders()` so each SPV blob is referenced at link
+>          time and surfaces in `nm libggml-vulkan.so`.
+>
+>     Symbol audit (`nm libggml-vulkan.so | grep milady_`) is now expected to
+>     pass on a successful linux-x64-vulkan build. **Op-level dispatch
+>     routing for `GGML_OP_ATTN_SCORE_QJL` and the milady `GGML_TYPE_*`
+>     case branches is the remaining gap.** The 8 standalone shaders use
+>     bespoke push-constant layouts (`{n_heads, n_kv_heads, n_tokens,
+>     proj_dim}` for QJL; `{n_rows, head_dim, use_qjl}` for Polar) that do
+>     NOT match the existing `vk_op_binary_push_constants` /
+>     `vk_mat_vec_push_constants` paths, so a follow-up patch must
+>     introduce a milady-native dispatch entrypoint and per-op routing.
+>     Until that lands, `llama-server --help` still won't show qjl/polar/
+>     turbo as user-visible cache types and `ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN=1`
+>     remains the explicit acknowledgement of the routing gap.
 >
 >   * Deferred dispatch wiring (Wave-6 audit, 2026-05-10): `ggml-metal-ops.cpp`
 >     and `ggml-metal-device.m` do NOT yet contain dispatch sites for
@@ -556,16 +577,23 @@ binary fully satisfies AGENTS.md §3 today.
 
 | Env var                                  | What it does                                              | Default |
 | ---------------------------------------- | --------------------------------------------------------- | ------- |
-| `ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN`   | Acknowledge AGENTS.md §3 gap so a `*-vulkan` target builds without turbo/qjl/polar dispatch (audit-loggable). | OFF |
+| `ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN`   | Audit-loggable acknowledgement that the runtime may publish a `*-vulkan` artifact even if `requiredKernelsMissing()` flags missing dispatch. The Vulkan patch hook runs unconditionally and stages standalones + applies dispatch patches; this knob only suppresses the post-build kernel-presence gate. | OFF |
 | `ELIZA_DFLASH_LLAMA_CPP_REMOTE`          | Override the fork remote (default `https://github.com/milady-ai/llama.cpp.git`). | unset |
 | `ELIZA_DFLASH_LLAMA_CPP_REF`             | Override the fork ref (default `v0.4.0-milady`).          | unset |
 | `ELIZA_DFLASH_VULKAN_HEADERS_DIR` / `ELIZA_DFLASH_SPIRV_HEADERS_DIR` | Pre-staged Khronos header paths for cross-builds. | unset |
+| `ELIZA_DFLASH_CMAKE_FLAGS`               | Extra cmake flags appended to the per-target list. Wins on conflict (e.g. override `-DCMAKE_CUDA_ARCHITECTURES`). | unset |
+| `MINGW_TOOLCHAIN_FILE`                   | Operator-supplied cmake toolchain file for windows-* targets. Required for `windows-arm64-*` cross builds; optional override for `windows-x64-*` (auto-detected mingw is used otherwise). | unset |
 
 The previous `ELIZA_DFLASH_PATCH_METAL_*` / `ELIZA_DFLASH_PATCH_VULKAN_KERNELS`
 environment knobs were decorative log toggles for the v0.4.0-milady-era
-no-op patch hooks. They have been removed; the new patch helpers run
-unconditionally on every Metal target and hard-throw on Vulkan unless
-the explicit gap-acknowledgement env var is set.
+no-op patch hooks. They have been removed; both the Metal and Vulkan
+patch helpers now run unconditionally on every matching target — Metal
+copies the standalone shaders + patches the metallib `add_custom_command`,
+Vulkan copies the standalones into `vulkan-shaders/` + applies the
+dispatch-wiring patches under `kernel-patches/vulkan-dispatch-patches/`.
+There is no opt-out, per AGENTS.md §3 ("Required for ALL tiers").
+`ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN` only relaxes the post-build
+audit gate; it does not skip the patch step.
 
 Wiring these into `dflash-server.ts` (so `--cache-type-k turbo3_tcq`
 actually runs through the new shader, and so QJL / Polar are reachable

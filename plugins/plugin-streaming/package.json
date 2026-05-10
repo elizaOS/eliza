@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-streaming",
   "description": "Unified RTMP streaming for elizaOS (Twitch, YouTube, X, pump.fun, custom and named ingest URLs)",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -21,9 +21,9 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/cloud-routing": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-browser": "workspace:*"
+    "@elizaos/cloud-routing": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-browser": "2.0.0-beta.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

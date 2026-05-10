@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-shell",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Shell history and observability plugin for ElizaOS",
   "type": "module",
   "main": "dist/index.js",
@@ -42,8 +42,8 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
     "cross-spawn": "^7.0.6",
     "zod": "^4.4.3"
   },

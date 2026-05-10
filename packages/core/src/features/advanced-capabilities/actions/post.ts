@@ -37,9 +37,9 @@ type PostOp = (typeof POST_OPS)[number];
 const POST_CONTEXTS = ["social_posting", "connectors"];
 
 const POST_DESCRIPTION =
-	"Primary action for public feed surfaces and timelines. Use op to choose the subaction: send publishes a post, read fetches recent feed posts, search searches public posts. Addressed DMs, groups, channels, and rooms belong to MESSAGE.";
+	"Primary action for public feed surfaces and timelines. Use action to choose the operation: send publishes a post, read fetches recent feed posts, search searches public posts. Addressed DMs, groups, channels, and rooms belong to MESSAGE.";
 const POST_COMPRESSED =
-	"primary post action ops send read search public feed timeline posts";
+	"primary post action send read search public feed timeline posts";
 
 function normalizeOp(value: unknown): PostOp | undefined {
 	if (typeof value !== "string") return undefined;
@@ -59,9 +59,10 @@ function normalizeOp(value: unknown): PostOp | undefined {
 function resolveOp(message: Memory, options?: HandlerOptions): PostOp {
 	const params = paramsFromOptions(options);
 	const explicit =
+		normalizeOp(params.action) ??
 		normalizeOp(params.op) ??
 		normalizeOp(params.operation) ??
-		normalizeOp(params.action);
+		normalizeOp(params.subaction);
 	if (explicit) return explicit;
 	const text = `${message.content?.text ?? ""}`.toLowerCase();
 	if (params.query || /\b(search|find)\b/.test(text)) return "search";
@@ -569,8 +570,8 @@ function refreshDescriptions(action: Action, runtime: IAgentRuntime): void {
 
 export const POST_PARAMETERS: ActionParameter[] = [
 	{
-		name: "subaction",
-		description: "Post subaction: send, read, or search.",
+		name: "action",
+		description: "Post action: send, read, or search.",
 		required: false,
 		schema: { type: "string", enum: [...POST_OPS] },
 	},

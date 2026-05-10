@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-ollama",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -53,14 +53,14 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "@types/node": "^25.0.3",
     "bun-types": "^1.3.12",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",

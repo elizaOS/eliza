@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-talkmode",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Runs voice conversations with live transcription, chat orchestration, and spoken replies.",
   "keywords": [
     "voice",
@@ -38,7 +38,7 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/app-core": "workspace:*"
+    "@elizaos/app-core": "2.0.0-beta.1"
   },
   "repository": {
     "type": "git",

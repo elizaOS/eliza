@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-background-runner",
-  "version": "0.1.0",
+  "version": "2.0.0-beta.1",
   "description": "Background task runner for elizaOS — drives core TaskService.runDueTasks() from OS-level wake-ups (BGTaskScheduler on iOS, WorkManager on Android via @capacitor-community/background-runner). Falls back to a setInterval poll when no native scheduler is available.",
   "type": "module",
   "main": "dist/index.js",
@@ -44,7 +44,7 @@
   "peerDependencies": {
     "@capacitor-community/background-runner": "*",
     "@capacitor/core": "*",
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "peerDependenciesMeta": {
     "@capacitor-community/background-runner": {
@@ -55,7 +55,7 @@
     }
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

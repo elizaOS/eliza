@@ -8,7 +8,7 @@
  * `/Users/shawwalters/eliza-workspace/milady/packages/inference/AGENTS.md`
  * §2 for the binding tier matrix.
  *
- * HF-search results from outside `elizalabs/eliza-1-*` MUST never be
+ * HF-search results from outside `elizaos/eliza-1-*` MUST never be
  * marked default-eligible (handled by `hf-search.ts`, which produces
  * entries that are absent from `DEFAULT_ELIGIBLE_MODEL_IDS`).
  *
@@ -64,7 +64,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
   {
     id: "eliza-1-lite-0_6b",
     displayName: "Eliza-1 lite",
-    hfRepo: "elizalabs/eliza-1-lite-0_6b",
+    hfRepo: "elizaos/eliza-1-lite-0_6b",
     ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
     params: "1B",
     quant: "TurboQuant Q3 + Polar Q4 KV",
@@ -82,7 +82,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
   {
     id: "eliza-1-mobile-1_7b",
     displayName: "Eliza-1 mobile",
-    hfRepo: "elizalabs/eliza-1-mobile-1_7b",
+    hfRepo: "elizaos/eliza-1-mobile-1_7b",
     ggufFile: "text/eliza-1-mobile-1_7b-32k.gguf",
     params: "1.7B",
     quant: "TurboQuant Q3/Q4 + QJL K-cache",
@@ -100,7 +100,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
   {
     id: "eliza-1-desktop-9b",
     displayName: "Eliza-1 desktop",
-    hfRepo: "elizalabs/eliza-1-desktop-9b",
+    hfRepo: "elizaos/eliza-1-desktop-9b",
     ggufFile: "text/eliza-1-desktop-9b-64k.gguf",
     params: "9B",
     quant: "TurboQuant Q4 + QJL + Polar",
@@ -118,7 +118,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
   {
     id: "eliza-1-pro-27b",
     displayName: "Eliza-1 pro",
-    hfRepo: "elizalabs/eliza-1-pro-27b",
+    hfRepo: "elizaos/eliza-1-pro-27b",
     ggufFile: "text/eliza-1-pro-27b-128k.gguf",
     params: "27B",
     quant: "TurboQuant Q4 + QJL + Polar",
@@ -136,7 +136,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
   {
     id: "eliza-1-server-h200",
     displayName: "Eliza-1 server",
-    hfRepo: "elizalabs/eliza-1-server-h200",
+    hfRepo: "elizaos/eliza-1-server-h200",
     ggufFile: "text/eliza-1-server-h200-256k.gguf",
     params: "27B",
     quant: "CUDA TurboQuant + QJL + Polar",

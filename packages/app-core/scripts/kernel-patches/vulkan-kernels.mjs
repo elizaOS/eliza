@@ -193,9 +193,22 @@ function parsePatchFile(filePath) {
 }
 
 // Apply one parsed hunk to file contents. Returns { text, applied } where
-// applied=false means the sentinel was already present (idempotent skip).
+// applied=false means the inject block was already present (idempotent skip).
+//
+// Idempotency uses an *exact* check — the inject block already in the file —
+// rather than a coarse global sentinel, so multi-hunk patches against the
+// same file (e.g. struct-field hunk + load-shaders hunk) can be applied
+// independently and re-applied safely.
 function applyHunk(text, hunk, ctx) {
-  if (hunk.sentinel && text.includes(hunk.sentinel)) {
+  // Use the first non-blank line of the inject block as the per-hunk
+  // sentinel. Each inject block in our patches starts with a unique
+  // `// MILADY-VK-DISPATCH-PATCH-V1 BEGIN — <description>` comment, so
+  // first-non-blank identifies it precisely.
+  const firstLine = hunk.inject.split("\n").find((l) => l.trim().length > 0);
+  if (!firstLine) {
+    throw new Error(`[vulkan-kernels] empty inject block in ${ctx}`);
+  }
+  if (text.includes(firstLine)) {
     return { text, applied: false };
   }
   const idx = text.indexOf(hunk.anchor);

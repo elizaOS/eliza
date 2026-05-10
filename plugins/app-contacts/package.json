@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-contacts",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "description": "Android Contacts overlay app — wraps the @elizaos/capacitor-contacts native plugin.",
   "main": "./dist/index.js",
@@ -27,11 +27,11 @@
     }
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/capacitor-contacts": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*",
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/capacitor-contacts": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1",
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {

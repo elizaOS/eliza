@@ -189,7 +189,7 @@ def _ctx(
         bundle_dir=bundle,
         dry_run=dry_run,
         metal_verification=metal,
-        repo_id=f"elizalabs/eliza-1-{tier}",
+        repo_id=f"elizaos/eliza-1-{tier}",
         public=False,
         training_repo_root=training_root or _TRAINING_ROOT,
         template_path=(

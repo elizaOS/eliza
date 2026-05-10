@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-browser",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "description": "Browser plugin: unified BROWSER action and MANAGE_BROWSER_BRIDGE management action. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge. Targets are registered with the BrowserService; the agent uses what is available.",
   "main": "./dist/index.js",
@@ -20,8 +20,8 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/vault": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/vault": "2.0.0-beta.1",
     "drizzle-orm": "0.45.2"
   },
   "devDependencies": {

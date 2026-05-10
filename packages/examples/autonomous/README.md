@@ -19,7 +19,7 @@ These demos are intentionally **sandboxed**:
 
 Download the Eliza-1 mobile GGUF and place it in your models directory.
 
-- Model repo: [`elizalabs/eliza-1-mobile-1_7b`](https://huggingface.co/elizalabs/eliza-1-mobile-1_7b)
+- Model repo: [`elizaos/eliza-1-mobile-1_7b`](https://huggingface.co/elizaos/eliza-1-mobile-1_7b)
 - GGUF file: `text/eliza-1-mobile-1_7b-32k.gguf`
 
 Then set:

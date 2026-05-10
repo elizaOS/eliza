@@ -36,6 +36,7 @@ import type {
   SpeakerPreset,
   TextToken,
 } from "./voice/types";
+import { writeVoicePresetFile } from "./voice/voice-preset-format";
 
 /**
  * TTS backend whose synthesis only completes when `release()` is
@@ -78,12 +79,14 @@ function writePresetBundle(root: string): void {
   mkdirSync(path.join(root, "cache"), { recursive: true });
   // 16 floats — enough for the speaker preset cache to parse without
   // truncating to zero. Real presets are O(KB-MB); shape only matters
-  // for the integration test.
-  const preset = new Float32Array(16);
-  for (let i = 0; i < preset.length; i++) preset[i] = (i + 1) / 100;
+  // for the integration test. Wrap in the v1 binary format the parser
+  // now requires (see voice-preset-format.ts).
+  const embedding = new Float32Array(16);
+  for (let i = 0; i < embedding.length; i++) embedding[i] = (i + 1) / 100;
+  const bytes = writeVoicePresetFile({ embedding, phrases: [] });
   writeFileSync(
     path.join(root, "cache", "voice-preset-default.bin"),
-    Buffer.from(preset.buffer),
+    Buffer.from(bytes),
   );
 }
 
