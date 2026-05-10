@@ -133,7 +133,10 @@ function readOp(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
 ): TaskOp | null {
-  const raw = pickString(params, content, "op");
+  const raw =
+    pickString(params, content, "subaction") ??
+    pickString(params, content, "op") ??
+    pickString(params, content, "action");
   if (!raw) return null;
   const normalized = raw.toLowerCase().replace(/-/g, "_");
   return (SUPPORTED_OPS as readonly string[]).includes(normalized)
@@ -1108,9 +1111,17 @@ async function runControl(
   }
 
   const text = typeof content.text === "string" ? content.text : "";
+  const topLevelAction = textValue(params.action) ?? textValue(content.action);
+  const normalizedTopLevelAction = topLevelAction?.toLowerCase().replace(/-/g, "_");
+  const legacyControlAction =
+    topLevelAction && normalizedTopLevelAction !== "control"
+      ? topLevelAction
+      : undefined;
   const action = inferControlAction(
     text,
-    textValue(params.action) ?? textValue(content.action),
+    textValue(params.controlAction) ??
+      textValue(content.controlAction) ??
+      legacyControlAction,
   );
 
   if (!action) {
@@ -1892,9 +1903,16 @@ async function runManageIssues(
 
   const text = ((content.text as string) ?? "").slice(0, ISSUE_BODY_MAX_CHARS);
 
+  const topLevelAction = textValue(params.action) ?? textValue(content.action);
+  const normalizedTopLevelAction = topLevelAction?.toLowerCase().replace(/-/g, "_");
+  const legacyIssueAction =
+    topLevelAction && normalizedTopLevelAction !== "manage_issues"
+      ? topLevelAction
+      : undefined;
   const action =
-    (params.action as string) ??
-    (content.action as string) ??
+    (params.issueAction as string) ??
+    (content.issueAction as string) ??
+    legacyIssueAction ??
     inferIssueAction(text);
   const repo = (params.repo as string) ?? (content.repo as string);
 
@@ -2145,14 +2163,14 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
   ],
   description:
     "Single planner-visible surface for the orchestrator's task-agent and workspace lifecycle. " +
-    "Pick `op` to dispatch: create / spawn_agent / send / stop_agent / list_agents / cancel / history / control / share / provision_workspace / submit_workspace / manage_issues / archive / reopen. " +
-    "Use `control` with action=pause|resume|stop|continue|archive|reopen for task-thread state transitions, and `manage_issues` with action=create|list|get|update|comment|close|reopen|add_labels for GitHub issues.",
+    "Pick `action` to dispatch: create / spawn_agent / send / stop_agent / list_agents / cancel / history / control / share / provision_workspace / submit_workspace / manage_issues / archive / reopen. " +
+    "Use `control` with controlAction=pause|resume|stop|continue|archive|reopen for task-thread state transitions, and `manage_issues` with issueAction=create|list|get|update|comment|close|reopen|add_labels for GitHub issues.",
   descriptionCompressed:
-    "tasks: op=create|spawn_agent|send|stop_agent|list_agents|cancel|history|control|share|provision_workspace|submit_workspace|manage_issues|archive|reopen",
+    "tasks: action=create|spawn_agent|send|stop_agent|list_agents|cancel|history|control|share|provision_workspace|submit_workspace|manage_issues|archive|reopen",
   suppressPostActionContinuation: true,
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description:
         "Task operation: create, spawn_agent, send, stop_agent, list_agents, cancel, history, control, share, provision_workspace, submit_workspace, manage_issues, archive, reopen.",
       required: false,
@@ -2174,38 +2192,38 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "agents",
-      description: "Pipe-delimited multi-agent task list for op=create.",
+      description: "Pipe-delimited multi-agent task list for action=create.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "repo",
       description:
-        "Repository URL/slug for op=create / op=manage_issues / op=provision_workspace.",
+        "Repository URL/slug for action=create / action=manage_issues / action=provision_workspace.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "workdir",
-      description: "Working directory for op=create / op=spawn_agent.",
+      description: "Working directory for action=create / action=spawn_agent.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "memoryContent",
-      description: "Additional memory/context for op=create / op=spawn_agent.",
+      description: "Additional memory/context for action=create / action=spawn_agent.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "label",
-      description: "Task label for op=create / op=spawn_agent / op=send.",
+      description: "Task label for action=create / action=spawn_agent / action=send.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "approvalPreset",
-      description: "Approval preset for op=create / op=spawn_agent.",
+      description: "Approval preset for action=create / action=spawn_agent.",
       required: false,
       schema: {
         type: "string" as const,
@@ -2214,20 +2232,20 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "keepAliveAfterComplete",
-      description: "Keep session alive after completion for op=spawn_agent.",
+      description: "Keep session alive after completion for action=spawn_agent.",
       required: false,
       schema: { type: "boolean" as const },
     },
     // send
     {
       name: "input",
-      description: "Text input to send to a running session for op=send.",
+      description: "Text input to send to a running session for action=send.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "keys",
-      description: "Key sequence to send for op=send.",
+      description: "Key sequence to send for action=send.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2235,26 +2253,26 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     {
       name: "sessionId",
       description:
-        "Target session id for op=send / op=stop_agent / op=cancel / op=control / op=share.",
+        "Target session id for action=send / action=stop_agent / action=cancel / action=control / action=share.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "threadId",
       description:
-        "Target task-thread id for op=cancel / op=control / op=share / op=archive / op=reopen.",
+        "Target task-thread id for action=cancel / action=control / action=share / action=archive / action=reopen.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "taskId",
-      description: "Alias for threadId; preferred for op=archive / op=reopen.",
+      description: "Alias for threadId; preferred for action=archive / action=reopen.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "all",
-      description: "Apply to all sessions for op=stop_agent / op=cancel.",
+      description: "Apply to all sessions for action=stop_agent / action=cancel.",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -2290,41 +2308,47 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "statuses",
-      description: "Status filter list for op=history.",
+      description: "Status filter list for action=history.",
       required: false,
       schema: { type: "array" as const, items: { type: "string" as const } },
     },
     {
       name: "limit",
-      description: "Result limit for op=history.",
+      description: "Result limit for action=history.",
       required: false,
       schema: { type: "number" as const },
     },
     {
       name: "includeArchived",
-      description: "Include archived threads in op=history.",
+      description: "Include archived threads in action=history.",
       required: false,
       schema: { type: "boolean" as const },
     },
     // control
     {
-      name: "action",
+      name: "controlAction",
       description:
-        "Sub-action for op=control (pause|resume|stop|continue|archive|reopen) " +
-        "or for op=manage_issues (create|list|get|update|comment|close|reopen|add_labels).",
+        "Child action for action=control: pause | resume | stop | continue | archive | reopen. Legacy action=<control verb> is still accepted when top-level action is supplied as op/subaction.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "issueAction",
+      description:
+        "Child action for action=manage_issues: create | list | get | update | comment | close | reopen | add_labels.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "note",
-      description: "Optional note for op=control with action=pause|stop.",
+      description: "Optional note for action=control with controlAction=pause|stop.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "instruction",
       description:
-        "Follow-up instruction for op=control with action=resume|continue.",
+        "Follow-up instruction for action=control with controlAction=resume|continue.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2332,7 +2356,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     {
       name: "baseBranch",
       description:
-        "Base branch for op=provision_workspace / op=submit_workspace.",
+        "Base branch for action=provision_workspace / action=submit_workspace.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2381,7 +2405,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "skipPR",
-      description: "Skip PR creation for op=submit_workspace.",
+      description: "Skip PR creation for action=submit_workspace.",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -2389,35 +2413,35 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     {
       name: "title",
       description:
-        "Issue title for op=manage_issues with action=create|update.",
+        "Issue title for action=manage_issues with issueAction=create|update.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "body",
       description:
-        "Issue body for op=manage_issues with action=create|update|comment.",
+        "Issue body for action=manage_issues with issueAction=create|update|comment.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "issueNumber",
       description:
-        "Issue number for op=manage_issues with action=get|update|comment|close|reopen|add_labels.",
+        "Issue number for action=manage_issues with issueAction=get|update|comment|close|reopen|add_labels.",
       required: false,
       schema: { type: "number" as const },
     },
     {
       name: "labels",
       description:
-        "Labels (csv string or array) for op=manage_issues with action=create|update|add_labels|list.",
+        "Labels (csv string or array) for action=manage_issues with issueAction=create|update|add_labels|list.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "state",
       description:
-        "State filter (open|closed|all) for op=manage_issues with action=list.",
+        "State filter (open|closed|all) for action=manage_issues with issueAction=list.",
       required: false,
       schema: { type: "string" as const },
     },

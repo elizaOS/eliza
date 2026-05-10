@@ -90,11 +90,20 @@ export interface PermissionCardProps {
 }
 
 function defaultStateFor(id: PermissionId): PermissionState {
+  const platform =
+    typeof navigator !== "undefined" &&
+    /Win/i.test(navigator.platform ?? "")
+      ? "win32"
+      : typeof navigator !== "undefined" &&
+          /Linux/i.test(navigator.platform ?? "")
+        ? "linux"
+        : "darwin";
   return {
     id,
     status: "not-determined",
     lastChecked: 0,
     canRequest: true,
+    platform,
   };
 }
 

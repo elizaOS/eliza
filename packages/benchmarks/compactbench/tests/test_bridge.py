@@ -107,3 +107,122 @@ def test_bridge_raises_on_invalid_json(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(bridge.BridgeError) as excinfo:
         bridge.run_ts_compactor("naive-summary", {"turns": []})
     assert "non-JSON stdout" in str(excinfo.value)
+
+
+def test_bridge_recovers_error_envelope_on_nonzero_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The TS shim writes its error envelope to stdout and exits 1. Earlier
+    versions surfaced only the stderr noise; the bridge should now parse
+    the structured ``{"error": ...}`` and surface the real message.
+    """
+
+    def fake_run(_args: list[str], *, input: bytes, **_kwargs: Any) -> Any:
+        return _make_completed(
+            '{"error": "Cerebras chat completion failed (401): bad key"}',
+            stderr="bun: warning",
+            returncode=1,
+        )
+
+    monkeypatch.setattr(bridge.subprocess, "run", fake_run)
+    monkeypatch.setattr(bridge.shutil, "which", lambda _: "/fake/bun")
+
+    with pytest.raises(bridge.BridgeError) as excinfo:
+        bridge.run_ts_compactor("naive-summary", {"turns": []})
+    assert "Cerebras chat completion failed (401)" in str(excinfo.value)
+
+
+def test_bridge_recovers_trailing_json_after_stray_logs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stray ``console.log`` from the TS process or bun startup banner
+    must not break artifact parsing — the last balanced JSON object on
+    stdout is the result.
+    """
+    artifact = {
+        "schemaVersion": "1.0.0",
+        "summaryText": "x",
+        "structured_state": {
+            "immutable_facts": [],
+            "locked_decisions": [],
+            "deferred_items": [],
+            "forbidden_behaviors": [],
+            "entity_map": {},
+            "unresolved_items": [],
+        },
+        "selectedSourceTurnIds": [],
+        "warnings": [],
+        "methodMetadata": {},
+    }
+    noisy_stdout = (
+        "[bun] resolving dependencies...\n"
+        "module imported in 142ms\n"
+        f"{json.dumps(artifact)}\n"
+    )
+
+    def fake_run(_args: list[str], *, input: bytes, **_kwargs: Any) -> Any:
+        return _make_completed(noisy_stdout)
+
+    monkeypatch.setattr(bridge.subprocess, "run", fake_run)
+    monkeypatch.setattr(bridge.shutil, "which", lambda _: "/fake/bun")
+
+    result = bridge.run_ts_compactor("naive-summary", {"turns": []})
+    assert result["summaryText"] == "x"
+
+
+def test_bridge_serializes_unicode_without_escape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unicode in the transcript must reach the TS side as raw UTF-8, not
+    as ``\\u`` escape sequences. The TS JSON.parse handles both, but we
+    don't want to bloat large payloads.
+    """
+    captured: dict[str, Any] = {}
+
+    def fake_run(_args: list[str], *, input: bytes, **_kwargs: Any) -> Any:
+        captured["raw"] = input
+        return _make_completed(
+            json.dumps(
+                {
+                    "schemaVersion": "1.0.0",
+                    "summaryText": "ok",
+                    "structured_state": {
+                        "immutable_facts": [],
+                        "locked_decisions": [],
+                        "deferred_items": [],
+                        "forbidden_behaviors": [],
+                        "entity_map": {},
+                        "unresolved_items": [],
+                    },
+                    "selectedSourceTurnIds": [],
+                    "warnings": [],
+                    "methodMetadata": {},
+                }
+            )
+        )
+
+    monkeypatch.setattr(bridge.subprocess, "run", fake_run)
+    monkeypatch.setattr(bridge.shutil, "which", lambda _: "/fake/bun")
+
+    transcript = {"turns": [{"id": 0, "role": "user", "content": "héllo 你好 🌊", "tags": []}]}
+    bridge.run_ts_compactor("naive-summary", transcript)
+
+    raw_text = captured["raw"].decode("utf-8")
+    assert "héllo" in raw_text
+    assert "你好" in raw_text
+    assert "🌊" in raw_text
+    assert "\\u" not in raw_text
+
+
+def test_bridge_rejects_nan_in_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    """JS JSON.parse cannot consume NaN/Infinity, so the bridge must
+    refuse them at serialization time rather than producing a payload the
+    TS side will silently drop or fail on.
+    """
+    monkeypatch.setattr(bridge.shutil, "which", lambda _: "/fake/bun")
+    transcript = {
+        "turns": [{"id": 0, "role": "user", "content": "x"}],
+        "metadata": {"score": float("nan")},
+    }
+    with pytest.raises(ValueError):
+        bridge.run_ts_compactor("naive-summary", transcript)

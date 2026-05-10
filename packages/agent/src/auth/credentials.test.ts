@@ -17,6 +17,8 @@ function useTempElizaHome(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-auth-test-"));
   tempHomes.push(dir);
   vi.stubEnv("ELIZA_HOME", dir);
+  vi.stubEnv("HOME", dir);
+  vi.stubEnv("USERPROFILE", dir);
   return dir;
 }
 

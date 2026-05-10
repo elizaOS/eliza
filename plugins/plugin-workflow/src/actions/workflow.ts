@@ -1,7 +1,7 @@
 /**
  * WORKFLOW — single umbrella action for workflow lifecycle ops.
  *
- * Op-based dispatch (provide `op` parameter):
+ * Action-based dispatch (provide `action` parameter):
  *   create        — generate + deploy a new workflow from a seed prompt
  *   modify        — load a deployed workflow into the draft editor by id
  *   activate      — activate a workflow by id
@@ -10,7 +10,7 @@
  *   delete        — permanently delete a workflow by id
  *   executions    — fetch recent executions for a workflow id
  *
- * All ops talk to the in-process `WorkflowService` via
+ * All actions talk to the in-process `WorkflowService` via
  * `runtime.getService(WORKFLOW_SERVICE_TYPE)`. There is no HTTP boundary.
  *
  * Trigger CRUD (create/update/delete/run a scheduled trigger, including
@@ -52,6 +52,7 @@ type WorkflowOp = (typeof WORKFLOW_OPS)[number];
 const WORKFLOW_CONTEXTS = ['automation', 'tasks', 'agent_internal'] as const;
 
 interface WorkflowActionParameters {
+  action?: unknown;
   op?: unknown;
   seedPrompt?: unknown;
   name?: unknown;
@@ -351,14 +352,14 @@ export const workflowAction: Action = {
     'WORKFLOW_EXECUTIONS',
   ],
   description:
-    'Manage workflows. Op-based dispatch — provide an `op` parameter:\n' +
+    'Manage workflows. Action-based dispatch - provide an `action` parameter:\n' +
     '  create, modify, activate, deactivate, toggle_active, delete, executions.\n' +
     'For creating/updating scheduled triggers (including promoting a task to a workflow), use the TRIGGER action.',
   descriptionCompressed:
-    'manage workflows; op-based dispatch (create modify activate deactivate toggle_active delete executions)',
+    'manage workflows; action-based dispatch (create modify activate deactivate toggle_active delete executions)',
   parameters: [
     {
-      name: 'op',
+      name: 'action',
       description:
         'Operation: create, modify, activate, deactivate, toggle_active, delete, executions.',
       required: true,
@@ -378,7 +379,7 @@ export const workflowAction: Action = {
     },
     {
       name: 'seedPrompt',
-      description: 'Natural-language description for op=create.',
+      description: 'Natural-language description for action=create.',
       required: false,
       schema: { type: 'string' as const },
     },
@@ -390,13 +391,13 @@ export const workflowAction: Action = {
     },
     {
       name: 'active',
-      description: 'Target state for op=toggle_active (true to activate).',
+      description: 'Target state for action=toggle_active (true to activate).',
       required: false,
       schema: { type: 'boolean' as const },
     },
     {
       name: 'limit',
-      description: 'Max executions to return for op=executions (default 10).',
+      description: 'Max executions to return for action=executions (default 10).',
       required: false,
       schema: { type: 'number' as const },
     },
@@ -412,11 +413,11 @@ export const workflowAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     const params = (options?.parameters ?? {}) as WorkflowActionParameters;
-    const op = readOp(params.op);
+    const op = readOp(params.action ?? params.op);
     if (!op) {
       return {
         success: false,
-        text: `op parameter is required (one of: ${WORKFLOW_OPS.join(', ')}).`,
+        text: `action parameter is required (one of: ${WORKFLOW_OPS.join(', ')}).`,
       };
     }
     const service = getWorkflowService(runtime);
