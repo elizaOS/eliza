@@ -1,27 +1,36 @@
-# DRAFT TurboQuant / QJL / PolarQuant KV cache kernels (Vulkan + Metal)
+# TurboQuant / QJL / PolarQuant KV cache kernels (Vulkan + Metal)
 
-> **DRAFT — COMPILED ONLY ON LINUX, NOT VALIDATED ON GPU HARDWARE.**
+> **STATUS — Vulkan turbo* hardware-verified on Intel ARL + lavapipe (8/8 PASS each). Metal + QJL/Polar still need on-device runs.**
 >
-> | Family       | Files                                                            | Source-level checked against fork? | Compiled with target SDK? | Validated on hardware? |
+> | Family       | Files                                                            | Source-level checked against fork? | Compiles with target SDK? | Validated on hardware? |
 > | ------------ | ---------------------------------------------------------------- | ---------------------------------- | ------------------------- | ---------------------- |
-> | TurboQuant   | `metal/turbo3.metal`, `metal/turbo4.metal`, `metal/turbo3_tcq.metal`, `vulkan/turbo*.comp` | YES (byte layout + decode math match in-tree `dequantize_turbo3_0_t4` and the always-on `patchMetalTurbo4`) | NO (no `xcrun metal` / `glslc` in author env beyond the NDK build) | NO |
-> | QJL          | `metal/qjl.metal` (new)                                          | YES (against `qjl_score_qk_ref` in `packages/native-plugins/qjl-cpu`) | NO | NO |
-> | PolarQuant   | `metal/polar.metal` (new)                                        | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref` in `packages/native-plugins/polarquant-cpu`) | NO | NO |
+> | TurboQuant — Vulkan | `vulkan/turbo3.comp`, `vulkan/turbo4.comp`, `vulkan/turbo3_tcq.comp` | YES (byte layout + decode math match in-tree `dequantize_turbo3_*` and the always-on `patchMetalTurbo4`) | YES (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — 8/8 PASS on Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe |
+> | TurboQuant — Metal  | `metal/turbo3.metal`, `metal/turbo4.metal`, `metal/turbo3_tcq.metal` | YES (matches in-tree `dequantize_turbo3_0_t4` + `patchMetalTurbo4`) | NO (no `xcrun metal` in author env) | NO |
+> | QJL          | `metal/qjl.metal`, `vulkan/qjl{,_get_rows,_mul_mv}.comp`         | YES (against `qjl_score_qk_ref` in `packages/native-plugins/qjl-cpu`) | YES (Vulkan only) | NO |
+> | PolarQuant   | `metal/polar.metal`, `vulkan/polar{,_get_rows}.comp`             | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref` in `packages/native-plugins/polarquant-cpu`) | YES (Vulkan only) | NO |
 >
 > Earlier history: the original `turbo*.comp` Vulkan port reported 0/8 PASS
-> against Mesa llvmpipe (subgroup-size mismatch + structural divergence).
+> against Mesa llvmpipe AND Intel ARL — different wrong values per ICD,
+> which fingerprinted a source-level subgroup-size assumption (`subgroupAdd`
+> over a 32-thread workgroup with no `requiredSubgroupSize`). Wave-4 W4-A
+> replaced that with the same driver-portable shared-memory tree reduction
+> the new W3-E QJL/Polar shaders use; the result is 8/8 PASS on both ICDs.
+> See `reports/porting/2026-05-09-w4/vulkan-turbo-fix.md`.
+>
 > The Metal ports here mirror the **same** decode math as the fork's existing,
 > shipping `dequantize_turbo3_0_t4` and the always-on `patchMetalTurbo4` patch
 > — so the byte layout and centroid lookup have been triple-checked at the
 > source level. None of that is a substitute for `metal_verify` reporting
 > 8/8 PASS on a real Apple GPU.
 >
-> **Do not wire these into the production fork on the always-on path** until
-> hardware verification lands. The build-script patch hooks
-> (`patchMetalTurbo3Tcq`, `patchMetalQjl`, `patchMetalPolar`) are all
-> opt-in via env vars (`ELIZA_DFLASH_PATCH_METAL_*=1`) for that reason.
-> `patchMetalTurbo4` remains always-on because it predates these standalone
-> shaders and rewrites the fork's stale Turbo4 path to match the current
+> The Vulkan turbo* `patchVulkanKernels` hook is now default-on after Wave-4
+> verification (set `ELIZA_DFLASH_PATCH_VULKAN_KERNELS=0` to silence it). The
+> Metal patch hooks for the new standalone shaders
+> (`patchMetalTurbo3Tcq`, `patchMetalQjl`, `patchMetalPolar`) remain opt-in
+> via env vars (`ELIZA_DFLASH_PATCH_METAL_*=1`) — flip them once
+> `metal_verify` reports 8/8 on real Apple Silicon. `patchMetalTurbo4`
+> remains always-on because it predates these standalone shaders and
+> rewrites the fork's stale Turbo4 path to match the current
 > `block_turbo4_0` layout (norm + qs[64], no QJL residuals).
 >
 > The most likely on-hardware failure modes (carry-overs from the Vulkan
@@ -184,11 +193,16 @@ Each shader file annotates the CUDA function it ports. Key correspondences:
 3. **No `d_tcq_dump_*` debug paths.** The CUDA `k_set_rows_turbo3_tcq` has
    optional global dump buffers for autocorrelation analysis. Removed.
 
-4. **Subgroup/SIMD reduction.** Vulkan uses
-   `GL_KHR_shader_subgroup_arithmetic` `subgroupAdd`; Metal uses
-   `simd_sum`. Both assume a 32-lane subgroup/SIMD-group, which matches
-   nVidia warps and Apple GPU SIMD-groups. On AMD GCN/RDNA the wave size
-   may be 32 or 64 — verify on hardware.
+4. **Subgroup/SIMD reduction.** Vulkan uses a driver-portable 32-thread
+   shared-memory tree reduction (5 barriers, `shared float partials[32]`)
+   so it works regardless of subgroup size. The original `subgroupAdd`
+   path silently under-reduced on Intel ARL (minSubgroupSize=8) and on
+   lavapipe; W4-A replaced it after on-hardware verification. Metal still
+   uses `simd_sum` because the dispatch is one threadgroup = one Apple
+   SIMD-group of 32 lanes (the `simd_sum` assumption is a per-vendor
+   guarantee on Apple Silicon, unlike Vulkan's driver-chosen subgroup
+   size). On AMD GCN/RDNA the Vulkan tree reduction sidesteps the
+   wave32/wave64 question entirely.
 
 5. **No FWHT inside the shader.** All shaders skip both forward and inverse
    rotation because the surrounding graph pre-rotates `Q`. This matches
@@ -269,10 +283,9 @@ adb push vulkan_verify /data/local/tmp/eliza-kernels/
 adb shell "cd /data/local/tmp/eliza-kernels && \
            ./vulkan_verify turbo3.spv fixtures/turbo3.json"
 
-# 3) End-to-end via llama-server: the patch hook `patchVulkanKernels`
-#    (gated by ELIZA_DFLASH_PATCH_VULKAN_KERNELS=1) drops these .comp
-#    files into the fork's Vulkan backend. Default: OFF.
-ELIZA_DFLASH_PATCH_VULKAN_KERNELS=1 \
+# 3) End-to-end via llama-server: the patch hook `patchVulkanKernels` is
+#    default-on after Wave-4 hardware verification. To silence the log:
+ELIZA_DFLASH_PATCH_VULKAN_KERNELS=0 \
   bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend vulkan
 ```
 
@@ -280,9 +293,11 @@ ELIZA_DFLASH_PATCH_VULKAN_KERNELS=1 \
 
 | Shader            | C reference compiles | Self-test (CPU) | Fixture generated | Static visual review vs CUDA / fork | Compiles to SPIR-V/AIR | Runs on real GPU | Numerically matches CUDA |
 | ----------------- | -------------------- | --------------- | ----------------- | ----------------------------------- | ---------------------- | ---------------- | ------------------------ |
-| `turbo3.comp`     | n/a                  | n/a             | yes               | yes                                 | NEEDS HARDWARE         | NEEDS HARDWARE   | NEEDS HARDWARE           |
-| `turbo4.comp`     | n/a                  | n/a             | yes               | yes                                 | NEEDS HARDWARE         | NEEDS HARDWARE   | NEEDS HARDWARE           |
-| `turbo3_tcq.comp` | n/a                  | n/a             | yes               | yes                                 | NEEDS HARDWARE         | NEEDS HARDWARE   | NEEDS HARDWARE           |
+| `turbo3.comp`     | n/a                  | n/a             | yes               | yes                                 | yes (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe | YES — 8/8 PASS, max diff 4.8e-6 |
+| `turbo4.comp`     | n/a                  | n/a             | yes               | yes                                 | yes (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe | YES — 8/8 PASS, max diff 5.7e-6 |
+| `turbo3_tcq.comp` | n/a                  | n/a             | yes               | yes                                 | yes (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe | YES — 8/8 PASS, max diff 6.7e-6 |
+| `qjl.comp`, `qjl_get_rows.comp`, `qjl_mul_mv.comp` | n/a | n/a | NO (harness lacks QJL bind-set yet) | YES (against `qjl_score_qk_ref`) | yes (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1, spirv-val clean) | NEEDS HARNESS EXTENSION | NEEDS HARNESS EXTENSION |
+| `polar.comp`, `polar_get_rows.comp` | n/a | n/a | NO (harness lacks Polar bind-set yet) | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref`) | yes (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1, spirv-val clean) | NEEDS HARNESS EXTENSION | NEEDS HARNESS EXTENSION |
 | `turbo3.metal`    | n/a                  | n/a             | yes               | YES (matches fork's `dequantize_turbo3_0_t4` byte-for-byte) | NEEDS HARDWARE         | NEEDS HARDWARE   | NEEDS HARDWARE           |
 | `turbo4.metal`    | n/a                  | n/a             | yes               | YES (matches always-on `patchMetalTurbo4` decode path)       | NEEDS HARDWARE         | NEEDS HARDWARE   | NEEDS HARDWARE           |
 | `turbo3_tcq.metal`| n/a                  | n/a             | yes               | YES (matches CUDA `dequantize_turbo3_tcq` 9-bit window decode) | NEEDS HARDWARE         | NEEDS HARDWARE   | NEEDS HARDWARE           |
@@ -309,16 +324,21 @@ scores, so the references can't silently disagree with each other:
 
 These are reference-vs-reference checks; they verify that the two C
 references the Metal shaders mirror agree with each other, not that the
-shaders agree with hardware. What "NEEDS HARDWARE"
-means: no shader compiler (`glslangValidator`, `glslc`, `xcrun metal`) is
-installed in the agent's working environment, so even the textual SPIR-V /
-AIR compile step is unverified. The shaders are written to match the
-fork's existing in-tree Metal helpers (where they exist) plus the on-fork
-CPU references for QJL and Polar bit-for-bit, but **that is not a
-substitute for `xcrun metal` followed by `metal_verify` reporting 8/8 PASS
-on a real Apple Silicon device**. AGENTS.md is explicit about this
-constraint — do not regenerate this matrix to ✓ until the hardware run
-actually happens.
+shaders agree with hardware. What "NEEDS HARDWARE" means for the Metal
+rows: no `xcrun metal` is installed in the agent's working environment,
+so even the textual AIR compile step is unverified. The shaders are
+written to match the fork's existing in-tree Metal helpers (where they
+exist) plus the on-fork CPU references for QJL and Polar bit-for-bit,
+but **that is not a substitute for `xcrun metal` followed by
+`metal_verify` reporting 8/8 PASS on a real Apple Silicon device**.
+What "NEEDS HARNESS EXTENSION" means for the Vulkan QJL/Polar rows: the
+shaders compile cleanly under `glslc --target-env=vulkan1.1
+--target-spv=spv1.3` and pass `spirv-val`, but `verify/vulkan_verify.cpp`
+hard-codes the turbo bind-set + push-constants struct, so the QJL and
+Polar shaders need either harness branching or a separate verify binary
+plus matching JSON fixtures regenerated from `qjl_polar_ref.c`. AGENTS.md
+is explicit about this constraint — do not regenerate this matrix to ✓
+until the hardware run actually happens.
 
 ## Substitution note for fixtures
 
@@ -355,16 +375,17 @@ exposes the following patch hooks:
 
 | Env var                                  | What it does                                              | Default |
 | ---------------------------------------- | --------------------------------------------------------- | ------- |
-| `ELIZA_DFLASH_PATCH_VULKAN_KERNELS=1`    | Drops `vulkan/*.comp` into the fork's Vulkan tree         | OFF     |
+| `ELIZA_DFLASH_PATCH_VULKAN_KERNELS`      | Vulkan turbo* sync hook (default-on log; set `=0` to silence) | ON  |
 | `ELIZA_DFLASH_PATCH_METAL_TURBO3=1`      | Drops `metal/turbo3*.metal` into the fork's Metal tree    | OFF     |
 | `ELIZA_DFLASH_PATCH_METAL_QJL=1`         | Drops `metal/qjl.metal` into the fork's Metal tree        | OFF     |
 | `ELIZA_DFLASH_PATCH_METAL_POLAR=1`       | Drops `metal/polar.metal` into the fork's Metal tree      | OFF     |
 
 `patchMetalTurbo4` is **always on** during Metal builds — it predates these
 standalone shaders and rewrites the fork's stale Turbo4 path to match the
-current `block_turbo4_0` layout. Do not flip the four hooks above to
-always-on until `metal_verify` reports 8/8 PASS on real Apple Silicon
-hardware.
+current `block_turbo4_0` layout. `patchVulkanKernels` flipped to default-on
+after Wave-4 W4-A verified the turbo3 / turbo4 / turbo3_tcq Vulkan shaders
+8/8 PASS on Intel ARL + lavapipe. Do not flip the three Metal hooks above
+until `metal_verify` reports 8/8 PASS on real Apple Silicon hardware.
 
 Wiring these into `dflash-server.ts` (so `--cache-type-k turbo3_tcq`
 actually runs through the new shader, and so QJL / Polar are reachable
