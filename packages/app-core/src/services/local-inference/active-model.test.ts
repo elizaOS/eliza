@@ -83,8 +83,8 @@ describe("resolveLocalInferenceLoadArgs", () => {
 
   it("threads catalog contextLength into loader args when no override is given", async () => {
     const target = makeInstalledModel(
-      "qwen2.5-coder-7b",
-      "/tmp/Qwen2.5-Coder-7B.gguf",
+      "eliza-1-9b",
+      "/tmp/eliza-1-9b.gguf",
     );
     const args = await resolveLocalInferenceLoadArgs(target);
     expect(args.contextSize).toBe(131072);
@@ -92,8 +92,8 @@ describe("resolveLocalInferenceLoadArgs", () => {
 
   it("per-load contextSize override beats catalog contextLength default", async () => {
     const target = makeInstalledModel(
-      "qwen2.5-coder-7b",
-      "/tmp/Qwen2.5-Coder-7B.gguf",
+      "eliza-1-9b",
+      "/tmp/eliza-1-9b.gguf",
     );
     const args = await resolveLocalInferenceLoadArgs(target, {
       contextSize: 32768,
@@ -102,10 +102,7 @@ describe("resolveLocalInferenceLoadArgs", () => {
   });
 
   it("per-load gpuLayers/flashAttention/mmap/mlock overrides flow into args", async () => {
-    const target = makeInstalledModel(
-      "llama-3.2-1b",
-      "/tmp/llama-3.2-1b.gguf",
-    );
+    const target = makeInstalledModel("eliza-1-2b", "/tmp/eliza-1-2b.gguf");
     const args = await resolveLocalInferenceLoadArgs(target, {
       gpuLayers: 16,
       flashAttention: true,

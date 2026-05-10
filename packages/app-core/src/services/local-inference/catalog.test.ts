@@ -1,8 +1,33 @@
 import { describe, expect, it } from "vitest";
-import { findCatalogModel, MODEL_CATALOG } from "./catalog";
+import {
+  ELIZA_1_PLACEHOLDER_IDS,
+  findCatalogModel,
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  MODEL_CATALOG,
+} from "./catalog";
+import { recommendForFirstRun } from "./recommendation";
 import { localInferenceService } from "./service";
 
 describe("local inference catalog", () => {
+  it("ships exactly the 12 Milady-shippable entries", () => {
+    expect(MODEL_CATALOG.map((m) => m.id).sort()).toEqual(
+      [
+        "bonsai-8b-1bit",
+        "bonsai-8b-1bit-dflash",
+        "bonsai-8b-dflash-drafter",
+        "eliza-1-2b",
+        "eliza-1-9b",
+        "eliza-1-27b",
+        "qwen3.5-4b-dflash",
+        "qwen3.5-4b-dflash-drafter-q4",
+        "qwen3.5-9b-dflash",
+        "qwen3.5-9b-dflash-drafter-q4",
+        "qwen3.6-27b-dflash",
+        "qwen3.6-27b-dflash-drafter-q8",
+      ].sort(),
+    );
+  });
+
   it("keeps DFlash drafter companions installable but hidden from the hub", () => {
     const visible = localInferenceService.getCatalog();
     expect(visible.some((model) => model.category === "drafter")).toBe(false);
@@ -34,7 +59,7 @@ describe("local inference catalog", () => {
   });
 
   it("declares contextLength on every entry whose blurb claims a long window", () => {
-    // Catches the regression class this task exists to prevent: a blurb
+    // Catches the regression class this test exists to prevent: a blurb
     // saying "128k window" but no `contextLength` on the entry, so the
     // loader silently uses the default (8k or 4k).
     const longContextRegex =
@@ -59,19 +84,14 @@ describe("local inference catalog", () => {
     // legitimately advertise a 128k+ ceiling and must declare it
     // programmatically, not just in marketing prose.
     const expected = {
-      "qwen2.5-coder-7b": 131072,
-      "qwen2.5-coder-14b": 131072,
-      "deepseek-r1-distill-qwen-32b": 131072,
+      "eliza-1-2b": 131072,
       "eliza-1-9b": 131072,
       "eliza-1-27b": 131072,
       "qwen3.5-4b-dflash": 131072,
       "qwen3.5-9b-dflash": 131072,
       "qwen3.6-27b-dflash": 131072,
-      "llama-3.1-8b": 131072,
-      "llama-3.2-1b": 131072,
-      "llama-3.2-3b": 131072,
       "bonsai-8b-1bit": 131072,
-      "qwen3-coder-30b-awq-q4": 262144,
+      "bonsai-8b-1bit-dflash": 131072,
     } as const;
     for (const [id, expectedLength] of Object.entries(expected)) {
       const model = findCatalogModel(id);
@@ -118,5 +138,46 @@ describe("local inference catalog", () => {
         `tokenizer mismatch: target ${entry.id} (${entry.tokenizerFamily}) ≠ drafter ${drafterId} (${drafter!.tokenizerFamily})`,
       ).toBe(drafter!.tokenizerFamily);
     }
+  });
+
+  it("every chat/code/reasoning entry uses TBQ KV cache or DFlash (eliza-1 placeholders excepted)", () => {
+    // Hard rule: we ONLY ship Milady-optimized paths. Non-drafter entries
+    // must either declare a DFlash spec-decode block or a TurboQuant KV
+    // cache type. eliza-1-* are placeholders for upcoming optimized
+    // weights and are exempt until those tunes ship.
+    const offenders: string[] = [];
+    for (const model of MODEL_CATALOG) {
+      if (model.runtimeRole === "dflash-drafter") continue;
+      if (ELIZA_1_PLACEHOLDER_IDS.has(model.id)) continue;
+      const dflash = model.runtime?.dflash !== undefined;
+      const typeK = model.runtime?.kvCache?.typeK?.toLowerCase() ?? "";
+      const typeV = model.runtime?.kvCache?.typeV?.toLowerCase() ?? "";
+      const tbqK = typeK.startsWith("tbq") || typeK.startsWith("turbo");
+      const tbqV = typeV.startsWith("tbq") || typeV.startsWith("turbo");
+      const tbq = tbqK || tbqV;
+      if (!dflash && !tbq) {
+        offenders.push(
+          `${model.id} has no DFlash block and no TBQ KV cache (typeK=${typeK || "<none>"}, typeV=${typeV || "<none>"})`,
+        );
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("FIRST_RUN_DEFAULT_MODEL_ID resolves to a TBQ/DFlash entry", () => {
+    const defaultModel = findCatalogModel(FIRST_RUN_DEFAULT_MODEL_ID);
+    expect(defaultModel, `${FIRST_RUN_DEFAULT_MODEL_ID} missing`).toBeTruthy();
+    expect(defaultModel?.runtime?.dflash).toBeDefined();
+    expect(defaultModel?.runtimeRole).not.toBe("dflash-drafter");
+  });
+
+  it("recommendForFirstRun resolves to a Milady-shippable model", () => {
+    const picked = recommendForFirstRun();
+    expect(picked).not.toBeNull();
+    expect(picked!.id).toBe(FIRST_RUN_DEFAULT_MODEL_ID);
+    expect(picked!.runtime?.dflash).toBeDefined();
+    // Defensive: even with a stripped catalog, the function must not
+    // return a generic GGUF without a DFlash block.
+    expect(ELIZA_1_PLACEHOLDER_IDS.has(picked!.id)).toBe(false);
   });
 });
