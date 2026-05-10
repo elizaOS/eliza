@@ -11,7 +11,10 @@ import {
   type AppSessionActionResult,
   createGeneratedAppHeroSvg,
   hasAppInterface,
+  PostInstallAppRequestSchema,
+  PostLaunchAppRequestSchema,
   PostLoadFromDirectoryRequestSchema,
+  PostStopAppRequestSchema,
   PutAppPermissionsRequestSchema,
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
@@ -1011,16 +1014,23 @@ export async function handleAppsRoutes(
 
   if (method === "POST" && pathname === "/api/apps/launch") {
     try {
-      const body = await readJsonBody<{ name?: string }>(req, res);
-      if (!body) return true;
-      if (!body.name?.trim()) {
-        error(res, "name is required");
+      const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+      if (rawBody === null || rawBody === undefined) return true;
+      const parsed = PostLaunchAppRequestSchema.safeParse(rawBody);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        const issuePath = issue?.path?.join(".") ?? "<root>";
+        error(
+          res,
+          `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+          400,
+        );
         return true;
       }
       const pluginManager = getPluginManager();
       const result = await appManager.launch(
         pluginManager,
-        body.name.trim(),
+        parsed.data.name,
         (_progress: InstallProgressLike) => {},
         runtime,
       );
@@ -1033,27 +1043,27 @@ export async function handleAppsRoutes(
 
   if (method === "POST" && pathname === "/api/apps/install") {
     try {
-      const body = await readJsonBody<{ name?: string; version?: string }>(
-        req,
-        res,
-      );
-      if (!body) return true;
-      const name = body.name?.trim();
-      if (!name) {
-        error(res, "name is required");
+      const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+      if (rawBody === null || rawBody === undefined) return true;
+      const parsed = PostInstallAppRequestSchema.safeParse(rawBody);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        const issuePath = issue?.path?.join(".") ?? "<root>";
+        error(
+          res,
+          `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+          400,
+        );
         return true;
       }
+      const { name, version } = parsed.data;
       const progressEvents: InstallProgressLike[] = [];
       const recordProgress = (progress: InstallProgressLike) => {
         progressEvents.push(progress);
       };
       const pluginManager = getPluginManager();
       let result = await pluginManager
-        .installPlugin(
-          name,
-          recordProgress,
-          body.version ? { version: body.version } : undefined,
-        )
+        .installPlugin(name, recordProgress, version ? { version } : undefined)
         .catch((err: unknown) => ({
           success: false as const,
           pluginName: name,
@@ -1072,7 +1082,7 @@ export async function handleAppsRoutes(
         const { installPlugin: installPluginDirect } = await import(
           /* webpackIgnore: true */ "../services/plugin-installer.js"
         );
-        result = await installPluginDirect(name, recordProgress, body.version);
+        result = await installPluginDirect(name, recordProgress, version);
       }
       if (!result.success) {
         json(
@@ -1097,17 +1107,21 @@ export async function handleAppsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/apps/stop") {
-    const body = await readJsonBody<{ name?: string; runId?: string }>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    if (!body.name?.trim() && !body.runId?.trim()) {
-      error(res, "name or runId is required");
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null || rawBody === undefined) return true;
+    const parsed = PostStopAppRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const issuePath = issue?.path?.join(".") ?? "<root>";
+      error(
+        res,
+        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        400,
+      );
       return true;
     }
-    const appName = body.name?.trim() ?? "";
-    const runId = body.runId?.trim();
+    const appName = parsed.data.name ?? "";
+    const runId = parsed.data.runId;
     const pluginManager = getPluginManager();
     const result = await appManager.stop(pluginManager, appName, runId);
     json(res, result);

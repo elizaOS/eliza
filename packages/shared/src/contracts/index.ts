@@ -1,6 +1,7 @@
 export * from "./app-permissions.js";
 export * from "./app-permissions-routes.js";
 export * from "./apps.js";
+export * from "./apps-lifecycle-routes.js";
 export * from "./apps-loading-routes.js";
 export * from "./awareness.js";
 export * from "./cloud-topology.js";
