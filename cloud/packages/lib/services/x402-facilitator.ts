@@ -120,6 +120,7 @@ export interface VerifyResult {
   isValid: boolean;
   payer?: string;
   invalidReason?: string;
+  invalidMessage?: string;
 }
 
 /** Settlement result */
@@ -934,10 +935,19 @@ class X402FacilitatorService {
         paymentPayload as Parameters<ExactSvmFacilitator["verify"]>[0],
         paymentRequirements as Parameters<ExactSvmFacilitator["verify"]>[1],
       );
+      if (!result.isValid && result.invalidMessage) {
+        logger.warn("[x402-facilitator] Solana verification failed", {
+          invalidReason: result.invalidReason,
+          invalidMessage: result.invalidMessage,
+          payer: result.payer,
+          network: accepted.network,
+        });
+      }
       return {
         isValid: result.isValid,
         payer: result.payer || undefined,
         invalidReason: result.invalidReason ?? result.invalidMessage,
+        invalidMessage: result.invalidMessage,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
