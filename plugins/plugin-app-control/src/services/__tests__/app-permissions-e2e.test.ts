@@ -19,7 +19,7 @@
  * Phase 2.1-2.4 actually compose into a working pipeline.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -121,6 +121,19 @@ describe("Phase 2.5 — registry → auto-spawn → invoke end-to-end", () => {
 		await teardownTestEnv(env);
 	});
 
+	function makePackageDir(slug: string): string {
+		const dir = path.join(env.stateDir, "packages", slug);
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(
+			path.join(dir, "package.json"),
+			JSON.stringify({
+				name: `@example/${slug}`,
+				main: path.relative(dir, FIXTURE_PLUGIN_PATH),
+			}),
+		);
+		return dir;
+	}
+
 	it("register() with isolation:'worker' is a no-op when the host service is not on the runtime", async () => {
 		// Sanity check: the registry's auto-spawn lookup short-circuits
 		// when the host service isn't registered. The register() call
@@ -147,27 +160,109 @@ describe("Phase 2.5 — registry → auto-spawn → invoke end-to-end", () => {
 		services.set("app-registry", localRegistry);
 		services.set("app-worker-host", localHost);
 		try {
+			const directory = makePackageDir("app-e2e-autospawn");
 			await localRegistry.register(
 				{
 					slug: "e2e-autospawn",
 					canonicalName: "@example/app-e2e-autospawn",
 					aliases: [],
-					directory: path.dirname(FIXTURE_PLUGIN_PATH),
+					directory,
 					displayName: "E2E Auto-Spawn",
 					isolation: "worker",
 				},
 				{ trust: "external" },
 			);
-			// Auto-spawn is best-effort and uses the entry directory's
-			// conventional package.json#main path which the fixture
-			// doesn't ship. The contract: register() does not throw.
-			// The host's list() may be empty (spawn deferred / failed)
-			// or contain the slug.
 			const slugs = localHost.list().map((s) => s.slug);
-			expect(slugs.length === 0 || slugs.includes("e2e-autospawn")).toBe(true);
+			expect(slugs).toContain("e2e-autospawn");
+			const reply = await localHost.invoke("e2e-autospawn", "invokeAction", {
+				actionName: "ECHO",
+				content: { ok: true },
+			});
+			expect(reply.ok).toBe(true);
 		} finally {
 			await localHost.stop();
 		}
+	});
+
+	it("bootstraps persisted worker apps when AppWorkerHostService starts", async () => {
+		const services = new Map<string, unknown>();
+		const runtime = makeRuntime(services);
+		const localRegistry = new AppRegistryService(runtime);
+		services.set("app-registry", localRegistry);
+		const directory = makePackageDir("app-e2e-bootstrap");
+		await localRegistry.register(
+			{
+				slug: "e2e-bootstrap",
+				canonicalName: "@example/app-e2e-bootstrap",
+				aliases: [],
+				directory,
+				displayName: "E2E Bootstrap",
+				isolation: "worker",
+			},
+			{ trust: "external" },
+		);
+
+		const localHost = await AppWorkerHostService.start(runtime);
+		try {
+			services.set("app-worker-host", localHost);
+			expect(localHost.list().map((s) => s.slug)).toContain("e2e-bootstrap");
+			const reply = await localHost.invoke("e2e-bootstrap", "invokeAction", {
+				actionName: "ECHO",
+				content: { bootstrapped: true },
+			});
+			expect(reply.ok).toBe(true);
+		} finally {
+			await localHost.stop();
+		}
+	});
+
+	it("stops and restarts worker-isolated apps when grants change", async () => {
+		const calls: string[] = [];
+		const services = new Map<string, unknown>();
+		const runtime = makeRuntime(services);
+		const localRegistry = new AppRegistryService(runtime);
+		services.set("app-worker-host", {
+			startForRegisteredApp: async (slug: string) => {
+				calls.push(`start:${slug}`);
+				return { ok: true };
+			},
+			stopWorker: async (slug: string) => {
+				calls.push(`stop:${slug}`);
+			},
+		});
+
+		await localRegistry.register(
+			{
+				slug: "e2e-refresh-grants",
+				canonicalName: "@example/app-e2e-refresh-grants",
+				aliases: [],
+				directory: path.dirname(FIXTURE_PLUGIN_PATH),
+				displayName: "E2E Refresh Grants",
+				isolation: "worker",
+				requestedPermissions: { net: { outbound: ["127.0.0.1"] } },
+			},
+			{ trust: "external" },
+		);
+		expect(calls).toEqual(["start:e2e-refresh-grants"]);
+
+		await localRegistry.setGrantedNamespaces(
+			"e2e-refresh-grants",
+			["net"],
+			"user",
+		);
+		expect(calls).toEqual([
+			"start:e2e-refresh-grants",
+			"stop:e2e-refresh-grants",
+			"start:e2e-refresh-grants",
+		]);
+
+		await localRegistry.setGrantedNamespaces("e2e-refresh-grants", [], "user");
+		expect(calls).toEqual([
+			"start:e2e-refresh-grants",
+			"stop:e2e-refresh-grants",
+			"start:e2e-refresh-grants",
+			"stop:e2e-refresh-grants",
+		]);
 	});
 
 	it("manual spawn with explicit pluginEntryPath + grant + invoke round-trips an action through the worker", async () => {
