@@ -7,7 +7,6 @@
  * for credit balance across all components that need it.
  */
 
-import { usePathname } from "@elizaos/cloud-ui";
 import {
   createContext,
   type ReactNode,
@@ -20,6 +19,7 @@ import {
 } from "react";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { logger } from "@/lib/utils/logger";
+import { usePathname } from "../../ui/src/runtime/navigation";
 
 interface CreditsContextValue {
   creditBalance: number | null;

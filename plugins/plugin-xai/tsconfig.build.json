@@ -7,6 +7,7 @@
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": true,
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@elizaos/core": ["../../../packages/core/dist"]
     },
