@@ -8,13 +8,7 @@ import type {
   TokenizeTextParams,
 } from "@elizaos/core";
 import { type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
-import {
-  getLlama,
-  type Llama,
-  type LlamaEmbeddingContext,
-  LlamaLogLevel,
-  type LlamaModel,
-} from "node-llama-cpp";
+import type { Llama, LlamaEmbeddingContext, LlamaModel } from "node-llama-cpp";
 import { type Config, validateConfig } from "./environment";
 import { type EmbeddingModelSpec, MODEL_SPECS, type ModelSpec } from "./types";
 import { DownloadManager } from "./utils/downloadManager";
@@ -543,6 +537,7 @@ export class LocalEmbeddingManager {
   private async ensureLlama(): Promise<void> {
     if (this.llama) return;
     const choice = this.getBackendChoice();
+    const { getLlama, LlamaLogLevel } = await import("node-llama-cpp");
     this.llama = await getLlama({
       gpu: choice.gpuOption,
       logLevel: LlamaLogLevel.error,

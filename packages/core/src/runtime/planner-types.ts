@@ -54,6 +54,7 @@ export type EvaluatorOutput = EvaluationResult & {
 };
 
 export interface PlannerRuntime {
+	getService?(service: string): unknown;
 	useModel(
 		modelType: TextGenerationModelType,
 		params: {
