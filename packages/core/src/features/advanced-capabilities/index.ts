@@ -13,6 +13,7 @@
  */
 
 import { withCanonicalActionDocs } from "../../action-docs.ts";
+import { promoteSubactionsToActions } from "../../actions/promote-subactions.ts";
 import { createService } from "../../services.ts";
 import type { IAgentRuntime, RegisteredEvaluator } from "../../types/index.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
@@ -92,20 +93,21 @@ export const advancedProviders = [
  * `advancedEvaluators` and run by the EvaluatorService in one model call.
  */
 export const advancedActions = [
-	withCanonicalActionDocs(roomOpAction),
+	...promoteSubactionsToActions(withCanonicalActionDocs(roomOpAction)),
 	withCanonicalActionDocs(updateRoleAction),
 	withCanonicalActionDocs(searchExperiencesAction),
-	messageAction,
-	postAction,
-	// Todo actions
-	todoAction,
+	...promoteSubactionsToActions(messageAction),
+	...promoteSubactionsToActions(postAction),
+	// Todo actions — TODO is the umbrella; the leaf actions stay registered
+	// for direct dispatch.
+	...promoteSubactionsToActions(todoAction),
 	createTodoAction,
 	completeTodoAction,
 	listTodosAction,
 	editTodoAction,
 	deleteTodoAction,
 	// Personality actions
-	characterAction,
+	...promoteSubactionsToActions(characterAction),
 ];
 
 export const advancedEvaluators = [

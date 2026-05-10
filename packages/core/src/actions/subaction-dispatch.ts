@@ -10,6 +10,28 @@ export type SubactionHandlerMap<TSubaction extends string, TContext = void> = {
 	[key in TSubaction]: SubactionHandler<TContext>;
 };
 
+/**
+ * Canonical project-wide discriminator field name for umbrella actions.
+ *
+ * Umbrella actions previously used a mix of `op`, `action`, `operation`,
+ * and `subaction`. The canonical name is now `subaction`. The other names
+ * remain accepted as input aliases so cached planner outputs do not break,
+ * but new schema documentation, examples, and tests should use `subaction`.
+ */
+export const CANONICAL_SUBACTION_KEY = "subaction" as const;
+
+/**
+ * Default ordered list of parameter keys that {@link readSubaction} consults
+ * when an umbrella's handler resolves the requested operation. The canonical
+ * key is consulted first; legacy aliases follow.
+ */
+export const DEFAULT_SUBACTION_KEYS: readonly string[] = [
+	CANONICAL_SUBACTION_KEY,
+	"op",
+	"action",
+	"operation",
+];
+
 export function normalizeSubaction(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const normalized = value
@@ -28,7 +50,7 @@ export function readSubaction<TSubaction extends string>(
 		defaultValue?: TSubaction;
 	},
 ): TSubaction | undefined {
-	const keys = options.keys ?? ["op", "subaction", "action"];
+	const keys = options.keys ?? DEFAULT_SUBACTION_KEYS;
 	const allowed = new Set<string>(options.allowed);
 	const aliases = options.aliases ?? {};
 

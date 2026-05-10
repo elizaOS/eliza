@@ -11,6 +11,7 @@ import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
+  promoteSubactionsToActions,
 } from "@elizaos/core";
 import { TLSSocket } from "node:tls";
 import type {
@@ -199,7 +200,10 @@ export const browserPlugin: Plugin = {
   routes: [...browserBridgePluginRoutes, ...browserWorkspaceRoutes],
   services: [BrowserService as ServiceClass],
   providers: [browserWorkspaceProvider],
-  actions: [browserAction, manageBrowserBridgeAction],
+  actions: [
+    ...promoteSubactionsToActions(browserAction),
+    ...promoteSubactionsToActions(manageBrowserBridgeAction),
+  ],
   // Self-declared auto-enable: activate when features.browser is enabled.
   autoEnable: {
     shouldEnable: (_env, config) => {

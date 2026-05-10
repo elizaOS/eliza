@@ -7,7 +7,7 @@
  */
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
-import { AgentEventService } from "@elizaos/core";
+import { AgentEventService, promoteSubactionsToActions } from "@elizaos/core";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
 import { extractPageAction } from "../actions/extract-page.ts";
@@ -203,19 +203,19 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     actions: [
       terminalAction,
-      triggerAction,
+      ...promoteSubactionsToActions(triggerAction),
       ...pageActionGroupActions,
       skillCommandAction,
-      extractPageAction,
-      contactAction,
+      ...promoteSubactionsToActions(extractPageAction),
+      ...promoteSubactionsToActions(contactAction),
       settingsAction,
-      pluginAction,
+      ...promoteSubactionsToActions(pluginAction),
       // Observability / introspection actions
-      logsAction,
-      runtimeAction,
-      databaseAction,
+      ...promoteSubactionsToActions(logsAction),
+      ...promoteSubactionsToActions(runtimeAction),
+      ...promoteSubactionsToActions(databaseAction),
       queryTrajectoriesAction,
-      memoryAction,
+      ...promoteSubactionsToActions(memoryAction),
       // SCHEDULE_FOLLOW_UP is now the `followup` op on contactAction.
       // ARCHIVE_CODING_TASK / REOPEN_CODING_TASK live as ops on the TASKS
       // parent in @elizaos/plugin-agent-orchestrator (also surfaced via the

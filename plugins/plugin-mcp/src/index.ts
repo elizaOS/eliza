@@ -1,4 +1,10 @@
-import { type Action, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import {
+  type Action,
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+  promoteSubactionsToActions,
+} from "@elizaos/core";
 import { MCP_ACTION_CONTEXT, mcpAction } from "./actions/mcp";
 import { provider } from "./provider";
 import { McpService } from "./service";
@@ -27,7 +33,7 @@ const mcpPlugin: Plugin = {
   },
 
   services: [McpService],
-  actions: [withMcpContext(mcpAction)],
+  actions: [...promoteSubactionsToActions(withMcpContext(mcpAction))],
   providers: [provider],
 };
 

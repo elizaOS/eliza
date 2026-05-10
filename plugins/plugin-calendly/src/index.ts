@@ -12,7 +12,11 @@
  */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { getConnectorAccountManager, logger } from "@elizaos/core";
+import {
+  getConnectorAccountManager,
+  logger,
+  promoteSubactionsToActions,
+} from "@elizaos/core";
 import { calendlyOpAction } from "./actions/calendly-op.js";
 import { createCalendlyConnectorAccountProvider } from "./connector-account-provider.js";
 import { calendlyEventTypesProvider } from "./providers/calendly-event-types.js";
@@ -45,7 +49,7 @@ export const calendlyPlugin: Plugin = {
   description:
     "Calendly integration -- list event types, hand off booking links, cancel scheduled events",
   services: [CalendlyService],
-  actions: [calendlyOpAction],
+  actions: [...promoteSubactionsToActions(calendlyOpAction)],
   providers: [calendlyEventTypesProvider],
   autoEnable: {
     envKeys: [
