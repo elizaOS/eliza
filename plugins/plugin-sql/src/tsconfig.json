@@ -1,9 +1,5 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@elizaos/core": ["../../../packages/core/dist/index.node.d.ts"]
-    },
     "ignoreDeprecations": "6.0",
     "target": "ESNext",
     "module": "ESNext",

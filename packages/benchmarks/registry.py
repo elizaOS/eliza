@@ -1969,8 +1969,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
         agent_raw = extra.get("agent")
         provider_lower = (model.provider or "").strip().lower()
+        payment_mode = extra.get("payment") is True or extra.get("payments") is True
         if agent_raw == "dummy" or extra.get("mock") is True or provider_lower == "mock":
-            args.extend(["--agent", "dummy"])
+            args.extend(["--agent", "dummy-charge" if payment_mode else "dummy"])
         else:
             args.extend(["--agent", "eliza"])
 
@@ -1992,6 +1993,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         concurrency = extra.get("concurrency")
         if isinstance(concurrency, int) and concurrency > 0:
             args.extend(["--concurrency", str(concurrency)])
+        payment_mock_url = extra.get("payment_mock_url")
+        if isinstance(payment_mock_url, str) and payment_mock_url.strip():
+            args.extend(["--payment-mock-url", payment_mock_url.strip()])
         return args
 
     def _woobench_result(output_dir: Path) -> Path:

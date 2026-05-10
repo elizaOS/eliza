@@ -40,15 +40,15 @@ import {
   readTriggerConfig,
   TRIGGER_TASK_NAME,
   TRIGGER_TASK_TAGS,
-} from "../triggers/runtime.js";
+} from "../triggers/runtime.ts";
 import {
   buildTriggerMetadata,
   normalizeTriggerIntervalMs,
   parseCronExpression,
   parseScheduledAtIso,
-} from "../triggers/scheduling.js";
-import { deployTextTriggerWorkflow } from "../triggers/text-to-workflow.js";
-import type { TriggerTaskMetadata } from "../triggers/types.js";
+} from "../triggers/scheduling.ts";
+import { deployTextTriggerWorkflow } from "../triggers/text-to-workflow.ts";
+import type { TriggerTaskMetadata } from "../triggers/types.ts";
 
 type AutonomyRoomService = {
   getAutonomousRoomId?(): UUID;

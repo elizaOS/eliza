@@ -1,7 +1,19 @@
 // @vitest-environment jsdom
 
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("lucide-react", () => {
+  const Icon = ({ className }: { className?: string }) => (
+    <span className={className} data-testid="tool-call-icon" />
+  );
+  return {
+    CheckCircle: Icon,
+    ChevronDown: Icon,
+    Clock3: Icon,
+    XCircle: Icon,
+  };
+});
 
 import type { NativeToolCallEvent } from "../../api/client-types-cloud";
 import {

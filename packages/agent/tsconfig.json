@@ -6,7 +6,12 @@
     "jsx": "react-jsx",
     "strict": false,
     "skipLibCheck": true,
-    "types": ["node", "bun", "react", "react-dom"],
+    "types": [
+      "node",
+      "bun",
+      "react",
+      "react-dom"
+    ],
     "typeRoots": [
       "./node_modules/@types",
       "../app-core/node_modules/@types",
@@ -17,9 +22,9 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
-      "@elizaos/core": ["../core/src/index.node.ts"],
-      "@elizaos/core/testing": ["../core/src/testing/index.ts"],
-      "@elizaos/core/*": ["../core/src/*"],
+      "@elizaos/core": [
+        "../core/src/index.node.ts"
+      ],
       "@elizaos/native-activity-tracker": [
         "../native-plugins/activity-tracker/src/index.ts"
       ],
@@ -29,91 +34,108 @@
       "@elizaos/capacitor-mobile-signals": [
         "../native-plugins/mobile-signals/src/index.ts"
       ],
-      "@elizaos/capacitor-wifi": ["../native-plugins/wifi/src/index.ts"],
+      "@elizaos/capacitor-wifi": [
+        "../native-plugins/wifi/src/index.ts"
+      ],
       "@elizaos/capacitor-contacts": [
         "../native-plugins/contacts/src/index.ts"
       ],
-      "@elizaos/capacitor-phone": ["../native-plugins/phone/src/index.ts"],
-      "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
-      "@elizaos/app-lifeops/*": ["../../plugins/app-lifeops/src/*"],
-      "@elizaos/app-phone": ["../../plugins/app-phone/src/index.ts"],
-      "@elizaos/app-phone/*": ["../../plugins/app-phone/src/*"],
-      "@elizaos/app-elizamaker": ["../../plugins/app-elizamaker/src/index.ts"],
-      "@elizaos/app-elizamaker/*": ["../../plugins/app-elizamaker/src/*"],
-      "@elizaos/plugin-form": ["../../plugins/plugin-form/src/index.ts"],
-      "@elizaos/plugin-form/*": ["../../plugins/plugin-form/src/*"],
-      "@elizaos/app-wifi": ["../../plugins/app-wifi/src/index.ts"],
-      "@elizaos/app-wifi/*": ["../../plugins/app-wifi/src/*"],
-      "@elizaos/app-core": ["../app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../app-core/src/*"],
-      "@elizaos/app-steward": ["../../plugins/app-steward/src/index.ts"],
-      "@elizaos/app-steward/*": ["../../plugins/app-steward/src/*"],
-      "@elizaos/app-shopify": ["../../plugins/app-shopify/src/index.ts"],
-      "@elizaos/app-shopify/*": ["../../plugins/app-shopify/src/*"],
-      "@elizaos/app-vincent": ["../../plugins/app-vincent/src/index.ts"],
-      "@elizaos/app-vincent/*": ["../../plugins/app-vincent/src/*"],
-      "@elizaos/ui": ["../ui/src/index.ts"],
-      "@elizaos/ui/*": ["../ui/src/*"],
-      "@elizaos/app-companion": ["../../plugins/app-companion/src/index.ts"],
-      "@elizaos/app-companion/*": ["../../plugins/app-companion/src/*"],
-      "@elizaos/app-knowledge": ["../../plugins/app-knowledge/src/index.ts"],
-      "@elizaos/app-knowledge/*": ["../../plugins/app-knowledge/src/*"],
-      "@elizaos/app-training": ["../../plugins/app-training/src/index.ts"],
-      "@elizaos/app-training/*": ["../../plugins/app-training/src/*"],
+      "@elizaos/capacitor-phone": [
+        "../native-plugins/phone/src/index.ts"
+      ],
+      "@elizaos/app-lifeops": [
+        "../../plugins/app-lifeops/src/index.ts"
+      ],
+      "@elizaos/app-phone": [
+        "../../plugins/app-phone/src/index.ts"
+      ],
+      "@elizaos/app-elizamaker": [
+        "../../plugins/app-elizamaker/src/index.ts"
+      ],
+      "@elizaos/plugin-form": [
+        "../../plugins/plugin-form/src/index.ts"
+      ],
+      "@elizaos/app-wifi": [
+        "../../plugins/app-wifi/src/index.ts"
+      ],
+      "@elizaos/app-core": [
+        "../app-core/src/index.ts"
+      ],
+      "@elizaos/app-steward": [
+        "../../plugins/app-steward/src/index.ts"
+      ],
+      "@elizaos/app-shopify": [
+        "../../plugins/app-shopify/src/index.ts"
+      ],
+      "@elizaos/app-vincent": [
+        "../../plugins/app-vincent/src/index.ts"
+      ],
+      "@elizaos/ui": [
+        "../ui/src/index.ts"
+      ],
+      "@elizaos/app-companion": [
+        "../../plugins/app-companion/src/index.ts"
+      ],
+      "@elizaos/app-knowledge": [
+        "../../plugins/app-knowledge/src/index.ts"
+      ],
+      "@elizaos/app-training": [
+        "../../plugins/app-training/src/index.ts"
+      ],
       "@elizaos/app-task-coordinator": [
         "../../plugins/app-task-coordinator/src/index.ts"
       ],
-      "@elizaos/app-task-coordinator/*": [
-        "../../plugins/app-task-coordinator/src/*"
+      "@elizaos/app-contacts": [
+        "../../plugins/app-contacts/src/index.ts"
       ],
-      "@elizaos/app-contacts": ["../../plugins/app-contacts/src/index.ts"],
-      "@elizaos/app-contacts/*": ["../../plugins/app-contacts/src/*"],
-      "@elizaos/agent": ["./src/index.ts"],
-      "@elizaos/agent/*": ["./src/*"],
-      "@elizaos/plugin-browser-bridge": [
-        "../../plugins/plugin-browser-bridge/src/index.ts"
+      "@elizaos/agent": [
+        "./src/index.ts"
       ],
-      "@elizaos/plugin-browser-bridge/*": [
-        "../../plugins/plugin-browser-bridge/src/*"
+      "@elizaos/plugin-coding-tools": [
+        "../../plugins/plugin-coding-tools/src/index.ts"
       ],
-      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
-      "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
+      "@elizaos/plugin-browser": [
+        "../../plugins/plugin-browser/src/index.ts"
+      ],
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
       ],
-      "@elizaos/plugin-computeruse/*": [
-        "../../plugins/plugin-computeruse/src/*"
+      "@elizaos/plugin-music": [
+        "../../plugins/plugin-music/src/index.ts"
       ],
-      "@elizaos/plugin-music": ["../../plugins/plugin-music/src/index.ts"],
-      "@elizaos/plugin-music/*": ["../../plugins/plugin-music/src/*"],
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],
-      "@elizaos/plugin-whatsapp/*": ["../../plugins/plugin-whatsapp/src/*"],
-      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
-      "@elizaos/plugin-signal/*": ["../../plugins/plugin-signal/src/*"],
-      "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
-      "@elizaos/plugin-google/*": ["../../plugins/plugin-google/src/*"],
+      "@elizaos/plugin-signal": [
+        "../../plugins/plugin-signal/src/index.ts"
+      ],
+      "@elizaos/plugin-google": [
+        "../../plugins/plugin-google/src/index.ts"
+      ],
       "@elizaos/plugin-telegram": [
         "../../plugins/plugin-telegram/src/index.ts"
       ],
-      "@elizaos/plugin-telegram/*": ["../../plugins/plugin-telegram/src/*"],
       "@elizaos/plugin-sql": [
         "../../plugins/plugin-sql/src/index.node.ts"
       ],
-      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
-      "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/shared/*": ["../shared/src/*"],
-      "@elizaos/skills": ["../skills/src/index.ts"],
-      "@elizaos/skills/*": ["../skills/src/*"],
-      "react": ["../app-core/node_modules/@types/react/index.d.ts"],
+      "@elizaos/shared": [
+        "../shared/src/index.ts"
+      ],
+      "@elizaos/skills": [
+        "../skills/src/index.ts"
+      ],
+      "react": [
+        "../app-core/node_modules/@types/react/index.d.ts"
+      ],
       "react/jsx-runtime": [
         "../app-core/node_modules/@types/react/jsx-runtime.d.ts"
       ],
       "react/jsx-dev-runtime": [
         "../app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
       ],
-      "react-dom": ["../app-core/node_modules/@types/react-dom/index.d.ts"],
+      "react-dom": [
+        "../app-core/node_modules/@types/react-dom/index.d.ts"
+      ],
       "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
       "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
       "@elizaos/plugin-elizacloud": [
@@ -139,7 +161,9 @@
       "@elizaos/*": ["../../node_modules/@elizaos/*"]
     }
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "exclude": [
     "src/**/*.test.ts",
     "src/**/*.test.tsx",

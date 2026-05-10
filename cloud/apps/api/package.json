@@ -28,9 +28,10 @@
     "mcp-handler": "^1.0.7",
     "jose": "^6.0.0",
     "stripe": "^22.0.0",
-    "typescript": "^6.0.3",
     "wrangler": "^4.0.0",
     "zod": "^4.4.3"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
 }

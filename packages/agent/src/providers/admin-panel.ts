@@ -7,7 +7,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { resolveCanonicalOwnerIdForMessage } from "@elizaos/core";
-import { hasAdminAccess } from "../security/access.js";
+import { hasAdminAccess } from "../security/access.ts";
 
 /** Maximum total characters for the provider text output. */
 const MAX_TEXT_LENGTH = 2000;

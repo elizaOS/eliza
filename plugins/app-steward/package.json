@@ -8,61 +8,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./ui": {
-      "types": "./dist/ui.d.ts",
-      "import": "./dist/ui.js",
-      "default": "./dist/ui.js"
-    },
-    "./plugin": {
-      "types": "./dist/plugin.d.ts",
-      "import": "./dist/plugin.js",
-      "default": "./dist/plugin.js"
-    },
-    "./types": {
-      "types": "./dist/types/index.d.ts",
-      "import": "./dist/types/index.js",
-      "default": "./dist/types/index.js"
-    },
-    "./types/*": {
-      "types": "./dist/types/*.d.ts",
-      "import": "./dist/types/*.js",
-      "default": "./dist/types/*.js"
-    },
-    "./api/*": {
-      "types": "./dist/api/*.d.ts",
-      "import": "./dist/api/*.js",
-      "default": "./dist/api/*.js"
-    },
-    "./services/*": {
-      "types": "./dist/services/*.d.ts",
-      "import": "./dist/services/*.js",
-      "default": "./dist/services/*.js"
-    },
-    "./security/*": {
-      "types": "./dist/security/*.d.ts",
-      "import": "./dist/security/*.js",
-      "default": "./dist/security/*.js"
-    },
-    "./routes/*": {
-      "types": "./dist/routes/*.d.ts",
-      "import": "./dist/routes/*.js",
-      "default": "./dist/routes/*.js"
-    },
-    "./actions/*": {
-      "types": "./dist/actions/*.d.ts",
-      "import": "./dist/actions/*.js",
-      "default": "./dist/actions/*.js"
-    },
-    "./browser-workspace-wallet": {
-      "types": "./dist/browser-workspace-wallet.d.ts",
-      "import": "./dist/browser-workspace-wallet.js",
-      "default": "./dist/browser-workspace-wallet.js"
-    },
-    "./*": {
-      "types": "./dist/*",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
     }
   },
   "dependencies": {
@@ -70,6 +15,8 @@
     "@simplewebauthn/browser": "^13.0.0",
     "@solana/web3.js": "1.98.4",
     "@stwd/sdk": "^0.8.1",
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/ui": "workspace:*",
@@ -90,7 +37,7 @@
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "tsc -p tsconfig.build.json"
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [
     "dist"

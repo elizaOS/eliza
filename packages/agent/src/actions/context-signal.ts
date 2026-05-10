@@ -26,11 +26,11 @@ import {
   type ContextSignalKey,
   getContextSignalTerms,
   resolveContextSignalSpec,
-} from "./context-signal-lexicon.js";
+} from "./context-signal-lexicon.ts";
 import {
   recentConversationTexts as collectRecentConversationTexts,
   recentConversationTextsFromState,
-} from "./recent-conversation-texts.js";
+} from "./recent-conversation-texts.ts";
 
 export { collectKeywordTermMatches, textIncludesKeywordTerm };
 

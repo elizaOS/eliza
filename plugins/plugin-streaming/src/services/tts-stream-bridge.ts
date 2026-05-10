@@ -11,9 +11,28 @@
 
 import { spawn } from "node:child_process";
 import type { Writable } from "node:stream";
-import { logger } from "@elizaos/core";
-import { sanitizeSpeechText } from "@elizaos/shared";
-import type { TtsConfig, TtsProvider } from "@elizaos/shared";
+import { logger, sanitizeSpeechText } from "@elizaos/core";
+
+export type TtsProvider = "elevenlabs" | "openai" | "edge" | (string & {});
+
+export type TtsConfig = {
+  enabled?: boolean;
+  provider?: TtsProvider;
+  elevenlabs?: {
+    apiKey?: string;
+    voiceId?: string;
+    modelId?: string;
+    voiceSettings?: Record<string, unknown>;
+  };
+  openai?: {
+    apiKey?: string;
+    model?: string;
+    voice?: string;
+  };
+  edge?: {
+    voice?: string;
+  };
+};
 
 const TAG = "[TtsStreamBridge]";
 

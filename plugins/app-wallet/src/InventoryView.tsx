@@ -9,13 +9,19 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileWindow,
 } from "@elizaos/shared";
+import type { InventoryChainFilters } from "@elizaos/ui";
 import {
+  type ActivityEvent,
+  AppPageSidebar,
   Button,
+  client,
   cn,
   PageLayout,
   SidebarContent,
   SidebarPanel,
   SidebarScrollRegion,
+  useActivityEvents,
+  useApp,
 } from "@elizaos/ui";
 import {
   Activity,
@@ -42,22 +48,14 @@ import {
   useRef,
   useState,
 } from "react";
-import { client } from "@elizaos/ui";
-import {
-  type ActivityEvent,
-  useActivityEvents,
-} from "@elizaos/ui";
-import type { InventoryChainFilters } from "@elizaos/ui";
-import { useApp } from "@elizaos/ui";
-import { AppPageSidebar } from "@elizaos/ui";
-import { getNativeLogoUrl } from "./inventory/chainConfig";
+import { getNativeLogoUrl } from "./inventory/chainConfig.ts";
 import {
   formatBalance,
   type NftItem,
   type TokenRow,
-} from "./inventory/constants";
-import { TokenLogo } from "./inventory/TokenLogo";
-import { useInventoryData } from "./inventory/useInventoryData";
+} from "./inventory/constants.ts";
+import { TokenLogo } from "./inventory/TokenLogo.tsx";
+import { useInventoryData } from "./inventory/useInventoryData.ts";
 
 type DashboardWindow = "24h" | "7d" | "30d";
 type WalletRailTab = "tokens" | "defi" | "nfts";

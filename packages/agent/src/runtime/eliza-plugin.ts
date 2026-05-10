@@ -8,49 +8,49 @@
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
-import { contactAction } from "../actions/contact.js";
-import { databaseAction } from "../actions/database.js";
-import { extractPageAction } from "../actions/extract-page.js";
-import { logsAction } from "../actions/logs.js";
-import { memoryAction } from "../actions/memories.js";
-import { pageActionGroupActions } from "../actions/page-action-groups.js";
-import { pluginAction } from "../actions/plugin.js";
-import { runtimeAction } from "../actions/runtime.js";
-import { settingsAction } from "../actions/settings-actions.js";
+import { contactAction } from "../actions/contact.ts";
+import { databaseAction } from "../actions/database.ts";
+import { extractPageAction } from "../actions/extract-page.ts";
+import { logsAction } from "../actions/logs.ts";
+import { memoryAction } from "../actions/memories.ts";
+import { pageActionGroupActions } from "../actions/page-action-groups.ts";
+import { pluginAction } from "../actions/plugin.ts";
+import { runtimeAction } from "../actions/runtime.ts";
+import { settingsAction } from "../actions/settings-actions.ts";
 import {
   addRegisteredSkillSlug,
   clearRegisteredSkillSlugs,
   skillCommandAction,
-} from "../actions/skill-command.js";
-import { terminalAction } from "../actions/terminal.js";
-import { queryTrajectoriesAction } from "../actions/trajectories.js";
-import { triggerAction } from "../actions/trigger.js";
-import { adminPanelProvider } from "../providers/admin-panel.js";
-import { adminTrustProvider } from "../providers/admin-trust.js";
-import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.js";
-import { escalationTriggerProvider } from "../providers/escalation-trigger.js";
-import { pageScopedContextProvider } from "../providers/page-scoped-context.js";
-import { recentConversationsProvider } from "../providers/recent-conversations.js";
-import { relevantConversationsProvider } from "../providers/relevant-conversations.js";
-import { roleBackfillProvider } from "../providers/role-backfill.js";
-import { rolodexProvider } from "../providers/rolodex.js";
-import { createSessionKeyProvider } from "../providers/session-bridge.js";
+} from "../actions/skill-command.ts";
+import { terminalAction } from "../actions/terminal.ts";
+import { queryTrajectoriesAction } from "../actions/trajectories.ts";
+import { triggerAction } from "../actions/trigger.ts";
+import { adminPanelProvider } from "../providers/admin-panel.ts";
+import { adminTrustProvider } from "../providers/admin-trust.ts";
+import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.ts";
+import { escalationTriggerProvider } from "../providers/escalation-trigger.ts";
+import { pageScopedContextProvider } from "../providers/page-scoped-context.ts";
+import { recentConversationsProvider } from "../providers/recent-conversations.ts";
+import { relevantConversationsProvider } from "../providers/relevant-conversations.ts";
+import { roleBackfillProvider } from "../providers/role-backfill.ts";
+import { rolodexProvider } from "../providers/rolodex.ts";
+import { createSessionKeyProvider } from "../providers/session-bridge.ts";
 import {
   getSessionProviders,
   resolveDefaultSessionStorePath,
-} from "../providers/session-utils.js";
-import { createChannelProfileProvider } from "../providers/simple-mode.js";
-import { createDynamicSkillProvider } from "../providers/skill-provider.js";
-import { createOngoingTasksProvider } from "../providers/tasks.js";
-import { uiCatalogProvider } from "../providers/ui-catalog.js";
-import { createUserNameProvider } from "../providers/user-name.js";
-import { createWorkspaceProvider } from "../providers/workspace-provider.js";
-import { ElizaCharacterPersistenceService } from "../services/character-persistence.js";
-import { AgentMediaGenerationService } from "../services/media-generation.js";
-import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.js";
-import { registerTriggerTaskWorker } from "../triggers/runtime.js";
+} from "../providers/session-utils.ts";
+import { createChannelProfileProvider } from "../providers/simple-mode.ts";
+import { createDynamicSkillProvider } from "../providers/skill-provider.ts";
+import { createOngoingTasksProvider } from "../providers/tasks.ts";
+import { uiCatalogProvider } from "../providers/ui-catalog.ts";
+import { createUserNameProvider } from "../providers/user-name.ts";
+import { createWorkspaceProvider } from "../providers/workspace-provider.ts";
+import { ElizaCharacterPersistenceService } from "../services/character-persistence.ts";
+import { AgentMediaGenerationService } from "../services/media-generation.ts";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
+import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
 
-import { setCustomActionsRuntime } from "./custom-actions.js";
+import { setCustomActionsRuntime } from "./custom-actions.ts";
 
 export type ElizaPluginConfig = {
   workspaceDir?: string;

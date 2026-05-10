@@ -1,16 +1,16 @@
 import type {
   LifeOpsSleepCycleEvidenceSource,
   LifeOpsSleepCycleType,
-} from "@elizaos/shared";
+} from "../contracts/health.js";
+import {
+  classifyLifeOpsSleepCycleType,
+  type LifeOpsSleepEpisode,
+} from "./sleep-cycle.js";
 import {
   createLifeOpsSleepEpisode,
   type LifeOpsSleepEpisodeRecord,
   type SleepEpisodeRepository,
 } from "./sleep-episode-types.js";
-import {
-  classifyLifeOpsSleepCycleType,
-  type LifeOpsSleepEpisode,
-} from "./sleep-cycle.js";
 
 const EPISODE_SEAL_DELAY_MS = 2 * 60 * 60 * 1_000;
 

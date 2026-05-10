@@ -7,7 +7,8 @@
  * wiring path (`runtime-wiring.ts`).
  */
 
-import type http from "node:http";
+import { IncomingMessage, ServerResponse } from "node:http";
+import { Socket } from "node:net";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -72,28 +73,35 @@ function buildCtx(args: {
   runner: ScheduledTaskRunnerHandle;
 }): { ctx: LifeOpsRouteContext; res: MockResponse } {
   const res: MockResponse = { headers: {}, ended: false };
-  const httpRes = {
-    statusCode: 0,
-    setHeader(name: string, value: string) {
-      res.headers[name] = value;
-    },
-    end(buf?: string) {
-      res.ended = true;
-      res.body = buf ?? "";
-      res.statusCode = (this as unknown as { statusCode: number }).statusCode;
-    },
-    write(_chunk: string) {
-      /* noop */
-    },
-  } as unknown as http.ServerResponse;
+  const socket = new Socket();
+  setRemoteAddress(socket, "127.0.0.1");
+  const httpReq = new IncomingMessage(socket);
+  httpReq.method = args.method;
+  httpReq.headers = args.body
+    ? { "content-type": "application/json", "content-length": "1" }
+    : {};
 
-  const httpReq = {
-    method: args.method,
-    headers: args.body
-      ? { "content-type": "application/json", "content-length": "1" }
-      : {},
-    socket: { remoteAddress: "127.0.0.1" },
-  } as unknown as http.IncomingMessage;
+  const httpRes = new ServerResponse(httpReq);
+  httpRes.statusCode = 0;
+  const setHeader = httpRes.setHeader.bind(httpRes);
+  httpRes.setHeader = (name, value) => {
+    res.headers[name] = Array.isArray(value) ? value.join(", ") : String(value);
+    return setHeader(name, value);
+  };
+  httpRes.end = function end(
+    this: ServerResponse,
+    chunk?: unknown,
+    encodingOrCallback?: BufferEncoding | (() => void),
+    callback?: () => void,
+  ): ServerResponse {
+    res.ended = true;
+    res.body = typeof chunk === "string" ? chunk : "";
+    res.statusCode = this.statusCode;
+    const done =
+      typeof encodingOrCallback === "function" ? encodingOrCallback : callback;
+    done?.();
+    return this;
+  };
 
   const ctx: LifeOpsRouteContext = {
     req: httpReq,
@@ -103,12 +111,12 @@ function buildCtx(args: {
     url: new URL(`http://localhost${args.pathname}`),
     state: { runtime: null, adminEntityId: null },
     json(r, data, status = 200) {
-      (r as unknown as { statusCode: number }).statusCode = status;
+      r.statusCode = status;
       r.setHeader?.("content-type", "application/json");
       r.end?.(JSON.stringify(data));
     },
     error(r, message, status = 400) {
-      (r as unknown as { statusCode: number }).statusCode = status;
+      r.statusCode = status;
       r.setHeader?.("content-type", "application/json");
       r.end?.(JSON.stringify({ error: message }));
     },
@@ -124,6 +132,13 @@ function buildCtx(args: {
     },
   };
   return { ctx, res };
+}
+
+function setRemoteAddress(socket: Socket, remoteAddress: string): void {
+  Object.defineProperty(socket, "remoteAddress", {
+    value: remoteAddress,
+    configurable: true,
+  });
 }
 
 describe("scheduled-tasks REST handler", () => {
@@ -295,8 +310,7 @@ describe("scheduled-tasks REST handler", () => {
       runner,
     });
     // Override remoteAddress to a public IP.
-    (ctx.req.socket as unknown as { remoteAddress: string }).remoteAddress =
-      "8.8.8.8";
+    setRemoteAddress(ctx.req.socket, "8.8.8.8");
     await handler(ctx);
     expect(res.statusCode).toBe(403);
   });

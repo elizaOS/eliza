@@ -1,15 +1,11 @@
 /**
- * Wave-1 frozen registry: AnchorContribution + AnchorConsolidationPolicy
- * (W1-A).
+ * AnchorContribution + AnchorConsolidationPolicy registry.
  *
- * Source of truth: `docs/audit/wave1-interfaces.md` §1.4 + IMPL §3.1.
- *
- * Wave-1 ships the registry shape + a stub `wake.confirmed` anchor that
- * resolves to `ownerFact.morningWindow.start` (per IMPL §3.1
- * "Risk-and-tradeoff: Stub anchor resolution"). W1-B's `plugin-health`
- * registers the real `wake.observed` / `wake.confirmed` / `bedtime.target`
- * / `nap.start` anchors and may overwrite the stub at boot — so the stub
- * is only registered when the real one is absent.
+ * Ships a stub `wake.confirmed` anchor that resolves to
+ * `ownerFact.morningWindow.start`. `plugin-health` registers the real
+ * `wake.observed` / `wake.confirmed` / `bedtime.target` / `nap.start`
+ * anchors and may overwrite the stub at boot — so the stub is only
+ * registered when the real one is absent.
  *
  * Consolidation policies are referenced by anchor key. The runner uses
  * them when multiple `relative_to_anchor` tasks fire on the same anchor;

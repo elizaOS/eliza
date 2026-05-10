@@ -10,6 +10,12 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
+      "drizzle-orm": [
+        "../plugin-sql/node_modules/drizzle-orm"
+      ],
+      "drizzle-orm/*": [
+        "../plugin-sql/node_modules/drizzle-orm/*"
+      ],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
@@ -28,11 +34,10 @@
       ],
       "react/jsx-dev-runtime": [
         "../../packages/app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
-      ],
-      "react-dom": [
-        "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
       ]
     }
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }

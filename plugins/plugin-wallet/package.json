@@ -14,42 +14,9 @@
   "types": "dist/index.d.mts",
   "exports": {
     ".": {
-      "import": {
-        "types": "./dist/index.d.mts",
-        "default": "./dist/index.mjs"
-      }
-    },
-    "./sdk": {
-      "import": {
-        "types": "./dist/sdk/index.d.mts",
-        "default": "./dist/sdk/index.mjs"
-      }
-    },
-    "./wallet-action": {
-      "import": {
-        "types": "./dist/wallet-action.d.mts",
-        "default": "./dist/wallet-action.mjs"
-      }
-    },
-    "./plugin": {
-      "types": "./dist/routes/plugin.d.ts",
-      "import": "./dist/routes/plugin.js",
-      "default": "./dist/routes/plugin.js"
-    },
-    "./register-routes": {
-      "types": "./dist/register-routes.d.ts",
-      "import": "./dist/register-routes.js",
-      "default": "./dist/register-routes.js"
-    },
-    "./routes/*": {
-      "types": "./dist/routes/*.d.ts",
-      "import": "./dist/routes/*.js",
-      "default": "./dist/routes/*.js"
-    },
-    "./lib/*": {
-      "types": "./dist/lib/*.d.mts",
-      "import": "./dist/lib/*.mjs",
-      "default": "./dist/lib/*.mjs"
+      "import": "./dist/index.mjs",
+      "default": "./dist/index.mjs",
+      "types": "./dist/index.d.mts"
     },
     "./package.json": "./package.json"
   },
@@ -78,11 +45,8 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-elizacloud": "workspace:*",
-    "form-data": "4.0.5",
-    "whatwg-url": "^16.0.0"
+    "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",

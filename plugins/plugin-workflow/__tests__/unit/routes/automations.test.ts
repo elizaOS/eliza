@@ -1,4 +1,4 @@
-import { describe, expect, mock, test, beforeEach } from 'bun:test';
+import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { ServerResponse } from 'node:http';
 import type { AgentRuntime, Room, Task, UUID } from '@elizaos/core';
 import { stringToUuid } from '@elizaos/core';
@@ -13,7 +13,10 @@ import { WORKFLOW_SERVICE_TYPE } from '../../../src/services/workflow-service';
 const AGENT_NAME = 'Eliza';
 const WORLD_ID = stringToUuid(`${AGENT_NAME}-web-chat-world`);
 
-type AutomationsRuntime = Pick<AgentRuntime, 'agentId' | 'character' | 'getService' | 'getRooms' | 'getTasks'>;
+type AutomationsRuntime = Pick<
+  AgentRuntime,
+  'agentId' | 'character' | 'getService' | 'getRooms' | 'getTasks'
+>;
 
 interface RuntimeMockOptions {
   agentId?: UUID;
@@ -41,8 +44,7 @@ function createWorkflowServiceMock(opts: RuntimeMockOptions) {
 }
 
 function createRuntimeMock(opts: RuntimeMockOptions = {}): AgentRuntime {
-  const agentId =
-    opts.agentId ?? (stringToUuid('test-agent-001') as UUID);
+  const agentId = opts.agentId ?? (stringToUuid('test-agent-001') as UUID);
   const workflowService = createWorkflowServiceMock(opts);
   const services: Record<string, unknown> = {
     [WORKFLOW_SERVICE_TYPE]: workflowService,

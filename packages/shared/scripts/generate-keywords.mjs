@@ -45,9 +45,8 @@ function loadKeywordFiles() {
     }
     for (const [key, value] of Object.entries(data.entries || {})) {
       if (key in allEntries) {
-        console.warn(
-          `  Warning: duplicate key "${key}" in ${file}, overwriting`,
-        );
+        allEntries[key] = mergeKeywordEntry(allEntries[key], value);
+        continue;
       }
       allEntries[key] = value;
     }
@@ -57,6 +56,25 @@ function loadKeywordFiles() {
   }
 
   return { entries: allEntries, locales: [...allLocales].sort() };
+}
+
+function mergeStringArrays(left, right) {
+  const seen = new Set();
+  const merged = [];
+  for (const value of [...(left || []), ...(right || [])]) {
+    if (typeof value !== "string" || seen.has(value)) continue;
+    seen.add(value);
+    merged.push(value);
+  }
+  return merged;
+}
+
+function mergeKeywordEntry(left, right) {
+  const merged = { ...(left || {}) };
+  for (const [locale, values] of Object.entries(right || {})) {
+    merged[locale] = mergeStringArrays(merged[locale], values);
+  }
+  return merged;
 }
 
 // --- TypeScript Generator ---

@@ -22,6 +22,10 @@ const CreateChargeSchema = z.object({
   providers: z.array(ProviderSchema).min(1).max(2).optional(),
   success_url: z.string().url().optional(),
   cancel_url: z.string().url().optional(),
+  callback_url: z.string().url().optional(),
+  callback_secret: z.string().min(8).max(256).optional(),
+  callback_channel: z.record(z.string(), z.unknown()).optional(),
+  callback_metadata: z.record(z.string(), z.unknown()).optional(),
   lifetime_seconds: z
     .number()
     .int()
@@ -59,6 +63,10 @@ app.post("/", async (c) => {
       providers: parsed.data.providers,
       successUrl: parsed.data.success_url,
       cancelUrl: parsed.data.cancel_url,
+      callbackUrl: parsed.data.callback_url,
+      callbackSecret: parsed.data.callback_secret,
+      callbackChannel: parsed.data.callback_channel,
+      callbackMetadata: parsed.data.callback_metadata,
       lifetimeSeconds: parsed.data.lifetime_seconds,
       metadata: parsed.data.metadata,
     });

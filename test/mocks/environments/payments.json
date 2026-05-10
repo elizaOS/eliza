@@ -1,0 +1,228 @@
+{
+  "uuid": "00000000-0000-4000-8000-000payments000",
+  "lastMigration": 33,
+  "name": "Payments API",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 3019,
+  "hostname": "127.0.0.1",
+  "routes": [
+    {
+      "uuid": "00000001-0000-4000-8000-000payments000",
+      "type": "http",
+      "documentation": "POST create payment request",
+      "method": "post",
+      "endpoint": "v1/payment-requests",
+      "responses": [
+        {
+          "uuid": "00000002-0000-4000-8000-000payments000",
+          "body": "{\"success\":true,\"paymentRequest\":{\"id\":\"payreq_static\",\"amountUsd\":{{body 'amountUsd'}},\"currency\":\"USD\",\"status\":\"requested\",\"paid\":false,\"accepted\":false,\"provider\":\"mock\",\"network\":\"mock\",\"description\":\"{{body 'description'}}\",\"paymentUrl\":\"http://127.0.0.1:3019/checkout/payreq_static\",\"checkoutUrl\":\"http://127.0.0.1:3019/checkout/payreq_static\",\"callbackSecretSet\":false,\"createdAt\":\"{{now 'iso'}}\",\"updatedAt\":\"{{now 'iso'}}\",\"expiresAt\":\"{{now 'iso' offset='+15m'}}\"}}",
+          "latency": 0,
+          "statusCode": 201,
+          "label": "Created",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000003-0000-4000-8000-000payments000",
+      "type": "http",
+      "documentation": "GET payment request status",
+      "method": "get",
+      "endpoint": "v1/payment-requests/:id",
+      "responses": [
+        {
+          "uuid": "00000004-0000-4000-8000-000payments000",
+          "body": "{\"success\":true,\"paymentRequest\":{\"id\":\"{{urlParam 'id'}}\",\"amountUsd\":1,\"currency\":\"USD\",\"status\":\"requested\",\"paid\":false,\"accepted\":false,\"provider\":\"mock\",\"network\":\"mock\",\"paymentUrl\":\"http://127.0.0.1:3019/checkout/{{urlParam 'id'}}\",\"checkoutUrl\":\"http://127.0.0.1:3019/checkout/{{urlParam 'id'}}\",\"callbackSecretSet\":false,\"createdAt\":\"{{now 'iso'}}\",\"updatedAt\":\"{{now 'iso'}}\",\"expiresAt\":\"{{now 'iso' offset='+15m'}}\"}}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000005-0000-4000-8000-000payments000",
+      "type": "http",
+      "documentation": "POST mark payment paid",
+      "method": "post",
+      "endpoint": "v1/payment-requests/:id/pay",
+      "responses": [
+        {
+          "uuid": "00000006-0000-4000-8000-000payments000",
+          "body": "{\"success\":true,\"accepted\":true,\"paymentRequest\":{\"id\":\"{{urlParam 'id'}}\",\"amountUsd\":1,\"currency\":\"USD\",\"status\":\"paid\",\"paid\":true,\"accepted\":true,\"provider\":\"mock\",\"network\":\"mock\",\"transactionHash\":\"mock_tx_static\",\"paidAt\":\"{{now 'iso'}}\",\"createdAt\":\"{{now 'iso'}}\",\"updatedAt\":\"{{now 'iso'}}\",\"expiresAt\":\"{{now 'iso' offset='+15m'}}\"}}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000007-0000-4000-8000-000payments000",
+      "type": "http",
+      "documentation": "POST mark payment failed",
+      "method": "post",
+      "endpoint": "v1/payment-requests/:id/fail",
+      "responses": [
+        {
+          "uuid": "00000008-0000-4000-8000-000payments000",
+          "body": "{\"success\":true,\"accepted\":false,\"paymentRequest\":{\"id\":\"{{urlParam 'id'}}\",\"amountUsd\":1,\"currency\":\"USD\",\"status\":\"failed\",\"paid\":false,\"accepted\":false,\"provider\":\"mock\",\"network\":\"mock\",\"failureReason\":\"mock_failure\",\"failedAt\":\"{{now 'iso'}}\",\"createdAt\":\"{{now 'iso'}}\",\"updatedAt\":\"{{now 'iso'}}\",\"expiresAt\":\"{{now 'iso' offset='+15m'}}\"}}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000009-0000-4000-8000-000payments000",
+      "type": "http",
+      "documentation": "POST create Cloud-style app charge",
+      "method": "post",
+      "endpoint": "api/v1/apps/:appId/charges",
+      "responses": [
+        {
+          "uuid": "00000010-0000-4000-8000-000payments000",
+          "body": "{\"success\":true,\"charge\":{\"id\":\"charge_static\",\"appId\":\"{{urlParam 'appId'}}\",\"amountUsd\":{{body 'amount'}},\"description\":\"{{body 'description'}}\",\"providers\":[\"stripe\",\"oxapay\"],\"paymentUrl\":\"http://127.0.0.1:3019/payment/app-charge/{{urlParam 'appId'}}/charge_static\",\"status\":\"requested\",\"paidAt\":null,\"expiresAt\":\"{{now 'iso' offset='+7d'}}\",\"createdAt\":\"{{now 'iso'}}\",\"metadata\":{\"kind\":\"app_charge_request\",\"app_id\":\"{{urlParam 'appId'}}\"}}}",
+          "latency": 0,
+          "statusCode": 201,
+          "label": "Created",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000011-0000-4000-8000-000payments000",
+      "type": "http",
+      "documentation": "GET Cloud-style app charge status",
+      "method": "get",
+      "endpoint": "api/v1/apps/:appId/charges/:chargeId",
+      "responses": [
+        {
+          "uuid": "00000012-0000-4000-8000-000payments000",
+          "body": "{\"success\":true,\"charge\":{\"id\":\"{{urlParam 'chargeId'}}\",\"appId\":\"{{urlParam 'appId'}}\",\"amountUsd\":1,\"description\":\"Mock app charge\",\"providers\":[\"stripe\",\"oxapay\"],\"paymentUrl\":\"http://127.0.0.1:3019/payment/app-charge/{{urlParam 'appId'}}/{{urlParam 'chargeId'}}\",\"status\":\"requested\",\"paidAt\":null,\"expiresAt\":\"{{now 'iso' offset='+7d'}}\",\"createdAt\":\"{{now 'iso'}}\",\"metadata\":{\"kind\":\"app_charge_request\",\"app_id\":\"{{urlParam 'appId'}}\"}}}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000013-0000-4000-8000-000payments000",
+      "type": "http",
+      "documentation": "POST Cloud-style app charge checkout",
+      "method": "post",
+      "endpoint": "api/v1/apps/:appId/charges/:chargeId/checkout",
+      "responses": [
+        {
+          "uuid": "00000014-0000-4000-8000-000payments000",
+          "body": "{\"success\":true,\"checkout\":{\"provider\":\"oxapay\",\"paymentId\":\"{{urlParam 'chargeId'}}\",\"trackId\":\"{{urlParam 'chargeId'}}\",\"payLink\":\"http://127.0.0.1:3019/checkout/{{urlParam 'chargeId'}}?provider=oxapay\",\"expiresAt\":\"{{now 'iso' offset='+7d'}}\"}}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    }
+  ]
+}

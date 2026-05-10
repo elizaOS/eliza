@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldRestoreAgentsListAfterAppLaunch } from "./app-manager-agents-list-guard.js";
+import { shouldRestoreAgentsListAfterAppLaunch } from "./app-manager-agents-list-guard.ts";
 
 describe("shouldRestoreAgentsListAfterAppLaunch", () => {
   it("restores when an app populates agents.list for a preset-backed agent", () => {

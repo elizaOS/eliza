@@ -1,11 +1,6 @@
 import type http from "node:http";
-import { logger } from "@elizaos/core";
-import type { ElizaConfig, ReadJsonBodyOptions } from "@elizaos/shared";
-import {
-  getMcpServerDetails,
-  parseClampedInteger,
-  searchMcpMarketplace,
-} from "@elizaos/agent";
+import { logger, type ReadJsonBodyOptions } from "@elizaos/core";
+import { getMcpServerDetails, searchMcpMarketplace } from "./mcp-marketplace.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,7 +13,7 @@ export interface McpRouteContext {
   pathname: string;
   url: URL;
   state: {
-    config: ElizaConfig;
+    config: McpRouteConfig;
     runtime: { getService: (name: string) => unknown } | null;
   };
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
@@ -26,25 +21,59 @@ export interface McpRouteContext {
   readJsonBody: <T extends object>(
     req: http.IncomingMessage,
     res: http.ServerResponse,
-    options?: ReadJsonBodyOptions,
+    options?: ReadJsonBodyOptions
   ) => Promise<T | null>;
-  saveElizaConfig: (config: ElizaConfig) => void;
+  saveElizaConfig: (config: McpRouteConfig) => void;
   redactDeep: (val: unknown) => unknown;
   isBlockedObjectKey: (key: string) => boolean;
   cloneWithoutBlockedObjectKeys: <T>(value: T) => T;
-  resolveMcpServersRejection: (
-    servers: Record<string, unknown>,
-  ) => Promise<string | null>;
+  resolveMcpServersRejection: (servers: Record<string, unknown>) => Promise<string | null>;
   resolveMcpTerminalAuthorizationRejection: (
     req: http.IncomingMessage,
     servers: Record<string, unknown>,
-    body: { terminalToken?: string },
+    body: { terminalToken?: string }
   ) => { reason: string; status: number } | null;
-  decodePathComponent: (
-    raw: string,
-    res: http.ServerResponse,
-    label: string,
-  ) => string | null;
+  decodePathComponent: (raw: string, res: http.ServerResponse, label: string) => string | null;
+}
+
+type McpConfigServer = Record<string, unknown> & {
+  type: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
+  cwd?: string;
+  timeoutInMillis?: number;
+};
+
+export interface McpRouteConfig {
+  mcp?: {
+    servers?: Record<string, McpConfigServer>;
+  };
+}
+
+interface ParseClampedIntegerOptions {
+  min?: number;
+  max?: number;
+  fallback?: number;
+}
+
+function parseClampedInteger(
+  value: string | null | undefined,
+  options: ParseClampedIntegerOptions = {}
+): number | undefined {
+  const raw = value == null ? "" : value.trim();
+  if (!raw) return Number.isFinite(options.fallback) ? options.fallback : undefined;
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) {
+    return Number.isFinite(options.fallback) ? options.fallback : undefined;
+  }
+
+  if (options.min !== undefined && parsed < options.min) return options.min;
+  if (options.max !== undefined && parsed > options.max) return options.max;
+  return parsed;
 }
 
 // ---------------------------------------------------------------------------
@@ -52,8 +81,7 @@ export interface McpRouteContext {
 // ---------------------------------------------------------------------------
 
 export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
-  const { req, res, method, pathname, url, state, json, error, readJsonBody } =
-    ctx;
+  const { req, res, method, pathname, url, state, json, error, readJsonBody } = ctx;
 
   // ═══════════════════════════════════════════════════════════════════════
   // MCP marketplace routes
@@ -62,30 +90,21 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
   if (method === "GET" && pathname === "/api/mcp/marketplace/search") {
     const query = url.searchParams.get("q") ?? "";
     const limitStr = url.searchParams.get("limit");
-    const limit = limitStr
-      ? parseClampedInteger(limitStr, { min: 1, max: 50, fallback: 30 })
-      : 30;
+    const limit = limitStr ? parseClampedInteger(limitStr, { min: 1, max: 50, fallback: 30 }) : 30;
     try {
       const result = await searchMcpMarketplace(query || undefined, limit);
       json(res, { ok: true, results: result.results });
     } catch (err) {
-      error(
-        res,
-        `MCP marketplace search failed: ${err instanceof Error ? err.message : err}`,
-        502,
-      );
+      error(res, `MCP marketplace search failed: ${err instanceof Error ? err.message : err}`, 502);
     }
     return true;
   }
 
-  if (
-    method === "GET" &&
-    pathname.startsWith("/api/mcp/marketplace/details/")
-  ) {
+  if (method === "GET" && pathname.startsWith("/api/mcp/marketplace/details/")) {
     const serverName = ctx.decodePathComponent(
       pathname.slice("/api/mcp/marketplace/details/".length),
       res,
-      "server name",
+      "server name"
     );
     if (serverName === null) return true;
     if (!serverName.trim()) {
@@ -103,7 +122,7 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       error(
         res,
         `Failed to fetch server details: ${err instanceof Error ? err.message : err}`,
-        502,
+        502
       );
     }
     return true;
@@ -136,7 +155,7 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       error(
         res,
         'Invalid server name: "__proto__", "constructor", and "prototype" are reserved',
-        400,
+        400
       );
       return true;
     }
@@ -158,13 +177,13 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
     const mcpTerminalRejection = ctx.resolveMcpTerminalAuthorizationRejection(
       req,
       { [serverName]: config },
-      body,
+      body
     );
     if (mcpTerminalRejection) {
       error(
         res,
         `Configuring stdio MCP servers requires terminal authorization. ${mcpTerminalRejection.reason}`,
-        mcpTerminalRejection.status,
+        mcpTerminalRejection.status
       );
       return true;
     }
@@ -179,9 +198,7 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
     try {
       ctx.saveElizaConfig(state.config);
     } catch (err) {
-      logger.warn(
-        `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
-      );
+      logger.warn(`[api] Config save failed: ${err instanceof Error ? err.message : err}`);
     }
 
     json(res, { ok: true, name: serverName, requiresRestart: true });
@@ -192,14 +209,14 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
     const serverName = ctx.decodePathComponent(
       pathname.slice("/api/mcp/config/server/".length),
       res,
-      "server name",
+      "server name"
     );
     if (serverName === null) return true;
     if (ctx.isBlockedObjectKey(serverName)) {
       error(
         res,
         'Invalid server name: "__proto__", "constructor", and "prototype" are reserved',
-        400,
+        400
       );
       return true;
     }
@@ -209,9 +226,7 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       try {
         ctx.saveElizaConfig(state.config);
       } catch (err) {
-        logger.warn(
-          `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
-        );
+        logger.warn(`[api] Config save failed: ${err instanceof Error ? err.message : err}`);
       }
     }
 
@@ -228,16 +243,12 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
 
     if (!state.config.mcp) state.config.mcp = {};
     if (body.servers !== undefined) {
-      if (
-        !body.servers ||
-        typeof body.servers !== "object" ||
-        Array.isArray(body.servers)
-      ) {
+      if (!body.servers || typeof body.servers !== "object" || Array.isArray(body.servers)) {
         error(res, "servers must be a JSON object", 400);
         return true;
       }
       const mcpRejection = await ctx.resolveMcpServersRejection(
-        body.servers as Record<string, unknown>,
+        body.servers as Record<string, unknown>
       );
       if (mcpRejection) {
         error(res, mcpRejection, 400);
@@ -246,13 +257,13 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       const mcpTerminalRejection = ctx.resolveMcpTerminalAuthorizationRejection(
         req,
         body.servers as Record<string, unknown>,
-        body,
+        body
       );
       if (mcpTerminalRejection) {
         error(
           res,
           `Configuring stdio MCP servers requires terminal authorization. ${mcpTerminalRejection.reason}`,
-          mcpTerminalRejection.status,
+          mcpTerminalRejection.status
         );
         return true;
       }
@@ -265,9 +276,7 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
     try {
       ctx.saveElizaConfig(state.config);
     } catch (err) {
-      logger.warn(
-        `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
-      );
+      logger.warn(`[api] Config save failed: ${err instanceof Error ? err.message : err}`);
     }
 
     json(res, { ok: true });
@@ -302,16 +311,12 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
               name: s.name,
               status: s.status,
               toolCount: Array.isArray(s.tools) ? s.tools.length : 0,
-              resourceCount: Array.isArray(s.resources)
-                ? s.resources.length
-                : 0,
+              resourceCount: Array.isArray(s.resources) ? s.resources.length : 0,
             });
           }
         }
       } catch (err) {
-        logger.debug(
-          `[api] Service not available: ${err instanceof Error ? err.message : err}`,
-        );
+        logger.debug(`[api] Service not available: ${err instanceof Error ? err.message : err}`);
       }
     }
 

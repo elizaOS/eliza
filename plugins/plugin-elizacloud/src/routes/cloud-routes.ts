@@ -548,6 +548,7 @@ export async function handleCloudRoute(
           typeof data.organizationId === "string"
             ? data.organizationId
             : undefined,
+        token: data.apiKey,
         userId: typeof data.userId === "string" ? data.userId : undefined,
       });
       return true;

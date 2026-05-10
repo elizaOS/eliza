@@ -3,11 +3,11 @@ import type {
   LifeOpsAwakeProbability,
   LifeOpsScheduleRegularity,
   LifeOpsSleepCycle,
-} from "@elizaos/shared";
-import type { LifeOpsActivityWindow } from "./sleep-cycle.js";
-import { resolveActivitySignalReliability } from "./source-reliability.js";
+} from "../contracts/health.js";
 import { getZonedDateParts } from "../util/time.js";
 import { parseIsoMs } from "../util/time-util.js";
+import type { LifeOpsActivityWindow } from "./sleep-cycle.js";
+import { resolveActivitySignalReliability } from "./source-reliability.js";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));

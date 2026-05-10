@@ -16,7 +16,7 @@
  * Instead, this file gives plugin-health (and any future cross-package
  * caller) a stable canonical alias to import from:
  *
- *   import type { LifeOpsHealthSignal } from "@elizaos/shared/contracts/health";
+ *   import type { LifeOpsHealthSignal } from "@elizaos/shared";
  *
  * The runtime semantics are identical to importing from `@elizaos/shared`
  * directly — these are pure type re-exports.
@@ -27,77 +27,77 @@
  */
 
 export type {
+  DisconnectLifeOpsHealthConnectorRequest,
+  // REST request/response surface
+  GetLifeOpsHealthSummaryRequest,
+  LifeOpsAwakeProbability,
+  LifeOpsAwakeProbabilityContributor,
+  LifeOpsAwakeProbabilitySource,
+  LifeOpsBedtimeImminentFilters,
+  LifeOpsCircadianRuleFiring,
+  // Circadian inference
+  LifeOpsCircadianState,
+  LifeOpsDayBoundary,
+  LifeOpsDayBoundaryAnchor,
+  LifeOpsHealthConnectorCapability,
   // Connector provider / capability / metric
   LifeOpsHealthConnectorProvider,
-  LifeOpsHealthConnectorCapability,
-  LifeOpsHealthMetric,
-  // Health-signal source + signal payload
-  LifeOpsHealthSignalSource,
-  LifeOpsHealthSignalSleepSummary,
-  LifeOpsHealthSignalBiometrics,
-  LifeOpsHealthSignal,
   // Connector status / wire envelopes
   LifeOpsHealthConnectorReason,
   LifeOpsHealthConnectorStatus,
+  LifeOpsHealthDailySummary,
+  LifeOpsHealthMetric,
   LifeOpsHealthMetricSample,
-  LifeOpsHealthWorkout,
-  LifeOpsHealthSyncState,
+  LifeOpsHealthSignal,
+  LifeOpsHealthSignalBiometrics,
+  LifeOpsHealthSignalSleepSummary,
+  // Health-signal source + signal payload
+  LifeOpsHealthSignalSource,
+  LifeOpsHealthSleepEpisode,
   // Sleep-stage + sleep-episode model
   LifeOpsHealthSleepStage,
   LifeOpsHealthSleepStageSample,
-  LifeOpsHealthSleepEpisode,
-  LifeOpsHealthDailySummary,
-  // REST request/response surface
-  GetLifeOpsHealthSummaryRequest,
   LifeOpsHealthSummaryResponse,
-  StartLifeOpsHealthConnectorRequest,
-  StartLifeOpsHealthConnectorResponse,
-  DisconnectLifeOpsHealthConnectorRequest,
-  SyncLifeOpsHealthConnectorRequest,
-  // Circadian inference
-  LifeOpsCircadianState,
-  LifeOpsUnclearReason,
-  LifeOpsScheduleSleepStatus,
-  LifeOpsSleepCycleEvidenceSource,
-  LifeOpsSleepCycleType,
-  LifeOpsRegularityClass,
-  LifeOpsScheduleRegularity,
+  LifeOpsHealthSyncState,
+  LifeOpsHealthWorkout,
+  LifeOpsNapDetectedFilters,
   LifeOpsPersonalBaseline,
-  LifeOpsAwakeProbabilitySource,
-  LifeOpsAwakeProbabilityContributor,
-  LifeOpsAwakeProbability,
-  LifeOpsSleepCycleEvidence,
-  LifeOpsSleepCycle,
-  LifeOpsDayBoundaryAnchor,
-  LifeOpsDayBoundary,
-  LifeOpsRelativeTimeAnchorSource,
+  LifeOpsRegularityChangedFilters,
+  LifeOpsRegularityClass,
   LifeOpsRelativeTime,
+  LifeOpsRelativeTimeAnchorSource,
+  LifeOpsScheduleInsight,
+  LifeOpsScheduleMealInsight,
   LifeOpsScheduleMealLabel,
   LifeOpsScheduleMealSource,
-  LifeOpsScheduleMealInsight,
-  LifeOpsCircadianRuleFiring,
-  LifeOpsScheduleInsight,
-  // Sleep / wake event filters
-  LifeOpsSleepOnsetCandidateFilters,
-  LifeOpsSleepDetectedFilters,
-  LifeOpsSleepEndedFilters,
-  LifeOpsWakeObservedFilters,
-  LifeOpsWakeConfirmedFilters,
-  LifeOpsNapDetectedFilters,
-  LifeOpsBedtimeImminentFilters,
-  LifeOpsRegularityChangedFilters,
+  LifeOpsScheduleRegularity,
+  LifeOpsScheduleSleepStatus,
   // Screen-time
   LifeOpsScreenTimePerAppUsage,
   LifeOpsScreenTimeSummaryPayload,
+  LifeOpsSleepCycle,
+  LifeOpsSleepCycleEvidence,
+  LifeOpsSleepCycleEvidenceSource,
+  LifeOpsSleepCycleType,
+  LifeOpsSleepDetectedFilters,
+  LifeOpsSleepEndedFilters,
+  // Sleep / wake event filters
+  LifeOpsSleepOnsetCandidateFilters,
+  LifeOpsUnclearReason,
+  LifeOpsWakeConfirmedFilters,
+  LifeOpsWakeObservedFilters,
+  StartLifeOpsHealthConnectorRequest,
+  StartLifeOpsHealthConnectorResponse,
+  SyncLifeOpsHealthConnectorRequest,
 } from "./lifeops.js";
 
 export {
-  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
+  LIFEOPS_CIRCADIAN_STATES,
   LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
+  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
+  LIFEOPS_HEALTH_CONNECTOR_REASONS,
   LIFEOPS_HEALTH_METRICS,
   LIFEOPS_HEALTH_SIGNAL_SOURCES,
-  LIFEOPS_HEALTH_CONNECTOR_REASONS,
   LIFEOPS_HEALTH_SLEEP_STAGES,
-  LIFEOPS_CIRCADIAN_STATES,
   LIFEOPS_UNCLEAR_REASONS,
 } from "./lifeops.js";

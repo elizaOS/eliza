@@ -6,6 +6,10 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { ModelType, logger } from "@elizaos/core";
+import {
+  getEvalModelClient,
+  isCerebrasEvalEnabled,
+} from "../../../plugins/app-lifeops/test/helpers/lifeops-eval-model.ts";
 
 const JUDGE_PROMPT_TEMPLATE = `You are a strict evaluator. Score the candidate response against the rubric from 0.0 (fails completely) to 1.0 (fully satisfies).
 
@@ -123,14 +127,31 @@ export async function judgeTextWithLlm(
     candidate,
   );
 
+  // Standing direction: scenario judging runs on Cerebras gpt-oss-120b so
+  // the agent under test is never used to grade itself. Falls back to the
+  // runtime's TEXT_LARGE provider when Cerebras isn't configured (unit
+  // tests pass a stub runtime; CI without the key keeps working).
+  const useCerebras = isCerebrasEvalEnabled();
+  const cerebrasClient = useCerebras ? getEvalModelClient() : null;
+
   let lastRaw = "";
   for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt += 1) {
-    const output = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt,
-      maxTokens: MAX_JUDGE_TOKENS,
-      temperature: 0,
-    });
-    const raw = typeof output === "string" ? output : JSON.stringify(output);
+    let raw: string;
+    if (cerebrasClient) {
+      const result = await cerebrasClient({
+        prompt,
+        maxTokens: MAX_JUDGE_TOKENS,
+        temperature: 0,
+      });
+      raw = result.text;
+    } else {
+      const output = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt,
+        maxTokens: MAX_JUDGE_TOKENS,
+        temperature: 0,
+      });
+      raw = typeof output === "string" ? output : JSON.stringify(output);
+    }
     lastRaw = raw;
     const result = parseJudgeJson(raw);
     if (result) {

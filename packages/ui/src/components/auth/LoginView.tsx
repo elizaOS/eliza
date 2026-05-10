@@ -237,8 +237,8 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
                 </p>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground/80">
-                    From a browser on the host machine, open this URL then go
-                    to Settings → Security:
+                    From a browser on the host machine, open this URL then go to
+                    Settings → Security:
                   </p>
                   <code className="block break-all rounded bg-bg/70 px-2 py-1.5 font-mono text-[11px] text-foreground">
                     http://localhost:31337/

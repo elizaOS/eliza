@@ -10,11 +10,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./register-routes": {
-      "types": "./dist/register-routes.d.ts",
-      "import": "./dist/register-routes.js",
-      "default": "./dist/register-routes.js"
     }
   },
   "files": [
@@ -31,7 +26,6 @@
     "@octokit/rest": "^22.0.0"
   },
   "peerDependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {

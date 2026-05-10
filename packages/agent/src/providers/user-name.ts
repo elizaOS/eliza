@@ -14,8 +14,8 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "../security/access.js";
-import { fetchConfiguredOwnerName } from "../services/owner-name.js";
+import { hasOwnerAccess } from "../security/access.ts";
+import { fetchConfiguredOwnerName } from "../services/owner-name.ts";
 
 export function createUserNameProvider(): Provider {
   return {

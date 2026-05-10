@@ -21,8 +21,8 @@ import type {
 } from "@elizaos/shared";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { ethers } from "ethers";
-import { resolveStewardCredentialsPath } from "../config/paths.js";
-import { computeValueUsd } from "./wallet-dex-prices.js";
+import { resolveStewardCredentialsPath } from "../config/paths.ts";
+import { computeValueUsd } from "./wallet-dex-prices.ts";
 
 type StewardAgentPayload = {
   walletAddress?: string;
@@ -78,7 +78,7 @@ export {
   fetchDexPrices,
   fetchDexScreenerPrices,
   WRAPPED_NATIVE,
-} from "./wallet-dex-prices.js";
+} from "./wallet-dex-prices.ts";
 
 export {
   type AnkrTokenAsset,
@@ -86,7 +86,7 @@ export {
   type EvmProviderKeys,
   fetchEvmBalances,
   resolveEvmProviderKeys,
-} from "./wallet-evm-balance.js";
+} from "./wallet-evm-balance.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────
 
@@ -453,9 +453,9 @@ export function generateWalletForChain(
 // Extracted to wallet-env-sync.ts to break circular dependency with config/config.ts.
 // Local import for internal use (setSolanaWalletEnv below), plus re-export for
 // backward compatibility so existing consumers of wallet.js keep working.
-import { syncSolanaPublicKeyEnv } from "./wallet-env-sync.js";
+import { syncSolanaPublicKeyEnv } from "./wallet-env-sync.ts";
 
-export { syncSolanaPublicKeyEnv } from "./wallet-env-sync.js";
+export { syncSolanaPublicKeyEnv } from "./wallet-env-sync.ts";
 
 export function setSolanaWalletEnv(privateKey: string): string | null {
   const trimmed = privateKey.trim();

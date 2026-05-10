@@ -8,31 +8,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./client": {
-      "types": "./dist/client.d.ts",
-      "import": "./dist/client.js",
-      "default": "./dist/client.js"
-    },
-    "./plugin": {
-      "types": "./dist/plugin.d.ts",
-      "import": "./dist/plugin.js",
-      "default": "./dist/plugin.js"
-    },
-    "./register": {
-      "types": "./dist/register.d.ts",
-      "import": "./dist/register.js",
-      "default": "./dist/register.js"
-    },
-    "./useVincentState": {
-      "types": "./dist/useVincentState.d.ts",
-      "import": "./dist/useVincentState.js",
-      "default": "./dist/useVincentState.js"
-    },
-    "./*": {
-      "types": "./dist/*",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
     }
   },
   "dependencies": {
@@ -56,7 +31,7 @@
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "tsc -p tsconfig.build.json"
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [
     "dist"

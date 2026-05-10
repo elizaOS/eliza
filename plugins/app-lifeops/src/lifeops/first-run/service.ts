@@ -4,19 +4,14 @@
  * Owns:
  *   - the lifecycle state machine (`pending` → `in_progress` → `complete`)
  *     via `FirstRunStateStore`
- *   - writes to `OwnerFactStore` (interim wrapper, W2-E swap target)
+ *   - writes to the canonical `OwnerFactStore`
  *   - emission of the defaults pack into the `ScheduledTaskRunner`
  *   - the replay path (re-run without destroying tasks)
  *
- * The runner is **injected** so the wave-1 boundary stays clean: if W1-A's
- * production runner is registered on the runtime by the time the action
- * fires, this service uses it; otherwise it falls back to an in-memory
- * recorder that is sufficient for unit/integration tests.
- *
- * Move target for `service-mixin-definitions.ts`'s legacy
- * `checkAndOfferSeeding` / `applySeedRoutines`: those methods are deprecated
- * once first-run lands. The legacy entry points stay on the mixin for
- * backwards compat but delegate to this service.
+ * The runner is injected: if the production runner is registered on the
+ * runtime by the time the action fires, this service uses it; otherwise it
+ * falls back to an in-memory recorder that is sufficient for unit /
+ * integration tests.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -46,8 +41,12 @@ import {
   createOwnerFactStore,
   type FirstRunRecord,
   type FirstRunStateStore,
+  type OwnerFactProvenance,
+  type OwnerFacts,
+  type OwnerFactsPatch,
   type OwnerFactStore,
 } from "./state.js";
+import { asCacheRuntime } from "../runtime-cache.js";
 
 // --- Runner injection ------------------------------------------------------
 
@@ -56,10 +55,10 @@ export interface ScheduledTaskRunnerLike {
 }
 
 /**
- * Runtime-side hook used by W1-A to expose the production runner. The plugin
- * `init` registers an instance via `setScheduledTaskRunner`; the first-run
- * service calls `getScheduledTaskRunner` to fetch it. When unset, the service
- * uses the in-memory fallback which is sufficient for the wave-1 e2e tests.
+ * Runtime-side hook used to expose the production runner. The plugin `init`
+ * registers an instance via `setScheduledTaskRunner`; the first-run service
+ * calls `getScheduledTaskRunner` to fetch it. When unset, the service uses
+ * the in-memory fallback which is sufficient for tests.
  */
 let registeredRunner: ScheduledTaskRunnerLike | null = null;
 
@@ -81,23 +80,6 @@ interface CachedTaskRecord {
 
 const FALLBACK_RUNNER_CACHE_KEY = "eliza:lifeops:first-run:fallback-tasks:v1";
 
-interface RuntimeCacheLike {
-  getCache<T>(key: string): Promise<T | null | undefined>;
-  setCache<T>(key: string, value: T): Promise<boolean | undefined>;
-  deleteCache?(key: string): Promise<boolean | undefined>;
-}
-
-function asCacheRuntime(runtime: IAgentRuntime): RuntimeCacheLike | null {
-  const candidate = runtime as unknown as Partial<RuntimeCacheLike>;
-  if (
-    typeof candidate.getCache !== "function" ||
-    typeof candidate.setCache !== "function"
-  ) {
-    return null;
-  }
-  return candidate as RuntimeCacheLike;
-}
-
 class FallbackInMemoryRunner implements ScheduledTaskRunnerLike {
   constructor(private readonly runtime: IAgentRuntime) {}
   async schedule(task: ScheduledTaskInput): Promise<ScheduledTask> {
@@ -110,25 +92,23 @@ class FallbackInMemoryRunner implements ScheduledTaskRunnerLike {
       taskId,
       state: { status: "scheduled", followupCount: 0 },
     };
-    if (cache) {
-      const stored =
-        (await cache.getCache<CachedTaskRecord[]>(FALLBACK_RUNNER_CACHE_KEY)) ??
-        [];
-      const filtered = task.idempotencyKey
-        ? stored.filter(
-            (entry) => entry.input.idempotencyKey !== task.idempotencyKey,
-          )
-        : stored.slice();
-      filtered.push({
-        taskId,
-        input: task,
-        scheduledAt: new Date().toISOString(),
-      });
-      await cache.setCache<CachedTaskRecord[]>(
-        FALLBACK_RUNNER_CACHE_KEY,
-        filtered,
-      );
-    }
+    const stored =
+      (await cache.getCache<CachedTaskRecord[]>(FALLBACK_RUNNER_CACHE_KEY)) ??
+      [];
+    const filtered = task.idempotencyKey
+      ? stored.filter(
+          (entry) => entry.input.idempotencyKey !== task.idempotencyKey,
+        )
+      : stored.slice();
+    filtered.push({
+      taskId,
+      input: task,
+      scheduledAt: new Date().toISOString(),
+    });
+    await cache.setCache<CachedTaskRecord[]>(
+      FALLBACK_RUNNER_CACHE_KEY,
+      filtered,
+    );
     return scheduled;
   }
 }
@@ -137,7 +117,6 @@ export async function readFallbackScheduledTasks(
   runtime: IAgentRuntime,
 ): Promise<CachedTaskRecord[]> {
   const cache = asCacheRuntime(runtime);
-  if (!cache) return [];
   const stored = await cache.getCache<CachedTaskRecord[]>(
     FALLBACK_RUNNER_CACHE_KEY,
   );
@@ -148,12 +127,57 @@ export async function clearFallbackScheduledTasks(
   runtime: IAgentRuntime,
 ): Promise<void> {
   const cache = asCacheRuntime(runtime);
-  if (!cache) return;
-  if (typeof cache.deleteCache === "function") {
-    await cache.deleteCache(FALLBACK_RUNNER_CACHE_KEY);
-    return;
+  await cache.deleteCache(FALLBACK_RUNNER_CACHE_KEY);
+}
+
+// --- Flat-facts view (test-facing) ----------------------------------------
+
+/**
+ * Flat projection of the typed `OwnerFacts` store, used by callers that
+ * want quick scalar access to fact values (first-run tests, replay
+ * pre-fill). Provenance is intentionally elided — readers that need it go
+ * through the typed `OwnerFactStore` directly.
+ */
+export interface FirstRunFlatFacts {
+  preferredName?: string;
+  timezone?: string;
+  morningWindow?: { startLocal: string; endLocal: string };
+  eveningWindow?: { startLocal: string; endLocal: string };
+  preferredNotificationChannel?: string;
+  locale?: string;
+}
+
+function flattenFacts(facts: OwnerFacts): FirstRunFlatFacts {
+  const flat: FirstRunFlatFacts = {};
+  if (facts.preferredName) flat.preferredName = facts.preferredName.value;
+  if (facts.timezone) flat.timezone = facts.timezone.value;
+  if (facts.morningWindow) {
+    flat.morningWindow = {
+      startLocal: facts.morningWindow.value.startLocal,
+      endLocal: facts.morningWindow.value.endLocal,
+    };
   }
-  await cache.setCache<CachedTaskRecord[]>(FALLBACK_RUNNER_CACHE_KEY, []);
+  if (facts.eveningWindow) {
+    flat.eveningWindow = {
+      startLocal: facts.eveningWindow.value.startLocal,
+      endLocal: facts.eveningWindow.value.endLocal,
+    };
+  }
+  if (facts.preferredNotificationChannel) {
+    flat.preferredNotificationChannel =
+      facts.preferredNotificationChannel.value;
+  }
+  if (facts.locale) flat.locale = facts.locale.value;
+  return flat;
+}
+
+function makeFirstRunProvenance(note?: string): OwnerFactProvenance {
+  const provenance: OwnerFactProvenance = {
+    source: "first_run",
+    recordedAt: new Date().toISOString(),
+  };
+  if (note) provenance.note = note;
+  return provenance;
 }
 
 // --- Service ---------------------------------------------------------------
@@ -161,7 +185,7 @@ export async function clearFallbackScheduledTasks(
 export interface FirstRunRunResult {
   status: "ok" | "needs_more_input" | "already_complete";
   record: FirstRunRecord;
-  facts: Awaited<ReturnType<OwnerFactStore["read"]>>;
+  facts: FirstRunFlatFacts;
   scheduledTasks: ScheduledTask[];
   /** Question id awaiting an answer (only set when status = needs_more_input). */
   awaitingQuestion?: string;
@@ -233,8 +257,8 @@ export class FirstRunService {
     return this.stateStore.read();
   }
 
-  async readFacts(): ReturnType<OwnerFactStore["read"]> {
-    return this.factStore.read();
+  async readFacts(): Promise<FirstRunFlatFacts> {
+    return flattenFacts(await this.factStore.read());
   }
 
   /**
@@ -249,7 +273,7 @@ export class FirstRunService {
       return {
         status: "already_complete",
         record,
-        facts: await this.factStore.read(),
+        facts: flattenFacts(await this.factStore.read()),
         scheduledTasks: [],
         message:
           "First-run already completed. Use the replay path to re-confirm settings.",
@@ -271,7 +295,7 @@ export class FirstRunService {
       return {
         status: "needs_more_input",
         record,
-        facts: await this.factStore.read(),
+        facts: flattenFacts(await this.factStore.read()),
         scheduledTasks: [],
         awaitingQuestion: "wakeTime",
         message: "What time do you usually wake up?",
@@ -284,7 +308,7 @@ export class FirstRunService {
       return {
         status: "needs_more_input",
         record,
-        facts: await this.factStore.read(),
+        facts: flattenFacts(await this.factStore.read()),
         scheduledTasks: [],
         awaitingQuestion: "wakeTime",
         message:
@@ -300,12 +324,16 @@ export class FirstRunService {
       input.channel ?? "in_app",
       this.runtime,
     );
-    const facts = await this.factStore.update({
+    const factsPatch: OwnerFactsPatch = {
       morningWindow,
       timezone,
       eveningWindow: DEFAULT_EVENING_WINDOW,
       preferredNotificationChannel: channelValidation.channel,
-    });
+    };
+    const facts = await this.factStore.update(
+      factsPatch,
+      makeFirstRunProvenance("defaults path: wake-time answer"),
+    );
 
     const pack = buildDefaultsPack({
       morningWindow,
@@ -324,7 +352,7 @@ export class FirstRunService {
     return {
       status: "ok",
       record: completed,
-      facts,
+      facts: flattenFacts(facts),
       scheduledTasks,
       message: this.formatDefaultsCompleteMessage(scheduledTasks.length),
       warnings: channelValidation.warning ? [channelValidation.warning] : [],
@@ -344,7 +372,7 @@ export class FirstRunService {
       return {
         status: "already_complete",
         record,
-        facts: await this.factStore.read(),
+        facts: flattenFacts(await this.factStore.read()),
         scheduledTasks: [],
         message:
           "First-run already completed. Use the replay path to re-confirm settings.",
@@ -363,7 +391,7 @@ export class FirstRunService {
       return {
         status: "needs_more_input",
         record,
-        facts: await this.factStore.read(),
+        facts: flattenFacts(await this.factStore.read()),
         scheduledTasks: [],
         awaitingQuestion: next.id,
         message: next.prompt,
@@ -373,14 +401,17 @@ export class FirstRunService {
 
     const finalized = finalizeCustomizeAnswers(merged, this.runtime);
 
-    const factsPatch: Parameters<OwnerFactStore["update"]>[0] = {
+    const factsPatch: OwnerFactsPatch = {
       preferredName: finalized.preferredName,
       timezone: finalized.timezone,
       morningWindow: finalized.morningWindow,
       eveningWindow: finalized.eveningWindow,
       preferredNotificationChannel: finalized.channel,
     };
-    const facts = await this.factStore.update(factsPatch);
+    const facts = await this.factStore.update(
+      factsPatch,
+      makeFirstRunProvenance("customize path: completed questionnaire"),
+    );
 
     const pack = buildDefaultsPack({
       morningWindow: finalized.morningWindow,
@@ -394,8 +425,8 @@ export class FirstRunService {
       scheduledTasks.push(await runner.schedule(input));
     }
     // Categories that gate followups would create per-relationship watcher
-    // tasks in W1-D's followup-starter pack. Here we just record the
-    // selection on the answers; the W1-D pack reads those facts at boot.
+    // tasks via the followup-starter pack. Here we just record the
+    // selection on the answers; the pack reads those facts at boot.
 
     const completed = await this.stateStore.complete();
     const warnings: string[] = [];
@@ -405,7 +436,7 @@ export class FirstRunService {
     return {
       status: "ok",
       record: completed,
-      facts,
+      facts: flattenFacts(facts),
       scheduledTasks,
       message: this.formatCustomizeCompleteMessage(
         finalized,
@@ -416,15 +447,15 @@ export class FirstRunService {
   }
 
   /**
-   * Replay. Per `GAP_ASSESSMENT.md` §8.14: keeps existing tasks intact (the
-   * runner upserts by `idempotencyKey`); only OwnerFactStore facts the
-   * questions touch are updated.
+   * Replay. Keeps existing tasks intact (the runner upserts by
+   * `idempotencyKey`); only OwnerFactStore facts the questions touch are
+   * updated.
    */
   async runReplayPath(input: ReplayPathInput): Promise<FirstRunRunResult> {
     let record = await this.stateStore.read();
     record = await this.stateStore.begin("replay");
-    const currentFacts = await this.factStore.read();
-    const partial = partialAnswersFromFacts(currentFacts);
+    const currentTypedFacts = await this.factStore.read();
+    const partial = partialAnswersFromFacts(currentTypedFacts);
     const merged = mergeCustomizeAnswers(
       {
         ...partial,
@@ -439,7 +470,7 @@ export class FirstRunService {
       return {
         status: "needs_more_input",
         record,
-        facts: currentFacts,
+        facts: flattenFacts(currentTypedFacts),
         scheduledTasks: [],
         awaitingQuestion: next.id,
         message: next.prompt,
@@ -448,14 +479,17 @@ export class FirstRunService {
     }
 
     const finalized = finalizeCustomizeAnswers(merged, this.runtime);
-    const factsPatch: Parameters<OwnerFactStore["update"]>[0] = {
+    const factsPatch: OwnerFactsPatch = {
       preferredName: finalized.preferredName,
       timezone: finalized.timezone,
       morningWindow: finalized.morningWindow,
       eveningWindow: finalized.eveningWindow,
       preferredNotificationChannel: finalized.channel,
     };
-    const facts = await this.factStore.update(factsPatch);
+    const facts = await this.factStore.update(
+      factsPatch,
+      makeFirstRunProvenance("replay path: refreshed answers"),
+    );
 
     // Re-emit the defaults pack with the same idempotency keys so the runner
     // upserts in place. Existing user-authored tasks (different idempotency
@@ -478,7 +512,7 @@ export class FirstRunService {
     return {
       status: "ok",
       record: completed,
-      facts,
+      facts: flattenFacts(facts),
       scheduledTasks,
       message: "Settings refreshed. Existing scheduled tasks were preserved.",
       warnings,

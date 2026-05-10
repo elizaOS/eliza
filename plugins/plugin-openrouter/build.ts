@@ -22,7 +22,7 @@ await build({
   splitting: false,
   sourcemap: "linked",
   minify: false,
-  external: ["@elizaos/core", "ai", "@openrouter/ai-sdk-provider", "@ai-sdk/openai", "undici"],
+  external: ["@elizaos/core", "ai", "@openrouter/ai-sdk-provider", "@ai-sdk/openai"],
   naming: {
     entry: "index.node.js",
   },
@@ -37,7 +37,7 @@ await build({
   splitting: false,
   sourcemap: "linked",
   minify: false,
-  external: ["@elizaos/core", "ai", "@openrouter/ai-sdk-provider", "@ai-sdk/openai", "undici"],
+  external: ["@elizaos/core", "ai", "@openrouter/ai-sdk-provider", "@ai-sdk/openai"],
   naming: {
     entry: "index.browser.js",
   },
@@ -52,7 +52,7 @@ await build({
   splitting: false,
   sourcemap: "linked",
   minify: false,
-  external: ["@elizaos/core", "ai", "@openrouter/ai-sdk-provider", "@ai-sdk/openai", "undici"],
+  external: ["@elizaos/core", "ai", "@openrouter/ai-sdk-provider", "@ai-sdk/openai"],
   naming: {
     entry: "index.node.cjs",
   },

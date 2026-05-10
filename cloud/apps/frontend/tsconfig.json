@@ -2,7 +2,11 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "target": "ES2020",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
@@ -13,24 +17,44 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "allowImportingTsExtensions": false,
-    "types": ["vite/client", "node"],
+    "types": [
+      "vite/client",
+      "node"
+    ],
     "composite": false,
     "declaration": false,
     "declarationMap": false,
     "paths": {
-      "@/lib/*": ["../../packages/lib/*"],
-      "@/db/*": ["../../packages/db/*"],
-      "@/types/*": ["../../packages/types/*"],
-      "@/components/*": ["../../packages/ui/src/components/*"],
-      "@/packages/*": ["../../packages/*"],
-      "@elizaos/cloud-ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/cloud-ui/primitives": ["../../packages/ui/src/components/primitives.ts"],
-      "@elizaos/cloud-ui/brand": ["../../packages/ui/src/components/brand/index.ts"],
-      "@elizaos/cloud-ui/layout": ["../../packages/ui/src/components/layout/index.ts"],
-      "@elizaos/cloud-ui/*": ["../../packages/ui/src/*"],
-      "@/*": ["./src/*"]
+      "@/lib/*": [
+        "../../packages/lib/*"
+      ],
+      "@/db/*": [
+        "../../packages/db/*"
+      ],
+      "@/types/*": [
+        "../../packages/types/*"
+      ],
+      "@/components/*": [
+        "../../packages/ui/src/components/*"
+      ],
+      "@/packages/*": [
+        "../../packages/*"
+      ],
+      "@elizaos/cloud-ui": [
+        "../../packages/ui/src/index.ts"
+      ],
+      "@/*": [
+        "./src/*"
+      ]
     }
   },
-  "include": ["src", "vite.config.ts"],
-  "exclude": ["node_modules", "dist", "src/legacy"]
+  "include": [
+    "src",
+    "vite.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/legacy"
+  ]
 }

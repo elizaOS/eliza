@@ -18,7 +18,11 @@ import os from "node:os";
 import path from "node:path";
 
 // Load .env from repo root if dotenv is available
-const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+const REPO_ROOT =
+	process.env.ELIZA_REPO_ROOT?.trim() ||
+	(typeof import.meta.dirname === "string"
+		? path.resolve(import.meta.dirname, "..", "..", "..", "..")
+		: process.cwd());
 try {
 	const { config } = await import("dotenv");
 	config({ path: path.join(REPO_ROOT, ".env") });

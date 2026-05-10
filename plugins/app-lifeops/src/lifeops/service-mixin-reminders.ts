@@ -113,7 +113,6 @@ import {
   type SyncLifeOpsScheduleObservationsRequest,
   type SyncLifeOpsScheduleObservationsResponse,
 } from "./schedule-sync-contracts.js";
-import { STRETCH_ROUTINE_TITLE } from "./seed-routines.js";
 import {
   DEFAULT_REMINDER_INTENSITY,
   DEFAULT_REMINDER_PROCESS_LIMIT,
@@ -198,10 +197,6 @@ import {
   deriveSleepWakeEvents,
   type LifeOpsDerivedEvent,
 } from "@elizaos/plugin-health";
-import {
-  pickStretchReminderCopy,
-  shouldStretchNow,
-} from "./stretch-decider.js";
 import {
   DEFAULT_TELEMETRY_RETENTION_DAYS,
   runTelemetryRetention,
@@ -564,82 +559,11 @@ function buildReminderBody(args: {
   return parts.join("\n");
 }
 
-/** Identify a stretch routine reminder by its canonical seeded title. */
-function isStretchDefinition(
-  definition: Pick<LifeOpsTaskDefinition, "title"> | null,
-): boolean {
-  return definition?.title === STRETCH_ROUTINE_TITLE;
-}
-
-/** Day-of-year (1–366) for the given Date inside the supplied timezone. */
-function computeDayOfYear(date: Date, timezone: string): number {
-  const parts = getZonedDateParts(date, timezone);
-  const start = Date.UTC(parts.year, 0, 1);
-  const today = Date.UTC(parts.year, parts.month - 1, parts.day);
-  return Math.floor((today - start) / 86_400_000) + 1;
-}
-
-interface StretchReminderGateResult {
-  shouldSuppress: boolean;
-  bodyOverride?: string;
-}
-
-/**
- * Stretch-specific dispatch gate. Returns `shouldSuppress: true` when
- * the soft-self-care nudge should sit out this tick (busy day, weekend,
- * late evening, or still inside the cooldown). When the nudge does
- * fire, returns a deterministic copy variant via `bodyOverride` so the
- * stretch body stops being the generic "Reminder: Stretch" line.
- *
- * No-op for any non-stretch reminder.
- */
-function evaluateStretchReminderGate(args: {
-  definition: Pick<LifeOpsTaskDefinition, "title"> | null;
-  plan: Pick<LifeOpsReminderPlan, "id">;
-  existingAttempts: LifeOpsReminderAttempt[];
-  activityProfile: ReminderActivityProfileSnapshot | null;
-  ownerTimezone: string;
-  now: Date;
-}): StretchReminderGateResult {
-  if (!isStretchDefinition(args.definition)) {
-    return { shouldSuppress: false };
-  }
-  const planAttempts = args.existingAttempts.filter(
-    (attempt) =>
-      attempt.planId === args.plan.id &&
-      attempt.outcome === "delivered" &&
-      typeof attempt.attemptedAt === "string",
-  );
-  let lastStretchMs: number | null = null;
-  for (const attempt of planAttempts) {
-    const attemptedAt = attempt.attemptedAt;
-    if (typeof attemptedAt !== "string") continue;
-    const ms = Date.parse(attemptedAt);
-    if (!Number.isFinite(ms)) continue;
-    if (lastStretchMs === null || ms > lastStretchMs) {
-      lastStretchMs = ms;
-    }
-  }
-  const localParts = getZonedDateParts(args.now, args.ownerTimezone);
-  const dayOfWeek = getWeekdayForLocalDate(localParts);
-  const decision = shouldStretchNow({
-    nowMs: args.now.getTime(),
-    lastStretchMs,
-    // Walk-out / outside-detection signal lands when issue #13's
-    // location consumer is wired in. Until then we deliberately leave
-    // this null so the helper falls back to the cadence-only path.
-    lastWalkOutMs: null,
-    isBusyDay: isReminderBusyDay(args.activityProfile),
-    dayOfWeek,
-    hourOfDay: localParts.hour,
-  });
-  if (!decision.shouldFire) {
-    return { shouldSuppress: true };
-  }
-  const dayOfYear = computeDayOfYear(args.now, args.ownerTimezone);
-  const bodyOverride = pickStretchReminderCopy({ dayOfYear });
-  return { shouldSuppress: false, bodyOverride };
-}
+// Stretch cadence + walk-out / weekend / late-evening rules live as
+// registered gate-registry entries composed on the stretch starter task in
+// `default-packs/habit-starters.ts` (`weekend_skip`, `late_evening_skip`,
+// `stretch.walk_out_reset`). The `ScheduledTask` runner consults the gate
+// registry directly.
 
 function buildReminderVoiceContext(runtime: IAgentRuntime): string {
   if (!runtime.character) return "";
@@ -4783,17 +4707,6 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         ) {
           continue;
         }
-        const stretchGate = evaluateStretchReminderGate({
-          definition,
-          plan,
-          existingAttempts,
-          activityProfile,
-          ownerTimezone,
-          now,
-        });
-        if (stretchGate.shouldSuppress) {
-          continue;
-        }
         const attempt = await this.dispatchReminderAttempt({
           plan,
           ownerType: "occurrence",
@@ -4819,7 +4732,6 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           }),
           timezone: ownerTimezone,
           definition,
-          bodyOverride: stretchGate.bodyOverride,
         });
         dueAttempts.push(attempt);
         if (isDeliveredReminderOutcome(attempt.outcome)) {

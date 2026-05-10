@@ -250,11 +250,12 @@ export const firstRunAction: Action = {
     }
 
     const summary = summarizeResult(result);
-    await callback?.({ text: summary.text, data: summary.data });
+    const data = summary.data as any;
+    await callback?.({ text: summary.text, data });
     return {
       text: summary.text,
       success: result.status === "ok" || result.status === "needs_more_input",
-      data: summary.data,
+      data,
     };
   },
 };

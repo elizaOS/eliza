@@ -47,7 +47,6 @@ declare module "@elizaos/plugin-groq" {
 }
 
 declare module "@elizaos/plugin-edge-tts";
-declare module "@elizaos/plugin-edge-tts/node";
 declare module "@elizaos/signal-native";
 
 declare module "three/examples/jsm/libs/meshopt_decoder.module.js" {

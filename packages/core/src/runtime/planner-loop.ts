@@ -348,20 +348,10 @@ export async function runPlannerLoop(
 			logger: params.runtime.logger,
 		});
 
-		// Conservative gate: when a successful tool drained the queue and the
-		// just-completed planner call gave us a clean explicit `messageToUser`,
-		// the in-loop evaluator's job (decide FINISH / NEXT_RECOMMENDED /
-		// CONTINUE) collapses to FINISH with success=true. Synthesize that
-		// decision and skip ONLY the in-loop `runEvaluator` LLM call.
-		//
-		// The post-turn registered evaluator step (`runPostTurnEvaluators` in
-		// `services/evaluator.ts`, dispatched from `services/message.ts` after
-		// `runPlannerLoop` returns) runs regardless of how the loop terminates
-		// and is unaffected by this gate. See `tryGateEvaluator` doc-comment for
-		// the full scope contract.
-		//
-		// Falls through to the real evaluator on any ambiguity (failure, more
-		// queued tools, missing/unsafe message).
+		// Conservative gate (PR #7514): when a successful tool drained the queue
+		// and the just-completed planner call gave us a clean explicit
+		// `messageToUser`, synthesize a FINISH and skip the in-loop evaluator.
+		// Falls through on any ambiguity. See `tryGateEvaluator` doc-comment.
 		const gateStartedAt = Date.now();
 		const gated = tryGateEvaluator({
 			trajectory,
@@ -375,11 +365,6 @@ export async function runPlannerLoop(
 				iteration,
 				evaluator: gated,
 			});
-			// Recorder-stage parity: emit a synthesized "evaluation" stage so
-			// trajectory replay tools see the iteration's outcome on the same
-			// timeline slot they would for a model-produced evaluation. The
-			// stage carries `gated: true` + `llmCallSkipped: true` so reviewers
-			// can distinguish gated decisions from real evaluator calls.
 			await recordGatedEvaluationStage({
 				recorder: params.recorder,
 				trajectoryId: params.trajectoryId,
@@ -401,13 +386,24 @@ export async function runPlannerLoop(
 			};
 		}
 
-		const evaluator = await evaluateTrajectory(params, trajectory, iteration);
+		let evaluator = await evaluateTrajectory(params, trajectory, iteration);
 		trajectory.evaluatorOutputs.push(evaluator);
-		trajectory.context = appendEvaluationEvent({
-			context: trajectory.context,
-			iteration,
-			evaluator,
-		});
+		appendEvaluatorContextEvent(trajectory, evaluator, iteration);
+
+		// Repair pass (PR #7497): if FINISH after tool use without
+		// `messageToUser`, ask once more for a user-facing answer.
+		if (
+			evaluator.decision === "FINISH" &&
+			!getNonEmptyString(evaluator.messageToUser) &&
+			hasExecutedNonTerminalTool(trajectory)
+		) {
+			evaluator = await repairFinishWithoutUserMessage({
+				params,
+				trajectory,
+				iteration,
+				evaluator,
+			});
+		}
 
 		if (evaluator.decision === "FINISH") {
 			return {
@@ -1391,6 +1387,56 @@ function appendEvaluationEvent(args: {
 			recommendedToolCallId: args.evaluator.recommendedToolCallId,
 		},
 	});
+}
+
+function appendEvaluatorContextEvent(
+	trajectory: PlannerTrajectory,
+	evaluator: EvaluatorOutput,
+	iteration: number,
+): void {
+	trajectory.context = appendEvaluationEvent({
+		context: trajectory.context,
+		iteration,
+		evaluator,
+	});
+}
+
+async function repairFinishWithoutUserMessage(args: {
+	params: PlannerLoopParams;
+	trajectory: PlannerTrajectory;
+	iteration: number;
+	evaluator: EvaluatorOutput;
+}): Promise<EvaluatorOutput> {
+	const createdAt = Date.now();
+	args.params.runtime.logger?.warn?.(
+		{
+			iteration: args.iteration,
+			decision: args.evaluator.decision,
+			success: args.evaluator.success,
+		},
+		"Evaluator selected FINISH without a user-facing message; retrying evaluation",
+	);
+	args.trajectory.context = appendContextEvent(args.trajectory.context, {
+		id: `evaluation-missing-message:${args.iteration}:${createdAt}`,
+		type: "instruction",
+		source: "planner-loop",
+		createdAt,
+		content:
+			"The previous evaluator selected FINISH after tool use but did not include messageToUser. Re-evaluate and, if the task is complete, include a concise user-facing message grounded in the completed tool results. Do not paste raw tool transcripts, command banners, or internal logs unless the user explicitly asked for raw output.",
+		metadata: {
+			iteration: args.iteration,
+			decision: args.evaluator.decision,
+			success: args.evaluator.success,
+		},
+	});
+	const repaired = await evaluateTrajectory(
+		args.params,
+		args.trajectory,
+		args.iteration,
+	);
+	args.trajectory.evaluatorOutputs.push(repaired);
+	appendEvaluatorContextEvent(args.trajectory, repaired, args.iteration);
+	return repaired;
 }
 
 function appendTerminalPlannerOutputEvent(args: {

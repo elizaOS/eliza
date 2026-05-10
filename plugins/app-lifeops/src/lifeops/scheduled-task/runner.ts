@@ -1,20 +1,17 @@
 /**
- * Wave-1 ScheduledTaskRunner (W1-A).
- *
- * Source of truth: `docs/audit/wave1-interfaces.md` §1.2 / §1.5 + IMPL §3.1
- * + GAP_ASSESSMENT §2.3 / §8.10 / §8.11 / §8.12.
+ * ScheduledTaskRunner.
  *
  * Cross-agent invariants enforced here:
- *  - The runner does NOT pattern-match on `promptInstructions` (§7.1).
+ *  - The runner does NOT pattern-match on `promptInstructions`.
  *  - `acknowledged` is non-terminal; `pipeline.onComplete` only fires on
- *    `completed` (§7.6).
- *  - Snooze RESETS the ladder (§7.7).
- *  - Global pause skips tasks with `respectsGlobalPause: true` (§7.8).
- *  - `shouldFire` is always an array (§7.5); empty / missing arrays
- *    are treated as "no gates → allow".
+ *    `completed`.
+ *  - Snooze RESETS the ladder.
+ *  - Global pause skips tasks with `respectsGlobalPause: true`.
+ *  - `shouldFire` is always an array; empty / missing arrays are treated as
+ *    "no gates → allow".
  *  - `idempotencyKey` deduplicates schedules.
- *  - `pipeline.onSkip` wins over `completionCheck.followupAfterMinutes`
- *    when both are set (§8.10).
+ *  - `pipeline.onSkip` wins over `completionCheck.followupAfterMinutes` when
+ *    both are set.
  */
 
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";
@@ -110,8 +107,8 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
 }
 
 // ---------------------------------------------------------------------------
-// Dispatcher (channel-side egress is owned by W1-F; we only emit a
-// describe-it record here so the runner is testable in isolation).
+// Dispatcher (channel-side egress is owned by the channel registry; we only
+// emit a describe-it record here so the runner is testable in isolation).
 // ---------------------------------------------------------------------------
 
 export interface ScheduledTaskDispatchRecord {
@@ -182,7 +179,7 @@ function asEscalationCursor(task: ScheduledTask): {
   lastDispatchedAt: string;
 } {
   // The runner persists escalation cursor inside metadata under a
-  // reserved key. Wave-1 keeps the cursor opaque to other consumers.
+  // reserved key. The cursor is opaque to other consumers.
   const cursor = (task.metadata?.escalationCursor ?? null) as {
     stepIndex?: number;
     lastDispatchedAt?: string;
@@ -248,8 +245,8 @@ export interface ScheduledTaskRunnerExtras {
     },
   ): Promise<ScheduledTask>;
   /**
-   * Run the nightly rollup pass on the state-log. Wave-1 default
-   * retention is 90 days.
+   * Run the nightly rollup pass on the state-log. Default retention is 90
+   * days.
    */
   rolloverStateLog(opts?: { retentionDays?: number }): Promise<{
     rolledUp: number;
@@ -481,10 +478,10 @@ export function createScheduledTaskRunner(
     task: ScheduledTask,
     payload: { force?: boolean } | undefined,
   ): Promise<ScheduledTask> {
-    // Wave-1 escalate is a manual nudge to the next ladder step. The
-    // dispatcher transition is handled inside fire(); we simply mark the
-    // task as fired with intensity escalation and write a log row. The
-    // actual channel egress happens via the dispatcher when fire() runs.
+    // `escalate` is a manual nudge to the next ladder step. The dispatcher
+    // transition is handled inside fire(); we simply mark the task as fired
+    // with intensity escalation and write a log row. The actual channel
+    // egress happens via the dispatcher when fire() runs.
     task.state.followupCount += 1;
     task.state.lastFollowupAt = now().toISOString();
     task.state.lastDecisionLog = "escalated";

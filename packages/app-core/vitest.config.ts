@@ -9,6 +9,8 @@ const agentSrc = path.join(monorepoRoot, "packages/agent/src");
 const uiDir = path.join(monorepoRoot, "packages/ui");
 const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
+const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud-routing/src");
+const cloudSdkSrc = path.join(monorepoRoot, "cloud/packages/sdk/src");
 const appLifeopsSrc = path.join(monorepoRoot, "plugins/app-lifeops/src");
 const appTaskCoordinatorSrc = path.join(
   monorepoRoot,
@@ -25,6 +27,19 @@ const pluginBrowserBridgeSrc = path.join(
   monorepoRoot,
   "plugins/plugin-browser/src",
 );
+const pluginCapacitorBridgeSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-capacitor-bridge/src",
+);
+const pluginComputerUseSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-computeruse/src",
+);
+const pluginCodingToolsSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-coding-tools/src",
+);
+const pluginDiscordRoot = path.join(monorepoRoot, "plugins/plugin-discord");
 const pluginElizaCloudSrc = path.join(
   monorepoRoot,
   "plugins/plugin-elizacloud",
@@ -32,8 +47,24 @@ const pluginElizaCloudSrc = path.join(
 );
 const pluginEdgeTtsSrc = path.join(monorepoRoot, "plugins/plugin-edge-tts");
 const pluginIMessageSrc = path.join(monorepoRoot, "plugins/plugin-imessage/src");
+const pluginLocalInferenceSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-local-inference/src",
+);
+const pluginMcpSrc = path.join(monorepoRoot, "plugins/plugin-mcp/src");
 const pluginOpenAiSrc = path.join(monorepoRoot, "plugins/plugin-openai");
 const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
+const pluginSignalSrc = path.join(monorepoRoot, "plugins/plugin-signal/src");
+const pluginStreamingSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-streaming/src",
+);
+const pluginWhatsappRoot = path.join(monorepoRoot, "plugins/plugin-whatsapp");
+const pluginWorkflowSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-workflow/src",
+);
+const pluginX402Src = path.join(monorepoRoot, "plugins/plugin-x402/src");
 const reactPkg = path.join(fileDir, "node_modules/react");
 const reactDomPkg = path.join(fileDir, "node_modules/react-dom");
 const includeLiveE2e = process.env.ELIZA_INCLUDE_LIVE_E2E === "1";
@@ -109,6 +140,14 @@ export default defineConfig({
       },
       { find: /^@elizaos\/core\/(.+)$/, replacement: path.join(coreSrc, "$1") },
       {
+        find: /^@elizaos\/cloud-routing$/,
+        replacement: path.join(cloudRoutingSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/cloud-sdk$/,
+        replacement: path.join(cloudSdkSrc, "index.ts"),
+      },
+      {
         find: /^@elizaos\/app-lifeops$/,
         replacement: path.join(appLifeopsSrc, "index.ts"),
       },
@@ -172,6 +211,26 @@ export default defineConfig({
         replacement: path.join(pluginBrowserBridgeSrc, "$1"),
       },
       {
+        find: /^@elizaos\/plugin-capacitor-bridge$/,
+        replacement: path.join(pluginCapacitorBridgeSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-computeruse$/,
+        replacement: path.join(pluginComputerUseSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-coding-tools$/,
+        replacement: path.join(pluginCodingToolsSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-coding-tools\/(.+)$/,
+        replacement: path.join(pluginCodingToolsSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-discord$/,
+        replacement: path.join(pluginDiscordRoot, "index.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-elizacloud$/,
         replacement: path.join(pluginElizaCloudSrc, "index.node.ts"),
       },
@@ -196,12 +255,40 @@ export default defineConfig({
         replacement: path.join(pluginIMessageSrc, "$1"),
       },
       {
+        find: /^@elizaos\/plugin-local-inference$/,
+        replacement: path.join(pluginLocalInferenceSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-mcp$/,
+        replacement: path.join(pluginMcpSrc, "index.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-pdf$/,
         replacement: path.join(pluginPdfSrc, "index.node.ts"),
       },
       {
         find: /^@elizaos\/plugin-pdf\/(.+)$/,
         replacement: path.join(pluginPdfSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-signal$/,
+        replacement: path.join(pluginSignalSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-streaming$/,
+        replacement: path.join(pluginStreamingSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-whatsapp$/,
+        replacement: path.join(pluginWhatsappRoot, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-workflow$/,
+        replacement: path.join(pluginWorkflowSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-x402$/,
+        replacement: path.join(pluginX402Src, "index.ts"),
       },
       {
         find: /^@elizaos\/plugin-browser$/,

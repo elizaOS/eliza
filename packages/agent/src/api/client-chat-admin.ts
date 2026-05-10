@@ -6,7 +6,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 
-import { isUuidLike } from "./server-helpers.js";
+import { isUuidLike } from "./server-helpers.ts";
 
 type ClientChatAdminState = {
   runtime?: IAgentRuntime | { getSetting?: (key: string) => unknown } | null;

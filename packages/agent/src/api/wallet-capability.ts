@@ -1,12 +1,12 @@
 import type { AgentRuntime } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.js";
+import type { ElizaConfig } from "../config/config.ts";
 import {
   type EvmSigningCapability,
   type EvmSigningCapabilityKind,
   resolveEvmSigningCapability,
-} from "../services/evm-signing-capability.js";
-import { getWalletAddresses } from "./wallet.js";
-import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
+} from "../services/evm-signing-capability.ts";
+import { getWalletAddresses } from "./wallet.ts";
+import { resolveWalletRpcReadiness } from "./wallet-rpc.ts";
 
 /** Unified wallet package (bundles legacy EVM + Solana plugins). */
 export const EVM_PLUGIN_PACKAGE = "@elizaos/plugin-wallet";

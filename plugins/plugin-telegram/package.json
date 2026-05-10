@@ -11,11 +11,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./account-auth-service": {
-      "types": "./dist/account-auth-service.d.ts",
-      "import": "./dist/account-auth-service.js",
-      "default": "./dist/account-auth-service.js"
     }
   },
   "files": [
@@ -28,13 +23,13 @@
     "strip-literal": "^3.0.0",
     "telegraf": "4.16.3",
     "telegram": "^2.26.22",
-    "type-detect": "^4.1.0",
-    "typescript": "^6.0.3"
+    "type-detect": "^4.1.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@elizaos/config": "^1.7.2",
     "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {

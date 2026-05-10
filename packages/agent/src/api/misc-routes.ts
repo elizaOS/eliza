@@ -8,17 +8,17 @@ import {
 } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { asRecord } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
+import type { ElizaConfig } from "../config/config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import type {
   CustomActionDef,
   CustomActionHandler,
-} from "../config/types.eliza.js";
+} from "../config/types.eliza.ts";
 import {
   buildTestHandler,
   registerCustomActionLive,
-} from "../runtime/custom-actions.js";
-import { resolveTerminalRunLimits } from "./terminal-run-limits.js";
+} from "../runtime/custom-actions.ts";
+import { resolveTerminalRunLimits } from "./terminal-run-limits.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,7 +49,7 @@ type CompanionEmote = {
   [key: string]: unknown;
 };
 
-const COMPANION_EMOTES_MODULE: string = "@elizaos/app-companion/emotes";
+const COMPANION_EMOTES_MODULE: string = "@elizaos/app-companion";
 let companionEmotesPromise: Promise<{
   catalog: CompanionEmote[];
   byId: Map<string, CompanionEmote>;

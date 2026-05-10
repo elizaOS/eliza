@@ -16,8 +16,8 @@ import {
   type WalletExportRejection,
   type WalletExportRequestBody,
 } from "@elizaos/shared";
-import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.js";
-import type { ConversationMeta } from "./server-helpers.js";
+import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.ts";
+import type { ConversationMeta } from "./server-helpers.ts";
 
 // ---------------------------------------------------------------------------
 // Auth token extraction

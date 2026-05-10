@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
+import { readRequestBodyBuffer } from "@elizaos/core";
 import {
   getDiscordAvatarCacheDir,
   getDiscordAvatarCachePath,
 } from "@elizaos/plugin-discord";
-import { resolveStateDir } from "../config/paths.js";
-import { readRequestBodyBuffer } from "./http-helpers.js";
+import { resolveStateDir } from "../config/paths.ts";
 
 // ---------------------------------------------------------------------------
 // Types

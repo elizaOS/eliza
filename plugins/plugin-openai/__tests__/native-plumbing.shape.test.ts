@@ -34,7 +34,7 @@ beforeEach(() => {
   vi.stubEnv("OPENAI_BASE_URL", "https://api.openai.com/v1");
   vi.stubEnv("OPENAI_API_KEY", "test-key");
   for (const key of ENV_KEYS_TO_CLEAR) {
-    vi.stubEnv(key, undefined as unknown as string);
+    vi.stubEnv(key, undefined);
   }
 });
 

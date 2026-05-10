@@ -12,11 +12,11 @@ import {
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
 } from "@elizaos/core";
-import { readJsonBody } from "@elizaos/shared";
 import {
   createPaymentAwareHandler,
   isRoutePaymentWrapped,
 } from "@elizaos/plugin-x402";
+import { readJsonBody } from "@elizaos/shared";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 

@@ -1,6 +1,5 @@
 /**
- * `HandoffStore` — per-room handoff state per `GAP_ASSESSMENT.md` §3.14
- * (closes the J13 group-chat-handoff gap from `JOURNEY_GAME_THROUGH.md`).
+ * `HandoffStore` — per-room handoff state.
  *
  * When the agent says "I'll let you take it from here" in a multi-party
  * thread, the store flips the room into handoff mode; the
@@ -9,23 +8,10 @@
  *
  * Backing storage: runtime cache, keyed per-room. Multiple rooms can be in
  * handoff mode simultaneously (unlike `GlobalPauseStore`, which is global).
- *
- * Frozen interface (`GAP_ASSESSMENT.md` §3.14):
- *
- *   HandoffStore {
- *     enter(roomId, opts: { reason; resumeOn: ResumeCondition }): void
- *     exit(roomId): void
- *     status(roomId): { active; enteredAt?; resumeOn? }
- *   }
- *
- *   ResumeCondition =
- *     | { kind: "mention" }
- *     | { kind: "explicit_resume" }
- *     | { kind: "silence_minutes"; minutes: number }
- *     | { kind: "user_request_help"; userId: string }
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { asCacheRuntime } from "../runtime-cache.js";
 
 export type ResumeCondition =
   | { kind: "mention" }
@@ -58,25 +44,6 @@ interface HandoffRecord {
   enteredAt: string;
   reason: string;
   resumeOn: ResumeCondition;
-}
-
-interface RuntimeCacheLike {
-  getCache<T>(key: string): Promise<T | null | undefined>;
-  setCache<T>(key: string, value: T): Promise<boolean | undefined>;
-  deleteCache?(key: string): Promise<boolean | undefined>;
-}
-
-function asCacheRuntime(runtime: IAgentRuntime): RuntimeCacheLike {
-  const candidate = runtime as unknown as Partial<RuntimeCacheLike>;
-  if (
-    typeof candidate.getCache !== "function" ||
-    typeof candidate.setCache !== "function"
-  ) {
-    throw new Error(
-      "[handoff] runtime does not expose getCache/setCache — refusing to operate without persistence",
-    );
-  }
-  return candidate as RuntimeCacheLike;
 }
 
 function cacheKeyForRoom(roomId: string): string {
@@ -142,15 +109,7 @@ export function createHandoffStore(runtime: IAgentRuntime): HandoffStore {
 
     async exit(roomId: string): Promise<void> {
       if (typeof roomId !== "string" || roomId.length === 0) return;
-      if (typeof cache.deleteCache === "function") {
-        await cache.deleteCache(cacheKeyForRoom(roomId));
-        return;
-      }
-      // Sentinel write — status() treats missing/null as inactive.
-      await cache.setCache<HandoffRecord | null>(
-        cacheKeyForRoom(roomId),
-        null,
-      );
+      await cache.deleteCache(cacheKeyForRoom(roomId));
     },
 
     async status(roomId: string, _now: Date = new Date()): Promise<HandoffStatus> {

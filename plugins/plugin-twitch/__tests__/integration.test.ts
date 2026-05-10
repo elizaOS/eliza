@@ -27,6 +27,7 @@ import twitchPlugin, {
   TwitchServiceNotInitializedError,
   type TwitchUserInfo,
 } from "../src/index.ts";
+import { TwitchWorkflowCredentialProvider } from "../src/workflow-credential-provider.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers: mock runtime, memory, state
@@ -65,13 +66,17 @@ function makeMockRuntime(overrides: MockRuntimeOverrides = {}): MockRuntime {
     useModel: async (_type: string, _opts: unknown) =>
       overrides.modelResponse ?? "{}",
     emitEvent: async () => {},
-    registerMessageConnector: vi.fn<(registration: MessageConnectorRegistration) => void>(),
+    registerMessageConnector:
+      vi.fn<(registration: MessageConnectorRegistration) => void>(),
     registerSendHandler: vi.fn(),
     ...overrides,
   } as MockRuntime;
 }
 
-function makeMemory(source: string = "twitch", text: string = "hello"): Partial<Memory> {
+function makeMemory(
+  source: string = "twitch",
+  text: string = "hello",
+): Partial<Memory> {
   return {
     content: { text, source },
     userId: "user-1",
@@ -88,7 +93,9 @@ function makeState(extra: Record<string, unknown> = {}): Partial<State> {
   };
 }
 
-function makeTwitchSettings(overrides: Partial<TwitchSettings>): TwitchSettings {
+function makeTwitchSettings(
+  overrides: Partial<TwitchSettings>,
+): TwitchSettings {
   return {
     username: "testbot",
     clientId: "client-id",
@@ -106,8 +113,10 @@ function makeTwitchSettings(overrides: Partial<TwitchSettings>): TwitchSettings 
 function makeTwitchServiceHarness(
   fields: TwitchServiceHarnessFields = {},
 ): TwitchService & TwitchServiceHarnessFields {
-  return Object.assign(Object.create(TwitchService.prototype), fields) as TwitchService &
-    TwitchServiceHarnessFields;
+  return Object.assign(
+    Object.create(TwitchService.prototype),
+    fields,
+  ) as TwitchService & TwitchServiceHarnessFields;
 }
 
 function makeMockTwitchService(overrides: Record<string, unknown> = {}) {
@@ -148,9 +157,10 @@ describe("Plugin metadata", () => {
     expect(twitchPlugin.providers).toHaveLength(0);
   });
 
-  test("registers exactly 1 service", () => {
-    expect(twitchPlugin.services).toHaveLength(1);
-    expect(twitchPlugin.services![0]).toBe(TwitchService);
+  test("registers Twitch and workflow credential services", () => {
+    expect(twitchPlugin.services).toHaveLength(2);
+    expect(twitchPlugin.services).toContain(TwitchService);
+    expect(twitchPlugin.services).toContain(TwitchWorkflowCredentialProvider);
   });
 
   test("has an init function", () => {
@@ -369,7 +379,8 @@ describe("Custom Errors", () => {
 describe("Twitch message connector accounts", () => {
   test("registers one connector for each started account", () => {
     const runtime = makeMockRuntime({
-      registerMessageConnector: vi.fn<(registration: MessageConnectorRegistration) => void>(),
+      registerMessageConnector:
+        vi.fn<(registration: MessageConnectorRegistration) => void>(),
       registerSendHandler: vi.fn(),
       logger: { info: vi.fn() },
     });
@@ -408,7 +419,8 @@ describe("Twitch message connector accounts", () => {
 
   test("registers accountId and routes sends through that account", async () => {
     const runtime = makeMockRuntime({
-      registerMessageConnector: vi.fn<(registration: MessageConnectorRegistration) => void>(),
+      registerMessageConnector:
+        vi.fn<(registration: MessageConnectorRegistration) => void>(),
       registerSendHandler: vi.fn(),
       getRoom: vi.fn(),
       logger: { info: vi.fn() },

@@ -1,224 +1,37 @@
 /**
- * First-run state + interim `OwnerFactStore` wrapper.
+ * First-run lifecycle state.
  *
- * **Lifecycle:** the first-run capability flips between three high-level
- * states — `pending`, `in_progress`, `complete`. The provider surfaces an
- * affordance only when state is `pending` or `in_progress`. When the user
- * abandons mid-customize, state stays `in_progress` and `partialAnswers`
- * holds the answers collected so far so the next invocation resumes.
- *
- * **OwnerFactStore wrapper:** Wave-1 ships an interim `OwnerFactStore` that
- * is a thin facade over the existing `LifeOpsOwnerProfile` (per
- * `IMPLEMENTATION_PLAN.md` §3.3 "OwnerFactStore stub"). The interface is the
- * eventual W2-E shape — `read` / `update` of the well-known facts the
- * first-run flow touches. Wave-2 W2-E swaps the implementation in place;
- * call sites do not change.
- *
- * **Fact set this wave touches:** `preferredName`, `timezone`,
- * `morningWindow`, `eveningWindow`, `preferredNotificationChannel`, `locale`.
- *
- * Source of truth for the contract: `wave1-interfaces.md` §4.1 / §8 +
- * `GAP_ASSESSMENT.md` §3.10 / §5.
+ * Owns the `pending` → `in_progress` → `complete` lifecycle and the
+ * Q-by-Q `partialAnswers` accumulator used by the customize path. The
+ * canonical owner-fact store lives in `../owner/fact-store.ts`.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  readLifeOpsOwnerProfile,
-  updateLifeOpsOwnerProfile,
-} from "../owner-profile.js";
+import { asCacheRuntime } from "../runtime-cache.js";
 
-// --- OwnerFactStore (interim wrapper) -------------------------------------
+// --- Public re-exports of the canonical OwnerFactStore --------------------
 
-export interface OwnerFactWindow {
-  /** "HH:MM" 24h. Local to `timezone`. */
-  startLocal: string;
-  /** "HH:MM" 24h. Local to `timezone`. */
-  endLocal: string;
-}
-
-export interface OwnerFacts {
-  preferredName?: string;
-  timezone?: string;
-  morningWindow?: OwnerFactWindow;
-  eveningWindow?: OwnerFactWindow;
-  preferredNotificationChannel?: string;
-  locale?: string;
-  /** ISO-8601 of last update; null when never written. */
-  updatedAt: string | null;
-}
-
-export interface OwnerFactsPatch {
-  preferredName?: string;
-  timezone?: string;
-  morningWindow?: OwnerFactWindow;
-  eveningWindow?: OwnerFactWindow;
-  preferredNotificationChannel?: string;
-  locale?: string;
-}
-
-export interface OwnerFactStore {
-  read(): Promise<OwnerFacts>;
-  update(patch: OwnerFactsPatch): Promise<OwnerFacts>;
-}
-
-const TIME_OF_DAY_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
-
-function isWindow(value: unknown): value is OwnerFactWindow {
-  if (!value || typeof value !== "object") return false;
-  const v = value as Record<string, unknown>;
-  return (
-    typeof v.startLocal === "string" &&
-    TIME_OF_DAY_PATTERN.test(v.startLocal) &&
-    typeof v.endLocal === "string" &&
-    TIME_OF_DAY_PATTERN.test(v.endLocal)
-  );
-}
-
-function readWindowFromMetadata(
-  metadata: Record<string, unknown> | null,
-  key: string,
-): OwnerFactWindow | undefined {
-  if (!metadata) return undefined;
-  const candidate = metadata[key];
-  return isWindow(candidate) ? candidate : undefined;
-}
-
-/**
- * Concrete interim wrapper. Reads/writes through `LifeOpsOwnerProfile` for
- * the legacy fields and stores wave-1-specific extensions
- * (`morningWindow`, `eveningWindow`, `preferredNotificationChannel`, `locale`)
- * inside the same task metadata under the `ownerFactsExtensions` key. The
- * extension key is intentionally separate from `ownerProfile` so the legacy
- * path keeps its narrow string-only schema and the W2-E migration can move
- * the extensions cleanly.
- */
-export function createOwnerFactStore(runtime: IAgentRuntime): OwnerFactStore {
-  return {
-    async read(): Promise<OwnerFacts> {
-      const profile = await readLifeOpsOwnerProfile(runtime);
-      const extensions = await readOwnerFactsExtensions(runtime);
-      const facts: OwnerFacts = {
-        updatedAt: profile.updatedAt,
-      };
-      if (profile.name && profile.name !== "admin") {
-        facts.preferredName = profile.name;
-      }
-      if (extensions.timezone) {
-        facts.timezone = extensions.timezone;
-      }
-      if (extensions.morningWindow) {
-        facts.morningWindow = extensions.morningWindow;
-      }
-      if (extensions.eveningWindow) {
-        facts.eveningWindow = extensions.eveningWindow;
-      }
-      if (extensions.preferredNotificationChannel) {
-        facts.preferredNotificationChannel =
-          extensions.preferredNotificationChannel;
-      }
-      if (extensions.locale) {
-        facts.locale = extensions.locale;
-      }
-      return facts;
-    },
-    async update(patch: OwnerFactsPatch): Promise<OwnerFacts> {
-      // Touch the legacy LifeOpsOwnerProfile when `preferredName` is in the
-      // patch so existing readers stay consistent.
-      if (typeof patch.preferredName === "string") {
-        await updateLifeOpsOwnerProfile(runtime, {
-          name: patch.preferredName,
-        });
-      }
-      await mergeOwnerFactsExtensions(runtime, patch);
-      return await this.read();
-    },
-  };
-}
-
-// --- Extensions storage (cache-backed, swap target for W2-E) -------------
-
-const OWNER_FACTS_EXTENSIONS_CACHE_KEY =
-  "eliza:lifeops:owner-facts-extensions:v1";
-
-interface OwnerFactsExtensions {
-  timezone?: string;
-  morningWindow?: OwnerFactWindow;
-  eveningWindow?: OwnerFactWindow;
-  preferredNotificationChannel?: string;
-  locale?: string;
-}
-
-interface RuntimeCacheLike {
-  getCache<T>(key: string): Promise<T | null | undefined>;
-  setCache<T>(key: string, value: T): Promise<boolean | undefined>;
-  deleteCache?(key: string): Promise<boolean | undefined>;
-}
-
-function asCacheRuntime(runtime: IAgentRuntime): RuntimeCacheLike {
-  const candidate = runtime as unknown as Partial<RuntimeCacheLike>;
-  if (
-    typeof candidate.getCache !== "function" ||
-    typeof candidate.setCache !== "function"
-  ) {
-    throw new Error(
-      "[first-run-state] runtime does not expose getCache/setCache",
-    );
-  }
-  return candidate as RuntimeCacheLike;
-}
-
-async function readOwnerFactsExtensions(
-  runtime: IAgentRuntime,
-): Promise<OwnerFactsExtensions> {
-  const cache = asCacheRuntime(runtime);
-  const stored = await cache.getCache<Record<string, unknown>>(
-    OWNER_FACTS_EXTENSIONS_CACHE_KEY,
-  );
-  if (!stored || typeof stored !== "object") return {};
-  const ext: OwnerFactsExtensions = {};
-  if (typeof stored.timezone === "string" && stored.timezone) {
-    ext.timezone = stored.timezone;
-  }
-  const morning = readWindowFromMetadata(stored, "morningWindow");
-  if (morning) ext.morningWindow = morning;
-  const evening = readWindowFromMetadata(stored, "eveningWindow");
-  if (evening) ext.eveningWindow = evening;
-  if (
-    typeof stored.preferredNotificationChannel === "string" &&
-    stored.preferredNotificationChannel
-  ) {
-    ext.preferredNotificationChannel = stored.preferredNotificationChannel;
-  }
-  if (typeof stored.locale === "string" && stored.locale) {
-    ext.locale = stored.locale;
-  }
-  return ext;
-}
-
-async function mergeOwnerFactsExtensions(
-  runtime: IAgentRuntime,
-  patch: OwnerFactsPatch,
-): Promise<void> {
-  const cache = asCacheRuntime(runtime);
-  const current = await readOwnerFactsExtensions(runtime);
-  const next: OwnerFactsExtensions = { ...current };
-  if (typeof patch.timezone === "string") {
-    next.timezone = patch.timezone;
-  }
-  if (patch.morningWindow && isWindow(patch.morningWindow)) {
-    next.morningWindow = patch.morningWindow;
-  }
-  if (patch.eveningWindow && isWindow(patch.eveningWindow)) {
-    next.eveningWindow = patch.eveningWindow;
-  }
-  if (typeof patch.preferredNotificationChannel === "string") {
-    next.preferredNotificationChannel = patch.preferredNotificationChannel;
-  }
-  if (typeof patch.locale === "string") {
-    next.locale = patch.locale;
-  }
-  await cache.setCache(OWNER_FACTS_EXTENSIONS_CACHE_KEY, next);
-}
+export {
+  createOwnerFactStore,
+  ownerFactsToView,
+  registerOwnerFactStore,
+  resolveOwnerFactStore,
+  getOwnerFactStore,
+} from "../owner/fact-store.js";
+export type {
+  EscalationRule,
+  OwnerFactEntry,
+  OwnerFactProvenance,
+  OwnerFactProvenanceSource,
+  OwnerFacts,
+  OwnerFactsPatch,
+  OwnerFactStore,
+  OwnerFactWindow,
+  OwnerQuietHours,
+  PolicyPatchEscalationRule,
+  PolicyPatchReminderIntensity,
+  ReminderIntensity,
+} from "../owner/fact-store.js";
 
 // --- First-run lifecycle state -------------------------------------------
 

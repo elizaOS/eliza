@@ -19,6 +19,7 @@ export interface CoalescedDiscordMessageMeta {
 export type DiscordMessageWithCoalescedMetadata = DiscordMessage & {
 	__discordCoalescedMessages?: CoalescedDiscordMessageMeta[];
 	__discordCoalescedMessageIds?: string[];
+	__discordAddressingContent?: string;
 };
 
 export type DiscordMessageMetadata = Record<string, unknown> & {
@@ -127,6 +128,12 @@ export function makeCoalescedDiscordMessage(
 		},
 		__discordCoalescedMessageIds: {
 			value: meta.map((entry) => entry.id).filter(Boolean),
+			writable: false,
+			enumerable: false,
+			configurable: true,
+		},
+		__discordAddressingContent: {
+			value: base.content,
 			writable: false,
 			enumerable: false,
 			configurable: true,

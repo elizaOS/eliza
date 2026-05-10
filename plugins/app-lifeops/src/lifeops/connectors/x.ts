@@ -1,7 +1,6 @@
 /**
- * W2-B — X (Twitter) connector contribution.
- *
- * Wraps the LifeOps X mixin (`service-mixin-x.ts`).
+ * X (Twitter) connector contribution. Wraps the LifeOps X mixin
+ * (`service-mixin-x.ts`).
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { LifeOpsService } from "../service.js";

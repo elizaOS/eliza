@@ -206,6 +206,10 @@ function isCloudProvisionedByEnv(): boolean {
   return process.env.ELIZA_CLOUD_PROVISIONED === "1";
 }
 
+function isLocalAuthRequiredByEnv(): boolean {
+  return process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1";
+}
+
 function isTrustedLocalOrigin(raw: string): boolean {
   const trimmed = raw.trim();
   if (!trimmed || trimmed === "null") return true;
@@ -235,6 +239,7 @@ function isTrustedLocalOrigin(raw: string): boolean {
 export function isTrustedLocalRequest(
   req: Pick<http.IncomingMessage, "headers" | "socket">,
 ): boolean {
+  if (isLocalAuthRequiredByEnv()) return false;
   if (isCloudProvisionedByEnv()) return false;
   if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false;
   if (proxyClientHeaderBlocksLocalTrust(req.headers)) return false;

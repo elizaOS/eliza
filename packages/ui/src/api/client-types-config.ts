@@ -3,6 +3,8 @@
 // Update*, Extension*, Workbench*, Character*, Voice*, Skill*
 // ---------------------------------------------------------------------------
 
+import type { MessageExampleContent } from "@elizaos/shared";
+import type { ConfigUiHint } from "../types";
 import type {
   CreateTriggerRequest as _CreateTriggerRequest,
   TriggerHealthSnapshot as _TriggerHealthSnapshot,
@@ -11,9 +13,7 @@ import type {
   UpdateTriggerRequest as _UpdateTriggerRequest,
   ConversationScope,
   ReleaseChannel,
-} from "@elizaos/agent";
-import type { MessageExampleContent } from "@elizaos/shared";
-import type { ConfigUiHint } from "../types";
+} from "./agent-client-type-shim";
 
 export type {
   BrowserBridgeCompanionPackageStatus,

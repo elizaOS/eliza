@@ -1,11 +1,8 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import type { IAgentRuntime, Task, UUID } from '@elizaos/core';
+import type { IAgentRuntime, Service, Task, UUID } from '@elizaos/core';
 import { migrateLegacyWorkbenchTasks } from '../../src/lib/legacy-task-migration';
 import { migrateLegacyTextTriggers } from '../../src/lib/legacy-text-trigger-migration';
-import {
-  WORKFLOW_SERVICE_TYPE,
-  type WorkflowService,
-} from '../../src/services/workflow-service';
+import { WORKFLOW_SERVICE_TYPE } from '../../src/services/workflow-service';
 import type { WorkflowCreationResult, WorkflowDefinition } from '../../src/types/index';
 
 interface DeployCall {
@@ -13,15 +10,11 @@ interface DeployCall {
   userId: string;
 }
 
-interface MockWorkflowService {
-  deployCalls: DeployCall[];
-  deployImpl: (workflow: WorkflowDefinition, userId: string) => Promise<WorkflowCreationResult>;
-}
-
 interface MockRuntime {
   runtime: IAgentRuntime;
   tasks: Task[];
   workflowService: MockWorkflowService;
+  setWorkflowServiceRegistered(registered: boolean): void;
 }
 
 const AGENT_ID = '00000000-0000-0000-0000-00000000a601' as UUID;
@@ -39,25 +32,34 @@ function defaultDeploy(workflow: WorkflowDefinition): Promise<WorkflowCreationRe
   });
 }
 
+class MockWorkflowService extends WorkflowService {
+  deployCalls: DeployCall[] = [];
+  deployImpl: (workflow: WorkflowDefinition, userId: string) => Promise<WorkflowCreationResult> =
+    defaultDeploy;
+
+  override async stop(): Promise<void> {}
+
+  override async deployWorkflow(
+    workflow: WorkflowDefinition,
+    userId: string
+  ): Promise<WorkflowCreationResult> {
+    this.deployCalls.push({ workflow, userId });
+    return this.deployImpl(workflow, userId);
+  }
+}
+
 function makeRuntime(initialTasks: Task[] = []): MockRuntime {
   const tasks = initialTasks.map((t) => ({ ...t, metadata: { ...(t.metadata ?? {}) } }));
 
-  const workflowService: MockWorkflowService = {
-    deployCalls: [],
-    deployImpl: defaultDeploy,
-  };
-
-  const serviceWrapper = {
-    deployWorkflow: (workflow: WorkflowDefinition, userId: string) => {
-      workflowService.deployCalls.push({ workflow, userId });
-      return workflowService.deployImpl(workflow, userId);
-    },
-  } as unknown as WorkflowService;
+  const workflowService = new MockWorkflowService();
+  let workflowServiceRegistered = true;
 
   const runtime = {
     agentId: AGENT_ID,
-    getService(type: string) {
-      if (type === WORKFLOW_SERVICE_TYPE) return serviceWrapper;
+    getService<T extends Service>(type: string): T | null {
+      if (type === WORKFLOW_SERVICE_TYPE && workflowServiceRegistered) {
+        return workflowService as T;
+      }
       return null;
     },
     async getTasks(params: { agentIds: UUID[]; tags?: string[] }) {
@@ -84,9 +86,16 @@ function makeRuntime(initialTasks: Task[] = []): MockRuntime {
           : existing.metadata,
       };
     },
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 
-  return { runtime, tasks, workflowService };
+  return {
+    runtime,
+    tasks,
+    workflowService,
+    setWorkflowServiceRegistered(registered: boolean) {
+      workflowServiceRegistered = registered;
+    },
+  };
 }
 
 function makeWorkbenchTask(id: string, overrides: Partial<Task> = {}): Task {
@@ -192,7 +201,7 @@ describe('migrateLegacyWorkbenchTasks', () => {
 
   test('returns an empty summary when WorkflowService is not registered', async () => {
     const ctx = makeRuntime([makeWorkbenchTask('a')]);
-    (ctx.runtime as unknown as { getService: () => null }).getService = () => null;
+    ctx.setWorkflowServiceRegistered(false);
 
     const summary = await migrateLegacyWorkbenchTasks(ctx.runtime);
     expect(summary).toEqual({ migrated: 0, skipped: 0, failed: 0 });
@@ -294,7 +303,7 @@ describe('migrateLegacyTextTriggers', () => {
 
   test('returns an empty summary when WorkflowService is not registered', async () => {
     const ctx = makeRuntime([makeTriggerTask('a')]);
-    (ctx.runtime as unknown as { getService: () => null }).getService = () => null;
+    ctx.setWorkflowServiceRegistered(false);
 
     const summary = await migrateLegacyTextTriggers(ctx.runtime);
     expect(summary).toEqual({ migrated: 0, skipped: 0, failed: 0 });

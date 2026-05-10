@@ -1,8 +1,8 @@
 import type http from "node:http";
 import type { AgentRuntime, Task, UUID } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
-import type { TriggerSummary } from "../triggers/types.js";
-import { WORKBENCH_TODO_TAG } from "./workbench-helpers.js";
+import type { TriggerSummary } from "../triggers/types.ts";
+import { WORKBENCH_TODO_TAG } from "./workbench-helpers.ts";
 
 interface WorkbenchTodoView {
   id: string;

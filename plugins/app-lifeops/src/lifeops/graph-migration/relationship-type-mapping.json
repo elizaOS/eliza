@@ -1,7 +1,6 @@
 {
   "_meta": {
-    "description": "Mapping table: legacy LifeOpsRelationship.relationshipType strings → new RelationshipStore type strings. Unknown strings pass through verbatim. Edit this file to add a new mapping; the migrator reloads it on each run.",
-    "owner": "W1-E"
+    "description": "Mapping table: legacy LifeOpsRelationship.relationshipType strings → new RelationshipStore type strings. Unknown strings pass through verbatim. Edit this file to add a new mapping; the migrator reloads it on each run."
   },
   "mappings": {
     "partner": "partner_of",

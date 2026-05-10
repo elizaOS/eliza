@@ -12,13 +12,13 @@ import {
   type DexTokenMeta,
   fetchDexPrices,
   WRAPPED_NATIVE,
-} from "./wallet-dex-prices.js";
+} from "./wallet-dex-prices.ts";
 import {
   resolveAvalancheRpcUrls,
   resolveBaseRpcUrls,
   resolveBscRpcUrls,
   resolveEthereumRpcUrls,
-} from "./wallet-rpc.js";
+} from "./wallet-rpc.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────
 

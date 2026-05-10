@@ -1,5 +1,5 @@
 /**
- * W2-B — Duffel (travel) connector contribution.
+ * Duffel (travel) connector contribution.
  *
  * Wraps the Duffel travel adapter (`../travel-adapters/duffel.ts`).
  * Duffel is a travel-booking provider; like Calendly it has no outbound
@@ -80,7 +80,7 @@ export function createDuffelConnectorContribution(
           "duffel.read requires { origin, destination, departureDate, passengers, cabinClass }",
         );
       }
-      return searchFlights(readDuffelConfigFromEnv(), params as SearchFlightsRequest);
+      return searchFlights(params as SearchFlightsRequest, readDuffelConfigFromEnv());
     },
   };
 }

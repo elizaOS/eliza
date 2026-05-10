@@ -16,8 +16,7 @@
     "allowImportingTsExtensions": true,
     "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/core": ["../../../packages/core/dist/node"],
-      "@elizaos/core/*": ["../../../packages/core/dist/*"]
+      "@elizaos/core": ["../../../packages/core/dist/node"]
     }
   },
   "include": ["src/**/*.ts", "auto-enable.ts"],

@@ -55,6 +55,10 @@ export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
 export * from "./env-utils";
+export {
+	roleAction,
+	updateRoleAction,
+} from "./features/advanced-capabilities/actions/role";
 export * from "./features/advanced-memory";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
@@ -81,7 +85,7 @@ export type {
 // MESSAGE, MESSAGE, adapters, SendPolicy, TriageService).
 // Selective re-export — `MessageParticipant` collides with an unrelated type in
 // `types/service-interfaces.ts`; consumers that need the triage-side participant type
-// import it directly from "@elizaos/core/features/messaging/triage".
+// should import it from the package barrel.
 export {
 	__resetDefaultMessageRefStoreForTests,
 	__resetDefaultTriageServiceForTests,
@@ -202,6 +206,7 @@ export {
 	settingsDebugCloudSummary,
 } from "./settings-debug";
 export { sanitizeSpeechText } from "./spoken-text";
+export * from "./testing";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
 export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
@@ -240,6 +245,7 @@ export {
 export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities
 export * from "./utils/environment";
+export { formatError } from "./utils/format-error";
 export * from "./utils/prompt-compression";
 // Export Node-specific utilities
 export * from "./utils/server-health";
@@ -247,7 +253,6 @@ export * from "./utils/server-health";
 export * from "./utils/state-dir";
 // Export streaming utilities
 export * from "./utils/streaming";
-export * from "./testing";
 // Export validation utilities
 export * from "./validation";
 

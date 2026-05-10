@@ -69,7 +69,11 @@ import { getPermissionManager } from "./native/permissions";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
 import { resolveRendererAsset } from "./renderer-static";
-import { registerRpcHandlers } from "./rpc-handlers";
+import {
+	buildBunRpcHandlers,
+	wireBrowserWorkspaceCaller,
+} from "./rpc-handlers";
+import type { ElizaDesktopRPCSchema } from "./rpc-schema";
 import {
 	readResolvedPreloadScript,
 	resolveRendererAssetDir,
@@ -846,7 +850,7 @@ async function resolveRendererUrl(): Promise<string> {
 	return rendererUrl;
 }
 
-async function createMainWindow(): Promise<BrowserWindow> {
+async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 	const rendererUrl = await resolveRendererUrl();
 	const mainWindowPartition = resolveMainWindowPartition(process.env);
 	if (mainWindowPartition) {
@@ -892,6 +896,9 @@ async function createMainWindow(): Promise<BrowserWindow> {
 
 	let win: BrowserWindow;
 	if (useIsolatedMainView) {
+		// Shell window with the empty default webview. The actual content
+		// (and therefore the RPC channel) is hosted on the separate mainView
+		// BrowserView constructed below — that's what we attach `rpc` to.
 		win = new BrowserWindow({
 			title: BRAND.appName,
 			// @ts-expect-error: Electrobun doesn't expose icon in JS typings yet
@@ -918,6 +925,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
 				height: state.height,
 			},
 			windowId: win.id,
+			rpc,
 		});
 		win.webviewId = mainView.id;
 		if (forceMainWindowCef) {
@@ -935,6 +943,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
 			frame: windowFrame,
 			titleBarStyle,
 			transparent,
+			rpc,
 		});
 	}
 
@@ -963,8 +972,12 @@ async function createMainWindow(): Promise<BrowserWindow> {
 	return win;
 }
 
-function attachMainWindow(win: BrowserWindow): BrowserWindow {
-	const sendToWebview = wireRpcAndModules(win);
+function attachMainWindow(
+	win: BrowserWindow,
+	rpc: ElizaDesktopRpc,
+	sendToWebview: SendToWebview,
+): BrowserWindow {
+	wireMainWindowAfterCreate(win, rpc, sendToWebview);
 	currentWindow = win;
 	currentSendToWebview = sendToWebview;
 	setCurrentMainWindow(win, {
@@ -1056,7 +1069,12 @@ async function restoreWindow(): Promise<void> {
 		return;
 	}
 	backgroundWindowPromise = (async () => {
-		const win = attachMainWindow(await createMainWindow());
+		const { rpc, sendToWebview } = createDesktopRpc("main");
+		const win = attachMainWindow(
+			await createMainWindow(rpc),
+			rpc,
+			sendToWebview,
+		);
 		injectApiBase(win);
 		logger.info("[Main] Restored window from dock click");
 	})().finally(() => {
@@ -1260,72 +1278,127 @@ function toggleFocusedWindowDevTools(): void {
 	});
 }
 
-type RpcSendProxy = Record<string, ((payload: unknown) => void) | undefined>;
+/**
+ * The exact rpc object that BrowserView.defineRPC<ElizaDesktopRPCSchema>
+ * returns. Carries the schema generic so call sites get typed `request`
+ * and `send` proxies.
+ */
+type ElizaDesktopRpc = ReturnType<
+	typeof BrowserView.defineRPC<ElizaDesktopRPCSchema>
+>;
 
 /**
- * Structural type for the Electrobun RPC instance.
- * The actual runtime object returned by createRPC exposes `send` and
- * `setRequestHandler`, but the base RPCWithTransport interface only has
- * `setTransport`. We use a structural type to avoid casts.
- *
- * `(params: never) => unknown` for handler values: any typed handler
- * `(p: T) => R` satisfies this via TypeScript's function contravariance
- * (`never extends T` is always true).
+ * Internal: type-erased view of the rpc shape that
+ * `wireBrowserWorkspaceCaller` consumes. The handler module declares its
+ * own structural type with `params: any`, so we widen here at the
+ * boundary instead of forcing every consumer to import that internal.
  */
-type ElectrobunRpcInstance = {
-	send?: RpcSendProxy;
-	setRequestHandler?: (
-		handlers: Record<string, (params: never) => unknown>,
-	) => void;
-};
+// biome-ignore lint/suspicious/noExplicitAny: bridges typed rpc.request to the handler-module's any-params signature
+type RpcRequestProxy = Record<string, (params: any) => Promise<any>>;
 
-function wireRpcAndModules(
-	win: BrowserWindow,
-): (message: string, payload?: unknown) => void {
-	const rpc = win.webview.rpc as ElectrobunRpcInstance | undefined;
+const MAX_RPC_REQUEST_TIME_MS = 600_000;
 
-	const sendToWebview = (message: string, payload?: unknown): void => {
-		if (rpc?.send) {
-			const sender = rpc?.send?.[message];
-			if (sender) {
-				sender(payload ?? null);
-				return;
-			}
+/**
+ * Build a typed RPC instance plus its `sendToWebview` companion, ready to
+ * be passed to a `BrowserWindow` / `BrowserView` constructor via the `rpc`
+ * option.
+ *
+ * This is the constructor-time injection pattern required by the
+ * Electrobun rules: handlers are declared up front and bound when the
+ * webview is created, not patched in post-hoc via `setRequestHandler`.
+ *
+ * `sendToWebview` closes over the RPC by reference so it can be passed
+ * into `buildBunRpcHandlers` before `defineRPC` returns — we only need
+ * the actual `send` proxy at call time, after the webview is alive.
+ *
+ * @param label  Diagnostic tag included in the "no RPC method" warning so
+ *               main / settings / surface windows are distinguishable.
+ */
+function createDesktopRpc(label: string): {
+	rpc: ElizaDesktopRpc;
+	sendToWebview: SendToWebview;
+} {
+	let rpc: ElizaDesktopRpc | undefined;
+
+	const sendToWebview: SendToWebview = (message, payload) => {
+		if (!rpc) {
+			logger.warn(
+				`[sendToWebview:${label}] RPC not yet initialised; dropping message: ${message}`,
+			);
+			return;
 		}
-		logger.warn(`[sendToWebview] No RPC method for message: ${message}`);
+		try {
+			// `rpc.send` is a Proxy<sendFn> from defineElectrobunRPC: both
+			// `rpc.send(message, payload)` and `rpc.send.<message>(payload)`
+			// dispatch through the same underlying sendFn. Cast to a plain
+			// function signature to call it dynamically by name without the
+			// schema-typed overloads narrowing the message string.
+			(rpc.send as unknown as (m: string, p?: unknown) => void)(
+				message,
+				payload ?? null,
+			);
+		} catch (err) {
+			logger.warn(
+				`[sendToWebview:${label}] send(${message}) failed: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
 	};
 
-	initializeNativeModules(win, sendToWebview);
-	setStewardSendToWebview(sendToWebview);
-	registerRpcHandlers(rpc, sendToWebview);
+	type BunRpcRequestsHandlers = NonNullable<
+		Parameters<typeof BrowserView.defineRPC<ElizaDesktopRPCSchema>>[0]["handlers"]
+	>["requests"];
 
-	return sendToWebview;
+	rpc = BrowserView.defineRPC<ElizaDesktopRPCSchema>({
+		maxRequestTime: MAX_RPC_REQUEST_TIME_MS,
+		handlers: {
+			requests: buildBunRpcHandlers({
+				sendToWebview,
+			}) as BunRpcRequestsHandlers,
+		},
+	});
+
+	return { rpc, sendToWebview };
 }
 
 /**
- * Wire RPC handlers on a secondary window (e.g. settings) without calling
- * initializeNativeModules — avoids overwriting the main window reference on
- * DesktopManager and other singletons.
+ * Wire main-window-only side effects after the BrowserWindow has been
+ * constructed with its pre-built RPC.
+ *
+ * Does NOT register request handlers — those are baked into the rpc by
+ * `createDesktopRpc` at construction time. This function only wires
+ * post-hoc concerns that need a live `win` and `rpc.request` proxy:
+ *
+ *   - native module singletons (DesktopManager, AgentManager, …) get
+ *     bound to the main window + sendToWebview
+ *   - browser workspace's renderer-side caller is set so bun-side tab
+ *     code can `rpc.request.browserWorkspaceRendererEvaluate(...)`
+ *   - steward sidecar's send-to-webview is wired
  */
-function wireSettingsRpc(win: BrowserWindow): void {
-	const rpc = win.webview.rpc as ElectrobunRpcInstance | undefined;
+function wireMainWindowAfterCreate(
+	win: BrowserWindow,
+	rpc: ElizaDesktopRpc,
+	sendToWebview: SendToWebview,
+): void {
+	initializeNativeModules(win, sendToWebview);
+	setStewardSendToWebview(sendToWebview);
+	wireBrowserWorkspaceCaller({
+		request: rpc.request as unknown as RpcRequestProxy,
+	});
+}
 
-	const sendToWebview = (message: string, payload?: unknown): void => {
-		if (rpc?.send) {
-			const sender = rpc?.send?.[message];
-			if (sender) {
-				sender(payload ?? null);
-				return;
-			}
-		}
-		logger.warn(
-			`[sendToWebview:settings] No RPC method for message: ${message}`,
-		);
-	};
-
-	// Register request handlers on the settings window's RPC — reuses the same
-	// handler registry but does not touch native module singletons.
-	registerRpcHandlers(rpc, sendToWebview);
+/**
+ * Wire RPC for a secondary window (e.g. settings) after constructor-time
+ * injection. Does NOT call `initializeNativeModules` — that would
+ * overwrite the main window reference on DesktopManager and other
+ * singletons.
+ *
+ * This keeps the call site symmetric with the main window even though
+ * settings windows don't need most of the wiring.
+ */
+function wireSettingsRpcAfterCreate(rpc: ElizaDesktopRpc): void {
+	wireBrowserWorkspaceCaller({
+		request: rpc.request as unknown as RpcRequestProxy,
+	});
 }
 
 function injectApiBase(win: BrowserWindow): void {
@@ -2005,7 +2078,13 @@ async function main(): Promise<void> {
 	recordStartupPhase("creating_window", {
 		pid: process.pid,
 	});
-	const mainWin = attachMainWindow(await createMainWindow());
+	const { rpc: mainRpc, sendToWebview: mainSendToWebview } =
+		createDesktopRpc("main");
+	const mainWin = attachMainWindow(
+		await createMainWindow(mainRpc),
+		mainRpc,
+		mainSendToWebview,
+	);
 	recordStartupPhase("window_ready", {
 		pid: process.pid,
 	});
@@ -2022,13 +2101,33 @@ async function main(): Promise<void> {
 		getFloatingChatManager().configure(url, preload);
 	});
 
+	// Per-window RPC tracking: surface windows each get their own typed
+	// RPC built up front via createDesktopRpc, baked into the BrowserWindow
+	// constructor, then "wired" post-hoc by wireSettingsRpcAfterCreate.
+	const surfaceRpcs = new WeakMap<ManagedWindowLike, ElizaDesktopRpc>();
+
 	surfaceWindowManager = new SurfaceWindowManager({
-		createWindow: (options) =>
-			new BrowserWindow(options) as BrowserWindow & ManagedWindowLike,
+		createWindow: (options) => {
+			const { rpc } = createDesktopRpc("surface");
+			const window = new BrowserWindow({
+				...options,
+				rpc,
+			}) as BrowserWindow & ManagedWindowLike;
+			surfaceRpcs.set(window, rpc);
+			return window;
+		},
 		resolveRendererUrl,
 		readPreload: () => readResolvedPreloadScript(import.meta.dir),
-		wireRpc: (window) =>
-			wireSettingsRpc(window as BrowserWindow & ManagedWindowLike),
+		wireRpc: (window) => {
+			const rpc = surfaceRpcs.get(window);
+			if (!rpc) {
+				logger.warn(
+					"[surface-windows] wireRpc called for window with no tracked rpc; skipping browser-workspace caller setup",
+				);
+				return;
+			}
+			wireSettingsRpcAfterCreate(rpc);
+		},
 		injectApiBase: (window) =>
 			injectApiBase(window as BrowserWindow & ManagedWindowLike),
 		onWindowFocused: (window) => {
@@ -2403,7 +2502,9 @@ main().catch((err) => {
 			"utf8",
 		);
 	} catch {}
-	void runShutdownCleanup("fatal-startup").finally(() => {
-		process.exit(1);
-	});
+	void runShutdownCleanup("fatal-startup").finally(shutdownAfterFatalError);
 });
+
+import { shutdownAfterFatalError } from "./fatal-shutdown";
+
+export { shutdownAfterFatalError };

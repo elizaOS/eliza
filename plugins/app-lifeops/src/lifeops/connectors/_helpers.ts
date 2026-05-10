@@ -1,9 +1,9 @@
 /**
- * Internal helpers for the W2-B connector migrations.
+ * Internal helpers for connector wrappers.
  *
  * The legacy `service-mixin-*` files surface their own bespoke status shapes
  * (`LifeOpsTelegramConnectorStatus`, `LifeOpsDiscordConnectorStatus`, ...).
- * Each W2-B connector wrapper translates that shape into the W1-F contract:
+ * Each connector wrapper translates that shape into the contract:
  *
  *   - {@link ConnectorStatus} — uniform `ok | degraded | disconnected` triple.
  *   - {@link DispatchResult}  — typed success / failure for `send`.
@@ -27,7 +27,7 @@ export type LegacyConnectorStatus = {
 };
 
 /**
- * Translate any legacy `getXConnectorStatus()` shape into the W1-F
+ * Translate any legacy `getXConnectorStatus()` shape into a
  * {@link ConnectorStatus}. Status mapping:
  *
  *   - `connected: true` and no degradations → `ok`.
@@ -57,7 +57,7 @@ export function legacyStatusToConnectorStatus(
 
 /**
  * Translate a thrown {@link LifeOpsServiceError} (or generic Error) raised by a
- * legacy mixin send method into the W1-F {@link DispatchResult} failure shape.
+ * legacy mixin send method into the {@link DispatchResult} failure shape.
  *
  * Status code → failure-reason mapping mirrors the dispatch-policy decisions:
  *   - 401 / 410 / token-expired → `auth_expired` (userActionable: true).

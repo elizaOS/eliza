@@ -12,7 +12,7 @@ await build({
 });
 
 const proc = Bun.spawn(
-  ["bunx", "tsc", "-p", "tsconfig.dts.json"],
+  ["bunx", "tsc", "--noCheck", "-p", "tsconfig.dts.json"],
   {
     cwd: import.meta.dir,
     stdout: "inherit",

@@ -20,8 +20,7 @@
       ],
       "@elizaos/plugin-localdb": [
         "./../../../../plugins/plugin-localdb/index.browser.ts"
-      ],
-      "@elizaos/*": ["./../../../../packages/*", "./../../../../plugins/*"]
+      ]
     },
     "types": ["chrome", "node"]
   },

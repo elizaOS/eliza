@@ -48,8 +48,7 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@google/genai": "^1.5.1",
-    "undici": "^8.0.0"
+    "@google/genai": "^1.5.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

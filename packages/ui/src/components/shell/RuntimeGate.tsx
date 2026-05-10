@@ -20,16 +20,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import {
-  Button,
-  Card,
-  CardContent,
-  Checkbox,
-  Input,
-  Spinner,
-  TooltipHint,
-} from "@elizaos/ui";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as React from "react";
 import { client } from "../../api";
 import type {
   CloudCompatAgent,
@@ -62,6 +53,7 @@ import {
   isElizaOS,
   isIOS,
 } from "../../platform/init";
+import { useBranding } from "../../config/branding";
 import {
   ONBOARDING_PROVIDER_CATALOG,
   type OnboardingProviderOption,
@@ -79,6 +71,12 @@ import {
 } from "../../utils";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
+import { Button } from "../ui/button";
+import { Card, CardContent } from "../ui/card";
+import { Checkbox } from "../ui/checkbox";
+import { Input } from "../ui/input";
+import { Spinner } from "../ui/spinner";
+import { TooltipHint } from "../ui/tooltip";
 
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 
@@ -193,7 +191,7 @@ type CloudStage =
   | "login"
   | "loading"
   | "auto-creating"
-  | "agent-list"
+  | "retry"
   | "creating"
   | "provisioning"
   | "connecting";
@@ -358,26 +356,6 @@ export function resolveRuntimeChoices(args: {
   return ["cloud", "remote"];
 }
 
-function statusBadge(status: string): { label: string; className: string } {
-  switch (status) {
-    case "running":
-      return { label: "LIVE", className: "bg-ok text-white" };
-    case "provisioning":
-    case "queued":
-      return { label: "STARTING", className: "bg-warn text-black" };
-    case "stopped":
-    case "suspended":
-      return { label: "STOPPED", className: "bg-black/20 text-black/70" };
-    case "failed":
-      return { label: "FAILED", className: "bg-danger text-white" };
-    default:
-      return {
-        label: status.toUpperCase(),
-        className: "bg-black/10 text-black/60",
-      };
-  }
-}
-
 export function RuntimeGate() {
   const {
     setState,
@@ -393,31 +371,32 @@ export function RuntimeGate() {
     t,
   } = useApp();
 
-  const setUiLanguage = useCallback(
+  const setUiLanguage = React.useCallback(
     (lang: UiLanguage) => setState("uiLanguage", normalizeLanguage(lang)),
     [setState],
   );
 
-  const [subView, setSubView] = useState<SubView>("chooser");
-  const [discoveredGateways, setDiscoveredGateways] = useState<
+  const [subView, setSubView] = React.useState<SubView>("chooser");
+  const [discoveredGateways, setDiscoveredGateways] = React.useState<
     GatewayDiscoveryEndpoint[]
   >([]);
 
   // Cloud sub-view
-  const [cloudStage, setCloudStage] = useState<CloudStage>(
+  const [cloudStage, setCloudStage] = React.useState<CloudStage>(
     elizaCloudConnected ? "loading" : "login",
   );
-  const [agents, setAgents] = useState<CloudCompatAgent[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [provisionStatus, setProvisionStatus] = useState("");
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [provisionStatus, setProvisionStatus] = React.useState("");
+  const pollTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
 
   // Remote sub-view
-  const [remoteUrl, setRemoteUrl] = useState("");
-  const [remoteToken, setRemoteToken] = useState("");
+  const [remoteUrl, setRemoteUrl] = React.useState("");
+  const [remoteToken, setRemoteToken] = React.useState("");
 
   // Local embeddings toggle (elizacloud only, default unchecked)
-  const [useLocalEmbeddings, setUseLocalEmbeddings] = useState(false);
+  const [useLocalEmbeddings, setUseLocalEmbeddings] = React.useState(false);
 
   // Local-runtime setup wizard. When the user picks "Local" in the
   // chooser we render an in-place wizard (provider list → API key entry)
@@ -425,15 +404,19 @@ export function RuntimeGate() {
   // the user straight into chat with no model provider configured —
   // their first send hits the no_provider gate (commit 28e19c8023) and
   // they have to backtrack to Settings. The wizard saves the round-trip.
-  const [localStage, setLocalStage] = useState<LocalStage>("provider");
-  const [localProviderId, setLocalProviderId] = useState<string | null>(null);
-  const [localApiKey, setLocalApiKey] = useState("");
-  const [localSaving, setLocalSaving] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [localStage, setLocalStage] = React.useState<LocalStage>("provider");
+  const [localProviderId, setLocalProviderId] = React.useState<string | null>(
+    null,
+  );
+  const [localApiKey, setLocalApiKey] = React.useState("");
+  const [localSaving, setLocalSaving] = React.useState(false);
+  const [localError, setLocalError] = React.useState<string | null>(null);
 
   // Filter catalog to direct API-key providers (group:"local" excludes
   // managed cloud + subscription paths — those have their own flows).
-  const localProviderCatalog = useMemo<readonly OnboardingProviderOption[]>(
+  const localProviderCatalog = React.useMemo<
+    readonly OnboardingProviderOption[]
+  >(
     () =>
       ONBOARDING_PROVIDER_CATALOG.filter(
         (provider) =>
@@ -451,9 +434,9 @@ export function RuntimeGate() {
   const isDesktop = isDesktopPlatform();
   const isDev = Boolean(import.meta.env.DEV);
   const synchronousLocal = isDesktop || isDev;
-  const [localProbeResult, setLocalProbeResult] = useState<boolean | null>(
-    synchronousLocal ? true : isAndroid || isIOS ? null : false,
-  );
+  const [localProbeResult, setLocalProbeResult] = React.useState<
+    boolean | null
+  >(synchronousLocal ? true : isAndroid || isIOS ? null : false);
 
   // ElizaOS: the picker is bypassed entirely unless the user explicitly asks
   // for it via `?runtime=picker` (Settings ▸ Runtime is the only legitimate
@@ -468,7 +451,7 @@ export function RuntimeGate() {
   const pickerTargetOverride = readPickerTargetOverride();
   const elizaOSAutoLocal = isElizaOS() && !pickerOverride;
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (synchronousLocal) return;
     if (!isAndroid && !isIOS) return;
     let cancelled = false;
@@ -505,7 +488,7 @@ export function RuntimeGate() {
   const showLocalOption = localProbeResult === true;
   const localProbePending = localProbeResult === null;
 
-  const runtimeChoices = useMemo(
+  const runtimeChoices = React.useMemo(
     () =>
       resolveRuntimeChoices({
         isAndroid,
@@ -519,7 +502,7 @@ export function RuntimeGate() {
   );
   const runtimeChoiceKey = runtimeChoices.join("|");
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!pickerOverride || !pickerTargetOverride) return;
     if (!runtimeChoices.includes(pickerTargetOverride)) return;
     setSubView((current) =>
@@ -528,7 +511,7 @@ export function RuntimeGate() {
   }, [pickerOverride, pickerTargetOverride, runtimeChoices]);
 
   // ── Gateway discovery (LAN autodetect) ────────────────────────────
-  useEffect(() => {
+  React.useEffect(() => {
     if (subView !== "chooser" && subView !== "remote") return;
     let cancelled = false;
     discoverGatewayEndpoints()
@@ -544,14 +527,14 @@ export function RuntimeGate() {
   }, [subView]);
 
   // ── Cleanup poll on unmount ───────────────────────────────────────
-  useEffect(() => {
+  React.useEffect(() => {
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
   }, []);
 
   // ── Cloud: auto-advance from login when connected ─────────────────
-  useEffect(() => {
+  React.useEffect(() => {
     if (elizaCloudConnected && cloudStage === "login") {
       setCloudStage("loading");
     }
@@ -559,15 +542,15 @@ export function RuntimeGate() {
 
   // ── Completion helpers ─────────────────────────────────────────────
 
-  const finishAsCloud = useCallback(
-    (agent: CloudCompatAgent) => {
+  const finishAsCloud = React.useCallback(
+    async (agent: CloudCompatAgent) => {
       // Refuse to complete cloud onboarding without a usable agent URL —
       // persisting an active server with no apiBase puts the next boot
       // into an infinite loopback poll (`https://localhost/api/auth/status`)
       // because client.getBaseUrl() falls back to window.location.origin
       // when nothing is set. Surface the failure so the user can retry
       // instead of silently writing a broken active-server record.
-      const apiBase = resolveCloudAgentApiBase(agent);
+      let apiBase = resolveCloudAgentApiBase(agent);
       if (!apiBase) {
         setError(
           t("runtimegate.cloudAgentMissingUrl", {
@@ -575,29 +558,65 @@ export function RuntimeGate() {
               "Cloud agent is not reachable yet. Retry after it finishes starting.",
           }),
         );
-        setCloudStage("agent-list");
+        setCloudStage("retry");
         return;
       }
       setCloudStage("connecting");
 
-      const accessToken = client.getRestAuthToken() ?? undefined;
+      let label = agent.agent_name;
+      let accessToken: string | undefined;
+      try {
+        const launchRes = await client.launchCloudCompatAgent(agent.agent_id);
+        const launchConnection = launchRes.data?.connection;
+        const launchApiBase = normalizeRuntimeUrl(launchConnection?.apiBase);
+        const launchToken = launchConnection?.token?.trim();
+
+        if (!launchRes.success || !launchApiBase || !launchToken) {
+          throw new Error(
+            launchRes.error ||
+              t("runtimegate.cloudLaunchMissingConnection", {
+                defaultValue:
+                  "Cloud did not return a runtime connection for this agent.",
+              }),
+          );
+        }
+
+        apiBase = launchApiBase;
+        accessToken = launchToken;
+        if (launchRes.data?.agentName) {
+          label = launchRes.data.agentName;
+        }
+      } catch (err) {
+        setError(
+          displayErrorMessage(
+            err,
+            t("runtimegate.cloudLaunchFailed", {
+              defaultValue: "Cloud agent launch failed. Please retry.",
+            }),
+          ),
+        );
+        setCloudStage("retry");
+        return;
+      }
 
       savePersistedActiveServer({
         id: `cloud:${agent.agent_id}`,
         kind: "cloud",
-        label: agent.agent_name,
+        label,
         apiBase,
         ...(accessToken ? { accessToken } : {}),
       });
       addAgentProfile({
         kind: "cloud",
-        label: agent.agent_name,
+        label,
         cloudAgentId: agent.agent_id,
         apiBase,
         ...(accessToken ? { accessToken } : {}),
       });
 
+      setError(null);
       client.setBaseUrl(apiBase);
+      client.setToken(accessToken ?? null);
       persistMobileRuntimeModeForServerTarget("elizacloud");
       setState("onboardingServerTarget", "elizacloud");
       // Apply embedding preference before handing off. Non-blocking: if this
@@ -619,7 +638,7 @@ export function RuntimeGate() {
     [completeOnboarding, setState, t, useLocalEmbeddings],
   );
 
-  const finishAsLocal = useCallback(() => {
+  const finishAsLocal = React.useCallback(() => {
     setError(null);
     const localApiBase =
       isAndroid || isIOS
@@ -699,13 +718,13 @@ export function RuntimeGate() {
   // The vanilla Android APK (no ElizaOS user-agent suffix) does not enter
   // this branch — it renders the chooser tiles like iOS / web and waits for
   // a user choice.
-  useEffect(() => {
+  React.useEffect(() => {
     if (!elizaOSAutoLocal) return;
     if (!showLocalOption) return;
     finishAsLocal();
   }, [elizaOSAutoLocal, finishAsLocal, showLocalOption]);
 
-  const finishAsRemoteGateway = useCallback(
+  const finishAsRemoteGateway = React.useCallback(
     (gateway: GatewayDiscoveryEndpoint) => {
       const apiBase = gatewayEndpointToApiBase(gateway);
       client.setBaseUrl(apiBase);
@@ -725,7 +744,7 @@ export function RuntimeGate() {
     [completeOnboarding, setState, startupCoordinator],
   );
 
-  const finishAsRemote = useCallback(() => {
+  const finishAsRemote = React.useCallback(() => {
     const url = normalizeRemoteTarget(remoteUrl);
     if (!url) {
       setError(
@@ -761,19 +780,19 @@ export function RuntimeGate() {
     t,
   ]);
 
-  const handleLocalSelectProvider = useCallback((providerId: string) => {
+  const handleLocalSelectProvider = React.useCallback((providerId: string) => {
     setLocalProviderId(providerId);
     setLocalApiKey("");
     setLocalError(null);
     setLocalStage("config");
   }, []);
 
-  const handleLocalConfigBack = useCallback(() => {
+  const handleLocalConfigBack = React.useCallback(() => {
     setLocalStage("provider");
     setLocalError(null);
   }, []);
 
-  const handleLocalSave = useCallback(async () => {
+  const handleLocalSave = React.useCallback(async () => {
     if (!localProviderId) {
       setLocalError(
         t("runtimegate.localPickProvider", {
@@ -815,7 +834,7 @@ export function RuntimeGate() {
 
   // ── Cloud: provision + connect ─────────────────────────────────────
 
-  const provisionAndConnect = useCallback(
+  const provisionAndConnect = React.useCallback(
     async (agentId: string, existingJobId?: string) => {
       if (pollTimerRef.current) {
         clearInterval(pollTimerRef.current);
@@ -866,7 +885,7 @@ export function RuntimeGate() {
               }),
             ),
           );
-          setCloudStage("agent-list");
+          setCloudStage("retry");
           return;
         } finally {
           if (startStatusTimer) clearTimeout(startStatusTimer);
@@ -878,7 +897,7 @@ export function RuntimeGate() {
                 defaultValue: "Provisioning failed",
               }),
           );
-          setCloudStage("agent-list");
+          setCloudStage("retry");
           return;
         }
         provisionData = provRes.data;
@@ -975,7 +994,7 @@ export function RuntimeGate() {
             )
             .catch(() => null);
           if (readyFromProvisionUrl) {
-            finishAsCloud(readyFromProvisionUrl);
+            await finishAsCloud(readyFromProvisionUrl);
             return;
           }
         }
@@ -983,7 +1002,7 @@ export function RuntimeGate() {
           Date.now() + AGENT_URL_WAIT_DEADLINE_MS,
         );
         if (ready) {
-          finishAsCloud(ready);
+          await finishAsCloud(ready);
         } else {
           setError(
             t("runtimegate.agentNotReady", {
@@ -991,7 +1010,7 @@ export function RuntimeGate() {
                 "Agent created but isn't ready yet (no connectable URL). Try again in a moment.",
             }),
           );
-          setCloudStage("agent-list");
+          setCloudStage("retry");
         }
         return;
       }
@@ -1001,7 +1020,7 @@ export function RuntimeGate() {
         if (pollTimerRef.current) clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
         setError(message);
-        setCloudStage("agent-list");
+        setCloudStage("retry");
       };
       const provisionJobDeadlineMs =
         Date.now() +
@@ -1070,7 +1089,7 @@ export function RuntimeGate() {
             readyFromJob ??
             (await fetchAgentWithUrl(Date.now() + AGENT_URL_WAIT_DEADLINE_MS));
           if (ready) {
-            finishAsCloud(ready);
+            await finishAsCloud(ready);
           } else {
             setError(
               t("runtimegate.agentNotReady", {
@@ -1078,13 +1097,13 @@ export function RuntimeGate() {
                   "Agent created but isn't ready yet (no connectable URL). Try again in a moment.",
               }),
             );
-            setCloudStage("agent-list");
+            setCloudStage("retry");
           }
         } else if (job.status === "failed") {
           if (pollTimerRef.current) clearInterval(pollTimerRef.current);
           pollTimerRef.current = null;
           setError(job.error ?? "Provisioning failed");
-          setCloudStage("agent-list");
+          setCloudStage("retry");
         } else {
           setProvisionStatus(`Provisioning (${job.status})...`);
         }
@@ -1098,34 +1117,11 @@ export function RuntimeGate() {
     [finishAsCloud, t],
   );
 
-  const handleConnectCloudAgent = useCallback(
-    (agent: CloudCompatAgent) => {
-      if (agent.status === "failed") {
-        return;
-      }
-      if (agent.status !== "running" || !resolveCloudAgentApiBase(agent)) {
-        void provisionAndConnect(agent.agent_id).catch((err) => {
-          setError(
-            err instanceof Error
-              ? err.message
-              : t("runtimegate.unknownError", {
-                  defaultValue: "Unknown error",
-                }),
-          );
-          setCloudStage("agent-list");
-        });
-        return;
-      }
-      finishAsCloud(agent);
-    },
-    [finishAsCloud, provisionAndConnect, t],
-  );
-
-  // ── Cloud: auto-pick first agent, or auto-create one ─────────────
-  // The user asked for a single-agent assumption during onboarding: if
-  // they already have agents, pick the first one; if not, create one
-  // named "My Agent" and connect. No list-selection UX during first run.
-  useEffect(() => {
+  // ── Cloud: auto-pick an existing agent, or auto-create one ────────
+  // During onboarding the cloud path is intentionally automatic: pick a
+  // usable existing agent, start it if needed, or create "My Agent".
+  // The user should not have to select an agent or click a second Connect.
+  React.useEffect(() => {
     if (subView !== "cloud" || cloudStage !== "loading") return;
     let cancelled = false;
 
@@ -1140,24 +1136,33 @@ export function RuntimeGate() {
               defaultValue: "Failed to load agents",
             }),
         );
-        setCloudStage("agent-list");
+        setCloudStage("retry");
         return;
       }
 
       const agentList = res.data;
-      setAgents(agentList);
 
       if (agentList.length > 0) {
-        const primary = agentList[0];
+        const primary =
+          agentList.find(
+            (agent) =>
+              agent.status === "running" && resolveCloudAgentApiBase(agent),
+          ) ??
+          agentList.find(
+            (agent) =>
+              agent.status !== "failed" && agent.status !== "suspended",
+          ) ??
+          agentList[0];
         if (primary) {
-          if (primary.status === "failed") {
+          if (primary.status === "failed" || primary.status === "suspended") {
             setError(
               primary.error_message ||
                 t("runtimegate.cloudAgentFailed", {
-                  defaultValue: "Cloud agent failed to start.",
+                  defaultValue:
+                    "Cloud agent is not available. Retry after checking Eliza Cloud.",
                 }),
             );
-            setCloudStage("agent-list");
+            setCloudStage("retry");
             return;
           }
           const primaryApiBase = resolveCloudAgentApiBase(primary);
@@ -1174,7 +1179,7 @@ export function RuntimeGate() {
             await provisionAndConnect(primary.agent_id);
             return;
           }
-          finishAsCloud(primary);
+          await finishAsCloud(primary);
           return;
         }
       }
@@ -1192,17 +1197,7 @@ export function RuntimeGate() {
               defaultValue: "Failed to create agent. Try again.",
             }),
         );
-        setCloudStage("agent-list");
-        return;
-      }
-      if (createRes.data.nodeId == null) {
-        setError(
-          t("runtimegate.cloudHostingUnavailable", {
-            defaultValue:
-              "Cloud agent hosting isn't available on this instance. Try a local or remote agent.",
-          }),
-        );
-        setCloudStage("agent-list");
+        setCloudStage("retry");
         return;
       }
       // MUST stay below the createCloudCompatAgent await — setting cloudStage
@@ -1225,7 +1220,7 @@ export function RuntimeGate() {
             ? err.message
             : t("runtimegate.unknownError", { defaultValue: "Unknown error" }),
         );
-        setCloudStage("agent-list");
+        setCloudStage("retry");
       }
     })().catch((err) => {
       if (cancelled) return;
@@ -1234,7 +1229,7 @@ export function RuntimeGate() {
           ? err.message
           : t("runtimegate.unknownError", { defaultValue: "Unknown error" }),
       );
-      setCloudStage("agent-list");
+      setCloudStage("retry");
     });
 
     return () => {
@@ -1242,13 +1237,13 @@ export function RuntimeGate() {
     };
   }, [subView, cloudStage, finishAsCloud, provisionAndConnect, t]);
 
-  const handleLogin = useCallback(async () => {
+  const handleLogin = React.useCallback(async () => {
     const win = preOpenWindow();
     setError(null);
     await handleCloudLogin(win);
   }, [handleCloudLogin]);
 
-  const handleRefreshAgents = useCallback(() => {
+  const handleRefreshAgents = React.useCallback(() => {
     setError(null);
     setCloudStage("loading");
   }, []);
@@ -1480,15 +1475,15 @@ export function RuntimeGate() {
           </div>
         )}
 
-        {cloudStage === "agent-list" && (
+        {cloudStage === "retry" && (
           <div className="mt-4 flex w-full max-w-[34rem] flex-col gap-3 text-left">
             <div className="flex items-center justify-between">
               <p
                 className="text-3xs uppercase tracking-[0.2em] text-[#ffe600]/80"
                 style={{ fontFamily: MONO_FONT }}
               >
-                {t("runtimegate.yourAgents", {
-                  defaultValue: "Your cloud agents",
+                {t("runtimegate.cloudNeedsAttention", {
+                  defaultValue: "Cloud connection needs attention",
                 })}
               </p>
               <button
@@ -1510,52 +1505,15 @@ export function RuntimeGate() {
               </p>
             )}
 
-            {agents.length > 0 && (
-              <div className="flex max-h-48 flex-col gap-2 overflow-y-auto">
-                {agents.map((agent) => {
-                  const badge = statusBadge(agent.status);
-                  return (
-                    <Card
-                      key={agent.agent_id}
-                      className="border-2 border-[#f0b90b]/45 bg-black/65 shadow-[4px_4px_0_rgba(0,0,0,0.62)]"
-                      style={{ borderRadius: 0 }}
-                    >
-                      <CardContent className="flex items-center justify-between gap-3 px-3 py-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p
-                              className="truncate text-sm font-bold uppercase text-white/95"
-                              style={{ fontFamily: MONO_FONT }}
-                            >
-                              {agent.agent_name}
-                            </p>
-                            <span
-                              className={`shrink-0 rounded-none px-1.5 py-0.5 text-2xs font-bold uppercase tracking-wide ${badge.className}`}
-                              style={{ fontFamily: MONO_FONT }}
-                            >
-                              {badge.label}
-                            </span>
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="shrink-0 rounded-none border-2 border-black bg-[#ffe600] text-xs font-black uppercase tracking-[0.14em] text-black shadow-[3px_3px_0_rgba(0,0,0,0.65)] hover:bg-white"
-                          style={{ fontFamily: MONO_FONT }}
-                          onClick={() => handleConnectCloudAgent(agent)}
-                          disabled={agent.status === "failed"}
-                        >
-                          {t("common.connect", {
-                            defaultValue: "Connect",
-                          })}
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
+            <p
+              className="text-3xs uppercase tracking-wide text-white/50"
+              style={{ fontFamily: MONO_FONT }}
+            >
+              {t("runtimegate.cloudAutoRetryHint", {
+                defaultValue:
+                  "Retry will check your account, start an agent if needed, and connect automatically.",
+              })}
+            </p>
 
             <BackButton t={t} onClick={() => setSubView("chooser")} />
           </div>
@@ -1887,19 +1845,10 @@ function GateShell({
     >
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed inset-0 overflow-hidden"
+        className="pointer-events-none absolute inset-0 overflow-hidden"
       >
-        {/* Theme-paired Milady zine backgrounds:
-            light → gold-on-cream collage (splash-bg.png)
-            dark  → gold-on-black collage (splash-bg-dark.png).
-            Use `object-contain` so the dense side panels of the collage
-            (I AM the effect, elizaOS runtime, etc.) aren't cropped. The
-            wrapper bg fills any letterbox area with a complementary brand
-            tone so it blends. */}
         <img
-          src={resolveAppAssetUrl(
-            lightMode ? "splash-bg.png" : "splash-bg-dark.png",
-          )}
+          src={resolveAppAssetUrl("splash-bg.png")}
           alt=""
           className="absolute inset-0 h-full w-full object-contain object-center"
         />
@@ -2046,7 +1995,8 @@ function WelcomeChooser({
   onConnectRemote,
   t,
 }: WelcomeChooserProps) {
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = React.useState(false);
+  const { appName } = useBranding();
 
   return (
     <div className="flex w-full flex-col items-center gap-6 text-center sm:gap-7">
@@ -2066,7 +2016,10 @@ function WelcomeChooser({
           }}
           className="text-3xl font-light uppercase tracking-tight text-white sm:text-4xl md:text-5xl"
         >
-          {t("runtimegate.welcomeTitle", { defaultValue: "Welcome to Milady" })}
+          {t("runtimegate.welcomeTitle", {
+            defaultValue: "Welcome to {{appName}}",
+            appName,
+          })}
         </h1>
         <p
           className="max-w-md text-sm leading-relaxed text-white/85 sm:text-base"

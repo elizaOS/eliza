@@ -7,7 +7,7 @@ import type {
   RegistryAppViewerMeta,
   RegistryPluginInfo as RegistryClientPluginInfo,
   RegistrySearchResult as RegistryClientSearchResult,
-} from "./registry-client-types.js";
+} from "./registry-client-types.ts";
 
 export type { AppUiExtensionConfig };
 

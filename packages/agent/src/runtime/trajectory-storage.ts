@@ -19,13 +19,13 @@ import type {
   TrajectoryListResult,
   TrajectoryStatus,
   TrajectoryStepKind,
-} from "../types/trajectory.js";
+} from "../types/trajectory.ts";
 import {
   exportPersistedTrajectories,
   persistedTrajectoryToDetailRecord,
   type RuntimeTrajectoryExportOptions,
   trajectoryRowToListItem,
-} from "./trajectory-export.js";
+} from "./trajectory-export.ts";
 import {
   asRecord,
   type CompleteStepOptions,
@@ -71,13 +71,13 @@ import {
   truncateRecord,
   warnRuntime,
   writeCompressedJsonlRows,
-} from "./trajectory-internals.js";
+} from "./trajectory-internals.ts";
 
 // Re-export types needed by consumers
 export type {
   CompleteStepOptions,
   StartStepOptions,
-} from "./trajectory-internals.js";
+} from "./trajectory-internals.ts";
 
 // ---------------------------------------------------------------------------
 // appendLlmCall / appendProviderAccess

@@ -4,8 +4,8 @@
  */
 
 import type { Action, Plugin, Provider } from "@elizaos/core";
-import { readAppRunStore } from "./app-run-store.js";
-import { isOverlayAppPresenceActive } from "./overlay-app-presence.js";
+import { readAppRunStore } from "./app-run-store.ts";
+import { isOverlayAppPresenceActive } from "./overlay-app-presence.ts";
 
 const STOPPED_STATUSES = new Set(["stopped", "offline", "error", "failed"]);
 

@@ -5,6 +5,8 @@ import { defineConfig } from "tsup";
 const monorepoRoot = path.resolve(__dirname, "../../../..");
 const packagesDir = path.join(monorepoRoot, "packages");
 const pluginsDir = path.join(monorepoRoot, "plugins");
+const emptyStub = path.join(__dirname, "src/stubs/empty.js");
+const fastRedactStub = path.join(__dirname, "src/stubs/fast-redact.js");
 
 // Helper to resolve @elizaos packages from monorepo
 function resolvePackage(pkg: string, browserPath?: string): string {
@@ -41,6 +43,22 @@ const _nodeExternals = [
   "async_hooks",
   "node:*",
 ];
+
+const browserOnlyAliases = {
+  "@vercel/oidc": emptyStub,
+  dotenv: emptyStub,
+  "fast-redact": fastRedactStub,
+  "fs-extra": emptyStub,
+  fs: emptyStub,
+  "node:fs": emptyStub,
+  "node:fs/promises": emptyStub,
+  path: emptyStub,
+  "node:path": emptyStub,
+  stream: emptyStub,
+  "node:stream": emptyStub,
+  constants: emptyStub,
+  "node:constants": emptyStub,
+} as const;
 
 export default defineConfig([
   // Background script
@@ -140,9 +158,7 @@ console.log("[ElizaOS] Offscreen bundle starting...");`,
           "@elizaos/plugin-inmemorydb",
           "index.browser.ts",
         ),
-        "@vercel/oidc": path.join(__dirname, "src/stubs/empty.js"),
-        dotenv: path.join(__dirname, "src/stubs/empty.js"),
-        "fast-redact": path.join(__dirname, "src/stubs/fast-redact.js"),
+        ...browserOnlyAliases,
       };
     },
   },
@@ -221,9 +237,7 @@ console.log("[ElizaOS] Bundle starting...");`,
           "index.browser.ts",
         ),
         // Stub Node.js packages
-        "@vercel/oidc": path.join(__dirname, "src/stubs/empty.js"),
-        dotenv: path.join(__dirname, "src/stubs/empty.js"),
-        "fast-redact": path.join(__dirname, "src/stubs/fast-redact.js"),
+        ...browserOnlyAliases,
       };
     },
   },

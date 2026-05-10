@@ -25,11 +25,11 @@ import type {
   ProviderSwitchIntent,
   ReloadContext,
   ReloadStrategy,
-} from "./types.js";
+} from "./types.ts";
 import {
   defaultSecretsManager,
   resolveProviderApiKey,
-} from "./vault-bridge.js";
+} from "./vault-bridge.ts";
 
 export interface HotStrategyDeps {
   /**
@@ -117,9 +117,9 @@ function makeDefaultApplyProviderEnv(
 ): (intent: ProviderSwitchIntent) => Promise<void> {
   return async (intent: ProviderSwitchIntent): Promise<void> => {
     const { applyOnboardingConnectionConfig, createProviderSwitchConnection } =
-      await import("../../api/provider-switch-config.js");
+      await import("../../api/provider-switch-config.ts");
     const { loadElizaConfig, saveElizaConfig } = await import(
-      "../../config/config.js"
+      "../../config/config.ts"
     );
 
     const apiKey = await resolveProviderApiKey({

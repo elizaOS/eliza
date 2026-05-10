@@ -5,9 +5,9 @@ import type {
   ReadJsonBodyOptions,
 } from "@elizaos/core";
 import { credTypesForConnector } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
-import { CONNECTOR_ENV_MAP } from "../config/env-vars.js";
-import type { ConnectorConfig } from "../config/types.eliza.js";
+import type { ElizaConfig } from "../config/config.ts";
+import { CONNECTOR_ENV_MAP } from "../config/env-vars.ts";
+import type { ConnectorConfig } from "../config/types.eliza.ts";
 
 /**
  * Runtime event name emitted when a connector is disconnected. Subscribers

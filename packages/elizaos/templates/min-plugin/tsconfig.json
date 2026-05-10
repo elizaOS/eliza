@@ -14,8 +14,7 @@
     "noEmit": true,
     "types": ["node", "vitest/globals"],
     "paths": {
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"]
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"]
     }
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"]

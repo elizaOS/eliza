@@ -28,6 +28,17 @@ export const FOLLOWUP_STARTER_RECORD_IDS = {
   watcher: "default-pack:followup-starter:cadence-watcher",
 } as const;
 
+/**
+ * Fallback cadence used by the RelationshipStore overdue resolver when an
+ * edge does not carry its own `metadata.cadenceDays`. Per IMPL §7.1: 14 days
+ * keeps "stay-in-touch" cadence loose enough for the long tail of
+ * relationships while leaving room for tighter overrides on closer edges
+ * (e.g. `colleague_of` may carry `cadenceDays: 7`, `friend_of` may stay at
+ * 14). The W3-A 7-day simulation supports 14 as the default — the followup
+ * watcher fires daily but emits zero children when no edge is overdue.
+ */
+export const DEFAULT_FOLLOWUP_CADENCE_DAYS = 14;
+
 const watcherRecord: ScheduledTaskSeed = {
   kind: "watcher",
   promptInstructions:
@@ -105,7 +116,7 @@ export const followupStarterPack: DefaultPack = {
   key: FOLLOWUP_STARTER_PACK_KEY,
   label: "Cadence follow-ups",
   description:
-    "Daily watcher reads RelationshipStore for overdue cadence edges and emits a follow-up task per overdue edge. The morning brief folds them in. Resolves automatically when any new interaction is observed on the edge.",
+    "Daily watcher reads RelationshipStore for overdue cadence edges and emits a follow-up task per overdue edge. Default cadence is 14 days; per-edge overrides via Relationship.metadata.cadenceDays let closer relationships carry tighter cadences. The morning brief folds emissions in. Resolves automatically when any new interaction is observed on the edge.",
   defaultEnabled: true,
   records: [watcherRecord],
   uiHints: {

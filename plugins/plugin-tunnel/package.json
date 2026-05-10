@@ -19,7 +19,7 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc --noCheck -p tsconfig.json",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
@@ -29,7 +29,13 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
   },
-  "keywords": ["elizaos", "plugin", "tunnel", "tailscale", "networking"],
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "tunnel",
+    "tailscale",
+    "networking"
+  ],
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
   },

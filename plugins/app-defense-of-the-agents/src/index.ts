@@ -27,3 +27,5 @@ export function createAppDefenseOfTheAgentsPlugin(): Plugin {
 export const appDefenseOfTheAgentsPlugin = createAppDefenseOfTheAgentsPlugin();
 
 export default appDefenseOfTheAgentsPlugin;
+export * from "./routes";
+export * from "./ui";

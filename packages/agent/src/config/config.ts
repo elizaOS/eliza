@@ -10,17 +10,17 @@ import {
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import JSON5 from "json5";
-import { readConfigEnvSync } from "../api/config-env.js";
-import { syncSolanaPublicKeyEnv } from "../api/wallet-env-sync.js";
-import { isVaultRef } from "../runtime/operations/vault-bridge.js";
-import { collectConfigEnvVars, collectConnectorEnvVars } from "./env-vars.js";
-import { resolveConfigIncludes } from "./includes.js";
-import { normalizeModelMetadataInConfig } from "./model-metadata.js";
+import { readConfigEnvSync } from "../api/config-env.ts";
+import { syncSolanaPublicKeyEnv } from "../api/wallet-env-sync.ts";
+import { isVaultRef } from "../runtime/operations/vault-bridge.ts";
+import { collectConfigEnvVars, collectConnectorEnvVars } from "./env-vars.ts";
+import { resolveConfigIncludes } from "./includes.ts";
+import { normalizeModelMetadataInConfig } from "./model-metadata.ts";
 import {
   resolveConfigPath,
   resolveStateDir,
   resolveUserPath,
-} from "./paths.js";
+} from "./paths.ts";
 
 export type { ElizaConfig } from "@elizaos/shared";
 

@@ -11,8 +11,7 @@
  * would create a startup cycle), so we look the service up by string id
  * and constrain it via {@link WorkflowServiceLike}.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import type { TriggerWakeMode } from "./types.js";
+import type { TriggerWakeMode } from "./types.ts";
 
 const WORKFLOW_SERVICE_TYPE = "workflow";
 const RESPOND_TO_EVENT_NODE_TYPE = "workflows-nodes-base.respondToEvent";
@@ -26,6 +25,10 @@ export interface TextTriggerWorkflowDraft {
 export interface DeployedTriggerWorkflow {
   id: string;
   name: string;
+}
+
+export interface WorkflowServiceRuntime {
+  getService(serviceType: string): unknown;
 }
 
 /**
@@ -61,7 +64,7 @@ function isWorkflowServiceLike(value: unknown): value is WorkflowServiceLike {
 }
 
 export function getWorkflowService(
-  runtime: IAgentRuntime,
+  runtime: WorkflowServiceRuntime,
 ): WorkflowServiceLike | null {
   const svc = runtime.getService(WORKFLOW_SERVICE_TYPE);
   return isWorkflowServiceLike(svc) ? svc : null;
@@ -74,7 +77,7 @@ export function getWorkflowService(
  * return an id, which happens for missing-credentials short-circuits).
  */
 export async function deployTextTriggerWorkflow(
-  runtime: IAgentRuntime,
+  runtime: WorkflowServiceRuntime,
   draft: TextTriggerWorkflowDraft,
   ownerId: string,
 ): Promise<DeployedTriggerWorkflow | null> {

@@ -203,7 +203,7 @@ export interface BuildMemoryFromMessageOptions {
 	processedContent?: string;
 	processedAttachments?: Media[];
 	extraContent?: JsonObject;
-	extraMetadata?: JsonObject;
+	extraMetadata?: Record<string, unknown>;
 	accountId?: string;
 }
 

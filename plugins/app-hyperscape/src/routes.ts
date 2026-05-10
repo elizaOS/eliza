@@ -39,7 +39,7 @@ function toAppSessionJsonValue(
     typeof value === "number" ||
     typeof value === "boolean"
   ) {
-    return value;
+    return value as AppSessionJsonValue;
   }
   if (Array.isArray(value)) {
     return value
@@ -218,7 +218,7 @@ async function resolveRuntimeEvmAddress(
   if (!existingPk) {
     return null;
   }
-  const walletApiModule = "@elizaos/agent/api/wallet";
+  const walletApiModule = "@elizaos/agent";
   const { deriveEvmAddress } = (await import(
     /* webpackIgnore: true */ walletApiModule
   )) as {

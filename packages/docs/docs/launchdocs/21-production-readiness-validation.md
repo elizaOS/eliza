@@ -13,7 +13,7 @@ Current native identity: `Eliza` / `app.eliza`
   - Wallet package registration now has a real `./register` source/dist export.
   - Steward and LifeOps renderer imports use their UI subpaths, avoiding server route imports in the browser bundle.
 - Fixed final package/typecheck regressions found after the route fixes:
-  - App-core training routes now delegate to `@elizaos/app-training/routes/training`.
+  - App-core training routes now delegate to `@elizaos/app-training`.
   - App-core exports the app-shell and widget registry subpaths used by registered app packages.
   - Companion typecheck resolves the wallet app package through explicit workspace paths.
 - Rebuilt the production web renderer and both native app shells after the final fixes.

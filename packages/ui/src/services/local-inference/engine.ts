@@ -25,6 +25,8 @@ import {
 } from "./dflash-server";
 import { listInstalledModels } from "./registry";
 
+const NODE_LLAMA_CPP_MODULE_ID = "node-llama-cpp";
+
 export interface GenerateArgs {
   prompt: string;
   stopSequences?: string[];
@@ -226,7 +228,9 @@ export class LocalInferenceEngine {
 
   private async loadBinding(): Promise<LlamaBindingModule | null> {
     try {
-      const mod = (await import("node-llama-cpp")) as unknown;
+      const mod = (await import(
+        /* @vite-ignore */ NODE_LLAMA_CPP_MODULE_ID
+      )) as unknown;
       if (
         mod &&
         typeof mod === "object" &&
