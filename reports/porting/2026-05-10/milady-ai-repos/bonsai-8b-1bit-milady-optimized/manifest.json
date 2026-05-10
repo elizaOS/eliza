@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "kind": "milady-optimized",
+  "modelId": "bonsai-8b-1bit",
+  "base": {
+    "name": "bonsai-8b-1bit",
+    "displayName": "Bonsai 8B 1-bit + Milady fused stack",
+    "params": "8B",
+    "tokenizerFamily": "qwen3",
+    "contextLength": 131072
+  },
+  "gguf": {
+    "file": "bonsai-8b-1bit-milady-optimized.gguf",
+    "sha256": null,
+    "sizeBytes": 0,
+    "quant": "Bonsai 1-bit weights + QJL1_256 K + TBQ V (Q4_POLAR re-quant for compat)"
+  },
+  "optimization": {
+    "weights": "Q4_POLAR",
+    "kvK": "QJL1_256",
+    "kvV": "TBQ4_0",
+    "speculativeDecode": "DFlash",
+    "kernels": [
+      "q4_polar",
+      "qjl1_256",
+      "tbq3_0",
+      "tbq4_0",
+      "dflash"
+    ],
+    "requiresFork": "milady-ai/llama.cpp@v0.1.0-milady"
+  },
+  "pipeline": {
+    "publishedAt": "2026-05-10T00:00:00Z",
+    "trainedFrom": "apothic/bonsai-8B-1bit-turboquant",
+    "trainingPipeline": "elizaos/eliza-1-pipeline",
+    "buildScript": "packages/training/scripts/publish_milady_model.py"
+  },
+  "status": "placeholder",
+  "placeholderNote": "GGUF not yet produced by W5-Pipeline. Once the fused build lands, run publish_milady_model.py from this directory to upload it. The publisher refuses to ship a zero-byte file, so this manifest cannot be promoted to a real release without the GGUF being present.",
+  "drafter": {
+    "repo": "milady-ai/bonsai-8b-1bit-milady-drafter",
+    "file": "bonsai-8b-1bit-milady-drafter.gguf",
+    "params": "0.6B",
+    "tokenizerFamily": "qwen3"
+  }
+}
