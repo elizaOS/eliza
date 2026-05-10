@@ -627,6 +627,22 @@ const browserExternals = [
 	"node:diagnostics_channel", // Node.js built-in module
 	"node:async_hooks", // Node.js built-in module
 	"fs-extra", // Node-only fs library; host bundlers stub this for browser/Capacitor
+	// Document extractors are Node-only (mammoth uses fs.readFile.bind, unpdf
+	// pulls in Node fs/util internals). Reachable from
+	// features/documents/utils.ts; with `target: "node"` Bun inlines these
+	// even when only used inside Node-side flows. Mark as external so the
+	// host bundler resolves them only on the Node side.
+	"mammoth",
+	"unpdf",
+	// Vercel AI SDK gateway has a transitive `@vercel/oidc` import that
+	// touches `os.platform()`/`os.arch()`/`os.hostname()` at module-load
+	// to build a User-Agent string. That throws in the browser even when
+	// host bundlers stub `os`, because the call site uses
+	// `(0, os.platform)()` after a destructured re-binding, which loses the
+	// Proxy chaining. Externalise the gateway and its transitive sentinel
+	// so the browser bundle never invokes the call.
+	"@ai-sdk/gateway",
+	"@vercel/oidc",
 ];
 
 // Node-specific externals (native modules and node-specific packages)
