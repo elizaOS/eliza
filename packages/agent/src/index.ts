@@ -7,6 +7,7 @@ export type { CloudConfigLike } from "@elizaos/plugin-elizacloud";
 export {
   handleCloudBillingRoute,
   handleCloudCompatRoute,
+  handleCloudRoute,
 } from "@elizaos/plugin-elizacloud";
 export type { ElizaConfig, ReleaseChannel, RolesConfig } from "@elizaos/shared";
 export {

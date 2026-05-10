@@ -10,10 +10,21 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import {
+	createWriteStream,
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	renameSync,
+	statSync,
+	unlinkSync,
+} from "node:fs";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import path from "node:path";
 import type { Duplex } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
 import {
 	type AgentRuntime,
 	type GenerateTextParams,
