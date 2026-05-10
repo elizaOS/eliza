@@ -185,6 +185,7 @@ export type {
   WorkflowConfig,
   X402Config,
 } from "./config/types.js";
+export * from "./config/runtime-mode.js";
 export * from "./config/ui-spec.js";
 export * from "./config/wechat-config.js";
 export * from "./config/zod-schema.agent-runtime.js";

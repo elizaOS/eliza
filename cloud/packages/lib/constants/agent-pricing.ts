@@ -5,7 +5,7 @@
  * Pricing is hourly-based and billed by an hourly cron.
  *
  * Running agents:  $0.01/hour  (~$7.20/month)
- * Idle/stopped:    $0.0025/hour (~$1.80/month — snapshot storage)
+ * Idle/stopped:    $0.0025/hour (~$1.80/month - snapshot storage)
  *
  * All amounts in USD.
  */
@@ -28,8 +28,8 @@ export const AGENT_PRICING = {
   },
 
   // ── Thresholds ────────────────────────────────────────────────────
-  /** Minimum credit balance required before provisioning an agent. */
-  MINIMUM_DEPOSIT: 5.0,
+  /** Minimum credit balance required before creating, provisioning, or resuming an agent. */
+  MINIMUM_DEPOSIT: 0.1,
   /** Warn user when balance drops below this. */
   LOW_CREDIT_WARNING: 2.0,
   /** Hours between warning and forced shutdown. */

@@ -244,6 +244,22 @@ const nativeStubs = {
   // require'er to wait on the TLA. Mobile never runs the integration-test
   // harness, so swap the entire testing surface for an empty stub.
   "@elizaos/core/testing": path.join(stubsDir, "empty.cjs"),
+  // `@snazzah/davey` is discord.js's DAVE-protocol voice codec — a
+  // napi-rs native binding with NO Android prebuild. discord.js statically
+  // requires it through its voice subpath; the bundle inlines the
+  // platform-dispatch loader, which then dies with `Cannot find native
+  // binding` at runtime even though the agent never opens a voice call.
+  // Stub the whole package: discord.js's voice path silently degrades to
+  // unencrypted UDP (fine for our purposes — the agent is text-only).
+  "@snazzah/davey": path.join(stubsDir, "null-plugin.cjs"),
+  // `@napi-rs/keyring` is the OS-keychain master-key resolver in
+  // `@elizaos/vault`. No Android prebuild ships, and the bundled
+  // platform-dispatch loader fails at runtime with `Cannot find native
+  // binding` BEFORE vault's defensive try/catch around `await import` can
+  // catch it. The agent's master-key path falls through to
+  // `ELIZA_VAULT_PASSPHRASE` / in-memory keys; ElizaAgentService can mint
+  // a per-boot passphrase if needed. Stub keeps the bundle building.
+  "@napi-rs/keyring": path.join(stubsDir, "null-plugin.cjs"),
   // React + react-dom stubs: workspace plugins (`@elizaos/app-lifeops`,
   // `@elizaos/app-companion`, etc.) re-export their UI subtree from
   // `src/index.ts` for the host app to consume. The agent only loads each

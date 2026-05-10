@@ -56,5 +56,5 @@ export function getActionResultsFromCache(runtime: IAgentRuntime, messageId: str
     return [];
   }
 
-  return results;
+  return Array.isArray(results) ? results : [];
 }

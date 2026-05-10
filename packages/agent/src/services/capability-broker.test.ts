@@ -54,7 +54,7 @@ describe("CapabilityBroker", () => {
       target: "/Users/me/secrets.txt",
     });
     expect(fsWrite.allowed).toBe(false);
-    if (!fsWrite.allowed) {
+    if (fsWrite.allowed === false) {
       expect(fsWrite.reason).toMatch(/host filesystem/i);
     }
 
