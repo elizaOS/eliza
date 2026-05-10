@@ -2,10 +2,7 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import type { IAgentRuntime, Service, Task, UUID } from '@elizaos/core';
 import { migrateLegacyWorkbenchTasks } from '../../src/lib/legacy-task-migration';
 import { migrateLegacyTextTriggers } from '../../src/lib/legacy-text-trigger-migration';
-import {
-  WorkflowService,
-  WORKFLOW_SERVICE_TYPE,
-} from '../../src/services/workflow-service';
+import { WorkflowService, WORKFLOW_SERVICE_TYPE } from '../../src/services/workflow-service';
 import type { WorkflowCreationResult, WorkflowDefinition } from '../../src/types/index';
 
 interface DeployCall {
