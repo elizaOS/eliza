@@ -1112,7 +1112,9 @@ async function runControl(
 
   const text = typeof content.text === "string" ? content.text : "";
   const topLevelAction = textValue(params.action) ?? textValue(content.action);
-  const normalizedTopLevelAction = topLevelAction?.toLowerCase().replace(/-/g, "_");
+  const normalizedTopLevelAction = topLevelAction
+    ?.toLowerCase()
+    .replace(/-/g, "_");
   const legacyControlAction =
     topLevelAction && normalizedTopLevelAction !== "control"
       ? topLevelAction
@@ -1904,7 +1906,9 @@ async function runManageIssues(
   const text = ((content.text as string) ?? "").slice(0, ISSUE_BODY_MAX_CHARS);
 
   const topLevelAction = textValue(params.action) ?? textValue(content.action);
-  const normalizedTopLevelAction = topLevelAction?.toLowerCase().replace(/-/g, "_");
+  const normalizedTopLevelAction = topLevelAction
+    ?.toLowerCase()
+    .replace(/-/g, "_");
   const legacyIssueAction =
     topLevelAction && normalizedTopLevelAction !== "manage_issues"
       ? topLevelAction
@@ -2211,13 +2215,15 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "memoryContent",
-      description: "Additional memory/context for action=create / action=spawn_agent.",
+      description:
+        "Additional memory/context for action=create / action=spawn_agent.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "label",
-      description: "Task label for action=create / action=spawn_agent / action=send.",
+      description:
+        "Task label for action=create / action=spawn_agent / action=send.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2232,7 +2238,8 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "keepAliveAfterComplete",
-      description: "Keep session alive after completion for action=spawn_agent.",
+      description:
+        "Keep session alive after completion for action=spawn_agent.",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -2266,13 +2273,15 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "taskId",
-      description: "Alias for threadId; preferred for action=archive / action=reopen.",
+      description:
+        "Alias for threadId; preferred for action=archive / action=reopen.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "all",
-      description: "Apply to all sessions for action=stop_agent / action=cancel.",
+      description:
+        "Apply to all sessions for action=stop_agent / action=cancel.",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -2341,7 +2350,8 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "note",
-      description: "Optional note for action=control with controlAction=pause|stop.",
+      description:
+        "Optional note for action=control with controlAction=pause|stop.",
       required: false,
       schema: { type: "string" as const },
     },

@@ -340,8 +340,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			},
 			{
 				name: "mode",
-				description:
-					"Legacy alias for action. Prefer action in new calls.",
+				description: "Legacy alias for action. Prefer action in new calls.",
 				required: false,
 				schema: { type: "string", enum: [...SUBACTIONS] },
 			},

@@ -1,13 +1,7 @@
 import { promises as fsp } from "node:fs";
 import path from "node:path";
 import { Storage } from "@brighter/storage-adapter-local";
-import {
-  type IAgentRuntime,
-  logger,
-  resolveStateDir,
-  Service,
-  ServiceType,
-} from "@elizaos/core";
+import { type IAgentRuntime, logger, resolveStateDir, Service, ServiceType } from "@elizaos/core";
 
 import type { JsonUploadResult, JsonValue, UploadResult } from "../types";
 

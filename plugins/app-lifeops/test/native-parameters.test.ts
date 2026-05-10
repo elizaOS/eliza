@@ -1,4 +1,9 @@
-import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  listSubactionsFromParameters,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { calendarAction } from "../src/actions/calendar.js";
 import { resolveRequestAction } from "../src/actions/resolve-request.js";
@@ -128,12 +133,7 @@ describe("LifeOps native options.parameters migration", () => {
     // (CALENDAR_FEED, CALENDAR_CREATE_EVENT, CALENDAR_PROPOSE_TIMES, etc.).
     expect(calendarAction.subActions).toBeUndefined();
     expect(calendarAction.subPlanner).toBeUndefined();
-    const subactionParam = (calendarAction.parameters ?? []).find(
-      (p) => p.name === "subaction",
-    );
-    expect(subactionParam).toBeDefined();
-    const enumVerbs = (subactionParam?.schema as { enum?: readonly string[] })
-      .enum;
+    const enumVerbs = listSubactionsFromParameters(calendarAction.parameters);
     expect(enumVerbs).toContain("feed");
     expect(enumVerbs).toContain("create_event");
     expect(enumVerbs).toContain("propose_times");

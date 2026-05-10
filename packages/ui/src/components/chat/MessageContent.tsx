@@ -1,4 +1,3 @@
-import { Button } from "@elizaos/ui";
 import {
   type FormEvent,
   useCallback,
@@ -18,6 +17,7 @@ import { stripAssistantStageDirections } from "../../utils/assistant-text";
 import { ConfigRenderer, defaultRegistry } from "../config-ui/config-renderer";
 import { UiRenderer } from "../config-ui/ui-renderer";
 import { paramsToSchema } from "../pages/plugin-list-utils";
+import { Button } from "../ui/button";
 import { findChoiceRegions } from "./message-choice-parser";
 import { type ChoiceOption, ChoiceWidget } from "./widgets/ChoiceWidget";
 

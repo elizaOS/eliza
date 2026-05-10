@@ -559,7 +559,9 @@ export const triggerAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = readParams(options);
-    const opRaw = readString(params.action ?? params.subaction ?? params.op)?.toLowerCase();
+    const opRaw = readString(
+      params.action ?? params.subaction ?? params.op,
+    )?.toLowerCase();
     if (!opRaw || !isTriggerOp(opRaw)) {
       const result = failed(
         "invalid",

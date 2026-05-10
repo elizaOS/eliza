@@ -199,7 +199,10 @@ function readAttachmentActionKind(
 ): AttachmentAction {
 	const raw = params.action ?? params.subaction ?? params.op;
 	if (typeof raw === "string") {
-		const normalized = raw.trim().toLowerCase().replace(/[-\s]+/g, "_");
+		const normalized = raw
+			.trim()
+			.toLowerCase()
+			.replace(/[-\s]+/g, "_");
 		if ((ATTACHMENT_ACTIONS as readonly string[]).includes(normalized)) {
 			return normalized as AttachmentAction;
 		}

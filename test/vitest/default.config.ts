@@ -166,6 +166,7 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-coding-tools",
   "plugin-computeruse",
   "plugin-discord",
+  "plugin-elizacloud",
   "plugin-health",
   "plugin-imessage",
   "plugin-local-inference",
