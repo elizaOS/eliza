@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const generateTextMock = vi.fn(async () => ({ text: "ok", usage: undefined }));
 const createAnthropicMock = vi.fn(() => (modelName: string) => ({ modelName }));
@@ -17,6 +17,11 @@ vi.mock("@elizaos/core", () => ({
 }));
 
 describe("z.ai text parameter resolution", () => {
+  beforeEach(() => {
+    generateTextMock.mockClear();
+    createAnthropicMock.mockClear();
+  });
+
   it("does not treat undefined temperature as explicit when topP is set", async () => {
     const runtime = {
       character: {},
@@ -40,6 +45,31 @@ describe("z.ai text parameter resolution", () => {
       expect.objectContaining({
         topP: 0.8,
         temperature: undefined,
+      })
+    );
+  });
+
+  it("passes configured CoT budget through Anthropic provider options", async () => {
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        if (key === "ZAI_COT_BUDGET_SMALL") return "2048";
+        return undefined;
+      },
+    };
+
+    const { handleTextSmall } = await import("../models/text");
+
+    await expect(handleTextSmall(runtime as never, { prompt: "hello" })).resolves.toBe("ok");
+
+    expect(generateTextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerOptions: {
+          anthropic: {
+            thinking: { type: "enabled", budgetTokens: 2048 },
+          },
+        },
       })
     );
   });
