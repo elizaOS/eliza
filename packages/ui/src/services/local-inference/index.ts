@@ -1,5 +1,10 @@
 export type { LocalInferenceLoader } from "./active-model";
-export { findCatalogModel, MODEL_CATALOG } from "./catalog";
+export {
+  ELIZA_1_PLACEHOLDER_IDS,
+  findCatalogModel,
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  MODEL_CATALOG,
+} from "./catalog";
 export { getDflashRuntimeStatus } from "./dflash-server";
 export { assessFit, probeHardware } from "./hardware";
 export { buildTextGenerationReadiness } from "./readiness";
@@ -10,6 +15,7 @@ export {
   chooseSmallerFallbackModel,
   classifyRecommendationPlatform,
   type RecommendationPlatformClass,
+  recommendForFirstRun,
   type RecommendedModelSelection,
   selectRecommendedModelForSlot,
   selectRecommendedModels,
