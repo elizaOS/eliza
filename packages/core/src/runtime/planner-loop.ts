@@ -1,10 +1,5 @@
 import { PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
-import {
-	OPTIMIZED_PROMPT_SERVICE,
-	type OptimizedPromptService,
-} from "../services/optimized-prompt";
-import { resolveOptimizedPrompt } from "../services/optimized-prompt-resolver";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { ActionResult, ProviderDataRecord } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
@@ -791,13 +786,6 @@ function extractFirstJsonArray(raw: string): string | null {
 		}
 	}
 	return null;
-}
-
-function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {
-	const service = runtime.getService?.(
-		OPTIMIZED_PROMPT_SERVICE,
-	) as OptimizedPromptService | null | undefined;
-	return resolveOptimizedPrompt(service, "action_planner", plannerTemplate);
 }
 
 async function callPlanner(params: {
