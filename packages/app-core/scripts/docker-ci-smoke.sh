@@ -262,8 +262,8 @@ else
   log "No local @elizaos/core source package found at $TYPESCRIPT_DIR; using installed package"
 fi
 
-log "Building cloud package artifacts"
-for package_dir in cloud/packages/sdk packages/cloud-routing; do
+log "Building shared/cloud package artifacts"
+for package_dir in packages/shared cloud/packages/sdk packages/cloud-routing; do
   if [[ -f "$package_dir/package.json" ]] && jq -e '.scripts.build' "$package_dir/package.json" >/dev/null; then
     log "Building $(node -p "require('./$package_dir/package.json').name") workspace artifacts"
     pushd "$package_dir" >/dev/null
@@ -272,7 +272,8 @@ for package_dir in cloud/packages/sdk packages/cloud-routing; do
   fi
 done
 mkdir -p node_modules/@elizaos
-rm -rf node_modules/@elizaos/cloud-sdk node_modules/@elizaos/cloud-routing
+rm -rf node_modules/@elizaos/shared node_modules/@elizaos/cloud-sdk node_modules/@elizaos/cloud-routing
+ln -s ../../packages/shared node_modules/@elizaos/shared
 ln -s ../../cloud/packages/sdk node_modules/@elizaos/cloud-sdk
 ln -s ../../packages/cloud-routing node_modules/@elizaos/cloud-routing
 
