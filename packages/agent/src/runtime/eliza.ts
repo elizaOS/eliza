@@ -122,6 +122,8 @@ type AppCoreRuntimeModule = {
     options: AccountPoolCredentialsOptions,
   ) => Promise<void> | void;
   startAccountPoolKeepAlive: () => void;
+  getBuildVariant: () => "store" | "direct";
+  isStoreBuild: () => boolean;
 };
 
 async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
@@ -2989,6 +2991,28 @@ export async function startEliza(
   const deploymentTarget = resolveDeploymentTargetInConfig(
     config as Record<string, unknown>,
   );
+
+  // 2h-pre. Store-variant build: macOS App Sandbox / MAS / MS Store / Flathub
+  // policy is incompatible with running an embedded local AgentRuntime, so
+  // store builds must route to Eliza Cloud. If the cloud config is missing,
+  // fail loudly and route the user to onboarding.
+  const { isStoreBuild } = await importAppCoreRuntime();
+  if (isStoreBuild()) {
+    if (deploymentTarget.runtime === "local") {
+      throw new Error(
+        "[eliza] Store-variant builds cannot run a local agent. " +
+          "Pair an Eliza Cloud account in onboarding, or switch to the direct download build.",
+      );
+    }
+    if (!config.cloud?.apiKey?.trim() || !config.cloud?.agentId?.trim()) {
+      throw new Error(
+        "[eliza] Store-variant build requires a paired Eliza Cloud account. " +
+          "Run onboarding to link Eliza Cloud, or switch to the direct download build.",
+      );
+    }
+    return startInCloudMode(config, config.cloud.agentId, opts);
+  }
+
   if (
     deploymentTarget.runtime === "cloud" &&
     deploymentTarget.provider === "elizacloud" &&
