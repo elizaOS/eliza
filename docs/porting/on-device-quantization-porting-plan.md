@@ -18,10 +18,21 @@
 > [`reports/porting/2026-05-09-unified/`](../../reports/porting/2026-05-09-unified/)
 > for the post-pin verification snapshot. The companion
 > [`milady-ai/node-llama-cpp`](https://github.com/milady-ai/node-llama-cpp)
-> @ `v3.18.1-milady.1` extends `experimentalKvCacheKey/ValueType` to
+> @ `v3.18.1-milady.3` extends `experimentalKvCacheKey/ValueType` to
 > accept the new lowercase aliases (`"tbq3_0"`, `"tbq4_0"`,
 > `"qjl1_256"`, `"q4_polar"`) so the desktop path stops rejecting them
-> at `createContext()`.
+> at `createContext()`. **Consumable as a github URL drop-in: bun
+> resolves `github:milady-ai/node-llama-cpp#v3.18.1-milady.3` directly
+> and gets pre-built `dist/` + `templates/packed/` (no devDeps + tsc
+> needed).** Milady's three pins (root `package.json`,
+> `eliza/packages/app-core/package.json`,
+> `eliza/plugins/plugin-local-embedding/package.json`) all point at
+> this tag. Native binaries still come from
+> `@node-llama-cpp/<platform>@3.18.1` on npm (upstream's prebuilds);
+> kernels for the milady-only enum slots (43/44/46/47) only resolve
+> against the milady-ai/llama.cpp fork binary, but the binding-level
+> acceptance is now correct so desktop W1-C plumbing
+> (`active-model.runtime.test.ts`) passes end-to-end.
 >
 > The on-device runtime is `bun:ffi` → `libllama.so` → forked llama.cpp
 > ([`milady-ai/llama.cpp`](https://github.com/milady-ai/llama.cpp) @
@@ -125,7 +136,7 @@ DFlash hardening landed in the same session (W1-G):
 | `looksLikeQjl(modelPath)` + `qjl1_256` cache type | `aosp-llama-adapter.ts` (worktree-agent-a55644a05aeeed035 commit `f674c14160`) | Set `ELIZA_LLAMA_CACHE_TYPE_K=qjl1_256` to compose with TBQ V. Auto-detect QJL > Bonsai precedence. |
 | `block_qjl1_256` + `GGML_OP_ATTN_SCORE_QJL` | `/tmp/llama-cpp-qjl @ qjl-kcache` (4 commits, NOT in shipped fork yet) | Not pushed to GitHub; vendor commit on Apothic side needed before next AOSP rebuild picks it up. |
 | `block_q4_polar` (`Q4_POLAR=45`) | `/tmp/llama-cpp-polar @ polarquant-q4` (4 commits, NOT in shipped fork yet) | Same — vendor + push to Apothic remote required. |
-| Speculative-decoding API | source landed (`aosp-dflash-adapter.ts`, llama-server cross-compile in `compile-libllama.mjs`); build env unblocked 2026-05-09 (W1-G); cross-compile artifact still pending CI run | Bundle now builds; `bun run --cwd packages/agent build:mobile` produces a fresh `agent-bundle.js`. llama-server arm64-v8a/musl build is the next step. |
+| Speculative-decoding API | DFlash CLI surface landed on `milady-ai/llama.cpp @ v0.2.0-milady` (Wave-3 agent A, 2026-05-09): `--spec-type dflash`, `--draft-min-prob`, `n_drafted_total` + `n_drafted_accepted_total` Prometheus counters. arm64-v8a + x86_64 musl cross-builds verified clean via `compile-libllama.mjs --src-dir`. Local llama-server smoke: chat completion + metrics counters confirmed (acceptance rate 13/13 with target=drafter). | spiritbuun/buun-llama-cpp pin retired. Both AOSP and host build paths now consume the same unified-fork commit. |
 | Capacitor Android local-agent runtime | source landed (worktree-agent-a58ffa46f33215b6a) | ElizaAgentService gated on AOSP_BUILD; in-WebView local-agent kernel (`local-agent-kernel.ts`) generalized for both iOS and Android; shared TBQ resolver across adapters. |
 | Catalog `tokenizerFamily` field + DFlash pair guard | source landed on develop (W1-G commit, originally worktree-agent-a3b48813556536b5d `04a3fdb24d`) + acceptance-rate telemetry + dflash-doctor parity check | Backfilled across every catalog entry. `maybeRepairDflashDrafter` deleted (dead — every DFlash pair is now Qwen3↔Qwen3 vocab). |
 | QJL standalone kernel library | `packages/native-plugins/qjl-cpu/` (worktree-agent-a7e72f45ecf16deab) | 1100 LOC, scalar+AVX2+NEON, 100/100 bit-parity vs Python ref. |
@@ -189,27 +200,32 @@ small drafter model. Upstream llama.cpp ships
 `examples/speculative/speculative.cpp` and `common/speculative.cpp` —
 not used today because the shim only exposes single-model decode.
 
-Two viable paths:
+**Status (2026-05-09, Wave-3 agent A):** path (a) landed on the unified
+fork at `milady-ai/llama.cpp @ v0.2.0-milady`. The fork now exposes
+`--spec-type dflash` (alias for the upstream draft-model path),
+`--draft-min-prob` (alias for upstream `--draft-p-min`), and Prometheus
+counters `llamacpp:n_drafted_total` / `llamacpp:n_drafted_accepted_total`
+on `/metrics`. Both `compile-libllama.mjs` (AOSP cross-compile) and
+`build-llama-cpp-dflash.mjs` (host build) pin the same commit; the
+spiritbuun pin is retired. See `unified-fork-strategy.md` §H step 8 for
+the full migration story. Path (b) (in-process shim entrypoints) is
+deferred behind hardware perf measurement of (a).
 
-- **(a) llama-server route.** Cross-compile `llama-server` for
-  android-arm64 musl using the same `compile-libllama.mjs` toolchain,
-  ship it next to `bun`. Have `ElizaAgentService` spawn it with
-  `--draft <drafter.gguf> --model <target.gguf>`. Bun talks to it over
-  loopback OpenAI-shaped HTTP (already what the host-side
-  `dflash-server.ts` does). **Pro:** zero new shim symbols. **Con:**
-  doubles the resident process count and adds cold-start cost. ~2 days.
+Two viable paths (recorded for posterity):
 
-- **(b) Shim entrypoint route.** Add `eliza_llama_create_speculative`,
-  `eliza_llama_decode_speculative` to `llama-shim/eliza_llama_shim.c`
-  that wrap the `common_speculative_*` helpers. Drafter and target
-  share the same llama.cpp process. Bun:ffi-binds the new entrypoints
-  in `aosp-llama-adapter.ts`. **Pro:** single process, lower cold start.
-  **Con:** new wire format work in `eliza_llama_shim.c`, need to expose
-  acceptance-rate telemetry. ~5 days.
+- **(a) llama-server route — LANDED.** Cross-compiled `llama-server`
+  for android-arm64 + x86_64 musl using `compile-libllama.mjs` (now
+  pointing at the unified fork's `v0.2.0-milady` tag). Bun spawns it
+  via `aosp-dflash-adapter.ts` and talks to it over loopback OpenAI
+  HTTP, same shape as the host-side `dflash-server.ts`. Adds one
+  resident process per loaded target; cold-start cost is the price
+  of zero new shim symbols.
 
-Path (a) is cheaper to validate; path (b) is the production answer.
-Doing (a) first to land a perf number, then (b) as the durable wiring,
-is the recommended order.
+- **(b) Shim entrypoint route — deferred.** Would add
+  `eliza_llama_create_speculative` / `eliza_llama_decode_speculative` to
+  `llama-shim/eliza_llama_shim.c` wrapping `common_speculative_*`,
+  letting drafter and target share one llama.cpp process. ~5 days when
+  perf measurement of (a) shows the cold-start cost is worth removing.
 
 ### 3. QJL NEON kernel + GGML K-cache hook
 
@@ -386,6 +402,43 @@ curl -X POST localhost:31337/api/messages -H 'Content-Type: application/json' \
   -d '{"text":"hi"}'
 ```
 
+## Wave 3: fused CPU kernels (W3-B; landed)
+
+Branch: `milady/fused-cpu` off `milady/integration`. Three new kernels +
+parity tests + microbench, all CPU-only:
+
+| Kernel | Op / entry | ISAs | Parity | Speedup vs unfused (AVX2) |
+|---|---|---|---|---|
+| Fused QJL-K + TBQ-V attention | `GGML_OP_FUSED_ATTN_QJL_TBQ` (`ggml_fused_attn_qjl_tbq()`) | scalar / AVX2 / NEON | max-rel ≤ 1.7e-3 over 100 random contexts (target ≤ 5e-3) | 4.5× at n_kv=512 (target ≥ 1.5×) |
+| Fused Q4_POLAR × Q8_0 dot | `ggml_vec_dot_q4_polar_q8_0_fused` | scalar / AVX2 / NEON | bit-exact (0.00e+00 max-rel) over 100 blocks, both QJL-residual on/off | ≥ 100× (unfused is cross-TU call-overhead bound) |
+| Fused-Hadamard 2-block dot | `ggml_vec_dot_q4_polar_q8_0_fused_hadamard` | scalar (SIMD pending) | bit-exact over 100 blocks | not measured (lower-priority) |
+
+Files (in `milady-ai/llama.cpp` on branch `milady/fused-cpu`):
+- `ggml/src/ggml-cpu/fused-attn-qjl-tbq.c` + `-avx2.c` + `-neon.c`
+- `ggml/src/ggml-cpu/fused-q4-polar-dot.c` + `-avx2.c` + `-neon.c`
+- `ggml/src/ggml-cpu/fused-hadamard-polar-dot.c`
+- `tests/test-fused-kernels.cpp` (gated by `LLAMA_BUILD_TESTS=ON`)
+- `tests/bench-fused-kernels.cpp` (gated by `LLAMA_BUILD_TESTS=ON`)
+
+Algorithm notes:
+- Fused QJL+TBQ uses two-pass online softmax (FlashAttention-style
+  numerical-stability pattern, simplified to two passes since the K
+  side is so cheap that re-reading is free vs a TBQ V dequant).
+- Fused Q4_POLAR dot exploits WHT linearity: `<H c, y> = <c, H y>`,
+  so we apply the inverse-Hadamard butterfly to the *activation* side
+  once and stream centroids directly into the FMA accumulator. The
+  per-block `l2 / QK_POLAR` scale folds into the per-Q8_0-chunk fp16
+  scale at load time.
+- Fused-Hadamard 2-block dot is the prototype for collapsing the
+  butterfly across paired blocks; current implementation runs two
+  independent N-WHTs because typical KV-cache pairs don't share `l2`,
+  so the win is in the shared QJL-signs sweep + better cache locality
+  rather than the butterfly fusion itself. SIMD versions of this
+  kernel are deferred until a workload depends on it.
+
+GPU fused kernels (CUDA, Metal) tracked separately on `milady/fused-cuda`
+(W3-D) and a future `milady/fused-metal`.
+
 ## Out of scope (explicit)
 
 - NNAPI / EdgeTPU delegates. KV-cache compressors and per-step bit
@@ -396,3 +449,7 @@ curl -X POST localhost:31337/api/messages -H 'Content-Type: application/json' \
   when ggml-webgpu lands TBQ.
 - Training-time-only paths (PolarQuant calibration, TurboQuant
   calibration loop). Those stay in `packages/training/`.
+- FlashAttention-v2 single-pass online-softmax integration (W3-B
+  fused attn borrows the pattern but stays two-pass for now).
+- DFlash port (W3-A track).
+- GPU fused kernels (W3-D for CUDA; future Metal track).
