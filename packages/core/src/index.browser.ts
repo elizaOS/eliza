@@ -12,6 +12,8 @@ export * from "./api/route-helpers";
 export * from "./app-registry";
 // Export core modules (all browser-compatible after refactoring)
 export * from "./app-route-plugin-registry";
+export * from "./build-variant";
+export * from "./sandbox-policy";
 export * from "./character";
 export * from "./connectors";
 export * from "./connectors/account-manager";
