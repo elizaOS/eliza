@@ -32,25 +32,34 @@
 //   Minimum tested: zig 0.13.0. Earlier versions ship older libc++ headers
 //   that miss <bit> / <span> shims llama.cpp's CMake feature checks rely on.
 //
-// llama.cpp pin (matches eliza/packages/agent/src/runtime/aosp-llama-adapter.ts):
-//   fork:   https://github.com/Apothic-AI/llama.cpp-1bit-turboquant
-//   tag:    main-b8198-b2b5273  (== upstream b8198 + TurboQuant KV-cache patch)
-//   commit: b2b5273e8b275bb96362fe844a5202632eb3e52b
+// llama.cpp pin (matches plugins/plugin-aosp-local-inference/src/aosp-llama-adapter.ts):
+//   fork:   https://github.com/milady-ai/llama.cpp
+//   tag:    v0.1.0-milady          (milady/integration HEAD)
+//   commit: edd55d8b0a1f4b4279f17eb08a903e52b9a7cc4e
 //
-// Why this fork (not stock ggml-org/llama.cpp b4500):
-//   apothic/llama.cpp-1bit-turboquant adds two GGML quant types (TBQ3_0 = 43,
-//   TBQ4_0 = 44) that the matching Bonsai-8B-1bit GGUF on Hugging Face is
-//   trained against. The fork's KV-cache path stores K/V in TBQ format
-//   instead of fp16 — block_tbq3_0 packs 32 floats into 14 bytes vs 64
-//   bytes for fp16, a 4–4.6× reduction. KV cache is the dominant memory
-//   consumer on long contexts on phones, so this is the difference between
-//   "Bonsai loads but OOMs after 1k tokens" and "Bonsai loads and chats".
+// Why this fork (not stock ggml-org/llama.cpp b8198):
+//   The Milady fork composes four techniques onto upstream b8198:
 //
-//   Critically, the fork ships a CPU implementation of TBQ — see
-//   `ggml/src/ggml-cpu/quants.c` (ggml_vec_dot_tbq{3,4}_0_f32,
-//   quantize_row_tbq{3,4}_0) and `ggml/src/ggml-cpu/ggml-cpu.c` (type-trait
-//   registration). Mobile is CPU-only via the bun:ffi musl path, so the
-//   CPU TBQ implementation is what makes this useful on phones at all.
+//     - TBQ3_0 (slot 43) + TBQ4_0 (slot 44) — 3-bit / 4-bit TurboQuant V-cache.
+//       Cherry-picked from apothic/llama.cpp-1bit-turboquant @ b2b5273.
+//       block_tbq3_0 packs 32 floats into 14 bytes vs 64 bytes for fp16
+//       (4–4.6× reduction). KV cache is the dominant memory consumer on
+//       long contexts on phones, so this is the difference between
+//       "Bonsai loads but OOMs after 1k tokens" and "Bonsai loads and chats".
+//     - QJL1_256 (slot 46) — 1-bit JL-transform K-cache (256 sketch dims,
+//       34 bytes/block). From W1-A's QJL series.
+//     - Q4_POLAR (slot 47) — 4-bit PolarQuant weight quantization. From
+//       W1-B's Polar series. Bumped from upstream slot 45 to 47 because
+//       slot 46 is now QJL.
+//     - Metal kernel sources (.metal) for TBQ3_0/TBQ4_0/TBQ3_TCQ/QJL/Polar
+//       under ggml/src/ggml-metal/milady-kernels/. Source-only landing —
+//       dispatcher wiring is the next agent's job.
+//
+//   The CPU implementations of all four techniques (NEON for arm64, AVX2
+//   for x86_64, scalar fallback) are baked into the fork at
+//   ggml/src/ggml-cpu/qjl/* and ggml/src/ggml-cpu/quants-polar.c. Mobile
+//   is CPU-only via the bun:ffi musl path, so these are what makes the
+//   fork useful on phones at all.
 //
 //   The fork is based on llama.cpp b8198 (much newer than the prior b4500
 //   pin), so it inherits the post-2024 sampler-chain API
@@ -158,12 +167,21 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // inside the elizaOS source checkout it's the elizaOS repo root.
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 
-// apothic/llama.cpp-1bit-turboquant @ main-b8198-b2b5273
-// (TurboQuant KV-cache patch on top of upstream llama.cpp b8198).
-export const LLAMA_CPP_TAG = "main-b8198-b2b5273";
-export const LLAMA_CPP_COMMIT = "b2b5273e8b275bb96362fe844a5202632eb3e52b";
+// milady-ai/llama.cpp @ v0.1.0-milady (milady/integration HEAD).
+// Composes TBQ (apothic) + QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources
+// (W1-D) onto upstream b8198. See docs/porting/unified-fork-strategy.md
+// for the full migration story.
+//
+// Pre-2026-05-09 the AOSP path consumed apothic/llama.cpp-1bit-turboquant
+// directly and applied vendored QJL + PolarQuant patch series via
+// scripts/aosp/llama-cpp-patches/apply-patches.mjs at build time. That
+// flow is now replaced by a single canonical fork — the patches are
+// baked in. apply-patches.mjs is kept around for one release as a
+// rollback path; see scripts/aosp/llama-cpp-patches/README.md.
+export const LLAMA_CPP_TAG = "v0.1.0-milady";
+export const LLAMA_CPP_COMMIT = "edd55d8b0a1f4b4279f17eb08a903e52b9a7cc4e";
 export const LLAMA_CPP_REMOTE =
-  "https://github.com/Apothic-AI/llama.cpp-1bit-turboquant.git";
+  "https://github.com/milady-ai/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
 
 export const ABI_TARGETS = [
