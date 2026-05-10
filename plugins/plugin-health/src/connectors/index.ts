@@ -18,12 +18,14 @@
  */
 
 import { logger } from "@elizaos/core";
+import { getHealthProviderSpec } from "../health-bridge/health-provider-registry.js";
 import type {
   AnchorContribution,
   AnchorRegistry,
   BusFamilyContribution,
   BusFamilyRegistry,
   ConnectorContribution,
+  ConnectorOAuthConfig,
   ConnectorRegistry,
   ConnectorStatus,
   DispatchResult,
@@ -143,6 +145,20 @@ function buildConnectorContribution(
     message:
       "plugin-health Wave-1 stub: connector send is not yet wired; configure via the legacy lifeops health-connectors path.",
   });
+  // URL provided by the connector contribution; the dispatcher does not
+  // hardcode. The OAuth-bridged providers (strava / fitbit / withings / oura)
+  // surface their authorize / token / api-base URLs from the canonical
+  // health-provider registry.
+  const providerSpec = getHealthProviderSpec(kind);
+  const oauth: ConnectorOAuthConfig | undefined = providerSpec
+    ? {
+        authorizeUrl: providerSpec.oauth.authorizeUrl,
+        tokenUrl: providerSpec.oauth.tokenUrl,
+        revokeUrl: providerSpec.oauth.revokeUrl,
+        scopes: providerSpec.oauth.defaultScopes,
+      }
+    : undefined;
+  const apiBaseUrl = providerSpec?.apiBaseUrl;
   return {
     kind,
     capabilities: [...HEALTH_CONNECTOR_CAPABILITIES[kind]],
@@ -153,6 +169,8 @@ function buildConnectorContribution(
           ? ["local", "cloud"]
           : ["cloud"],
     describe: { label: CONNECTOR_LABELS[kind] },
+    oauth,
+    apiBaseUrl,
     start: async () => {
       // Wave-1 stub — concrete start lives in `health-bridge.ts` /
       // `health-connectors.ts` and is invoked through the legacy
