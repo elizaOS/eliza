@@ -50,6 +50,25 @@ export interface NodeSelectionOptions {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a node was provisioned by the autoscaler (Hetzner Cloud) and is
+ * therefore safe to mark offline on health-check failure. Canonical cores
+ * (manually-provisioned, no `provider` metadata, or any non-autoscaled
+ * provider) are protected — they remain healthy in DB even if a transient
+ * ssh probe fails, because flapping them removes real production capacity.
+ *
+ * Operators always have `enabled=false` to disable a node explicitly.
+ */
+function isAutoscaledNode(node: DockerNode): boolean {
+  const meta = node.metadata as Record<string, unknown> | null | undefined;
+  if (!meta || typeof meta !== "object") return false;
+  return meta.provider === "hetzner-cloud" && meta.autoscaled === true;
+}
+
+// ---------------------------------------------------------------------------
 // DockerNodeManager
 // ---------------------------------------------------------------------------
 
@@ -181,6 +200,22 @@ export class DockerNodeManager {
       `[docker-node-manager] Health check failed for ${node.node_id} after ${MAX_RETRIES} attempts: ${lastError}`,
     );
     const status: DockerNodeStatus = lastError.includes("empty ID") ? "degraded" : "offline";
+
+    // Canonical (operator-managed) nodes are never marked offline from
+    // health-check failures. The autoscaler-provisioned hetzner-cloud nodes
+    // are ephemeral and OK to flap; manually-provisioned cores host long-lived
+    // production sandboxes, where a transient ssh hiccup should not pull the
+    // node out of rotation. Operators retain explicit `enabled=false` to
+    // disable nodes; status flapping is reserved for autoscaler-managed nodes.
+    if (!isAutoscaledNode(node)) {
+      logger.warn(
+        `[docker-node-manager] Suppressed ${status} status for canonical node ${node.node_id} (${node.hostname}); leaving prior status (${node.status}) intact. Set enabled=false to remove from rotation.`,
+      );
+      // Return the prior in-DB status so callers (e.g. /api/v1/cron/agent-hot-pool)
+      // see the unchanged state, not a phantom "offline" that was never persisted.
+      return node.status;
+    }
+
     await dockerNodesRepository.updateStatus(node.node_id, status);
     return status;
   }
@@ -216,17 +251,31 @@ export class DockerNodeManager {
         await dockerNodesRepository.updateStatus(node.node_id, "healthy");
         return true;
       }
-      await dockerNodesRepository.updateStatus(node.node_id, "degraded");
+      if (isAutoscaledNode(node)) {
+        await dockerNodesRepository.updateStatus(node.node_id, "degraded");
+      } else {
+        logger.warn(
+          `[docker-node-manager] Suppressed degraded mark for canonical node ${node.node_id} (${node.hostname}); Docker probe returned empty ID`,
+        );
+      }
       logger.warn(`[docker-node-manager] Node ${node.node_id} Docker probe returned empty ID`);
       return false;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await dockerNodesRepository.updateStatus(node.node_id, "offline").catch((updateError) => {
-        logger.warn("[docker-node-manager] Failed to mark node offline", {
-          nodeId: node.node_id,
-          error: updateError instanceof Error ? updateError.message : String(updateError),
+      // See healthCheckNode for rationale: canonical nodes are never marked
+      // offline from a transient ssh failure during scheduling.
+      if (isAutoscaledNode(node)) {
+        await dockerNodesRepository.updateStatus(node.node_id, "offline").catch((updateError) => {
+          logger.warn("[docker-node-manager] Failed to mark node offline", {
+            nodeId: node.node_id,
+            error: updateError instanceof Error ? updateError.message : String(updateError),
+          });
         });
-      });
+      } else {
+        logger.warn(
+          `[docker-node-manager] Suppressed offline mark for canonical node ${node.node_id} (${node.hostname}): ${message}`,
+        );
+      }
       logger.warn(`[docker-node-manager] Node ${node.node_id} is not reachable: ${message}`);
       return false;
     }

@@ -1,10 +1,11 @@
 import {
   Button,
   client,
+  dispatchFocusConnector,
   isElectrobunRuntime,
   openExternalUrl,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import type {
   LifeOpsOwnerBrowserAccessStatus,
   LifeOpsTelegramAuthState,
@@ -424,6 +425,65 @@ function browserAccessActionIcon(
   }
 }
 
+function ConnectorManagementButton({
+  provider,
+  platform,
+  label = "Open in Connectors",
+  disabled,
+}: {
+  provider: "signal" | "telegram";
+  platform: string;
+  label?: string;
+  disabled?: boolean;
+}) {
+  const { setActionNotice, setTab } = useApp();
+  const handleOpen = useCallback(() => {
+    setTab("connectors");
+    dispatchFocusConnector(provider);
+    setActionNotice(
+      `${platform} setup is managed in Connectors. Configure the connector account there, then refresh LifeOps status.`,
+      "info",
+      4200,
+    );
+  }, [platform, provider, setActionNotice, setTab]);
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="h-8 rounded-xl px-3 text-xs font-semibold"
+      disabled={disabled}
+      onClick={handleOpen}
+      title={`${label}: ${platform}`}
+      aria-label={`${label}: ${platform}`}
+    >
+      <ExternalLink className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+      {label}
+    </Button>
+  );
+}
+
+function ManagedConnectorChip({
+  platform,
+  message,
+}: {
+  platform: string;
+  message: string | null | undefined;
+}) {
+  const title =
+    message ??
+    `${platform} setup is managed by its connector plugin, not by LifeOps.`;
+  return (
+    <span
+      className="inline-flex h-7 items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 text-[11px] font-semibold text-amber-600"
+      title={title}
+    >
+      <Plug2 className="h-3.5 w-3.5" aria-hidden />
+      Managed
+    </span>
+  );
+}
+
 export function SignalConnectorCard() {
   const signal = useSignalConnector();
   const isConnected = signal.status?.connected === true;
@@ -431,29 +491,41 @@ export function SignalConnectorCard() {
   const sendReady =
     signal.status?.grantedCapabilities.includes("signal.send") === true;
   const fullyReady = isConnected && inboundReady && sendReady;
+  const showPluginManagedSetup =
+    !isConnected && signal.setupManagedByPlugin === true;
   const pairingState = signal.pairingStatus?.state ?? null;
   const isPairing =
+    !showPluginManagedSetup &&
     !isConnected &&
     (pairingState === "generating_qr" ||
       pairingState === "waiting_for_scan" ||
       pairingState === "linking");
   const busy = signal.actionPending || signal.loading;
-  const statusLabel = isConnected
-    ? fullyReady
-      ? "Connected"
-      : inboundReady
-        ? "Connected, send limited"
-        : sendReady
-          ? "Connected, inbound off"
-          : "Connected, capabilities missing"
-    : isPairing
-      ? "Pairing..."
-      : signal.error
-        ? "Needs attention"
-        : "Not connected";
+  const statusLabel =
+    signal.loading && !signal.status
+      ? "Checking..."
+      : isConnected
+        ? fullyReady
+          ? "Connected"
+          : inboundReady
+            ? "Connected, send limited"
+            : sendReady
+              ? "Connected, inbound off"
+              : "Connected, capabilities missing"
+        : showPluginManagedSetup
+          ? "Managed in Connectors"
+          : isPairing
+            ? "Pairing..."
+            : signal.error
+              ? "Needs attention"
+              : "Not connected";
   const statusVariant: ConnectorStatusVariant = fullyReady
     ? "ok"
-    : isConnected || isPairing || signal.error
+    : isConnected ||
+        isPairing ||
+        showPluginManagedSetup ||
+        signal.error ||
+        (signal.loading && !signal.status)
       ? "warning"
       : "muted";
 
@@ -464,7 +536,36 @@ export function SignalConnectorCard() {
       status={statusLabel}
       statusVariant={statusVariant}
     >
-      {!isConnected && !isPairing ? (
+      {showPluginManagedSetup ? (
+        <div className="space-y-2">
+          <ManagedConnectorChip
+            platform="Signal"
+            message={signal.pluginManagedMessage}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <ConnectorManagementButton
+              provider="signal"
+              platform="Signal"
+              disabled={busy}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 rounded-xl p-0"
+              disabled={busy}
+              onClick={() => void signal.refresh()}
+              title="Refresh"
+              aria-label="Refresh"
+            >
+              {signal.loading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              )}
+            </Button>
+          </div>
+        </div>
+      ) : !isConnected && !isPairing ? (
         <Button
           size="sm"
           className="h-8 w-8 rounded-xl p-0"
@@ -534,17 +635,29 @@ export function SignalConnectorCard() {
               <div>Send: {sendReady ? "ready" : "not ready"}</div>
             </div>
           </details>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 w-8 rounded-xl p-0"
-            disabled={busy}
-            onClick={() => void signal.disconnect()}
-            title="Disconnect"
-            aria-label="Disconnect"
-          >
-            <Unplug className="h-3.5 w-3.5" aria-hidden />
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <ConnectorManagementButton
+              provider="signal"
+              platform="Signal"
+              label="Manage"
+              disabled={busy}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 rounded-xl p-0"
+              disabled={busy}
+              onClick={() => void signal.refresh()}
+              title="Refresh"
+              aria-label="Refresh"
+            >
+              {signal.loading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              )}
+            </Button>
+          </div>
         </div>
       ) : null}
 
@@ -894,11 +1007,18 @@ export function TelegramConnectorCard() {
   const [loginOpen, setLoginOpen] = useState(false);
 
   const isConnected = telegram.status?.connected === true;
-  const authError = telegram.status?.authError ?? telegram.error;
+  const setupManagedByPlugin = telegram.setupManagedByPlugin === true;
+  const rawAuthError = telegram.status?.authError ?? telegram.error;
+  const authError = telegram.pluginManaged ? telegram.error : rawAuthError;
   const authState = inferTelegramRetryState({
     authState: telegram.authState ?? "idle",
-    authError,
+    authError: rawAuthError,
   });
+  const readReady =
+    telegram.status?.grantedCapabilities.includes("telegram.read") === true;
+  const sendReady =
+    telegram.status?.grantedCapabilities.includes("telegram.send") === true;
+  const fullyReady = isConnected && readReady && sendReady;
   const busy =
     telegram.actionPending || telegram.loading || telegram.verifyPending;
 
@@ -909,14 +1029,14 @@ export function TelegramConnectorCard() {
   }, [telegram.status?.phone, phoneInput]);
 
   useEffect(() => {
-    if (isConnected) {
+    if (isConnected || setupManagedByPlugin) {
       setLoginOpen(false);
       return;
     }
     if (authState !== "idle" && authState !== "error") {
       setLoginOpen(true);
     }
-  }, [authState, isConnected]);
+  }, [authState, isConnected, setupManagedByPlugin]);
 
   const handleSendCode = useCallback(() => {
     if (phoneInput.trim().length > 0) {
@@ -944,30 +1064,50 @@ export function TelegramConnectorCard() {
 
   const showStartStep =
     !isConnected &&
+    !setupManagedByPlugin &&
     !loginOpen &&
     (authState === "idle" || authState === "error");
   const showPhoneStep =
     !isConnected &&
+    !setupManagedByPlugin &&
     loginOpen &&
     (authState === "idle" || authState === "error");
   const showCodeStep =
-    authState === "waiting_for_provisioning_code" ||
-    authState === "waiting_for_code";
-  const showPasswordStep = authState === "waiting_for_password";
-  const statusLabel = isConnected
-    ? "Connected"
-    : authState === "waiting_for_provisioning_code"
-      ? "Enter my.telegram.org code"
-      : authState === "waiting_for_code"
-        ? "Enter verification code"
-        : authState === "waiting_for_password"
-          ? "2FA password required"
-          : authState === "error"
-            ? "Retry Telegram login"
-            : "Not connected";
-  const statusVariant: ConnectorStatusVariant = isConnected
+    !setupManagedByPlugin &&
+    (authState === "waiting_for_provisioning_code" ||
+      authState === "waiting_for_code");
+  const showPasswordStep =
+    !setupManagedByPlugin && authState === "waiting_for_password";
+  const statusLabel =
+    telegram.loading && !telegram.status
+      ? "Checking..."
+      : isConnected
+        ? fullyReady
+          ? "Connected"
+          : readReady
+            ? "Connected, send limited"
+            : sendReady
+              ? "Connected, inbound off"
+              : "Connected, capabilities missing"
+        : setupManagedByPlugin
+          ? "Managed in Connectors"
+          : authState === "waiting_for_provisioning_code"
+            ? "Enter my.telegram.org code"
+            : authState === "waiting_for_code"
+              ? "Enter verification code"
+              : authState === "waiting_for_password"
+                ? "2FA password required"
+                : authState === "error"
+                  ? "Retry Telegram login"
+                  : "Not connected";
+  const statusVariant: ConnectorStatusVariant = fullyReady
     ? "ok"
-    : showCodeStep || showPasswordStep || authState === "error"
+    : isConnected ||
+        setupManagedByPlugin ||
+        showCodeStep ||
+        showPasswordStep ||
+        authState === "error" ||
+        (telegram.loading && !telegram.status)
       ? "warning"
       : "muted";
 
@@ -989,6 +1129,37 @@ export function TelegramConnectorCard() {
         >
           <Plug2 className="h-3.5 w-3.5" aria-hidden />
         </Button>
+      ) : null}
+
+      {!isConnected && setupManagedByPlugin ? (
+        <div className="space-y-2">
+          <ManagedConnectorChip
+            platform="Telegram"
+            message={telegram.pluginManagedMessage}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <ConnectorManagementButton
+              provider="telegram"
+              platform="Telegram"
+              disabled={busy}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 rounded-xl p-0"
+              disabled={busy}
+              onClick={() => void telegram.refresh()}
+              title="Refresh"
+              aria-label="Refresh"
+            >
+              {telegram.loading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              )}
+            </Button>
+          </div>
+        </div>
       ) : null}
 
       {showPhoneStep ? (
@@ -1057,7 +1228,7 @@ export function TelegramConnectorCard() {
         </div>
       ) : null}
 
-      {authState === "waiting_for_password" ? (
+      {showPasswordStep ? (
         <div className="flex items-center gap-2">
           <input
             type="password"
@@ -1094,17 +1265,45 @@ export function TelegramConnectorCard() {
               )}
             </div>
           ) : null}
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 w-8 rounded-xl p-0"
-            disabled={busy}
-            onClick={() => void telegram.disconnect()}
-            title="Disconnect"
-            aria-label="Disconnect"
-          >
-            <Unplug className="h-3.5 w-3.5" aria-hidden />
-          </Button>
+          <details className="rounded-2xl bg-bg/24 px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-txt">Access</span>
+              <AccessPips
+                items={[
+                  readReady ? "ok" : "warning",
+                  sendReady ? "ok" : "warning",
+                ]}
+                label={`Telegram read ${readReady ? "ready" : "not ready"}, send ${sendReady ? "ready" : "not ready"}`}
+              />
+            </summary>
+            <div className="mt-2 rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
+              <div>Read: {readReady ? "ready" : "not ready"}</div>
+              <div>Send: {sendReady ? "ready" : "not ready"}</div>
+            </div>
+          </details>
+          <div className="flex flex-wrap items-center gap-2">
+            <ConnectorManagementButton
+              provider="telegram"
+              platform="Telegram"
+              label="Manage"
+              disabled={busy}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 w-8 rounded-xl p-0"
+              disabled={busy}
+              onClick={() => void telegram.refresh()}
+              title="Refresh"
+              aria-label="Refresh"
+            >
+              {telegram.loading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              )}
+            </Button>
+          </div>
         </div>
       ) : null}
 
@@ -1262,7 +1461,7 @@ function formatIMessageSendMode(
     case "cli":
       return "imsg CLI";
     case "private-api":
-      return "BlueBubbles Private API";
+      return "Plugin private API";
     case "apple-script":
       return "Messages.app AppleScript";
     default:
@@ -1278,11 +1477,8 @@ function formatIMessageDiagnostic(code: string): string {
       return "Eliza could not open Messages chat.db for incoming message reads.";
     case "native_bridge_not_connected":
       return "The native Messages bridge is loaded but not connected yet.";
-    case "bluebubbles_private_api_disabled":
-      return "BlueBubbles Private API is disabled, so sends rely on AppleScript.";
-    case "bluebubbles_helper_disconnected":
-      return "BlueBubbles helper is disconnected, which usually means the Mac-side send path is degraded.";
     case "no_backend_available":
+    case "imessage_plugin_unavailable":
       return "No local iMessage backend is available.";
     default:
       return code;
@@ -1301,25 +1497,16 @@ export function IMessageConnectorCard() {
   const nativeReadDegraded =
     status?.diagnostics.includes("full_disk_access_required") ||
     status?.diagnostics.includes("chat_db_unavailable");
-  const isDegraded =
-    Boolean(isConnected && nativeReadDegraded) ||
-    Boolean(
-      isConnected &&
-        status?.bridgeType === "bluebubbles" &&
-        (status.sendMode === "apple-script" ||
-          status.helperConnected === false),
-    );
+  const isDegraded = Boolean(isConnected && nativeReadDegraded);
   const needsFullDiskAccess = imessage.fullDiskAccess?.status === "revoked";
   const showFullDiskAccessControls =
     runningOnMacHost && (needsFullDiskAccess || nativeReadDegraded);
   const bridgeLabel =
     status?.bridgeType === "native"
       ? "Messages.app"
-      : status?.bridgeType === "bluebubbles"
-        ? "BlueBubbles"
-        : status?.bridgeType === "imsg"
-          ? "imsg"
-          : null;
+      : status?.bridgeType === "imsg"
+        ? "imsg"
+        : null;
   const statusLabel =
     busy && !status
       ? "Checking..."
@@ -1341,11 +1528,7 @@ export function IMessageConnectorCard() {
           : "muted";
   const bridgePips: ConnectorStatusVariant[] = [
     isConnected ? "ok" : "muted",
-    status?.privateApiEnabled === false || status?.helperConnected === false
-      ? "warning"
-      : isConnected
-        ? "ok"
-        : "muted",
+    nativeReadDegraded ? "warning" : isConnected ? "ok" : "muted",
     status?.sendMode === "apple-script"
       ? "warning"
       : isConnected
@@ -1386,11 +1569,7 @@ export function IMessageConnectorCard() {
               ? nativeReadDegraded
                 ? "Eliza can send through Messages.app now. Grant Full Disk Access to let it read incoming iMessages from chat.db."
                 : "Eliza is using the native Mac Messages bridge for iMessage send and receive."
-              : bridgeLabel === "BlueBubbles"
-                ? status?.sendMode === "private-api"
-                  ? "LifeOps is using the Mac-side BlueBubbles bridge with Private API enabled."
-                  : "LifeOps is using the Mac-side BlueBubbles bridge. Sends are currently using the AppleScript fallback."
-                : "LifeOps is using the Mac-side imsg bridge for iMessage access."
+              : "LifeOps is using the plugin-managed iMessage bridge."
             : iosRuntime
               ? "iMessage access must run through a paired Mac or a remote Mac backend that has iMessage configured."
               : runningOnMacHost
@@ -1435,18 +1614,7 @@ export function IMessageConnectorCard() {
               <div>
                 Send path: {formatIMessageSendMode(status?.sendMode ?? "none")}
               </div>
-              {status?.privateApiEnabled !== null ? (
-                <div>
-                  Private API:{" "}
-                  {status.privateApiEnabled ? "enabled" : "disabled"}
-                </div>
-              ) : null}
-              {status?.helperConnected !== null ? (
-                <div>
-                  Helper:{" "}
-                  {status.helperConnected ? "connected" : "disconnected"}
-                </div>
-              ) : null}
+              <div>Read path: {nativeReadDegraded ? "limited" : "ready"}</div>
             </div>
           </details>
         ) : null}

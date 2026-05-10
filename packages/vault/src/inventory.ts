@@ -37,7 +37,7 @@ export const PROFILE_SEGMENT = "profile";
  * High-level category of a vault entry — drives grouping in the UI.
  *
  * - `provider`   — model-provider API keys (OPENAI_API_KEY, etc.)
- * - `plugin`     — non-provider plugin tokens (N8N_API_KEY, GITHUB_TOKEN, …)
+ * - `plugin`     — non-provider plugin tokens (WORKFLOW_API_KEY, GITHUB_TOKEN, …)
  * - `wallet`     — wallet private keys / mnemonics
  * - `credential` — saved-login records (`creds.<domain>.<user>`)
  * - `system`     — internal manager/preferences entries

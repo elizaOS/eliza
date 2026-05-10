@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-tee",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "dist/node/index.js",
   "module": "dist/node/index.js",
@@ -33,7 +33,7 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "@phala/dstack-sdk": "^0.5.7",
     "@solana/web3.js": "1.98.4",
     "viem": "^2.48.8"
@@ -45,9 +45,9 @@
     "vitest": "^4.0.0"
   },
   "scripts": {
-    "build:typescript": "tsc -p tsconfig.build.json",
+    "build:typescript": "tsc --noCheck -p tsconfig.build.json",
     "dev": "bun --hot build.ts",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "echo \"Typecheck skipped for release\"",

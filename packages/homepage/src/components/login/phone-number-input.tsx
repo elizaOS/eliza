@@ -1,8 +1,8 @@
-import { useMemo } from "react";
-import { ChevronDown } from "lucide-react";
 import { getCountries, getCountryCallingCode } from "libphonenumber-js";
-import { Input } from "@/components/ui/input";
+import { ChevronDown } from "lucide-react";
+import { useMemo } from "react";
 import { CountryFlag } from "@/components/login/country-flag";
+import { Input } from "@/components/ui/input";
 
 // ============================================================================
 // Country helpers

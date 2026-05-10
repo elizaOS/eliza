@@ -781,6 +781,37 @@ def _score_from_abliteration_robustness_json(data: JSONValue) -> ScoreExtraction
     )
 
 
+def _score_from_lifeops_bench_json(data: JSONValue) -> ScoreExtraction:
+    """Extract LifeOpsBench score from its aggregate result JSON.
+
+    The runner writes one JSON per ``__main__`` invocation containing
+    ``pass_at_1`` (headline), ``pass_at_k`` (multi-seed pass rate),
+    plus per-domain mean scores and the agent/eval cost split.
+    Higher is better; unit is ratio.
+    """
+    root = expect_dict(data, ctx="lifeops_bench:root")
+    pass_at_1 = expect_float(
+        get_required(root, "pass_at_1", ctx="lifeops_bench:root"),
+        ctx="lifeops_bench:pass_at_1",
+    )
+    return ScoreExtraction(
+        score=pass_at_1,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "pass_at_1": pass_at_1,
+            "pass_at_k": get_optional(root, "pass_at_k") or 0,
+            "seeds": get_optional(root, "seeds") or 0,
+            "total_cost_usd": get_optional(root, "total_cost_usd") or 0,
+            "agent_cost_usd": get_optional(root, "agent_cost_usd") or 0,
+            "eval_cost_usd": get_optional(root, "eval_cost_usd") or 0,
+            "total_latency_ms": get_optional(root, "total_latency_ms") or 0,
+            "model_name": get_optional(root, "model_name") or "",
+            "judge_model_name": get_optional(root, "judge_model_name") or "",
+        },
+    )
+
+
 def _score_from_action_calling_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="action_calling:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="action_calling:root"), ctx="action_calling:metrics")
@@ -808,15 +839,23 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _bfcl_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.bfcl", "run", "--output", str(output_dir)]
-        if model.provider:
-            args.extend(["--provider", model.provider])
-        if model.model:
-            model_name = model.model
-            provider_name = (model.provider or "").strip().lower()
-            if provider_name == "groq" and not model_name.startswith("groq/"):
-                model_name = f"groq/{model_name}"
-            args.extend(["--model", model_name])
         provider_name = (model.provider or "").strip().lower()
+        agent = extra.get("agent")
+        # Route LLM-backed providers through the eliza TS bridge so the
+        # ElizaBFCLAgent + registered runtime is exercised.
+        bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
+        if agent == "eliza" or provider_name in bridge_providers:
+            args.extend(["--provider", "eliza"])
+            if model.model:
+                args.extend(["--model", model.model])
+        else:
+            if model.provider:
+                args.extend(["--provider", model.provider])
+            if model.model:
+                model_name = model.model
+                if provider_name == "groq" and not model_name.startswith("groq/"):
+                    model_name = f"groq/{model_name}"
+                args.extend(["--model", model_name])
         if extra.get("mock") is True or provider_name == "mock":
             args.append("--mock")
         sample = extra.get("sample")
@@ -860,10 +899,16 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if extra.get("mock") is True or provider_name == "mock":
             args.append("--mock")
         # Route the planning loop through the TS benchmark server when the
-        # caller asks for the eliza agent (either via model.provider or the
-        # explicit "agent": "eliza" extra).
+        # caller asks for the eliza agent or any LLM-backed provider.
         agent = extra.get("agent")
-        if agent == "eliza" or provider_name == "eliza":
+        if agent == "eliza" or provider_name in {
+            "eliza",
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+        }:
             args.extend(["--provider", "eliza"])
         return args
 
@@ -891,6 +936,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--provider", provider_name])
             if model.model:
                 args.extend(["--model", model.model])
+            base_url = extra.get("base_url")
+            if isinstance(base_url, str) and base_url.strip():
+                args.extend(["--base-url", base_url.strip()])
         elif model.provider:
             raise ValueError(f"mint: unsupported provider '{model.provider}'")
         if extra.get("no_ablation") is True:
@@ -964,11 +1012,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 provider_name = provider.strip().lower()
             elif model.provider:
                 provider_name = model.provider.strip().lower()
+            # Route all OpenAI-compatible LLM providers (including cerebras)
+            # through the eliza TS bridge instead of falling back to mock.
             provider_map: dict[str, str] = {
-                "openai": "eliza-openai",
-                "groq": "eliza-openai",
-                "openrouter": "eliza-openai",
-                "vllm": "eliza-openai",
+                "openai": "eliza",
+                "groq": "eliza",
+                "openrouter": "eliza",
+                "vllm": "eliza",
+                "cerebras": "eliza",
+                "eliza": "eliza",
                 "anthropic": "anthropic",
             }
             provider_str = provider_map.get(provider_name, "mock")
@@ -1004,7 +1056,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _terminalbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         # Run module from its python project root.
-        _ = extra
         args = [
             python,
             "-m",
@@ -1012,13 +1063,23 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output-dir",
             str(output_dir),
         ]
-        if model.model:
-            model_name = model.model
-            if model.provider and "/" not in model_name:
-                model_name = f"{model.provider}/{model_name}"
-            args.extend(["--model", model_name])
-        if model.provider:
-            args.extend(["--model-provider", model.provider])
+        provider_name = (model.provider or "").strip().lower()
+        agent = extra.get("agent")
+        # LLM-backed providers route through the eliza TS bridge so the
+        # registered eliza agent + plugins are exercised.
+        bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
+        if agent == "eliza" or provider_name in bridge_providers:
+            if model.model:
+                args.extend(["--model", model.model])
+            args.extend(["--model-provider", "eliza"])
+        else:
+            if model.model:
+                model_name = model.model
+                if model.provider and "/" not in model_name:
+                    model_name = f"{model.provider}/{model_name}"
+                args.extend(["--model", model_name])
+            if model.provider:
+                args.extend(["--model-provider", model.provider])
         if model.temperature is not None:
             args.extend(["--temperature", str(model.temperature)])
         max_tasks = extra.get("max_tasks")
@@ -1027,7 +1088,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         sample = extra.get("sample")
         if sample is True:
             args.append("--sample")
-        if extra.get("dry_run") is True:
+        if extra.get("dry_run") is True or extra.get("no_docker") is True:
             args.append("--dry-run")
         if extra.get("oracle") is True:
             args.append("--oracle")
@@ -1051,7 +1112,18 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         provider_name = (model.provider or "").strip().lower()
-        if provider_name == "mock":
+        agent = extra.get("agent")
+        # Route LLM-backed providers through the eliza TS bridge.
+        bridge_providers = {
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+            "eliza",
+            "mock",
+        }
+        if agent == "eliza" or provider_name in bridge_providers:
             args.extend(["--provider", "eliza"])
         elif model.provider:
             args.extend(["--provider", model.provider])
@@ -1094,7 +1166,17 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         agent = extra.get("agent")
-        if agent == "eliza":
+        provider_name = (model.provider or "").strip().lower()
+        # LLM-backed providers route through the eliza TS bridge so the
+        # registered eliza agent is exercised, not python mock.
+        if agent == "eliza" or provider_name in {
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+            "eliza",
+        }:
             args.extend(["--real-llm", "--model-provider", "eliza"])
         else:
             real = extra.get("real_llm")
@@ -1135,11 +1217,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             runs = extra.get("num_runs")
         if isinstance(runs, int) and runs > 0:
             args.extend(["--runs", str(runs)])
+        elif extra.get("max_tasks") == 1:
+            args.extend(["--runs", "1"])
         days = extra.get("days")
         if not isinstance(days, int):
             days = extra.get("max_days_per_run")
         if isinstance(days, int) and days > 0:
             args.extend(["--days", str(days)])
+        elif extra.get("max_tasks") == 1:
+            args.extend(["--days", "1"])
         return args
 
     def _vending_result(output_dir: Path) -> Path:
@@ -1275,6 +1361,20 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--seed", str(seed)])
         if extra.get("strict") is True:
             args.append("--strict")
+        # Default to bridge mode (real eliza TS agent) for any LLM-backed
+        # provider; explicit `--extra '{"mode":"simulate"}'` opts into the
+        # deterministic simulator for offline smoke-testing only.
+        provider_name = (model.provider or "").strip().lower()
+        mode_override = extra.get("mode")
+        if isinstance(mode_override, str) and mode_override.strip() in {
+            "bridge",
+            "simulate",
+        }:
+            args.extend(["--mode", mode_override.strip()])
+        elif provider_name in {"cerebras", "openai", "groq", "openrouter", "vllm", "anthropic", "google", "eliza"}:
+            args.extend(["--mode", "bridge"])
+        else:
+            args.extend(["--mode", "simulate"])
         return args
 
     def _orchestrator_lifecycle_result(output_dir: Path) -> Path:
@@ -1283,10 +1383,21 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _mind2web_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.mind2web", "--output", str(output_dir)]
         agent = extra.get("agent")
-        if agent == "eliza":
+        provider_name = (model.provider or "").strip().lower()
+        # Route LLM-backed providers through the eliza TS bridge so the actual
+        # registered eliza agent + plugins are exercised, not the python mock.
+        if agent == "eliza" or provider_name in {
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+            "eliza",
+        }:
             args.extend(["--real-llm", "--provider", "eliza"])
+            if model.model:
+                args.extend(["--model", model.model])
         else:
-            provider_name = (model.provider or "").strip().lower()
             if model.provider and provider_name != "mock":
                 args.extend(["--provider", model.provider])
             real_llm = extra.get("real_llm")
@@ -1539,6 +1650,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         seed = extra.get("seed")
         if isinstance(seed, int) and seed > 0:
             args.extend(["--seed", str(seed)])
+        max_scenarios = extra.get("max_scenarios")
+        if not isinstance(max_scenarios, int):
+            max_scenarios = extra.get("max_tasks")
+        if isinstance(max_scenarios, int) and max_scenarios > 0:
+            args.extend(["--max-scenarios", str(max_scenarios)])
         return args
 
     def _gauntlet_result(output_dir: Path) -> Path:
@@ -1611,7 +1727,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(mode, str) and mode.strip() in {"execution", "conceptual"}:
             args.extend(["--mode", mode.strip()])
         else:
-            args.extend(["--mode", "conceptual"])
+            # Default to execution: real file/exec validation, not keyword matching.
+            args.extend(["--mode", "execution"])
         task = extra.get("task")
         if isinstance(task, str) and task.strip():
             args.extend(["--task", task.strip()])
@@ -1700,6 +1817,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             profile = profile_raw.strip().lower()
         elif (model.provider or "").strip().lower() == "mock":
             profile = "mock"
+        elif not os.getenv("VOICEBENCH_AUDIO_PATH") and not (
+            Path("benchmarks/voicebench/shared/audio/default.wav").exists()
+            or Path("agent-town/public/assets/background.mp3").exists()
+        ):
+            profile = "mock"
         else:
             profile = "groq"
         if profile not in {"groq", "elevenlabs", "mock"}:
@@ -1750,6 +1872,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             provider_lower = (model.provider or "").strip().lower()
             if provider_lower in {"eliza", "eliza-bridge", "eliza-ts"}:
                 system = "eliza-bridge"
+            elif provider_lower in {"cerebras", "openai", "groq", "openrouter", "vllm"}:
+                system = "full"
             else:
                 system = "baseline"
         args.extend(["--system", system])
@@ -1876,8 +2000,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
         agent_raw = extra.get("agent")
         provider_lower = (model.provider or "").strip().lower()
+        payment_mode = extra.get("payment") is True or extra.get("payments") is True
         if agent_raw == "dummy" or extra.get("mock") is True or provider_lower == "mock":
-            args.extend(["--agent", "dummy"])
+            args.extend(["--agent", "dummy-charge" if payment_mode else "dummy"])
         else:
             args.extend(["--agent", "eliza"])
 
@@ -1899,6 +2024,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         concurrency = extra.get("concurrency")
         if isinstance(concurrency, int) and concurrency > 0:
             args.extend(["--concurrency", str(concurrency)])
+        payment_mock_url = extra.get("payment_mock_url")
+        if isinstance(payment_mock_url, str) and payment_mock_url.strip():
+            args.extend(["--payment-mock-url", payment_mock_url.strip()])
         return args
 
     def _woobench_result(output_dir: Path) -> Path:
@@ -1981,7 +2109,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(max_new_tokens, int) and max_new_tokens > 0:
             args.extend(["--max-new-tokens", str(max_new_tokens)])
         temperature = extra.get("temperature")
-        if isinstance(temperature, int | float) and not isinstance(temperature, bool):
+        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool):
             args.extend(["--temperature", str(float(temperature))])
         return args
 
@@ -2025,7 +2153,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(max_new_tokens, int) and max_new_tokens > 0:
             args.extend(["--max-new-tokens", str(max_new_tokens)])
         temperature = extra.get("temperature")
-        if isinstance(temperature, int | float) and temperature >= 0:
+        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool) and temperature >= 0:
             args.extend(["--temperature", str(float(temperature))])
         return args
 
@@ -2064,12 +2192,65 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(max_new_tokens, int) and max_new_tokens > 0:
             args.extend(["--max-new-tokens", str(max_new_tokens)])
         temperature = extra.get("temperature")
-        if isinstance(temperature, int | float) and temperature >= 0:
+        if isinstance(temperature, (int, float)) and not isinstance(temperature, bool) and temperature >= 0:
             args.extend(["--temperature", str(float(temperature))])
         return args
 
     def _action_calling_result(output_dir: Path) -> Path:
         return output_dir / "action-calling-results.json"
+
+    # lifeops-bench
+    def _lifeops_bench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        """Build the LifeOpsBench CLI invocation.
+
+        ``model.model`` selects the agent backend: ``perfect`` / ``wrong``
+        for hermetic oracle runs; ``hermes`` / ``cerebras-direct`` /
+        ``eliza`` for adapter-backed runs that need an API key. Default
+        (no model specified) is ``perfect`` for cheap smoke runs.
+        """
+        agent = model.model or "perfect"
+        args = [
+            python,
+            "-m",
+            "eliza_lifeops_bench",
+            "--agent",
+            agent,
+            "--output-dir",
+            str(output_dir),
+        ]
+        domain = extra.get("domain")
+        if isinstance(domain, str) and domain.strip():
+            args.extend(["--domain", domain.strip()])
+        mode = extra.get("mode")
+        if isinstance(mode, str) and mode.strip():
+            args.extend(["--mode", mode.strip()])
+        scenario = extra.get("scenario")
+        if isinstance(scenario, str) and scenario.strip():
+            args.extend(["--scenario", scenario.strip()])
+        seeds = extra.get("seeds")
+        if isinstance(seeds, int) and seeds > 0:
+            args.extend(["--seeds", str(seeds)])
+        concurrency = extra.get("concurrency")
+        if isinstance(concurrency, int) and concurrency > 0:
+            args.extend(["--concurrency", str(concurrency)])
+        max_cost_usd = extra.get("max_cost_usd")
+        if isinstance(max_cost_usd, (int, float)) and not isinstance(max_cost_usd, bool):
+            args.extend(["--max-cost-usd", str(float(max_cost_usd))])
+        per_scenario_timeout_s = extra.get("per_scenario_timeout_s")
+        if isinstance(per_scenario_timeout_s, int) and per_scenario_timeout_s > 0:
+            args.extend(["--per-scenario-timeout-s", str(per_scenario_timeout_s)])
+        evaluator_model = extra.get("evaluator_model")
+        if isinstance(evaluator_model, str) and evaluator_model.strip():
+            args.extend(["--evaluator-model", evaluator_model.strip()])
+        judge_model = extra.get("judge_model")
+        if isinstance(judge_model, str) and judge_model.strip():
+            args.extend(["--judge-model", judge_model.strip()])
+        return args
+
+    def _lifeops_bench_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="lifeops_*.json")
 
     return [
         BenchmarkDefinition(
@@ -2587,6 +2768,30 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_action_calling_cmd,
             locate_result=_action_calling_result,
             extract_score=_score_from_action_calling_json,
+        ),
+        BenchmarkDefinition(
+            id="lifeops_bench",
+            display_name="LifeOpsBench",
+            description="Multi-turn life-assistant tool-use benchmark (calendar/mail/messages/contacts/reminders/finance/travel/health/sleep/focus)",
+            cwd_rel="packages/benchmarks/lifeops-bench",
+            requirements=BenchmarkRequirements(
+                env_vars=("CEREBRAS_API_KEY", "ANTHROPIC_API_KEY"),
+                paths=(
+                    "packages/benchmarks/lifeops-bench/eliza_lifeops_bench",
+                    "packages/benchmarks/lifeops-bench/data/snapshots",
+                ),
+                notes=(
+                    "model.model selects the agent backend: 'perfect'/'wrong' for hermetic oracle runs (no env vars needed); "
+                    "'hermes'/'cerebras-direct'/'eliza' for live adapters. "
+                    "CEREBRAS_API_KEY is required when LIVE scenarios are scheduled (simulated user uses gpt-oss-120b). "
+                    "ANTHROPIC_API_KEY is required for the LIVE judge (claude-opus-4-7). "
+                    "Cost cap defaults to $10; override via extra.max_cost_usd. "
+                    "Score: pass@1 across all (scenario, seed) pairs. Higher is better."
+                ),
+            ),
+            build_command=_lifeops_bench_cmd,
+            locate_result=_lifeops_bench_result,
+            extract_score=_score_from_lifeops_bench_json,
         ),
     ]
 

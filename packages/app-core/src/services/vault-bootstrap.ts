@@ -16,17 +16,16 @@
  * failures are isolated; if every write fails the function throws.
  */
 
-import { persistConfigEnv, readConfigEnv } from "@elizaos/agent/api/config-env";
 import {
   type ElizaConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "@elizaos/agent/config/config";
-import { resolveStateDir } from "@elizaos/agent/config/paths";
-import {
   formatVaultRef,
   isVaultRef,
-} from "@elizaos/agent/runtime/operations/vault-bridge";
+  loadElizaConfig,
+  persistConfigEnv,
+  readConfigEnv,
+  resolveStateDir,
+  saveElizaConfig,
+} from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import type { Vault } from "@elizaos/vault";
 
@@ -45,7 +44,17 @@ interface VaultBootstrapOptions {
   vault?: Vault;
 }
 
-const ENV_VAR_KEY = /^[A-Z][A-Z0-9_]*$/;
+// Inlined helper instead of a `const ENV_VAR_KEY = /.../` module-scope
+// binding because Bun.build (1.3.13) collapses such top-level `const` regex
+// literals into `var ENV_VAR_KEY` declarations whose initialiser sits inside
+// an `__esm` wrapper. On the on-device runtime that wrapper sometimes fails
+// to fire before the first call site, leaving `ENV_VAR_KEY` undefined and
+// throwing `TypeError: undefined is not an object (evaluating
+// 'ENV_VAR_KEY.test')` mid-vault-bootstrap. A function returning the regex
+// stays callable regardless of init order.
+function isEnvVarKey(key: string): boolean {
+  return /^[A-Z][A-Z0-9_]*$/.test(key);
+}
 
 function inferSensitiveByHeuristic(key: string): boolean {
   return /(?:_API_KEY|_SECRET|_TOKEN|_PASSWORD|_PRIVATE_KEY|_SIGNING_|ENCRYPTION_)/i.test(
@@ -119,13 +128,13 @@ async function migrateElizaJson(
   const env = (config as { env?: unknown }).env;
   if (isPlainRecord(env)) {
     for (const key of Object.keys(env)) {
-      if (!ENV_VAR_KEY.test(key)) continue;
+      if (!isEnvVarKey(key)) continue;
       await tryMigrate(env, key);
     }
     const vars = (env as { vars?: unknown }).vars;
     if (isPlainRecord(vars)) {
       for (const key of Object.keys(vars)) {
-        if (!ENV_VAR_KEY.test(key)) continue;
+        if (!isEnvVarKey(key)) continue;
         await tryMigrate(vars, key);
       }
     }
@@ -193,7 +202,7 @@ async function mirrorProcessEnvSensitive(
   const failed: string[] = [];
 
   for (const [key, rawValue] of Object.entries(process.env)) {
-    if (!ENV_VAR_KEY.test(key)) continue;
+    if (!isEnvVarKey(key)) continue;
     if (seenKeys.has(key)) continue;
     if (typeof rawValue !== "string" || rawValue.length === 0) continue;
     if (isVaultRef(rawValue)) continue;

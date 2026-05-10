@@ -17,6 +17,10 @@
  */
 
 import type { Action, IAgentRuntime, Logger } from "@elizaos/core";
+import {
+  PARENT_AGENT_BROKER_SLUG,
+  runParentAgentBroker,
+} from "./parent-agent-broker.js";
 import type { PTYService } from "./pty-service.js";
 import {
   LIFEOPS_CONTEXT_BROKER_SLUG,
@@ -49,7 +53,7 @@ interface SkillCallbackResult {
 }
 
 function getLogger(runtime: IAgentRuntime): Logger | Console {
-  const candidate = (runtime as unknown as { logger?: Logger }).logger;
+  const candidate = (runtime as { logger?: Logger }).logger;
   return candidate ?? console;
 }
 
@@ -108,10 +112,10 @@ function formatResultForChild(
 
 /**
  * Locate the USE_SKILL action on the runtime. Returns null when the agent
- * skills plugin is not loaded — in that case the bridge stays inert.
+ * skills plugin is not loaded; virtual brokers still route without it.
  */
 function resolveUseSkillAction(runtime: IAgentRuntime): SkillUseAction | null {
-  const actions = (runtime as unknown as { actions?: Action[] }).actions;
+  const actions = (runtime as { actions?: Action[] }).actions;
   if (!Array.isArray(actions)) return null;
   for (const action of actions) {
     if (!action || typeof action.name !== "string") continue;
@@ -129,21 +133,21 @@ interface BridgeDeps {
    * Optional: per-session allow-list of skill slugs. The bridge consults the
    * registry below when dispatching a child USE_SKILL directive. A directive
    * whose slug is not on the session's allow-list is rejected back into the
-   * child with an error message listing the recommended slugs.
+   * child with an error message listing the slugs that were rendered into that
+   * session's SKILLS.md.
    *
    * If omitted (or no entry is registered for the session), the bridge falls
    * back to permissive behavior — any enabled skill may be invoked. This
    * preserves backwards-compatible behavior for callers that do not yet wire
-   * per-spawn recommendations.
+   * per-spawn manifests.
    */
   sessionAllowList?: SkillSessionAllowList;
 }
 
 /**
  * Session-scoped allow-list registry. Callers register a session's allow-list
- * at spawn time (see `coding-task-handlers.ts` after
- * `recommendSkillsForTask`). The bridge reads the entry when a USE_SKILL
- * directive arrives.
+ * at spawn time from the generated SKILLS.md manifest. The bridge reads the
+ * entry when a USE_SKILL directive arrives.
  *
  * Using a plain Map instead of a WeakMap — the key is the PTY sessionId
  * string assigned at spawn time, which we must explicitly clear on session
@@ -183,7 +187,7 @@ const installedRuntimes = new WeakSet<object>();
  * passed in to register per-session slugs.
  */
 export function ensureSkillCallbackBridge(deps: BridgeDeps): void {
-  const runtimeKey = deps.runtime as unknown as object;
+  const runtimeKey = deps.runtime as object;
   if (installedRuntimes.has(runtimeKey)) return;
   installedRuntimes.add(runtimeKey);
   installSkillCallbackBridge(deps);
@@ -208,12 +212,6 @@ export function installSkillCallbackBridge(deps: BridgeDeps): () => void {
   }
 
   const useSkillAction = resolveUseSkillAction(runtime);
-  if (!useSkillAction || typeof useSkillAction.handler !== "function") {
-    log.debug?.(
-      `${LOG_PREFIX} USE_SKILL action not registered; bridge inactive`,
-    );
-    return () => undefined;
-  }
 
   const dispatchToParent = async (
     sessionId: string,
@@ -276,6 +274,33 @@ export function installSkillCallbackBridge(deps: BridgeDeps): () => void {
           typeof result.text === "string" && result.text.trim()
             ? result.text
             : "(no output)",
+      });
+      await ptyService.sendToSession(sessionId, reply);
+      return;
+    }
+
+    if (invocation.slug === PARENT_AGENT_BROKER_SLUG) {
+      const result = await runParentAgentBroker({
+        runtime,
+        sessionId,
+        session: ptyService.getSession(sessionId),
+        args: invocation.args,
+      });
+      const reply = formatResultForChild(invocation.slug, {
+        success: result.success !== false,
+        text:
+          typeof result.text === "string" && result.text.trim()
+            ? result.text
+            : "(no output)",
+      });
+      await ptyService.sendToSession(sessionId, reply);
+      return;
+    }
+
+    if (!useSkillAction || typeof useSkillAction.handler !== "function") {
+      const reply = formatResultForChild(invocation.slug, {
+        success: false,
+        text: "The parent does not have the disk USE_SKILL action loaded for this skill. The virtual parent-agent and lifeops-context brokers can still be used when allowed for the task.",
       });
       await ptyService.sendToSession(sessionId, reply);
       return;

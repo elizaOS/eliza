@@ -10,6 +10,7 @@ import {
 } from "@elizaos/core";
 import type { LinearService } from "../services/linear";
 import type { DeleteCommentParameters } from "../types/index.js";
+import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const deleteCommentAction: Action = {
@@ -17,7 +18,8 @@ export const deleteCommentAction: Action = {
   contexts: ["tasks", "connectors", "automation"],
   contextGate: { anyOf: ["tasks", "connectors", "automation"] },
   roleGate: { minRole: "USER" },
-  description: "Delete a Linear comment by id",
+  description:
+    "Delete a specific Linear comment by its comment id. Use when the user asks to remove, retract, or erase a comment they previously left on a Linear issue.",
   descriptionCompressed: "delete Linear comment id",
   parameters: [
     {
@@ -26,11 +28,9 @@ export const deleteCommentAction: Action = {
       required: false,
       schema: { type: "string" },
     },
+    linearAccountIdParameter,
   ],
-  similes: [
-    "remove-linear-comment",
-    "erase-linear-comment",
-  ],
+  similes: ["remove-linear-comment", "erase-linear-comment"],
 
   examples: [
     [
@@ -48,11 +48,7 @@ export const deleteCommentAction: Action = {
     ],
   ],
 
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-  ): Promise<boolean> =>
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     validateLinearActionIntent(runtime, message, state, {
       keywords: ["delete", "remove", "linear", "comment"],
       regexAlternation: "delete|remove|linear|comment",
@@ -63,34 +59,32 @@ export const deleteCommentAction: Action = {
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
       const linearService = runtime.getService<LinearService>("linear");
       if (!linearService) {
         throw new Error("Linear service not available");
       }
+      const accountId = getLinearAccountId(runtime, _options);
 
-      const params = _options?.parameters as
-        | DeleteCommentParameters
-        | undefined;
+      const params = _options?.parameters as DeleteCommentParameters | undefined;
       const commentId = params?.commentId?.trim() ?? "";
 
       if (!commentId) {
-        const errorMessage =
-          "Please provide a commentId to delete.";
+        const errorMessage = "Please provide a commentId to delete.";
         await callback?.({ text: errorMessage, source: message.content.source });
         return { text: errorMessage, success: false };
       }
 
-      await linearService.deleteComment(commentId);
+      await linearService.deleteComment(commentId, accountId);
 
       const successMessage = `Deleted comment ${commentId}.`;
       await callback?.({ text: successMessage, source: message.content.source });
       return {
         text: successMessage,
         success: true,
-        data: { commentId },
+        data: { commentId, accountId },
       };
     } catch (error) {
       logger.error("Failed to delete comment:", error);

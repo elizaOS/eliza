@@ -15,7 +15,6 @@ import type {
 	GenerateTextParams,
 	IAgentRuntime,
 	ModelTypeName,
-	ObjectGenerationParams,
 	TextEmbeddingParams,
 } from "../types";
 import { ModelType } from "../types";
@@ -25,9 +24,9 @@ const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 
 /** Default models for different types */
 const DEFAULT_MODELS = {
-	text_small: process.env.OLLAMA_SMALL_MODEL || "llama3.2:1b",
-	text_large: process.env.OLLAMA_LARGE_MODEL || "llama3.2:3b",
-	embedding: process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text",
+	text_small: process.env.OLLAMA_SMALL_MODEL || "eliza-1-2b",
+	text_large: process.env.OLLAMA_LARGE_MODEL || "eliza-1-9b",
+	embedding: process.env.OLLAMA_EMBEDDING_MODEL || "eliza-1-2b",
 } as const;
 
 /**
@@ -195,33 +194,6 @@ async function generateEmbeddingWithOllama(
 }
 
 /**
- * Extract JSON object from a text response that may contain surrounding text
- */
-function extractJsonFromResponse(response: string): Record<string, unknown> {
-	// Try to find JSON object in the response
-	const jsonMatch = response.match(/\{[\s\S]*\}/);
-	const textToParse = jsonMatch ? jsonMatch[0] : response;
-
-	try {
-		const parsed: unknown = JSON.parse(textToParse);
-		if (
-			typeof parsed !== "object" ||
-			parsed === null ||
-			Array.isArray(parsed)
-		) {
-			throw new Error(`Expected JSON object but got: ${typeof parsed}`);
-		}
-		return parsed as Record<string, unknown>;
-	} catch (error) {
-		const message =
-			error instanceof Error ? error.message : "Unknown parse error";
-		throw new Error(
-			`Failed to parse JSON from Ollama response: ${message}\nResponse was: ${response.slice(0, 200)}`,
-		);
-	}
-}
-
-/**
  * Handle TEXT_SMALL model requests
  */
 async function handleTextSmall(
@@ -300,59 +272,18 @@ async function handleTextEmbedding(
 }
 
 /**
- * Generate structured object using Ollama with JSON mode
- */
-async function generateObjectWithOllama(
-	runtime: IAgentRuntime,
-	model: string,
-	params: ObjectGenerationParams,
-): Promise<Record<string, unknown>> {
-	logger.debug({ src: "ollama", model }, "OBJECT generation request");
-
-	const jsonPrompt = `${params.prompt}\n\nRespond with valid JSON only:`;
-	const response = await generateTextWithOllama(model, jsonPrompt, {
-		system: buildCanonicalSystemPrompt({ character: runtime.character }),
-		temperature: params.temperature ?? 0.3, // Lower temp for structured output
-		maxTokens: params.maxTokens,
-	});
-
-	return extractJsonFromResponse(response);
-}
-
-/**
- * Handle OBJECT_SMALL model requests
- */
-async function handleObjectSmall(
-	runtime: IAgentRuntime,
-	params: ObjectGenerationParams,
-): Promise<Record<string, unknown>> {
-	return generateObjectWithOllama(runtime, DEFAULT_MODELS.text_small, params);
-}
-
-/**
- * Handle OBJECT_LARGE model requests
- */
-async function handleObjectLarge(
-	runtime: IAgentRuntime,
-	params: ObjectGenerationParams,
-): Promise<Record<string, unknown>> {
-	return generateObjectWithOllama(runtime, DEFAULT_MODELS.text_large, params);
-}
-
-/**
  * Union type of all model parameter types for Ollama handlers
  */
 type OllamaModelParams =
 	| GenerateTextParams
 	| TextEmbeddingParams
-	| ObjectGenerationParams
 	| string
 	| null;
 
 /**
  * Union type of all model result types for Ollama handlers
  */
-type OllamaModelResult = string | number[] | Record<string, unknown>;
+type OllamaModelResult = string | number[];
 
 /**
  * Model handler function type
@@ -372,7 +303,5 @@ export function createOllamaModelHandlers(): Partial<
 		[ModelType.TEXT_SMALL]: handleTextSmall as ModelHandlerFn,
 		[ModelType.TEXT_LARGE]: handleTextLarge as ModelHandlerFn,
 		[ModelType.TEXT_EMBEDDING]: handleTextEmbedding as ModelHandlerFn,
-		[ModelType.OBJECT_SMALL]: handleObjectSmall as ModelHandlerFn,
-		[ModelType.OBJECT_LARGE]: handleObjectLarge as ModelHandlerFn,
 	};
 }

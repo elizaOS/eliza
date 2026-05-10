@@ -518,7 +518,9 @@ export const formatMessages = ({
 								lines.push(`Type: ${media.contentType}`);
 							}
 							if (media.text || media.description) {
-								lines.push("Stored content available via READ_ATTACHMENT");
+								lines.push(
+									"Stored content available via ATTACHMENT action=read",
+								);
 							}
 							return lines.join("\n");
 						})
@@ -574,7 +576,7 @@ export const formatMessages = ({
 
 	return [
 		formattedMessages,
-		`Note: ${omittedAttachmentCount} older attachment${omittedAttachmentCount === 1 ? "" : "s"} omitted from context. Use READ_ATTACHMENT to inspect additional attachments.`,
+		`Note: ${omittedAttachmentCount} older attachment${omittedAttachmentCount === 1 ? "" : "s"} omitted from context. Use ATTACHMENT action=read to inspect additional attachments.`,
 	]
 		.filter(Boolean)
 		.join("\n");
@@ -590,6 +592,7 @@ export const formatTimestamp = formatTimestampBase;
  * finishes those surfaces.
  */
 export function parseKeyValueXml<T = Record<string, unknown>>(
+	// audit:allowlist - retained for cloud/ XML evaluators
 	text: string,
 ): T | null {
 	if (!text) return null;
@@ -611,7 +614,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 			return null;
 		}
 
-		const firstBlock = findFirstXmlBlock(text);
+		const firstBlock = findFirstXmlBlock(text); // audit:allowlist - helper for parseKeyValueXml
 		if (!firstBlock) {
 			logger.warn({ src: "core:utils" }, "Could not find XML block in text");
 			return null;
@@ -649,6 +652,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 }
 
 function findFirstXmlBlock(
+	// audit:allowlist - helper for parseKeyValueXml (legacy XML parser, retained for cloud/)
 	input: string,
 ): { tag: string; content: string } | null {
 	let i = 0;

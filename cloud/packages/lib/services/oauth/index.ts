@@ -49,9 +49,19 @@ export type {
   InitiateAuthResult,
   ListConnectionsParams,
   OAuthConnection,
+  OAuthConnectionRole,
+  OAuthConnectionRoleOutput,
   OAuthConnectionSource,
   OAuthConnectionStatus,
   OAuthProviderInfo,
   OAuthProviderType,
+  OAuthStandardConnectionRole,
   TokenResult,
+} from "./types";
+export {
+  formatOAuthConnectionRole,
+  isOAuthConnectionRole,
+  normalizeOAuthConnectionRole,
+  OAUTH_CONNECTION_ROLES,
+  parseOAuthConnectionRole,
 } from "./types";

@@ -1,8 +1,5 @@
 import type { Plugin } from "../../types/index.ts";
-import {
-	longTermExtractionEvaluator,
-	summarizationEvaluator,
-} from "./evaluators/index.ts";
+import { memoryItems } from "./evaluators/index.ts";
 import {
 	contextSummaryProvider,
 	longTermMemoryProvider,
@@ -10,8 +7,9 @@ import {
 import { MemoryService } from "./services/memory-service.ts";
 
 export {
-	longTermExtractionEvaluator,
-	summarizationEvaluator,
+	longTermMemoryEvaluator,
+	memoryItems,
+	summaryEvaluator,
 } from "./evaluators/index.ts";
 export {
 	contextSummaryProvider,
@@ -44,7 +42,7 @@ export function createAdvancedMemoryPlugin(): Plugin {
 		description:
 			"Memory management with conversation summarization and long-term persistent memory",
 		services: [MemoryService],
-		evaluators: [summarizationEvaluator, longTermExtractionEvaluator],
+		evaluators: memoryItems,
 		providers: [longTermMemoryProvider, contextSummaryProvider],
 	};
 }

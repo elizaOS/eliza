@@ -353,7 +353,7 @@ The simplest way to configure models is through `agents.defaults.model`:
     defaults: {
       model: {
         primary: "anthropic/claude-sonnet-4.6",
-        fallbacks: ["openai/gpt-5", "groq/llama-3.3-70b"],
+        fallbacks: ["openai/gpt-5", "groq/openai/gpt-oss-120b"],
       },
     },
   },
@@ -493,7 +493,6 @@ Eliza automatically enables plugins based on your configuration. You do not need
 | `CUA_API_KEY` / `CUA_HOST` | `@elizaos/plugin-cua` |
 | `OBSIDIAN_VAULT_PATH` | `@elizaos/plugin-obsidian` |
 | `REPOPROMPT_CLI_PATH` | `@elizaos/plugin-repoprompt` |
-| `CLAUDE_CODE_WORKBENCH_ENABLED` | `@elizaos/plugin-claude-code-workbench` |
 
 **Feature plugins** are auto-enabled via the `features` flag map:
 
@@ -533,7 +532,6 @@ Eliza automatically enables plugins based on your configuration. You do not need
 | `vision` | `@elizaos/plugin-vision` |
 | `computeruse` | `@elizaos/plugin-computeruse` |
 | `repoprompt` | `@elizaos/plugin-repoprompt` |
-| `claudeCodeWorkbench` | `@elizaos/plugin-claude-code-workbench` |
 
 <Info>
 The `vision`, `fal`, and `suno` plugins are also auto-enabled when their respective `media.*` config sections are configured (e.g., `media.vision.provider` is set, or `media.image.provider: "fal"` with `mode: "own-key"`). Webhook plugins auto-enable when `hooks.token` is set. Gmail watch auto-enables when `hooks.gmail.account` is set.

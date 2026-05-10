@@ -103,7 +103,7 @@ def _ps(name: str, type_: str, *, required: bool = False,
             "description": description}
 
 
-# Discord 17 actions
+# Discord 17 connector intents mapped to canonical actions
 DISCORD_PARAMS: dict[str, list[ParamSpec]] = {
     "CHAT_WITH_ATTACHMENTS": [
         _ps("objective", "string", required=True,
@@ -137,7 +137,7 @@ DISCORD_PARAMS: dict[str, list[ParamSpec]] = {
         _ps("channelRef", "string",
             description="Channel ref or 'current'."),
     ],
-    "GET_USER_INFO": [
+    "discord_get_user": [
         _ps("userIdentifier", "string", required=True,
             description="User mention, ID, or username."),
         _ps("detailed", "boolean",
@@ -151,23 +151,25 @@ DISCORD_PARAMS: dict[str, list[ParamSpec]] = {
         _ps("channelName", "string",
             description="Voice channel name to leave (default: current)."),
     ],
-    "LIST_CHANNELS": [
+    "discord_list_channels": [
         _ps("guildId", "string",
             description="Optional Discord guild ID; defaults to current guild."),
     ],
-    "PIN_MESSAGE": [
+    "discord_pin_message": [
         _ps("messageRef", "string", required=True,
             description="Message ID or 'last' to pin."),
         _ps("channelRef", "string",
             description="Channel ref or 'current'."),
+        _ps("pin", "boolean", required=True,
+            description="True to pin; false to remove an existing pin."),
     ],
-    "SEND_DM": [
+    "discord_private_message": [
         _ps("recipientIdentifier", "string", required=True,
             description="Recipient user mention, ID, or username."),
         _ps("messageContent", "string", required=True,
             description="DM body to send."),
     ],
-    "SEND_MESSAGE": [
+    "discord_channel_message": [
         _ps("text", "string", required=True,
             description="Message text to send."),
         _ps("channelRef", "string",
@@ -195,29 +197,31 @@ DISCORD_PARAMS: dict[str, list[ParamSpec]] = {
         _ps("attachmentId", "string", required=True,
             description="Discord attachment ID to transcribe."),
     ],
-    "UNPIN_MESSAGE": [
+    "discord_unpin_message": [
         _ps("messageRef", "string", required=True,
             description="Message ID or 'last' to unpin."),
         _ps("channelRef", "string",
             description="Channel ref or 'current'."),
+        _ps("pin", "boolean", required=True,
+            description="True to pin; false to remove an existing pin."),
     ],
 }
 
-# Twitter 7 actions
+# Twitter/X 7 connector intents mapped to canonical actions
 TWITTER_PARAMS: dict[str, list[ParamSpec]] = {
-    "FETCH_FEED_TOP": [
+    "x_feed_top": [
         _ps("topN", "number",
             description="Number of top tweets to return (1-50)."),
     ],
-    "POST_TWEET": [
+    "x_post_basic": [
         _ps("text", "string", required=True,
             description="The tweet body (<=280 chars)."),
     ],
-    "READ_UNREAD_X_DMS": [
+    "x_read_messages": [
         _ps("limit", "number",
             description="Max number of unread DMs to fetch."),
     ],
-    "REPLY_X_DM": [
+    "x_direct_message": [
         _ps("recipient", "string", required=True,
             description="Recipient user id or username (no leading @)."),
         _ps("text", "string", required=True,
@@ -225,39 +229,39 @@ TWITTER_PARAMS: dict[str, list[ParamSpec]] = {
         _ps("confirmed", "boolean",
             description="Must be true for the DM to actually send."),
     ],
-    "SEARCH_X": [
+    "x_search_posts": [
         _ps("query", "string", required=True,
             description="Search query against X recent tweets."),
         _ps("maxResults", "number",
             description="Maximum tweets to return (1-100)."),
     ],
-    "SEND_X_POST": [
+    "x_post_confirmed": [
         _ps("text", "string", required=True,
             description="The tweet body."),
         _ps("confirmed", "boolean",
             description="Must be true for the tweet to actually post."),
     ],
-    "SUMMARIZE_FEED": [
+    "x_feed_summary": [
         _ps("topN", "number",
             description="Number of top tweets to summarize."),
     ],
 }
 
-# Signal 5 actions
+# Signal 5 connector intents mapped to canonical actions
 SIGNAL_PARAMS: dict[str, list[ParamSpec]] = {
-    "SIGNAL_LIST_CONTACTS": [],
-    "SIGNAL_LIST_GROUPS": [],
-    "SIGNAL_READ_RECENT_MESSAGES": [
+    "signal_contacts": [],
+    "signal_groups": [],
+    "signal_read_messages": [
         _ps("limit", "number",
             description="Max number of recent messages to read."),
     ],
-    "SIGNAL_SEND_MESSAGE": [
+    "signal_message": [
         _ps("text", "string", required=True,
             description="The Signal message text to send."),
         _ps("recipient", "string",
             description="E.164 phone (+1234567890), group ID, or 'current'."),
     ],
-    "SIGNAL_SEND_REACTION": [
+    "signal_reaction": [
         _ps("emoji", "string", required=True,
             description="Single emoji to react with."),
         _ps("targetTimestamp", "number", required=True,
@@ -269,9 +273,9 @@ SIGNAL_PARAMS: dict[str, list[ParamSpec]] = {
     ],
 }
 
-# BlueBubbles 2 actions
+# BlueBubbles 2 connector intents mapped to canonical actions
 BLUEBUBBLES_PARAMS: dict[str, list[ParamSpec]] = {
-    "BLUEBUBBLES_SEND_REACTION": [
+    "bluebubbles_reaction": [
         _ps("emoji", "string", required=True,
             description="Reaction (heart, thumbsup, thumbsdown, haha, "
             "exclamation, question, or any emoji)."),
@@ -280,7 +284,7 @@ BLUEBUBBLES_PARAMS: dict[str, list[ParamSpec]] = {
         _ps("remove", "boolean",
             description="True to remove the reaction; false to add it."),
     ],
-    "SEND_BLUEBUBBLES_MESSAGE": [
+    "bluebubbles_message": [
         _ps("text", "string", required=True,
             description="The iMessage body to send."),
         _ps("chatGuid", "string",
@@ -288,9 +292,9 @@ BLUEBUBBLES_PARAMS: dict[str, list[ParamSpec]] = {
     ],
 }
 
-# iMessage 1 action
+# iMessage 1 connector intent mapped to canonical actions
 IMESSAGE_PARAMS: dict[str, list[ParamSpec]] = {
-    "IMESSAGE_SEND_MESSAGE": [
+    "imessage_message": [
         _ps("text", "string", required=True,
             description="The iMessage body to send."),
         _ps("to", "string",
@@ -298,15 +302,15 @@ IMESSAGE_PARAMS: dict[str, list[ParamSpec]] = {
     ],
 }
 
-# WhatsApp 2 actions
+# WhatsApp 2 connector intents mapped to canonical actions
 WHATSAPP_PARAMS: dict[str, list[ParamSpec]] = {
-    "WHATSAPP_SEND_MESSAGE": [
+    "whatsapp_message": [
         _ps("to", "string", required=True,
             description="Phone in E.164 format (e.g. +14155552671)."),
         _ps("text", "string", required=True,
             description="The WhatsApp message body."),
     ],
-    "WHATSAPP_SEND_REACTION": [
+    "whatsapp_reaction": [
         _ps("messageId", "string", required=True,
             description="WhatsApp message ID to react to."),
         _ps("emoji", "string", required=True,
@@ -503,7 +507,7 @@ def to_naive(text: str) -> str:
 # preset translations per action covers the non-en bucket.
 
 TRANSLATIONS: dict[str, dict[str, list[str]]] = {
-    "SEND_MESSAGE": {
+    "discord_channel_message": {
         "zh": ["请在#general 频道发：{text}", "帮我在 {channel} 发一条消息：{text}"],
         "es": ["por favor envía «{text}» al canal {channel}",
                "manda este mensaje al {channel}: {text}"],
@@ -516,7 +520,7 @@ TRANSLATIONS: dict[str, dict[str, list[str]]] = {
         "pt": ["por favor envie \"{text}\" no {channel}",
                "manda essa mensagem em {channel}: {text}"],
     },
-    "POST_TWEET": {
+    "x_post_basic": {
         "zh": ["发个推文：{text}", "请帮我发一条推：{text}"],
         "es": ["postea este tweet: {text}", "publica un tweet: {text}"],
         "fr": ["publie ce tweet : {text}", "tweete ceci : {text}"],
@@ -526,7 +530,7 @@ TRANSLATIONS: dict[str, dict[str, list[str]]] = {
         "pt": ["por favor poste este tweet: {text}",
                "tweeta isso aí: {text}"],
     },
-    "SEND_DM": {
+    "discord_private_message": {
         "zh": ["给 {recipient} 发私信：{text}",
                "请私信 {recipient}：{text}"],
         "es": ["mándale un DM a {recipient}: {text}",
@@ -540,7 +544,7 @@ TRANSLATIONS: dict[str, dict[str, list[str]]] = {
         "pt": ["manda DM pro {recipient}: {text}",
                "envie um privado para {recipient}: {text}"],
     },
-    "WHATSAPP_SEND_MESSAGE": {
+    "whatsapp_message": {
         "zh": ["请用 WhatsApp 给 {to} 发：{text}",
                "WhatsApp 发给 {to}：{text}"],
         "es": ["envía un WhatsApp a {to}: {text}",
@@ -554,7 +558,7 @@ TRANSLATIONS: dict[str, dict[str, list[str]]] = {
         "pt": ["envia um WhatsApp pra {to}: {text}",
                "manda no WhatsApp para {to}: {text}"],
     },
-    "SIGNAL_SEND_MESSAGE": {
+    "signal_message": {
         "zh": ["用 Signal 发：{text}", "Signal 发送：{text}"],
         "es": ["envía por Signal: {text}", "manda por Signal: {text}"],
         "fr": ["envoie par Signal : {text}", "Signal : {text}"],
@@ -562,7 +566,7 @@ TRANSLATIONS: dict[str, dict[str, list[str]]] = {
         "de": ["sende per Signal: {text}", "Signal-Nachricht: {text}"],
         "pt": ["manda no Signal: {text}", "envia pelo Signal: {text}"],
     },
-    "IMESSAGE_SEND_MESSAGE": {
+    "imessage_message": {
         "zh": ["iMessage 给 {to}：{text}", "用 iMessage 发：{text}"],
         "es": ["iMessage a {to}: {text}", "envía un iMessage: {text}"],
         "fr": ["iMessage à {to} : {text}", "envoie un iMessage : {text}"],
@@ -571,7 +575,7 @@ TRANSLATIONS: dict[str, dict[str, list[str]]] = {
         "pt": ["manda iMessage pro {to}: {text}",
                "envia um iMessage: {text}"],
     },
-    "SEND_BLUEBUBBLES_MESSAGE": {
+    "bluebubbles_message": {
         "zh": ["通过 BlueBubbles 发 iMessage：{text}",
                "用 BlueBubbles 发：{text}"],
         "es": ["envía vía BlueBubbles: {text}",
@@ -585,7 +589,7 @@ TRANSLATIONS: dict[str, dict[str, list[str]]] = {
         "pt": ["manda pelo BlueBubbles: {text}",
                "iMessage via BlueBubbles: {text}"],
     },
-    "SEARCH_X": {
+    "x_search_posts": {
         "zh": ["在 X 上搜：{query}", "X 搜索：{query}"],
         "es": ["busca en X: {query}", "haz una búsqueda en X: {query}"],
         "fr": ["cherche sur X : {query}", "recherche X : {query}"],
@@ -593,7 +597,7 @@ TRANSLATIONS: dict[str, dict[str, list[str]]] = {
         "de": ["suche auf X nach {query}", "X-Suche: {query}"],
         "pt": ["pesquise no X: {query}", "buscar no X: {query}"],
     },
-    "FETCH_FEED_TOP": {
+    "x_feed_top": {
         "zh": ["拉取 X 时间线前几条", "看一下 X 首页热门"],
         "es": ["trae lo más top de mi feed de X",
                "muéstrame lo mejor del feed de X"],
@@ -606,7 +610,7 @@ TRANSLATIONS: dict[str, dict[str, list[str]]] = {
         "pt": ["pega os top tweets do meu feed do X",
                "me mostra o melhor do feed do X"],
     },
-    "SUMMARIZE_FEED": {
+    "x_feed_summary": {
         "zh": ["总结一下 X 时间线",
                "把 X 首页前 N 条总结一下"],
         "es": ["resume mi feed de X",
@@ -620,7 +624,7 @@ TRANSLATIONS: dict[str, dict[str, list[str]]] = {
         "pt": ["resume meu feed do X",
                "me dá um resumo do top do feed"],
     },
-    "READ_UNREAD_X_DMS": {
+    "x_read_messages": {
         "zh": ["看看 X 的未读私信", "X 上有什么没读的 DM"],
         "es": ["léeme los DMs no leídos de X",
                "muéstrame los DMs sin leer en X"],
@@ -633,7 +637,7 @@ TRANSLATIONS: dict[str, dict[str, list[str]]] = {
         "pt": ["lê meus DMs do X não lidos",
                "mostra os DMs do X que não li"],
     },
-    "REPLY_X_DM": {
+    "x_direct_message": {
         "zh": ["回复 {recipient} 的 X 私信：{text}",
                "给 {recipient} 在 X 回 DM：{text}"],
         "es": ["responde el DM de X a {recipient}: {text}",
@@ -647,7 +651,7 @@ TRANSLATIONS: dict[str, dict[str, list[str]]] = {
         "pt": ["responde o DM do X para {recipient}: {text}",
                "manda resposta no X DM pro {recipient}: {text}"],
     },
-    "SEND_X_POST": {
+    "x_post_confirmed": {
         "zh": ["在 X 上发：{text}", "X 发推：{text}"],
         "es": ["publica en X: {text}", "haz un post en X: {text}"],
         "fr": ["publie sur X : {text}", "post sur X : {text}"],
@@ -683,14 +687,14 @@ def _quote_id(s: str) -> str:
     return s
 
 
-def _build_args(action: str, idx: int, rng: random.Random,
+def _build_args(action: str, param_key: str, param_specs: list[ParamSpec],
+                idx: int, rng: random.Random,
                 style: str) -> tuple[dict[str, Any], dict[str, Any]]:
     """Return (arguments_dict, scenario_facts) for a given action.
 
     scenario_facts holds the underlying fields used to phrase the user
     message — speaker name, channel ref, etc.
     """
-    sp = ALL_PARAMS.get(action, [])
     args: dict[str, Any] = {}
     facts: dict[str, Any] = {}
 
@@ -703,10 +707,10 @@ def _build_args(action: str, idx: int, rng: random.Random,
             return rng.random() < 0.2
         return (idx + ord(p["name"][0])) % 2 == 0
 
-    for p in sp:
+    for p in param_specs:
         if not maybe_optional(p):
             continue
-        v = _sample_value(action, p, idx, rng)
+        v = _sample_value(action, param_key, p, idx, rng)
         if v is None:
             continue
         args[p["name"]] = v
@@ -723,17 +727,18 @@ def _build_args(action: str, idx: int, rng: random.Random,
     return args, facts
 
 
-def _sample_value(action: str, p: ParamSpec, idx: int,
+def _sample_value(action: str, param_key: str, p: ParamSpec, idx: int,
                   rng: random.Random) -> Any:
     n = p["name"]
     t = p["type"]
     # General string/number fallbacks driven by name
     if n == "text":
-        if action in ("POST_TWEET", "SEND_X_POST"):
+        if action == "POST" or param_key.startswith("x_post"):
             return SAMPLE_TWEETS[idx % len(SAMPLE_TWEETS)]
-        if action == "REPLY_X_DM":
-            return DM_BODIES[idx % len(DM_BODIES)]
-        if action == "SEND_DM":
+        if param_key in {
+            "discord_private_message", "x_direct_message", "signal_message",
+            "bluebubbles_message", "imessage_message", "whatsapp_message",
+        }:
             return DM_BODIES[idx % len(DM_BODIES)]
         msgs = [
             "Hey team — quick update on the migration: we're 80% through.",
@@ -782,9 +787,9 @@ def _sample_value(action: str, p: ParamSpec, idx: int,
     if n == "recipientIdentifier":
         return DISCORD_USER_REFS[idx % len(DISCORD_USER_REFS)]
     if n == "recipient":
-        if action == "REPLY_X_DM":
+        if param_key == "x_direct_message":
             return TWITTER_HANDLES[idx % len(TWITTER_HANDLES)]
-        # SIGNAL_SEND_MESSAGE: phone, group, or 'current'
+        # Signal message: phone, group, or 'current'
         bucket = idx % 4
         if bucket == 0:
             return "current"
@@ -792,9 +797,9 @@ def _sample_value(action: str, p: ParamSpec, idx: int,
             return SIGNAL_GROUPS[idx % len(SIGNAL_GROUPS)]
         return PHONES[idx % len(PHONES)]
     if n == "to":
-        if action == "WHATSAPP_SEND_MESSAGE":
+        if param_key == "whatsapp_message":
             return PHONES[idx % len(PHONES)]
-        # IMESSAGE_SEND_MESSAGE
+        # iMessage
         bucket = idx % 4
         if bucket == 0:
             return "current"
@@ -828,6 +833,8 @@ def _sample_value(action: str, p: ParamSpec, idx: int,
     if n == "confirmed":
         # Only `True` is meaningful; we surface confirmation in 60% of records
         return idx % 5 != 0
+    if n == "pin":
+        return param_key != "discord_unpin_message"
     if n == "remove":
         return idx % 4 == 0
     if n == "emoji":
@@ -850,7 +857,7 @@ def _sample_value(action: str, p: ParamSpec, idx: int,
 # ────────────────────────── Phrasing per action ──────────────────────────
 
 
-def _en_phrasings(action: str, args: dict[str, Any],
+def _en_phrasings(action: str, param_key: str, args: dict[str, Any],
                   facts: dict[str, Any]) -> list[str]:
     a = action
     text = facts.get("text") or "..."
@@ -858,58 +865,58 @@ def _en_phrasings(action: str, args: dict[str, Any],
     recipient = facts.get("recipient") or "alice"
     msg_id = facts.get("messageId") or "last"
     emoji = facts.get("emoji") or "👍"
-    if a == "SEND_MESSAGE":
+    if param_key == "discord_channel_message":
         return [
             f"send '{text}' to {channel}",
             f"please post this in {channel}: {text}",
             f"in #{channel.lstrip('#')}, drop the line: {text}",
             f"could you say in {channel}: {text}",
         ]
-    if a == "SEND_DM":
+    if param_key == "discord_private_message":
         return [
             f"DM {recipient}: {text}",
             f"send {recipient} a private message saying {text!r}",
             f"slide into {recipient}'s DMs with: {text}",
         ]
-    if a == "EDIT_MESSAGE":
+    if (a == "MESSAGE" and param_key == "EDIT_MESSAGE") or a == "EDIT_MESSAGE":
         new = args.get("newText", text)
         return [
             f"edit message {msg_id} in {channel} to say: {new}",
             f"can you patch message {msg_id} → {new}",
             f"update {msg_id} to: {new}",
         ]
-    if a == "DELETE_MESSAGE":
+    if (a == "MESSAGE" and param_key == "DELETE_MESSAGE") or a == "DELETE_MESSAGE":
         return [
             f"delete message {msg_id} in {channel}",
             f"remove that one — id {msg_id} — from {channel}",
             f"please yank discord msg {msg_id}",
         ]
-    if a == "PIN_MESSAGE":
+    if param_key == "discord_pin_message":
         return [
             f"pin message {msg_id} in {channel}",
             f"make {msg_id} sticky in {channel}",
             f"please pin the {msg_id} message",
         ]
-    if a == "UNPIN_MESSAGE":
+    if param_key == "discord_unpin_message":
         return [
             f"unpin {msg_id} from {channel}",
             f"remove pin on message {msg_id}",
             f"can you unpin the {msg_id} note in {channel}",
         ]
-    if a == "JOIN_CHANNEL":
+    if (a == "MESSAGE" and param_key == "JOIN_CHANNEL") or a == "JOIN_CHANNEL":
         return [
             f"hop into the {args.get('channelName')} voice channel",
             f"join voice: {args.get('channelName')}",
             f"can you join {args.get('channelName')} VC",
         ]
-    if a == "LEAVE_CHANNEL":
+    if (a == "MESSAGE" and param_key == "LEAVE_CHANNEL") or a == "LEAVE_CHANNEL":
         cn = args.get("channelName") or "the current voice room"
         return [
             f"leave the {cn} voice channel",
             f"please disconnect from {cn}",
             f"hop out of {cn} VC",
         ]
-    if a == "LIST_CHANNELS":
+    if param_key == "discord_list_channels":
         gid = args.get("guildId")
         if gid:
             return [
@@ -921,7 +928,7 @@ def _en_phrasings(action: str, args: dict[str, Any],
             "show me all the channels we have",
             "what channels exist here?",
         ]
-    if a == "GET_USER_INFO":
+    if param_key == "discord_get_user":
         ui = args.get("userIdentifier", recipient)
         det = args.get("detailed", False)
         if det:
@@ -980,13 +987,13 @@ def _en_phrasings(action: str, args: dict[str, Any],
         ]
 
     # Twitter
-    if a == "POST_TWEET":
+    if param_key == "x_post_basic":
         return [
             f"tweet: {text}",
             f"post on twitter: {text}",
             f"new tweet please — {text}",
         ]
-    if a == "SEND_X_POST":
+    if param_key == "x_post_confirmed":
         if args.get("confirmed"):
             return [
                 f"yes confirmed, post the tweet: {text}",
@@ -996,7 +1003,7 @@ def _en_phrasings(action: str, args: dict[str, Any],
             f"draft a tweet for me: {text}",
             f"prepare X post: {text}",
         ]
-    if a == "REPLY_X_DM":
+    if param_key == "x_direct_message":
         if args.get("confirmed"):
             return [
                 f"confirmed — reply to {recipient}'s X DM with: {text}",
@@ -1006,7 +1013,7 @@ def _en_phrasings(action: str, args: dict[str, Any],
             f"draft a DM reply to {recipient}: {text}",
             f"prepare reply to {recipient} on X: {text}",
         ]
-    if a == "SEARCH_X":
+    if param_key == "x_search_posts":
         q = args.get("query", "")
         mr = args.get("maxResults")
         if mr:
@@ -1018,58 +1025,58 @@ def _en_phrasings(action: str, args: dict[str, Any],
             f"search X for '{q}'",
             f"what's being said about '{q}' on X",
         ]
-    if a == "FETCH_FEED_TOP":
+    if param_key == "x_feed_top":
         return [
             "show me the top of my X feed",
             f"top {facts.get('topN', 10)} tweets in my feed",
             "what's hot in my X timeline right now",
         ]
-    if a == "SUMMARIZE_FEED":
+    if param_key == "x_feed_summary":
         return [
             "summarize my X feed",
             f"give me a recap of the top {facts.get('topN', 10)} tweets",
         ]
-    if a == "READ_UNREAD_X_DMS":
+    if param_key == "x_read_messages":
         return [
             "read my unread X DMs",
             "what unread DMs do I have on X",
         ]
 
     # Signal
-    if a == "SIGNAL_LIST_CONTACTS":
+    if param_key == "signal_contacts":
         return ["list my Signal contacts", "show Signal contacts"]
-    if a == "SIGNAL_LIST_GROUPS":
+    if param_key == "signal_groups":
         return ["list my Signal groups", "show Signal groups"]
-    if a == "SIGNAL_READ_RECENT_MESSAGES":
+    if param_key == "signal_read_messages":
         return [
             f"read my latest {args.get('limit', 10)} Signal messages",
             "show recent Signal messages",
         ]
-    if a == "SIGNAL_SEND_MESSAGE":
+    if param_key == "signal_message":
         return [
             f"signal {recipient}: {text}",
             f"send Signal message to {recipient}: {text}",
         ]
-    if a == "SIGNAL_SEND_REACTION":
+    if param_key == "signal_reaction":
         return [
             f"react with {emoji} on Signal message {args.get('targetTimestamp')} from {args.get('targetAuthor')}",
             f"add a {emoji} reaction to that Signal msg",
         ]
 
     # BlueBubbles
-    if a == "BLUEBUBBLES_SEND_REACTION":
+    if param_key == "bluebubbles_reaction":
         return [
             f"react with {emoji} to message {msg_id}",
             f"add a {emoji} on that iMessage ({msg_id})",
         ]
-    if a == "SEND_BLUEBUBBLES_MESSAGE":
+    if param_key == "bluebubbles_message":
         return [
             f"send iMessage via BlueBubbles: {text}",
             f"text via BlueBubbles: {text}",
         ]
 
     # iMessage
-    if a == "IMESSAGE_SEND_MESSAGE":
+    if param_key == "imessage_message":
         to = args.get("to", "current")
         return [
             f"iMessage {to}: {text}",
@@ -1077,13 +1084,13 @@ def _en_phrasings(action: str, args: dict[str, Any],
         ]
 
     # WhatsApp
-    if a == "WHATSAPP_SEND_MESSAGE":
+    if param_key == "whatsapp_message":
         to = args.get("to", "+14155552671")
         return [
             f"WhatsApp {to}: {text}",
             f"send a WhatsApp to {to}: {text}",
         ]
-    if a == "WHATSAPP_SEND_REACTION":
+    if param_key == "whatsapp_reaction":
         return [
             f"react with {emoji} to whatsapp message {msg_id}",
             f"put a {emoji} on whatsapp msg {msg_id}",
@@ -1223,12 +1230,15 @@ def _pick_style_for_index(action: str, idx: int) -> str:
     return STYLES[idx % len(STYLES)]
 
 
-def _phrase(action: str, args: dict[str, Any], facts: dict[str, Any],
+def _phrase(action: str, param_key: str, args: dict[str, Any], facts: dict[str, Any],
             lang: str, style: str, rng: random.Random) -> str:
-    en_options = _en_phrasings(action, args, facts)
+    en_options = _en_phrasings(action, param_key, args, facts)
     en_msg = en_options[rng.randrange(len(en_options))]
     if lang != "en":
-        templates = TRANSLATIONS.get(action, {}).get(lang, [])
+        templates = (
+            TRANSLATIONS.get(param_key, {}).get(lang, [])
+            or TRANSLATIONS.get(action, {}).get(lang, [])
+        )
         if templates:
             tpl = templates[rng.randrange(len(templates))]
             try:
@@ -1244,16 +1254,103 @@ def _phrase(action: str, args: dict[str, Any], facts: dict[str, Any],
     return style_transform(msg, style, rng)
 
 
+def _canonicalize_connector_args(
+    plugin: str,
+    action: str,
+    param_key: str,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    """Add canonical MESSAGE/POST operation fields for connector rows."""
+    if action == "POST":
+        operation = "send"
+        if param_key in {"x_feed_top", "x_feed_summary"}:
+            operation = "read"
+        elif param_key == "x_search_posts":
+            operation = "search"
+        canonical = {"operation": operation, "source": "x", **args}
+        if "maxResults" in args and "limit" not in canonical:
+            canonical["limit"] = args["maxResults"]
+        if "topN" in args and "limit" not in canonical:
+            canonical["limit"] = args["topN"]
+        return canonical
+
+    if action != "MESSAGE":
+        return args
+
+    source_by_plugin = {
+        "plugin-discord": "discord",
+        "plugin-twitter": "x",
+        "plugin-signal": "signal",
+        "plugin-bluebubbles": "bluebubbles",
+        "plugin-imessage": "imessage",
+        "plugin-whatsapp": "whatsapp",
+    }
+    operation_by_key = {
+        "DELETE_MESSAGE": "delete",
+        "EDIT_MESSAGE": "edit",
+        "JOIN_CHANNEL": "join",
+        "LEAVE_CHANNEL": "leave",
+        "discord_get_user": "get_user",
+        "discord_list_channels": "list_channels",
+        "discord_pin_message": "pin",
+        "discord_private_message": "send",
+        "discord_channel_message": "send",
+        "discord_unpin_message": "pin",
+        "x_read_messages": "read",
+        "x_direct_message": "send",
+        "signal_contacts": "get_user",
+        "signal_groups": "list_channels",
+        "signal_read_messages": "read",
+        "signal_message": "send",
+        "signal_reaction": "react",
+        "bluebubbles_reaction": "react",
+        "bluebubbles_message": "send",
+        "imessage_message": "send",
+        "whatsapp_message": "send",
+        "whatsapp_reaction": "react",
+    }
+    canonical = {
+        "operation": operation_by_key.get(param_key, "send"),
+        "source": source_by_plugin.get(plugin, plugin.removeprefix("plugin-")),
+        **args,
+    }
+    target = (
+        args.get("recipient")
+        or args.get("recipientIdentifier")
+        or args.get("channelRef")
+        or args.get("channelName")
+        or args.get("guildId")
+        or args.get("to")
+    )
+    if target and "target" not in canonical:
+        canonical["target"] = target
+    message_text = args.get("messageContent") or args.get("text") or args.get("newText")
+    if message_text and "message" not in canonical:
+        canonical["message"] = message_text
+    message_id = args.get("messageId") or args.get("messageRef")
+    if message_id and "messageId" not in canonical:
+        canonical["messageId"] = message_id
+    if args.get("guildId") and "serverId" not in canonical:
+        canonical["serverId"] = args["guildId"]
+    user = args.get("userIdentifier") or args.get("recipientIdentifier")
+    if user and "user" not in canonical:
+        canonical["user"] = user
+    return canonical
+
+
 def make_record(
-    *, encoder: ExpectedResponseEncoder, action: str, plugin: str, idx: int,
+    *, encoder: ExpectedResponseEncoder, action: str, param_key: str,
+    plugin: str, idx: int,
     rng: random.Random, action_description: str,
-    action_param_specs: list[ParamSpec], lang: str,
+    build_param_specs: list[ParamSpec], action_param_specs: list[ParamSpec],
+    lang: str,
 ) -> dict[str, Any]:
     style = _pick_style_for_index(action, idx)
     persona = rng.choice(PERSONAS)
     agent = rng.choice(AGENT_NAMES)
 
-    args, facts = _build_args(action, idx, rng, style)
+    args, facts = _build_args(action, param_key, build_param_specs, idx, rng, style)
+    args = _canonicalize_connector_args(plugin, action, param_key, args)
 
     if style == "subtle-null":
         msg = rng.choice(SUBTLE_NULL_MESSAGES)
@@ -1261,7 +1358,7 @@ def make_record(
             msg = fallback_translate(lang, msg)
         expected_response, available = _build_subtle_null_response(action, encoder)
     else:
-        msg = _phrase(action, args, facts, lang, style, rng)
+        msg = _phrase(action, param_key, args, facts, lang, style, rng)
         expected_response = encoder.encode({
             "tool_calls": [{"name": action, "arguments": args}],
         })
@@ -1269,7 +1366,7 @@ def make_record(
 
     history = _make_memory(rng, persona, agent, style)
 
-    rid = stable_id("messaging-gen", action, idx, msg, persona)[:12]
+    rid = stable_id("messaging-gen", plugin, param_key, action, idx, msg, persona)[:12]
 
     system_prompt = (
         "You are an autonomous elizaOS agent. Decide which action to take "
@@ -1302,6 +1399,7 @@ def make_record(
             "toolSpecs": tool_specs,
             "synth_origin": "messaging-gen",
             "synth_action": action,
+            "synth_intent": param_key,
             "synth_lang": lang,
             "synth_style": style,
             "plugin": plugin,
@@ -1313,35 +1411,58 @@ def make_record(
 # ────────────────────────── Main ──────────────────────────
 
 
-TARGET_ACTIONS_BY_PLUGIN: dict[str, list[str]] = {
+TARGET_ACTIONS_BY_PLUGIN: dict[str, list[tuple[str, str]]] = {
     "plugin-discord": [
-        "CHAT_WITH_ATTACHMENTS", "CREATE_POLL", "DELETE_MESSAGE",
-        "DOWNLOAD_MEDIA", "EDIT_MESSAGE", "GET_USER_INFO",
-        "JOIN_CHANNEL", "LEAVE_CHANNEL", "LIST_CHANNELS", "PIN_MESSAGE",
-        "SEND_DM", "SEND_MESSAGE", "SERVER_INFO", "SETUP_CREDENTIALS",
-        "SUMMARIZE_CONVERSATION", "TRANSCRIBE_MEDIA", "UNPIN_MESSAGE",
+        ("CHAT_WITH_ATTACHMENTS", "CHAT_WITH_ATTACHMENTS"),
+        ("CREATE_POLL", "CREATE_POLL"),
+        ("MESSAGE", "DELETE_MESSAGE"),
+        ("DOWNLOAD_MEDIA", "DOWNLOAD_MEDIA"),
+        ("MESSAGE", "EDIT_MESSAGE"),
+        ("MESSAGE", "discord_get_user"),
+        ("MESSAGE", "JOIN_CHANNEL"),
+        ("MESSAGE", "LEAVE_CHANNEL"),
+        ("MESSAGE", "discord_list_channels"),
+        ("MESSAGE", "discord_pin_message"),
+        ("MESSAGE", "discord_private_message"),
+        ("MESSAGE", "discord_channel_message"),
+        ("SERVER_INFO", "SERVER_INFO"),
+        ("SETUP_CREDENTIALS", "SETUP_CREDENTIALS"),
+        ("SUMMARIZE_CONVERSATION", "SUMMARIZE_CONVERSATION"),
+        ("TRANSCRIBE_MEDIA", "TRANSCRIBE_MEDIA"),
+        ("MESSAGE", "discord_unpin_message"),
     ],
     "plugin-twitter": [
-        "FETCH_FEED_TOP", "POST_TWEET", "READ_UNREAD_X_DMS", "REPLY_X_DM",
-        "SEARCH_X", "SEND_X_POST", "SUMMARIZE_FEED",
+        ("POST", "x_feed_top"),
+        ("POST", "x_post_basic"),
+        ("MESSAGE", "x_read_messages"),
+        ("MESSAGE", "x_direct_message"),
+        ("POST", "x_search_posts"),
+        ("POST", "x_post_confirmed"),
+        ("POST", "x_feed_summary"),
     ],
     "plugin-signal": [
-        "SIGNAL_LIST_CONTACTS", "SIGNAL_LIST_GROUPS",
-        "SIGNAL_READ_RECENT_MESSAGES", "SIGNAL_SEND_MESSAGE",
-        "SIGNAL_SEND_REACTION",
+        ("MESSAGE", "signal_contacts"),
+        ("MESSAGE", "signal_groups"),
+        ("MESSAGE", "signal_read_messages"),
+        ("MESSAGE", "signal_message"),
+        ("MESSAGE", "signal_reaction"),
     ],
     "plugin-bluebubbles": [
-        "BLUEBUBBLES_SEND_REACTION", "SEND_BLUEBUBBLES_MESSAGE",
+        ("MESSAGE", "bluebubbles_reaction"),
+        ("MESSAGE", "bluebubbles_message"),
     ],
-    "plugin-imessage": ["IMESSAGE_SEND_MESSAGE"],
-    "plugin-whatsapp": ["WHATSAPP_SEND_MESSAGE", "WHATSAPP_SEND_REACTION"],
+    "plugin-imessage": [("MESSAGE", "imessage_message")],
+    "plugin-whatsapp": [
+        ("MESSAGE", "whatsapp_message"),
+        ("MESSAGE", "whatsapp_reaction"),
+    ],
 }
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--n-per", type=int, default=100,
-                    help="records per action (default 100)")
+                    help="records per connector intent (default 100)")
     ap.add_argument("--seed", type=int, default=0xCEEB05)
     ap.add_argument("--out", type=Path, default=OUT_PATH)
     args = ap.parse_args()
@@ -1350,12 +1471,12 @@ def main() -> int:
     by_name: dict[str, dict[str, Any]] = {a["name"]: a
                                            for a in catalog["actions"]}
 
-    targets: list[tuple[str, str]] = []
-    for plugin, names in TARGET_ACTIONS_BY_PLUGIN.items():
-        for n in names:
-            targets.append((plugin, n))
+    targets: list[tuple[str, str, str]] = []
+    for plugin, entries in TARGET_ACTIONS_BY_PLUGIN.items():
+        for action, param_key in entries:
+            targets.append((plugin, action, param_key))
 
-    log.info("Generating %d records each for %d actions = %d total target",
+    log.info("Generating %d records each for %d connector intents = %d total target",
              args.n_per, len(targets), args.n_per * len(targets))
 
     encoder = JsonExpectedResponseEncoder()
@@ -1365,10 +1486,10 @@ def main() -> int:
     n_total = 0
     try:
         with args.out.open("w", encoding="utf-8") as f:
-            for plugin, action in targets:
+            for plugin, action, param_key in targets:
                 cat_entry = by_name.get(action, {})
                 desc = cat_entry.get("description") or ""
-                params = ALL_PARAMS.get(action, [])
+                params = ALL_PARAMS.get(param_key, [])
                 # If catalog has explicit params, prefer those; otherwise
                 # use our researched specs.
                 if cat_entry.get("parameters"):
@@ -1381,23 +1502,27 @@ def main() -> int:
                     ]
                 else:
                     params_for_specs = params
-                action_rng = random.Random(args.seed ^ hash(action) & 0xFFFFFFFF)
+                seed_material = hash((plugin, action, param_key)) & 0xFFFFFFFF
+                action_rng = random.Random(args.seed ^ seed_material)
                 lang_schedule = _build_lang_schedule(args.n_per, action_rng)
                 wrote = 0
                 for i in range(args.n_per):
                     rec = make_record(
-                        encoder=encoder, action=action, plugin=plugin,
+                        encoder=encoder, action=action, param_key=param_key,
+                        plugin=plugin,
                         idx=i, rng=action_rng,
                         action_description=desc,
+                        build_param_specs=params,
                         action_param_specs=params_for_specs,
                         lang=lang_schedule[i],
                     )
                     f.write(json.dumps(rec, ensure_ascii=False,
                                        separators=(",", ":")) + "\n")
                     wrote += 1
-                counts[action] = wrote
+                counts[f"{plugin}/{param_key}->{action}"] = wrote
                 n_total += wrote
-                log.info("  %s/%s: %d records", plugin, action, wrote)
+                log.info("  %s/%s (%s): %d records",
+                         plugin, action, param_key, wrote)
     finally:
         encoder.close()
 

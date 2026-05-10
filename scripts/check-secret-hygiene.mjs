@@ -9,6 +9,8 @@ const violations = [];
 let trackedFileCount = 0;
 const knownNonSecretValues = new Set([
   "playwright-local-auth-secret",
+  "sk-or-e2e-test-token",
+  "test-internal-secret",
   "test-cron-secret",
 ]);
 

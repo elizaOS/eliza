@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-elevenlabs",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "dist/cjs/index.node.cjs",
   "module": "dist/node/index.node.js",
@@ -27,16 +27,6 @@
         "default": "./dist/node/index.node.js"
       },
       "default": "./dist/node/index.node.js"
-    },
-    "./node": {
-      "types": "./dist/node/index.d.ts",
-      "import": "./dist/node/index.node.js",
-      "default": "./dist/node/index.node.js"
-    },
-    "./browser": {
-      "types": "./dist/browser/index.d.ts",
-      "import": "./dist/browser/index.browser.js",
-      "default": "./dist/browser/index.browser.js"
     }
   },
   "files": [
@@ -44,24 +34,24 @@
   ],
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.16.0",
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
     "@types/bun": "^1.2.22",
     "@types/node": "^24.5.2",
-    "prettier": "^3.8.3",
     "typescript": "^6.0.3"
   },
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun --hot build.ts",
     "test": "echo 'No tests defined for plugin-elevenlabs'",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src",
-    "lint": "prettier --write ./src",
-    "lint:check": "prettier --check ./src",
-    "typecheck": "tsc --project tsconfig.build.json --noEmit"
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "publishConfig": {
     "access": "public"

@@ -15,7 +15,7 @@ Some route tests only care about **`MINIMUM_DEPOSIT`** (e.g. provisioning or cre
 
 ```ts
 mock.module("@/lib/constants/agent-pricing", () => ({
-  AGENT_PRICING: { MINIMUM_DEPOSIT: 5 },
+  AGENT_PRICING: { MINIMUM_DEPOSIT: 0.1 },
 }));
 ```
 

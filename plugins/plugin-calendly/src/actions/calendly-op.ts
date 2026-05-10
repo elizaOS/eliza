@@ -16,6 +16,10 @@ import type {
   State,
 } from "@elizaos/core";
 import { getActiveRoutingContextsForTurn, logger } from "@elizaos/core";
+import {
+  calendlyAccountIdParameter,
+  resolveCalendlyAccountId,
+} from "../accounts.js";
 import type { CalendlyService } from "../services/CalendlyService.js";
 import {
   CALENDLY_SERVICE_TYPE,
@@ -213,7 +217,8 @@ async function handleBook(
   }
 
   const service = getService(runtime);
-  if (!service?.isConnected()) {
+  const accountId = resolveCalendlyAccountId(runtime, params);
+  if (!service?.isConnected(accountId)) {
     const error =
       "No third-party Calendly URL found and Calendly is not connected — set CALENDLY_ACCESS_TOKEN to resolve your own booking link";
     await callback?.({ text: error });
@@ -224,7 +229,7 @@ async function handleBook(
     const bookingUrl = await service.getBookingUrl({
       durationMinutes: extractDuration(params, text),
       slug: extractSlug(params),
-    });
+    }, accountId);
     if (!bookingUrl) {
       const error = "No active Calendly event types are available to book";
       await callback?.({ text: error });
@@ -254,7 +259,8 @@ async function handleCancel(
   callback?: HandlerCallback,
 ): Promise<CalendlyActionResult<CancelData>> {
   const service = getService(runtime);
-  if (!service?.isConnected()) {
+  const accountId = resolveCalendlyAccountId(runtime, params);
+  if (!service?.isConnected(accountId)) {
     const error =
       "Calendly is not connected — set CALENDLY_ACCESS_TOKEN to cancel bookings";
     await callback?.({ text: error });
@@ -280,7 +286,7 @@ async function handleCancel(
     };
   }
   try {
-    await service.cancelBooking(uuid, reason);
+    await service.cancelBooking(uuid, reason, accountId);
     await callback?.({
       text: `Canceled Calendly event ${uuid}${reason ? ` (${reason})` : ""}`,
     });
@@ -314,7 +320,7 @@ export const calendlyOpAction: Action = {
   descriptionCompressed: "Calendly slot ops: book, cancel.",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: "Operation to perform: 'book' or 'cancel'.",
       required: true,
       schema: { type: "string" as const, enum: ["book", "cancel"] },
@@ -349,6 +355,7 @@ export const calendlyOpAction: Action = {
       required: false,
       schema: { type: "string" as const },
     },
+    calendlyAccountIdParameter,
   ],
 
   validate: async (
@@ -372,6 +379,7 @@ export const calendlyOpAction: Action = {
     const text =
       typeof message.content?.text === "string" ? message.content.text : "";
     const params = mergedOptions(options);
+    const accountId = resolveCalendlyAccountId(runtime, params);
     const op = readOp(params);
     if (!op) {
       const error = "CALENDLY_OP requires op in {book, cancel}";
@@ -381,7 +389,7 @@ export const calendlyOpAction: Action = {
     if (op === "book") {
       return handleBook(runtime, text, params, callback);
     }
-    return handleCancel(runtime, text, params, callback);
+    return handleCancel(runtime, text, { ...params, accountId }, callback);
   },
 
   examples: [
@@ -396,7 +404,7 @@ export const calendlyOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Calendly booking link: https://calendly.com/alex/intro",
-          actions: ["CALENDLY_OP"],
+          actions: ["CALENDLY"],
         },
       },
     ],
@@ -409,7 +417,7 @@ export const calendlyOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Calendly booking link: https://calendly.com/me/30min",
-          actions: ["CALENDLY_OP"],
+          actions: ["CALENDLY"],
         },
       },
     ],
@@ -424,7 +432,7 @@ export const calendlyOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Canceled Calendly event 11111111-2222-3333-4444-555555555555 (I need to travel)",
-          actions: ["CALENDLY_OP"],
+          actions: ["CALENDLY"],
         },
       },
     ],

@@ -25,10 +25,28 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const app = new Hono<AppEnv>();
 
 const OverrideSchema = z.object({
-  billingSource: z.enum(["gateway", "openrouter", "openai", "groq", "fal", "elevenlabs"]),
+  billingSource: z.enum([
+    "gateway",
+    "openrouter",
+    "openai",
+    "groq",
+    "vast",
+    "fal",
+    "elevenlabs",
+    "suno",
+  ]),
   provider: z.string().min(1),
   model: z.string().min(1),
-  productFamily: z.enum(["language", "embedding", "image", "video", "tts", "stt", "voice_clone"]),
+  productFamily: z.enum([
+    "language",
+    "embedding",
+    "image",
+    "video",
+    "music",
+    "tts",
+    "stt",
+    "voice_clone",
+  ]),
   chargeType: z.string().min(1),
   unit: z.enum([
     "token",
@@ -48,7 +66,7 @@ const OverrideSchema = z.object({
 });
 
 const RefreshSchema = z.object({
-  sources: z.array(z.enum(["gateway", "openrouter", "fal", "elevenlabs"])).optional(),
+  sources: z.array(z.enum(["gateway", "openrouter", "fal", "elevenlabs", "suno"])).optional(),
 });
 
 app.get("/", async (c) => {

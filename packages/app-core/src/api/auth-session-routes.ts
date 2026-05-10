@@ -19,10 +19,8 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { logger } from "@elizaos/core";
-import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
+import type { DrizzleDatabase } from "@elizaos/plugin-sql";
 import { AuthStore } from "../services/auth-store";
-import { extractHeaderValue, getProvidedApiToken } from "./auth";
 import {
   appendAuditEvent,
   assertPasswordStrong,
@@ -40,6 +38,7 @@ import {
   WeakPasswordError,
 } from "./auth/index";
 import { findActiveSession } from "./auth/sessions";
+import { extractHeaderValue, getProvidedApiToken } from "./auth.ts";
 import {
   type CompatRuntimeState,
   isTrustedLocalRequest,

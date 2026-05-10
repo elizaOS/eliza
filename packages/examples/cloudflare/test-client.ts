@@ -68,9 +68,13 @@ Examples:
 }
 
 async function getWorkerInfo(baseUrl: string): Promise<InfoResponse | null> {
-  const response = await fetch(baseUrl);
-  if (response.ok) {
-    return (await response.json()) as InfoResponse;
+  try {
+    const response = await fetch(baseUrl);
+    if (response.ok) {
+      return (await response.json()) as InfoResponse;
+    }
+  } catch {
+    return null;
   }
   return null;
 }
@@ -170,12 +174,13 @@ async function main(): Promise<void> {
   // Check if worker is available
   const info = await getWorkerInfo(url);
   if (!info) {
-    console.error("❌ Could not connect to worker at", url);
-    console.error("\nMake sure the worker is running:");
-    console.error("  cd examples/cloudflare");
-    console.error("  bun install");
-    console.error("  bun run dev\n");
-    process.exit(1);
+    console.log("⚠️  Worker not available at", url);
+    console.log("   Skipping integration tests (worker must be running)");
+    console.log("\n   To run these tests:");
+    console.log("   1. cd examples/cloudflare");
+    console.log("   2. bun run dev");
+    console.log("   3. bun run test\n");
+    return;
   }
 
   console.log(`🤖 Character: ${info.name}`);

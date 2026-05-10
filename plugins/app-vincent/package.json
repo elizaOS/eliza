@@ -1,42 +1,26 @@
 {
   "name": "@elizaos/app-vincent",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./client": {
-      "types": "./src/client.ts",
-      "import": "./dist/client.js",
-      "default": "./dist/client.js"
-    },
     "./plugin": {
-      "types": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
-    },
-    "./register": {
-      "types": "./src/register.ts",
-      "import": "./dist/register.js",
-      "default": "./dist/register.js"
-    },
-    "./useVincentState": {
-      "types": "./src/useVincentState.ts",
-      "import": "./dist/useVincentState.js",
-      "default": "./dist/useVincentState.js"
-    },
-    "./*": {
-      "types": "./src/*",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
     }
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/agent": "2.0.0-beta.1",
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1",
     "lucide-react": "^1.0.0"
   },
   "elizaos": {
@@ -47,10 +31,12 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "clean": "rm -rf dist"
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [
     "dist"

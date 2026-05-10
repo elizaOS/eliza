@@ -115,7 +115,7 @@ export class RoomsRepository {
    * Note: source and type are required in the database (notNull, no defaults).
    */
   async create(input: CreateRoomInput): Promise<Room> {
-    const roomResult = (await dbWrite
+    const [roomResult] = await dbWrite
       .insert(roomTable)
       .values({
         id: input.id,
@@ -128,10 +128,10 @@ export class RoomsRepository {
         worldId: input.worldId,
         metadata: input.metadata,
         createdAt: new Date(),
-      })
-      .returning()) as any[];
+      } as typeof roomTable.$inferInsert)
+      .returning();
 
-    return roomResult[0] as Room;
+    return roomResult as Room;
   }
 
   /**
@@ -140,7 +140,7 @@ export class RoomsRepository {
   async update(roomId: string, input: UpdateRoomInput): Promise<Room> {
     const [room] = await dbWrite
       .update(roomTable)
-      .set(input)
+      .set(input as typeof roomTable.$inferInsert)
       .where(eq(roomTable.id, roomId))
       .returning();
 
@@ -193,7 +193,7 @@ export class RoomsRepository {
         metadata: {
           ...currentMetadata,
           ...metadata,
-        },
+        } as typeof roomTable.$inferInsert.metadata,
       })
       .where(eq(roomTable.id, roomId));
   }

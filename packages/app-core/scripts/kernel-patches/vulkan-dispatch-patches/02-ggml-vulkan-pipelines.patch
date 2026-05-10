@@ -1,0 +1,86 @@
+# MILADY-VK-DISPATCH-PATCH-V1
+#
+# Patch target : ggml/src/ggml-vulkan/ggml-vulkan.cpp
+# Goal         : declare + create 8 pipelines for the milady standalones so
+#                that their SPIR-V blobs are referenced at link time and the
+#                resulting libggml-vulkan.so contains the new pipeline names.
+#
+# Two hunks (parsed sequentially by kernel-patches/vulkan-kernels.mjs).
+# Each hunk carries its own ANCHOR / SENTINEL / INJECT block. SENTINEL is the
+# same token across both hunks so a partially-applied state still re-checks.
+#
+# OUT OF SCOPE for this patch (deliberate, mirrors metal-kernels.mjs §41):
+#   * Wiring op-level dispatch (ggml_vk_get_dequantize_mul_mat_vec / GGML_OP_*
+#     case branches) for GGML_TYPE_TBQ3_0 / TBQ4_0 / QJL1_256 / Q4_POLAR /
+#     TBQ3_TCQ. The 8 standalones use bespoke push-constant layouts and bind
+#     sets that are NOT compatible with the existing vk_op_binary_push_constants
+#     / vk_mat_vec_push_constants paths. A separate follow-up patch is
+#     required to introduce a milady-native dispatch entrypoint for
+#     GGML_OP_ATTN_SCORE_QJL (which already exists in ggml.h:563 but has no
+#     Vulkan dispatch — only the CPU reference). Until then the kernels live
+#     as live, named pipelines inside libggml-vulkan.so but are not yet
+#     selected by the runtime — `nm libggml-vulkan.so | grep milady_` passes,
+#     end-to-end attention dispatch does not.
+
+# -----------------------------------------------------------------------------
+# Hunk 1 — extend vk_device_struct with 8 pipeline slots.
+# Anchor: just before the closing brace of vk_device_struct. The closing brace
+# is the first `};` after the `pipeline_topk_moe` member at the end of the
+# struct. We anchor on a stable mid-struct line and insert a block.
+# -----------------------------------------------------------------------------
+
+ANCHOR    vk_pipeline pipeline_get_rows_f32[GGML_TYPE_COUNT];
+SENTINEL  MILADY-VK-DISPATCH-PATCH-V1
+---INJECT-BEGIN---
+    // MILADY-VK-DISPATCH-PATCH-V1 BEGIN — milady turbo / qjl / polar pipelines
+    // Pre-allocated pipeline slots for the 8 milady standalone shaders. These
+    // fields keep the pipelines reachable from the device struct so the
+    // shader symbols are referenced at link time. Op-level dispatch wiring is
+    // deferred (see kernel-patches/vulkan-dispatch-patches/02-ggml-vulkan-pipelines.patch
+    // header comment for scope).
+    vk_pipeline pipeline_milady_turbo3;
+    vk_pipeline pipeline_milady_turbo4;
+    vk_pipeline pipeline_milady_turbo3_tcq;
+    vk_pipeline pipeline_milady_qjl;
+    vk_pipeline pipeline_milady_qjl_get_rows;
+    vk_pipeline pipeline_milady_qjl_mul_mv;
+    vk_pipeline pipeline_milady_polar;
+    vk_pipeline pipeline_milady_polar_get_rows;
+    // MILADY-VK-DISPATCH-PATCH-V1 END
+
+---INJECT-END---
+
+# -----------------------------------------------------------------------------
+# Hunk 2 — pipeline-creation calls inside ggml_vk_load_shaders().
+# Anchor: the trailing `for (auto &c : compiles) { c.wait(); }` loop at the
+# bottom of ggml_vk_load_shaders(). Same pattern as upstream uses for every
+# other pipeline.
+#
+# Push-constant sizes + bind counts come directly from the shader sources
+# under packages/inference/vulkan/. wg_denoms = {1,1,1} (no grid rounding —
+# the actual local_size_x = 32 is in the shader's layout qualifier).
+# -----------------------------------------------------------------------------
+
+ANCHOR    for (auto &c : compiles) {
+SENTINEL  MILADY-VK-DISPATCH-PATCH-V1
+---INJECT-BEGIN---
+    // MILADY-VK-DISPATCH-PATCH-V1 BEGIN — create milady turbo / qjl / polar pipelines
+    // Push-constant sizes / bind counts are taken from the matching .comp files.
+    //   turbo3 / turbo4    : 3 storage buffers (q, k_blocks, scores)            + 5*u32 push
+    //   turbo3_tcq         : 4 storage buffers (q, k_blocks, scores, codebook)  + 5*u32 push
+    //   qjl (score)        : 3 storage buffers (q_sketch, packed_k, scores)     + 4*u32 push
+    //   qjl_get_rows       : 3 storage buffers (k_packed, prj, out)             + 2*u32 push
+    //   qjl_mul_mv         : 3 storage buffers (k_blocks, q_sketch, y)          + 2*u32 push
+    //   polar              : 3 storage buffers (k_blocks, q, y)                 + 3*u32 push
+    //   polar_get_rows     : 2 storage buffers (k_block, out)                   + 2*u32 push
+    ggml_vk_create_pipeline(device, device->pipeline_milady_turbo3,         "milady_turbo3",         milady_turbo3_len,         milady_turbo3_data,         "main", 3, 5 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_turbo4,         "milady_turbo4",         milady_turbo4_len,         milady_turbo4_data,         "main", 3, 5 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_turbo3_tcq,     "milady_turbo3_tcq",     milady_turbo3_tcq_len,     milady_turbo3_tcq_data,     "main", 4, 5 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_qjl,            "milady_qjl",            milady_qjl_len,            milady_qjl_data,            "main", 3, 4 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_qjl_get_rows,   "milady_qjl_get_rows",   milady_qjl_get_rows_len,   milady_qjl_get_rows_data,   "main", 3, 2 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_qjl_mul_mv,     "milady_qjl_mul_mv",     milady_qjl_mul_mv_len,     milady_qjl_mul_mv_data,     "main", 3, 2 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_polar,          "milady_polar",          milady_polar_len,          milady_polar_data,          "main", 3, 3 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_polar_get_rows, "milady_polar_get_rows", milady_polar_get_rows_len, milady_polar_get_rows_data, "main", 2, 2 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
+    // MILADY-VK-DISPATCH-PATCH-V1 END
+
+---INJECT-END---

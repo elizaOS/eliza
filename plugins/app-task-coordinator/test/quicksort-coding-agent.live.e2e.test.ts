@@ -142,7 +142,7 @@ describeIf(LIVE_TESTS_ENABLED && CAN_RUN_CODEX)(
       });
       runtime = setup.runtime;
       cleanupRuntime = setup.cleanup;
-      service = await PTYService.start(runtime as unknown as IAgentRuntime);
+      service = await PTYService.start(runtime as IAgentRuntime);
       (runtime.services as Map<string, unknown[]>).set("PTY_SERVICE", [
         service,
       ]);
@@ -176,7 +176,7 @@ describeIf(LIVE_TESTS_ENABLED && CAN_RUN_CODEX)(
         const sentinel = "LIVE_QUICKSORT_DONE";
 
         const spawnResult = await spawnAgentAction.handler(
-          runtime as unknown as IAgentRuntime,
+          runtime as IAgentRuntime,
           createMessage({
             agentType: "codex",
             workdir,
@@ -266,7 +266,7 @@ describeIf(LIVE_TESTS_ENABLED && CAN_RUN_CODEX)(
         const sentinel = "LIVE_DRAFT_DONE";
 
         const spawnResult = await spawnAgentAction.handler(
-          runtime as unknown as IAgentRuntime,
+          runtime as IAgentRuntime,
           createMessage({
             agentType: "codex",
             workdir,

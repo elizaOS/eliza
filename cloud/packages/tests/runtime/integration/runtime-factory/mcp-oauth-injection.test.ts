@@ -122,7 +122,7 @@ describe.skipIf(!hasDatabaseUrl)("MCP OAuth Injection", () => {
   it("should not persist user API keys in MCP settings when user has no OAuth connections", async () => {
     // Create context WITHOUT oauth connections
     const userContext = buildUserContext(testData, {
-      agentMode: AgentMode.ASSISTANT,
+      agentMode: AgentMode.CHAT,
       webSearchEnabled: false,
     });
 
@@ -158,7 +158,7 @@ describe.skipIf(!hasDatabaseUrl)("MCP OAuth Injection", () => {
     // Create context WITH oauth connections
     const userContext: UserContext = {
       ...buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       }),
       oauthConnections: [{ platform: "google" }],
@@ -191,7 +191,7 @@ describe.skipIf(!hasDatabaseUrl)("MCP OAuth Injection", () => {
   it("should keep API keys out of persisted MCP settings for same-origin MCP servers", async () => {
     const userContext: UserContext = {
       ...buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       }),
       oauthConnections: [{ platform: "google" }],
@@ -225,7 +225,7 @@ describe.skipIf(!hasDatabaseUrl)("MCP OAuth Injection", () => {
     // Test with a platform that's not in MCP_SERVER_CONFIGS
     const userContext: UserContext = {
       ...buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
+        agentMode: AgentMode.CHAT,
         webSearchEnabled: false,
       }),
       oauthConnections: [{ platform: "slack" }], // Not supported

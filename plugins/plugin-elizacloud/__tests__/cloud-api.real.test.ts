@@ -6,8 +6,8 @@
 
 import * as http from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { CloudApiError, InsufficientCreditsError } from "../types/cloud";
-import { CloudApiClient } from "../utils/cloud-api";
+import { CloudApiError, InsufficientCreditsError } from "../src/types/cloud";
+import { CloudApiClient } from "../src/utils/cloud-api";
 
 let server: http.Server;
 let baseUrl: string;

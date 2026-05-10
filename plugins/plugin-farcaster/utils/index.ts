@@ -127,11 +127,13 @@ export function createCastMemory({
   senderId,
   runtime,
   cast,
+  accountId,
 }: {
   roomId: UUID;
   senderId: UUID;
   runtime: IAgentRuntime;
   cast: Cast;
+  accountId?: string;
 }): Memory {
   const inReplyTo = cast.inReplyTo
     ? castUuid({
@@ -150,11 +152,15 @@ export function createCastMemory({
     content: {
       text: cast.text,
       source: FARCASTER_SOURCE,
+      ...(accountId ? { accountId } : {}),
       url: "",
       inReplyTo,
       hash: cast.hash,
       threadId: cast.threadId,
       attachments: cast.media && cast.media.length > 0 ? cast.media : undefined,
+    },
+    metadata: {
+      ...(accountId ? { accountId } : {}),
     },
     roomId,
   };

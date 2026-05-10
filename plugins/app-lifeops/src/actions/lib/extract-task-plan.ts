@@ -21,9 +21,9 @@ import {
   LIFEOPS_REMINDER_INTENSITIES,
   type LifeOpsReminderIntensity,
 } from "../../contracts/index.js";
-import { runExtractorPipeline } from "../extractor-pipeline.js";
-import { resolveContextWindow } from "../lifeops-extraction-config.js";
-import { normalizeExplicitTimeZoneToken } from "../timezone-normalization.js";
+import { resolveContextWindow } from "../../lifeops/defaults.js";
+import { runExtractorPipeline } from "../../lifeops/llm/extractor-pipeline.js";
+import { normalizeExplicitTimeZoneToken } from "../../lifeops/time/timezone.js";
 import { recentConversationTexts } from "./recent-context.js";
 
 // ── Types ─────────────────────────────────────────────

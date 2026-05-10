@@ -17,6 +17,12 @@ export interface SolanaSigner {
   signAllTransactions(
     txs: ReadonlyArray<Transaction | VersionedTransaction>,
   ): Promise<Array<Transaction | VersionedTransaction>>;
+  /**
+   * Detached Ed25519 signature of an opaque message. Returned bytes are 64
+   * bytes (raw signature). Used by Wallet-Standard `signMessage` and any
+   * non-transaction sign-in flows.
+   */
+  signMessage(message: Uint8Array): Promise<Uint8Array>;
 }
 
 export interface WalletAddresses {

@@ -125,6 +125,8 @@ interface NativeGenerateTextResult {
   providerMetadata?: unknown;
 }
 
+type NativeTextModelResult = string & NativeGenerateTextResult;
+
 const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as ModelTypeName;
 const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as ModelTypeName;
 const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as ModelTypeName;
@@ -221,7 +223,7 @@ function firstNumber(...values: unknown[]): number | undefined {
 }
 
 function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCacheOptions {
-  const withOpenAIOptions = params as unknown as GenerateTextParamsWithOpenAIOptions;
+  const withOpenAIOptions = params as GenerateTextParamsWithOpenAIOptions;
   return {
     promptCacheKey: withOpenAIOptions.providerOptions?.openai?.promptCacheKey,
     promptCacheRetention: withOpenAIOptions.providerOptions?.openai?.promptCacheRetention,
@@ -232,7 +234,7 @@ function resolveProviderOptions(
   params: GenerateTextParams,
   runtime: IAgentRuntime
 ): Record<string, unknown> | undefined {
-  const withOpenAIOptions = params as unknown as GenerateTextParamsWithOpenAIOptions;
+  const withOpenAIOptions = params as GenerateTextParamsWithOpenAIOptions;
   const rawProviderOptions = withOpenAIOptions.providerOptions;
   const promptCacheOptions = resolvePromptCacheOptions(params);
 
@@ -293,7 +295,7 @@ function buildStructuredOutput(responseSchema: unknown): NativeOutput {
       : { schema: responseSchema };
 
   return Output.object({
-    schema: jsonSchema(schemaOptions.schema as JSONSchema7),
+    schema: jsonSchema(sanitizeJsonSchema(schemaOptions.schema, true)),
     ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
     ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
   }) as NativeOutput;
@@ -566,6 +568,16 @@ function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
       properties[key] = sanitizeJsonSchema(value);
     }
     sanitized.properties = properties;
+
+    const propertyKeys = Object.keys(properties);
+    const existingRequired = Array.isArray(sanitized.required)
+      ? sanitized.required.filter((key): key is string => typeof key === "string")
+      : [];
+    sanitized.required = [...new Set([...existingRequired, ...propertyKeys])];
+  }
+
+  if (sanitized.type === "object" && sanitized.additionalProperties !== false) {
+    sanitized.additionalProperties = false;
   }
 
   if (sanitized.items) {
@@ -678,7 +690,7 @@ function createLlmCallDetails(
   providerOptions?: Record<string, unknown>,
   generateParams?: NativeTextParams
 ): RecordLlmCallDetails {
-  const originalParams = params as unknown as GenerateTextParamsWithOpenAIOptions;
+  const originalParams = params as GenerateTextParamsWithOpenAIOptions;
   const nativeParams = generateParams as
     | (NativeTextParams & {
         output?: unknown;
@@ -778,7 +790,7 @@ async function generateTextByModelType(
   modelType: ModelTypeName,
   getModelFn: ModelNameGetter
 ): Promise<string | TextStreamResult> {
-  const paramsWithAttachments = params as unknown as GenerateTextParamsWithOpenAIOptions;
+  const paramsWithAttachments = params as GenerateTextParamsWithOpenAIOptions;
   const openai = createOpenAIClient(runtime);
   const modelName = getModelFn(runtime);
 
@@ -811,15 +823,16 @@ async function generateTextByModelType(
   const normalizedToolChoice = normalizeToolChoice(paramsWithAttachments.toolChoice);
   const normalizedMessages = normalizeNativeMessages(paramsWithAttachments.messages);
   const wireMessages = dropDuplicateLeadingSystemMessage(normalizedMessages, systemPrompt);
-  const promptOrMessages: NativePrompt = normalizedMessages
-    ? wireMessages && wireMessages.length > 0
-      ? { messages: wireMessages }
+  const effectiveMessages =
+    wireMessages && wireMessages.length > 0 ? wireMessages : normalizedMessages;
+  const promptText =
+    typeof params.prompt === "string" && params.prompt.length > 0 ? params.prompt : "";
+  const promptOrMessages: NativePrompt =
+    effectiveMessages && effectiveMessages.length > 0
+      ? { messages: effectiveMessages }
       : userContent
         ? { messages: [{ role: "user" as const, content: userContent }] }
-        : { prompt: params.prompt }
-    : userContent
-      ? { messages: [{ role: "user" as const, content: userContent }] }
-      : { prompt: params.prompt };
+        : { prompt: promptText };
   const generateParams: NativeTextParams = {
     model,
     ...promptOrMessages,
@@ -888,7 +901,7 @@ async function generateTextByModelType(
   }
 
   if (shouldReturnNativeResult) {
-    return buildNativeTextResult(result, modelName) as unknown as string;
+    return buildNativeTextResult(result, modelName) as NativeTextModelResult;
   }
 
   return result.text;

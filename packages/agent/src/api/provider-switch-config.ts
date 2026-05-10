@@ -13,11 +13,13 @@ import {
   getOnboardingProviderOption,
   getOnboardingProviderSignalEnvKeys,
   getStoredOnboardingProviderId,
+  getStoredSubscriptionProvider,
   migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
   normalizeOnboardingCredentialInputs,
   normalizeOnboardingProviderId,
   normalizeServiceRoutingConfig,
+  normalizeSubscriptionProviderSelectionId,
   type OnboardingConnection,
   type OnboardingCredentialInputs,
   type OnboardingLlmPersistenceSelection,
@@ -26,10 +28,13 @@ import {
 } from "@elizaos/shared";
 import {
   applySubscriptionCredentials,
-  deleteCredentials,
-} from "../auth/credentials.js";
-import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
-import type { ElizaConfig } from "../config/types.eliza.js";
+  deleteProviderCredentials,
+} from "../auth/credentials.ts";
+import {
+  SUBSCRIPTION_PROVIDER_IDS,
+  SUBSCRIPTION_PROVIDER_MAP,
+} from "../auth/types.ts";
+import type { ElizaConfig } from "../config/types.eliza.ts";
 
 type MutableElizaConfig = Partial<ElizaConfig> & {
   cloud?: Record<string, unknown>;
@@ -335,17 +340,13 @@ function applyLocalProviderCapabilities(
 
   const storedProviderId = getStoredOnboardingProviderId(normalizedProvider);
   if (
-    storedProviderId === "anthropic-subscription" ||
-    storedProviderId === "openai-codex"
+    storedProviderId &&
+    normalizeSubscriptionProviderSelectionId(storedProviderId)
   ) {
     applySubscriptionProviderConfig(config, storedProviderId);
 
-    // Anthropic subscription tokens (OAuth / setup tokens) must NOT be
-    // injected into the runtime environment as ANTHROPIC_API_KEY.
-    // Anthropic's TOS only permits these tokens through the Claude Code
-    // CLI.  The task-agent orchestrator spawns actual `claude` CLI
-    // subprocesses and that path is fine.  For OpenAI/Codex tokens,
-    // direct API use is permitted so we do apply them.
+    // Subscription coding plans must remain on their first-party coding
+    // surfaces. Do not inject their credentials into direct API env vars.
     if (storedProviderId === "anthropic-subscription") {
       // Store the setup token in config for task-agent discovery but do
       // NOT set it in process.env.
@@ -420,9 +421,9 @@ const PROVIDER_DEFAULT_MODELS: Record<
   },
   groq: {
     smallKey: "GROQ_SMALL_MODEL",
-    smallVal: "llama-3.1-8b-instant",
+    smallVal: "openai/gpt-oss-120b",
     largeKey: "GROQ_LARGE_MODEL",
-    largeVal: "llama-3.1-8b-instant",
+    largeVal: "openai/gpt-oss-120b",
   },
 };
 
@@ -540,10 +541,9 @@ function toOnboardingConnectionFromSelection(
  * Sets `agents.defaults.subscriptionProvider` so the task-agent orchestrator
  * knows which subscription is active.
  *
- * For providers whose tokens can be used directly by the runtime (Codex),
- * also sets `agents.defaults.model.primary`.  For Anthropic subscriptions,
- * `model.primary` is NOT set because those tokens are restricted to the
- * Claude Code CLI (TOS).
+ * For providers with a runtime model-provider plugin, also sets
+ * `agents.defaults.model.primary`. Anthropic subscriptions are restricted to
+ * Claude Code CLI (TOS), so `model.primary` is NOT set for that provider.
  *
  * Mutates `config` in place.
  */
@@ -555,8 +555,10 @@ export function applySubscriptionProviderConfig(
   config.agents.defaults ??= {};
   const defaults = config.agents.defaults;
 
-  const subscriptionKey =
-    provider === "openai-subscription" ? "openai-codex" : provider;
+  const selectionId = normalizeSubscriptionProviderSelectionId(provider);
+  const subscriptionKey = selectionId
+    ? getStoredSubscriptionProvider(selectionId)
+    : provider;
   const modelProvider =
     SUBSCRIPTION_PROVIDER_MAP[
       subscriptionKey as keyof typeof SUBSCRIPTION_PROVIDER_MAP
@@ -565,10 +567,10 @@ export function applySubscriptionProviderConfig(
   if (modelProvider) {
     defaults.subscriptionProvider = subscriptionKey;
 
-    // Only set model.primary for providers whose tokens work with the
-    // runtime.  Anthropic subscription tokens are restricted to Claude
-    // Code CLI (TOS) so the runtime cannot use them for LLM inference.
-    const runtimeApplicable = subscriptionKey !== "anthropic-subscription";
+    // Only set model.primary for providers with a runtime model-provider
+    // plugin. Anthropic subscription tokens are restricted to Claude Code
+    // CLI (TOS), so the runtime cannot use them for LLM inference.
+    const runtimeApplicable = subscriptionKey === "openai-codex";
     if (runtimeApplicable) {
       defaults.model = { ...defaults.model, primary: modelProvider };
     }
@@ -674,8 +676,9 @@ export function clearPersistedOnboardingConfig(
   delete process.env.ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL;
   delete process.env.ELIZAOS_CLOUD_ACTION_PLANNER_MODEL;
   delete process.env.ELIZAOS_CLOUD_PLANNER_MODEL;
-  deleteCredentials("anthropic-subscription");
-  deleteCredentials("openai-codex");
+  for (const provider of SUBSCRIPTION_PROVIDER_IDS) {
+    deleteProviderCredentials(provider);
+  }
 }
 
 export function createProviderSwitchConnection(args: {

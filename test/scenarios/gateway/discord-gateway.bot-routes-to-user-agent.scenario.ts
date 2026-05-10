@@ -30,7 +30,7 @@ export default scenario({
       room: "main",
       text: "What's in this Discord gateway DM? Summarize it back to me.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["TRIAGE_MESSAGES"],
+        acceptedActions: ["MESSAGE"],
         description: "Discord gateway inbox read",
         includesAny: ["discord", "dm", "message"],
       }),
@@ -39,18 +39,18 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      actionName: ["MESSAGE", "MESSAGE"],
     },
     {
       type: "selectedActionArguments",
-      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      actionName: ["MESSAGE", "MESSAGE"],
       includesAny: ["discord", "dm", "message", "channel", "guild"],
     },
     {
       type: "custom",
       name: "discord-gateway-inbox-context-is-real",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["TRIAGE_MESSAGES"],
+        acceptedActions: ["MESSAGE"],
         description: "Discord gateway inbox read",
         includesAny: ["discord", "dm", "message"],
       }),
@@ -65,7 +65,7 @@ export default scenario({
         }
 
         const hit = ctx.actionsCalled.find((action) =>
-          ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"].includes(action.actionName),
+          ["MESSAGE", "MESSAGE"].includes(action.actionName),
         );
         if (!hit) {
           return "expected an INBOX action";
@@ -86,7 +86,7 @@ export default scenario({
       name: "discord-gateway-room-ownership-is-real",
       predicate: async (ctx) => {
         const hit = ctx.actionsCalled.find((action) =>
-          ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"].includes(action.actionName),
+          ["MESSAGE", "MESSAGE"].includes(action.actionName),
         );
         if (!hit) {
           return "expected an INBOX action";

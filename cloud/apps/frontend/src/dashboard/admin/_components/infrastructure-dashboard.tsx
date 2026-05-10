@@ -492,7 +492,7 @@ function ContainerStatusBadge({ status }: { status: string }) {
 type SortField = "containerName" | "agentName" | "nodeId" | "status" | "liveHealth" | "createdAt";
 type SortDirection = "asc" | "desc";
 
-/** Minimal type for docker inspect data to avoid `as any` casts throughout */
+/** Minimal type for docker inspect data to avoid unchecked casts throughout */
 interface DockerInspectData {
   Config?: {
     Image?: string;

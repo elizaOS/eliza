@@ -2,6 +2,18 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  colorizeDevSettingsStartupBanner,
+  type DevSettingsRow,
+  formatDevSettingsTable,
+  prependDevSubsystemFigletHeading,
+  resolveDesktopApiPort,
+  resolveDesktopApiPortPreference,
+  resolveDesktopUiPort,
+  resolveDesktopUiPortPreference,
+  syncElizaEnvAliases,
+} from "@elizaos/shared";
+import { resolveAppBranding } from "@elizaos/ui/config/app-config";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import {
@@ -10,23 +22,6 @@ import {
   type Plugin,
   transformWithEsbuild,
 } from "vite";
-import { resolveAppBranding } from "../../packages/app-core/src/config/app-config.ts";
-// Keep workspace-relative TS imports in this config so Vite transpiles them
-// while bundling the config instead of asking Node to load package-exported
-// .ts files directly in CI.
-import { colorizeDevSettingsStartupBanner } from "../../packages/shared/src/dev-settings-banner-style.ts";
-import { prependDevSubsystemFigletHeading } from "../../packages/shared/src/dev-settings-figlet-heading.ts";
-import {
-  type DevSettingsRow,
-  formatDevSettingsTable,
-} from "../../packages/shared/src/dev-settings-table.ts";
-import {
-  resolveDesktopApiPort,
-  resolveDesktopApiPortPreference,
-  resolveDesktopUiPort,
-  resolveDesktopUiPortPreference,
-} from "../../packages/shared/src/runtime-env.ts";
-import { syncElizaEnvAliases } from "../../scripts/lib/sync-eliza-env-aliases.mjs";
 import appConfig from "./app.config";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
@@ -42,14 +37,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
 const nativePluginsRoot = path.join(elizaRoot, "packages/native-plugins");
 const appCoreSrcRoot = path.join(elizaRoot, "packages/app-core/src");
-const pluginSqlSrcRoot = path.join(elizaRoot, "plugins/plugin-sql/typescript");
 const pluginBrowserBridgeSrcRoot = path.join(
   elizaRoot,
   "plugins/plugin-browser/src",
-);
-const appCoreNativePluginEntrypoints = path.join(
-  appCoreSrcRoot,
-  "platform/native-plugin-entrypoints.ts",
 );
 const uiPkgRoot = path.join(elizaRoot, "packages/ui");
 const capacitorCoreEntry = _require.resolve("@capacitor/core");
@@ -109,7 +99,7 @@ function resolvePackageExportTarget(value: unknown): string | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 
   const record = value as Record<string, unknown>;
-  for (const condition of ["source", "types", "import", "default"]) {
+  for (const condition of ["source", "import", "default"]) {
     const target = record[condition];
     if (typeof target === "string") return target;
   }
@@ -134,21 +124,66 @@ function createWorkspacePackageAliases(packageRoots: string[]) {
       if (!pkgName) continue;
       const pkgDir = path.dirname(pkgPath);
       for (const [key, value] of Object.entries(pkg.exports || {})) {
+        if (key !== ".") continue;
         const exportTarget = resolvePackageExportTarget(value);
         if (!exportTarget) continue;
-        const aliasKey =
-          key === "." ? pkgName : `${pkgName}/${key.replace(/^\.\//, "")}`;
         aliases.push({
-          find: new RegExp(`^${escapeRegExp(aliasKey)}$`),
+          find: new RegExp(`^${escapeRegExp(pkgName)}$`),
           replacement: path.resolve(pkgDir, exportTarget),
         });
       }
-      aliases.push({
-        find: new RegExp(`^${escapeRegExp(pkgName)}/(.*)`),
-        replacement: path.resolve(pkgDir, "src/$1"),
-      });
     }
   }
+  return aliases;
+}
+
+function resolveAppPluginBrowserEntry(pkgDir: string): string | null {
+  const preferred = [
+    "src/ui.ts",
+    "src/ui/index.ts",
+    "src/register.ts",
+    "src/index.ts",
+  ];
+  for (const relativePath of preferred) {
+    const candidate = path.join(pkgDir, relativePath);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function createAppPluginBrowserAliases() {
+  const pluginsRoot = path.resolve(elizaRoot, "plugins");
+  const aliases = [];
+  if (!fs.existsSync(pluginsRoot)) return aliases;
+
+  for (const entry of fs.readdirSync(pluginsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith("app-")) continue;
+    const pkgDir = path.join(pluginsRoot, entry.name);
+    const pkgPath = path.join(pkgDir, "package.json");
+    if (!fs.existsSync(pkgPath)) continue;
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    const pkgName = pkg.name;
+    if (!pkgName) continue;
+
+    const browserEntry = resolveAppPluginBrowserEntry(pkgDir);
+    if (browserEntry) {
+      aliases.push({
+        find: new RegExp(`^${escapeRegExp(pkgName)}$`),
+        replacement: browserEntry,
+      });
+    }
+
+    for (const uiEntry of ["src/ui.ts", "src/ui/index.ts"]) {
+      const candidate = path.join(pkgDir, uiEntry);
+      if (!fs.existsSync(candidate)) continue;
+      aliases.push({
+        find: new RegExp(`^${escapeRegExp(pkgName)}/ui$`),
+        replacement: candidate,
+      });
+      break;
+    }
+  }
+
   return aliases;
 }
 
@@ -191,14 +226,14 @@ const BRANDED_ENV = {
   viteSettingsDebug: `VITE_${APP_ENV_PREFIX}_SETTINGS_DEBUG`,
 };
 const DEFAULT_APP_ROUTE_PLUGIN_MODULES = [
-  "@elizaos/app-vincent/register-routes",
-  "@elizaos/app-shopify/register-routes",
-  "@elizaos/app-steward/register-routes",
-  "@elizaos/app-lifeops/register-routes",
-  "@elizaos/plugin-github/register-routes",
-  "@elizaos/plugin-computeruse/register-routes",
-  "@elizaos/plugin-elizacloud/register-routes",
-  "@elizaos/plugin-n8n-workflow/register-routes",
+  "@elizaos/app-vincent",
+  "@elizaos/app-shopify",
+  "@elizaos/app-steward",
+  "@elizaos/app-lifeops",
+  "@elizaos/plugin-github",
+  "@elizaos/plugin-computeruse",
+  "@elizaos/plugin-elizacloud",
+  "@elizaos/plugin-workflow",
 ];
 
 // Mirror branded app env into ELIZA_* before the shared runtime helpers resolve ports.
@@ -317,22 +352,46 @@ function elizaCoreBetaPrerelease(dir: string): number {
   return m?.[1] ? parseInt(m[1], 10) : -1;
 }
 
-function resolveExistingUiSourceModule(id: string) {
+function resolveExistingTsSourceModule(id: string): string {
   if (fs.existsSync(id)) {
-    return id;
+    try {
+      if (!fs.statSync(id).isDirectory()) {
+        return id;
+      }
+    } catch {
+      return id;
+    }
   }
 
-  const alternate = id.endsWith(".tsx")
-    ? `${id.slice(0, -4)}.ts`
-    : id.endsWith(".ts")
-      ? `${id.slice(0, -3)}.tsx`
-      : null;
+  const candidates = [
+    `${id}.ts`,
+    `${id}.tsx`,
+    path.join(id, "index.ts"),
+    path.join(id, "index.tsx"),
+  ];
 
-  if (alternate && fs.existsSync(alternate)) {
-    return alternate;
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? id;
+}
+
+function resolveSharedSourceExportTarget(
+  sharedPkgDir: string,
+  key: string,
+  value: unknown,
+): string | null {
+  if (key === ".") {
+    return path.join(sharedPkgDir, "src/index.ts");
   }
 
-  return id;
+  const exportTarget = resolvePackageExportTarget(value);
+  if (!exportTarget) return null;
+
+  const sourceRelative = exportTarget
+    .replace(/^\.\//, "")
+    .replace(/^dist\//, "")
+    .replace(/\.js$/, "");
+  return resolveExistingTsSourceModule(
+    path.join(sharedPkgDir, "src", sourceRelative),
+  );
 }
 
 /**
@@ -422,13 +481,15 @@ function isElizaCoreBrowserDistId(id: string | undefined): boolean {
 /**
  * Resolved file path for bundling `@elizaos/core` in the renderer.
  * Linked eliza checkouts sometimes omit `dist/` until `bun run build`;
- * prefer the source browser entry when present, otherwise fall back to
- * built artifacts and then the bun install cache copy.
+ * prefer the local browser source entry in dev so Vite does not need to parse
+ * the huge bundled browser artifact during startup. Built artifacts remain as
+ * fallbacks for published/cached installs.
  */
 function resolveElizaCoreBundlePath(): string {
-  const pkgDir = tryResolveElizaCorePkgDir();
   const sourceBrowserEntry = resolveElizaCoreSourceBrowserPath();
   if (sourceBrowserEntry) return sourceBrowserEntry;
+
+  const pkgDir = tryResolveElizaCorePkgDir();
   if (pkgDir) {
     const browserEntry = path.join(pkgDir, "dist/browser/index.browser.js");
     const nodeEntry = path.join(pkgDir, "dist/node/index.node.js");
@@ -480,22 +541,21 @@ function resolveElizaCoreBundlePath(): string {
 /**
  * Some linked @elizaos/core workspaces have a flat dist/index.browser.js shim
  * even when dist/browser/index.browser.js was never emitted. If anything in the
- * dependency graph resolves that shim directly, redirect it back to the source
- * browser entry so Vite never follows the missing relative import.
+ * dependency graph resolves that shim directly, redirect it to the best browser
+ * entry so Vite never follows the missing relative import.
  */
 function elizaCoreBrowserEntryFallbackPlugin(): Plugin {
   return {
     name: "eliza-core-browser-entry-fallback",
     enforce: "pre",
     resolveId(id, importer) {
-      const sourceBrowserEntry = resolveElizaCoreSourceBrowserPath();
-      if (!sourceBrowserEntry) return null;
-      if (isElizaCoreBrowserDistId(id)) return sourceBrowserEntry;
+      const browserEntry = resolveElizaCoreBundlePath();
+      if (isElizaCoreBrowserDistId(id)) return browserEntry;
       if (
         id === "./browser/index.browser.js" &&
         isElizaCoreBrowserDistId(importer)
       ) {
-        return sourceBrowserEntry;
+        return browserEntry;
       }
       return null;
     },
@@ -726,7 +786,7 @@ function desktopCorsPlugin(): Plugin {
 /**
  * Patch the final bundle output to fix AsyncLocalStorage stubs.
  *
- * langsmith imports `{ AsyncLocalStorage } from "node:async_hooks"` at the
+ * Some packages import `{ AsyncLocalStorage } from "node:async_hooks"` at the
  * top level. Vite's dep optimizer and Rollup inline the virtual-module stub
  * as `(()=>({}))`, making AsyncLocalStorage `undefined` and causing
  * `new undefined` → "xte is not a constructor" at runtime in mobile webviews.
@@ -848,6 +908,11 @@ export default defineConfig({
   publicDir: path.resolve(here, "public"),
   define: {
     global: "globalThis",
+    // Build variant — set at signing time by desktop-build.mjs and embedded
+    // here so the renderer can branch on store vs direct without an API call.
+    __MILADY_BUILD_VARIANT__: JSON.stringify(
+      process.env.MILADY_BUILD_VARIANT === "store" ? "store" : "direct",
+    ),
     // Mirror the branded TTS debug env into the client bundle so one env
     // enables UI + server TTS logs in dev.
     [`import.meta.env.${BRANDED_ENV.ttsDebug}`]: JSON.stringify(
@@ -920,65 +985,12 @@ export default defineConfig({
       ...(capacitorAppEntry
         ? [{ find: /^@capacitor\/app$/, replacement: capacitorAppEntry }]
         : []),
-      // Keep this subpath on the concrete source file so Docker/Vite builds
-      // do not fall back to the extensionless tsconfig wildcard rewrite.
-      {
-        find: /^@elizaos\/app-core\/platform\/native-plugin-entrypoints$/,
-        replacement: appCoreNativePluginEntrypoints,
-      },
-      {
-        find: /^@elizaos\/app-core\/platform\/native-plugin-entrypoints\.js$/,
-        replacement: appCoreNativePluginEntrypoints,
-      },
-      // Keep plugin-sql subpath imports on the repo-local source layout. Some
-      // cached package copies still describe the old src/ layout, which makes
-      // renderer builds fail before the server-only imports can be stubbed.
-      {
-        find: /^@elizaos\/plugin-sql\/drizzle$/,
-        replacement: path.join(pluginSqlSrcRoot, "drizzle/index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-sql\/schema$/,
-        replacement: path.join(pluginSqlSrcRoot, "schema/index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-sql\/types$/,
-        replacement: path.join(pluginSqlSrcRoot, "types.ts"),
-      },
       // Keep the migrated browser bridge plugin on local source in renderer
       // builds. It is not an `app-*` route package, so the dynamic app plugin
       // aliases intentionally skip it.
       {
         find: /^@elizaos\/plugin-browser$/,
         replacement: path.join(pluginBrowserBridgeSrcRoot, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-browser\/contracts$/,
-        replacement: path.join(pluginBrowserBridgeSrcRoot, "contracts.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-browser\/schema$/,
-        replacement: path.join(pluginBrowserBridgeSrcRoot, "schema.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-browser\/packaging$/,
-        replacement: path.join(pluginBrowserBridgeSrcRoot, "packaging.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-browser\/routes$/,
-        replacement: path.join(pluginBrowserBridgeSrcRoot, "routes.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-browser\/service$/,
-        replacement: path.join(pluginBrowserBridgeSrcRoot, "service.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-browser\/actions$/,
-        replacement: path.join(pluginBrowserBridgeSrcRoot, "actions.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-browser\/plugin$/,
-        replacement: path.join(pluginBrowserBridgeSrcRoot, "plugin.ts"),
       },
       // Node built-in subpaths that browser polyfills don't provide.
       // Server-only code imports these but they're never executed in-browser.
@@ -1006,50 +1018,9 @@ export default defineConfig({
         find: /^@elizaos\/ui$/,
         replacement: path.join(uiPkgRoot, "src/index.ts"),
       },
-      {
-        find: /^@elizaos\/ui\/components\/ui\/(.*)$/,
-        replacement: `${uiPkgRoot}/src/components/ui/$1.tsx`,
-        customResolver: resolveExistingUiSourceModule,
-      },
-      {
-        find: /^@elizaos\/ui\/components\/composites\/([^/]+)$/,
-        replacement: `${uiPkgRoot}/src/components/composites/$1/index.ts`,
-      },
-      {
-        find: /^@elizaos\/ui\/components\/composites\/(.+)\/([^/]+)$/,
-        replacement: `${uiPkgRoot}/src/components/composites/$1/$2.tsx`,
-        customResolver: resolveExistingUiSourceModule,
-      },
-      {
-        find: /^@elizaos\/ui\/components\/(.+)\/([^/]+)$/,
-        replacement: `${uiPkgRoot}/src/components/$1/$2.tsx`,
-        customResolver: resolveExistingUiSourceModule,
-      },
-      {
-        find: /^@elizaos\/ui\/hooks$/,
-        replacement: path.join(uiPkgRoot, "src/hooks/index.ts"),
-      },
-      {
-        find: /^@elizaos\/ui\/hooks\/(.*)$/,
-        replacement: `${uiPkgRoot}/src/hooks/$1.ts`,
-      },
-      {
-        find: /^@elizaos\/ui\/layouts$/,
-        replacement: path.join(uiPkgRoot, "src/layouts/index.ts"),
-      },
-      {
-        find: /^@elizaos\/ui\/layouts\/([^/]+)$/,
-        replacement: `${uiPkgRoot}/src/layouts/$1/index.ts`,
-      },
-      {
-        find: /^@elizaos\/ui\/layouts\/(.+)\/([^/]+)$/,
-        replacement: `${uiPkgRoot}/src/layouts/$1/$2.tsx`,
-      },
-      {
-        find: /^@elizaos\/ui\/lib\/(.*)$/,
-        replacement: `${uiPkgRoot}/src/lib/$1.ts`,
-      },
-      // Dynamic aliases for local app plugin packages.
+      // Browser-safe aliases for local app plugin package roots.
+      ...createAppPluginBrowserAliases(),
+      // Dynamic aliases for local app plugin package subpaths.
       ...createWorkspacePackageAliases([path.resolve(elizaRoot, "plugins")]),
       ...(() => {
         const sharedPkgPath = path.resolve(
@@ -1060,15 +1031,16 @@ export default defineConfig({
         const sharedPkg = JSON.parse(fs.readFileSync(sharedPkgPath, "utf8"));
         const aliases = [];
         for (const [key, value] of Object.entries(sharedPkg.exports || {})) {
-          const exportTarget = resolvePackageExportTarget(value);
+          if (key !== ".") continue;
+          const exportTarget = resolveSharedSourceExportTarget(
+            sharedPkgDir,
+            key,
+            value,
+          );
           if (!exportTarget) continue;
-          const aliasKey =
-            key === "."
-              ? "@elizaos/shared"
-              : `@elizaos/shared/${key.replace(/^\.\//, "")}`;
           aliases.push({
-            find: new RegExp(`^${escapeRegExp(aliasKey)}$`),
-            replacement: path.resolve(sharedPkgDir, exportTarget),
+            find: new RegExp(`^${escapeRegExp("@elizaos/shared")}$`),
+            replacement: exportTarget,
           });
         }
         return aliases;
@@ -1090,71 +1062,34 @@ export default defineConfig({
         const generatedAliases = [];
 
         for (const [key, value] of Object.entries(appCorePkg.exports || {})) {
+          if (key !== ".") continue;
           const exportTarget = resolvePackageExportTarget(value);
           if (!exportTarget) continue;
-          const aliasKey =
-            key === "."
-              ? "@elizaos/app-core"
-              : `@elizaos/app-core/${key.replace(/^\.\//, "")}`;
           // Keep the renderer on a browser-safe entry. The package root barrel
           // re-exports server modules that pull Node-only code like sharp into
           // the Vite client graph.
-          const targetPath =
-            key === "."
-              ? appCoreBrowserEntry
-              : path.resolve(appCorePkgDir, exportTarget);
+          const targetPath = appCoreBrowserEntry;
 
           generatedAliases.push({
-            find: new RegExp(`^${escapeRegExp(aliasKey)}$`),
+            find: new RegExp(`^${escapeRegExp("@elizaos/app-core")}$`),
             replacement: targetPath,
           });
-          // Also map .js extension for users importing it as .js
-          if (!aliasKey.endsWith(".js") && !aliasKey.endsWith(".css")) {
-            generatedAliases.push({
-              find: new RegExp(`^${escapeRegExp(aliasKey)}\\.js$`),
-              replacement: targetPath,
-            });
-          }
         }
 
-        const uiSource = path.resolve(elizaRoot, "packages/app-core/src/ui");
+        const uiSource = path.resolve(elizaRoot, "packages/ui/src");
 
         return [
           ...generatedAliases,
-          // Fallback: catch any @elizaos/app-core sub-path not covered by the
-          // dynamic export-map aliases above (e.g. when the published package
-          // uses conditional exports objects and the `typeof value === "string"`
-          // guard skips them).  Maps directly to the local src/ tree.
-          {
-            find: /^@elizaos\/app-core\/(.+)$/,
-            replacement: `${appCorePkgDir}/src/$1`,
-          },
           {
             find: /^@elizaos\/ui$/,
             replacement: path.join(uiSource, "index.ts"),
           },
-          {
-            find: /^@elizaos\/ui\/(.*)$/,
-            replacement: `${uiSource}/$1/index.ts`, // assumes subpaths are directories
-          },
-          // NOTE: App and UI code should import `@elizaos/agent/<subpath>` only.
-          // The package root still resolves to `./src/index.ts`, which pulls in
-          // server-only modules. Map the bare specifier to a no-op so the client
-          // bundle never traverses that graph.
           {
             find: /^@elizaos\/agent$/,
             replacement: path.join(
               appCoreSrcRoot,
               "platform/empty-node-module.ts",
             ),
-          },
-          // Fallback for @elizaos/agent sub-path imports (e.g. /autonomy,
-          // /contracts/onboarding). The npm-published package may not include
-          // all export entries that the local workspace source provides, so
-          // resolve sub-paths directly from the local agent source tree.
-          {
-            find: /^@elizaos\/agent\/(.+)$/,
-            replacement: path.resolve(elizaRoot, "packages/agent/src/$1"),
           },
           // @elizaos/core — force ALL copies (including nested ones in plugins
           // that bundle their own older core) to the
@@ -1251,6 +1186,16 @@ export default defineConfig({
       // Contains native-only pty-state-capture / pty-console imports; skip pre-bundling.
       "@elizaos/plugin-agent-orchestrator",
       "pty-console",
+      // chalk + drizzle-orm: Node-only deps that never run in the
+      // renderer. Excluded from dep-optimisation so the
+      // nativeModuleStubPlugin can replace them at resolve-time with
+      // browser-safe Proxy stubs (otherwise rolldown emits a bare
+      // `import "chalk"` that the browser can't resolve).
+      "chalk",
+      "drizzle-orm",
+      "drizzle-orm/pg-core",
+      "drizzle-orm/pglite",
+      "drizzle-orm/neon-http",
       // Built-in secrets live in @elizaos/core features; Vite must not externalize them as a separate package.
       // Node-only HTTP client — crashes in browser, stub via nativeModuleStubPlugin
       "undici",
@@ -1262,6 +1207,13 @@ export default defineConfig({
       // Node-only connector; LifeOps server services may dynamically import it,
       // but the renderer must not parse its Baileys/qrcode-terminal graph.
       "@elizaos/plugin-whatsapp",
+      // Native keychain bindings (.node). Dep optimization treats .node as text → UTF-8 error.
+      "@napi-rs/keyring",
+      // Pulls `@napi-rs/keyring` dynamically; excluding avoids the optimizer crawling native bindings.
+      "@elizaos/vault",
+      // Vite occasionally invalidates zod's optimized chunk during dev startup,
+      // which leaves the UI serving a missing .vite/deps file.
+      "zod",
     ],
   },
   build: {
@@ -1291,6 +1243,11 @@ export default defineConfig({
             "electron",
             "node-llama-cpp",
             "pty-manager",
+            // chalk + drizzle-orm intentionally NOT externalised here:
+            // marking them external leaves a bare ESM specifier in the
+            // output bundle (e.g. `import "chalk"`), which the browser
+            // can't resolve. They are stubbed at resolve-time by
+            // nativeModuleStubPlugin instead.
           ].includes(id)
         )
           return true;

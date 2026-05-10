@@ -30,7 +30,7 @@ export default scenario({
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "BLOCK_UNTIL_TASK_COMPLETE",
+      actionName: "APP_BLOCK",
       minCount: 1,
     },
   ],

@@ -2,7 +2,7 @@
  * Shared onboarding contracts.
  */
 
-import { isTruthyEnvValue } from "../env-utils.impl.js";
+import { isTruthyEnvValue } from "../env-utils.js";
 import type {
   DeploymentTargetConfig,
   LinkedAccountFlagsConfig,
@@ -75,10 +75,13 @@ export type OnboardingProviderId =
   | "anthropic"
   | "anthropic-subscription"
   | "deepseek"
+  | "deepseek-coding-subscription"
   | "elizacloud"
   | "gemini"
+  | "gemini-subscription"
   | "grok"
   | "groq"
+  | "kimi-coding-subscription"
   | "mistral"
   | "moonshot"
   | "ollama"
@@ -87,6 +90,7 @@ export type OnboardingProviderId =
   | "openrouter"
   | "together"
   | "zai"
+  | "zai-coding-subscription"
   | (string & {});
 
 export type OnboardingProviderAuthMode =
@@ -181,11 +185,19 @@ export interface InventoryProviderOption {
 
 export type SubscriptionProviderSelectionId =
   | "anthropic-subscription"
-  | "openai-subscription";
+  | "openai-subscription"
+  | "gemini-subscription"
+  | "zai-coding-subscription"
+  | "kimi-coding-subscription"
+  | "deepseek-coding-subscription";
 
 export type StoredSubscriptionProviderId =
   | "anthropic-subscription"
-  | "openai-codex";
+  | "openai-codex"
+  | "gemini-cli"
+  | "zai-coding"
+  | "kimi-coding"
+  | "deepseek-coding";
 
 export const SUBSCRIPTION_PROVIDER_SELECTIONS = [
   {
@@ -200,10 +212,34 @@ export const SUBSCRIPTION_PROVIDER_SELECTIONS = [
     family: "openai",
     labelKey: "providerswitcher.chatgptSubscription",
   },
+  {
+    id: "gemini-subscription",
+    storedProvider: "gemini-cli",
+    family: "gemini",
+    labelKey: "providerswitcher.geminiSubscription",
+  },
+  {
+    id: "zai-coding-subscription",
+    storedProvider: "zai-coding",
+    family: "zai",
+    labelKey: "providerswitcher.zaiCodingPlan",
+  },
+  {
+    id: "kimi-coding-subscription",
+    storedProvider: "kimi-coding",
+    family: "moonshot",
+    labelKey: "providerswitcher.kimiCodingPlan",
+  },
+  {
+    id: "deepseek-coding-subscription",
+    storedProvider: "deepseek-coding",
+    family: "deepseek",
+    labelKey: "providerswitcher.deepseekCodingPlan",
+  },
 ] as const satisfies ReadonlyArray<{
   id: SubscriptionProviderSelectionId;
   storedProvider: StoredSubscriptionProviderId;
-  family: "anthropic" | "openai";
+  family: "anthropic" | "openai" | "gemini" | "zai" | "moonshot" | "deepseek";
   labelKey: string;
 }>;
 
@@ -243,7 +279,8 @@ export const ONBOARDING_PROVIDER_CATALOG = [
     envKey: null,
     pluginName: "@elizaos/plugin-openai",
     keyPrefix: null,
-    description: "Use your ChatGPT Plus or Pro subscription via OAuth.",
+    description:
+      "Powers Codex-backed coding agents through the official Codex surface.",
     family: "openai",
     authMode: "subscription",
     group: "subscription",
@@ -251,6 +288,66 @@ export const ONBOARDING_PROVIDER_CATALOG = [
     recommended: true,
     labelKey: "providerswitcher.chatgptSubscription",
     storedProvider: "openai-codex",
+  },
+  {
+    id: "gemini-subscription",
+    name: "Gemini CLI Subscription",
+    envKey: null,
+    pluginName: "@elizaos/plugin-google-genai",
+    keyPrefix: null,
+    description:
+      "Powers task agents through the authenticated Gemini CLI. No Gemini subscription token is imported into API env vars.",
+    family: "gemini",
+    authMode: "subscription",
+    group: "subscription",
+    order: 35,
+    labelKey: "providerswitcher.geminiSubscription",
+    storedProvider: "gemini-cli",
+  },
+  {
+    id: "zai-coding-subscription",
+    name: "z.ai Coding Plan",
+    envKey: null,
+    pluginName: "@homunculuslabs/plugin-zai",
+    keyPrefix: null,
+    description:
+      "Stores z.ai Coding Plan credentials for the dedicated coding endpoint only, not the general z.ai API key path.",
+    family: "zai",
+    authMode: "subscription",
+    group: "subscription",
+    order: 36,
+    labelKey: "providerswitcher.zaiCodingPlan",
+    storedProvider: "zai-coding",
+  },
+  {
+    id: "kimi-coding-subscription",
+    name: "Kimi Code",
+    envKey: null,
+    pluginName: "@elizaos/plugin-openai",
+    keyPrefix: null,
+    description:
+      "Stores Kimi Code credentials for Kimi's coding endpoint only, not the Moonshot general API key path.",
+    family: "moonshot",
+    authMode: "subscription",
+    group: "subscription",
+    order: 37,
+    labelKey: "providerswitcher.kimiCodingPlan",
+    storedProvider: "kimi-coding",
+  },
+  {
+    id: "deepseek-coding-subscription",
+    name: "DeepSeek Coding Plan",
+    envKey: null,
+    pluginName: "@elizaos/plugin-deepseek",
+    keyPrefix: null,
+    description:
+      "Unavailable until DeepSeek exposes a first-party coding subscription surface that can be integrated without API-key substitution.",
+    family: "deepseek",
+    authMode: "subscription",
+    group: "subscription",
+    order: 38,
+    labelKey: "providerswitcher.deepseekCodingPlan",
+    storedProvider: "deepseek-coding",
   },
   {
     id: "anthropic",
@@ -551,6 +648,9 @@ export type SubscriptionCredentialSource =
   | "claude-code-cli"
   | "setup-token"
   | "codex-cli"
+  | "gemini-cli"
+  | "coding-plan-key"
+  | "unavailable"
   | null;
 
 export interface SubscriptionProviderStatus {
@@ -567,6 +667,11 @@ export interface SubscriptionProviderStatus {
   valid: boolean;
   expiresAt: number | null;
   source: SubscriptionCredentialSource;
+  available?: boolean;
+  availabilityReason?: string;
+  allowedClient?: string;
+  loginHint?: string;
+  billingMode?: "subscription-coding-plan" | "subscription-coding-cli";
 }
 
 export interface SubscriptionStatusResponse {
@@ -577,6 +682,17 @@ const ONBOARDING_PROVIDER_ALIASES: Record<string, OnboardingProviderId> = {
   "openai-codex": "openai-subscription",
   "openai-subscription": "openai-subscription",
   "anthropic-subscription": "anthropic-subscription",
+  "gemini-cli": "gemini-subscription",
+  "gemini-subscription": "gemini-subscription",
+  "google-subscription": "gemini-subscription",
+  "zai-coding": "zai-coding-subscription",
+  "z.ai-coding": "zai-coding-subscription",
+  "zai-coding-subscription": "zai-coding-subscription",
+  "kimi-coding": "kimi-coding-subscription",
+  "kimi-code": "kimi-coding-subscription",
+  "kimi-coding-subscription": "kimi-coding-subscription",
+  "deepseek-coding": "deepseek-coding-subscription",
+  "deepseek-coding-subscription": "deepseek-coding-subscription",
   google: "gemini",
   "google-genai": "gemini",
   gemini: "gemini",
@@ -603,31 +719,35 @@ export function isSubscriptionProviderSelectionId(
 export function normalizeSubscriptionProviderSelectionId(
   value: unknown,
 ): SubscriptionProviderSelectionId | null {
-  if (value === "anthropic-subscription") return "anthropic-subscription";
-  if (value === "openai-subscription" || value === "openai-codex") {
-    return "openai-subscription";
-  }
-  return null;
+  const normalized = normalizeOnboardingProviderId(value);
+  return isSubscriptionProviderSelectionId(normalized) ? normalized : null;
 }
 
 export function getStoredSubscriptionProvider(
   selectionId: SubscriptionProviderSelectionId,
 ): StoredSubscriptionProviderId {
-  return selectionId === "anthropic-subscription"
-    ? "anthropic-subscription"
-    : "openai-codex";
+  return (
+    SUBSCRIPTION_PROVIDER_SELECTIONS.find(
+      (provider) => provider.id === selectionId,
+    )?.storedProvider ?? "anthropic-subscription"
+  );
 }
 
 export function getSubscriptionProviderFamily(
   selectionId: SubscriptionProviderSelectionId,
-): "anthropic" | "openai" {
-  return selectionId === "anthropic-subscription" ? "anthropic" : "openai";
+): "anthropic" | "openai" | "gemini" | "zai" | "moonshot" | "deepseek" {
+  return (
+    SUBSCRIPTION_PROVIDER_SELECTIONS.find(
+      (provider) => provider.id === selectionId,
+    )?.family ?? "anthropic"
+  );
 }
 
 export function requiresAdditionalRuntimeProvider(
   providerId: unknown,
 ): boolean {
-  return normalizeOnboardingProviderId(providerId) === "anthropic-subscription";
+  const selection = normalizeSubscriptionProviderSelectionId(providerId);
+  return Boolean(selection && selection !== "openai-subscription");
 }
 
 export function normalizeOnboardingProviderId(

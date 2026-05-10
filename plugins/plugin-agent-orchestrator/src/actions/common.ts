@@ -65,17 +65,11 @@ export function getAcpService(
   return (runtime.getService?.("ACP_SERVICE") ??
     runtime.getService?.("ACP_SUBPROCESS_SERVICE") ??
     runtime.getService?.("PTY_SERVICE") ??
-    undefined) as unknown as AcpActionService | undefined;
+    undefined) as AcpActionService | undefined;
 }
 
 export function logger(runtime: IAgentRuntime) {
-  return (
-    (
-      runtime as unknown as {
-        logger?: Record<string, (...args: unknown[]) => void>;
-      }
-    ).logger ?? {}
-  );
+  return runtime.logger ?? {};
 }
 
 export function contentRecord(message: Memory): Record<string, unknown> {
@@ -213,7 +207,7 @@ export async function resolveSession(
   sessions: SessionInfo[];
 }> {
   const stateSession = (
-    state as unknown as { codingSession?: { id?: string } } | undefined
+    state as { codingSession?: { id?: string } } | undefined
   )?.codingSession?.id;
   const targetId = sessionId ?? stateSession;
   if (targetId) {
@@ -232,17 +226,14 @@ export function setCurrentSession(
   state: State | undefined,
   session: SpawnResult | SessionInfo,
 ): void {
-  if (state)
-    (state as unknown as { codingSession?: unknown }).codingSession = session;
+  if (state) (state as { codingSession?: unknown }).codingSession = session;
 }
 
 export function setCurrentSessions(
   state: State | undefined,
   sessions: SpawnResult[],
 ): void {
-  if (state)
-    (state as unknown as { codingSessions?: unknown }).codingSessions =
-      sessions;
+  if (state) (state as { codingSessions?: unknown }).codingSessions = sessions;
 }
 
 export function emitSessionEvent(
@@ -251,7 +242,6 @@ export function emitSessionEvent(
   event: SessionEventName,
   data: unknown,
 ): void {
-  // TODO(W7-integration): AcpService.emitSessionEvent is currently private though CREATE_TASK parity needs it.
   service.emitSessionEvent?.(sessionId, event, data);
 }
 

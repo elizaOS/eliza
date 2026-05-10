@@ -7,32 +7,32 @@
  * - `enableSecretsManager: true` / `ENABLE_SECRETS_MANAGER` — encrypted secrets, plugin activation
  * - `enablePluginManager: true` / `ENABLE_PLUGIN_MANAGER` — plugin introspection, install/eject
  *
- * Actions, providers, and evaluators are populated eagerly from each capability's
- * index so they are registered with the runtime alongside the lazy-started services.
+ * Actions and providers are populated eagerly from each capability's index so
+ * they are registered with the runtime alongside the lazy-started services.
  */
 
-import type { Action, Evaluator, Provider } from "../types/index.ts";
+import { createService } from "../services.ts";
+import type { Action, Provider } from "../types/index.ts";
 import type { ServiceClass } from "../types/plugin.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 
 // ─── Trust ────────────────────────────────────────────────────────────────────
 
 // Eagerly import trust components so they are available to the runtime's
-// action planner, provider composition, and evaluator loop.
-import {
-	evaluateTrustAction,
-	recordTrustInteractionAction,
-	requestElevationAction,
-	updateRoleAction as trustUpdateRoleAction,
-	updateSettingsAction as trustUpdateSettingsAction,
-} from "./trust/actions/index.ts";
-import {
-	adminTrustProvider,
-	securityStatusProvider,
-	trustProfileProvider,
-	roleProvider as trustRoleProvider,
-	settingsProvider as trustSettingsProvider,
-} from "./trust/providers/index.ts";
+// action planner and provider composition.
+//
+// Direct leaf-file imports — see comment in
+// ./advanced-capabilities/index.ts for the Bun.build mis-rewrite that
+// requires bypassing barrels here too.
+import { evaluateTrustAction } from "./trust/actions/evaluateTrust.ts";
+import { recordTrustInteractionAction } from "./trust/actions/recordTrustInteraction.ts";
+import { requestElevationAction } from "./trust/actions/requestElevation.ts";
+import { updateRoleAction as trustUpdateRoleAction } from "./trust/actions/roles.ts";
+import { adminTrustProvider } from "./trust/providers/adminTrust.ts";
+import { roleProvider as trustRoleProvider } from "./trust/providers/roles.ts";
+import { securityStatusProvider } from "./trust/providers/securityStatus.ts";
+import { settingsProvider as trustSettingsProvider } from "./trust/providers/settings.ts";
+import { trustProfileProvider } from "./trust/providers/trustProfile.ts";
 
 const trustCapability = {
 	providers: [
@@ -44,41 +44,39 @@ const trustCapability = {
 	] as Provider[],
 	actions: [
 		trustUpdateRoleAction,
-		trustUpdateSettingsAction,
 		recordTrustInteractionAction,
 		evaluateTrustAction,
 		requestElevationAction,
 	] as Action[],
-	evaluators: [] as Evaluator[],
 	services: [
-		{
-			serviceType: "trust-engine",
-			start: async (runtime: IAgentRuntime) => {
+		createService("trust-engine")
+			.withDescription("Trust profile, evidence, and policy evaluation")
+			.withStart(async (runtime: IAgentRuntime) => {
 				const mod = await import("./trust/index.ts");
 				return mod.TrustEngineServiceWrapper.start(runtime);
-			},
-		} as unknown as ServiceClass,
-		{
-			serviceType: "security-module",
-			start: async (runtime: IAgentRuntime) => {
+			})
+			.build(),
+		createService("security-module")
+			.withDescription("Trust security module")
+			.withStart(async (runtime: IAgentRuntime) => {
 				const mod = await import("./trust/index.ts");
 				return mod.SecurityModuleServiceWrapper.start(runtime);
-			},
-		} as unknown as ServiceClass,
-		{
-			serviceType: "credential-protector",
-			start: async (runtime: IAgentRuntime) => {
+			})
+			.build(),
+		createService("credential-protector")
+			.withDescription("Credential risk protection")
+			.withStart(async (runtime: IAgentRuntime) => {
 				const mod = await import("./trust/index.ts");
 				return mod.CredentialProtectorServiceWrapper.start(runtime);
-			},
-		} as unknown as ServiceClass,
-		{
-			serviceType: "contextual-permissions",
-			start: async (runtime: IAgentRuntime) => {
+			})
+			.build(),
+		createService("contextual-permissions")
+			.withDescription("Contextual permission checks")
+			.withStart(async (runtime: IAgentRuntime) => {
 				const mod = await import("./trust/index.ts");
 				return mod.ContextualPermissionSystemServiceWrapper.start(runtime);
-			},
-		} as unknown as ServiceClass,
+			})
+			.build(),
 	] as ServiceClass[],
 	async init(runtime: IAgentRuntime): Promise<void> {
 		const { ensureAdminRoleOnInit } = await import("./trust/index.ts");
@@ -88,21 +86,22 @@ const trustCapability = {
 
 // ─── Secrets Manager ──────────────────────────────────────────────────────────
 
-import {
-	manageSecretAction,
-	requestSecretAction,
-	setSecretAction,
-} from "./secrets/actions/index.ts";
+// Direct leaf-file imports — see comment in
+// ./advanced-capabilities/index.ts for the Bun.build mis-rewrite that
+// requires bypassing barrels.
+import { manageSecretAction } from "./secrets/actions/manage-secret.ts";
+import { requestSecretAction } from "./secrets/actions/request-secret.ts";
+import { setSecretAction } from "./secrets/actions/set-secret.ts";
+import { updateSettingsAction as onboardingUpdateSettingsAction } from "./secrets/onboarding/action.ts";
 import {
 	missingSecretsProvider,
 	onboardingSettingsProvider,
-	updateSettingsAction as onboardingUpdateSettingsAction,
-} from "./secrets/onboarding/index.ts";
+} from "./secrets/onboarding/provider.ts";
 import { OnboardingService } from "./secrets/onboarding/service.ts";
 import {
 	secretsInfoProvider,
 	secretsStatusProvider,
-} from "./secrets/providers/index.ts";
+} from "./secrets/providers/secrets-status.ts";
 import { PluginActivatorService } from "./secrets/services/plugin-activator.ts";
 import { SecretsService } from "./secrets/services/secrets.ts";
 
@@ -120,37 +119,36 @@ const secretsCapability = {
 		onboardingUpdateSettingsAction,
 	] as Action[],
 	services: [
-		{
-			serviceType: "SECRETS",
-			start: async (runtime: IAgentRuntime) => {
+		createService("SECRETS")
+			.withDescription("Secrets manager")
+			.withStart(async (runtime: IAgentRuntime) => {
 				return SecretsService.start(runtime);
-			},
-		} as unknown as ServiceClass,
-		{
-			serviceType: "PLUGIN_ACTIVATOR",
-			start: async (runtime: IAgentRuntime) => {
+			})
+			.build(),
+		createService("PLUGIN_ACTIVATOR")
+			.withDescription("Plugin activation service")
+			.withStart(async (runtime: IAgentRuntime) => {
 				return PluginActivatorService.start(runtime);
-			},
-		} as unknown as ServiceClass,
-		{
-			serviceType: "ONBOARDING",
-			start: async (runtime: IAgentRuntime) => {
+			})
+			.build(),
+		createService("ONBOARDING")
+			.withDescription("Secrets onboarding service")
+			.withStart(async (runtime: IAgentRuntime) => {
 				return OnboardingService.start(runtime);
-			},
-		} as unknown as ServiceClass,
+			})
+			.build(),
 	] as ServiceClass[],
 };
 
 // ─── Plugin Manager ───────────────────────────────────────────────────────────
 
-import {
-	CoreManagerService,
-	PluginManagerService,
-	pluginAction,
-	pluginConfigurationStatusProvider,
-	pluginStateProvider,
-	registryPluginsProvider,
-} from "./plugin-manager/index.ts";
+// Direct leaf imports — see comment in ./advanced-capabilities/index.ts.
+import { pluginAction } from "./plugin-manager/actions/plugin.ts";
+import { pluginConfigurationStatusProvider } from "./plugin-manager/providers/pluginConfigurationStatus.ts";
+import { pluginStateProvider } from "./plugin-manager/providers/pluginStateProvider.ts";
+import { registryPluginsProvider } from "./plugin-manager/providers/registryPluginsProvider.ts";
+import { CoreManagerService } from "./plugin-manager/services/coreManagerService.ts";
+import { PluginManagerService } from "./plugin-manager/services/pluginManagerService.ts";
 
 const pluginManagerCapability = {
 	providers: [
@@ -160,18 +158,18 @@ const pluginManagerCapability = {
 	] as Provider[],
 	actions: [pluginAction] as Action[],
 	services: [
-		{
-			serviceType: "plugin_manager",
-			start: async (runtime: IAgentRuntime) => {
+		createService("plugin_manager")
+			.withDescription("Plugin management service")
+			.withStart(async (runtime: IAgentRuntime) => {
 				return PluginManagerService.start(runtime);
-			},
-		} as unknown as ServiceClass,
-		{
-			serviceType: "core_manager",
-			start: async (runtime: IAgentRuntime) => {
+			})
+			.build(),
+		createService("core_manager")
+			.withDescription("Core management service")
+			.withStart(async (runtime: IAgentRuntime) => {
 				return CoreManagerService.start(runtime);
-			},
-		} as unknown as ServiceClass,
+			})
+			.build(),
 	] as ServiceClass[],
 };
 
@@ -179,29 +177,22 @@ const pluginManagerCapability = {
 
 export type {
 	DocumentsPluginConfig,
-	FetchedKnowledgeUrl,
-	FetchedKnowledgeUrlKind,
-	FetchKnowledgeFromUrlOptions,
-	// Legacy alias
-	KnowledgePluginConfig,
-} from "./documents/index.ts";
+	FetchDocumentFromUrlOptions,
+	FetchedDocumentUrl,
+	FetchedDocumentUrlKind,
+} from "./documents/index";
 export {
 	createDocumentsPlugin,
-	createKnowledgePlugin,
+	DocumentService,
+	documentAction,
 	documentActions,
 	documentsPlugin,
 	documentsPluginCore,
 	documentsPluginHeadless,
 	documentsProvider,
-	fetchKnowledgeFromUrl,
+	fetchDocumentFromUrl,
 	isYouTubeUrl,
-	KnowledgeService,
-	knowledgeActions,
-	knowledgePlugin,
-	knowledgePluginCore,
-	knowledgePluginHeadless,
-	knowledgeProvider,
-} from "./documents/index.ts";
+} from "./documents/index";
 export type {
 	TrajectoryExportOptions,
 	TrajectoryListItem,

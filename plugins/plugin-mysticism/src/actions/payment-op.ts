@@ -16,6 +16,8 @@ type PaymentOp = "check" | "request";
 const PAYMENT_AMOUNT_MAX_CHARS = 32;
 
 interface PaymentOpParams {
+  action?: unknown;
+  subaction?: unknown;
   op?: unknown;
   amount?: unknown;
   entityId?: unknown;
@@ -42,7 +44,7 @@ function isPaymentOp(value: unknown): value is PaymentOp {
 }
 
 export const paymentOpAction: Action = {
-  name: "PAYMENT_OP",
+  name: "MYSTICISM_PAYMENT",
   contexts: ["finance", "payments"],
   contextGate: { anyOf: ["finance", "payments"] },
   roleGate: { minRole: "OWNER" },
@@ -54,14 +56,15 @@ export const paymentOpAction: Action = {
     "CHECK_PAYMENT",
     "VERIFY_PAYMENT",
     "PAYMENT_STATUS",
+    "PAYMENT",
   ],
   description:
-    "Payment router for the active mysticism reading session. Set op to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
+    "Payment router for the active mysticism reading session. Set action to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
   descriptionCompressed: "Mysticism payment ops: check, request.",
 
   parameters: [
     {
-      name: "op",
+      name: "action",
       description: "Operation: check or request.",
       required: true,
       schema: { type: "string" as const, enum: ["check", "request"] },
@@ -104,7 +107,10 @@ export const paymentOpAction: Action = {
       return { success: false, text: "Mysticism service not available." };
     }
 
-    const opRaw = readParam(options, "op");
+    const opRaw =
+      readParam(options, "action") ??
+      readParam(options, "subaction") ??
+      readParam(options, "op");
     if (!isPaymentOp(opRaw)) {
       return {
         success: false,
@@ -171,7 +177,7 @@ export const paymentOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "For a full Celtic Cross reading, I'd ask $3.00.",
-          actions: ["PAYMENT_OP"],
+          actions: ["MYSTICISM_PAYMENT"],
         },
       },
     ],
@@ -180,7 +186,7 @@ export const paymentOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Let me check if your payment has come through...",
-          actions: ["PAYMENT_OP"],
+          actions: ["MYSTICISM_PAYMENT"],
         },
       },
     ],

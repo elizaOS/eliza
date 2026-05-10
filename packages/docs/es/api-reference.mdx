@@ -98,7 +98,7 @@ curl http://localhost:31337/api/conversations \
 </div>
 
 ```bash
-curl -X POST http://localhost:31337/api/knowledge/documents \
+curl -X POST http://localhost:31337/api/documents \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -112,7 +112,7 @@ curl -X POST http://localhost:31337/api/knowledge/documents \
 </div>
 
 ```bash
-curl "http://localhost:31337/api/knowledge/search?q=what+is+eliza&limit=5" \
+curl "http://localhost:31337/api/documents/search?q=what+is+eliza&limit=5" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
@@ -458,14 +458,14 @@ La bandeja de entrada agrega mensajes de todas las plataformas conectadas (iMess
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| `GET` | `/api/knowledge/stats` | Obtener conteos de documentos y fragmentos |
-| `GET` | `/api/knowledge/documents` | Listar documentos de conocimiento. Parámetros: `limit`, `offset` |
-| `GET` | `/api/knowledge/documents/:id` | Obtener un documento específico con contenido |
-| `POST` | `/api/knowledge/documents` | Subir un documento (contenido en base64 o texto) |
-| `POST` | `/api/knowledge/documents/url` | Subir desde URL (soporta auto-transcripción de YouTube) |
-| `DELETE` | `/api/knowledge/documents/:id` | Eliminar un documento y todos sus fragmentos |
-| `GET` | `/api/knowledge/search` | Búsqueda semántica. Parámetros: `q` (requerido), `threshold`, `limit` |
-| `GET` | `/api/knowledge/fragments/:documentId` | Listar todos los fragmentos de un documento |
+| `GET` | `/api/documents/stats` | Obtener conteos de documentos y fragmentos |
+| `GET` | `/api/documents` | Listar documentos de conocimiento. Parámetros: `limit`, `offset` |
+| `GET` | `/api/documents/:id` | Obtener un documento específico con contenido |
+| `POST` | `/api/documents` | Subir un documento (contenido en base64 o texto) |
+| `POST` | `/api/documents/url` | Subir desde URL (soporta auto-transcripción de YouTube) |
+| `DELETE` | `/api/documents/:id` | Eliminar un documento y todos sus fragmentos |
+| `GET` | `/api/documents/search` | Búsqueda semántica. Parámetros: `q` (requerido), `threshold`, `limit` |
+| `GET` | `/api/documents/:documentId/fragments` | Listar todos los fragmentos de un documento |
 
 ---
 

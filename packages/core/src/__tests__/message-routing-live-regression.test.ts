@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ActionResult, IAgentRuntime } from "../index";
+import { parseActionParams } from "../actions";
+import type { Action, ActionResult, IAgentRuntime } from "../index";
 import {
 	actionResultsSuppressPostActionContinuation,
+	extractPlannerActionNames,
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 	looksLikeSelfPolicyExplanationRequest,
+	resolvePlannerActionName,
 	shouldPromoteExplicitReplyToOwnedAction,
 	shouldSkipDocumentProviderRescue,
 	stripReplyWhenActionOwnsTurn,
@@ -19,13 +22,49 @@ const logger = {
 };
 
 describe("live routing regressions", () => {
+	it("extracts inline params from planner action strings", () => {
+		const shellPlan: Record<string, unknown> = {
+			actions: 'SHELL_COMMAND <params>{"command":"df -h"}</params>',
+			params: {},
+		};
+		expect(extractPlannerActionNames(shellPlan)).toEqual(["SHELL_COMMAND"]);
+		expect(parseActionParams(shellPlan.params).get("SHELL_COMMAND")).toEqual({
+			command: "df -h",
+		});
+
+		const appPlan: Record<string, unknown> = {
+			actions:
+				'APP {"mode":"create","app":"normie-slider","intent":"build, verify, and report"}',
+			params: {},
+		};
+		expect(extractPlannerActionNames(appPlan)).toEqual(["APP"]);
+		expect(parseActionParams(appPlan.params).get("APP")).toEqual({
+			mode: "create",
+			app: "normie-slider",
+			intent: "build, verify, and report",
+		});
+	});
+
+	it("does not treat params tags inside inline JSON strings as XML wrappers", () => {
+		const plan: Record<string, unknown> = {
+			actions:
+				'APP {"note":"literal <params, marker","intent":"build, verify"}, SHELL_COMMAND <params>{"command":"df -h"}</params>',
+			params: {},
+		};
+
+		expect(extractPlannerActionNames(plan)).toEqual(["APP", "SHELL_COMMAND"]);
+		const params = parseActionParams(plan.params);
+		expect(params.get("APP")).toEqual({
+			note: "literal <params, marker",
+			intent: "build, verify",
+		});
+		expect(params.get("SHELL_COMMAND")).toEqual({ command: "df -h" });
+	});
+
 	it("collapses duplicate visible REPLY planner actions", () => {
 		expect(
 			stripReplyWhenActionOwnsTurn(
-				{ actions: [], logger } as unknown as Pick<
-					IAgentRuntime,
-					"actions" | "logger"
-				>,
+				{ actions: [], logger } as Pick<IAgentRuntime, "actions" | "logger">,
 				["REPLY", "REPLY"],
 			),
 		).toEqual(["REPLY"]);
@@ -37,10 +76,92 @@ describe("live routing regressions", () => {
 				{
 					actions: [{ name: "REPLY", similes: ["RESPOND"] }],
 					logger,
-				} as unknown as Pick<IAgentRuntime, "actions" | "logger">,
+				} as Pick<IAgentRuntime, "actions" | "logger">,
 				["RESPOND", "REPLY"],
 			),
 		).toEqual(["RESPOND"]);
+	});
+
+	it("routes dotted planner subactions through the registered umbrella action", () => {
+		const runtime = {
+			actions: [{ name: "LIFE" }, { name: "CALENDAR" }],
+			logger,
+		} as Pick<IAgentRuntime, "actions" | "logger">;
+
+		expect(
+			resolvePlannerActionName(runtime, undefined, "LIFE.add_goal"),
+		).toEqual(["LIFE"]);
+		expect(
+			resolvePlannerActionName(
+				runtime,
+				undefined,
+				"functions.CALENDAR.create_event",
+			),
+		).toEqual(["CALENDAR"]);
+	});
+
+	it("routes invented atomic planner action names through registered parents", () => {
+		const runtime = {
+			actions: [
+				{ name: "OWNER_GOALS" },
+				{ name: "OWNER_TODOS" },
+				{ name: "MESSAGE" },
+				{ name: "POST" },
+				{ name: "COMPUTER_USE" },
+			],
+			logger,
+		} as Pick<IAgentRuntime, "actions" | "logger">;
+
+		expect(
+			resolvePlannerActionName(runtime, undefined, "TASKS_ADD_TODO"),
+		).toEqual(["OWNER_TODOS"]);
+		expect(resolvePlannerActionName(runtime, undefined, "todo_create")).toEqual(
+			["OWNER_TODOS"],
+		);
+		expect(
+			resolvePlannerActionName(runtime, undefined, "todos_create"),
+		).toEqual(["OWNER_TODOS"]);
+		expect(resolvePlannerActionName(runtime, undefined, "task_list")).toEqual([
+			"OWNER_TODOS",
+		]);
+		expect(
+			resolvePlannerActionName(runtime, undefined, "DISCORD_POST_MESSAGE"),
+		).toEqual(["MESSAGE"]);
+		expect(
+			resolvePlannerActionName(runtime, undefined, "SEARCH_TWITTER_POSTS"),
+		).toEqual(["POST"]);
+		expect(
+			resolvePlannerActionName(runtime, undefined, "READ_TWITTER_DM"),
+		).toEqual(["MESSAGE"]);
+		expect(
+			resolvePlannerActionName(runtime, undefined, "EMAIL_FETCH_UNREAD"),
+		).toEqual(["MESSAGE"]);
+		expect(
+			resolvePlannerActionName(runtime, undefined, "SUMMARIZE_UNREAD_EMAILS"),
+		).toEqual(["MESSAGE"]);
+		expect(resolvePlannerActionName(runtime, undefined, "SET_GOAL")).toEqual([
+			"OWNER_GOALS",
+		]);
+		expect(resolvePlannerActionName(runtime, undefined, "DESKTOP")).toEqual([
+			"COMPUTER_USE",
+		]);
+	});
+
+	it("repairs known aliases against the runtime when the compressed surface omitted the parent", () => {
+		const runtime = {
+			actions: [{ name: "MESSAGE" }, { name: "CONNECTOR" }],
+			logger,
+		} as Pick<IAgentRuntime, "actions" | "logger">;
+		const exposedLookup = new Map<string, Action>([
+			["CONNECTOR", { name: "CONNECTOR" } as Action],
+		]);
+
+		expect(
+			resolvePlannerActionName(runtime, exposedLookup, "list_unread_emails"),
+		).toEqual(["MESSAGE"]);
+		expect(resolvePlannerActionName(runtime, exposedLookup, "MESSAGE")).toEqual(
+			["MESSAGE"],
+		);
 	});
 
 	it("infers safe params for explicit local shell checks", () => {
@@ -83,7 +204,7 @@ describe("live routing regressions", () => {
 					description: "Search the web or other registered backends",
 				},
 			],
-		} as unknown as Pick<IAgentRuntime, "actions">;
+		} as Pick<IAgentRuntime, "actions">;
 
 		const suggestion = suggestOwnedActionFromMetadata(runtime, {
 			content: {
@@ -146,7 +267,7 @@ describe("live routing regressions", () => {
 					description: "Run local shell commands",
 				},
 			],
-		} as unknown as Pick<IAgentRuntime, "actions">;
+		} as Pick<IAgentRuntime, "actions">;
 		const text = "explain how df -h checks disk space on this VPS";
 		const howToRunText = "explain how to run df -h on this VPS";
 
@@ -195,7 +316,7 @@ describe("live routing regressions", () => {
 					description: "Search the web or other registered backends",
 				},
 			],
-		} as unknown as Pick<IAgentRuntime, "actions">;
+		} as Pick<IAgentRuntime, "actions">;
 
 		expect(
 			suggestOwnedActionFromMetadata(runtime, {
@@ -227,7 +348,7 @@ describe("live routing regressions", () => {
 				content: {
 					text: "can you explain the uploaded document?",
 				},
-			} as unknown as Parameters<typeof shouldSkipDocumentProviderRescue>[0]),
+			} as Parameters<typeof shouldSkipDocumentProviderRescue>[0]),
 		).toBe(false);
 	});
 
@@ -237,7 +358,7 @@ describe("live routing regressions", () => {
 				content: {
 					text: "what workflow should you use for processing documents in your knowledge base?",
 				},
-			} as unknown as Parameters<typeof shouldSkipDocumentProviderRescue>[0]),
+			} as Parameters<typeof shouldSkipDocumentProviderRescue>[0]),
 		).toBe(false);
 	});
 

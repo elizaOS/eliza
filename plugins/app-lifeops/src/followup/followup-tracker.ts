@@ -52,6 +52,18 @@ export interface RelationshipsServiceLike {
   ): Promise<ContactInfo | null>;
 }
 
+function isRelationshipsServiceLike(
+  service: unknown,
+): service is RelationshipsServiceLike {
+  if (!service || typeof service !== "object") return false;
+  const candidate = service as Partial<RelationshipsServiceLike>;
+  return (
+    typeof candidate.searchContacts === "function" &&
+    typeof candidate.getContact === "function" &&
+    typeof candidate.updateContact === "function"
+  );
+}
+
 export const FOLLOWUP_TRACKER_TASK_NAME = "FOLLOWUP_TRACKER_RECONCILE" as const;
 export const FOLLOWUP_TRACKER_TASK_TAGS = [
   "queue",
@@ -119,15 +131,7 @@ export function getRelationshipsServiceLike(
 ): RelationshipsServiceLike | null {
   const service = runtime.getService("relationships");
   if (!service) return null;
-  const candidate = service as unknown as Partial<RelationshipsServiceLike>;
-  if (
-    typeof candidate.searchContacts !== "function" ||
-    typeof candidate.getContact !== "function" ||
-    typeof candidate.updateContact !== "function"
-  ) {
-    return null;
-  }
-  return candidate as RelationshipsServiceLike;
+  return isRelationshipsServiceLike(service) ? service : null;
 }
 
 let degradedLogged = false;

@@ -259,7 +259,7 @@ Parameters allow the LLM to extract structured data from the conversation:
 
 ```typescript
 const sendMessageAction: Action = {
-  name: "SEND_MESSAGE",
+  name: "MESSAGE",
   description: "Send a message to a specific user on a platform",
 
   parameters: [
@@ -661,10 +661,30 @@ const myPlugin: Plugin = {
 
 ```typescript
 // my-plugin.test.ts
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { createMessageMemory, stringToUuid, type Memory } from "@elizaos/core";
+import { createTestRuntime, type TestRuntimeResult } from "@elizaos/core";
 import myPlugin from "./index";
 
+function createTestMessage(text: string): Memory {
+  return createMessageMemory({
+    entityId: stringToUuid("test-user"),
+    roomId: stringToUuid("test-room"),
+    content: { text },
+  });
+}
+
 describe("my-plugin", () => {
+  let testRuntime: TestRuntimeResult;
+
+  beforeAll(async () => {
+    testRuntime = await createTestRuntime();
+  });
+
+  afterAll(async () => {
+    await testRuntime.cleanup();
+  });
+
   it("has required properties", () => {
     expect(myPlugin.name).toBe("my-plugin");
     expect(myPlugin.description).toBeDefined();
@@ -674,8 +694,8 @@ describe("my-plugin", () => {
     const greetAction = myPlugin.actions?.find(a => a.name === "GREET");
     expect(greetAction).toBeDefined();
 
-    const mockRuntime = { logger: console } as any;
-    const mockMessage = { content: { text: "hello" } } as any;
+    const mockRuntime = testRuntime.runtime;
+    const mockMessage = createTestMessage("hello");
 
     const isValid = await greetAction!.validate(mockRuntime, mockMessage);
     expect(isValid).toBe(true);
@@ -684,8 +704,8 @@ describe("my-plugin", () => {
   it("greet action returns greeting", async () => {
     const greetAction = myPlugin.actions?.find(a => a.name === "GREET");
 
-    const mockRuntime = { logger: console } as any;
-    const mockMessage = { content: { text: "say hi to Bob" } } as any;
+    const mockRuntime = testRuntime.runtime;
+    const mockMessage = createTestMessage("say hi to Bob");
     const options = { parameters: { name: "Bob" } };
 
     const result = await greetAction!.handler(mockRuntime, mockMessage, undefined, options);
@@ -935,10 +955,6 @@ const ModelType = {
   TEXT_TO_SPEECH: "TEXT_TO_SPEECH",        // TTS
   AUDIO: "AUDIO",                          // Audio processing
   VIDEO: "VIDEO",                          // Video processing
-
-  // Structured output
-  OBJECT_SMALL: "OBJECT_SMALL",
-  OBJECT_LARGE: "OBJECT_LARGE",
 
   // Research
   RESEARCH: "RESEARCH",

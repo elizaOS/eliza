@@ -1,0 +1,392 @@
+# Unified llama.cpp fork strategy
+
+> North-star plan for landing every Milady on-device inference technique
+> (TurboQuant, QJL, PolarQuant, DFlash, head-quant, KV paging) into ONE
+> Milady-controlled llama.cpp fork that ships optimized kernels on every
+> platform we target. Successor doc to
+> [`on-device-quantization-porting-plan.md`](./on-device-quantization-porting-plan.md);
+> the porting plan tracks per-technique deliverables, this doc fixes the
+> repo, branch, build matrix, and migration order so the next wave of
+> agents stops guessing.
+
+## A. Executive summary
+
+**Status (2026-05-09, post Wave-3-A):** AOSP and host build paths now
+both pin `milady-ai/llama.cpp @ v0.2.0-milady`, which composes TBQ + QJL
++ Q4_POLAR + Metal kernels (v0.1.0-milady) + DFlash speculative-decoding
+CLI surface (this release). The `spiritbuun/buun-llama-cpp` pin is
+retired. Stock desktop still runs `node-llama-cpp@3.18.1` — that's the
+remaining non-unified consumer; see §F for the migration plan.
+
+**Original problem (resolved for the AOSP+host paths, kept for context):**
+Milady previously built against three different llama.cpp trees and a
+patch directory. AOSP cross-compiled `Apothic-AI/llama.cpp-1bit-turboquant
+@ b2b5273e8b27` and applied `eliza/packages/app-core/scripts/aosp/llama-cpp-patches/{qjl,polarquant}/*`
+on every build. The host-side DFlash server was built from
+`spiritbuun/buun-llama-cpp @ master` (min commit `b9d01582b`). Stock desktop
+runs `node-llama-cpp@3.18.1`, which embeds yet a third llama.cpp build
+without TurboQuant/QJL/PolarQuant. The Metal kernel work in
+`packages/inference/metal/` was staged as opt-in patch hooks in
+`scripts/build-llama-cpp-dflash.mjs` before the unified fork owned the
+.metal sources. That was unmaintainable: a feature only shipped when
+two unrelated forks happened to carry the same patch series.
+
+**The fix is a single Milady-owned fork at `milady-ai/llama.cpp` rebased
+on `ggml-org/llama.cpp` master**, with every Milady technique as a named
+branch off `milady/main`, and every consumer (AOSP `compile-libllama.mjs`,
+host `build-llama-cpp-dflash.mjs`, the Capacitor xcframework, the patched
+node-llama-cpp binding) pointing at the same commit. The vendored
+`scripts/aosp/llama-cpp-patches/` directory becomes a transitional shim
+during migration and is deleted once `milady/main` carries the same
+commits as commits in the fork. New techniques (BitNet, MXFP4, head
+quant, KV paging) land directly as PRs against `milady/main`.
+
+**The win:** one fork to rebuild, one CI matrix to run, one place to land
+upstream PRs from. Today QJL exists as four `git format-patch` files that
+have to apply cleanly against a moving Apothic base; tomorrow QJL is
+`milady/main..milady/qjl-cpu-kernel` and CI rebuilds every backend on
+push. Hardware-validated kernels become always-on instead of opt-in env
+flags.
+
+## B. Canonical fork — repo, base, branching scheme
+
+**Recommendation: hard-fork (option a in the brief).** Vendored patches
+(option b) hit a quadratic maintenance cost as soon as you have more
+than two patch series with overlapping touch points (already true for
+QJL+PolarQuant+TurboQuant in `ggml-common.h`). A hybrid (option c) keeps
+the worst part of both: still need a vendor base AND still need to merge
+every technique manually.
+
+| Item | Decision |
+|---|---|
+| Repo | `https://github.com/milady-ai/llama.cpp` (new, Milady-owned) |
+| Upstream base | `ggml-org/llama.cpp` master, rebase nightly to a tagged commit |
+| Default branch | `milady/main` |
+| Pin at fork creation | upstream `b8198` (matches the apothic base — verified compatible with TBQ patches and the b8198 sampler/vocab API the AOSP shim binds against; see `compile-libllama.mjs:36-63`) |
+| Per-technique branches | `milady/turboquant-cpu`, `milady/turboquant-cuda`, `milady/turboquant-metal`, `milady/turboquant-vulkan`, `milady/qjl-cpu`, `milady/qjl-metal`, `milady/qjl-cuda`, `milady/polar-cpu`, `milady/polar-metal`, `milady/polar-cuda`, `milady/dflash-server`, `milady/head-quant`, `milady/kv-paging`, `milady/fused-cpu` (W3-B), `milady/fused-cuda` (W3-D) |
+| Integration branch | `milady/integration` — fast-forwarded from per-technique branches, what every Milady consumer pins against |
+| CI tag | `milady-vYYYY.MM.DD-<short-sha>` — one tag per green CI matrix, what `compile-libllama.mjs` and `build-llama-cpp-dflash.mjs` consume |
+
+Rationale for new repo (not fork-of-Apothic): Apothic's b8198 base has
+TBQ3_0/TBQ4_0 but no QJL or Polar; spiritbuun's master has TurboQuant
+CUDA + DFlash but no Polar; neither has the Metal port. The cleanest
+merge base is upstream b8198, then cherry-pick TBQ from Apothic and
+DFlash + TurboQuant CUDA from spiritbuun as separate branches. We get
+clean credit for upstreaming attempts (PR #21089 is still open as of
+2026-04-19; future merges of TBQ upstream become a `git rebase` instead
+of a patch deletion).
+
+The vendored `scripts/aosp/llama-cpp-patches/{qjl,polarquant}/` directory
+stays in-repo until `milady/main` carries equivalent commits, then the
+patches are deleted and `apply-patches.mjs` short-circuits.
+
+## C. Build matrix
+
+Same backend matrix as `build-llama-cpp-dflash.mjs:39-55` plus AOSP/iOS,
+unified across both build scripts. Output paths fixed at
+`$ELIZA_STATE_DIR/local-inference/bin/<target>/` for host and
+`apps/app/android/app/src/main/assets/agent/<abi>/` for AOSP.
+
+| Target triple | CMake flags | Toolchain | Runner | Artifact |
+|---|---|---|---|---|
+| `linux-x64-cpu` | `GGML_NATIVE=ON` | host gcc/clang | GH `ubuntu-24.04` | `llama-server`, `llama-cli`, `llama-speculative-simple` |
+| `linux-x64-cuda` | `GGML_CUDA=ON GGML_CUDA_FA=ON GGML_CUDA_FA_ALL_QUANTS=ON` | nvcc | self-hosted (CUDA L4/A10) | + `libggml-cuda.so` |
+| `linux-x64-vulkan` | `GGML_VULKAN=ON` + Khronos headers | host clang + glslc | GH `ubuntu-24.04` | + SPIR-V `.spv` |
+| `linux-x64-rocm` | `GGML_HIP=ON` | hipcc | self-hosted (gfx1100) | + `libggml-hip.so` |
+| `darwin-arm64-metal` | `GGML_METAL=ON GGML_METAL_EMBED_LIBRARY=ON` | xcrun | self-hosted (M-series) | + `default.metallib` |
+| `darwin-x64-metal` | as above | xcrun | self-hosted (Intel Mac) | as above |
+| `ios-arm64-metal` | `BUILD_SHARED_LIBS=OFF CMAKE_SYSTEM_NAME=iOS CMAKE_OSX_SYSROOT=iphoneos` | xcrun | self-hosted (M-series) | static `lib*.a` + headers + `.metallib` (consumed by `LlamaCpp.xcframework` patch at `packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch`) |
+| `ios-arm64-simulator-metal` | `CMAKE_OSX_SYSROOT=iphonesimulator` | xcrun | self-hosted (M-series) | as above |
+| `android-arm64-cpu` (musl) | `GGML_NATIVE=OFF -DCMAKE_SYSTEM_PROCESSOR=aarch64` via zig 0.13+ | `zig cc --target=aarch64-linux-musl` | GH `ubuntu-24.04` | `libllama.so`, `libggml*.so`, `libeliza-llama-shim.so`, `llama-server` (musl-linked, see `compile-libllama.mjs:14-30`) |
+| `android-x86_64-cpu` (musl) | as above with `aarch64`→`x86_64` | zig | GH `ubuntu-24.04` | as above (cuttlefish smoke) |
+| `android-arm64-vulkan` | NDK toolchain + Khronos headers | NDK r26 + glslc | GH `ubuntu-24.04` | NDK-linked `libllama.so` (separate from musl path — Adreno/Mali GPU access via Vulkan ICD) |
+| `windows-x64-cpu` | `GGML_NATIVE=ON` | MSVC / mingw | GH `windows-2022` | `llama-server.exe`, `.dll` runtime |
+| `windows-x64-cuda` | `GGML_CUDA=ON` | MSVC + nvcc | self-hosted (Windows + RTX) | + `ggml-cuda.dll` |
+
+GH-hosted runners cover everything except CUDA, ROCm, Apple Silicon, and
+the Windows CUDA path. Self-hosted runner labels: `cuda-l4`, `rocm-gfx1100`,
+`apple-m3-pro`, `windows-rtx`. Apple Silicon also drives the Metal kernel
+verification (`packages/inference/verify/metal_verify`).
+
+## D. Per-technique × per-platform table
+
+Owner column maps to existing worktree commits where the kernel already
+exists in some form; "Validation" is the command/harness that proves the
+kernel landed correctly. Status legend: `✓` shipped on the unified fork,
+`☐` ready to land (kernel exists, needs glue), `▲` blocked, `✗` out of scope.
+
+| Technique | Linux CPU | Linux CUDA | Linux Vulkan | macOS Metal | iOS Metal | Android arm64 musl CPU | Android NDK Vulkan | Owner / source | Validation |
+|---|---|---|---|---|---|---|---|---|---|
+| **TBQ3_0/TBQ4_0** (V-side KV) | ✓ Apothic base | ✓ via spiritbuun cherry-pick | ☐ via `packages/inference/vulkan/turbo*.comp` | ☐ always-on `patchMetalTurbo4` + opt-in `turbo3.metal` | ☐ same | ✓ libggml-base.so symbol verified (porting plan §"Symbols verified") | ☐ NDK build path | W1-A (Apothic), Agent-D (Metal) | `metal_verify .../turbo3.metal kernel_turbo3_dot fixtures/turbo3.json` |
+| **TBQ3_TCQ** (trellis-coded) | ☐ ref C only | ▲ Viterbi encoder needs warp-shuffle port | ☐ `vulkan/turbo3_tcq.comp` (decode-only) | ☐ `metal/turbo3_tcq.metal` (decode-only) | ☐ same | ☐ ref C → NEON encoder | ☐ | W1-D | `metal_verify ... turbo3_tcq fixtures/turbo3_tcq.json` |
+| **QJL1_256** (K-side KV) | ☐ vendored patch series `qjl/0001..0004` (`block_qjl1_256` + `GGML_OP_ATTN_SCORE_QJL`); CPU AVX2/NEON exists in `packages/native-plugins/qjl-cpu/` | ☐ port from `packages/training/scripts/quantization/qjl/csrc/` | ☐ port to `.comp` | ☐ `metal/qjl.metal` exists (opt-in via `ELIZA_DFLASH_PATCH_METAL_QJL=1`) | ☐ same | ☐ NEON path validated 100/100 host parity, needs arm64 hardware | ☐ | W1-A (CPU), Agent-D (Metal) | `qjl_bench --parity` (host) + `metal_verify ... qjl fixtures/qjl.json` |
+| **Q4_POLAR** (weight-side) | ☐ vendored patch series `polarquant/0001..0004` (scalar ref); NEON/AVX2 = next-session work | ☐ port from `polarquant/csrc/` (training-side, codes-only) | ☐ port to `.comp` | ☐ `metal/polar.metal` exists (opt-in via `ELIZA_DFLASH_PATCH_METAL_POLAR=1`) | ☐ same | ☐ scalar landed, NEON/AVX2 next session | ☐ | W1-B, Agent-D | `polar_roundtrip` + `polar_dot` + `metal_verify ... polar fixtures/polar.json` + Wikitext-2 PPL Δ ≤ +0.05 |
+| **DFlash spec-decode** | ✓ via `llama-server --spec-type dflash` on the unified fork (`milady-ai/llama.cpp @ v0.2.0-milady`) | ✓ same | ✓ same | ✓ same | ✗ no networking sandbox | ✓ cross-compiled `llama-server` shipped per ABI; `aosp-dflash-adapter.ts` wires it. Drafter pair: Eliza-1 target + Eliza-1 drafter from the same tokenizer family (see `dflash-drafter-strategy.md`) | n/a | unified fork (Wave-3 agent A); Eliza-1 catalog/publish path | `aosp-dflash-adapter.ts` health → 5-prompt round-trip with `llamacpp:n_drafted_total > 0` and `_accepted_total / _total > 0.5` |
+| **Head quantization** (per-attn-head bit budget; recommended new addition — see §E) | ☐ port from KIVI/KVQuant ref (per-channel K, per-token V, mixed-precision scoring per head) | ☐ same | ☐ same | ☐ same | ☐ same | ☐ same | ☐ same | new branch `milady/head-quant` | Wikitext-2 PPL Δ vs flat-bit baseline; per-head sensitivity profile written to GGUF metadata |
+| **KV paging / split-by-layer offload** (recommended new addition — see §E) | ☐ extend slot-save-path + `n_keep` to a per-layer CPU↔disk pager | n/a | n/a | n/a | n/a | ☐ disk-paged KV is the >128k context unlock on phones | n/a | new branch `milady/kv-paging` | 256k context PPL on a 1B model with no OOM and tok/s ≥ baseline + 20% |
+| **BitNet b1.58** (recommended add — see §E) | ☐ port `bitnet.cpp` ternary kernels onto our base; ggml type `TL1`/`TL2` | ☐ CUDA via bitnet.cpp's `bitnet_kernels.cu` | ☐ Vulkan TBD | ☐ MSL TBD | ☐ same | ☐ NEON ternary unpack | ☐ | new branch `milady/bitnet` | bitnet-b1.58-2B-4T inference matches HF reference |
+| **MXFP4 / NVFP4** (recommended add — see §E) | ✓ already in upstream master (Apr 2026); rebase free | ✓ Blackwell tensor-core path also upstream | ☐ Vulkan TBD | ☐ Apple Silicon FP4 not real (memory savings only) | ☐ same | ✓ memory savings on phones | ☐ | upstream rebase | upstream `llama-bench` |
+| **Fused QJL+TBQ attention** (W3-B; CPU-only) | ✓ scalar + AVX2 + NEON; `GGML_OP_FUSED_ATTN_QJL_TBQ` | ☐ W3-D CUDA fused attn | ☐ Vulkan TBD | ☐ Metal TBD | ☐ same | ✓ NEON path compiled (parity validated on x86; arm64 pending hardware) | ☐ | W3-B (`milady/fused-cpu`) | `tests/test-fused-kernels.cpp` (parity ≤ 5e-3 over 100 random contexts) + `tests/bench-fused-kernels.cpp` (target ≥1.5x AVX2 / ≥1.3x NEON; observed 4.5x on AVX2 at n_kv=512) |
+| **Fused Q4_POLAR x Q8_0 dot** (W3-B; CPU-only) | ✓ scalar + AVX2 + NEON; folded into `ggml_vec_dot_q4_polar_q8_0_fused` | ☐ port to CUDA | ☐ Vulkan TBD | ☐ Metal TBD | ☐ same | ✓ NEON path compiled | ☐ | W3-B (`milady/fused-cpu`) | bit-exact (0.00e+00 max-rel-err) vs unfused over 100 random blocks |
+| Hexagon HVX / NNAPI / EdgeTPU / WebGPU | ✗ explicitly out of scope per current porting plan §"Out of scope (explicit)" | | | | | | | n/a | n/a |
+
+## E. Capabilities not yet bundled but should be — ranked
+
+**Highest value first; each row scoped to "1+ agent in 1 session" unless noted.**
+
+1. **MXFP4 / NVFP4 rebase.** ggml-org/llama.cpp landed both in March-April
+   2026 (block size 32, single-level E8M0 scale for MXFP4; block size 16,
+   two-level FP8 E4M3 + FP32 scale for NVFP4). Free win on rebase to
+   upstream master. ~1 session: re-pin `LLAMA_CPP_COMMIT`, rebuild matrix,
+   add MXFP4/NVFP4 to catalog `kvCacheConfigs[]` in
+   `scripts/benchmark/configs/`. Verifies on Blackwell tensor cores;
+   memory-only savings on Apple Silicon and phones.
+2. **Head-aware KV quant.** KIVI's asymmetric scheme — per-channel K,
+   per-token V, plus a sensitivity-aware per-head bit budget from KVTuner
+   — composes cleanly with QJL on K and TBQ on V (we already have both;
+   per-head bit-budget is a tensor-metadata field plus a dispatcher
+   change). Adds ~20% extra KV reduction at iso-PPL on long context.
+   Effort: ~3-5 sessions for CPU + dispatch; ~5 sessions for Metal/CUDA.
+   Source: jy-yuan/KIVI (Apache 2.0) + arXiv:2402.02750.
+3. **BitNet b1.58 ternary support.** Microsoft's bitnet.cpp is a llama.cpp
+   fork with TL1/TL2 ternary kernels for ARM/x86/CUDA. Pulling those
+   kernels onto our base lights up the entire microsoft/bitnet-b1.58-2B-4T
+   class of models for on-device. PR #8151 is the upstream attempt; not
+   yet merged. Effort: ~1 week — block format is small (2 ternary values
+   per byte), kernels are public, the win is unlocking a model class
+   that's already trained for phones (~400MB for 2B). Source:
+   microsoft/BitNet, arXiv:2502.11880.
+4. **KV disk paging.** Existing llama.cpp options (`--no-kv-offload`,
+   `--cache-type-k/v`, `slot-save-path`, `n_keep`) only handle GPU↔CPU
+   offload and same-process slot save/load. A disk pager — split KV by
+   layer, store cold layers on flash with `mmap`, page in on attention
+   miss — is the >128k-context-on-phones unlock. vLLM PagedAttention is
+   the GPU-side reference; FlexAttention's BlockMask is the kernel-shape
+   reference. Effort: ~2 weeks (new ggml backend op + CPU graph change).
+   This one is the biggest non-trivial bet on the list.
+5. **TBQ3_TCQ encoder.** Decode-only TCQ already exists across CPU/Metal/Vulkan
+   shaders. Encoder requires a 512-state Viterbi over 128 timesteps
+   (`reference/turbo_kernels.c` has a slow reference). On CUDA/Metal it
+   needs warp-shuffle min-reduction. ~5-7 days. Pure quality win — TCQ
+   decoder is already shipped, just an asymmetric encode/decode split
+   today.
+6. **Eliza-1 drafter quality work.** Current AOSP DFlash validation
+   should use an Eliza-1 target plus an Eliza-1 drafter with the same
+   tokenizer family. Acceptance rate is the throughput multiplier and
+   has not been measured on phone hardware. Add `n_drafted/n_accepted`
+   to the benchmark harness; tune `--draft-min`, `--draft-max`,
+   `--spec-replace` per Eliza-1 tier and target device.
+7. **HQQ.** Calibration-free 4-bit, integrates in Transformers/vLLM
+   today, no llama.cpp upstream. Skip until upstream lands or until a
+   model we want is HQQ-only.
+
+## F. node-llama-cpp gap — RESOLVED (path (a) landed)
+
+**Status: shipped.** `milady-ai/node-llama-cpp` exists and is consumable
+as a bun-installable github URL drop-in. Milady's three pins
+(`/package.json`, `eliza/packages/app-core/package.json`,
+`eliza/plugins/plugin-local-embedding/package.json`) all reference
+`github:milady-ai/node-llama-cpp#v3.18.1-milady.3`. The fork's
+`src/gguf/types/GgufTensorInfoTypes.ts` extends `GgmlType` with
+TBQ3_0 (43), TBQ4_0 (44), QJL1_256 (46), Q4_POLAR (47) and
+`resolveGgmlTypeOption()` accepts the lowercase aliases (`tbq3_0`,
+`tbq4_0`, `qjl1_256`, `q4_polar`). The desktop W1-C plumbing now
+flows the strings through cleanly. Verified by
+`packages/app-core/src/services/local-inference/active-model.runtime.test.ts`.
+
+### Original diagnosis (kept for context)
+
+`node-llama-cpp@3.18.1` exposes
+`LlamaContextOptions.experimentalKvCacheKeyType`/`experimentalKvCacheValueType`
+typed as `"currentQuant" | keyof typeof GgmlType | GgmlType`. The
+stock `GgmlType` enum did not contain `tbq3_0`, `tbq4_0`, `qjl1_256`,
+or `q4_polar`. `engine.ts` already threaded `overrides.cacheTypeK/V`
+through to this option, but on a stock node-llama-cpp build the
+binding silently dropped those values via `resolveGgmlTypeOption(...) ??
+defaultContextKvCacheKeyType`, which was exactly the gap
+`active-model.ts` called out.
+
+### How the fork was made bun-installable
+
+bun's github-URL install does NOT run devDependencies + `tsc --build`,
+so the resolved package needs `dist/` and `templates/packed/`
+pre-built on the target ref. Path (a) — the durable answer — is to
+commit those build outputs to a release branch:
+
+1. Source branch `milady/extended-cache-types` carries the TS edits
+   to `GgmlType` and `resolveGgmlTypeOption`.
+2. Release branch `milady/release-v3.18.1-milady.2` contains the
+   built `dist/` (~5.7 MB) + `templates/packed/` (~164 KB) plus a
+   patch to `getModuleVersion.ts` that strips `-milady.N` so the
+   prebuilt-binary version comparison
+   (`@node-llama-cpp/<platform>@3.18.1`) succeeds.
+3. Tags `v3.18.1-milady.{1,2,3}` mark consumable refs; `.3` is
+   current.
+
+Maintenance cost on upstream rebases: cherry-pick the GgmlType
+extension, rebuild dist, retag. ~1h per upstream minor.
+
+### Path (b) for later (bun:ffi bypass)
+
+Drop node-llama-cpp on desktop entirely and call our musl-linked
+`libllama.so` + `libeliza-llama-shim.so` via bun:ffi the same way the
+AOSP path does (already wired in `aosp-llama-adapter.ts`, just needs
+a desktop adapter and the shim binding for `experimentalKvCache*`).
+~3-5 days. Drops one C++ dependency and unifies the desktop+mobile
+codepath but loses the battle-tested node-llama-cpp embedding/grammar/
+sampler stack. Defer until the bun:ffi shim has been hardened on
+phone hardware.
+
+### Remaining gap
+
+The fork's TS layer accepts the strings; the C++ kernel only runs
+when the loaded `@node-llama-cpp/<platform>` binary is built from
+`milady-ai/llama.cpp` (the actual TBQ/QJL/Polar kernels). With the
+upstream prebuild loaded today, the binding silently falls back to
+its default cache type when the enum int isn't in ggml's type table.
+Wiring the milady-ai/llama.cpp prebuild publication into
+`@node-llama-cpp/<platform>` is the next step (tracked in §H step 9
+of this doc).
+
+## G. CI strategy
+
+Extend `.github/workflows/local-inference-bench.yml` (W1-H landed) into
+a 4-job pipeline:
+
+| Job | Runner | Cost | What it does |
+|---|---|---|---|
+| `fork-build-host` | GH `ubuntu-24.04`, `windows-2022`, `macos-14` matrix | free | Rebuild every host CPU/Vulkan target on every PR to `milady/main`; runs `metal_verify`/`vulkan_verify` against fixtures (no GPU compute, just SPIR-V/AIR compile). |
+| `fork-build-cross` | GH `ubuntu-24.04` | free | AOSP arm64+x86_64 musl via zig + Android Vulkan via NDK + iOS via macos-14 matrix. Output uploaded as artifact. |
+| `kernel-verify-gpu` | self-hosted: `cuda-l4`, `rocm-gfx1100`, `apple-m3-pro`, `android-pixel-arm64` | $$$ | Run `metal_verify`/`vulkan_verify` and `qjl_bench --parity` on the actual silicon — only this job catches subgroup-size mismatches and ULP drift. Manual dispatch (cost), nightly schedule, or label-gated PR (`needs-gpu-verify` label). |
+| `bench-real-agent` | self-hosted: `apple-m3-pro` for darwin, `android-pixel-arm64` via adb forward, `cuttlefish` for x86_64 emulator | $$ | Existing `profile-inference.mjs` against each backend. Records `tok/s`, `n_drafted`, PPL Δ. Posts results to nightly tracking issue (already wired). |
+
+The current `local-inference-matrix.yml` covers some of this for the
+existing AOSP path; `local-inference-bench.yml` is the harness side.
+This proposal collapses both into a single workflow against
+`milady/main`. Self-hosted-runner label conventions follow Anthropic's
+internal usage; if no Apple Silicon runner is available, Metal kernels
+get hardware-validated only on developer machines (and the
+`packages/inference/README.md` matrix row stays "NEEDS HARDWARE"
+until that's fixed).
+
+For PR gating: `fork-build-host` + `fork-build-cross` + `kernel-verify-gpu`
+on `milady/main`. `bench-real-agent` runs nightly only.
+
+## H. Migration order
+
+Concrete steps from "vendored patches + scattered branches" to the
+unified fork. Each step is a single agent session unless noted.
+
+1. **Create `milady-ai/llama.cpp` repo, push upstream b8198 as
+   `milady/main`.** Tag `milady-v2026.05.09-base`. (1h.)
+2. **Cherry-pick TBQ commits from
+   `Apothic-AI/llama.cpp-1bit-turboquant @ b2b5273`** onto branch
+   `milady/turboquant-cpu`. Resolve any drift against b8198 (should be
+   none — apothic is b8198 + TBQ). Tag green CI.
+3. **Cherry-pick TurboQuant CUDA + DFlash commits from
+   `spiritbuun/buun-llama-cpp @ master`** onto branches
+   `milady/turboquant-cuda` and `milady/dflash-server`. Validate against
+   spiritbuun's existing CUDA test harness on a self-hosted runner.
+4. **Apply QJL patch series to a new branch `milady/qjl-cpu`**, port
+   commits from `eliza/packages/app-core/scripts/aosp/llama-cpp-patches/qjl/0001..0004`
+   into proper `git format-patch`-friendly commits. Add the
+   `packages/native-plugins/qjl-cpu/` source as the kernel directly under
+   `ggml/src/ggml-cpu/qjl/` instead of vendoring a separate CMake target.
+5. **Apply Polar patch series to `milady/polar-cpu`**, same shape. Then
+   add the `packages/inference/metal/{qjl,polar}.metal` files
+   directly to `ggml/src/ggml-metal/` on `milady/qjl-metal` and
+   `milady/polar-metal`. Drop the `ELIZA_DFLASH_PATCH_METAL_*` opt-in
+   gates once `metal_verify` reports 8/8 PASS — they become always-on.
+6. **Fast-forward `milady/integration` from each per-technique branch.**
+   Run the full CI matrix from §G. Tag green output as `milady-v2026.05.X`.
+7. **Switch `compile-libllama.mjs:165-167` to point at
+   `milady-ai/llama.cpp @ milady/integration`.** Delete
+   `scripts/aosp/llama-cpp-patches/{qjl,polarquant}/` and the
+   `apply-patches.mjs` invocation. The directory and script can be
+   removed (they're transitional shims); leave them gitignored for one
+   release in case of rollback.
+8. **Switch `build-llama-cpp-dflash.mjs:33-37` to point at the same
+   ref.** Delete `patchMetalTurbo4`, `patchMetalQjl`, `patchMetalPolar`,
+   `patchMetalTurbo3Tcq`, `patchVulkanKernels` — all five become no-ops
+   because the fork carries the kernels directly. Keep the function
+   signatures during the transition, just have them log "patch already
+   on fork" and return.
+   **DONE 2026-05-09 (Wave-3 agent A).** Bumped `REMOTE` to
+   `milady-ai/llama.cpp`, `REF` to `v0.2.0-milady`, `MIN_COMMIT` to
+   `7c7818aafc7599996268226e2e56099f4f38e972`. Cache directory renamed
+   from `buun-llama-cpp` to `milady-llama-cpp` (forces a fresh pull for
+   anyone with a stale checkout). All five patch hooks reduced to
+   "kernels already present on milady-ai/llama.cpp; no-op." log lines.
+   `compile-libllama.mjs` (AOSP cross-compile) bumped from
+   `v0.1.0-milady` to the same `v0.2.0-milady` tag so both paths land on
+   the same commit. The unified-fork side adds DFlash CLI surface
+   (`--spec-type dflash`, `--draft-min-prob` alias, Prometheus
+   `n_drafted_total` / `n_drafted_accepted_total` counters) directly so
+   the host-side `dflash-server.ts` and AOSP-side `aosp-dflash-adapter.ts`
+   keep working unchanged. Verified: native host build clean, arm64-v8a
+   + x86_64 musl cross-builds clean via `compile-libllama.mjs --src-dir`,
+   local llama-server smoke test passes (chat completion + metrics
+   counters confirmed).
+9. **Fork `node-llama-cpp` to `milady-ai/node-llama-cpp`**, embed our
+   unified fork as the bundled C++ source, extend `GgmlType` /
+   `resolveGgmlTypeOption` to accept `tbq3_0`, `tbq4_0`, `qjl1_256`,
+   `q4_polar`. Pin desktop builds at the milady-binding version. (~1
+   week — see §F.)
+10. **Land MXFP4/NVFP4** by upstream rebase (free). Then queue
+    head-quant, KV paging, and BitNet as ranked in §E. Each lands as a
+    new `milady/<technique>` branch + PR to `milady/integration`.
+11. **Open upstream PRs.** Each branch off `milady/main` should be a
+    candidate PR back to `ggml-org/llama.cpp` (TBQ already has
+    PR #21089 — aim to keep our diff small enough to be merge-able).
+    Once a technique merges upstream, delete our branch and rebase.
+
+**Rollback plan.** Every step keeps the pre-migration code path alive
+until the new path is green. The unified fork is opt-in via
+`MILADY_LLAMA_CPP_REMOTE` env until step 7, at which point the default
+flips. The patch directory stays in git history, so reverting is one
+script edit.
+
+## Pinned references
+
+- `ggml-org/llama.cpp` PR #21089 (TurboQuant CPU TBQ3_0/TBQ4_0 — open as
+  of 2026-04-19).
+- `ggml-org/llama.cpp` Issue #20977 (TurboQuant feature-request thread,
+  277+ thumbs).
+- `Apothic-AI/llama.cpp-1bit-turboquant @ main-b8198-b2b5273` (current
+  AOSP base).
+- `spiritbuun/buun-llama-cpp @ master` (current DFlash + CUDA base; min
+  commit `b9d01582b`).
+- `microsoft/BitNet` (TL1/TL2 ternary kernels).
+- `jy-yuan/KIVI` (asymmetric per-channel K + per-token V; ICML 2024,
+  arXiv:2402.02750, Apache 2.0).
+- `SqueezeAILab/KVQuant` (NeurIPS 2024, arXiv:2401.18079, mixed-precision
+  per-channel K + dense/sparse outliers).
+- vLLM `Quantized KV Cache` docs (PagedAttention reference for the KV
+  paging branch).
+- `withcatai/node-llama-cpp` v3.18.1 release notes (`experimentalKvCache*`
+  options surface, stock `GgmlType` enum).
+- `packages/inference/README.md` (current Metal/Vulkan port status,
+  `metal_verify`/`vulkan_verify` harness, fixture protocol).
+- `docs/porting/dflash-drafter-strategy.md` (Eliza-1 matched-tokenizer
+  target/drafter decision).
+- `docs/porting/on-device-quantization-porting-plan.md` (per-technique
+  status, AOSP bundle verification commands).
+- `docs/porting/benchmark-harness.md` (the harness `bench-real-agent`
+  drives).
+
+## Out of scope for this strategy doc
+
+- **Hexagon HVX / Snapdragon QDSP6 ports.** Excluded per current porting
+  plan; revisit only after NEON paths are validated on Pixel hardware
+  AND a meaningful number of users are on a Hexagon-routable device.
+- **NNAPI / EdgeTPU / Pixel Tensor TPU.** KV-cache compressors don't fit
+  the static-graph delegate model; this would mean abandoning llama.cpp
+  for MediaPipe LLM Inference, which is a separate product decision.
+- **WebGPU.** ggml-webgpu backend is not stable enough as of May 2026;
+  revisit when upstream lands TBQ.
+- **Training-time-only paths** (PolarQuant calibration, TurboQuant
+  calibration, QJL projection generation). Stay in
+  `packages/training/`.
+- **AWQ / GPTQ / IQ-quants subtypes (IQ3_XXS..IQ4_XS) / Q2_K..Q6_K.**
+  All already in upstream llama.cpp; rebasing onto `milady/main` picks
+  them up for free.

@@ -1,6 +1,6 @@
-import type { InventoryChainFilters } from "@elizaos/app-core/state/types";
-import type { ChainKey } from "./chainConfig";
-import { resolveChainKey } from "./chainConfig";
+import type { InventoryChainFilters } from "@elizaos/ui";
+import type { ChainKey } from "./chainConfig.ts";
+import { resolveChainKey } from "./chainConfig.ts";
 
 export type PrimaryInventoryChainKey = keyof InventoryChainFilters;
 

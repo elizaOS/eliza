@@ -1,7 +1,5 @@
-import { ErrorBoundary } from "@elizaos/app-core";
-import "@elizaos/app-core/styles/styles.css";
-import "@elizaos/app-core/styles/brand-gold.css";
-import "@elizaos/app-core/platform/native-plugin-entrypoints";
+import { ErrorBoundary } from "@elizaos/ui";
+import "@elizaos/app-core";
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
@@ -12,11 +10,16 @@ import {
   createVectorBrowserRenderer,
   GlobalEmoteOverlay,
   InferenceCloudAlertButton,
+  registerCompanionApp,
   resolveCompanionInferenceNotice,
   THREE,
   useCompanionSceneStatus,
 } from "@elizaos/app-companion";
-import type { BrandingConfig } from "@elizaos/app-core";
+import { PhoneCompanionApp } from "@elizaos/app-phone";
+import { Agent } from "@elizaos/capacitor-agent";
+import { Desktop } from "@elizaos/capacitor-desktop";
+import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
+import type { BrandingConfig } from "@elizaos/ui";
 import {
   AGENT_READY_EVENT,
   APP_PAUSE_EVENT,
@@ -65,57 +68,63 @@ import {
   subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
-} from "@elizaos/app-core";
-import { PhoneCompanionApp } from "@elizaos/app-phone/ui";
-import { Agent } from "@elizaos/capacitor-agent";
-import { Desktop } from "@elizaos/capacitor-desktop";
-import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
+} from "@elizaos/ui";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "@elizaos/app-companion/register";
 // Side-effect: register LifeOps sidebar widgets + client methods on ElizaClient.
-import "@elizaos/app-lifeops/widgets";
+import "@elizaos/app-lifeops";
 // Side-effect: register coding-agent (task-coordinator) slots so app-core
 // slot wrappers (CodingAgentControlChip, PtyConsoleBase, etc.) render the
 // real components instead of nulls.
-import "@elizaos/app-task-coordinator/register-slots";
+import "@elizaos/app-task-coordinator";
 // Side-effect: register game operator surfaces + detail extensions.
-import "@elizaos/app-babylon/ui";
-import "@elizaos/app-scape/ui";
-import "@elizaos/app-hyperscape/ui";
-import "@elizaos/app-2004scape/ui";
-import "@elizaos/app-defense-of-the-agents/ui";
-import "@clawville/app-clawville/ui";
+import "@elizaos/app-babylon";
+import "@elizaos/app-scape";
+import "@elizaos/app-hyperscape";
+import "@elizaos/app-2004scape";
+import "@elizaos/app-defense-of-the-agents";
+import "@clawville/app-clawville";
 import {
   AppBlockerSettingsCard,
   LifeOpsBrowserSetupPanel as BrowserBridgeSetupPanel,
-  dispatchQueuedLifeOpsGithubCallbackFromUrl,
+  dispatchQueuedLifeOpsGithubCallbackFromUrl as dispatchQueuedLifeOpsGithubCallback,
   LifeOpsActivitySignalsEffect,
   LifeOpsPageView,
   WebsiteBlockerSettingsCard,
-} from "@elizaos/app-lifeops/ui";
+} from "@elizaos/app-lifeops";
 import {
   ApprovalQueue,
   StewardLogo,
   TransactionHistory,
-} from "@elizaos/app-steward/ui";
+} from "@elizaos/app-steward";
 import {
   CodingAgentControlChip,
   CodingAgentSettingsSection,
   CodingAgentTasksPanel,
   PtyConsoleDrawer,
 } from "@elizaos/app-task-coordinator";
-import { FineTuningView } from "@elizaos/app-training/ui";
-import "@elizaos/app-trajectory-logger/register";
-import "@elizaos/app-shopify/register";
-import "@elizaos/app-vincent/client";
+import { FineTuningView } from "@elizaos/app-training";
+import "@elizaos/app-trajectory-logger";
+import "@elizaos/app-shopify";
+import "@elizaos/app-vincent";
 import { useVincentState } from "@elizaos/app-vincent";
-import "@elizaos/app-vincent/register";
+import "@elizaos/app-vincent";
 // Side-effect: register the wallet UI plugin (route loader, /inventory shell
-// page, and chat sidebar wallet-status widget) with @elizaos/app-core
-// registries. Must precede the first shell render.
-import "@elizaos/app-wallet/register";
-import { shouldUseCloudOnlyBranding } from "@elizaos/app-core";
+// page, and chat sidebar wallet-status widget) with the app shell registries.
+// Must precede the first shell render.
+import "@elizaos/app-wallet";
+// Side-effect: register the AOSP-only Phone / Contacts / WiFi overlay apps.
+// Each `register` module gates itself on `isElizaOS()` so stock Android, iOS,
+// desktop, and web bundles bring the modules in without registering anything.
+// On Eliza-derived AOSP images (ElizaOS, MiladyOS, …) the corresponding
+// overlay app shows up in the apps catalog and is launchable as a system
+// surface. `@elizaos/app-phone` already side-effect-registers via the
+// `PhoneCompanionApp` named import above, but the explicit imports here keep
+// the three apps symmetric and survive a future barrel cleanup that drops
+// `register.js` from the package index.
+import "@elizaos/app-contacts";
+import "@elizaos/app-wifi";
+import { shouldUseCloudOnlyBranding } from "@elizaos/ui";
 import {
   APP_BRANDING_BASE,
   APP_CONFIG,
@@ -145,22 +154,17 @@ const BRANDED_WINDOW_KEYS = {
   shareQueue: `__${APP_ENV_PREFIX}_SHARE_QUEUE__`,
 } as const;
 
-type AppCompatWindow = Window &
-  Record<string, unknown> & {
-    __ELIZA_APP_SHARE_QUEUE__?: ShareTargetPayload[];
-    __ELIZA_APP_CHARACTER_EDITOR__?: typeof CharacterEditor;
-    __ELIZA_APP_API_BASE__?: string;
-  };
-
-function getAppWindow(): AppCompatWindow {
-  return window as unknown as AppCompatWindow;
+function isShareTargetQueue(value: unknown): value is ShareTargetPayload[] {
+  return Array.isArray(value);
 }
 
 function getInjectedAppApiBase(): string | undefined {
-  const appWindow = getAppWindow();
-  const brandedApiBase = appWindow[BRANDED_WINDOW_KEYS.apiBase];
+  const brandedApiBase: unknown = Reflect.get(
+    window,
+    BRANDED_WINDOW_KEYS.apiBase,
+  );
   return (
-    appWindow.__ELIZA_APP_API_BASE__ ??
+    window.__ELIZA_APP_API_BASE__ ??
     (typeof brandedApiBase === "string" ? brandedApiBase : undefined)
   );
 }
@@ -177,6 +181,8 @@ const APP_BRANDING: Partial<BrandingConfig> = {
     isNativePlatform: Capacitor.isNativePlatform(),
   }),
 };
+
+registerCompanionApp();
 
 /**
  * Platform detection utilities
@@ -248,7 +254,7 @@ if (isElizaOS() && !hasRuntimePickerOverride()) {
 
 // Register custom character editor for app-core's ViewRouter to pick up
 window.__ELIZA_APP_CHARACTER_EDITOR__ = CharacterEditor;
-getAppWindow()[BRANDED_WINDOW_KEYS.characterEditor] = CharacterEditor;
+Reflect.set(window, BRANDED_WINDOW_KEYS.characterEditor, CharacterEditor);
 
 import { getStylePresets } from "@elizaos/shared";
 
@@ -304,21 +310,21 @@ const appBootConfig: AppBootConfig = {
 setBootConfig(appBootConfig);
 
 function getShareQueue(): ShareTargetPayload[] {
-  const appWindow = getAppWindow();
-  const brandedQueue = appWindow[BRANDED_WINDOW_KEYS.shareQueue];
+  const brandedQueue: unknown = Reflect.get(
+    window,
+    BRANDED_WINDOW_KEYS.shareQueue,
+  );
   const existing =
-    appWindow.__ELIZA_APP_SHARE_QUEUE__ ??
-    (Array.isArray(brandedQueue)
-      ? (brandedQueue as ShareTargetPayload[])
-      : undefined);
+    window.__ELIZA_APP_SHARE_QUEUE__ ??
+    (isShareTargetQueue(brandedQueue) ? brandedQueue : undefined);
   if (existing) {
-    appWindow.__ELIZA_APP_SHARE_QUEUE__ = existing;
-    appWindow[BRANDED_WINDOW_KEYS.shareQueue] = existing;
+    window.__ELIZA_APP_SHARE_QUEUE__ = existing;
+    Reflect.set(window, BRANDED_WINDOW_KEYS.shareQueue, existing);
     return existing;
   }
   const queue: ShareTargetPayload[] = [];
-  appWindow.__ELIZA_APP_SHARE_QUEUE__ = queue;
-  appWindow[BRANDED_WINDOW_KEYS.shareQueue] = queue;
+  window.__ELIZA_APP_SHARE_QUEUE__ = queue;
+  Reflect.set(window, BRANDED_WINDOW_KEYS.shareQueue, queue);
   return queue;
 }
 
@@ -360,7 +366,7 @@ async function initializePlatform(): Promise<void> {
 
   if (isDesktopPlatform()) {
     await initializeDesktopShell();
-  } else {
+  } else if (isNative) {
     await initializeAgent();
   }
 }
@@ -498,11 +504,11 @@ function handleDeepLink(url: string): void {
       break;
     case "lifeops":
       window.location.hash = "#lifeops";
-      dispatchQueuedLifeOpsGithubCallbackFromUrl(url);
+      dispatchQueuedLifeOpsGithubCallback(url);
       break;
     case "settings":
       window.location.hash = "#settings";
-      dispatchQueuedLifeOpsGithubCallbackFromUrl(url);
+      dispatchQueuedLifeOpsGithubCallback(url);
       break;
     case "connect": {
       const gatewayUrl = parsed.searchParams.get("url");

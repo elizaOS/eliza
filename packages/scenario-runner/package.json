@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/scenario-runner",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Lean scenario runner for the WS7 scenario-schema architecture. Loads .scenario.ts files, executes them against a real @elizaos/core AgentRuntime with a live LLM, and emits a JSON report.",
   "type": "module",
   "license": "MIT",
@@ -37,27 +37,26 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./cli": {
-      "types": "./dist/cli.d.ts",
-      "import": "./dist/cli.js",
-      "default": "./dist/cli.js"
-    },
     "./package.json": "./package.json"
   },
   "scripts": {
     "clean": "rm -rf dist",
     "prepublishOnly": "bun run build",
-    "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run",
+    "build": "tsc --noCheck -p tsconfig.build.json",
+    "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/scenario-schema": "workspace:*"
+    "@elizaos/app-lifeops": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-agent-skills": "2.0.0-beta.1",
+    "@elizaos/plugin-local-embedding": "2.0.0-beta.1",
+    "@elizaos/plugin-sql": "2.0.0-beta.1",
+    "@elizaos/scenario-schema": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1"
   },
   "devDependencies": {
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   }
 }

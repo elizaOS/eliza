@@ -141,38 +141,54 @@ export interface InitContext {
   markTaskDelivered?: (sessionId: string) => void;
 }
 
+async function readCodexExecOutputFile(
+  ctx: InitContext,
+  sessionId: string,
+  outputFile: string,
+): Promise<string> {
+  const maxAttempts = 10;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const fromFile = cleanForChat(await readFile(outputFile, "utf8"));
+      if (fromFile.trim()) {
+        return fromFile.trim();
+      }
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String((error as { code?: unknown }).code)
+          : "";
+      if (code !== "ENOENT") {
+        ctx.log(
+          `Failed to read Codex exec output file for ${sessionId}: ${error}`,
+        );
+        return "";
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  return "";
+}
+
 async function captureFastPathTaskResponse(
   ctx: InitContext,
   sessionId: string,
 ): Promise<string> {
-  const buffered = captureTaskResponse(
+  const outputFile = ctx.sessionMetadata.get(sessionId)?.codexExecOutputFile;
+  if (typeof outputFile === "string" && outputFile.trim()) {
+    const fromFile = await readCodexExecOutputFile(ctx, sessionId, outputFile);
+    if (fromFile) {
+      return fromFile;
+    }
+  }
+
+  return captureTaskResponse(
     sessionId,
     ctx.sessionOutputBuffers,
     ctx.taskResponseMarkers,
   );
-  const outputFile = ctx.sessionMetadata.get(sessionId)?.codexExecOutputFile;
-  if (typeof outputFile !== "string" || !outputFile.trim()) {
-    return buffered;
-  }
-
-  try {
-    const fromFile = cleanForChat(await readFile(outputFile, "utf8"));
-    if (fromFile.trim()) {
-      return fromFile.trim();
-    }
-  } catch (error) {
-    const code =
-      error && typeof error === "object" && "code" in error
-        ? String((error as { code?: unknown }).code)
-        : "";
-    if (code !== "ENOENT") {
-      ctx.log(
-        `Failed to read Codex exec output file for ${sessionId}: ${error}`,
-      );
-    }
-  }
-
-  return buffered;
 }
 
 // NOTE: A previous implementation defined `forwardReadyAsTaskComplete` here,
@@ -231,7 +247,7 @@ export async function initializePTYManager(
     });
   };
 
-  const shouldSuppressLegacyLoginRequired = (sessionId: string): boolean => {
+  const shouldSuppressDuplicateLoginRequired = (sessionId: string): boolean => {
     const at = recentStructuredAuth.get(sessionId);
     if (!at) return false;
     if (Date.now() - at > AUTH_EVENT_DEDUPE_MS) {
@@ -379,7 +395,7 @@ export async function initializePTYManager(
     bunManager.on(
       "login_required",
       (session: WorkerSessionHandle, instructions?: string, url?: string) => {
-        if (shouldSuppressLegacyLoginRequired(session.id)) {
+        if (shouldSuppressDuplicateLoginRequired(session.id)) {
           return;
         }
         // Auto-handle Gemini auth flow
@@ -546,7 +562,7 @@ export async function initializePTYManager(
   nodeManager.on(
     "login_required",
     (session: SessionHandle, instructions?: string, url?: string) => {
-      if (shouldSuppressLegacyLoginRequired(session.id)) {
+      if (shouldSuppressDuplicateLoginRequired(session.id)) {
         return;
       }
       if (session.type === "gemini") {

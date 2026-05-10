@@ -5,23 +5,18 @@
  */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { getConnectorAccountManager, logger } from "@elizaos/core";
 
+export * from "./accounts.js";
 // Service
 export { MatrixService } from "./service.js";
-
 // Types
 export * from "./types.js";
 
-import { joinRoom } from "./actions/joinRoom.js";
-// Actions
-import { MATRIX_MESSAGE_OP_ACTION, messageOp } from "./actions/messageOp.js";
-import { matrixRoomsProvider } from "./providers/index.js";
-
-export { joinRoom, MATRIX_MESSAGE_OP_ACTION, matrixRoomsProvider, messageOp };
-
 // Import service for plugin
+import { createMatrixConnectorAccountProvider } from "./connector-account-provider.js";
 import { MatrixService } from "./service.js";
+import { MatrixWorkflowCredentialProvider } from "./workflow-credential-provider.js";
 
 /**
  * Matrix plugin definition.
@@ -30,15 +25,36 @@ const matrixPlugin: Plugin = {
   name: "matrix",
   description: "Matrix messaging integration plugin for ElizaOS with E2EE support",
 
-  services: [MatrixService],
+  services: [MatrixService, MatrixWorkflowCredentialProvider],
 
-  actions: [messageOp, joinRoom],
+  actions: [],
 
-  providers: [matrixRoomsProvider],
+  providers: [],
 
   tests: [],
 
+  // Self-declared auto-enable: activate when the "matrix" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["matrix"],
+  },
+
   init: async (_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
+    // Register the Matrix provider with the ConnectorAccountManager.
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createMatrixConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:matrix",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Matrix provider with ConnectorAccountManager"
+      );
+    }
+
     const homeserver = runtime.getSetting("MATRIX_HOMESERVER");
     const userId = runtime.getSetting("MATRIX_USER_ID");
     const accessToken = runtime.getSetting("MATRIX_ACCESS_TOKEN");

@@ -1,11 +1,10 @@
 #!/usr/bin/env node
-import { runAutonomousCli } from "./cli/index.js";
 
 // Static import so `Bun.build` pulls the AOSP llama loader into the mobile
 // bundle. The adapter self-gates on `ELIZA_LOCAL_LLAMA=1` and no-ops on
 // every other platform/runtime, so the import is safe everywhere; we only
 // need it bundled so `ensure-local-inference-handler.ts`'s dynamic import of
-// `@elizaos/agent/runtime/aosp-llama-adapter` resolves on-device. Registration
+// `@elizaos/plugin-aosp-local-inference` resolves on-device. Registration
 // itself happens through that handler, not from this side-effect import.
 //
 // We capture the named export into `globalThis` to defeat Bun.build's
@@ -14,8 +13,6 @@ import { runAutonomousCli } from "./cli/index.js";
 // which is exactly what we observed empirically (only the source-map comment
 // survived, the symbol did not). Dropping it would silently break the
 // dynamic import path on AOSP. Keep this guard pinned.
-import { registerAospLlamaLoader as __elizaAospLlamaLoader } from "./runtime/aosp-llama-adapter.js";
-
 // Static import so `Bun.build` pulls the AOSP local-inference bootstrap
 // into the mobile bundle. The bootstrap runs `ensureAospLocalInferenceHandlers`
 // after `startEliza()` returns the runtime, registering TEXT_SMALL /
@@ -24,14 +21,18 @@ import { registerAospLlamaLoader as __elizaAospLlamaLoader } from "./runtime/aos
 // symbol out (the only consumer is a dynamic import in `cli/index.ts`,
 // which is enough for resolution but not for inclusion in some Bun.build
 // configurations). Mirror the `__elizaAospLlamaLoader` pattern.
-import { ensureAospLocalInferenceHandlers as __elizaAospLocalInferenceBootstrap } from "./runtime/aosp-local-inference-bootstrap.js";
-import { ensureMobileDeviceBridgeInferenceHandlers as __elizaMobileDeviceBridgeBootstrap } from "./runtime/mobile-device-bridge-bootstrap.js";
+import {
+  registerAospLlamaLoader as __elizaAospLlamaLoader,
+  ensureAospLocalInferenceHandlers as __elizaAospLocalInferenceBootstrap,
+} from "@elizaos/plugin-aosp-local-inference";
+import { ensureMobileDeviceBridgeInferenceHandlers as __elizaMobileDeviceBridgeBootstrap } from "@elizaos/plugin-capacitor-bridge";
+import { runAutonomousCli } from "./cli/index.ts";
 
 // Pull @elizaos/app-{wifi,contacts,phone}'s runtime plugin adapter into the
 // mobile bundle. The adapter imports each app package's `/plugin` subpath,
 // applies the agent-side hosted-app session gate, and Object.assigns those
 // modules into STATIC_ELIZA_PLUGINS so plugin-resolver.ts picks them up before
-// falling through to a runtime `import("@elizaos/app-*/plugin")` that has no
+// falling through to a wildcard app plugin import that has no
 // node_modules tree to resolve on-device.
 //
 // Dynamic + try/catch instead of a static `import` so non-mobile builds
@@ -40,7 +41,7 @@ import { ensureMobileDeviceBridgeInferenceHandlers as __elizaMobileDeviceBridgeB
 // Bun.build still bundles the target because the path is a string
 // literal, so the Android bundle keeps the same behavior.
 try {
-  await import("./runtime/android-app-plugins.js");
+  await import("./runtime/android-app-plugins.ts");
 } catch {
   // Android-only app plugins not bundled in this build; plugin-resolver.ts
   // returns null for these IDs and the rest of the runtime is unaffected.

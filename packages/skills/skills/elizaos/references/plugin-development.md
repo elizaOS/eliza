@@ -20,7 +20,7 @@ An elizaOS plugin is a plain object that can register:
 Use for tool execution or side effects.
 
 - declared in `plugin.actions`
-- executed by `runtime.processActions(...)`
+- executed by planned tool calls
 - can declare structured parameters
 
 ### Providers

@@ -6,18 +6,16 @@ import { createTodoAction } from "./actions/create-todo.ts";
 import { deleteTodoAction } from "./actions/delete-todo.ts";
 import { editTodoAction } from "./actions/edit-todo.ts";
 import { listTodosAction } from "./actions/list-todos.ts";
-import { todoAction } from "./actions/todo.ts";
 import { todosProvider } from "./providers/todos.ts";
 
 export const todosPlugin: Plugin = {
 	name: "todos",
 	description:
-		"Per-user todo list. Create, complete, list, edit, and delete todo items scoped to each user.",
+		"Per-user todo list. Create, complete, list, edit, and delete todo items scoped to each user. The TODO umbrella action is provided by @elizaos/plugin-todos; this plugin exposes only the leaf CRUD actions.",
 
 	providers: [todosProvider],
 
 	actions: [
-		todoAction,
 		createTodoAction,
 		completeTodoAction,
 		listTodosAction,
@@ -40,7 +38,6 @@ export { createTodoAction } from "./actions/create-todo.ts";
 export { deleteTodoAction } from "./actions/delete-todo.ts";
 export { editTodoAction } from "./actions/edit-todo.ts";
 export { listTodosAction } from "./actions/list-todos.ts";
-export { todoAction } from "./actions/todo.ts";
 export { todosProvider } from "./providers/todos.ts";
 export { getTodosService, TodosService } from "./services/todoService.ts";
 export type {

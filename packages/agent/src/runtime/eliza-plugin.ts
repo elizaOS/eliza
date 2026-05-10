@@ -7,126 +7,49 @@
  */
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
-import { AgentEventService } from "@elizaos/core";
-import { browserAutofillLoginAction } from "../actions/browser-autofill-login.js";
-import { browserSessionAction } from "../actions/browser-session.js";
-import { codeAction } from "../actions/code-umbrella.js";
-import {
-  disconnectConnectorAction,
-  listConnectorsAction,
-  saveConnectorConfigAction,
-  toggleConnectorAction,
-} from "../actions/connector-control.js";
-import {
-  executeDatabaseQueryAction,
-  getTableDataAction,
-  listDatabaseTablesAction,
-  searchVectorsAction,
-} from "../actions/database.js";
-import {
-  createContactAction,
-  deleteContactAction,
-  getRelationshipActivityAction,
-  linkEntityAction,
-  readEntityAction,
-  resolveMergeCandidateAction,
-  searchEntityAction,
-  updateContactAction,
-} from "../actions/entity-actions.js";
-import { extractPageAction } from "../actions/extract-page.js";
-import { launchpadLaunchAction } from "../actions/launchpad-launch.js";
-import {
-  clearLogsAction,
-  exportLogsAction,
-  queryLogsAction,
-} from "../actions/logs.js";
-import { manageTasksAction } from "../actions/manage-tasks.js";
-import {
-  createMemoryAction,
-  editMemoryAction,
-  forgetMemoryAction,
-  recallMemoryFilteredAction,
-} from "../actions/memories.js";
-import { pageActionGroupActions } from "../actions/page-action-groups.js";
-import { readChannelAction } from "../actions/read-channel.js";
-import { readMessagesAction } from "../actions/read-messages.js";
-import { readPluginConfigAction } from "../actions/read-plugin-config.js";
-import { restartAction } from "../actions/restart.js";
-import {
-  describeRegisteredActionsAction,
-  getRuntimeStatusAction,
-  reloadRuntimeConfigAction,
-  restartRuntimeAction,
-} from "../actions/runtime.js";
-import {
-  scratchpadAddAction,
-  scratchpadDeleteAction,
-  scratchpadReadAction,
-  scratchpadReplaceAction,
-  scratchpadSearchAction,
-} from "../actions/scratchpad.js";
-import { searchConversationsAction } from "../actions/search-conversations.js";
-import { sendAdminMessageAction } from "../actions/send-admin-message.js";
-import { setUserNameAction } from "../actions/set-user-name.js";
-import {
-  toggleAutoTrainingAction,
-  toggleCapabilityAction,
-  updateAiProviderAction,
-  updateIdentityAction,
-} from "../actions/settings-actions.js";
+import { AgentEventService, promoteSubactionsToActions } from "@elizaos/core";
+import { contactAction } from "../actions/contact.ts";
+import { databaseAction } from "../actions/database.ts";
+import { logsAction } from "../actions/logs.ts";
+import { memoryAction } from "../actions/memories.ts";
+import { pageActionGroupActions } from "../actions/page-action-groups.ts";
+import { pluginAction } from "../actions/plugin.ts";
+import { runtimeAction } from "../actions/runtime.ts";
+import { settingsAction } from "../actions/settings-actions.ts";
 import {
   addRegisteredSkillSlug,
   clearRegisteredSkillSlugs,
-  skillCommandAction,
-} from "../actions/skill-command.js";
-import {
-  archiveCodingTaskAction,
-  reopenCodingTaskAction,
-} from "../actions/tasks-coding.js";
-import { terminalAction } from "../actions/terminal.js";
-import {
-  annotateTrajectoryAction,
-  exportTrajectoryDatasetAction,
-  queryTrajectoriesAction,
-} from "../actions/trajectories.js";
-import { updateOwnerNameAction } from "../actions/update-owner-name.js";
-import { webSearchAction } from "../actions/web-search.js";
-import {
-  createWorkflowAction,
-  deleteWorkflowAction,
-  promoteTaskToWorkflowAction,
-  toggleWorkflowActiveAction,
-} from "../actions/workflow/index.js";
-import { lateJoinWhitelistEvaluator } from "../evaluators/late-join-whitelist.js";
-import { adminPanelProvider } from "../providers/admin-panel.js";
-import { adminTrustProvider } from "../providers/admin-trust.js";
-import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.js";
-import { escalationTriggerProvider } from "../providers/escalation-trigger.js";
-import { pageScopedContextProvider } from "../providers/page-scoped-context.js";
-import { recentConversationsProvider } from "../providers/recent-conversations.js";
-import { relevantConversationsProvider } from "../providers/relevant-conversations.js";
-import { roleBackfillProvider } from "../providers/role-backfill.js";
-import { rolodexProvider } from "../providers/rolodex.js";
-import { createSessionKeyProvider } from "../providers/session-bridge.js";
+} from "../actions/skill-command.ts";
+import { terminalAction } from "../actions/terminal.ts";
+import { triggerAction } from "../actions/trigger.ts";
+import { adminPanelProvider } from "../providers/admin-panel.ts";
+import { adminTrustProvider } from "../providers/admin-trust.ts";
+import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.ts";
+import { escalationTriggerProvider } from "../providers/escalation-trigger.ts";
+import { pageScopedContextProvider } from "../providers/page-scoped-context.ts";
+import { pendingPermissionsProvider } from "../providers/pending-permissions-provider.ts";
+import { recentConversationsProvider } from "../providers/recent-conversations.ts";
+import { relevantConversationsProvider } from "../providers/relevant-conversations.ts";
+import { roleBackfillProvider } from "../providers/role-backfill.ts";
+import { rolodexProvider } from "../providers/rolodex.ts";
+import { createSessionKeyProvider } from "../providers/session-bridge.ts";
 import {
   getSessionProviders,
   resolveDefaultSessionStorePath,
-} from "../providers/session-utils.js";
-import { createChannelProfileProvider } from "../providers/simple-mode.js";
-import { createDynamicSkillProvider } from "../providers/skill-provider.js";
-import { createOngoingTasksProvider } from "../providers/tasks.js";
-import { uiCatalogProvider } from "../providers/ui-catalog.js";
-import { createUserNameProvider } from "../providers/user-name.js";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
-import { createWorkspaceProvider } from "../providers/workspace-provider.js";
-import { ElizaCharacterPersistenceService } from "../services/character-persistence.js";
-import { createTriggerTaskAction } from "../triggers/action.js";
-import { deleteTriggerTaskAction } from "../triggers/delete-trigger.js";
-import { runTriggerNowAction } from "../triggers/run-trigger.js";
-import { registerTriggerTaskWorker } from "../triggers/runtime.js";
-import { updateTriggerTaskAction } from "../triggers/update-trigger.js";
+} from "../providers/session-utils.ts";
+import { createChannelProfileProvider } from "../providers/simple-mode.ts";
+import { createDynamicSkillProvider } from "../providers/skill-provider.ts";
+import { createOngoingTasksProvider } from "../providers/tasks.ts";
+import { uiCatalogProvider } from "../providers/ui-catalog.ts";
+import { createUserNameProvider } from "../providers/user-name.ts";
+import { createWorkspaceProvider } from "../providers/workspace-provider.ts";
+import { ElizaCharacterPersistenceService } from "../services/character-persistence.ts";
+import { AgentMediaGenerationService } from "../services/media-generation.ts";
+import { PermissionRegistry } from "../services/permissions-registry.ts";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
+import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
 
-import { setCustomActionsRuntime } from "./custom-actions.js";
+import { setCustomActionsRuntime } from "./custom-actions.ts";
 
 export type ElizaPluginConfig = {
   workspaceDir?: string;
@@ -134,6 +57,23 @@ export type ElizaPluginConfig = {
   sessionStorePath?: string;
   agentId?: string;
 };
+
+type AgentSkillsService = {
+  getLoadedSkills: () => Array<{
+    slug: string;
+    name: string;
+    description: string;
+  }>;
+};
+
+function isAgentSkillsService(value: unknown): value is AgentSkillsService {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    typeof (value as { getLoadedSkills?: unknown }).getLoadedSkills ===
+      "function"
+  );
+}
 
 export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
   const workspaceDir =
@@ -154,6 +94,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     createSessionKeyProvider({ defaultAgentId: agentId }),
     ...getSessionProviders({ storePath: sessionStorePath }),
     createDynamicSkillProvider(),
+    pendingPermissionsProvider,
     createUserNameProvider(),
     createOngoingTasksProvider(),
   ];
@@ -167,6 +108,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     services: [
       AgentEventService as ServiceClass,
       ElizaCharacterPersistenceService as ServiceClass,
+      AgentMediaGenerationService as ServiceClass,
+      PermissionRegistry as ServiceClass,
     ],
 
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
@@ -180,18 +123,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // after this init() returns.
       const registerSkillsAsCommands = () => {
         try {
-          const skillsService = runtime.getService(
-            "AGENT_SKILLS_SERVICE",
-          ) as unknown as
-            | {
-                getLoadedSkills: () => Array<{
-                  slug: string;
-                  name: string;
-                  description: string;
-                }>;
-              }
-            | undefined;
-          if (!skillsService) return false;
+          const skillsService = runtime.getService("AGENT_SKILLS_SERVICE");
+          if (!isAgentSkillsService(skillsService)) return false;
 
           const skills = skillsService.getLoadedSkills();
           if (skills.length === 0) return false;
@@ -269,77 +202,22 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       escalationTriggerProvider,
     ],
 
-    evaluators: [lateJoinWhitelistEvaluator],
-
     actions: [
-      restartAction,
-      sendAdminMessageAction,
       terminalAction,
-      createTriggerTaskAction,
-      updateTriggerTaskAction,
-      deleteTriggerTaskAction,
-      runTriggerNowAction,
-      createWorkflowAction,
-      deleteWorkflowAction,
-      toggleWorkflowActiveAction,
-      promoteTaskToWorkflowAction,
-      manageTasksAction,
+      ...promoteSubactionsToActions(triggerAction),
       ...pageActionGroupActions,
-      setUserNameAction,
-      skillCommandAction,
-      webSearchAction,
-      extractPageAction,
-      browserSessionAction,
-      browserAutofillLoginAction,
-      launchpadLaunchAction,
-      readChannelAction,
-      searchConversationsAction,
-      searchEntityAction,
-      linkEntityAction,
-      readEntityAction,
-      resolveMergeCandidateAction,
-      getRelationshipActivityAction,
-      createContactAction,
-      updateContactAction,
-      deleteContactAction,
-      updateOwnerNameAction,
-      readMessagesAction,
-      updateIdentityAction,
-      updateAiProviderAction,
-      toggleCapabilityAction,
-      toggleAutoTrainingAction,
-      listConnectorsAction,
-      toggleConnectorAction,
-      saveConnectorConfigAction,
-      disconnectConnectorAction,
-      readPluginConfigAction,
+      ...promoteSubactionsToActions(contactAction),
+      settingsAction,
+      ...promoteSubactionsToActions(pluginAction),
       // Observability / introspection actions
-      queryLogsAction,
-      exportLogsAction,
-      clearLogsAction,
-      getRuntimeStatusAction,
-      describeRegisteredActionsAction,
-      reloadRuntimeConfigAction,
-      restartRuntimeAction,
-      listDatabaseTablesAction,
-      getTableDataAction,
-      executeDatabaseQueryAction,
-      searchVectorsAction,
-      queryTrajectoriesAction,
-      exportTrajectoryDatasetAction,
-      annotateTrajectoryAction,
-      createMemoryAction,
-      recallMemoryFilteredAction,
-      forgetMemoryAction,
-      editMemoryAction,
-      scratchpadAddAction,
-      scratchpadReadAction,
-      scratchpadSearchAction,
-      scratchpadReplaceAction,
-      scratchpadDeleteAction,
-      archiveCodingTaskAction,
-      reopenCodingTaskAction,
-      codeAction,
+      ...promoteSubactionsToActions(logsAction),
+      ...promoteSubactionsToActions(runtimeAction),
+      ...promoteSubactionsToActions(databaseAction),
+      ...promoteSubactionsToActions(memoryAction),
+      // SCHEDULE_FOLLOW_UP is now the `followup` op on contactAction.
+      // ARCHIVE_CODING_TASK / REOPEN_CODING_TASK live as ops on the TASKS
+      // parent in @elizaos/plugin-agent-orchestrator (also surfaced via the
+      // CODE umbrella).
     ],
   };
 

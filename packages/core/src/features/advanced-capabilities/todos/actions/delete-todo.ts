@@ -25,7 +25,8 @@ function extractId(message: Memory, options?: HandlerOptions): string | null {
 export const deleteTodoAction: Action = {
 	name: "DELETE_TODO",
 	contexts: ["todos", "agent_internal"],
-	description: "Delete (soft-delete) a todo item.",
+	roleGate: { minRole: "USER" },
+	description: "Soft-delete one existing todo item by id.",
 	similes: ["REMOVE_TODO", "DISCARD_TODO"],
 
 	validate: async (
@@ -114,7 +115,41 @@ export const deleteTodoAction: Action = {
 			schema: { type: "string" as const, minLength: 1 },
 		},
 	],
-	examples: [],
+	examples: [
+		[
+			{
+				name: "{{name1}}",
+				content: { text: "Delete todo abc-123.", source: "chat" },
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: "Deleting todo abc-123.",
+					actions: ["DELETE_TODO"],
+					thought:
+						"Hard-delete on a specific id; DELETE_TODO with id=abc-123 removes it from the list.",
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Remove the 'old prototype' todo I added last month.",
+					source: "chat",
+				},
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: "Removing that todo.",
+					actions: ["DELETE_TODO"],
+					thought:
+						"Description-based reference; agent resolves to the matching todo id and dispatches DELETE_TODO.",
+				},
+			},
+		],
+	],
 };
 
 export default deleteTodoAction;

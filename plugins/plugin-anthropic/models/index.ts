@@ -1,5 +1,4 @@
 export { handleImageDescription } from "./image";
-export { handleObjectLarge, handleObjectSmall } from "./object";
 export {
   handleActionPlanner,
   handleReasoningLarge,

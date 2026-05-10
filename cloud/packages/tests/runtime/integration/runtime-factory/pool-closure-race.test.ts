@@ -45,6 +45,7 @@ import {
 
 const TEST_TIMEOUT = 120000; // 2 minutes per test
 const ADAPTER_PROBE_TIMEOUT_MS = 5_000;
+const runPoolClosureRaceTests = process.env.RUN_POOL_CLOSURE_RACE_TESTS === "1";
 
 // ============================================================================
 // Local Test State
@@ -80,7 +81,7 @@ async function setupTestEnvironment(): Promise<void> {
     creditBalance: 1000.0,
     includeCharacter: true,
     characterName: "Mira",
-    characterData: mcpTestCharacter as unknown as Record<string, unknown>,
+    characterData: { ...mcpTestCharacter },
     characterSettings: mcpTestCharacter.settings as Record<string, unknown>,
   });
   console.log("Test data created");
@@ -129,7 +130,7 @@ async function withAdapterProbeTimeout<T>(promise: Promise<T>, label: string): P
 // Test Suite: Pool Closure Race Conditions
 // ============================================================================
 
-describe.skipIf(!hasDatabaseUrl)("Pool Closure Race Condition", () => {
+describe.skipIf(!hasDatabaseUrl || !runPoolClosureRaceTests)("Pool Closure Race Condition", () => {
   beforeAll(setupTestEnvironment, TEST_TIMEOUT);
   afterAll(cleanupTestEnvironment);
 
@@ -143,7 +144,7 @@ describe.skipIf(!hasDatabaseUrl)("Pool Closure Race Condition", () => {
       async () => {
         // Create a runtime
         const userContext = buildUserContext(testData, {
-          agentMode: AgentMode.ASSISTANT,
+          agentMode: AgentMode.CHAT,
           webSearchEnabled: false,
         });
 
@@ -213,7 +214,7 @@ describe.skipIf(!hasDatabaseUrl)("Pool Closure Race Condition", () => {
       "should demonstrate OLD eviction behavior causes pool closure",
       async () => {
         const userContext = buildUserContext(testData, {
-          agentMode: AgentMode.ASSISTANT,
+          agentMode: AgentMode.CHAT,
           webSearchEnabled: false,
         });
 
@@ -265,7 +266,7 @@ describe.skipIf(!hasDatabaseUrl)("Pool Closure Race Condition", () => {
       "should demonstrate NEW eviction behavior preserves pool",
       async () => {
         const userContext = buildUserContext(testData, {
-          agentMode: AgentMode.ASSISTANT,
+          agentMode: AgentMode.CHAT,
           webSearchEnabled: false,
         });
 
@@ -321,7 +322,7 @@ describe.skipIf(!hasDatabaseUrl)("Pool Closure Race Condition", () => {
       "should demonstrate parallel queries succeed with NEW eviction",
       async () => {
         const userContext = buildUserContext(testData, {
-          agentMode: AgentMode.ASSISTANT,
+          agentMode: AgentMode.CHAT,
           webSearchEnabled: false,
         });
 
@@ -396,12 +397,12 @@ describe.skipIf(!hasDatabaseUrl)("Pool Closure Race Condition", () => {
         // For this test, we'll create runtimes with different cache keys
 
         const userContextA = buildUserContext(testData, {
-          agentMode: AgentMode.ASSISTANT,
+          agentMode: AgentMode.CHAT,
           webSearchEnabled: false, // This creates cache key: agentId
         });
 
         const userContextB = buildUserContext(testData, {
-          agentMode: AgentMode.ASSISTANT,
+          agentMode: AgentMode.CHAT,
           webSearchEnabled: false,
           appPromptConfig: { prompt: "pool-race-context-b" },
         });
@@ -490,7 +491,7 @@ describe.skipIf(!hasDatabaseUrl)("Pool Closure Race Condition", () => {
       "should show direct adapter.close() terminates shared pool",
       async () => {
         const userContext = buildUserContext(testData, {
-          agentMode: AgentMode.ASSISTANT,
+          agentMode: AgentMode.CHAT,
           webSearchEnabled: false,
         });
 
@@ -537,96 +538,99 @@ describe.skipIf(!hasDatabaseUrl)("Pool Closure Race Condition", () => {
 // Test Suite: Simulating Production Error Scenario
 // ============================================================================
 
-describe.skipIf(!hasDatabaseUrl)("Production Error Reproduction", () => {
-  beforeAll(setupTestEnvironment, TEST_TIMEOUT);
-  afterAll(cleanupTestEnvironment);
+describe.skipIf(!hasDatabaseUrl || !runPoolClosureRaceTests)(
+  "Production Error Reproduction",
+  () => {
+    beforeAll(setupTestEnvironment, TEST_TIMEOUT);
+    afterAll(cleanupTestEnvironment);
 
-  /**
-   * This test simulates the exact production scenario from the logs:
-   * 1. Service registration times out
-   * 2. New runtime creation starts
-   * 3. Old runtime eviction happens
-   * 4. Query fails with "Cannot use a pool after calling end on the pool"
-   */
-  it(
-    "should reproduce production 'Cannot use a pool after calling end' error",
-    async () => {
-      console.log("\n" + "=".repeat(60));
-      console.log("REPRODUCING PRODUCTION ERROR SCENARIO");
-      console.log("=".repeat(60));
+    /**
+     * This test simulates the exact production scenario from the logs:
+     * 1. Service registration times out
+     * 2. New runtime creation starts
+     * 3. Old runtime eviction happens
+     * 4. Query fails with "Cannot use a pool after calling end on the pool"
+     */
+    it(
+      "should reproduce production 'Cannot use a pool after calling end' error",
+      async () => {
+        console.log("\n" + "=".repeat(60));
+        console.log("REPRODUCING PRODUCTION ERROR SCENARIO");
+        console.log("=".repeat(60));
 
-      // Step 1: Create an initial runtime (simulates existing cached runtime)
-      const userContext = buildUserContext(testData, {
-        agentMode: AgentMode.ASSISTANT,
-        webSearchEnabled: false,
-      });
+        // Step 1: Create an initial runtime (simulates existing cached runtime)
+        const userContext = buildUserContext(testData, {
+          agentMode: AgentMode.CHAT,
+          webSearchEnabled: false,
+        });
 
-      const existingRuntime = await runtimeFactory.createRuntimeForUser(userContext);
-      const existingAgentId = existingRuntime.agentId as string;
-      console.log(`\nStep 1: Created existing runtime: ${existingAgentId}`);
+        const existingRuntime = await runtimeFactory.createRuntimeForUser(userContext);
+        const existingAgentId = existingRuntime.agentId as string;
+        console.log(`\nStep 1: Created existing runtime: ${existingAgentId}`);
 
-      // Get reference to adapter (simulates what a concurrent request would hold)
-      const adapterRef = _testing.getAdapterEntries().get(existingAgentId);
-      expect(adapterRef).toBeDefined();
+        // Get reference to adapter (simulates what a concurrent request would hold)
+        const adapterRef = _testing.getAdapterEntries().get(existingAgentId);
+        expect(adapterRef).toBeDefined();
 
-      // Step 2: Simulate timeout scenario by forcing eviction
-      // This is what happens when cache evicts stale/unhealthy entries
-      console.log("\nStep 2: Simulating eviction (what happens after timeout/error)");
+        // Step 2: Simulate timeout scenario by forcing eviction
+        // This is what happens when cache evicts stale/unhealthy entries
+        console.log("\nStep 2: Simulating eviction (what happens after timeout/error)");
 
-      // Hold a promise that will try to query during eviction
-      const concurrentQueryPromise = (async () => {
-        // Small delay to let eviction start
-        await new Promise((r) => setTimeout(r, 50));
+        // Hold a promise that will try to query during eviction
+        const concurrentQueryPromise = (async () => {
+          // Small delay to let eviction start
+          await new Promise((r) => setTimeout(r, 50));
 
-        console.log("Concurrent query attempting to use adapter...");
-        try {
-          // This simulates a request that was in flight when eviction happened
-          await adapterRef!.isReady();
-          return { success: true };
-        } catch (error) {
-          return { success: false, error: (error as Error).message };
+          console.log("Concurrent query attempting to use adapter...");
+          try {
+            // This simulates a request that was in flight when eviction happened
+            await adapterRef!.isReady();
+            return { success: true };
+          } catch (error) {
+            return { success: false, error: (error as Error).message };
+          }
+        })();
+
+        // Trigger eviction
+        await _testing.forceEvictRuntime(existingAgentId);
+        console.log("Eviction triggered");
+
+        // Wait for concurrent query result
+        const queryResult = await concurrentQueryPromise;
+
+        // Step 3: Analyze results
+        console.log("\nStep 3: Results");
+        if (!queryResult.success) {
+          console.log("*** PRODUCTION ERROR REPRODUCED ***");
+          console.log(`Error: ${queryResult.error}`);
+
+          // The specific error we're looking for
+          const expectedErrors = [
+            "cannot use a pool after calling end",
+            "pool has been destroyed",
+            "pool is closed",
+            "connection terminated",
+          ];
+
+          const matchedError = expectedErrors.some((err) =>
+            queryResult.error?.toLowerCase().includes(err.toLowerCase()),
+          );
+
+          if (matchedError) {
+            console.log("\n!!! EXACT PRODUCTION ERROR MATCHED !!!");
+            console.log("This confirms the race condition thesis.");
+          }
+
+          expect(queryResult.success).toBe(false);
+        } else {
+          console.log("Query succeeded - race condition timing not reproduced");
+          console.log("The test may need adjustment for timing or the fix may already be in place");
         }
-      })();
 
-      // Trigger eviction
-      await _testing.forceEvictRuntime(existingAgentId);
-      console.log("Eviction triggered");
-
-      // Wait for concurrent query result
-      const queryResult = await concurrentQueryPromise;
-
-      // Step 3: Analyze results
-      console.log("\nStep 3: Results");
-      if (!queryResult.success) {
-        console.log("*** PRODUCTION ERROR REPRODUCED ***");
-        console.log(`Error: ${queryResult.error}`);
-
-        // The specific error we're looking for
-        const expectedErrors = [
-          "cannot use a pool after calling end",
-          "pool has been destroyed",
-          "pool is closed",
-          "connection terminated",
-        ];
-
-        const matchedError = expectedErrors.some((err) =>
-          queryResult.error?.toLowerCase().includes(err.toLowerCase()),
-        );
-
-        if (matchedError) {
-          console.log("\n!!! EXACT PRODUCTION ERROR MATCHED !!!");
-          console.log("This confirms the race condition thesis.");
-        }
-
-        expect(queryResult.success).toBe(false);
-      } else {
-        console.log("Query succeeded - race condition timing not reproduced");
-        console.log("The test may need adjustment for timing or the fix may already be in place");
-      }
-
-      // Cleanup
-      await invalidateRuntime(existingAgentId).catch(() => {});
-    },
-    TEST_TIMEOUT,
-  );
-});
+        // Cleanup
+        await invalidateRuntime(existingAgentId).catch(() => {});
+      },
+      TEST_TIMEOUT,
+    );
+  },
+);

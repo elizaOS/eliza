@@ -1029,7 +1029,7 @@ export class AgentSkillsService extends Service {
 			case "apt":
 				return `Install with apt: sudo apt-get install ${option.package}`;
 			case "node":
-				return `Install with npm/pnpm: npm install -g ${option.package}`;
+				return `Install with npm: npm install -g ${option.package}`;
 			case "pip":
 				return `Install with pip: pip install ${option.package}`;
 			case "cargo":

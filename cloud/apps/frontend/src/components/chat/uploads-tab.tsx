@@ -5,7 +5,7 @@ import { formatDistanceToNow } from "date-fns";
 import { FileText, Loader2, RefreshCw, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { KnowledgeDocument, PreUploadedFile } from "@/lib/types/knowledge";
+import type { CloudDocument, PreUploadedFile } from "@/lib/types/documents";
 
 interface UploadsTabProps {
   characterId: string | null;
@@ -20,7 +20,7 @@ export function UploadsTab({
   onPreUploadedFilesAdd,
   onPreUploadedFileRemove,
 }: UploadsTabProps) {
-  const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
+  const [documents, setDocuments] = useState<CloudDocument[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [_selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -32,7 +32,7 @@ export function UploadsTab({
     if (!characterId) return;
     setLoading(true);
 
-    const url = new URL("/api/v1/knowledge", window.location.origin);
+    const url = new URL("/api/v1/documents", window.location.origin);
     url.searchParams.set("characterId", characterId);
 
     const response = await fetch(url.toString(), { credentials: "include" });
@@ -102,7 +102,7 @@ export function UploadsTab({
           formData.append("files", file, file.name);
         }
 
-        const response = await fetch("/api/v1/knowledge/pre-upload", {
+        const response = await fetch("/api/v1/documents/pre-upload", {
           method: "POST",
           credentials: "include",
           body: formData,
@@ -132,13 +132,13 @@ export function UploadsTab({
         return;
       }
 
-      // Normal mode: process files through knowledge service
+      // Normal mode: process files through documents service
       formData.append("characterId", characterId);
       for (const file of files) {
         formData.append("files", file, file.name);
       }
 
-      const response = await fetch("/api/v1/knowledge/upload-file", {
+      const response = await fetch("/api/v1/documents/upload-file", {
         method: "POST",
         credentials: "include",
         body: formData,
@@ -187,7 +187,7 @@ export function UploadsTab({
   const handleDelete = async (documentId: string) => {
     if (!characterId) return;
 
-    const url = new URL(`/api/v1/knowledge/${documentId}`, window.location.origin);
+    const url = new URL(`/api/v1/documents/${documentId}`, window.location.origin);
     url.searchParams.set("characterId", characterId);
 
     const response = await fetch(url.toString(), {
@@ -219,7 +219,7 @@ export function UploadsTab({
 
     // Delete blob from storage
     try {
-      const response = await fetch("/api/v1/knowledge/pre-upload", {
+      const response = await fetch("/api/v1/documents/pre-upload", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -241,13 +241,13 @@ export function UploadsTab({
     }
   };
 
-  const getDocumentName = (doc: KnowledgeDocument): string => {
+  const getDocumentName = (doc: CloudDocument): string => {
     return (
       doc.metadata?.fileName || doc.metadata?.originalFilename || `Document ${doc.id.slice(0, 8)}`
     );
   };
 
-  const getDocumentAge = (doc: KnowledgeDocument): string => {
+  const getDocumentAge = (doc: CloudDocument): string => {
     const timestamp = doc.metadata?.uploadedAt || doc.createdAt;
     return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
   };

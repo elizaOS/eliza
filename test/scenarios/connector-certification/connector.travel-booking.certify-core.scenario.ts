@@ -14,7 +14,7 @@ export default buildConnectorCertificationScenario({
       responseIncludesAny: ["travel", "hold", "book", "approve", "itinerary"],
       acceptedActions: [
         "CALENDAR",
-        "SEND_DRAFT",
+        "MESSAGE",
         "VOICE_CALL",
       ],
       includesAny: ["travel", "hold", "book", "approve", "itinerary"],

@@ -1,10 +1,10 @@
 /**
- * Multi-action chain: create a todo, then conditionally block social media
- * until it's complete. Verifies the agent can sequence two distinct
- * side-effect actions across turns while maintaining conversational context.
+ * Multi-action chain: create a todo, then block named sites. Verifies the agent
+ * can sequence two distinct side-effect actions across turns while maintaining
+ * conversational context.
  *
  * Turn 1: CREATE_TASK (or LIFE simile) fires for the push-up todo.
- * Turn 2: BLOCK_UNTIL_TASK_COMPLETE fires, scoped to the todo created in turn 1.
+ * Turn 2: WEBSITE_BLOCK fires for the requested hostnames.
  */
 
 import { scenario } from "@elizaos/scenario-schema";
@@ -17,7 +17,7 @@ export default scenario({
   domain: "cross-cutting",
   tags: ["cross-cutting", "multi-action", "critical"],
   description:
-    "Two-turn chain: user asks the agent to create a push-ups todo, then in the follow-up turn asks for a block on social media until the todo is complete. Verifies CREATE_TASK (or LIFE) fires on turn 1 and BLOCK_UNTIL_TASK_COMPLETE fires on turn 2.",
+    "Two-turn chain: user asks the agent to create a push-ups todo, then in the follow-up turn asks to block named sites. Verifies CREATE_TASK (or LIFE) fires on turn 1 and WEBSITE_BLOCK fires on turn 2.",
 
   isolation: "per-scenario",
 
@@ -58,12 +58,12 @@ export default scenario({
       },
       assertTurn: (turn) => {
         const blocked = turn.actionsCalled.find(
-          (a) => a.actionName === "BLOCK_UNTIL_TASK_COMPLETE",
+          (a) => a.actionName === "WEBSITE_BLOCK",
         );
         if (!blocked) {
           const fired =
             turn.actionsCalled.map((a) => a.actionName).join(", ") || "(none)";
-          return `Expected BLOCK_UNTIL_TASK_COMPLETE action but got: ${fired}`;
+          return `Expected WEBSITE_BLOCK action but got: ${fired}`;
         }
       },
     },
@@ -72,7 +72,7 @@ export default scenario({
   finalChecks: [
     {
       type: "actionCalled",
-      actionName: "BLOCK_UNTIL_TASK_COMPLETE",
+      actionName: "WEBSITE_BLOCK",
       minCount: 1,
     },
   ],

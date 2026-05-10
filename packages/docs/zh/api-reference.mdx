@@ -98,7 +98,7 @@ curl http://localhost:31337/api/conversations \
 </div>
 
 ```bash
-curl -X POST http://localhost:31337/api/knowledge/documents \
+curl -X POST http://localhost:31337/api/documents \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -112,7 +112,7 @@ curl -X POST http://localhost:31337/api/knowledge/documents \
 </div>
 
 ```bash
-curl "http://localhost:31337/api/knowledge/search?q=what+is+eliza&limit=5" \
+curl "http://localhost:31337/api/documents/search?q=what+is+eliza&limit=5" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
@@ -458,14 +458,14 @@ curl -X POST http://localhost:31337/api/agent/autonomy \
 
 | 方法 | 路径 | 描述 |
 |--------|------|-------------|
-| `GET` | `/api/knowledge/stats` | 获取文档和片段数量 |
-| `GET` | `/api/knowledge/documents` | 列出知识文档。参数：`limit`、`offset` |
-| `GET` | `/api/knowledge/documents/:id` | 获取包含内容的特定文档 |
-| `POST` | `/api/knowledge/documents` | 上传文档（base64 内容或文本） |
-| `POST` | `/api/knowledge/documents/url` | 通过 URL 上传（支持 YouTube 自动转录） |
-| `DELETE` | `/api/knowledge/documents/:id` | 删除文档及其所有片段 |
-| `GET` | `/api/knowledge/search` | 语义搜索。参数：`q`（必填）、`threshold`、`limit` |
-| `GET` | `/api/knowledge/fragments/:documentId` | 列出文档的所有片段 |
+| `GET` | `/api/documents/stats` | 获取文档和片段数量 |
+| `GET` | `/api/documents` | 列出知识文档。参数：`limit`、`offset` |
+| `GET` | `/api/documents/:id` | 获取包含内容的特定文档 |
+| `POST` | `/api/documents` | 上传文档（base64 内容或文本） |
+| `POST` | `/api/documents/url` | 通过 URL 上传（支持 YouTube 自动转录） |
+| `DELETE` | `/api/documents/:id` | 删除文档及其所有片段 |
+| `GET` | `/api/documents/search` | 语义搜索。参数：`q`（必填）、`threshold`、`limit` |
+| `GET` | `/api/documents/:documentId/fragments` | 列出文档的所有片段 |
 
 ---
 

@@ -26,6 +26,10 @@ export interface SentTweet {
   readonly [extra: string]: unknown;
 }
 
+function errorDetail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export const wait = (minTime = 1000, maxTime = 3000) => {
   const waitTime =
     Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
@@ -184,7 +188,7 @@ export async function sendTweet(
     );
     logger.log("Successfully posted Tweet");
   } catch (error) {
-    logger.error("Error posting Tweet:", error);
+    logger.error("Error posting Tweet:", errorDetail(error));
     throw error;
   }
 
@@ -203,13 +207,25 @@ export async function sendTweet(
     }
     await client.cacheLatestCheckedTweetId();
 
-    // The v2 send-tweet response is a subset of Tweet; cache only exposes
-    // `tweet.id`, so the shape is compatible at runtime.
-    await client.cacheTweet(tweetResult as unknown as Tweet);
+    await client.cacheTweet({
+      ...tweetResult,
+      userId: "",
+      username: "",
+      name: "",
+      conversationId: tweetResult.id,
+      timestamp: Date.now(),
+      photos: [],
+      mentions: [],
+      hashtags: [],
+      urls: [],
+      videos: [],
+      thread: [],
+      permanentUrl: "",
+    });
 
     logger.log("Successfully posted a tweet", tweetResult.id);
   } catch (error) {
-    logger.error("Error parsing tweet response:", error);
+    logger.error("Error parsing tweet response:", errorDetail(error));
     throw error;
   }
 
@@ -234,12 +250,13 @@ export async function sendChunkedTweet(
   inReplyTo: string,
 ): Promise<Memory[]> {
   const messages: Memory[] = [];
-  const chunks = splitTweetContent(content.text, TWEET_MAX_LENGTH);
+  const chunks = splitTweetContent(content.text ?? "", TWEET_MAX_LENGTH);
 
   let previousTweetId = inReplyTo;
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
+    if (chunk === undefined) continue;
     const _isLastChunk = i === chunks.length - 1;
 
     // Add the tweet number to the beginning of each chunk
@@ -261,13 +278,19 @@ export async function sendChunkedTweet(
         previousTweetId,
       );
 
-      const body = typeof result === "object" ? result : await result.json();
+      const body = result;
 
       // Twitter API v2 response format
-      const tweetResult = body?.data || body;
+      const tweetResult =
+        typeof body.data === "object" && body.data !== null ? body.data : body;
 
       // if we have a response
-      if (tweetResult?.id) {
+      if (
+        typeof tweetResult === "object" &&
+        tweetResult !== null &&
+        "id" in tweetResult &&
+        typeof tweetResult.id === "string"
+      ) {
         const tweetId = tweetResult.id;
         const permanentUrl = `https://x.com/${twitterUsername}/status/${tweetId}`;
 
@@ -288,7 +311,7 @@ export async function sendChunkedTweet(
         previousTweetId = tweetId;
       }
     } catch (error) {
-      logger.error(`Error sending chunk ${i + 1}:`, error);
+      logger.error(`Error sending chunk ${i + 1}:`, errorDetail(error));
       throw error;
     }
   }
@@ -326,7 +349,7 @@ function splitTweetContent(content: string, maxLength: number): string[] {
         // Split long paragraph into smaller chunks
         const chunks = splitParagraph(paragraph, maxLength);
         tweets.push(...chunks.slice(0, -1));
-        currentTweet = chunks[chunks.length - 1];
+        currentTweet = chunks[chunks.length - 1] ?? "";
       }
     }
   }

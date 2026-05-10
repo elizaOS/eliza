@@ -77,8 +77,8 @@ export const DEFAULT_CONFIG: ExtensionConfig = {
     // Groq
     groqApiKey: "",
     groqBaseUrl: "https://api.groq.com/openai/v1",
-    groqSmallModel: "llama-3.1-8b-instant",
-    groqLargeModel: "llama-3.3-70b-versatile",
+    groqSmallModel: "openai/gpt-oss-120b",
+    groqLargeModel: "openai/gpt-oss-120b",
   },
 };
 

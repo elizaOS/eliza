@@ -21,7 +21,7 @@ function createFakeWalletProvider(sendTransaction = vi.fn(async () => HASH)) {
       account: { address: ACCOUNT },
       sendTransaction,
     }),
-  } as unknown as WalletProvider;
+  } as WalletProvider;
 }
 
 const context = {
@@ -115,7 +115,8 @@ describe("EVM wallet chain handler", () => {
   it("does not register duplicate transfer or swap planner actions", () => {
     const actionNames = evmPlugin.actions?.map((action) => action.name) ?? [];
 
-    expect(actionNames).toContain("WALLET_ACTION");
+    expect(actionNames).toContain("WALLET");
+    expect(actionNames).not.toContain("WALLET_ACTION");
     expect(actionNames).not.toContain("TRANSFER");
     expect(actionNames).not.toContain("SWAP");
   });

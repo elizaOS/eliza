@@ -5,6 +5,16 @@ import type { ElectrobunConfig } from "electrobun/bun";
 
 const electrobunDir = path.dirname(fileURLToPath(import.meta.url));
 
+function chromiumFlags(
+	flags: Record<string, string | boolean>,
+): Record<string, string | true> {
+	return Object.fromEntries(
+		Object.entries(flags)
+			.filter(([, value]) => value !== false)
+			.map(([key, value]) => [key, value === true ? true : value]),
+	) as Record<string, string | true>;
+}
+
 export function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
 	return (
 		fs.existsSync(path.join(candidateDir, "bun.lock")) &&
@@ -125,6 +135,51 @@ function readJsonFile(filePath: string): Record<string, unknown> {
 	}
 }
 
+type EntitlementValue = boolean | string | string[];
+
+/**
+ * Parse the small subset of plist XML used by our entitlements files
+ * (`<key>` followed by `<true/>`, `<false/>`, `<string>...</string>`, or
+ * `<array><string>...</string>...</array>`) into a flat JSON record matching
+ * Electrobun's `mac.entitlements` shape.
+ *
+ * Throws if the file cannot be read or contains a value type we do not
+ * support — unlike a defensive try/catch, we want a missing/malformed
+ * entitlements file to fail the build loudly rather than silently produce a
+ * sandbox build with no entitlements.
+ */
+function parseEntitlementsPlist(
+	filePath: string,
+): Record<string, EntitlementValue> {
+	const xml = fs.readFileSync(filePath, "utf8");
+	const dictMatch = xml.match(/<dict>([\s\S]*?)<\/dict>/);
+	if (!dictMatch?.[1]) {
+		throw new Error(`Entitlements plist has no <dict> body: ${filePath}`);
+	}
+	const body = dictMatch[1];
+	const out: Record<string, EntitlementValue> = {};
+	const keyRe =
+		/<key>([^<]+)<\/key>\s*(<true\/>|<false\/>|<string>([^<]*)<\/string>|<array>([\s\S]*?)<\/array>)/g;
+	for (const match of body.matchAll(keyRe)) {
+		const key = match[1];
+		const valueTag = match[2];
+		if (!key || !valueTag) continue;
+		if (valueTag === "<true/>") {
+			out[key] = true;
+		} else if (valueTag === "<false/>") {
+			out[key] = false;
+		} else if (valueTag.startsWith("<string>")) {
+			out[key] = match[3] ?? "";
+		} else if (valueTag.startsWith("<array>")) {
+			const inner = match[4] ?? "";
+			out[key] = Array.from(inner.matchAll(/<string>([^<]*)<\/string>/g)).map(
+				(m) => m[1] ?? "",
+			);
+		}
+	}
+	return out;
+}
+
 function trimEnv(name: string): string {
 	return (process.env[name] ?? "").trim();
 }
@@ -188,7 +243,7 @@ function resolveBrandConfigCopySource({
 }
 
 export function createElectrobunConfig(): ElectrobunConfig {
-	const appName = (process.env.ELIZA_APP_NAME ?? "").trim() || "elizaOS";
+	const appName = (process.env.ELIZA_APP_NAME ?? "").trim() || "Eliza";
 	const appId = (process.env.ELIZA_APP_ID ?? "").trim() || "ai.elizaos.app";
 	const urlScheme = (process.env.ELIZA_URL_SCHEME ?? "").trim() || "elizaos";
 	const appVersion =
@@ -196,6 +251,8 @@ export function createElectrobunConfig(): ElectrobunConfig {
 	const releaseUrl = (process.env.ELIZA_RELEASE_URL ?? "").trim() || "";
 	const runtimeDistDir =
 		(process.env.ELIZA_RUNTIME_DIST_DIR ?? "").trim() || "eliza-dist";
+	const buildVariant: "store" | "direct" =
+		process.env.MILADY_BUILD_VARIANT === "store" ? "store" : "direct";
 	const brandConfigCopySource = resolveBrandConfigCopySource({
 		appName,
 		appId,
@@ -241,7 +298,6 @@ export function createElectrobunConfig(): ElectrobunConfig {
 					"@elizaos/app-core",
 					// Plugins — initialized by the API subprocess, never the bun shell.
 					"@elizaos/plugin-sql",
-					"@elizaos/plugin-knowledge",
 					"@elizaos/plugin-bootstrap",
 					"@elizaos/plugin-local-ai",
 					"@elizaos/plugin-local-embedding",
@@ -258,6 +314,10 @@ export function createElectrobunConfig(): ElectrobunConfig {
 					"onnxruntime-common",
 					"onnxruntime-web",
 					"@huggingface/transformers",
+					// chalk is pulled in transitively via @elizaos/shared/dist/terminal/theme.js.
+					// The Electrobun bun shell never renders to a TTY, so this branch is dead at
+					// runtime — externalising it just keeps the bundler from trying to resolve it.
+					"chalk",
 				],
 			},
 			views: {},
@@ -301,24 +361,42 @@ export function createElectrobunConfig(): ElectrobunConfig {
 					process.env.ELIZA_ELECTROBUN_NOTARIZE !== "0",
 				defaultRenderer: "native",
 				icons: "assets/appIcon.iconset",
-				entitlements: {
-					"com.apple.security.cs.allow-jit": true,
-					"com.apple.security.cs.allow-unsigned-executable-memory": true,
-					"com.apple.security.cs.disable-library-validation": true,
-					"com.apple.security.network.client": true,
-					"com.apple.security.network.server": true,
-					"com.apple.security.files.user-selected.read-write": true,
-					"com.apple.security.device.camera": true,
-					"com.apple.security.device.microphone": true,
-					"com.apple.security.device.screen-recording": true,
-				},
+				// Entitlements are selected by the MILADY_BUILD_VARIANT axis:
+				// - "store": parsed from entitlements/mas.entitlements; turns on
+				//   com.apple.security.app-sandbox for Mac App Store distribution.
+				// - "direct" (default): inline hardened-runtime entitlements with
+				//   no sandbox — current behavior for direct downloads.
+				//
+				// TODO(store-signing): Electrobun's config exposes a single mac
+				// entitlements field; the App Sandbox child-process entitlements
+				// (entitlements/mas-child.entitlements, with cs.inherit) need to
+				// be applied during codesign of helper binaries. Wire this through
+				// the platform signing/notarization step once the MAS signing
+				// identity ("3rd Party Mac Developer Application: <Team>") is
+				// configured via env (e.g. MILADY_MAS_SIGNING_IDENTITY).
+				entitlements:
+					buildVariant === "store"
+						? parseEntitlementsPlist(
+								path.join(electrobunDir, "entitlements/mas.entitlements"),
+							)
+						: {
+								"com.apple.security.cs.allow-jit": true,
+								"com.apple.security.cs.allow-unsigned-executable-memory": true,
+								"com.apple.security.cs.disable-library-validation": true,
+								"com.apple.security.network.client": true,
+								"com.apple.security.network.server": true,
+								"com.apple.security.files.user-selected.read-write": true,
+								"com.apple.security.device.camera": true,
+								"com.apple.security.device.microphone": true,
+								"com.apple.security.device.screen-recording": true,
+							},
 			},
 			linux: {
 				bundleCEF: true,
 				bundleWGPU: true,
 				defaultRenderer: "cef",
 				icon: "assets/appIcon.png",
-				chromiumFlags: {
+				chromiumFlags: chromiumFlags({
 					"enable-unsafe-webgpu": true,
 					"enable-features": "Vulkan",
 					"disable-gpu": false,
@@ -330,20 +408,20 @@ export function createElectrobunConfig(): ElectrobunConfig {
 					"disable-accelerated-video-decode": false,
 					"disable-accelerated-video-encode": false,
 					"disable-gpu-memory-buffer-video-frames": false,
-				} as unknown as Record<string, string | true>,
+				}),
 			},
 			win: {
 				bundleCEF: true,
 				bundleWGPU: true,
 				defaultRenderer: "cef",
 				icon: "assets/appIcon.ico",
-				chromiumFlags: {
+				chromiumFlags: chromiumFlags({
 					"enable-unsafe-webgpu": true,
 					"enable-features": "Vulkan",
 					"in-process-gpu": true,
 					"disable-gpu-sandbox": true,
 					"no-sandbox": true,
-				} as unknown as Record<string, string | true>,
+				}),
 			},
 		},
 		...(releaseUrl

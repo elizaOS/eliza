@@ -91,13 +91,51 @@ class ElizaAgentHarness:
             while not done and step_num < task.max_steps:
                 step_start = time.time()
 
-                # Build prompt
-                if step_num == 0:
-                    prompt_text = f"Start the benchmark task: {task.goal}"
+                # Build prompt — prefer the adapter's structured prompt so the
+                # agent sees the action-language contract (e.g. ```bash ...``` for
+                # the OS env, ```sql ...``` for the DB env). Without this the
+                # agent saw only a one-line goal and emitted conversational
+                # confirmations or empty "think" actions, which the adapters
+                # rejected with "No valid command/SQL query found".
+                formatter = getattr(adapter, "format_prompt", None)
+                if callable(formatter):
+                    try:
+                        prompt_text = formatter(task, observation)
+                    except Exception as fmt_err:
+                        logger.warning(
+                            "[eliza-agentbench] format_prompt failed for %s: %s",
+                            task.id, fmt_err,
+                        )
+                        prompt_text = f"Start the benchmark task: {task.goal}"
                 else:
-                    prompt_text = (
-                        f"Continue with the benchmark task. Step {step_num + 1}/{task.max_steps}"
+                    if step_num == 0:
+                        prompt_text = f"Start the benchmark task: {task.goal}"
+                    else:
+                        prompt_text = (
+                            f"Continue with the benchmark task. Step {step_num + 1}/{task.max_steps}"
+                        )
+
+                # Force strict action-language compliance. The Eliza chat planner
+                # otherwise picks REPLY and emits prose like "Got it, I'll ...".
+                # The agentbench adapters reject anything that isn't inside the
+                # advertised code fence, so we prepend a hard contract.
+                env = adapter.environment
+                env_name = env.value if hasattr(env, "value") else str(env)
+                strict_preamble: str | None = None
+                if env_name == "operating_system" or env_name == "os":
+                    strict_preamble = (
+                        "STRICT MODE: Respond with EXACTLY ONE bash command inside "
+                        "a ```bash``` fenced block. No prose, no questions, no "
+                        "confirmations. The command will be executed verbatim."
                     )
+                elif env_name == "database" or env_name == "db":
+                    strict_preamble = (
+                        "STRICT MODE: Respond with EXACTLY ONE SQL statement "
+                        "inside a ```sql``` fenced block. No prose, no questions. "
+                        "The query will be executed verbatim."
+                    )
+                if strict_preamble:
+                    prompt_text = f"{strict_preamble}\n\n{prompt_text}"
 
                 # Send to eliza
                 response = self._client.send_message(

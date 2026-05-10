@@ -1,13 +1,13 @@
 /**
  * Anthropic OAuth credential store with multi-account support.
  *
- * If the host runtime has installed the `__eliza_account_pool` shim on
+ * If the host runtime has installed the account-pool bridge on
  * `globalThis` (app-core does this when the multi-account `LinkedAccountConfig`
  * store is non-empty), token reads route through the pool: `select` picks
  * the active account, the OAuth fetch wrapper retries on 401 against a
  * different account, and the pool tracks rate-limited / invalid health.
  *
- * Without the shim, behavior matches the original single-source flow
+ * Without the bridge, behavior uses the single-source flow
  * (env var → keychain → ~/.claude/.credentials.json).
  */
 
@@ -16,7 +16,7 @@ interface OAuthToken {
   expiresAt: number;
   /**
    * Account identifier resolved through the pool; undefined when the token
-   * came from the env var or the legacy single-source fallback.
+   * came from the env var or the single-source reader.
    */
   accountId?: string;
 }
@@ -32,7 +32,7 @@ interface ClaudeCredentials {
   };
 }
 
-interface AccountPoolShim {
+interface AccountPoolBridge {
   /** Pick an Anthropic subscription account; null when none are eligible. */
   selectAnthropicSubscription(opts?: {
     sessionKey?: string;
@@ -46,15 +46,15 @@ interface AccountPoolShim {
   markRateLimited(accountId: string, untilMs: number, detail?: string): void | Promise<void>;
 }
 
-const AccountPoolShimSymbol: unique symbol = Symbol.for("eliza.account-pool.anthropic.v1");
+const AccountPoolBridgeSymbol: unique symbol = Symbol.for("eliza.account-pool.anthropic.v1");
 
-function getAccountPoolShim(): AccountPoolShim | undefined {
+function getAccountPoolBridge(): AccountPoolBridge | undefined {
   if (typeof globalThis === "undefined") return undefined;
-  const slot = (globalThis as Record<symbol, unknown>)[AccountPoolShimSymbol];
-  return slot as AccountPoolShim | undefined;
+  const slot = (globalThis as Record<symbol, unknown>)[AccountPoolBridgeSymbol];
+  return slot as AccountPoolBridge | undefined;
 }
 
-export const ANTHROPIC_ACCOUNT_POOL_SYMBOL = AccountPoolShimSymbol;
+export const ANTHROPIC_ACCOUNT_POOL_SYMBOL = AccountPoolBridgeSymbol;
 
 const tokenCache = new Map<string, OAuthToken>();
 const ENV_CACHE_KEY = "__env__";
@@ -70,10 +70,10 @@ interface AppSubscriptionCredentials {
 /**
  * Ref: https://code.claude.com/docs/en/authentication
  *
- * Returns a synchronously-loaded token. When the multi-account shim is
+ * Returns a synchronously-loaded token. When the multi-account bridge is
  * installed, callers should prefer `getClaudeOAuthTokenAsync` so the pool
  * can pick a fresh account on cache miss; the sync path falls back to the
- * legacy file/keychain reader.
+ * file/keychain reader.
  */
 export function getClaudeOAuthToken(opts?: { accountId?: string }): OAuthToken {
   const appToken = readAppManagedAnthropicToken();
@@ -142,15 +142,15 @@ export async function getClaudeOAuthTokenAsync(opts?: {
     return token;
   }
 
-  const shim = getAccountPoolShim();
-  if (shim) {
-    const account = await shim.selectAnthropicSubscription(opts);
+  const bridge = getAccountPoolBridge();
+  if (bridge) {
+    const account = await bridge.selectAnthropicSubscription(opts);
     if (account) {
       const cached = tokenCache.get(account.id);
       if (cached && Date.now() < cached.expiresAt - 60_000) {
         return cached;
       }
-      const access = await shim.getAccessToken("anthropic-subscription", account.id);
+      const access = await bridge.getAccessToken("anthropic-subscription", account.id);
       if (access) {
         const token: OAuthToken = {
           accessToken: access,
@@ -169,7 +169,7 @@ export async function getClaudeOAuthTokenAsync(opts?: {
 /**
  * Notify the pool that the supplied account is no longer valid (e.g. 401
  * after refresh) and clear the in-memory cache entry. Returns true when the
- * pool was notified, false when no shim is installed.
+ * pool was notified, false when no bridge is installed.
  */
 export function reportClaudeOAuthInvalid(accountId: string | undefined, detail?: string): boolean {
   if (accountId) {
@@ -177,9 +177,9 @@ export function reportClaudeOAuthInvalid(accountId: string | undefined, detail?:
   } else {
     tokenCache.clear();
   }
-  const shim = getAccountPoolShim();
-  if (!shim || !accountId) return false;
-  void shim.markInvalid(accountId, detail);
+  const bridge = getAccountPoolBridge();
+  if (!bridge || !accountId) return false;
+  void bridge.markInvalid(accountId, detail);
   return true;
 }
 
@@ -191,9 +191,9 @@ export function reportClaudeOAuthRateLimited(
   if (accountId) {
     tokenCache.delete(accountId);
   }
-  const shim = getAccountPoolShim();
-  if (!shim || !accountId) return false;
-  void shim.markRateLimited(accountId, untilMs, detail);
+  const bridge = getAccountPoolBridge();
+  if (!bridge || !accountId) return false;
+  void bridge.markRateLimited(accountId, untilMs, detail);
   return true;
 }
 
@@ -241,8 +241,8 @@ function readAppManagedAnthropicToken(): OAuthToken | null {
   const { join } = require("node:path") as typeof import("node:path");
   const { homedir } = require("node:os") as typeof import("node:os");
   const { readFileSync } = require("node:fs") as typeof import("node:fs");
-  const namespace = getEnvVar("ELIZA_NAMESPACE")?.trim() || "eliza";
-  const stateDir = getEnvVar("ELIZA_STATE_DIR")?.trim() || join(homedir(), `.${namespace}`);
+  const { resolveStateDir } = require("@elizaos/core") as typeof import("@elizaos/core");
+  const stateDir = resolveStateDir();
   const accountId = getEnvVar("ANTHROPIC_SUBSCRIPTION_ACCOUNT_ID")?.trim() || "default";
   const paths = [
     join(stateDir, "auth", "anthropic-subscription", `${accountId}.json`),

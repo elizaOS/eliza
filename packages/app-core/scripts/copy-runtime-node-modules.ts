@@ -835,33 +835,6 @@ function patchCopiedAgentRuntimeExports(packageDir: string): void {
   }
 }
 
-export function rewritePackagedLifeOpsTelegramAuthImport(
-  source: string,
-): string {
-  return source.replace(
-    'from "../../../../plugins/plugin-telegram/src/account-auth-service.ts";',
-    'from "@elizaos/plugin-telegram/account-auth-service";',
-  );
-}
-
-function patchCopiedAppLifeOpsRuntimeImports(packageDir: string): void {
-  const telegramAuthPath = path.join(
-    packageDir,
-    "src",
-    "lifeops",
-    "telegram-auth.ts",
-  );
-  if (!fs.existsSync(telegramAuthPath)) {
-    return;
-  }
-
-  const original = fs.readFileSync(telegramAuthPath, "utf8");
-  const rewritten = rewritePackagedLifeOpsTelegramAuthImport(original);
-  if (rewritten !== original) {
-    fs.writeFileSync(telegramAuthPath, rewritten);
-  }
-}
-
 function shortHash(value: string): string {
   let hash = 0x811c9dc5;
   for (let i = 0; i < value.length; i += 1) {
@@ -1031,10 +1004,6 @@ function patchCopiedPackageRuntimeSurface(
   packageDir: string,
   rootDestDir: string,
 ): void {
-  if (name === "@elizaos/app-lifeops") {
-    patchCopiedAppLifeOpsRuntimeImports(packageDir);
-    return;
-  }
   if (name === "@elizaos/agent") {
     patchCopiedAgentRuntimeExports(packageDir);
     return;

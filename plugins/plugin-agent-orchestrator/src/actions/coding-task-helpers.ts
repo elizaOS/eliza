@@ -17,7 +17,7 @@ import { type HandlerCallback, logger } from "@elizaos/core";
 import { readConfigEnvKey } from "../services/config-env.js";
 import type { PTYService } from "../services/pty-service.js";
 import type { SkillSessionAllowList } from "../services/skill-callback-bridge.js";
-import type { CodingWorkspaceService } from "../services/workspace-service.js";
+import { getCodingWorkspaceService } from "../services/workspace-service.js";
 
 /**
  * Sanitize a label into a safe directory name.
@@ -189,9 +189,7 @@ export function registerSessionEvents(
       logger.info(
         `[scratch-lifecycle] Terminal event "${event}" for "${label}": registering scratch workspace at ${scratchDir}`,
       );
-      const wsService = runtime.getService(
-        "CODING_WORKSPACE_SERVICE",
-      ) as unknown as CodingWorkspaceService | undefined;
+      const wsService = getCodingWorkspaceService(runtime);
       if (!wsService) {
         logger.warn(
           `[scratch-lifecycle] CODING_WORKSPACE_SERVICE not found, cannot register scratch workspace`,
@@ -203,7 +201,7 @@ export function registerSessionEvents(
           .then(() => {
             scratchRegistered = true;
           })
-          .catch((err) => {
+          .catch((err: unknown) => {
             logger.warn(
               `[START_CODING_TASK] Failed to register scratch workspace for "${label}": ${err}`,
             );

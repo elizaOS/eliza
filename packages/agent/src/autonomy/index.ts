@@ -1,4 +1,4 @@
-import type { StreamEventEnvelope } from "../api/server-types.js";
+import type { StreamEventEnvelope } from "../api/server-types.ts";
 
 export type AutonomyRunHealthStatus =
   | "ok"

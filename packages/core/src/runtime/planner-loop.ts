@@ -1,7 +1,16 @@
-import { v5PlannerSchema, v5PlannerTemplate } from "../prompts/planner";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { resolveStateDir } from "../utils/state-dir";
+import { PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
+import { plannerSchema, plannerTemplate } from "../prompts/planner";
+import {
+	OPTIMIZED_PROMPT_SERVICE,
+	type OptimizedPromptService,
+} from "../services/optimized-prompt";
+import { resolveOptimizedPrompt } from "../services/optimized-prompt-resolver";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { ActionResult, ProviderDataRecord } from "../types/components";
-import type { ContextEvent, ContextObject } from "../types/context-object";
+import type { ContextEvent, ContextObjectTool } from "../types/context-object";
 import {
 	type ChatMessage,
 	type GenerateTextResult,
@@ -12,7 +21,6 @@ import {
 	type ToolChoice,
 	type ToolDefinition,
 } from "../types/model";
-import type { JsonValue } from "../types/primitives.ts";
 import { computePrefixHashes } from "./context-hash";
 import { appendContextEvent } from "./context-object";
 import {
@@ -22,7 +30,6 @@ import {
 	renderContextObject,
 } from "./context-renderer";
 import { computeCallCostUsd } from "./cost-table";
-import type { EvaluatorEffects, EvaluatorOutput } from "./evaluator";
 import { runEvaluator } from "./evaluator";
 import { parseJsonObject, stringifyForModel } from "./json-output";
 import {
@@ -37,6 +44,22 @@ import {
 	type ModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
+import {
+	cacheProviderOptions,
+	toolMessageContent,
+	trajectoryStepsToMessages,
+} from "./planner-rendering";
+import type {
+	ContextObject,
+	EvaluatorOutput,
+	PlannerLoopParams,
+	PlannerLoopResult,
+	PlannerRuntime,
+	PlannerStep,
+	PlannerToolCall,
+	PlannerToolResult,
+	PlannerTrajectory,
+} from "./planner-types";
 import type {
 	RecordedStage,
 	RecordedToolCall,
@@ -44,102 +67,22 @@ import type {
 	TrajectoryRecorder,
 } from "./trajectory-recorder";
 
-export type { ContextObject } from "../types/context-object";
-
-export interface PlannerRuntime {
-	useModel(
-		modelType: TextGenerationModelType,
-		params: {
-			messages: ChatMessage[];
-			tools?: ToolDefinition[];
-			toolChoice?: ToolChoice;
-			responseSchema?: unknown;
-			promptSegments?: PromptSegment[];
-			providerOptions?: Record<string, unknown>;
-		},
-		provider?: string,
-	): Promise<string | GenerateTextResult>;
-	logger?: {
-		debug?: (context: unknown, message?: string) => void;
-		warn?: (context: unknown, message?: string) => void;
-		error?: (context: unknown, message?: string) => void;
-	};
-}
-
-export interface PlannerToolCall {
-	id?: string;
-	name: string;
-	params?: Record<string, unknown>;
-}
-
-export interface PlannerToolResult {
-	success: boolean;
-	text?: string;
-	data?: Record<string, unknown>;
-	error?: unknown;
-	continueChain?: boolean;
-}
-
-export interface PlannerStep {
-	iteration: number;
-	thought?: string;
-	toolCall?: PlannerToolCall;
-	result?: PlannerToolResult;
-	terminalMessage?: string;
-	terminalOnly?: boolean;
-}
-
-export interface PlannerTrajectory {
-	context: ContextObject;
-	steps: PlannerStep[];
-	archivedSteps: PlannerStep[];
-	plannedQueue: PlannerToolCall[];
-	evaluatorOutputs: EvaluatorOutput[];
-}
-
-export interface PlannerLoopResult {
-	status: "finished" | "continued";
-	trajectory: PlannerTrajectory;
-	evaluator?: EvaluatorOutput;
-	finalMessage?: string;
-}
-
-export interface PlannerLoopParams {
-	runtime: PlannerRuntime;
-	context: ContextObject;
-	config?: Partial<ChainingLoopConfig>;
-	executeToolCall: (
-		toolCall: PlannerToolCall,
-		context: {
-			trajectory: PlannerTrajectory;
-			iteration: number;
-		},
-	) => Promise<PlannerToolResult> | PlannerToolResult;
-	evaluate?: (params: {
-		runtime: PlannerRuntime;
-		context: ContextObject;
-		trajectory: PlannerTrajectory;
-	}) => Promise<EvaluatorOutput> | EvaluatorOutput;
-	onToolCallEnqueued?: (
-		toolCall: PlannerToolCall,
-		context: { iteration: number },
-	) => Promise<void> | void;
-	modelType?: TextGenerationModelType;
-	evaluatorEffects?: EvaluatorEffects;
-	provider?: string;
-	/** Native tool definitions exposed to the planner model. */
-	tools?: ToolDefinition[];
-	/** Native tool selection policy. Defaults to "auto" when tools is non-empty. */
-	toolChoice?: ToolChoice;
-	/**
-	 * Trajectory recorder for v5 observability. When supplied, the planner
-	 * loop records one stage per planner call, tool execution, and evaluator
-	 * call. When omitted the loop is unaffected.
-	 */
-	recorder?: TrajectoryRecorder;
-	trajectoryId?: string;
-	parentStageId?: string;
-}
+export {
+	cacheProviderOptions,
+	trajectoryStepsToMessages,
+} from "./planner-rendering";
+export type {
+	ContextObject,
+	EvaluatorEffects,
+	EvaluatorOutput,
+	PlannerLoopParams,
+	PlannerLoopResult,
+	PlannerRuntime,
+	PlannerStep,
+	PlannerToolCall,
+	PlannerToolResult,
+	PlannerTrajectory,
+} from "./planner-types";
 
 interface RawPlannerOutput {
 	thought?: unknown;
@@ -147,6 +90,10 @@ interface RawPlannerOutput {
 	tools?: unknown;
 	actions?: unknown;
 	action?: unknown;
+	actionName?: unknown;
+	name?: unknown;
+	tool?: unknown;
+	function?: unknown;
 	messageToUser?: unknown;
 	text?: unknown;
 }
@@ -163,18 +110,20 @@ export async function runPlannerLoop(
 		evaluatorOutputs: [],
 	};
 	const failures: FailureLike[] = [];
+	let terminalOnlyContinuations = 0;
+	const requireNonTerminalToolCall =
+		params.requireNonTerminalToolCall === true &&
+		hasExposedNonTerminalTool(params.tools);
+	// Tracks the most recent planner output's *explicit* `messageToUser` so the
+	// post-tool evaluator gate can use it as the final response when the
+	// trajectory ends cleanly. EXPLICIT means the planner's structured output
+	// carried a `messageToUser` field — not a fallback inferred from a stray
+	// `text` field on a native tool-call return (which can be a pre-tool thought
+	// rather than a final answer). The gate refuses ambiguous signals to avoid
+	// surfacing a thought as the user-facing reply.
+	let lastPlannerExplicitMessageToUser: string | undefined;
 
-	for (
-		let iteration = 1;
-		iteration <= config.maxPlannerIterations;
-		iteration++
-	) {
-		assertTrajectoryLimit({
-			kind: "planner_iterations",
-			max: config.maxPlannerIterations,
-			observed: iteration,
-		});
-
+	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
 			const plannerOutput = await callPlanner({
 				runtime: params.runtime,
@@ -190,22 +139,128 @@ export async function runPlannerLoop(
 				parentStageId: params.parentStageId,
 				iteration,
 			});
+			// Treat `messageToUser` as authoritative ONLY when the planner's structured
+			// output carried it as an explicit field. The native-tool-call code path
+			// in `parsePlannerOutput` falls back to `raw.text`, but in native mode
+			// `text` can be a pre-tool thought rather than a final answer — too
+			// ambiguous to drive the gate. We therefore probe `raw.messageToUser`
+			// directly here; native-mode returns won't have that key, so the gate
+			// stays inert in that path.
+			const explicit = plannerOutput.raw?.messageToUser;
+			lastPlannerExplicitMessageToUser =
+				typeof explicit === "string" && explicit.trim().length > 0
+					? explicit
+					: undefined;
 
 			if (plannerOutput.toolCalls.length === 0) {
+				if (
+					requireNonTerminalToolCall &&
+					!hasExecutedNonTerminalTool(trajectory)
+				) {
+					handleRequiredToolPlannerMiss({
+						trajectory,
+						iteration,
+						plannerOutput,
+						reason: "no_tool_calls",
+						logger: params.runtime.logger,
+					});
+					continue;
+				}
 				trajectory.steps.push({
 					iteration,
 					thought: plannerOutput.thought,
 					terminalMessage: plannerOutput.messageToUser,
 					terminalOnly: true,
 				});
+				trajectory.context = appendTerminalPlannerOutputEvent({
+					context: trajectory.context,
+					iteration,
+					message: plannerOutput.messageToUser,
+				});
+				if (trajectory.steps.some((step) => step.toolCall)) {
+					const evaluator = await evaluateTrajectory(
+						params,
+						trajectory,
+						iteration,
+					);
+					trajectory.evaluatorOutputs.push(evaluator);
+					trajectory.context = appendEvaluationEvent({
+						context: trajectory.context,
+						iteration,
+						evaluator,
+					});
+
+					if (evaluator.decision === "FINISH") {
+						return {
+							status: "finished",
+							trajectory,
+							evaluator,
+							finalMessage: userSafeFinalMessage(
+								evaluator.messageToUser ??
+									plannerOutput.messageToUser ??
+									latestToolResultText(trajectory) ??
+									evaluator.thought,
+								trajectory,
+							),
+						};
+					}
+
+					if (evaluator.decision === "NEXT_RECOMMENDED") {
+						const selected = preferRecommendedToolCall(trajectory, evaluator);
+						if (!selected) {
+							params.runtime.logger?.warn?.(
+								{
+									recommendedToolCallId: evaluator.recommendedToolCallId,
+									queuedToolCallIds: trajectory.plannedQueue.map(
+										(call) => call.id,
+									),
+								},
+								"Evaluator requested NEXT_RECOMMENDED without a valid queued tool after terminal planner output; replanning",
+							);
+							trajectory.plannedQueue.length = 0;
+						}
+						continue;
+					}
+
+					terminalOnlyContinuations++;
+					assertTrajectoryLimit({
+						kind: "terminal_only_continuations",
+						max: config.maxTerminalOnlyContinuations,
+						observed: terminalOnlyContinuations,
+					});
+					trajectory.plannedQueue.length = 0;
+					trajectory.context = appendTerminalContinuationEvent({
+						context: trajectory.context,
+						iteration,
+						terminalOnlyContinuations,
+						message: plannerOutput.messageToUser,
+					});
+					continue;
+				}
 				return {
 					status: "finished",
 					trajectory,
-					finalMessage: plannerOutput.messageToUser,
+					finalMessage: userSafeFinalMessage(
+						plannerOutput.messageToUser,
+						trajectory,
+					),
 				};
 			}
 
 			if (plannerOutput.toolCalls.every(isTerminalToolCall)) {
+				if (
+					requireNonTerminalToolCall &&
+					!hasExecutedNonTerminalTool(trajectory)
+				) {
+					handleRequiredToolPlannerMiss({
+						trajectory,
+						iteration,
+						plannerOutput,
+						reason: "terminal_only_tool_calls",
+						logger: params.runtime.logger,
+					});
+					continue;
+				}
 				const finalMessage = terminalMessageFromToolCalls(
 					plannerOutput.toolCalls,
 					plannerOutput.messageToUser,
@@ -271,6 +326,15 @@ export async function runPlannerLoop(
 			failures,
 		});
 
+		const latestResult = trajectory.steps[trajectory.steps.length - 1]?.result;
+		if (latestResult?.continueChain === false) {
+			return {
+				status: "finished",
+				trajectory,
+				finalMessage: latestResult.text,
+			};
+		}
+
 		await maybeCompactBeforeNextModelCall({
 			trajectory,
 			config,
@@ -282,32 +346,74 @@ export async function runPlannerLoop(
 			logger: params.runtime.logger,
 		});
 
-		const evaluator = await evaluateTrajectory(params, trajectory, iteration);
-		trajectory.evaluatorOutputs.push(evaluator);
-		trajectory.context = appendContextEvent(trajectory.context, {
-			id: `evaluation:${iteration}:${Date.now()}`,
-			type: "evaluation",
-			source: "planner-loop",
-			createdAt: Date.now(),
-			metadata: {
-				iteration,
-				success: evaluator.success,
-				decision: evaluator.decision,
-				thought: evaluator.thought,
-				messageToUser: evaluator.messageToUser,
-				recommendedToolCallId: evaluator.recommendedToolCallId,
-			},
+		// Conservative gate (PR #7514): when a successful tool drained the queue
+		// and the just-completed planner call gave us a clean explicit
+		// `messageToUser`, synthesize a FINISH and skip the in-loop evaluator.
+		// Falls through on any ambiguity. See `tryGateEvaluator` doc-comment.
+		const gateStartedAt = Date.now();
+		const gated = tryGateEvaluator({
+			trajectory,
+			failures,
+			lastPlannerExplicitMessageToUser,
 		});
+		if (gated) {
+			trajectory.evaluatorOutputs.push(gated);
+			trajectory.context = appendEvaluationEvent({
+				context: trajectory.context,
+				iteration,
+				evaluator: gated,
+			});
+			await recordGatedEvaluationStage({
+				recorder: params.recorder,
+				trajectoryId: params.trajectoryId,
+				parentStageId: params.parentStageId,
+				iteration,
+				startedAt: gateStartedAt,
+				endedAt: Date.now(),
+				output: gated,
+				logger: params.runtime.logger,
+			});
+			return {
+				status: "finished",
+				trajectory,
+				evaluator: gated,
+				finalMessage: userSafeFinalMessage(
+					gated.messageToUser ?? latestToolResultText(trajectory),
+					trajectory,
+				),
+			};
+		}
+
+		let evaluator = await evaluateTrajectory(params, trajectory, iteration);
+		trajectory.evaluatorOutputs.push(evaluator);
+		appendEvaluatorContextEvent(trajectory, evaluator, iteration);
+
+		// Repair pass (PR #7497): if FINISH after tool use without
+		// `messageToUser`, ask once more for a user-facing answer.
+		if (
+			evaluator.decision === "FINISH" &&
+			!getNonEmptyString(evaluator.messageToUser) &&
+			hasExecutedNonTerminalTool(trajectory)
+		) {
+			evaluator = await repairFinishWithoutUserMessage({
+				params,
+				trajectory,
+				iteration,
+				evaluator,
+			});
+		}
 
 		if (evaluator.decision === "FINISH") {
 			return {
 				status: "finished",
 				trajectory,
 				evaluator,
-				finalMessage:
+				finalMessage: userSafeFinalMessage(
 					evaluator.messageToUser ??
-					latestToolResultText(trajectory) ??
-					evaluator.thought,
+						latestToolResultText(trajectory) ??
+						evaluator.thought,
+					trajectory,
+				),
 			};
 		}
 
@@ -328,19 +434,6 @@ export async function runPlannerLoop(
 
 		trajectory.plannedQueue.length = 0;
 	}
-
-	const evaluator =
-		trajectory.evaluatorOutputs[trajectory.evaluatorOutputs.length - 1] ??
-		({
-			success: false,
-			decision: "CONTINUE",
-			thought: "Planner loop stopped at iteration limit.",
-		} satisfies EvaluatorOutput);
-	return {
-		status: "continued",
-		trajectory,
-		evaluator,
-	};
 }
 
 function renderPlannerModelInput(params: {
@@ -352,14 +445,32 @@ function renderPlannerModelInput(params: {
 	promptSegments: PromptSegment[];
 } {
 	const renderedContext = renderContextObject(params.context);
-	const template = params.template ?? v5PlannerTemplate;
+	const template = params.template ?? plannerTemplate;
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
+	const availableActionsBlock = renderAvailableActionsBlock(params.context);
+	const routingHintsBlock = renderRoutingHintsBlock(params.context);
+	const extraSegments: PromptSegment[] = [];
+	if (availableActionsBlock) {
+		extraSegments.push({ content: availableActionsBlock, stable: false });
+	}
+	if (routingHintsBlock) {
+		extraSegments.push({ content: routingHintsBlock, stable: false });
+	}
+	const contextSegments =
+		extraSegments.length > 0
+			? [...renderedContext.promptSegments, ...extraSegments]
+			: renderedContext.promptSegments;
+	// The planner stage instructions are template-derived (`plannerTemplate`)
+	// and structurally identical across iterations and across user turns, so they
+	// belong in the cached prefix. Marking the segment `stable: true` lets the
+	// Anthropic provider stamp `cache_control` on this block and lets the
+	// cache-key prefix extend through these instructions.
 	const promptSegments = normalizePromptSegments([
-		...renderedContext.promptSegments,
-		{ content: `planner_stage:\n${instructions}`, stable: false },
+		...contextSegments,
+		{ content: `planner_stage:\n${instructions}`, stable: true },
 	]);
 	// Native tool-call messages: assistant (with toolCalls) + tool (result) per
 	// completed step. This grows append-only across planner iterations so the
@@ -369,7 +480,7 @@ function renderPlannerModelInput(params: {
 	// dynamic block would re-introduce the JSON-dump anti-pattern in the user
 	// message and invalidate the cache prefix on every iteration.
 	const messages = buildStageChatMessages({
-		contextSegments: renderedContext.promptSegments,
+		contextSegments,
 		stageLabel: "planner_stage",
 		instructions,
 		dynamicBlocks: [],
@@ -378,133 +489,133 @@ function renderPlannerModelInput(params: {
 	return { messages, promptSegments };
 }
 
+function normalizePlannerToolName(name: string): string {
+	return name
+		.trim()
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, "");
+}
+
+function isPlannerWrapperTool(name: string): boolean {
+	return (
+		normalizePlannerToolName(name) ===
+		normalizePlannerToolName(PLAN_ACTIONS_TOOL_NAME)
+	);
+}
+
+function compactToolParameters(parameters: unknown): unknown {
+	if (!parameters || typeof parameters !== "object") {
+		return undefined;
+	}
+	const record = parameters as {
+		type?: unknown;
+		properties?: unknown;
+		required?: unknown;
+		additionalProperties?: unknown;
+	};
+	return {
+		...(typeof record.type === "string" ? { type: record.type } : {}),
+		...(record.properties &&
+		typeof record.properties === "object" &&
+		!Array.isArray(record.properties)
+			? { properties: record.properties }
+			: {}),
+		...(Array.isArray(record.required) ? { required: record.required } : {}),
+		...(record.additionalProperties !== undefined
+			? { additionalProperties: record.additionalProperties }
+			: {}),
+	};
+}
+
+function renderToolForAvailableActions(tool: ContextObjectTool): string {
+	const description = tool.description?.trim();
+	const parameterSummary = compactToolParameters(tool.parameters);
+	const lines = [`- ${tool.name}:${description ? ` ${description}` : ""}`];
+	if (parameterSummary !== undefined) {
+		lines.push(`  parameters: ${JSON.stringify(parameterSummary)}`);
+	}
+	return lines.join("\n");
+}
+
 /**
- * Convert completed trajectory steps into proper assistant/tool message pairs
- * for native tool-calling. Skips steps that lack a toolCall or result (e.g.
- * terminal-only steps). The resulting array grows append-only across planner
- * iterations, which keeps the prefix byte-identical for cache hits.
+ * Build a "Routing hints" block from each available action's
+ * {@link Action.routingHint}. Replaces the hand-written domain-routing prose
+ * that used to live inline in `plannerTemplate` — each action now carries
+ * its own one-line hint as metadata, and the planner sees them only when the
+ * action is actually exposed for this turn.
+ *
+ * Returns `null` when no exposed action has a `routingHint` set, so the
+ * planner prompt simply omits the section.
  */
-export function trajectoryStepsToMessages(steps: PlannerStep[]): ChatMessage[] {
-	const messages: ChatMessage[] = [];
-	for (const step of steps) {
-		if (!step.toolCall || !step.result) {
+function renderRoutingHintsBlock(context: ContextObject): string | null {
+	const seen = new Set<string>();
+	const lines: string[] = [];
+	for (const event of context.events ?? []) {
+		if (event.type !== "tool" || !("tool" in event)) continue;
+		const tool = event.tool as ContextObjectTool;
+		const hint = tool.action?.routingHint?.trim();
+		if (!hint) continue;
+		const key = normalizePlannerToolName(tool.name);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		lines.push(`- ${hint}`);
+	}
+	if (lines.length === 0) return null;
+	return ["# Routing hints", ...lines].join("\n");
+}
+
+function renderAvailableActionsBlock(context: ContextObject): string | null {
+	const parentAction =
+		typeof context.metadata?.subPlannerParentAction === "string"
+			? context.metadata.subPlannerParentAction
+			: "";
+	const inSubPlanner = parentAction.length > 0;
+	const tools: ContextObjectTool[] = [];
+	const seen = new Set<string>();
+
+	for (const event of context.events ?? []) {
+		if (event.type !== "tool" || !("tool" in event)) {
 			continue;
 		}
-		const toolCallId = stableToolCallId(step);
-		// The model's prior decision: assistant message with a tool call.
-		messages.push({
-			role: "assistant",
-			content: step.thought ?? null,
-			toolCalls: [
-				{
-					id: toolCallId,
-					type: "function",
-					name: step.toolCall.name,
-					arguments: JSON.stringify(step.toolCall.params ?? {}),
-				},
-			],
-		});
-		messages.push({
-			role: "tool",
-			toolCallId,
-			name: step.toolCall.name,
-			content: toolMessageContent(step.result),
-		});
+		const tool = event.tool as ContextObjectTool;
+		if (!tool?.name || isPlannerWrapperTool(tool.name)) {
+			continue;
+		}
+		const parentMatches =
+			typeof tool.metadata?.parentAction === "string" &&
+			tool.metadata.parentAction === parentAction;
+		if (inSubPlanner) {
+			if (event.source !== "sub-planner" && !parentMatches) {
+				continue;
+			}
+		} else if (event.source === "sub-planner" || parentMatches) {
+			continue;
+		}
+		const key = normalizePlannerToolName(tool.name);
+		if (seen.has(key)) {
+			continue;
+		}
+		seen.add(key);
+		tools.push(tool);
 	}
-	return messages;
-}
 
-/**
- * Stable tool-call id for an assistant turn. Prefer the model-supplied id;
- * fall back to a deterministic `tc-<iter>-<name>-<argsDigest>` so two tool
- * calls in the same iteration with different args don't collide and so
- * re-rendering the trajectory produces byte-identical assistant turns.
- */
-function stableToolCallId(step: PlannerStep): string {
-	if (step.toolCall?.id) {
-		return step.toolCall.id;
+	if (tools.length === 0) {
+		return null;
 	}
-	const name = step.toolCall?.name ?? "unknown";
-	const argsDigest = shortArgsDigest(step.toolCall?.params);
-	return `tc-${step.iteration}-${name}-${argsDigest}`;
-}
 
-function shortArgsDigest(params: Record<string, unknown> | undefined): string {
-	if (!params) return "0";
-	const json = stringifyForModel(params);
-	let hash = 0;
-	for (let i = 0; i < json.length; i++) {
-		hash = (hash * 31 + json.charCodeAt(i)) | 0;
-	}
-	return (hash >>> 0).toString(16).padStart(8, "0").slice(0, 8);
-}
+	const scope = inSubPlanner
+		? [
+				`sub_planner_scope: parent=${parentAction}`,
+				`Use only the child actions listed below. Do not call ${parentAction} from inside its own sub-planner.`,
+				"",
+			]
+		: [];
 
-/**
- * Project a PlannerToolResult to plain-text `tool` message content per OpenAI
- * conventions: prefer `result.text`, fall back to a JSON serialization of
- * `data`/`error` only when no text projection exists. Strict-grammar
- * providers (Cerebras) and Anthropic both prefer text over a JSON blob in
- * the tool turn, and this preserves byte-stability when text is consistent.
- */
-function toolMessageContent(result: PlannerToolResult): string {
-	const parts: string[] = [];
-	if (typeof result.text === "string" && result.text.trim().length > 0) {
-		parts.push(`text: ${result.text.trim()}`);
-	}
-	if (result.data && Object.keys(result.data).length > 0) {
-		parts.push(`data: ${stringifyForModel(result.data)}`);
-	}
-	if (result.error) {
-		const errMsg =
-			typeof result.error === "string"
-				? result.error
-				: result.error instanceof Error
-					? result.error.message
-					: stringifyForModel(result.error);
-		parts.push(result.success ? `note: ${errMsg}` : `error: ${errMsg}`);
-	}
-	if (parts.length > 0) {
-		return parts.join("\n");
-	}
-	return result.success ? "ok" : "failed";
-}
-
-export function cacheProviderOptions(args: {
-	prefixHash: string;
-	segmentHashes?: readonly string[];
-}): Record<string, JsonValue | object | undefined> {
-	const promptCacheKey = `v5:${args.prefixHash}`.slice(0, 1024);
-	return {
-		eliza: {
-			promptCacheKey,
-			prefixHash: args.prefixHash,
-			...(args.segmentHashes ? { segmentHashes: [...args.segmentHashes] } : {}),
-		},
-		cerebras: {
-			promptCacheKey,
-			prompt_cache_key: promptCacheKey,
-		},
-		openai: {
-			promptCacheKey,
-			promptCacheRetention: "24h",
-		},
-		// Anthropic requires explicit cache_control on stable segments.
-		// plugin-anthropic reads cacheControl from anthropic providerOptions and
-		// stamps it onto each stable promptSegment block. This key tells the
-		// plugin which TTL to use; "5m" is the Anthropic default.
-		anthropic: {
-			cacheControl: { type: "ephemeral" },
-		},
-		// OpenRouter passes cache_control through to the underlying provider.
-		// For Anthropic-backed models it forwards the anthropic cache_control;
-		// for OpenAI-compat models it forwards prompt_cache_key.
-		openrouter: {
-			promptCacheKey,
-		},
-		gateway: {
-			caching: "auto",
-		},
-	};
+	return [
+		...scope,
+		"# Available Actions",
+		...tools.map(renderToolForAvailableActions),
+	].join("\n");
 }
 
 export function parsePlannerOutput(raw: string | GenerateTextResult): {
@@ -554,17 +665,135 @@ function parseJsonPlannerOutput(raw: string): {
 	messageToUser?: string;
 	raw: Record<string, unknown>;
 } {
-	const parsed = parseJsonObject<RawPlannerOutput>(raw) ?? {};
+	const trimmed = raw.trim();
+	const parsed = parseJsonObject<RawPlannerOutput>(trimmed);
+	if (!parsed) {
+		const array = parseJsonArrayFromText(raw);
+		const arrayToolCalls = normalizeToolCalls(array);
+		if (arrayToolCalls.length > 0) {
+			return {
+				thought: undefined,
+				toolCalls: arrayToolCalls,
+				messageToUser: undefined,
+				raw: { toolCalls: array } as Record<string, unknown>,
+			};
+		}
+		return {
+			toolCalls: [],
+			messageToUser: getNonEmptyString(trimmed),
+			raw: { text: trimmed },
+		};
+	}
 	const messageToUser = getNonEmptyString(parsed.messageToUser ?? parsed.text);
-	const toolCalls = normalizeToolCalls(
-		parsed.toolCalls ?? parsed.tools ?? parsed.actions ?? parsed.action,
-	);
+	const rawToolCalls =
+		parsed.toolCalls ??
+		parsed.tools ??
+		parsed.actions ??
+		(parsed.action != null ||
+		parsed.actionName != null ||
+		parsed.name != null ||
+		parsed.tool != null ||
+		parsed.function != null
+			? parsed
+			: undefined);
+	const toolCalls = normalizeToolCalls(rawToolCalls);
+	if (toolCalls.length > 0 || messageToUser) {
+		return {
+			thought: typeof parsed.thought === "string" ? parsed.thought : undefined,
+			toolCalls,
+			messageToUser,
+			raw: parsed as Record<string, unknown>,
+		};
+	}
+
+	const array = parseJsonArrayFromText(raw);
+	const arrayToolCalls = normalizeToolCalls(array);
+	if (arrayToolCalls.length > 0) {
+		return {
+			thought: undefined,
+			toolCalls: arrayToolCalls,
+			messageToUser: undefined,
+			raw: { toolCalls: array } as Record<string, unknown>,
+		};
+	}
+
 	return {
 		thought: typeof parsed.thought === "string" ? parsed.thought : undefined,
-		toolCalls,
+		toolCalls: [],
 		messageToUser,
 		raw: parsed as Record<string, unknown>,
 	};
+}
+
+function parseJsonArrayFromText(raw: string): unknown[] | null {
+	const trimmed = raw.trim();
+	if (!trimmed) {
+		return null;
+	}
+
+	const candidates: string[] = [];
+	const fullFence = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	candidates.push(fullFence?.[1]?.trim() ?? trimmed);
+
+	for (const match of trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)) {
+		const candidate = match[1]?.trim();
+		if (candidate) {
+			candidates.push(candidate);
+		}
+	}
+
+	const arrayText = extractFirstJsonArray(trimmed);
+	if (arrayText) {
+		candidates.push(arrayText);
+	}
+
+	for (const candidate of [...new Set(candidates)]) {
+		try {
+			const parsed = JSON.parse(candidate);
+			if (Array.isArray(parsed)) {
+				return parsed;
+			}
+		} catch {
+			// Try the next candidate.
+		}
+	}
+	return null;
+}
+
+function extractFirstJsonArray(raw: string): string | null {
+	const start = raw.indexOf("[");
+	if (start < 0) return null;
+
+	let depth = 0;
+	let inString = false;
+	let escaped = false;
+	for (let index = start; index < raw.length; index++) {
+		const char = raw[index];
+		if (inString) {
+			if (escaped) {
+				escaped = false;
+			} else if (char === "\\") {
+				escaped = true;
+			} else if (char === '"') {
+				inString = false;
+			}
+			continue;
+		}
+		if (char === '"') {
+			inString = true;
+			continue;
+		}
+		if (char === "[") {
+			depth++;
+			continue;
+		}
+		if (char !== "]") continue;
+		depth--;
+		if (depth === 0) {
+			return raw.slice(start, index + 1);
+		}
+	}
+	return null;
 }
 
 async function callPlanner(params: {
@@ -584,6 +813,7 @@ async function callPlanner(params: {
 	let renderedInput = renderPlannerModelInput({
 		context: params.context,
 		trajectory: params.trajectory,
+		template: resolveOptimizedPlannerTemplate(params.runtime),
 	});
 	let modelInputBudget = buildModelInputBudget({
 		messages: renderedInput.messages,
@@ -607,6 +837,7 @@ async function callPlanner(params: {
 			renderedInput = renderPlannerModelInput({
 				context: params.trajectory.context,
 				trajectory: params.trajectory,
+				template: resolveOptimizedPlannerTemplate(params.runtime),
 			});
 			modelInputBudget = buildModelInputBudget({
 				messages: renderedInput.messages,
@@ -639,6 +870,10 @@ async function callPlanner(params: {
 			cacheProviderOptions({
 				prefixHash,
 				segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+				promptSegments: renderedInput.promptSegments,
+				provider: params.provider,
+				hasTools,
+				conversationId: params.trajectoryId,
 			}),
 			modelInputBudget,
 		),
@@ -647,7 +882,7 @@ async function callPlanner(params: {
 		modelParams.tools = params.tools;
 		modelParams.toolChoice = params.toolChoice ?? "auto";
 	} else {
-		modelParams.responseSchema = v5PlannerSchema;
+		modelParams.responseSchema = plannerSchema;
 	}
 
 	const startedAt = Date.now();
@@ -852,6 +1087,54 @@ function compactText(value: string, maxLength: number): string {
 	return `${text.slice(0, headLength)} ...[${text.length - headLength - tailLength} chars compacted]... ${text.slice(-tailLength)}`;
 }
 
+/**
+ * Synthesized recorder stage for the gated path. Emits a `kind: "evaluation"`
+ * entry so the recorder timeline shows the iteration's outcome on the same
+ * slot a model-produced evaluation would have occupied. The stage carries
+ * `gated: true`, `llmCallSkipped: true`, and `reason: "explicit_terminal_reply"`
+ * so replay/debug tools can distinguish gated decisions from real evaluator
+ * calls without a string-match against the thought marker. No `model` block
+ * is included — no LLM call happened.
+ */
+async function recordGatedEvaluationStage(args: {
+	recorder?: TrajectoryRecorder;
+	trajectoryId?: string;
+	parentStageId?: string;
+	iteration: number;
+	startedAt: number;
+	endedAt: number;
+	output: EvaluatorOutput;
+	logger?: PlannerRuntime["logger"];
+}): Promise<void> {
+	if (!args.recorder || !args.trajectoryId) return;
+	try {
+		const stage: RecordedStage = {
+			stageId: `stage-eval-iter-${args.iteration}-${args.startedAt}-gated`,
+			kind: "evaluation",
+			iteration: args.iteration,
+			parentStageId: args.parentStageId,
+			startedAt: args.startedAt,
+			endedAt: args.endedAt,
+			latencyMs: args.endedAt - args.startedAt,
+			evaluation: {
+				success: args.output.success,
+				decision: args.output.decision,
+				thought: args.output.thought,
+				messageToUser: args.output.messageToUser,
+				gated: true,
+				llmCallSkipped: true,
+				reason: "explicit_terminal_reply",
+			},
+		};
+		await args.recorder.recordStage(args.trajectoryId, stage);
+	} catch (err) {
+		args.logger?.warn?.(
+			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
+			"[TrajectoryRecorder] failed to record gated evaluation stage",
+		);
+	}
+}
+
 async function recordCompactionStage(args: {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
@@ -985,19 +1268,19 @@ function extractUsage(
 		completionTokens,
 		totalTokens,
 	};
-	const cacheRead = (usage as Record<string, unknown>).cacheReadInputTokens;
+	const cacheRead = usage.cacheReadInputTokens;
 	if (typeof cacheRead === "number") {
 		out.cacheReadInputTokens = cacheRead;
 	} else {
 		// Fall back to OpenAI plugin's `cachedPromptTokens` shape, which adapters
 		// emitted before the shared schema landed.
-		const cachedPrompt = (usage as Record<string, unknown>).cachedPromptTokens;
+		const cachedPrompt =
+			"cachedPromptTokens" in usage ? usage.cachedPromptTokens : undefined;
 		if (typeof cachedPrompt === "number") {
 			out.cacheReadInputTokens = cachedPrompt;
 		}
 	}
-	const cacheCreation = (usage as Record<string, unknown>)
-		.cacheCreationInputTokens;
+	const cacheCreation = usage.cacheCreationInputTokens;
 	if (typeof cacheCreation === "number") {
 		out.cacheCreationInputTokens = cacheCreation;
 	}
@@ -1047,6 +1330,154 @@ async function evaluateTrajectory(
 		trajectoryId: params.trajectoryId,
 		parentStageId: params.parentStageId,
 		iteration,
+	});
+}
+
+function appendEvaluationEvent(args: {
+	context: ContextObject;
+	iteration: number;
+	evaluator: EvaluatorOutput;
+}): ContextObject {
+	const createdAt = Date.now();
+	return appendContextEvent(args.context, {
+		id: `evaluation:${args.iteration}:${createdAt}`,
+		type: "evaluation",
+		source: "planner-loop",
+		createdAt,
+		metadata: {
+			iteration: args.iteration,
+			success: args.evaluator.success,
+			decision: args.evaluator.decision,
+			thought: args.evaluator.thought,
+			messageToUser: args.evaluator.messageToUser,
+			recommendedToolCallId: args.evaluator.recommendedToolCallId,
+		},
+	});
+}
+
+function appendEvaluatorContextEvent(
+	trajectory: PlannerTrajectory,
+	evaluator: EvaluatorOutput,
+	iteration: number,
+): void {
+	trajectory.context = appendEvaluationEvent({
+		context: trajectory.context,
+		iteration,
+		evaluator,
+	});
+}
+
+async function repairFinishWithoutUserMessage(args: {
+	params: PlannerLoopParams;
+	trajectory: PlannerTrajectory;
+	iteration: number;
+	evaluator: EvaluatorOutput;
+}): Promise<EvaluatorOutput> {
+	const createdAt = Date.now();
+	args.params.runtime.logger?.warn?.(
+		{
+			iteration: args.iteration,
+			decision: args.evaluator.decision,
+			success: args.evaluator.success,
+		},
+		"Evaluator selected FINISH without a user-facing message; retrying evaluation",
+	);
+	args.trajectory.context = appendContextEvent(args.trajectory.context, {
+		id: `evaluation-missing-message:${args.iteration}:${createdAt}`,
+		type: "instruction",
+		source: "planner-loop",
+		createdAt,
+		content:
+			"The previous evaluator selected FINISH after tool use but did not include messageToUser. Re-evaluate and, if the task is complete, include a concise user-facing message grounded in the completed tool results. Do not paste raw tool transcripts, command banners, or internal logs unless the user explicitly asked for raw output.",
+		metadata: {
+			iteration: args.iteration,
+			decision: args.evaluator.decision,
+			success: args.evaluator.success,
+		},
+	});
+	const repaired = await evaluateTrajectory(
+		args.params,
+		args.trajectory,
+		args.iteration,
+	);
+	args.trajectory.evaluatorOutputs.push(repaired);
+	appendEvaluatorContextEvent(args.trajectory, repaired, args.iteration);
+	return repaired;
+}
+
+function appendTerminalPlannerOutputEvent(args: {
+	context: ContextObject;
+	iteration: number;
+	message?: string;
+}): ContextObject {
+	const createdAt = Date.now();
+	const unsafe = isUnsafeUserVisibleText(args.message);
+	const content = [
+		"planner_terminal_output:",
+		compactText(args.message ?? "", 1_200),
+		"",
+		unsafe
+			? "note: This output looked like internal planning or attempted tool-call text. It must not be shown directly to the user."
+			: "note: Evaluate whether this user-visible output actually completes the request.",
+	].join("\n");
+	return appendContextEvent(args.context, {
+		id: `terminal-planner-output:${args.iteration}:${createdAt}`,
+		type: "segment",
+		source: "planner-loop",
+		createdAt,
+		metadata: {
+			iteration: args.iteration,
+			unsafe,
+		},
+		segment: {
+			id: `terminal-planner-output:${args.iteration}:${createdAt}`,
+			label: "terminal_planner_output",
+			content,
+			stable: false,
+			metadata: {
+				iteration: args.iteration,
+				unsafe,
+			},
+		},
+	});
+}
+
+function appendTerminalContinuationEvent(args: {
+	context: ContextObject;
+	iteration: number;
+	terminalOnlyContinuations: number;
+	message?: string;
+}): ContextObject {
+	const createdAt = Date.now();
+	const unsafe = isUnsafeUserVisibleText(args.message);
+	const content = [
+		"planner_retry_instruction:",
+		`terminal_only_continuations: ${args.terminalOnlyContinuations}`,
+		unsafe
+			? "The previous planner output exposed internal tool planning. Emit native toolCalls for remaining work, or a concise user-safe message only if the request is complete."
+			: "The evaluator found the previous terminal planner output incomplete. Emit native toolCalls for remaining work.",
+	].join("\n");
+	return appendContextEvent(args.context, {
+		id: `terminal-planner-retry:${args.iteration}:${createdAt}`,
+		type: "segment",
+		source: "planner-loop",
+		createdAt,
+		metadata: {
+			iteration: args.iteration,
+			terminalOnlyContinuations: args.terminalOnlyContinuations,
+			unsafe,
+		},
+		segment: {
+			id: `terminal-planner-retry:${args.iteration}:${createdAt}`,
+			label: "planner_retry_instruction",
+			content,
+			stable: false,
+			metadata: {
+				iteration: args.iteration,
+				terminalOnlyContinuations: args.terminalOnlyContinuations,
+				unsafe,
+			},
+		},
 	});
 }
 
@@ -1231,9 +1662,24 @@ function normalizeToolCalls(value: unknown): PlannerToolCall[] {
 	return calls;
 }
 
+/**
+ * The LLM sees the stable Stage 2 wrapper surface, so every action invocation
+ * arrives wrapped:
+ * `{ name: "PLAN_ACTIONS", args: { action, subaction?, parameters, thought } }`.
+ * Holding the tool list fixed keeps prompt-cache hashes stable across requests
+ * no matter which actions are gated this turn.
+ *
+ * We unwrap at the parse boundary so all downstream logic — context-event
+ * lookup, trajectory recording, terminal sentinels (REPLY/IGNORE/STOP),
+ * failure attribution — sees the actual action name, not the wrapper.
+ *
+ * The `subaction` hint is preserved on `params.subaction` for router-style
+ * actions.
+ */
+
 function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 	if (typeof entry === "string") {
-		const name = entry.trim();
+		const name = normalizeToolCallName(entry);
 		return name ? { name } : null;
 	}
 
@@ -1242,21 +1688,77 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 	}
 
 	const record = entry as ToolCall & Record<string, unknown>;
-	const name = String(
-		record.name ?? record.toolName ?? record.tool ?? record.action ?? "",
-	).trim();
+	const rawFunction =
+		record.function && typeof record.function === "object"
+			? (record.function as Record<string, unknown>)
+			: null;
+	const functionName =
+		typeof record.function === "string" ? record.function : rawFunction?.name;
+	const name = normalizeToolCallName(
+		record.name ??
+			record.toolName ??
+			record.tool ??
+			record.action ??
+			record.actionName ??
+			functionName ??
+			"",
+	);
 	if (!name) {
 		return null;
 	}
 
 	const args = normalizeArgs(
-		record.input ?? record.args ?? record.arguments ?? record.params,
+		record.input ??
+			record.args ??
+			record.arguments ??
+			record.params ??
+			record.parameters ??
+			rawFunction?.input ??
+			rawFunction?.args ??
+			rawFunction?.arguments ??
+			rawFunction?.params ??
+			rawFunction?.parameters,
 	);
+
+	if (name.toUpperCase() === PLAN_ACTIONS_TOOL_NAME) {
+		const inner = args ?? {};
+		const actionName =
+			typeof inner.action === "string" ? inner.action.trim() : "";
+		if (!actionName) {
+			return null;
+		}
+		const subaction =
+			typeof inner.subaction === "string" && inner.subaction.trim().length > 0
+				? inner.subaction.trim()
+				: undefined;
+		const baseParameters =
+			inner.parameters &&
+			typeof inner.parameters === "object" &&
+			!Array.isArray(inner.parameters)
+				? (inner.parameters as Record<string, unknown>)
+				: {};
+		const actionParameters: Record<string, unknown> = subaction
+			? { ...baseParameters, subaction }
+			: baseParameters;
+		return {
+			id: typeof record.id === "string" ? record.id : undefined,
+			name: actionName,
+			params: actionParameters,
+		};
+	}
+
 	return {
 		id: typeof record.id === "string" ? record.id : undefined,
 		name,
 		params: args,
 	};
+}
+
+function normalizeToolCallName(value: unknown): string {
+	const raw = String(value ?? "").trim();
+	if (!raw) return "";
+	const withoutPrefix = raw.replace(/^(?:functions?|tools?)\./i, "");
+	return withoutPrefix.trim();
 }
 
 function normalizeArgs(value: unknown): Record<string, unknown> | undefined {
@@ -1271,6 +1773,73 @@ function normalizeArgs(value: unknown): Record<string, unknown> | undefined {
 
 function isTerminalToolCall(toolCall: PlannerToolCall): boolean {
 	return ["REPLY", "IGNORE", "STOP"].includes(toolCall.name.toUpperCase());
+}
+
+function getToolDefinitionName(tool: ToolDefinition): string | undefined {
+	const maybeTool = tool as ToolDefinition & {
+		function?: { name?: unknown };
+		name?: unknown;
+	};
+	const name = maybeTool.name ?? maybeTool.function?.name;
+	return typeof name === "string" && name.trim().length > 0
+		? name.trim()
+		: undefined;
+}
+
+function hasExposedNonTerminalTool(
+	tools: ToolDefinition[] | undefined,
+): boolean {
+	return (
+		Array.isArray(tools) &&
+		tools.some((tool) => {
+			const name = getToolDefinitionName(tool);
+			return Boolean(name && !isTerminalToolCall({ name }));
+		})
+	);
+}
+
+function hasExecutedNonTerminalTool(trajectory: PlannerTrajectory): boolean {
+	return trajectory.steps.some(
+		(step) => step.toolCall && !isTerminalToolCall(step.toolCall),
+	);
+}
+
+function handleRequiredToolPlannerMiss(params: {
+	trajectory: PlannerTrajectory;
+	iteration: number;
+	plannerOutput: ReturnType<typeof parsePlannerOutput>;
+	reason: "no_tool_calls" | "terminal_only_tool_calls";
+	logger?: PlannerRuntime["logger"];
+}): void {
+	const createdAt = Date.now();
+	params.logger?.warn?.(
+		{
+			iteration: params.iteration,
+			reason: params.reason,
+			messageToUser: params.plannerOutput.messageToUser,
+			toolCalls: params.plannerOutput.toolCalls.map((toolCall) => ({
+				name: toolCall.name,
+				id: toolCall.id,
+			})),
+		},
+		"Planner returned terminal output before satisfying a required tool call; retrying",
+	);
+	params.trajectory.context = appendContextEvent(params.trajectory.context, {
+		id: `required-tool-retry:${params.iteration}:${params.reason}`,
+		type: "instruction",
+		source: "planner-loop",
+		createdAt,
+		content:
+			"The previous planner response was not valid because this turn is tool-required and no non-terminal tool has run yet. " +
+			"Retry by calling one exposed non-terminal tool that can attempt the current request. " +
+			"After that tool returns, use its result to decide whether to continue or answer the user.",
+		metadata: {
+			iteration: params.iteration,
+			reason: params.reason,
+			messageToUser: params.plannerOutput.messageToUser,
+			toolCalls: stringifyForModel(params.plannerOutput.toolCalls),
+		},
+	});
 }
 
 function terminalMessageFromToolCalls(
@@ -1297,6 +1866,114 @@ function latestToolResultText(
 		}
 	}
 	return undefined;
+}
+
+/**
+ * Decide whether the planner-loop can synthesize a FINISH evaluator output and
+ * skip ONLY the in-loop LLM trajectory-decision call (`runEvaluator`) for the
+ * current iteration.
+ *
+ * Scope — what this skips and what it does NOT skip
+ * --------------------------------------------------
+ * SKIPS: the in-loop `runEvaluator` call (`packages/core/src/runtime/evaluator.ts`),
+ * which makes one LLM call to decide FINISH / NEXT_RECOMMENDED / CONTINUE for
+ * the planner trajectory.
+ *
+ * DOES NOT skip: the post-turn registered evaluator step. `runtime.evaluators`
+ * are dispatched by `EvaluatorService.run` via `runPostTurnEvaluators`
+ * (`packages/core/src/services/evaluator.ts:446`), called from
+ * `services/message.ts` AFTER `runPlannerLoop` returns. Those registered
+ * evaluators run regardless of how the loop terminated, including via this
+ * gate. Memory hooks, telemetry, and `ALWAYS_AFTER` actions in the same
+ * end-of-chain block are likewise unaffected.
+ *
+ * The evaluator's three trajectory-decision outcomes (FINISH, NEXT_RECOMMENDED,
+ * CONTINUE) collapse to FINISH/success=true when ALL of the following hold
+ * after a tool execution:
+ *
+ *   1. The just-completed tool result is `success: true`.
+ *   2. The plan queue is drained — no tools remain to evaluate.
+ *   3. No failures have accumulated (no recent error to investigate).
+ *   4. The most-recent planner output supplied an EXPLICIT `messageToUser`
+ *      field in its structured output (NOT a fallback inferred from a stray
+ *      `text` on a native tool-call return — that path can carry a pre-tool
+ *      thought rather than a final answer, which would be unsafe to surface).
+ *   5. That `messageToUser` is not a tool/function-syntax leak (the evaluator's
+ *      own prompt rules say leaked syntax should force CONTINUE; we honor the
+ *      same constraint by reusing `isUnsafeUserVisibleText`).
+ *
+ * On any single ambiguity the function returns `null` and the caller falls
+ * through to the full evaluator path. Returning a synthesized `EvaluatorOutput`
+ * preserves trajectory observability: `appendEvaluationEvent` still records
+ * the decision in the context event stream, `trajectory.evaluatorOutputs` still
+ * gets the entry, and the loop's return value still carries `evaluator` in the
+ * shape consumers (`subPlannerResultToPlannerToolResult` in `services/message.ts`)
+ * read — `success` and `messageToUser`. Recorder stage entries for "evaluation"
+ * are NOT emitted in the gated case; the recorder timeline shows tool stages
+ * only for that iteration.
+ *
+ * Cost win: roughly 50% of LLM calls on "tool-then-explicit-reply" turns where
+ * the planner committed a `messageToUser` field at plan-time. Native-mode
+ * native-tool-call returns without an explicit `messageToUser` field do NOT
+ * trigger the gate — those calls remain on the full evaluator path.
+ */
+function tryGateEvaluator(args: {
+	trajectory: PlannerTrajectory;
+	failures: readonly FailureLike[];
+	lastPlannerExplicitMessageToUser: string | undefined;
+}): EvaluatorOutput | null {
+	const latestStep = args.trajectory.steps[args.trajectory.steps.length - 1];
+	const latestResult = latestStep?.result;
+	if (!latestResult || latestResult.success !== true) return null;
+	if (args.trajectory.plannedQueue.length > 0) return null;
+	if (args.failures.length > 0) return null;
+	const message = args.lastPlannerExplicitMessageToUser?.trim();
+	if (!message) return null;
+	if (isUnsafeUserVisibleText(message)) return null;
+
+	return {
+		success: true,
+		decision: "FINISH",
+		thought: GATED_EVALUATOR_THOUGHT,
+		messageToUser: message,
+	};
+}
+
+/** Marker the gate stamps onto synthesized EvaluatorOutputs so trajectory
+ * dumps and replay tools can identify gated (i.e. evaluator-skipped) decisions
+ * cheaply. */
+export const GATED_EVALUATOR_THOUGHT =
+	"Gated FINISH: queue drained successfully with a clean planner messageToUser; evaluator LLM call skipped.";
+
+function userSafeFinalMessage(
+	message: string | undefined,
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	const candidate = getNonEmptyString(message);
+	if (candidate && !isUnsafeUserVisibleText(candidate)) {
+		return candidate;
+	}
+	const latest = latestToolResultText(trajectory);
+	if (latest && !isUnsafeUserVisibleText(latest)) {
+		return latest;
+	}
+	return candidate ? "I handled the available step." : undefined;
+}
+
+function isUnsafeUserVisibleText(value: string | undefined): boolean {
+	if (!value) return false;
+	const text = value.trim();
+	if (!text) return false;
+	return [
+		/\bto=functions\.[A-Z0-9_]+\b/i,
+		/\bfunctions\.[A-Z0-9_]+\b/i,
+		/"action"\s*:\s*"functions\.[A-Z0-9_]+"/i,
+		/\b(?:tool|function)\s+calls?\b/i,
+		/\b(?:I|we)\s+(?:need|should|must|will)\s+to\s+(?:call|use|invoke|issue|perform)\b/i,
+		/\b(?:call|use|invoke)\s+[A-Z][A-Z0-9_]{2,}\b/,
+		/\b(?:MESSAGE\s+operation|operation=(?:draft_reply|respond|send_draft|triage|list_inbox))\b/i,
+		/\{\s*"parameters"\s*:/i,
+	].some((pattern) => pattern.test(text));
 }
 
 function preferRecommendedToolCall(
@@ -1368,4 +2045,84 @@ function getNonEmptyString(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim().length > 0
 		? value
 		: undefined;
+}
+
+/**
+ * Look up the optimized `action_planner` prompt from the runtime's
+ * OptimizedPromptService, fall back to the baseline `plannerTemplate`. Keeps
+ * the planner loop using the latest artifact written by
+ * `bun run train -- --backend native --task action_planner` without any
+ * additional plumbing at the call site.
+ *
+ * `PlannerRuntime` is the minimal shape this module accepts; the full
+ * `IAgentRuntime` (with `getService`) flows in via the message handler at
+ * `services/message.ts`. Cast structurally so we don't widen `PlannerRuntime`
+ * just to read one optional service.
+ */
+// In-process cache for the on-disk optimized planner artifact. Resolved
+// once per process so we don't re-read the JSON file on every planner
+// invocation. Set to `null` for "no artifact" and to the prompt body when
+// found. The flag avoids re-attempting reads when the file is missing.
+let cachedDiskOptimizedPlannerPrompt: string | null = null;
+let cachedDiskOptimizedPlannerLoaded = false;
+
+function loadOptimizedPlannerFromDisk(): string | null {
+	const dir = join(resolveStateDir(), "optimized-prompts", "action_planner");
+	if (!existsSync(dir)) return null;
+	const entries = readdirSync(dir)
+		.filter((f) => f.endsWith(".json"))
+		.map((f) => ({
+			path: join(dir, f),
+			mtime: statSync(join(dir, f)).mtimeMs,
+		}))
+		.sort((a, b) => b.mtime - a.mtime);
+	for (const entry of entries) {
+		try {
+			const raw = readFileSync(entry.path, "utf-8");
+			const parsed = JSON.parse(raw) as {
+				task?: string;
+				prompt?: string;
+			};
+			if (
+				parsed.task === "action_planner" &&
+				typeof parsed.prompt === "string"
+			) {
+				return parsed.prompt;
+			}
+		} catch {}
+	}
+	return null;
+}
+
+function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {
+	// Production path: consult the registered service first. When it has
+	// an artifact for `action_planner`, return that.
+	const candidate = runtime as PlannerRuntime & {
+		getService?: <T>(name: string) => T | null | undefined;
+	};
+	const service =
+		candidate.getService?.<OptimizedPromptService>(OPTIMIZED_PROMPT_SERVICE) ??
+		null;
+	if (service) {
+		const fromService = resolveOptimizedPrompt(
+			service,
+			"action_planner",
+			plannerTemplate,
+		);
+		if (fromService !== plannerTemplate) return fromService;
+	}
+
+	// Fallback: read the on-disk store directly. Handles the test runtime
+	// path (where the service may not have started before the first
+	// planner call), the lazy-start race in production, and any other
+	// path that hasn't gotten the service registered yet.
+	if (!cachedDiskOptimizedPlannerLoaded) {
+		try {
+			cachedDiskOptimizedPlannerPrompt = loadOptimizedPlannerFromDisk();
+		} catch {
+			cachedDiskOptimizedPlannerPrompt = null;
+		}
+		cachedDiskOptimizedPlannerLoaded = true;
+	}
+	return cachedDiskOptimizedPlannerPrompt ?? plannerTemplate;
 }

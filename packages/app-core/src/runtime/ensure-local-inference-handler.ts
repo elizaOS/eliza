@@ -28,11 +28,19 @@ import {
   ModelType,
   type TextEmbeddingParams,
 } from "@elizaos/core";
-import type { LocalInferenceLoader } from "../services/local-inference/active-model";
+import {
+  type LocalInferenceLoader,
+  resolveLocalInferenceLoadArgs,
+} from "../services/local-inference/active-model";
 import {
   autoAssignAtBoot,
   readEffectiveAssignments,
 } from "../services/local-inference/assignments";
+import {
+  extractConversationId,
+  extractPromptCacheKey,
+  resolveLocalCacheKey,
+} from "../services/local-inference/cache-bridge";
 import { deviceBridge } from "../services/local-inference/device-bridge";
 import { localInferenceEngine } from "../services/local-inference/engine";
 import { handlerRegistry } from "../services/local-inference/handler-registry";
@@ -146,7 +154,7 @@ async function ensureAssignedModelLoaded(
 
   if (loader) {
     await loader.unloadModel();
-    await loader.loadModel({ modelPath: target.path });
+    await loader.loadModel(await resolveLocalInferenceLoadArgs(target));
   } else {
     await localInferenceEngine.load(target.path);
   }
@@ -160,6 +168,19 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
     // expensive; the user is expected to assign a small number of models.
     await ensureAssignedModelLoaded(loader, slot);
 
+    // Resolve the strongest cache key the runtime can give us. Order of
+    // precedence (see `resolveLocalCacheKey`):
+    //   1. Conversation id   — survives any prompt drift
+    //   2. Stable-prefix hash — survives unstable-tail timestamps
+    //   3. Provider plan hashes — back-compat
+    const providerOptions = (params as { providerOptions?: unknown })
+      .providerOptions;
+    const conversationId = extractConversationId(providerOptions);
+    const cacheKey =
+      resolveLocalCacheKey(providerOptions) ??
+      extractPromptCacheKey(providerOptions) ??
+      undefined;
+
     // Prefer a runtime-registered loader that implements `generate` — that's
     // the mobile / device-bridge path. On desktop we fall back to the
     // standalone engine.
@@ -167,6 +188,7 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
       return loader.generate({
         prompt: params.prompt ?? "",
         stopSequences: params.stopSequences,
+        cacheKey,
       });
     }
     if (!(await localInferenceEngine.available())) {
@@ -179,9 +201,53 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
         `[local-inference] No local model is active. Assign a model to ${slot} or activate one in Settings → Local models.`,
       );
     }
+
+    // Long-lived conversation? Open / reuse a registry handle so this
+    // turn lands on the same slot every time, regardless of prompt
+    // hash drift. The handle API additionally returns Anthropic-shape
+    // usage telemetry, which we surface at INFO once per generation.
+    if (conversationId) {
+      const modelId =
+        localInferenceEngine.currentModelPath() ?? "default-local-model";
+      const handle =
+        localInferenceEngine.conversation(conversationId, modelId) ??
+        localInferenceEngine.openConversation({
+          conversationId,
+          modelId,
+        });
+      const result = await localInferenceEngine.generateInConversation(handle, {
+        prompt: params.prompt ?? "",
+        stopSequences: params.stopSequences,
+      });
+      // Per-generation usage log. Match the Anthropic plugin's
+      // observability surface so cloud and local share the same
+      // mental model. Cache hit rate is reported when input_tokens > 0.
+      const u = result.usage;
+      const hitRate =
+        u.cache_hit_rate !== undefined
+          ? `${Math.round(u.cache_hit_rate * 100)}%`
+          : "n/a";
+      const dflashRate =
+        u.dflash_acceptance_rate !== undefined
+          ? ` dflash=${Math.round(u.dflash_acceptance_rate * 100)}%`
+          : "";
+      logger.info(
+        `[local-inference] usage conv=${conversationId} slot=${result.slotId} in=${u.input_tokens} out=${u.output_tokens} cache_read=${u.cache_read_input_tokens} cache_create=${u.cache_creation_input_tokens} hit=${hitRate}${dflashRate}`,
+      );
+      // Auto-tune signal — emits a one-line warn if the high-water mark
+      // outgrew the configured slot count this turn. Cheap to call,
+      // and the warning is what the operator needs to see.
+      localInferenceEngine.warnIfParallelTooLow({ warn: logger.warn });
+      return result.text;
+    }
+
+    // No conversation context: fall through to the existing hash-based
+    // slot allocation. Doesn't break any caller that wasn't aware of
+    // conversation handles.
     return localInferenceEngine.generate({
       prompt: params.prompt ?? "",
       stopSequences: params.stopSequences,
+      cacheKey,
     });
   };
 }
@@ -265,8 +331,8 @@ async function tryRegisterAospLlamaLoader(
   if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") return false;
   try {
     const mod = (await import(
-      "@elizaos/agent/runtime/aosp-llama-adapter"
-    )) as unknown as {
+      "@elizaos/plugin-aosp-local-inference"
+    )) as typeof import("@elizaos/plugin-aosp-local-inference") & {
       registerAospLlamaLoader?: (r: AgentRuntime) => Promise<boolean> | boolean;
     };
     if (typeof mod.registerAospLlamaLoader !== "function") {
@@ -296,16 +362,16 @@ async function tryRegisterCapacitorLoader(
     | undefined;
   if (!cap?.isNativePlatform?.()) return false;
   try {
-    const mod = (await import("@elizaos/capacitor-llama")) as unknown as {
-      registerCapacitorLlamaLoader?: (r: AgentRuntime) => void;
-    };
-    if (typeof mod.registerCapacitorLlamaLoader === "function") {
-      mod.registerCapacitorLlamaLoader(runtime);
-      logger.info(
-        "[local-inference] Registered capacitor-llama loader for mobile on-device inference",
-      );
-      return true;
-    }
+    const { registerCapacitorLlamaLoader } = await import(
+      "@elizaos/capacitor-llama"
+    );
+    const capacitorRuntime: Parameters<typeof registerCapacitorLlamaLoader>[0] =
+      Object.create(runtime);
+    registerCapacitorLlamaLoader(capacitorRuntime);
+    logger.info(
+      "[local-inference] Registered capacitor-llama loader for mobile on-device inference",
+    );
+    return true;
   } catch (err) {
     logger.debug(
       "[local-inference] capacitor-llama not available:",

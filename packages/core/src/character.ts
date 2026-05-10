@@ -2,16 +2,16 @@ import { validateCharacter } from "./schemas/character";
 import type {
 	Character,
 	CharacterSettings,
-	KnowledgeSourceItem,
+	DocumentSourceItem,
 	MessageExample,
 	MessageExampleGroup,
 } from "./types";
 
-type LegacyKnowledgeItem =
+type CharacterDocumentItem =
 	| string
 	| { path: string; shared?: boolean }
 	| { directory: string; shared?: boolean }
-	| KnowledgeSourceItem;
+	| DocumentSourceItem;
 
 type MessageExamplesInput = MessageExampleGroup[] | MessageExample[][];
 
@@ -26,7 +26,8 @@ export interface CharacterInput {
 	postExamples?: string[];
 	topics?: string[];
 	adjectives?: string[];
-	knowledge?: LegacyKnowledgeItem[];
+	documents?: CharacterDocumentItem[];
+	knowledge?: CharacterDocumentItem[];
 	plugins?: string[];
 	settings?: CharacterSettings;
 	secrets?: Record<string, string>;
@@ -46,7 +47,7 @@ interface NormalizedCharacterInput {
 	postExamples: string[];
 	topics: string[];
 	adjectives: string[];
-	knowledge: KnowledgeSourceItem[];
+	documents: DocumentSourceItem[];
 	plugins: string[];
 	settings?: CharacterSettings;
 	secrets: Record<string, string>;
@@ -78,9 +79,9 @@ function normalizeMessageExamples(
 	return [];
 }
 
-function normalizeKnowledgeItem(
-	item: LegacyKnowledgeItem,
-): KnowledgeSourceItem | null {
+function normalizeDocumentItem(
+	item: CharacterDocumentItem,
+): DocumentSourceItem | null {
 	if (typeof item === "string") {
 		return { item: { case: "path", value: item } };
 	}
@@ -90,14 +91,14 @@ function normalizeKnowledgeItem(
 	if ("item" in item && isRecord(item.item)) {
 		const caseValue = item.item.case;
 		if (caseValue === "path" && typeof item.item.value === "string") {
-			return item as KnowledgeSourceItem;
+			return item as DocumentSourceItem;
 		}
 		if (
 			caseValue === "directory" &&
 			isRecord(item.item.value) &&
 			typeof item.item.value.path === "string"
 		) {
-			return item as KnowledgeSourceItem;
+			return item as DocumentSourceItem;
 		}
 	}
 	if ("path" in item && typeof item.path === "string") {
@@ -128,9 +129,13 @@ export function normalizeCharacterInput(
 				? bioValue
 				: [bioValue];
 
-	const normalizedKnowledge = (input.knowledge ?? [])
-		.map((item) => normalizeKnowledgeItem(item))
-		.filter((item): item is KnowledgeSourceItem => item !== null);
+	const documentInput = [
+		...(input.documents ?? []),
+		...(input.knowledge ?? []),
+	];
+	const normalizedDocuments = documentInput
+		.map((item) => normalizeDocumentItem(item))
+		.filter((item): item is DocumentSourceItem => item !== null);
 
 	return {
 		id: input.id,
@@ -143,7 +148,7 @@ export function normalizeCharacterInput(
 		postExamples: input.postExamples ?? [],
 		topics: input.topics ?? [],
 		adjectives: input.adjectives ?? [],
-		knowledge: normalizedKnowledge,
+		documents: normalizedDocuments,
 		plugins: input.plugins ?? [],
 		settings: input.settings ?? {},
 		secrets: input.secrets ?? {},

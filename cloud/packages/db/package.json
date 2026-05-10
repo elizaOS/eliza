@@ -5,17 +5,8 @@
   "type": "module",
   "private": true,
   "exports": {
-    "./package.json": "./package.json",
-    "./client": "./client.ts",
-    "./database-url": "./database-url.ts",
-    "./execute-helpers": "./execute-helpers.ts",
-    "./helpers": "./helpers.ts",
-    "./worker-neon-http": "./worker-neon-http.ts",
-    "./repositories": "./repositories/index.ts",
-    "./repositories/*": "./repositories/*.ts",
-    "./repositories/agents/*": "./repositories/agents/*.ts",
-    "./schemas": "./schemas/index.ts",
-    "./schemas/*": "./schemas/*.ts"
+    ".": "./index.ts",
+    "./package.json": "./package.json"
   },
   "scripts": {
     "lint": "biome check .",
@@ -24,11 +15,12 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.4.5",
+    "@elizaos/plugin-sql": "workspace:*",
     "@neondatabase/serverless": "^1.1.0",
     "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "@types/node": "22.19.17",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   }
 }

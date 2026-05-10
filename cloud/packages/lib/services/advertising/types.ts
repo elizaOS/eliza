@@ -106,6 +106,7 @@ export interface CreativeMedia {
   id: string;
   source: "generation" | "upload";
   url: string;
+  providerAssetId?: string;
   thumbnailUrl?: string;
   type: "image" | "video";
   order: number;
@@ -121,6 +122,10 @@ export interface CreateCreativeInput {
   callToAction?: CallToAction;
   destinationUrl?: string;
   media: CreativeMedia[];
+  pageId?: string;
+  instagramActorId?: string;
+  tiktokIdentityId?: string;
+  tiktokIdentityType?: string;
 }
 
 export interface UpdateCreativeInput {

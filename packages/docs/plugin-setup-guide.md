@@ -52,8 +52,8 @@ where to get the credentials, minimum required fields, and tips for optional fie
 **Minimum required:** `GROQ_API_KEY`
 **Variables:**
 - `GROQ_API_KEY` — From console.groq.com
-- `GROQ_SMALL_MODEL` — e.g. `openai/gpt-oss-20b`
-- `GROQ_LARGE_MODEL` — e.g. `llama-3.3-70b-versatile`
+- `GROQ_SMALL_MODEL` — e.g. `openai/gpt-oss-120b`
+- `GROQ_LARGE_MODEL` — e.g. `openai/gpt-oss-120b`
 - `GROQ_TTS_MODEL` / `GROQ_TTS_VOICE` — e.g. `canopylabs/orpheus-v1-english` / `troy`
 - `GROQ_TTS_RESPONSE_FORMAT` — Audio response format (default: `wav`)
 **Tips:** Groq is extremely fast inference — great for latency-sensitive use cases. Free tier available.
@@ -63,7 +63,7 @@ where to get the credentials, minimum required fields, and tips for optional fie
 **Minimum required:** `OPENROUTER_API_KEY`
 **Variables:**
 - `OPENROUTER_API_KEY` — From openrouter.ai/keys
-- `OPENROUTER_SMALL_MODEL` — e.g. `openai/gpt-5-mini` or `meta-llama/llama-3.3-70b`
+- `OPENROUTER_SMALL_MODEL` — e.g. `openai/gpt-5-mini` or `openai/gpt-oss-120b`
 - `OPENROUTER_LARGE_MODEL` — e.g. `anthropic/claude-sonnet-4-6`
 - `OPENROUTER_IMAGE_MODEL` — e.g. `openai/gpt-5` (for vision tasks)
 - `OPENROUTER_IMAGE_GENERATION_MODEL` — e.g. `openai/dall-e-3`
@@ -86,16 +86,16 @@ where to get the credentials, minimum required fields, and tips for optional fie
 
 ### Ollama (Local Models)
 **Get credentials:** No API key needed — install Ollama locally
-**Setup:** https://ollama.com — run `ollama pull llama3.2` to download a model
+**Setup:** https://ollama.com — create the Eliza-1 Ollama models from `packages/training/cloud/ollama/`
 **Minimum required:** `OLLAMA_BASE_URL` = `http://localhost:11434` (auto-enable trigger) or `OLLAMA_API_ENDPOINT` = `http://localhost:11434/api`
 **Variables:**
 - `OLLAMA_BASE_URL` — Auto-enable trigger. Default: `http://localhost:11434`
 - `OLLAMA_API_ENDPOINT` — Plugin endpoint. Default: `http://localhost:11434/api`
-- `OLLAMA_SMALL_MODEL` — e.g. `gemma3:latest` (default)
-- `OLLAMA_MEDIUM_MODEL` — e.g. `gemma3:latest`
-- `OLLAMA_LARGE_MODEL` — e.g. `gemma3:latest` (default)
+- `OLLAMA_SMALL_MODEL` — e.g. `eliza-1-2b`
+- `OLLAMA_MEDIUM_MODEL` — e.g. `eliza-1-9b`
+- `OLLAMA_LARGE_MODEL` — e.g. `eliza-1-9b`
 - `OLLAMA_EMBEDDING_MODEL` — e.g. `nomic-embed-text`
-**Tips:** Completely free and private. Requires Ollama running on your machine or a server. Pull models with `ollama pull <model>`. For embeddings use `nomic-embed-text`.
+**Tips:** Completely free and private. Requires Ollama running on your machine or a server. Build Eliza-1 models with `ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m`.
 
 ### Local AI
 **Get credentials:** No API key — uses local model files

@@ -3,13 +3,13 @@
  * Renders inside the Wallets tab as a sub-section or alongside inventory.
  */
 
-import { useApp } from "@elizaos/app-core";
 import {
   PageLayout,
   PagePanel,
   Sidebar,
   SidebarContent,
   SidebarPanel,
+  useApp,
 } from "@elizaos/ui";
 import { FileText } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";

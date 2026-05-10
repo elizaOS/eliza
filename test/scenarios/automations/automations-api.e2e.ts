@@ -11,18 +11,18 @@
  * Exits non-zero on any failed case. Prints a per-case summary.
  */
 
-import type { TriggerSummary } from "@elizaos/agent/triggers/types";
+import type { TriggerSummary } from "@elizaos/agent";
 import type {
-  N8nStatusResponse,
-  N8nWorkflow,
-} from "@elizaos/app-core/api/client-types-chat";
+  WorkflowStatusResponse,
+  WorkflowDefinition,
+} from "@elizaos/ui";
 import type {
   AutomationItem,
   AutomationListResponse,
   AutomationNodeCatalogResponse,
   AutomationNodeDescriptor,
   WorkbenchTask,
-} from "@elizaos/app-core/api/client-types-config";
+} from "@elizaos/ui";
 
 const API_BASE = process.env.ELIZA_API_BASE ?? "http://127.0.0.1:31337";
 const AUTH_TOKEN = process.env.ELIZA_API_TOKEN ?? "";
@@ -253,25 +253,25 @@ async function caseWorkflowTriggerValidation(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Case 3: n8n workflow listing + status
+// Case 3: workflow listing + status
 // ---------------------------------------------------------------------------
 
-async function caseN8nWorkflowsAndStatus(): Promise<void> {
-  const listRes = await apiFetch("/api/n8n/workflows");
-  assert(listRes.status === 200, `GET /api/n8n/workflows ${listRes.status}`);
-  const listBody = await readJson<{ workflows: N8nWorkflow[] }>(listRes);
+async function caseWorkflowDefinitionsAndStatus(): Promise<void> {
+  const listRes = await apiFetch("/api/workflow/workflows");
+  assert(listRes.status === 200, `GET /api/workflow/workflows ${listRes.status}`);
+  const listBody = await readJson<{ workflows: WorkflowDefinition[] }>(listRes);
   assert(Array.isArray(listBody.workflows), "workflows is not an array");
 
-  const statusRes = await apiFetch("/api/n8n/status");
-  assert(statusRes.status === 200, `GET /api/n8n/status ${statusRes.status}`);
-  const status = await readJson<N8nStatusResponse>(statusRes);
-  assert(typeof status.mode === "string", "n8n status missing mode");
-  assert(typeof status.status === "string", "n8n status missing status");
+  const statusRes = await apiFetch("/api/workflow/status");
+  assert(statusRes.status === 200, `GET /api/workflow/status ${statusRes.status}`);
+  const status = await readJson<WorkflowStatusResponse>(statusRes);
+  assert(typeof status.mode === "string", "workflow status missing mode");
+  assert(typeof status.status === "string", "workflow status missing status");
   assert(
     typeof status.cloudHealth === "string",
-    "n8n status missing cloudHealth",
+    "workflow status missing cloudHealth",
   );
-  assert(typeof status.platform === "string", "n8n status missing platform");
+  assert(typeof status.platform === "string", "workflow status missing platform");
 }
 
 // ---------------------------------------------------------------------------
@@ -342,7 +342,7 @@ async function caseAutomationsList(): Promise<void> {
   const coord = body.automations.filter(
     (a) => a.type === "coordinator_text",
   ).length;
-  const wf = body.automations.filter((a) => a.type === "n8n_workflow").length;
+  const wf = body.automations.filter((a) => a.type === "workflow_service").length;
   assert(
     body.summary.coordinatorCount === coord,
     `coordinatorCount mismatch: ${body.summary.coordinatorCount} vs ${coord}`,
@@ -351,11 +351,11 @@ async function caseAutomationsList(): Promise<void> {
     body.summary.workflowCount === wf,
     `workflowCount mismatch: ${body.summary.workflowCount} vs ${wf}`,
   );
-  assert(body.n8nStatus !== undefined, "n8nStatus field absent");
-  assert(body.n8nStatus !== null, "n8nStatus null (n8n unreachable?)");
+  assert(body.workflowStatus !== undefined, "workflowStatus field absent");
+  assert(body.workflowStatus !== null, "workflowStatus null (workflow unreachable?)");
   assert(
     body.workflowFetchError === null,
-    `workflowFetchError should be null when n8n healthy, got ${body.workflowFetchError}`,
+    `workflowFetchError should be null when workflow healthy, got ${body.workflowFetchError}`,
   );
 }
 
@@ -403,13 +403,13 @@ async function caseNodeCatalog(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Case 7: /api/n8n/status platform + cloudHealth invariants
+// Case 7: /api/workflow/status platform + cloudHealth invariants
 // ---------------------------------------------------------------------------
 
-async function caseN8nStatusInvariants(): Promise<void> {
-  const res = await apiFetch("/api/n8n/status");
-  assert(res.status === 200, `GET /api/n8n/status ${res.status}`);
-  const status = await readJson<N8nStatusResponse>(res);
+async function caseWorkflowStatusInvariants(): Promise<void> {
+  const res = await apiFetch("/api/workflow/status");
+  assert(res.status === 200, `GET /api/workflow/status ${res.status}`);
+  const status = await readJson<WorkflowStatusResponse>(res);
   assert(
     status.platform === "desktop" || status.platform === "cloud",
     `platform should be desktop or cloud, got ${status.platform}`,
@@ -433,10 +433,10 @@ async function caseN8nStatusInvariants(): Promise<void> {
 async function main(): Promise<void> {
   console.log(`Automations E2E — ${API_BASE}`);
 
-  const ping = await apiFetch("/api/n8n/status").catch(() => null);
+  const ping = await apiFetch("/api/workflow/status").catch(() => null);
   if (!ping?.ok) {
     console.error(
-      `FATAL: dev server not responding on ${API_BASE}/api/n8n/status`,
+      `FATAL: dev server not responding on ${API_BASE}/api/workflow/status`,
     );
     process.exit(2);
   }
@@ -447,8 +447,8 @@ async function main(): Promise<void> {
   console.log("\nCase 2: Workflow-kind trigger validation");
   await runCase("workflow-trigger validation", caseWorkflowTriggerValidation);
 
-  console.log("\nCase 3: n8n workflow listing + status");
-  await runCase("n8n workflows + status", caseN8nWorkflowsAndStatus);
+  console.log("\nCase 3: workflow listing + status");
+  await runCase("workflows + status", caseWorkflowDefinitionsAndStatus);
 
   console.log("\nCase 4: Workbench task lifecycle");
   await runCase("workbench task lifecycle", caseWorkbenchTaskLifecycle);
@@ -459,8 +459,8 @@ async function main(): Promise<void> {
   console.log("\nCase 6: Node catalog shape");
   await runCase("node catalog", caseNodeCatalog);
 
-  console.log("\nCase 7: n8n status invariants (platform, cloudHealth)");
-  await runCase("n8n status invariants", caseN8nStatusInvariants);
+  console.log("\nCase 7: workflow status invariants (platform, cloudHealth)");
+  await runCase("workflow status invariants", caseWorkflowStatusInvariants);
 
   const passed = results.filter((r) => r.status === "pass").length;
   const failed = results.filter((r) => r.status === "fail").length;

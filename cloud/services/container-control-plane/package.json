@@ -12,11 +12,11 @@
   "dependencies": {
     "@elizaos/cloud-db": "workspace:*",
     "@elizaos/cloud-lib": "workspace:*",
-    "hono": "4.12.16"
+    "hono": "4.12.18"
   },
   "devDependencies": {
-    "@types/bun": "latest",
+    "@types/bun": "1.3.13",
     "@types/node": "22.19.2",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   }
 }

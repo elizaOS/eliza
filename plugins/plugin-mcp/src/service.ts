@@ -20,6 +20,7 @@ import {
   DEFAULT_PING_CONFIG,
   type HttpMcpServerConfig,
   INITIAL_RETRY_DELAY,
+  isMcpSettings,
   MAX_RECONNECT_ATTEMPTS,
   MCP_SERVICE_NAME,
   type McpConnection,
@@ -50,9 +51,11 @@ export class McpService extends Service {
 
   private initializationPromise: Promise<void> | null = null;
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
-    this.initializationPromise = this.initializeMcpServers();
+    if (runtime) {
+      this.initializationPromise = this.initializeMcpServers();
+    }
   }
 
   static async start(runtime: IAgentRuntime): Promise<McpService> {
@@ -98,11 +101,8 @@ export class McpService extends Service {
     const rawSettings = this.runtime.getSetting("mcp");
     let settings: McpSettings | null | undefined = null;
 
-    if (rawSettings && typeof rawSettings === "object" && !Array.isArray(rawSettings)) {
-      const parsed = rawSettings as Record<string, unknown>;
-      if ("servers" in parsed && typeof parsed.servers === "object" && parsed.servers !== null) {
-        settings = parsed as unknown as McpSettings;
-      }
+    if (isMcpSettings(rawSettings)) {
+      settings = rawSettings;
     }
 
     if (!settings?.servers) {
@@ -113,12 +113,8 @@ export class McpService extends Service {
         "mcp" in characterSettings
       ) {
         const characterMcpSettings = characterSettings.mcp;
-        if (
-          characterMcpSettings &&
-          typeof characterMcpSettings === "object" &&
-          "servers" in characterMcpSettings
-        ) {
-          settings = characterMcpSettings as unknown as McpSettings;
+        if (isMcpSettings(characterMcpSettings)) {
+          settings = characterMcpSettings;
         }
       }
     }

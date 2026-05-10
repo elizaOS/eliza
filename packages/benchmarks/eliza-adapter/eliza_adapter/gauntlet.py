@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 from typing import TYPE_CHECKING, Optional
@@ -168,11 +169,22 @@ class Agent:
         self._scenario: "ScenarioContext | None" = None
         self._last_explanation: str | None = None
         self._initialized = False
+        self._server_mgr = None
         print("    [Eliza Bridge Agent] Created (will verify TS server on first scenario)")
 
     async def initialize(self, context: "ScenarioContext") -> None:
         """Verify the eliza server is reachable and store scenario context."""
         if not self._initialized:
+            if not os.environ.get("ELIZA_BENCH_URL"):
+                from eliza_adapter.server_manager import ElizaServerManager
+
+                self._server_mgr = ElizaServerManager()
+                self._server_mgr.start()
+                os.environ["ELIZA_BENCH_TOKEN"] = self._server_mgr.token
+                os.environ.setdefault(
+                    "ELIZA_BENCH_URL", f"http://localhost:{self._server_mgr.port}"
+                )
+                self._client = self._server_mgr.client
             self._client.wait_until_ready(timeout=120)
             self._initialized = True
             print("    [Eliza Bridge Agent] TS server ready")

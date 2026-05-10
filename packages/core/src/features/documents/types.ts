@@ -67,7 +67,7 @@ export const ModelConfigSchema = z.object({
 
 	LOAD_DOCS_ON_STARTUP: z.boolean().default(false),
 
-	CTX_KNOWLEDGE_ENABLED: z.boolean().default(false),
+	CTX_DOCUMENTS_ENABLED: z.boolean().default(false),
 
 	RATE_LIMIT_ENABLED: z.boolean().default(true),
 
@@ -135,17 +135,46 @@ export interface AddDocumentOptions {
 	contentType: string;
 	originalFilename: string;
 	content: string;
+	scope?: DocumentVisibilityScope;
+	scopedToEntityId?: UUID;
+	addedBy?: UUID;
+	addedByRole?: DocumentAddedByRole;
+	addedFrom?: DocumentAddedFrom;
 	metadata?: Record<string, unknown>;
 }
 declare module "../../types/service.ts" {
 	interface ServiceTypeRegistry {
-		KNOWLEDGE: "knowledge";
+		DOCUMENTS: "documents";
 	}
 }
 
-export const KnowledgeServiceType = {
-	KNOWLEDGE: "knowledge" as const,
+export const DocumentServiceType = {
+	DOCUMENTS: "documents" as const,
 } satisfies Partial<ServiceTypeRegistry>;
+
+export type DocumentVisibilityScope =
+	| "global"
+	| "owner-private"
+	| "user-private"
+	| "agent-private";
+
+export type DocumentAddedByRole =
+	| "OWNER"
+	| "ADMIN"
+	| "USER"
+	| "AGENT"
+	| "RUNTIME";
+
+export type DocumentAddedFrom =
+	| "chat"
+	| "upload"
+	| "url"
+	| "file"
+	| "agent-autonomous"
+	| "runtime-internal"
+	| "lifeops"
+	| "default-seed"
+	| "character";
 
 export interface DocumentMetadataExtended extends Record<string, unknown> {
 	type: string; // e.g., 'document', 'website_content'
@@ -162,6 +191,12 @@ export interface DocumentMemoryMetadata
 	type: typeof MemoryType.DOCUMENT;
 	documentId: UUID;
 	source: string;
+	scope?: DocumentVisibilityScope;
+	scopedToEntityId?: UUID;
+	addedBy?: UUID;
+	addedByRole?: DocumentAddedByRole;
+	addedFrom?: DocumentAddedFrom;
+	addedAt?: number;
 	title?: string;
 	filename?: string;
 	originalFilename?: string;
@@ -178,13 +213,19 @@ export interface DocumentFragmentMemoryMetadata
 		Record<string, unknown> {
 	type: typeof MemoryType.FRAGMENT;
 	documentId: UUID;
+	scope?: DocumentVisibilityScope;
+	scopedToEntityId?: UUID;
+	addedBy?: UUID;
+	addedByRole?: DocumentAddedByRole;
+	addedFrom?: DocumentAddedFrom;
+	addedAt?: number;
 	position: number;
 	source?: string;
 	documentTitle?: string;
 	timestamp?: number;
 }
 export interface DocumentsConfig {
-	CTX_KNOWLEDGE_ENABLED: boolean;
+	CTX_DOCUMENTS_ENABLED: boolean;
 	LOAD_DOCS_ON_STARTUP: boolean;
 	MAX_INPUT_TOKENS?: string | number;
 	MAX_OUTPUT_TOKENS?: string | number;
@@ -206,6 +247,10 @@ export interface LoadResult {
 
 export interface ExtendedMemoryMetadata extends Record<string, unknown> {
 	type?: string;
+	scope?: DocumentVisibilityScope;
+	scopedToEntityId?: string;
+	userId?: string;
+	agentId?: string;
 	title?: string;
 	filename?: string;
 	path?: string;

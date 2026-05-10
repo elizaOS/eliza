@@ -4,7 +4,7 @@ sidebarTitle: "Automations"
 description: "REST API endpoints for listing automation items and browsing the node catalog."
 ---
 
-The Automations API provides a unified view of all automation sources (triggers, n8n workflows, cron jobs, workbench tasks) and a catalog of available automation nodes. These endpoints power the Automations tab in the dashboard.
+The Automations API provides a unified view of all automation sources (triggers, workflows, cron jobs, workbench tasks) and a catalog of available automation nodes. These endpoints power the Automations tab in the dashboard.
 
 ## Endpoints
 
@@ -17,7 +17,7 @@ The Automations API provides a unified view of all automation sources (triggers,
 
 ### GET /api/automations
 
-Returns a unified list of all automation items across sources (triggers, n8n workflows, cron jobs, workbench tasks).
+Returns a unified list of all automation items across sources (triggers, workflows, cron jobs, workbench tasks).
 
 **Response**
 
@@ -40,8 +40,8 @@ Returns a unified list of all automation items across sources (triggers, n8n wor
 | Field | Type | Description |
 |-------|------|-------------|
 | `automations` | array | All automation items across all sources |
-| `automations[].source` | string | `"trigger"`, `"n8n"`, `"cron"`, or `"workbench"` |
-| `automations[].type` | string | Automation type (e.g., `"coordinator_text"`, `"n8n_workflow"`) |
+| `automations[].source` | string | `"trigger"`, `"workflow"`, `"cron"`, or `"workbench"` |
+| `automations[].type` | string | Automation type (e.g., `"coordinator_text"`, `"workflow_service"`) |
 | `automations[].enabled` | boolean | Whether the automation is currently active |
 
 ---

@@ -12,7 +12,12 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  getElizaNamespace,
+  type IAgentRuntime,
+  resolveStateDir,
+  resolveUserPath,
+} from "@elizaos/core";
 import type { PreflightResult } from "coding-agent-adapters";
 import type { AgentMetrics } from "./agent-metrics.js";
 import {
@@ -408,10 +413,6 @@ function normalizeTaskAgentAdapterForModelPrefs(
       return "gemini";
     case "aider":
       return "aider";
-    case "opencode":
-    case "open-code":
-    case "open code":
-      return "opencode";
     default:
       return undefined;
   }
@@ -441,12 +442,8 @@ export function getTaskAgentModelPrefs(
 function getPreflightAuthStatus(
   result: PreflightResult | undefined,
 ): "authenticated" | "unauthenticated" | "unknown" {
-  const auth =
-    result && typeof result === "object"
-      ? ((result as unknown as Record<string, unknown>).auth as
-          | Record<string, unknown>
-          | undefined)
-      : undefined;
+  const auth = (result as PreflightResult & { auth?: { status?: unknown } })
+    ?.auth;
   const status = typeof auth?.status === "string" ? auth.status : "";
   if (status === "authenticated" || status === "unauthenticated") {
     return status;
@@ -483,18 +480,12 @@ function extractOauthAccessToken(value: unknown): string | undefined {
 }
 
 function resolveElizaConfigPath(): string {
-  const explicit =
-    process.env.ELIZA_CONFIG_PATH?.trim() ||
-    process.env.ELIZA_CONFIG_PATH?.trim();
-  if (explicit) return explicit;
+  const explicit = process.env.ELIZA_CONFIG_PATH?.trim();
+  if (explicit) return resolveUserPath(explicit);
 
-  const stateDir =
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    path.join(getUserHomeDir(), ".eliza");
-  const namespace = process.env.ELIZA_NAMESPACE?.trim();
-  const filename =
-    !namespace || namespace === "eliza" ? "eliza.json" : `${namespace}.json`;
-  return path.join(stateDir, filename);
+  const namespace = getElizaNamespace();
+  const filename = namespace === "eliza" ? "eliza.json" : `${namespace}.json`;
+  return path.join(resolveStateDir(), filename);
 }
 
 function readConfiguredSubscriptionProvider(): string | undefined {
@@ -717,6 +708,9 @@ async function computeTaskAgentFrameworkState(
   const providerPrefersCodex =
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription";
+  const providerPrefersGemini =
+    configuredSubscriptionProvider === "gemini-cli" ||
+    configuredSubscriptionProvider === "gemini-subscription";
 
   const inventory: TaskAgentFrameworkAvailability[] = STANDARD_FRAMEWORKS.map(
     (id) => {
@@ -728,7 +722,9 @@ async function computeTaskAgentFrameworkState(
           ? claudeSubscriptionReady
           : id === "codex"
             ? codexSubscriptionReady
-            : false;
+            : id === "gemini"
+              ? providerPrefersGemini && geminiPreflightAuth === "authenticated"
+              : false;
       const authReady =
         id === "claude"
           ? claudeAuthReady
@@ -742,11 +738,13 @@ async function computeTaskAgentFrameworkState(
           ? "ready to use the user's Claude subscription"
           : id === "codex" && subscriptionReady
             ? "ready to use the user's OpenAI subscription"
-            : installed
-              ? authReady
-                ? "installed with credentials available"
-                : "installed but credentials were not detected"
-              : "CLI not detected";
+            : id === "gemini" && subscriptionReady
+              ? "ready to use the user's Gemini CLI subscription"
+              : installed
+                ? authReady
+                  ? "installed with credentials available"
+                  : "installed but credentials were not detected"
+                : "CLI not detected";
       return {
         id,
         label: FRAMEWORK_LABELS[id],
@@ -839,7 +837,11 @@ async function computeTaskAgentFrameworkState(
           ? framework.subscriptionReady
             ? 18
             : 6
-          : 0;
+          : providerPrefersGemini && framework.id === "gemini"
+            ? framework.subscriptionReady
+              ? 18
+              : 6
+            : 0;
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +
@@ -995,6 +997,9 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
   const providerPrefersCodex =
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription";
+  const providerPrefersGemini =
+    configuredSubscriptionProvider === "gemini-cli" ||
+    configuredSubscriptionProvider === "gemini-subscription";
   const explicitDefault = safeGetSetting(runtime, "PARALLAX_DEFAULT_AGENT_TYPE")
     ?.toLowerCase()
     .trim();
@@ -1022,7 +1027,11 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
           ? framework.subscriptionReady
             ? 18
             : 6
-          : 0;
+          : providerPrefersGemini && framework.id === "gemini"
+            ? framework.subscriptionReady
+              ? 18
+              : 6
+            : 0;
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +
@@ -1244,6 +1253,14 @@ function buildPreferredReason(
     framework.subscriptionReady
   ) {
     return `best fit for ${dominantSignals.join(" + ")} work while honoring the configured OpenAI subscription`;
+  }
+  if (
+    (configuredSubscriptionProvider === "gemini-cli" ||
+      configuredSubscriptionProvider === "gemini-subscription") &&
+    framework.id === "gemini" &&
+    framework.subscriptionReady
+  ) {
+    return `best fit for ${dominantSignals.join(" + ")} work while honoring the configured Gemini CLI subscription`;
   }
   if (framework.subscriptionReady) {
     return `best overall score for ${dominantSignals.join(" + ")} work with subscription-backed auth already available`;

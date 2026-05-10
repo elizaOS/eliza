@@ -44,8 +44,8 @@
     },
     {
       "connector": "imessage",
-      "providers": ["BlueBubbles / Blooio"],
-      "requiredAxes": ["core", "helper-disconnected"]
+      "providers": ["iMessage connector plugin"],
+      "requiredAxes": ["core", "plugin-unavailable"]
     },
     {
       "connector": "twilio-sms",
@@ -84,7 +84,7 @@
       "connector": "gmail",
       "axis": "core",
       "providers": ["Gmail API"],
-      "actions": ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      "actions": ["MESSAGE", "MESSAGE"],
       "capabilities": ["read", "draft", "send-after-approval", "degraded-auth"],
       "requiredFinalCheckTypes": [
         "draftExists",
@@ -98,7 +98,7 @@
       "axis": "missing-scope",
       "degraded": true,
       "providers": ["Gmail API"],
-      "actions": ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      "actions": ["MESSAGE", "MESSAGE"],
       "capabilities": ["missing-send-scope", "draft-hold", "reauth-required"],
       "requiredSeedTypes": ["connectorStatus"],
       "requiredFinalCheckTypes": ["interventionRequestExists", "draftExists"]
@@ -165,7 +165,7 @@
       "connector": "discord",
       "axis": "core",
       "providers": ["Discord bridge"],
-      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      "actions": ["MESSAGE", "MESSAGE"],
       "capabilities": [
         "inbound-fetch",
         "reply-draft",
@@ -181,7 +181,7 @@
       "axis": "disconnected",
       "degraded": true,
       "providers": ["Discord bridge"],
-      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      "actions": ["MESSAGE", "MESSAGE"],
       "capabilities": ["disconnect-surfacing", "reconnect-request"],
       "requiredSeedTypes": ["connectorStatus"],
       "requiredFinalCheckTypes": ["clarificationRequested"]
@@ -191,7 +191,7 @@
       "connector": "telegram",
       "axis": "core",
       "providers": ["Telegram bridge"],
-      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      "actions": ["MESSAGE", "MESSAGE"],
       "capabilities": [
         "inbound-fetch",
         "reply-draft",
@@ -207,7 +207,7 @@
       "axis": "auth-expired",
       "degraded": true,
       "providers": ["Telegram bridge"],
-      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      "actions": ["MESSAGE", "MESSAGE"],
       "capabilities": ["auth-expiry-surfacing", "reauth-request"],
       "requiredSeedTypes": ["connectorAuthSession"],
       "requiredFinalCheckTypes": ["interventionRequestExists"]
@@ -217,7 +217,7 @@
       "connector": "x-dm",
       "axis": "core",
       "providers": ["X bridge"],
-      "actions": ["X", "TRIAGE_MESSAGES"],
+      "actions": ["X", "MESSAGE"],
       "capabilities": [
         "inbound-fetch",
         "reply-draft",
@@ -232,7 +232,7 @@
       "axis": "disconnected",
       "degraded": true,
       "providers": ["X bridge"],
-      "actions": ["X", "TRIAGE_MESSAGES"],
+      "actions": ["X", "MESSAGE"],
       "capabilities": ["disconnect-surfacing", "reconnect-request"],
       "requiredSeedTypes": ["connectorStatus"],
       "requiredFinalCheckTypes": ["clarificationRequested"]
@@ -242,7 +242,7 @@
       "connector": "signal",
       "axis": "core",
       "providers": ["Signal bridge"],
-      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      "actions": ["MESSAGE", "MESSAGE"],
       "capabilities": [
         "inbound-fetch",
         "reply-draft",
@@ -262,7 +262,7 @@
       "axis": "session-revoked",
       "degraded": true,
       "providers": ["Signal bridge"],
-      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      "actions": ["MESSAGE", "MESSAGE"],
       "capabilities": ["revoked-session-surfacing", "relink-request"],
       "requiredSeedTypes": ["connectorAuthSession"],
       "requiredFinalCheckTypes": ["interventionRequestExists"]
@@ -272,7 +272,7 @@
       "connector": "whatsapp",
       "axis": "core",
       "providers": ["WhatsApp bridge"],
-      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      "actions": ["MESSAGE", "MESSAGE"],
       "capabilities": [
         "inbound-fetch",
         "reply-draft",
@@ -292,7 +292,7 @@
       "axis": "delivery-degraded",
       "degraded": true,
       "providers": ["WhatsApp bridge"],
-      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      "actions": ["MESSAGE", "MESSAGE"],
       "capabilities": ["delivery-surfacing", "failed-send-followup"],
       "requiredSeedTypes": ["transportFault"],
       "requiredFinalCheckTypes": [
@@ -304,8 +304,8 @@
       "id": "connector.imessage.certify-core",
       "connector": "imessage",
       "axis": "core",
-      "providers": ["BlueBubbles / Blooio"],
-      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      "providers": ["iMessage connector plugin"],
+      "actions": ["MESSAGE", "MESSAGE"],
       "capabilities": ["bridge-health", "send", "delivery-state", "reconnect"],
       "requiredFinalCheckTypes": [
         "draftExists",
@@ -314,13 +314,13 @@
       ]
     },
     {
-      "id": "connector.imessage.certify-helper-disconnected",
+      "id": "connector.imessage.certify-plugin-unavailable",
       "connector": "imessage",
-      "axis": "helper-disconnected",
+      "axis": "plugin-unavailable",
       "degraded": true,
-      "providers": ["BlueBubbles / Blooio"],
-      "actions": ["TRIAGE_MESSAGES", "SEND_DRAFT"],
-      "capabilities": ["helper-health-surfacing", "repair-request"],
+      "providers": ["iMessage connector plugin"],
+      "actions": ["MESSAGE", "MESSAGE"],
+      "capabilities": ["plugin-health-surfacing", "repair-request"],
       "requiredSeedTypes": ["connectorStatus"],
       "requiredFinalCheckTypes": ["interventionRequestExists"]
     },
@@ -329,7 +329,7 @@
       "connector": "twilio-sms",
       "axis": "core",
       "providers": ["Twilio"],
-      "actions": ["SEND_DRAFT"],
+      "actions": ["MESSAGE"],
       "capabilities": [
         "send-after-approval",
         "delivery-state",
@@ -344,7 +344,7 @@
       "axis": "retry-idempotent",
       "degraded": true,
       "providers": ["Twilio"],
-      "actions": ["SEND_DRAFT"],
+      "actions": ["MESSAGE"],
       "capabilities": ["retry-safe-send", "idempotent-resend"],
       "requiredSeedTypes": ["transportFault"],
       "requiredFinalCheckTypes": [
@@ -418,7 +418,7 @@
       "connector": "travel-booking",
       "axis": "core",
       "providers": ["Travel adapter"],
-      "actions": ["CALENDAR", "SEND_DRAFT", "VOICE_CALL"],
+      "actions": ["CALENDAR", "MESSAGE", "VOICE_CALL"],
       "capabilities": [
         "search",
         "hold",
@@ -434,7 +434,7 @@
       "axis": "hold-expired",
       "degraded": true,
       "providers": ["Travel adapter"],
-      "actions": ["CALENDAR", "SEND_DRAFT", "VOICE_CALL"],
+      "actions": ["CALENDAR", "MESSAGE", "VOICE_CALL"],
       "capabilities": ["expired-hold-repair", "reprice", "reapproval"],
       "requiredSeedTypes": ["transportFault"],
       "requiredFinalCheckTypes": [

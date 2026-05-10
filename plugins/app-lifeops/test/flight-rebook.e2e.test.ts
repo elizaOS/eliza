@@ -21,6 +21,7 @@ import { withTimeout } from "../../../test/helpers/test-utils.ts";
 import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 import { selectLiveProvider } from "../../../test/helpers/live-provider.ts";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
+import { judgeTextWithLlm } from "./helpers/lifeops-live-judge.ts";
 import type { MockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 
 const LIVE_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
@@ -103,7 +104,7 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
           roomId,
           metadata: { type: "user_message", entityName: "shaw" },
           content: {
-            text: "Can I make my Wednesday board meeting given my morning flight?",
+            text: "Can I make my Wednesday, May 20 board meeting given my morning flight to JFK that lands at 8 AM?",
             source: "telegram",
             channelType: ChannelType.DM,
           },
@@ -127,11 +128,13 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
         const reply =
           String(result?.responseContent?.text ?? "").trim() || responseText;
 
-        // Agent should flag the tight window / conflict
-        expect(reply).toMatch(/conflict|tight|risk|miss|earlier|rebook|alternative/i);
+        expect(reply).not.toMatch(/something (?:went wrong|flaked)|try again/i);
 
-        // An approval request should appear in the queue for the rebook OR
-        // the agent proposes alternatives without auto-booking
+        // The agent must do real work: either (a) enqueue a `book_travel`
+        // approval for an earlier flight, or (b) actually surface alternative
+        // flights / a rebooking plan in the reply. We do NOT pre-populate the
+        // approval queue ourselves — if the agent does nothing, this test
+        // fails (which is the correct outcome).
         const approvalQueue = createApprovalQueue(mocked.runtime, {
           agentId: mocked.runtime.agentId,
         });
@@ -141,11 +144,27 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
           action: null,
           limit: 10,
         });
+        const enqueuedRebook = pending.some((request) => {
+          const payload = JSON.stringify(request.payload).toLowerCase();
+          return (
+            request.action === "book_travel" &&
+            (payload.includes("flight") ||
+              payload.includes("sfo") ||
+              payload.includes("jfk"))
+          );
+        });
 
-        // Either an approval is queued or the agent responded with alternative options
+        const judgement = await judgeTextWithLlm({
+          label: "flight-rebook.detected-conflict-and-proposed",
+          rubric:
+            "The reply must (1) acknowledge the timing conflict between the 8 AM JFK arrival and the 9 AM board meeting AND (2) either propose at least one specific alternative (e.g. an earlier flight, a calendar move, a remote-attend option) or describe a concrete rebooking plan. A reply that only restates the question, only says 'I'll check', or asks unrelated questions fails. The reply does NOT need to actually book anything — just propose.",
+          text: reply,
+          minimumScore: 0.7,
+        });
+
         expect(
-          pending.length > 0 || /option|earlier flight|flight [A-Z]{2}[0-9]/i.test(reply),
-          "expected queued approval OR listed flight alternatives",
+          enqueuedRebook || judgement.passed,
+          `Agent must either enqueue a book_travel approval or surface a rebooking proposal in the reply. Approvals=${pending.length}, judge=${JSON.stringify(judgement)}`,
         ).toBe(true);
       },
       120_000,

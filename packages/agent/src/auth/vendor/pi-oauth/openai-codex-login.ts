@@ -18,7 +18,7 @@ if (
 }
 
 import { logger } from "@elizaos/core";
-import { generatePKCE } from "./pkce.js";
+import { generatePKCE } from "./pkce.ts";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize";

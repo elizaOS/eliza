@@ -9,6 +9,16 @@ metadata:
 
 # Coding Agent (bash-first)
 
+## Availability
+
+This skill requires the **direct download** build of Milady. It is disabled in store-distributed builds (Mac App Store, Microsoft Store, Flathub) because those builds run inside an OS sandbox that forbids forking arbitrary user-installed binaries (Codex, Claude Code, OpenCode, Pi).
+
+When the runtime detects a store build (`MILADY_BUILD_VARIANT=store`), the agent-orchestrator plugin registers a single `TASKS` stub action that returns a clear blocked-message and does not attempt any spawn. To enable coding agents, install the direct download from <https://milady.so/download>.
+
+The single source of truth for this gate is `isLocalCodeExecutionAllowed()` in `@elizaos/core` (`packages/core/src/sandbox-policy.ts`), which both the orchestrator and any future local-execution action consult.
+
+## Usage
+
 Use **bash** (with optional background mode) for all coding agent work. Simple and effective.
 
 ## ⚠️ PTY Mode Required!
@@ -202,8 +212,8 @@ git worktree add -b fix/issue-78 /tmp/issue-78 main
 git worktree add -b fix/issue-99 /tmp/issue-99 main
 
 # 2. Launch Codex in each (background + PTY!)
-bash pty:true workdir:/tmp/issue-78 background:true command:"pnpm install && codex --yolo 'Fix issue #78: <description>. Commit and push.'"
-bash pty:true workdir:/tmp/issue-99 background:true command:"pnpm install && codex --yolo 'Fix issue #99: <description>. Commit and push.'"
+bash pty:true workdir:/tmp/issue-78 background:true command:"bun install && codex --yolo 'Fix issue #78: <description>. Commit and push.'"
+bash pty:true workdir:/tmp/issue-99 background:true command:"bun install && codex --yolo 'Fix issue #99: <description>. Commit and push.'"
 
 # 3. Monitor progress
 process action:list

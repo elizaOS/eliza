@@ -1,5 +1,5 @@
 import type { UUID } from "../../types";
-import type { ContextEvent, ContextObject } from "../../types/context-object";
+import type { ContextEvent } from "../../types/context-object";
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
@@ -22,8 +22,9 @@ export interface ContextObjectTrajectoryExport {
 	events: ContextEvent[];
 	metrics?: JsonObject;
 	metadata?: JsonObject;
-	contextObject?: Omit<ContextObject, "events"> & {
-		events?: ContextEvent[];
+	/** Snapshot of context object plus optional events; JSON-sanitized for export */
+	contextObject?: JsonObject & {
+		id: string;
 	};
 }
 
@@ -79,7 +80,7 @@ export interface LLMCall {
 	 * Pipeline stage identifier. Canonical values:
 	 * "action" | "reasoning" | "evaluation" | "response" |
 	 * "should_respond" | "compose_state" | "other".
-	 * Features may extend this with their own labels (e.g. "knowledge",
+	 * Features may extend this with their own labels (e.g. "documents",
 	 * "training.teacher") — the UI falls through to the "plan" stage for
 	 * any unrecognized value, and the enricher preserves the raw label as
 	 * a `purpose:*` tag.

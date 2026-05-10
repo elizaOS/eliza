@@ -18,6 +18,7 @@ import {
 import {
 	type Channel,
 	ChannelType as DiscordChannelType,
+	type Client as DiscordClient,
 	type Guild,
 	type GuildMember,
 	type Interaction,
@@ -45,6 +46,8 @@ import {
  * Subset of DiscordService fields needed by interaction handling.
  */
 export interface InteractionServiceInternals {
+	accountId?: string;
+	accountToken?: string;
 	client: NonNullable<DiscordService["client"]>;
 	runtime: ICompatRuntime;
 	character: DiscordService["character"];
@@ -57,7 +60,7 @@ export interface InteractionServiceInternals {
 	resolveDiscordEntityId(userId: string): UUID;
 	getChannelType(channel: Channel): Promise<ChannelType>;
 	registerSlashCommands(commands: DiscordSlashCommand[]): Promise<void>;
-	refreshOwnerDiscordUserIds(client: unknown): Promise<void>;
+	refreshOwnerDiscordUserIds(client: DiscordClient): Promise<void>;
 }
 
 /**
@@ -67,6 +70,7 @@ export async function handleInteractionCreate(
 	service: InteractionServiceInternals,
 	interaction: Interaction,
 ): Promise<void> {
+	const accountId = service.accountId ?? "default";
 	const entityId = service.resolveDiscordEntityId(interaction.user.id);
 	const userName = interaction.user.bot
 		? `${interaction.user.username}#${interaction.user.discriminator}`
@@ -118,11 +122,11 @@ export async function handleInteractionCreate(
 		type,
 		worldId: createUniqueUuid(service.runtime, serverId ?? roomId) as UUID,
 		worldName: interaction.guild?.name || undefined,
-		userId: interaction.user.id as unknown as UUID,
-		metadata: buildDiscordWorldMetadata(
-			service.runtime,
-			interaction.guild?.ownerId,
-		),
+		userId: interaction.user.id as UUID,
+		metadata: {
+			...buildDiscordWorldMetadata(service.runtime, interaction.guild?.ownerId),
+			accountId,
+		},
 	});
 
 	if (interaction.isCommand()) {
@@ -145,6 +149,7 @@ export async function handleInteractionCreate(
 			const slashPayload: DiscordSlashCommandPayload = {
 				runtime: service.runtime,
 				source: "discord",
+				accountId,
 				interaction,
 				client: service.client,
 				commands: service.slashCommands,
@@ -179,6 +184,7 @@ export async function handleInteractionCreate(
 		const modalPayload: DiscordSlashCommandPayload = {
 			runtime: service.runtime,
 			source: "discord",
+			accountId,
 			interaction,
 			client: service.client,
 			commands: service.slashCommands,
@@ -321,6 +327,7 @@ export async function handleInteractionCreate(
 				service.timeouts.push(earlyCheckTimeout);
 
 				const interactionPayload: EventPayload & {
+					accountId?: string;
 					interaction: {
 						customId: string;
 						componentType: number;
@@ -333,6 +340,7 @@ export async function handleInteractionCreate(
 				} = {
 					runtime: service.runtime,
 					source: "discord",
+					accountId,
 					interaction: {
 						customId: interaction.customId,
 						componentType: interaction.componentType,
@@ -394,6 +402,7 @@ export async function buildStandardizedRooms(
 	guild: Guild,
 	_worldId: UUID,
 ): Promise<Room[]> {
+	const accountId = service.accountId ?? "default";
 	const rooms: Room[] = [];
 
 	for (const [channelId, channel] of guild.channels.cache) {
@@ -454,6 +463,7 @@ export async function buildStandardizedRooms(
 				 * Channel topic exposed via metadata for plugin-content-seeder
 				 */
 				metadata: {
+					accountId,
 					topic:
 						"topic" in channel ? (channel as TextChannel).topic : undefined,
 					participants,
@@ -627,10 +637,14 @@ export async function buildStandardizedUsers(
  */
 export async function onReady(
 	service: InteractionServiceInternals,
-	readyClient: any,
+	readyClient: DiscordClient<true>,
 ): Promise<void> {
-	service.runtime.logger.success("Discord client ready");
-	const discordApiToken = service.runtime.getSetting("DISCORD_API_TOKEN");
+	const accountId = service.accountId ?? "default";
+	service.runtime.logger.success(
+		`Discord client ready for account ${accountId}`,
+	);
+	const discordApiToken =
+		service.accountToken ?? service.runtime.getSetting("DISCORD_API_TOKEN");
 	if (
 		typeof discordApiToken === "string" &&
 		discordApiToken.trim().length > 0 &&
@@ -743,14 +757,17 @@ export async function onReady(
 						serverId: fullGuild.id,
 						metadata: {
 							...buildDiscordWorldMetadata(service.runtime, fullGuild.ownerId),
+							accountId,
 						},
 					} as World,
 					source: "discord",
+					accountId,
 				};
 
 				service.runtime.emitEvent([DiscordEventTypes.WORLD_CONNECTED], {
 					runtime: service.runtime,
 					source: "discord",
+					accountId,
 					world: standardizedData.world,
 					rooms: standardizedData.rooms,
 					entities: standardizedData.entities,

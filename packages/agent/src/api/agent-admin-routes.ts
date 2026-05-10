@@ -1,14 +1,15 @@
 import path from "node:path";
-import type { AgentRuntime, UUID } from "@elizaos/core";
+import type { AgentRuntime, RouteRequestMeta, UUID } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/shared";
 import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,
 } from "@elizaos/shared";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import { resolveUserPath } from "../config/paths.js";
-import { detectRuntimeModel } from "./agent-model.js";
-import { clearPersistedOnboardingConfig } from "./provider-switch-config.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { resolveUserPath } from "../config/paths.ts";
+import type { AutonomousConfigLike } from "../types/config-like.ts";
+import { detectRuntimeModel } from "./agent-model.ts";
+import { clearPersistedOnboardingConfig } from "./provider-switch-config.ts";
 
 type AgentStateStatus =
   | "not_started"
@@ -19,7 +20,20 @@ type AgentStateStatus =
   | "restarting"
   | "error";
 
-import type { AutonomousConfigLike } from "../types/config-like.js";
+type AppCoreRuntimeModule = {
+  sharedVault: () => {
+    remove: (key: string) => Promise<void> | void;
+  };
+};
+
+async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
+  // String-literal dynamic import — see comment in
+  // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue
+  // that requires Bun.build to statically follow this specifier.
+  return import(
+    /* webpackIgnore: true */ "@elizaos/app-core"
+  ) as Promise<AppCoreRuntimeModule>;
+}
 
 function resolveDefaultAgentName(config: AutonomousConfigLike): string {
   const ui = config.ui as
@@ -193,9 +207,7 @@ export async function handleAgentAdminRoutes(
       // → useCloudState reports cloud connected → user sees themselves still
       // logged in even though they just hit "Reset".
       try {
-        const { sharedVault } = await import(
-          "@elizaos/app-core/services/vault-mirror"
-        );
+        const { sharedVault } = await importAppCoreRuntime();
         const vault = sharedVault();
         const cloudKeys = [
           "ELIZAOS_CLOUD_API_KEY",

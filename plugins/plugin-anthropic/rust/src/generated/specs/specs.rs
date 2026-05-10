@@ -1,0 +1,19 @@
+//! Auto-generated canonical action/provider docs for plugin-anthropic.
+//! DO NOT EDIT - Generated from prompts/specs/**.
+
+pub const CORE_ACTION_DOCS_JSON: &str = r#"{
+  "version": "1.0.0",
+  "actions": []
+}"#;
+pub const ALL_ACTION_DOCS_JSON: &str = r#"{
+  "version": "1.0.0",
+  "actions": []
+}"#;
+pub const CORE_PROVIDER_DOCS_JSON: &str = r#"{
+  "version": "1.0.0",
+  "providers": []
+}"#;
+pub const ALL_PROVIDER_DOCS_JSON: &str = r#"{
+  "version": "1.0.0",
+  "providers": []
+}"#;

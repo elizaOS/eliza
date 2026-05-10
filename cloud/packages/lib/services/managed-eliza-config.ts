@@ -35,18 +35,26 @@ export function normalizeBaseUrl(raw: string): string {
 }
 
 export function resolveElizaAppUrl(): string {
+  const env = getCloudAwareEnv();
   return normalizeBaseUrl(
-    process.env.NEXT_PUBLIC_ELIZA_APP_URL || process.env.ELIZA_APP_URL || DEFAULT_ELIZA_APP_URL,
+    env.NEXT_PUBLIC_ELIZA_APP_URL || env.ELIZA_APP_URL || DEFAULT_ELIZA_APP_URL,
   );
 }
 
 export function resolveCloudPublicUrl(): string {
+  const env = getCloudAwareEnv();
   return normalizeBaseUrl(
-    process.env.NEXT_PUBLIC_APP_URL || process.env.ELIZA_CLOUD_URL || DEFAULT_CLOUD_PUBLIC_URL,
+    env.NEXT_PUBLIC_APP_URL || env.ELIZA_CLOUD_URL || DEFAULT_CLOUD_PUBLIC_URL,
   );
 }
 
 export function resolveCloudApiBaseUrl(): string {
+  const env = getCloudAwareEnv();
+  const explicit =
+    env.ELIZAOS_CLOUD_BASE_URL || env.ELIZA_CLOUD_API_BASE_URL || env.NEXT_PUBLIC_API_URL;
+  if (explicit) {
+    return normalizeBaseUrl(explicit);
+  }
   return `${resolveCloudPublicUrl()}/api/v1`;
 }
 
@@ -65,13 +73,14 @@ export function resolveManagedAllowedOrigins(): string[] {
   if (appOrigin) origins.add(appOrigin);
   if (cloudOrigin) origins.add(cloudOrigin);
 
-  if (process.env.NODE_ENV !== "production") {
+  const env = getCloudAwareEnv();
+  if (env.NODE_ENV !== "production") {
     for (const origin of DEV_ELIZA_APP_ORIGINS) {
       origins.add(origin);
     }
   }
 
-  const extraOrigins = process.env.ELIZA_MANAGED_ALLOWED_ORIGINS;
+  const extraOrigins = env.ELIZA_MANAGED_ALLOWED_ORIGINS;
   if (extraOrigins) {
     for (const item of extraOrigins.split(",")) {
       const trimmed = item.trim();

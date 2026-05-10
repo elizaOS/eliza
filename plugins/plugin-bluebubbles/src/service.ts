@@ -16,6 +16,7 @@ import {
 	Service,
 	type UUID,
 } from "@elizaos/core";
+import { DEFAULT_ACCOUNT_ID as BLUEBUBBLES_DEFAULT_ACCOUNT_ID } from "./accounts";
 import { BlueBubblesClient } from "./client";
 import { BLUEBUBBLES_SERVICE_NAME, DEFAULT_WEBHOOK_PATH } from "./constants";
 import {
@@ -153,6 +154,46 @@ type MessageConnectorUserContext = NonNullable<
 		ReturnType<NonNullable<MessageConnectorRegistration["getUserContext"]>>
 	>
 >;
+type ConnectorReadParams = {
+	target?: ConnectorTargetInfo;
+	limit?: number;
+	query?: string;
+};
+type ConnectorMutationParams = {
+	target?: ConnectorTargetInfo;
+	chatGuid?: string;
+	messageGuid?: string;
+	messageId?: string;
+	id?: string;
+	emoji?: string;
+	reaction?: string;
+	text?: string;
+	content?: ConnectorContent;
+};
+type AdditiveMessageConnectorHooks = {
+	fetchMessages?: (
+		context: MessageConnectorQueryContext,
+		params?: ConnectorReadParams,
+	) => Promise<Memory[]>;
+	searchMessages?: (
+		context: MessageConnectorQueryContext,
+		params: ConnectorReadParams & { query: string },
+	) => Promise<Memory[]>;
+	reactHandler?: (
+		runtime: IAgentRuntime,
+		params: ConnectorMutationParams,
+	) => Promise<void>;
+	editHandler?: (
+		runtime: IAgentRuntime,
+		params: ConnectorMutationParams,
+	) => Promise<void>;
+	deleteHandler?: (
+		runtime: IAgentRuntime,
+		params: ConnectorMutationParams,
+	) => Promise<void>;
+};
+type ExtendedMessageConnectorRegistration = MessageConnectorRegistration &
+	AdditiveMessageConnectorHooks;
 
 function registerMessageConnectorIfAvailable(
 	runtime: IAgentRuntime,
@@ -163,7 +204,9 @@ function registerMessageConnectorIfAvailable(
 		withRegistry.registerMessageConnector(registration);
 		return;
 	}
-	runtime.registerSendHandler(registration.source, registration.sendHandler);
+	if (registration.sendHandler) {
+		runtime.registerSendHandler(registration.source, registration.sendHandler);
+	}
 }
 
 function hasRegisteredConnector(
@@ -206,6 +249,34 @@ function matchesQuery(
 				normalizedValue.includes(normalizedHandleQuery))
 		);
 	});
+}
+
+function normalizeConnectorLimit(
+	limit: number | undefined,
+	fallback = 50,
+): number {
+	if (!Number.isFinite(limit) || !limit || limit <= 0) {
+		return fallback;
+	}
+	return Math.min(Math.floor(limit), 200);
+}
+
+function filterMemoriesByQuery(
+	memories: Memory[],
+	query: string,
+	limit: number,
+): Memory[] {
+	const normalized = query.trim().toLowerCase();
+	if (!normalized) {
+		return memories.slice(0, limit);
+	}
+	return memories
+		.filter((memory) => {
+			const text =
+				typeof memory.content?.text === "string" ? memory.content.text : "";
+			return text.toLowerCase().includes(normalized);
+		})
+		.slice(0, limit);
 }
 
 function isBlueBubblesChatGuid(value: string): boolean {
@@ -260,7 +331,7 @@ function chatToTarget(
 		channelId: isGroup ? chat.guid : directHandle || chat.guid,
 	};
 	if (!isGroup && directHandle) {
-		target.entityId = directHandle as unknown as UUID;
+		target.entityId = directHandle as UUID;
 	}
 	return {
 		target,
@@ -291,7 +362,7 @@ function directTarget(
 		target: {
 			source: "bluebubbles",
 			channelId: normalized,
-			entityId: normalized as unknown as UUID,
+			entityId: normalized as UUID,
 		},
 		label: normalized,
 		kind: targetKindForBlueBubbles(normalized),
@@ -319,6 +390,91 @@ async function resolveBlueBubblesSendTarget(
 		}
 	}
 	return null;
+}
+
+function blueBubblesMessageToMemory({
+	runtime,
+	message,
+	chatGuid,
+	roomId,
+	source,
+	config,
+	accountId = BLUEBUBBLES_DEFAULT_ACCOUNT_ID,
+}: {
+	runtime: IAgentRuntime;
+	message: BlueBubblesMessage;
+	chatGuid: string;
+	roomId: UUID;
+	source: "bluebubbles" | "imessage";
+	config: BlueBubblesConfig | null;
+	accountId?: string;
+}): Memory {
+	const senderHandle = normalizeBlueBubblesTarget(
+		message.handle?.address ?? message.chats[0]?.chatIdentifier ?? chatGuid,
+	);
+	const entityId = message.isFromMe
+		? runtime.agentId
+		: (createUniqueUuid(runtime, `bluebubbles-entity:${senderHandle}`) as UUID);
+	const isGroup =
+		message.chats[0]?.participants.length > 1 || chatGuid.includes(";+;");
+	const attachments = message.attachments.map((attachment) => ({
+		id: attachment.guid,
+		url: config
+			? `${config.serverUrl}/api/v1/attachment/${encodeURIComponent(attachment.guid)}?password=${encodeURIComponent(config.password)}`
+			: "",
+		title: attachment.transferName,
+		description: attachment.mimeType ?? undefined,
+		contentType: (attachment.mimeType ??
+			"application/octet-stream") as ContentType,
+	}));
+
+	const memory = createMessageMemory({
+		id: createUniqueUuid(runtime, `bluebubbles:${message.guid}`) as UUID,
+		agentId: runtime.agentId,
+		entityId,
+		roomId,
+		content: {
+			text: message.text ?? "",
+			source,
+			channelType: isGroup ? ChannelType.GROUP : ChannelType.DM,
+			...(attachments.length > 0 ? { attachments } : {}),
+		},
+	}) as Memory;
+	memory.createdAt = message.dateCreated;
+	memory.metadata = {
+		...(memory.metadata ?? {}),
+		source,
+		provider: "bluebubbles",
+		// Top-level accountId per MessageMetadata contract. Inbound connector
+		// stamps this so outbound resolution can route replies back through the
+		// same connector account.
+		accountId,
+		timestamp: message.dateCreated,
+		entityName: message.handle?.address ?? senderHandle,
+		entityUserName: senderHandle,
+		fromBot: message.isFromMe,
+		fromId: message.isFromMe ? runtime.agentId : senderHandle,
+		sourceId: entityId,
+		chatType: isGroup ? ChannelType.GROUP : ChannelType.DM,
+		messageIdFull: message.guid,
+		sender: {
+			id: message.isFromMe ? runtime.agentId : senderHandle,
+			name: message.handle?.address ?? senderHandle,
+			username: senderHandle,
+		},
+		bluebubbles: {
+			id: senderHandle,
+			userId: senderHandle,
+			username: senderHandle,
+			userName: senderHandle,
+			name: message.handle?.address ?? senderHandle,
+			chatGuid,
+			messageGuid: message.guid,
+		},
+		bluebubblesChatGuid: chatGuid,
+		bluebubblesMessageGuid: message.guid,
+	};
+	return memory;
 }
 
 export class BlueBubblesService extends Service {
@@ -513,7 +669,7 @@ export class BlueBubblesService extends Service {
 		service: BlueBubblesService,
 	): void {
 		const register = (source: "bluebubbles" | "imessage") => {
-			registerMessageConnectorIfAvailable(runtime, {
+			const registration = {
 				source,
 				label: source === "imessage" ? "iMessage (BlueBubbles)" : "BlueBubbles",
 				capabilities: [
@@ -600,9 +756,10 @@ export class BlueBubblesService extends Service {
 						...(memory.metadata ?? {}),
 						bluebubblesChatGuid: chatGuid,
 						bluebubblesMessageGuid: result.guid,
+						messageIdFull: result.guid,
 					};
 
-					await runtime.createMemory(memory, "messages");
+					return memory;
 				},
 				resolveTargets: async (query: string) => {
 					const candidates: MessageConnectorTarget[] = [];
@@ -628,6 +785,155 @@ export class BlueBubblesService extends Service {
 					(await service.listChats()).map((chat) => chatToTarget(chat, 0.66)),
 				listRooms: async () =>
 					(await service.listChats()).map((chat) => chatToTarget(chat, 0.7)),
+				fetchMessages: async (context, params) => {
+					const limit = normalizeConnectorLimit(params?.limit);
+					const target = params?.target ?? context.target;
+					const resolvedTarget = target
+						? await resolveBlueBubblesSendTarget(context.runtime, target)
+						: null;
+					if (service.client && resolvedTarget) {
+						const chatGuid = await service.client.resolveTarget(resolvedTarget);
+						const roomId =
+							target?.roomId ??
+							(createUniqueUuid(
+								context.runtime,
+								`bluebubbles-room:${chatGuid}`,
+							) as UUID);
+						const messages = await service.client
+							.getMessages(chatGuid, limit)
+							.catch(() => []);
+						if (messages.length > 0) {
+							return messages
+								.map((message) =>
+									blueBubblesMessageToMemory({
+										runtime: context.runtime,
+										message,
+										chatGuid,
+										roomId,
+										source,
+										config: service.blueBubblesConfig,
+									}),
+								)
+								.sort(
+									(left, right) =>
+										(right.createdAt ?? 0) - (left.createdAt ?? 0),
+								)
+								.slice(0, limit);
+						}
+					}
+					if (target?.roomId) {
+						return context.runtime.getMemories({
+							tableName: "messages",
+							roomId: target.roomId,
+							limit,
+							orderBy: "createdAt",
+							orderDirection: "desc",
+						});
+					}
+					const targets = (await service.listChats())
+						.slice(0, 10)
+						.map((chat) => chatToTarget(chat, 0.66));
+					const roomIds = Array.from(
+						new Set(
+							targets
+								.map((candidate) => candidate.target.roomId)
+								.filter((roomId): roomId is UUID => Boolean(roomId)),
+						),
+					);
+					const chunks = await Promise.all(
+						roomIds.map((roomId) =>
+							context.runtime.getMemories({
+								tableName: "messages",
+								roomId,
+								limit,
+								orderBy: "createdAt",
+								orderDirection: "desc",
+							}),
+						),
+					);
+					return chunks
+						.flat()
+						.sort(
+							(left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0),
+						)
+						.slice(0, limit);
+				},
+				searchMessages: async (context, params) => {
+					const limit = normalizeConnectorLimit(params?.limit);
+					const messages = await registration.fetchMessages?.(context, {
+						target: params?.target ?? context.target,
+						limit: Math.max(limit, 100),
+					});
+					return filterMemoriesByQuery(messages ?? [], params.query, limit);
+				},
+				reactHandler: async (handlerRuntime, params) => {
+					const mutationParams = params as ConnectorMutationParams;
+					const target = params.target ?? ({ source } as ConnectorTargetInfo);
+					const resolvedTarget = await resolveBlueBubblesSendTarget(
+						handlerRuntime,
+						target,
+					);
+					const chatGuid = mutationParams.chatGuid ?? resolvedTarget;
+					const messageGuid = String(
+						mutationParams.messageGuid ??
+							params.messageId ??
+							mutationParams.id ??
+							"",
+					).trim();
+					const reaction = String(
+						mutationParams.reaction ?? params.emoji ?? "",
+					).trim();
+					if (!chatGuid || !messageGuid || !reaction) {
+						throw new Error(
+							"BlueBubbles reactHandler requires chat, message guid, and reaction",
+						);
+					}
+					const result = await service.sendReaction(
+						chatGuid,
+						messageGuid,
+						reaction,
+					);
+					if (!result.success) {
+						throw new Error("BlueBubbles reaction failed");
+					}
+				},
+				editHandler: async (_handlerRuntime, params) => {
+					const mutationParams = params as ConnectorMutationParams;
+					if (!service.client) {
+						throw new Error("BlueBubbles client not initialized");
+					}
+					const messageGuid = String(
+						mutationParams.messageGuid ??
+							params.messageId ??
+							mutationParams.id ??
+							"",
+					).trim();
+					const text = String(
+						mutationParams.text ?? params.content?.text ?? "",
+					).trim();
+					if (!messageGuid || !text) {
+						throw new Error(
+							"BlueBubbles editHandler requires message guid and text",
+						);
+					}
+					await service.client.editMessage(messageGuid, text);
+				},
+				deleteHandler: async (_handlerRuntime, params) => {
+					const mutationParams = params as ConnectorMutationParams;
+					if (!service.client) {
+						throw new Error("BlueBubbles client not initialized");
+					}
+					const messageGuid = String(
+						mutationParams.messageGuid ??
+							params.messageId ??
+							mutationParams.id ??
+							"",
+					).trim();
+					if (!messageGuid) {
+						throw new Error("BlueBubbles deleteHandler requires message guid");
+					}
+					await service.client.unsendMessage(messageGuid);
+				},
 				getChatContext: async (
 					target: ConnectorTargetInfo,
 					context: MessageConnectorQueryContext,
@@ -674,7 +980,8 @@ export class BlueBubblesService extends Service {
 						metadata: { normalizedHandle: handle },
 					};
 				},
-			});
+			} as ExtendedMessageConnectorRegistration;
+			registerMessageConnectorIfAvailable(runtime, registration);
 		};
 
 		register("bluebubbles");
@@ -887,7 +1194,7 @@ export class BlueBubblesService extends Service {
 			roomId,
 			worldId,
 			worldName: "iMessage",
-			userId: senderHandle as unknown as UUID,
+			userId: senderHandle as UUID,
 			userName: senderHandle,
 			name: message.handle?.address ?? senderHandle,
 			source: "bluebubbles",
@@ -918,6 +1225,10 @@ export class BlueBubblesService extends Service {
 			...(memory.metadata ?? {}),
 			source: "bluebubbles",
 			provider: "bluebubbles",
+			// Top-level accountId per MessageMetadata contract. Inbound connector
+			// stamps this so outbound resolution can route replies back through
+			// the same connector account.
+			accountId: BLUEBUBBLES_DEFAULT_ACCOUNT_ID,
 			timestamp: message.dateCreated,
 			entityName: message.handle?.address ?? senderHandle,
 			entityUserName: senderHandle,
@@ -945,7 +1256,7 @@ export class BlueBubblesService extends Service {
 			bluebubblesMessageGuid: message.guid,
 			bluebubblesThreadOriginatorGuid:
 				message.threadOriginatorGuid ?? undefined,
-		} as unknown as Memory["metadata"];
+		} as Memory["metadata"];
 
 		await this.runtime.createMemory(memory, "messages");
 

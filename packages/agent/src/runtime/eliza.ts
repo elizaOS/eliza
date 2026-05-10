@@ -26,21 +26,21 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // ---------------------------------------------------------------------------
 // Extracted modules — re-exported for backward compatibility
 // ---------------------------------------------------------------------------
-import { runFirstTimeSetup } from "./first-time-setup.js";
-import { resolveConfigEnvForProcess } from "./operations/vault-bridge.js";
-import { resolvePlugins } from "./plugin-resolver.js";
+import { runFirstTimeSetup } from "./first-time-setup.ts";
+import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
+import { resolvePlugins } from "./plugin-resolver.ts";
 import {
   CUSTOM_PLUGINS_DIRNAME as CUSTOM_RUNTIME_PLUGINS_DIRNAME,
   type ResolvedPlugin as RuntimeResolvedPlugin,
   STATIC_ELIZA_PLUGINS,
-} from "./plugin-types.js";
+} from "./plugin-types.ts";
 
 export {
   CHANNEL_PLUGIN_MAP,
   collectPluginNames,
   OPTIONAL_PLUGIN_MAP,
   PROVIDER_PLUGIN_MAP,
-} from "./plugin-collector.js";
+} from "./plugin-collector.ts";
 
 export {
   CUSTOM_PLUGINS_DIRNAME,
@@ -56,7 +56,7 @@ export {
   resolvePackageEntry,
   STATIC_ELIZA_PLUGINS,
   scanDropInPlugins,
-} from "./plugin-types.js";
+} from "./plugin-types.ts";
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
 
@@ -102,16 +102,51 @@ import {
   resolveServiceRoutingInConfig,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
-import { buildCharacterFromConfig } from "./build-character-config.js";
+import type { Vault } from "@elizaos/vault";
+
+type AccountPoolCredentialsOptions = {
+  activeBackend?: string | undefined;
+  accountStrategies?: Record<string, unknown> | undefined;
+  serviceRouting?: ReturnType<typeof resolveServiceRoutingInConfig>;
+};
+
+type AppCoreRuntimeModule = {
+  hydrateWalletKeysFromNodePlatformSecureStore: () => Promise<void> | void;
+  runVaultBootstrap: () => Promise<{
+    migrated: number;
+    failed: unknown[];
+  }>;
+  sharedVault: () => Vault;
+  getDefaultAccountPool: () => unknown;
+  applyAccountPoolApiCredentials: (
+    options: AccountPoolCredentialsOptions,
+  ) => Promise<void> | void;
+  startAccountPoolKeepAlive: () => void;
+  getBuildVariant: () => "store" | "direct";
+  isStoreBuild: () => boolean;
+};
+
+async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
+  // Use a string-literal dynamic import (no indirection through a `const`)
+  // so Bun.build can statically follow it and inline `@elizaos/app-core`
+  // into the mobile bundle. The previous indirect form
+  // (`const moduleId = "@elizaos/app-core"; import(moduleId)`) defeated
+  // Bun's resolver and produced a runtime `Cannot find module` on AOSP
+  // where there is no node_modules tree.
+  return import(
+    /* webpackIgnore: true */ "@elizaos/app-core"
+  ) as Promise<AppCoreRuntimeModule>;
+}
+
+import { buildCharacterFromConfig } from "./build-character-config.ts";
 import {
   resolvePreferredProviderId,
   resolvePreferredProviderPluginName,
   resolvePrimaryModel,
-} from "./model-resolution.js";
+} from "./model-resolution.ts";
 
 const ELIZAMAKER_MODULE: string = "@elizaos/app-elizamaker";
-const STEWARD_EVM_BRIDGE_MODULE: string =
-  "@elizaos/app-steward/services/steward-evm-bridge";
+const STEWARD_EVM_BRIDGE_MODULE: string = "@elizaos/app-steward";
 
 type ElizaMakerModule = {
   initializeOGCode?: () => void;
@@ -137,54 +172,64 @@ async function loadStewardEvmBridgeModule(): Promise<StewardEvmBridgeModule> {
 import {
   debugLogResolvedContext,
   validateRuntimeContext,
-} from "../api/plugin-validation.js";
-import { getWalletAddresses, syncSolanaPublicKeyEnv } from "../api/wallet.js";
+} from "../api/plugin-validation.ts";
+import { getWalletAddresses, syncSolanaPublicKeyEnv } from "../api/wallet.ts";
 import {
   configFileExists,
   type ElizaConfig,
   loadElizaConfig,
-} from "../config/config.js";
+} from "../config/config.ts";
 import {
   CONNECTOR_ENV_MAP,
   collectConfigEnvVars,
   collectConnectorEnvVars,
-} from "../config/env-vars.js";
-import { resolveStateDir, resolveUserPath } from "../config/paths.js";
+} from "../config/env-vars.ts";
+import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
 import {
   createHookEvent,
   type LoadHooksOptions,
   loadHooks,
   triggerHook,
-} from "../hooks/index.js";
-import {
-  ensureAgentWorkspace,
-  resolveDefaultAgentWorkspaceDir,
-  shouldBootstrapWorkspaceInitFiles,
-} from "../providers/workspace.js";
-import { SandboxAuditLog } from "../security/audit-log.js";
+} from "../hooks/index.ts";
+import { ensureAgentWorkspace } from "../providers/workspace.ts";
+import { SandboxAuditLog } from "../security/audit-log.ts";
 import {
   SandboxManager,
   type SandboxMode,
-} from "../services/sandbox-manager.js";
-import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
-import { seedBundledDocuments } from "./default-documents.js";
-import discordLocalPlugin from "./discord-local-plugin.js";
-import { createElizaPlugin } from "./eliza-plugin.js";
-import { detectEmbeddingPreset } from "./embedding-presets.js";
+} from "../services/sandbox-manager.ts";
 import {
-  runtimeKnowledgeEnabled,
+  resolveDefaultAgentWorkspaceDir,
+  shouldBootstrapWorkspaceInitFiles,
+} from "../shared/workspace-resolution.ts";
+import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.ts";
+import { seedBundledDocuments } from "./default-documents.ts";
+import { createElizaPlugin } from "./eliza-plugin.ts";
+import { detectEmbeddingPreset } from "./embedding-presets.ts";
+import {
+  runtimeDocumentsEnabled,
   runtimeTrajectoriesEnabled,
-} from "./native-runtime-features.js";
+} from "./native-runtime-features.ts";
 import {
   createPgliteInitError,
   getPgliteErrorCode,
   PGLITE_ERROR_CODES,
-} from "./pglite-error-compat.js";
-import { installRuntimePluginLifecycle } from "./plugin-lifecycle.js";
-import rolesPlugin from "./roles.js";
-import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.js";
+} from "./pglite-error-compat.ts";
+import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
+import rolesPlugin from "./roles.ts";
+import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.ts";
 
-const require = createRequire(import.meta.url);
+function isPluginSqlResolutionError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    message.includes("Cannot find module '@elizaos/plugin-sql'") ||
+    message.includes('Cannot find module "@elizaos/plugin-sql"') ||
+    (message.includes("@elizaos/plugin-sql") &&
+      (message.includes("ResolveMessage") ||
+        message.includes("Module not found") ||
+        message.includes("could not resolve") ||
+        message.includes("Could not resolve")))
+  );
+}
 
 async function loadRequiredPluginSql(): Promise<
   typeof import("@elizaos/plugin-sql")
@@ -194,13 +239,13 @@ async function loadRequiredPluginSql(): Promise<
   } catch (err) {
     const sourceEntry = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
-      "../../../../plugins/plugin-sql/typescript/index.ts",
+      "../../../../plugins/plugin-sql/src/index.node.ts",
     );
-    if (!existsSync(sourceEntry)) {
+    if (!isPluginSqlResolutionError(err) || !existsSync(sourceEntry)) {
       throw err;
     }
-    logger.warn(
-      `[eliza] @elizaos/plugin-sql package entry is unavailable; falling back to workspace source at ${sourceEntry} (orig err: ${err instanceof Error ? err.message : String(err)})`,
+    logger.debug(
+      `[eliza] Loading @elizaos/plugin-sql from workspace source at ${sourceEntry}`,
     );
     return (await import(
       pathToFileURL(sourceEntry).href
@@ -208,93 +253,143 @@ async function loadRequiredPluginSql(): Promise<
   }
 }
 
-const pluginSql = await loadRequiredPluginSql();
-// plugin-local-embedding is needed when local embeddings are enabled, but
-// Docker no-embedding smokes must still boot if a published package advertises
-// a missing dist entry.
-let pluginLocalEmbedding:
-  | typeof import("@elizaos/plugin-local-embedding")
-  | null = null;
-try {
-  pluginLocalEmbedding = await import("@elizaos/plugin-local-embedding");
-} catch {
-  pluginLocalEmbedding = null;
-}
 // Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package.
-// Use top-level dynamic import because the package is ESM-only and fails under
-// createRequire() in bun runtime; the await is resolved before module consumers read the binding.
-let pluginAgentOrchestrator: unknown = null;
-try {
-  const packageName = "@elizaos/plugin-agent-orchestrator";
-  pluginAgentOrchestrator = await import(packageName);
-} catch {
-  pluginAgentOrchestrator = null;
+const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
+  try {
+    return await import(packageName);
+  } catch {
+    return null;
+  }
+};
+
+// IMPORTANT: Do NOT pull plugin modules in via top-level `await` at module scope.
+//
+// Bun.build (and any cross-module top-level-await scheduling that follows the
+// ESM spec naively) can emit an `init_eliza()` call that is NOT awaited inside
+// a downstream `init_runtime*` function. When that happens, the
+// `Object.assign(STATIC_ELIZA_PLUGINS, ...)` below has not run yet by the time
+// `loadSinglePlugin("@elizaos/plugin-sql")` is dispatched, and the resolver
+// falls through to a dynamic import that throws
+// "Cannot find module '@elizaos/plugin-sql'" from the bundle path.
+//
+// Solution: lazy-load and memoize each module, and register the static map
+// inside `ensureCoreStaticPluginsRegistered()` which is awaited from every
+// runtime entry point (`startEliza`, `startInCloudMode`).
+let _pluginSqlPromise: Promise<typeof import("@elizaos/plugin-sql")> | null =
+  null;
+async function getPluginSql(): Promise<typeof import("@elizaos/plugin-sql")> {
+  if (!_pluginSqlPromise) {
+    _pluginSqlPromise = loadRequiredPluginSql();
+  }
+  return _pluginSqlPromise;
 }
-// Keep plugin-shell behind a guarded runtime require too. The published alpha
-// tarball can declare dist/index.js without actually shipping it, which breaks
-// CLI/bootstrap in published-only CI.
-let pluginShell: unknown = null;
-try {
-  pluginShell = require("@elizaos/plugin-shell");
-} catch {
-  pluginShell = null;
+
+let _pluginLocalEmbeddingPromise: Promise<
+  typeof import("@elizaos/plugin-local-embedding") | null
+> | null = null;
+async function getPluginLocalEmbedding(): Promise<
+  typeof import("@elizaos/plugin-local-embedding") | null
+> {
+  if (!_pluginLocalEmbeddingPromise) {
+    _pluginLocalEmbeddingPromise = (async () => {
+      try {
+        return await import("@elizaos/plugin-local-embedding");
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return _pluginLocalEmbeddingPromise;
 }
-// Keep plugin-commands behind a guarded runtime require. Some published alpha
-// builds advertise dist/index.js without actually shipping it, and a static
-// ESM import here makes the CLI fail before it can print --help/--version.
-let pluginCommands: unknown = null;
-try {
-  pluginCommands = require("@elizaos/plugin-commands");
-} catch {
-  pluginCommands = null;
-}
-// Keep plugin-video behind a guarded runtime require. plugin-video's main
-// points at dist/index.js, which is not built in test/CI flows that do not
-// run a full plugin build first; a static ESM import then crashes vitest at
-// resolution time. Same pattern as plugin-shell / plugin-commands above.
-let pluginVideo: unknown = null;
-try {
-  pluginVideo = require("@elizaos/plugin-video");
-} catch {
-  pluginVideo = null;
-}
-// Keep plugin-elizacloud behind a guarded runtime require as well. Some
-// published alpha builds advertise dist/node/index.node.js but do not ship
-// that ESM entry, which breaks CLI bootstrap in published-only CI.
-let pluginElizacloud: unknown = null;
-try {
-  pluginElizacloud = require("@elizaos/plugin-elizacloud");
-} catch {
-  pluginElizacloud = null;
-}
-// Keep plugin-ollama behind a guarded runtime require as well. Some published
-// alpha builds advertise dist/node/index.node.js but do not ship that ESM
-// entry, which breaks CLI bootstrap and startup smokes in published-only CI.
-let pluginOllama: unknown = null;
-try {
-  pluginOllama = require("@elizaos/plugin-ollama");
-} catch {
-  pluginOllama = null;
-}
-// Keep plugin-anthropic behind a guarded runtime require too. Some published
-// alpha builds advertise dist/node/index.node.js without shipping that entry,
-// which breaks no-credential Docker startup smokes before provider selection.
-let pluginAnthropic: unknown = null;
-try {
-  pluginAnthropic = require("@elizaos/plugin-anthropic");
-} catch {
-  pluginAnthropic = null;
-}
-// Keep plugin-openai behind a guarded runtime require too. Some published
-// alpha builds advertise dist/node/index.node.js without shipping that entry,
-// which breaks CLI bootstrap and validation in published-only CI.
-let pluginOpenai: unknown = null;
-try {
-  pluginOpenai = require("@elizaos/plugin-openai");
-} catch {
-  pluginOpenai = null;
+
+const _optionalPluginCache = new Map<string, Promise<unknown>>();
+function getOptionalPlugin(packageName: string): Promise<unknown> {
+  const cached = _optionalPluginCache.get(packageName);
+  if (cached) return cached;
+  const promise = loadOptionalPlugin(packageName);
+  _optionalPluginCache.set(packageName, promise);
+  return promise;
 }
 // Personality is bundled in @elizaos/core advanced capabilities (advancedCapabilities).
+
+let _coreStaticPluginsRegistered = false;
+let _coreStaticPluginsRegistrationPromise: Promise<void> | null = null;
+
+/**
+ * Resolve and register the baseline `@elizaos/plugin-*` modules into the
+ * shared `STATIC_ELIZA_PLUGINS` map. Called from every runtime entry point
+ * (`startEliza`, `startInCloudMode`, `bootElizaRuntime`) before any caller
+ * touches `loadSinglePlugin`. Memoized so repeated calls are free.
+ *
+ * Why this isn't done at module init:
+ * - Top-level `await` for these modules at module scope creates a
+ *   cross-module TLA dependency that `Bun.build` does not always honor in
+ *   the bundled output (it emits the init call without awaiting it).
+ * - Deferring to an explicit awaited call inside an entry function makes the
+ *   ordering explicit and bundler-independent.
+ */
+export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
+  if (_coreStaticPluginsRegistered) return;
+  if (_coreStaticPluginsRegistrationPromise) {
+    await _coreStaticPluginsRegistrationPromise;
+    return;
+  }
+  _coreStaticPluginsRegistrationPromise = (async () => {
+    const [
+      pluginSql,
+      pluginLocalEmbedding,
+      pluginAgentOrchestrator,
+      pluginShell,
+      pluginCommands,
+      pluginVideo,
+      pluginElizacloud,
+      pluginOllama,
+      pluginAnthropic,
+      pluginOpenai,
+    ] = await Promise.all([
+      getPluginSql(),
+      getPluginLocalEmbedding(),
+      getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
+      getOptionalPlugin("@elizaos/plugin-shell"),
+      getOptionalPlugin("@elizaos/plugin-commands"),
+      getOptionalPlugin("@elizaos/plugin-video"),
+      getOptionalPlugin("@elizaos/plugin-elizacloud"),
+      getOptionalPlugin("@elizaos/plugin-ollama"),
+      getOptionalPlugin("@elizaos/plugin-anthropic"),
+      getOptionalPlugin("@elizaos/plugin-openai"),
+    ]);
+
+    Object.assign(STATIC_ELIZA_PLUGINS, {
+      "@elizaos/plugin-sql": pluginSql,
+      ...(pluginLocalEmbedding
+        ? { "@elizaos/plugin-local-embedding": pluginLocalEmbedding }
+        : {}),
+      // secrets (SECRETS service): now built-in core capability (ENABLE_SECRETS_MANAGER)
+      ...(pluginAgentOrchestrator
+        ? { "agent-orchestrator": pluginAgentOrchestrator }
+        : {}),
+      ...(pluginShell ? { "@elizaos/plugin-shell": pluginShell } : {}),
+      // plugin-manager: now built-in core capability (ENABLE_PLUGIN_MANAGER)
+      ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
+      ...(pluginVideo ? { "@elizaos/plugin-video": pluginVideo } : {}),
+      ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
+      ...(pluginAnthropic
+        ? { "@elizaos/plugin-anthropic": pluginAnthropic }
+        : {}),
+      ...(pluginOllama ? { "@elizaos/plugin-ollama": pluginOllama } : {}),
+      ...(pluginElizacloud
+        ? { "@elizaos/plugin-elizacloud": pluginElizacloud }
+        : {}),
+      // trust: now built-in core capability (ENABLE_TRUST)
+      // `@elizaos/app-lifeops` and `@elizaos/app-companion` are intentionally
+      // omitted from the static map — see the comment near the top of this file.
+      // They resolve via headless dynamic-import entrypoints in plugin-resolver.ts.
+      // personality: now built-in advanced capability (advancedCapabilities: true)
+    });
+    _coreStaticPluginsRegistered = true;
+  })();
+  await _coreStaticPluginsRegistrationPromise;
+}
 
 type SignalShutdownContext = {
   getRuntime: () => AgentRuntime;
@@ -373,35 +468,13 @@ function registerSignalShutdownHandlers(context: SignalShutdownContext): void {
  * Post-release plugins are intentionally excluded so the packaged runtime can
  * ship a smaller baseline bundle. Those plugins fall through to dynamic
  * import() and can be installed later via the plugin installer.
+ *
+ * The actual `Object.assign(STATIC_ELIZA_PLUGINS, ...)` registration runs
+ * inside `ensureCoreStaticPluginsRegistered()` (defined above), which is
+ * called at the top of every runtime entry point. Doing it there instead of
+ * at module init avoids a `Bun.build` cross-module top-level-await scheduling
+ * bug that strands `@elizaos/plugin-sql` undefined in the bundled runtime.
  */
-// Populate the shared STATIC_ELIZA_PLUGINS registry (defined in plugin-types.ts)
-// so plugin-resolver.ts can read it without importing this module directly.
-Object.assign(STATIC_ELIZA_PLUGINS, {
-  "@elizaos/plugin-sql": pluginSql,
-  ...(pluginLocalEmbedding
-    ? { "@elizaos/plugin-local-embedding": pluginLocalEmbedding }
-    : {}),
-  // secrets (SECRETS service): now built-in core capability (ENABLE_SECRETS_MANAGER)
-  ...(pluginAgentOrchestrator
-    ? { "agent-orchestrator": pluginAgentOrchestrator }
-    : {}),
-  ...(pluginShell ? { "@elizaos/plugin-shell": pluginShell } : {}),
-  // plugin-manager: now built-in core capability (ENABLE_PLUGIN_MANAGER)
-  ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
-  ...(pluginVideo ? { "@elizaos/plugin-video": pluginVideo } : {}),
-  ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
-  ...(pluginAnthropic ? { "@elizaos/plugin-anthropic": pluginAnthropic } : {}),
-  ...(pluginOllama ? { "@elizaos/plugin-ollama": pluginOllama } : {}),
-  ...(pluginElizacloud
-    ? { "@elizaos/plugin-elizacloud": pluginElizacloud }
-    : {}),
-  // trust: now built-in core capability (ENABLE_TRUST)
-  // `@elizaos/app-lifeops` and `@elizaos/app-companion` are intentionally
-  // omitted from the static map — see the comment near the top of this file.
-  // They resolve via headless dynamic-import entrypoints in plugin-resolver.ts.
-  "@elizaos/plugin-discord-local": discordLocalPlugin,
-  // personality: now built-in advanced capability (advancedCapabilities: true)
-});
 
 // NODE_PATH so dynamic plugin imports (e.g. @elizaos/plugin-*) resolve.
 // WHY: When eliza is loaded from dist/ or by a test runner, Node's resolution does not
@@ -573,7 +646,7 @@ export function configureLocalEmbeddingPlugin(
 
   // Default Groq model names — plugin-groq still ships a deprecated large-model
   // fallback. Seed runtime defaults before plugin init so direct Groq provider
-  // sessions do not inherit the retired qwen-qwq-32b default.
+  // sessions use the approved GPT-OSS default.
   const currentSharedSmallModel =
     process.env.OPENAI_SMALL_MODEL ?? process.env.SMALL_MODEL;
   const currentSharedLargeModel =
@@ -582,7 +655,7 @@ export function configureLocalEmbeddingPlugin(
     "GROQ_SMALL_MODEL",
     currentSharedSmallModel && !isLikelyOpenAiTextModel(currentSharedSmallModel)
       ? currentSharedSmallModel
-      : "openai/gpt-oss-20b",
+      : "openai/gpt-oss-120b",
   );
   setEnvIfMissing(
     "GROQ_LARGE_MODEL",
@@ -775,13 +848,13 @@ export function normalizeOpenAiCompatibleProviderConfig(
     (currentSharedSmallModel &&
     !isLikelyOpenAiTextModel(currentSharedSmallModel)
       ? currentSharedSmallModel
-      : "llama-3.1-8b-instant");
+      : "openai/gpt-oss-120b");
   const normalizedGroqLargeModel =
     currentGroqLargeModel ??
     (currentSharedLargeModel &&
     !isLikelyOpenAiTextModel(currentSharedLargeModel)
       ? currentSharedLargeModel
-      : "qwen/qwen3-32b");
+      : "openai/gpt-oss-120b");
 
   env.GROQ_API_KEY = inheritedGroqApiKey;
   env.GROQ_SMALL_MODEL = normalizedGroqSmallModel;
@@ -1053,7 +1126,7 @@ async function installPromptOptimizationLayer(
 ): Promise<void> {
   try {
     const { installPromptOptimizations } = await import(
-      "./prompt-optimization.js"
+      "./prompt-optimization.ts"
     );
     installPromptOptimizations(runtime, config);
   } catch (err) {
@@ -1396,7 +1469,6 @@ export async function autoFetchCloudGithubToken(
  * Propagate cloud config from Eliza config into process.env so the
  * ElizaCloud plugin can discover settings at startup.
  */
-/** @internal Exported for testing. */
 export function applyCloudConfigToEnv(config: ElizaConfig): void {
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   const cloud = config.cloud;
@@ -1600,125 +1672,6 @@ export function applyX402ConfigToEnv(config: ElizaConfig): void {
     process.env.X402_API_KEY = x402.apiKey;
   if (x402.baseUrl && !process.env.X402_BASE_URL)
     process.env.X402_BASE_URL = x402.baseUrl;
-}
-
-/**
- * Resolve N8N_HOST + N8N_API_KEY for @elizaos/plugin-n8n-workflow.
- *
- * Resolution order (first match wins, later sources are not consulted):
- *
- *   1. Explicit process.env (user override) — both N8N_HOST and N8N_API_KEY
- *      already set. Respected as-is.
- *
- *   2. Eliza Cloud minted token. When `cloud.apiKey` is set and
- *      `cloud.enabled !== false`, mint a short-lived scoped n8n token via
- *      `POST {cloudBaseUrl}/api/v1/n8n/tokens` (auth: `Bearer <cloud.apiKey>`,
- *      body: `{ purpose: "milady-runtime" }`). The full Cloud key is NEVER
- *      passed through as `N8N_API_KEY`. The minted token is cached at
- *      `<stateDir>/n8n/cloud-token.json` and reused while it has more than
- *      60s of life remaining. See `docs/cloud/n8n-gateway-contract.md` (§4).
- *
- *      404 from the gateway endpoint → fall through to (3).
- *      401/403 from the gateway → log error, fall through to (3).
- *      Network/timeout → retried once, then fall through to (3).
- *
- *   3. Local sidecar. When not on a mobile platform, boot the local n8n
- *      sidecar via the app-core sidecar bridge and await readiness. The
- *      sidecar handles owner-setup → login → api-key minting itself; we
- *      just wait for it to land in `ready` and surface its host + apiKey.
- *      Mobile platforms skip this entirely (no child_process available).
- *
- *   4. Disabled. Leave env unset. The plugin's init() warns and the actions
- *      return a structured error to the caller.
- *
- * Called from startEliza() after applyCloudConfigToEnv so cloud settings
- * are already reflected in process.env.
- *
- * @internal Exported for testing.
- */
-export async function applyN8nConfigToEnv(
-  config: ElizaConfig,
-  _agentId: string,
-): Promise<void> {
-  // 1. Respect existing process.env overrides — the power-user path
-  //    (their own n8n on their own VPS).
-  if (process.env.N8N_HOST && process.env.N8N_API_KEY) return;
-
-  // Master gate — when config.n8n.enabled is false, do not pump anything.
-  if (config.n8n?.enabled === false) return;
-
-  // 2. Eliza Cloud minted token.
-  const cloud = config.cloud;
-  const cloudAuthed = Boolean(cloud?.apiKey) && cloud?.enabled !== false;
-  if (cloudAuthed && cloud?.apiKey) {
-    try {
-      const { resolveN8nCloudToken } = await import("./n8n-cloud-resolver.js");
-      const stateDir = resolveStateDir();
-      const resolved = await resolveN8nCloudToken(
-        cloud.apiKey,
-        cloud.baseUrl ?? "https://www.elizacloud.ai",
-        stateDir,
-      );
-      if (resolved) {
-        if (!process.env.N8N_HOST) process.env.N8N_HOST = resolved.host;
-        if (!process.env.N8N_API_KEY) {
-          process.env.N8N_API_KEY = resolved.apiKey;
-        }
-        return;
-      }
-    } catch (err) {
-      logger.warn(
-        `[N8nCloudResolver] resolver crashed, falling through to sidecar: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-    }
-    // Cloud failed but is configured — fall through to local sidecar
-    // (the autostart bridge will own ongoing lifecycle; we boot here only
-    // to populate env before the n8n plugin reads it).
-  }
-
-  // 2b. If the autostart bridge already populated config.n8n.host/apiKey
-  //     (e.g. on a hot-reload after the sidecar has been ready for a while),
-  //     prefer that over re-booting through the bridge.
-  const n8n = config.n8n;
-  if (n8n?.host && n8n?.apiKey) {
-    if (!process.env.N8N_HOST) process.env.N8N_HOST = n8n.host;
-    if (!process.env.N8N_API_KEY) process.env.N8N_API_KEY = n8n.apiKey;
-    return;
-  }
-
-  // 3. Local sidecar. Skip on mobile (no child_process).
-  if (isMobilePlatform()) {
-    logger.info("[N8nSidecar] Skipping (mobile platform)");
-    return;
-  }
-  if (n8n?.localEnabled === false) {
-    return;
-  }
-
-  try {
-    const { bootLocalN8nSidecar } = await import("./n8n-sidecar-bridge.js");
-    const booted = await bootLocalN8nSidecar({
-      enabled: true,
-      version: n8n?.version,
-      startPort: n8n?.startPort,
-    });
-    if (booted) {
-      if (!process.env.N8N_HOST) process.env.N8N_HOST = booted.host;
-      if (!process.env.N8N_API_KEY) process.env.N8N_API_KEY = booted.apiKey;
-      return;
-    }
-  } catch (err) {
-    logger.warn(
-      `[N8nSidecar] bridge crashed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
-
-  // 4. Fallback — leave unset. Legacy `config.env.vars` entries (N8N_HOST /
-  //    N8N_API_KEY) still flow through the generic env-var pump in startEliza.
 }
 
 function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
@@ -2708,14 +2661,20 @@ const LEVEL_TO_NAME: Record<number, string> = {
   60: "fatal",
 };
 
+type ChatLogEntry = LogEntry & {
+  roomId?: string;
+  runtime?: AgentRuntime & {
+    logLevelOverrides?: Map<string, string>;
+  };
+};
+
 export const logToChatListener = (entry: LogEntry) => {
-  if (entry.roomId && entry.runtime) {
-    const runtime = entry.runtime as unknown as AgentRuntime & {
-      logLevelOverrides?: Map<string, string>;
-    };
+  const chatEntry = entry as ChatLogEntry;
+  if (chatEntry.roomId && chatEntry.runtime) {
+    const runtime = chatEntry.runtime;
     // access dynamic property
     const overrides = runtime.logLevelOverrides;
-    const overrideLevel = overrides?.get(String(entry.roomId));
+    const overrideLevel = overrides?.get(String(chatEntry.roomId));
 
     if (overrideLevel) {
       const levelKey = entry.level as number;
@@ -2752,8 +2711,14 @@ export const logToChatListener = (entry: LogEntry) => {
 export async function startEliza(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
+  // Resolve and register baseline `@elizaos/plugin-*` modules into the
+  // STATIC_ELIZA_PLUGINS map BEFORE any plugin resolution happens. See the
+  // comment on `ensureCoreStaticPluginsRegistered()` for why this isn't a
+  // module-init top-level await.
+  await ensureCoreStaticPluginsRegistered();
+
   // Start buffering logs early so startup messages appear in the UI log viewer
-  const { captureEarlyLogs } = await import("../api/early-logs.js");
+  const { captureEarlyLogs } = await import("../api/early-logs.ts");
   captureEarlyLogs();
 
   // Register log listener for chat mirroring
@@ -2809,12 +2774,18 @@ export async function startEliza(
   // vault, then resolve any vault://KEY sentinels in `config.env` so the
   // legacy hydration loop below sees real values.
   {
-    const { runVaultBootstrap } = await import(
-      "@elizaos/app-core/services/vault-bootstrap"
-    );
-    const { sharedVault } = await import(
-      "@elizaos/app-core/services/vault-mirror"
-    );
+    try {
+      const { hydrateWalletKeysFromNodePlatformSecureStore } =
+        await importAppCoreRuntime();
+      await hydrateWalletKeysFromNodePlatformSecureStore();
+    } catch (err) {
+      logger.warn(
+        `[wallet][os-store] boot hydrate skipped: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    const { runVaultBootstrap } = await importAppCoreRuntime();
+    const { sharedVault } = await importAppCoreRuntime();
     const bootResult = await runVaultBootstrap();
     logger.info(
       `[vault-bootstrap] migrated=${bootResult.migrated} failed=${bootResult.failed.length}`,
@@ -2981,7 +2952,7 @@ export async function startEliza(
   // 2f. Install the multi-account pool shims and apply selected direct API
   //     accounts before plugin resolution snapshots process.env.
   try {
-    const accountPool = await import("@elizaos/app-core/account-pool");
+    const accountPool = await importAppCoreRuntime();
     accountPool.getDefaultAccountPool();
     await accountPool.applyAccountPoolApiCredentials({
       activeBackend: resolveServiceRoutingInConfig(
@@ -3006,7 +2977,7 @@ export async function startEliza(
   //     Config is NOT rolled back on failure; partial mutations may persist in
   //     the in-memory config but are not saved to disk until explicit save.
   try {
-    const { applySubscriptionCredentials } = await import("../auth/index.js");
+    const { applySubscriptionCredentials } = await import("../auth/index.ts");
     await applySubscriptionCredentials(config);
   } catch (err) {
     logger.warn(
@@ -3020,6 +2991,28 @@ export async function startEliza(
   const deploymentTarget = resolveDeploymentTargetInConfig(
     config as Record<string, unknown>,
   );
+
+  // 2h-pre. Store-variant build: macOS App Sandbox / MAS / MS Store / Flathub
+  // policy is incompatible with running an embedded local AgentRuntime, so
+  // store builds must route to Eliza Cloud. If the cloud config is missing,
+  // fail loudly and route the user to onboarding.
+  const { isStoreBuild } = await importAppCoreRuntime();
+  if (isStoreBuild()) {
+    if (deploymentTarget.runtime === "local") {
+      throw new Error(
+        "[eliza] Store-variant builds cannot run a local agent. " +
+          "Pair an Eliza Cloud account in onboarding, or switch to the direct download build.",
+      );
+    }
+    if (!config.cloud?.apiKey?.trim() || !config.cloud?.agentId?.trim()) {
+      throw new Error(
+        "[eliza] Store-variant build requires a paired Eliza Cloud account. " +
+          "Run onboarding to link Eliza Cloud, or switch to the direct download build.",
+      );
+    }
+    return startInCloudMode(config, config.cloud.agentId, opts);
+  }
+
   if (
     deploymentTarget.runtime === "cloud" &&
     deploymentTarget.provider === "elizacloud" &&
@@ -3028,17 +3021,6 @@ export async function startEliza(
   ) {
     return startInCloudMode(config, config.cloud.agentId, opts);
   }
-
-  // 2i. Pump N8N_HOST + N8N_API_KEY into process.env for
-  //     @elizaos/plugin-n8n-workflow. Must run BEFORE
-  //     buildCharacterFromConfig — that function snapshots
-  //     `process.env.N8N_*` into character.secrets, which is what
-  //     `runtime.getSetting()` reads. Setting env after the snapshot would
-  //     leave the plugin with empty credentials.
-  await applyN8nConfigToEnv(
-    config,
-    config.cloud?.agentId?.trim() ?? "milady-runtime",
-  );
 
   // 3. Build elizaOS Character from Eliza config
   const character = buildCharacterFromConfig(config);
@@ -3074,11 +3056,9 @@ export async function startEliza(
   // ELIZA_DISABLE_VAULT_PROFILE_RESOLVER=1.
   if (process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER !== "1") {
     try {
-      const { sharedVault } = await import(
-        "@elizaos/app-core/services/vault-mirror"
-      );
+      const { sharedVault } = await importAppCoreRuntime();
       const { applyVaultProfilesForAgent } = await import(
-        "./vault-profile-resolver.js"
+        "./vault-profile-resolver.ts"
       );
       await applyVaultProfilesForAgent(sharedVault(), agentId);
     } catch (err) {
@@ -3095,10 +3075,8 @@ export async function startEliza(
   // wallets are preserved. Opt-out via ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP=1.
   if (process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP !== "1") {
     try {
-      const { sharedVault } = await import(
-        "@elizaos/app-core/services/vault-mirror"
-      );
-      const { ensureAgentWallets } = await import("./agent-wallets.js");
+      const { sharedVault } = await importAppCoreRuntime();
+      const { ensureAgentWallets } = await import("./agent-wallets.ts");
       const descriptors = await ensureAgentWallets(
         sharedVault(),
         agentId,
@@ -3119,10 +3097,6 @@ export async function startEliza(
 
   // 5a. If cloud is configured and no local GitHub token, try fetching from cloud
   await autoFetchCloudGithubToken(config.cloud?.agentId?.trim() || agentId);
-
-  // 5b. (n8n env pump moved to step 2h, before buildCharacterFromConfig —
-  //     character.secrets is snapshotted from process.env at character-build
-  //     time, so the env must be populated before that runs.)
 
   const elizaPlugin = createElizaPlugin({
     workspaceDir,
@@ -3495,7 +3469,7 @@ export async function startEliza(
   if (process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
     try {
       const { ensureAospLocalInferenceHandlers } = await import(
-        "./aosp-local-inference-bootstrap.js"
+        "@elizaos/plugin-aosp-local-inference"
       );
       await ensureAospLocalInferenceHandlers(runtime);
     } catch (err) {
@@ -3506,7 +3480,7 @@ export async function startEliza(
   } else if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
     try {
       const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-        "./mobile-device-bridge-bootstrap.js"
+        "@elizaos/plugin-capacitor-bridge"
       );
       await ensureMobileDeviceBridgeInferenceHandlers(runtime);
     } catch (err) {
@@ -3697,7 +3671,7 @@ export async function startEliza(
     //     shared config/escalation/owner-contact helpers via runtime.getService().
     try {
       const { ConnectorSetupService } = await import(
-        "../services/connector-setup-service.js"
+        "../services/connector-setup-service.ts"
       );
       await runtime.registerService(ConnectorSetupService);
     } catch (err) {
@@ -3717,7 +3691,7 @@ export async function startEliza(
 
     // 8a. Apply legacy role redaction to protected plugin providers.
     try {
-      const { applyPluginRoleGating } = await import("./plugin-role-gating.js");
+      const { applyPluginRoleGating } = await import("./plugin-role-gating.ts");
       applyPluginRoleGating(runtime.plugins ?? []);
     } catch (err) {
       logger.debug(
@@ -3725,55 +3699,37 @@ export async function startEliza(
       );
     }
 
-    // 8b. Register lightweight conversation-proximity evaluator.
-    // Updates relationship strength when people post near each other in a room.
-    // No LLM calls — deterministic, runs on every message.
+    // 8b. Register conversation-proximity provider for post-turn evaluators.
+    // This is read-only context; relationship writes are handled by the
+    // evaluator service from model-extracted relationship updates.
     try {
-      const { updateProximityRelationships } = await import(
-        "../services/conversation-proximity.js"
+      const { conversationProximityProvider } = await import(
+        "../providers/conversation-proximity.ts"
       );
       await runtime.registerPlugin({
         name: "eliza-conversation-proximity",
         description:
-          "Lightweight relationship updates from conversation co-occurrence",
-        evaluators: [
-          {
-            name: "CONVERSATION_PROXIMITY",
-            description:
-              "Update relationship strength for co-participants in a room",
-            similes: [],
-            alwaysRun: true,
-            examples: [],
-            validate: async (_runtime, message) => {
-              // Run for any message with text from a real user (not the agent).
-              const text = (message.content as { text?: string })?.text;
-              return Boolean(text) && message.entityId !== _runtime.agentId;
-            },
-            handler: async (_runtime, message) => {
-              await updateProximityRelationships(_runtime, message);
-              return undefined;
-            },
-          },
-        ],
+          "Read-only co-participant context for post-turn evaluators",
+        providers: [conversationProximityProvider],
       });
-      logger.info("[eliza] ✓ conversation-proximity evaluator registered");
+      logger.info("[eliza] ✓ conversation-proximity provider registered");
     } catch (err) {
       logger.debug(
-        `[eliza] Conversation-proximity evaluator skipped: ${formatError(err)}`,
+        `[eliza] Conversation-proximity provider skipped: ${formatError(err)}`,
       );
     }
 
     try {
-      if (runtimeKnowledgeEnabled(runtime)) {
+      if (runtimeDocumentsEnabled(runtime)) {
         await seedBundledDocuments(runtime);
       } else {
         logger.info(
-          "[eliza] Native knowledge disabled; skipping bundled knowledge seeding",
+          "[eliza] Native documents disabled; skipping bundled document seeding",
         );
       }
     } catch (err) {
       logger.warn(
-        `[eliza] Failed to seed bundled knowledge: ${formatError(err)}`,
+        `[eliza] Failed to seed bundled documents: ${formatError(err)}`,
       );
     }
 
@@ -3790,7 +3746,7 @@ export async function startEliza(
 
     try {
       const { installAnthropicWebSearch } = await import(
-        "./web-search-tools.js"
+        "./web-search-tools.ts"
       );
       installAnthropicWebSearch(runtime);
     } catch (err) {
@@ -3819,9 +3775,9 @@ export async function startEliza(
       logger.info("[eliza] AutonomyService skipped — ENABLE_AUTONOMY=false");
     }
 
-    // Enable the autonomy loop so trigger/heartbeat instructions are
-    // actually processed. Without this, memories created by
-    // dispatchInstruction() sit in the DB and are never acted on.
+    // Enable the autonomy loop so memories injected into the autonomy
+    // room (e.g. by workflow nodes that post into autonomy) are actually
+    // processed by the agent's autonomous reasoning.
     if (autonomyEnabled) {
       const autonomySvc = getAutonomyService(runtime);
       if (autonomySvc) {
@@ -3934,7 +3890,7 @@ export async function startEliza(
   // desktop app, the API server is always available for the GUI admin
   // surface.
   try {
-    const { startApiServer } = await import("../api/server.js");
+    const { startApiServer } = await import("../api/server.ts");
     const apiPort = resolveServerOnlyPort(process.env);
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,
@@ -3994,16 +3950,12 @@ export async function startEliza(
           applyCloudConfigToEnv(freshConfig);
           applyX402ConfigToEnv(freshConfig);
           applyDatabaseConfigToEnv(freshConfig);
-          await applyN8nConfigToEnv(
-            freshConfig,
-            freshConfig.cloud?.agentId?.trim() || agentId,
-          );
           await autoFetchCloudGithubToken(
             freshConfig.cloud?.agentId?.trim() || agentId,
           );
 
           try {
-            const accountPool = await import("@elizaos/app-core/account-pool");
+            const accountPool = await importAppCoreRuntime();
             accountPool.getDefaultAccountPool();
             await accountPool.applyAccountPoolApiCredentials({
               activeBackend: resolveServiceRoutingInConfig(
@@ -4029,7 +3981,7 @@ export async function startEliza(
           // that may have been set up during onboarding.
           try {
             const { applySubscriptionCredentials } = await import(
-              "../auth/index.js"
+              "../auth/index.ts"
             );
             await applySubscriptionCredentials(freshConfig);
           } catch (subErr) {
@@ -4151,7 +4103,7 @@ export async function startEliza(
           assertPersistentDatabaseRequired(newRuntime);
           try {
             const { ConnectorSetupService: CSSReload } = await import(
-              "../services/connector-setup-service.js"
+              "../services/connector-setup-service.ts"
             );
             await newRuntime.registerService(CSSReload);
           } catch {
@@ -4174,7 +4126,7 @@ export async function startEliza(
 
           try {
             const { applyPluginRoleGating } = await import(
-              "./plugin-role-gating.js"
+              "./plugin-role-gating.ts"
             );
             applyPluginRoleGating(newRuntime.plugins ?? []);
           } catch (err) {
@@ -4454,12 +4406,22 @@ export async function startEliza(
  * Start in cloud mode — connect to a remote cloud agent via the thin client.
  * Skips all local runtime construction (plugins, database, etc.).
  */
+type CloudRuntimeProxyLike = {
+  agentName: string;
+  handleChatMessageStream: (text: string) => AsyncIterable<string>;
+  handleChatMessage: (text: string) => Promise<string>;
+};
+
 export async function startInCloudMode(
   config: ElizaConfig,
   agentId: string,
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
-  const { CloudManager } = await import("../cloud/cloud-manager.js");
+  // Cloud mode does not run a local AgentRuntime, but the registry must still
+  // be populated for any code path that touches `STATIC_ELIZA_PLUGINS` while
+  // the cloud proxy is active.
+  await ensureCoreStaticPluginsRegistered();
+  const { CloudManager } = await import("@elizaos/plugin-elizacloud");
 
   const cloudConfig = config.cloud;
   if (!cloudConfig) {
@@ -4472,14 +4434,14 @@ export async function startInCloudMode(
   );
 
   const manager = new CloudManager(cloudConfig, {
-    onStatusChange: (status) => {
+    onStatusChange: (status: string) => {
       logger.info(`[eliza] Cloud connection: ${status}`);
     },
   });
 
   try {
     await manager.init();
-    const proxy = await manager.connect(agentId);
+    const proxy = (await manager.connect(agentId)) as CloudRuntimeProxyLike;
 
     if (opts?.headless || opts?.serverOnly) {
       // In headless/server mode, start the API server with the cloud proxy.

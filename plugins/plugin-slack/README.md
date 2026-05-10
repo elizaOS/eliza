@@ -121,19 +121,21 @@ const agent = {
 
 ## Actions
 
-| Action | Description |
-|--------|-------------|
-| `SLACK_SEND_MESSAGE` | Send a message to a channel or thread |
-| `SLACK_REACT_TO_MESSAGE` | Add or remove emoji reactions |
-| `SLACK_READ_CHANNEL` | Read message history from a channel |
-| `SLACK_EDIT_MESSAGE` | Edit an existing message |
-| `SLACK_DELETE_MESSAGE` | Delete a message |
-| `SLACK_PIN_MESSAGE` | Pin a message to a channel |
-| `SLACK_UNPIN_MESSAGE` | Unpin a message from a channel |
-| `SLACK_LIST_PINS` | List pinned messages in a channel |
-| `SLACK_LIST_CHANNELS` | List available channels |
-| `SLACK_GET_USER_INFO` | Get information about a user |
-| `SLACK_EMOJI_LIST` | List custom emoji in the workspace |
+Slack messaging is exposed through the canonical message connector actions. Use
+`source: "slack"` when a request needs to target Slack explicitly.
+
+| Primary action | Operation | Description |
+|----------------|-----------|-------------|
+| `MESSAGE` | `send` | Send a message to a channel, DM, or thread |
+| `MESSAGE` | `read` | Read recent message history from a channel, DM, or thread |
+| `MESSAGE` | `search` | Search Slack message history |
+| `MESSAGE` | `list_channels` | List available channels |
+| `MESSAGE` | `list_servers` | List connected Slack workspaces |
+| `MESSAGE` | `react` | Add or remove emoji reactions |
+| `MESSAGE` | `edit` | Edit an existing message |
+| `MESSAGE` | `delete` | Delete a message |
+| `MESSAGE` | `pin` | Pin or unpin a message |
+| `MESSAGE` | `get_user` | Get information about a user |
 
 ## Providers
 

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-anthropic",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -32,26 +32,36 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "tool-use"
+      ]
+    }
+  },
   "sideEffects": false,
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.9",
     "ai": "^6.0.23",
-    "jsonrepair": "^3.12.0",
-    "undici": "^8.0.0"
+    "jsonrepair": "^3.12.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "@types/bun": "^1.3.9",
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -87,7 +97,7 @@
         "type": "string",
         "description": "Override the default Anthropic large model identifier used by the plugin",
         "required": false,
-        "default": "claude-sonnet-4-6",
+        "default": "claude-opus-4-7",
         "sensitive": false
       },
       "ANTHROPIC_EXPERIMENTAL_TELEMETRY": {
@@ -118,6 +128,6 @@
     }
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   }
 }

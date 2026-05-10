@@ -160,7 +160,7 @@ const llmPlugin: Plugin = {
 
 ### Adding Bootstrap Actions
 
-The bootstrap plugin (actions, providers, evaluators, services) is now automatically included in the elizaOS core runtime. No need to manually import or configure it - it's built-in and auto-registered during initialization.
+The bootstrap plugin (actions, providers, services) is now automatically included in the elizaOS core runtime. No need to manually import or configure it - it's built-in and auto-registered during initialization.
 
 ## About Classic ELIZA
 

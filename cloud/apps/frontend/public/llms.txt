@@ -23,22 +23,22 @@ llms-full.txt: https://elizacloud.ai/.well-known/llms-full.txt
   https://elizacloud.ai/docs/api/agents
 - API Keys — Manage API keys for elizaOS Cloud.
   https://elizacloud.ai/docs/api/api-keys
-- Apps — Create and manage applications on elizaOS Cloud.
+- Apps — Register, update, monetize, and route chat through Eliza Cloud apps.
   https://elizacloud.ai/docs/api/apps
 - Chat Completions — OpenAI-compatible chat completions API with streaming support for elizaOS Cloud.
   https://elizacloud.ai/docs/api/chat
-- Containers — Deploy and manage containers on elizaOS Cloud.
+- Containers — Deploy and manage containers on Eliza Cloud.
   https://elizacloud.ai/docs/api/containers
 - Credits & Billing — Manage credits and billing on elizaOS Cloud.
   https://elizacloud.ai/docs/api/credits
+- Knowledge — Upload and query documents for RAG on elizaOS Cloud.
+  https://elizacloud.ai/docs/api/documents
 - Embeddings — Generate vector embeddings for text using elizaOS Cloud embedding API.
   https://elizacloud.ai/docs/api/embeddings
 - Gallery — Store and manage generated media on elizaOS Cloud.
   https://elizacloud.ai/docs/api/gallery
 - Image Generation — Generate images from text prompts using elizaOS Cloud.
   https://elizacloud.ai/docs/api/images
-- Knowledge — Upload and query documents for RAG on elizaOS Cloud.
-  https://elizacloud.ai/docs/api/knowledge
 - MCPs — Model Context Protocol servers on elizaOS Cloud.
   https://elizacloud.ai/docs/api/mcps
 - Messages — Anthropic Messages API-compatible endpoint for Claude Code and Anthropic SDK clients.
@@ -47,7 +47,7 @@ llms-full.txt: https://elizacloud.ai/.well-known/llms-full.txt
   https://elizacloud.ai/docs/api/models
 - API Explorer — Browse every public Cloud API route (mostly under /api/v1) with a full left-side explorer and OpenAPI-friendly paths.
   https://elizacloud.ai/docs/api/overview
-- Redemptions — Redeem earnings on elizaOS Cloud.
+- Redemptions — Redeem earnings for elizaOS tokens.
   https://elizacloud.ai/docs/api/redemptions
 - Video Generation — Generate videos from text prompts using elizaOS Cloud.
   https://elizacloud.ai/docs/api/video
@@ -55,7 +55,7 @@ llms-full.txt: https://elizacloud.ai/.well-known/llms-full.txt
   https://elizacloud.ai/docs/api/voice
 - App Domains — Configure custom domains for your multi-tenant applications on elizaOS Cloud. Add wildcard subdomains and bring your own custom domains.
   https://elizacloud.ai/docs/app-domains
-- Apps — Create and manage applications on elizaOS Cloud. Build integrations with your agents and APIs.
+- Apps — Create and manage Eliza Cloud apps for hosting, chat routing, domains, analytics, and monetization.
   https://elizacloud.ai/docs/apps
 - Authentication — Learn how to authenticate with elizaOS Cloud APIs using API keys, session tokens, wallet signatures (SIWE and per-request), and x402 payments.
   https://elizacloud.ai/docs/authentication
@@ -67,31 +67,33 @@ llms-full.txt: https://elizacloud.ai/.well-known/llms-full.txt
   https://elizacloud.ai/docs/changelog
 - Character JSON — Complete reference for elizaOS character JSON configuration. Define agent personality, behavior, and settings.
   https://elizacloud.ai/docs/character-json
-- Containers — Deploy custom Docker containers on elizaOS Cloud with managed infrastructure and auto-scaling.
+- Containers — Deploy custom Docker containers on Eliza Cloud.
   https://elizacloud.ai/docs/containers
-- Earnings — Monetize your agents and apps on elizaOS Cloud. Earn from usage and marketplace listings.
+- Knowledge Base — Add documents to your agents' knowledge base for RAG-powered responses on elizaOS Cloud.
+  https://elizacloud.ai/docs/documents
+- Earnings — Track creator earnings and redeem them for elizaOS tokens.
   https://elizacloud.ai/docs/earnings
 - Error Handling — Understand elizaOS Cloud API errors and how to handle them gracefully in your applications.
   https://elizacloud.ai/docs/errors
 - Gallery — Manage your generated images and videos in the elizaOS Cloud Gallery.
   https://elizacloud.ai/docs/gallery
-- Image Generation — Generate images with AI on elizaOS Cloud using Google Gemini, OpenAI, and other models.
+- Image Generation — Generate images with AI on elizaOS Cloud using the configured image model catalog.
   https://elizacloud.ai/docs/image-generation
-- Installation — Install the elizaOS SDK and CLI tools for local development.
+- Installation — Install the elizaOS SDK and scaffolding CLI for local development.
   https://elizacloud.ai/docs/installation
-- Knowledge Base — Add documents to your agents' knowledge base for RAG-powered responses on elizaOS Cloud.
-  https://elizacloud.ai/docs/knowledge
 - MCP Protocol — Model Context Protocol implementation on elizaOS Cloud. Connect tools and resources to AI models.
   https://elizacloud.ai/docs/mcp
 - MCP Integration — Connect Model Context Protocol (MCP) servers to your agents on elizaOS Cloud for extended capabilities.
   https://elizacloud.ai/docs/mcps
+- Monetized Apps — Create, deploy, and monetize Eliza Cloud apps.
+  https://elizacloud.ai/docs/monetized-apps
 - Quickstart — Get started with elizaOS Cloud in 5 minutes. Deploy your first AI agent and start building.
   https://elizacloud.ai/docs/quickstart
 - Rate Limits — Understand rate limiting on elizaOS Cloud APIs and how to handle rate limit errors.
   https://elizacloud.ai/docs/rate-limits
 - SDKs & Libraries — Official and community SDKs for integrating with elizaOS Cloud in your preferred language.
   https://elizacloud.ai/docs/sdks
-- Video Generation — Generate AI videos from text prompts on elizaOS Cloud using Google Veo, Kling, and MiniMax video models.
+- Video Generation — Generate AI videos from text prompts on elizaOS Cloud using the configured video model catalog.
   https://elizacloud.ai/docs/video-generation
 - Voice Cloning — Clone voices and generate speech with ElevenLabs integration on elizaOS Cloud.
   https://elizacloud.ai/docs/voice-cloning

@@ -803,31 +803,31 @@ describeIf(LIVE_CHAT_SUITE_ENABLED)(
     );
 
     it(
-      "routes sender-style Gmail searches toward TRIAGE_MESSAGES across name and address variants",
+      "routes sender-style Gmail searches toward MESSAGE across name and address variants",
       async () => {
         const liveRuntime = requireStartedRuntime(runtime);
         const cases = [
           {
-            userRequest: "find the email from suran",
-            requiredFragments: ["triage_messages", "suran"],
+            userRequest: "find the email from pat",
+            requiredFragments: ["triage_messages", "pat"],
           },
           {
-            userRequest: "look for any email from suran@example.com",
-            requiredFragments: ["triage_messages", "suran@example.com"],
+            userRequest: "look for any email from pat@example.com",
+            requiredFragments: ["triage_messages", "pat@example.com"],
           },
           {
-            userRequest: "search my inbox for messages from Suran Lee",
-            requiredFragments: ["triage_messages", "suran lee"],
-          },
-          {
-            userRequest:
-              "can you search my email and tell me if anyone named suran emailed me",
-            requiredFragments: ["triage_messages", "suran"],
+            userRequest: "search my inbox for messages from Pat Smith",
+            requiredFragments: ["triage_messages", "pat smith"],
           },
           {
             userRequest:
-              "look for all emails sent to me from suran in the last few weeks",
-            requiredFragments: ["triage_messages", "suran"],
+              "can you search my email and tell me if anyone named pat emailed me",
+            requiredFragments: ["triage_messages", "pat"],
+          },
+          {
+            userRequest:
+              "look for all emails sent to me from pat in the last few weeks",
+            requiredFragments: ["triage_messages", "pat"],
           },
           {
             userRequest: "show all unread emails from alex@example.com",
@@ -877,7 +877,7 @@ describeIf(LIVE_CHAT_SUITE_ENABLED)(
     );
 
     it(
-      "routes broad Gmail filters toward TRIAGE_MESSAGES and preserves the key search terms",
+      "routes broad Gmail filters toward MESSAGE and preserves the key search terms",
       async () => {
         const liveRuntime = requireStartedRuntime(runtime);
         const cases = [

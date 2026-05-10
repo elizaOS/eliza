@@ -194,6 +194,41 @@ export class BlueSkyClient {
 		};
 	}
 
+	async searchPosts(params: {
+		query: string;
+		limit?: number;
+		cursor?: string;
+	}): Promise<{ posts: BlueSkyPost[]; cursor?: string }> {
+		const api = this.agent as {
+			app: {
+				bsky: {
+					feed: {
+						searchPosts: (params: {
+							q: string;
+							limit?: number;
+							cursor?: string;
+						}) => Promise<{
+							data: {
+								posts: AppBskyFeedDefs.PostView[];
+								cursor?: string;
+							};
+						}>;
+					};
+				};
+			};
+		};
+		const response = await api.app.bsky.feed.searchPosts({
+			q: params.query,
+			limit: params.limit ?? 25,
+			cursor: params.cursor,
+		});
+
+		return {
+			posts: response.data.posts.map(adaptPostView),
+			cursor: response.data.cursor,
+		};
+	}
+
 	async sendPost(request: CreatePostRequest): Promise<BlueSkyPost> {
 		if (this.config.dryRun) {
 			logger.info(

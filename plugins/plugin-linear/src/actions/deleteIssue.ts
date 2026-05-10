@@ -10,9 +10,10 @@ import {
   requireConfirmation,
   type State,
 } from "@elizaos/core";
-import { deleteIssueTemplate } from "../generated/prompts/typescript/prompts.js";
+import { deleteIssueTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { DeleteIssueParameters } from "../types/index.js";
+import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import { getStringValue, parseLinearPromptResponse } from "./parseLinearPrompt.js";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
@@ -33,6 +34,7 @@ export const deleteIssueAction: Action = {
       required: false,
       schema: { type: "string" },
     },
+    linearAccountIdParameter,
   ],
   similes: [
     "delete-linear-issue",
@@ -107,6 +109,7 @@ export const deleteIssueAction: Action = {
       if (!linearService) {
         throw new Error("Linear service not available");
       }
+      const accountId = getLinearAccountId(runtime, _options);
 
       const content = message.content.text;
       if (!content) {
@@ -175,7 +178,7 @@ export const deleteIssueAction: Action = {
         }
       }
 
-      const issue = await linearService.getIssue(issueId);
+      const issue = await linearService.getIssue(issueId, accountId);
       const issueTitle = issue.title.slice(0, LINEAR_ISSUE_TITLE_MAX_CHARS);
       const issueIdentifier = issue.identifier;
 
@@ -208,7 +211,7 @@ export const deleteIssueAction: Action = {
 
       logger.info(`Archiving issue ${issueIdentifier}: ${issueTitle}`);
 
-      await linearService.deleteIssue(issueId);
+      await linearService.deleteIssue(issueId, accountId);
 
       const successMessage = `✅ Successfully archived issue ${issueIdentifier}: "${issueTitle}"\n\nThe issue has been moved to the archived state and will no longer appear in active views.`;
       await callback?.({
@@ -224,6 +227,7 @@ export const deleteIssueAction: Action = {
           identifier: issueIdentifier,
           title: issueTitle,
           archived: true,
+          accountId,
         },
       };
     } catch (error) {

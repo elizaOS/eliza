@@ -12,10 +12,14 @@ import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { createFeatureFlagService } from "../lifeops/feature-flags.js";
 import {
   ALL_FEATURE_KEYS,
-  BASE_FEATURE_DEFAULTS,
-  isLifeOpsFeatureKey,
-  type LifeOpsFeatureKey,
+  type LifeOpsFeatureFlagKey,
 } from "../lifeops/feature-flags.types.js";
+import {
+  type FeatureFlagContribution,
+  type FeatureFlagRegistry,
+  getFeatureFlagRegistry,
+  UnknownFeatureFlagError,
+} from "../lifeops/registries/feature-flag-registry.js";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { formatPromptSection } from "./lib/prompt-format.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
@@ -29,7 +33,7 @@ interface ToggleParameters {
 }
 
 interface ExtractedToggle {
-  featureKey: LifeOpsFeatureKey | null;
+  featureKey: LifeOpsFeatureFlagKey | null;
   enabled: boolean | null;
   reason: string | null;
 }
@@ -49,24 +53,34 @@ function trimToNull(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function buildFeatureCatalog(): string {
-  return ALL_FEATURE_KEYS.map((key) => {
-    const def = BASE_FEATURE_DEFAULTS[key];
-    return `- ${key}: ${def.description}${def.costsMoney ? " (costs money)" : ""}`;
-  }).join("\n");
+function buildFeatureCatalog(registry: FeatureFlagRegistry): string {
+  return registry
+    .list()
+    .map((c) => {
+      const costsMoney = c.metadata?.costsMoney === "true";
+      return `- ${c.key}: ${c.description}${costsMoney ? " (costs money)" : ""}`;
+    })
+    .join("\n");
+}
+
+function pickFeatureKeyFromInput(
+  registry: FeatureFlagRegistry,
+  raw: unknown,
+): LifeOpsFeatureFlagKey | null {
+  if (typeof raw !== "string") return null;
+  return registry.has(raw) ? raw : null;
 }
 
 async function extractToggleWithLlm(args: {
   runtime: IAgentRuntime;
+  registry: FeatureFlagRegistry;
   message: Memory;
   state: State | undefined;
   params: ToggleParameters;
 }): Promise<ExtractedToggle> {
   if (typeof args.runtime.useModel !== "function") {
     return {
-      featureKey: isLifeOpsFeatureKey(args.params.featureKey)
-        ? args.params.featureKey
-        : null,
+      featureKey: pickFeatureKeyFromInput(args.registry, args.params.featureKey),
       enabled:
         typeof args.params.enabled === "boolean" ? args.params.enabled : null,
       reason: trimToNull(args.params.reason),
@@ -91,7 +105,7 @@ async function extractToggleWithLlm(args: {
     'Example: {"featureKey":"browser.automation","enabled":false,"reason":"wants manual control"}',
     "",
     "Allowed featureKey values (use null when no good match):",
-    buildFeatureCatalog(),
+    buildFeatureCatalog(args.registry),
     "",
     "Rules:",
     "- featureKey must be exactly one of the allowed values, or null.",
@@ -114,8 +128,7 @@ async function extractToggleWithLlm(args: {
   const rawText = typeof raw === "string" ? raw : "";
   const parsed = parseJsonModelRecord<Record<string, unknown>>(rawText);
 
-  const featureKeyRaw = parsed?.featureKey;
-  const featureKey = isLifeOpsFeatureKey(featureKeyRaw) ? featureKeyRaw : null;
+  const featureKey = pickFeatureKeyFromInput(args.registry, parsed?.featureKey);
   const enabled =
     typeof parsed?.enabled === "boolean"
       ? parsed.enabled
@@ -131,19 +144,19 @@ async function extractToggleWithLlm(args: {
 }
 
 function buildConfirmation(
-  key: LifeOpsFeatureKey,
+  contribution: FeatureFlagContribution,
   enabled: boolean,
   source: string,
   reason: string | null,
 ): string {
-  const def = BASE_FEATURE_DEFAULTS[key];
+  const costsMoney = contribution.metadata?.costsMoney === "true";
   const verb = enabled ? "Enabled" : "Disabled";
   const tail = reason ? ` (${reason})` : "";
   const cost =
-    def.costsMoney && enabled
+    costsMoney && enabled
       ? " Heads up: this feature can cost money — every action still requires explicit approval."
       : "";
-  return `${verb} '${key}' (${source}). ${def.description}${tail}.${cost}`;
+  return `${verb} '${contribution.key}' (${source}). ${contribution.description}${tail}.${cost}`;
 }
 
 export const toggleFeatureAction: Action = {
@@ -157,10 +170,14 @@ export const toggleFeatureAction: Action = {
     "OPT_OUT",
   ],
   description:
-    "Owner-only: enable or disable a LifeOps capability (flight booking, push notifications, browser automation, escalation, etc.). " +
-    "The set of feature keys is closed — do not invent new ones.",
+    "Enable or disable a registered LifeOps capability (flight booking, push notifications, browser automation, escalation, etc.). Subactions: enable, disable. Only keys registered in the FeatureFlagRegistry are accepted.",
   descriptionCompressed:
-    "toggle LifeOps feature flight-booking push-notifs browser-automation escalation: enable | disable; closed feature key set",
+    "enable|disable LifeOps feature flag; registry-driven keys (flight-booking, push-notifs, browser-automation, escalation)",
+  tags: [
+    "domain:meta",
+    "capability:update",
+    "surface:internal",
+  ],
   contexts: ["settings", "automation", "connectors"],
   roleGate: { minRole: "OWNER" },
   validate: async () => true,
@@ -171,9 +188,23 @@ export const toggleFeatureAction: Action = {
     options,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
+    const registry = getFeatureFlagRegistry(runtime);
+    if (!registry) {
+      const text =
+        "Feature flag registry is not initialized. Restart the LifeOps plugin and try again.";
+      await callback?.({ text });
+      return {
+        text,
+        success: false,
+        values: { success: false, error: "REGISTRY_NOT_INITIALIZED" },
+        data: { actionName: ACTION_NAME, error: "REGISTRY_NOT_INITIALIZED" },
+      };
+    }
+
     const params = getParams(options as HandlerOptions | undefined);
     const extracted = await extractToggleWithLlm({
       runtime,
+      registry,
       message,
       state,
       params,
@@ -182,9 +213,10 @@ export const toggleFeatureAction: Action = {
     const featureKey = extracted.featureKey;
     const enabled = extracted.enabled;
     if (!featureKey || enabled === null) {
+      const knownKeys = registry.list().map((c) => c.key);
       const text =
         "I could not match your request to a LifeOps feature. Available keys: " +
-        ALL_FEATURE_KEYS.join(", ") +
+        knownKeys.join(", ") +
         ". Tell me which one to enable or disable.";
       await callback?.({ text });
       return {
@@ -195,6 +227,20 @@ export const toggleFeatureAction: Action = {
       };
     }
 
+    if (!registry.has(featureKey)) {
+      throw new UnknownFeatureFlagError(
+        featureKey,
+        registry.list().map((c) => c.key),
+      );
+    }
+    const contribution = registry.get(featureKey);
+    if (!contribution) {
+      throw new UnknownFeatureFlagError(
+        featureKey,
+        registry.list().map((c) => c.key),
+      );
+    }
+
     const service = createFeatureFlagService(runtime);
     const subjectUserId =
       typeof message.entityId === "string" ? message.entityId : null;
@@ -203,7 +249,7 @@ export const toggleFeatureAction: Action = {
       : await service.disable(featureKey, "local", subjectUserId);
 
     const text = buildConfirmation(
-      featureKey,
+      contribution,
       next.enabled,
       next.source,
       extracted.reason,
@@ -231,19 +277,26 @@ export const toggleFeatureAction: Action = {
   parameters: [
     {
       name: "featureKey",
-      description: `LifeOps feature key. One of: ${ALL_FEATURE_KEYS.join(", ")}.`,
+      description:
+        "LifeOps feature key. Must be a key registered in the FeatureFlagRegistry " +
+        "(see GET /api/lifeops/dev/registries → featureFlags for the live list). Common keys include travel.book_flight, browser.automation, push.notifications, escalation.enabled.",
+      descriptionCompressed:
+        "feature key (registry-driven) e.g. travel.book_flight|browser.automation|push.notifications",
       required: false,
       schema: { type: "string" as const, enum: [...ALL_FEATURE_KEYS] },
+      examples: ["travel.book_flight", "browser.automation"],
     },
     {
       name: "enabled",
       description: "True to enable, false to disable.",
+      descriptionCompressed: "true=enable false=disable",
       required: false,
       schema: { type: "boolean" as const },
     },
     {
       name: "reason",
       description: "Optional short reason captured for the audit log.",
+      descriptionCompressed: "audit reason short",
       required: false,
       schema: { type: "string" as const },
     },

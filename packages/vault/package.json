@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/vault",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Simple secrets/config vault for Eliza agents. One API for sensitive credentials and non-sensitive configuration; routes to OS keychain, file, or password manager based on the user's choice.",
   "type": "module",
   "license": "MIT",
@@ -19,20 +19,19 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
   "exports": {
-    ".": "./src/index.ts",
-    "./testing": "./src/testing.ts",
+    ".": "./dist/index.js",
     "./package.json": "./package.json"
   },
   "scripts": {
     "clean": "rm -rf dist",
     "prepublishOnly": "bun run build",
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/vault",
+    "build": "node ../../scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/vault",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json"
@@ -43,7 +42,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.0",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "publishConfig": {

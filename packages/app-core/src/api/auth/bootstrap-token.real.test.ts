@@ -49,6 +49,13 @@ interface Harness {
 const ISSUER = "https://cloud.test.example";
 const CONTAINER_ID = "container-test-123";
 
+function asJoseKeyObject(key: unknown): KeyObject {
+  if (!key || typeof key !== "object") {
+    throw new Error("Expected jose to return a KeyObject");
+  }
+  return key as KeyObject;
+}
+
 function jwksJson(keys: JWK[]): string {
   return JSON.stringify({ keys });
 }
@@ -63,7 +70,7 @@ async function open(): Promise<Harness> {
   const adapter = createDatabaseAdapter(
     { dataDir },
     "00000000-0000-0000-0000-000000000007" as `${string}-${string}-${string}-${string}-${string}`,
-  ) as unknown as AdapterWithDb;
+  ) as AdapterWithDb;
   await adapter.initialize?.();
   if (!adapter.db) throw new Error("test harness: adapter has no .db");
   const db = adapter.db as DrizzleDatabase;
@@ -98,9 +105,9 @@ async function open(): Promise<Harness> {
 
   return {
     store,
-    privateKey: real.privateKey as unknown as KeyObject,
+    privateKey: asJoseKeyObject(real.privateKey),
     publicJwk,
-    attackerPrivateKey: attacker.privateKey as unknown as KeyObject,
+    attackerPrivateKey: asJoseKeyObject(attacker.privateKey),
     attackerPublicJwk,
     hsSecret,
     stateDir,
@@ -292,9 +299,9 @@ describe("verifyBootstrapToken — adversarial cases", () => {
   });
 
   it("fails closed when the JWKS endpoint is unreachable", async () => {
-    const failingFetch: typeof fetch = (async () => {
+    const failingFetch = (async () => {
       throw new Error("network down");
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
     const token = await sign({ privateKey: harness.privateKey });
     const result = await verifyBootstrapToken(token, {
       env: envFor(harness),

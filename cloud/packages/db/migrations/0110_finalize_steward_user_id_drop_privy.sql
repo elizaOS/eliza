@@ -83,6 +83,25 @@ BEGIN
   END IF;
 END $$;
 
+-- A.1 Backfill: assign a synthetic steward_user_id to any rows still NULL.
+--     The defensive precondition above only guards *active human* accounts
+--     because steward-sync.ts only re-links users that hit the auth flow.
+--     Rows that bypass the flow are:
+--       - System rows inserted by other migrations (e.g. the Warm Pool
+--         sentinel user from 0107_warm_pool_columns.sql).
+--       - Inactive / anonymous / affiliate placeholder users that the
+--         backfill explicitly excluded.
+--     The synthetic value is 'system::<users.id>' / 'system::<user_identities.id>'.
+--     It satisfies the UNIQUE constraint, sorts cleanly in audits, and is
+--     trivially distinguishable from a real Steward id.
+UPDATE "users"
+SET "steward_user_id" = 'system::' || "id"::text
+WHERE "steward_user_id" IS NULL;
+
+UPDATE "user_identities"
+SET "steward_user_id" = 'system::' || "id"::text
+WHERE "steward_user_id" IS NULL;
+
 -- B. Promote steward_user_id to NOT NULL.
 --
 -- B.1 users — use NOT VALID + VALIDATE to avoid a table-blocking scan

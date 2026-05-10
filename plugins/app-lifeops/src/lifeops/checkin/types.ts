@@ -84,17 +84,14 @@ export interface CheckinCollectorErrors {
  * `runNightCheckin`. Always optional — the morning path does not surface
  * sleep stats today, and the night path falls back gracefully when the
  * baseline has fewer than 5 episodes (`baseline === null`).
+ *
+ * Moved to `@elizaos/plugin-health` in Wave-1 (W1-B). Re-exported here for
+ * backward compatibility with the existing `from "./types.js"` importers,
+ * and brought into local scope for downstream `SleepRecap | null` usages
+ * inside this file.
  */
-export interface SleepRecap {
-  /** Local bedtime hour in [12, 36) (next-day-normalized). Null when baseline insufficient. */
-  readonly medianBedtimeLocalHour: number | null;
-  /** Median sleep episode duration in minutes. Null when baseline insufficient. */
-  readonly medianSleepDurationMin: number | null;
-  /** Sleep regularity index in [0, 100]. */
-  readonly sri: number;
-  /** Classification bucket from `classifyRegularity`. */
-  readonly regularityClass: LifeOpsRegularityClass;
-}
+import type { SleepRecap } from "@elizaos/plugin-health";
+export type { SleepRecap };
 
 export interface CheckinReport {
   readonly reportId: string;

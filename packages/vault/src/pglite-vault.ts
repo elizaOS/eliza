@@ -1,23 +1,22 @@
+import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { promises as fs } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
+import { AuditLog } from "./audit.js";
 import { decrypt, encrypt } from "./crypto.js";
 import { assertKey, optsCaller } from "./internal-utils.js";
 import type { MasterKeyResolver } from "./master-key.js";
 import { resolveReference } from "./password-managers.js";
-import { AuditLog } from "./audit.js";
 import { emptyStore, readStore, type StoreData } from "./store.js";
-import type { Vault, SetOptions } from "./vault.js";
-import { VaultMissError } from "./vault.js";
 import type {
-  AuditRecord,
   PasswordManagerReference,
   StoredEntry,
   VaultDescriptor,
   VaultLogger,
   VaultStats,
 } from "./types.js";
+import type { SetOptions, Vault } from "./vault-types.js";
+import { VaultMissError } from "./vault-types.js";
 
 /**
  * PGlite-backed Vault implementation.
@@ -51,6 +50,8 @@ const SCHEMA_SETUP = `
   );
   CREATE INDEX IF NOT EXISTS idx_vault_entries_kind ON vault_entries(kind);
 `;
+
+const MIGRATION_SENTINEL_KEY = "_migrated_from_file_v1";
 
 interface EntryRow {
   key: string;
@@ -190,7 +191,8 @@ export class PgliteVaultImpl implements Vault {
     const db = await this.db();
     if (!prefix) {
       const res = await db.query<{ key: string }>(
-        `SELECT key FROM vault_entries ORDER BY key`,
+        `SELECT key FROM vault_entries WHERE key <> $1 ORDER BY key`,
+        [MIGRATION_SENTINEL_KEY],
       );
       return res.rows.map((r) => r.key);
     }
@@ -203,8 +205,10 @@ export class PgliteVaultImpl implements Vault {
     // `ELIZAOSXCLOUD.foo`. Use an explicit ESCAPE clause.
     const escapedPrefix = prefix.replace(/[\\%_]/g, "\\$&");
     const res = await db.query<{ key: string }>(
-      `SELECT key FROM vault_entries WHERE key = $1 OR key LIKE $2 ESCAPE '\\' ORDER BY key`,
-      [prefix, `${escapedPrefix}.%`],
+      `SELECT key FROM vault_entries
+       WHERE key <> $3 AND (key = $1 OR key LIKE $2 ESCAPE '\\')
+       ORDER BY key`,
+      [prefix, `${escapedPrefix}.%`, MIGRATION_SENTINEL_KEY],
     );
     return res.rows.map((r) => r.key);
   }
@@ -242,7 +246,11 @@ export class PgliteVaultImpl implements Vault {
   async stats(): Promise<VaultStats> {
     const db = await this.db();
     const res = await db.query<{ kind: string; n: string | number }>(
-      `SELECT kind, COUNT(*) AS n FROM vault_entries GROUP BY kind`,
+      `SELECT kind, COUNT(*) AS n
+         FROM vault_entries
+        WHERE key <> $1
+        GROUP BY kind`,
+      [MIGRATION_SENTINEL_KEY],
     );
     let sensitive = 0;
     let nonSensitive = 0;
@@ -385,9 +393,10 @@ export class PgliteVaultImpl implements Vault {
       }
       await tx.query(
         `INSERT INTO vault_entries (key, kind, value, last_modified)
-         VALUES ('_migrated_from_file_v1', 'value', $1, $2)
+         VALUES ($1, 'value', $2, $3)
          ON CONFLICT (key) DO NOTHING`,
         [
+          MIGRATION_SENTINEL_KEY,
           JSON.stringify({ at: new Date().toISOString(), migrated }),
           Date.now(),
         ],
@@ -414,9 +423,10 @@ async function writeMigrationSentinel(
 ): Promise<void> {
   await db.query(
     `INSERT INTO vault_entries (key, kind, value, last_modified)
-     VALUES ('_migrated_from_file_v1', 'value', $1, $2)
+     VALUES ($1, 'value', $2, $3)
      ON CONFLICT (key) DO NOTHING`,
     [
+      MIGRATION_SENTINEL_KEY,
       JSON.stringify({ at: new Date().toISOString(), reason, migrated: 0 }),
       Date.now(),
     ],
@@ -453,7 +463,8 @@ async function insertLegacyEntry(
 
 export function defaultPgliteVaultDataDir(): string {
   const root =
-    process.env.ELIZA_STATE_DIR ??
+    process.env.MILADY_STATE_DIR?.trim() ??
+    process.env.ELIZA_STATE_DIR?.trim() ??
     join(homedir(), `.${process.env.ELIZA_NAMESPACE?.trim() || "eliza"}`);
   return join(root, ".vault-pglite");
 }

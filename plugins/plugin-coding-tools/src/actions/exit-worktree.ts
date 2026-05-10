@@ -46,9 +46,7 @@ export const exitWorktreeAction: Action = {
       schema: { type: "boolean" },
     },
   ],
-  validate: async (runtime: IAgentRuntime) => {
-    return true;
-  },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -145,4 +143,36 @@ export const exitWorktreeAction: Action = {
       cleaned,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Exit the current worktree.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Exited worktree; cwd restored.",
+          actions: ["EXIT_WORKTREE"],
+          thought:
+            "Session has an active worktree; EXIT_WORKTREE pops it and restores the previous cwd.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Done with that branch — exit and clean it up.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Exited worktree and removed the directory.",
+          actions: ["EXIT_WORKTREE"],
+          thought:
+            "User asked to clean up; EXIT_WORKTREE with cleanup=true removes the worktree directory after popping.",
+        },
+      },
+    ],
+  ],
 };

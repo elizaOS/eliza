@@ -1,11 +1,11 @@
 import {
   type AutocompleteProvider,
-  type Component,
   Editor,
   type Focusable,
   type TUI,
 } from "@elizaos/tui";
 import chalk from "chalk";
+import { createEditorTheme } from "../lib/editor-theme.js";
 import { useStore } from "../lib/store.js";
 import type { Message } from "../types.js";
 
@@ -125,43 +125,40 @@ function toRenderLines(messages: Message[], maxWidth: number): RenderLine[] {
   return lines;
 }
 
-export class ChatPane implements Component, Focusable {
+export class ChatPane implements Focusable {
+  focused = false;
   private props: ChatPaneProps;
   private editor: Editor;
   private scrollOffset = 0;
   private width = 80;
   private height = 24;
-  private focused = false;
 
   constructor(props: ChatPaneProps) {
     this.props = props;
-    this.editor = new Editor({
-      width: this.width - 4,
-      maxHeight: 5,
-      placeholder: "Message (or /command)…",
-      autocompleteProvider: props.autocompleteProvider,
-      onSubmit: async (text: string) => {
-        if (text.trim()) {
-          this.editor.clear();
-          await props.onSubmit(text.trim());
-        }
-      },
-    });
+    const theme = createEditorTheme();
+    this.editor = new Editor(props.tui, theme, { paddingX: 0 });
+    if (props.autocompleteProvider) {
+      this.editor.setAutocompleteProvider(props.autocompleteProvider);
+    }
+    this.editor.onSubmit = async (text: string) => {
+      const trimmed = text.trim();
+      if (trimmed.length > 0) {
+        this.editor.setText("");
+        await props.onSubmit(trimmed);
+      }
+    };
+    this.editor.onChange = (text: string) => {
+      useStore.getState().setInputValue(text);
+    };
   }
 
-  resize(width: number, height: number): void {
-    this.width = width;
-    this.height = height;
-    this.editor.setWidth(Math.max(1, width - 4));
+  syncFocus(isFocused: boolean): void {
+    this.focused = isFocused;
+    this.editor.focused = isFocused;
   }
 
-  setFocused(focused: boolean): void {
-    this.focused = focused;
-    this.editor.setFocused(focused);
-  }
-
-  isFocused(): boolean {
-    return this.focused;
+  invalidate(): void {
+    this.editor.invalidate();
   }
 
   handleInput(char: string): void {
@@ -169,12 +166,10 @@ export class ChatPane implements Component, Focusable {
 
     // Ctrl+Up/Down to scroll
     if (char === "\x1b[1;5A") {
-      // Ctrl+Up
       this.scrollUp();
       return;
     }
     if (char === "\x1b[1;5B") {
-      // Ctrl+Down
       this.scrollDown();
       return;
     }
@@ -182,15 +177,13 @@ export class ChatPane implements Component, Focusable {
     // Escape to clear input
     if (char === "\x1b") {
       useStore.getState().setInputValue("");
-      this.editor.clear();
+      this.editor.setText("");
       this.props.tui.requestRender();
       return;
     }
 
-    // Pass to editor
     this.editor.handleInput(char);
 
-    // Sync input value with store
     const inputValue = this.editor.getText();
     useStore.getState().setInputValue(inputValue);
     this.props.tui.requestRender();
@@ -213,10 +206,11 @@ export class ChatPane implements Component, Focusable {
     this.props.tui.requestRender();
   }
 
-  render(width: number, height: number): string[] {
+  /** Region body for the chat column (messages + input chrome). */
+  renderContent(width: number, height: number): string[] {
     this.width = width;
     this.height = height;
-    this.editor.setWidth(Math.max(1, width - 4));
+    this.editor.setPaddingX(1);
 
     const state = useStore.getState();
     const room = state.rooms.find((r) => r.id === state.currentRoomId);
@@ -226,7 +220,6 @@ export class ChatPane implements Component, Focusable {
     const innerWidth = Math.max(1, width - 4);
     const paddingX = 1;
 
-    // Calculate layout
     const headerHeight = 1;
     const inputHeight = 3;
     const helpHeight = 1;
@@ -235,13 +228,11 @@ export class ChatPane implements Component, Focusable {
       height - headerHeight - inputHeight - helpHeight,
     );
 
-    // Build all render lines
     const allLines = toRenderLines(messages, innerWidth);
     if (isAgentTyping) {
       allLines.push({ text: "Eliza typing…", color: "green", dim: true });
     }
 
-    // Calculate visible lines with scroll
     const maxScroll = Math.max(0, allLines.length - messageAreaHeight);
     const clampedScroll = Math.min(this.scrollOffset, maxScroll);
     const startIndex = Math.max(
@@ -253,17 +244,14 @@ export class ChatPane implements Component, Focusable {
 
     const output: string[] = [];
 
-    // Header
     const headerColor = this.focused ? chalk.bold.cyan : chalk.white;
     const scrollIndicator =
       clampedScroll > 0 ? chalk.dim(` [↑ ${clampedScroll}]`) : "";
     const header = `${headerColor(`Chat: ${room?.name ?? "Unknown"}`)} ${chalk.dim(`(${messages.length})`)}${scrollIndicator}`;
     output.push(" ".repeat(paddingX) + header);
 
-    // Messages
     if (visibleLines.length === 0) {
       output.push(" ".repeat(paddingX) + chalk.dim.italic("No messages."));
-      // Fill remaining space
       for (let i = 1; i < messageAreaHeight; i++) {
         output.push("");
       }
@@ -277,14 +265,12 @@ export class ChatPane implements Component, Focusable {
         else if (line.color === "green") styled = chalk.green(styled);
         output.push(" ".repeat(paddingX) + styled);
       }
-      // Fill remaining space
       const remaining = messageAreaHeight - visibleLines.length;
       for (let i = 0; i < remaining; i++) {
         output.push("");
       }
     }
 
-    // Input area
     const borderColor = this.focused ? chalk.cyan : chalk.gray;
     const topBorder = borderColor(`┌${"─".repeat(innerWidth)}┐`);
     const bottomBorder = borderColor(`└${"─".repeat(innerWidth)}┘`);
@@ -296,7 +282,7 @@ export class ChatPane implements Component, Focusable {
         `${borderColor("│")} ${chalk.dim("Processing...")}${" ".repeat(Math.max(0, innerWidth - 14))}${borderColor("│")}`,
       );
     } else {
-      const editorLines = this.editor.render(innerWidth, 1);
+      const editorLines = this.editor.render(innerWidth);
       const promptLine = chalk.cyan("> ") + (editorLines[0] || "");
       output.push(
         `${borderColor("│")} ${promptLine.padEnd(innerWidth - 1)}${borderColor("│")}`,
@@ -305,7 +291,6 @@ export class ChatPane implements Component, Focusable {
 
     output.push(bottomBorder);
 
-    // Help text
     const helpText = !this.focused
       ? "Tab: focus"
       : state.inputValue.startsWith("/")

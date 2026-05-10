@@ -11,6 +11,7 @@ import {
   listCalendlyScheduledEvents,
   readCalendlyCredentialsFromEnv,
 } from "../../calendly-client.js";
+import { listCalendlyScheduledEventsWithRuntimeService } from "../../runtime-service-delegates.js";
 
 function eventToMessageRef(event: CalendlyScheduledEvent): MessageRef {
   const startMs = Date.parse(event.startTime);
@@ -44,8 +45,18 @@ function eventToMessageRef(event: CalendlyScheduledEvent): MessageRef {
 export class CalendlyAdapter extends BaseMessageAdapter {
   readonly source: MessageSource = "calendly";
 
-  isAvailable(_runtime: IAgentRuntime): boolean {
-    return readCalendlyCredentialsFromEnv() != null;
+  isAvailable(runtime: IAgentRuntime): boolean {
+    const service = runtime.getService?.("calendly") as
+      | { isConnected?: (accountId?: string) => boolean }
+      | null
+      | undefined;
+    const serviceAvailable =
+      service && typeof service === "object"
+        ? typeof service.isConnected === "function"
+          ? service.isConnected("default")
+          : true
+        : false;
+    return serviceAvailable || readCalendlyCredentialsFromEnv() != null;
   }
 
   capabilities(): MessageAdapterCapabilities {
@@ -60,14 +71,26 @@ export class CalendlyAdapter extends BaseMessageAdapter {
   }
 
   protected async listMessagesImpl(
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     opts: ListOptions,
   ): Promise<MessageRef[]> {
-    const credentials = readCalendlyCredentialsFromEnv();
-    if (!credentials) return [];
     const minStartTime = opts.sinceMs
       ? new Date(opts.sinceMs).toISOString()
       : undefined;
+    const delegated = await listCalendlyScheduledEventsWithRuntimeService({
+      runtime,
+      options: {
+        minStartTime,
+        limit: opts.limit ?? 50,
+        status: "active",
+      },
+    });
+    if (delegated.status === "handled") {
+      return delegated.value.map(eventToMessageRef);
+    }
+
+    const credentials = readCalendlyCredentialsFromEnv();
+    if (!credentials) return [];
     const events = await listCalendlyScheduledEvents(credentials, {
       minStartTime,
       limit: opts.limit ?? 50,

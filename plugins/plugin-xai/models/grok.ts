@@ -61,8 +61,11 @@ function getAuthHeader(config: GrokConfig): Record<string, string> {
 }
 
 interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | unknown[];
+  tool_call_id?: string;
+  tool_calls?: unknown[];
+  name?: string;
 }
 
 interface ChatCompletionResponse {
@@ -74,7 +77,12 @@ interface ChatCompletionResponse {
     index: number;
     message: {
       role: string;
-      content: string;
+      content: string | null;
+      tool_calls?: Array<{
+        id: string;
+        type: "function";
+        function: { name: string; arguments: string };
+      }>;
     };
     finish_reason: string;
   }>;
@@ -82,6 +90,105 @@ interface ChatCompletionResponse {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
+  };
+}
+
+interface XaiNativeTextResult {
+  text: string;
+  toolCalls: Array<{ toolCallId: string; toolName: string; input: unknown }>;
+  finishReason?: string;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+}
+
+type XaiToolDefinition = {
+  type?: "function";
+  name?: string;
+  description?: string;
+  parameters?: unknown;
+  inputSchema?: unknown;
+  function?: { name?: string; description?: string; parameters?: unknown };
+};
+
+type XaiToolChoice =
+  | "auto"
+  | "none"
+  | "required"
+  | { type: "function"; function: { name: string } }
+  | { type: "tool"; toolName: string }
+  | { name: string };
+
+function normalizeXaiTools(tools: unknown): unknown[] | undefined {
+  if (!tools) return undefined;
+  if (Array.isArray(tools)) {
+    return tools
+      .map((tool) => normalizeXaiTool(tool as XaiToolDefinition))
+      .filter((tool): tool is Record<string, unknown> => tool !== undefined);
+  }
+  if (typeof tools === "object") {
+    const out: Record<string, unknown>[] = [];
+    for (const [name, value] of Object.entries(
+      tools as Record<string, XaiToolDefinition>,
+    )) {
+      const normalized = normalizeXaiTool({ ...value, name });
+      if (normalized) out.push(normalized);
+    }
+    return out.length > 0 ? out : undefined;
+  }
+  return undefined;
+}
+
+function normalizeXaiTool(
+  tool: XaiToolDefinition,
+): Record<string, unknown> | undefined {
+  const name = tool.name ?? tool.function?.name;
+  if (!name) return undefined;
+  const description = tool.description ?? tool.function?.description;
+  const parameters = tool.parameters ??
+    tool.function?.parameters ??
+    tool.inputSchema ?? { type: "object" };
+  return {
+    type: "function",
+    function: {
+      name,
+      ...(description ? { description } : {}),
+      parameters,
+    },
+  };
+}
+
+function normalizeXaiToolChoice(toolChoice: unknown): unknown {
+  if (!toolChoice) return undefined;
+  if (
+    typeof toolChoice === "string" &&
+    (toolChoice === "auto" ||
+      toolChoice === "none" ||
+      toolChoice === "required")
+  ) {
+    return toolChoice;
+  }
+  const choice = toolChoice as Record<string, unknown>;
+  if (choice.type === "function") return toolChoice;
+  if (choice.type === "tool" && typeof choice.toolName === "string") {
+    return { type: "function", function: { name: choice.toolName } };
+  }
+  if (typeof choice.name === "string") {
+    return { type: "function", function: { name: choice.name } };
+  }
+  return undefined;
+}
+
+function buildXaiResponseFormat(responseSchema: unknown): unknown {
+  if (!responseSchema) return undefined;
+  const r = responseSchema as Record<string, unknown>;
+  const schema = (r.schema ?? responseSchema) as Record<string, unknown>;
+  const name = typeof r.name === "string" ? r.name : "structured_response";
+  return {
+    type: "json_schema",
+    json_schema: { name, schema, strict: true },
   };
 }
 
@@ -233,10 +340,29 @@ async function generateText(
   modelType: ModelTypeName,
   model: string,
   params: GenerateTextParams,
-): Promise<string | TextStreamResult> {
+): Promise<string | TextStreamResult | XaiNativeTextResult> {
+  const paramsWithNative = params as GenerateTextParams & {
+    messages?: ChatMessage[];
+    tools?: unknown;
+    toolChoice?: XaiToolChoice;
+    responseSchema?: unknown;
+  };
   const promptText = params.prompt ?? "";
-  const messages: ChatMessage[] = [];
-  messages.push({ role: "user", content: promptText });
+  const tools = normalizeXaiTools(paramsWithNative.tools);
+  const toolChoice = normalizeXaiToolChoice(paramsWithNative.toolChoice);
+  const responseFormat = buildXaiResponseFormat(
+    paramsWithNative.responseSchema,
+  );
+  const returnNative = Boolean(
+    paramsWithNative.messages ||
+      paramsWithNative.tools ||
+      paramsWithNative.toolChoice ||
+      paramsWithNative.responseSchema,
+  );
+
+  const messages: ChatMessage[] = paramsWithNative.messages?.length
+    ? (paramsWithNative.messages as ChatMessage[])
+    : [{ role: "user", content: promptText }];
 
   const body: Record<string, unknown> = {
     model,
@@ -251,6 +377,15 @@ async function generateText(
   }
   if (params.stopSequences) {
     body.stop = params.stopSequences;
+  }
+  if (tools) {
+    body.tools = tools;
+  }
+  if (toolChoice) {
+    body.tool_choice = toolChoice;
+  }
+  if (responseFormat) {
+    body.response_format = responseFormat;
   }
 
   if (params.stream && params.onStreamChunk) {
@@ -355,20 +490,57 @@ async function generateText(
 
       const data = (await response.json()) as ChatCompletionResponse;
 
-      if (!data.choices?.[0]?.message?.content) {
+      const choice = data.choices?.[0];
+      const rawText = choice?.message?.content ?? "";
+      const rawToolCalls = choice?.message?.tool_calls ?? [];
+
+      if (!returnNative && !rawText) {
         throw new Error("No content in Grok response");
       }
 
-      const text = data.choices[0].message.content;
       emitModelUsed(
         runtime,
         modelType,
         data.model || model,
-        normalizeTokenUsage(data.usage) ?? estimateUsage(params.prompt ?? "", text),
+        normalizeTokenUsage(data.usage) ??
+          estimateUsage(params.prompt ?? "", rawText),
       );
-      return text;
+
+      if (returnNative) {
+        const usage = normalizeTokenUsage(data.usage);
+        const native: XaiNativeTextResult = {
+          text: rawText,
+          toolCalls: rawToolCalls.map((tc) => ({
+            toolCallId: tc.id,
+            toolName: tc.function.name,
+            input: parseJsonOrRaw(tc.function.arguments),
+          })),
+          finishReason: choice?.finish_reason,
+          ...(usage
+            ? {
+                usage: {
+                  promptTokens: usage.promptTokens,
+                  completionTokens: usage.completionTokens,
+                  totalTokens: usage.totalTokens,
+                },
+              }
+            : {}),
+        };
+        return native;
+      }
+
+      return rawText;
     },
   );
+}
+
+function parseJsonOrRaw(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
 }
 
 async function createEmbedding(
@@ -411,13 +583,18 @@ export async function handleTextSmall(
 ): Promise<string | TextStreamResult> {
   const config = getConfig(runtime);
   logger.debug(`[Grok] Generating text with model: ${config.smallModel}`);
-  return generateText(
+  // Native result (with toolCalls) is cast through the string return type:
+  // elizaOS's plugin Model handler signature is
+  // `Promise<string | TextStreamResult>`. Consumers that pass `tools` /
+  // `messages` / `responseSchema` / `toolChoice` unwrap the native shape from
+  // `useModel`.
+  return (await generateText(
     runtime,
     config,
     ModelType.TEXT_SMALL,
     config.smallModel,
     params,
-  );
+  )) as string | TextStreamResult;
 }
 
 export async function handleTextLarge(
@@ -426,13 +603,13 @@ export async function handleTextLarge(
 ): Promise<string | TextStreamResult> {
   const config = getConfig(runtime);
   logger.debug(`[Grok] Generating text with model: ${config.largeModel}`);
-  return generateText(
+  return (await generateText(
     runtime,
     config,
     ModelType.TEXT_LARGE,
     config.largeModel,
     params,
-  );
+  )) as string | TextStreamResult;
 }
 
 export async function handleTextEmbedding(

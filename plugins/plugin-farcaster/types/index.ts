@@ -1,6 +1,8 @@
 import type { Media, Memory, MessagePayload } from "@elizaos/core";
 import type { Cast as NeynarCast, Embed as NeynarEmbed } from "@neynar/nodejs-sdk/build/api";
-import { z } from "zod";
+import * as zod from "zod";
+
+const z = zod.z ?? zod;
 
 export interface Profile {
   fid: number;
@@ -95,10 +97,10 @@ export const FarcasterConfigSchema = z.object({
   FARCASTER_HUB_URL: z.string().min(1, "FARCASTER_HUB_URL is not set"),
 });
 
-export type FarcasterConfig = z.infer<typeof FarcasterConfigSchema>;
+export type FarcasterConfig = zod.infer<typeof FarcasterConfigSchema>;
 
 export enum FarcasterEventTypes {
-  CAST_GENERATED = "FARCASTER_CAST_GENERATED",
+  POST_GENERATED = "FARCASTER_POST_GENERATED",
   MENTION_RECEIVED = "FARCASTER_MENTION_RECEIVED",
   THREAD_CAST_CREATED = "FARCASTER_THREAD_CAST_CREATED",
 }
@@ -111,6 +113,7 @@ export enum FarcasterMessageType {
 export interface FarcasterGenericCastPayload extends Omit<MessagePayload, "message"> {
   memory: Memory;
   cast: NeynarCast;
+  accountId?: string;
 }
 
 export interface NeynarWebhookData {

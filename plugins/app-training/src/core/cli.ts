@@ -8,11 +8,16 @@
  * Or: `cd eliza/packages/agent && bun run training:cli` (delegates to this file).
  */
 
-import { readFile } from "fs/promises";
+import { existsSync, readdirSync, readFileSync, statSync } from "fs";
+import { mkdir, readFile, writeFile } from "fs/promises";
+import { homedir } from "os";
+import { join } from "path";
 import { parseArgs } from "util";
+import { fileURLToPath } from "url";
 import { AGENT_CONTEXTS, type AgentContext } from "./context-types.js";
 import {
   createAnthropicTeacher,
+  createCerebrasTeacher,
   createOpenAITeacher,
   exportToElizaNativeJSONL,
   type GenerationConfig,
@@ -20,12 +25,19 @@ import {
   type TeacherModel,
   type TrainingSample,
 } from "./dataset-generator.js";
+import {
+  type CompareMode,
+  comparePrompts,
+  formatComparisonSummary,
+  type ScorerKind,
+} from "./prompt-compare.js";
 import { formatQualityReport, validateDataset } from "./replay-validator.js";
 import {
   buildRoleplayEpisodes,
   exportRoleplayEpisodes,
 } from "./roleplay-trajectories.js";
 import { ALL_BLUEPRINTS, BLUEPRINT_STATS } from "./scenario-blueprints.js";
+import type { TrajectoryTrainingTask } from "./trajectory-task-datasets.js";
 const AGENT_DECISIONS = ["RESPOND", "IGNORE", "STOP"] as const;
 type AgentDecision = (typeof AGENT_DECISIONS)[number];
 
@@ -58,6 +70,17 @@ function parseAgentDecisions(
 }
 
 function getTeacherModel(): TeacherModel {
+  // Standing direction: training defaults to Cerebras gpt-oss-120b. The
+  // teacher generates synthetic conversations; the agent under test is
+  // unaffected.
+  const trainProvider =
+    process.env.TRAIN_MODEL_PROVIDER?.trim() ?? process.env.TRAINING_PROVIDER?.trim();
+  const cerebrasKey = process.env.CEREBRAS_API_KEY;
+  if (trainProvider === "cerebras" && cerebrasKey) {
+    console.log("Using Cerebras gpt-oss-120b as teacher model");
+    return createCerebrasTeacher();
+  }
+
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
 
@@ -72,7 +95,7 @@ function getTeacherModel(): TeacherModel {
   }
 
   throw new Error(
-    "No teacher model API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY.",
+    "No teacher model API key found. Set CEREBRAS_API_KEY (preferred), ANTHROPIC_API_KEY, or OPENAI_API_KEY.",
   );
 }
 
@@ -165,6 +188,295 @@ async function cmdGenerate(args: string[]) {
   console.log("\nDone!");
 }
 
+async function cmdCompare(args: string[]) {
+  const { values } = parseArgs({
+    args,
+    options: {
+      baseline: { type: "string" },
+      variant: { type: "string" },
+      dataset: { type: "string" },
+      task: { type: "string" },
+      scorer: { type: "string" },
+      mode: { type: "string" },
+      "max-examples": { type: "string" },
+      tolerance: { type: "string" },
+      output: { type: "string", short: "o" },
+      temperature: { type: "string" },
+      "max-tokens": { type: "string" },
+    },
+  });
+
+  if (!values.baseline || !values.variant || !values.dataset) {
+    console.error(
+      "Usage: compare --baseline <prompt.txt> --variant <prompt.txt> --dataset <dataset.jsonl> [options]",
+    );
+    console.error("");
+    console.error("Options:");
+    console.error(
+      "  --task <task>          One of: should_respond, context_routing, action_planner, response, media_description",
+    );
+    console.error(
+      "  --scorer <kind>        agreement | planner_action (default: derived from --task)",
+    );
+    console.error(
+      "  --mode <mode>          vs_historical (default) | pairwise",
+    );
+    console.error("  --max-examples N       Cap evaluations (default: all)");
+    console.error("  --tolerance N          Pass threshold delta (default: 0.02)");
+    console.error("  --temperature N        Sampling temperature (default: 0)");
+    console.error("  --max-tokens N         Per-completion cap (default: 512)");
+    console.error("  -o, --output <path>    Write JSON result to file");
+    console.error("");
+    console.error(
+      "Requires ANTHROPIC_API_KEY or OPENAI_API_KEY for the model adapter.",
+    );
+    process.exit(1);
+  }
+
+  const [baselinePrompt, variantPrompt] = await Promise.all([
+    readFile(values.baseline, "utf-8"),
+    readFile(values.variant, "utf-8"),
+  ]);
+
+  const teacher = getTeacherModel();
+  const adapter = {
+    async complete(input: {
+      system?: string;
+      user: string;
+      temperature?: number;
+      maxTokens?: number;
+    }): Promise<string> {
+      // Teacher model fixes its own temperature/max_tokens, but the
+      // scorer asks for 0/512 by default. Re-using the teacher here
+      // keeps adapter wiring trivial; if you need stricter
+      // determinism, plug a different adapter via the API.
+      return await teacher.generate(input.system ?? "", input.user);
+    },
+  };
+
+  const task = values.task as TrajectoryTrainingTask | undefined;
+  const scorer = values.scorer as ScorerKind | undefined;
+  const mode = values.mode as CompareMode | undefined;
+  const maxExamples = values["max-examples"]
+    ? Number.parseInt(values["max-examples"], 10)
+    : undefined;
+  const temperature = values.temperature
+    ? Number.parseFloat(values.temperature)
+    : undefined;
+  const maxTokens = values["max-tokens"]
+    ? Number.parseInt(values["max-tokens"], 10)
+    : undefined;
+
+  console.log(
+    `[compare] baseline=${values.baseline} variant=${values.variant}`,
+  );
+  console.log(
+    `[compare] dataset=${values.dataset} task=${task ?? "(any)"} mode=${mode ?? "vs_historical"}`,
+  );
+  console.log(`[compare] adapter=${teacher.name}`);
+
+  const result = await comparePrompts({
+    baselinePrompt,
+    variantPrompt,
+    dataset: values.dataset,
+    task,
+    scorer,
+    mode,
+    maxExamples,
+    temperature,
+    maxTokens,
+    adapter,
+  });
+
+  console.log("");
+  console.log(formatComparisonSummary(result));
+
+  if (values.output) {
+    await writeFile(values.output, JSON.stringify(result, null, 2));
+    console.log(`[compare] wrote result to ${values.output}`);
+  }
+
+  if (!result.passed) {
+    process.exit(2);
+  }
+}
+
+interface RecordedMessage {
+  role: string;
+  content: string | unknown;
+}
+
+interface RecordedStage {
+  stageId?: string;
+  kind?: string;
+  startedAt?: number;
+  endedAt?: number;
+  model?: {
+    modelType?: string;
+    modelName?: string;
+    provider?: string;
+    messages?: RecordedMessage[];
+    response?: string | unknown;
+    toolCalls?: unknown[];
+  };
+}
+
+interface RecordedTrajectory {
+  trajectoryId: string;
+  agentId: string;
+  rootMessage?: { text?: string };
+  startedAt?: number;
+  status?: string;
+  stages?: RecordedStage[];
+}
+
+/**
+ * Map RecordedStage.kind / model.modelType to a TrajectoryTrainingTask bucket.
+ * Returns null if the stage doesn't fit a known eval task.
+ */
+function classifyStage(stage: RecordedStage): TrajectoryTrainingTask | null {
+  const kind = stage.kind?.toLowerCase() ?? "";
+  const modelType = stage.model?.modelType?.toLowerCase() ?? "";
+  if (kind === "messagehandler" || modelType.includes("response_handler")) {
+    return "should_respond";
+  }
+  if (kind === "planner" || modelType.includes("planner")) {
+    return "action_planner";
+  }
+  if (kind === "tool" || kind === "action") {
+    return "response";
+  }
+  if (modelType.includes("vision") || modelType.includes("image")) {
+    return "media_description";
+  }
+  return null;
+}
+
+function stringifyContent(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return "";
+  return JSON.stringify(value);
+}
+
+function stageToJsonlRow(
+  stage: RecordedStage,
+): Record<string, unknown> | null {
+  const messages = stage.model?.messages ?? [];
+  const response = stage.model?.response;
+  if (messages.length === 0) return null;
+  if (!response && !stage.model?.toolCalls) return null;
+  const normalizedMessages = messages.map((m) => ({
+    role: m.role,
+    content: stringifyContent(m.content),
+  }));
+  const systemMsg = normalizedMessages.find((m) => m.role === "system");
+  const responseText = stringifyContent(response);
+  const toolCalls = stage.model?.toolCalls;
+  return {
+    format: "eliza_native_v1",
+    boundary: "vercel_ai_sdk.generateText",
+    request: {
+      system: systemMsg?.content ?? "",
+      messages: normalizedMessages,
+    },
+    response: toolCalls
+      ? { text: responseText, toolCalls }
+      : { text: responseText },
+  };
+}
+
+async function cmdExportTrajectories(args: string[]) {
+  const { values } = parseArgs({
+    args,
+    options: {
+      input: { type: "string", short: "i" },
+      output: { type: "string", short: "o" },
+      "max-per-task": { type: "string" },
+    },
+  });
+  const inputDir =
+    values.input ??
+    process.env.MILADY_TRAJECTORY_DIR ??
+    join(
+      process.env.MILADY_STATE_DIR ??
+        process.env.ELIZA_STATE_DIR ??
+        join(homedir(), ".milady"),
+      "trajectories",
+    );
+  const outputDir = values.output ?? "./training-data";
+  const cap = values["max-per-task"]
+    ? Number.parseInt(values["max-per-task"], 10)
+    : Number.POSITIVE_INFINITY;
+
+  if (!existsSync(inputDir)) {
+    console.error(`[export-trajectories] input dir not found: ${inputDir}`);
+    process.exit(1);
+  }
+
+  await mkdir(outputDir, { recursive: true });
+  console.log(`[export-trajectories] reading from ${inputDir}`);
+  console.log(`[export-trajectories] writing to ${outputDir}`);
+
+  const buckets: Record<TrajectoryTrainingTask, Record<string, unknown>[]> = {
+    should_respond: [],
+    context_routing: [],
+    action_planner: [],
+    response: [],
+    media_description: [],
+  };
+
+  const agentDirs = readdirSync(inputDir).filter((name) => {
+    const full = join(inputDir, name);
+    return statSync(full).isDirectory();
+  });
+
+  let totalTrajectories = 0;
+  let totalStages = 0;
+  let droppedStages = 0;
+  for (const agentDir of agentDirs) {
+    const agentPath = join(inputDir, agentDir);
+    const files = readdirSync(agentPath).filter((f) => f.endsWith(".json"));
+    for (const file of files) {
+      let traj: RecordedTrajectory;
+      try {
+        traj = JSON.parse(
+          readFileSync(join(agentPath, file), "utf-8"),
+        ) as RecordedTrajectory;
+      } catch {
+        continue;
+      }
+      totalTrajectories += 1;
+      for (const stage of traj.stages ?? []) {
+        totalStages += 1;
+        const task = classifyStage(stage);
+        if (!task) {
+          droppedStages += 1;
+          continue;
+        }
+        if (buckets[task].length >= cap) continue;
+        const row = stageToJsonlRow(stage);
+        if (!row) {
+          droppedStages += 1;
+          continue;
+        }
+        buckets[task].push(row);
+      }
+    }
+  }
+
+  for (const task of Object.keys(buckets) as TrajectoryTrainingTask[]) {
+    const path = join(outputDir, `${task}_trajectories.jsonl`);
+    const lines = buckets[task].map((row) => JSON.stringify(row));
+    await writeFile(path, `${lines.join("\n")}\n`);
+    console.log(
+      `[export-trajectories] ${task}: wrote ${buckets[task].length} examples to ${path}`,
+    );
+  }
+  console.log(
+    `[export-trajectories] summary: ${totalTrajectories} trajectories, ${totalStages} stages (${droppedStages} unclassified)`,
+  );
+}
+
 async function cmdValidate(args: string[]) {
   const { values } = parseArgs({
     args,
@@ -202,6 +514,12 @@ async function main() {
     case "validate":
       await cmdValidate(restArgs);
       break;
+    case "compare":
+      await cmdCompare(restArgs);
+      break;
+    case "export-trajectories":
+      await cmdExportTrajectories(restArgs);
+      break;
     default:
       console.log(`Usage: cli.ts <command> [options]
 
@@ -216,6 +534,25 @@ Commands:
   validate          Validate a generated dataset
     --input PATH    Path to raw_samples.json
 
+  export-trajectories  Re-export raw recorded trajectories to per-task JSONL
+    -i, --input DIR    Trajectory dir (default: $MILADY_TRAJECTORY_DIR or ~/.milady/trajectories)
+    -o, --output DIR   Output dir (default: ./training-data)
+    --max-per-task N   Cap examples per task bucket
+
+  compare           A/B compare two prompts on a trajectory dataset
+    --baseline PATH    Path to baseline prompt (.txt)
+    --variant PATH     Path to variant prompt (.txt)
+    --dataset PATH     Path to JSONL dataset (eliza_native_v1)
+    --task NAME        should_respond | context_routing | action_planner | response | media_description
+    --scorer KIND      agreement | planner_action (default: from --task)
+    --mode MODE        vs_historical (default) | pairwise
+    --max-examples N   Cap evaluations
+    --tolerance F      Pass threshold delta (default: 0.02)
+    --temperature F    Sampling temperature (default: 0)
+    --max-tokens N     Per-completion cap (default: 512)
+    -o, --output PATH  Write JSON result to file
+    Exits with code 2 if variant regresses beyond --tolerance.
+
 Environment:
   ANTHROPIC_API_KEY   Use Claude as teacher model
   OPENAI_API_KEY      Use GPT-5 as teacher model
@@ -224,7 +561,9 @@ Environment:
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

@@ -1,9 +1,12 @@
 import { validateToolArgs } from "../actions/validate-tool-args";
+import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
+import { checkSenderRole } from "../roles";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type {
 	Action,
 	ActionParameters,
 	ActionResult,
+	ContentValue,
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
@@ -41,6 +44,43 @@ export type ExecutePlannedToolCallOptions = HandlerOptions & {
 	onStreamChunk?: StreamChunkCallback;
 };
 
+function isContentRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function toContentValue(value: unknown): ContentValue {
+	if (
+		value === undefined ||
+		value === null ||
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return value as ContentValue;
+	}
+	if (Array.isArray(value)) {
+		return value.map(toContentValue);
+	}
+	if (isContentRecord(value)) {
+		const record: Record<string, ContentValue> = {};
+		for (const [key, entry] of Object.entries(value)) {
+			record[key] = toContentValue(entry);
+		}
+		return record;
+	}
+	return String(value);
+}
+
+function actionResultToContentRecord(
+	result: ActionResult,
+): Record<string, ContentValue> {
+	const record: Record<string, ContentValue> = {};
+	for (const [key, value] of Object.entries(result)) {
+		record[key] = toContentValue(value);
+	}
+	return record;
+}
+
 export async function executePlannedToolCall(
 	runtime: IAgentRuntime,
 	ctx: ExecutePlannedToolCallContext,
@@ -57,7 +97,8 @@ export async function executePlannedToolCall(
 		);
 	}
 
-	const gateFailure = getGateFailure(action, ctx);
+	const executorCtx = await withResolvedUserRoles(runtime, ctx);
+	const gateFailure = getGateFailure(action, executorCtx);
 	if (gateFailure) {
 		return emitToolResult(toolCall, failureResult(action.name, gateFailure));
 	}
@@ -74,8 +115,7 @@ export async function executePlannedToolCall(
 			),
 		);
 	}
-
-	const previousResults = [...(ctx.previousResults ?? [])];
+	const previousResults = [...(executorCtx.previousResults ?? [])];
 	const parameters =
 		action.parameters && action.parameters.length > 0
 			? (validation.args as ActionParameters | undefined)
@@ -94,20 +134,65 @@ export async function executePlannedToolCall(
 		},
 	};
 
-	const messageId = ctx.message.id as UUID | undefined;
-	const roomId = ctx.message.roomId as UUID;
-	const worldId = (ctx.message.worldId ?? roomId) as UUID;
+	if (action.validate) {
+		let valid = false;
+		try {
+			valid = await action.validate(
+				runtime,
+				executorCtx.message,
+				executorCtx.state,
+				handlerOptions,
+			);
+		} catch (error) {
+			return emitToolResult(
+				toolCall,
+				failureResult(action.name, stringifyError(error), { error }),
+			);
+		}
+		if (!valid) {
+			return emitToolResult(
+				toolCall,
+				failureResult(
+					action.name,
+					`Action ${action.name} is not available for the current state`,
+				),
+			);
+		}
+	}
+
+	const accountPolicy = await evaluateConnectorAccountPolicies(
+		runtime,
+		action,
+		{
+			message: executorCtx.message,
+			parameters: validation.args as Record<string, unknown>,
+		},
+	);
+	if (!accountPolicy.allowed) {
+		return emitToolResult(
+			toolCall,
+			failureResult(
+				action.name,
+				accountPolicy.reason ??
+					`Action ${action.name} is not allowed for the selected connector account`,
+			),
+		);
+	}
+
+	const messageId = executorCtx.message.id as UUID | undefined;
+	const roomId = executorCtx.message.roomId as UUID;
+	const worldId = (executorCtx.message.worldId ?? roomId) as UUID;
 	const actionStartContent = {
 		text: `Executing action: ${action.name}`,
 		actions: [action.name],
 		actionStatus: "executing" as const,
-		source: ctx.message.content?.source,
+		source: executorCtx.message.content?.source,
 	};
 	if (typeof runtime.emitEvent === "function") {
 		await runtime
 			.emitEvent(EventType.ACTION_STARTED, {
 				runtime,
-				messageId,
+				...(messageId ? { messageId } : {}),
 				roomId,
 				world: worldId,
 				content: actionStartContent,
@@ -129,11 +214,11 @@ export async function executePlannedToolCall(
 	try {
 		const result = await action.handler(
 			runtime,
-			ctx.message,
-			ctx.state,
+			executorCtx.message,
+			executorCtx.state,
 			handlerOptions,
-			ctx.callback,
-			ctx.responses,
+			executorCtx.callback,
+			executorCtx.responses,
 		);
 		resultForEvent = normalizeActionResult(action.name, result);
 	} catch (error) {
@@ -146,14 +231,15 @@ export async function executePlannedToolCall(
 		await runtime
 			.emitEvent(EventType.ACTION_COMPLETED, {
 				runtime,
-				messageId,
+				...(messageId ? { messageId } : {}),
 				roomId,
 				world: worldId,
 				content: {
 					text: resultForEvent.text ?? `Action ${action.name} completed`,
 					actions: [action.name],
 					actionStatus: resultForEvent.success ? "completed" : "failed",
-					source: ctx.message.content?.source,
+					actionResult: actionResultToContentRecord(resultForEvent),
+					source: executorCtx.message.content?.source,
 					error:
 						typeof resultForEvent.error === "string"
 							? resultForEvent.error
@@ -192,9 +278,53 @@ async function emitToolResult(
 		toolCallId: streamingToolCall.id,
 		result: streamingToolCall.result,
 		status,
-		messageId: streamingContext?.messageId,
+		...(streamingContext?.messageId
+			? { messageId: streamingContext.messageId }
+			: {}),
 	});
 	return result;
+}
+
+async function withResolvedUserRoles(
+	runtime: IAgentRuntime,
+	ctx: ExecutePlannedToolCallContext,
+): Promise<ExecutePlannedToolCallContext> {
+	if (ctx.userRoles?.length) {
+		return ctx;
+	}
+	return {
+		...ctx,
+		userRoles: await resolveToolCallUserRoles(runtime, ctx.message),
+	};
+}
+
+async function resolveToolCallUserRoles(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<RoleGateRole[]> {
+	if (
+		typeof message.entityId === "string" &&
+		message.entityId === runtime.agentId
+	) {
+		return ["OWNER"];
+	}
+
+	try {
+		const result = await checkSenderRole(runtime, message);
+		if (result?.role) {
+			return [result.role as RoleGateRole];
+		}
+	} catch (error) {
+		runtime.logger?.debug?.(
+			{
+				src: "execute-planned-tool-call",
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"sender role lookup failed; defaulting to USER",
+		);
+	}
+
+	return ["USER"];
 }
 
 function plannedToolCallToStreamingToolCall(

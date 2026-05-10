@@ -16,7 +16,7 @@ type MockSlackService = SlackService & {
 };
 
 function createRuntime() {
-  return {
+  const runtime = {
     agentId: "agent-1",
     registerMessageConnector: vi.fn(),
     registerSendHandler: vi.fn(),
@@ -24,7 +24,9 @@ function createRuntime() {
     getRoom: vi.fn(),
     getEntityById: vi.fn(),
     getRelationships: vi.fn().mockResolvedValue([]),
-  } as unknown as IAgentRuntime & {
+  };
+
+  return runtime as IAgentRuntime & {
     registerMessageConnector: ReturnType<typeof vi.fn>;
     registerSendHandler: ReturnType<typeof vi.fn>;
   };
@@ -57,6 +59,50 @@ describe("Slack message connector adapter", () => {
     });
   });
 
+  it("registers account-scoped and legacy connector routes", () => {
+    const runtime = createRuntime();
+    const service = Object.assign(
+      Object.create(SlackService.prototype) as MockSlackService,
+      {
+        handleSendMessage: vi.fn(),
+        accountStates: new Map([
+          [
+            "acct-a",
+            {
+              accountId: "acct-a",
+              account: { accountId: "acct-a", name: "A" },
+              teamId: "TA",
+            },
+          ],
+          [
+            "acct-b",
+            {
+              accountId: "acct-b",
+              account: { accountId: "acct-b", name: "B" },
+              teamId: "TB",
+            },
+          ],
+        ]),
+        defaultAccountId: "acct-a",
+      },
+    );
+
+    SlackService.registerSendHandlers(runtime, service);
+
+    const registrations = runtime.registerMessageConnector.mock.calls.map(
+      (call) => call[0],
+    );
+    expect(registrations.map((registration) => registration.accountId)).toEqual(
+      [undefined, "acct-a", "acct-b"],
+    );
+    expect(registrations[1]).toMatchObject({
+      source: "slack",
+      accountId: "acct-a",
+      account: { accountId: "acct-a" },
+      metadata: { accountId: "acct-a" },
+    });
+  });
+
   it("opens a DM channel when the unified target is a Slack user ID", async () => {
     const runtime = createRuntime();
     const sendMessage = vi.fn().mockResolvedValue({ ts: "1700000000.000001" });
@@ -85,6 +131,7 @@ describe("Slack message connector adapter", () => {
       "D123",
       "hello",
       expect.objectContaining({ threadTs: undefined }),
+      "default",
     );
   });
 
@@ -150,5 +197,49 @@ describe("Slack message connector adapter", () => {
     expect(
       userTargets.find((target) => target.kind === "user")?.target,
     ).toMatchObject({ source: "slack", entityId: "U234" });
+  });
+
+  it("routes outbound DMs through the requested account client", async () => {
+    const runtime = createRuntime();
+    const clientA = {
+      conversations: {
+        open: vi.fn().mockResolvedValue({ channel: { id: "DA" } }),
+      },
+    };
+    const clientB = {
+      conversations: {
+        open: vi.fn().mockResolvedValue({ channel: { id: "DB" } }),
+      },
+    };
+    const sendMessage = vi.fn().mockResolvedValue({ ts: "1700000000.000002" });
+    const service = Object.assign(
+      Object.create(SlackService.prototype) as SlackService,
+      {
+        client: clientA,
+        defaultAccountId: "acct-a",
+        accountStates: new Map([
+          ["acct-a", { accountId: "acct-a", client: clientA }],
+          ["acct-b", { accountId: "acct-b", client: clientB }],
+        ]),
+        sendMessage,
+      },
+    );
+
+    await service.handleSendMessage(
+      runtime,
+      { source: "slack", accountId: "acct-b", channelId: "U123ABC" },
+      { text: "hello" },
+    );
+
+    expect(clientA.conversations.open).not.toHaveBeenCalled();
+    expect(clientB.conversations.open).toHaveBeenCalledWith({
+      users: "U123ABC",
+    });
+    expect(sendMessage).toHaveBeenCalledWith(
+      "DB",
+      "hello",
+      expect.any(Object),
+      "acct-b",
+    );
   });
 });

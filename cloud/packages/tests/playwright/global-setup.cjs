@@ -13,6 +13,7 @@ const TEST_USER_ID = "22222222-2222-4222-8222-222222222222";
 const TEST_USER_EMAIL = "local-live-test-user@agent.local";
 const TEST_USER_NAME = "Local Live Test User";
 const TEST_USER_WALLET = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+const TEST_USER_STEWARD_ID = "steward:local-live-test-user";
 
 const TEST_API_KEY_ID = "33333333-3333-4333-8333-333333333333";
 const TEST_API_KEY_NAME = "Local Live Test API Key";
@@ -38,6 +39,16 @@ const SCHEMA_COMPATIBILITY_COLUMNS = [
     table: "organizations",
     column: "steward_tenant_api_key",
     definition: "steward_tenant_api_key text",
+  },
+  {
+    table: "organizations",
+    column: "pay_as_you_go_from_earnings",
+    definition: "pay_as_you_go_from_earnings boolean NOT NULL DEFAULT true",
+  },
+  {
+    table: "generations",
+    column: "is_public",
+    definition: "is_public boolean NOT NULL DEFAULT false",
   },
 ];
 
@@ -244,13 +255,21 @@ async function upsertUser(client, organizationId) {
               is_anonymous = false,
               is_active = true,
               email_verified = true,
+              steward_user_id = $6,
               wallet_address = $5,
               wallet_chain_type = 'evm',
               wallet_verified = true,
               updated_at = NOW()
         WHERE id = $1
         RETURNING id`,
-      [existingUsers.rows[0].id, TEST_USER_EMAIL, TEST_USER_NAME, organizationId, TEST_USER_WALLET],
+      [
+        existingUsers.rows[0].id,
+        TEST_USER_EMAIL,
+        TEST_USER_NAME,
+        organizationId,
+        TEST_USER_WALLET,
+        TEST_USER_STEWARD_ID,
+      ],
     );
 
     return result.rows[0].id;
@@ -266,13 +285,21 @@ async function upsertUser(client, organizationId) {
        is_anonymous,
        is_active,
        email_verified,
+       steward_user_id,
        wallet_address,
        wallet_chain_type,
        wallet_verified
      )
-     VALUES ($1, $2, $3, $4, 'owner', false, true, true, $5, 'evm', true)
+     VALUES ($1, $2, $3, $4, 'owner', false, true, true, $5, $6, 'evm', true)
      RETURNING id`,
-    [TEST_USER_ID, TEST_USER_EMAIL, TEST_USER_NAME, organizationId, TEST_USER_WALLET],
+    [
+      TEST_USER_ID,
+      TEST_USER_EMAIL,
+      TEST_USER_NAME,
+      organizationId,
+      TEST_USER_STEWARD_ID,
+      TEST_USER_WALLET,
+    ],
   );
 
   return result.rows[0].id;

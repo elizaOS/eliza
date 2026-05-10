@@ -1791,7 +1791,10 @@ export class LifeOpsContextGraph {
           targetType,
           targetId,
           evidenceId: entry.id,
-          reason: policyDecision.reason ?? "policy_denied",
+          reason:
+            "reason" in policyDecision
+              ? (policyDecision.reason ?? "policy_denied")
+              : "policy_denied",
           sourceFamilies,
         });
         continue;

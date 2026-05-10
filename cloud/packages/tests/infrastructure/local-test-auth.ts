@@ -15,6 +15,7 @@ const TEST_USER_ID = "22222222-2222-4222-8222-222222222222";
 const TEST_USER_EMAIL = "local-live-test-user@agent.local";
 const TEST_USER_NAME = "Local Live Test User";
 const TEST_USER_WALLET = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+const TEST_USER_STEWARD_ID = "steward:local-live-test-user";
 
 const TEST_API_KEY_ID = "33333333-3333-4333-8333-333333333333";
 const TEST_API_KEY_NAME = "Local Live Test API Key";
@@ -25,6 +26,7 @@ const TEST_MEMBER_USER_ID = "55555555-5555-4555-8555-555555555555";
 const TEST_MEMBER_USER_EMAIL = "local-live-test-member@agent.local";
 const TEST_MEMBER_USER_NAME = "Local Live Test Member";
 const TEST_MEMBER_USER_WALLET = "0xdddddddddddddddddddddddddddddddddddddddd";
+const TEST_MEMBER_USER_STEWARD_ID = "steward:local-live-test-member";
 const TEST_MEMBER_API_KEY_ID = "66666666-6666-4666-8666-666666666666";
 const TEST_MEMBER_API_KEY_NAME = "Local Live Test Member API Key";
 const TEST_MEMBER_API_KEY_VALUE = "eliza_test_local_live_member_key";
@@ -33,6 +35,34 @@ const TEST_AFFILIATE_API_KEY_NAME = "Local Live Test Affiliate API Key";
 const TEST_AFFILIATE_API_KEY_VALUE = "eliza_test_local_live_affiliate_key";
 const TEST_AFFILIATE_PERMISSIONS = ["affiliate:create-character"];
 const TEST_AUTH_SECRET = "playwright-local-auth-secret";
+const SCHEMA_COMPATIBILITY_COLUMNS = [
+  { table: "users", column: "steward_user_id", definition: "steward_user_id text" },
+  {
+    table: "user_identities",
+    column: "steward_user_id",
+    definition: "steward_user_id text",
+  },
+  {
+    table: "organizations",
+    column: "steward_tenant_id",
+    definition: "steward_tenant_id text",
+  },
+  {
+    table: "organizations",
+    column: "steward_tenant_api_key",
+    definition: "steward_tenant_api_key text",
+  },
+  {
+    table: "organizations",
+    column: "pay_as_you_go_from_earnings",
+    definition: "pay_as_you_go_from_earnings boolean NOT NULL DEFAULT true",
+  },
+  {
+    table: "generations",
+    column: "is_public",
+    definition: "is_public boolean NOT NULL DEFAULT false",
+  },
+] as const;
 
 let bootstrapPromise: Promise<LocalTestAuthContext> | null = null;
 
@@ -100,28 +130,31 @@ async function createLocalAuthClient(connectionString: string): Promise<LocalAut
   return client;
 }
 
+async function columnExists(
+  client: LocalAuthClient,
+  table: string,
+  column: string,
+): Promise<boolean> {
+  const result = await client.query(
+    `SELECT 1
+       FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+        AND column_name = $2
+      LIMIT 1`,
+    [table, column],
+  );
+
+  return Boolean(result.rowCount && result.rowCount > 0);
+}
+
 async function ensureSchemaCompatibility(client: LocalAuthClient): Promise<void> {
-  await client.query(`
-    ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS steward_user_id text;
-  `);
-
-  await client.query(`
-    ALTER TABLE user_identities
-      ADD COLUMN IF NOT EXISTS steward_user_id text;
-  `);
-
-  await client.query(`
-    ALTER TABLE organizations
-      ADD COLUMN IF NOT EXISTS steward_tenant_id text,
-      ADD COLUMN IF NOT EXISTS steward_tenant_api_key text,
-      ADD COLUMN IF NOT EXISTS pay_as_you_go_from_earnings boolean NOT NULL DEFAULT true;
-  `);
-
-  await client.query(`
-    ALTER TABLE generations
-      ADD COLUMN IF NOT EXISTS is_public boolean NOT NULL DEFAULT false;
-  `);
+  for (const { table, column, definition } of SCHEMA_COMPATIBILITY_COLUMNS) {
+    if (await columnExists(client, table, column)) {
+      continue;
+    }
+    await client.query(`ALTER TABLE ${table} ADD COLUMN ${definition};`);
+  }
 }
 
 async function upsertOrganization(client: LocalAuthClient): Promise<string> {
@@ -170,7 +203,8 @@ async function upsertUser(client: LocalAuthClient, organizationId: string): Prom
               role = 'owner',
               is_anonymous = false,
               is_active = true,
-              email_verified = true,
+          email_verified = true,
+              steward_user_id = $6,
               wallet_address = $5,
               wallet_chain_type = 'evm',
               wallet_verified = true,
@@ -183,6 +217,7 @@ async function upsertUser(client: LocalAuthClient, organizationId: string): Prom
         TEST_USER_NAME,
         organizationId,
         TEST_USER_WALLET,
+        TEST_USER_STEWARD_ID,
       ],
     );
 
@@ -199,13 +234,21 @@ async function upsertUser(client: LocalAuthClient, organizationId: string): Prom
        is_anonymous,
        is_active,
        email_verified,
+       steward_user_id,
        wallet_address,
        wallet_chain_type,
        wallet_verified
      )
-     VALUES ($1, $2, $3, $4, 'owner', false, true, true, $5, 'evm', true)
+     VALUES ($1, $2, $3, $4, 'owner', false, true, true, $5, $6, 'evm', true)
      RETURNING id`,
-    [TEST_USER_ID, TEST_USER_EMAIL, TEST_USER_NAME, organizationId, TEST_USER_WALLET],
+    [
+      TEST_USER_ID,
+      TEST_USER_EMAIL,
+      TEST_USER_NAME,
+      organizationId,
+      TEST_USER_STEWARD_ID,
+      TEST_USER_WALLET,
+    ],
   );
 
   return result.rows[0]!.id;
@@ -252,6 +295,7 @@ async function upsertMemberUser(client: LocalAuthClient, organizationId: string)
               is_anonymous = false,
               is_active = true,
               email_verified = true,
+              steward_user_id = $6,
               wallet_address = $5,
               wallet_chain_type = 'evm',
               wallet_verified = true,
@@ -264,6 +308,7 @@ async function upsertMemberUser(client: LocalAuthClient, organizationId: string)
         TEST_MEMBER_USER_NAME,
         organizationId,
         TEST_MEMBER_USER_WALLET,
+        TEST_MEMBER_USER_STEWARD_ID,
       ],
     );
 
@@ -280,17 +325,19 @@ async function upsertMemberUser(client: LocalAuthClient, organizationId: string)
        is_anonymous,
        is_active,
        email_verified,
+       steward_user_id,
        wallet_address,
        wallet_chain_type,
        wallet_verified
      )
-     VALUES ($1, $2, $3, $4, 'member', false, true, true, $5, 'evm', true)
+     VALUES ($1, $2, $3, $4, 'member', false, true, true, $5, $6, 'evm', true)
      RETURNING id`,
     [
       TEST_MEMBER_USER_ID,
       TEST_MEMBER_USER_EMAIL,
       TEST_MEMBER_USER_NAME,
       organizationId,
+      TEST_MEMBER_USER_STEWARD_ID,
       TEST_MEMBER_USER_WALLET,
     ],
   );
@@ -384,9 +431,12 @@ async function bootstrapLocalTestAuth(): Promise<LocalTestAuthContext> {
 
   const client = await createLocalAuthClient(getDatabaseUrl());
 
+  let inTransaction = false;
   try {
-    await client.query("BEGIN");
     await ensureSchemaCompatibility(client);
+
+    await client.query("BEGIN");
+    inTransaction = true;
 
     const organizationId = await upsertOrganization(client);
     const userId = await upsertUser(client, organizationId);
@@ -408,6 +458,7 @@ async function bootstrapLocalTestAuth(): Promise<LocalTestAuthContext> {
     });
 
     await client.query("COMMIT");
+    inTransaction = false;
 
     const sessionToken = createPlaywrightTestSessionToken(userId, organizationId);
 
@@ -430,7 +481,9 @@ async function bootstrapLocalTestAuth(): Promise<LocalTestAuthContext> {
       sessionToken,
     };
   } catch (error) {
-    await client.query("ROLLBACK");
+    if (inTransaction) {
+      await client.query("ROLLBACK");
+    }
     throw error;
   } finally {
     await client.end();

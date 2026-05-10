@@ -29,7 +29,7 @@ import {
   listTriggerTasks,
   readTriggerConfig,
   triggersFeatureEnabled,
-} from "@elizaos/agent/triggers/runtime";
+} from "@elizaos/agent";
 import {
   type AgentRuntime,
   type EventPayload,
@@ -98,8 +98,7 @@ function stripRuntimeFields(
   payload: EventPayload | EventPayloadMap[keyof EventPayloadMap],
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  const source = payload as unknown as Record<string, unknown>;
-  for (const [key, value] of Object.entries(source)) {
+  for (const [key, value] of Object.entries(payload)) {
     if (key === "runtime" || key === "source") continue;
     // Skip function values (e.g. callback) — they cannot be serialized to JSON
     if (typeof value === "function") continue;
@@ -109,7 +108,12 @@ function stripRuntimeFields(
 }
 
 function readPayloadSource(payload: EventPayload): string | null {
-  const record = payload as unknown as Record<string, unknown>;
+  const record = payload as EventPayload & {
+    message?: {
+      content?: { source?: unknown };
+      source?: unknown;
+    };
+  };
   const message = record.message as Record<string, unknown> | undefined;
   const content = message?.content as Record<string, unknown> | undefined;
   const candidates = [record.source, content?.source, message?.source];

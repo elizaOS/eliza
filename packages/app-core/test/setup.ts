@@ -36,7 +36,7 @@ try {
     rootRequire.resolve("react-dom/package.json"),
   );
 
-  const moduleInternals = Module as unknown as {
+  const moduleInternals = Module as typeof Module & {
     _resolveFilename: ResolveFilename & {
       [REACT_RESOLVE_PATCH_MARK]?: boolean;
     };
@@ -168,7 +168,7 @@ const sharedSessionStorage = ensureStorage(
 );
 
 if (typeof globalThis.window !== "undefined") {
-  const win = globalThis.window as unknown as Record<string, unknown>;
+  const win = globalThis.window as Window & Record<string, unknown>;
   ensureStorage(win, "localStorage", sharedLocalStorage);
   ensureStorage(win, "sessionStorage", sharedSessionStorage);
   // jsdom ships noisy "Not implemented" confirm/alert stubs. Replace them

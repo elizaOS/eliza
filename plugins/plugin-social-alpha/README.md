@@ -20,11 +20,6 @@ src/
 │   ├── PriceDataService.ts       # Price data fetching and enrichment
 │   ├── TrustScoreService.ts      # Trust score calculation and optimization
 │   └── balancedTrustScoreCalculator.ts  # Core scoring algorithm
-├── scripts/               # CLI tools
-│   ├── process-discord-data.ts   # Process raw Discord data
-│   ├── enrich-price-data.ts      # Enrich calls with price data
-│   ├── analyze-trust-scores.ts   # Analyze and rank users
-│   └── optimize-algorithm.ts     # Optimize scoring parameters
 ├── frontend/              # React UI components
 │   └── LeaderboardTable.tsx      # Trust score leaderboard
 └── __tests__/            # Comprehensive test suite
@@ -48,61 +43,6 @@ DEXSCREENER_API_KEY=your_dexscreener_api_key
 # Optional: Helius for token metadata
 HELIUS_API_KEY=your_helius_api_key
 ```
-
-## Usage
-
-### 1. Process Discord Data
-
-Extract trading calls from Discord export:
-
-```bash
-npm run process-discord-data -- --input ./discord-data --output ./processed-data
-```
-
-Options:
-- `--input <dir>`: Directory containing Discord JSON exports (default: `./discord-data`)
-- `--output <dir>`: Output directory for processed data (default: `./processed-data`)
-- `--batch-size <number>`: Number of calls per batch (default: `1000`)
-
-### 2. Enrich with Price Data
-
-Fetch historical price data for each trading call:
-
-```bash
-npm run enrich-price-data -- --input ./processed-data/batches --output ./enriched-data
-```
-
-Options:
-- `--input <dir>`: Directory containing processed batches (default: `./processed-data/batches`)
-- `--output <dir>`: Output directory for enriched data (default: `./enriched-data`)
-- `--resume`: Resume from previous run if interrupted
-
-### 3. Analyze Trust Scores
-
-Calculate trust scores and generate rankings:
-
-```bash
-npm run analyze-trust-scores -- --input ./enriched-data/enriched_calls.json --output ./trust-analysis
-```
-
-Options:
-- `--input <file>`: Enriched calls JSON file
-- `--output <dir>`: Output directory for analysis results
-- `--compare`: Compare different scoring algorithms
-- `--visualize`: Generate CSV for data visualization
-
-### 4. Optimize Algorithm (Optional)
-
-Fine-tune scoring parameters using ML optimization:
-
-```bash
-npm run optimize-algorithm -- --quick --output ./optimization-results
-```
-
-Options:
-- `--quick`: Run quick optimization with fewer parameter combinations
-- `--cache`: Use cached simulation data (default: true)
-- `--output <dir>`: Output directory for optimization results
 
 ## Trust Score Algorithm
 
@@ -215,14 +155,6 @@ npm run typecheck
 2. **Rate Limits**: If hitting API rate limits, reduce batch size or add delays
 3. **Memory Issues**: For large datasets, reduce batch size or process in chunks
 4. **TypeScript Errors**: Run `npm run typecheck` to identify type issues
-
-### Debug Mode
-
-Enable debug logging:
-
-```bash
-DEBUG=marketplace-of-trust:* npm run process-discord-data
-```
 
 ## Contributing
 

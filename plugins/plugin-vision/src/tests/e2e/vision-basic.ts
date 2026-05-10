@@ -6,7 +6,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
-import { captureImageAction, describeSceneAction } from "../../action";
+import { visionAction } from "../../action";
 import type { VisionService } from "../../service";
 
 export class VisionBasicE2ETestSuite {
@@ -77,11 +77,7 @@ export class VisionBasicE2ETestSuite {
         );
 
         // Validate the action
-        const isValid = await describeSceneAction.validate(
-          runtime,
-          message,
-          state,
-        );
+        const isValid = await visionAction.validate(runtime, message, state);
 
         if (!visionService || !visionService.isActive()) {
           // If vision service is not active, validation should return false
@@ -95,11 +91,11 @@ export class VisionBasicE2ETestSuite {
           );
 
           // But handler should still work and provide appropriate message
-          await describeSceneAction.handler(
+          await visionAction.handler(
             runtime,
             message,
             state,
-            {},
+            { parameters: { op: "describe" } },
             async (response) => {
               callbackCalled = true;
               callbackResponse = response;
@@ -131,16 +127,16 @@ export class VisionBasicE2ETestSuite {
           // Vision is active, normal test flow
           if (!isValid) {
             throw new Error(
-              "describeSceneAction validation failed despite active vision",
+              "visionAction validation failed despite active vision",
             );
           }
           console.log("  Action validation: passed");
 
-          await describeSceneAction.handler(
+          await visionAction.handler(
             runtime,
             message,
             state,
-            {},
+            { parameters: { op: "describe" } },
             async (response) => {
               callbackCalled = true;
               callbackResponse = response;
@@ -166,9 +162,9 @@ export class VisionBasicE2ETestSuite {
         // Verify response contains expected action
         if (
           !callbackResponse.actions ||
-          !callbackResponse.actions.includes("DESCRIBE_SCENE")
+          !callbackResponse.actions.includes("VISION")
         ) {
-          throw new Error("Response does not include DESCRIBE_SCENE action");
+          throw new Error("Response does not include VISION action");
         }
       },
     },
@@ -199,11 +195,7 @@ export class VisionBasicE2ETestSuite {
         );
 
         // Validate the action
-        const isValid = await captureImageAction.validate(
-          runtime,
-          message,
-          state,
-        );
+        const isValid = await visionAction.validate(runtime, message, state);
 
         if (!visionService || !visionService.isActive()) {
           // If vision service is not active, validation should return false
@@ -217,11 +209,11 @@ export class VisionBasicE2ETestSuite {
           );
 
           // But handler should still work and provide appropriate message
-          await captureImageAction.handler(
+          await visionAction.handler(
             runtime,
             message,
             state,
-            {},
+            { parameters: { op: "capture" } },
             async (response) => {
               callbackCalled = true;
               callbackResponse = response;
@@ -253,16 +245,16 @@ export class VisionBasicE2ETestSuite {
           // Vision is active, normal test flow
           if (!isValid) {
             throw new Error(
-              "captureImageAction validation failed despite active vision",
+              "visionAction validation failed despite active vision",
             );
           }
           console.log("  Action validation: passed");
 
-          await captureImageAction.handler(
+          await visionAction.handler(
             runtime,
             message,
             state,
-            {},
+            { parameters: { op: "capture" } },
             async (response) => {
               callbackCalled = true;
               callbackResponse = response;
@@ -302,9 +294,9 @@ export class VisionBasicE2ETestSuite {
         // Verify response contains expected action
         if (
           !callbackResponse.actions ||
-          !callbackResponse.actions.includes("CAPTURE_IMAGE")
+          !callbackResponse.actions.includes("VISION")
         ) {
-          throw new Error("Response does not include CAPTURE_IMAGE action");
+          throw new Error("Response does not include VISION action");
         }
       },
     },

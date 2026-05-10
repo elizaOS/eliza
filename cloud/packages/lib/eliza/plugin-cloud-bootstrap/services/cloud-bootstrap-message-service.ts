@@ -9,6 +9,7 @@ import {
   composePromptFromState,
   createUniqueUuid,
   EventType,
+  executePlannedToolCall,
   type HandlerCallback,
   type IAgentRuntime,
   type IMessageService,
@@ -43,6 +44,8 @@ import {
 import {
   attachAvailableContexts,
   type ContextRoutingDecision,
+  getActiveRoutingContexts,
+  getContextRoutingFromMessage,
   parseContextRoutingMetadata,
   setContextRoutingMetadata,
 } from "../utils/context-routing";
@@ -59,7 +62,51 @@ import {
   isLatestResponseId,
   setLatestResponseId,
 } from "../utils/race-tracking";
-import { getActionResultsFromCache, refreshStateAfterAction } from "../utils/state";
+import { refreshStateAfterAction } from "../utils/state";
+
+type RuntimeWithEvaluators = IAgentRuntime & {
+  evaluate?: (
+    message: Memory,
+    state: State,
+    didRespond: boolean,
+    callback: HandlerCallback,
+    responseMessages: Memory[],
+  ) => Promise<unknown>;
+};
+
+function isStateValue(value: unknown): value is NonNullable<State["values"][string]> {
+  return (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint" ||
+    typeof value === "object"
+  );
+}
+
+function getContentMetadata(content: Content): Record<string, unknown> {
+  const metadata = content.metadata;
+  return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? (metadata as Record<string, unknown>)
+    : {};
+}
+
+function withActionResultsMetadata(
+  message: Memory,
+  actionResults: NativePlannerActionResult[],
+): Memory {
+  return {
+    ...message,
+    content: {
+      ...message.content,
+      metadata: {
+        ...getContentMetadata(message.content),
+        actionResults,
+      },
+    } as unknown as Content,
+  };
+}
 
 const RETRY_CONFIG = {
   baseDelayMs: 200,
@@ -614,15 +661,6 @@ export class CloudBootstrapMessageService implements IMessageService {
         if (callback) {
           await callback(responseContent);
         }
-      } else if (mode === "actions") {
-        // Actions mode - run processActions (though in native-planner we already did this)
-        await runtime.processActions(message, responseMessages, state, async (content) => {
-          responseContent!.actionCallbacks = content;
-          if (callback) {
-            return callback(content);
-          }
-          return [];
-        });
       }
     }
 
@@ -633,12 +671,13 @@ export class CloudBootstrapMessageService implements IMessageService {
     const hasEvaluatorStorage = memoryService?.hasStorage?.() !== false;
 
     if (hasEvaluatorStorage) {
+      const runtimeWithEvaluators = runtime as RuntimeWithEvaluators;
       try {
-        await runtime.evaluate(
+        await runtimeWithEvaluators.evaluate?.(
           message,
           state,
           true,
-          async (content) => {
+          async (content: Content) => {
             if (responseContent) {
               responseContent.evalCallbacks = content;
             }
@@ -703,6 +742,7 @@ export class CloudBootstrapMessageService implements IMessageService {
     let lastActionKey = "";
     let accumulatedState: State = state;
     let finishResponse: string | null = null;
+    const activeContexts = getActiveRoutingContexts(getContextRoutingFromMessage(message));
 
     // Save the original system prompt so we can restore it after the native planner loop.
     // The decision phase uses a functional system prompt (embedded in the template),
@@ -747,7 +787,7 @@ export class CloudBootstrapMessageService implements IMessageService {
         ],
         true,
       );
-      (accumulatedState.data as any).actionResults = traceActionResult;
+      accumulatedState.data.actionResults = traceActionResult;
 
       // Snapshot provider values for use in the decision loop. ACTIONS and USER_AUTH_STATUS
       // are truly stable. RECENT_MESSAGES is intentionally frozen here so the decision LLM
@@ -759,7 +799,7 @@ export class CloudBootstrapMessageService implements IMessageService {
       // recall, and (b) refreshing recentMessages per iteration would add ~200-400ms each.
       // If a future action requires cross-iteration memory visibility, fetch fresh
       // recentMessages inside that specific iteration instead of using the cached snapshot.
-      const cachedStableValues: Record<string, unknown> = {};
+      const cachedStableValues: State["values"] = {};
       const stableProviderKeys = [
         "recentMessages",
         "actions",
@@ -769,16 +809,16 @@ export class CloudBootstrapMessageService implements IMessageService {
         "userAuthStatus",
       ];
       for (const key of stableProviderKeys) {
-        const val =
-          accumulatedState.values?.[key] ?? (accumulatedState as Record<string, unknown>)[key];
-        if (val !== undefined) {
+        const val = accumulatedState.values?.[key] ?? accumulatedState[key];
+        if (val !== undefined && isStateValue(val)) {
           cachedStableValues[key] = val;
         }
       }
       // Also cache provider data (used by action execution, not templates)
-      const cachedStableData = accumulatedState.data
-        ? { actionsData: accumulatedState.data.actionsData }
-        : {};
+      const cachedStableData: State["data"] =
+        accumulatedState.data.actionsData !== undefined
+          ? { actionsData: accumulatedState.data.actionsData }
+          : {};
 
       const streamThinking = async (phase: string, content: string): Promise<void> => {
         if (options?.onReasoningChunk) {
@@ -804,16 +844,7 @@ export class CloudBootstrapMessageService implements IMessageService {
 
         // Inject actionResults into message metadata BEFORE composeState
         // so ACTION_STATE provider can read it during state composition
-        const messageWithResults = {
-          ...message,
-          content: {
-            ...message.content,
-            metadata: {
-              ...((message.content as any).metadata || {}),
-              actionResults: traceActionResult,
-            },
-          },
-        };
+        const messageWithResults = withActionResultsMetadata(message, traceActionResult);
 
         // Only refresh ACTION_STATE + CHARACTER per iteration. ACTIONS, USER_AUTH_STATUS,
         // and RECENT_MESSAGES are stable for the request lifetime and reused from cache.
@@ -825,11 +856,11 @@ export class CloudBootstrapMessageService implements IMessageService {
         // Merge: start with fresh ACTION_STATE, overlay cached stable provider values
         accumulatedState = {
           ...actionOnlyState,
-          values: { ...actionOnlyState.values, ...cachedStableValues } as any,
+          values: { ...actionOnlyState.values, ...cachedStableValues },
           data: { ...actionOnlyState.data, ...cachedStableData },
         };
         // Also set on state.data for consistency
-        (accumulatedState.data as any).actionResults = traceActionResult;
+        accumulatedState.data.actionResults = traceActionResult;
 
         const remainingSteps = maxIterations - iterationCount;
         const stateWithIterationContext = {
@@ -1059,22 +1090,6 @@ export class CloudBootstrapMessageService implements IMessageService {
             `\nExecuting action: ${action}${hasActionParams ? ` with params: ${JSON.stringify(actionParams)}` : ""}\n`,
           );
 
-          const actionContent: Content & {
-            params?: Record<string, Record<string, unknown>>;
-            actionParams?: Record<string, unknown>;
-            actionInput?: Record<string, unknown>;
-          } = {
-            text: `Executing action: ${action}`,
-            actions: [action],
-            thought: thought ?? "",
-          };
-
-          if (hasActionParams) {
-            actionContent.params = toNativeActionParams(action, actionParams);
-            actionContent.actionParams = actionParams;
-            actionContent.actionInput = actionParams;
-          }
-
           const actionMessage: Memory = hasActionParams
             ? {
                 ...message,
@@ -1087,47 +1102,47 @@ export class CloudBootstrapMessageService implements IMessageService {
               }
             : message;
 
-          let capturedResult: {
-            text?: string;
-            success?: boolean;
-            values?: Record<string, unknown>;
-            data?: Record<string, unknown>;
-          } | null = null;
-
-          await runtime.processActions(
-            actionMessage,
-            [
-              {
-                id: v4() as UUID,
-                entityId: runtime.agentId,
-                roomId: message.roomId,
-                createdAt: Date.now(),
-                content: actionContent,
+          let capturedCallback: Content | undefined;
+          const result = await executePlannedToolCall(
+            runtime,
+            {
+              message: actionMessage,
+              state: accumulatedState,
+              activeContexts,
+              previousResults: traceActionResult,
+              callback: async (content) => {
+                capturedCallback = content;
+                return [];
               },
-            ],
-            accumulatedState,
-            async (result) => {
-              capturedResult = result;
-              return [];
+              responses: [
+                {
+                  id: v4() as UUID,
+                  entityId: runtime.agentId,
+                  roomId: message.roomId,
+                  createdAt: Date.now(),
+                  content: {
+                    text: `Executing action: ${action}`,
+                    actions: [action],
+                    thought: thought ?? "",
+                  },
+                },
+              ],
             },
+            hasActionParams ? { name: action, params: actionParams } : { name: action },
+            options?.onStreamChunk ? { onStreamChunk: options.onStreamChunk } : undefined,
           );
-
-          const result =
-            capturedResult ||
-            (() => {
-              const actionResults = getActionResultsFromCache(runtime, message.id as string);
-              return actionResults.length > 0
-                ? (actionResults[0] as Record<string, unknown>)
-                : null;
-            })();
+          const resultText =
+            typeof result.text === "string" && result.text.length > 0
+              ? result.text
+              : capturedCallback?.text;
           const success = (result?.success as boolean) ?? false;
 
           const actionResult: NativePlannerActionResult = {
             data: { actionName: action },
             success,
-            text: result?.text as string | undefined,
-            values: result?.values as Record<string, unknown> | undefined,
-            error: success ? undefined : (result?.text as string | undefined),
+            text: resultText,
+            values: result?.values,
+            error: success ? undefined : resultText,
           };
 
           // Transparent meta-actions (e.g., SEARCH_ACTIONS) don't appear in
@@ -1143,9 +1158,7 @@ export class CloudBootstrapMessageService implements IMessageService {
 
           // Track newly discovered actions from SEARCH_ACTIONS for explicit visibility
           if (action === "SEARCH_ACTIONS" && actionResult.success && result) {
-            const data = (result as Record<string, unknown>).data as
-              | Record<string, unknown>
-              | undefined;
+            const data = result.data as Record<string, unknown> | undefined;
             const newlyRegistered = data?.newlyRegistered as string[] | undefined;
             if (newlyRegistered?.length) {
               newlyRegistered.forEach((name) => discoveredActions.add(name));
@@ -1259,16 +1272,7 @@ export class CloudBootstrapMessageService implements IMessageService {
 
       // Inject actionResults into message metadata BEFORE composeState
       // so ACTION_STATE provider can read them during state composition
-      const summaryMessageWithResults = {
-        ...message,
-        content: {
-          ...message.content,
-          metadata: {
-            ...((message.content as any).metadata || {}),
-            actionResults: traceActionResult,
-          },
-        },
-      };
+      const summaryMessageWithResults = withActionResultsMetadata(message, traceActionResult);
 
       // Fetch all providers fresh for the summary. RECENT_MESSAGES will include
       // messages created by action execution, which the summary LLM needs to see.
@@ -1288,11 +1292,11 @@ export class CloudBootstrapMessageService implements IMessageService {
       // changed after actions executed, so the stale cached copy must NOT win.
       accumulatedState = {
         ...summaryFreshState,
-        values: { ...cachedStableValues, ...summaryFreshState.values } as any,
+        values: { ...cachedStableValues, ...summaryFreshState.values },
         data: { ...cachedStableData, ...summaryFreshState.data },
       };
       // Also set on state.data for consistency
-      (accumulatedState.data as any).actionResults = traceActionResult;
+      accumulatedState.data.actionResults = traceActionResult;
       accumulatedState.totalActionsExecuted = totalActionsExecuted;
       accumulatedState.values.totalActionsExecuted = totalActionsExecuted;
       accumulatedState.values.hasActionResults = traceActionResult.length > 0;

@@ -1,4 +1,4 @@
-import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import {
   type Action,
   type ActionExample,
@@ -19,6 +19,12 @@ import {
   listCalendlyScheduledEvents,
   readCalendlyCredentialsFromEnv,
 } from "../../lifeops/calendly-client.js";
+import {
+  createCalendlySingleUseLinkWithRuntimeService,
+  getCalendlyAvailabilityWithRuntimeService,
+  listCalendlyEventTypesWithRuntimeService,
+  listCalendlyScheduledEventsWithRuntimeService,
+} from "../../lifeops/runtime-service-delegates.js";
 
 const ACTION_NAME = "CALENDLY";
 
@@ -41,6 +47,85 @@ function coerceString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function coerceRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function normalizeCalendlyEventType(value: unknown): CalendlyEventType | null {
+  const record = coerceRecord(value);
+  if (!record) return null;
+  const uri = coerceString(record.uri);
+  const name = coerceString(record.name);
+  const schedulingUrl =
+    coerceString(record.schedulingUrl) ?? coerceString(record.scheduling_url);
+  const durationRaw = record.durationMinutes ?? record.duration;
+  const durationMinutes =
+    typeof durationRaw === "number"
+      ? durationRaw
+      : Number.parseInt(String(durationRaw ?? ""), 10);
+  if (!uri || !name || !schedulingUrl || !Number.isFinite(durationMinutes)) {
+    return null;
+  }
+  return {
+    uri,
+    name,
+    slug: coerceString(record.slug) ?? "",
+    schedulingUrl,
+    durationMinutes,
+    active: record.active !== false,
+  };
+}
+
+function normalizeCalendlyEventTypes(values: unknown[]): CalendlyEventType[] {
+  return values
+    .map(normalizeCalendlyEventType)
+    .filter((value): value is CalendlyEventType => value !== null);
+}
+
+function normalizeCalendlyScheduledEvents(
+  values: unknown[],
+): CalendlyScheduledEvent[] {
+  return values
+    .map((value): CalendlyScheduledEvent | null => {
+      const record = coerceRecord(value);
+      if (!record) return null;
+      const uri = coerceString(record.uri);
+      const name = coerceString(record.name);
+      const startTime =
+        coerceString(record.startTime) ?? coerceString(record.start_time);
+      const endTime =
+        coerceString(record.endTime) ?? coerceString(record.end_time);
+      const status = record.status === "canceled" ? "canceled" : "active";
+      if (!uri || !name || !startTime || !endTime) return null;
+      const invitees = Array.isArray(record.invitees)
+        ? record.invitees
+            .map((invitee) => {
+              const inviteeRecord = coerceRecord(invitee);
+              if (!inviteeRecord) return null;
+              return {
+                ...(coerceString(inviteeRecord.name)
+                  ? { name: coerceString(inviteeRecord.name) }
+                  : {}),
+                ...(coerceString(inviteeRecord.email)
+                  ? { email: coerceString(inviteeRecord.email) }
+                  : {}),
+                status: coerceString(inviteeRecord.status) ?? "active",
+              };
+            })
+            .filter(
+              (
+                invitee,
+              ): invitee is { name?: string; email?: string; status: string } =>
+                invitee !== null,
+            )
+        : [];
+      return { uri, name, startTime, endTime, status, invitees };
+    })
+    .filter((value): value is CalendlyScheduledEvent => value !== null);
 }
 
 function parseSubaction(value: unknown): CalendlySubaction | null {
@@ -138,6 +223,24 @@ function success(text: string, data: Record<string, unknown>): ActionResult {
   };
 }
 
+function calendlyRuntimeServiceAvailable(runtime: IAgentRuntime): boolean {
+  const service = runtime.getService?.("calendly") as
+    | { isConnected?: (accountId?: string) => boolean }
+    | null
+    | undefined;
+  if (!service || typeof service !== "object") return false;
+  return typeof service.isConnected === "function"
+    ? service.isConnected("default")
+    : true;
+}
+
+function calendlyNotConfiguredFailure(): ActionResult {
+  return failure(
+    "Calendly is not configured. Connect the Calendly service or set ELIZA_CALENDLY_TOKEN.",
+    "CALENDLY_NOT_CONFIGURED",
+  );
+}
+
 export const calendlyAction: Action = {
   name: ACTION_NAME,
   similes: [
@@ -150,23 +253,28 @@ export const calendlyAction: Action = {
     "CALENDLY_SCHEDULED_EVENTS",
   ],
   description:
-    "Work with Calendly specifically (calendly.com / api.calendly.com): " +
-    "list event types, check availability against a Calendly event type URI, " +
-    "list Calendly-scheduled events, generate Calendly single-use booking " +
-    "links. Subactions: list_event_types, availability, upcoming_events, " +
-    "single_use_link. " +
-    "Use this — NOT the Google-Calendar handler — whenever the user mentions Calendly by " +
-    "name or passes a calendly.com / api.calendly.com URL. Calendly is a " +
-    "separate third-party scheduling product with its own API, event-type " +
-    "URIs, and booking-link flow.",
+    "Work with Calendly specifically (calendly.com / api.calendly.com). " +
+    "Subactions: list_event_types, availability (against a Calendly event-type URI), upcoming_events, single_use_link (generate a one-shot booking link). " +
+    "Use this — not CALENDAR — whenever the user mentions Calendly by name or passes a calendly.com / api.calendly.com URL.",
+  descriptionCompressed:
+    "calendly: list_event_types|availability|upcoming_events|single_use_link; route here for calendly.com URLs",
+  tags: [
+    "domain:calendar",
+    "capability:read",
+    "capability:write",
+    "surface:remote-api",
+  ],
   contexts: ["calendar", "contacts", "tasks"],
   roleGate: { minRole: "OWNER" },
 
   validate: async (
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     _message: Memory,
   ): Promise<boolean> => {
-    if (!readCalendlyCredentialsFromEnv()) return false;
+    return (
+      readCalendlyCredentialsFromEnv() !== null ||
+      calendlyRuntimeServiceAvailable(runtime)
+    );
   },
 
   parameters: [
@@ -174,12 +282,24 @@ export const calendlyAction: Action = {
       name: "subaction",
       description:
         "One of: list_event_types, availability, upcoming_events, single_use_link. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      descriptionCompressed:
+        "calendly op: list_event_types|availability|upcoming_events|single_use_link",
       required: false,
-      schema: { type: "string" as const },
+      schema: {
+        type: "string" as const,
+        enum: [
+          "list_event_types",
+          "availability",
+          "upcoming_events",
+          "single_use_link",
+        ],
+      },
+      examples: ["list_event_types", "availability"],
     },
     {
       name: "intent",
       description: "Optional free-form description of the user's intent.",
+      descriptionCompressed: "free-form intent",
       required: false,
       schema: { type: "string" as const },
     },
@@ -187,27 +307,36 @@ export const calendlyAction: Action = {
       name: "eventTypeUri",
       description:
         "Calendly event type URI. Required for availability and single_use_link.",
+      descriptionCompressed:
+        "calendly event type URI (availability|single_use_link)",
       required: false,
       schema: { type: "string" as const },
+      examples: ["https://api.calendly.com/event_types/ABCDEFGH"],
     },
     {
       name: "startDate",
       description:
         "ISO date (YYYY-MM-DD) for range-based queries (availability, upcoming_events).",
+      descriptionCompressed: "YYYY-MM-DD range start",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+      examples: ["2026-05-12"],
     },
     {
       name: "endDate",
       description: "ISO date (YYYY-MM-DD) for range-based queries.",
+      descriptionCompressed: "YYYY-MM-DD range end",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+      examples: ["2026-05-19"],
     },
     {
       name: "timezone",
       description: "IANA timezone, e.g. America/Los_Angeles.",
+      descriptionCompressed: "IANA tz",
       required: false,
       schema: { type: "string" as const },
+      examples: ["America/Los_Angeles", "UTC"],
     },
   ],
 
@@ -260,14 +389,6 @@ export const calendlyAction: Action = {
     state,
     options,
   ): Promise<ActionResult> => {
-    const credentials = readCalendlyCredentialsFromEnv();
-    if (!credentials) {
-      return failure(
-        "Calendly is not configured. Set ELIZA_CALENDLY_TOKEN.",
-        "CALENDLY_NOT_CONFIGURED",
-      );
-    }
-
     const rawParameters = (options as HandlerOptions | undefined)?.parameters;
     const rawParams = ((typeof rawParameters === "object" &&
     rawParameters !== null
@@ -299,6 +420,19 @@ export const calendlyAction: Action = {
     try {
       switch (subaction) {
         case "list_event_types": {
+          const delegated = await listCalendlyEventTypesWithRuntimeService({
+            runtime,
+          });
+          if (delegated.status === "handled") {
+            const types = normalizeCalendlyEventTypes(delegated.value);
+            return success(formatEventTypes(types), {
+              subaction,
+              eventTypes: types,
+              accountId: delegated.accountId,
+            });
+          }
+          const credentials = readCalendlyCredentialsFromEnv();
+          if (!credentials) return calendlyNotConfiguredFailure();
           const types = await listCalendlyEventTypes(credentials);
           return success(formatEventTypes(types), {
             subaction,
@@ -319,6 +453,24 @@ export const calendlyAction: Action = {
               "MISSING_DATE_RANGE",
             );
           }
+          const delegated = await getCalendlyAvailabilityWithRuntimeService({
+            runtime,
+            eventTypeUri,
+            options: {
+              startDate,
+              endDate,
+              timezone: coerceString(params.timezone),
+            },
+          });
+          if (delegated.status === "handled") {
+            return success(formatAvailability(delegated.value), {
+              subaction,
+              availability: delegated.value,
+              accountId: delegated.accountId,
+            });
+          }
+          const credentials = readCalendlyCredentialsFromEnv();
+          if (!credentials) return calendlyNotConfiguredFailure();
           const availability = await getCalendlyAvailability(
             credentials,
             eventTypeUri,
@@ -337,14 +489,34 @@ export const calendlyAction: Action = {
         case "upcoming_events": {
           const startDate = coerceString(params.startDate);
           const endDate = coerceString(params.endDate);
-          const events = await listCalendlyScheduledEvents(credentials, {
+          const eventOptions: {
+            minStartTime: string;
+            maxStartTime?: string;
+            status: "active";
+            limit: number;
+          } = {
             minStartTime: startDate
               ? `${startDate}T00:00:00Z`
               : new Date().toISOString(),
             maxStartTime: endDate ? `${endDate}T23:59:59Z` : undefined,
             status: "active",
             limit: 50,
+          };
+          const delegated = await listCalendlyScheduledEventsWithRuntimeService({
+            runtime,
+            options: eventOptions,
           });
+          if (delegated.status === "handled") {
+            const events = normalizeCalendlyScheduledEvents(delegated.value);
+            return success(formatScheduledEvents(events), {
+              subaction,
+              events,
+              accountId: delegated.accountId,
+            });
+          }
+          const credentials = readCalendlyCredentialsFromEnv();
+          if (!credentials) return calendlyNotConfiguredFailure();
+          const events = await listCalendlyScheduledEvents(credentials, eventOptions);
           return success(formatScheduledEvents(events), {
             subaction,
             events,
@@ -358,6 +530,21 @@ export const calendlyAction: Action = {
               "MISSING_EVENT_TYPE_URI",
             );
           }
+          const delegated = await createCalendlySingleUseLinkWithRuntimeService({
+            runtime,
+            eventTypeUri,
+          });
+          if (delegated.status === "handled") {
+            const expiryText = delegated.value.expiresAt
+              ? ` (expires ${delegated.value.expiresAt})`
+              : "";
+            return success(
+              `Single-use Calendly booking link: ${delegated.value.bookingUrl}${expiryText}`,
+              { subaction, link: delegated.value, accountId: delegated.accountId },
+            );
+          }
+          const credentials = readCalendlyCredentialsFromEnv();
+          if (!credentials) return calendlyNotConfiguredFailure();
           const link = await createCalendlySingleUseLink(
             credentials,
             eventTypeUri,

@@ -5,8 +5,7 @@
 
 "use client";
 
-import { ElizaCloudLockup } from "@elizaos/cloud-ui/primitives";
-import Image from "@elizaos/cloud-ui/runtime/image";
+import { ElizaCloudLockup, Image } from "@elizaos/cloud-ui";
 import { Link } from "react-router-dom";
 
 export default function Footer() {

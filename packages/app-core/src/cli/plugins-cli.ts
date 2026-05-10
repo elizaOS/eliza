@@ -6,9 +6,9 @@ import {
   type PluginManagerLike,
 } from "@elizaos/agent";
 import { type IAgentRuntime, PluginManagerService } from "@elizaos/core";
+import { parseClampedInteger } from "@elizaos/shared";
 import chalk from "chalk";
 import type { Command } from "commander";
-import { parseClampedInteger } from "../utils/number-parsing";
 
 /** Validate that a resolved plugin path is within allowed boundaries. */
 export function validatePluginPath(resolved: string): void {
@@ -129,13 +129,11 @@ async function getPluginManager(): Promise<PluginManagerLike> {
     plugins: [],
     actions: [],
     providers: [],
-    evaluators: [],
     services: new Map(),
     getService: () => null,
     registerService: async () => {},
     registerAction: () => {},
     registerProvider: () => {},
-    registerEvaluator: () => {},
     registerEvent: () => {},
   };
   const pluginManager = new PluginManagerService(mockRuntime as IAgentRuntime);
@@ -419,9 +417,7 @@ export function registerPluginsCli(program: Command): void {
             console.log(
               chalk.dim("Agent is restarting to load the new plugin..."),
             );
-            const { requestRestart } = await import(
-              "@elizaos/agent/runtime/restart"
-            );
+            const { requestRestart } = await import("@elizaos/shared");
             await Promise.resolve(
               requestRestart(`Plugin ${result.pluginName} installed`),
             );
@@ -533,9 +529,9 @@ export function registerPluginsCli(program: Command): void {
         const { pathToFileURL } = await import("node:url");
         const fsPromises = await import("node:fs/promises");
         const { resolveStateDir, resolveUserPath } = await import(
-          "@elizaos/agent/config/paths"
+          "@elizaos/agent"
         );
-        const { loadElizaConfig } = await import("../config/config");
+        const { loadElizaConfig } = await import("@elizaos/agent");
         const {
           CUSTOM_PLUGINS_DIRNAME,
           scanDropInPlugins,
@@ -687,9 +683,9 @@ export function registerPluginsCli(program: Command): void {
       try {
         const _nodePath = await import("node:path");
         const nodeFs = await import("node:fs");
-        const { resolveUserPath } = await import("@elizaos/agent/config/paths");
+        const { resolveUserPath } = await import("@elizaos/agent");
         const { loadElizaConfig, saveElizaConfig } = await import(
-          "../config/config"
+          "@elizaos/agent"
         );
 
         const resolved = resolveUserPath(rawPath);
@@ -750,9 +746,9 @@ export function registerPluginsCli(program: Command): void {
       try {
         const nodePath = await import("node:path");
         const { resolveStateDir, resolveUserPath } = await import(
-          "@elizaos/agent/config/paths"
+          "@elizaos/agent"
         );
-        const { loadElizaConfig } = await import("../config/config");
+        const { loadElizaConfig } = await import("@elizaos/agent");
         const { CUSTOM_PLUGINS_DIRNAME, scanDropInPlugins } = await import(
           "../runtime/eliza"
         );
@@ -955,7 +951,7 @@ export function registerPluginsCli(program: Command): void {
 
         // Save to config and env
         const { loadElizaConfig, saveElizaConfig } = await import(
-          "../config/config"
+          "@elizaos/agent"
         );
 
         let config: ReturnType<typeof loadElizaConfig>;
@@ -1024,7 +1020,7 @@ export function registerPluginsCli(program: Command): void {
         const nodeFs = await import("node:fs");
         const { spawnSync } = await import("node:child_process");
         const { resolveStateDir, resolveUserPath } = await import(
-          "@elizaos/agent/config/paths"
+          "@elizaos/agent"
         );
         const { CUSTOM_PLUGINS_DIRNAME, scanDropInPlugins } = await import(
           "../runtime/eliza"

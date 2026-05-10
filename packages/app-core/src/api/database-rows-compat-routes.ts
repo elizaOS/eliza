@@ -4,8 +4,8 @@ import {
   quoteIdent,
   sanitizeIdentifier,
   sqlLiteral,
-} from "../utils/sql-compat";
-import { ensureRouteAuthorized } from "./auth";
+} from "@elizaos/shared";
+import { ensureRouteAuthorized } from "./auth.ts";
 import {
   type CompatRuntimeState,
   DATABASE_UNAVAILABLE_MESSAGE,

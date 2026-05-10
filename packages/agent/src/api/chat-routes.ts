@@ -17,47 +17,58 @@ import {
   type AgentRuntime,
   ChannelType,
   type Content,
+  composePrompt,
   createMessageMemory,
   logger,
   ModelType,
+  mobileDirectReplyTemplate,
+  type RouteRequestContext,
   runWithTrajectoryContext,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-
-import { asRecord, normalizeCharacterLanguage } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.js";
+import {
+  getLocalInferenceChatStatus,
+  handleLocalInferenceChatCommand,
+  type LocalInferenceChatMetadata,
+  type LocalInferenceCommandIntent,
+} from "@elizaos/plugin-local-inference";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import {
+  asRecord,
+  normalizeCharacterLanguage,
+  resolveStreamingUpdate,
+} from "@elizaos/shared";
+import type { ElizaConfig } from "../config/config.ts";
 import {
   type CapturedModelUsage,
   estimateTokenCount,
   withModelUsageCapture,
-} from "../runtime/prompt-optimization.js";
-import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.js";
-import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.js";
-import { syncCharacterIntoConfig } from "../services/character-persistence.js";
-import { detectRuntimeModel } from "./agent-model.js";
+} from "../runtime/prompt-optimization.ts";
+import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.ts";
+import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.ts";
+import { syncCharacterIntoConfig } from "../services/character-persistence.ts";
+import { detectRuntimeModel } from "./agent-model.ts";
 import {
   executeFallbackParsedActions,
   maybeHandleDirectBinanceSkillRequest,
   parseFallbackActionBlocks,
-} from "./binance-skill-helpers.js";
+} from "./binance-skill-helpers.ts";
 import {
   isClientVisibleNoResponse,
   isNoResponsePlaceholder,
-} from "./chat-text-helpers.js";
-import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
+} from "./chat-text-helpers.ts";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
 import {
   extractAnthropicSystemAndLastUser,
   extractCompatTextContent,
   extractOpenAiSystemAndLastUser,
   resolveCompatRoomKey,
-} from "./compat-utils.js";
+} from "./compat-utils.ts";
 import {
   isInsufficientCreditsError,
   isInsufficientCreditsMessage,
-} from "./credit-detection.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+} from "./credit-detection.ts";
 import {
   buildWalletActionNotExecutedReply,
   cloneWithoutBlockedObjectKeys,
@@ -65,15 +76,14 @@ import {
   getErrorMessage,
   hasBlockedObjectKeyDeep,
   isWalletActionRequiredIntent,
-  maybeAugmentChatMessageWithKnowledge,
+  maybeAugmentChatMessageWithDocuments,
   maybeAugmentChatMessageWithLanguage,
   maybeAugmentChatMessageWithWalletContext,
   normalizeIncomingChatPrompt,
   resolveAppUserName,
   trimWalletProgressPrefix,
   validateChatImages,
-} from "./server-helpers.js";
-import { resolveStreamingUpdate } from "./streaming-text.js";
+} from "./server-helpers.ts";
 
 const CHAT_MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB (image-capable)
 
@@ -85,6 +95,8 @@ export interface ChatGenerationResult {
   text: string;
   agentName: string;
   noResponseReason?: "ignored";
+  failureKind?: ChatFailureKind;
+  localInference?: LocalInferenceChatMetadata;
   usedActionCallbacks?: boolean;
   actionCallbackHistory?: string[];
   responseContent?: Content | null;
@@ -237,15 +249,10 @@ async function generateMobileLocalSimpleReply(
     runtime.character.system.trim().length > 0
       ? runtime.character.system.trim()
       : `You are ${agentName}. Reply briefly and directly.`;
-  const prompt = [
-    system,
-    "",
-    "Mobile local mode: answer the user directly. Do not select actions, do not return structured control output, and do not explain internal reasoning.",
-    "If the user asks for exact words, output exactly those words and nothing else.",
-    "",
-    `User: ${userText}`,
-    `${agentName}:`,
-  ].join("\n");
+  const prompt = composePrompt({
+    state: { system, userText, agentName },
+    template: mobileDirectReplyTemplate,
+  });
   const raw = await runtime.useModel(ModelType.TEXT_SMALL, {
     prompt,
     maxTokens: 64,
@@ -268,7 +275,7 @@ async function generateMobileLocalSimpleReply(
 
 const EXACT_GROUNDED_VALUE_REQUEST =
   /\b(?:exact|verbatim|copy|quoted?|identifier|codeword|return only|only the)\b/i;
-const KNOWLEDGE_VALUE_CAPTURE =
+const DOCUMENT_VALUE_CAPTURE =
   /\b(?:codeword|identifier|token|value)\s*(?:is|=|:)\s*([A-Za-z0-9][A-Za-z0-9._-]{1,127})\b/gi;
 const UPPERCASE_IDENTIFIER_CAPTURE = /\b[A-Z0-9]+(?:[-_][A-Z0-9]+)+\b/g;
 const UUID_IDENTIFIER_CAPTURE =
@@ -293,32 +300,32 @@ function collectRegexMatches(
 
 function extractExactGroundedValueFromText(
   messageText: string,
-  knowledgeText: string,
+  documentText: string,
 ): string | null {
   if (!messageText || !EXACT_GROUNDED_VALUE_REQUEST.test(messageText)) {
     return null;
   }
 
-  if (!knowledgeText) {
+  if (!documentText) {
     return null;
   }
 
-  const capturedKnowledgeValues = uniqueMatches(
-    collectRegexMatches(knowledgeText, KNOWLEDGE_VALUE_CAPTURE, 1),
+  const capturedDocumentValues = uniqueMatches(
+    collectRegexMatches(documentText, DOCUMENT_VALUE_CAPTURE, 1),
   );
-  if (capturedKnowledgeValues.length === 1) {
-    return capturedKnowledgeValues[0];
+  if (capturedDocumentValues.length === 1) {
+    return capturedDocumentValues[0];
   }
 
   const uppercaseCandidates = uniqueMatches(
-    collectRegexMatches(knowledgeText, UPPERCASE_IDENTIFIER_CAPTURE),
+    collectRegexMatches(documentText, UPPERCASE_IDENTIFIER_CAPTURE),
   );
   if (uppercaseCandidates.length === 1) {
     return uppercaseCandidates[0];
   }
 
   const uuidCandidates = uniqueMatches(
-    collectRegexMatches(knowledgeText, UUID_IDENTIFIER_CAPTURE),
+    collectRegexMatches(documentText, UUID_IDENTIFIER_CAPTURE),
   );
   if (uuidCandidates.length === 1) {
     return uuidCandidates[0];
@@ -327,7 +334,7 @@ function extractExactGroundedValueFromText(
   return null;
 }
 
-async function resolveExactKnowledgeValueForChat(
+async function resolveExactDocumentValueForChat(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
 ): Promise<string | null> {
@@ -339,9 +346,9 @@ async function resolveExactKnowledgeValueForChat(
     return null;
   }
 
-  const knowledgeService = runtime.getService?.("knowledge") as
+  const documentsService = runtime.getService?.("documents") as
     | {
-        getKnowledge?: (
+        searchDocuments?: (
           message: ReturnType<typeof createMessageMemory>,
         ) => Promise<
           Array<{
@@ -353,14 +360,14 @@ async function resolveExactKnowledgeValueForChat(
     | null
     | undefined;
   if (
-    !knowledgeService ||
-    typeof knowledgeService.getKnowledge !== "function"
+    !documentsService ||
+    typeof documentsService.searchDocuments !== "function"
   ) {
     return null;
   }
 
   try {
-    const matches = await knowledgeService.getKnowledge(message);
+    const matches = await documentsService.searchDocuments(message);
     if (!Array.isArray(matches) || matches.length === 0) {
       return null;
     }
@@ -390,7 +397,7 @@ async function resolveExactKnowledgeValueForChat(
       return exactMatchCandidates[0];
     }
 
-    const knowledgeText = preferredMatches
+    const documentsText = preferredMatches
       .map((match) =>
         typeof match?.content?.text === "string"
           ? match.content.text.trim()
@@ -398,7 +405,7 @@ async function resolveExactKnowledgeValueForChat(
       )
       .filter((text) => text.length > 0)
       .join("\n\n");
-    return extractExactGroundedValueFromText(messageText, knowledgeText);
+    return extractExactGroundedValueFromText(messageText, documentsText);
   } catch {
     return null;
   }
@@ -639,7 +646,8 @@ export function getChatFailureReply(
 export type ChatFailureKind =
   | "insufficient_credits"
   | "no_provider"
-  | "provider_issue";
+  | "provider_issue"
+  | "local_inference";
 
 export function classifyChatFailure(
   err: unknown,
@@ -654,7 +662,156 @@ export function classifyChatFailure(
   if (isNoProviderError(err)) {
     return "no_provider";
   }
+  if (isLocalInferenceError(err)) {
+    return "local_inference";
+  }
   return "provider_issue";
+}
+
+function normalizeIntentText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[`"'“”‘’]/g, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasLocalInferenceMetadata(
+  message: ReturnType<typeof createMessageMemory>,
+): boolean {
+  const contentMetadata = asRecord(message.content.metadata) ?? {};
+  const messageMetadata = asRecord(message.metadata) ?? {};
+  const metadata = { ...contentMetadata, ...messageMetadata };
+  const localValue =
+    metadata.localInference ??
+    metadata.localInferenceContext ??
+    metadata.localModel ??
+    metadata.modelHub;
+  if (localValue === true) return true;
+  if (typeof localValue === "string") {
+    return /^(1|true|yes|local|local-inference|model-hub)$/i.test(
+      localValue.trim(),
+    );
+  }
+  const context =
+    typeof metadata.context === "string"
+      ? metadata.context
+      : typeof metadata.scope === "string"
+        ? metadata.scope
+        : "";
+  return /\blocal[-_\s]?inference\b|\bmodel[-_\s]?hub\b/i.test(context);
+}
+
+function hasLocalInferenceTopic(text: string): boolean {
+  return (
+    /\b(local|locally|on device|on-device|device model|local model|local inference|model hub|gguf|llama|inference|provider|runtime)\b/i.test(
+      text,
+    ) || /\bmodel\s+(?:download|install|load|setup)\b/i.test(text)
+  );
+}
+
+function isImperativeCloudOrLocalRouting(text: string): boolean {
+  return /^(?:please\s+)?(?:use|switch|prefer|route|go|move)\s+(?:me\s+)?(?:to\s+)?(?:the\s+)?(?:cloud|local|on device|on-device)\b/i.test(
+    text,
+  );
+}
+
+export function detectLocalInferenceCommandIntent(
+  text: string,
+  options: { localInferenceContext?: boolean } = {},
+): LocalInferenceCommandIntent | null {
+  const normalized = normalizeIntentText(text);
+  if (!normalized) return null;
+
+  const explicitContext =
+    options.localInferenceContext === true ||
+    hasLocalInferenceTopic(normalized) ||
+    isImperativeCloudOrLocalRouting(normalized);
+  if (!explicitContext) return null;
+
+  if (
+    /\b(?:use|switch|prefer|route|go|move)\s+(?:to\s+)?(?:the\s+)?cloud\b/.test(
+      normalized,
+    ) ||
+    /\bcloud\s+(?:mode|provider|inference|model|routing)\b/.test(normalized)
+  ) {
+    return "use_cloud";
+  }
+
+  if (
+    /\b(?:use|switch|prefer|route|go|move)\s+(?:to\s+)?(?:the\s+)?(?:local|on device|on device model)\b/.test(
+      normalized,
+    ) ||
+    /\b(?:local|on device)\s+(?:mode|provider|inference|model|routing)\b/.test(
+      normalized,
+    )
+  ) {
+    return "use_local";
+  }
+
+  if (
+    /\b(?:smaller|smallest|tiny|lighter|lightweight|less memory|low ram|low memory)\b/.test(
+      normalized,
+    ) &&
+    /\b(?:switch|use|load|pick|select|change|model)\b/.test(normalized)
+  ) {
+    return "switch_smaller";
+  }
+
+  if (
+    /\b(?:cancel|stop|abort|halt)\b/.test(normalized) &&
+    /\b(?:download|model|local|inference)\b/.test(normalized)
+  ) {
+    return "cancel";
+  }
+
+  if (
+    /\b(?:re download|redownload|download again|fresh download)\b/.test(
+      normalized,
+    )
+  ) {
+    return "redownload";
+  }
+
+  if (
+    /\b(?:retry|try again|resume|continue|restart)\b/.test(normalized) &&
+    /\b(?:download|model|local|inference)\b/.test(normalized)
+  ) {
+    return normalized.includes("resume") || normalized.includes("continue")
+      ? "resume"
+      : "retry";
+  }
+
+  if (
+    /\b(?:status|progress|state|ready|loaded|loading|how far|what model)\b/.test(
+      normalized,
+    ) &&
+    (options.localInferenceContext === true ||
+      /\b(?:download|model|local|inference|gguf|eliza-1|provider|runtime)\b/.test(
+        normalized,
+      ))
+  ) {
+    return "status";
+  }
+
+  if (
+    /\b(?:download|install|get|fetch|pull)\b/.test(normalized) &&
+    (options.localInferenceContext === true ||
+      /\b(?:model|local|inference|gguf|eliza-1)\b/.test(normalized))
+  ) {
+    return "download";
+  }
+
+  return null;
+}
+
+export function isLocalInferenceError(err: unknown): boolean {
+  const message =
+    err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  return /\b(?:local inference|local model|on-device|device bridge|llama|gguf|capacitor-llama|no local model|model download|enospc|no space left|disk full)\b/i.test(
+    message,
+  );
 }
 
 export function normalizeChatResponseText(
@@ -744,7 +901,7 @@ export function initSse(res: http.ServerResponse): void {
 
 export function writeSse(
   res: http.ServerResponse,
-  payload: Record<string, string | number | boolean | null | undefined>,
+  payload: Record<string, unknown>,
 ): void {
   if (res.writableEnded || res.destroyed) return;
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -800,15 +957,6 @@ export async function persistConversationMemory(
     if (isDuplicateMemoryError(err)) return;
     throw err;
   }
-
-  // Fire-and-forget: update relationship strength for co-participants
-  // based on conversation proximity (last N messages in the same room).
-  void import("../services/conversation-proximity.js").then(
-    ({ updateProximityRelationships }) =>
-      updateProximityRelationships(runtime, memory).catch(() => {
-        /* non-critical — don't fail the chat flow */
-      }),
-  );
 }
 
 async function hasRecentAssistantMemory(
@@ -1396,6 +1544,39 @@ export async function generateChatResponse(
               // Fall through to normal LLM-based routing if coordinator not available
             }
 
+            const localInferenceIntent = detectLocalInferenceCommandIntent(
+              originalUserText,
+              {
+                localInferenceContext: hasLocalInferenceMetadata(message),
+              },
+            );
+            if (localInferenceIntent) {
+              const localResult = await handleLocalInferenceChatCommand(
+                localInferenceIntent,
+                originalUserText,
+              );
+              emitSnapshot(localResult.text);
+              result = {
+                didRespond: true,
+                responseContent: {
+                  text: localResult.text,
+                  source: "client_chat",
+                  actions: ["REPLY"],
+                  localInference: localResult.localInference as
+                    | Record<string, unknown>
+                    | undefined,
+                  failureKind:
+                    localResult.localInference.status === "failed" ||
+                    localResult.localInference.status === "no_space"
+                      ? "local_inference"
+                      : undefined,
+                } as Content,
+                responseMessages: [],
+              } as typeof result;
+              responseText = localResult.text;
+              return;
+            }
+
             if (isMobileLocalSimpleChat(message)) {
               const simpleResult = await generateMobileLocalSimpleReply(
                 runtime,
@@ -1425,7 +1606,7 @@ export async function generateChatResponse(
                 languageAugmentedMessage,
               );
             const generationMessage =
-              await maybeAugmentChatMessageWithKnowledge(
+              await maybeAugmentChatMessageWithDocuments(
                 runtime,
                 walletAugmentedMessage,
               );
@@ -1702,12 +1883,12 @@ export async function generateChatResponse(
     }
 
     const noResponseFallback = opts?.resolveNoResponseText?.();
-    const exactKnowledgeValue = await resolveExactKnowledgeValueForChat(
+    const exactDocumentValue = await resolveExactDocumentValueForChat(
       runtime,
       message,
     );
     const normalizedResponseText = trimWalletProgressPrefix(
-      exactKnowledgeValue || responseText || resultText || "",
+      exactDocumentValue || responseText || resultText || "",
     );
     const intentionalNoResponse = isIntentionalNoResponseResult(
       result,
@@ -1735,6 +1916,21 @@ export async function generateChatResponse(
         : finalText
           ? ({ text: finalText } satisfies Content)
           : null;
+    const responseRecord = responseContent as
+      | (Record<string, unknown> & {
+          localInference?: LocalInferenceChatMetadata;
+          failureKind?: ChatFailureKind;
+        })
+      | null;
+    const localInference =
+      responseRecord?.localInference &&
+      typeof responseRecord.localInference === "object"
+        ? responseRecord.localInference
+        : undefined;
+    const failureKind =
+      responseRecord?.failureKind === "local_inference"
+        ? "local_inference"
+        : undefined;
 
     return {
       text: finalText,
@@ -1742,6 +1938,8 @@ export async function generateChatResponse(
       ...(intentionalNoResponse
         ? { noResponseReason: "ignored" as const }
         : {}),
+      ...(failureKind ? { failureKind } : {}),
+      ...(localInference ? { localInference } : {}),
       ...(actionCallbacksSeen > 0 ? { usedActionCallbacks: true } : {}),
       ...(actionCallbackHistory.length > 0
         ? { actionCallbackHistory: [...actionCallbackHistory] }
@@ -2093,15 +2291,24 @@ export async function handleChatRoutes(
             },
           });
 
-          await generateChatResponse(runtime, message, state.agentName, {
-            isAborted: () => aborted,
-            onChunk: (chunk) => {
-              fullText += chunk;
-              if (chunk) sendChunk({ content: chunk }, null);
+          const result = await generateChatResponse(
+            runtime,
+            message,
+            state.agentName,
+            {
+              isAborted: () => aborted,
+              onChunk: (chunk) => {
+                fullText += chunk;
+                if (chunk) sendChunk({ content: chunk }, null);
+              },
+              resolveNoResponseText: () =>
+                resolveNoResponseFallback(state.logBuffer, runtime),
             },
-            resolveNoResponseText: () =>
-              resolveNoResponseFallback(state.logBuffer, runtime),
-          });
+          );
+          if (result.localInference && !fullText) {
+            fullText = result.text;
+            sendChunk({ content: result.text }, null);
+          }
           syncRuntimeCharacterToChatStateConfig(state);
         }
 
@@ -2121,7 +2328,22 @@ export async function handleChatRoutes(
         writeSseData(res, "[DONE]");
       } catch (err) {
         if (!aborted) {
-          if (isNoProviderError(err)) {
+          if (isLocalInferenceError(err)) {
+            const localFailure = await getLocalInferenceChatStatus(
+              "status",
+              err,
+            );
+            writeSseData(
+              res,
+              JSON.stringify({
+                error: {
+                  message: localFailure.text,
+                  type: "local_inference",
+                  localInference: localFailure.localInference,
+                },
+              }),
+            );
+          } else if (isNoProviderError(err)) {
             writeSseData(
               res,
               JSON.stringify({
@@ -2154,6 +2376,8 @@ export async function handleChatRoutes(
     // Non-streaming
     try {
       let responseText: string;
+      let localInference: LocalInferenceChatMetadata | undefined;
+      let failureKind: ChatFailureKind | undefined;
 
       {
         if (!state.runtime) {
@@ -2199,6 +2423,8 @@ export async function handleChatRoutes(
         );
         syncRuntimeCharacterToChatStateConfig(state);
         responseText = result.text;
+        localInference = result.localInference;
+        failureKind = result.failureKind;
       }
 
       const resolvedText = normalizeChatResponseText(
@@ -2218,9 +2444,24 @@ export async function handleChatRoutes(
             finish_reason: "stop",
           },
         ],
+        ...(failureKind ? { failureKind } : {}),
+        ...(localInference ? { localInference } : {}),
       });
     } catch (err) {
-      if (isNoProviderError(err)) {
+      if (isLocalInferenceError(err)) {
+        const localFailure = await getLocalInferenceChatStatus("status", err);
+        json(
+          res,
+          {
+            error: {
+              message: localFailure.text,
+              type: "local_inference",
+              localInference: localFailure.localInference,
+            },
+          },
+          503,
+        );
+      } else if (isNoProviderError(err)) {
         json(
           res,
           {

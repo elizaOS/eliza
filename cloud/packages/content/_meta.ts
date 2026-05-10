@@ -89,7 +89,7 @@ const meta = {
   mcps: {
     title: "MCP Integration",
   },
-  knowledge: {
+  documents: {
     title: "Knowledge Base",
   },
 

@@ -31,7 +31,7 @@ export default scenario({
       room: "main",
       text: "Draft an SMS to +15555550101 saying I'll be late for dinner, but hold it for my approval.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["SEND_DRAFT"],
+        acceptedActions: ["MESSAGE"],
         description: "twilio sms draft",
         includesAny: ["sms", "draft", "confirm", "15555550101"],
       }),
@@ -48,7 +48,7 @@ export default scenario({
       room: "main",
       text: "Yes, send that SMS to +15555550101 now.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["SEND_DRAFT"],
+        acceptedActions: ["MESSAGE"],
         description: "twilio sms send confirmed",
         includesAny: ["sms", "send", "15555550101"],
       }),
@@ -63,7 +63,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["SEND_DRAFT"],
+      actionName: ["MESSAGE"],
     },
     {
       type: "approvalRequestExists",
@@ -83,7 +83,7 @@ export default scenario({
       type: "custom",
       name: "twilio-sms-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["SEND_DRAFT"],
+        acceptedActions: ["MESSAGE"],
         description: "twilio sms draft then send",
         includesAny: ["sms", "draft", "send", "15555550101"],
         minCount: 2,

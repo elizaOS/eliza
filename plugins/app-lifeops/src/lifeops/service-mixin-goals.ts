@@ -103,6 +103,19 @@ export interface LifeOpsGoalService {
   reviewGoalsForWeek(now?: Date): Promise<LifeOpsWeeklyGoalReview>;
 }
 
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+/** Days of inactivity after which a daily / interval / times-per-day goal is
+ *  considered stale enough to demote from "on_track". The cadences run at
+ *  least every other day, so two days without activity is the earliest
+ *  defensible signal. */
+const GOAL_STALE_DAYS_FREQUENT = 2;
+/** Stale threshold for weekly cadences. Allows one full skipped week before
+ *  the goal flips to "needs_attention". */
+const GOAL_STALE_DAYS_WEEKLY = 10;
+/** Stale threshold for goals whose cadence is anything else (manual,
+ *  monthly, ad-hoc). Keeps the default close to the weekly bar. */
+const GOAL_STALE_DAYS_DEFAULT = 7;
+
 const GOAL_SIMILARITY_STOP_WORDS = new Set([
   "and",
   "the",
@@ -470,10 +483,10 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
         cadenceKind === "daily" ||
         cadenceKind === "times_per_day" ||
         cadenceKind === "interval"
-          ? 2 * 24 * 60 * 60 * 1000
+          ? GOAL_STALE_DAYS_FREQUENT * ONE_DAY_MS
           : cadenceKind === "weekly"
-            ? 10 * 24 * 60 * 60 * 1000
-            : 7 * 24 * 60 * 60 * 1000;
+            ? GOAL_STALE_DAYS_WEEKLY * ONE_DAY_MS
+            : GOAL_STALE_DAYS_DEFAULT * ONE_DAY_MS;
       const lastActivityTime = new Date(lastActivityAt).getTime();
       if (!Number.isFinite(lastActivityTime)) {
         return "needs_attention";

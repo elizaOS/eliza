@@ -100,7 +100,7 @@ export const toPiCommand = (task: string | undefined): string => {
  *
  * `--dangerously-skip-permissions` is a flag of the `run` subcommand
  * (NOT the top-level opencode command), so it must come AFTER `run` —
- * verified live with opencode 1.14.33 + ollama qwen2.5-coder:0.5b.
+ * verified live with opencode 1.14.33 + an OpenAI-compatible Eliza-1 endpoint.
  *
  * Model + provider selection comes from the OPENCODE_CONFIG_CONTENT env
  * var that the spawn pipeline injects — see buildOpencodeSpawnConfig in

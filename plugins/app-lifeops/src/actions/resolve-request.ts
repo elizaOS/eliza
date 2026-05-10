@@ -1,4 +1,4 @@
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -26,7 +26,7 @@ import {
   resolveActionArgs,
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
-import { INTERNAL_URL } from "./lifeops-google-helpers.js";
+import { INTERNAL_URL } from "../lifeops/access.js";
 
 const ACTION_NAME = "RESOLVE_REQUEST";
 
@@ -120,8 +120,7 @@ async function extractResolution(
     }
     return { requestId: null, reason: null };
   }
-  // TODO(native-parameters): delete this legacy resolution fallback after the planner
-  // consistently supplies requestId/reason in options.parameters.
+  // LLM resolution path for natural-language approval decisions.
   const prompt = `You are resolving an approval queue decision.
 The user wants to ${intent} one of the pending requests below.
 Understand the user's message in any language. Echo the reason in the user's language.
@@ -262,6 +261,29 @@ export async function executeApprovedRequest(args: {
     };
   }
 
+  if (args.request.action === "execute_workflow") {
+    const payload = args.request.payload;
+    if (payload.action !== "execute_workflow") {
+      throw new Error(
+        `[approval] action/payload mismatch: action=execute_workflow, payload.action=${payload.action}`,
+      );
+    }
+    await args.queue.markExecuting(args.request.id);
+    const done = await args.queue.markDone(args.request.id);
+    const text = `Approved workflow ${payload.workflowId}.`;
+    await args.callback?.({ text });
+    return {
+      text,
+      success: true,
+      data: {
+        requestId: done.id,
+        state: done.state,
+        action: done.action,
+        workflowId: payload.workflowId,
+      },
+    };
+  }
+
   logger.info(
     `[OwnerResolveRequest] approved ${args.request.id} without executor`,
   );
@@ -386,18 +408,38 @@ export const resolveRequestAction: Action & {
     "NO_DONT",
     "ACCEPT_REQUEST",
     "DECLINE_REQUEST",
+    "ADMIN_REJECT_APPROVAL",
+    "REJECT_APPROVAL",
+    "DENY_APPROVAL",
+    "DECLINE_APPROVAL",
+  ],
+  tags: [
+    "domain:meta",
+    "capability:execute",
+    "capability:update",
+    "surface:internal",
+    "risk:irreversible",
   ],
   description:
-    "Owner-only. Approve or reject a pending action queued for human confirmation (send_email, send_message, " +
-    "book_travel, voice_call, etc.). Picks the target request from the queue based on user intent (multilingual).",
+    "Approve or reject a pending action queued for owner confirmation (send_email, send_message, book_travel, voice_call, etc.). Subactions: approve, reject. requestId is optional — the handler inspects the pending queue and infers the target from owner intent, or asks a follow-up.",
   descriptionCompressed:
-    "approve|reject pending request from queue: send_email send_message book_travel voice_call multilingual",
-  contexts: ["email", "messaging", "calendar", "tasks", "contacts", "payments"],
+    "approve|reject queued action; requestId optional; covers send_email|send_message|book_travel|voice_call",
+  contexts: [
+    "email",
+    "messaging",
+    "calendar",
+    "tasks",
+    "contacts",
+    "payments",
+    "automation",
+    "admin",
+    "general",
+  ],
   roleGate: { minRole: "OWNER" },
   validate: async () => true,
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "One of: approve, reject.",
       required: false,
       schema: { type: "string" as const, enum: ["approve", "reject"] },
@@ -405,7 +447,7 @@ export const resolveRequestAction: Action & {
     {
       name: "requestId",
       description:
-        "Approval request id to approve or reject. Supply this when the planner can identify the pending request directly.",
+        "Approval request id to approve or reject. Optional: omit it when the user references the pending request in natural language.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -449,7 +491,7 @@ export const resolveRequestAction: Action & {
       {
         name: "{{name1}}",
         content: {
-          text: "Yeah, go ahead and send that draft to Marco.",
+          text: "Yeah, go ahead and send that draft.",
         },
       },
       {

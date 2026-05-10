@@ -20,7 +20,7 @@ import {
   type LiveProviderConfig,
   type LiveProviderName,
   selectLiveProvider,
-} from "../../app-core/test/helpers/live-provider.ts";
+} from "@elizaos/core";
 
 // Test helpers loaded lazily so the build rootDir stays within src/.
 async function loadTestMocks() {
@@ -218,7 +218,7 @@ export async function createScenarioRuntime(
   // Basic capabilities: REPLY, CHOICE, IGNORE, NONE actions, core providers
   // (CHARACTER, ACTIONS, MESSAGES, ENTITIES, ...), and baseline services
   // (TaskService, EmbeddingGenerationService). advancedCapabilities also
-  // registers contact/message actions (ADD_CONTACT, SEND_MESSAGE, ...).
+  // registers contact/message actions (ADD_CONTACT, MESSAGE, ...).
   // Without this plugin the runtime has no conversational reply action and
   // nearly every scenario fails with "expected 1 call(s) to REPLY, saw 0".
   await runtime.registerPlugin(
@@ -285,7 +285,7 @@ export async function createScenarioRuntime(
   // Env prerequisites (Gmail OAuth, Twilio, etc.) are NOT required for the
   // plugin to load — they only gate individual action execution at call time.
   try {
-    const lifeOpsPluginSpecifier = "@elizaos/app-lifeops/plugin";
+    const lifeOpsPluginSpecifier = "@elizaos/app-lifeops";
     const lifeOpsModule = (await import(lifeOpsPluginSpecifier)) as Record<
       string,
       unknown
@@ -312,7 +312,7 @@ export async function createScenarioRuntime(
   // Load the separate LifeOps route bridge plugin so scenario API turns can
   // exercise the same HTTP handlers the app exposes at runtime.
   try {
-    const lifeOpsRoutesPluginSpecifier = "@elizaos/app-lifeops/routes/plugin";
+    const lifeOpsRoutesPluginSpecifier = "@elizaos/app-lifeops";
     const lifeOpsRoutesModule = (await import(
       lifeOpsRoutesPluginSpecifier
     )) as Record<string, unknown>;
@@ -331,12 +331,12 @@ export async function createScenarioRuntime(
       }
     } else {
       logger.warn(
-        "[scenario-runner] @elizaos/app-lifeops/routes/plugin did not export a Plugin; skipping",
+        "[scenario-runner] @elizaos/app-lifeops did not export the LifeOps route Plugin; skipping",
       );
     }
   } catch (err) {
     logger.warn(
-      `[scenario-runner] @elizaos/app-lifeops/routes/plugin unavailable: ${
+      `[scenario-runner] @elizaos/app-lifeops route plugin unavailable: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -360,13 +360,12 @@ export async function createScenarioRuntime(
   // observing. Use this to modify entity profiles, metadata, or attributes.")
   // is broad enough that small-model classifiers pick it for any request that
   // mentions a person or fact ("remember my favorite color is blue",
-  // "remind me to email Alex"), which crowds out CREATE_TASK, SEND_MESSAGE,
+  // "remind me to email Alex"), which crowds out CREATE_TASK, MESSAGE,
   // RELATIONSHIP, LIFE, etc. For the scenario runner — which is testing
   // user-facing action routing, not profile editing — dropping it unblocks
   // the realistic cases. Real runtimes keep UPDATE_ENTITY enabled.
   const bannedActions = new Set(["UPDATE_ENTITY"]);
-  const runtimeActions = (runtime as unknown as { actions: { name: string }[] })
-    .actions;
+  const runtimeActions = runtime.actions;
   for (let i = runtimeActions.length - 1; i >= 0; i -= 1) {
     if (bannedActions.has(runtimeActions[i].name)) {
       runtimeActions.splice(i, 1);

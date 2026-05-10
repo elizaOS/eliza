@@ -1,1 +1,1 @@
-export * from "@elizaos/shared/config";
+export * from "@elizaos/shared";

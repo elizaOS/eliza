@@ -3,12 +3,16 @@ import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import {
+  createMachineSession,
+  findActiveSession,
+  parseSessionCookie,
+} from "./auth/sessions";
+import {
   ensureRouteAuthorized,
   getCompatApiToken,
   getProvidedApiToken,
   tokenMatches,
-} from "./auth";
-import { findActiveSession, parseSessionCookie } from "./auth/sessions";
+} from "./auth.ts";
 import {
   type CompatRuntimeState,
   getCompatDrizzleDb,
@@ -140,6 +144,45 @@ function rateLimitPairing(ip: string | null): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Identity bookkeeping for paired devices
+// ---------------------------------------------------------------------------
+
+const PAIRED_DEVICE_IDENTITY_DISPLAY_NAME = "paired-device";
+
+/**
+ * Resolve an identity id to bind a paired-device machine session to:
+ *   1. existing owner identity (typical password-configured deployments).
+ *   2. existing `paired-device` machine identity (idempotent on repeat pair).
+ *   3. otherwise create a fresh `paired-device` machine identity.
+ *
+ * The machine session itself is what authorizes requests; the identity is a
+ * stable parent row so audit logs + the security UI can group sessions
+ * minted by the pairing flow.
+ */
+async function ensurePairedDeviceIdentityId(
+  store: import("../services/auth-store").AuthStore,
+): Promise<string> {
+  const owner = (await store.listIdentitiesByKind("owner"))[0];
+  if (owner) return owner.id;
+
+  const existing = await store.findIdentityByDisplayName(
+    PAIRED_DEVICE_IDENTITY_DISPLAY_NAME,
+  );
+  if (existing) return existing.id;
+
+  const id = crypto.randomUUID();
+  await store.createIdentity({
+    id,
+    kind: "machine",
+    displayName: PAIRED_DEVICE_IDENTITY_DISPLAY_NAME,
+    createdAt: Date.now(),
+    passwordHash: null,
+    cloudUserId: null,
+  });
+  return id;
+}
+
+// ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
 
@@ -162,7 +205,7 @@ export async function handleAuthPairingCompatRoutes(
   // ── GET /api/onboarding/status ──────────────────────────────────────
   // Cloud-provisioned containers used to skip auth here entirely. That
   // bypass is gone: callers now need a trusted local request, a valid
-  // cookie session, an allowed legacy bearer, or a bootstrap exchange.
+  // cookie session, an allowed bearer token, or a bootstrap exchange.
   if (method === "GET" && url.pathname === "/api/onboarding/status") {
     if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
@@ -300,6 +343,45 @@ export async function handleAuthPairingCompatRoutes(
 
     pairingCode = null;
     pairingExpiresAt = 0;
+
+    // Mint a machine session so the paired client gets a session-id bearer
+    // token that authenticates against `ensureCompatApiAuthorizedAsync`.
+    // Returning the raw connection key here would auth `/api/auth/status`
+    // (static-token branch) but get rejected on every other route once the
+    // runtime DB is up. Sessions are TTL-bound and revocable; the static
+    // connection key is forever-valid until the operator rotates it.
+    const db = getCompatDrizzleDb(state);
+    if (db) {
+      try {
+        const { AuthStore } = await import("../services/auth-store");
+        const store = new AuthStore(
+          db as ConstructorParameters<typeof AuthStore>[0],
+        );
+        const identityId = await ensurePairedDeviceIdentityId(store);
+        const { session } = await createMachineSession(store, {
+          identityId,
+          scopes: [],
+          label: "paired-device",
+          ip: remoteAddress,
+        });
+        sendJsonResponse(res, 200, { token: session.id });
+        return true;
+      } catch (err) {
+        // Surface the failure rather than silently falling back to a path
+        // that mints a forever-valid static-token bearer. Operators should
+        // see the underlying error and fix it; clients retry pairing.
+        logger.error(
+          `[api] pair: failed to mint machine session: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        sendJsonErrorResponse(res, 500, "Failed to mint session");
+        return true;
+      }
+    }
+
+    // No DB yet — extremely unlikely once the runtime is up enough to serve
+    // requests, but preserve the legacy static-token return as a fallback.
     sendJsonResponse(res, 200, { token });
     return true;
   }

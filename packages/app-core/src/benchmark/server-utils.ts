@@ -8,6 +8,8 @@ import {
 } from "@elizaos/core";
 import type { BenchmarkContext, CapturedAction } from "./plugin";
 
+export { coerceParams } from "./params";
+
 export const DEFAULT_PORT = 3939;
 export const DEFAULT_HOST = "127.0.0.1";
 export const BENCHMARK_WORLD_ID = stringToUuid("eliza-benchmark-world");
@@ -31,6 +33,38 @@ export interface BenchmarkOutboxEntry {
   ts: number;
 }
 
+/**
+ * Per-LLM-call usage record captured from a MODEL_USED event during a turn.
+ * Optional cachedTokens reflects provider-reported prompt-cache hits
+ * (OpenAI-style `prompt_tokens_details.cached_tokens`,
+ *  Anthropic-style `cache_read_input_tokens`,
+ *  Cerebras-compat `prompt_tokens_details.cached_tokens`).
+ */
+export interface BenchmarkLlmCallUsage {
+  modelType: string;
+  provider?: string;
+  source?: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedTokens?: number;
+}
+
+/**
+ * Aggregated usage for a single benchmark turn (sum across every LLM call
+ * that fired between handleMessage start and finish). cacheHitRatio is
+ * cachedTokens / promptTokens when promptTokens > 0, else 0.
+ */
+export interface BenchmarkTurnUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedTokens: number;
+  cacheHitRatio: number;
+  callCount: number;
+  calls: BenchmarkLlmCallUsage[];
+}
+
 export interface BenchmarkTrajectoryStep {
   step: number;
   startedAt: number;
@@ -42,6 +76,11 @@ export interface BenchmarkTrajectoryStep {
   responseText: string;
   actions: string[];
   params: Record<string, unknown>;
+  /**
+   * Optional usage roll-up for this turn. Added 2026 to support
+   * cache-hit and token analysis. Older trajectory readers ignore it.
+   */
+  usage?: BenchmarkTurnUsage;
 }
 
 export interface CuaServiceLike {
@@ -277,26 +316,6 @@ export function coerceActions(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
-export function coerceParams(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-    } catch {
-      return {};
-    }
-  }
-
-  return {};
-}
-
 export function normalizeBenchmarkContext(
   session: BenchmarkSession,
   context: Record<string, unknown> | undefined,
@@ -333,6 +352,9 @@ export function capturedActionToParams(
   if (!capturedAction) return {};
 
   const benchmarkParams: Record<string, unknown> = {};
+  if (capturedAction.params) {
+    Object.assign(benchmarkParams, capturedAction.params);
+  }
   if (capturedAction.command) benchmarkParams.command = capturedAction.command;
   if (capturedAction.toolName)
     benchmarkParams.tool_name = capturedAction.toolName;

@@ -4,7 +4,6 @@
 	"files": {
 		"includes": [
 			"__tests__/**",
-			"generated/**",
 			"managers/**",
 			"services/**",
 			"types/**",

@@ -23,7 +23,6 @@ import logging
 import sys
 from pathlib import Path
 
-import torch
 import torch.nn as nn
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
@@ -32,11 +31,14 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 from _common import (  # noqa: E402
+    add_quantization_cli_args,
     get_text_config,
     head_dim_of,
+    kernel_manifest_fragment,
     load_calibration_prompts,
     load_model_and_tokenizer,
     save_model,
+    validate_quantization_args,
     write_sidecar,
 )
 
@@ -71,29 +73,15 @@ def calibrate_skip_layers(
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
-    ap.add_argument(
-        "--model",
-        required=True,
-        help="HF repo id or local path. LoRA adapter dirs are merged automatically.",
-    )
-    ap.add_argument("--output", required=True, type=Path)
-    ap.add_argument(
-        "--calibration",
-        type=Path,
-        default=None,
-        help="Optional JSONL of records with currentMessage.content for skip_layers calibration.",
-    )
-    ap.add_argument("--calibration-samples", type=int, default=128)
+    add_quantization_cli_args(ap)
+    # Recipe-specific knobs.
     ap.add_argument("--nbits", type=int, default=4, choices=(2, 4))
     ap.add_argument("--residual-length", type=int, default=128)
     ap.add_argument("--base-seed", type=int, default=42)
     ap.add_argument("--norm-threshold", type=float, default=5.0)
-    ap.add_argument("--device", default="cuda")
-    ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
-    if not torch.cuda.is_available() and args.device == "cuda":
-        raise RuntimeError("CUDA requested but not available")
+    validate_quantization_args(args)
 
     if args.dry_run:
         print(json.dumps(vars(args), indent=2, default=str))
@@ -131,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
         "calibration_file": str(args.calibration) if args.calibration else None,
         "calibration_samples": args.calibration_samples if args.calibration else 0,
         "norm_threshold": args.norm_threshold,
+        "kernel_manifest": kernel_manifest_fragment("turboquant"),
         "notes": (
             "TurboQuant is a runtime KV-cache compressor. The weights in "
             "this directory are unchanged. To use the quantized cache, "

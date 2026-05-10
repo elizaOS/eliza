@@ -1,10 +1,11 @@
-import type { IAgentRuntime, UUID } from "@elizaos/core";
-import {
-  createNativeRelationshipsGraphService,
-  type RelationshipsGraphQuery,
-  type RelationshipsGraphService,
-} from "../services/relationships-graph.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+import type {
+  IAgentRuntime,
+  RelationshipsGraphQuery,
+  RelationshipsGraphService,
+  RelationshipsMergeProposalEvidence,
+  UUID,
+} from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/shared";
 
 type RelationshipsFeatureRuntime = IAgentRuntime & {
   enableRelationships?: () => Promise<void>;
@@ -13,6 +14,27 @@ type RelationshipsFeatureRuntime = IAgentRuntime & {
 
 export interface RelationshipsRouteContext extends RouteRequestContext {
   runtime?: IAgentRuntime | null;
+}
+
+// The merged RelationshipsService (in @elizaos/core) implements the
+// RelationshipsGraphService surface directly.
+type RelationshipsServiceWithGraph = RelationshipsGraphService;
+
+function isRelationshipsServiceWithGraph(
+  service: unknown,
+): service is RelationshipsServiceWithGraph {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    typeof (service as { getGraphSnapshot?: unknown }).getGraphSnapshot ===
+      "function" &&
+    typeof (service as { getPersonDetail?: unknown }).getPersonDetail ===
+      "function" &&
+    typeof (service as { getCandidateMerges?: unknown }).getCandidateMerges ===
+      "function" &&
+    typeof (service as { acceptMerge?: unknown }).acceptMerge === "function" &&
+    typeof (service as { rejectMerge?: unknown }).rejectMerge === "function"
+  );
 }
 
 function parseQuery(reqUrl: string | undefined): RelationshipsGraphQuery {
@@ -48,16 +70,9 @@ function parseQuery(reqUrl: string | undefined): RelationshipsGraphQuery {
 
 async function getRelationshipsGraphService(
   runtime?: IAgentRuntime | null,
-): Promise<RelationshipsGraphService | null> {
+): Promise<RelationshipsServiceWithGraph | null> {
   if (!runtime) {
     return null;
-  }
-
-  const graphService = runtime.getService(
-    "relationships_graph",
-  ) as unknown as RelationshipsGraphService | null;
-  if (graphService) {
-    return graphService;
   }
 
   const runtimeWithFeatures = runtime as RelationshipsFeatureRuntime;
@@ -69,17 +84,8 @@ async function getRelationshipsGraphService(
     await runtimeWithFeatures.enableRelationships();
   }
 
-  const relationshipsService = runtime.getService("relationships");
-  if (!relationshipsService) {
-    return null;
-  }
-
-  return createNativeRelationshipsGraphService(
-    runtime,
-    relationshipsService as Parameters<
-      typeof createNativeRelationshipsGraphService
-    >[1],
-  );
+  const service = runtime.getService("relationships");
+  return isRelationshipsServiceWithGraph(service) ? service : null;
 }
 
 type LinkRequestBody = {
@@ -87,11 +93,20 @@ type LinkRequestBody = {
   evidence?: unknown;
 };
 
-function asEvidenceRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
+function asEvidenceRecord(value: unknown): RelationshipsMergeProposalEvidence {
+  if (value === undefined || value === null) {
+    return {};
   }
-  return {};
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  try {
+    return JSON.parse(
+      JSON.stringify(value),
+    ) as RelationshipsMergeProposalEvidence;
+  } catch {
+    return {};
+  }
 }
 
 function parseActivityInteger(

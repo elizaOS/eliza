@@ -1,4 +1,4 @@
-import type { OverlayAppContext } from "@elizaos/app-core";
+import type { OverlayAppContext } from "@elizaos/ui";
 import {
   Badge,
   Button,
@@ -7,7 +7,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import {
   BarChart3,
   ChevronLeft,

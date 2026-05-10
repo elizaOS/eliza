@@ -58,13 +58,25 @@ def _extract_json_plan(raw_text: str) -> dict[str, Any]:
     fence_match = re.search(r"```(?:json)?\s*\n?(.*?)```", raw_text, re.DOTALL)
     candidate = fence_match.group(1).strip() if fence_match else raw_text.strip()
 
-    start = candidate.find("{")
-    end = candidate.rfind("}")
-    if start == -1 or end == -1 or end <= start:
+    decoder = json.JSONDecoder()
+    parsed: Any | None = None
+    last_error: Exception | None = None
+    for match in re.finditer(r"[{[]", candidate):
+        try:
+            value, _end = decoder.raw_decode(candidate[match.start() :])
+        except json.JSONDecodeError as exc:
+            last_error = exc
+            continue
+        if isinstance(value, dict):
+            parsed = value
+            break
+        if isinstance(value, list):
+            parsed = {"steps": value}
+            break
+    if parsed is None:
+        if last_error is not None:
+            raise last_error
         raise ValueError("No JSON object found in LLM response")
-
-    json_str = candidate[start : end + 1]
-    parsed = json.loads(json_str)
     if "steps" not in parsed:
         raise ValueError("Plan JSON must contain a 'steps' key")
     if not isinstance(parsed["steps"], list) or not parsed["steps"]:

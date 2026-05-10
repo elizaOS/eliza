@@ -152,6 +152,13 @@ export function shouldSuppressCodexExecPtyManagerEvent(options: {
   return options.event === "blocked" || options.event === "login_required";
 }
 
+export function shouldSuppressCodexExecHookEvent(options: {
+  codexExecMode: boolean;
+  event: string;
+}): boolean {
+  return options.codexExecMode && options.event === "session_end";
+}
+
 /**
  * Portable safety floor injected into every spawned coding-agent's memory
  * file. Locks the agent to its allocated workspace dir so it never wanders
@@ -356,8 +363,6 @@ export type {
   SessionInfo,
   SpawnSessionOptions,
 } from "./pty-types.js";
-// Re-export for backward compatibility
-export { normalizeAgentType } from "./pty-types.js";
 
 /**
  * Narrow shape of `~/.claude.json` that we read/write here. Claude Code owns
@@ -473,13 +478,15 @@ async function seedClaudeTrustForWorkdirUnsafe(
  * Retrieve the SwarmCoordinator from the PTYService registered on the runtime.
  * Returns undefined if PTYService or coordinator is not available.
  */
+export function getPtyService(runtime: IAgentRuntime): PTYService | null {
+  const service = runtime.getService("PTY_SERVICE");
+  return service instanceof PTYService ? service : null;
+}
+
 export function getCoordinator(
   runtime: IAgentRuntime,
 ): SwarmCoordinator | undefined {
-  const ptyService = runtime.getService("PTY_SERVICE") as unknown as
-    | PTYService
-    | undefined;
-  return ptyService?.coordinator ?? undefined;
+  return getPtyService(runtime)?.coordinator ?? undefined;
 }
 
 export class PTYService {
@@ -607,7 +614,7 @@ export class PTYService {
     const servicesMap = runtime.services as Map<string, Service[]> | undefined;
     const existing = servicesMap?.get?.("SWARM_COORDINATOR");
     if (existing && existing.length > 0) {
-      service.coordinator = existing[0] as unknown as SwarmCoordinator;
+      service.coordinator = existing[0] as Service & SwarmCoordinator;
       logger.info(
         "[PTYService] SwarmCoordinator already registered, skipping duplicate start",
       );
@@ -623,7 +630,7 @@ export class PTYService {
         // We bypass registerService() (which would call start() again) and
         // write directly to the services map that getService() reads from.
         servicesMap?.set?.("SWARM_COORDINATOR", [
-          coordinator as unknown as Service,
+          coordinator as Service & SwarmCoordinator,
         ]);
 
         logger.info("[PTYService] SwarmCoordinator wired and started");
@@ -644,9 +651,7 @@ export class PTYService {
   }
 
   static async stopRuntime(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService("PTY_SERVICE") as unknown as
-      | PTYService
-      | undefined;
+    const service = getPtyService(runtime);
     if (service) {
       await service.stop();
     }
@@ -1586,6 +1591,19 @@ export class PTYService {
     event: string,
     data: Record<string, unknown>,
   ): void {
+    if (
+      shouldSuppressCodexExecHookEvent({
+        codexExecMode:
+          this.sessionMetadata.get(sessionId)?.codexExecMode === true,
+        event,
+      })
+    ) {
+      this.log(
+        `Ignoring Codex exec hook ${event} for ${sessionId}; process exit fast-path owns completion`,
+      );
+      return;
+    }
+
     // Log high-frequency events (tool_running, permission) at debug level;
     // completion events at info level.
     const summary =

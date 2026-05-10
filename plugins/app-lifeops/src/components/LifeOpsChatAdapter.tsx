@@ -1,4 +1,4 @@
-import { useAppWorkspaceChatChrome, useChatComposer } from "@elizaos/app-core";
+import { useAppWorkspaceChatChrome, useChatComposer } from "@elizaos/ui";
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCalendarEvent,

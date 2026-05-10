@@ -30,9 +30,14 @@ import type {
 import type { ToolsConfig } from "./types.tools.js";
 
 export type {
+  AudioElevenlabsConfig,
   AudioElevenlabsSfxConfig,
+  AudioElevenlabsVoiceSettings,
+  AudioFalConfig,
   AudioGenConfig,
   AudioGenProvider,
+  AudioKind,
+  AudioProviderRoutingConfig,
   AudioSunoConfig,
   CustomActionDef,
   CustomActionHandler,
@@ -173,8 +178,8 @@ export type SkillsConfig = {
   entries?: Record<string, SkillConfig>;
 };
 
-export type KnowledgeConfig = {
-  /** Enable contextual knowledge enrichment for document ingestion. */
+export type DocumentsConfig = {
+  /** Enable contextual enrichment for document ingestion. */
   contextualEnrichment?: boolean;
   /** Docs directory path used for enrichment context. */
   docsPath?: string;
@@ -576,37 +581,10 @@ export type CloudConfig = {
   container?: CloudContainerDefaults;
 };
 
-/**
- * n8n workflow integration configuration.
- *
- * Two paths populate N8N_HOST + N8N_API_KEY for `@elizaos/plugin-n8n-workflow`:
- *   1. Eliza Cloud gateway — when `cloud.apiKey` is set and `cloud.enabled` is
- *      not false, the cloud gateway handles the n8n instance. The runtime
- *      pumps `${cloud.baseUrl}/api/v1/agents/${agentId}/n8n` into N8N_HOST and
- *      `cloud.apiKey` into N8N_API_KEY.
- *   2. Local sidecar — when `localEnabled !== false` (the default) and the
- *      Eliza n8n sidecar is running, the sidecar lifecycle writes `host`
- *      and `apiKey` fields below when it reaches the "ready" status. The
- *      runtime pumps those into the plugin.
- *
- * `enabled` acts as a master gate (default true). Setting it to false disables
- * auto-enable of the plugin regardless of cloud or sidecar state.
- */
-export type N8nConfig = {
+/** Workflow integration configuration. */
+export type WorkflowConfig = {
   /** Master gate. Default: true. When false, plugin auto-enable is skipped. */
   enabled?: boolean;
-  /** Allow the local n8n sidecar to populate host/apiKey. Default: true. */
-  localEnabled?: boolean;
-  /** Sidecar-populated n8n host URL (set once the sidecar is ready). */
-  host?: string;
-  /** Sidecar-populated n8n API key. */
-  apiKey?: string;
-  /** Sidecar lifecycle status. */
-  status?: "stopped" | "starting" | "ready" | "error";
-  /** Pinned n8n version for the sidecar. */
-  version?: string;
-  /** First port in the allocation range the sidecar picks from. */
-  startPort?: number;
 };
 
 /** CUA (Computer Use Agent) configuration. Supports local (Lume VM) and cloud modes. */
@@ -654,11 +632,11 @@ export type X402Config = {
 // --- Local embedding runtime config ---
 
 export type EmbeddingConfig = {
-  /** GGUF model filename (e.g. "bge-small-en-v1.5.Q4_K_M.gguf"). */
+  /** GGUF model filename (e.g. "text/eliza-1-lite-0_6b-32k.gguf"). */
   model?: string;
   /** Optional Hugging Face repo/source for model resolution. */
   modelRepo?: string;
-  /** Embedding vector dimension (default: 384). */
+  /** Embedding vector dimension (default: 1024). */
   dimensions?: number;
   /** Embedding context window size (must match the model; default: model hint). */
   contextSize?: number;
@@ -773,7 +751,7 @@ export type ElizaConfig = {
      */
     favoriteApps?: string[];
   };
-  knowledge?: KnowledgeConfig;
+  documents?: DocumentsConfig;
   roles?: RolesConfig;
   skills?: SkillsConfig;
   plugins?: PluginsConfig;
@@ -802,8 +780,8 @@ export type ElizaConfig = {
   database?: DatabaseConfig;
   /** Eliza Cloud integration for remote agent provisioning and inference. */
   cloud?: CloudConfig;
-  /** n8n workflow integration (cloud gateway or local sidecar). */
-  n8n?: N8nConfig;
+  /** In-process workflow integration. */
+  workflow?: WorkflowConfig;
   /** Wallet source selection and cached cloud wallet descriptors. */
   wallet?: {
     primary?: Partial<Record<"evm" | "solana", "local" | "cloud">>;

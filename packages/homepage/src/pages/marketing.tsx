@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import {
-  releaseData,
   type ReleaseDataDownload,
+  releaseData,
 } from "@/generated/release-data";
 import { getElizacloudUrl } from "@/lib/api/client";
 

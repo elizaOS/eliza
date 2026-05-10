@@ -1,20 +1,18 @@
 {
   "name": "@elizaos/plugin-tailscale",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Tunnel plugin for elizaOS — local Tailscale serve/funnel or Eliza Cloud-routed Tailscale auth-key minter",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    "./package.json": "./package.json",
     ".": {
-      "import": {
-        "@elizaos/source": "./src/index.ts",
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
-    }
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist"
@@ -26,19 +24,26 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "clean": "rm -rf dist coverage",
-    "lint": "prettier --check ."
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-tunnel": "2.0.0-beta.1"
   },
   "dependencies": {
-    "@elizaos/cloud-routing": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "undici": "^8.0.0",
+    "@elizaos/cloud-routing": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-tunnel": "2.0.0-beta.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.6.0",
-    "prettier": "^3.8.3",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.17"
   },
   "publishConfig": {

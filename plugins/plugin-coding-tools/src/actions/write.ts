@@ -50,9 +50,7 @@ export const writeAction: Action = {
       schema: { type: "string" },
     },
   ],
-  validate: async (runtime: IAgentRuntime) => {
-    return true;
-  },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -100,7 +98,7 @@ export const writeAction: Action = {
     }
 
     const validated = await sandbox.validatePath(conversationId, filePath);
-    if (!validated.ok) {
+    if (validated.ok === false) {
       const reason =
         validated.reason === "blocked" ? "path_blocked" : "invalid_param";
       return failureToActionResult({ reason, message: validated.message });
@@ -109,7 +107,7 @@ export const writeAction: Action = {
     const resolved = validated.resolved;
 
     const gate = await fileState.assertWritable(conversationId, resolved);
-    if (!gate.ok) {
+    if (gate.ok === false) {
       const reason =
         gate.reason === "stale_read" ? "stale_read" : "invalid_param";
       return failureToActionResult({ reason, message: gate.message });
@@ -154,4 +152,39 @@ export const writeAction: Action = {
       bytes,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Create /tmp/test.md with the text 'Hello'.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Wrote /tmp/test.md.",
+          actions: ["WRITE"],
+          thought:
+            "New file with literal content maps to WRITE with path and content set.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Overwrite docs/intro.md with the new draft I pasted.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Wrote docs/intro.md.",
+          actions: ["WRITE"],
+          thought:
+            "Whole-file overwrite maps to WRITE; readBeforeWrite is enforced internally so the agent doesn't clobber unread changes.",
+        },
+      },
+    ],
+  ],
 };

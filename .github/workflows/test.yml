@@ -32,7 +32,7 @@ on:
 
 concurrency:
   group: test-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CI: "true"
@@ -40,6 +40,19 @@ env:
   NODE_VERSION: "23"
   NODE_NO_WARNINGS: "1"
   NODE_OPTIONS: "--max-old-space-size=4096"
+  # Live-test keys. Suites gated via describeLive() / requiredEnv skip cleanly
+  # with a yellow warning when a key is missing — the workflow stays green.
+  # Cerebras is the universal default LLM (gpt-oss-120b); the OPENAI_* aliases
+  # are auto-applied by scripts/run-all-tests.mjs when CEREBRAS_API_KEY is set.
+  CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+  XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+  NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+  ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
 
 jobs:
   server-tests:
@@ -65,7 +78,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --frozen-lockfile
+          install-command: bun install --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -95,7 +108,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --frozen-lockfile
+          install-command: bun install --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -106,7 +119,7 @@ jobs:
   plugin-tests:
     name: Plugin Tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 95
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -133,7 +146,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --frozen-lockfile
+          install-command: bun install --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -150,10 +163,10 @@ jobs:
             ${{ runner.os }}-cargo-plugin-tests-
 
       - name: Run plugin tests
-        # Cap step well below the 75m job budget so a flaky plugin
+        # Cap step below the 95m job budget so a flaky plugin
         # (most recently plugin-shell rust PTY tests in run 25234887145)
         # fails fast instead of burning the whole job's wall clock.
-        timeout-minutes: 60
+        timeout-minutes: 85
         run: bun run test:plugins
 
   desktop-contract:
@@ -174,8 +187,11 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --frozen-lockfile
+          install-command: bun install --ignore-scripts
           install-native-deps: "false"
+
+      - name: Build workspace packages for Vitest resolution
+        run: bun run build:core
 
       - name: Run Electrobun contract tests
         working-directory: packages/app-core/platforms/electrobun
@@ -219,7 +235,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --frozen-lockfile
+          install-command: bun install --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"

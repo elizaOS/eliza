@@ -4,7 +4,7 @@ export const AGENT_CONTEXTS = [
   "crypto",
   "wallet",
   "payments",
-  "knowledge",
+  "documents",
   "browser",
   "code",
   "media",

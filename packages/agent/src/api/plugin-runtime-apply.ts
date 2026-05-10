@@ -1,7 +1,7 @@
 import { type AgentRuntime, logger } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.js";
-import { supportsRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.js";
-import type { ResolvedPlugin } from "../runtime/plugin-types.js";
+import type { ElizaConfig } from "../config/config.ts";
+import { supportsRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.ts";
+import type { ResolvedPlugin } from "../runtime/plugin-types.ts";
 
 export type PluginRuntimeApplyMode =
   | "none"
@@ -105,7 +105,7 @@ function resolveTargetPackageName(
 async function resolvePluginsForConfig(
   config: ElizaConfig,
 ): Promise<ResolvedPlugin[]> {
-  const { resolvePlugins } = await import("../runtime/plugin-resolver.js");
+  const { resolvePlugins } = await import("../runtime/plugin-resolver.ts");
   return await resolvePlugins(config, { quiet: true });
 }
 

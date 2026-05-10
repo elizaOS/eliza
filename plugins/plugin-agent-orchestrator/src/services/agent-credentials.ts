@@ -142,7 +142,7 @@ export interface OpencodeSpawnConfig {
 
 /**
  * Build the per-spawn OpenCode config (fed via OPENCODE_CONFIG_CONTENT).
- * Three modes — verified live against ollama serving qwen2.5-coder:0.5b:
+ * Three modes — verified live against an OpenAI-compatible Eliza-1 endpoint:
  *   1. Cloud: PARALLAX_LLM_PROVIDER=cloud + paired Eliza Cloud key.
  *   2. Local: PARALLAX_OPENCODE_LOCAL=1 (and/or PARALLAX_OPENCODE_BASE_URL).
  *   3. User-config: PARALLAX_OPENCODE_MODEL_POWERFUL alone — defers to
@@ -205,7 +205,7 @@ export function buildOpencodeSpawnConfig(
     const baseURL = customBaseUrl?.trim() || OPENCODE_LOCAL_DEFAULT_BASE_URL;
     const apiKey = readConfigEnvKey("PARALLAX_OPENCODE_API_KEY");
     const providerId = "eliza-local";
-    const powerful = userPowerful?.trim() || "qwen2.5-coder:7b";
+    const powerful = userPowerful?.trim() || "eliza-1-9b";
     const fast = userFast?.trim();
     const config = {
       $schema: "https://opencode.ai/config.json",

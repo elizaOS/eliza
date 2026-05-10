@@ -29,8 +29,6 @@ import {
 	type ProviderResult,
 	type State,
 } from "@elizaos/core";
-// Import actions
-import { commandAction } from "./actions/command";
 import { detectCommand, hasCommand, normalizeCommandBody } from "./parser";
 import {
 	findCommandByAlias,
@@ -163,7 +161,19 @@ export const commandsPlugin: Plugin = {
 
 	providers: [commandRegistryProvider],
 
-	actions: [commandAction],
+	// Self-declared auto-enable: activate when features.commands is enabled.
+	autoEnable: {
+		shouldEnable: (_env, config) => {
+			const f = (config?.features as Record<string, unknown> | undefined)
+				?.commands;
+			return (
+				f === true ||
+				(typeof f === "object" &&
+					f !== null &&
+					(f as { enabled?: unknown }).enabled !== false)
+			);
+		},
+	},
 
 	config: {
 		COMMANDS_ENABLED: "true",

@@ -45,6 +45,8 @@ export interface NostrProfile {
 
 /** Configuration settings for the Nostr plugin */
 export interface NostrSettings {
+  /** Connector account identifier for this Nostr bot instance */
+  accountId?: string;
   /** Private key in hex or nsec format */
   privateKey: string;
   /** Public key (derived from private key) */
@@ -179,6 +181,42 @@ export function isValidPubkey(input: string): boolean {
   return /^[0-9a-fA-F]{64}$/.test(trimmed);
 }
 
+function bytesToHex(data: Uint8Array): string {
+  return Array.from(data)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) {
+    throw new NostrCryptoError("Decoded key data must be hex or bytes");
+  }
+  return Uint8Array.from(hex.match(/.{1,2}/g)?.map((byte) => Number.parseInt(byte, 16)) ?? []);
+}
+
+function decodedDataToHex(data: unknown): string {
+  if (typeof data === "string") {
+    if (!/^[0-9a-fA-F]{64}$/.test(data)) {
+      throw new NostrCryptoError("Decoded public key must be 64 hex characters");
+    }
+    return data.toLowerCase();
+  }
+  if (data instanceof Uint8Array) {
+    return bytesToHex(data);
+  }
+  throw new NostrCryptoError("Decoded public key must be hex or bytes");
+}
+
+function decodedDataToBytes(data: unknown): Uint8Array {
+  if (data instanceof Uint8Array) {
+    return data;
+  }
+  if (typeof data === "string") {
+    return hexToBytes(data);
+  }
+  throw new NostrCryptoError("Decoded private key must be hex or bytes");
+}
+
 /** Normalize a pubkey to hex format (accepts npub or hex) */
 export function normalizePubkey(input: string): string {
   const trimmed = input.trim();
@@ -189,11 +227,7 @@ export function normalizePubkey(input: string): string {
     if (decoded.type !== "npub") {
       throw new NostrCryptoError("Invalid npub key");
     }
-    // Convert Uint8Array to hex string
-    const data = decoded.data as unknown as Uint8Array;
-    return Array.from(data)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
+    return decodedDataToHex(decoded.data);
   }
 
   // Already hex - validate and return lowercase
@@ -219,7 +253,7 @@ export function validatePrivateKey(key: string): Uint8Array {
     if (decoded.type !== "nsec") {
       throw new NostrCryptoError("Invalid nsec key: wrong type");
     }
-    return decoded.data as unknown as Uint8Array;
+    return decodedDataToBytes(decoded.data);
   }
 
   // Handle hex format

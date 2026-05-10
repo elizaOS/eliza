@@ -87,7 +87,40 @@ export const clearHistory: Action = {
     }
     return { success: true, text: response.text };
   },
-  examples: (spec.examples ?? []) as ActionExample[][],
+  examples: (spec.examples?.length
+    ? spec.examples
+    : [
+        [
+          {
+            name: "{{name1}}",
+            content: { text: "Clear my shell command history.", source: "chat" },
+          },
+          {
+            name: "{{agentName}}",
+            content: {
+              text: "Shell command history has been cleared.",
+              actions: ["CLEAR_SHELL_HISTORY"],
+              thought:
+                "User asked to wipe shell history; CLEAR_SHELL_HISTORY clears the recorded commands for this conversation.",
+            },
+          },
+        ],
+        [
+          {
+            name: "{{name1}}",
+            content: { text: "Reset the terminal history for this conversation.", source: "chat" },
+          },
+          {
+            name: "{{agentName}}",
+            content: {
+              text: "Shell command history has been cleared.",
+              actions: ["CLEAR_SHELL_HISTORY"],
+              thought:
+                "Reset/terminal-history phrasing maps to the same CLEAR_SHELL_HISTORY action.",
+            },
+          },
+        ],
+      ]) as ActionExample[][],
 };
 
 export default clearHistory;

@@ -1,20 +1,11 @@
 /**
  * Dashboard action cards — the primary landing experience for users.
- * Shows quick-access cards for Chat, Create Agent, Billing/Credits, and Developer APIs.
+ * Shows quick-access cards for Chat, Billing/Credits, and Developer APIs.
  */
 
 "use client";
 
-import {
-  ArrowRight,
-  BookOpen,
-  Bot,
-  Code,
-  Key,
-  MessageSquare,
-  Sparkles,
-  Wallet,
-} from "lucide-react";
+import { ArrowRight, BookOpen, Bot, Code, Key, MessageSquare, Wallet } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -32,7 +23,7 @@ export function DashboardActionCards({ creditBalance, className }: DashboardActi
         : "$0.00";
 
   return (
-    <div className={cn("grid gap-4 sm:grid-cols-2 lg:grid-cols-4", className)}>
+    <div className={cn("grid gap-4 sm:grid-cols-2 lg:grid-cols-3", className)}>
       {/* Model Playground */}
       <Link
         to="/dashboard/chat"
@@ -50,24 +41,6 @@ export function DashboardActionCards({ creditBalance, className }: DashboardActi
         </div>
         {/* Glow effect */}
         <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-orange-500/10 blur-3xl transition-opacity duration-500 group-hover:opacity-100 opacity-0" />
-      </Link>
-
-      {/* Create Agent */}
-      <Link
-        to="/dashboard/build"
-        className="group relative flex min-h-[156px] flex-col justify-between overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-violet-500/15 via-violet-600/10 to-transparent p-5 transition-all duration-300 hover:border-violet-500/40 hover:shadow-lg hover:shadow-violet-500/5"
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/20 text-violet-400 transition-colors group-hover:bg-violet-500/30">
-            <Sparkles className="h-5 w-5" />
-          </div>
-          <ArrowRight className="h-4 w-4 text-white/30 transition-all duration-300 group-hover:translate-x-1 group-hover:text-violet-400" />
-        </div>
-        <div>
-          <h3 className="text-base font-semibold text-white">Create an Agent</h3>
-          <p className="mt-1 text-sm text-white/50">Build a custom agent</p>
-        </div>
-        <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-violet-500/10 blur-3xl transition-opacity duration-500 group-hover:opacity-100 opacity-0" />
       </Link>
 
       {/* Credits & Billing */}
@@ -132,8 +105,8 @@ export function DashboardActionCards({ creditBalance, className }: DashboardActi
 
 export function DashboardActionCardsSkeleton() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {[...Array(4)].map((_, i) => (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {[...Array(3)].map((_, i) => (
         <div
           key={i}
           className="flex flex-col justify-between rounded-xl border border-white/10 bg-white/5 p-5"

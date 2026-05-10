@@ -5,6 +5,7 @@
 
 "use client";
 
+import type { Voice as BaseVoice } from "@elizaos/cloud-ui";
 import {
   Alert,
   AlertDescription,
@@ -24,11 +25,14 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  getEstimatedReadyMessage,
   ScrollArea,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
+  VoiceAudioPlayer,
+  VoiceStatusBadge,
 } from "@elizaos/cloud-ui";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -47,8 +51,6 @@ import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { getEstimatedReadyMessage, VoiceAudioPlayer, VoiceStatusBadge } from "@elizaos/cloud-ui/components/voice";
-import type { Voice as BaseVoice } from "@elizaos/cloud-ui/components/voice/types";
 import { VoiceCloneForm } from "./voice-clone-form";
 
 // Extended Voice type with additional fields for studio

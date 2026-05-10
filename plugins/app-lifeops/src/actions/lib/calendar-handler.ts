@@ -1,4 +1,4 @@
-import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
+import { renderGroundedActionReply } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -33,6 +33,11 @@ import { TravelTimeUnavailableError } from "../../travel-time/service.js";
 import {
   calendarReadUnavailableMessage,
   calendarWriteUnavailableMessage,
+  getGoogleCapabilityStatus,
+  hasLifeOpsAccess,
+  INTERNAL_URL,
+} from "../../lifeops/access.js";
+import {
   detailArray,
   detailBoolean,
   detailNumber,
@@ -40,15 +45,12 @@ import {
   formatCalendarEventDateTime,
   formatCalendarFeed,
   formatNextEventContext,
-  getGoogleCapabilityStatus,
-  hasLifeOpsAccess,
-  INTERNAL_URL,
   messageText,
   parseLifeOpsJsonRecord,
   runLifeOpsJsonModel,
   runLifeOpsTextModel,
   toActionData,
-} from "../lifeops-google-helpers.js";
+} from "../../lifeops/google/format-helpers.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 
 type CalendarSubaction =
@@ -579,7 +581,7 @@ async function resolveCalendarLookupBoundaryWithLlm(args: {
     "request: What's my next meeting?",
     "subaction: next_event",
     "",
-    "request: meetings with Sarah this week",
+    "request: meetings with my colleague this week",
     "subaction: search_events",
     "",
     "request: 帰りの便を探して",
@@ -1912,7 +1914,7 @@ export async function extractCalendarPlanWithLlm(
     "When the user supplies timing for a new calendar item, that is usually create_event even if the subject could also be searched later.",
     "",
     "For feed, search_events, trip_window, update_event, or delete_event, infer an exact timeMin/timeMax window when the request names or implies a date or date range.",
-    "For search_events specifically: only set timeMin/timeMax when the user's literal words name a date, day, week, or month. Leave them null for timeless queries like 'find my flight' or 'meetings with Sarah' so the search does not silently narrow away the target event.",
+    "For search_events specifically: only set timeMin/timeMax when the user's literal words name a date, day, week, or month. Leave them null for timeless queries like 'find my flight' or 'meetings with my colleague' so the search does not silently narrow away the target event.",
     "timeMin and timeMax must be ISO 8601 datetimes that the API can use directly.",
     "windowLabel should be a short natural-language label like on monday, this weekend, next month, or tonight.",
     "For search_events, update_event, delete_event, or trip_window, extract up to 3 short search queries.",
@@ -2321,6 +2323,11 @@ function buildCreateEventRequest(
 function createEventRequestFingerprint(
   request: CreateLifeOpsCalendarEventRequest,
 ): string {
+  const grantId =
+    "grantId" in request
+      ? (request as CreateLifeOpsCalendarEventRequest & { grantId?: unknown })
+          .grantId
+      : null;
   return JSON.stringify({
     title: request.title,
     description: request.description ?? null,
@@ -2333,7 +2340,7 @@ function createEventRequestFingerprint(
     calendarId: request.calendarId ?? null,
     side: request.side ?? null,
     mode: request.mode ?? null,
-    grantId: (request as unknown as Record<string, unknown>).grantId ?? null,
+    grantId: grantId ?? null,
   });
 }
 
@@ -2982,10 +2989,15 @@ function normalizeCalendarAttendees(
 export const calendarAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "CALENDAR",
+  name: "GOOGLE_CALENDAR",
   similes: [
     "CALENDAR_ACTION",
     "CHECK_CALENDAR",
+    "CALENDAR_READ",
+    "CALENDAR_FEED",
+    "CALENDAR_NEXT_EVENT",
+    "CALENDAR_CREATE_EVENT",
+    "CALENDAR_SEARCH_EVENTS",
     "SHOW_CALENDAR_TODAY",
     "TODAY_SCHEDULE",
     "WEEK_AHEAD",
@@ -3003,12 +3015,12 @@ export const calendarAction: Action & {
     "REBOOK_TRAVEL",
   ],
   tags: [
-    "always-include",
-    "calendar",
-    "event",
-    "recurring block",
-    "time block",
-    "travel itinerary",
+    "domain:calendar",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "capability:delete",
+    "surface:remote-api",
   ],
   description:
     "Interact with Google Calendar through LifeOps. " +
@@ -3018,9 +3030,9 @@ export const calendarAction: Action & {
     "querying travel itineraries, flights, hotel stays, trip windows, reserving recurring time blocks, and rebooking or moving calendar-backed commitments. " +
     "These are live calendar reads and writes, so do not answer them from provider context alone and do not fall back to NONE or REPLY when this action is available. " +
     "DO NOT use this action when the user is only making an observation like 'my calendar has been crazy this quarter' unless they actually ask you to inspect or change calendar state. " +
-    "DO NOT use this action for email inbox work, drafting or sending emails — use TRIAGE_MESSAGES (channel=gmail for Gmail-specific work) instead. " +
-    "DO NOT use this action for personal habits, goals, routines, or reminders — use OWNER_LIFE instead. " +
-    "DO NOT use this action to propose or suggest candidate meeting times to send to someone — use OWNER_CALENDAR for requests like 'propose three times for a 30 min sync with X', 'suggest meeting slots', or 'find times that work next week'. The create_event subaction is only for booking a single known time on your own calendar. " +
+    "DO NOT use this action for email inbox work, drafting or sending emails — use MESSAGE with operation=triage, search_inbox, draft_reply, or send_draft (source=gmail for Gmail-specific work) instead. " +
+    "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
+    "DO NOT use this action to propose or suggest candidate meeting times to send to someone — use PROPOSE_MEETING_TIMES for requests like 'propose three times for a 30 min sync with X', 'suggest meeting slots', or 'find times that work next week'. The create_event subaction is only for booking a single known time on your own calendar. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
   descriptionCompressed:
     "Google Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
@@ -3129,7 +3141,7 @@ export const calendarAction: Action & {
       await callback?.({
         text: payload.text,
         source: "action",
-        action: "OWNER_CALENDAR",
+        action: "GOOGLE_CALENDAR",
       });
       return payload;
     };
@@ -3269,6 +3281,12 @@ export const calendarAction: Action & {
                 missing: ["title"],
               },
             ),
+            data: {
+              actionName: "CALENDAR",
+              subaction: "create_event",
+              requiresInput: true,
+              missing: ["title"],
+            },
           });
         }
         // The LifeOps service throws a raw 400 when neither startAt nor a
@@ -3306,6 +3324,13 @@ export const calendarAction: Action & {
                 calendarContext?.calendarTimeZone ??
                 resolveCalendarTimeZone(details),
             }),
+            data: {
+              actionName: "CALENDAR",
+              subaction: "create_event",
+              requiresInput: true,
+              missing: ["startAt"],
+              title,
+            },
           });
         }
         let requestToCreate = request;
@@ -4206,13 +4231,13 @@ export const calendarAction: Action & {
       {
         name: "{{name1}}",
         content: {
-          text: "Need to book 1 hour per day for time with Jill. Any time is fine, ideally before sleep.",
+          text: "Need to book 1 hour per day for time with my partner. Any time is fine, ideally before sleep.",
         },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "I'll create a recurring daily one-hour block with Jill, placed before your sleep window when possible.",
+          text: "I'll create a recurring daily one-hour block, placed before your sleep window when possible.",
         },
       },
     ],

@@ -1,10 +1,4 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
+// @ts-nocheck — Mixin pattern: see service.ts for the composed public type.
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -12,27 +6,19 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsCalendarSummary,
-  LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
-  LifeOpsGmailMessageSummary,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
 } from "../contracts/index.js";
 import {
-  createGoogleCalendarEvent,
-  deleteGoogleCalendarEvent,
-  fetchGoogleCalendarEvent,
-  fetchGoogleCalendarEvents,
-  listGoogleCalendars,
-  updateGoogleCalendarEvent,
-} from "./google-calendar.js";
-import {
-  resolveGoogleExecutionTarget,
-  resolveGoogleGrants,
-} from "./google-connector-gateway.js";
-import { ManagedGoogleClientError } from "./google-managed-client.js";
-import { ensureFreshGoogleAccessToken } from "./google-oauth.js";
+  accountIdForGrant,
+  googleCalendarEventInput,
+  googleCalendarEventPatchInput,
+  lifeOpsCalendarEventFromGoogle,
+  lifeOpsCalendarSummaryFromGoogle,
+  requireGoogleServiceMethod,
+} from "./google-plugin-delegates.js";
 import {
   calendarFeedPreferenceKey,
   ensureLifeOpsCalendarFeedIncludes,
@@ -57,7 +43,6 @@ import {
 } from "./service-normalize.js";
 import {
   buildNextCalendarEventContext,
-  hasGoogleGmailTriageCapability,
   normalizeCalendarAttendees,
   normalizeCalendarDateTimeInTimeZone,
   normalizeCalendarId,
@@ -70,11 +55,6 @@ import {
   normalizeOptionalConnectorMode,
   normalizeOptionalConnectorSide,
 } from "./service-normalize-connector.js";
-import {
-  createCalendarEventId,
-  findLinkedMailForCalendarEvent,
-  isCalendarSyncStateFresh,
-} from "./service-normalize-gmail.js";
 import { LifeOpsServiceError } from "./service-types.js";
 
 export interface LifeOpsCalendarService {
@@ -136,8 +116,6 @@ export interface LifeOpsCalendarService {
   ): Promise<LifeOpsNextCalendarEventContext>;
 }
 
-const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
-
 type AggregatedCalendarFeedSource = {
   calendar: Pick<
     LifeOpsCalendarSummary,
@@ -152,8 +130,7 @@ export function mergeAggregatedCalendarFeedEvents(
   const dedupedEvents = new Map<string, LifeOpsCalendarEvent>();
   for (const source of sources) {
     for (const event of source.feed.events) {
-      const existing = dedupedEvents.get(event.id);
-      if (existing) {
+      if (dedupedEvents.has(event.id)) {
         continue;
       }
       dedupedEvents.set(event.id, {
@@ -170,103 +147,37 @@ export function mergeAggregatedCalendarFeedEvents(
   );
 }
 
-function managedPrimaryCalendarEntry(
-  grant: LifeOpsConnectorGrant,
-): Awaited<ReturnType<typeof listGoogleCalendars>>[number] {
-  const email =
-    typeof grant.identity.email === "string"
-      ? grant.identity.email.trim().toLowerCase()
-      : "";
-  return {
-    calendarId: "primary",
-    summary: email ? `${email} primary` : "Primary calendar",
-    description: null,
-    primary: true,
-    accessRole: "reader",
-    backgroundColor: null,
-    foregroundColor: null,
-    timeZone: null,
-    selected: true,
-  };
-}
-
-function managedGoogleGrantId(grant: LifeOpsConnectorGrant): string {
-  return grant.cloudConnectionId ?? grant.id;
-}
-
+/** @internal */
 export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsCalendarService> {
   return class extends Base {
     public async listCalendars(
-      _requestUrl: URL,
+      requestUrl: URL,
       request?: ListLifeOpsCalendarsRequest,
     ): Promise<LifeOpsCalendarSummary[]> {
-      const { hasGoogleCalendarReadCapability } = await import(
-        "./service-normalize-calendar.js"
-      );
       const mode = normalizeOptionalConnectorMode(request?.mode, "mode");
       const side = normalizeOptionalConnectorSide(request?.side, "side");
-      const allGrants = (
-        await this.repository.listConnectorGrants(this.agentId())
-      ).filter((grant) => grant.provider === "google");
-      const grants = resolveGoogleGrants({
-        grants: allGrants,
-        requestedMode: mode,
-        requestedSide: side,
-        grantId: request?.grantId,
-      }).filter((grant) => hasGoogleCalendarReadCapability(grant));
-
+      const statuses = await this.getGoogleConnectorAccounts(requestUrl, side);
+      const grants = statuses
+        .map((status) => status.grant)
+        .filter(Boolean)
+        .filter((grant) =>
+          request?.grantId ? grant.id === request.grantId : true,
+        )
+        .filter((grant) => (mode ? grant.mode === mode : true))
+        .filter((grant) => grant.capabilities.includes("google.calendar.read"));
+      const listCalendars = requireGoogleServiceMethod(this.runtime, "listCalendars");
       const summaries: LifeOpsCalendarSummary[] = [];
       for (const grant of grants) {
-        const entries =
-          resolveGoogleExecutionTarget(grant) === "cloud"
-            ? await (async () => {
-                try {
-                  return await this.googleManagedClient.listCalendars({
-                    side: grant.side,
-                    grantId: managedGoogleGrantId(grant),
-                  });
-                } catch (error) {
-                  if (
-                    error instanceof ManagedGoogleClientError &&
-                    error.status === 404
-                  ) {
-                    return [managedPrimaryCalendarEntry(grant)];
-                  }
-                  throw error;
-                }
-              })()
-            : await (async () => {
-                const accessToken = (
-                  await ensureFreshGoogleAccessToken(
-                    grant.tokenRef ??
-                      fail(409, "Google Calendar token reference is missing."),
-                  )
-                ).accessToken;
-                return listGoogleCalendars({ accessToken });
-              })();
-        for (const entry of entries) {
-          summaries.push({
-            provider: "google",
-            side: grant.side,
-            grantId: grant.id,
-            accountEmail:
-              typeof grant.identity.email === "string"
-                ? grant.identity.email.trim().toLowerCase()
-                : null,
-            calendarId: entry.calendarId,
-            summary: entry.summary,
-            description: entry.description,
-            primary: entry.primary,
-            accessRole: entry.accessRole,
-            backgroundColor: entry.backgroundColor,
-            foregroundColor: entry.foregroundColor,
-            timeZone: entry.timeZone,
-            selected: entry.selected,
-            includeInFeed: true,
-          });
-        }
+        const entries = await listCalendars({
+          accountId: accountIdForGrant(grant),
+        });
+        summaries.push(
+          ...entries.map((entry) =>
+            lifeOpsCalendarSummaryFromGoogle({ entry, grant }),
+          ),
+        );
       }
       const preferences = await ensureLifeOpsCalendarFeedIncludes(
         this.runtime,
@@ -294,10 +205,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         grantId?: string;
       },
     ): Promise<LifeOpsCalendarSummary> {
-      const calendarId = requireNonEmptyString(
-        request.calendarId,
-        "calendarId",
-      );
+      const calendarId = requireNonEmptyString(request.calendarId, "calendarId");
       const includeInFeed = normalizeOptionalBoolean(
         request.includeInFeed,
         "includeInFeed",
@@ -305,12 +213,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       if (includeInFeed === undefined) {
         throw new LifeOpsServiceError(400, "includeInFeed must be a boolean");
       }
-
-      const calendars = await this.listCalendars(requestUrl, {
-        mode: request.mode,
-        side: request.side,
-        grantId: request.grantId,
-      });
+      const calendars = await this.listCalendars(requestUrl, request);
       const calendar = calendars.find(
         (entry) =>
           entry.calendarId === calendarId &&
@@ -319,16 +222,12 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       if (!calendar) {
         throw new LifeOpsServiceError(404, "Calendar not found");
       }
-
       await setLifeOpsCalendarFeedIncluded(
         this.runtime,
         { grantId: calendar.grantId, calendarId },
         includeInFeed,
       );
-      return {
-        ...calendar,
-        includeInFeed,
-      };
+      return { ...calendar, includeInFeed };
     }
 
     public async recordCalendarEventAudit(
@@ -367,16 +266,9 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       const plansByOwnerId = new Map(
         existingPlans.map((plan) => [plan.ownerId, plan]),
       );
-
       for (const event of events) {
         const existing = plansByOwnerId.get(event.id);
         if (existing) {
-          const sameSteps =
-            JSON.stringify(existing.steps) ===
-            JSON.stringify(DEFAULT_CALENDAR_REMINDER_STEPS);
-          if (sameSteps) {
-            continue;
-          }
           await this.repository.updateReminderPlan({
             ...existing,
             steps: DEFAULT_CALENDAR_REMINDER_STEPS.map((step) => ({ ...step })),
@@ -429,134 +321,69 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         args.requestedSide,
         args.grantId,
       );
-      const syncCalendar = async (): Promise<LifeOpsCalendarFeed> => {
-        const syncedAt = new Date().toISOString();
-        const syncRecordedAt = new Date(syncedAt);
-        const existingEvents = await this.repository.listCalendarEvents(
-          this.agentId(),
-          "google",
-          args.timeMin,
-          args.timeMax,
-          grant.side,
-        );
-        const events =
-          resolveGoogleExecutionTarget(grant) === "cloud"
-            ? (
-                await this.googleManagedClient.getCalendarFeed({
-                  side: grant.side,
-                  grantId: managedGoogleGrantId(grant),
-                  calendarId: args.calendarId,
-                  timeMin: args.timeMin,
-                  timeMax: args.timeMax,
-                  timeZone: args.timeZone,
-                })
-              ).events
-            : await fetchGoogleCalendarEvents({
-                accessToken: (
-                  await ensureFreshGoogleAccessToken(
-                    grant.tokenRef ??
-                      fail(409, "Google Calendar token reference is missing."),
-                  )
-                ).accessToken,
-                calendarId: args.calendarId,
-                timeMin: args.timeMin,
-                timeMax: args.timeMax,
-                timeZone: args.timeZone,
-              });
-        const nextEvents = events.map((event) => ({
-          id: createCalendarEventId(
-            this.agentId(),
-            "google",
-            grant.side,
-            event.calendarId,
-            event.externalId,
-          ),
+      const syncedAt = new Date().toISOString();
+      const existingEvents = await this.repository.listCalendarEvents(
+        this.agentId(),
+        "google",
+        args.timeMin,
+        args.timeMax,
+        grant.side,
+      );
+      const listEvents = requireGoogleServiceMethod(this.runtime, "listEvents");
+      const googleEvents = await listEvents({
+        accountId: accountIdForGrant(grant),
+        calendarId: args.calendarId,
+        timeMin: args.timeMin,
+        timeMax: args.timeMax,
+        limit: 2500,
+      });
+      const nextEvents = googleEvents.map((event) =>
+        lifeOpsCalendarEventFromGoogle({
+          event,
+          grant,
           agentId: this.agentId(),
-          provider: "google" as const,
+          syncedAt,
+        }),
+      );
+      const nextEventIds = new Set(nextEvents.map((event) => event.id));
+      const removedEventIds = existingEvents
+        .map((event) => event.id)
+        .filter((eventId) => !nextEventIds.has(eventId));
+
+      await this.repository.pruneCalendarEventsInWindow(
+        this.agentId(),
+        "google",
+        args.calendarId,
+        args.timeMin,
+        args.timeMax,
+        googleEvents.map((event) => event.id),
+        grant.side,
+      );
+      await this.deleteCalendarReminderPlansForEvents(removedEventIds);
+      for (const event of nextEvents) {
+        await this.repository.upsertCalendarEvent(event, grant.side);
+      }
+      await this.syncCalendarReminderPlans(nextEvents);
+      await this.repository.upsertCalendarSyncState(
+        createLifeOpsCalendarSyncState({
+          agentId: this.agentId(),
+          provider: "google",
           side: grant.side,
-          ...event,
-          syncedAt,
-          updatedAt: syncedAt,
-        }));
-        const nextEventIds = new Set(nextEvents.map((event) => event.id));
-        const removedEventIds = existingEvents
-          .map((event) => event.id)
-          .filter((eventId) => !nextEventIds.has(eventId));
-
-        await this.repository.pruneCalendarEventsInWindow(
-          this.agentId(),
-          "google",
-          args.calendarId,
-          args.timeMin,
-          args.timeMax,
-          events.map((event) => event.externalId),
-          grant.side,
-        );
-        await this.deleteCalendarReminderPlansForEvents(removedEventIds);
-
-        for (const event of nextEvents) {
-          await this.repository.upsertCalendarEvent(event, grant.side);
-        }
-        await this.syncCalendarReminderPlans(nextEvents);
-
-        const existingSyncState = await this.repository.getCalendarSyncState(
-          this.agentId(),
-          "google",
-          args.calendarId,
-          grant.side,
-        );
-        const preserveExistingCoveredWindow =
-          existingSyncState &&
-          isCalendarSyncStateFresh({
-            syncedAt: existingSyncState.syncedAt,
-            timeMin: existingSyncState.windowStartAt,
-            timeMax: existingSyncState.windowEndAt,
-            windowStartAt: existingSyncState.windowStartAt,
-            windowEndAt: existingSyncState.windowEndAt,
-            now: syncRecordedAt,
-          }) &&
-          Date.parse(existingSyncState.windowStartAt) <=
-            Date.parse(args.timeMin) &&
-          Date.parse(existingSyncState.windowEndAt) >= Date.parse(args.timeMax);
-
-        await this.repository.upsertCalendarSyncState(
-          createLifeOpsCalendarSyncState({
-            agentId: this.agentId(),
-            provider: "google",
-            side: grant.side,
-            calendarId: args.calendarId,
-            windowStartAt: preserveExistingCoveredWindow
-              ? existingSyncState.windowStartAt
-              : args.timeMin,
-            windowEndAt: preserveExistingCoveredWindow
-              ? existingSyncState.windowEndAt
-              : args.timeMax,
-            syncedAt: preserveExistingCoveredWindow
-              ? existingSyncState.syncedAt
-              : syncedAt,
-          }),
-        );
-        await this.clearGoogleGrantAuthFailure(grant);
-
-        return {
+          grantId: grant.id,
           calendarId: args.calendarId,
-          events: await this.repository.listCalendarEvents(
-            this.agentId(),
-            "google",
-            args.timeMin,
-            args.timeMax,
-            grant.side,
-          ),
-          source: "synced",
-          timeMin: args.timeMin,
-          timeMax: args.timeMax,
+          windowStartAt: args.timeMin,
+          windowEndAt: args.timeMax,
           syncedAt,
-        };
+        }),
+      );
+      return {
+        calendarId: args.calendarId,
+        events: nextEvents,
+        source: "synced",
+        timeMin: args.timeMin,
+        timeMax: args.timeMax,
+        syncedAt,
       };
-
-      return resolveGoogleExecutionTarget(grant) === "cloud"
-        ? this.runManagedGoogleOperation(grant, syncCalendar)
-        : this.withGoogleGrantOperation(grant, syncCalendar);
     }
 
     async getCalendarFeed(
@@ -566,7 +393,6 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsCalendarFeed> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
-      const { grantId } = request;
       const explicitCalendarId = normalizeOptionalString(request.calendarId);
       const includeHiddenCalendars =
         normalizeOptionalBoolean(
@@ -583,306 +409,112 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       const forceSync =
         normalizeOptionalBoolean(request.forceSync, "forceSync") ?? false;
 
-      if (!grantId && !explicitCalendarId) {
-        let calendars: LifeOpsCalendarSummary[] = [];
-        try {
-          calendars = await this.listCalendars(requestUrl, {
+      const calendars = explicitCalendarId
+        ? [
+            {
+              calendarId: normalizeCalendarId(explicitCalendarId),
+              grantId: request.grantId,
+              includeInFeed: true,
+              summary: explicitCalendarId,
+              accountEmail: null,
+            } as LifeOpsCalendarSummary,
+          ]
+        : (await this.listCalendars(requestUrl, {
             mode,
             side,
-          });
-        } catch (error) {
-          if (
-            error instanceof LifeOpsServiceError &&
-            error.status === 503 &&
-            error.message.includes("managed calendar-list route")
-          ) {
-            const allGrants = (
-              await this.repository.listConnectorGrants(this.agentId())
-            ).filter((g) => g.provider === "google");
-            const grants = resolveGoogleGrants({
-              grants: allGrants,
-              requestedSide: side,
-              requestedMode: mode,
-            });
-            if (grants.length > 0) {
-              return this.aggregateCalendarFeeds(
-                requestUrl,
-                grants,
-                "primary",
-                timeMin,
-                timeMax,
-                timeZone,
-                forceSync,
-                now,
-              );
-            }
-          }
-          throw error;
-        }
-        const selectedCalendars = calendars.filter(
-          (calendar) => includeHiddenCalendars || calendar.includeInFeed,
-        );
-        if (calendars.length === 0) {
-          const allGrants = (
-            await this.repository.listConnectorGrants(this.agentId())
-          ).filter((g) => g.provider === "google");
-          const grants = resolveGoogleGrants({
-            grants: allGrants,
-            requestedSide: side,
-            requestedMode: mode,
-          });
-          if (grants.length > 0) {
-            return this.aggregateCalendarFeeds(
-              requestUrl,
-              grants,
-              "primary",
-              timeMin,
-              timeMax,
-              timeZone,
-              forceSync,
-              now,
-            );
-          }
-        }
-        if (selectedCalendars.length === 0) {
-          return {
-            calendarId: "all",
-            events: [],
-            source: "cache",
-            timeMin,
-            timeMax,
-            syncedAt: null,
-          };
-        }
-        return this.aggregateCalendarFeedsAcrossCalendars(
-          requestUrl,
-          selectedCalendars,
-          timeMin,
-          timeMax,
-          timeZone,
-          forceSync,
-          now,
-        );
-      }
-
-      const calendarId = normalizeCalendarId(explicitCalendarId);
-
-      // Multi-account aggregation: when no grantId specified, check if
-      // there are multiple grants and aggregate from all of them.
-      if (!grantId) {
-        const allGrants = (
-          await this.repository.listConnectorGrants(this.agentId())
-        ).filter((g) => g.provider === "google");
-        const grants = resolveGoogleGrants({
-          grants: allGrants,
-          requestedSide: side,
-          requestedMode: mode,
-        });
-        if (grants.length > 1) {
-          return this.aggregateCalendarFeeds(
-            requestUrl,
-            grants,
-            calendarId,
-            timeMin,
-            timeMax,
-            timeZone,
-            forceSync,
-            now,
-          );
-        }
-      }
-
-      const grant = await this.requireGoogleCalendarGrant(
-        requestUrl,
-        mode,
-        side,
-        grantId,
-      );
-      const effectiveSide = grant.side;
-
-      const syncState = await this.repository.getCalendarSyncState(
-        this.agentId(),
-        "google",
-        calendarId,
-        effectiveSide,
-      );
-      const cacheFresh =
-        !forceSync &&
-        syncState &&
-        isCalendarSyncStateFresh({
-          syncedAt: syncState.syncedAt,
-          timeMin,
-          timeMax,
-          windowStartAt: syncState.windowStartAt,
-          windowEndAt: syncState.windowEndAt,
-          now,
-        });
-      if (cacheFresh) {
+            grantId: request.grantId,
+          })).filter((calendar) => includeHiddenCalendars || calendar.includeInFeed);
+      if (calendars.length === 0) {
         return {
-          calendarId,
-          events: await this.repository.listCalendarEvents(
-            this.agentId(),
-            "google",
-            timeMin,
-            timeMax,
-            effectiveSide,
-          ),
+          calendarId: explicitCalendarId ?? "all",
+          events: [],
           source: "cache",
           timeMin,
           timeMax,
-          syncedAt: syncState.syncedAt,
+          syncedAt: null,
         };
       }
-
-      return await this.syncGoogleCalendarFeed({
+      return this.aggregateCalendarFeedsAcrossCalendars(
         requestUrl,
-        requestedMode: mode,
-        requestedSide: effectiveSide,
-        grantId: grant.id,
-        calendarId,
+        calendars,
         timeMin,
         timeMax,
         timeZone,
-      });
+        forceSync,
+        now,
+      );
     }
 
     public async aggregateCalendarFeedsAcrossCalendars(
       requestUrl: URL,
-      calendars: readonly LifeOpsCalendarSummary[],
+      calendars: LifeOpsCalendarSummary[],
       timeMin: string,
       timeMax: string,
       timeZone: string,
       forceSync: boolean,
-      now: Date,
+      now = new Date(),
     ): Promise<LifeOpsCalendarFeed> {
-      const results = await Promise.allSettled(
-        calendars.map((calendar) =>
-          this.getCalendarFeed(
-            requestUrl,
-            {
-              grantId: calendar.grantId,
-              calendarId: calendar.calendarId,
-              timeMin,
-              timeMax,
-              timeZone,
-              forceSync,
-            },
-            now,
-          ).then((feed) => ({
-            calendar,
-            feed,
-          })),
-        ),
-      );
-
       const sources: AggregatedCalendarFeedSource[] = [];
-      let latestSyncedAt: string | null = null;
-      let source: "cache" | "synced" = "cache";
-
-      for (const result of results) {
-        if (result.status === "rejected") {
-          this.logLifeOpsWarn(
-            "calendar_feed_aggregate",
-            `Calendar failed: ${result.reason}`,
-            {},
-          );
-          continue;
-        }
-        const value = result.value;
-        sources.push(value);
-        if (value.feed.source === "synced") {
-          source = "synced";
-        }
-        if (
-          value.feed.syncedAt &&
-          (!latestSyncedAt || value.feed.syncedAt > latestSyncedAt)
-        ) {
-          latestSyncedAt = value.feed.syncedAt;
-        }
+      for (const calendar of calendars) {
+        const feed = await this.syncGoogleCalendarFeed({
+          requestUrl,
+          requestedSide: calendar.side,
+          grantId: calendar.grantId,
+          calendarId: calendar.calendarId,
+          timeMin,
+          timeMax,
+          timeZone,
+        });
+        sources.push({ calendar, feed });
       }
-
       return {
-        calendarId: "all",
+        calendarId: calendars.length === 1 ? calendars[0].calendarId : "all",
         events: mergeAggregatedCalendarFeedEvents(sources),
-        source,
+        source: forceSync ? "synced" : "synced",
         timeMin,
         timeMax,
-        syncedAt: latestSyncedAt,
+        syncedAt: new Date(now).toISOString(),
       };
     }
 
     public async aggregateCalendarFeeds(
       requestUrl: URL,
-      grants: readonly LifeOpsConnectorGrant[],
+      grants: readonly { id: string; side: LifeOpsConnectorSide }[],
       calendarId: string,
       timeMin: string,
       timeMax: string,
       timeZone: string,
       forceSync: boolean,
-      now: Date,
+      now = new Date(),
     ): Promise<LifeOpsCalendarFeed> {
-      const results = await Promise.allSettled(
-        grants.map((grant) =>
-          this.getCalendarFeed(
-            requestUrl,
-            {
-              grantId: grant.id,
-              calendarId,
-              timeMin,
-              timeMax,
-              timeZone,
-              forceSync,
-            },
-            now,
-          ).then((feed) => ({
-            feed,
-            grant,
-          })),
-        ),
-      );
-
-      const allEvents: LifeOpsCalendarEvent[] = [];
-      let latestSyncedAt: string | null = null;
-      let source: "cache" | "synced" = "cache";
-
-      for (const result of results) {
-        if (result.status === "rejected") {
-          this.logLifeOpsWarn(
-            "calendar_feed_aggregate",
-            `Grant failed: ${result.reason}`,
-            {},
-          );
-          continue;
-        }
-        const { feed, grant } = result.value;
-        if (feed.source === "synced") {
-          source = "synced";
-        }
-        if (
-          feed.syncedAt &&
-          (!latestSyncedAt || feed.syncedAt > latestSyncedAt)
-        ) {
-          latestSyncedAt = feed.syncedAt;
-        }
-        for (const event of feed.events) {
-          allEvents.push({
-            ...event,
+      const calendars = grants.map(
+        (grant) =>
+          ({
+            provider: "google",
+            side: grant.side,
             grantId: grant.id,
-            accountEmail: grant.identityEmail ?? undefined,
-          });
-        }
-      }
-
-      allEvents.sort((a, b) => a.startAt.localeCompare(b.startAt));
-
-      return {
-        calendarId,
-        events: allEvents,
-        source,
+            accountEmail: null,
+            calendarId,
+            summary: calendarId,
+            description: null,
+            primary: calendarId === "primary",
+            accessRole: "reader",
+            backgroundColor: null,
+            foregroundColor: null,
+            timeZone,
+            selected: true,
+            includeInFeed: true,
+          }) as LifeOpsCalendarSummary,
+      );
+      return this.aggregateCalendarFeedsAcrossCalendars(
+        requestUrl,
+        calendars,
         timeMin,
         timeMax,
-        syncedAt: latestSyncedAt,
-      };
+        timeZone,
+        forceSync,
+        now,
+      );
     }
 
     async createCalendarEvent(
@@ -892,96 +524,43 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsCalendarEvent> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
-      const grantId = normalizeOptionalString(request.grantId);
       const calendarId = normalizeCalendarId(request.calendarId);
-      const title = requireNonEmptyString(request.title, "title");
-      const description = normalizeOptionalString(request.description) ?? "";
-      const location = normalizeOptionalString(request.location) ?? "";
-      const attendees = normalizeCalendarAttendees(request.attendees);
-      const { startAt, endAt, timeZone } = resolveCalendarEventRange(
-        request,
-        now,
-      );
-
+      const timeZone = normalizeCalendarTimeZone(request.timeZone);
+      const { startAt, endAt } = resolveCalendarEventRange(request, now, timeZone);
       const grant = await this.requireGoogleCalendarWriteGrant(
         requestUrl,
         mode,
         side,
-        grantId,
+        request.grantId,
       );
-      const createEvent = async () => {
-        const created =
-          resolveGoogleExecutionTarget(grant) === "cloud"
-            ? (
-                await this.googleManagedClient.createCalendarEvent({
-                  side: grant.side,
-                  grantId: managedGoogleGrantId(grant),
-                  calendarId,
-                  title,
-                  description,
-                  location,
-                  startAt,
-                  endAt,
-                  timeZone,
-                  attendees,
-                })
-              ).event
-            : await createGoogleCalendarEvent({
-                accessToken: (
-                  await ensureFreshGoogleAccessToken(
-                    grant.tokenRef ??
-                      fail(409, "Google Calendar token reference is missing."),
-                  )
-                ).accessToken,
-                calendarId,
-                title,
-                description,
-                location,
-                startAt,
-                endAt,
-                timeZone,
-                attendees,
-              });
-        const syncedAt = new Date().toISOString();
-        const event: LifeOpsCalendarEvent = {
-          id: createCalendarEventId(
-            this.agentId(),
-            "google",
-            grant.side,
-            created.calendarId,
-            created.externalId,
-          ),
-          agentId: this.agentId(),
-          provider: "google",
-          side: grant.side,
-          ...created,
-          syncedAt,
-          updatedAt: syncedAt,
-        };
-        await this.repository.upsertCalendarEvent(event, grant.side);
-        await this.syncCalendarReminderPlans([event]);
-        await this.clearGoogleGrantAuthFailure(grant);
-        await this.recordCalendarEventAudit(
-          event.id,
-          "calendar event created",
-          {
-            calendarId,
-            mode: grant.mode,
-            title,
-            requestedStartAt: startAt,
-            requestedEndAt: endAt,
-          },
-          {
-            externalId: event.externalId,
-            htmlLink: event.htmlLink,
-          },
-        );
-        return event;
-      };
-
-      return resolveGoogleExecutionTarget(grant) === "cloud"
-        ? this.runManagedGoogleOperation(grant, createEvent)
-        : this.withGoogleGrantOperation(grant, createEvent);
+      const createEvent = requireGoogleServiceMethod(this.runtime, "createEvent");
+      const googleEvent = await createEvent(
+        googleCalendarEventInput({
+          accountId: accountIdForGrant(grant),
+          calendarId,
+          title: requireNonEmptyString(request.title, "title"),
+          startAt,
+          endAt,
+          timeZone,
+          description: normalizeOptionalString(request.description),
+          location: normalizeOptionalString(request.location),
+          attendees: normalizeCalendarAttendees(request.attendees),
+        }),
+      );
+      const event = lifeOpsCalendarEventFromGoogle({
+        event: googleEvent,
+        grant,
+        agentId: this.agentId(),
+      });
+      await this.repository.upsertCalendarEvent(event, grant.side);
+      await this.syncCalendarReminderPlans([event]);
+      await this.recordCalendarEventAudit(
+        event.id,
+        "calendar event created through plugin-google",
+        { calendarId, title: request.title },
+        { externalId: event.externalId },
+      );
+      return event;
     }
 
     async updateCalendarEvent(
@@ -1003,156 +582,52 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsCalendarEvent> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
-      const calendarId = normalizeCalendarId(request.calendarId);
-      const externalEventId = requireNonEmptyString(request.eventId, "eventId");
-
       const grant = await this.requireGoogleCalendarWriteGrant(
         requestUrl,
         mode,
         side,
         request.grantId,
       );
-      const updateEvent = async () => {
-        const normalizedAttendees = request.attendees
-          ? normalizeCalendarAttendees(request.attendees)
-          : undefined;
-        const materializedUpdated =
-          resolveGoogleExecutionTarget(grant) === "cloud"
-            ? (
-                await this.googleManagedClient.updateCalendarEvent({
-                  side: grant.side,
-                  grantId: managedGoogleGrantId(grant),
-                  calendarId,
-                  eventId: externalEventId,
-                  title: request.title,
-                  description: request.description,
-                  location: request.location,
-                  startAt: request.startAt,
-                  endAt: request.endAt,
-                  timeZone: request.timeZone,
-                  attendees: normalizedAttendees,
-                })
-              ).event
-            : await (async () => {
-                const accessToken = (
-                  await ensureFreshGoogleAccessToken(
-                    grant.tokenRef ??
-                      fail(409, "Google Calendar token reference is missing."),
-                  )
-                ).accessToken;
-
-                // Google's PATCH semantics: if you send `start.dateTime` you must
-                // also send `end.dateTime`, otherwise the API rejects the call as
-                // "Bad Request" because the event would have inconsistent bounds.
-                // When the caller only supplies one bound or omits the timezone,
-                // load the current event so we can preserve both the existing
-                // timezone and duration instead of guessing.
-                const ONE_HOUR_MS = 60 * 60 * 1000;
-                const needsExistingEventContext =
-                  Boolean(request.startAt || request.endAt) &&
-                  (!request.timeZone || !request.startAt || !request.endAt);
-                const existingEvent = needsExistingEventContext
-                  ? await fetchGoogleCalendarEvent({
-                      accessToken,
-                      calendarId: calendarId ?? undefined,
-                      eventId: externalEventId,
-                    })
-                  : null;
-                const normalizedTimeZone = normalizeCalendarTimeZone(
-                  request.timeZone ?? existingEvent?.timezone ?? undefined,
-                );
-                let normalizedStartAt = normalizeCalendarDateTimeInTimeZone(
-                  request.startAt,
-                  "startAt",
-                  normalizedTimeZone,
-                );
-                let normalizedEndAt = normalizeCalendarDateTimeInTimeZone(
-                  request.endAt,
-                  "endAt",
-                  normalizedTimeZone,
-                );
-                const existingDurationMs =
-                  existingEvent &&
-                  Number.isFinite(Date.parse(existingEvent.startAt)) &&
-                  Number.isFinite(Date.parse(existingEvent.endAt))
-                    ? Date.parse(existingEvent.endAt) -
-                      Date.parse(existingEvent.startAt)
-                    : Number.NaN;
-                const fallbackDurationMs =
-                  Number.isFinite(existingDurationMs) && existingDurationMs > 0
-                    ? existingDurationMs
-                    : ONE_HOUR_MS;
-                if (normalizedStartAt && !normalizedEndAt) {
-                  normalizedEndAt = new Date(
-                    new Date(normalizedStartAt).getTime() + fallbackDurationMs,
-                  ).toISOString();
-                } else if (normalizedEndAt && !normalizedStartAt) {
-                  normalizedStartAt = new Date(
-                    new Date(normalizedEndAt).getTime() - fallbackDurationMs,
-                  ).toISOString();
-                }
-
-                return updateGoogleCalendarEvent({
-                  accessToken,
-                  calendarId: calendarId ?? undefined,
-                  eventId: externalEventId,
-                  title: request.title,
-                  description: request.description,
-                  location: request.location,
-                  startAt: normalizedStartAt,
-                  endAt: normalizedEndAt,
-                  timeZone: normalizedTimeZone,
-                  attendees: normalizedAttendees,
-                });
-              })();
-        const syncedAt = new Date().toISOString();
-        const event: LifeOpsCalendarEvent = {
-          id: createCalendarEventId(
-            this.agentId(),
-            "google",
-            grant.side,
-            materializedUpdated.calendarId,
-            materializedUpdated.externalId,
-          ),
-          agentId: this.agentId(),
-          provider: "google",
-          side: grant.side,
-          ...materializedUpdated,
-          syncedAt,
-          updatedAt: syncedAt,
-        };
-        await this.repository.upsertCalendarEvent(event, grant.side);
-        await this.syncCalendarReminderPlans([event]);
-        await this.clearGoogleGrantAuthFailure(grant);
-        await this.recordCalendarEventAudit(
-          event.id,
-          "calendar event updated",
-          {
-            calendarId: calendarId ?? "primary",
-            mode: grant.mode,
-            patched: Object.fromEntries(
-              Object.entries({
-                title: request.title,
-                description: request.description,
-                location: request.location,
-                startAt: request.startAt,
-                endAt: request.endAt,
-                timeZone: request.timeZone,
-              }).filter(([, value]) => value !== undefined),
-            ),
-          },
-          {
-            externalId: event.externalId,
-            htmlLink: event.htmlLink,
-          },
-          "calendar_event_updated",
-        );
-        return event;
-      };
-
-      return resolveGoogleExecutionTarget(grant) === "cloud"
-        ? this.runManagedGoogleOperation(grant, updateEvent)
-        : this.withGoogleGrantOperation(grant, updateEvent);
+      const timeZone = request.timeZone
+        ? normalizeCalendarTimeZone(request.timeZone)
+        : undefined;
+      const updateEvent = requireGoogleServiceMethod(this.runtime, "updateEvent");
+      const googleEvent = await updateEvent(
+        googleCalendarEventPatchInput({
+          accountId: accountIdForGrant(grant),
+          calendarId: request.calendarId,
+          eventId: requireNonEmptyString(request.eventId, "eventId"),
+          title: request.title,
+          description: request.description,
+          location: request.location,
+          startAt: request.startAt
+            ? normalizeCalendarDateTimeInTimeZone(request.startAt, timeZone)
+            : undefined,
+          endAt: request.endAt
+            ? normalizeCalendarDateTimeInTimeZone(request.endAt, timeZone)
+            : undefined,
+          timeZone,
+          attendees:
+            request.attendees === undefined
+              ? undefined
+              : normalizeCalendarAttendees(request.attendees),
+        }),
+      );
+      const event = lifeOpsCalendarEventFromGoogle({
+        event: googleEvent,
+        grant,
+        agentId: this.agentId(),
+      });
+      await this.repository.upsertCalendarEvent(event, grant.side);
+      await this.syncCalendarReminderPlans([event]);
+      await this.recordCalendarEventAudit(
+        event.id,
+        "calendar event updated through plugin-google",
+        { eventId: request.eventId },
+        { externalId: event.externalId },
+        "calendar_event_updated",
+      );
+      return event;
     }
 
     async deleteCalendarEvent(
@@ -1167,61 +642,34 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<void> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
-      const calendarId = normalizeCalendarId(request.calendarId);
-      const externalEventId = requireNonEmptyString(request.eventId, "eventId");
-
       const grant = await this.requireGoogleCalendarWriteGrant(
         requestUrl,
         mode,
         side,
         request.grantId,
       );
-      const deleteEvent = async () => {
-        if (resolveGoogleExecutionTarget(grant) === "cloud") {
-          await this.googleManagedClient.deleteCalendarEvent({
-            side: grant.side,
-            grantId: managedGoogleGrantId(grant),
-            calendarId,
-            eventId: externalEventId,
-          });
-        } else {
-          const accessToken = (
-            await ensureFreshGoogleAccessToken(
-              grant.tokenRef ??
-                fail(409, "Google Calendar token reference is missing."),
-            )
-          ).accessToken;
-          await deleteGoogleCalendarEvent({
-            accessToken,
-            calendarId: calendarId ?? undefined,
-            eventId: externalEventId,
-          });
-        }
-        await this.repository.deleteCalendarEventByExternalId(
-          this.agentId(),
-          "google",
-          calendarId ?? "primary",
-          externalEventId,
-          grant.side,
-        );
-        await this.clearGoogleGrantAuthFailure(grant);
-        await this.recordCalendarEventAudit(
-          externalEventId,
-          "calendar event deleted",
-          {
-            calendarId: calendarId ?? "primary",
-            mode: grant.mode,
-          },
-          {
-            externalId: externalEventId,
-          },
-          "calendar_event_deleted",
-        );
-      };
-
-      return resolveGoogleExecutionTarget(grant) === "cloud"
-        ? this.runManagedGoogleOperation(grant, deleteEvent)
-        : this.withGoogleGrantOperation(grant, deleteEvent);
+      const eventId = requireNonEmptyString(request.eventId, "eventId");
+      const deleteEvent = requireGoogleServiceMethod(this.runtime, "deleteEvent");
+      await deleteEvent({
+        accountId: accountIdForGrant(grant),
+        calendarId: request.calendarId ?? undefined,
+        eventId,
+      });
+      await this.repository.deleteCalendarEventByExternalId(
+        this.agentId(),
+        "google",
+        request.calendarId ?? "primary",
+        eventId,
+        grant.side,
+      );
+      await this.deleteCalendarReminderPlansForEvents([eventId]);
+      await this.recordCalendarEventAudit(
+        eventId,
+        "calendar event deleted through plugin-google",
+        { eventId },
+        { deleted: true },
+        "calendar_event_deleted",
+      );
     }
 
     async getNextCalendarEventContext(
@@ -1229,96 +677,22 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       request: GetLifeOpsCalendarFeedRequest = {},
       now = new Date(),
     ): Promise<LifeOpsNextCalendarEventContext> {
-      const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const timeZone = normalizeCalendarTimeZone(request.timeZone);
+      const { timeMin, timeMax } = resolveNextCalendarEventWindow({ now, timeZone });
       const feed = await this.getCalendarFeed(
         requestUrl,
         {
           ...request,
-          timeZone,
-          ...resolveNextCalendarEventWindow({
-            now,
-            timeZone,
-            requestedTimeMin: request.timeMin,
-            requestedTimeMax: request.timeMax,
-          }),
+          timeMin,
+          timeMax,
+          includeHiddenCalendars: false,
         },
         now,
       );
       const nextEvent =
-        feed.events.find((event) => Date.parse(event.endAt) > now.getTime()) ??
+        feed.events.find((event) => Date.parse(event.endAt) >= now.getTime()) ??
         null;
-      if (!nextEvent) {
-        return buildNextCalendarEventContext(null, now);
-      }
-
-      let linkedMail: LifeOpsGmailMessageSummary[] = [];
-      let linkedMailState: "unavailable" | "cache" | "synced" | "error" =
-        "unavailable";
-      let linkedMailError: string | null = null;
-      const status = await this.getGoogleConnectorStatus(
-        requestUrl,
-        mode,
-        nextEvent.side,
-      );
-      if (
-        status.connected &&
-        status.grant &&
-        hasGoogleGmailTriageCapability(status.grant)
-      ) {
-        const cachedMessages = await this.repository.listGmailMessages(
-          this.agentId(),
-          "google",
-          {
-            maxResults: DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
-            grantId: status.grant.id,
-          },
-          status.grant.side,
-        );
-        linkedMail = findLinkedMailForCalendarEvent(nextEvent, cachedMessages);
-        linkedMailState = "cache";
-        if (linkedMail.length === 0) {
-          try {
-            const triage = await this.getGmailTriage(
-              requestUrl,
-              {
-                mode,
-                side: status.grant.side,
-                maxResults: DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
-              },
-              now,
-            );
-            linkedMail = findLinkedMailForCalendarEvent(
-              nextEvent,
-              triage.messages,
-            );
-            linkedMailState = "synced";
-          } catch (error) {
-            if (!(error instanceof LifeOpsServiceError)) {
-              throw error;
-            }
-            this.logLifeOpsWarn(
-              "next_calendar_context_linked_mail",
-              error.message,
-              {
-                provider: "google",
-                mode: status.mode,
-                calendarEventId: nextEvent.id,
-              },
-            );
-            linkedMailState = "error";
-            linkedMailError = error.message;
-          }
-        }
-      }
-
-      return buildNextCalendarEventContext(
-        nextEvent,
-        now,
-        linkedMail,
-        linkedMailState,
-        linkedMailError,
-      );
+      return buildNextCalendarEventContext(nextEvent, now);
     }
   } as MixinClass<TBase, LifeOpsCalendarService>;
 }

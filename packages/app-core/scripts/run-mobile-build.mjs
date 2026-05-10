@@ -6,7 +6,16 @@
  * Reads app identity from the host's app.config.ts so web, desktop, and
  * native builds share one canonical app contract.
  *
- * Usage: node scripts/run-mobile-build.mjs <android|android-system|ios|ios-overlay>
+ * Usage: node scripts/run-mobile-build.mjs <android|android-cloud|android-system|ios|ios-overlay>
+ *
+ * Android targets:
+ *   - android         Sideload-only debug APK with the on-device agent runtime
+ *                     and AOSP/system-only permissions. NOT Play-Store-shippable.
+ *   - android-cloud   Play-Store-compliant thin Capacitor client backed by
+ *                     Eliza Cloud. No on-device agent, no default-role
+ *                     activities, no system-only permissions.
+ *   - android-system  Privileged platform-signed AOSP release APK for
+ *                     Milady OS / ElizaOS device builds.
  *
  * Phases:
  *   1. Resolve config       — read app.config.ts for appId / appName
@@ -21,7 +30,7 @@
  *                             docs/agent-on-mobile.md).
  *   6. Native build         — gradlew / xcodebuild
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -479,8 +488,10 @@ export function applyIosAppIdentity({
 
   const replacements = [
     ["group.ai.elizaos.app", appGroup],
+    ["group.app.eliza", appGroup],
     ["group.com.miladyai.milady", appGroup],
     ['"group.ai.elizaos.app"', `"${appGroup}"`],
+    ['"group.app.eliza"', `"${appGroup}"`],
     ['"group.com.miladyai.milady"', `"${appGroup}"`],
   ];
   for (const relPath of [
@@ -534,15 +545,32 @@ export function applyIosAppIdentity({
 
 async function buildWeb(platform) {
   const capacitorTarget =
-    platform === "android-system"
+    platform === "android-system" || platform === "android-cloud"
       ? "android"
       : platform === "ios-overlay"
         ? "ios"
         : platform;
+  // Android runtime mode mirrors the iOS runtime mode pattern: `cloud`
+  // means the renderer should treat Eliza Cloud as the only hosting target
+  // (Play-Store-compliant thin client; no on-device agent), while `local`
+  // is the default sideload/AOSP behavior. Surfaced to the renderer via
+  // VITE_ELIZA_ANDROID_RUNTIME_MODE so it can hide the Local picker option.
+  const androidRuntimeMode =
+    platform === "android-cloud"
+      ? "cloud"
+      : platform === "android" || platform === "android-system"
+        ? "local"
+        : null;
   const env = {
     ...process.env,
     ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
     MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
+    ...(androidRuntimeMode
+      ? {
+          VITE_ELIZA_ANDROID_RUNTIME_MODE: androidRuntimeMode,
+          VITE_MILADY_ANDROID_RUNTIME_MODE: androidRuntimeMode,
+        }
+      : {}),
   };
   const bun = resolveBunExecutable();
   if (bun) {
@@ -598,6 +626,8 @@ const ANDROID_PERMISSIONS = [
   "FOREGROUND_SERVICE_SPECIAL_USE",
   "POST_NOTIFICATIONS",
   "WAKE_LOCK",
+  "RECEIVE_BOOT_COMPLETED",
+  "SYSTEM_ALERT_WINDOW",
   // PACKAGE_USAGE_STATS is granted via the privapp-permissions whitelist;
   // MANAGE_APP_OPS_MODES is what ElizaBootReceiver actually needs to
   // reflectively flip the GET_USAGE_STATS appop to ALLOWED at boot.
@@ -716,6 +746,53 @@ export function injectNoCompressTarGz(content) {
 }
 
 /**
+ * Keep packaged Android native libraries extracted on install.
+ *
+ * Normal Capacitor installs run as `untrusted_app`, which cannot execute
+ * bun/musl files copied into app data. ElizaAgentService therefore prefers
+ * the same payload shipped as libeliza_* native libraries; those files must
+ * exist on disk under nativeLibraryDir for ProcessBuilder to execute them.
+ */
+export function injectNativeLibLegacyPackaging(content) {
+  if (/useLegacyPackaging\s*=\s*true/.test(content)) return content;
+  if (/jniLibs\s*\{/.test(content)) {
+    return content.replace(
+      /jniLibs\s*\{/,
+      "jniLibs {\n            useLegacyPackaging = true",
+    );
+  }
+  if (/packaging\s*\{/.test(content)) {
+    return content.replace(
+      /packaging\s*\{/,
+      "packaging {\n        jniLibs {\n            useLegacyPackaging = true\n        }",
+    );
+  }
+
+  const block =
+    `\n    packaging {\n` +
+    `        jniLibs {\n` +
+    `            useLegacyPackaging = true\n` +
+    `        }\n` +
+    `    }\n`;
+  const androidOpen = content.search(/\n\s*android\s*\{/);
+  if (androidOpen < 0) return content;
+  let depth = 0;
+  let i = content.indexOf("{", androidOpen);
+  while (i < content.length) {
+    const ch = content[i];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return content.slice(0, i) + block + content.slice(i);
+      }
+    }
+    i += 1;
+  }
+  return content;
+}
+
+/**
  * Inject an optional app-thinning hook for `assets/agent/`.
  *
  * Local mode on stock Capacitor APKs now depends on the staged bun runtime,
@@ -725,6 +802,94 @@ export function injectNoCompressTarGz(content) {
  *
  * Idempotent: re-runs are no-ops once the block is present.
  */
+/**
+ * Inject the `copyForkLlamaLib` Gradle task that bundles the buun-llama-cpp
+ * fork's android-arm64 .so into the APK's jniLibs/. The fork's specialized
+ * KV cache types (turbo3, turbo4, turbo3_tcq) and DFlash spec-decoding kernels
+ * live in this .so; without it, mobile only gets stock llama.cpp.
+ *
+ * Resolution order for the libdir:
+ *   1. -Peliza.dflash.android.libdir=<path>   (gradle property)
+ *   2. ELIZA_DFLASH_ANDROID_LIBDIR env var
+ *   3. ~/.eliza/local-inference/bin/dflash/android-arm64-{cpu,vulkan}/
+ *
+ * Skips with a clear log when no path is configured or the dir doesn't exist,
+ * so a desktop dev still gets a working APK without local fork builds.
+ *
+ * Idempotent: re-runs are no-ops once the block is present.
+ */
+export function injectCopyForkLlamaLibTask(content) {
+  if (/\[copyForkLlamaLib\]/.test(content)) return content;
+  const block =
+    `\n// Bundle the buun-llama-cpp fork's android-arm64 .so into the APK so\n` +
+    `// mobile gets DFlash + TurboQuant KV cache + QJL kernels. Stock\n` +
+    `// llama-cpp-capacitor's .so still ships when the fork lib dir is missing.\n` +
+    `def resolveForkLlamaLibDir = { ->\n` +
+    `    def fromProp = project.findProperty('eliza.dflash.android.libdir')\n` +
+    `    if (fromProp) return fromProp.toString()\n` +
+    `    def fromEnv = System.getenv('ELIZA_DFLASH_ANDROID_LIBDIR')\n` +
+    `    if (fromEnv) return fromEnv\n` +
+    `    def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "\${System.getProperty('user.home')}/.eliza"\n` +
+    `    def candidates = ['vulkan', 'cpu'].collect { backend ->\n` +
+    `        "\${stateDir}/local-inference/bin/dflash/android-arm64-\${backend}"\n` +
+    `    }\n` +
+    `    return candidates.find { new File(it).isDirectory() }\n` +
+    `}\n` +
+    `\n` +
+    `task copyForkLlamaLib {\n` +
+    `    doLast {\n` +
+    `        def libDir = resolveForkLlamaLibDir()\n` +
+    `        if (!libDir) {\n` +
+    `            println "[copyForkLlamaLib] no fork lib dir configured (set -Peliza.dflash.android.libdir or build via packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-arm64-vulkan); APK ships stock llama-cpp-capacitor only"\n` +
+    `            return\n` +
+    `        }\n` +
+    `        def srcDir = new File(libDir.toString())\n` +
+    `        if (!srcDir.isDirectory()) {\n` +
+    `            println "[copyForkLlamaLib] fork lib dir \${libDir} does not exist; APK ships stock llama-cpp-capacitor only"\n` +
+    `            return\n` +
+    `        }\n` +
+    `        def jniDir = file('src/main/jniLibs/arm64-v8a')\n` +
+    `        jniDir.mkdirs()\n` +
+    `        def assetsDir = file('src/main/assets')\n` +
+    `        assetsDir.mkdirs()\n` +
+    `        int copied = 0\n` +
+    `        srcDir.eachFile { src ->\n` +
+    `            if (src.name.endsWith('.so')) {\n` +
+    `                def dst = new File(jniDir, src.name)\n` +
+    `                dst.bytes = src.bytes\n` +
+    `                copied++\n` +
+    `            }\n` +
+    `            if (src.name == 'kernels.json') {\n` +
+    `                def dst = new File(assetsDir, 'llama-cpp-kernels.json')\n` +
+    `                dst.bytes = src.bytes\n` +
+    `                println "[copyForkLlamaLib] staged kernels.json as assets/llama-cpp-kernels.json"\n` +
+    `            }\n` +
+    `        }\n` +
+    `        println "[copyForkLlamaLib] copied \${copied} .so file(s) from \${libDir} to \${jniDir}"\n` +
+    `    }\n` +
+    `}\n` +
+    `\n` +
+    `afterEvaluate {\n` +
+    `    tasks.matching { it.name == 'preBuild' }.all { it.dependsOn copyForkLlamaLib }\n` +
+    `}\n`;
+  const androidOpen = content.search(/\n\s*android\s*\{/);
+  if (androidOpen < 0) return content;
+  let depth = 0;
+  let i = content.indexOf("{", androidOpen);
+  while (i < content.length) {
+    const ch = content[i];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return content.slice(0, i + 1) + block + content.slice(i + 1);
+      }
+    }
+    i += 1;
+  }
+  return content;
+}
+
 export function injectAospAssetThinning(content) {
   if (/\[app-thinning\]/.test(content)) return content;
   const block =
@@ -1007,6 +1172,7 @@ function overlayAndroid() {
     for (const file of [
       "GatewayConnectionService.java",
       "AgentPlugin.java",
+      "ElizaNativeBridge.java",
       "MainActivity.java",
       "ElizaAgentService.java",
       "ElizaAssistActivity.java",
@@ -1660,6 +1826,7 @@ function overlayIos() {
   if (fs.existsSync(srcEnt)) {
     let ent = fs.readFileSync(srcEnt, "utf8");
     ent = ent.replace("group.ai.elizaos.app", `group.${APP.appId}`);
+    ent = ent.replace("group.app.eliza", `group.${APP.appId}`);
     fs.writeFileSync(path.join(targetAppDir, "App.entitlements"), ent, "utf8");
     console.log(
       `[mobile-build] Copied iOS entitlements (app group: group.${APP.appId}).`,
@@ -1698,9 +1865,16 @@ export function prepareIosOverlay({ buildTarget = null } = {}) {
   const syncedFiles = syncPlatformTemplateFiles("ios");
   overlayIos();
   stripSpmIncompatiblePlugins();
-  if (isIosSimulatorBuildTarget(buildTarget)) {
+  const includeLlama =
+    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
+    isTruthyEnv(process.env.MILADY_IOS_INCLUDE_LLAMA);
+  if (isIosSimulatorBuildTarget(buildTarget) || !includeLlama) {
+    // Strip the SPM LlamaCppCapacitor entry whenever we're not bundling the
+    // pod — either because the simulator build replaces it with a CocoaPod
+    // (existing behavior) or because the build deliberately omits llama
+    // (cloud-only / App Store thin client).
     stripSpmPlugins(IOS_COCOAPODS_OWNED_SPM_PLUGINS, {
-      reason: "CocoaPods-owned",
+      reason: includeLlama ? "CocoaPods-owned" : "llama excluded",
     });
   }
   return syncedFiles;
@@ -1716,6 +1890,16 @@ function generatePodfile() {
     return;
   }
 
+  // LlamaCppCapacitor ships an on-device llama.cpp xcframework. It is only
+  // needed when the iOS build includes on-device inference. The default
+  // App Store target is the `cloud` runtime mode, which is a thin HTTP
+  // client and must NOT bundle the llama.cpp binary. Gate the pod on
+  // ELIZA_IOS_INCLUDE_LLAMA / MILADY_IOS_INCLUDE_LLAMA — kept in sync with
+  // `resolveIosBuildTarget()` so the pod, the xcframework path, and the
+  // build destination all agree on a single inclusion decision.
+  const includeLlama =
+    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
+    isTruthyEnv(process.env.MILADY_IOS_INCLUDE_LLAMA);
   const customPods = [
     ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
     ["ElizaosCapacitorAppblocker", "@elizaos/capacitor-appblocker"],
@@ -1728,8 +1912,13 @@ function generatePodfile() {
     ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
     ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
     ["ElizaosCapacitorWebsiteblocker", "@elizaos/capacitor-websiteblocker"],
-    ["LlamaCppCapacitor", "llama-cpp-capacitor"],
+    ...(includeLlama ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]] : []),
   ];
+  if (!includeLlama) {
+    console.log(
+      "[mobile-build] iOS Podfile: omitting LlamaCppCapacitor (ELIZA_IOS_INCLUDE_LLAMA / MILADY_IOS_INCLUDE_LLAMA not set)",
+    );
+  }
 
   const lines = [
     `  pod 'Capacitor', :path => node_package_path('@capacitor/ios')`,
@@ -1969,7 +2158,9 @@ function patchAndroidGradle() {
     );
     patched = injectBuildConfigAospField(patched);
     patched = injectNoCompressTarGz(patched);
+    patched = injectNativeLibLegacyPackaging(patched);
     patched = injectAospAssetThinning(patched);
+    patched = injectCopyForkLlamaLibTask(patched);
     if (patched !== current) {
       fs.writeFileSync(appGradlePath, patched, "utf8");
       console.log(
@@ -2330,73 +2521,10 @@ async function generateAndroidBrandAssets() {
 
 // ── Phase 6: Native builds ──────────────────────────────────────────────
 
-function findFrameworkBinary(frameworkDir) {
-  return firstExisting([
-    path.join(frameworkDir, path.basename(frameworkDir, ".framework")),
-    path.join(
-      frameworkDir,
-      "Versions",
-      "A",
-      path.basename(frameworkDir, ".framework"),
-    ),
-  ]);
-}
-
-function readMachOPlatform(binaryPath) {
-  const result = spawnSync("otool", ["-l", binaryPath], {
-    encoding: "utf8",
-  });
-  if (result.status !== 0) return null;
-  const match = result.stdout.match(
-    /cmd LC_BUILD_VERSION[\s\S]*?platform\s+(\d+)/,
-  );
-  return match ? Number(match[1]) : null;
-}
-
-function readMachOArchs(binaryPath) {
-  const result = spawnSync("lipo", ["-archs", binaryPath], {
-    encoding: "utf8",
-  });
-  if (result.status !== 0) return [];
-  return result.stdout.trim().split(/\s+/).filter(Boolean);
-}
-
-function frameworkMatches({ frameworkDir, platform, arch }) {
-  const binaryPath = findFrameworkBinary(frameworkDir);
-  if (!binaryPath || !fs.existsSync(binaryPath)) return false;
-  return (
-    readMachOPlatform(binaryPath) === platform &&
-    readMachOArchs(binaryPath).includes(arch)
-  );
-}
-
-function hasSimulatorSlice(xcframeworkDir) {
-  if (!fs.existsSync(xcframeworkDir)) return false;
-  const pending = [xcframeworkDir];
-  while (pending.length) {
-    const current = pending.pop();
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      const entryPath = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        pending.push(entryPath);
-        continue;
-      }
-      if (
-        entry.name === "llama-cpp" &&
-        readMachOPlatform(entryPath) === 7 &&
-        readMachOArchs(entryPath).includes("arm64")
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 export function patchLlamaCppCapacitorPodspecForXcframework(
   packageDir,
   {
-    xcframeworkRelPath = "ios/Frameworks-xcframework/llama-cpp.xcframework",
+    xcframeworkRelPath = "ios/Frameworks-xcframework/LlamaCpp.xcframework",
   } = {},
 ) {
   const podspecPath = path.join(packageDir, "LlamaCppCapacitor.podspec");
@@ -2407,7 +2535,15 @@ export function patchLlamaCppCapacitorPodspecForXcframework(
     `s.vendored_frameworks = '${xcframeworkRelPath}'`,
   );
   patched = patched.replace(
+    "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.framework'",
+    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+  );
+  patched = patched.replace(
     "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
+    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+  );
+  patched = patched.replace(
+    "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.xcframework'",
     `s.vendored_frameworks = '${xcframeworkRelPath}'`,
   );
   patched = patched.replace(
@@ -2436,78 +2572,91 @@ export function patchLlamaCppCapacitorPodspecForXcframework(
   }
 }
 
-function moveDeviceOnlyLlamaCppFrameworkForSimulator(frameworksDir) {
-  const deviceFramework = path.join(frameworksDir, "llama-cpp.framework");
-  if (!fs.existsSync(deviceFramework)) return;
+// Wave-4-F (iOS pipeline rewire): the iOS LlamaCpp.xcframework is now
+// produced by `build-llama-cpp-dflash.mjs --target ios-arm64-metal` +
+// `--target ios-arm64-simulator-metal` and assembled by
+// `ios-xcframework/build-xcframework.mjs --verify`. The previous in-process
+// cmake invocation that built `llama-cpp-capacitor`'s bundled `ios/`
+// source produced a STOCK llama.cpp framework with none of the milady
+// kernels (TurboQuant / QJL / PolarQuant / DFlash) and silently violated
+// AGENTS.md §3 on every iOS build. Delegating to the dflash builder
+// ensures the same kernel-set lands on iOS as on darwin/linux/android.
+//
+// AGENTS.md §3 enforcement: build-llama-cpp-dflash.mjs hard-throws on
+// missing kernels via writeCapabilities()/requiredKernelsMissing(); the
+// xcframework packaging --verify step additionally greps the static
+// archives for AGENTS.md §3 kernel symbols. Either failure aborts the
+// iOS build before the npm-bundled stock framework can be linked.
+const DFLASH_BUILD_SCRIPT = path.resolve(
+  __dirname,
+  "build-llama-cpp-dflash.mjs",
+);
+const IOS_XCFRAMEWORK_BUILD_SCRIPT = path.resolve(
+  __dirname,
+  "ios-xcframework",
+  "build-xcframework.mjs",
+);
 
-  const archivedFramework = path.join(
-    frameworksDir,
-    "llama-cpp-device.framework",
-  );
-  fs.rmSync(archivedFramework, { recursive: true, force: true });
-  fs.renameSync(deviceFramework, archivedFramework);
-  console.log(
-    "[mobile-build] Moved device-only llama.cpp framework out of simulator framework search path.",
+function elizaStateDirForBuild() {
+  const env = process.env.ELIZA_STATE_DIR?.trim();
+  if (env) return env;
+  return path.join(os.homedir(), ".eliza");
+}
+
+function dflashTargetOutDir(target) {
+  return path.join(
+    elizaStateDirForBuild(),
+    "local-inference",
+    "bin",
+    "dflash",
+    target,
   );
 }
 
-async function buildIosLlamaCppSimulatorFramework(packageDir) {
-  if (!resolveExecutable("cmake")) {
+async function ensureDflashIosTarget(target) {
+  const outDir = dflashTargetOutDir(target);
+  const capabilities = path.join(outDir, "CAPABILITIES.json");
+  if (fs.existsSync(capabilities)) {
+    console.log(
+      `[mobile-build] Reusing existing dflash artifact for ${target} at ${outDir}`,
+    );
+    return outDir;
+  }
+  console.log(`[mobile-build] Building dflash artifact for ${target}`);
+  await run("node", [DFLASH_BUILD_SCRIPT, "--target", target]);
+  if (!fs.existsSync(capabilities)) {
     throw new Error(
-      "cmake is required to build llama.cpp for the iOS simulator.",
+      `[mobile-build] dflash build for ${target} did not produce CAPABILITIES.json at ${capabilities}. ` +
+        `AGENTS.md §3 forbids shipping an iOS framework without the full kernel set; aborting.`,
     );
   }
-
-  const iosSourceDir = path.join(packageDir, "ios");
-  const buildDir = path.join(iosSourceDir, "build-simulator-arm64");
-  fs.rmSync(buildDir, { recursive: true, force: true });
-  fs.mkdirSync(buildDir, { recursive: true });
-
-  await run(
-    "cmake",
-    [
-      "..",
-      "-DCMAKE_BUILD_TYPE=Release",
-      "-DCMAKE_OSX_SYSROOT=iphonesimulator",
-      "-DCMAKE_OSX_ARCHITECTURES=arm64",
-      "-DCMAKE_OSX_DEPLOYMENT_TARGET=14.0",
-      "-DCMAKE_XCODE_ATTRIBUTE_ENABLE_BITCODE=NO",
-    ],
-    { cwd: buildDir },
-  );
-  await run(
-    "cmake",
-    [
-      "--build",
-      ".",
-      "--config",
-      "Release",
-      "--",
-      `-j${Math.max(os.cpus().length, 1)}`,
-    ],
-    { cwd: buildDir },
-  );
-
-  const frameworkDir = firstExisting([
-    path.join(buildDir, "llama-cpp.framework"),
-    path.join(buildDir, "Release", "llama-cpp.framework"),
-  ]);
-  if (
-    !frameworkDir ||
-    !frameworkMatches({ frameworkDir, platform: 7, arch: "arm64" })
-  ) {
-    throw new Error(
-      "Built llama.cpp framework is not an arm64 iOS simulator framework.",
-    );
-  }
-  return frameworkDir;
+  return outDir;
 }
 
-async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
-  if (!isIosSimulatorBuildTarget(buildTarget)) return;
+async function ensureIosLlamaCppVendoredFramework({ buildTarget: _buildTarget }) {
+  // When llama is excluded from the build (cloud-only / App Store thin
+  // client), the pod is not generated and the vendored framework is not
+  // referenced. Skipping here avoids spinning up xcodebuild for an
+  // xcframework that nothing consumes.
+  const includeLlama =
+    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
+    isTruthyEnv(process.env.MILADY_IOS_INCLUDE_LLAMA);
+  if (!includeLlama) return;
+
+  if (process.platform !== "darwin") {
+    throw new Error(
+      "[mobile-build] iOS llama.cpp xcframework build requires a macOS host with Xcode. " +
+        "Either run on macOS or unset ELIZA_IOS_INCLUDE_LLAMA / MILADY_IOS_INCLUDE_LLAMA.",
+    );
+  }
 
   const packageDir = resolvePackageAbsolutePath("llama-cpp-capacitor");
-  if (!packageDir) return;
+  if (!packageDir) {
+    throw new Error(
+      "[mobile-build] llama-cpp-capacitor package not found in node_modules; " +
+        "either install it or unset ELIZA_IOS_INCLUDE_LLAMA / MILADY_IOS_INCLUDE_LLAMA.",
+    );
+  }
 
   const frameworksDir = path.join(packageDir, "ios", "Frameworks");
   const xcframeworksDir = path.join(
@@ -2515,53 +2664,58 @@ async function ensureIosLlamaCppVendoredFramework({ buildTarget }) {
     "ios",
     "Frameworks-xcframework",
   );
-  const xcframeworkDir = path.join(xcframeworksDir, "llama-cpp.xcframework");
+  const xcframeworkDir = path.join(xcframeworksDir, "LlamaCpp.xcframework");
   patchLlamaCppCapacitorPodspecForXcframework(packageDir);
 
-  if (hasSimulatorSlice(xcframeworkDir)) {
-    moveDeviceOnlyLlamaCppFrameworkForSimulator(frameworksDir);
-    return;
-  }
+  // Build (or reuse) both per-platform slices via the dflash builder so
+  // the iOS xcframework carries the same milady kernel set as every
+  // other supported backend. Per AGENTS.md §3, missing kernels here are
+  // a hard error: build-llama-cpp-dflash.mjs already enforces that and
+  // throws via writeCapabilities() before producing CAPABILITIES.json.
+  await ensureDflashIosTarget("ios-arm64-metal");
+  await ensureDflashIosTarget("ios-arm64-simulator-metal");
 
-  const simulatorFramework =
-    await buildIosLlamaCppSimulatorFramework(packageDir);
-  const deviceFramework = path.join(frameworksDir, "llama-cpp.framework");
-  const createArgs = ["-create-xcframework"];
-  if (
-    frameworkMatches({
-      frameworkDir: deviceFramework,
-      platform: 2,
-      arch: "arm64",
-    })
-  ) {
-    createArgs.push("-framework", deviceFramework);
-  }
-  createArgs.push("-framework", simulatorFramework);
   fs.mkdirSync(xcframeworksDir, { recursive: true });
   fs.rmSync(xcframeworkDir, { recursive: true, force: true });
-  await run("xcodebuild", [...createArgs, "-output", xcframeworkDir], {
-    cwd: packageDir,
-  });
-  // CocoaPods adds the parent directory of every `vendored_frameworks` entry
-  // to FRAMEWORK_SEARCH_PATHS. With both `llama-cpp.framework` (the original
-  // device-only one shipped in the npm tarball) and the freshly-created
-  // `llama-cpp.xcframework` sitting in the same parent dir, the linker's
-  // -F path resolves `-framework llama-cpp` to the device-only `.framework`
-  // first and fails simulator builds with:
+  await run("node", [
+    IOS_XCFRAMEWORK_BUILD_SCRIPT,
+    "--output",
+    xcframeworkDir,
+    "--device-archive-dir",
+    dflashTargetOutDir("ios-arm64-metal"),
+    "--sim-archive-dir",
+    dflashTargetOutDir("ios-arm64-simulator-metal"),
+    "--verify",
+  ]);
+
+  // CocoaPods adds the parent directory of every `vendored_frameworks`
+  // entry to FRAMEWORK_SEARCH_PATHS. The npm package ships a stock
+  // device-only `LlamaCpp.framework` / `llama-cpp.framework` next to
+  // the (now-replaced) xcframework slot. With both present the linker
+  // resolves `-framework LlamaCpp` to the stock .framework first and
+  // fails simulator builds with:
   //   ld: building for 'iOS-simulator', but linking in dylib (...) built for 'iOS'
-  // Move the device-only framework out of the search path so only the
-  // xcframework's per-platform slice can resolve.
-  if (fs.existsSync(deviceFramework)) {
-    const archivedDeviceFramework = path.join(
+  // Move the npm-bundled stock frameworks out of the search path so the
+  // xcframework's per-platform slice is the only resolvable target.
+  for (const stale of [
+    path.join(frameworksDir, "LlamaCpp.framework"),
+    path.join(frameworksDir, "llama-cpp.framework"),
+  ]) {
+    if (!fs.existsSync(stale)) continue;
+    const archived = path.join(
       packageDir,
       "ios",
-      ".llama-cpp-device-archive",
+      `.${path.basename(stale, ".framework")}-stock-archive`,
     );
-    fs.rmSync(archivedDeviceFramework, { recursive: true, force: true });
-    fs.renameSync(deviceFramework, archivedDeviceFramework);
+    fs.rmSync(archived, { recursive: true, force: true });
+    fs.renameSync(stale, archived);
+    console.log(
+      `[mobile-build] Archived stock npm framework: ${stale} -> ${archived} ` +
+        `(stock build has no Eliza-1 kernels — see AGENTS.md §3).`,
+    );
   }
   console.log(
-    "[mobile-build] Prepared llama.cpp xcframework for iOS simulator (device-only .framework moved out of FRAMEWORK_SEARCH_PATHS).",
+    "[mobile-build] iOS LlamaCpp.xcframework wired to milady-built kernels (device + simulator slices).",
   );
 }
 
@@ -2587,17 +2741,28 @@ export function resolveIosBuildTarget({
   const includeDeviceOnlyLlama =
     isTruthyEnv(env.ELIZA_IOS_INCLUDE_LLAMA) ||
     isTruthyEnv(env.MILADY_IOS_INCLUDE_LLAMA);
-  const llamaCppFramework = path.join(
-    appDirValue,
-    "node_modules",
-    "llama-cpp-capacitor",
-    "ios",
-    "Frameworks",
-    "llama-cpp.framework",
-    "llama-cpp",
-  );
+  const llamaCppFramework = firstExisting([
+    path.join(
+      appDirValue,
+      "node_modules",
+      "llama-cpp-capacitor",
+      "ios",
+      "Frameworks",
+      "LlamaCpp.framework",
+      "LlamaCpp",
+    ),
+    path.join(
+      appDirValue,
+      "node_modules",
+      "llama-cpp-capacitor",
+      "ios",
+      "Frameworks",
+      "llama-cpp.framework",
+      "llama-cpp",
+    ),
+  ]);
 
-  if (includeDeviceOnlyLlama && fs.existsSync(llamaCppFramework)) {
+  if (includeDeviceOnlyLlama && llamaCppFramework) {
     return {
       destination: "generic/platform=iOS",
       sdk: "iphoneos",
@@ -2612,6 +2777,204 @@ export function resolveIosBuildTarget({
   };
 }
 
+// ── Android cloud (Play-Store) strip set ────────────────────────────────
+//
+// The default Android target injects an on-device agent runtime, default
+// roles (dialer, SMS, browser, contacts, camera, calendar, clock,
+// assistant, in-call), a boot receiver, and the privileged appop /
+// usage-stats permissions that AOSP needs but Play Store rejects. The
+// `android-cloud` target produces a thin Capacitor client backed by Eliza
+// Cloud and must not ship any of those components.
+//
+// Components deleted from the manifest (and from app/src/main/java/...):
+const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
+  "ElizaAgentService",
+  "ElizaDialActivity",
+  "ElizaAssistActivity",
+  "ElizaInCallService",
+  "ElizaSmsReceiver",
+  "ElizaMmsReceiver",
+  "ElizaRespondViaMessageService",
+  "ElizaSmsComposeActivity",
+  "ElizaBootReceiver",
+  "ElizaBrowserActivity",
+  "ElizaContactsActivity",
+  "ElizaCameraActivity",
+  "ElizaClockActivity",
+  "ElizaCalendarActivity",
+];
+
+// Permissions removed from the manifest. Anything that triggers a Play
+// Store policy review (sensitive runtime perms, system-only signature
+// perms, default-role / call / SMS perms, background location) gets
+// dropped. The remainder — INTERNET, POST_NOTIFICATIONS, FOREGROUND_SERVICE
+// + FOREGROUND_SERVICE_DATA_SYNC for the Gateway sync service, WAKE_LOCK,
+// scoped storage SDK fallbacks, RECORD_AUDIO/CAMERA/LOCATION needed for
+// Capacitor plugins the cloud renderer still uses — stays in place.
+const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
+  "READ_CONTACTS",
+  "WRITE_CONTACTS",
+  "CALL_PHONE",
+  "READ_PHONE_STATE",
+  "ANSWER_PHONE_CALLS",
+  "MANAGE_OWN_CALLS",
+  "READ_CALL_LOG",
+  "WRITE_CALL_LOG",
+  "READ_SMS",
+  "SEND_SMS",
+  "RECEIVE_SMS",
+  "RECEIVE_MMS",
+  "RECEIVE_WAP_PUSH",
+  "ACCESS_BACKGROUND_LOCATION",
+  "FOREGROUND_SERVICE_SPECIAL_USE",
+  "RECEIVE_BOOT_COMPLETED",
+  "SYSTEM_ALERT_WINDOW",
+  "PACKAGE_USAGE_STATS",
+  "MANAGE_APP_OPS_MODES",
+  "BIND_DEVICE_ADMIN",
+];
+
+// Java sources removed from the merged sources tree so they don't
+// reference manifest-stripped classes and break compilation.
+const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
+  "ElizaAgentService.java",
+  "ElizaAssistActivity.java",
+  "ElizaBootReceiver.java",
+  "ElizaBrowserActivity.java",
+  "ElizaCalendarActivity.java",
+  "ElizaCameraActivity.java",
+  "ElizaClockActivity.java",
+  "ElizaContactsActivity.java",
+  "ElizaDialActivity.java",
+  "ElizaInCallService.java",
+  "ElizaMmsReceiver.java",
+  "ElizaRespondViaMessageService.java",
+  "ElizaSmsComposeActivity.java",
+  "ElizaSmsReceiver.java",
+];
+
+/**
+ * Strip the Play-Store-noncompliant manifest components, permissions, and
+ * Java sources, plus any previously-staged on-device agent runtime
+ * artifacts (assets/agent + jniLibs/libeliza_*.so), from a freshly
+ * overlaid Android project.
+ *
+ * Idempotent: safe to re-run on an already-stripped tree.
+ */
+function stripAndroidForCloud() {
+  const androidPackage = APP.appId;
+
+  // 1. Strip manifest components, permissions, and BootReceiver/SMS/etc.
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
+  if (fs.existsSync(manifestPath)) {
+    let xml = fs.readFileSync(manifestPath, "utf8");
+    const original = xml;
+
+    for (const component of ANDROID_CLOUD_STRIPPED_COMPONENTS) {
+      xml = removeApplicationComponentBlock(
+        xml,
+        `${androidPackage}.${component}`,
+      );
+      xml = removeApplicationComponentClassBlock(xml, component);
+    }
+
+    for (const perm of ANDROID_CLOUD_STRIPPED_PERMISSIONS) {
+      const escaped = escapeRegExp(`android.permission.${perm}`);
+      const re = new RegExp(
+        `\\n\\s*<uses-permission\\b[^>]*android:name="${escaped}"[^>]*/>\\s*`,
+        "g",
+      );
+      xml = xml.replace(re, "\n");
+    }
+
+    if (xml !== original) {
+      fs.writeFileSync(manifestPath, xml, "utf8");
+      console.log(
+        "[mobile-build] Stripped Play-Store-noncompliant components and permissions from AndroidManifest.xml.",
+      );
+    }
+  }
+
+  // 2. Remove the matching Java sources so the build doesn't reference
+  //    manifest-stripped classes. The merged sources live under
+  //    app/src/main/java/<package-path>/, and overlayAndroid() may also
+  //    have left a legacy ai/elizaos/app copy if the Java rename ran on a
+  //    fresh tree — wipe both.
+  const javaRoots = [
+    path.join(
+      androidDir,
+      "app",
+      "src",
+      "main",
+      "java",
+      packageNameToPath(androidPackage),
+    ),
+    path.join(androidDir, "app", "src", "main", "java", "ai", "elizaos", "app"),
+  ];
+  let removedJavaCount = 0;
+  for (const root of javaRoots) {
+    if (!fs.existsSync(root)) continue;
+    for (const file of ANDROID_CLOUD_STRIPPED_JAVA_FILES) {
+      const target = path.join(root, file);
+      if (fs.existsSync(target)) {
+        fs.rmSync(target);
+        removedJavaCount += 1;
+      }
+    }
+  }
+  if (removedJavaCount > 0) {
+    console.log(
+      `[mobile-build] Removed ${removedJavaCount} Play-Store-noncompliant Java source(s).`,
+    );
+  }
+
+  // 3. Wipe any previously-staged on-device agent runtime. These are
+  //    build artifacts (.gitignore covers them) — the cloud APK must not
+  //    embed bun, musl, libstdc++, libgcc, llama-server, or the
+  //    libeliza_*.so jniLibs disguise.
+  const stagedAgentAssets = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "assets",
+    "agent",
+  );
+  if (fs.existsSync(stagedAgentAssets)) {
+    fs.rmSync(stagedAgentAssets, { recursive: true, force: true });
+    console.log(
+      "[mobile-build] Removed staged on-device agent runtime under assets/agent/.",
+    );
+  }
+
+  const stagedJniLibs = path.join(androidDir, "app", "src", "main", "jniLibs");
+  if (fs.existsSync(stagedJniLibs)) {
+    let libelizaCount = 0;
+    for (const abi of fs.readdirSync(stagedJniLibs)) {
+      const abiDir = path.join(stagedJniLibs, abi);
+      const stat = fs.statSync(abiDir);
+      if (!stat.isDirectory()) continue;
+      for (const lib of fs.readdirSync(abiDir)) {
+        if (lib.startsWith("libeliza_") || lib === "libsigsys-handler.so") {
+          fs.rmSync(path.join(abiDir, lib));
+          libelizaCount += 1;
+        }
+      }
+    }
+    if (libelizaCount > 0) {
+      console.log(
+        `[mobile-build] Removed ${libelizaCount} disguised native runtime library(s) from jniLibs/.`,
+      );
+    }
+  }
+}
+
 async function buildAndroid() {
   const sdk = resolveAndroidSdkRoot();
   const jdk = resolveJavaHome();
@@ -2620,6 +2983,15 @@ async function buildAndroid() {
       "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
     );
   if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
+
+  console.warn(
+    "[mobile-build] WARNING: target `android` produces an APK that embeds " +
+      "the on-device agent runtime (libeliza_bun.so disguise) and requests " +
+      "system-only permissions (MANAGE_APP_OPS_MODES, PACKAGE_USAGE_STATS). " +
+      "It is SIDELOAD-ONLY and will be rejected by the Play Store. Use " +
+      "`build:android:cloud` for a Play-Store-compliant thin client, or " +
+      "`build:android:system` for the AOSP privileged platform-signed APK.",
+  );
 
   await buildWeb("android");
   await ensurePlatform("android");
@@ -2663,6 +3035,74 @@ async function buildAndroid() {
   ) {
     gradleArgs.unshift("-PelizaAospBuild=true");
   }
+  await run(
+    "./gradlew",
+    [":capacitor-cordova-android-plugins:writeDebugAarMetadata"],
+    {
+      cwd: androidDir,
+      env,
+    },
+  );
+  await run("./gradlew", gradleArgs, {
+    cwd: androidDir,
+    env,
+  });
+}
+
+async function buildAndroidCloud() {
+  const sdk = resolveAndroidSdkRoot();
+  const jdk = resolveJavaHome();
+  if (!sdk)
+    throw new Error(
+      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
+    );
+  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
+
+  await buildWeb("android-cloud");
+  await ensurePlatform("android");
+  await runCapacitor(["sync", "android"]);
+
+  patchAndroidGradle();
+  await generateAndroidBrandAssets();
+  overlayAndroid();
+  sanitizeAndroidManifestWhenPlatformTemplatesMissing();
+  // The cloud target is a thin Capacitor client backed by Eliza Cloud.
+  // It must NOT embed the on-device agent runtime, NOT declare default
+  // role activities (dialer, SMS, browser, contacts, camera, calendar,
+  // clock, assistant, in-call), NOT register a BootReceiver, and NOT
+  // request system-only permissions (MANAGE_APP_OPS_MODES,
+  // PACKAGE_USAGE_STATS) or sensitive runtime permissions
+  // (READ/SEND/RECEIVE_SMS, CALL_PHONE, ACCESS_BACKGROUND_LOCATION).
+  // overlayAndroid() injects all of these unconditionally; we strip them
+  // here as a post-overlay pass so the merge logic remains a single
+  // source of truth across all three Android targets.
+  stripAndroidForCloud();
+
+  const env = {
+    ...process.env,
+    ANDROID_HOME: sdk,
+    ANDROID_SDK_ROOT: sdk,
+    JAVA_HOME: jdk,
+    PATH: prependPath(process.env, [
+      path.join(jdk, "bin"),
+      path.join(sdk, "platform-tools"),
+    ]),
+  };
+
+  // The Play-Store target intentionally builds without `-PelizaAospBuild`,
+  // so BuildConfig.AOSP_BUILD = false at runtime — ElizaAgentService is
+  // already stripped from the manifest and the related `assets/agent/`
+  // tree is gone, but turning off the AOSP gradle flag also drops any
+  // Soong/AOSP-only resource paths from the APK.
+  const settingsGradle = fs.readFileSync(
+    path.join(androidDir, "capacitor.settings.gradle"),
+    "utf8",
+  );
+  const gradleArgs = [];
+  if (settingsGradle.includes(":elizaos-capacitor-websiteblocker")) {
+    gradleArgs.push(":elizaos-capacitor-websiteblocker:testDebugUnitTest");
+  }
+  gradleArgs.push(":app:assembleDebug");
   await run(
     "./gradlew",
     [":capacitor-cordova-android-plugins:writeDebugAarMetadata"],
@@ -2835,17 +3275,20 @@ export async function main(argv = process.argv.slice(2)) {
   const target = argv[0];
   if (
     target !== "android" &&
+    target !== "android-cloud" &&
     target !== "android-system" &&
     target !== "ios" &&
     target !== "ios-overlay"
   ) {
     console.error(
-      "Usage: node scripts/run-mobile-build.mjs <android|android-system|ios|ios-overlay>",
+      "Usage: node scripts/run-mobile-build.mjs <android|android-cloud|android-system|ios|ios-overlay>",
     );
     process.exit(1);
   }
   if (target === "android") {
     await buildAndroid();
+  } else if (target === "android-cloud") {
+    await buildAndroidCloud();
   } else if (target === "android-system") {
     await buildAndroidSystem();
   } else if (target === "ios") {

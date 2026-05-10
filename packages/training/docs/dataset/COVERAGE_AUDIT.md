@@ -135,45 +135,16 @@ have no runtime mapping. Drop unconditionally.
 
 ---
 
-## Per-phase coverage — real numbers (full corpus, 2026-05-05)
+## Per-phase coverage assessment (post-transform)
 
-Source: `previews/full/PHASE_COVERAGE.md` from
-`scripts/classify_records_by_phase.py --hf-raw elizaos/eliza-1-training`.
-Total records classified: **1,059,915**.
+After applying the master mapping above:
 
-| Phase           | Records   | Actual % | Distribution target | Drift |
-|-----------------|----------:|---------:|---------------------|-------|
-| 1 should_respond| 119,367   | 11.26%   | 20–30%              | **−9 pts** |
-| 2 response      | 807,195   | 76.16%   | 45–55%              | **+21 pts** |
-| 3 action        | 358       | 0.03%    | 10–20%              | **−10 pts** |
-| 4 evaluation    | 166       | 0.02%    | 7–13%               | **−7 pts** |
-| OOB             | 132,829   | 12.53%   | 0%                  | **+12.5 pts** |
-
-**OOB composition** (132,829 records):
-
-| Source                              | Records | Action |
-|-------------------------------------|--------:|--------|
-| `reasoning_cot`                     | 113,672 | DROP — `transform_reasoning_cot.py --mode drop` |
-| `lifeops.*` (44 task_types)         |  18,547 | RESHAPE — patched `synthesize_action_pairs.py:gen_lifeops` to emit Phase-2 envelope (commit 2026-05-05) |
-| `claude_distill`                    |     216 | TRANSFORM — `transform_claude_distill_to_reply.py` |
-| `dataset-generator.should_respond`  |      92 | RELABEL — patched synthesizer to emit `task_type=should_respond` |
-| `plugin-discord.*` and similar      |    ~150 | DROP for now — small volume, route via OOB gate |
-| Other (legacy synth task_types)     |     ~52 | DROP — route via OOB gate |
-
-**Phase 3 / Phase 4 fixes:**
-- Phase 3 has 358 records across only 6 templates with examples (most templates have <100 records, several have 5). The 7 missing templates were synthesized via `scripts/synthesize_phase3_actions.py`.
-- Phase 4 has 166 records (81 reflection_evaluator + 75 reflection + 5 each of summarization/long_term_extraction). The 5-evaluator synthesizer at `scripts/synthesize_evaluator_prompts.py` will add ~15k records.
-
-After applying all transforms + synth runs, projected post-pack distribution:
-
-| Phase           | Projected records | Projected % | Within target? |
-|-----------------|------------------:|------------:|----------------|
-| 1               | ~150k (after synth top-up to reach 25%) | 25%   | ✓ |
-| 2               | ~330k (after lifeops reshape, hermes cap E=100k, claude_distill 216) | 55% | ✓ |
-| 3               | ~22k (358 + 21k synthesized)            | 12%   | ✓ (low end of band) |
-| 4               | ~15k (166 + 15k synthesized)            | 7%    | ✓ (low end of band) |
-| **Total**       | **~600k**                                | **100%** | |
-| **OOB**         | **0**                                    | **0%** | ✓ enforced by `--oob-policy=fail` |
+| Phase           | Estimated records (post-transform) | Distribution target | Action |
+|-----------------|------------------------------------|---------------------|--------|
+| 1 should_respond| ~120k (scambench + synthesized)    | 25%                 | Synthesize ~30k more `should_respond_with_context` to reach target |
+| 2 response      | ~600k after Tier-cap + reasoning_cot drop | 50%        | Already heavy. Cap further if needed. |
+| 3 action        | ~30k (synthesized core_prompts)    | 15%                 | **Synthesize the missing ~6 action templates** (see below) |
+| 4 evaluation    | ~5k (reflection only)              | 10%                 | **Largest gap — synthesize 5 evaluator types** (see below) |
 
 ---
 

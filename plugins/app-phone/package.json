@@ -1,53 +1,30 @@
 {
   "name": "@elizaos/app-phone",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "description": "Phone app for Eliza — Android dialer/call-log overlay (@elizaos/capacitor-phone) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./ui": {
-      "types": "./src/ui.ts",
-      "import": "./dist/ui.js",
-      "default": "./dist/ui.js"
-    },
     "./plugin": {
-      "types": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
-    },
-    "./register": {
-      "types": "./src/register.ts",
-      "import": "./dist/register.js",
-      "default": "./dist/register.js"
-    },
-    "./register-companion-page": {
-      "types": "./src/register-companion-page.ts",
-      "import": "./dist/register-companion-page.js",
-      "default": "./dist/register-companion-page.js"
-    },
-    "./companion": {
-      "types": "./src/companion/index.ts",
-      "import": "./dist/companion/index.js",
-      "default": "./dist/companion/index.js"
-    },
-    "./companion/services": {
-      "types": "./src/companion/services/index.ts",
-      "import": "./dist/companion/services/index.js",
-      "default": "./dist/companion/services/index.js"
     }
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src",
     "test": "bunx vitest run --config ./vitest.config.ts",
-    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "clean": "rm -rf dist"
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
     "@capacitor/barcode-scanner": "^3.0.0",
@@ -55,11 +32,12 @@
     "@capacitor/haptics": "8.0.2",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/push-notifications": "^8.0.0",
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/capacitor-phone": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*",
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/capacitor-phone": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-browser": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1",
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {
@@ -77,7 +55,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],

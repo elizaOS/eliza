@@ -43,7 +43,7 @@ export default scenario({
       room: "main",
       text: "Draft a follow-up Discord DM to Alice Chen about the Acme Inc partnership update, but hold it for approval.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+        acceptedActions: ["MESSAGE", "MESSAGE"],
         description: "discord follow-up draft",
         includesAny: ["Alice", "discord", "follow-up", "approval"],
       }),
@@ -59,7 +59,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      actionName: ["MESSAGE", "MESSAGE"],
     },
     {
       type: "draftExists",
@@ -70,7 +70,7 @@ export default scenario({
       type: "custom",
       name: "followup-draft-discord-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+        acceptedActions: ["MESSAGE", "MESSAGE"],
         description: "discord follow-up draft",
         includesAny: ["Alice", "discord", "follow-up", "approval"],
       }),

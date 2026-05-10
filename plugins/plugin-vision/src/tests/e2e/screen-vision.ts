@@ -1,6 +1,6 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
-import { setVisionModeAction } from "../../action";
+import { visionAction } from "../../action";
 import type { VisionService } from "../../service";
 import { VisionMode } from "../../types";
 
@@ -206,7 +206,7 @@ export class ScreenVisionE2ETestSuite {
         }
 
         // Test with action
-        console.log("  Testing SET_VISION_MODE action...");
+        console.log("  Testing VISION action with op=set_mode...");
 
         const message: Memory = {
           id: createUniqueUuid(runtime, "test-msg"),
@@ -218,11 +218,11 @@ export class ScreenVisionE2ETestSuite {
         };
 
         let callbackCalled = false;
-        await setVisionModeAction.handler(
+        await visionAction.handler(
           runtime,
           message,
           { values: {}, data: {}, text: "" },
-          {},
+          { parameters: { op: "set_mode" } },
           async (response) => {
             callbackCalled = true;
             console.log(`  Action response: ${response.text}`);
@@ -231,7 +231,7 @@ export class ScreenVisionE2ETestSuite {
         );
 
         if (!callbackCalled) {
-          throw new Error("SET_VISION_MODE action did not call callback");
+          throw new Error("VISION set_mode op did not call callback");
         }
 
         const finalMode = visionService.getVisionMode();
@@ -319,23 +319,28 @@ export class ScreenVisionE2ETestSuite {
 
         // Try to set invalid region (should handle gracefully)
         // Access private property for testing purposes
-        const testableService = visionService as unknown as {
-          visionConfig: {
-            screenRegion?: {
-              x: number;
-              y: number;
-              width: number;
-              height: number;
-            };
+        type TestVisionConfig = {
+          screenRegion?: {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
           };
         };
-        const originalConfig = testableService.visionConfig;
-        testableService.visionConfig.screenRegion = {
-          x: -100,
-          y: -100,
-          width: 50000,
-          height: 50000,
+        const originalConfig = Reflect.get(
+          visionService,
+          "visionConfig",
+        ) as TestVisionConfig;
+        const invalidConfig: TestVisionConfig = {
+          ...originalConfig,
+          screenRegion: {
+            x: -100,
+            y: -100,
+            width: 50000,
+            height: 50000,
+          },
         };
+        Reflect.set(visionService, "visionConfig", invalidConfig);
 
         await visionService.setVisionMode(VisionMode.SCREEN);
         await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -345,7 +350,7 @@ export class ScreenVisionE2ETestSuite {
         console.log(`  Service active after invalid config: ${isActive}`);
 
         // Restore config
-        testableService.visionConfig = originalConfig;
+        Reflect.set(visionService, "visionConfig", originalConfig);
 
         console.log("✓ Error handling works correctly");
       },

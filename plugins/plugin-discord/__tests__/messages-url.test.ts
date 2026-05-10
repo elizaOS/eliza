@@ -1,5 +1,5 @@
 import {
-	__setKnowledgeUrlFetchImplForTests,
+	__setDocumentUrlFetchImplForTests,
 	ContentType,
 	type IAgentRuntime,
 	ServiceType,
@@ -20,7 +20,7 @@ function runtime(): IAgentRuntime {
 			info: vi.fn(),
 			warn: vi.fn(),
 		},
-	} as unknown as IAgentRuntime;
+	} as IAgentRuntime;
 }
 
 function discordMessage(content: string): DiscordMessage {
@@ -29,13 +29,13 @@ function discordMessage(content: string): DiscordMessage {
 		embeds: [],
 		mentions: { users: new Map() },
 		attachments: new Map(),
-	} as unknown as DiscordMessage;
+	} as DiscordMessage;
 }
 
 function managerFor(testRuntime: IAgentRuntime): MessageManager {
 	const manager = Object.create(MessageManager.prototype) as MessageManager;
 	Object.assign(
-		manager as unknown as {
+		manager as {
 			runtime: IAgentRuntime;
 			attachmentManager: {
 				processAttachments: () => Promise<[]>;
@@ -52,14 +52,14 @@ function managerFor(testRuntime: IAgentRuntime): MessageManager {
 }
 
 afterEach(() => {
-	__setKnowledgeUrlFetchImplForTests(null);
+	__setDocumentUrlFetchImplForTests(null);
 });
 
 describe("MessageManager URL enrichment", () => {
 	it("turns direct webpage URLs into readable link attachments without a browser service", async () => {
 		const html =
 			"<html><head><style>.hidden{display:none}</style><script>window.secret='wrong'</script></head><body><p>secret phrase: velvet-lantern-7419</p></body></html>";
-		__setKnowledgeUrlFetchImplForTests(async () => {
+		__setDocumentUrlFetchImplForTests(async () => {
 			return new Response(html, {
 				headers: { "content-type": "text/html; charset=utf-8" },
 			});
@@ -82,7 +82,7 @@ describe("MessageManager URL enrichment", () => {
 	});
 
 	it("uses a stable attachment id for the same direct URL", async () => {
-		__setKnowledgeUrlFetchImplForTests(async () => {
+		__setDocumentUrlFetchImplForTests(async () => {
 			return new Response("same page", {
 				headers: { "content-type": "text/plain; charset=utf-8" },
 			});
@@ -106,7 +106,7 @@ describe("hasActiveTaskAgentWorkForMessage", () => {
 			getService: vi.fn((serviceType) =>
 				serviceType === "SWARM_COORDINATOR" ? { tasks } : null,
 			),
-		} as unknown as IAgentRuntime;
+		} as IAgentRuntime;
 	}
 
 	it("matches active task-agent work by originating message id", () => {

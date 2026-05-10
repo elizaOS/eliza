@@ -25,6 +25,7 @@ interface MinimalLogger {
   info: (message: string) => void;
   warn: (message: string) => void;
   error: (message: string) => void;
+  debug: (message: string) => void;
 }
 
 interface RuntimeLike {
@@ -143,6 +144,7 @@ export async function runSkillScoringBatch(
     info: () => {},
     warn: () => {},
     error: () => {},
+    debug: () => {},
   };
   const trajectoryService = runtime.getService(
     "trajectories",
@@ -212,11 +214,14 @@ export async function registerSkillScoringCron(
     info: () => {},
     warn: () => {},
     error: () => {},
+    debug: () => {},
   };
-  const cronService = await waitForService<CronServiceLike>(runtime, "CRON");
+  const cronService = await waitForService<CronServiceLike>(runtime, "CRON", {
+    timeoutMs: 2_000,
+  });
   if (!cronService || typeof cronService.createJob !== "function") {
-    log.warn(
-      "[SkillScoringCron] CRON service unavailable after 10s; skill-scoring cron not scheduled",
+    log.debug(
+      `[SkillScoringCron] CRON service not registered; cron not scheduled (run on-demand via ${SCORE_EVENT_NAME} event)`,
     );
     return;
   }

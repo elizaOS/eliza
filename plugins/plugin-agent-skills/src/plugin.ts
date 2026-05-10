@@ -11,6 +11,7 @@
  */
 
 import type { Action, IAgentRuntime, Plugin, Provider } from "@elizaos/core";
+import { promoteSubactionsToActions } from "@elizaos/core";
 
 // Actions
 import { skillAction } from "./actions/skill";
@@ -22,10 +23,6 @@ import {
 	skillInstructionsProvider,
 	skillsSummaryProvider,
 } from "./providers/skills";
-import {
-	installAgentSkillsSearchDispatcher,
-	registerAgentSkillsSearchCategory,
-} from "./search-category";
 // Services
 import { AgentSkillsService } from "./services/skills";
 
@@ -40,7 +37,8 @@ const ALL_SERVICES: PluginServiceClass[] = [
 
 const ALL_ACTIONS: Action[] = [
 	useSkillAction, // Canonical entry point — invoke an enabled skill by slug
-	skillAction, // Catalog management: search/details/sync/toggle/install/uninstall
+	// SKILL is promoted: parent + virtual SKILL_<OP> actions per subaction.
+	...promoteSubactionsToActions(skillAction),
 ];
 
 const ALL_PROVIDERS: Provider[] = [
@@ -78,9 +76,7 @@ let cleanupSyncTask: (() => void) | null = null;
  *
  * **Actions**
  * - USE_SKILL: Canonical entry point for invoking an enabled skill
- * - SEARCH_SKILLS: Browse available skills
- * - GET_SKILL_DETAILS: Get detailed skill info
- * - SYNC_SKILL_CATALOG: Refresh catalog
+ * - SKILL: Search/details/sync/toggle/install/uninstall skill catalog ops
  *
  * ## Configuration:
  * - SKILLS_DIR: Skill directory (default: ./skills)
@@ -96,7 +92,20 @@ export const agentSkillsPlugin: Plugin = {
 	actions: ALL_ACTIONS,
 	providers: ALL_PROVIDERS,
 
-	evaluators: [],
+	// Self-declared auto-enable: activate when features.agentSkills is enabled.
+	autoEnable: {
+		shouldEnable: (_env, config) => {
+			const f = (config?.features as Record<string, unknown> | undefined)
+				?.agentSkills;
+			return (
+				f === true ||
+				(typeof f === "object" &&
+					f !== null &&
+					(f as { enabled?: unknown }).enabled !== false)
+			);
+		},
+	},
+
 	routes: [],
 
 	// Initialize background task when plugin loads.
@@ -104,9 +113,6 @@ export const agentSkillsPlugin: Plugin = {
 	// AgentSkillsService.initialize(). This background task only
 	// handles periodic hourly refreshes.
 	init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-		registerAgentSkillsSearchCategory(runtime);
-		installAgentSkillsSearchDispatcher(runtime);
-
 		// If a previous runtime left a timer behind (e.g. reload in dev), clear
 		// it before installing a fresh one so we never stack intervals.
 		if (cleanupSyncTask) {

@@ -136,7 +136,7 @@ export const kaminoLiquidityProvider: Provider = {
       // Get Kamino liquidity service
       const kaminoLiquidityService = runtime.getService(
         "KAMINO_LIQUIDITY_SERVICE",
-      ) as unknown as KaminoLiquidityService;
+      ) as KaminoLiquidityService;
       if (!kaminoLiquidityService) {
         liquidityInfo += "❌ Kamino liquidity service not available.\n";
       } else {

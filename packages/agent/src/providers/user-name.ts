@@ -14,8 +14,8 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "../security/access.js";
-import { fetchConfiguredOwnerName } from "../services/owner-name.js";
+import { hasOwnerAccess } from "../security/access.ts";
+import { fetchConfiguredOwnerName } from "../services/owner-name.ts";
 
 export function createUserNameProvider(): Provider {
   return {
@@ -58,7 +58,7 @@ export function createUserNameProvider(): Provider {
         text:
           "No preferred user name is stored yet. The current fallback label is admin. " +
           "If it comes up naturally in conversation, you can ask what " +
-          "they'd like to be called and use the SET_USER_NAME action to remember it.",
+          "they'd like to be called and use the SETTINGS action with op=set_owner_name to remember it.",
         values: { userName: "admin", userNameFallback: true },
       };
     },

@@ -1,5 +1,4 @@
-import type { Metadata } from "./primitives";
-import type { JsonValue } from "./proto.js";
+import type { JsonValue, Metadata } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 
 /**
@@ -35,6 +34,8 @@ export interface ServiceTypeRegistry {
 	POST: "post";
 	HOOKS: "hooks";
 	PAIRING: "pairing";
+	CONNECTOR_ACCOUNT: "connector_account";
+	CONNECTOR_ACCOUNT_STORAGE: "connector_account_storage";
 	AGENT_EVENT: "agent_event";
 	OPTIMIZED_PROMPT: "optimized_prompt";
 	UNKNOWN: "unknown";
@@ -124,7 +125,10 @@ export const ServiceType = {
 	POST: "post",
 	HOOKS: "hooks",
 	PAIRING: "pairing",
+	CONNECTOR_ACCOUNT: "connector_account",
+	CONNECTOR_ACCOUNT_STORAGE: "connector_account_storage",
 	AGENT_EVENT: "agent_event",
+	MEDIA_GENERATION: "media_generation",
 	VOICE_CACHE: "voice_cache",
 	OPTIMIZED_PROMPT: "optimized_prompt",
 	UNKNOWN: "unknown",

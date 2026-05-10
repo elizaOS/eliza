@@ -1,13 +1,23 @@
 /**
  * Seed routine templates offered during first-run onboarding.
  *
- * These are data-only definitions — no hardcoded logic is tied to any
- * specific routine.  The seeding flow creates standard task definitions
- * through the normal LifeOps service API so they benefit from the same
- * adaptive timing, reminders, and escalation as user-created tasks.
+ * **Wave-1 transitional alias:** the canonical source of truth for the 8
+ * habit starters is `src/default-packs/habit-starters.ts` (W1-D). This file
+ * preserves the legacy `RoutineSeedTemplate` shape (rooted in
+ * `CreateLifeOpsDefinitionRequest`) so existing callers
+ * (`service-mixin-definitions.ts`, `client-lifeops.ts`,
+ * `service-mixin-reminders.ts`) compile.
+ *
+ * Wave-2 (W2-A migration) deletes this file entirely once those callers
+ * move to the `ScheduledTaskRunner` API and read from
+ * `default-packs/habit-starters.ts` directly.
+ *
+ * Do **not** add new templates here — author them in
+ * `default-packs/habit-starters.ts` instead.
  */
 
 import type { CreateLifeOpsDefinitionRequest } from "../contracts/index.js";
+import { HABIT_STARTER_KEYS } from "../default-packs/habit-starters.js";
 import {
   REMINDER_ACTIVITY_GATE_METADATA_KEY,
   REMINDER_URGENCY_METADATA_KEY,
@@ -17,6 +27,9 @@ import {
  * Canonical title for the seeded stretch routine. Exported so the
  * reminder dispatch loop can apply stretch-specific gating (busy-day
  * skip, walk-out reset) without grep-matching string literals.
+ *
+ * Wave-2: replaced by `task.shouldFire.kind === "stretch.walk_out_reset"`
+ * (see GAP §2.7 + IMPL §3.4 — title-string match goes away).
  */
 export const STRETCH_ROUTINE_TITLE = "Stretch";
 
@@ -35,7 +48,7 @@ export interface RoutineSeedTemplate {
 
 export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
   {
-    key: "brush_teeth",
+    key: HABIT_STARTER_KEYS.brushTeeth,
     title: "Brush teeth",
     description: "Morning and night tooth brushing",
     category: "hygiene",
@@ -48,7 +61,7 @@ export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
     },
   },
   {
-    key: "invisalign",
+    key: HABIT_STARTER_KEYS.invisalign,
     title: "Invisalign",
     description: "Weekday after-lunch tray check",
     category: "health",
@@ -65,7 +78,7 @@ export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
     },
   },
   {
-    key: "drink_water",
+    key: HABIT_STARTER_KEYS.drinkWater,
     title: "Drink water",
     description: "Stay hydrated throughout the day",
     category: "health",
@@ -83,7 +96,7 @@ export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
     },
   },
   {
-    key: "stretch",
+    key: HABIT_STARTER_KEYS.stretch,
     title: STRETCH_ROUTINE_TITLE,
     description: "Soft stretch nudges in the afternoon and evening",
     category: "health",
@@ -111,7 +124,7 @@ export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
     },
   },
   {
-    key: "vitamins",
+    key: HABIT_STARTER_KEYS.vitamins,
     title: "Take vitamins",
     description: "Vitamins with meals",
     category: "nutrition",
@@ -124,7 +137,7 @@ export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
     },
   },
   {
-    key: "workout",
+    key: HABIT_STARTER_KEYS.workout,
     title: "Workout",
     description: "Daily exercise session",
     category: "fitness",
@@ -137,7 +150,7 @@ export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
     },
   },
   {
-    key: "shower",
+    key: HABIT_STARTER_KEYS.shower,
     title: "Shower",
     description: "Regular showers",
     category: "hygiene",
@@ -150,7 +163,7 @@ export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
     },
   },
   {
-    key: "shave",
+    key: HABIT_STARTER_KEYS.shave,
     title: "Shave",
     description: "Regular shaving",
     category: "hygiene",

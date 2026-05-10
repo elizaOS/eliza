@@ -24,8 +24,8 @@ iMessage plugin for ElizaOS agents. Enables chat integration with Apple's iMessa
 # npm
 npm install @elizaos/plugin-imessage
 
-# pnpm
-pnpm add @elizaos/plugin-imessage
+# bun
+bun add @elizaos/plugin-imessage
 ```
 
 ## Configuration
@@ -81,24 +81,17 @@ IMESSAGE_CLI_PATH=/usr/local/bin/imsg
 
 ### Actions
 
-#### IMESSAGE_SEND_MESSAGE
+iMessage sending is exposed through the canonical message connector action. Use
+`source: "imessage"` when a request needs to target iMessage explicitly.
 
-Send a text message to a phone number or email.
-
-```
-"Send them a message saying 'Hello!'"
-"Text +1234567890 saying 'I'll be there in 10 minutes'"
-```
+| Primary action | Operation | Description |
+|----------------|-----------|-------------|
+| `MESSAGE` | `send` | Send a text message to a phone number, email, contact, or chat |
 
 ### Providers
 
-#### imessageChatContext
-
-Provides information about the current chat:
-- Handle (phone/email)
-- Chat ID
-- Chat type (direct/group)
-- Display name
+iMessage does not register standalone planner providers. Chat and contact
+context is exposed through the iMessage message connector hooks.
 
 ## How It Works
 

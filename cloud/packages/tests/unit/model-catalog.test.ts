@@ -5,6 +5,7 @@ import {
   getGroqApiModelId,
   isGroqNativeModel,
   isSelectableTextModel,
+  isVastNativeModel,
   mergeCatalogModels,
   OPENROUTER_DEFAULT_FREE_MODEL,
   OPENROUTER_RECOMMENDED_TEXT_MODEL,
@@ -21,6 +22,18 @@ describe("Groq catalog helpers", () => {
     expect(getGroqApiModelId("groq/compound")).toBe("compound-beta");
     expect(getGroqApiModelId("groq/compound-mini")).toBe("compound-beta-mini");
     expect(getGroqApiModelId("openai/gpt-5.4")).toBe("openai/gpt-5.4");
+  });
+});
+
+describe("Vast catalog helpers", () => {
+  test("recognizes static Vast native model ids", () => {
+    expect(isVastNativeModel("vast/eliza-1-27b")).toBe(true);
+    expect(isVastNativeModel("vast/eliza-1-2b")).toBe(true);
+    expect(isVastNativeModel("vast/eliza-1-9b")).toBe(true);
+    expect(isVastNativeModel("vast/eliza-1-27b")).toBe(true);
+    expect(isVastNativeModel("vast/eliza-1-9b")).toBe(true);
+    expect(isVastNativeModel("vast/eliza-1-27b")).toBe(true);
+    expect(isVastNativeModel("openai/gpt-5.4")).toBe(false);
   });
 });
 
@@ -100,10 +113,10 @@ describe("text model selection filter", () => {
 
     expect(
       isSelectableTextModel({
-        id: "meta-llama/llama-prompt-guard-2-22m",
+        id: "openai/content-safeguard-mini",
         object: "model",
         created: 0,
-        owned_by: "meta-llama",
+        owned_by: "openai",
         type: "language",
       }),
     ).toBe(false);

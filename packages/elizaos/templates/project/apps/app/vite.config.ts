@@ -2,18 +2,16 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { colorizeDevSettingsStartupBanner } from "@elizaos/shared/dev-settings-banner-style";
-import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
 import {
+  colorizeDevSettingsStartupBanner,
   type DevSettingsRow,
   formatDevSettingsTable,
-} from "@elizaos/shared/dev-settings-table";
-import {
+  prependDevSubsystemFigletHeading,
   resolveDesktopApiPort,
   resolveDesktopApiPortPreference,
   resolveDesktopUiPort,
   resolveDesktopUiPortPreference,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig, type Plugin, transformWithEsbuild } from "vite";
@@ -91,9 +89,6 @@ function resolveAppCoreSourceFile(relativePath: string): string {
   return path.join(appCoreSrcRoot, `${relativePath}${extensionCandidates[0]}`);
 }
 
-const appCoreNativePluginEntrypoints = resolveAppCoreSourceFile(
-  "platform/native-plugin-entrypoints",
-);
 const emptyNodeModuleEntry = resolveAppCoreSourceFile(
   "platform/empty-node-module",
 );
@@ -279,11 +274,6 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function wildcardReplacement(value: string): string {
-  let index = 0;
-  return value.replace(/\*/g, () => `$${++index}`);
-}
-
 function resolvePackageExportTarget(value: unknown): string | null {
   if (typeof value === "string") return value;
   if (!value || typeof value !== "object") return null;
@@ -305,22 +295,12 @@ function createPackageExportAliases(options: {
   const aliases: Array<{ find: RegExp; replacement: string }> = [];
 
   for (const [key, value] of Object.entries(options.packageExports || {})) {
+    if (key !== ".") continue;
     const target = resolvePackageExportTarget(value);
     if (!target) continue;
 
-    const aliasKey =
-      key === "."
-        ? options.packageName
-        : `${options.packageName}/${key.replace(/^\.\//, "")}`;
+    const aliasKey = options.packageName;
     const replacementPath = path.resolve(options.packageDir, target);
-
-    if (aliasKey.includes("*") || target.includes("*")) {
-      aliases.push({
-        find: new RegExp(`^${escapeRegex(aliasKey).replace(/\\\*/g, "(.*)")}$`),
-        replacement: wildcardReplacement(replacementPath),
-      });
-      continue;
-    }
 
     aliases.push({
       find: new RegExp(`^${escapeRegex(aliasKey)}$`),
@@ -744,6 +724,12 @@ function nativeModuleStubPlugin(): Plugin {
       ]);
       if (nodeBuiltins.has(id) || nodeBuiltins.has(id.split("/")[0]))
         return `${VIRTUAL_PREFIX}node:${id}`;
+      if (
+        /^@napi-rs\/keyring/.test(id) ||
+        id.replace(/\\/g, "/").includes("/@napi-rs/keyring")
+      ) {
+        return `${VIRTUAL_PREFIX}@napi-rs/keyring`;
+      }
       const bare = id.startsWith("@")
         ? id.split("/").slice(0, 2).join("/")
         : id.split("/")[0];
@@ -756,7 +742,22 @@ function nativeModuleStubPlugin(): Plugin {
     load(id) {
       if (!id.startsWith(VIRTUAL_PREFIX)) return null;
 
-      const modName = id.slice(VIRTUAL_PREFIX.length).split("/")[0];
+      const strippedFull = id.slice(VIRTUAL_PREFIX.length);
+      if (strippedFull === "@napi-rs/keyring") {
+        return [
+          "export class Entry {",
+          "  constructor(_service, _account) {}",
+          '  getPassword() { return ""; }',
+          "  setPassword() {",
+          "    throw new Error(",
+          '      "OS keychain is unavailable in the browser/renderer build."',
+          "    );",
+          "  }",
+          "}",
+        ].join("\n");
+      }
+
+      const modName = strippedFull.split("/")[0];
       // node-llama-cpp is the most import-heavy native module — its consumers
       // use many named exports (LlamaLogLevel, getLlama, etc.).  Return a
       // module whose default export is a Proxy that returns no-op stubs for
@@ -855,7 +856,7 @@ function nativeModuleStubPlugin(): Plugin {
       }
 
       // async_hooks — AsyncLocalStorage must be a real constructor because
-      // langsmith and @elizaos packages do `new AsyncLocalStorage()` at the
+      // @elizaos packages do `new AsyncLocalStorage()` at the
       // top level. Uses function-constructor syntax (not class expressions)
       // for maximum WebView compatibility. The renderChunk plugin
       // (asyncLocalStoragePatchPlugin) also patches the final bundle output
@@ -943,7 +944,7 @@ function nativeModuleStubPlugin(): Plugin {
 /**
  * Patch the final bundle output to fix AsyncLocalStorage stubs.
  *
- * langsmith imports `{ AsyncLocalStorage } from "node:async_hooks"` at the
+ * Some packages import `{ AsyncLocalStorage } from "node:async_hooks"` at the
  * top level. Vite's dep optimizer and Rollup inline the virtual-module stub
  * as `(()=>({}))`, making AsyncLocalStorage `undefined` and causing
  * `new undefined` → "xte is not a constructor" at runtime in mobile webviews.
@@ -1116,14 +1117,6 @@ export default defineConfig({
           replacement: emptyNodeModuleEntry,
         },
       ]),
-      {
-        find: /^@elizaos\/app-core\/platform\/native-plugin-entrypoints$/,
-        replacement: appCoreNativePluginEntrypoints,
-      },
-      {
-        find: /^@elizaos\/app-core\/platform\/native-plugin-entrypoints\.js$/,
-        replacement: appCoreNativePluginEntrypoints,
-      },
       // Capacitor plugins — local source mode resolves real plugin sources;
       // package mode uses browser-safe stubs for renderer builds.
       ...NATIVE_PLUGIN_ALIAS_ENTRIES,
@@ -1155,20 +1148,15 @@ export default defineConfig({
               packageName: pkgName,
             }),
           );
-          // Catch-all subpath for direct src/ access
-          aliases.push({
-            find: new RegExp(`^${escapeRegex(pkgName)}/(.*)`),
-            replacement: path.resolve(pkgDir, "src/$1"),
-          });
         }
         return aliases;
       })(),
       {
-        find: /^@clawville\/app-clawville(\/.*)?$/,
+        find: /^@clawville\/app-clawville$/,
         replacement: optionalElizaAppStubEntry,
       },
       {
-        find: /^@elizaos\/app-(?!core(\/|$)).+$/,
+        find: /^@elizaos\/app-(?!core$)[^/]+$/,
         replacement: optionalElizaAppStubEntry,
       },
       ...(() => {
@@ -1234,11 +1222,6 @@ export default defineConfig({
             packageExports: uiPkg.exports,
             packageName: "@elizaos/ui",
           }),
-          // NOTE: @elizaos/agent barrel re-exports server-only code (eliza.ts,
-          // server.ts) that imports native modules (node-llama-cpp, node:module).
-          // Nothing in the browser needs the barrel — only subpath imports like
-          // @elizaos/agent/contracts/onboarding are used.  Map the bare import
-          // to an empty module so Vite never traverses the server-side tree.
           {
             find: /^@elizaos\/agent$/,
             replacement: emptyNodeModuleEntry,
@@ -1349,6 +1332,8 @@ export default defineConfig({
       "undici",
       // Native LLM embedding — uses node-llama-cpp, never runs in browser
       "@elizaos/plugin-local-embedding",
+      "@napi-rs/keyring",
+      "@elizaos/vault",
     ],
   },
   build: {
@@ -1381,6 +1366,7 @@ export default defineConfig({
         )
           return true;
         if (/^@node-llama-cpp\//.test(id)) return true;
+        if (/^@napi-rs\/keyring/.test(id)) return true;
         return false;
       },
       input: {

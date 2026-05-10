@@ -5,8 +5,8 @@
  * access.
  */
 
-import type { OverlayApp } from "@elizaos/app-core";
-import { registerOverlayApp } from "@elizaos/app-core";
+import type { OverlayApp } from "@elizaos/ui";
+import { registerOverlayApp } from "@elizaos/ui";
 import { VincentAppView } from "./VincentAppView";
 
 export const VINCENT_APP_NAME = "@elizaos/app-vincent";

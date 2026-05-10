@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
+import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
+import type { RouteRequestContext } from "@elizaos/shared";
 import { resolveApiToken } from "@elizaos/shared";
-import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
-import type { RouteRequestContext } from "./route-helpers.js";
-import { isAuthorized, isTrustedLocalRequest } from "./server-helpers-auth.js";
+import { isAuthorized, isTrustedLocalRequest } from "./server-helpers-auth.ts";
 
 function getConfiguredApiToken(): string | undefined {
   return resolveApiToken(process.env) ?? undefined;
@@ -105,6 +105,14 @@ export async function handleAuthRoutes(
   }
 
   if (method === "POST" && pathname === "/api/auth/pair") {
+    // NOTE: this handler is shadowed by `handleAuthPairingCompatRoutes` in
+    // `@elizaos/app-core` (the compat route mints a real machine session
+    // bound to an identity, which authenticates against
+    // `ensureCompatApiAuthorizedAsync`). This agent-only path is kept for
+    // standalone agent-server usage; it returns the static connection key,
+    // which only authenticates routes that explicitly accept the static
+    // token (e.g. `/api/auth/status`). For full route coverage, run via
+    // app-core so the compat handler intercepts first.
     const body = await readJsonBody<{ code?: string }>(req, res);
     if (!body) return true;
 

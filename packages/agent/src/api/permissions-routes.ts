@@ -1,7 +1,6 @@
-import type { AgentRuntime } from "@elizaos/core";
-import type { PermissionState } from "@elizaos/shared";
-import type { AutonomousConfigLike } from "../types/config-like.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+import type { AgentRuntime, RouteRequestContext } from "@elizaos/core";
+import type { PermissionState, SystemPermissionId } from "@elizaos/shared";
+import type { AutonomousConfigLike } from "../types/config-like.ts";
 
 interface PermissionAutonomousConfigLike extends AutonomousConfigLike {
   features?: {
@@ -14,13 +13,23 @@ interface PermissionAutonomousConfigLike extends AutonomousConfigLike {
 
 const WEBSITE_BLOCKING_PERMISSION_ID = "website-blocking";
 
+const ALL_PERMISSION_IDS: readonly SystemPermissionId[] = [
+  "accessibility",
+  "screen-recording",
+  "microphone",
+  "camera",
+  "shell",
+  "website-blocking",
+  "location",
+];
+
 type SelfControlApi = {
   getSelfControlPermissionState: () => Promise<PermissionState>;
   requestSelfControlPermission: () => Promise<PermissionState>;
   openSelfControlPermissionLocation: () => Promise<boolean>;
 };
 
-const SELFCONTROL_MODULE: string = "@elizaos/app-lifeops/selfcontrol";
+const SELFCONTROL_MODULE: string = "@elizaos/app-lifeops";
 
 async function loadSelfControlApi(): Promise<SelfControlApi | null> {
   try {
@@ -40,13 +49,59 @@ async function loadSelfControlApi(): Promise<SelfControlApi | null> {
   }
 }
 
+function currentPlatform(): "darwin" | "win32" | "linux" {
+  const p = process.platform;
+  return p === "darwin" || p === "win32" || p === "linux" ? p : "linux";
+}
+
 function unavailableWebsiteBlockingPermission(): PermissionState {
   return {
     id: WEBSITE_BLOCKING_PERMISSION_ID,
     status: "not-applicable",
     lastChecked: Date.now(),
     canRequest: false,
+    platform: currentPlatform(),
     reason: "Website blocking is available when the LifeOps app is installed.",
+  };
+}
+
+function unavailableSystemPermission(id: SystemPermissionId): PermissionState {
+  return {
+    id,
+    status: "not-applicable",
+    lastChecked: Date.now(),
+    canRequest: false,
+    platform: currentPlatform(),
+    reason: "Native permission checks are unavailable in this runtime.",
+  };
+}
+
+function buildPermissionsPayload(
+  state: PermissionRouteState,
+  websiteBlockingPermission: PermissionState,
+): Record<SystemPermissionId, PermissionState> & {
+  _platform: NodeJS.Platform;
+  _shellEnabled: boolean;
+} {
+  const permissionStates = state.permissionStates ?? {};
+  const shellEnabled = state.shellEnabled ?? true;
+  const permissions = {} as Record<SystemPermissionId, PermissionState>;
+
+  for (const id of ALL_PERMISSION_IDS) {
+    permissions[id] = permissionStates[id] ?? unavailableSystemPermission(id);
+  }
+
+  permissions.shell = {
+    ...permissions.shell,
+    status: shellEnabled ? "granted" : "denied",
+    canRequest: false,
+  };
+  permissions[WEBSITE_BLOCKING_PERMISSION_ID] = websiteBlockingPermission;
+
+  return {
+    ...permissions,
+    _platform: process.platform,
+    _shellEnabled: shellEnabled,
   };
 }
 
@@ -89,14 +144,8 @@ export async function handlePermissionRoutes(
   if (!pathname.startsWith("/api/permissions")) return false;
 
   if (method === "GET" && pathname === "/api/permissions") {
-    const permStates = state.permissionStates ?? {};
     const websiteBlockingPermission = await getWebsiteBlockingPermissionState();
-    json(res, {
-      ...permStates,
-      [WEBSITE_BLOCKING_PERMISSION_ID]: websiteBlockingPermission,
-      _platform: process.platform,
-      _shellEnabled: state.shellEnabled ?? true,
-    });
+    json(res, buildPermissionsPayload(state, websiteBlockingPermission));
     return true;
   }
 
@@ -111,6 +160,7 @@ export async function handlePermissionRoutes(
       status: enabled ? "granted" : "denied",
       lastChecked: shellState?.lastChecked ?? Date.now(),
       canRequest: false,
+      platform: currentPlatform(),
     };
     state.permissionStates.shell = permission;
 
@@ -140,6 +190,7 @@ export async function handlePermissionRoutes(
         status: "not-applicable",
         lastChecked: Date.now(),
         canRequest: false,
+        platform: currentPlatform(),
       });
       return true;
     }
@@ -148,10 +199,8 @@ export async function handlePermissionRoutes(
   }
 
   if (method === "POST" && pathname === "/api/permissions/refresh") {
-    json(res, {
-      message: "Permission refresh requested",
-      action: "ipc:permissions:refresh",
-    });
+    const websiteBlockingPermission = await getWebsiteBlockingPermissionState();
+    json(res, buildPermissionsPayload(state, websiteBlockingPermission));
     return true;
   }
 
@@ -225,6 +274,7 @@ export async function handlePermissionRoutes(
       status: enabled ? "granted" : "denied",
       lastChecked: Date.now(),
       canRequest: false,
+      platform: currentPlatform(),
     };
 
     if (!state.config.features) {

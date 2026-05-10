@@ -219,14 +219,6 @@ jobs:
       - name: Materialize bun npm package binary
         run: if [ -f node_modules/bun/install.js ]; then (cd node_modules/bun && node install.js); fi
 
-      - name: Generate protobuf types
-        run: |
-          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/core/src/types/generated ]; then
-            cd packages/schemas
-            node node_modules/@bufbuild/buf/install.js 2>/dev/null || true
-            bunx @bufbuild/buf@1.67.0 generate
-          fi
-
       - name: Pack upstream tarballs
         run: node packages/app-core/scripts/pack-upstreams.mjs
 

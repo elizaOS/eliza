@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-shell",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Shell history and observability plugin for ElizaOS",
   "type": "module",
   "main": "dist/index.js",
@@ -20,8 +20,17 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "shell-access"
+      ]
+    }
+  },
   "keywords": [
     "eliza",
     "plugin",
@@ -33,7 +42,8 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
     "cross-spawn": "^7.0.6",
     "zod": "^4.4.3"
   },
@@ -44,14 +54,14 @@
     "@biomejs/biome": "^2.4.14",
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
     "dev": "bun --hot build.ts",
-    "clean": "rm -rf dist .turbo node_modules",
+    "clean": "rm -rf dist .turbo",
     "test": "vitest run",
     "typecheck": "echo \"Typecheck skipped for release\"",
     "lint": "echo \"Lint skipped for release\"",

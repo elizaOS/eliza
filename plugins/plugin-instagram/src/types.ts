@@ -130,6 +130,8 @@ export interface InstagramThread {
 
 /** Instagram plugin configuration */
 export interface InstagramConfig {
+  /** Connector account identifier for this Instagram bot instance */
+  accountId?: string;
   /** Instagram username */
   username: string;
   /** Instagram password */

@@ -7,8 +7,5 @@ export {
   type RipgrepResult,
   type RipgrepMode,
 } from "./ripgrep-service.js";
-export {
-  ShellTaskService,
-  type ShellTaskRecord,
-  type SpawnOptions,
-} from "./shell-task-service.js";
+export { CodingTaskExecutor } from "./coding-task-executor.js";
+export * from "./coding-agent-context.js";

@@ -15,6 +15,7 @@
 import path from "node:path";
 import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
 import {
+  type SignalPairingEvent,
   SignalPairingSession,
   type SignalPairingSnapshot,
   type SignalPairingStatus,
@@ -62,8 +63,25 @@ interface ConnectorSetupService {
   broadcastWs(data: object): void;
 }
 
+function isConnectorSetupService(service: unknown): service is ConnectorSetupService {
+  if (!service || typeof service !== "object") {
+    return false;
+  }
+  const candidate = service as Partial<ConnectorSetupService>;
+  return (
+    typeof candidate.getConfig === "function" &&
+    typeof candidate.updateConfig === "function" &&
+    typeof candidate.persistConfig === "function" &&
+    typeof candidate.registerEscalationChannel === "function" &&
+    typeof candidate.setOwnerContact === "function" &&
+    typeof candidate.getWorkspaceDir === "function" &&
+    typeof candidate.broadcastWs === "function"
+  );
+}
+
 function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
-  return runtime.getService("connector-setup") as ConnectorSetupService | null;
+  const service = runtime.getService("connector-setup");
+  return isConnectorSetupService(service) ? service : null;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -151,14 +169,12 @@ async function handlePair(
     authDir,
     accountId,
     cliPath: configuredCliPath,
-    onEvent: (event) => {
+    onEvent: (event: SignalPairingEvent) => {
       setupService?.broadcastWs(event);
       signalPairingSnapshots.set(accountId, session.getSnapshot());
 
       if (event.status === "connected") {
-        const phoneNumber = (event as unknown as Record<string, unknown>).phoneNumber as
-          | string
-          | undefined;
+        const phoneNumber = event.phoneNumber;
 
         if (setupService) {
           setupService.updateConfig((cfg) => {
@@ -166,6 +182,26 @@ async function handlePair(
             const cfgConnectors = cfg.connectors as Record<string, unknown>;
             const previousConfig =
               (cfgConnectors.signal as Record<string, unknown> | undefined) ?? {};
+            if (accountId !== "default") {
+              const accounts =
+                typeof previousConfig.accounts === "object" && previousConfig.accounts !== null
+                  ? { ...(previousConfig.accounts as Record<string, Record<string, unknown>>) }
+                  : {};
+              accounts[accountId] = {
+                ...(accounts[accountId] ?? {}),
+                authDir,
+                enabled: true,
+                ...(phoneNumber && phoneNumber.trim().length > 0
+                  ? { account: phoneNumber.trim() }
+                  : {}),
+              };
+              cfgConnectors.signal = {
+                ...previousConfig,
+                accounts,
+                enabled: true,
+              };
+              return;
+            }
             cfgConnectors.signal = {
               ...previousConfig,
               authDir,
@@ -227,10 +263,7 @@ async function handleStatus(
   reapTerminalSessions();
 
   // Extract accountId from query string
-  const rawUrl =
-    typeof (req as unknown as { url?: string }).url === "string"
-      ? (req as unknown as { url: string }).url
-      : "/";
+  const rawUrl = typeof req.url === "string" ? req.url : "/";
   const url = new URL(rawUrl, "http://localhost");
   let accountId: string;
   try {
@@ -249,7 +282,11 @@ async function handleStatus(
 
   let serviceConnected = false;
   try {
-    const sigService = runtime.getService("signal") as Record<string, unknown> | null;
+    const sigService = runtime.getService("signal") as {
+      connected?: unknown;
+      isConnected?: unknown;
+      isServiceConnected?: () => boolean;
+    } | null;
     if (sigService) {
       serviceConnected =
         Boolean(sigService.connected) ||
@@ -347,7 +384,19 @@ async function handleDisconnect(
     try {
       setupService.updateConfig((cfg) => {
         const connectors = (cfg.connectors ?? {}) as Record<string, unknown>;
-        delete connectors.signal;
+        if (accountId === "default") {
+          delete connectors.signal;
+          return;
+        }
+        const signalConfig = connectors.signal as Record<string, unknown> | undefined;
+        const accounts = signalConfig?.accounts as Record<string, unknown> | undefined;
+        if (accounts) {
+          delete accounts[accountId];
+        }
+        connectors.signal = {
+          ...(signalConfig ?? {}),
+          ...(accounts ? { accounts } : {}),
+        };
       });
     } catch (error) {
       res.status(500).json({

@@ -1,69 +1,25 @@
 {
   "name": "@elizaos/app-elizamaker",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "description": "ElizaMaker: ERC-8041 NFT drop/mint/whitelist routes, Twitter-verified Merkle proofs, and OG code tracking.",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./plugin": {
-      "types": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
-    },
-    "./routes/drop-routes": {
-      "types": "./src/drop-routes.ts",
-      "import": "./dist/drop-routes.js",
-      "default": "./dist/drop-routes.js"
-    },
-    "./drop-service-registry": {
-      "types": "./src/drop-service-registry.ts",
-      "import": "./dist/drop-service-registry.js",
-      "default": "./dist/drop-service-registry.js"
-    },
-    "./drop-service": {
-      "types": "./src/drop-service.ts",
-      "import": "./dist/drop-service.js",
-      "default": "./dist/drop-service.js"
-    },
-    "./registry-service-registry": {
-      "types": "./src/registry-service-registry.ts",
-      "import": "./dist/registry-service-registry.js",
-      "default": "./dist/registry-service-registry.js"
-    },
-    "./init-registry-services": {
-      "types": "./src/init-registry-services.ts",
-      "import": "./dist/init-registry-services.js",
-      "default": "./dist/init-registry-services.js"
-    },
-    "./nft-verify": {
-      "types": "./src/nft-verify.ts",
-      "import": "./dist/nft-verify.js",
-      "default": "./dist/nft-verify.js"
-    },
-    "./twitter-verify": {
-      "types": "./src/twitter-verify.ts",
-      "import": "./dist/twitter-verify.js",
-      "default": "./dist/twitter-verify.js"
-    },
-    "./merkle-tree": {
-      "types": "./src/merkle-tree.ts",
-      "import": "./dist/merkle-tree.js",
-      "default": "./dist/merkle-tree.js"
-    },
-    "./og-tracker": {
-      "types": "./src/og-tracker.ts",
-      "import": "./dist/og-tracker.js",
-      "default": "./dist/og-tracker.js"
     }
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/agent": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
     "ethers": "^6.15.0"
   },
   "agentConfig": {
@@ -78,10 +34,12 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "clean": "rm -rf dist"
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [
     "dist"

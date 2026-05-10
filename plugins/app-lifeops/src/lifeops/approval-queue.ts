@@ -74,6 +74,7 @@ const VALID_ACTIONS: ReadonlySet<ApprovalAction> = new Set([
   "cancel_event",
   "book_travel",
   "make_call",
+  "sign_document",
   "execute_workflow",
   "spend_money",
 ]);
@@ -385,12 +386,11 @@ function requirePaymentRequired(
   );
 }
 
-function validateApprovalPayload(
-  value: unknown,
+function assertApprovalPayload(
+  record: Record<string, unknown>,
+  action: ApprovalAction,
   label: string,
-): ApprovalPayload {
-  const record = requireRecord(value, label);
-  const action = parseAction(record.action);
+): asserts record is ApprovalPayload {
   switch (action) {
     case "send_message":
       requireStringField(record, "recipient", label);
@@ -486,7 +486,16 @@ function validateApprovalPayload(
       requireStringField(record, "memo", label);
       break;
   }
-  return record as unknown as ApprovalPayload;
+}
+
+function validateApprovalPayload(
+  value: unknown,
+  label: string,
+): ApprovalPayload {
+  const record = requireRecord(value, label);
+  const action = parseAction(record.action);
+  assertApprovalPayload(record, action, label);
+  return record;
 }
 
 function rowToRequest(row: Record<string, unknown>): ApprovalRequest {

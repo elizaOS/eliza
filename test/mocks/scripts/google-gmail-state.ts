@@ -193,6 +193,29 @@ const GMAIL_FIXTURE_MESSAGES: GmailFixtureMessage[] = [
       "This week in ops: ship the launch checklist, review the metrics deck, and confirm next week's travel.\n",
   },
   {
+    id: "msg-medium-newsletter",
+    threadId: "thr-medium-news",
+    labelIds: ["INBOX", "CATEGORY_PROMOTIONS", "UNREAD"],
+    snippet:
+      "Top product reads from Medium this week, including AI strategy and launch notes.",
+    internalDateOffsetMs: -45 * 60 * 1000,
+    headers: [
+      { name: "From", value: "Medium Daily Digest <newsletters@medium.com>" },
+      { name: "To", value: "Owner <owner@example.test>" },
+      { name: "Subject", value: "Your Medium Daily Digest" },
+      { name: "Precedence", value: "bulk" },
+      { name: "List-Id", value: "<daily.medium.com>" },
+      {
+        name: "List-Unsubscribe",
+        value:
+          "<mailto:unsubscribe@medium.com?subject=unsubscribe-newsletters>",
+      },
+      { name: "Message-Id", value: "<medium-digest@example.com>" },
+    ],
+    bodyText:
+      "Top product reads from Medium this week, including AI strategy, launch notes, and team operations.\n",
+  },
+  {
     id: "msg-spam",
     threadId: "thr-spam",
     labelIds: ["SPAM", "UNREAD"],

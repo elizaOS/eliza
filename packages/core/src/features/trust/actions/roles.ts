@@ -14,23 +14,15 @@ import {
 	type UUID,
 	type World,
 } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 
 const canModifyRole = (
 	currentRole: Role,
 	targetRole: Role | null,
-	newRole: Role,
+	_newRole: Role,
 ): boolean => {
 	if (targetRole === currentRole) return false;
-
-	switch (currentRole) {
-		case Role.OWNER:
-			return true;
-		case Role.ADMIN:
-			return newRole !== Role.OWNER;
-		default:
-			return false;
-	}
+	return currentRole === Role.OWNER;
 };
 
 const _extractionTemplate = `# Task: Extract role assignments from the conversation
@@ -171,7 +163,7 @@ export const updateRoleAction: ElizaAction = {
 			extractRoleAssignments(params.roleAssignments).length > 0;
 		return (
 			hasStructuredAssignments ||
-			hasActionContextOrKeyword(message, state, {
+			hasActionContext(message, state, {
 				contexts: ["admin", "settings"],
 				keywords: [
 					"update role",

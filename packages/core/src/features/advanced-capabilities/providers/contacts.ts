@@ -12,7 +12,7 @@ import type {
 const spec = requireProviderSpec("CONTACTS");
 const MAX_CONTACTS = 50;
 
-export const contactsProvider: Provider = {
+export const advancedContactsProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	contexts: ["contacts", "memory"],

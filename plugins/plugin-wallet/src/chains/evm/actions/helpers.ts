@@ -97,37 +97,13 @@ export async function confirmationRequired(params: {
   };
 }
 
-function hasActionInput(message: Memory, options?: unknown): boolean {
-  const text = typeof message.content?.text === "string" ? message.content.text : "";
-  const optionValues =
-    options && typeof options === "object" ? (options as Record<string, unknown>) : {};
-  return (
-    text.trim().length > 0 ||
-    Object.keys(optionValues).length > 0 ||
-    Boolean(message.content && typeof message.content === "object")
-  );
-}
-
-export function createEvmActionValidator(config: EvmActionValidatorConfig): ActionValidate {
+export function createEvmActionValidator(_config: EvmActionValidatorConfig): ActionValidate {
   return async (
     runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-    options?: unknown
+    _message: Memory,
+    _state?: State,
+    _options?: unknown
   ): Promise<boolean> => {
-    const text =
-      typeof message.content?.text === "string" ? message.content.text.toLowerCase() : "";
-    const keywordMatch = config.keywords.some(
-      (keyword) => keyword.length > 0 && text.includes(keyword)
-    );
-    const regexMatch = config.regex.test(text);
-    const source = String(message.content?.source ?? "");
-    const sourceMatch = Boolean(source || state || runtime.agentId || runtime.getSetting);
-
-    if (!(keywordMatch && regexMatch && sourceMatch && hasActionInput(message, options))) {
-      return false;
-    }
-
     try {
       return hasEvmPrivateKey(runtime);
     } catch {

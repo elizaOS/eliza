@@ -1,0 +1,330 @@
+/* Eliza — Theme System */
+
+:root {
+  /* Backgrounds */
+  --bg: #f7f8fa;
+  --bg-accent: #f1f3f5;
+  --bg-elevated: #fcfdfd;
+  --bg-hover: #eceff3;
+  --bg-muted: #f1f3f5;
+
+  --card: #fcfdfd;
+  --card-foreground: #1e2329;
+  --surface: #fcfdfd;
+
+  /* Text */
+  --text: #1e2329;
+  --text-strong: #0b0e11;
+  --chat-text: #1e2329;
+  --txt: var(--text);
+  --muted: #5e6673;
+  --muted-strong: #474d57;
+
+  /* Borders */
+  --border: #dce1e7;
+  --border-strong: #ced6df;
+  --border-hover: #f0b90b;
+  --input: #d6dee7;
+  --ring: #f0b90b;
+
+  /* Accent */
+  --accent: #f0b90b;
+  --accent-rgb: 240, 185, 11;
+  --accent-hover: #f3ba2f;
+  --accent-muted: #d8a000;
+  --accent-subtle: rgba(240, 185, 11, 0.12);
+  --accent-foreground: #1a1f26;
+  --primary: #f0b90b;
+  --primary-foreground: #1a1f26;
+
+  /* Status */
+  --ok: #03a66d;
+  --ok-muted: rgba(3, 166, 109, 0.72);
+  --ok-subtle: rgba(3, 166, 109, 0.12);
+  --destructive: #f6465d;
+  --destructive-foreground: #ffffff;
+  --destructive-subtle: rgba(246, 70, 93, 0.12);
+  --warn: #f0b90b;
+  --warn-muted: rgba(240, 185, 11, 0.72);
+  --warn-subtle: rgba(240, 185, 11, 0.12);
+  --danger: #f6465d;
+  --info: #f0b90b;
+
+  /* Status semantic aliases */
+  --status-success: var(--ok);
+  --status-success-bg: var(--ok-subtle);
+  --status-danger: var(--danger);
+  --status-danger-bg: var(--destructive-subtle);
+  --status-warning: var(--warn);
+  --status-warning-bg: var(--warn-subtle);
+  --status-info: #3b82f6;
+  --status-info-bg: rgba(59, 130, 246, 0.12);
+
+  --focus: rgba(240, 185, 11, 0.16);
+  --focus-ring: 0 0 0 2px rgba(240, 185, 11, 0.42);
+  --scrollbar-track: #edf1f4;
+  --scrollbar-thumb-start: rgba(240, 185, 11, 0.42);
+  --scrollbar-thumb-mid: rgba(240, 185, 11, 0.58);
+  --scrollbar-thumb-end: rgba(216, 160, 0, 0.66);
+  --scrollbar-thumb-hover-start: rgba(240, 185, 11, 0.56);
+  --scrollbar-thumb-hover-mid: rgba(240, 185, 11, 0.7);
+  --scrollbar-thumb-hover-end: rgba(216, 160, 0, 0.78);
+  --scrollbar-thumb-edge: rgba(240, 185, 11, 0.12);
+
+  /* Header */
+  --header-bar-bg: #fcfdfd;
+  --header-bar-fg: #1e2329;
+  --section-bar-bg: #f1f3f5;
+  --section-bar-fg: #1e2329;
+  --link-color: #c99400;
+  --link-hover-color: #b38300;
+
+  --mono: "Courier New", Courier, monospace;
+  --font-body:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+  --font-display:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+  --font-chat:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* Legacy */
+  --shadow-xs: 0 1px 2px rgb(15 23 42 / 0.04);
+  --shadow-sm: 0 1px 3px rgb(15 23 42 / 0.05);
+  --shadow-md: 0 12px 32px rgb(15 23 42 / 0.08);
+  --shadow-lg: 0 18px 48px rgb(15 23 42 / 0.12);
+  --shadow-xl: 0 20px 50px -12px rgb(15 23 42 / 0.18);
+  --shadow-2xl: 0 25px 60px -15px rgb(15 23 42 / 0.24);
+  --shadow-inset: inset 0 1px 0 rgb(255 255 255 / 0.05);
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.5rem;
+  --radius-full: 9999px;
+  --radius: 0.5rem;
+  --duration-normal: 150ms;
+
+  /* Compact text sizes (replaces arbitrary text-[9px], text-[10px], text-[11px]) */
+  --text-3xs: 0.5625rem;
+  --text-2xs: 0.625rem;
+  --text-xs-tight: 0.6875rem;
+
+  /* Touch target minimum (Apple HIG 44px) */
+  --min-touch-target: 2.75rem;
+  --eliza-mobile-nav-offset: 0px;
+
+  /* Plugin UI Design Tokens */
+  --plugin-field-gap: 1rem;
+  --plugin-group-gap: 1.5rem;
+  --plugin-section-padding: 1.5rem;
+  --plugin-label-size: 0.8125rem;
+  --plugin-help-size: 0.6875rem;
+  --plugin-error-size: 0.6875rem;
+  --plugin-label: var(--text);
+  --plugin-help: var(--muted);
+  --plugin-error: var(--destructive);
+  --plugin-border: var(--border);
+  --plugin-focus-ring: var(--accent);
+  --plugin-input-height: 2.25rem;
+  --plugin-max-field-width: 32rem;
+
+  color-scheme: light;
+}
+
+:root.eliza-mobile-bottom-nav {
+  --eliza-mobile-nav-offset: 3.75rem;
+}
+
+[data-theme="dark"],
+.dark {
+  --bg: #050506;
+  --bg-accent: #0a0a0c;
+  --bg-elevated: #0d0d10;
+  --bg-hover: #141418;
+  --bg-muted: #0a0a0c;
+
+  --card: #0e0e11;
+  --card-foreground: #eaecef;
+  --surface: #121214;
+
+  --text: #eaecef;
+  --text-strong: #ffffff;
+  --chat-text: #eaecef;
+  --txt: var(--text);
+  --muted: #8a8a94;
+  --muted-strong: #b9b9c2;
+
+  --border: #232329;
+  --border-strong: #313136;
+  --border-hover: #f0b90b;
+  --input: #17171c;
+  --ring: #f0b90b;
+
+  --accent: #f0b90b;
+  --accent-rgb: 240, 185, 11;
+  --accent-hover: #f3ba2f;
+  --accent-muted: #d8a000;
+  --accent-subtle: rgba(240, 185, 11, 0.12);
+  --accent-foreground: #1a1f26;
+  --primary: #f0b90b;
+  --primary-foreground: #1a1f26;
+
+  --ok: hsl(142 76% 36%);
+  --ok-muted: hsla(142 76% 36% / 0.7);
+  --ok-subtle: hsla(142 76% 36% / 0.1);
+  --destructive: hsl(0 84.2% 60.2%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --destructive-subtle: hsla(0 84% 60% / 0.1);
+  --warn: #f0b90b;
+  --warn-muted: rgba(240, 185, 11, 0.7);
+  --warn-subtle: rgba(240, 185, 11, 0.12);
+  --danger: hsl(0 84.2% 60.2%);
+  --info: #f0b90b;
+
+  --status-success: var(--ok);
+  --status-success-bg: var(--ok-subtle);
+  --status-danger: var(--danger);
+  --status-danger-bg: var(--destructive-subtle);
+  --status-warning: var(--warn);
+  --status-warning-bg: var(--warn-subtle);
+  --status-info: #60a5fa;
+  --status-info-bg: rgba(96, 165, 250, 0.12);
+
+  --focus: rgba(240, 185, 11, 0.18);
+  --focus-ring: 0 0 0 2px rgba(240, 185, 11, 0.44);
+  --scrollbar-track: transparent;
+  --scrollbar-thumb-start: rgba(255, 226, 105, 0.88);
+  --scrollbar-thumb-mid: rgba(240, 185, 11, 0.72);
+  --scrollbar-thumb-end: rgba(255, 210, 77, 0.8);
+  --scrollbar-thumb-hover-start: rgba(255, 232, 137, 0.94);
+  --scrollbar-thumb-hover-mid: rgba(240, 185, 11, 0.82);
+  --scrollbar-thumb-hover-end: rgba(255, 214, 92, 0.88);
+  --scrollbar-thumb-edge: rgba(255, 235, 175, 0.12);
+
+  --header-bar-bg: #050506;
+  --header-bar-fg: #ffffff;
+  --section-bar-bg: #0a0a0c;
+  --section-bar-fg: #ffffff;
+  --link-color: var(--text);
+  --link-hover-color: #f0b90b;
+
+  --mono: "Courier New", Courier, monospace;
+  --font-body:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+  --font-display:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+  --font-chat:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.06);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg:
+    0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 50px -12px rgb(0 0 0 / 0.3);
+  --shadow-2xl: 0 25px 60px -15px rgb(0 0 0 / 0.4);
+  --shadow-inset: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.5rem;
+  --radius-full: 9999px;
+  --radius: 0.5rem;
+  --duration-normal: 200ms;
+
+  /* Compact text sizes */
+  --text-3xs: 0.5625rem;
+  --text-2xs: 0.625rem;
+  --text-xs-tight: 0.6875rem;
+  --min-touch-target: 2.75rem;
+
+  /* Plugin UI */
+  --plugin-field-gap: 1rem;
+  --plugin-group-gap: 1.5rem;
+  --plugin-section-padding: 1.5rem;
+  --plugin-label-size: 0.8125rem;
+  --plugin-help-size: 0.6875rem;
+  --plugin-error-size: 0.6875rem;
+  --plugin-label: var(--text);
+  --plugin-help: var(--muted);
+  --plugin-error: var(--destructive);
+  --plugin-border: var(--border);
+  --plugin-focus-ring: var(--accent);
+  --plugin-input-height: 2.25rem;
+  --plugin-max-field-width: 32rem;
+
+  color-scheme: dark;
+}
+
+/* macOS desktop: reserve space for traffic lights (close/min/max buttons)
+   when the title bar is hidden with hiddenInset. The .desktop class is
+   added by the Electrobun shell at startup. */
+body.desktop {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+@supports not (padding-top: env(safe-area-inset-top)) {
+  body.desktop {
+    padding-top: 0px;
+  }
+}
+
+/* ─── Mobile (native iOS / Android) lockdown ───
+   The native shell is a fixed-viewport app: no pinch zoom, no rubber-band
+   bounce, no two-finger drag, no callout/long-press menu, no scrollbars.
+   Safe-area padding is applied at `#root` (see `styles.css`) instead of
+   here — `#root` is locked to `100dvh` so body-level padding wouldn't
+   shrink the React tree's flex container, and inner shells would still
+   render under the status bar. */
+body.native,
+body.platform-ios,
+body.platform-android {
+  touch-action: pan-x pan-y;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  /* Lock the body to viewport extents so a stray drag can't scroll the
+     entire app off-screen. Inner regions opt back in to overflow. */
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* Allow text selection inside inputs/contenteditable so users can still type,
+   select, copy and paste. */
+body.native input,
+body.native textarea,
+body.native [contenteditable="true"],
+body.platform-ios input,
+body.platform-ios textarea,
+body.platform-ios [contenteditable="true"],
+body.platform-android input,
+body.platform-android textarea,
+body.platform-android [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* Hide scrollbars on native shells. Mobile users don't need a visible
+   scrollbar; they get a momentum scroller. */
+body.native *::-webkit-scrollbar,
+body.platform-ios *::-webkit-scrollbar,
+body.platform-android *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+body.native *,
+body.platform-ios *,
+body.platform-android * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}

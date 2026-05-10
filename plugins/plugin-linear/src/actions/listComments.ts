@@ -10,6 +10,7 @@ import {
 } from "@elizaos/core";
 import type { LinearService } from "../services/linear";
 import type { ListCommentsParameters } from "../types/index.js";
+import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const listCommentsAction: Action = {
@@ -32,12 +33,9 @@ export const listCommentsAction: Action = {
       required: false,
       schema: { type: "number" },
     },
+    linearAccountIdParameter,
   ],
-  similes: [
-    "get-linear-comments",
-    "show-linear-comments",
-    "fetch-linear-comments",
-  ],
+  similes: ["get-linear-comments", "show-linear-comments", "fetch-linear-comments"],
 
   examples: [
     [
@@ -55,11 +53,7 @@ export const listCommentsAction: Action = {
     ],
   ],
 
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-  ): Promise<boolean> =>
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
     validateLinearActionIntent(runtime, message, state, {
       keywords: ["list", "comments", "linear", "issue"],
       regexAlternation: "list|comments|linear|issue",
@@ -70,29 +64,25 @@ export const listCommentsAction: Action = {
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<ActionResult> {
     try {
       const linearService = runtime.getService<LinearService>("linear");
       if (!linearService) {
         throw new Error("Linear service not available");
       }
+      const accountId = getLinearAccountId(runtime, _options);
 
-      const params = _options?.parameters as
-        | ListCommentsParameters
-        | undefined;
+      const params = _options?.parameters as ListCommentsParameters | undefined;
       const issueId = params?.issueId?.trim() ?? "";
       const limit =
-        typeof params?.limit === "number"
-          ? Math.min(Math.max(1, params.limit), 100)
-          : 25;
+        typeof params?.limit === "number" ? Math.min(Math.max(1, params.limit), 100) : 25;
 
       if (!issueId) {
         // Try to extract issue id from message text
         const match = message.content.text?.match(/([A-Z]+-\d+)/);
         if (!match) {
-          const errorMessage =
-            "Please provide an issueId to list comments for.";
+          const errorMessage = "Please provide an issueId to list comments for.";
           await callback?.({
             text: errorMessage,
             source: message.content.source,
@@ -100,11 +90,11 @@ export const listCommentsAction: Action = {
           return { text: errorMessage, success: false };
         }
         const extractedId = match[1];
-        const comments = await linearService.listComments(extractedId, limit);
+        const comments = await linearService.listComments(extractedId, limit, accountId);
         return formatCommentResult(extractedId, comments, message, callback);
       }
 
-      const comments = await linearService.listComments(issueId, limit);
+      const comments = await linearService.listComments(issueId, limit, accountId);
       return formatCommentResult(issueId, comments, message, callback);
     } catch (error) {
       logger.error("Failed to list comments:", error);
@@ -119,7 +109,7 @@ async function formatCommentResult(
   issueId: string,
   comments: Awaited<ReturnType<LinearService["listComments"]>>,
   message: Memory,
-  callback?: HandlerCallback,
+  callback?: HandlerCallback
 ): Promise<ActionResult> {
   if (comments.length === 0) {
     const text = `No comments on issue ${issueId}.`;
@@ -131,12 +121,10 @@ async function formatCommentResult(
     comments.map(async (c) => {
       const user = await c.user;
       const name = user?.name ?? "unknown";
-      const created = c.createdAt
-        ? new Date(c.createdAt).toISOString().slice(0, 10)
-        : "?";
+      const created = c.createdAt ? new Date(c.createdAt).toISOString().slice(0, 10) : "?";
       const body = (c.body ?? "").slice(0, 200);
       return `- [${c.id}] ${name} (${created}): ${body}`;
-    }),
+    })
   );
 
   const text = `${comments.length} comment(s) on ${issueId}:\n${lines.join("\n")}`;

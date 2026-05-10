@@ -10,7 +10,6 @@ import { repoRoot } from "./repo-root";
 import {
   getAgentSourceAliases,
   getAppCoreSourceAliases,
-  getElizaCoreRolesEntry,
   getElizaWorkspaceRoot,
   getOptionalInstalledPackageAliases,
   getOptionalPluginSdkAliases,
@@ -20,17 +19,12 @@ import {
 } from "./workspace-aliases";
 
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
-const elizaCoreRolesEntry = getElizaCoreRolesEntry(repoRoot);
 const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const integrationResolveAlias: ModuleAlias[] = [
   ...getOptionalPluginSdkAliases(repoRoot),
-  {
-    find: "@elizaos/core/roles",
-    replacement: elizaCoreRolesEntry,
-  },
   ...(elizaCoreEntry
     ? [
         {
@@ -122,6 +116,13 @@ export default defineConfig({
       "eliza/packages/agent/test/**/*.integration.test.ts",
       "eliza/apps/*/test/**/*.integration.test.ts",
       "eliza/packages/app-core/test/**/*.integration.test.ts",
+      // Plugin-level integration tests (16 *.integration.test.ts files in
+      // app-lifeops/test/) were dead in CI — neither the plugin's own
+      // vitest.config.ts (which excludes the integration suffix from the
+      // unit lane) nor this integration config picked them up. Include
+      // them now so the existing coverage runs.
+      "eliza/plugins/app-lifeops/test/**/*.integration.test.ts",
+      "eliza/plugins/*/test/**/*.integration.test.ts",
     ],
     setupFiles: ["eliza/packages/app-core/test/setup.ts"],
     exclude: [

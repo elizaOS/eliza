@@ -10,7 +10,13 @@
 
 import * as path from "node:path";
 import { ModelType } from "@elizaos/core";
-import { cleanForChat, extractCompletionSummary } from "./ansi-utils.js";
+import {
+  cleanForChat,
+  closeUnbalancedMarkdownFences,
+  extractCompletionSummary,
+  formatMarkdownTablesForChat,
+  summarizeUserFacingTurnOutput,
+} from "./ansi-utils.js";
 import {
   type CustomValidatorResult,
   type CustomValidatorSpec,
@@ -207,12 +213,14 @@ const STATUS_PATTERNS = [
   /^installing/i,
   /^resolving/i,
 ];
+// biome-ignore lint/suspicious/noControlCharactersInRegex: this intentionally strips ANSI escape sequences.
+const ANSI_ESCAPE_PATTERN = /\u001B\[[0-9;]*[a-zA-Z]/g;
 
 function isStatusAnimation(text: string): boolean {
   // Strip ANSI escapes, whitespace, ellipsis, and spinner glyphs so
   // "⠋ Orchestrating…" normalizes to "Orchestrating".
   const stripped = text
-    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+    .replace(ANSI_ESCAPE_PATTERN, "")
     .replace(/[\s\u2026\u00b7\u2022\u25cf\u25cb⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏|/\-\\]/g, "")
     .trim();
   if (stripped.length === 0) return true;
@@ -443,6 +451,155 @@ function truncateForUser(text: string, max = 140): string {
     return trimmed;
   }
   return `${trimmed.slice(0, max)}...`;
+}
+
+export function completionReasoningFromTurnOutput(turnOutput: string): string {
+  const cleaned = summarizeUserFacingTurnOutput(turnOutput);
+
+  return cleaned
+    ? truncateForUser(cleaned, 2000)
+    : "Subagent completed and produced output.";
+}
+
+export function taskAgentFailureReasonFromTurnOutput(
+  turnOutput: string,
+): string | null {
+  const cleaned = cleanForChat(turnOutput);
+  if (!cleaned.trim()) return null;
+
+  if (
+    /\b(?:401\s+Unauthorized|authentication required|Invalid API key|API key is invalid|OPENAI_API_KEY|Set OPENAI_API_KEY)\b/i.test(
+      cleaned,
+    )
+  ) {
+    return "Task agent failed to authenticate before completing.";
+  }
+
+  return null;
+}
+
+export function completeDecisionWithTurnOutput(
+  decision: CoordinationLLMResponse,
+  turnOutput: string,
+): CoordinationLLMResponse {
+  if (decision.action !== "complete") {
+    return decision;
+  }
+
+  if (!cleanForChat(turnOutput).trim()) {
+    return decision;
+  }
+
+  const finalOutput = completionReasoningFromTurnOutput(turnOutput);
+  return {
+    ...decision,
+    reasoning: finalOutput,
+    keyDecision: finalOutput,
+  };
+}
+
+export function isCompletingWithCapturedOutput(task: {
+  status: string;
+  completionSummary?: string;
+}): boolean {
+  return (
+    task.status === "tool_running" &&
+    typeof task.completionSummary === "string" &&
+    task.completionSummary.trim().length > 0
+  );
+}
+
+export function shouldIgnoreStoppedEventDuringCompletion(options: {
+  task: { status: string; completionSummary?: string };
+  hasInFlightDecision: boolean;
+  hasPendingTurnComplete: boolean;
+}): boolean {
+  if (options.task.status === "completed" || options.task.status === "error") {
+    return true;
+  }
+
+  if (isCompletingWithCapturedOutput(options.task)) {
+    return true;
+  }
+
+  return (
+    (options.task.status === "active" ||
+      options.task.status === "tool_running") &&
+    (options.hasInFlightDecision || options.hasPendingTurnComplete)
+  );
+}
+
+export function isMissingPtySessionError(error: unknown): boolean {
+  return (
+    error instanceof Error && /^Session\s+.+\s+not found$/u.test(error.message)
+  );
+}
+
+export function uniqueSummaryParts(parts: string[]): string[] {
+  const entries: Array<{ key: string; value: string }> = [];
+  for (const part of parts) {
+    const trimmed = formatMarkdownTablesForChat(
+      closeUnbalancedMarkdownFences(part),
+    );
+    if (!trimmed) continue;
+    const key = normalizeSummaryPartForDedupe(trimmed);
+    const overlappingIndex = entries.findIndex((entry) =>
+      areDuplicateSummaryParts(entry.key, key),
+    );
+    if (overlappingIndex >= 0) {
+      if (
+        key !== entries[overlappingIndex].key &&
+        trimmed.length > entries[overlappingIndex].value.length
+      ) {
+        entries[overlappingIndex] = { key, value: trimmed };
+      }
+      continue;
+    }
+    entries.push({ key, value: trimmed });
+  }
+  return entries.map((entry) => entry.value);
+}
+
+function normalizeSummaryPartForDedupe(text: string): string {
+  return text
+    .replace(/^```[a-z0-9_-]*$/gim, "")
+    .replace(/^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$/gim, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function areDuplicateSummaryParts(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const minMeaningfulLength = 80;
+  return (
+    a.length >= minMeaningfulLength &&
+    b.length >= minMeaningfulLength &&
+    (a.includes(b) || b.includes(a))
+  );
+}
+
+function stringMetadataValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function readReplyToExternalMessageId(task: {
+  originMetadata?: Record<string, unknown>;
+}): string | undefined {
+  const metadata = task.originMetadata;
+  if (!metadata) return undefined;
+  const discord =
+    metadata.discord && typeof metadata.discord === "object"
+      ? (metadata.discord as Record<string, unknown>)
+      : null;
+  return (
+    stringMetadataValue(metadata.replyToExternalMessageId) ??
+    stringMetadataValue(metadata.discordMessageId) ??
+    stringMetadataValue(metadata.messageIdFull) ??
+    stringMetadataValue(discord?.messageId)
+  );
 }
 
 function extractLoginInstructions(eventData: {
@@ -815,7 +972,11 @@ async function checkAllTasksCompleteAsync(
         .filter((sd) => sd.agentLabel === t.label)
         .map((sd) => sd.summary)
         .join("; ");
-      const body = decisions || t.completionSummary || "no output captured";
+      const body =
+        t.validationSummary ||
+        decisions ||
+        t.completionSummary ||
+        "no output captured";
       return tasks.length === 1 ? body : `• ${t.label}: ${body}`;
     });
     const text =
@@ -851,7 +1012,8 @@ async function checkAllTasksCompleteAsync(
         agentType: t.agentType,
         originalTask: t.originalTask,
         status: t.status,
-        completionSummary: summaryParts.join("\n") || "",
+        completionSummary: uniqueSummaryParts(summaryParts).join("\n") || "",
+        validationSummary: t.validationSummary,
         // Forward the task's workdir so buildTaskLine in synthesis can
         // read the agent's end_turn jsonl directly. Without this, the
         // session is already killed by the time synthesis runs and
@@ -859,6 +1021,7 @@ async function checkAllTasksCompleteAsync(
         // placeholder even though the jsonl has the real answer.
         workdir: t.workdir,
         roomId: threadRoomIds.get(t.threadId),
+        replyToExternalMessageId: readReplyToExternalMessageId(t),
       };
     });
     // Wrap in Promise.resolve().then() to catch sync throws, and race against
@@ -1171,11 +1334,11 @@ export async function executeDecision(
     case "complete": {
       const taskCtx = ctx.tasks.get(sessionId);
 
-      // Extract meaningful artifacts (PR URLs, commits) instead of
+      // Extract meaningful artifacts and summaries instead of
       // dumping raw terminal output which is full of TUI noise.
       let summary = "";
       try {
-        const rawOutput = await ctx.ptyService.getSessionOutput(sessionId, 50);
+        const rawOutput = await ctx.ptyService.getSessionOutput(sessionId, 240);
         summary = extractCompletionSummary(rawOutput);
       } catch {
         /* ignore */
@@ -1397,19 +1560,9 @@ export async function executeDecision(
           await ctx.syncTaskContext(taskCtx);
           // Validator-driven continuation is coordinator-internal;
           // synthesis reports the final outcome.
-        } else {
-          ctx.broadcast({
-            type: "escalation",
-            sessionId,
-            timestamp: Date.now(),
-            data: {
-              reason: "validation_escalation",
-              summary: validation.summary,
-            },
-          });
-          // Escalations surface via the broadcast event above; chat
-          // stays quiet until the coordinator reaches a terminal state.
+          return;
         }
+
         // verdict === "escalate": the subagent finished with an answer but
         // the validator LLM could not prove acceptance from available
         // evidence. The answer itself is still in the session jsonl — mark
@@ -1427,6 +1580,15 @@ export async function executeDecision(
             summary: validation.summary,
           },
         });
+      }
+
+      const validationSummary =
+        validation.verdict === "pass"
+          ? summarizeUserFacingTurnOutput(validation.summary) ||
+            validation.summary.trim()
+          : "";
+      if (validationSummary) {
+        taskCtx.validationSummary = validationSummary;
       }
 
       taskCtx.status = "completed";
@@ -1482,7 +1644,7 @@ export async function executeDecision(
           data: {
             status: "completed",
             completionSummary: taskCtx.completionSummary,
-            validationSummary: validation.summary,
+            validationSummary: taskCtx.validationSummary ?? validation.summary,
           },
         }),
       ]);
@@ -1498,7 +1660,7 @@ export async function executeDecision(
           repo: taskCtx.repo,
           workdir: taskCtx.workdir,
           completionSummary: taskCtx.completionSummary,
-          validationSummary: validation.summary,
+          validationSummary: taskCtx.validationSummary ?? validation.summary,
         })
         .catch((err) => {
           ctx.log(
@@ -1512,7 +1674,7 @@ export async function executeDecision(
         timestamp: Date.now(),
         data: {
           reasoning: decision.reasoning,
-          validationSummary: validation.summary,
+          validationSummary: taskCtx.validationSummary ?? validation.summary,
         },
       });
 
@@ -2098,14 +2260,24 @@ export async function handleTurnComplete(
       // transient assessor-LLM misfire shouldn't shadow output the agent
       // actually produced. Escalate only when we genuinely have nothing.
       if (turnOutput.trim().length > 0) {
-        ctx.log(
-          `Turn-complete for "${taskCtx.label}": assessor LLM failed but turn output is non-empty, treating as complete`,
-        );
-        decision = {
-          action: "complete",
-          reasoning:
-            "Assessor LLM returned an invalid response, but the subagent emitted task_complete with captured output. Trusting the subagent.",
-        };
+        const failureReason = taskAgentFailureReasonFromTurnOutput(turnOutput);
+        if (failureReason) {
+          ctx.log(
+            `Turn-complete for "${taskCtx.label}": assessor LLM failed and output is a task-agent failure, escalating`,
+          );
+          decision = {
+            action: "escalate",
+            reasoning: failureReason,
+          };
+        } else {
+          ctx.log(
+            `Turn-complete for "${taskCtx.label}": assessor LLM failed but turn output is non-empty, treating as complete`,
+          );
+          decision = {
+            action: "complete",
+            reasoning: completionReasoningFromTurnOutput(turnOutput),
+          };
+        }
       } else {
         ctx.log(
           `Turn-complete for "${taskCtx.label}": all decision paths failed, escalating`,
@@ -2135,6 +2307,8 @@ export async function handleTurnComplete(
         reasoning: agentQuestion,
       };
     }
+
+    decision = completeDecisionWithTurnOutput(decision, turnOutput);
 
     // Log the decision
     ctx.log(
@@ -2168,7 +2342,17 @@ export async function handleTurnComplete(
       },
     });
 
-    if (ctx.pendingBlocked.has(sessionId)) {
+    if (
+      ctx.pendingBlocked.has(sessionId) &&
+      decision.action === "complete" &&
+      turnOutput.trim().length > 0
+    ) {
+      ctx.pendingBlocked.delete(sessionId);
+      ctx.lastBlockedPromptFingerprint.delete(sessionId);
+      ctx.log(
+        `Ignoring buffered blocked prompt for "${taskCtx.label}" because task_complete produced final output`,
+      );
+    } else if (ctx.pendingBlocked.has(sessionId)) {
       ctx.log(
         `Deferring turn assessment execution for "${taskCtx.label}" because a newer blocked prompt arrived during assessment`,
       );
@@ -2198,7 +2382,24 @@ export async function handleTurnComplete(
       // synthesis path own the user-facing notification.
     }
 
-    await executeDecision(ctx, sessionId, decision);
+    try {
+      await executeDecision(ctx, sessionId, decision);
+    } catch (err) {
+      if (
+        decision.action === "complete" &&
+        isMissingPtySessionError(err) &&
+        taskCtx.completionSummary?.trim()
+      ) {
+        ctx.log(
+          `Completing "${taskCtx.label}" from captured output after PTY session disappeared`,
+        );
+        taskCtx.status = "completed";
+        await ctx.syncTaskContext(taskCtx);
+        checkAllTasksComplete(ctx);
+        return;
+      }
+      throw err;
+    }
 
     // executeDecision only stops the session on "complete" / "respond".
     // Escalate and ignore need an explicit stop to release the PTY that
@@ -2514,11 +2715,8 @@ export async function handleConfirmDecision(
         threadId: taskCtx.threadId,
         promptText,
         recentOutput: output,
-        llmDecision: pendingDecision.llmDecision as unknown as Record<
-          string,
-          unknown
-        >,
-        taskContext: taskCtx as unknown as Record<string, unknown>,
+        llmDecision: { ...pendingDecision.llmDecision },
+        taskContext: { ...taskCtx },
         createdAt: pendingDecision.createdAt,
       });
     } else {
@@ -2539,8 +2737,8 @@ export async function handleConfirmDecision(
         threadId: taskCtx.threadId,
         promptText,
         recentOutput: output,
-        llmDecision: decision as unknown as Record<string, unknown>,
-        taskContext: taskCtx as unknown as Record<string, unknown>,
+        llmDecision: { ...decision },
+        taskContext: { ...taskCtx },
         createdAt: pendingDecision.createdAt,
       });
     }

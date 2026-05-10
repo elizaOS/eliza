@@ -20,16 +20,17 @@
     "types": ["node", "bun-types"],
     "allowImportingTsExtensions": true,
     "paths": {
-      "@elizaos/core": ["../../../packages/core/dist/node"],
-      "@elizaos/core/*": ["../../../packages/core/dist/*"]
+      "@elizaos/core": ["../../../packages/core/dist/node"]
     }
   },
   "include": ["./**/*.ts"],
   "exclude": [
     "node_modules",
     "dist",
+    "build.ts",
     "**/__tests__/**",
     "**/*.test.ts",
-    "build.ts"
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
   ]
 }

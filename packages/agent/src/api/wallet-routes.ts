@@ -1,7 +1,18 @@
 import type http from "node:http";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, RouteRequestMeta } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import {
+  type CloudWalletDescriptor,
+  type CloudWalletProvider,
+  ElizaCloudClient,
+  getOrCreateClientAddressKey,
+  normalizeCloudSiteUrl,
+  persistCloudWalletCache,
+  provisionCloudWalletsBestEffort,
+  resolveCloudApiKey,
+} from "@elizaos/plugin-elizacloud";
 import type {
+  RouteHelpers,
   WalletExportRejection as WalletExportRejectionLike,
   WalletExportRequestBody,
 } from "@elizaos/shared";
@@ -10,23 +21,10 @@ import {
   type WalletConfigUpdateRequest,
   type WalletRpcSelections,
 } from "@elizaos/shared";
-import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
-import {
-  type CloudWalletDescriptor,
-  type CloudWalletProvider,
-  ElizaCloudClient,
-} from "../cloud/bridge-client.js";
-import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
-import {
-  getOrCreateClientAddressKey,
-  persistCloudWalletCache,
-  provisionCloudWalletsBestEffort,
-} from "../cloud/cloud-wallet.js";
-import type { ElizaConfig } from "../config/config.js";
-import { isCloudWalletEnabled } from "../config/feature-flags.js";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
-import { persistConfigEnv } from "./config-env.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
+import type { ElizaConfig } from "../config/config.ts";
+import { isCloudWalletEnabled } from "../config/feature-flags.ts";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
+import { persistConfigEnv } from "./config-env.ts";
 import {
   fetchEvmBalances,
   fetchSolanaBalances,
@@ -39,14 +37,14 @@ import {
   type WalletBalancesResponse,
   type WalletChain,
   type WalletConfigStatus,
-} from "./wallet.js";
-import { resolveWalletCapabilityStatus } from "./wallet-capability.js";
+} from "./wallet.ts";
+import { resolveWalletCapabilityStatus } from "./wallet-capability.ts";
 import {
   applyWalletRpcConfigUpdate,
   getStoredWalletRpcSelections,
   resolveWalletNetworkMode,
   resolveWalletRpcReadiness,
-} from "./wallet-rpc.js";
+} from "./wallet-rpc.ts";
 
 const WALLET_CONFIG_COMPAT_KEYS = new Set([
   "ALCHEMY_API_KEY",

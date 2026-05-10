@@ -4,19 +4,15 @@ import { FeishuService } from "./service";
 
 describe("Feishu message connector", () => {
 	it("registers connector metadata and routes card sends", async () => {
-		const runtime = {
+		const runtime = Object.assign(Object.create(null) as IAgentRuntime, {
 			registerMessageConnector: vi.fn(),
 			registerSendHandler: vi.fn(),
 			getRoom: vi.fn(),
-		} as unknown as IAgentRuntime;
-		const service = Object.create(FeishuService.prototype) as FeishuService;
+		});
 		const sendMessage = vi.fn();
-		(service as unknown as { client: unknown }).client = {};
-		(
-			service as unknown as {
-				messageManager: { sendMessage: typeof sendMessage };
-			}
-		).messageManager = { sendMessage };
+		const service = Object.create(FeishuService.prototype) as FeishuService;
+		Reflect.set(service, "client", {});
+		Reflect.set(service, "messageManager", { sendMessage });
 
 		FeishuService.registerSendHandlers(runtime, service);
 
@@ -31,7 +27,8 @@ describe("Feishu message connector", () => {
 
 		const registration = vi.mocked(runtime.registerMessageConnector).mock
 			.calls[0][0];
-		await registration.sendHandler(
+		expect(registration.sendHandler).toBeDefined();
+		await registration.sendHandler?.(
 			runtime,
 			{ source: "feishu", channelId: "oc_test" } as TargetInfo,
 			{

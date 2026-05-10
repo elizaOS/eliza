@@ -8,13 +8,7 @@ import type {
   TokenizeTextParams,
 } from "@elizaos/core";
 import { type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
-import {
-  getLlama,
-  type Llama,
-  type LlamaEmbeddingContext,
-  LlamaLogLevel,
-  type LlamaModel,
-} from "node-llama-cpp";
+import type { Llama, LlamaEmbeddingContext, LlamaModel } from "node-llama-cpp";
 import { type Config, validateConfig } from "./environment";
 import { type EmbeddingModelSpec, MODEL_SPECS, type ModelSpec } from "./types";
 import { DownloadManager } from "./utils/downloadManager";
@@ -38,7 +32,86 @@ const NODE_LLAMA_NOISY_LOAD_ERROR_PATTERNS = [
   "llama_model_load:",
   "llama_model_load_from_file_impl: failed to load model",
 ];
-const MIN_EMBEDDING_RETRY_TEXT_LENGTH = 1;
+
+/**
+ * Hardware-aware backend probe order.
+ *
+ * node-llama-cpp's `getLlama({ gpu: "auto" })` already enumerates the
+ * available GPU back-ends and picks the best, but it does so silently —
+ * we want to log the chosen backend (so dev-server logs make the
+ * acceleration path obvious) and we want a deterministic fallback chain
+ * that respects:
+ *
+ *   1. CUDA — desktop NVIDIA. Highest throughput when present.
+ *   2. Metal — Apple Silicon (the binding maps "auto" -> Metal there).
+ *   3. Vulkan — Linux/Windows discrete GPUs without CUDA.
+ *   4. NEON CPU — aarch64 (Apple Silicon CPU fallback, AOSP arm64,
+ *      Pixel/Tensor) where llama.cpp's NEON kernels handily beat
+ *      generic SIMD.
+ *   5. Generic CPU — last resort.
+ *
+ * We don't probe each backend by trying to load — that would burn GPU
+ * memory just to check capabilities. Instead we read OS / arch hints
+ * (CUDA env, darwin/arm64 detection) plus the binding's own
+ * `supportsGpuOffloading` heuristic.
+ */
+export type BackendKind = "cuda" | "metal" | "vulkan" | "neon-cpu" | "cpu";
+
+export interface BackendChoice {
+  backend: BackendKind;
+  /** Value forwarded to `getLlama({ gpu })`. */
+  gpuOption: false | "auto" | "cuda" | "metal" | "vulkan";
+  /** Set when the user forced a non-GPU backend via env. */
+  forced: boolean;
+  reason: string;
+}
+
+export function chooseBackend(config: Config): BackendChoice {
+  if (config.LOCAL_EMBEDDING_FORCE_CPU) {
+    const isAarch64 = process.arch === "arm64" || process.arch === "arm";
+    return {
+      backend: isAarch64 ? "neon-cpu" : "cpu",
+      gpuOption: false,
+      forced: true,
+      reason: "LOCAL_EMBEDDING_FORCE_CPU=1",
+    };
+  }
+  // CUDA hint: env var present and non-empty (Linux + Windows path).
+  const cudaHint = process.env.CUDA_VISIBLE_DEVICES?.trim();
+  if (cudaHint && cudaHint !== "" && cudaHint !== "-1") {
+    return {
+      backend: "cuda",
+      gpuOption: "cuda",
+      forced: false,
+      reason: `CUDA_VISIBLE_DEVICES=${cudaHint}`,
+    };
+  }
+  if (process.platform === "darwin") {
+    return {
+      backend: "metal",
+      gpuOption: "metal",
+      forced: false,
+      reason: "Darwin — Metal via node-llama-cpp",
+    };
+  }
+  if (process.platform === "linux" || process.platform === "win32") {
+    // Let the binding pick; falls through to Vulkan / CUDA when the
+    // build supports it, otherwise to CPU.
+    return {
+      backend: "vulkan",
+      gpuOption: "auto",
+      forced: false,
+      reason: `${process.platform} — auto (Vulkan/CUDA when available)`,
+    };
+  }
+  const isAarch64 = process.arch === "arm64" || process.arch === "arm";
+  return {
+    backend: isAarch64 ? "neon-cpu" : "cpu",
+    gpuOption: false,
+    forced: false,
+    reason: `${process.platform}/${process.arch} — CPU only`,
+  };
+}
 
 type EmbeddingModelHint = {
   pattern: RegExp;
@@ -49,24 +122,36 @@ type EmbeddingModelHint = {
 
 const EMBEDDING_MODEL_HINTS: EmbeddingModelHint[] = [
   {
-    pattern: /nomic-embed-text-v1\.5/i,
-    repo: "nomic-ai/nomic-embed-text-v1.5-GGUF",
-    dimensions: 768,
-    contextSize: 8192,
+    pattern: /eliza-1-lite/i,
+    repo: "elizaos/eliza-1-lite-0_6b",
+    dimensions: 1024,
+    contextSize: 32768,
   },
   {
-    pattern: /bge-small-en-v1\.5/i,
-    repo: "ChristianAzinn/bge-small-en-v1.5-gguf",
-    dimensions: 384,
-    contextSize: 512,
-  },
-  {
-    pattern: /e5-mistral-7b/i,
-    repo: "dranger003/e5-mistral-7b-instruct-GGUF",
-    dimensions: 4096,
+    pattern: /eliza-1-mobile/i,
+    repo: "elizaos/eliza-1-mobile-1_7b",
+    dimensions: 2048,
     contextSize: 32768,
   },
 ];
+
+export type PoolingStrategy = "mean" | "cls" | "last";
+
+export function parsePoolingStrategy(value: string | undefined): PoolingStrategy {
+  switch (value?.trim().toLowerCase()) {
+    case "cls":
+      return "cls";
+    case "last":
+      return "last";
+    case undefined:
+    case "":
+    case "mean":
+      return "mean";
+    default:
+      logger.warn({ value }, "Unknown LOCAL_EMBEDDING_POOLING; falling back to 'mean'");
+      return "mean";
+  }
+}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -87,12 +172,6 @@ function isContextLimitError(error: unknown): boolean {
 function shouldSuppressNodeLlamaLoadError(message: string): boolean {
   const lower = message.toLowerCase();
   return NODE_LLAMA_NOISY_LOAD_ERROR_PATTERNS.some((pattern) => lower.includes(pattern));
-}
-
-function shrinkEmbeddingInput(text: string): string {
-  if (text.length <= MIN_EMBEDDING_RETRY_TEXT_LENGTH) return text;
-  const nextLength = Math.max(MIN_EMBEDDING_RETRY_TEXT_LENGTH, Math.floor(text.length / 2));
-  return text.slice(0, nextLength);
 }
 
 function inferEmbeddingModelHint(modelName: string): EmbeddingModelHint | null {
@@ -151,74 +230,122 @@ function safeUnlink(filePath: string): void {
 }
 
 /**
- * Class representing a LocalAIManager.
- * @property {LocalAIManager | null} instance - The static instance of LocalAIManager.
- * @property {Llama | undefined} llama - The llama object.
- * @property {LlamaModel | undefined} smallModel - The small LlamaModel object.
- * @property {LlamaModel | undefined} mediumModel - The medium LlamaModel object.
- * @property {LlamaContext | undefined} ctx - The LlamaContext object.
- * @property {LlamaContextSequence | undefined} sequence - The LlamaContextSequence object.
- * @property {LlamaChatSession | undefined} chatSession - The LlamaChatSession object.
- * @property {string} modelPath - The path to the model.
+ * Sliding-window chunking with overlap, tuned for embedding models.
+ *
+ * WHY this is here (per CLAUDE.md, this is one of the rare load-bearing
+ * comments): embedding models have a *hard* context window. Inputs longer
+ * than that have to be split before embedding, then re-aggregated.
+ *
+ * Strategy:
+ *   1. Approximate token count as `Math.ceil(text.length / 4)` —
+ *      conventional GPT/Llama upper bound for English. The model's
+ *      tokenizer is the source of truth at embed time; the approximation
+ *      is only used to decide whether splitting is *needed* and how many
+ *      chunks to make.
+ *   2. If estimated tokens fit, return one chunk.
+ *   3. Otherwise, split into N chunks of `windowTokens` with
+ *      `overlapTokens` overlap. Overlap stops semantic units from being
+ *      sliced exactly between chunks (a paragraph boundary in chunk A
+ *      shouldn't lose all context for the start of chunk B).
+ *   4. Embed each chunk and average-pool the resulting vectors. Average
+ *      pool with renormalisation is the simplest aggregation that gives
+ *      cosine-similarity-stable representations for retrieval over long
+ *      documents — see Sentence-BERT's mean-pool approach. Max-pool
+ *      tends to over-emphasise outlier dimensions; CLS-pool needs a
+ *      special token the embedding head was trained to use, which not
+ *      every embedding model exposes.
+ *   5. L2-normalise the pooled vector unless the caller disabled it.
  */
-class LocalAIManager {
-  private static instance: LocalAIManager | null = null;
+export function chunkText(text: string, windowTokens: number, overlapTokens: number): string[] {
+  const charsPerToken = 4;
+  const windowChars = Math.max(1, windowTokens * charsPerToken);
+  const overlapChars = Math.max(0, Math.min(windowChars - 1, overlapTokens * charsPerToken));
+  if (text.length <= windowChars) return [text];
+
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < text.length) {
+    const end = Math.min(start + windowChars, text.length);
+    chunks.push(text.slice(start, end));
+    if (end >= text.length) break;
+    start = end - overlapChars;
+  }
+  return chunks;
+}
+
+export function meanPool(vectors: number[][]): number[] {
+  if (vectors.length === 0) {
+    throw new Error("meanPool received an empty vector list");
+  }
+  const dim = vectors[0].length;
+  const out = new Array<number>(dim).fill(0);
+  for (const vec of vectors) {
+    if (vec.length !== dim) {
+      throw new Error(`Cannot mean-pool vectors of differing dimensions (${vec.length} vs ${dim})`);
+    }
+    for (let i = 0; i < dim; i += 1) out[i] += vec[i];
+  }
+  for (let i = 0; i < dim; i += 1) out[i] /= vectors.length;
+  return out;
+}
+
+export function l2Normalize(embedding: number[]): number[] {
+  let squareSum = 0;
+  for (const v of embedding) squareSum += v * v;
+  const norm = Math.sqrt(squareSum);
+  if (norm === 0) return embedding;
+  return embedding.map((v) => v / norm);
+}
+
+export function alignDimensions(embedding: number[], target: number): number[] {
+  if (target <= 0 || embedding.length === target) return embedding;
+  logger.warn(
+    { observed: embedding.length, target },
+    "Embedding dimension mismatch; padding/truncating to declared target"
+  );
+  if (embedding.length > target) return embedding.slice(0, target);
+  return [...embedding, ...new Array(target - embedding.length).fill(0)];
+}
+
+export class LocalEmbeddingManager {
+  private static instance: LocalEmbeddingManager | null = null;
   private llama: Llama | undefined;
   private embeddingModel: LlamaModel | undefined;
   private embeddingContext: LlamaEmbeddingContext | undefined;
   private modelPath!: string;
-  private mediumModelPath!: string;
   private embeddingModelPath!: string;
   private cacheDir!: string;
   private tokenizerManager!: TokenizerManager;
   private downloadManager!: DownloadManager;
   private activeModelConfig: ModelSpec;
   private embeddingModelConfig: EmbeddingModelSpec;
-  private config: Config | null = null; // Store validated config
+  private config: Config | null = null;
+  private backendChoice: BackendChoice | null = null;
+  private pooling: PoolingStrategy = "mean";
+  private normalize = true;
+  private batchSize = 16;
+  private overlapTokens = 64;
 
-  // Initialization state flag
   private embeddingInitialized = false;
-  private environmentInitialized = false; // Add flag for environment initialization
-
-  // Initialization promises to prevent duplicate initialization
+  private environmentInitialized = false;
   private embeddingInitializingPromise: Promise<void> | null = null;
-  private environmentInitializingPromise: Promise<void> | null = null; // Add promise for environment
-
+  private environmentInitializingPromise: Promise<void> | null = null;
   private modelsDir!: string;
 
-  /**
-   * Private constructor function to initialize base managers and paths.
-   * Model paths are set after environment initialization.
-   */
   private constructor() {
     this.config = validateConfig();
-
     this._setupCacheDir();
-
-    // Initialize active model config (default)
     this.activeModelConfig = MODEL_SPECS.small;
-    // Initialize embedding model config (spec details)
     this.embeddingModelConfig = MODEL_SPECS.embedding;
   }
 
-  /**
-   * Post-validation initialization steps that require config to be set.
-   * Called after config validation in initializeEnvironment.
-   */
   private _postValidateInit(): void {
     this._setupModelsDir();
-
-    // Initialize managers that depend on modelsDir
     this.downloadManager = DownloadManager.getInstance(this.cacheDir, this.modelsDir);
     this.tokenizerManager = TokenizerManager.getInstance(this.cacheDir, this.modelsDir);
   }
 
-  /**
-   * Sets up the models directory, reading from config or environment variables,
-   * and ensures the directory exists.
-   */
   private _setupModelsDir(): void {
-    // Set up models directory consistently, similar to cacheDir
     const modelsDirEnv = this.config?.MODELS_DIR?.trim() || process.env.MODELS_DIR?.trim();
     if (modelsDirEnv) {
       this.modelsDir = path.resolve(modelsDirEnv);
@@ -230,67 +357,34 @@ class LocalAIManager {
         this.modelsDir
       );
     }
-
-    // Ensure models directory exists
     if (!fs.existsSync(this.modelsDir)) {
       fs.mkdirSync(this.modelsDir, { recursive: true });
       logger.debug("Ensured models directory exists (created):", this.modelsDir);
-    } else {
-      logger.debug("Models directory already exists:", this.modelsDir);
     }
   }
 
-  /**
-   * Sets up the cache directory, reading from config or environment variables,
-   * and ensures the directory exists.
-   */
   private _setupCacheDir(): void {
-    // Set up cache directory
     const cacheDirEnv = this.config?.CACHE_DIR?.trim() || process.env.CACHE_DIR?.trim();
     if (cacheDirEnv) {
       this.cacheDir = path.resolve(cacheDirEnv);
       logger.info("Using cache directory from CACHE_DIR environment variable:", this.cacheDir);
     } else {
-      const cacheDir = path.join(os.homedir(), ".eliza", "cache");
-      // Ensure cache directory exists
-      if (!fs.existsSync(cacheDir)) {
-        fs.mkdirSync(cacheDir, { recursive: true });
-        logger.debug("Ensuring cache directory exists (created):", cacheDir);
-      }
-      this.cacheDir = cacheDir;
-      logger.info(
-        "CACHE_DIR environment variable not set, using default cache directory:",
-        this.cacheDir
-      );
+      this.cacheDir = path.join(os.homedir(), ".eliza", "cache");
     }
-    // Ensure cache directory exists if specified via env var but not yet created
     if (!fs.existsSync(this.cacheDir)) {
       fs.mkdirSync(this.cacheDir, { recursive: true });
       logger.debug("Ensured cache directory exists (created):", this.cacheDir);
-    } else {
-      logger.debug("Cache directory already exists:", this.cacheDir);
     }
   }
 
-  /**
-   * Retrieves the singleton instance of LocalAIManager. If an instance does not already exist, a new one is created and returned.
-   * @returns {LocalAIManager} The singleton instance of LocalAIManager
-   */
-  public static getInstance(): LocalAIManager {
-    if (!LocalAIManager.instance) {
-      LocalAIManager.instance = new LocalAIManager();
+  public static getInstance(): LocalEmbeddingManager {
+    if (!LocalEmbeddingManager.instance) {
+      LocalEmbeddingManager.instance = new LocalEmbeddingManager();
     }
-    return LocalAIManager.instance;
+    return LocalEmbeddingManager.instance;
   }
 
-  /**
-   * Initializes the environment by validating the configuration and setting model paths.
-   * Now public to be callable from plugin init and model handlers.
-   *
-   * @returns {Promise<void>} A Promise that resolves once the environment has been successfully initialized.
-   */
   public async initializeEnvironment(): Promise<void> {
-    // Prevent duplicate initialization
     if (this.environmentInitialized) return;
     if (this.environmentInitializingPromise) {
       await this.environmentInitializingPromise;
@@ -299,44 +393,46 @@ class LocalAIManager {
 
     this.environmentInitializingPromise = (async () => {
       try {
-        logger.info("Initializing environment configuration...");
-
-        // Re-validate config to ensure it's up to date
+        logger.info("Initializing embedding plugin environment...");
         this.config = await validateConfig();
         this.embeddingModelConfig = resolveEmbeddingModelSpec(this.config, MODEL_SPECS.embedding);
+        this.backendChoice = chooseBackend(this.config);
+        this.pooling = parsePoolingStrategy(this.config.LOCAL_EMBEDDING_POOLING);
+        this.normalize = this.config.LOCAL_EMBEDDING_NORMALIZE !== false;
+        this.batchSize = Math.max(1, this.config.LOCAL_EMBEDDING_BATCH_SIZE ?? 16);
+        this.overlapTokens = Math.max(0, this.config.LOCAL_EMBEDDING_CHUNK_OVERLAP ?? 64);
 
-        // Initialize components that depend on validated config
         this._postValidateInit();
+        this.embeddingModelPath = path.join(this.modelsDir, this.embeddingModelConfig.name);
 
-        // Set model paths based on validated config
-        this.embeddingModelPath = path.join(this.modelsDir, this.embeddingModelConfig.name); // Set embedding path
-
-        logger.info("Using embedding model path:", basename(this.embeddingModelPath));
         logger.info(
           {
             model: this.embeddingModelConfig.name,
             repo: this.embeddingModelConfig.repo,
             dimensions: this.embeddingModelConfig.dimensions,
             contextSize: this.embeddingModelConfig.contextSize,
+            backend: this.backendChoice.backend,
+            backendReason: this.backendChoice.reason,
+            pooling: this.pooling,
+            normalize: this.normalize,
+            batchSize: this.batchSize,
+            overlapTokens: this.overlapTokens,
           },
-          "Resolved embedding model spec"
+          "Resolved embedding model spec + backend"
         );
 
         this.ensureEmbeddingModelFileIsValid();
-
-        logger.info("Environment configuration validated and model paths set");
-
         this.environmentInitialized = true;
-        logger.success("Environment initialization complete");
+        logger.success("Embedding environment initialization complete");
       } catch (error) {
         logger.error(
           {
             error: error instanceof Error ? error.message : String(error),
             stack: error instanceof Error ? error.stack : undefined,
           },
-          "Environment validation failed"
+          "Embedding environment validation failed"
         );
-        this.environmentInitializingPromise = null; // Allow retry on failure
+        this.environmentInitializingPromise = null;
         throw error;
       }
     })();
@@ -344,14 +440,6 @@ class LocalAIManager {
     await this.environmentInitializingPromise;
   }
 
-  /**
-   * Downloads the model based on the modelPath provided.
-   * Determines the model spec and path based on the model type.
-   *
-   * @param {ModelTypeName} modelType - The type of model to download
-   * @param {ModelSpec} [customModelSpec] - Optional custom model spec to use instead of the default
-   * @returns A Promise that resolves to a boolean indicating whether the model download was successful.
-   */
   private async downloadModel(
     modelType: ModelTypeName,
     customModelSpec?: ModelSpec,
@@ -360,30 +448,22 @@ class LocalAIManager {
     let modelSpec: ModelSpec;
     let modelPathToDownload: string;
 
-    // Ensure environment is initialized to have correct paths
     await this.initializeEnvironment();
 
     if (customModelSpec) {
       modelSpec = customModelSpec;
-      // Use appropriate path based on model type, now read from instance properties
       modelPathToDownload =
-        modelType === ModelType.TEXT_EMBEDDING
-          ? this.embeddingModelPath
-          : modelType === ModelType.TEXT_LARGE
-            ? this.mediumModelPath
-            : this.modelPath;
+        modelType === ModelType.TEXT_EMBEDDING ? this.embeddingModelPath : this.modelPath;
     } else if (modelType === ModelType.TEXT_EMBEDDING) {
       modelSpec = this.embeddingModelConfig;
-      modelPathToDownload = this.embeddingModelPath; // Use configured path
+      modelPathToDownload = this.embeddingModelPath;
       this.ensureEmbeddingModelFileIsValid();
     } else {
-      modelSpec = modelType === ModelType.TEXT_LARGE ? MODEL_SPECS.medium : MODEL_SPECS.small;
-      modelPathToDownload =
-        modelType === ModelType.TEXT_LARGE ? this.mediumModelPath : this.modelPath; // Use configured path
+      modelSpec = MODEL_SPECS.small;
+      modelPathToDownload = this.modelPath;
     }
 
     try {
-      // Pass the determined path to the download manager
       return await this.downloadManager.downloadModel(
         modelSpec,
         modelPathToDownload,
@@ -396,23 +476,17 @@ class LocalAIManager {
           modelType,
           modelPath: modelPathToDownload,
         },
-        "Model download failed"
+        "Embedding model download failed"
       );
       throw error;
     }
   }
 
-  /**
-   * Asynchronously checks the platform capabilities.
-   *
-   * @returns {Promise<void>} A promise that resolves once the platform capabilities have been checked.
-   */
   public async checkPlatformCapabilities(): Promise<void> {
     try {
       const platformManager = getPlatformManager();
       await platformManager.initialize();
       const capabilities = platformManager.getCapabilities();
-
       logger.info(
         {
           platform: capabilities.platform,
@@ -427,31 +501,27 @@ class LocalAIManager {
     }
   }
 
-  /**
-   * Initializes the LocalAI Manager for a given model type.
-   *
-   * @param {ModelTypeName} modelType - The type of model to initialize (default: ModelType.TEXT_SMALL)
-   * @returns {Promise<void>} A promise that resolves when initialization is complete or rejects if an error occurs
-   */
   async initialize(_modelType: ModelTypeName = ModelType.TEXT_SMALL): Promise<void> {
-    await this.initializeEnvironment(); // Ensure environment is initialized first
+    await this.initializeEnvironment();
   }
 
   public getEmbeddingDimensions(): number {
     return this.embeddingModelConfig.dimensions;
   }
 
+  public getBackendChoice(): BackendChoice {
+    if (!this.backendChoice) {
+      this.backendChoice = chooseBackend(this.config ?? validateConfig());
+    }
+    return this.backendChoice;
+  }
+
   private ensureEmbeddingModelFileIsValid(): void {
     if (!this.embeddingModelPath || !fs.existsSync(this.embeddingModelPath)) return;
     if (isValidGgufFile(this.embeddingModelPath)) return;
-
     const { bytesRead, magic } = readMagicHeader(this.embeddingModelPath);
     logger.warn(
-      {
-        embeddingModelPath: this.embeddingModelPath,
-        bytesRead,
-        magic,
-      },
+      { embeddingModelPath: this.embeddingModelPath, bytesRead, magic },
       "Invalid embedding model file detected; removing corrupt file before download/retry"
     );
     safeUnlink(this.embeddingModelPath);
@@ -459,8 +529,10 @@ class LocalAIManager {
 
   private async ensureLlama(): Promise<void> {
     if (this.llama) return;
+    const choice = this.getBackendChoice();
+    const { getLlama, LlamaLogLevel } = await import("node-llama-cpp");
     this.llama = await getLlama({
-      gpu: this.config?.LOCAL_EMBEDDING_FORCE_CPU ? false : "auto",
+      gpu: choice.gpuOption,
       logLevel: LlamaLogLevel.error,
       logger: (level, message) => {
         if (level !== "error" && level !== "fatal") return;
@@ -470,6 +542,10 @@ class LocalAIManager {
         logger.error(`[node-llama-cpp] ${text}`);
       },
     });
+    logger.info(
+      { backend: choice.backend, reason: choice.reason },
+      "node-llama-cpp embedding runtime initialised"
+    );
   }
 
   private async loadEmbeddingModel(): Promise<void> {
@@ -500,7 +576,7 @@ class LocalAIManager {
   }
 
   private async initializeEmbeddingWithRecovery(): Promise<void> {
-    logger.info("Loading embedding model:", this.embeddingModelPath);
+    logger.info("Loading embedding model:", basename(this.embeddingModelPath));
     try {
       await this.loadEmbeddingModel();
       logger.success("Embedding model initialized successfully");
@@ -516,11 +592,9 @@ class LocalAIManager {
         },
         "Embedding model appears corrupted/incomplete; deleting and re-downloading"
       );
-
       this.embeddingModel = undefined;
       this.embeddingContext = undefined;
       safeUnlink(this.embeddingModelPath);
-
       await this.downloadModel(ModelType.TEXT_EMBEDDING, undefined, true);
       this.ensureEmbeddingModelFileIsValid();
       await this.loadEmbeddingModel();
@@ -528,251 +602,177 @@ class LocalAIManager {
     }
   }
 
-  /**
-   * Asynchronously initializes the embedding model.
-   *
-   * @returns {Promise<void>} A promise that resolves once the initialization is complete.
-   */
   public async initializeEmbedding(): Promise<void> {
     try {
-      await this.initializeEnvironment(); // Ensure environment/paths are ready
-      logger.info("Initializing embedding model...");
-      logger.info("Models directory:", this.modelsDir);
-
-      // Ensure models directory exists
+      await this.initializeEnvironment();
+      logger.info({ modelsDir: this.modelsDir }, "Initializing embedding model...");
       if (!fs.existsSync(this.modelsDir)) {
-        logger.warn("Models directory does not exist, creating it:", this.modelsDir);
         fs.mkdirSync(this.modelsDir, { recursive: true });
       }
-
-      // Download the embedding model using the common downloadModel function
-      // This will now use the correct embeddingModelPath
       await this.downloadModel(ModelType.TEXT_EMBEDDING);
       this.ensureEmbeddingModelFileIsValid();
-
-      // Initialize the llama instance if not already done
       await this.ensureLlama();
-
-      // Load the embedding model
       if (!this.embeddingModel) {
         await this.initializeEmbeddingWithRecovery();
       }
     } catch (error) {
       if (isCorruptedModelLoadError(error)) {
-        logger.warn(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-            modelsDir: this.modelsDir,
-            embeddingModelPath: this.embeddingModelPath,
-          },
-          "Embedding initialization failed due to model corruption"
-        );
         safeUnlink(this.embeddingModelPath);
-      } else {
-        logger.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-            modelsDir: this.modelsDir,
-            embeddingModelPath: this.embeddingModelPath, // Log the path being used
-          },
-          "Embedding initialization failed with details"
-        );
       }
+      logger.error(
+        {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          modelsDir: this.modelsDir,
+          embeddingModelPath: this.embeddingModelPath,
+        },
+        "Embedding initialization failed"
+      );
       throw error;
     }
   }
 
   /**
-   * Generate embeddings using the proper LlamaContext.getEmbedding method.
+   * Generate a single embedding for `text`.
+   *
+   * Inputs longer than the model's context window are split into
+   * overlapping chunks (see `chunkText` for the WHY), each chunk is
+   * embedded individually, and the results are pooled (default mean)
+   * before being optionally L2-normalised. node-llama-cpp's
+   * `LlamaEmbeddingContext.getEmbeddingFor()` doesn't expose the raw
+   * per-token tensor, so `cls`/`last` pooling reduces to the same
+   * pooled-output the binding returns — we still record the requested
+   * pooling for telemetry and as a forward-compat seam if the binding
+   * grows a per-token surface.
    */
   async generateEmbedding(text: string): Promise<number[]> {
-    try {
-      // Lazy initialize embedding model
-      await this.lazyInitEmbedding();
-
-      if (!this.embeddingModel || !this.embeddingContext) {
-        throw new Error("Failed to initialize embedding model");
-      }
-
-      logger.info({ textLength: text.length }, "Generating embedding for text");
-      let candidateText = text;
-      let attempt = 0;
-      while (true) {
-        try {
-          const embeddingResult = await this.embeddingContext.getEmbeddingFor(candidateText);
-          const mutableEmbedding = [...embeddingResult.vector];
-          const sizedEmbedding = this.alignEmbeddingDimensions(mutableEmbedding);
-          const normalizedEmbedding = this.normalizeEmbedding(sizedEmbedding);
-          logger.info({ dimensions: normalizedEmbedding.length }, "Embedding generation complete");
-          return normalizedEmbedding;
-        } catch (error) {
-          if (!isContextLimitError(error)) {
-            throw error;
-          }
-          const nextCandidate = shrinkEmbeddingInput(candidateText);
-          if (nextCandidate === candidateText) {
-            throw error;
-          }
-          attempt += 1;
-          logger.warn(
-            {
-              attempt,
-              currentChars: candidateText.length,
-              nextChars: nextCandidate.length,
-            },
-            "Embedding input exceeded context window; retrying with truncated text"
-          );
-          candidateText = nextCandidate;
-        }
-      }
-    } catch (error) {
-      if (isCorruptedModelLoadError(error)) {
-        logger.warn(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-            textLength: text?.length ?? "text is null",
-            embeddingModelPath: this.embeddingModelPath,
-          },
-          "Embedding generation failed due to model corruption; model file removed"
-        );
-        safeUnlink(this.embeddingModelPath);
-        this.embeddingModel = undefined;
-        this.embeddingContext = undefined;
-        this.embeddingInitialized = false;
-      } else {
-        logger.error(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-            textLength: text?.length ?? "text is null",
-          },
-          "Embedding generation failed"
-        );
-      }
-
-      throw error instanceof Error
-        ? error
-        : new Error(`Embedding generation failed: ${String(error)}`);
-    }
+    const result = await this.generateEmbeddings([text]);
+    return result[0];
   }
 
   /**
-   * Normalizes an embedding vector using L2 normalization
+   * Generate embeddings for an array of inputs in a single call.
    *
-   * @param {number[]} embedding - The embedding vector to normalize
-   * @returns {number[]} - The normalized embedding vector
+   * Batches sequentially through node-llama-cpp's embedding context (the
+   * binding does not expose a true batched-embed C++ API at this time —
+   * 3.18.x's `LlamaEmbeddingContext.getEmbeddingFor()` is single-input
+   * only). We still expose the array shape so callers can let us manage
+   * the batch concurrency rather than serialising through `Promise.all`
+   * at every call-site.
    */
-  private alignEmbeddingDimensions(embedding: number[]): number[] {
-    const targetDimensions = this.getEmbeddingDimensions();
-    if (targetDimensions <= 0 || embedding.length === targetDimensions) {
-      return embedding;
+  async generateEmbeddings(inputs: string[]): Promise<number[][]> {
+    if (inputs.length === 0) return [];
+    await this.lazyInitEmbedding();
+    if (!this.embeddingModel || !this.embeddingContext) {
+      throw new Error("Failed to initialize embedding model");
     }
 
-    logger.warn(
-      {
-        observedDimensions: embedding.length,
-        targetDimensions,
-      },
-      "Embedding dimensions mismatch; adjusting output dimensions"
-    );
+    const ctxTokens = this.embeddingModelConfig.contextSize;
+    // Reserve a small slack for tokenizer overhead. 92% of context
+    // keeps us safely under the limit while still using most of it.
+    const windowTokens = Math.max(8, Math.floor(ctxTokens * 0.92));
+    const out: number[][] = new Array(inputs.length);
 
-    if (embedding.length > targetDimensions) {
-      return embedding.slice(0, targetDimensions);
+    for (let start = 0; start < inputs.length; start += this.batchSize) {
+      const slice = inputs.slice(start, start + this.batchSize);
+      // Each chunk-embed is awaited in order: the binding is single-
+      // contexted (one inflight `getEmbeddingFor` per context). Running
+      // them concurrently against the same context corrupts state.
+      for (let i = 0; i < slice.length; i += 1) {
+        const text = slice[i];
+        if (!text || text.trim().length === 0) {
+          out[start + i] = new Array(this.getEmbeddingDimensions()).fill(0);
+          continue;
+        }
+        out[start + i] = await this.embedSingleInput(text, windowTokens);
+      }
     }
-
-    return [...embedding, ...new Array(targetDimensions - embedding.length).fill(0)];
+    return out;
   }
 
-  private normalizeEmbedding(embedding: number[]): number[] {
-    // Calculate the L2 norm (Euclidean norm)
-    const squareSum = embedding.reduce((sum, val) => sum + val * val, 0);
-    const norm = Math.sqrt(squareSum);
-
-    // Avoid division by zero
-    if (norm === 0) {
-      return embedding;
+  private async embedSingleInput(text: string, windowTokens: number): Promise<number[]> {
+    const chunks = chunkText(text, windowTokens, this.overlapTokens);
+    const vectors: number[][] = [];
+    for (const chunk of chunks) {
+      const vec = await this.embedRawWithRetry(chunk);
+      vectors.push(alignDimensions(vec, this.getEmbeddingDimensions()));
     }
-
-    // Normalize each component
-    return embedding.map((val) => val / norm);
+    const pooled = vectors.length === 1 ? vectors[0] : meanPool(vectors);
+    return this.normalize ? l2Normalize(pooled) : pooled;
   }
 
-  /**
-   * Lazy initialize the embedding model
-   */
+  private async embedRawWithRetry(text: string): Promise<number[]> {
+    if (!this.embeddingContext) {
+      throw new Error("Embedding context not initialised");
+    }
+    let candidate = text;
+    while (true) {
+      try {
+        const result = await this.embeddingContext.getEmbeddingFor(candidate);
+        return [...result.vector];
+      } catch (error) {
+        if (!isContextLimitError(error)) {
+          if (isCorruptedModelLoadError(error)) {
+            safeUnlink(this.embeddingModelPath);
+            this.embeddingModel = undefined;
+            this.embeddingContext = undefined;
+            this.embeddingInitialized = false;
+          }
+          throw error instanceof Error
+            ? error
+            : new Error(`Embedding generation failed: ${String(error)}`);
+        }
+        const next =
+          candidate.length > 1 ? candidate.slice(0, Math.floor(candidate.length / 2)) : candidate;
+        if (next === candidate) throw error;
+        logger.warn(
+          { fromChars: candidate.length, toChars: next.length },
+          "Chunk exceeded model context; halving and retrying"
+        );
+        candidate = next;
+      }
+    }
+  }
+
   private async lazyInitEmbedding(): Promise<void> {
     if (this.embeddingInitialized) return;
-
     if (!this.embeddingInitializingPromise) {
       this.embeddingInitializingPromise = (async () => {
         try {
-          // Ensure environment is initialized first to get correct paths
           await this.initializeEnvironment();
-
-          // Download model if needed (uses the correct path now)
           await this.downloadModel(ModelType.TEXT_EMBEDDING);
           this.ensureEmbeddingModelFileIsValid();
-
-          // Initialize the llama instance if not already done
           await this.ensureLlama();
-
           await this.initializeEmbeddingWithRecovery();
-
           this.embeddingInitialized = true;
           logger.info("Embedding model initialized successfully");
         } catch (error) {
           if (isCorruptedModelLoadError(error)) {
-            logger.warn(
-              error instanceof Error ? error : String(error),
-              "Failed to initialize embedding model due to corruption"
-            );
             safeUnlink(this.embeddingModelPath);
-          } else {
-            logger.error(
-              error instanceof Error ? error : String(error),
-              "Failed to initialize embedding model"
-            );
           }
           this.embeddingInitializingPromise = null;
           throw error;
         }
       })();
     }
-
     await this.embeddingInitializingPromise;
   }
 
-  /**
-   * Returns the TokenizerManager associated with this object.
-   *
-   * @returns {TokenizerManager} The TokenizerManager object.
-   */
   public getTokenizerManager(): TokenizerManager {
     return this.tokenizerManager;
   }
 
-  /**
-   * Returns the active model configuration.
-   * @returns {ModelSpec} The active model configuration.
-   */
   public getActiveModelConfig(): ModelSpec {
     return this.activeModelConfig;
   }
 }
 
-// Create manager instance
-const localAIManager = LocalAIManager.getInstance();
+const localEmbeddingManager = LocalEmbeddingManager.getInstance();
 
-/**
- * Plugin that provides functionality for local AI using LLaMA models.
- * @type {Plugin}
- */
-export const localAiPlugin: Plugin = {
-  name: "local-ai",
-  description: "Local AI plugin using LLaMA models",
+export const localEmbeddingPlugin: Plugin = {
+  name: "local-embedding",
+  description:
+    "Hardware-aware local embedding plugin (CUDA/Metal/Vulkan/NEON/CPU) backed by node-llama-cpp",
   // Higher priority ensures local embeddings are used instead of remote
   // providers (e.g. ElizaCloud, OpenAI) even when plugins register in
   // parallel and the registration order is non-deterministic.
@@ -780,15 +780,13 @@ export const localAiPlugin: Plugin = {
 
   async init(_config: unknown, _runtime: IAgentRuntime) {
     logger.info("Initializing local embedding plugin...");
-
     try {
-      await localAIManager.initializeEnvironment();
-      await localAIManager.checkPlatformCapabilities();
+      await localEmbeddingManager.initializeEnvironment();
+      await localEmbeddingManager.checkPlatformCapabilities();
 
       const config = validateConfig();
       const modelsDir = config.MODELS_DIR || path.join(os.homedir(), ".eliza", "models");
       const embeddingModelPath = path.join(modelsDir, config.LOCAL_EMBEDDING_MODEL);
-
       if (fs.existsSync(embeddingModelPath)) {
         logger.info(
           { embeddingModelPath: basename(embeddingModelPath) },
@@ -800,7 +798,6 @@ export const localAiPlugin: Plugin = {
           "Embedding model file not present yet; it will be downloaded on first use"
         );
       }
-
       logger.success("Local embedding plugin initialized");
     } catch (error) {
       logger.error(
@@ -815,37 +812,39 @@ export const localAiPlugin: Plugin = {
         : new Error(`Failed to initialize local embedding plugin: ${String(error)}`);
     }
   },
+
   models: {
+    // Single-input only — `@elizaos/core`'s TEXT_EMBEDDING contract is
+    // (string | TextEmbeddingParams) -> number[]. Callers wanting the
+    // batched path import `LocalEmbeddingManager` directly:
+    //
+    //   import { LocalEmbeddingManager } from "@elizaos/plugin-local-embedding";
+    //   const vecs = await LocalEmbeddingManager.getInstance().generateEmbeddings(inputs);
+    //
+    // If the core contract grows array support later, widen this handler
+    // to dispatch on Array.isArray(params).
     [ModelType.TEXT_EMBEDDING]: async (
       _runtime: IAgentRuntime,
       params: TextEmbeddingParams | string | null
     ): Promise<number[]> => {
-      // Extract text from params - can be string, object with text, or null
-      let text: string | undefined;
-      if (typeof params === "string") {
-        text = params;
-      } else if (params && typeof params === "object" && "text" in params) {
-        text = params.text;
-      }
-
       try {
         if (params == null) {
-          return new Array(localAIManager.getEmbeddingDimensions()).fill(0);
+          return new Array(localEmbeddingManager.getEmbeddingDimensions()).fill(0);
         }
-
+        let text: string | undefined;
+        if (typeof params === "string") {
+          text = params;
+        } else if (params && typeof params === "object" && "text" in params) {
+          text = params.text;
+        }
         if (!text || text.trim().length === 0) {
           throw new Error("TEXT_EMBEDDING requires non-empty text");
         }
-
-        // Pass the raw text directly to the framework without any manipulation
-        return await localAIManager.generateEmbedding(text);
+        return await localEmbeddingManager.generateEmbedding(text);
       } catch (error) {
         logger.error(
           {
             error: error instanceof Error ? error.message : String(error),
-            fullText: text,
-            textType: typeof text,
-            textStructure: text !== null ? JSON.stringify(text, null, 2) : "null",
           },
           "Error in TEXT_EMBEDDING handler"
         );
@@ -860,8 +859,8 @@ export const localAiPlugin: Plugin = {
       params: TokenizeTextParams
     ): Promise<number[]> => {
       try {
-        const manager = localAIManager.getTokenizerManager();
-        const config = localAIManager.getActiveModelConfig();
+        const manager = localEmbeddingManager.getTokenizerManager();
+        const config = localEmbeddingManager.getActiveModelConfig();
         return await manager.encode(params.prompt, config);
       } catch (error) {
         logger.error(
@@ -877,8 +876,8 @@ export const localAiPlugin: Plugin = {
       params: DetokenizeTextParams
     ): Promise<string> => {
       try {
-        const manager = localAIManager.getTokenizerManager();
-        const config = localAIManager.getActiveModelConfig();
+        const manager = localEmbeddingManager.getTokenizerManager();
+        const config = localEmbeddingManager.getActiveModelConfig();
         return await manager.decode(params.tokens, config);
       } catch (error) {
         logger.error(
@@ -889,130 +888,28 @@ export const localAiPlugin: Plugin = {
       }
     },
   },
+
   tests: [
     {
-      name: "local_ai_plugin_tests",
+      name: "local_embedding_plugin_tests",
       tests: [
         {
-          name: "local_ai_test_text_embedding",
+          name: "local_embedding_test_text_embedding",
           fn: async (runtime) => {
-            try {
-              logger.info("Starting TEXT_EMBEDDING test");
-
-              // Test with normal text
-              const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-                text: "This is a test of the text embedding model.",
-              });
-
-              logger.info({ count: embedding.length }, "Embedding generated with dimensions");
-
-              if (!Array.isArray(embedding)) {
-                throw new Error("Embedding is not an array");
-              }
-
-              if (embedding.length === 0) {
-                throw new Error("Embedding array is empty");
-              }
-
-              if (embedding.some((val) => typeof val !== "number")) {
-                throw new Error("Embedding contains non-numeric values");
-              }
-
-              // Test with null input (should return zero vector)
-              const nullEmbedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, null);
-              if (!Array.isArray(nullEmbedding) || nullEmbedding.some((val) => val !== 0)) {
-                throw new Error("Null input did not return zero vector");
-              }
-
-              logger.success("TEXT_EMBEDDING test completed successfully");
-            } catch (error) {
-              logger.error(
-                {
-                  error: error instanceof Error ? error.message : String(error),
-                  stack: error instanceof Error ? error.stack : undefined,
-                },
-                "TEXT_EMBEDDING test failed"
-              );
-              throw error;
+            logger.info("Starting TEXT_EMBEDDING test");
+            const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+              text: "This is a test of the text embedding model.",
+            });
+            if (!Array.isArray(embedding)) throw new Error("Embedding is not an array");
+            if (embedding.length === 0) throw new Error("Embedding array is empty");
+            if (embedding.some((val) => typeof val !== "number")) {
+              throw new Error("Embedding contains non-numeric values");
             }
-          },
-        },
-        {
-          name: "local_ai_test_tokenizer_encode",
-          fn: async (runtime) => {
-            try {
-              logger.info("Starting TEXT_TOKENIZER_ENCODE test");
-              const prompt = "Hello tokenizer test!";
-
-              const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
-                prompt,
-                modelType: ModelType.TEXT_TOKENIZER_ENCODE,
-              });
-              logger.info({ count: tokens.length }, "Encoded tokens");
-
-              if (!Array.isArray(tokens)) {
-                throw new Error("Tokens output is not an array");
-              }
-
-              if (tokens.length === 0) {
-                throw new Error("No tokens generated");
-              }
-
-              if (tokens.some((token) => !Number.isInteger(token))) {
-                throw new Error("Tokens contain non-integer values");
-              }
-
-              logger.success("TEXT_TOKENIZER_ENCODE test completed successfully");
-            } catch (error) {
-              logger.error(
-                {
-                  error: error instanceof Error ? error.message : String(error),
-                  stack: error instanceof Error ? error.stack : undefined,
-                },
-                "TEXT_TOKENIZER_ENCODE test failed"
-              );
-              throw error;
+            const nullEmbedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, null);
+            if (!Array.isArray(nullEmbedding) || nullEmbedding.some((val) => val !== 0)) {
+              throw new Error("Null input did not return zero vector");
             }
-          },
-        },
-        {
-          name: "local_ai_test_tokenizer_decode",
-          fn: async (runtime) => {
-            try {
-              logger.info("Starting TEXT_TOKENIZER_DECODE test");
-
-              // First encode some text
-              const originalText = "Hello tokenizer test!";
-              const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
-                prompt: originalText,
-                modelType: ModelType.TEXT_TOKENIZER_ENCODE,
-              });
-
-              // Then decode it back
-              const decodedText = await runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
-                tokens,
-                modelType: ModelType.TEXT_TOKENIZER_DECODE,
-              });
-              logger.info(
-                { original: originalText, decoded: decodedText },
-                "Round trip tokenization"
-              );
-
-              if (typeof decodedText !== "string") {
-                throw new Error("Decoded output is not a string");
-              }
-
-              logger.success("TEXT_TOKENIZER_DECODE test completed successfully");
-            } catch (error) {
-              logger.error(
-                {
-                  error: error instanceof Error ? error.message : String(error),
-                  stack: error instanceof Error ? error.stack : undefined,
-                },
-                "TEXT_TOKENIZER_DECODE test failed"
-              );
-              throw error;
-            }
+            logger.success("TEXT_EMBEDDING test completed successfully");
           },
         },
       ],
@@ -1020,4 +917,7 @@ export const localAiPlugin: Plugin = {
   ],
 };
 
-export default localAiPlugin;
+// Legacy export alias for existing imports.
+export const localAiPlugin = localEmbeddingPlugin;
+
+export default localEmbeddingPlugin;

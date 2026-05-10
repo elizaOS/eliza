@@ -1,49 +1,12 @@
 /**
  * @module actions/restore
- * @description Action for restoring stashed form sessions
+ * @description Planner action for restoring stashed form sessions.
  *
- * ## Why an Action (Not Evaluator)
- *
- * The restore operation is unique among form intents because:
- *
- * 1. **Timing Matters**: The restored form context must be available
- *    to the agent BEFORE it generates a response. Evaluators run
- *    AFTER response generation.
- *
- * 2. **Preemption**: When user says "resume my form", the FORM_RESTORE
- *    action should preempt REPLY, generate its own response with the
- *    restored context, and let the agent continue naturally.
- *
- * 3. **Immediate Context**: After restore, the provider runs and gives
- *    the agent the restored form context for its response.
- *
- * ## Flow Comparison
- *
- * ### Other Intents (via Evaluator):
- * ```
- * Message → Provider (no context) → REPLY → Evaluator (updates state)
- *                                              ↓
- *                                    Next message has updated context
- * ```
- *
- * ### Restore Intent (via Action):
- * ```
- * Message → FORM_RESTORE.validate() → true
- *                    ↓
- *         FORM_RESTORE.handler() → Restore session → Generate response
- *                                        ↓
- *                               Next message has restored context immediately
- * ```
- *
- * ## Handling Multiple Stashed Forms
- *
- * If user has multiple stashed forms, this action restores the most recent.
- * Future enhancement: Let user choose which form to restore.
- *
- * ## Conflicts with Active Forms
- *
- * If user has an active form in the current room and tries to restore,
- * the action asks them to either continue or stash the current one.
+ * Restore is a planner-driven Action (not part of the post-message form
+ * evaluator) because the restored form context must reach the provider
+ * BEFORE the agent generates its response. If the user has an active form
+ * in the current room, the action asks them to continue or stash the
+ * current one. Multiple stashed forms restore the most recent.
  */
 
 import {
@@ -57,7 +20,6 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import { quickIntentDetect } from "../intent";
 import type { FormService } from "../service";
 
 const RESTORE_FIELD_LIMIT = 12;
@@ -98,44 +60,27 @@ export const formRestoreAction: Action = {
   ],
 
   /**
-   * Validate: Only trigger for restore intent with stashed sessions.
-   *
-   * Fast path: Uses quickIntentDetect for English keywords.
-   * Evaluator handles non-English via LLM.
-   *
-   * @returns true if action should run
+   * Validate: action is selectable whenever the user has stashed sessions
+   * and no active form in the current room. The planner picks it via the
+   * action description/similes when the user actually wants to resume.
    */
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    try {
-      const text = message.content?.text || "";
+    const formService = runtime.getService("FORM") as FormService;
+    if (!formService) return false;
 
-      // Quick check for restore intent
-      // WHY quick path: Avoid LLM call for simple English phrases
-      const intent = quickIntentDetect(text);
-      if (intent !== "restore") {
-        return false;
-      }
+    const entityId = message.entityId as UUID;
+    const roomId = message.roomId as UUID;
+    if (!entityId || !roomId) return false;
 
-      const formService = runtime.getService("FORM") as FormService;
-      if (!formService) {
-        return false;
-      }
+    const stashed = await formService.getStashedSessions(entityId);
+    if (stashed.length === 0) return false;
 
-      // Check for stashed sessions
-      // WHY check stashed: No point restoring if nothing to restore
-      const entityId = message.entityId as UUID;
-      if (!entityId) return false;
-      const stashed = await formService.getStashedSessions(entityId);
-
-      return stashed.length > 0;
-    } catch (error) {
-      logger.error("[FormRestoreAction] Validation error:", String(error));
-      return false;
-    }
+    const active = await formService.getActiveSession(entityId, roomId);
+    return active === null;
   },
 
   /**

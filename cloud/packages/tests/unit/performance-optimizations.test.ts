@@ -40,7 +40,7 @@ describe("Action validation cache", () => {
       content: { text: "test" },
       roomId: "room-1",
       entityId: "entity-1",
-    } as unknown as Memory;
+    } as Memory;
   }
 
   const emptyState = { values: {}, data: {}, text: "" } as State;
@@ -329,7 +329,7 @@ describe("Action validation cache", () => {
     })) as unknown as typeof setTimeout;
     globalThis.clearTimeout = ((handle?: ReturnType<typeof setTimeout>) => {
       clearedHandles.push(handle);
-    }) as typeof clearTimeout;
+    }) as unknown as typeof clearTimeout;
 
     try {
       await actionsProvider.get!(runtime, message, emptyState);
@@ -368,7 +368,7 @@ describe("Action validation cache", () => {
       content: { text: "test" },
       roomId: "r",
       entityId: "e",
-    } as unknown as Memory;
+    } as Memory;
 
     const r1 = await actionsProvider.get!(runtime, msg, emptyState);
     expect(providerActionsData(r1)).toHaveLength(1);
@@ -480,13 +480,11 @@ describe("native planner template", () => {
     expect(decisionTemplate).not.toContain("<output>");
   });
 
-  test("preserves OAuth/connect rules from ux-overhaul", () => {
-    expect(decisionTemplate).toContain("OAUTH_CONNECT");
-    expect(decisionTemplate).toContain("links expire and must be freshly generated");
+  test("preserves execute-actions rule from ux-overhaul", () => {
     expect(decisionTemplate).toContain("Always execute actions for user requests");
   });
 
-  test("all 8 rules present and numbered", () => {
+  test("all 7 rules present and numbered", () => {
     expect(decisionTemplate).toContain("1. **Single action per step**");
     expect(decisionTemplate).toContain("2. **No redundancy**");
     expect(decisionTemplate).toContain("3. **Parameter extraction**");
@@ -494,7 +492,6 @@ describe("native planner template", () => {
     expect(decisionTemplate).toContain("5. **Completion**");
     expect(decisionTemplate).toContain("6. **Minimize iterations**");
     expect(decisionTemplate).toContain("7. **Always execute actions");
-    expect(decisionTemplate).toContain("8. **OAuth / connect requests**");
   });
 
   test("summary template preserves URL and next-step guidelines", () => {

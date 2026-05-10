@@ -16,10 +16,18 @@
     "allowImportingTsExtensions": true,
     "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/core": ["../../../packages/core/dist/node"],
-      "@elizaos/core/*": ["../../../packages/core/dist/*"]
+      "@elizaos/core": ["../../../packages/core/dist/node"]
     }
   },
-  "include": ["./**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "build.ts"]
+  "include": ["src/**/*.ts", "auto-enable.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build.ts",
+    "vitest.config.ts",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
+  ]
 }

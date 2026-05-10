@@ -123,7 +123,6 @@ else
 fi
 APP_CORE_SCRIPTS_DIR="$APP_CORE_DIR/scripts"
 AGENT_DIR="$PACKAGES_DIR/agent"
-SCHEMAS_DIR="$PACKAGES_DIR/schemas"
 # @elizaos/core source lives under packages/core (current) or packages/typescript
 # (legacy). Prefer the current name; fall back to the legacy path so older branches
 # still work.
@@ -248,23 +247,6 @@ else
 fi
 node scripts/patch-tsup-dts.mjs || true
 
-# buf.gen.yaml outputs to packages/core (current name) or packages/typescript (legacy name)
-_proto_marker=""
-for _candidate in "$PACKAGES_DIR/core/src/types/generated/eliza/v1/agent_pb.ts" \
-                  "$PACKAGES_DIR/typescript/src/types/generated/eliza/v1/agent_pb.ts"; do
-  if [[ -f "$_candidate" ]]; then
-    _proto_marker="$_candidate"
-    break
-  fi
-done
-if [[ -z "$_proto_marker" ]]; then
-  log "Generating core protobuf sources"
-  pushd "$SCHEMAS_DIR" >/dev/null
-  bunx --package @bufbuild/buf@1.68.3 buf generate
-  popd >/dev/null
-fi
-unset _proto_marker _candidate
-
 if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
   log "Building @elizaos/core source artifacts"
   pushd "$TYPESCRIPT_DIR" >/dev/null
@@ -279,6 +261,21 @@ if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
 else
   log "No local @elizaos/core source package found at $TYPESCRIPT_DIR; using installed package"
 fi
+
+log "Building shared/cloud package artifacts"
+for package_dir in packages/shared cloud/packages/sdk packages/cloud-routing; do
+  if [[ -f "$package_dir/package.json" ]] && jq -e '.scripts.build' "$package_dir/package.json" >/dev/null; then
+    log "Building $(node -p "require('./$package_dir/package.json').name") workspace artifacts"
+    pushd "$package_dir" >/dev/null
+    "$BUN_BIN" run build
+    popd >/dev/null
+  fi
+done
+mkdir -p node_modules/@elizaos
+rm -rf node_modules/@elizaos/shared node_modules/@elizaos/cloud-sdk node_modules/@elizaos/cloud-routing
+ln -s ../../packages/shared node_modules/@elizaos/shared
+ln -s ../../cloud/packages/sdk node_modules/@elizaos/cloud-sdk
+ln -s ../../packages/cloud-routing node_modules/@elizaos/cloud-routing
 
 log "Building Capacitor plugins"
 "$BUN_BIN" packages/app-core/scripts/build-native-plugins.mjs
@@ -296,7 +293,26 @@ fi
 # inside the COPY-into-Docker tree or the runtime fails with
 # ERR_MODULE_NOT_FOUND. Build them explicitly here — `bun install
 # --ignore-scripts` skipped per-package postinstall hooks.
-for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf; do
+for plugin in \
+  plugin-sql \
+  plugin-video \
+  plugin-agent-skills \
+  plugin-pdf \
+  plugin-browser \
+  plugin-capacitor-bridge \
+  plugin-coding-tools \
+  plugin-computeruse \
+  plugin-discord \
+  plugin-elizacloud \
+  plugin-imessage \
+  plugin-local-inference \
+  plugin-mcp \
+  plugin-signal \
+  plugin-streaming \
+  plugin-telegram \
+  plugin-whatsapp \
+  plugin-workflow \
+  plugin-x402; do
   plugin_dir="$PLUGINS_DIR/$plugin"
   if [[ -f "$plugin_dir/package.json" ]]; then
     if jq -e '.scripts.build' "$plugin_dir/package.json" >/dev/null; then
@@ -307,6 +323,19 @@ for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf; do
     fi
   fi
 done
+
+log "Building all @elizaos/app workspace deps (turbo, --force to bypass cache)"
+# apps/app's build:web (Vite) resolves every workspace package via its
+# `exports` map, which points at `dist/`. Without prior builds those
+# entry points don't exist and Vite errors with
+#   "Failed to resolve entry for package \"@elizaos/shared\""
+#   "Cannot find module '@elizaos/ui/dist/config/app-config.js'"
+# build:docker-dist only emits the agent package, so we run the full
+# turbo build of @elizaos/app's dep graph (build:core covers a subset
+# but misses @elizaos/ui and the @elizaos/app-* surface packages).
+# --force forces fresh builds, sidestepping any poisoned remote cache
+# that contains incomplete dist artifacts.
+"$BUN_BIN" run build:client -- --force
 
 log "Building agent workspace"
 pushd "$AGENT_DIR" >/dev/null

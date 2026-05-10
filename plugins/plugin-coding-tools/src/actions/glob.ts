@@ -42,7 +42,7 @@ interface NodeFsGlobModule {
 }
 
 function getNodeFsGlob(): NodeFsGlobModule["glob"] | undefined {
-  const candidate = (fs as unknown as Partial<NodeFsGlobModule>).glob;
+  const candidate = (fs as Partial<NodeFsGlobModule>).glob;
   return typeof candidate === "function" ? candidate : undefined;
 }
 
@@ -142,7 +142,7 @@ export const globAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: ["FIND_FILES"],
   description:
-    "Find files matching a glob pattern (e.g. '**/*.ts'). Returns up to 100 absolute paths sorted by mtime descending. Excludes VCS, build, and dependency directories. Use this instead of BASH for file discovery.",
+    "Find files matching a glob pattern (e.g. '**/*.ts'). Returns up to 100 absolute paths sorted by mtime descending. Excludes VCS, build, and dependency directories. Use this instead of SHELL for file discovery.",
   descriptionCompressed:
     "Find files by glob (e.g. '**/*.ts'); returns absolute paths sorted by mtime.",
   parameters: [
@@ -160,13 +160,7 @@ export const globAction: Action = {
       schema: { type: "string" },
     },
   ],
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
-  ) => {
-    return true;
-  },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -210,7 +204,7 @@ export const globAction: Action = {
     const targetPath = requestedPath ?? session.getCwd(conversationId);
 
     const validation = await sandbox.validatePath(conversationId, targetPath);
-    if (!validation.ok) {
+    if (validation.ok === false) {
       const reason =
         validation.reason === "blocked" ? "path_blocked" : "invalid_param";
       return failureToActionResult({ reason, message: validation.message });
@@ -271,4 +265,36 @@ export const globAction: Action = {
       truncated,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Find all TypeScript test files in the repo.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Listing matches for **/*.test.ts.",
+          actions: ["GLOB"],
+          thought:
+            "Pattern-based file lookup maps to GLOB with pattern='**/*.test.ts'.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Find every package.json under packages/.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Listing matches for packages/**/package.json.",
+          actions: ["GLOB"],
+          thought:
+            "Scoped glob with explicit prefix; GLOB takes pattern and the session cwd handles the root.",
+        },
+      },
+    ],
+  ],
 };

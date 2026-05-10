@@ -12,7 +12,7 @@ export default buildConnectorCertificationScenario({
       name: "imessage-core",
       text: "Use the iMessage bridge to read the thread, draft a reply, and send it when the bridge is healthy.",
       responseIncludesAny: ["imessage", "bridge", "reply", "send"],
-      acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      acceptedActions: ["MESSAGE", "MESSAGE"],
       includesAny: ["imessage", "bridge", "reply", "send"],
     },
   ],

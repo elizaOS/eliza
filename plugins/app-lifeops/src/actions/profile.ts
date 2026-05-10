@@ -1,35 +1,28 @@
 import type {
   Action,
   ActionExample,
+  ActionParameterSchema,
   HandlerOptions,
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import type {
-  LifeOpsDomain,
-  LifeOpsReminderStep,
-  SetLifeOpsReminderPreferenceRequest,
-} from "../contracts/index.js";
 import {
-  normalizeLifeOpsOwnerProfilePatch,
-  persistConfiguredOwnerName,
-  updateLifeOpsOwnerProfile,
-} from "../lifeops/owner-profile.js";
+  type OwnerFactProvenance,
+  type OwnerFactsPatch,
+  resolveOwnerFactStore,
+} from "../lifeops/owner/fact-store.js";
+import { normalizeLifeOpsOwnerProfilePatch } from "../lifeops/owner-profile.js";
 import { LifeOpsService } from "../lifeops/service.js";
-import { extractReminderIntensityWithLlm } from "./lib/extract-task-plan.js";
 import {
   resolveActionArgs,
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
-import { resolveDefinitionFromIntent } from "./life.js";
 
-type ProfileSubaction =
-  | "save"
-  | "capture_phone"
-  | "set_reminder_preference"
-  | "configure_escalation";
+type ProfileSubaction = "save" | "capture_phone";
 
 type ProfileSaveParams = {
+  key?: string;
+  value?: unknown;
   name?: string;
   relationshipStatus?: string;
   partnerName?: string;
@@ -46,35 +39,25 @@ type ProfileCapturePhoneParams = {
   allowVoice?: boolean;
 };
 
-type ProfileSetReminderPreferenceParams = {
-  intensity?: "minimal" | "normal" | "persistent" | "high_priority_only";
-  target?: string;
-  intent?: string;
-  details?: Record<string, unknown>;
-};
-
-type ProfileConfigureEscalationParams = {
-  target?: string;
-  timeoutMinutes?: number;
-  callAfterMinutes?: number;
-  details?: Record<string, unknown>;
-};
-
 type ProfileParams = {
   subaction?: ProfileSubaction;
 } & ProfileSaveParams &
-  Partial<ProfileCapturePhoneParams> &
-  ProfileSetReminderPreferenceParams &
-  ProfileConfigureEscalationParams;
+  Partial<ProfileCapturePhoneParams>;
 
+// Wave-2 W2-A collapsed PROFILE.save ≡ PROFILE.set into a single
+// canonical `save` subaction. The legacy `set` spelling is normalized
+// onto `save` in `normalizePlannerProfileParams` so old callers keep
+// resolving while the planner converges on a single name.
 const SUBACTIONS = {
   save: {
     description:
-      "Persist stable owner facts: name, location, gender, age, relationship status, travel-booking preferences.",
+      "Persist stable owner facts: name, location, gender, age, relationship status, travel-booking preferences. Also accepts the legacy planner alias `set` (canonicalized to `save`).",
     descriptionCompressed:
       "persist stable owner fact: name location gender age relationship-status travel-booking-prefs",
     required: [],
     optional: [
+      "key",
+      "value",
       "name",
       "location",
       "gender",
@@ -91,81 +74,121 @@ const SUBACTIONS = {
     required: ["phoneNumber"],
     optional: ["allowSms", "allowVoice"],
   },
-  set_reminder_preference: {
-    description:
-      "Set reminder intensity (minimal | normal | persistent | high_priority_only); optional per-definition target.",
-    descriptionCompressed:
-      "set reminder intensity: minimal|normal|persistent|high_priority_only",
-    required: ["intensity"],
-    optional: ["target", "intent", "details"],
-  },
-  configure_escalation: {
-    description:
-      "Set escalation rules (timeoutMinutes, callAfterMinutes) for a definition or globally.",
-    descriptionCompressed:
-      "set escalation rules: timeout-minutes call-after-no-response etc",
-    required: [],
-    optional: ["target", "timeoutMinutes", "callAfterMinutes", "details"],
-  },
 } as const satisfies SubactionsMap<ProfileSubaction>;
 
-function detailRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+function formatGenericProfileValue(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(
+        ([, entryValue]) => entryValue !== undefined && entryValue !== null,
+      )
+      .map(([entryKey, entryValue]) => {
+        const label = entryKey.replace(/[_-]+/g, " ");
+        if (typeof entryValue === "boolean") {
+          return entryValue ? label : `not ${label}`;
+        }
+        return `${label}: ${String(entryValue)}`;
+      });
+    return entries.length > 0 ? entries.join("; ") : undefined;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return undefined;
 }
 
-function detailString(
-  source: Record<string, unknown> | undefined,
-  key: string,
-): string | undefined {
-  const value = source?.[key];
-  return typeof value === "string" && value.trim().length > 0
-    ? value
-    : undefined;
+function normalizePlannerProfileParams(
+  params: ProfileParams,
+  message: Memory,
+): ProfileParams {
+  const normalized: ProfileParams = { ...params };
+  // Wave-2 W2-A: collapse the legacy `set` alias onto the canonical
+  // `save` subaction.
+  if ((normalized.subaction as unknown) === "set") {
+    normalized.subaction = "save";
+  }
+
+  const key = typeof params.key === "string" ? params.key.toLowerCase() : "";
+  const text =
+    typeof message.content?.text === "string" ? message.content.text : "";
+  const looksLikeTravelPreference =
+    /\b(?:travel|booking|flight|seat|hotel|venue|carry[-\s]?on)\b/i.test(key) ||
+    /\b(?:travel|booking|flight|seat|hotel|venue|carry[-\s]?on)\b/i.test(text);
+  if (!normalized.travelBookingPreferences && looksLikeTravelPreference) {
+    normalized.travelBookingPreferences =
+      formatGenericProfileValue(params.value) ||
+      text.replace(/^\s*(?:remember\s+that|save|store)\s+/i, "").trim();
+  }
+
+  return normalized;
 }
 
-function _detailBoolean(
-  source: Record<string, unknown> | undefined,
-  key: string,
-): boolean | undefined {
-  const value = source?.[key];
-  return typeof value === "boolean" ? value : undefined;
+function makeProfileProvenance(intent: string): OwnerFactProvenance {
+  const provenance: OwnerFactProvenance = {
+    source: "profile_save",
+    recordedAt: new Date().toISOString(),
+  };
+  if (intent.length > 0) {
+    provenance.note = intent.slice(0, 200);
+  }
+  return provenance;
 }
 
-function detailArray(
-  source: Record<string, unknown> | undefined,
-  key: string,
-): unknown[] | undefined {
-  const value = source?.[key];
-  return Array.isArray(value) ? value : undefined;
+function legacyPatchToFactPatch(
+  legacy: ReturnType<typeof normalizeLifeOpsOwnerProfilePatch>,
+): OwnerFactsPatch {
+  const patch: OwnerFactsPatch = {};
+  if (typeof legacy.name === "string") patch.preferredName = legacy.name;
+  if (typeof legacy.relationshipStatus === "string") {
+    patch.relationshipStatus = legacy.relationshipStatus;
+  }
+  if (typeof legacy.partnerName === "string") {
+    patch.partnerName = legacy.partnerName;
+  }
+  if (typeof legacy.orientation === "string") {
+    patch.orientation = legacy.orientation;
+  }
+  if (typeof legacy.gender === "string") patch.gender = legacy.gender;
+  if (typeof legacy.age === "string") patch.age = legacy.age;
+  if (typeof legacy.location === "string") patch.location = legacy.location;
+  if (typeof legacy.travelBookingPreferences === "string") {
+    patch.travelBookingPreferences = legacy.travelBookingPreferences;
+  }
+  return patch;
 }
 
 async function handleSave(
   runtime: IAgentRuntime,
   params: ProfileParams,
+  message: Memory,
 ): Promise<ReturnType<NonNullable<Action["handler"]>>> {
-  const patch = normalizeLifeOpsOwnerProfilePatch(params);
-  if (Object.keys(patch).length === 0) {
+  const legacyPatch = normalizeLifeOpsOwnerProfilePatch(params);
+  if (Object.keys(legacyPatch).length === 0) {
     return {
       text: "Tell me the stable owner detail you want saved, such as your preferred name, location, relationship status, or reusable travel preferences.",
       success: false,
       data: { error: "NO_FIELDS" },
     };
   }
-  const profile = await updateLifeOpsOwnerProfile(runtime, patch);
-  if (!profile) {
+  const factPatch = legacyPatchToFactPatch(legacyPatch);
+  if (Object.keys(factPatch).length === 0) {
     return {
-      text: "",
+      text: "Tell me the stable owner detail you want saved, such as your preferred name, location, relationship status, or reusable travel preferences.",
       success: false,
-      data: { error: "PROFILE_UPDATE_FAILED" },
+      data: { error: "NO_FIELDS" },
     };
   }
-  const nameSyncSaved =
-    typeof patch.name === "string"
-      ? await persistConfiguredOwnerName(patch.name)
-      : null;
-  const updatedFields = Object.keys(patch);
+  const intent =
+    typeof message.content?.text === "string" ? message.content.text : "";
+  const factStore = resolveOwnerFactStore(runtime);
+  const facts = await factStore.update(
+    factPatch,
+    makeProfileProvenance(intent),
+  );
+  const updatedFields = Object.keys(factPatch);
   const text =
     updatedFields.length === 1
       ? `Updated ${updatedFields[0]}.`
@@ -173,7 +196,7 @@ async function handleSave(
   return {
     text,
     success: true,
-    data: { profile, updatedFields, nameSyncSaved },
+    data: { facts, updatedFields },
   };
 }
 
@@ -208,134 +231,6 @@ async function handleCapturePhone(
   };
 }
 
-async function handleSetReminderPreference(
-  runtime: IAgentRuntime,
-  params: ProfileParams,
-  message: Memory,
-): Promise<ReturnType<NonNullable<Action["handler"]>>> {
-  const details = detailRecord(params.details);
-  const intent =
-    params.intent?.trim() ||
-    (typeof message.content?.text === "string"
-      ? message.content.text.trim()
-      : "");
-
-  let intensity: SetLifeOpsReminderPreferenceRequest["intensity"] | "unknown" =
-    params.intensity ?? "unknown";
-  if (intensity === "unknown") {
-    const plan = await extractReminderIntensityWithLlm({ runtime, intent });
-    intensity = plan.intensity;
-  }
-  if (intensity === "unknown") {
-    return {
-      success: false,
-      text: "I need to know whether you want reminders minimal, normal, persistent, or high priority only.",
-    };
-  }
-
-  const service = new LifeOpsService(runtime);
-  const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
-  const target = await resolveDefinitionFromIntent(
-    service,
-    params.target,
-    intent,
-    domain,
-  );
-  const request: SetLifeOpsReminderPreferenceRequest = {
-    intensity,
-    definitionId: target?.definition.id ?? null,
-    note: intent,
-  };
-  const preference = await service.setReminderPreference(request);
-  const intensityLabel =
-    intensity === "high_priority_only"
-      ? "high priority only"
-      : preference.effective.intensity;
-  if (target) {
-    return {
-      success: true,
-      text: `Reminder intensity for "${target.definition.title}" is now ${intensityLabel}.`,
-      data: { preference },
-    };
-  }
-  return {
-    success: true,
-    text: `Global LifeOps reminders are now ${intensityLabel}.`,
-    data: { preference },
-  };
-}
-
-async function handleConfigureEscalation(
-  runtime: IAgentRuntime,
-  params: ProfileParams,
-): Promise<ReturnType<NonNullable<Action["handler"]>>> {
-  const details = detailRecord(params.details);
-  const service = new LifeOpsService(runtime);
-  const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
-
-  // Target a specific definition when supplied; otherwise treat as a
-  // global escalation profile-update (currently no-op until a global
-  // escalation contract exists — return a structured ack).
-  if (!params.target) {
-    return {
-      success: true,
-      text: "No target supplied; global escalation defaults are unchanged.",
-      data: {
-        timeoutMinutes: params.timeoutMinutes ?? null,
-        callAfterMinutes: params.callAfterMinutes ?? null,
-      },
-    };
-  }
-  const target = await resolveDefinitionFromIntent(
-    service,
-    params.target,
-    params.target,
-    domain,
-  );
-  if (!target) {
-    return {
-      success: false,
-      text: "I could not find that item to configure its escalation.",
-    };
-  }
-  const ownership =
-    target.definition.domain === "agent_ops"
-      ? { domain: "agent_ops" as const, subjectType: "agent" as const }
-      : { domain: "user_lifeops" as const, subjectType: "owner" as const };
-  const rawSteps =
-    detailArray(details, "steps") ?? detailArray(details, "escalationSteps");
-  const steps: LifeOpsReminderStep[] = rawSteps
-    ? rawSteps
-        .filter(
-          (s): s is Record<string, unknown> =>
-            typeof s === "object" && s !== null,
-        )
-        .map((s) => ({
-          channel: String(
-            s.channel ?? "in_app",
-          ) as LifeOpsReminderStep["channel"],
-          offsetMinutes:
-            typeof s.offsetMinutes === "number" ? s.offsetMinutes : 0,
-          label:
-            typeof s.label === "string"
-              ? s.label
-              : String(s.channel ?? "reminder"),
-        }))
-    : [{ channel: "in_app", offsetMinutes: 0, label: "In-app reminder" }];
-  const updated = await service.updateDefinition(target.definition.id, {
-    ownership,
-    reminderPlan: { steps },
-  });
-  const summary = steps
-    .map((s) => `${s.channel} at +${s.offsetMinutes}m`)
-    .join(", ");
-  return {
-    success: true,
-    text: `Updated reminder plan for "${updated.definition.title}": ${summary}.`,
-    data: { updated },
-  };
-}
-
 export const profileAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
@@ -347,33 +242,50 @@ export const profileAction: Action & {
     "SAVE_TRAVEL_PREFERENCES",
     "REMEMBER_PREFERENCES",
     "CAPTURE_PHONE",
-    "CONFIGURE_ESCALATION",
-    "SET_REMINDER_INTENSITY",
   ],
   tags: [
-    "always-include",
-    "travel preferences",
-    "flight preferences",
-    "hotel preferences",
-    "booking preferences",
-    "owner profile",
+    "domain:meta",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "surface:internal",
   ],
   description:
-    "Owner-only. Persist stable owner facts and preferences: name, location, gender, age, relationship status, travel-booking preferences (save subaction); phone number (capture_phone); reminder intensity (set_reminder_preference); escalation rules (configure_escalation). All operations are durable owner-scoped state.",
+    "Save durable owner facts and preferences. Subactions: save (name, location, gender, age, relationship status, travel-booking preferences), capture_phone (phone number for SMS/voice escalation). Reminder intensity and escalation rules live on LIFE.policy_set_reminder / LIFE.policy_configure_escalation.",
   descriptionCompressed:
-    "persist owner state: save(name,location,age,prefs) + capture_phone(number) + set_reminder_preference(intensity) + configure_escalation(rules)",
-  contexts: ["memory", "contacts", "tasks", "settings", "calendar"],
+    "save owner facts+prefs: subactions save|capture_phone; reminder/escalation policy → LIFE.policy_*",
+  routingHint:
+    'durable owner facts, reusable preferences, travel/booking preferences ("remember I prefer aisle seats", "save my hotel preferences") -> PROFILE; reminder intensity / escalation rules -> LIFE.policy_*; never use extraction/memory side effects/REPLY',
+  // "general" included so "save my preference" / "remember I like X" prompts
+  // surface PROFILE when the messageHandler picks "general". See
+  // `12-real-root-cause.md`.
+  contexts: ["general", "memory", "contacts", "tasks", "settings", "calendar"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
   validate: async () => true,
 
   handler: async (runtime, message, state, options) => {
+    const rawParams =
+      ((options as HandlerOptions | undefined)?.parameters as ProfileParams) ??
+      ({} as ProfileParams);
+    const normalizedRawParams = normalizePlannerProfileParams(
+      rawParams,
+      message,
+    );
+    const normalizedOptions: HandlerOptions | undefined = options
+      ? ({
+          ...options,
+          parameters: normalizedRawParams as HandlerOptions["parameters"],
+        } as HandlerOptions)
+      : ({
+          parameters: normalizedRawParams as HandlerOptions["parameters"],
+        } as HandlerOptions);
     const resolved = await resolveActionArgs<ProfileSubaction, ProfileParams>({
       runtime,
       message,
       state: state ?? undefined,
-      options,
+      options: normalizedOptions,
       actionName: "PROFILE",
       subactions: SUBACTIONS,
       defaultSubaction: "save",
@@ -391,21 +303,16 @@ export const profileAction: Action & {
     }
 
     const params = resolved.params;
-    // Planner-supplied params may bypass resolveActionArgs entirely; merge
-    // the raw HandlerOptions parameters for save (which has no required fields).
-    const rawParams =
-      ((options as HandlerOptions | undefined)?.parameters as ProfileParams) ??
-      ({} as ProfileParams);
 
     switch (resolved.subaction) {
       case "save":
-        return handleSave(runtime, { ...rawParams, ...params });
+        return handleSave(
+          runtime,
+          { ...normalizedRawParams, ...params },
+          message,
+        );
       case "capture_phone":
         return handleCapturePhone(params, runtime);
-      case "set_reminder_preference":
-        return handleSetReminderPreference(runtime, params, message);
-      case "configure_escalation":
-        return handleConfigureEscalation(runtime, params);
     }
   },
 
@@ -413,16 +320,11 @@ export const profileAction: Action & {
     {
       name: "subaction",
       description:
-        "Which profile operation to perform: save, capture_phone, set_reminder_preference, or configure_escalation.",
+        "Which profile operation to perform: save or capture_phone. The legacy `set` alias is canonicalized to `save`.",
       required: false,
       schema: {
         type: "string" as const,
-        enum: [
-          "save",
-          "capture_phone",
-          "set_reminder_preference",
-          "configure_escalation",
-        ],
+        enum: ["save", "capture_phone"],
       },
     },
     {
@@ -467,6 +369,26 @@ export const profileAction: Action & {
       schema: { type: "string" as const },
     },
     {
+      name: "key",
+      description:
+        "Compatibility alias for generic profile set calls. Prefer explicit fields such as travelBookingPreferences.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "value",
+      description:
+        "Compatibility value for generic profile set calls; normalized into explicit owner profile fields when possible.",
+      schema: {
+        type: "string" as const,
+        anyOf: [
+          { type: "string" as const },
+          { type: "number" as const },
+          { type: "boolean" as const },
+          { type: "object" as const, additionalProperties: true },
+        ],
+      } as ActionParameterSchema,
+    },
+    {
       name: "phoneNumber",
       description: "Owner phone number for SMS/voice escalation routing.",
       schema: { type: "string" as const },
@@ -480,45 +402,6 @@ export const profileAction: Action & {
       name: "allowVoice",
       description: "Allow voice-call contact on the captured number.",
       schema: { type: "boolean" as const },
-    },
-    {
-      name: "intensity",
-      description:
-        "Reminder intensity level: minimal, normal, persistent, or high_priority_only.",
-      schema: {
-        type: "string" as const,
-        enum: ["minimal", "normal", "persistent", "high_priority_only"],
-      },
-    },
-    {
-      name: "target",
-      description:
-        "Optional definition name/ID for set_reminder_preference or configure_escalation.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "intent",
-      description:
-        "Free-form intent text for the reminder-preference operation.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "timeoutMinutes",
-      description:
-        "Escalation timeout in minutes (used by configure_escalation).",
-      schema: { type: "number" as const },
-    },
-    {
-      name: "callAfterMinutes",
-      description:
-        "Minutes before escalating to a voice call (used by configure_escalation).",
-      schema: { type: "number" as const },
-    },
-    {
-      name: "details",
-      description:
-        "Structured data when needed: domain (user_lifeops/agent_ops), steps escalation list, etc.",
-      schema: { type: "object" as const },
     },
   ],
   examples: [
@@ -547,20 +430,6 @@ export const profileAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "Phone number 555-1234 saved. Enabled for: SMS.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "less reminders please",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Global LifeOps reminders are now minimal.",
         },
       },
     ],

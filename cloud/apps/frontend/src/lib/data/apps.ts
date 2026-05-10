@@ -11,7 +11,8 @@ type LegacyAppDatabaseFields =
   | "user_database_region"
   | "user_database_error";
 
-export type App = Omit<AppDto, LegacyAppDatabaseFields> & Partial<Pick<AppDto, LegacyAppDatabaseFields>>;
+export type App = Omit<AppDto, LegacyAppDatabaseFields> &
+  Partial<Pick<AppDto, LegacyAppDatabaseFields>>;
 
 // Apps list changes only on create/edit/delete. Relax to 2 minutes so list
 // pages don't refetch on every nav while still staying responsive after

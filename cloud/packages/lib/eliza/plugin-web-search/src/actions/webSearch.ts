@@ -1,6 +1,8 @@
 import {
   Action,
   type ActionResult,
+  type Content,
+  type ContentValue,
   composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
@@ -10,9 +12,10 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import { defineActionParameters } from "@/lib/eliza/plugin-cloud-bootstrap/types";
 import { normalizeCloudActionArgs } from "@/lib/eliza/plugin-cloud-bootstrap/utils/native-planner-guards";
 import { WebSearchService } from "../services/searchService";
-import type { SearchResult } from "../types";
+import type { SearchResponse, SearchResult } from "../types";
 
 interface WebSearchParams {
   query?: string;
@@ -57,6 +60,44 @@ Respond using JSON only. No markdown, no prose, no XML.
 function MaxTokens(data: string, maxTokens: number = DEFAULT_MAX_WEB_SEARCH_CHARS): string {
   // Character-based truncation to cap response length
   return data.length > maxTokens ? data.slice(0, maxTokens) : data;
+}
+
+function toCallbackData(
+  searchResponse: SearchResponse,
+  reasoning: string,
+  searchMetadata: Record<string, ContentValue>,
+): Record<string, ContentValue> {
+  return {
+    answer: searchResponse.answer,
+    query: searchResponse.query,
+    responseTime: searchResponse.responseTime,
+    images: searchResponse.images.map((image) => ({
+      url: image.url,
+      description: image.description,
+    })),
+    results: searchResponse.results.map((result) => ({
+      title: result.title,
+      url: result.url,
+      content: result.content,
+      rawContent: result.rawContent,
+      score: result.score,
+      publishedDate: result.publishedDate,
+    })),
+    model: searchResponse.model,
+    provider: searchResponse.provider,
+    searchQueries: searchResponse.searchQueries,
+    usage: searchResponse.usage
+      ? {
+          inputTokens: searchResponse.usage.inputTokens,
+          outputTokens: searchResponse.usage.outputTokens,
+          totalTokens: searchResponse.usage.totalTokens,
+        }
+      : undefined,
+    cost: searchResponse.cost,
+    actionName: "WEB_SEARCH",
+    reasoning,
+    searchMetadata,
+  };
 }
 
 /**
@@ -178,8 +219,8 @@ async function extractSearchParams(
 
 export const webSearch: Action & Record<string, unknown> = {
   name: "WEB_SEARCH",
-  contexts: ["web", "knowledge", "finance", "crypto"],
-  contextGate: { anyOf: ["web", "knowledge", "finance", "crypto"] },
+  contexts: ["web", "documents", "finance", "crypto"],
+  contextGate: { anyOf: ["web", "documents", "finance", "crypto"] },
   roleGate: { minRole: "USER" },
   similes: [
     "SEARCH_WEB",
@@ -201,8 +242,8 @@ export const webSearch: Action & Record<string, unknown> = {
     "- For crypto/DeFi content: use topic='finance' + source from [theblock.com, coindesk.com, decrypt.co, dlnews.com]\n" +
     "- Don't give up after one attempt if results are clearly irrelevant",
 
-  // Parameter schema for tool calling (object form, cast for compat with upstream ActionParameter[])
-  parameters: {
+  // Parameter schema for tool calling.
+  parameters: defineActionParameters({
     query: {
       type: "string",
       description: "The search query to look up on the web",
@@ -246,7 +287,7 @@ export const webSearch: Action & Record<string, unknown> = {
       description: "End date filter in YYYY-MM-DD format (returns results before this date)",
       required: false,
     },
-  } as any,
+  }),
 
   validate: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
     try {
@@ -348,33 +389,31 @@ export const webSearch: Action & Record<string, unknown> = {
           `3. Executed hosted Google-grounded search with ${maxResults} max results`,
           `4. Retrieved ${searchResponse.results.length} grounded results${searchResponse.answer ? " with synthesized answer" : ""}`,
         ].join("\n");
+        const searchMetadata: Record<string, ContentValue> = {
+          query,
+          topic,
+          source,
+          maxResults,
+          resultsFound: searchResponse.results.length,
+          hasAnswer: !!searchResponse.answer,
+          searchQueries: searchResponse.searchQueries ?? [],
+        };
+        const callbackData = toCallbackData(searchResponse, reasoningSteps, searchMetadata);
 
         const result: ActionResult = {
           text: MaxTokens(responseList, DEFAULT_MAX_WEB_SEARCH_CHARS),
           success: true,
-          data: {
-            ...searchResponse,
-            actionName: "WEB_SEARCH",
-            reasoning: reasoningSteps,
-            searchMetadata: {
-              query,
-              topic,
-              source,
-              maxResults,
-              resultsFound: searchResponse.results.length,
-              hasAnswer: !!searchResponse.answer,
-              searchQueries: searchResponse.searchQueries ?? [],
-            },
-          },
+          data: callbackData,
           input: inputParams,
         } as ActionResult & { input: typeof inputParams };
 
         if (callback) {
-          callback({
+          const responseContent: Content = {
             text: result.text,
             actions: ["WEB_SEARCH"],
-            data: result.data,
-          } as any);
+            data: callbackData,
+          };
+          callback(responseContent);
         }
 
         return result;

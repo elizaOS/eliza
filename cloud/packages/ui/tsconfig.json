@@ -15,7 +15,6 @@
     "types": ["node", "vite/client"],
     "paths": {
       "@elizaos/cloud-ui": ["./src/index.ts"],
-      "@elizaos/cloud-ui/*": ["./src/*"],
       "@/*": ["./src/*"],
       "@/lib/*": ["../lib/*"],
       "@/db/*": ["../db/*"],

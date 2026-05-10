@@ -7,16 +7,18 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import {
   getSelfControlAccess,
   SELFCONTROL_ACCESS_ERROR,
-} from "../website-blocker/access.ts";
-import { hasActiveHarshNoBypassRule } from "../website-blocker/chat-integration/harsh-mode-check.ts";
+} from "../website-blocker/access.js";
+import { activateBlockRule } from "../website-blocker/chat-integration/block-activator.js";
+import {
+  BlockRuleReader,
+  BlockRuleWriter,
+} from "../website-blocker/chat-integration/block-rule-service.js";
+import { hasActiveHarshNoBypassRule } from "../website-blocker/chat-integration/harsh-mode-check.js";
 import {
   formatWebsiteList,
   type getSelfControlPermissionState,
@@ -24,10 +26,8 @@ import {
   normalizeWebsiteTargets,
   parseSelfControlBlockRequest,
   requestSelfControlPermission,
-  startSelfControlBlock,
   stopSelfControlBlock,
-} from "../website-blocker/engine.ts";
-import { syncWebsiteBlockerExpiryTask } from "../website-blocker/service.ts";
+} from "../website-blocker/engine.js";
 import {
   resolveActionArgs,
   type SubactionsMap,
@@ -39,13 +39,19 @@ type WebsiteBlockSubaction =
   | "block"
   | "unblock"
   | "status"
-  | "request_permission";
+  | "request_permission"
+  | "release"
+  | "list_active";
 
 interface WebsiteBlockParams {
   intent?: string;
   hostnames?: string[] | string;
   durationMinutes?: number | string | null;
   confirmed?: boolean | string | null;
+  ruleId?: string | null;
+  reason?: string | null;
+  includeLiveStatus?: boolean | string | null;
+  includeManagedRules?: boolean | string | null;
 }
 
 const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
@@ -76,6 +82,22 @@ const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
     descriptionCompressed:
       "request admin/root approval hosts-edits | explain manual-change",
     required: [],
+  },
+  release: {
+    description:
+      "Release a managed website block rule by id. Requires confirmed:true. harsh_no_bypass rules cannot be released through this path — they must wait for gate fulfillment.",
+    descriptionCompressed:
+      "release managed-block-rule(id) confirmed-true; harsh_no_bypass not releasable",
+    required: ["ruleId", "confirmed"],
+    optional: ["reason"],
+  },
+  list_active: {
+    description:
+      "Report the current website blocker state by combining the live OS-level hosts/SelfControl status with LifeOps-managed block rules (id, gateType, websites, gate target). Toggle either source via includeLiveStatus and includeManagedRules.",
+    descriptionCompressed:
+      "list-active-blocks: live hosts/SelfControl status + managed rules (gateType, target, websites)",
+    required: [],
+    optional: ["includeLiveStatus", "includeManagedRules"],
   },
 };
 
@@ -627,54 +649,28 @@ async function handleBlock(
     };
   }
 
-  const result = await startSelfControlBlock({
-    ...parsed.request,
-    scheduledByAgentId: String(runtime.agentId),
+  const activation = await activateBlockRule({
+    runtime,
+    websites: parsed.request.websites,
+    durationMinutes: parsed.request.durationMinutes,
   });
-  if (result.success === false) {
+  if (activation.success === false) {
     return {
       success: false,
-      text: result.error,
-      data: result.status
-        ? {
-            active: result.status.active,
-            endsAt: result.status.endsAt,
-            websites: result.status.websites,
-            requiresElevation: result.status.requiresElevation,
-          }
-        : undefined,
+      text: activation.error,
     };
-  }
-
-  if (parsed.request.durationMinutes !== null) {
-    try {
-      const taskId = await syncWebsiteBlockerExpiryTask(runtime);
-      if (!taskId) {
-        await stopSelfControlBlock();
-        return {
-          success: false,
-          text: "Eliza started the website block but could not schedule its automatic unblock task, so it rolled the block back.",
-        };
-      }
-    } catch (error) {
-      await stopSelfControlBlock();
-      return {
-        success: false,
-        text: `Eliza could not schedule the automatic unblock task, so it rolled the website block back. ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
   }
 
   return {
     success: true,
     text:
-      result.endsAt === null
+      activation.endsAt === null
         ? `Started a website block for ${formatWebsiteList(parsed.request.websites)} until you unblock it.`
-        : `Started a website block for ${formatWebsiteList(parsed.request.websites)} until ${result.endsAt}.`,
+        : `Started a website block for ${formatWebsiteList(parsed.request.websites)} until ${activation.endsAt}.`,
     data: {
       websites: parsed.request.websites,
       durationMinutes: parsed.request.durationMinutes,
-      endsAt: result.endsAt,
+      endsAt: activation.endsAt,
     },
   };
 }
@@ -780,18 +776,186 @@ async function handleRequestPermission(): Promise<ActionResult> {
   };
 }
 
+// ── release / list_active subactions (W2-F) ──
+//
+// Folded in from the deleted standalone `RELEASE_BLOCK` and
+// `LIST_ACTIVE_BLOCKS` actions, resolving the umbrella collision flagged in
+// `HARDCODING_AUDIT.md` §6 high-confidence #6. The block-rule reader/writer
+// remain in `website-blocker/chat-integration` — only the `Action` envelopes
+// were collapsed.
+
+function coerceString(value: unknown): string | null {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  return null;
+}
+
+function coerceBooleanFlag(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "yes", "1", "on"].includes(normalized)) return true;
+    if (["false", "no", "0", "off"].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
+function formatLiveWebsiteBlockStatus(
+  status: Awaited<ReturnType<typeof getSelfControlStatus>>,
+): string {
+  if (!status.available) {
+    return (
+      status.reason ??
+      "The live website blocker is unavailable on this machine."
+    );
+  }
+  const permissionNote = status.reason ? ` ${status.reason}` : "";
+  if (!status.active) {
+    return `No live website block is active right now.${permissionNote}`;
+  }
+  const websites =
+    status.websites.length > 0
+      ? formatWebsiteList(status.websites)
+      : "an unknown website set";
+  return status.endsAt
+    ? `A live website block is active for ${websites} until ${status.endsAt}.${permissionNote}`
+    : `A live website block is active for ${websites} until you remove it.${permissionNote}`;
+}
+
+async function handleRelease(
+  runtime: IAgentRuntime,
+  params: WebsiteBlockParams,
+): Promise<ActionResult> {
+  const ruleId = coerceString(params.ruleId);
+  if (!ruleId) {
+    return {
+      success: false,
+      text: "WEBSITE_BLOCK release requires a ruleId.",
+    };
+  }
+  if (!coerceConfirmedFlag(params.confirmed)) {
+    return {
+      success: false,
+      text: "WEBSITE_BLOCK release requires confirmed:true to release the rule.",
+    };
+  }
+  const reason = coerceString(params.reason) ?? "user_confirmed";
+  const writer = new BlockRuleWriter(runtime);
+  try {
+    await writer.releaseBlockRule(ruleId, { confirmed: true, reason });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      text: `Failed to release block rule ${ruleId}: ${message}`,
+    };
+  }
+  return {
+    success: true,
+    text: `Released block rule ${ruleId}.`,
+    data: { ruleId, reason },
+  };
+}
+
+async function handleListActive(
+  runtime: IAgentRuntime,
+  params: WebsiteBlockParams,
+): Promise<ActionResult> {
+  const includeLiveStatus = coerceBooleanFlag(params.includeLiveStatus, true);
+  const includeManagedRules = coerceBooleanFlag(
+    params.includeManagedRules,
+    true,
+  );
+  const reader = new BlockRuleReader(runtime);
+  const [rules, liveStatus] = await Promise.all([
+    includeManagedRules ? reader.listActiveBlocks() : Promise.resolve([]),
+    includeLiveStatus
+      ? getSelfControlStatus()
+      : Promise.resolve(
+          null as Awaited<ReturnType<typeof getSelfControlStatus>> | null,
+        ),
+  ]);
+  const sections = liveStatus ? [formatLiveWebsiteBlockStatus(liveStatus)] : [];
+  if (!includeManagedRules) {
+    return {
+      success: true,
+      text:
+        sections.join("\n") || "Managed block rule listing was not requested.",
+      data: {
+        actionName: ACTION_NAME,
+        rules: [],
+        liveStatus,
+      },
+    };
+  }
+  if (rules.length === 0) {
+    sections.push("No managed website block rules are active.");
+    return {
+      success: true,
+      text: sections.join("\n"),
+      data: { actionName: ACTION_NAME, rules: [], liveStatus },
+    };
+  }
+  const summaries = rules.map((rule) => {
+    const parts = [
+      `${rule.id} (${rule.gateType})`,
+      `sites=${rule.websites.join(",")}`,
+    ];
+    if (rule.gateType === "until_todo" && rule.gateTodoId) {
+      parts.push(`todo=${rule.gateTodoId}`);
+    }
+    if (rule.gateType === "until_iso" && rule.gateUntilMs !== null) {
+      parts.push(`until=${new Date(rule.gateUntilMs).toISOString()}`);
+    }
+    if (rule.gateType === "fixed_duration" && rule.fixedDurationMs !== null) {
+      parts.push(`duration_ms=${rule.fixedDurationMs}`);
+    }
+    return parts.join(" ");
+  });
+  sections.push(`Managed block rules:\n${summaries.join("\n")}`);
+  return {
+    success: true,
+    text: sections.join("\n"),
+    data: { actionName: ACTION_NAME, rules, liveStatus },
+  };
+}
+
 // ── Action ──
 
-export const websiteBlockAction: Action & {
+/**
+ * Internal implementation of the legacy `WEBSITE_BLOCK` action surface.
+ *
+ * Audit B Defer #1 folded `WEBSITE_BLOCK` and `APP_BLOCK` into the single
+ * `BLOCK` umbrella (`./block.ts`). The umbrella delegates to this impl when
+ * `target=website`, so the runtime logic + handlers + parameter shape stay
+ * unchanged. The legacy export name (`websiteBlockAction`) is re-exported
+ * below as an alias for `blockAction` so cached planner outputs and downstream
+ * importers keep resolving — but no `WEBSITE_BLOCK`-named action is registered
+ * in the plugin anymore; the umbrella simile carries the legacy name forward.
+ */
+export const websiteBlockActionImpl: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
-  similes: ["SELFCONTROL", "SITE_BLOCKER", "HOSTS_BLOCK", "FOCUS_BLOCK"],
+  similes: [
+    "SELFCONTROL",
+    "SITE_BLOCKER",
+    "HOSTS_BLOCK",
+    "FOCUS_BLOCK",
+    "AUTOMATION_FOCUS_BLOCK",
+    "BLOCK_WEBSITE",
+    "WEBSITE_BLOCKER",
+  ],
   description:
-    "Owner-only. Manage local hosts-file website blocking on this Mac. Subactions: block (start a fixed-duration or indefinite block on a set of public hostnames; always drafts first, requires confirmed:true to actually edit the hosts file), unblock (remove the active block), status (check whether a block is active and when it ends), request_permission (request administrator/root approval for hosts-file edits).",
+    "Owner-only. Manage local hosts-file website blocking on this Mac. Subactions: block (start a fixed-duration or indefinite block on a set of public hostnames; always drafts first, requires confirmed:true to actually edit the hosts file), unblock (remove the active block), status (check whether a block is active and when it ends), request_permission (request administrator/root approval for hosts-file edits), release (release a managed block rule by id; requires confirmed:true; harsh_no_bypass rules cannot be released this way), list_active (list live OS-level + managed website block rules).",
   descriptionCompressed:
-    "site block hosts-file: block(hosts,duration,confirm) unblock status request-permission; macOS draft-then-confirm",
-  contexts: ["screen_time", "browser", "automation", "tasks"],
+    "site block hosts-file: block(hosts,duration,confirm) unblock status request-permission release(ruleId,confirmed) list_active; macOS draft-then-confirm",
+  // Drop "tasks" — WEBSITE_BLOCK is a focus/screen-time tool, not a personal-
+  // task tool. With "tasks" included, it competed with LIFE on every habit
+  // prompt for tier-A slots. Belongs to screen_time / browser / automation /
+  // settings only.
+  contexts: ["screen_time", "browser", "automation", "settings"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
@@ -804,7 +968,7 @@ export const websiteBlockAction: Action & {
     {
       name: "subaction",
       description:
-        "One of: block, unblock, status, request_permission. When omitted the resolver extracts it from intent + recent conversation.",
+        "One of: block, unblock, status, request_permission, release, list_active. When omitted the resolver extracts it from intent + recent conversation.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -832,7 +996,35 @@ export const websiteBlockAction: Action & {
     {
       name: "confirmed",
       description:
-        "Set true only when the owner has explicitly confirmed the block. Without it, block returns a draft confirmation request.",
+        "Set true only when the owner has explicitly confirmed the block. Without it, block returns a draft confirmation request. Also required by the release subaction.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "ruleId",
+      description:
+        "ID of the managed block rule to release. Required by the release subaction.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "reason",
+      description:
+        "Optional reason recorded on the rule when released. Used by the release subaction.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "includeLiveStatus",
+      description:
+        "Whether to include the current hosts-file/SelfControl live block state in the list_active response. Default true.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "includeManagedRules",
+      description:
+        "Whether to include managed LifeOps block rules in the list_active response. Default true.",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -939,6 +1131,15 @@ export const websiteBlockAction: Action & {
         return handleStatus();
       case "request_permission":
         return handleRequestPermission();
+      case "release":
+        return handleRelease(runtime, params);
+      case "list_active":
+        return handleListActive(runtime, params);
     }
   },
 };
+
+// Legacy export — the `WEBSITE_BLOCK` name lives on as a simile of the new
+// BLOCK umbrella. Importers that destructured `websiteBlockAction` get the
+// umbrella back so they continue to dispatch through the unified entry.
+export { blockAction as websiteBlockAction } from "./block.js";

@@ -3,7 +3,11 @@
  */
 
 import {
+  type AgentContext,
+  type Content,
+  type ActionResult as CoreActionResult,
   createUniqueUuid,
+  executePlannedToolCall,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -22,8 +26,8 @@ import type { ParsedPlan, ParsedResponse } from "./parsers";
 export const DEFAULT_ELIZA_ID = "b850bc30-45f8-0041-a00a-83df46d8555d";
 
 /**
- * Check if runtime is in creator mode (chatting with default Eliza to create new character)
- * vs build mode (editing existing character)
+ * Check if runtime is in creator mode (chatting with default Eliza to create a new character)
+ * vs editing an existing character.
  */
 export function isCreatorMode(runtime: IAgentRuntime): boolean {
   const characterId = runtime.character.id;
@@ -265,11 +269,11 @@ interface Attachment {
   [key: string]: unknown;
 }
 
-interface ActionResult {
+interface AttachmentActionResult {
   data?: { attachments?: Attachment[] };
 }
 
-export function extractAttachments(actionResults: ActionResult[]): Attachment[] {
+export function extractAttachments(actionResults: AttachmentActionResult[]): Attachment[] {
   return actionResults
     .flatMap((result) => result.data?.attachments ?? [])
     .filter((att): att is Attachment => {
@@ -343,16 +347,54 @@ export async function executeActions(
     return callback ? callback(content) : [];
   };
 
-  // Pass onStreamChunk to processActions so each action can manage its own streaming context
-  await runtime.processActions(
-    message,
-    [actionResponse],
-    currentState,
-    wrappedCallback,
-    onStreamChunk ? { onStreamChunk } : undefined,
-  );
+  const previousResults: CoreActionResult[] = [];
+  const activeContexts = resolveActiveContexts(currentState);
+  for (const actionName of plannedActions) {
+    const result = await executePlannedToolCall(
+      runtime,
+      {
+        message,
+        state: currentState,
+        activeContexts,
+        previousResults,
+        callback: wrappedCallback,
+        responses: [actionResponse],
+      },
+      { name: actionName },
+      onStreamChunk ? { onStreamChunk } : undefined,
+    );
+    previousResults.push(result);
+  }
   const actionState = await runtime.composeState(message, ["CURRENT_RUN_CONTEXT"]);
   return { ...currentState, ...actionState };
+}
+
+function resolveActiveContexts(state: State): AgentContext[] {
+  const values = [
+    state.data?.selectedContexts,
+    state.data?.activeContexts,
+    state.data?.contexts,
+    state.values?.selectedContexts,
+    state.values?.activeContexts,
+    state.values?.contexts,
+  ];
+  const contexts = new Set<AgentContext>(["general"]);
+  for (const value of values) {
+    if (Array.isArray(value)) {
+      for (const context of value) {
+        if (typeof context === "string" && context.trim()) {
+          contexts.add(context.trim().toLowerCase() as AgentContext);
+        }
+      }
+    } else if (typeof value === "string" && value.trim()) {
+      for (const context of value.split(/[\n,;]/)) {
+        if (context.trim()) {
+          contexts.add(context.trim().toLowerCase() as AgentContext);
+        }
+      }
+    }
+  }
+  return [...contexts];
 }
 
 /**
@@ -660,14 +702,28 @@ export async function runEvaluatorsWithTimeout(
   responseMemory: Memory,
   callback: HandlerCallback,
 ): Promise<void> {
-  if (typeof runtime.evaluate !== "function") return;
+  type RuntimeWithEvaluate = IAgentRuntime & {
+    evaluate: (
+      message: Memory,
+      state: State,
+      didRespond: boolean,
+      callback: (content: Content) => Promise<Memory[]>,
+      responses: Memory[],
+    ) => Promise<unknown>;
+  };
+
+  const runtimeWithEvaluate = runtime as IAgentRuntime & {
+    evaluate?: RuntimeWithEvaluate["evaluate"];
+  };
+
+  if (typeof runtimeWithEvaluate.evaluate !== "function") return;
 
   await Promise.race([
-    runtime.evaluate(
+    runtimeWithEvaluate.evaluate(
       message,
       { ...state },
       true,
-      async (content) => {
+      async (content: Content) => {
         const result = await callback?.(content);
         return result ?? [];
       },

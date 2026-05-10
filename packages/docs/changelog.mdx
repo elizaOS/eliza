@@ -97,7 +97,7 @@ The runtime now respects per-plugin role declarations on startup. Plugins that d
 ## Updates
 
 - **Direct life-ops launch** — Opening [life-ops](/rest/lifeops) from the dashboard now goes straight to the section you tapped instead of routing through an intermediate landing screen.
-- **n8n empty-state translations** — The [automations](/guides/cloud) empty state for n8n workflows is now fully localized (Spanish, French, and Chinese) so first-time setup reads cleanly in every supported language.
+- **n8n empty-state translations** — The [automations](/guides/cloud) empty state for workflows is now fully localized (Spanish, French, and Chinese) so first-time setup reads cleanly in every supported language.
 - **Eliza Cloud TTS polish** — Cloud-hosted text-to-speech has been refreshed for cleaner audio output and more reliable streaming when your agent speaks back through Discord or the desktop voice surface.
 - **Default assistant name sync** — The assistant name shown across the desktop app, chat, and connector greetings now stays in sync with your agent configuration on first run, so renaming your agent applies everywhere immediately.
 - **Inbox routing reliability** — Inbox route handling has been hardened with deeper test coverage, so cross-channel messages land in the [unified inbox](/rest/inbox) consistently across Gmail, Discord, Telegram, Signal, and iMessage.
@@ -205,7 +205,7 @@ A new [BlueBubbles connector](/connectors/bluebubbles) lets your agent bridge to
 - **Chat and page polish** — Page-scoped chat context, chat widget heading, chat title, and chat sidebar have all been refined for cleaner layouts and more reliable context when switching between pages.
 - **Sidebar and apps view modernization** — The dashboard sidebar controls, [apps view](/dashboard/apps) catalog, and apps sidebar have been cleaned up with collapsed controls and tighter density. The character editor, [character](/agents/character-interface) layout, character panel, and character sidebar have also been polished for a more consistent navigation experience.
 - **Connector sidebar cleanup** — The connector configuration sidebar has been cleaned up and polished, with clearer toggles and connector switches for enabling/disabling individual platforms.
-- **Embedded knowledge uploads** — The [knowledge](/guides/knowledge) system now supports embedded uploads directly from the character editor, so you can attach reference material while configuring your agent's persona.
+- **Embedded knowledge uploads** — The [knowledge](/guides/documents) system now supports embedded uploads directly from the character editor, so you can attach reference material while configuring your agent's persona.
 - **X (Twitter) billing and status** — X connector billing is now surfaced alongside other cloud usage, and status reporting has been hardened with new test coverage.
 - **Cloud migration fix** — A migration issue affecting cloud-deployed agents has been resolved so upgrades apply cleanly on first boot.
 - **iOS runtime onboarding modes** — The iOS app now supports distinct runtime build and onboarding modes, giving mobile users a smoother first-run experience.
@@ -266,7 +266,7 @@ Workflow details now render as an interactive node graph instead of a plain list
 
 ## Updates
 
-- **Action surface consolidated** — Twenty-six legacy actions have been collapsed into seven owner-scoped umbrellas (`OWNER_INBOX`, `OWNER_CALENDAR`, `OWNER_SEND_MESSAGE`, etc.) and two agent-scoped entry points. Each umbrella routes to the same underlying handler, so behavior is unchanged — but the cleaner surface helps the action planner pick the right tool more reliably. Old action names still work as aliases.
+- **Action surface consolidated** — Twenty-six legacy actions have been collapsed into owner-scoped umbrellas (`OWNER_INBOX`, `OWNER_CALENDAR`, `OWNER_MESSAGE`, etc.) and two agent-scoped entry points. Each umbrella routes to the same underlying handler, so behavior is unchanged — but the cleaner surface helps the action planner pick the right tool more reliably. Old action names still work as aliases.
 - **Action selection accuracy** — The action planner now achieves 100% selection accuracy across a 69-case benchmark suite covering all 27 action categories. Improved action descriptions and rate-limit-aware retry logic contribute to more reliable routing, especially for health, calendar, and cross-channel actions.
 - **iOS companion consolidated** — The separate iOS companion app has been merged into the main Eliza iOS bundle. Companion mode — pairing, chat mirroring, and remote sessions — is now accessible within the main app, eliminating the need to install a second app.
 - **Life-ops onboarding polish** — The [life-ops](/rest/lifeops) page now shows a welcome card with capability tiles and friendlier empty states when no data is connected yet, making it easier to discover and set up integrations.
@@ -301,13 +301,13 @@ Your agent now picks the right action more reliably when you give it natural-lan
 
 </Update>
 
-<Update label="2026-04-19" description="Week of April 19; dashboard redesign, n8n workflow automations, life-ops connector UI, mobile responsiveness" tags={["Feature", "Update", "Fix"]}>
+<Update label="2026-04-19" description="Week of April 19; dashboard redesign, workflow automations, life-ops connector UI, mobile responsiveness" tags={["Feature", "Update", "Fix"]}>
 
 ## Dashboard redesign
 
 The [cloud dashboard](/guides/cloud) homepage has been completely redesigned. Agent cards now use a data-first layout with cleaner instance grids and filter chips for quick browsing. A new persistent sidebar with vertical tabs replaces the previous navigation, and the hero section is now typography-focused for a quieter, more readable landing experience. You can provision new cloud agents directly from the dashboard with an inline modal — no more navigating away to create an agent. Deleting cloud agents and managing card actions are also restored.
 
-## n8n workflow automations
+## workflow automations
 
 Your agent now supports [n8n](https://n8n.io) workflow automations through a new plugin. A dedicated Workflows pane in the Automations view lets you browse, activate, deactivate, and delete workflows. The n8n sidecar starts automatically when the plugin is enabled, and status updates poll in real time. The legacy n8n plugin has been retired in favor of this new integration.
 
@@ -427,7 +427,7 @@ Google Calendar actions now support updating and deleting events through convers
 - **Onboarding streamlined** — Unused onboarding steps have been removed and the setup chooser screen has been restyled for better readability on dark backgrounds. Each setup option now includes a description, and character selection includes a back button so you can revisit earlier choices.
 - **Action context deduplication** — Your agent's LLM context no longer includes duplicate action results. Action state is now the sole source with a generous token budget, which means faster responses and more room for conversation history.
 - **Music player stream reliability** — The [music player](/rest/apps) audio streaming fallback has been hardened to recover more gracefully when the primary stream source is unavailable.
-- **Knowledge view improvements** — The [knowledge](/guides/knowledge) detail view has been updated with a cleaner layout for browsing and managing uploaded documents.
+- **Knowledge view improvements** — The [knowledge](/guides/documents) detail view has been updated with a cleaner layout for browsing and managing uploaded documents.
 - **Cloud deployment improvements** — Cloud Docker images now build with all runtime patches applied in a single pipeline, making cloud container provisioning faster and more reliable.
 
 ## Bug fixes
@@ -550,7 +550,7 @@ When your agent's backend becomes unreachable, the dashboard now shows a clear f
 - **Trajectory scenario grouping** — The [trajectory view](/advanced/trajectories) now groups related LLM calls into named scenarios with history filters, making it easier to review and compare agent behavior across sessions.
 - **Advanced memory storage** — Your agent can now persist structured memories beyond the default conversation history. This enables richer context recall across sessions and is available through the agent configuration.
 - **Cloud voice support hardened** — Cloud containers now ship with native audio encoding dependencies, so Discord voice and TTS work reliably without additional setup. When voice dependencies are missing, the system degrades gracefully with a clear error instead of crashing.
-- **Knowledge plugin auto-configuration** — The knowledge plugin now auto-enables when API keys or a cloud provider are available, and auto-detects your text provider and model from your existing configuration. No manual setup needed to start using [knowledge](/guides/knowledge).
+- **Knowledge plugin auto-configuration** — The knowledge plugin now auto-enables when API keys or a cloud provider are available, and auto-detects your text provider and model from your existing configuration. No manual setup needed to start using [knowledge](/guides/documents).
 
 ## Bug fixes
 
@@ -816,7 +816,7 @@ Wallet transactions can now route through [Steward](https://steward.fi) for poli
 
 ## Knowledge view redesign
 
-The [knowledge](/guides/knowledge) sidebar now shows filenames prominently with inline type and source tags. A live search box filters documents by filename as you type, with semantic vector search still available on Enter. Hover any document to reveal the upload date and a quick-delete button.
+The [knowledge](/guides/documents) sidebar now shows filenames prominently with inline type and source tags. A live search box filters documents by filename as you type, with semantic vector search still available on Enter. Hover any document to reveal the upload date and a quick-delete button.
 
 ## Updates
 
@@ -1259,7 +1259,7 @@ The cloud [dashboard](/apps/dashboard) now discovers and manages both local and 
 
 ## Knowledge image and MDX uploads
 
-The [knowledge base](/guides/knowledge) now accepts image files and `.mdx` documents. Image uploads are automatically described using your agent's vision model (or stored as a reference entry if vision is unavailable) instead of failing with a "binary data" error. MDX files are processed as markdown, making it easy to import documentation directly.
+The [knowledge base](/guides/documents) now accepts image files and `.mdx` documents. Image uploads are automatically described using your agent's vision model (or stored as a reference entry if vision is unavailable) instead of failing with a "binary data" error. MDX files are processed as markdown, making it easy to import documentation directly.
 
 ## Homepage redesign
 
@@ -1380,7 +1380,7 @@ Your agent can now reason and act independently between conversations. When enab
 
 ## Local model downloads
 
-You can now download and run AI models locally for fully offline inference. Five model types are supported — vision (BLIP, Florence-2, Moondream2), LLM (Llama 3.2, Qwen 2.5, Phi-3 via Ollama), TTS (Parler, Bark, SpeechT5), STT (Whisper), and embeddings (MiniLM, BGE, Nomic Embed). Models are cached on disk after download and available without an internet connection. See the [local models guide](/guides/local-models) for details.
+You can now download and run Eliza-1 models locally for fully offline inference. The local stack focuses on Eliza-1 GGUF text generation and embedding models published through HuggingFace and cached on disk after download. See the [local models guide](/guides/local-models) for details.
 
 ## Chrome extension for browser control
 
@@ -1406,7 +1406,7 @@ The dashboard now requires a pairing code for initial authentication. When you f
 <Update label="2026-05-14" description="Week of May 8–14" tags={["Feature", "Update"]}>
 ## Media generation
 
-Your agent can now generate images, videos, and audio — and analyze images with AI vision — all from chat. Four new actions are available: `GENERATE_IMAGE`, `GENERATE_VIDEO`, `GENERATE_AUDIO`, and `ANALYZE_IMAGE`. Each supports multiple provider backends including FAL.ai, OpenAI, Google, xAI, and Eliza Cloud. Choose between cloud mode (no API key needed) and bring-your-own-key mode per media type. A media gallery in the dashboard lets you browse everything your agent has created. See the [media generation guide](/guides/media-generation) for details.
+Your agent can now generate images, videos, and audio — and analyze images with AI vision — all from chat. Two new actions are available: `GENERATE_MEDIA` for image, video, and audio generation, and `ANALYZE_IMAGE` for vision analysis. Each supports multiple provider backends including FAL.ai, OpenAI, Google, xAI, and Eliza Cloud. Choose between cloud mode (no API key needed) and bring-your-own-key mode per media type. A media gallery in the dashboard lets you browse everything your agent has created. See the [media generation guide](/guides/media-generation) for details.
 
 ## Event hooks
 
@@ -1582,7 +1582,7 @@ The `POST /api/character/generate` endpoint now returns `chatExamples` in the `m
 ## Updates
 
 - **Credit exhaustion errors surfaced clearly** — Cloud provider billing errors (HTTP 402 and 429) are now detected and shown in the dashboard with actionable guidance instead of generic failure messages.
-- **Knowledge service retry** — When the knowledge service is still loading, requests return a `Retry-After` header and the client auto-retries with exponential backoff, preventing failed queries during startup.
+- **Documents service retry** — When the documents service is still loading, requests return a `Retry-After` header and the client auto-retries with exponential backoff, preventing failed queries during startup.
 - **System warning banners** — Connector failures and coordinator wiring issues now surface directly in the dashboard as dismissible warning banners so you can act on problems immediately.
 </Update>
 
@@ -1640,7 +1640,7 @@ A new standalone Settings window gives you quick access to General, Providers, A
 
 ## Application menu overhaul
 
-The menu bar has been reorganized with a new Agent menu that gives you one-click access to [Knowledge](/guides/knowledge), [Skills](/plugins/skills), [Plugins](/plugins/overview), and [Social Connectors](/guides/connectors). File, View, and Window menus have also been expanded for quicker navigation.
+The menu bar has been reorganized with a new Agent menu that gives you one-click access to [Knowledge](/guides/documents), [Skills](/plugins/skills), [Plugins](/plugins/overview), and [Social Connectors](/guides/connectors). File, View, and Window menus have also been expanded for quicker navigation.
 
 ## Interactive tray provider management
 
@@ -1838,7 +1838,7 @@ The new Blooio plugin adds iMessage and SMS as a first-class messaging connector
 
 ## Bulk knowledge import
 
-You can now upload multiple files and entire folders to the [knowledge base](/guides/knowledge) at once. Large imports are processed in streaming batches so you don't need to upload files one at a time.
+You can now upload multiple files and entire folders to the [knowledge base](/guides/documents) at once. Large imports are processed in streaming batches so you don't need to upload files one at a time.
 
 ## In-app bug reports
 

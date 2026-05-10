@@ -487,9 +487,9 @@ class AnthropicAgent:
                 "thinking": {"type": "enabled", "budget_tokens": budget_tokens}
             }
             if self.use_isp:
-                logger.info("Thinking mode: INTERLEAVED SCRATCHPAD (ISP)")
+                logger.info("Thinking mode: INTERLEAVED WORKING NOTES (ISP)")
             else:
-                logger.info("Thinking mode: REGULAR SCRATCHPAD")
+                logger.info("Thinking mode: REGULAR WORKING NOTES")
 
         try:
             response = None

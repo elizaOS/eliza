@@ -27,12 +27,18 @@ function truncateInstallSkillText(text: string): string {
 		: `${text.slice(0, SKILL_INSTALL_TEXT_MAX_CHARS)}\n\n[truncated install result]`;
 }
 
-export const installSkillAction: Action = {
-	name: "INSTALL_SKILL",
+export const installSkillAction = {
+	name: "SKILL",
 	contexts: ["automation", "settings", "connectors"],
 	contextGate: { anyOf: ["automation", "settings", "connectors"] },
 	roleGate: { minRole: "USER" },
-	similes: ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"],
+	similes: [
+		"INSTALL_SKILL",
+		"DOWNLOAD_SKILL",
+		"ADD_SKILL",
+		"GET_SKILL",
+		"FETCH_SKILL",
+	],
 	description:
 		"Install a skill from the ClawHub registry. The skill will be security-scanned before activation. " +
 		'Provide a skill slug or search term, e.g. "install weather" or "add github".',
@@ -180,11 +186,11 @@ export const installSkillAction: Action = {
 				name: "{{agentName}}",
 				content: {
 					text: "Skill **Weather** (`weather`) installed successfully. The skill passed security scanning and is ready to use.",
-					actions: ["INSTALL_SKILL"],
+					actions: ["SKILL"],
 				},
 			},
 		],
 	],
-};
+} satisfies Action;
 
 export default installSkillAction;

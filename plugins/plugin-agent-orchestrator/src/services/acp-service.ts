@@ -85,7 +85,6 @@ const DENY_ENV_PATTERNS = [
 
 export class AcpService {
   static serviceType = "ACP_SUBPROCESS_SERVICE";
-  static compatType = "PTY_SERVICE";
 
   capabilityDescription =
     "Manages asynchronous ACPX task-agent sessions for open-ended background work";
@@ -111,29 +110,19 @@ export class AcpService {
     this.logger = (this.runtime.logger ?? {}) as RuntimeLogger;
     this.store = opts.store ?? new InMemorySessionStore();
     this.cliPath = this.setting("ELIZA_ACP_CLI") ?? "acpx";
-    this.defaultAgent =
-      this.setting("ELIZA_ACP_DEFAULT_AGENT") ??
-      this.setting("PARALLAX_DEFAULT_AGENT_TYPE") ??
-      "codex";
+    this.defaultAgent = this.setting("ELIZA_ACP_DEFAULT_AGENT") ?? "codex";
     this.defaultApprovalPreset = normalizeApprovalPreset(
       boolSetting(this.setting("ACPX_APPROVE_ALL")) === true
         ? "approve-all"
-        : // Public parity-spec name first; PRESET kept for backward compatibility with early drafts.
-          (this.setting("ELIZA_ACP_DEFAULT_APPROVAL") ??
-            this.setting("ELIZA_ACP_DEFAULT_APPROVAL_PRESET") ??
-            this.setting("PARALLAX_DEFAULT_APPROVAL_PRESET")),
+        : this.setting("ELIZA_ACP_DEFAULT_APPROVAL"),
     );
     this.agentSelectionStrategy =
-      this.setting("ELIZA_ACP_AGENT_SELECTION_STRATEGY") ??
-      this.setting("PARALLAX_AGENT_SELECTION_STRATEGY") ??
-      "fixed";
+      this.setting("ELIZA_ACP_AGENT_SELECTION_STRATEGY") ?? "fixed";
     this.maxSessions =
       parsePositiveInt(this.setting("ELIZA_ACP_MAX_SESSIONS")) ?? 8;
     this.sessionTimeoutMs = parsePositiveInt(
       this.setting("ACPX_DEFAULT_TIMEOUT_MS") ??
-        // Public parity-spec name first; SESSION kept for backward compatibility with early drafts.
-        this.setting("ELIZA_ACP_PROMPT_TIMEOUT_MS") ??
-        this.setting("ELIZA_ACP_SESSION_TIMEOUT_MS"),
+        this.setting("ELIZA_ACP_PROMPT_TIMEOUT_MS"),
     );
   }
 
@@ -142,16 +131,6 @@ export class AcpService {
       store: createDefaultSessionStore(runtime as RuntimeLike),
     });
     await service.start();
-    const servicesMap = runtime.services as Map<string, unknown[]> | undefined;
-    if (
-      servicesMap &&
-      process.env.ELIZA_ACP_REGISTER_AS_PTY_SERVICE !== "false"
-    ) {
-      const existing = servicesMap.get(AcpService.compatType);
-      if (!existing || existing.length === 0) {
-        servicesMap.set(AcpService.compatType, [service]);
-      }
-    }
     return service;
   }
 
@@ -180,11 +159,8 @@ export class AcpService {
     const approvalPreset = opts.approvalPreset ?? this.defaultApprovalPreset;
     const workdir = resolve(
       opts.workdir ??
-        // Public parity-spec name first; WORKDIR kept for backward compatibility with early drafts.
-        this.setting("ACPX_DEFAULT_CWD") ??
         this.setting("ELIZA_ACP_WORKSPACE_ROOT") ??
-        this.setting("ELIZA_ACP_WORKDIR_ROOT") ??
-        this.setting("PARALLAX_CODING_DIRECTORY") ??
+        this.setting("ACPX_DEFAULT_CWD") ??
         DEFAULT_WORKDIR_ROOT,
     );
     await mkdir(workdir, { recursive: true });
@@ -265,8 +241,8 @@ export class AcpService {
     }
 
     const updated = await this.store.get(id);
-    const fallback: SessionInfo = { ...session, status: "ready" };
-    return toSpawnResult(updated ?? fallback);
+    const sessionSnapshot: SessionInfo = { ...session, status: "ready" };
+    return toSpawnResult(updated ?? sessionSnapshot);
   }
 
   async sendPrompt(
@@ -481,8 +457,9 @@ export class AcpService {
     return this.sendPrompt(sessionId, input);
   }
 
-  async sendKeysToSession(): Promise<void> {
-    // TODO(W4): clarify with W6 how key events should map onto non-PTY acpx sessions.
+  async sendKeysToSession(sessionId: string): Promise<void> {
+    await this.requireSession(sessionId);
+    throw new Error("ACP sessions do not support raw key input.");
   }
 
   async stopSession(sessionId: string): Promise<void> {
@@ -666,19 +643,19 @@ export class AcpService {
 
   private handleAcpEvent(
     event: AcpJsonRpcMessage,
-    fallbackSessionId: string | undefined,
+    localSessionId: string | undefined,
     currentFinalText: string,
     startedAt: number,
   ): { finalText: string; stopReason?: string } {
     const protocolSessionId = extractSessionId(event);
-    const sessionId = fallbackSessionId ?? protocolSessionId;
+    const sessionId = localSessionId ?? protocolSessionId;
     if (
-      fallbackSessionId &&
+      localSessionId &&
       protocolSessionId &&
-      protocolSessionId !== fallbackSessionId
+      protocolSessionId !== localSessionId
     ) {
       void this.store
-        .update(fallbackSessionId, { acpxSessionId: protocolSessionId })
+        .update(localSessionId, { acpxSessionId: protocolSessionId })
         .catch(() => undefined);
     }
     for (const callback of this.acpCallbacks) callback(event, sessionId);
@@ -728,7 +705,7 @@ export class AcpService {
         this.appendOutput(sessionId, content.text);
         this.emitSessionEvent(sessionId, "message", { text: content.text });
       }
-      // Legacy/other adapters may put text directly at content level (no agent_message_chunk wrapper)
+      // Some adapters put text directly at content level.
       else if (
         !sessionUpdate &&
         content?.type === "text" &&
@@ -787,7 +764,7 @@ export class AcpService {
     return { finalText, stopReason };
   }
 
-  private emitSessionEvent(
+  emitSessionEvent(
     sessionId: string,
     event: SessionEventName,
     data: unknown,
@@ -909,8 +886,6 @@ export class AcpService {
     loggerFn?.call(this.logger, `[AcpService] ${message}`, data);
   }
 }
-
-export { AcpService as AcpxSubprocessService };
 
 function approvalArgs(preset: ApprovalPreset): string[] {
   switch (preset) {

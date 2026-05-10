@@ -2,6 +2,8 @@ import { WebPlugin } from "@capacitor/core";
 
 import type {
   AutoLaunchOptions,
+  DesktopPermissionId,
+  DesktopPermissionState,
   GlobalShortcut,
   GlobalShortcutEvent,
   NotificationEvent,
@@ -313,5 +315,38 @@ export class DesktopWeb extends WebPlugin {
       .forEach((l) => {
         l.callback(data);
       });
+  }
+
+  // System Permissions — web-platform stubs.
+  // The browser has no concept of these macOS-style permissions; report
+  // not-applicable so callers fall back to web APIs (navigator.permissions,
+  // getUserMedia, etc.) where appropriate.
+  async checkPermission(options: {
+    id: DesktopPermissionId;
+  }): Promise<DesktopPermissionState> {
+    // The Capacitor web shim runs in the renderer where `process` may
+    // not exist. Node types are not in this package's tsconfig, so we
+    // detect it via `globalThis` to keep this self-contained.
+    const proc = (globalThis as { process?: { platform?: string } }).process;
+    const platform = ((): DesktopPermissionState["platform"] => {
+      const p = proc?.platform;
+      if (p === "darwin" || p === "win32" || p === "linux") return p;
+      return "linux";
+    })();
+    return {
+      id: options.id,
+      status: "not-applicable",
+      restrictedReason: "platform_unsupported",
+      lastChecked: Date.now(),
+      canRequest: false,
+      platform,
+    };
+  }
+
+  async requestPermission(options: {
+    id: DesktopPermissionId;
+    reason: string;
+  }): Promise<DesktopPermissionState> {
+    return this.checkPermission({ id: options.id });
   }
 }

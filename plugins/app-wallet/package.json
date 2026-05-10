@@ -1,74 +1,29 @@
 {
   "name": "@elizaos/app-wallet",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "bun": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./ui": {
-      "types": "./src/ui.ts",
-      "import": "./dist/ui.js",
-      "default": "./dist/ui.js"
-    },
-    "./plugin": {
-      "types": "./src/plugin.ts",
-      "import": "./dist/plugin.js",
-      "default": "./dist/plugin.js"
-    },
-    "./register": {
-      "types": "./src/register.ts",
-      "import": "./dist/register.js",
-      "default": "./dist/register.js"
-    },
-    "./inventory/ChainIcon": {
-      "types": "./src/inventory/ChainIcon.tsx",
-      "import": "./dist/inventory/ChainIcon.js",
-      "default": "./dist/inventory/ChainIcon.js"
-    },
-    "./inventory/TokenLogo": {
-      "types": "./src/inventory/TokenLogo.tsx",
-      "import": "./dist/inventory/TokenLogo.js",
-      "default": "./dist/inventory/TokenLogo.js"
-    },
-    "./state/*": {
-      "types": "./src/state/*.ts",
-      "import": "./dist/state/*.js",
-      "default": "./dist/state/*.js"
-    },
-    "./inventory/*": {
-      "types": "./src/inventory/*.ts",
-      "import": "./dist/inventory/*.js",
-      "default": "./dist/inventory/*.js"
-    },
-    "./widgets/*": {
-      "types": "./src/widgets/*.tsx",
-      "import": "./dist/widgets/*.js",
-      "default": "./dist/widgets/*.js"
-    },
-    "./wallet-rpc": {
-      "types": "./src/wallet-rpc.ts",
-      "import": "./dist/wallet-rpc.js",
-      "default": "./dist/wallet-rpc.js"
-    },
-    "./*": {
-      "types": "./src/*",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
     }
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1",
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/plugin-wallet": "workspace:*",
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/plugin-wallet": "2.0.0-beta.1",
     "react": ">=18.0.0"
   },
   "elizaos": {
@@ -79,10 +34,12 @@
   "publishConfig": {
     "access": "public"
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "clean": "rm -rf dist"
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [
     "dist"

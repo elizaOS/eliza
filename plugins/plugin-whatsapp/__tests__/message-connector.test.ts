@@ -11,7 +11,7 @@ type ConnectorContent = Parameters<RuntimeSendHandler>[2];
 type MessageConnectorRegistration = Parameters<IAgentRuntime["registerMessageConnector"]>[0];
 
 function makeRuntime(registrations: MessageConnectorRegistration[]): IAgentRuntime {
-  return {
+  const runtime = {
     agentId: "agent-1" as UUID,
     registerMessageConnector: vi.fn((registration: MessageConnectorRegistration) => {
       registrations.push(registration);
@@ -19,7 +19,9 @@ function makeRuntime(registrations: MessageConnectorRegistration[]): IAgentRunti
     registerSendHandler: vi.fn(),
     getRoom: vi.fn(async () => null),
     getMemoryById: vi.fn(async () => null),
-  } as unknown as IAgentRuntime;
+  };
+
+  return runtime as never as IAgentRuntime;
 }
 
 describe("WhatsApp message connector registration", () => {
@@ -42,7 +44,11 @@ describe("WhatsApp message connector registration", () => {
       findKnownChatByParticipant: vi.fn((participant: string) =>
         participant === known.senderId ? known : null
       ),
-    } as unknown as WhatsAppConnectorService;
+      fetchConnectorMessages: vi.fn(async () => []),
+      searchConnectorMessages: vi.fn(async () => []),
+      reactConnectorMessage: vi.fn(async () => undefined),
+      getConnectorUser: vi.fn(async () => null),
+    } as never as WhatsAppConnectorService;
 
     WhatsAppConnectorService.registerSendHandlers(runtime, service);
 
@@ -60,6 +66,7 @@ describe("WhatsApp message connector registration", () => {
         label: "Alice",
         kind: "phone",
         target: expect.objectContaining({
+          accountId: "default",
           channelId: "+14155552671",
         }),
       })
@@ -72,6 +79,39 @@ describe("WhatsApp message connector registration", () => {
     );
 
     expect(service.sendMessage).toHaveBeenCalledWith({
+      accountId: "default",
+      type: "text",
+      to: "+14155552671",
+      content: "hello",
+      replyToMessageId: undefined,
+    });
+  });
+
+  it("threads target accountId through normalized sends", async () => {
+    const registrations: MessageConnectorRegistration[] = [];
+    const runtime = makeRuntime(registrations);
+    const service = {
+      connected: true,
+      config: { transport: "cloudapi" },
+      sendMessage: vi.fn(async () => ({ messages: [{ id: "wamid.2" }] })),
+      listKnownTargets: vi.fn(() => []),
+      getKnownTarget: vi.fn(() => null),
+      findKnownChatByParticipant: vi.fn(() => null),
+      fetchConnectorMessages: vi.fn(async () => []),
+      searchConnectorMessages: vi.fn(async () => []),
+      reactConnectorMessage: vi.fn(async () => undefined),
+      getConnectorUser: vi.fn(async () => null),
+    } as never as WhatsAppConnectorService;
+
+    WhatsAppConnectorService.registerSendHandlers(runtime, service);
+    await registrations[0].sendHandler?.(
+      runtime,
+      { source: "whatsapp", accountId: "work", entityId: "+1 (415) 555-2671" as UUID } as ConnectorTargetInfo,
+      { text: "hello" } as ConnectorContent
+    );
+
+    expect(service.sendMessage).toHaveBeenCalledWith({
+      accountId: "work",
       type: "text",
       to: "+14155552671",
       content: "hello",

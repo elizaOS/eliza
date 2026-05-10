@@ -26,6 +26,7 @@ import {
 	type Memory,
 	type MemoryMetadata,
 	type Plugin,
+	resolveStateDir,
 	Service,
 	stringToUuid,
 	type UUID,
@@ -63,6 +64,10 @@ type DiscordLocalSession = {
 	expiresAt?: number;
 	scopes: string[];
 };
+
+// TODO(plugin-discord multi-account handoff): thread accountId through the
+// browser/CDP auth partition before enabling multiple Discord local bridge
+// accounts. This stream only adds bot-token account routing.
 
 type DiscordLocalUser = {
 	id: string;
@@ -124,20 +129,6 @@ type PendingRpcRequest = {
 	resolve: (value: DiscordLocalRpcPayload) => void;
 	reject: (error: Error) => void;
 };
-
-// ── Inline state-dir resolution (avoids @elizaos/agent dependency) ──
-
-function resolveStateDir(): string {
-	const explicit = process.env.ELIZA_STATE_DIR?.trim() || undefined;
-	if (explicit) {
-		if (explicit.startsWith("~")) {
-			return path.resolve(explicit.replace(/^~(?=$|[\\/])/, os.homedir()));
-		}
-		return path.resolve(explicit);
-	}
-	const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
-	return path.join(os.homedir(), `.${namespace}`);
-}
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -263,8 +254,7 @@ function outboundMemoryIdFor(runtime: IAgentRuntime, roomId: UUID): UUID {
 function getRegisteredSendHandlers(
 	runtime: IAgentRuntime,
 ): Map<string, unknown> | null {
-	const sendHandlers = (runtime as unknown as { sendHandlers?: unknown })
-		.sendHandlers;
+	const sendHandlers = (runtime as { sendHandlers?: unknown }).sendHandlers;
 	return sendHandlers instanceof Map ? sendHandlers : null;
 }
 

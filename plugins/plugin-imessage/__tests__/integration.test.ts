@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 
 import imessagePlugin, {
   appleDateToJsMs,
-  chatContextProvider,
   chatDbMessageToPublicShape,
   formatPhoneNumber,
   getLastChatDbAccessIssue,
@@ -49,8 +48,7 @@ describe("iMessage plugin exports", () => {
     expect(Array.isArray(imessagePlugin.services)).toBe(true);
   });
 
-  it("exports providers and service", () => {
-    expect(chatContextProvider).toBeDefined();
+  it("exports service", () => {
     expect(IMessageService).toBeDefined();
   });
 
@@ -520,22 +518,10 @@ describe("Error classes", () => {
 // Action validation
 // ============================================================
 
-// IMESSAGE_SEND_MESSAGE used to be a standalone action; now the iMessage
-// MessageConnector (registered by IMessageService.registerSendHandlers) is
-// the canonical send path through SEND_MESSAGE. The plugin no longer ships a
-// dedicated send action, so the action-shape and validate/handler tests that
-// lived here have been retired with the action.
-
-// ============================================================
-// Chat context provider
-// ============================================================
-
-describe("chatContextProvider", () => {
-  it("has correct provider metadata", () => {
-    expect(chatContextProvider.name).toBe("imessageChatContext");
-    expect(chatContextProvider.description).toContain("iMessage");
-  });
-});
+// The former iMessage-specific send action is now handled by the iMessage
+// MessageConnector registered by IMessageService.registerSendHandlers. The
+// canonical send path is MESSAGE operation=send, so the dedicated action-shape
+// and validate/handler tests that lived here have been retired with the action.
 
 // ============================================================
 // chat.db reader (bun:sqlite) — inbound polling

@@ -3,16 +3,14 @@ import type {
   Memory,
   Provider,
   ProviderResult,
+  RelationshipsGraphService,
+  RelationshipsPersonSummary,
+  Service,
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
-import { hasAdminAccess } from "../security/access.js";
-import type {
-  RelationshipsGraphService,
-  RelationshipsPersonSummary,
-} from "../services/relationships-graph.js";
-import { resolveRelationshipsGraphService } from "../services/relationships-graph.js";
+import { hasAdminAccess } from "../security/access.ts";
 
 const MAX_CONTACTS = 10;
 
@@ -66,9 +64,9 @@ export const rolodexProvider: Provider = {
     }
 
     try {
-      const graphService = (await resolveRelationshipsGraphService(
-        runtime,
-      )) as RelationshipsGraphService | null;
+      const graphService = runtime.getService<
+        Service & RelationshipsGraphService
+      >("relationships");
 
       if (!graphService) {
         return { text: "", values: {}, data: {} };

@@ -1,21 +1,8 @@
 import type { Plugin } from "@elizaos/core";
 import {
-  askUserQuestionAction,
-  bashAction,
-  editAction,
-  enterWorktreeAction,
-  exitWorktreeAction,
-  globAction,
-  grepAction,
-  lsAction,
-  notebookEditAction,
-  readAction,
-  taskOutputAction,
-  taskStopAction,
-  todoWriteAction,
-  webFetchAction,
-  webSearchAction,
-  writeAction,
+  fileAction,
+  shellAction,
+  worktreeAction,
 } from "./actions/index.js";
 import { availableToolsProvider } from "./providers/available-tools.js";
 import {
@@ -23,49 +10,51 @@ import {
   RipgrepService,
   SandboxService,
   SessionCwdService,
-  ShellTaskService,
 } from "./services/index.js";
 
 export const codingToolsPlugin: Plugin = {
   name: "coding-tools",
   description:
-    "Native Claude-Code-style coding tools. READ, WRITE, EDIT, NOTEBOOK_EDIT, BASH (+ TASK_OUTPUT, TASK_STOP for backgrounded jobs), GREP, GLOB, LS, WEB_FETCH, CODE_WEB_SEARCH, TODO_WRITE, ASK_USER_QUESTION, ENTER_WORKTREE, EXIT_WORKTREE. All file paths must be absolute. Blocks user-private paths (~/pvt, ~/Library, ~/.ssh, etc.) by default; otherwise unrestricted.",
+    "Native Claude-Code-style coding tools. FILE owns read/write/edit/grep/glob/ls operations, SHELL runs local commands, and WORKTREE owns enter/exit worktree operations. The TODO umbrella action is provided by @elizaos/plugin-todos. WEB_SEARCH is provided by core/agent. All file paths must be absolute unless an operation explicitly defaults to session cwd. Blocks user-private + per-OS system paths by default.",
   services: [
     FileStateService,
     SandboxService,
     SessionCwdService,
     RipgrepService,
-    ShellTaskService,
   ],
   providers: [availableToolsProvider],
   actions: [
-    readAction,
-    writeAction,
-    editAction,
-    notebookEditAction,
-    bashAction,
-    taskOutputAction,
-    taskStopAction,
-    grepAction,
-    globAction,
-    lsAction,
-    webFetchAction,
-    webSearchAction,
-    todoWriteAction,
-    askUserQuestionAction,
-    enterWorktreeAction,
-    exitWorktreeAction,
+    fileAction,
+    shellAction,
+    worktreeAction,
   ],
+  // Self-declared auto-enable: activate when features.codingTools is enabled,
+  // or via the legacy "coding-agent" feature key (the plugin was renamed).
+  autoEnable: {
+    shouldEnable: (_env, config) => {
+      const features = config?.features as Record<string, unknown> | undefined;
+      const isFeatureEnabled = (f: unknown) =>
+        f === true ||
+        (typeof f === "object" &&
+          f !== null &&
+          (f as { enabled?: unknown }).enabled !== false);
+      return (
+        isFeatureEnabled(features?.codingTools) ||
+        isFeatureEnabled(features?.["coding-agent"])
+      );
+    },
+  },
 };
 
 export default codingToolsPlugin;
 
 export {
+  CodingTaskExecutor,
   FileStateService,
   RipgrepService,
   SandboxService,
   SessionCwdService,
-  ShellTaskService,
 } from "./services/index.js";
+export * from "./services/coding-agent-context.js";
 export { availableToolsProvider } from "./providers/available-tools.js";
 export * from "./types.js";

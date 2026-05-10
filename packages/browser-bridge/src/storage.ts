@@ -65,6 +65,15 @@ function normalizeOriginCandidate(
   }
 }
 
+function normalizeIsoString(value: unknown): string | null {
+  const normalized = normalizeString(value);
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
 function isLoopbackHost(hostname: string): boolean {
   const normalized = hostname.trim().toLowerCase();
   return (
@@ -217,6 +226,7 @@ export function normalizeCompanionConfig(
     apiBaseUrl,
     companionId,
     pairingToken,
+    pairingTokenExpiresAt: normalizeIsoString(input.pairingTokenExpiresAt),
     browser,
     profileId,
     profileLabel,

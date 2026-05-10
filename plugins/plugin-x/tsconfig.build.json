@@ -6,8 +6,7 @@
     "sourceMap": true,
     "inlineSources": true,
     "declaration": true,
-    "emitDeclarationOnly": true,
-    "paths": {}
+    "emitDeclarationOnly": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]

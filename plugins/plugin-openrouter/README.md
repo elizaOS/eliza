@@ -98,8 +98,8 @@ app.post("/openrouter/*", async (req, res) => {
 app.listen(3000);
 ```
 
-- `OPENROUTER_SMALL_MODEL`: Specific model to use for `TEXT_SMALL` and `OBJECT_SMALL`. Overrides `SMALL_MODEL` if set.
-- `OPENROUTER_LARGE_MODEL`: Specific model to use for `TEXT_LARGE` and `OBJECT_LARGE`. Overrides `LARGE_MODEL` if set.
+- `OPENROUTER_SMALL_MODEL`: Specific model to use for `TEXT_SMALL`. Overrides `SMALL_MODEL` if set.
+- `OPENROUTER_LARGE_MODEL`: Specific model to use for `TEXT_LARGE`. Overrides `LARGE_MODEL` if set.
 - `OPENROUTER_IMAGE_MODEL`: Specific model to use for `IMAGE_DESCRIPTION`. Overrides `IMAGE_MODEL` if set.
 - `OPENROUTER_IMAGE_GENERATION_MODEL`: Specific model to use for `IMAGE` generation. Overrides `IMAGE_GENERATION_MODEL` if set.
 - `OPENROUTER_EMBEDDING_MODEL`: Specific model to use for `TEXT_EMBEDDING`. Overrides `EMBEDDING_MODEL` if set.
@@ -116,10 +116,8 @@ app.listen(3000);
 
 The plugin currently provides these model types:
 
-- `TEXT_SMALL`: Optimized for fast, cost-effective text generation using the configured small model.
-- `TEXT_LARGE`: For more complex text generation tasks requiring larger models, using the configured large model.
-- `OBJECT_SMALL`: Generates structured JSON objects based on a prompt, using the configured small model.
-- `OBJECT_LARGE`: Generates structured JSON objects based on a prompt, using the configured large model.
+- `TEXT_SMALL`: Optimized for fast, cost-effective text generation using the configured small model. Supports `tools`, `toolChoice`, and `responseSchema` for structured output via native tool calling.
+- `TEXT_LARGE`: For more complex text generation tasks requiring larger models, using the configured large model. Supports `tools`, `toolChoice`, and `responseSchema` for structured output via native tool calling.
 - `IMAGE_DESCRIPTION`: Analyzes images and provides descriptive text and titles, using the configured image model.
 - `IMAGE`: Generates images from text prompts using the configured image generation model (e.g., Gemini 2.5 Flash Image Preview).
 - `TEXT_EMBEDDING`: Generates vector embeddings for text input, supporting configurable dimensions from 256 to 3072, using the configured embedding model.

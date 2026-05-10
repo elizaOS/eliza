@@ -1,10 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-	findKeywordTermMatch,
-	getValidationKeywordTerms,
-} from "../../i18n/validation-keywords.ts";
 import { logger } from "../../logger";
+import { checkSenderRole, hasRoleAccess, isAgentSelf } from "../../roles";
 import type {
 	Action,
 	ActionExample,
@@ -18,29 +15,71 @@ import type {
 	State,
 	UUID,
 } from "../../types";
-import { hasActionContextOrKeyword } from "../../utils/action-validation.ts";
-import { addKnowledgeFromFilePath } from "./docs-loader.ts";
-import { KnowledgeService, type SearchMode } from "./service.ts";
-import { fetchKnowledgeFromUrl, isYouTubeUrl } from "./url-ingest.ts";
-import { createKnowledgeNoteFilename, deriveKnowledgeTitle } from "./utils.ts";
+import { addDocumentFromFilePath } from "./docs-loader.ts";
+import { DocumentService, type SearchMode } from "./service.ts";
+import type {
+	DocumentAddedByRole,
+	DocumentAddedFrom,
+	DocumentVisibilityScope,
+	StoredDocument,
+} from "./types.ts";
+import { fetchDocumentFromUrl, isYouTubeUrl } from "./url-ingest.ts";
+import { createDocumentNoteFilename, deriveDocumentTitle } from "./utils.ts";
 
-type ExtendedValidator = (
-	runtime: IAgentRuntime,
-	message: Memory,
-	state?: State,
-	options?: unknown,
-) => Promise<boolean>;
+type DocumentSubAction =
+	| "list"
+	| "search"
+	| "read"
+	| "write"
+	| "edit"
+	| "delete"
+	| "import_file"
+	| "import_url";
 
-const PROCESS_KNOWLEDGE_TERMS = getValidationKeywordTerms(
-	"action.processKnowledge.request",
-	{ includeAllLocales: true },
-);
-const SEARCH_KNOWLEDGE_TERMS = getValidationKeywordTerms(
-	"action.searchKnowledge.request",
-	{ includeAllLocales: true },
-);
-const KNOWLEDGE_PATH_PATTERN =
-	/(?:\/[\w.-]+)+|(?:[a-zA-Z]:[\\/][\w\s.-]+(?:[\\/][\w\s.-]+)*)/;
+type DocumentActionParameters = {
+	action?: string;
+	subaction?: string;
+	query?: string;
+	id?: string;
+	documentId?: string;
+	text?: string;
+	content?: string;
+	title?: string;
+	filePath?: string;
+	url?: string;
+	tags?: string[];
+	limit?: number;
+	offset?: number;
+	searchMode?: string;
+	includeImageDescriptions?: boolean;
+	scope?: string;
+	scopedToEntityId?: string;
+	addedBy?: string;
+	timeRangeStart?: string | number;
+	timeRangeEnd?: string | number;
+};
+
+const DOCUMENT_SUB_ACTIONS = new Set<DocumentSubAction>([
+	"list",
+	"search",
+	"read",
+	"write",
+	"edit",
+	"delete",
+	"import_file",
+	"import_url",
+]);
+
+const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
+	"global",
+	"owner-private",
+	"user-private",
+	"agent-private",
+]);
+
+const DOCUMENT_PATH_PATTERN =
+	/(?:\/[\w .-]+)+|(?:[a-zA-Z]:[\\/][\w\s.-]+(?:[\\/][\w\s.-]+)*)/;
+const URL_PATTERN = /https?:\/\/[^\s)]+/i;
 
 const DOCUMENTS_SEARCH_CATEGORY: SearchCategoryRegistration = {
 	category: "documents",
@@ -51,13 +90,13 @@ const DOCUMENTS_SEARCH_CATEGORY: SearchCategoryRegistration = {
 		{
 			name: "scope",
 			label: "Scope",
-			description: "Optional scope: room, world, entity, or agent.",
+			description: "Optional visibility scope for stored documents.",
 			type: "enum",
 			options: [
-				{ label: "Room", value: "room" },
-				{ label: "World", value: "world" },
-				{ label: "Entity", value: "entity" },
-				{ label: "Agent", value: "agent" },
+				{ label: "Global", value: "global" },
+				{ label: "Owner private", value: "owner-private" },
+				{ label: "User private", value: "user-private" },
+				{ label: "Agent private", value: "agent-private" },
 			],
 		},
 	],
@@ -65,7 +104,7 @@ const DOCUMENTS_SEARCH_CATEGORY: SearchCategoryRegistration = {
 		"StoredDocument[] with id, content.text, similarity, metadata, and worldId.",
 	capabilities: ["semantic", "documents", "fragments"],
 	source: "core:documents",
-	serviceType: KnowledgeService.serviceType,
+	serviceType: DocumentService.serviceType,
 };
 
 function hasSearchCategory(runtime: IAgentRuntime, category: string): boolean {
@@ -83,668 +122,53 @@ export function registerDocumentsSearchCategory(runtime: IAgentRuntime): void {
 	}
 }
 
-/** @deprecated Use registerDocumentsSearchCategory */
-export const registerKnowledgeSearchCategory = registerDocumentsSearchCategory;
+function getParams(
+	options?: HandlerOptions | unknown,
+): DocumentActionParameters {
+	const maybeOptions = options as HandlerOptions | undefined;
+	const params = maybeOptions?.parameters;
+	return params && typeof params === "object"
+		? (params as DocumentActionParameters)
+		: {};
+}
 
-// ─── IMPORT_DOCUMENT_FROM_FILE (was PROCESS_KNOWLEDGE) ────────────────────────
+function normalizeSubAction(value: unknown): DocumentSubAction | null {
+	if (typeof value !== "string") return null;
+	const normalized = value.trim().toLowerCase().replace(/-/g, "_");
+	return DOCUMENT_SUB_ACTIONS.has(normalized as DocumentSubAction)
+		? (normalized as DocumentSubAction)
+		: null;
+}
 
-export const importDocumentFromFileAction: Action = {
-	name: "IMPORT_DOCUMENT_FROM_FILE",
-	contexts: ["documents"],
-	contextGate: { anyOf: ["documents"] },
-	roleGate: { minRole: "USER" },
-	description:
-		"Import and store a document from a file path or text content into the document store",
-	suppressPostActionContinuation: true,
-	parameters: [
-		{
-			name: "filePath",
-			description: "Optional local file path to ingest as a document.",
-			required: false,
-			schema: { type: "string" as const },
-		},
-		{
-			name: "content",
-			description: "Optional text content to store as a document.",
-			required: false,
-			schema: { type: "string" as const },
-		},
-		{
-			name: "title",
-			description: "Optional title for text-backed documents.",
-			required: false,
-			schema: { type: "string" as const },
-		},
-	],
-	similes: ["PROCESS_KNOWLEDGE"],
-	examples: [
-		[
-			{
-				name: "user",
-				content: { text: "Import the document at /path/to/document.pdf" },
-			},
-			{
-				name: "assistant",
-				content: {
-					text: "I'll import the document at /path/to/document.pdf and add it to my document store.",
-					actions: ["IMPORT_DOCUMENT_FROM_FILE"],
-				},
-			},
-		],
-		[
-			{
-				name: "user",
-				content: {
-					text: "Add this to your documents: The capital of France is Paris.",
-				},
-			},
-			{
-				name: "assistant",
-				content: {
-					text: "I'll add that information to my document store.",
-					actions: ["IMPORT_DOCUMENT_FROM_FILE"],
-				},
-			},
-		],
-	],
+function inferSubAction(
+	params: DocumentActionParameters,
+	message: Memory,
+): DocumentSubAction | null {
+	const explicit =
+		normalizeSubAction(params.action) ?? normalizeSubAction(params.subaction);
+	if (explicit) return explicit;
 
-	validate: async (
-		runtime: IAgentRuntime,
-		message: Memory,
-		state?: State,
-		options?: unknown,
-	): Promise<boolean> => {
-		registerDocumentsSearchCategory(runtime);
-		const __avLegacyValidate: ExtendedValidator = async (
-			runtime: IAgentRuntime,
-			message: Memory,
-			_state?: State,
-			_options?: unknown,
-		) => {
-			const text = message.content.text ?? "";
-			const hasKeyword =
-				findKeywordTermMatch(text, PROCESS_KNOWLEDGE_TERMS) !== undefined;
-			const hasPath = KNOWLEDGE_PATH_PATTERN.test(text);
-			const service = runtime.getService(KnowledgeService.serviceType);
-			if (!service) {
-				logger.warn(
-					"Documents service not available for IMPORT_DOCUMENT_FROM_FILE action",
-				);
-				return false;
-			}
-			return hasKeyword || hasPath;
-		};
-		try {
-			const hasLegacySignal = await __avLegacyValidate(
-				runtime,
-				message,
-				state,
-				options,
-			);
-			return (
-				hasLegacySignal ||
-				hasActionContextOrKeyword(message, state, {
-					contexts: ["documents"],
-					keywordKeys: ["action.processKnowledge.request"],
-					keywords: ["document", "file", "pdf", "remember this"],
-				})
-			);
-		} catch {
-			return false;
-		}
-	},
-
-	handler: async (
-		runtime: IAgentRuntime,
-		message: Memory,
-		_state?: State,
-		_options?: HandlerOptions,
-		callback?: HandlerCallback,
-	) => {
-		try {
-			registerDocumentsSearchCategory(runtime);
-			const service = runtime.getService<KnowledgeService>(
-				KnowledgeService.serviceType,
-			);
-			if (!service) {
-				throw new Error("Documents service not available");
-			}
-
-			const params =
-				_options?.parameters && typeof _options.parameters === "object"
-					? (_options.parameters as Record<string, unknown>)
-					: {};
-			const explicitPath =
-				typeof params.filePath === "string" && params.filePath.trim()
-					? params.filePath.trim()
-					: undefined;
-			const explicitContent =
-				typeof params.content === "string" && params.content.trim()
-					? params.content.trim()
-					: undefined;
-			const explicitTitle =
-				typeof params.title === "string" && params.title.trim()
-					? params.title.trim()
-					: undefined;
-			const text =
-				explicitContent ?? explicitPath ?? message.content.text ?? "";
-			const pathMatch = text.match(KNOWLEDGE_PATH_PATTERN);
-
-			let response: Content;
-
-			if (pathMatch) {
-				const filePath = pathMatch[0];
-				if (!fs.existsSync(filePath)) {
-					response = {
-						text: `I couldn't find the file at ${filePath}. Please check the path and try again.`,
-					};
-					if (callback) await callback(response);
-					return {
-						success: false,
-						text: response.text,
-						data: { actionName: "IMPORT_DOCUMENT_FROM_FILE" },
-					};
-				}
-
-				const fileName = path.basename(filePath);
-				const result = await addKnowledgeFromFilePath({
-					service,
-					agentId: runtime.agentId,
-					worldId: runtime.agentId,
-					roomId: runtime.agentId,
-					entityId: runtime.agentId,
-					filePath,
-					metadata: {
-						source: "learned",
-						learnedVia: "IMPORT_DOCUMENT_FROM_FILE",
-						learnedFromPath: filePath,
-					},
-				});
-				response = {
-					text: `I've successfully imported the document "${fileName}". It has been split into ${result?.fragmentCount || 0} searchable fragments and added to my document store.`,
-				};
-			} else {
-				const documentContent = text
-					.replace(
-						/^(add|store|remember|process|learn)\s+(this|that|the following)?:?\s*/i,
-						"",
-					)
-					.trim();
-
-				if (!documentContent) {
-					response = {
-						text: "I need some content to add to my document store. Please provide text or a file path.",
-					};
-					if (callback) await callback(response);
-					return {
-						success: false,
-						text: response.text,
-						data: { actionName: "IMPORT_DOCUMENT_FROM_FILE" },
-					};
-				}
-
-				const title =
-					explicitTitle ??
-					deriveKnowledgeTitle(documentContent, "Stored document");
-				const filename = createKnowledgeNoteFilename(title);
-
-				await service.addKnowledge({
-					clientDocumentId: "" as UUID,
-					contentType: "text/plain",
-					originalFilename: filename,
-					worldId: runtime.agentId,
-					content: documentContent,
-					roomId: runtime.agentId,
-					entityId: runtime.agentId,
-					metadata: {
-						source: "learned",
-						learnedVia: "IMPORT_DOCUMENT_FROM_FILE",
-						title,
-						filename,
-						originalFilename: filename,
-						fileExt: "txt",
-						fileType: "text/plain",
-						contentType: "text/plain",
-						fileSize: Buffer.byteLength(documentContent, "utf8"),
-						textBacked: true,
-					},
-				});
-
-				response = {
-					text: "I've added that information to my document store. It has been stored and indexed for future reference.",
-				};
-			}
-
-			if (callback) await callback(response);
-			return {
-				success: true,
-				text: response.text,
-				data: { actionName: "IMPORT_DOCUMENT_FROM_FILE" },
-			};
-		} catch (error) {
-			logger.error({ error }, "Error in IMPORT_DOCUMENT_FROM_FILE action");
-			const errorResponse: Content = {
-				text: `I encountered an error while importing the document: ${error instanceof Error ? error.message : String(error)}`,
-			};
-			if (callback) await callback(errorResponse);
-			return {
-				success: false,
-				text: errorResponse.text,
-				error: error instanceof Error ? error.message : String(error),
-				data: { actionName: "IMPORT_DOCUMENT_FROM_FILE" },
-			};
-		}
-	},
-};
-
-/** @deprecated Use importDocumentFromFileAction */
-export const processKnowledgeAction: Action = {
-	...importDocumentFromFileAction,
-	name: "PROCESS_KNOWLEDGE",
-	similes: ["IMPORT_DOCUMENT_FROM_FILE"],
-};
-
-// ─── SEARCH_DOCUMENTS (was SEARCH_KNOWLEDGE) ──────────────────────────────────
-
-export const searchDocumentsAction: Action = {
-	name: "SEARCH_DOCUMENTS",
-	contexts: ["documents"],
-	contextGate: { anyOf: ["documents"] },
-	roleGate: { minRole: "USER" },
-	description: "Search the document store for specific information",
-	suppressPostActionContinuation: true,
-	parameters: [
-		{
-			name: "query",
-			description: "Document search query.",
-			required: false,
-			schema: { type: "string" as const },
-		},
-		{
-			name: "limit",
-			description: "Maximum number of matching documents to include.",
-			required: false,
-			schema: { type: "number" as const, minimum: 1, maximum: 20, default: 3 },
-		},
-		{
-			name: "searchMode",
-			description:
-				"Retrieval strategy: 'hybrid' (default, vector + BM25 combined), 'vector' (pure semantic), or 'keyword' (pure BM25, works without an embedding model).",
-			required: false,
-			schema: {
-				type: "string" as const,
-				enum: ["hybrid", "vector", "keyword"],
-			},
-		},
-	],
-	similes: [
-		"SEARCH_KNOWLEDGE",
-		"search documents",
-		"find information",
-		"look up",
-		"query document store",
-		"find in documents",
-	],
-	examples: [
-		[
-			{
-				name: "user",
-				content: {
-					text: "Search your documents for information about quantum computing",
-				},
-			},
-			{
-				name: "assistant",
-				content: {
-					text: "I'll search my document store for information about quantum computing.",
-					actions: ["SEARCH_DOCUMENTS"],
-				},
-			},
-		],
-	],
-
-	validate: async (
-		runtime: IAgentRuntime,
-		message: Memory,
-		state?: State,
-		options?: unknown,
-	): Promise<boolean> => {
-		const __avLegacyValidate: ExtendedValidator = async (
-			runtime: IAgentRuntime,
-			message: Memory,
-			_state?: State,
-			_options?: unknown,
-		) => {
-			const params =
-				_options && typeof _options === "object"
-					? ((_options as Record<string, unknown>).parameters as
-							| Record<string, unknown>
-							| undefined)
-					: undefined;
-			if (typeof params?.query === "string" && params.query.trim()) {
-				return Boolean(runtime.getService(KnowledgeService.serviceType));
-			}
-			const text = message.content.text ?? "";
-			const hasSearchKeyword =
-				findKeywordTermMatch(text, SEARCH_KNOWLEDGE_TERMS) !== undefined;
-			const service = runtime.getService(KnowledgeService.serviceType);
-			if (!service) return false;
-			return hasSearchKeyword;
-		};
-		try {
-			return Boolean(
-				await __avLegacyValidate(runtime, message, state, options),
-			);
-		} catch {
-			return false;
-		}
-	},
-
-	handler: async (
-		runtime: IAgentRuntime,
-		message: Memory,
-		_state?: State,
-		_options?: HandlerOptions,
-		callback?: HandlerCallback,
-	) => {
-		try {
-			const service = runtime.getService<KnowledgeService>(
-				KnowledgeService.serviceType,
-			);
-			if (!service) {
-				throw new Error("Documents service not available");
-			}
-
-			const params = _options?.parameters as
-				| { query?: string; limit?: number; searchMode?: string }
-				| undefined;
-			const text = message.content.text || "";
-
-			const query =
-				typeof params?.query === "string" && params.query.trim()
-					? params.query.trim()
-					: text
-							.replace(
-								/^(search|find|look up|query)\s+(your\s+)?(?:knowledge|documents?)\s+(?:base\s+)?(?:for\s+)?/i,
-								"",
-							)
-							.trim();
-
-			if (!query) {
-				const response: Content = {
-					text: "What would you like me to search for in my document store?",
-				};
-				if (callback) await callback(response);
-				return {
-					success: false,
-					text: response.text,
-					data: { actionName: "SEARCH_DOCUMENTS" },
-				};
-			}
-
-			const rawMode = params?.searchMode;
-			const searchMode: SearchMode | undefined =
-				rawMode === "hybrid" || rawMode === "vector" || rawMode === "keyword"
-					? rawMode
-					: undefined;
-
-			const searchMessage: Memory = { ...message, content: { text: query } };
-			const results = await service.getKnowledge(
-				searchMessage,
-				undefined,
-				searchMode,
-			);
-
-			let response: Content;
-			if (results.length === 0) {
-				response = {
-					text: `I couldn't find any information about "${query}" in my document store.`,
-				};
-			} else {
-				const limit =
-					typeof params?.limit === "number"
-						? Math.max(1, Math.min(20, Math.floor(params.limit)))
-						: 3;
-				const formattedResults = results
-					.slice(0, limit)
-					.map((item, index) => `${index + 1}. ${item.content.text}`)
-					.join("\n\n");
-				response = {
-					text: `Here's what I found about "${query}":\n\n${formattedResults}`,
-				};
-			}
-
-			if (callback) await callback(response);
-			return {
-				success: true,
-				text: response.text,
-				data: { actionName: "SEARCH_DOCUMENTS" },
-			};
-		} catch (error) {
-			logger.error({ error }, "Error in SEARCH_DOCUMENTS action");
-			const errorResponse: Content = {
-				text: `I encountered an error while searching documents: ${error instanceof Error ? error.message : String(error)}`,
-			};
-			if (callback) await callback(errorResponse);
-			return {
-				success: false,
-				text: errorResponse.text,
-				error: error instanceof Error ? error.message : String(error),
-				data: { actionName: "SEARCH_DOCUMENTS" },
-			};
-		}
-	},
-};
-
-/** @deprecated Use searchDocumentsAction */
-export const searchKnowledgeAction: Action = {
-	...searchDocumentsAction,
-	name: "SEARCH_KNOWLEDGE",
-	similes: ["SEARCH_DOCUMENTS"],
-};
-
-// ─── IMPORT_DOCUMENT_FROM_URL (was INGEST_KNOWLEDGE_FROM_URL) ─────────────────
-
-type ImportDocumentFromUrlParameters = {
-	url?: string;
-	includeImageDescriptions?: unknown;
-};
-
-export const importDocumentFromUrlAction: Action = {
-	name: "IMPORT_DOCUMENT_FROM_URL",
-	contexts: ["documents"],
-	contextGate: { anyOf: ["documents"] },
-	roleGate: { minRole: "ADMIN" },
-	similes: [
-		"INGEST_KNOWLEDGE_FROM_URL",
-		"FETCH_KNOWLEDGE_FROM_URL",
-		"IMPORT_KNOWLEDGE_FROM_URL",
-		"LOAD_KNOWLEDGE_FROM_URL",
-		"ADD_KNOWLEDGE_FROM_URL",
-		"INGEST_URL",
-	],
-	description:
-		"Fetches the content of a URL and stores it in the agent's document store. Use this when the user wants to add a webpage, article, or downloadable document by providing a link.",
-	suppressPostActionContinuation: true,
-	parameters: [
-		{
-			name: "url",
-			description:
-				"Absolute URL of the page or file to fetch and import into the document store.",
-			required: true,
-			schema: { type: "string" as const },
-		},
-		{
-			name: "includeImageDescriptions",
-			description:
-				"When true, request image-description extraction from the upstream pipeline.",
-			required: false,
-			schema: { type: "boolean" as const },
-		},
-	],
-
-	validate: async (
-		runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-	): Promise<boolean> => {
-		return Boolean(runtime.getService(KnowledgeService.serviceType));
-	},
-
-	handler: async (
-		runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-		options?: HandlerOptions,
-		callback?: HandlerCallback,
-	): Promise<ActionResult> => {
-		const params = (options?.parameters ??
-			{}) as ImportDocumentFromUrlParameters;
-		const url = params.url?.trim();
-		const includeImageDescriptions = params.includeImageDescriptions === true;
-
-		if (!url) {
-			const text = "I need a URL to import into the document store.";
-			await callback?.({ text });
-			return {
-				text,
-				success: false,
-				values: { error: "missing_url" },
-				data: { actionName: "IMPORT_DOCUMENT_FROM_URL" },
-			};
-		}
-
-		try {
-			const service = runtime.getService<KnowledgeService>(
-				KnowledgeService.serviceType,
-			);
-			if (!service) {
-				throw new Error("Documents service not available");
-			}
-
-			const fetched = await fetchKnowledgeFromUrl(url, {
-				includeImageDescriptions,
-			});
-			const { filename, mimeType } = fetched;
-			const isYouTube = isYouTubeUrl(url);
-			const isTextBacked = fetched.contentType !== "binary";
-
-			const result = await service.addKnowledge({
-				agentId: runtime.agentId,
-				worldId: runtime.agentId,
-				roomId: runtime.agentId,
-				entityId: runtime.agentId,
-				clientDocumentId: "" as UUID,
-				contentType: mimeType,
-				originalFilename: filename,
-				content: fetched.content,
-				metadata: {
-					url,
-					source: isYouTube ? "youtube" : "url",
-					filename,
-					originalFilename: filename,
-					fileType: mimeType,
-					contentType: mimeType,
-					textBacked: isTextBacked,
-					includeImageDescriptions,
-					...(fetched.contentType === "transcript"
-						? { isYouTubeTranscript: true }
-						: {}),
-				},
-			});
-
-			const summaryLabel =
-				fetched.contentType === "transcript"
-					? "transcript"
-					: fetched.contentType === "html"
-						? "page"
-						: "document";
-			const text = `Imported ${summaryLabel} from ${url}. Stored as ${filename} with ${result.fragmentCount} fragment(s).`;
-			await callback?.({ text, actions: ["IMPORT_DOCUMENT_FROM_URL"] });
-
-			return {
-				text,
-				success: true,
-				values: {
-					documentId: result.clientDocumentId,
-					fragmentCount: result.fragmentCount,
-					filename,
-				},
-				data: {
-					actionName: "IMPORT_DOCUMENT_FROM_URL",
-					ingestData: {
-						documentId: result.clientDocumentId,
-						fragmentCount: result.fragmentCount,
-						filename,
-						url,
-						contentType: mimeType,
-						kind: fetched.contentType,
-						isYouTubeTranscript: fetched.contentType === "transcript",
-					},
-				},
-			};
-		} catch (error) {
-			logger.error(
-				{ error: error instanceof Error ? error.message : String(error) },
-				"Error in IMPORT_DOCUMENT_FROM_URL action",
-			);
-			const text = `I couldn't import that URL: ${error instanceof Error ? error.message : String(error)}`;
-			await callback?.({ text });
-			return {
-				text,
-				success: false,
-				values: {
-					error: error instanceof Error ? error.message : String(error),
-				},
-				data: { actionName: "IMPORT_DOCUMENT_FROM_URL" },
-			};
-		}
-	},
-
-	examples: [
-		[
-			{
-				name: "user",
-				content: {
-					text: "Add https://example.com/docs/getting-started to your documents.",
-				},
-			},
-			{
-				name: "assistant",
-				content: {
-					text: "I'll fetch that URL and add it to my document store.",
-					actions: ["IMPORT_DOCUMENT_FROM_URL"],
-				},
-			},
-		],
-		[
-			{
-				name: "user",
-				content: {
-					text: "Import the article at https://blog.example.com/post-1.",
-				},
-			},
-			{
-				name: "assistant",
-				content: {
-					text: "Fetching the article and indexing it into my document store.",
-					actions: ["IMPORT_DOCUMENT_FROM_URL"],
-				},
-			},
-		],
-	] as ActionExample[][],
-};
-
-/** @deprecated Use importDocumentFromUrlAction */
-export const ingestKnowledgeFromUrlAction: Action = {
-	...importDocumentFromUrlAction,
-	name: "INGEST_KNOWLEDGE_FROM_URL",
-	similes: ["IMPORT_DOCUMENT_FROM_URL"],
-};
-
-// ─── READ_DOCUMENT ─────────────────────────────────────────────────────────────
-
-type ReadDocumentParameters = { id?: string };
+	const text = message.content?.text ?? "";
+	if (
+		(params.url || URL_PATTERN.test(text)) &&
+		/\b(add|import|save)\b/i.test(text)
+	) {
+		return "import_url";
+	}
+	if (
+		(params.filePath || DOCUMENT_PATH_PATTERN.test(text)) &&
+		/\b(add|import|process|save)\b/i.test(text)
+	) {
+		return "import_file";
+	}
+	if (/\b(read|open|show)\b/i.test(text)) return "read";
+	if (/\b(list|recent|available)\b/i.test(text)) return "list";
+	if (/\b(delete|remove|drop|forget)\b/i.test(text)) return "delete";
+	if (/\b(edit|update|replace|rewrite)\b/i.test(text)) return "edit";
+	if (/\b(save|store|write|create|remember|add)\b/i.test(text)) return "write";
+	if (/\b(search|find|lookup|look up|query)\b/i.test(text)) return "search";
+	return null;
+}
 
 function isUuid(value: string): value is UUID {
 	return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -752,626 +176,1013 @@ function isUuid(value: string): value is UUID {
 	);
 }
 
-export const readDocumentAction: Action = {
-	name: "READ_DOCUMENT",
-	contexts: ["documents"],
-	contextGate: { anyOf: ["documents"] },
-	roleGate: { minRole: "USER" },
-	similes: ["GET_DOCUMENT", "FETCH_DOCUMENT", "RETRIEVE_DOCUMENT"],
-	description:
-		"Fetches the full text content of a single document by its id from the document store.",
-	suppressPostActionContinuation: true,
-	parameters: [
-		{
-			name: "id",
-			description: "UUID of the document to read.",
-			required: true,
-			schema: { type: "string" as const },
-		},
-	],
+function getDocumentId(
+	params: DocumentActionParameters,
+	message: Memory,
+): UUID | null {
+	const candidate = (params.documentId ?? params.id)?.trim();
+	if (candidate && isUuid(candidate)) return candidate;
 
-	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-		return Boolean(runtime.getService(KnowledgeService.serviceType));
-	},
+	const match = (message.content?.text ?? "").match(
+		/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+	);
+	return match?.[0] && isUuid(match[0]) ? match[0] : null;
+}
 
-	handler: async (
-		runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-		options?: HandlerOptions,
-		callback?: HandlerCallback,
-	): Promise<ActionResult> => {
-		const params = (options?.parameters ?? {}) as ReadDocumentParameters;
-		const id = params.id?.trim();
+function getSearchMode(value: unknown): SearchMode | undefined {
+	return value === "hybrid" || value === "vector" || value === "keyword"
+		? value
+		: undefined;
+}
 
-		if (!id || !isUuid(id)) {
-			const errMsg = "I need a valid document id (UUID) to read.";
-			await callback?.({ text: errMsg });
-			return {
-				text: errMsg,
-				success: false,
-				values: { error: "invalid_id" },
-				data: { actionName: "READ_DOCUMENT" },
-			};
-		}
+function getLimit(value: unknown, fallback: number): number {
+	return typeof value === "number" && Number.isFinite(value)
+		? Math.max(1, Math.min(100, Math.floor(value)))
+		: fallback;
+}
 
-		try {
-			const memory = await runtime.getMemoryById(id as UUID);
-			if (!memory) {
-				const errMsg = `Document ${id} not found.`;
-				await callback?.({ text: errMsg });
-				return {
-					text: errMsg,
-					success: false,
-					values: { error: "not_found" },
-					data: { actionName: "READ_DOCUMENT" },
-				};
-			}
+function getScope(
+	runtime: IAgentRuntime,
+	message: Memory,
+	params: DocumentActionParameters,
+): DocumentVisibilityScope {
+	const raw = params.scope?.trim() as DocumentVisibilityScope | undefined;
+	if (raw && DOCUMENT_SCOPES.has(raw)) {
+		return raw;
+	}
+	return message.entityId && message.entityId !== runtime.agentId
+		? "user-private"
+		: "agent-private";
+}
 
-			const text = memory.content?.text ?? "";
-			await callback?.({ text });
-			return {
-				text,
-				success: true,
-				values: { id, textLength: text.length },
-				data: { actionName: "READ_DOCUMENT", document: memory },
-			};
-		} catch (error) {
-			logger.error(
-				{ error: error instanceof Error ? error.message : String(error) },
-				"Error in READ_DOCUMENT action",
-			);
-			const errMsg = `I couldn't read that document: ${error instanceof Error ? error.message : String(error)}`;
-			await callback?.({ text: errMsg });
-			return {
-				text: errMsg,
-				success: false,
-				values: {
-					error: error instanceof Error ? error.message : String(error),
-				},
-				data: { actionName: "READ_DOCUMENT" },
-			};
-		}
-	},
+function getScopedToEntityId(
+	runtime: IAgentRuntime,
+	message: Memory,
+	scope: DocumentVisibilityScope,
+	params?: DocumentActionParameters,
+): UUID | undefined {
+	if (scope === "global") return undefined;
+	if (scope === "agent-private") return runtime.agentId;
+	if (scope === "owner-private") {
+		const ownerId = runtime.getSetting("ELIZA_ADMIN_ENTITY_ID");
+		return typeof ownerId === "string" && ownerId.trim()
+			? (ownerId.trim() as UUID)
+			: (message.entityId ?? runtime.agentId);
+	}
+	if (
+		typeof params?.scopedToEntityId === "string" &&
+		isUuid(params.scopedToEntityId)
+	) {
+		return params.scopedToEntityId;
+	}
+	return message.entityId ?? runtime.agentId;
+}
 
-	examples: [
-		[
-			{
-				name: "user",
-				content: {
-					text: "Read document 123e4567-e89b-12d3-a456-426614174000.",
-				},
-			},
-			{
-				name: "assistant",
-				content: {
-					text: "Fetching that document from the store.",
-					actions: ["READ_DOCUMENT"],
-				},
-			},
-		],
-	] as ActionExample[][],
-};
+async function getAddedByRole(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<DocumentAddedByRole> {
+	if (!message.entityId) return "RUNTIME";
+	if (message.entityId === runtime.agentId) return "AGENT";
+	const role = await checkSenderRole(runtime, message).catch(() => null);
+	if (role?.role === "OWNER" || role?.role === "ADMIN") return role.role;
+	return "USER";
+}
 
-// ─── EDIT_DOCUMENT (was UPDATE_KNOWLEDGE_DOCUMENT) ────────────────────────────
+async function ensureWriteAccess(
+	runtime: IAgentRuntime,
+	message: Memory,
+	scope: DocumentVisibilityScope,
+	scopedToEntityId?: UUID,
+): Promise<string | null> {
+	if (scope === "global" || scope === "owner-private") {
+		return (await hasRoleAccess(runtime, message, "OWNER"))
+			? null
+			: "Only the owner can write global or owner-private documents.";
+	}
+	if (scope === "agent-private") {
+		return isAgentSelf(runtime, message) ||
+			(await hasRoleAccess(runtime, message, "OWNER"))
+			? null
+			: "Only the owner or agent runtime can write agent-private documents.";
+	}
+	if (
+		scopedToEntityId &&
+		message.entityId &&
+		scopedToEntityId !== message.entityId &&
+		!(await hasRoleAccess(runtime, message, "OWNER")) &&
+		!isAgentSelf(runtime, message)
+	) {
+		return "Users can only write documents to their own private scope.";
+	}
+	return null;
+}
 
-type EditDocumentParameters = {
-	id?: string;
-	documentId?: string;
-	text?: string;
-	title?: string;
-};
+async function ensureDocumentMutationAccess(
+	runtime: IAgentRuntime,
+	message: Memory,
+	document: Memory,
+): Promise<string | null> {
+	const metadata = (document.metadata ?? {}) as Record<string, unknown>;
+	const scope =
+		typeof metadata.scope === "string" &&
+		DOCUMENT_SCOPES.has(metadata.scope as DocumentVisibilityScope)
+			? (metadata.scope as DocumentVisibilityScope)
+			: "global";
+	if (scope === "global" || scope === "owner-private") {
+		return (await hasRoleAccess(runtime, message, "OWNER"))
+			? null
+			: "Only the owner can edit or delete global and owner-private documents.";
+	}
+	if (scope === "agent-private") {
+		return isAgentSelf(runtime, message) ||
+			(await hasRoleAccess(runtime, message, "OWNER"))
+			? null
+			: "Only the owner or agent runtime can edit or delete agent-private documents.";
+	}
+	const scopedToEntityId =
+		typeof metadata.scopedToEntityId === "string"
+			? metadata.scopedToEntityId
+			: typeof document.entityId === "string"
+				? document.entityId
+				: undefined;
+	if (scopedToEntityId && message.entityId === scopedToEntityId) {
+		return null;
+	}
+	return (await hasRoleAccess(runtime, message, "ADMIN"))
+		? null
+		: "Users can only edit or delete their own private documents.";
+}
 
-export const editDocumentAction: Action = {
-	name: "EDIT_DOCUMENT",
-	contexts: ["documents"],
-	contextGate: { anyOf: ["documents"] },
-	roleGate: { minRole: "ADMIN" },
-	similes: [
-		"UPDATE_KNOWLEDGE_DOCUMENT",
-		"EDIT_KNOWLEDGE_DOCUMENT",
-		"UPDATE_DOCUMENT",
-		"MODIFY_DOCUMENT",
-		"REPLACE_DOCUMENT",
-		"REWRITE_DOCUMENT",
-	],
-	description:
-		"Replaces the text content of an existing document and re-fragments it. Use this when the user wants to revise the body of a previously-stored document by id.",
-	suppressPostActionContinuation: true,
-	parameters: [
-		{
-			name: "id",
-			description: "UUID of the document to edit.",
-			required: true,
-			schema: { type: "string" as const },
-		},
-		{
-			name: "text",
-			description: "New full text content of the document.",
-			required: true,
-			schema: { type: "string" as const },
-		},
-		{
-			name: "title",
-			description: "Optional new title for the document.",
-			required: false,
-			schema: { type: "string" as const },
-		},
-	],
+function getCleanWriteText(
+	params: DocumentActionParameters,
+	message: Memory,
+): string {
+	const explicit = params.text ?? params.content;
+	if (typeof explicit === "string" && explicit.trim()) {
+		return explicit.trim();
+	}
+	return (message.content?.text ?? "")
+		.replace(
+			/^(save|store|write|create|remember|add)\s+(this|that|the following|a document|document)?:?\s*/i,
+			"",
+		)
+		.trim();
+}
 
-	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-		return Boolean(runtime.getService(KnowledgeService.serviceType));
-	},
+function getQuery(params: DocumentActionParameters, message: Memory): string {
+	if (typeof params.query === "string" && params.query.trim()) {
+		return params.query.trim();
+	}
+	return (message.content?.text ?? "")
+		.replace(
+			/^(search|find|lookup|look up|query)\s+(my\s+|your\s+|the\s+)?documents?\s*(for|about)?\s*/i,
+			"",
+		)
+		.trim();
+}
 
-	handler: async (
-		runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-		options?: HandlerOptions,
-		callback?: HandlerCallback,
-	): Promise<ActionResult> => {
-		const params = (options?.parameters ?? {}) as EditDocumentParameters;
-		const documentId = (params.id ?? params.documentId)?.trim();
-		const text = typeof params.text === "string" ? params.text : "";
-
-		if (!documentId || !isUuid(documentId)) {
-			const errMsg = "I need a valid document id (UUID) to edit.";
-			await callback?.({ text: errMsg });
-			return {
-				text: errMsg,
-				success: false,
-				values: { error: "invalid_id" },
-				data: { actionName: "EDIT_DOCUMENT" },
-			};
-		}
-
-		if (!text.trim()) {
-			const errMsg = "I need non-empty text to update the document.";
-			await callback?.({ text: errMsg });
-			return {
-				text: errMsg,
-				success: false,
-				values: { error: "missing_text" },
-				data: { actionName: "EDIT_DOCUMENT" },
-			};
-		}
-
-		try {
-			const service = runtime.getService<KnowledgeService>(
-				KnowledgeService.serviceType,
-			);
-			if (!service) {
-				throw new Error("Documents service not available");
-			}
-
-			const result = await service.updateKnowledgeDocument({
-				documentId: documentId as UUID,
-				content: text,
-			});
-
-			const summary = `Updated document ${result.documentId}. Re-fragmented into ${result.fragmentCount} piece(s).`;
-			await callback?.({ text: summary, actions: ["EDIT_DOCUMENT"] });
-
-			return {
-				text: summary,
-				success: true,
-				values: {
-					id: result.documentId,
-					documentId: result.documentId,
-					fragmentCount: result.fragmentCount,
-				},
-				data: {
-					actionName: "EDIT_DOCUMENT",
-					updateData: {
-						documentId: result.documentId,
-						fragmentCount: result.fragmentCount,
-					},
-				},
-			};
-		} catch (error) {
-			logger.error(
-				{ error: error instanceof Error ? error.message : String(error) },
-				"Error in EDIT_DOCUMENT action",
-			);
-			const errMsg = `I couldn't edit that document: ${error instanceof Error ? error.message : String(error)}`;
-			await callback?.({ text: errMsg });
-			return {
-				text: errMsg,
-				success: false,
-				values: {
-					error: error instanceof Error ? error.message : String(error),
-				},
-				data: { actionName: "EDIT_DOCUMENT" },
-			};
-		}
-	},
-
-	examples: [
-		[
-			{
-				name: "user",
-				content: {
-					text: "Edit document 123e4567-e89b-12d3-a456-426614174000 with revised text.",
-				},
-			},
-			{
-				name: "assistant",
-				content: {
-					text: "I'll replace the document content and re-index its fragments.",
-					actions: ["EDIT_DOCUMENT"],
-				},
-			},
-		],
-	] as ActionExample[][],
-};
-
-/** @deprecated Use editDocumentAction */
-export const updateKnowledgeDocumentAction: Action = {
-	...editDocumentAction,
-	name: "UPDATE_KNOWLEDGE_DOCUMENT",
-	similes: ["EDIT_DOCUMENT"],
-};
-
-// ─── WRITE_DOCUMENT ────────────────────────────────────────────────────────────
-
-type WriteDocumentParameters = {
-	title?: string;
-	text?: string;
+function getDocumentFilterParams(params: DocumentActionParameters): {
+	scope?: DocumentVisibilityScope;
+	scopedToEntityId?: UUID;
+	addedBy?: UUID;
+	timeRangeStart?: number;
+	timeRangeEnd?: number;
 	tags?: string[];
-};
+} {
+	const scope =
+		typeof params.scope === "string" &&
+		DOCUMENT_SCOPES.has(params.scope as DocumentVisibilityScope)
+			? (params.scope as DocumentVisibilityScope)
+			: undefined;
+	const scopedToEntityId =
+		typeof params.scopedToEntityId === "string" &&
+		isUuid(params.scopedToEntityId)
+			? (params.scopedToEntityId as UUID)
+			: undefined;
+	const addedBy =
+		typeof params.addedBy === "string" && isUuid(params.addedBy)
+			? (params.addedBy as UUID)
+			: undefined;
+	const timeRangeStart = parseTimestampParam(params.timeRangeStart);
+	const timeRangeEnd = parseTimestampParam(params.timeRangeEnd);
+	const tags = Array.isArray(params.tags)
+		? params.tags.filter((tag): tag is string => typeof tag === "string")
+		: undefined;
+	return {
+		...(scope ? { scope } : {}),
+		...(scopedToEntityId ? { scopedToEntityId } : {}),
+		...(addedBy ? { addedBy } : {}),
+		...(typeof timeRangeStart === "number" ? { timeRangeStart } : {}),
+		...(typeof timeRangeEnd === "number" ? { timeRangeEnd } : {}),
+		...(tags && tags.length > 0 ? { tags } : {}),
+	};
+}
 
-export const writeDocumentAction: Action = {
-	name: "WRITE_DOCUMENT",
+function storedDocumentMatchesFilters(
+	document: StoredDocument,
+	filters: ReturnType<typeof getDocumentFilterParams>,
+): boolean {
+	const metadata = (document.metadata ?? {}) as Record<string, unknown>;
+	if (filters.scope && metadata.scope !== filters.scope) return false;
+	if (
+		filters.scopedToEntityId &&
+		metadata.scopedToEntityId !== filters.scopedToEntityId
+	) {
+		return false;
+	}
+	if (filters.addedBy && metadata.addedBy !== filters.addedBy) return false;
+	if (filters.tags && filters.tags.length > 0) {
+		const documentTags = Array.isArray(metadata.tags)
+			? metadata.tags.filter(
+					(value): value is string => typeof value === "string",
+				)
+			: [];
+		if (!filters.tags.every((tag) => documentTags.includes(tag))) {
+			return false;
+		}
+	}
+	const timestamp =
+		typeof metadata.timestamp === "number"
+			? metadata.timestamp
+			: typeof metadata.addedAt === "number"
+				? metadata.addedAt
+				: undefined;
+	if (
+		typeof filters.timeRangeStart === "number" &&
+		(typeof timestamp !== "number" || timestamp < filters.timeRangeStart)
+	) {
+		return false;
+	}
+	if (
+		typeof filters.timeRangeEnd === "number" &&
+		(typeof timestamp !== "number" || timestamp > filters.timeRangeEnd)
+	) {
+		return false;
+	}
+	return true;
+}
+
+function getFilePath(
+	params: DocumentActionParameters,
+	message: Memory,
+): string | null {
+	if (typeof params.filePath === "string" && params.filePath.trim()) {
+		return params.filePath.trim();
+	}
+	return (
+		(message.content?.text ?? "").match(DOCUMENT_PATH_PATTERN)?.[0] ?? null
+	);
+}
+
+function getUrl(
+	params: DocumentActionParameters,
+	message: Memory,
+): string | null {
+	if (typeof params.url === "string" && params.url.trim()) {
+		return params.url.trim();
+	}
+	return (message.content?.text ?? "").match(URL_PATTERN)?.[0] ?? null;
+}
+
+async function scopedAddOptions(
+	runtime: IAgentRuntime,
+	message: Memory,
+	scope: DocumentVisibilityScope,
+	addedFrom: DocumentAddedFrom,
+	params?: DocumentActionParameters,
+) {
+	const scopedToEntityId = getScopedToEntityId(runtime, message, scope, params);
+	const addedBy = message.entityId ?? runtime.agentId;
+	return {
+		agentId: runtime.agentId,
+		worldId: message.worldId ?? runtime.agentId,
+		roomId: message.roomId ?? runtime.agentId,
+		entityId: scopedToEntityId ?? addedBy,
+		scope,
+		scopedToEntityId,
+		addedBy,
+		addedByRole: await getAddedByRole(runtime, message),
+		addedFrom,
+	};
+}
+
+function result(
+	success: boolean,
+	text: string,
+	subaction: DocumentSubAction,
+	extra: Omit<ActionResult, "success" | "text" | "data"> & {
+		data?: Record<string, unknown>;
+	} = {},
+): ActionResult {
+	return {
+		...extra,
+		success,
+		text,
+		data: {
+			actionName: "DOCUMENT",
+			subaction,
+			...(extra.data ?? {}),
+		},
+	};
+}
+
+async function emit(
+	callback: HandlerCallback | undefined,
+	content: Content,
+): Promise<void> {
+	await callback?.(content);
+}
+
+async function handleSearch(
+	service: DocumentService,
+	message: Memory,
+	params: DocumentActionParameters,
+	callback?: HandlerCallback,
+): Promise<ActionResult> {
+	const query = getQuery(params, message);
+	if (!query) {
+		const text = "What would you like me to search for in documents?";
+		await emit(callback, { text });
+		return result(false, text, "search", {
+			values: { error: "missing_query" },
+		});
+	}
+
+	const searchMessage: Memory = {
+		...message,
+		content: { ...message.content, text: query },
+	};
+	const filters = getDocumentFilterParams(params);
+	const matches = await service.searchDocuments(
+		searchMessage,
+		filters.scopedToEntityId
+			? { entityId: filters.scopedToEntityId }
+			: undefined,
+		getSearchMode(params.searchMode),
+	);
+	const limit = getLimit(params.limit, 5);
+	const visible = matches
+		.filter((item) => storedDocumentMatchesFilters(item, filters))
+		.slice(0, limit);
+	const text =
+		visible.length === 0
+			? `I couldn't find any documents matching "${query}".`
+			: `Found ${visible.length} document fragment(s) for "${query}":\n\n${visible
+					.map((item, index) => `${index + 1}. ${item.content.text ?? ""}`)
+					.join("\n\n")}`;
+	await emit(callback, { text, actions: ["DOCUMENT"] });
+	return result(true, text, "search", {
+		values: { query, results: visible },
+		data: { query, results: visible },
+	});
+}
+
+async function handleRead(
+	service: DocumentService,
+	message: Memory,
+	params: DocumentActionParameters,
+	callback?: HandlerCallback,
+): Promise<ActionResult> {
+	const documentId = getDocumentId(params, message);
+	if (!documentId) {
+		const text = "I need a valid document id to read.";
+		await emit(callback, { text });
+		return result(false, text, "read", { values: { error: "invalid_id" } });
+	}
+
+	const document = await service.getDocumentById(documentId, message);
+	if (!document) {
+		const text = `Document ${documentId} not found.`;
+		await emit(callback, { text });
+		return result(false, text, "read", { values: { error: "not_found" } });
+	}
+
+	const text = document.content?.text ?? "";
+	await emit(callback, { text, actions: ["DOCUMENT"] });
+	return result(true, text, "read", {
+		values: { documentId, textLength: text.length },
+		data: { document },
+	});
+}
+
+async function handleWrite(
+	runtime: IAgentRuntime,
+	service: DocumentService,
+	message: Memory,
+	params: DocumentActionParameters,
+	callback?: HandlerCallback,
+): Promise<ActionResult> {
+	const text = getCleanWriteText(params, message);
+	if (!text) {
+		const response = "I need non-empty text to create a document.";
+		await emit(callback, { text: response });
+		return result(false, response, "write", {
+			values: { error: "missing_text" },
+		});
+	}
+
+	const scope = getScope(runtime, message, params);
+	const scopedToEntityId = getScopedToEntityId(runtime, message, scope, params);
+	const accessError = await ensureWriteAccess(
+		runtime,
+		message,
+		scope,
+		scopedToEntityId,
+	);
+	if (accessError) {
+		await emit(callback, { text: accessError });
+		return result(false, accessError, "write", {
+			values: { error: "forbidden" },
+		});
+	}
+
+	const title =
+		typeof params.title === "string" && params.title.trim()
+			? params.title.trim()
+			: deriveDocumentTitle(text, "Stored document");
+	const filename = createDocumentNoteFilename(title);
+	const addOptions = await scopedAddOptions(
+		runtime,
+		message,
+		scope,
+		"chat",
+		params,
+	);
+	const tags = Array.isArray(params.tags) ? params.tags : [];
+	const stored = await service.addDocument({
+		...addOptions,
+		clientDocumentId: "" as UUID,
+		contentType: "text/plain",
+		originalFilename: filename,
+		content: text,
+		metadata: {
+			source: "chat",
+			title,
+			filename,
+			originalFilename: filename,
+			fileExt: "txt",
+			fileType: "text/plain",
+			contentType: "text/plain",
+			fileSize: Buffer.byteLength(text, "utf8"),
+			textBacked: true,
+			...(tags.length > 0 ? { tags } : {}),
+		},
+	});
+
+	const response = `Created document "${title}" with ${stored.fragmentCount} fragment(s). Document id: ${stored.clientDocumentId}.`;
+	await emit(callback, { text: response, actions: ["DOCUMENT"] });
+	return result(true, response, "write", {
+		values: {
+			documentId: stored.clientDocumentId,
+			fragmentCount: stored.fragmentCount,
+			title,
+			scope,
+		},
+		data: { documentId: stored.clientDocumentId, filename, scope },
+	});
+}
+
+async function handleEdit(
+	runtime: IAgentRuntime,
+	service: DocumentService,
+	message: Memory,
+	params: DocumentActionParameters,
+	callback?: HandlerCallback,
+): Promise<ActionResult> {
+	const documentId = getDocumentId(params, message);
+	const text = typeof params.text === "string" ? params.text : params.content;
+	if (!documentId) {
+		const response = "I need a valid document id to edit.";
+		await emit(callback, { text: response });
+		return result(false, response, "edit", { values: { error: "invalid_id" } });
+	}
+	if (typeof text !== "string" || !text.trim()) {
+		const response = "I need non-empty text to update the document.";
+		await emit(callback, { text: response });
+		return result(false, response, "edit", {
+			values: { error: "missing_text" },
+		});
+	}
+
+	const document = await service.getDocumentById(documentId, message);
+	if (!document) {
+		const response = `Document ${documentId} not found.`;
+		await emit(callback, { text: response });
+		return result(false, response, "edit", { values: { error: "not_found" } });
+	}
+	const accessError = await ensureDocumentMutationAccess(
+		runtime,
+		message,
+		document,
+	);
+	if (accessError) {
+		await emit(callback, { text: accessError });
+		return result(false, accessError, "edit", {
+			values: { error: "forbidden" },
+		});
+	}
+
+	const updated = await service.updateDocument({
+		documentId,
+		content: text.trim(),
+		message,
+	});
+	const response = `Updated document ${updated.documentId}. Re-fragmented into ${updated.fragmentCount} piece(s).`;
+	await emit(callback, { text: response, actions: ["DOCUMENT"] });
+	return result(true, response, "edit", {
+		values: {
+			documentId: updated.documentId,
+			fragmentCount: updated.fragmentCount,
+		},
+	});
+}
+
+async function handleDelete(
+	runtime: IAgentRuntime,
+	service: DocumentService,
+	message: Memory,
+	params: DocumentActionParameters,
+	callback?: HandlerCallback,
+): Promise<ActionResult> {
+	const documentId = getDocumentId(params, message);
+	if (!documentId) {
+		const text = "I need a valid document id to delete.";
+		await emit(callback, { text });
+		return result(false, text, "delete", { values: { error: "invalid_id" } });
+	}
+
+	const document = await service.getDocumentById(documentId, message);
+	if (!document) {
+		const text = `Document ${documentId} not found.`;
+		await emit(callback, { text });
+		return result(false, text, "delete", { values: { error: "not_found" } });
+	}
+	const accessError = await ensureDocumentMutationAccess(
+		runtime,
+		message,
+		document,
+	);
+	if (accessError) {
+		await emit(callback, { text: accessError });
+		return result(false, accessError, "delete", {
+			values: { error: "forbidden" },
+		});
+	}
+
+	await service.deleteDocument(documentId, message);
+	const text = `Deleted document ${documentId}.`;
+	await emit(callback, { text, actions: ["DOCUMENT"] });
+	return result(true, text, "delete", { values: { documentId } });
+}
+
+function parseTimestampParam(value: unknown): number | undefined {
+	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (typeof value === "string" && value.trim()) {
+		const parsed = Date.parse(value.trim());
+		if (Number.isFinite(parsed)) return parsed;
+		const numeric = Number(value.trim());
+		if (Number.isFinite(numeric)) return numeric;
+	}
+	return undefined;
+}
+
+async function handleList(
+	service: DocumentService,
+	message: Memory,
+	params: DocumentActionParameters,
+	callback?: HandlerCallback,
+): Promise<ActionResult> {
+	const scope =
+		typeof params.scope === "string" &&
+		DOCUMENT_SCOPES.has(params.scope as DocumentVisibilityScope)
+			? (params.scope as DocumentVisibilityScope)
+			: undefined;
+	const scopedToEntityId =
+		typeof params.scopedToEntityId === "string" &&
+		isUuid(params.scopedToEntityId)
+			? (params.scopedToEntityId as UUID)
+			: undefined;
+	const addedBy =
+		typeof params.addedBy === "string" && isUuid(params.addedBy)
+			? (params.addedBy as UUID)
+			: undefined;
+	const timeRangeStart = parseTimestampParam(params.timeRangeStart);
+	const timeRangeEnd = parseTimestampParam(params.timeRangeEnd);
+	const offset =
+		typeof params.offset === "number" && params.offset >= 0
+			? Math.floor(params.offset)
+			: undefined;
+
+	const documents = await service.listDocuments(message, {
+		limit: getLimit(params.limit, 25),
+		offset,
+		query: params.query,
+		scope,
+		scopedToEntityId,
+		addedBy,
+		timeRangeStart,
+		timeRangeEnd,
+		tags: Array.isArray(params.tags) ? params.tags : undefined,
+	});
+	const text =
+		documents.length === 0
+			? "No documents are available."
+			: `Available documents:\n${documents
+					.map((document, index) => {
+						const metadata = document.metadata as
+							| Record<string, unknown>
+							| undefined;
+						const title =
+							typeof metadata?.title === "string"
+								? metadata.title
+								: typeof metadata?.filename === "string"
+									? metadata.filename
+									: `Document ${index + 1}`;
+						return `${index + 1}. ${title} (${document.id})`;
+					})
+					.join("\n")}`;
+	await emit(callback, { text, actions: ["DOCUMENT"] });
+	return result(true, text, "list", {
+		values: { documents },
+		data: { documents },
+	});
+}
+
+async function handleImportFile(
+	runtime: IAgentRuntime,
+	service: DocumentService,
+	message: Memory,
+	params: DocumentActionParameters,
+	callback?: HandlerCallback,
+): Promise<ActionResult> {
+	const filePath = getFilePath(params, message);
+	const content =
+		typeof params.content === "string" ? params.content.trim() : "";
+	if (!filePath && !content) {
+		const text = "I need a file path or text content to import.";
+		await emit(callback, { text });
+		return result(false, text, "import_file", {
+			values: { error: "missing_source" },
+		});
+	}
+
+	const scope = getScope(runtime, message, params);
+	const scopedToEntityId = getScopedToEntityId(runtime, message, scope, params);
+	const accessError = await ensureWriteAccess(
+		runtime,
+		message,
+		scope,
+		scopedToEntityId,
+	);
+	if (accessError) {
+		await emit(callback, { text: accessError });
+		return result(false, accessError, "import_file", {
+			values: { error: "forbidden" },
+		});
+	}
+
+	const addOptions = await scopedAddOptions(
+		runtime,
+		message,
+		scope,
+		"file",
+		params,
+	);
+	if (filePath) {
+		if (!fs.existsSync(filePath)) {
+			const text = `I couldn't find the file at ${filePath}.`;
+			await emit(callback, { text });
+			return result(false, text, "import_file", {
+				values: { error: "not_found" },
+			});
+		}
+		const stored = await addDocumentFromFilePath({
+			service,
+			filePath,
+			...addOptions,
+			metadata: {
+				source: "file",
+				importedFromPath: filePath,
+			},
+		});
+		const filename = path.basename(filePath);
+		const text = `Imported "${filename}" with ${stored.fragmentCount} fragment(s). Document id: ${stored.clientDocumentId}.`;
+		await emit(callback, { text, actions: ["DOCUMENT"] });
+		return result(true, text, "import_file", {
+			values: {
+				documentId: stored.clientDocumentId,
+				fragmentCount: stored.fragmentCount,
+				filename,
+				scope,
+			},
+		});
+	}
+
+	const title =
+		typeof params.title === "string" && params.title.trim()
+			? params.title.trim()
+			: deriveDocumentTitle(content, "Stored document");
+	const filename = createDocumentNoteFilename(title);
+	const stored = await service.addDocument({
+		...addOptions,
+		clientDocumentId: "" as UUID,
+		contentType: "text/plain",
+		originalFilename: filename,
+		content,
+		metadata: {
+			source: "file",
+			title,
+			filename,
+			originalFilename: filename,
+			fileExt: "txt",
+			fileType: "text/plain",
+			contentType: "text/plain",
+			fileSize: Buffer.byteLength(content, "utf8"),
+			textBacked: true,
+		},
+	});
+	const text = `Imported "${title}" with ${stored.fragmentCount} fragment(s). Document id: ${stored.clientDocumentId}.`;
+	await emit(callback, { text, actions: ["DOCUMENT"] });
+	return result(true, text, "import_file", {
+		values: {
+			documentId: stored.clientDocumentId,
+			fragmentCount: stored.fragmentCount,
+			title,
+			scope,
+		},
+	});
+}
+
+async function handleImportUrl(
+	runtime: IAgentRuntime,
+	service: DocumentService,
+	message: Memory,
+	params: DocumentActionParameters,
+	callback?: HandlerCallback,
+): Promise<ActionResult> {
+	const url = getUrl(params, message);
+	if (!url) {
+		const text = "I need a URL to import.";
+		await emit(callback, { text });
+		return result(false, text, "import_url", {
+			values: { error: "missing_url" },
+		});
+	}
+
+	const fetched = await fetchDocumentFromUrl(url, {
+		includeImageDescriptions: params.includeImageDescriptions === true,
+	});
+	const scope = getScope(runtime, message, params);
+	const scopedToEntityId = getScopedToEntityId(runtime, message, scope, params);
+	const accessError = await ensureWriteAccess(
+		runtime,
+		message,
+		scope,
+		scopedToEntityId,
+	);
+	if (accessError) {
+		await emit(callback, { text: accessError });
+		return result(false, accessError, "import_url", {
+			values: { error: "forbidden" },
+		});
+	}
+	const addOptions = await scopedAddOptions(
+		runtime,
+		message,
+		scope,
+		"url",
+		params,
+	);
+	const isTextBacked = fetched.contentType !== "binary";
+	const isYouTube = isYouTubeUrl(url);
+	const stored = await service.addDocument({
+		...addOptions,
+		clientDocumentId: "" as UUID,
+		contentType: fetched.mimeType,
+		originalFilename: fetched.filename,
+		content: fetched.content,
+		metadata: {
+			url,
+			source: isYouTube ? "youtube" : "url",
+			filename: fetched.filename,
+			originalFilename: fetched.filename,
+			fileType: fetched.mimeType,
+			contentType: fetched.mimeType,
+			textBacked: isTextBacked,
+			includeImageDescriptions: params.includeImageDescriptions === true,
+			...(fetched.contentType === "transcript"
+				? { isYouTubeTranscript: true }
+				: {}),
+		},
+	});
+
+	const label =
+		fetched.contentType === "transcript"
+			? "transcript"
+			: fetched.contentType === "html"
+				? "page"
+				: "document";
+	const text = `Imported ${label} from ${url}. Stored as ${fetched.filename} with ${stored.fragmentCount} fragment(s).`;
+	await emit(callback, { text, actions: ["DOCUMENT"] });
+	return result(true, text, "import_url", {
+		values: {
+			documentId: stored.clientDocumentId,
+			fragmentCount: stored.fragmentCount,
+			filename: fetched.filename,
+			scope,
+		},
+	});
+}
+
+export const documentAction: Action = {
+	name: "DOCUMENT",
 	contexts: ["documents"],
 	contextGate: { anyOf: ["documents"] },
 	roleGate: { minRole: "USER" },
-	similes: [
-		"CREATE_DOCUMENT",
-		"SAVE_DOCUMENT",
-		"STORE_DOCUMENT",
-		"ADD_DOCUMENT",
-	],
 	description:
-		"Creates a new document in the document store from the given title and text. Use this when the user wants to save new text content as a named document.",
+		"List, search, read, write, edit, delete, and import stored documents. Select one action and provide the fields needed for that operation.",
+	descriptionCompressed:
+		"Dispatches document operations using action: list, search, read, write, edit, delete, import_file, import_url.",
 	suppressPostActionContinuation: true,
 	parameters: [
 		{
-			name: "title",
-			description: "Title for the new document.",
-			required: false,
-			schema: { type: "string" as const },
-		},
-		{
-			name: "text",
-			description: "Full text content of the new document.",
+			name: "action",
+			description:
+				"Document operation to perform: list, search, read, write, edit, delete, import_file, or import_url.",
 			required: true,
-			schema: { type: "string" as const },
-		},
-		{
-			name: "tags",
-			description: "Optional list of tag strings for the document.",
-			required: false,
-			schema: { type: "array" as const, items: { type: "string" as const } },
-		},
-	],
-
-	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-		return Boolean(runtime.getService(KnowledgeService.serviceType));
-	},
-
-	handler: async (
-		runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-		options?: HandlerOptions,
-		callback?: HandlerCallback,
-	): Promise<ActionResult> => {
-		const params = (options?.parameters ?? {}) as WriteDocumentParameters;
-		const text = typeof params.text === "string" ? params.text.trim() : "";
-		const tags = Array.isArray(params.tags) ? params.tags : [];
-
-		if (!text) {
-			const errMsg = "I need non-empty text to create a document.";
-			await callback?.({ text: errMsg });
-			return {
-				text: errMsg,
-				success: false,
-				values: { error: "missing_text" },
-				data: { actionName: "WRITE_DOCUMENT" },
-			};
-		}
-
-		try {
-			const service = runtime.getService<KnowledgeService>(
-				KnowledgeService.serviceType,
-			);
-			if (!service) {
-				throw new Error("Documents service not available");
-			}
-
-			const title =
-				typeof params.title === "string" && params.title.trim()
-					? params.title.trim()
-					: deriveKnowledgeTitle(text, "Stored document");
-			const filename = createKnowledgeNoteFilename(title);
-
-			const result = await service.addKnowledge({
-				agentId: runtime.agentId,
-				worldId: runtime.agentId,
-				roomId: runtime.agentId,
-				entityId: runtime.agentId,
-				clientDocumentId: "" as UUID,
-				contentType: "text/plain",
-				originalFilename: filename,
-				content: text,
-				metadata: {
-					source: "write_document",
-					learnedVia: "WRITE_DOCUMENT",
-					title,
-					filename,
-					originalFilename: filename,
-					fileExt: "txt",
-					fileType: "text/plain",
-					contentType: "text/plain",
-					fileSize: Buffer.byteLength(text, "utf8"),
-					textBacked: true,
-					...(tags.length > 0 ? { tags } : {}),
-				},
-			});
-
-			const summary = `Created document "${title}" with ${result.fragmentCount} fragment(s). Document id: ${result.clientDocumentId}.`;
-			await callback?.({ text: summary, actions: ["WRITE_DOCUMENT"] });
-
-			return {
-				text: summary,
-				success: true,
-				values: {
-					id: result.clientDocumentId,
-					documentId: result.clientDocumentId,
-					fragmentCount: result.fragmentCount,
-					title,
-					filename,
-				},
-				data: {
-					actionName: "WRITE_DOCUMENT",
-					documentData: {
-						documentId: result.clientDocumentId,
-						fragmentCount: result.fragmentCount,
-						title,
-						filename,
-					},
-				},
-			};
-		} catch (error) {
-			logger.error(
-				{ error: error instanceof Error ? error.message : String(error) },
-				"Error in WRITE_DOCUMENT action",
-			);
-			const errMsg = `I couldn't create that document: ${error instanceof Error ? error.message : String(error)}`;
-			await callback?.({ text: errMsg });
-			return {
-				text: errMsg,
-				success: false,
-				values: {
-					error: error instanceof Error ? error.message : String(error),
-				},
-				data: { actionName: "WRITE_DOCUMENT" },
-			};
-		}
-	},
-
-	examples: [
-		[
-			{
-				name: "user",
-				content: {
-					text: "Save this as a document titled 'Meeting Notes': We decided to move the launch date.",
-				},
-			},
-			{
-				name: "assistant",
-				content: {
-					text: "I'll save that as a document in the store.",
-					actions: ["WRITE_DOCUMENT"],
-				},
-			},
-		],
-	] as ActionExample[][],
-};
-
-// ─── DELETE_DOCUMENT (was DELETE_KNOWLEDGE_DOCUMENT) ──────────────────────────
-
-type DeleteDocumentParameters = {
-	id?: string;
-	documentId?: string;
-};
-
-export const deleteDocumentAction: Action = {
-	name: "DELETE_DOCUMENT",
-	contexts: ["documents"],
-	contextGate: { anyOf: ["documents"] },
-	roleGate: { minRole: "ADMIN" },
-	similes: [
-		"DELETE_KNOWLEDGE_DOCUMENT",
-		"REMOVE_DOCUMENT",
-		"DROP_DOCUMENT",
-		"FORGET_DOCUMENT",
-	],
-	description:
-		"Deletes a document and all its fragments by id. Use this when the user wants to remove a previously-stored document.",
-	suppressPostActionContinuation: true,
-	parameters: [
-		{
-			name: "id",
-			description: "UUID of the document to delete.",
-			required: true,
-			schema: { type: "string" as const },
-		},
-	],
-
-	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-		return Boolean(runtime.getService(KnowledgeService.serviceType));
-	},
-
-	handler: async (
-		runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-		options?: HandlerOptions,
-		callback?: HandlerCallback,
-	): Promise<ActionResult> => {
-		const params = (options?.parameters ?? {}) as DeleteDocumentParameters;
-		const documentId = (params.id ?? params.documentId)?.trim();
-
-		if (!documentId || !isUuid(documentId)) {
-			const errMsg = "I need a valid document id (UUID) to delete.";
-			await callback?.({ text: errMsg });
-			return {
-				text: errMsg,
-				success: false,
-				values: { error: "invalid_id" },
-				data: { actionName: "DELETE_DOCUMENT" },
-			};
-		}
-
-		try {
-			const service = runtime.getService<KnowledgeService>(
-				KnowledgeService.serviceType,
-			);
-			if (!service) {
-				throw new Error("Documents service not available");
-			}
-
-			const existing = await runtime.getMemoryById(documentId as UUID);
-			if (!existing) {
-				const errMsg = `Document ${documentId} not found.`;
-				await callback?.({ text: errMsg });
-				return {
-					text: errMsg,
-					success: false,
-					values: { error: "not_found" },
-					data: { actionName: "DELETE_DOCUMENT" },
-				};
-			}
-
-			const fragments = await runtime.getMemories({
-				tableName: "knowledge",
-				agentId: runtime.agentId,
-				roomId: existing.roomId,
-				count: 10_000,
-			});
-			const relatedFragmentIds = fragments
-				.filter((fragment) => {
-					const meta = fragment.metadata as Record<string, unknown> | undefined;
-					return meta?.documentId === documentId;
-				})
-				.map((fragment) => fragment.id)
-				.filter((id): id is UUID => typeof id === "string");
-
-			for (const fragmentId of relatedFragmentIds) {
-				await service.deleteMemory(fragmentId);
-			}
-			await service.deleteMemory(documentId as UUID);
-
-			const summary = `Deleted document ${documentId} and ${relatedFragmentIds.length} fragment(s).`;
-			await callback?.({ text: summary, actions: ["DELETE_DOCUMENT"] });
-
-			return {
-				text: summary,
-				success: true,
-				values: {
-					id: documentId,
-					documentId,
-					deletedFragments: relatedFragmentIds.length,
-				},
-				data: {
-					actionName: "DELETE_DOCUMENT",
-					deleteData: {
-						documentId,
-						deletedFragments: relatedFragmentIds.length,
-					},
-				},
-			};
-		} catch (error) {
-			logger.error(
-				{ error: error instanceof Error ? error.message : String(error) },
-				"Error in DELETE_DOCUMENT action",
-			);
-			const errMsg = `I couldn't delete that document: ${error instanceof Error ? error.message : String(error)}`;
-			await callback?.({ text: errMsg });
-			return {
-				text: errMsg,
-				success: false,
-				values: {
-					error: error instanceof Error ? error.message : String(error),
-				},
-				data: { actionName: "DELETE_DOCUMENT" },
-			};
-		}
-	},
-
-	examples: [
-		[
-			{
-				name: "user",
-				content: {
-					text: "Delete document 123e4567-e89b-12d3-a456-426614174000.",
-				},
-			},
-			{
-				name: "assistant",
-				content: {
-					text: "I'll remove that document and its fragments from the store.",
-					actions: ["DELETE_DOCUMENT"],
-				},
-			},
-		],
-	] as ActionExample[][],
-};
-
-/** @deprecated Use deleteDocumentAction */
-export const deleteKnowledgeDocumentAction: Action = {
-	...deleteDocumentAction,
-	name: "DELETE_KNOWLEDGE_DOCUMENT",
-	similes: ["DELETE_DOCUMENT"],
-};
-
-// ─── LIST_DOCUMENTS ────────────────────────────────────────────────────────────
-
-type ListDocumentsParameters = { limit?: number; query?: string };
-
-export const listDocumentsAction: Action = {
-	name: "LIST_DOCUMENTS",
-	contexts: ["documents"],
-	contextGate: { anyOf: ["documents"] },
-	roleGate: { minRole: "USER" },
-	similes: ["ENUMERATE_DOCUMENTS", "SHOW_DOCUMENTS", "LIST_KNOWLEDGE"],
-	description:
-		"Lists stored documents in the document store, optionally filtered by a search query.",
-	suppressPostActionContinuation: true,
-	parameters: [
-		{
-			name: "limit",
-			description: "Maximum number of documents to return (default 20).",
-			required: false,
 			schema: {
-				type: "number" as const,
-				minimum: 1,
-				maximum: 100,
-				default: 20,
+				type: "string",
+				enum: [...DOCUMENT_SUB_ACTIONS],
 			},
 		},
 		{
 			name: "query",
-			description:
-				"Optional search query to filter documents by title or content.",
+			description: "Search or list filter query.",
 			required: false,
-			schema: { type: "string" as const },
+			schema: { type: "string" },
+		},
+		{
+			name: "id",
+			description: "Document UUID for read, edit, or delete.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "documentId",
+			description: "Document UUID for read, edit, or delete.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "text",
+			description: "Text to write or replacement text for edit.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "content",
+			description: "Text content to import or write.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "title",
+			description: "Optional title for text-backed documents.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "filePath",
+			description: "Local file path for import_file.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "url",
+			description: "HTTP or HTTPS URL for import_url.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "tags",
+			description: "Optional tags for created text documents.",
+			required: false,
+			schema: { type: "array", items: { type: "string" } },
+		},
+		{
+			name: "limit",
+			description: "Maximum number of results or listed documents.",
+			required: false,
+			schema: { type: "number", minimum: 1, maximum: 100 },
+		},
+		{
+			name: "searchMode",
+			description: "Search mode: hybrid, vector, or keyword.",
+			required: false,
+			schema: { type: "string", enum: ["hybrid", "vector", "keyword"] },
+		},
+		{
+			name: "scope",
+			description:
+				"Visibility scope for newly-created documents: global, owner-private, user-private, or agent-private.",
+			required: false,
+			schema: {
+				type: "string",
+				enum: [...DOCUMENT_SCOPES],
+			},
+		},
+		{
+			name: "scopedToEntityId",
+			description:
+				"Entity UUID for user-private documents when the owner or runtime is creating a document for a user. Also filters list/search to documents scoped to this entity.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "addedBy",
+			description:
+				"Filter list results to documents created by this entity UUID.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "timeRangeStart",
+			description:
+				"ISO date or epoch ms — list results created at or after this time.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "timeRangeEnd",
+			description:
+				"ISO date or epoch ms — list results created at or before this time.",
+			required: false,
+			schema: { type: "string" },
+		},
+		{
+			name: "offset",
+			description: "Pagination offset for list.",
+			required: false,
+			schema: { type: "number", minimum: 0 },
+		},
+		{
+			name: "includeImageDescriptions",
+			description:
+				"When importing URLs, request image descriptions from the upstream pipeline.",
+			required: false,
+			schema: { type: "boolean" },
 		},
 	],
+	similes: [
+		"search documents",
+		"read document",
+		"save document",
+		"edit document",
+		"delete document",
+		"list documents",
+		"import file",
+		"import url",
+	],
+	examples: [
+		[
+			{
+				name: "user",
+				content: { text: "Search documents for launch notes" },
+			},
+			{
+				name: "assistant",
+				content: {
+					text: "I'll search documents for launch notes.",
+					actions: ["DOCUMENT"],
+				},
+			},
+		],
+		[
+			{
+				name: "user",
+				content: { text: "Save this as a document: Launch is Friday." },
+			},
+			{
+				name: "assistant",
+				content: {
+					text: "I'll save that in documents.",
+					actions: ["DOCUMENT"],
+				},
+			},
+		],
+	] as ActionExample[][],
 
-	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-		return Boolean(runtime.getService(KnowledgeService.serviceType));
+	validate: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		_state?: State,
+		options?: unknown,
+	): Promise<boolean> => {
+		registerDocumentsSearchCategory(runtime);
+		if (!runtime.getService(DocumentService.serviceType)) return false;
+		const params = getParams(options);
+		return Boolean(inferSubAction(params, message));
 	},
 
 	handler: async (
@@ -1381,201 +1192,79 @@ export const listDocumentsAction: Action = {
 		options?: HandlerOptions,
 		callback?: HandlerCallback,
 	): Promise<ActionResult> => {
-		const params = (options?.parameters ?? {}) as ListDocumentsParameters;
-		const limit =
-			typeof params.limit === "number"
-				? Math.max(1, Math.min(100, Math.floor(params.limit)))
-				: 20;
-		const query =
-			typeof params.query === "string" ? params.query.trim() : undefined;
+		registerDocumentsSearchCategory(runtime);
+		const service = runtime.getService<DocumentService>(
+			DocumentService.serviceType,
+		);
+		const params = getParams(options);
+		const subaction = inferSubAction(params, message);
+
+		if (!service) {
+			const text = "Documents service not available.";
+			await emit(callback, { text });
+			return result(false, text, subaction ?? "search", {
+				values: { error: "service_unavailable" },
+			});
+		}
+		if (!subaction) {
+			const text = "I need a document subaction to perform.";
+			await emit(callback, { text });
+			return result(false, text, "search", {
+				values: { error: "missing_sub_action" },
+			});
+		}
 
 		try {
-			const service = runtime.getService<KnowledgeService>(
-				KnowledgeService.serviceType,
-			);
-			if (!service) {
-				throw new Error("Documents service not available");
+			switch (subaction) {
+				case "search":
+					return await handleSearch(service, message, params, callback);
+				case "read":
+					return await handleRead(service, message, params, callback);
+				case "write":
+					return await handleWrite(runtime, service, message, params, callback);
+				case "edit":
+					return await handleEdit(runtime, service, message, params, callback);
+				case "delete":
+					return await handleDelete(
+						runtime,
+						service,
+						message,
+						params,
+						callback,
+					);
+				case "list":
+					return await handleList(service, message, params, callback);
+				case "import_file":
+					return await handleImportFile(
+						runtime,
+						service,
+						message,
+						params,
+						callback,
+					);
+				case "import_url":
+					return await handleImportUrl(
+						runtime,
+						service,
+						message,
+						params,
+						callback,
+					);
 			}
-
-			let documents: Array<{
-				id: UUID;
-				content: { text?: string };
-				metadata?: Record<string, unknown>;
-			}>;
-
-			if (query) {
-				const searchMessage: Memory = { ...message, content: { text: query } };
-				documents = await service.getKnowledge(searchMessage);
-			} else {
-				documents = (await service.getMemories({
-					tableName: "documents",
-					roomId: runtime.agentId,
-					count: limit,
-				})) as typeof documents;
-			}
-
-			const sliced = documents.slice(0, limit);
-
-			if (sliced.length === 0) {
-				const text = query
-					? `No documents matched "${query}".`
-					: "No documents found in the store.";
-				await callback?.({ text });
-				return {
-					text,
-					success: true,
-					values: { count: 0 },
-					data: { actionName: "LIST_DOCUMENTS", documents: [] },
-				};
-			}
-
-			const formatted = sliced
-				.map((doc, i) => {
-					const meta = doc.metadata;
-					const title =
-						(meta?.title as string | undefined) ||
-						(meta?.filename as string | undefined) ||
-						doc.id;
-					return `${i + 1}. ${title} (id: ${doc.id})`;
-				})
-				.join("\n");
-
-			const text = `Found ${sliced.length} document(s):\n\n${formatted}`;
-			await callback?.({ text });
-			return {
-				text,
-				success: true,
-				values: { count: sliced.length },
-				data: {
-					actionName: "LIST_DOCUMENTS",
-					documents: sliced.map((doc) => ({
-						id: doc.id,
-						title:
-							(doc.metadata?.title as string | undefined) ??
-							(doc.metadata?.filename as string | undefined),
-					})),
-				},
-			};
 		} catch (error) {
-			logger.error(
-				{ error: error instanceof Error ? error.message : String(error) },
-				"Error in LIST_DOCUMENTS action",
-			);
-			const errMsg = `I couldn't list documents: ${error instanceof Error ? error.message : String(error)}`;
-			await callback?.({ text: errMsg });
-			return {
-				text: errMsg,
-				success: false,
+			logger.error({ error }, `Error in DOCUMENT ${subaction} action`);
+			const text = `I couldn't ${subaction.replace("_", " ")} documents: ${
+				error instanceof Error ? error.message : String(error)
+			}`;
+			await emit(callback, { text });
+			return result(false, text, subaction, {
+				error: error instanceof Error ? error.message : String(error),
 				values: {
 					error: error instanceof Error ? error.message : String(error),
 				},
-				data: { actionName: "LIST_DOCUMENTS" },
-			};
+			});
 		}
 	},
-
-	examples: [
-		[
-			{
-				name: "user",
-				content: { text: "List all documents in your store." },
-			},
-			{
-				name: "assistant",
-				content: {
-					text: "Here are the documents I have stored.",
-					actions: ["LIST_DOCUMENTS"],
-				},
-			},
-		],
-	] as ActionExample[][],
 };
 
-// ─── DOCUMENTS umbrella action ─────────────────────────────────────────────────
-
-export const documentsAction: Action = {
-	name: "DOCUMENTS",
-	contexts: ["documents"],
-	contextGate: { anyOf: ["documents"] },
-	roleGate: { minRole: "USER" },
-	description:
-		"Parent action for all document-store operations. Dispatches to the appropriate sub-action: SEARCH_DOCUMENTS, READ_DOCUMENT, WRITE_DOCUMENT, EDIT_DOCUMENT, DELETE_DOCUMENT, LIST_DOCUMENTS, IMPORT_DOCUMENT_FROM_FILE, or IMPORT_DOCUMENT_FROM_URL.",
-	suppressPostActionContinuation: true,
-	subActions: [
-		"SEARCH_DOCUMENTS",
-		"READ_DOCUMENT",
-		"WRITE_DOCUMENT",
-		"EDIT_DOCUMENT",
-		"DELETE_DOCUMENT",
-		"LIST_DOCUMENTS",
-		"IMPORT_DOCUMENT_FROM_FILE",
-		"IMPORT_DOCUMENT_FROM_URL",
-	],
-	subPlanner: {
-		name: "documents_subplanner",
-		description:
-			"Explodes SEARCH_DOCUMENTS, READ_DOCUMENT, WRITE_DOCUMENT, EDIT_DOCUMENT, DELETE_DOCUMENT, LIST_DOCUMENTS, IMPORT_DOCUMENT_FROM_FILE, and IMPORT_DOCUMENT_FROM_URL so the planner can chain multi-step document-store operations.",
-	},
-	parameters: [],
-
-	validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-		return Boolean(runtime.getService(KnowledgeService.serviceType));
-	},
-
-	handler: async (
-		_runtime: IAgentRuntime,
-		_message: Memory,
-		_state?: State,
-		_options?: HandlerOptions,
-		callback?: HandlerCallback,
-	): Promise<ActionResult> => {
-		const text =
-			"Please use a specific document action: SEARCH_DOCUMENTS, READ_DOCUMENT, WRITE_DOCUMENT, EDIT_DOCUMENT, DELETE_DOCUMENT, LIST_DOCUMENTS, IMPORT_DOCUMENT_FROM_FILE, or IMPORT_DOCUMENT_FROM_URL.";
-		await callback?.({ text });
-		return {
-			text,
-			success: false,
-			values: { error: "use_sub_action" },
-			data: { actionName: "DOCUMENTS" },
-		};
-	},
-
-	examples: [
-		[
-			{
-				name: "user",
-				content: { text: "Work with my documents." },
-			},
-			{
-				name: "assistant",
-				content: {
-					text: "I can search, read, write, edit, delete, or list documents. What would you like to do?",
-					actions: ["DOCUMENTS"],
-				},
-			},
-		],
-	] as ActionExample[][],
-};
-
-// ─── Exports ─────────────────────────────────────────────────────────────────
-
-export const documentActions = [
-	documentsAction,
-	searchDocumentsAction,
-	readDocumentAction,
-	writeDocumentAction,
-	editDocumentAction,
-	deleteDocumentAction,
-	listDocumentsAction,
-	importDocumentFromFileAction,
-	importDocumentFromUrlAction,
-	// Legacy aliases kept for backward compat
-	processKnowledgeAction,
-	searchKnowledgeAction,
-	ingestKnowledgeFromUrlAction,
-	updateKnowledgeDocumentAction,
-	deleteKnowledgeDocumentAction,
-];
-
-/** @deprecated Use documentActions */
-export const knowledgeActions = documentActions;
+export const documentActions: Action[] = [documentAction];

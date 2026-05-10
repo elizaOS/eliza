@@ -5,30 +5,22 @@
  */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { getConnectorAccountManager, logger } from "@elizaos/core";
 
+export * from "./accounts.js";
 // Service
 export { TwitchService } from "./service.js";
-
 // Types
 export * from "./types.js";
 
-// Actions
-// TWITCH_SEND_MESSAGE was a standalone action that duplicated the
-// MessageConnector path. The connector (registered by TwitchService.
-// registerSendHandlers) is now the canonical send path; SEND_MESSAGE
-// routes through it. Channel management lives in TWITCH_CHANNEL_OP.
-import { twitchChannelAction } from "./actions/channelRouter.js";
+// Twitch send/list/join/leave operations route through the MESSAGE action via
+// the MessageConnector registered by TwitchService.registerSendHandlers.
 
-export { twitchChannelAction };
-
-import { twitchChannelsProvider } from "./providers/twitchChannels.js";
-import { userContextProvider } from "./providers/userContext.js";
-
-export { twitchChannelsProvider, userContextProvider };
+import { createTwitchConnectorAccountProvider } from "./connector-account-provider.js";
 
 // Import service for plugin
 import { TwitchService } from "./service.js";
+import { TwitchWorkflowCredentialProvider } from "./workflow-credential-provider.js";
 
 /**
  * Twitch plugin definition.
@@ -38,18 +30,38 @@ const twitchPlugin: Plugin = {
   description:
     "Twitch chat integration plugin for ElizaOS with real-time messaging",
 
-  services: [TwitchService],
+  services: [TwitchService, TwitchWorkflowCredentialProvider],
 
-  actions: [twitchChannelAction],
+  actions: [],
 
-  providers: [userContextProvider, twitchChannelsProvider],
+  providers: [],
 
   tests: [],
+
+  // Self-declared auto-enable: activate when the "twitch" connector is
+  // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
+  // in plugin-auto-enable-engine.ts still serves as a fallback.
+  autoEnable: {
+    connectorKeys: ["twitch"],
+  },
 
   init: async (
     _config: Record<string, string>,
     runtime: IAgentRuntime,
   ): Promise<void> => {
+    try {
+      const manager = getConnectorAccountManager(runtime);
+      manager.registerProvider(createTwitchConnectorAccountProvider(runtime));
+    } catch (err) {
+      logger.warn(
+        {
+          src: "plugin:twitch",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Failed to register Twitch provider with ConnectorAccountManager",
+      );
+    }
+
     const username = runtime.getSetting("TWITCH_USERNAME");
     const clientId = runtime.getSetting("TWITCH_CLIENT_ID");
     const accessToken = runtime.getSetting("TWITCH_ACCESS_TOKEN");

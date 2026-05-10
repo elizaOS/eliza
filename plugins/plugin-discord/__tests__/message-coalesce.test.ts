@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMessageDebouncer } from "../debouncer";
+import { createChannelDebouncer, createMessageDebouncer } from "../debouncer";
 import {
 	getDiscordMessageCoalesceConfig,
 	makeCoalescedDiscordMessage,
@@ -110,5 +110,45 @@ describe("Discord message coalescing", () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+
+	it("does not immediately flush a channel message that mentions the bot incidentally", () => {
+		vi.useFakeTimers();
+		try {
+			const flushed: unknown[][] = [];
+			const debouncer = createChannelDebouncer(
+				(messages) => flushed.push([...messages]),
+				{
+					botUserId: "123",
+					debounceMs: 8000,
+					coalesceEnabled: false,
+				},
+			);
+
+			debouncer.enqueue(mockMessage("1", "<@456> compare this with <@123>"));
+			expect(flushed).toHaveLength(0);
+
+			vi.advanceTimersByTime(8000);
+			expect(flushed).toHaveLength(1);
+			expect(flushed[0]).toHaveLength(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("immediately flushes a channel message directly addressed to the bot", () => {
+		const flushed: unknown[][] = [];
+		const debouncer = createChannelDebouncer(
+			(messages) => flushed.push([...messages]),
+			{
+				botUserId: "123",
+				debounceMs: 8000,
+				coalesceEnabled: false,
+			},
+		);
+
+		debouncer.enqueue(mockMessage("1", "<@123> compare this with <@456>"));
+		expect(flushed).toHaveLength(1);
+		expect(flushed[0]).toHaveLength(1);
 	});
 });

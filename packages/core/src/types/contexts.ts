@@ -1,11 +1,13 @@
 import type { Role } from "./environment";
-import type { JsonValue } from "./proto.js";
+import type { JsonValue } from "./primitives";
 
 export type FirstPartyAgentContext =
 	| "simple"
 	| "general"
 	| "memory"
 	| "documents"
+	| "knowledge"
+	| "research"
 	| "web"
 	| "browser"
 	| "code"
@@ -15,6 +17,8 @@ export type FirstPartyAgentContext =
 	| "calendar"
 	| "contacts"
 	| "tasks"
+	| "todos"
+	| "productivity"
 	| "health"
 	| "screen_time"
 	| "subscriptions"
@@ -24,13 +28,19 @@ export type FirstPartyAgentContext =
 	| "crypto"
 	| "messaging"
 	| "phone"
+	| "social"
 	| "social_posting"
 	| "media"
 	| "automation"
 	| "connectors"
 	| "settings"
+	| "character"
 	| "secrets"
 	| "admin"
+	| "system"
+	| "state"
+	| "world"
+	| "game"
 	| "agent_internal";
 
 /**

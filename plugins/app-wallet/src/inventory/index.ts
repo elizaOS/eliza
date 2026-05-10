@@ -11,7 +11,7 @@ export {
   getStablecoinAddress,
   PRIMARY_CHAIN_KEYS,
   resolveChainKey,
-} from "./chainConfig";
+} from "./chainConfig.ts";
 export {
   BSC_GAS_READY_THRESHOLD,
   BSC_GAS_THRESHOLD,
@@ -21,6 +21,6 @@ export {
   type NftItem,
   type TokenRow,
   toNormalizedAddress,
-} from "./constants";
-export { TokenLogo } from "./TokenLogo";
-export { useInventoryData } from "./useInventoryData";
+} from "./constants.ts";
+export { TokenLogo } from "./TokenLogo.tsx";
+export { useInventoryData } from "./useInventoryData.ts";

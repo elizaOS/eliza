@@ -13,8 +13,8 @@
  */
 
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
-import { isInsufficientCreditsError } from "../../api/credit-detection.js";
-import type { HealthCheck, HealthCheckResult } from "./types.js";
+import { isInsufficientCreditsError } from "../../api/credit-detection.ts";
+import type { HealthCheck, HealthCheckResult } from "./types.ts";
 
 const LOG_PREFIX = "[runtime-ops:health-checks]";
 
@@ -34,13 +34,13 @@ interface ServiceRegistryLike {
 }
 
 function getDbAdapter(runtime: AgentRuntime): DbAdapterLike | null {
-  const adapter = (runtime as unknown as { adapter?: unknown }).adapter;
+  const adapter = runtime.adapter;
   if (adapter == null || typeof adapter !== "object") return null;
   return adapter as DbAdapterLike;
 }
 
 function asServiceRegistry(runtime: AgentRuntime): ServiceRegistryLike {
-  return runtime as unknown as ServiceRegistryLike;
+  return runtime as AgentRuntime & ServiceRegistryLike;
 }
 
 export function describeError(err: unknown): string {

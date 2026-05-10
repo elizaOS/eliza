@@ -1,4 +1,4 @@
-import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import {
   type Action,
   type ActionExample,
@@ -123,7 +123,18 @@ const examples: ActionExample[][] = [
   ],
 ];
 
-export const passwordManagerAction: Action & {
+/**
+ * Internal implementation of the legacy `PASSWORD_MANAGER` action surface.
+ *
+ * Audit B Defer #5 folded `PASSWORD_MANAGER` and `AUTOFILL` into the single
+ * `CREDENTIALS` umbrella (`./credentials.ts`). The umbrella forwards `search`,
+ * `list`, `inject_username`, and `inject_password` to this impl. The legacy
+ * export name (`passwordManagerAction`) is re-exported below as an alias for
+ * `credentialsAction` so cached planner outputs and downstream importers keep
+ * resolving — but no `PASSWORD_MANAGER`-named action is registered in the
+ * plugin anymore; the umbrella simile carries the legacy name forward.
+ */
+export const passwordManagerActionImpl: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: "PASSWORD_MANAGER",
@@ -139,6 +150,8 @@ export const passwordManagerAction: Action & {
     "Subactions: search, list, inject_username, inject_password. Credentials are NEVER displayed in chat — injection only copies to the OS clipboard briefly.",
   descriptionCompressed:
     "password manager 1Password|ProtonPass: search list inject_username inject_password (clipboard-only confirm-required no-plaintext-chat)",
+  routingHint:
+    "credential search/list/copy/inject -> PASSWORD_MANAGER; AUTOFILL handles login/password/form fill on a site",
   contexts: ["secrets", "browser", "automation"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -158,8 +171,8 @@ export const passwordManagerAction: Action & {
           message,
           state,
           actionName: "PASSWORD_MANAGER",
-          actionDescription: passwordManagerAction.description ?? "",
-          paramSchema: passwordManagerAction.parameters ?? [],
+          actionDescription: passwordManagerActionImpl.description ?? "",
+          paramSchema: passwordManagerActionImpl.parameters ?? [],
           existingParams: rawParams,
           requiredFields: ["subaction"],
         })) as PasswordManagerParameters;
@@ -303,3 +316,9 @@ export const passwordManagerAction: Action & {
     },
   ],
 };
+
+// Legacy export — the `PASSWORD_MANAGER` name lives on as a simile of the new
+// CREDENTIALS umbrella. Importers that destructured `passwordManagerAction`
+// get the umbrella back so they continue to dispatch through the unified
+// entry.
+export { credentialsAction as passwordManagerAction } from "./credentials.js";

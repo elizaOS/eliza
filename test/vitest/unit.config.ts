@@ -4,7 +4,6 @@ import { getElizaCoreEntry } from "../eliza-package-paths";
 import baseConfig from "./default.config";
 import { repoRoot } from "./repo-root";
 import {
-  getElizaCoreRolesEntry,
   getElizaWorkspaceRoot,
   getOptionalResolvedAliases,
   getWorkspacePluginAliases,
@@ -14,37 +13,39 @@ import {
 const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
 
-// Alias @elizaos/core to workspace source only when its dependencies are installed.
-const elizaCoreSource = path.join(
+/** This monorepo: core lives in `packages/core` (see `./testing` barrel in package exports). */
+const monorepoCoreRoot = path.join(repoRoot, "packages", "core");
+const monorepoCoreSource = path.join(monorepoCoreRoot, "src", "index.node.ts");
+/** Legacy submodule layout (`packages/typescript`) when embedding upstream eliza. */
+const legacyTypescriptCoreSource = path.join(
   elizaWorkspaceRoot,
   "packages",
   "typescript",
   "src",
   "index.ts",
 );
-const useLocalElizaCore =
-  existsSync(elizaCoreSource) &&
+
+const useMonorepoElizaCore =
+  existsSync(monorepoCoreSource) &&
+  existsSync(path.join(monorepoCoreRoot, "node_modules"));
+
+const useLegacyTypescriptElizaCore =
+  !useMonorepoElizaCore &&
+  existsSync(legacyTypescriptCoreSource) &&
   existsSync(
     path.join(elizaWorkspaceRoot, "packages", "typescript", "node_modules"),
   );
 
-// Keep the roles shim here too; the base config owns a separate alias array.
-const elizaCoreRolesEntry = getElizaCoreRolesEntry(repoRoot);
-const localElizaCoreReplacement = useLocalElizaCore
-  ? elizaCoreSource
-  : elizaCoreEntry;
+const localCoreSourceReplacement = useMonorepoElizaCore
+  ? monorepoCoreSource
+  : useLegacyTypescriptElizaCore
+    ? legacyTypescriptCoreSource
+    : undefined;
+
+const localElizaCoreReplacement =
+  localCoreSourceReplacement ?? elizaCoreEntry;
 const unitAliasEntries: ModuleAlias[] = [
   ...getOptionalResolvedAliases([
-    {
-      find: "@elizaos/plugin-telegram/account-auth-service",
-      replacement: path.join(
-        elizaWorkspaceRoot,
-        "plugins",
-        "plugin-telegram",
-        "src",
-        "account-auth-service.ts",
-      ),
-    },
     {
       find: "@elizaos/plugin-anthropic",
       replacement: path.join(
@@ -67,30 +68,6 @@ const unitAliasEntries: ModuleAlias[] = [
       ),
     },
   ]),
-  ...getOptionalResolvedAliases([
-    {
-      // Always applied — the shim fallback is always present even when the local eliza checkout is disabled.
-      find: "@elizaos/core/roles",
-      replacement: elizaCoreRolesEntry,
-    },
-  ]),
-  ...getOptionalResolvedAliases(
-    useLocalElizaCore
-      ? [
-          {
-            find: "@elizaos/core/testing",
-            replacement: path.join(
-              elizaWorkspaceRoot,
-              "packages",
-              "typescript",
-              "src",
-              "testing",
-              "index.ts",
-            ),
-          },
-        ]
-      : [],
-  ),
   ...getOptionalResolvedAliases(
     localElizaCoreReplacement
       ? [

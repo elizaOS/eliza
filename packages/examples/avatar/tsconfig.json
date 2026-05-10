@@ -16,5 +16,6 @@
     "noFallthroughCasesInSwitch": true,
     "types": ["vite/client"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "extends": "../../../tsconfig.dist-paths.json"
 }

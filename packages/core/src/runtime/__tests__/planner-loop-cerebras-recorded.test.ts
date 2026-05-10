@@ -2,6 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import type { GenerateTextResult, ToolDefinition } from "../../types/model";
 import { runPlannerLoop } from "../planner-loop";
 
+type CerebrasRecordedToolCall = NonNullable<
+	GenerateTextResult["toolCalls"]
+>[number] & {
+	toolName: string;
+	input: Record<string, string>;
+};
+
 /**
  * Integration regression: drive the planner with a recorded Cerebras response
  * shape (AI SDK v6 native tool-call format: finishReason="tool-calls",
@@ -25,9 +32,9 @@ const RECORDED_CEREBRAS_RESPONSE: GenerateTextResult = {
 			id: "call_recorded_abc123",
 			// AI SDK v6 Cerebras adapter returns `toolName` and `input`
 			// normalizeToolCall in planner-loop handles both shapes.
-			toolName: "SEARCH_KNOWLEDGE",
+			toolName: "DOCUMENT",
 			input: { query: "elizaOS architecture" },
-		} as unknown as GenerateTextResult["toolCalls"][number],
+		} as CerebrasRecordedToolCall,
 	],
 	usage: {
 		promptTokens: 526,
@@ -43,7 +50,7 @@ const RECORDED_CEREBRAS_RESPONSE: GenerateTextResult = {
 };
 
 const TOOL_DEF: ToolDefinition = {
-	name: "SEARCH_KNOWLEDGE",
+	name: "DOCUMENT",
 	description: "Search the knowledge base",
 	parameters: {
 		type: "object",
@@ -102,7 +109,7 @@ describe("planner-loop cerebras recorded response regression", () => {
 
 		// The tool call must have been extracted correctly
 		expect(capturedToolCalls).toHaveLength(1);
-		expect(capturedToolCalls[0]?.name).toBe("SEARCH_KNOWLEDGE");
+		expect(capturedToolCalls[0]?.name).toBe("DOCUMENT");
 		expect(capturedToolCalls[0]?.params).toEqual({
 			query: "elizaOS architecture",
 		});

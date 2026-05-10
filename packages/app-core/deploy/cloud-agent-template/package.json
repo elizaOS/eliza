@@ -8,6 +8,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-workflow": "workspace:*",
     "tsx": "4.21.0"
   }
 }

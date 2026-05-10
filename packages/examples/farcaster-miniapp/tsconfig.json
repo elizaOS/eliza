@@ -20,5 +20,6 @@
     "esModuleInterop": true,
     "resolveJsonModule": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "extends": "../../../tsconfig.dist-paths.json"
 }

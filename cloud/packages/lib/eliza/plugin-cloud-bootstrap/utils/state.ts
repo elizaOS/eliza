@@ -2,6 +2,10 @@ import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { NativePlannerActionResult } from "../types";
 
+interface RuntimeWithStateCache {
+  stateCache?: Map<string, { values?: { actionResults?: unknown[] } }>;
+}
+
 /** Refreshes state after action execution to sync prompts with latest results. */
 export async function refreshStateAfterAction(
   runtime: IAgentRuntime,
@@ -26,9 +30,7 @@ export async function refreshStateAfterAction(
  * Returns empty array on failure with warning logged.
  */
 export function getActionResultsFromCache(runtime: IAgentRuntime, messageId: string): unknown[] {
-  const runtimeWithCache = runtime as unknown as {
-    stateCache?: Map<string, { values?: { actionResults?: unknown[] } }>;
-  };
+  const runtimeWithCache = runtime as IAgentRuntime & RuntimeWithStateCache;
 
   if (!runtimeWithCache.stateCache) {
     logger.warn(
@@ -54,5 +56,5 @@ export function getActionResultsFromCache(runtime: IAgentRuntime, messageId: str
     return [];
   }
 
-  return results;
+  return Array.isArray(results) ? results : [];
 }

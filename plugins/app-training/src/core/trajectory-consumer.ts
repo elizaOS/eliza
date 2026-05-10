@@ -2,7 +2,7 @@ import type {
   Trajectory,
   TrajectoryLlmCall,
   TrajectoryStep,
-} from "@elizaos/agent/types/trajectory";
+} from "@elizaos/agent";
 import {
   ELIZA_NATIVE_TRAJECTORY_FORMAT,
   iterateTrajectoryLlmCalls,

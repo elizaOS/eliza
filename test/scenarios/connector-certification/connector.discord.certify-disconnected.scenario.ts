@@ -21,7 +21,7 @@ export default buildConnectorCertificationScenario({
       name: "discord-disconnected",
       text: "Read the Discord DM and send the reply in-thread, but if Discord is disconnected, tell me that clearly and ask me to reconnect it instead of claiming the message went out.",
       responseIncludesAny: ["discord", "disconnected", "reconnect", "reply"],
-      acceptedActions: ["TRIAGE_MESSAGES", "SEND_DRAFT"],
+      acceptedActions: ["MESSAGE", "MESSAGE"],
       includesAny: ["discord", "disconnected", "reconnect", "reply"],
     },
   ],

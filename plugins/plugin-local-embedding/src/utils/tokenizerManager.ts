@@ -1,5 +1,5 @@
 import { logger } from "@elizaos/core";
-import { AutoTokenizer, type PreTrainedTokenizer } from "@huggingface/transformers";
+import type { PreTrainedTokenizer } from "@huggingface/transformers";
 
 // Import the MODEL_SPECS type from a new types file we'll create later
 import type { ModelSpec } from "../types";
@@ -80,6 +80,8 @@ export class TokenizerManager {
         "Initializing new tokenizer from HuggingFace with models directory:",
         this.modelsDir
       );
+
+      const { AutoTokenizer } = await import("@huggingface/transformers");
 
       try {
         const tokenizer = await AutoTokenizer.from_pretrained(modelConfig.tokenizer.name, {

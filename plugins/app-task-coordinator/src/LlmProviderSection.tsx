@@ -1,4 +1,4 @@
-import { useApp } from "@elizaos/app-core";
+import { useApp } from "@elizaos/ui";
 import { Button, SettingsControls } from "@elizaos/ui";
 import {
   AlertTriangle,

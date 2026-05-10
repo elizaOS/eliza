@@ -4,6 +4,10 @@ import type { IAgentRuntime, TestSuite } from "@elizaos/core";
 import { ClientBase } from "./base";
 import type { TwitterConfig } from "./environment";
 
+function asRuntime<T extends object>(runtime: T): IAgentRuntime & T {
+  return runtime as IAgentRuntime & T;
+}
+
 /**
  * Test suite for Twitter client base functionality
  */
@@ -16,7 +20,7 @@ export class ClientBaseTestSuite implements TestSuite {
   constructor() {
     // Create a mock runtime for tests. The runtime interface is broad;
     // we stub only the surface the base client touches.
-    this.mockRuntime = {
+    this.mockRuntime = asRuntime({
       agentId: "test-agent-id" as IAgentRuntime["agentId"],
       getSetting: (key: string) => {
         return this.mockConfig[key as keyof TwitterConfig];
@@ -30,11 +34,14 @@ export class ClientBaseTestSuite implements TestSuite {
       createMemory: async () => {},
       getEntityById: async () => null,
       updateEntity: async () => {},
-    } as unknown as IAgentRuntime;
+    });
 
     // Create test config with only API v2 credentials
     this.mockConfig = {
       TWITTER_AUTH_MODE: "env",
+      TWITTER_ACCOUNT_ID: "default",
+      TWITTER_DEFAULT_ACCOUNT_ID: "default",
+      TWITTER_ACCOUNTS: "",
       TWITTER_API_KEY: "test-api-key",
       TWITTER_API_SECRET_KEY: "test-api-secret",
       TWITTER_ACCESS_TOKEN: "test-access-token",
@@ -42,7 +49,6 @@ export class ClientBaseTestSuite implements TestSuite {
       TWITTER_CLIENT_ID: "",
       TWITTER_REDIRECT_URI: "",
       TWITTER_SCOPES: "tweet.read tweet.write users.read offline.access",
-      TWITTER_BROKER_URL: "",
       TWITTER_DRY_RUN: "false",
       TWITTER_TARGET_USERS: "",
       TWITTER_ENABLE_POST: "false",

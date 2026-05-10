@@ -66,7 +66,7 @@ flowchart TD
 ```javascript
 enum SOCKET_MESSAGE_TYPE {
   ROOM_JOINING = 1,      // Join a channel/room
-  SEND_MESSAGE = 2,      // Send a message
+  MESSAGE_SEND = 2,      // Send a message
   MESSAGE = 3,           // Generic message
   ACK = 4,              // Acknowledgment
   THINKING = 5,         // Agent is thinking
@@ -150,7 +150,7 @@ socket.on("connection_established", function (data) {
 // 5. Send a message (make sure format is exact)
 function sendMessageToEliza(text) {
   const messagePayload = {
-    type: 2, // SEND_MESSAGE
+    type: 2, // MESSAGE_SEND
     payload: {
       senderId: entityId,
       senderName: "Extension User",
@@ -239,7 +239,7 @@ class ElizaSocketClient {
 
   sendMessage(text) {
     this.socket.emit("message", {
-      type: 2, // SEND_MESSAGE
+      type: 2, // MESSAGE_SEND
       payload: {
         senderId: this.entityId,
         senderName: "Extension User",
@@ -313,7 +313,7 @@ socket.emit("message", {
 ```javascript
 // The structure must be exact
 {
-  type: 2, // SEND_MESSAGE type
+  type: 2, // MESSAGE_SEND type
   payload: {
     senderId: entityId,
     senderName: 'Extension User',
@@ -504,7 +504,7 @@ class SocketIOService extends Service {
       socket.on("message", async (data) => {
         if (data.type === SOCKET_MESSAGE_TYPE.ROOM_JOINING) {
           await this.handleRoomJoin(socket, data.payload);
-        } else if (data.type === SOCKET_MESSAGE_TYPE.SEND_MESSAGE) {
+        } else if (data.type === SOCKET_MESSAGE_TYPE.MESSAGE_SEND) {
           await this.handleMessage(socket, data.payload);
         }
       });
@@ -705,7 +705,6 @@ Available extractors:
 | `PassthroughExtractor`    | Streams all content as-is                 |
 | `XmlTagExtractor`         | Extracts content from specific XML tags   |
 | `ResponseStreamExtractor` | Action-aware XML extraction (available but no longer used by `DefaultMessageService` — see note below) |
-| `ActionStreamFilter`      | Auto-detects content type (JSON/XML/text) |
 
 <Note>
   **Architecture change:** `DefaultMessageService.handleMessage` previously

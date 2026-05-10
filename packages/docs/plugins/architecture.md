@@ -32,7 +32,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-agent-skills",      // skill execution and marketplace runtime
   "@elizaos/plugin-commands",          // slash command handling
   "@elizaos/app-lifeops",             // LifeOps: tasks, goals, calendar, inbox
-  "@elizaos/plugin-browser-bridge",    // Chrome/Safari companion pairing
+  "@elizaos/plugin-browser",    // Chrome/Safari companion pairing
 ];
 ```
 
@@ -48,7 +48,6 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-cua",                   // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian",              // Obsidian vault CLI integration
   "@elizaos/plugin-repoprompt",            // RepoPrompt CLI integration and workflow orchestration
-  "@elizaos/plugin-claude-code-workbench", // Claude Code companion workflows for this monorepo
   "@elizaos/plugin-computeruse",           // computer use automation (requires platform-specific binaries)
   "@elizaos/plugin-browser",              // browser automation (requires stagehand-server)
   "@elizaos/plugin-vision",               // vision/image understanding (feature-gated)
@@ -156,7 +155,6 @@ const AUTH_PROVIDER_PLUGINS = {
   CUA_HOST:                       "@elizaos/plugin-cua",                 // bundled
   OBSIDIAN_VAULT_PATH:            "@elizaos/plugin-obsidian",            // bundled
   REPOPROMPT_CLI_PATH:            "@elizaos/plugin-repoprompt",          // bundled
-  CLAUDE_CODE_WORKBENCH_ENABLED:  "@elizaos/plugin-claude-code-workbench", // bundled
 };
 ```
 
@@ -209,7 +207,6 @@ const FEATURE_PLUGINS = {
   cua:                  "@elizaos/plugin-cua",                   // * upstream-only
   obsidian:             "@elizaos/plugin-obsidian",              // * upstream-only
   shell:                "@elizaos/plugin-shell",
-  executeCode:          "@elizaos/plugin-executecode",
   imageGen:             "@elizaos/plugin-image-generation",
   tts:                  "@elizaos/plugin-edge-tts",
   stt:                  "@elizaos/plugin-stt",
@@ -226,7 +223,6 @@ const FEATURE_PLUGINS = {
   vision:               "@elizaos/plugin-vision",
   computeruse:          "@elizaos/plugin-computeruse",
   repoprompt:           "@elizaos/plugin-repoprompt",            // * upstream-only
-  claudeCodeWorkbench:  "@elizaos/plugin-claude-code-workbench", // * upstream-only
 };
 ```
 

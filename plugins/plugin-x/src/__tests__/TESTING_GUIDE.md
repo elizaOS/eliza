@@ -6,9 +6,8 @@ This guide explains how to test the Twitter plugin after removing username/passw
 
 The plugin supports multiple auth modes:
 
-- `TWITTER_AUTH_MODE=env` (legacy OAuth 1.0a keys/tokens)
+- `TWITTER_AUTH_MODE=env` (OAuth 1.0a keys/tokens)
 - `TWITTER_AUTH_MODE=oauth` (OAuth 2.0 Authorization Code + PKCE, interactive “login + approve”, no client secret)
-- `TWITTER_AUTH_MODE=broker` (stub only, not implemented yet)
 
 ## Prerequisites
 
@@ -216,10 +215,10 @@ With Twitter API v2 only:
 
 ```bash
 # Run performance benchmarks
-npm run benchmark
+bun run benchmark
 
 # Test rate limiting
-npm run test:rate-limits
+bun run test:rate-limits
 ```
 
 ## CI/CD Integration

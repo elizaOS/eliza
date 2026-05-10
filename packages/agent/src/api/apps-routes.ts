@@ -1,8 +1,10 @@
 import type { Dirent } from "node:fs";
 import { promises as fs } from "node:fs";
 import type http from "node:http";
+import { ServerResponse } from "node:http";
 import path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, RouteRequestMeta } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/shared";
 import {
   type AppRunActionResult,
   type AppRunSummary,
@@ -12,23 +14,22 @@ import {
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
 } from "@elizaos/shared";
-import { parseAppPermissions } from "@elizaos/shared/contracts/app-permissions";
+import { parseAppPermissions } from "@elizaos/shared";
 import {
   importAppRouteModule,
   resolveWorkspacePackageDir,
-} from "../services/app-package-modules.js";
-import { setOverlayAppPresence } from "../services/overlay-app-presence.js";
+} from "../services/app-package-modules.ts";
+import { setOverlayAppPresence } from "../services/overlay-app-presence.ts";
 import type {
   InstallProgressLike,
   PluginManagerLike,
   RegistryPluginInfo,
   RegistrySearchResult,
-} from "../services/plugin-manager-types.js";
+} from "../services/plugin-manager-types.ts";
 import {
   scoreEntries,
   toSearchResults,
-} from "../services/registry-client-queries.js";
-import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
+} from "../services/registry-client-queries.ts";
 
 const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp",
@@ -626,20 +627,28 @@ async function proxyRunSteeringRequest(
   }
 
   const captured = createCapturedResponse();
+  const syntheticResponse = Object.assign(
+    Object.create(ServerResponse.prototype) as http.ServerResponse,
+    captured,
+  );
   const syntheticUrl = new URL(ctx.url.toString());
   syntheticUrl.pathname = target.pathname;
-  const syntheticCtx = {
+  const syntheticCtx: AppsRouteContext = {
     ...ctx,
     pathname: target.pathname,
     url: syntheticUrl,
-    res: captured,
+    res: syntheticResponse,
     readJsonBody: async <T extends object>() => body as T | null,
-    json: (response: CapturedResponse, data: unknown, status = 200): void => {
+    json: (
+      response: http.ServerResponse,
+      data: unknown,
+      status = 200,
+    ): void => {
       response.writeHead(status, { "Content-Type": "application/json" });
       response.end(JSON.stringify(data));
     },
     error: (
-      response: CapturedResponse,
+      response: http.ServerResponse,
       message: string,
       status = 500,
     ): void => {
@@ -648,9 +657,7 @@ async function proxyRunSteeringRequest(
     },
   };
 
-  const handled = await routeModule.handleAppRoutes(
-    syntheticCtx as unknown as AppsRouteContext,
-  );
+  const handled = await routeModule.handleAppRoutes(syntheticCtx);
   if (!handled) {
     return {
       success: false,
@@ -1056,25 +1063,12 @@ export async function handleAppsRoutes(
         !result.success &&
         result.error?.includes("requires a running agent runtime")
       ) {
-        // Fall back to the app-core installer which writes directly to
+        // Fall back to the direct installer which writes directly to
         // ~/.eliza/plugins/installed without depending on a plugin-manager
         // service. The runtime plugin resolver already searches that dir.
-        const { installPlugin: installPluginDirect } = (await import(
-          /* webpackIgnore: true */ "@elizaos/app-core/services/plugin-installer"
-        )) as {
-          installPlugin: (
-            name: string,
-            onProgress?: (progress: InstallProgressLike) => void,
-            version?: string,
-          ) => Promise<{
-            success: boolean;
-            pluginName: string;
-            version: string;
-            installPath: string;
-            requiresRestart: boolean;
-            error?: string;
-          }>;
-        };
+        const { installPlugin: installPluginDirect } = await import(
+          /* webpackIgnore: true */ "../services/plugin-installer.js"
+        );
         result = await installPluginDirect(name, recordProgress, body.version);
       }
       if (!result.success) {

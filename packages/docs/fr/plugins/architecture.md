@@ -55,7 +55,6 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-cua",                   // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian",              // Obsidian vault CLI integration
   "@elizaos/plugin-repoprompt",            // RepoPrompt CLI integration
-  "@elizaos/plugin-claude-code-workbench", // Claude Code companion workflows
   "@elizaos/plugin-computeruse",           // computer use automation (platform-specific)
   "@elizaos/plugin-browser",              // browser automation (requires stagehand-server)
   "@elizaos/plugin-vision",               // vision/image understanding (feature-gated)
@@ -178,7 +177,7 @@ const AUTH_PROVIDER_PLUGINS = {
   CUA_HOST:                       "@elizaos/plugin-cua",
   OBSIDIAN_VAULT_PATH:            "@elizaos/plugin-obsidian",
   REPOPROMPT_CLI_PATH:            "@elizaos/plugin-repoprompt",
-  CLAUDE_CODE_WORKBENCH_ENABLED:  "@elizaos/plugin-claude-code-workbench",
+
 };
 ```
 
@@ -243,7 +242,6 @@ const FEATURE_PLUGINS = {
   vision:               "@elizaos/plugin-vision",
   computeruse:          "@elizaos/plugin-computeruse",
   repoprompt:           "@elizaos/plugin-repoprompt",
-  claudeCodeWorkbench:  "@elizaos/plugin-claude-code-workbench",
 };
 ```
 

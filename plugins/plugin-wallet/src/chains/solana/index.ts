@@ -2,6 +2,7 @@ import type { IAgentRuntime, Plugin, ServiceTypeName } from "@elizaos/core";
 import { SOLANA_SERVICE_NAME } from "./constants";
 import { walletProvider } from "./providers/wallet";
 import { solanaRoutes } from "./routes/index";
+import { solanaSignRoutes } from "./routes/sign";
 import { SolanaService, SolanaWalletService } from "./service";
 
 function getStringSetting(runtime: IAgentRuntime, key: string): string | null {
@@ -21,7 +22,7 @@ export const solanaPlugin: Plugin = {
   name: SOLANA_SERVICE_NAME,
   description: "Solana blockchain plugin",
   services: [SolanaService, SolanaWalletService],
-  routes: solanaRoutes,
+  routes: [...solanaRoutes, ...solanaSignRoutes],
   init: async (_, runtime: IAgentRuntime) => {
     if (!getStringSetting(runtime, "SOLANA_RPC_URL")) {
       runtime.logger.log("no SOLANA_RPC_URL, skipping Solana chain init");

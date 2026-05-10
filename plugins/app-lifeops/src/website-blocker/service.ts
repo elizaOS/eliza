@@ -5,7 +5,7 @@ import {
   reconcileSelfControlBlockState,
   type SelfControlStatus,
   stopSelfControlBlock,
-} from "./engine.ts";
+} from "./engine.js";
 
 export const WEBSITE_BLOCKER_UNBLOCK_TASK_NAME =
   "WEBSITE_BLOCKER_UNBLOCK" as const;

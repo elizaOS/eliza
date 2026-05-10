@@ -11,13 +11,16 @@ Group=deploy
 WorkingDirectory=/opt/eliza/cloud
 EnvironmentFile=/opt/eliza/cloud/.env.local
 # ssh2 + dockerode are Node-only, so the daemon runs under tsx (not bun).
-ExecStart=/usr/bin/npx tsx packages/scripts/daemons/provisioning-worker.ts
+# Use the installed workspace binary directly; `npx tsx` adds npm/esbuild
+# startup overhead and has hit Node worker heap limits on the deploy host.
+Environment=NODE_OPTIONS=--max-old-space-size=1024
+ExecStart=/opt/eliza/cloud/node_modules/.bin/tsx packages/scripts/daemons/provisioning-worker.ts
 
 Restart=always
 RestartSec=5
 
-MemoryMax=512M
-MemoryHigh=384M
+MemoryMax=1536M
+MemoryHigh=1024M
 
 StandardOutput=journal
 StandardError=journal
@@ -25,6 +28,9 @@ SyslogIdentifier=eliza-provisioning-worker
 
 NoNewPrivileges=yes
 ProtectSystem=strict
+# Private writable /tmp for the service. tsx needs to create /tmp/tsx-${UID}
+# for its IPC server, which ProtectSystem=strict otherwise blocks.
+PrivateTmp=true
 ReadWritePaths=/opt/eliza
 ReadOnlyPaths=/home/deploy/.ssh
 

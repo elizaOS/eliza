@@ -18,13 +18,13 @@
     "@elizaos/billing": "workspace:*",
     "@upstash/redis": "^1.37.0",
     "hashring": "^3.2.0",
-    "hono": "4.12.16",
+    "hono": "4.12.18",
     "ioredis": "^5.10.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/hashring": "^3.2.5",
     "@types/node": "22.19.17",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   }
 }

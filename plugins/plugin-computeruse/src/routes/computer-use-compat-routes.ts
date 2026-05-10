@@ -14,21 +14,176 @@
  */
 
 import type http from "node:http";
-import {
-  ensureCompatSensitiveRouteAuthorized,
-  ensureRouteAuthorized,
-  getCompatApiToken,
-  getProvidedApiToken,
-  tokenMatches,
-} from "@elizaos/app-core/api/auth";
-import {
-  type CompatRuntimeState,
-  readCompatJsonBody,
-} from "@elizaos/app-core/api/compat-route-shared";
-import {
-  sendJsonError as sendJsonErrorResponse,
-  sendJson as sendJsonResponse,
-} from "@elizaos/app-core/api/response";
+import crypto from "node:crypto";
+
+type CompatRuntimeState = {
+  current: {
+    getService?: (name: string) => unknown;
+  } | null;
+};
+
+const MAX_BODY_BYTES = 1_048_576;
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (typeof value === "string") return value;
+  return Array.isArray(value) && typeof value[0] === "string" ? value[0] : null;
+}
+
+function isTrustedLocalRequest(
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
+): boolean {
+  const remoteAddress = req.socket?.remoteAddress?.trim().toLowerCase();
+  if (
+    remoteAddress &&
+    remoteAddress !== "127.0.0.1" &&
+    remoteAddress !== "::1" &&
+    remoteAddress !== "0:0:0:0:0:0:0:1" &&
+    remoteAddress !== "::ffff:127.0.0.1" &&
+    remoteAddress !== "::ffff:0:127.0.0.1"
+  ) {
+    return false;
+  }
+
+  const origin = firstHeaderValue(req.headers.origin);
+  if (origin) {
+    try {
+      const parsed = new URL(origin);
+      if (parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
+        return false;
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function tokenMatches(expected: string, provided: string): boolean {
+  const expectedBuf = Buffer.from(expected);
+  const providedBuf = Buffer.from(provided);
+  return (
+    expectedBuf.length === providedBuf.length &&
+    crypto.timingSafeEqual(expectedBuf, providedBuf)
+  );
+}
+
+function getCompatApiToken(): string | null {
+  return process.env.ELIZA_API_TOKEN?.trim() || null;
+}
+
+function getProvidedApiToken(
+  req: Pick<http.IncomingMessage, "headers">,
+): string | null {
+  const authHeader = firstHeaderValue(req.headers.authorization)
+    ?.slice(0, 1024)
+    ?.trim();
+  if (authHeader) {
+    const match = /^Bearer\s{1,8}(.+)$/i.exec(authHeader);
+    if (match?.[1]) return match[1].trim();
+  }
+
+  return (
+    firstHeaderValue(req.headers["x-eliza-token"]) ??
+    firstHeaderValue(req.headers["x-elizaos-token"]) ??
+    firstHeaderValue(req.headers["x-api-key"]) ??
+    firstHeaderValue(req.headers["x-api-token"])
+  )?.trim() || null;
+}
+
+function sendJsonResponse(
+  res: http.ServerResponse,
+  status: number,
+  body: unknown,
+): void {
+  if (res.headersSent) return;
+  res.statusCode = status;
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.end(JSON.stringify(body));
+}
+
+function sendJsonErrorResponse(
+  res: http.ServerResponse,
+  status: number,
+  message: string,
+): void {
+  sendJsonResponse(res, status, { error: message });
+}
+
+function ensureCompatSensitiveRouteAuthorized(
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
+  res: http.ServerResponse,
+): boolean {
+  if (isTrustedLocalRequest(req)) return true;
+
+  const expected = getCompatApiToken();
+  const provided = getProvidedApiToken(req);
+  if (expected && provided && tokenMatches(expected, provided)) {
+    return true;
+  }
+
+  sendJsonErrorResponse(res, expected ? 401 : 403, "Unauthorized");
+  return false;
+}
+
+async function ensureRouteAuthorized(
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
+  res: http.ServerResponse,
+  _state?: CompatRuntimeState,
+): Promise<boolean> {
+  if (isTrustedLocalRequest(req)) return true;
+
+  const expected = getCompatApiToken();
+  const provided = getProvidedApiToken(req);
+  if (expected && provided && tokenMatches(expected, provided)) {
+    return true;
+  }
+
+  sendJsonErrorResponse(res, 401, "Unauthorized");
+  return false;
+}
+
+async function readCompatJsonBody(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<Record<string, unknown> | null> {
+  const preParsed = (req as { body?: unknown }).body;
+  if (preParsed && typeof preParsed === "object" && !Array.isArray(preParsed)) {
+    return preParsed as Record<string, unknown>;
+  }
+
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  try {
+    for await (const chunk of req) {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      totalBytes += buf.length;
+      if (totalBytes > MAX_BODY_BYTES) {
+        req.destroy();
+        sendJsonErrorResponse(res, 413, "Request body too large");
+        return null;
+      }
+      chunks.push(buf);
+    }
+  } catch {
+    sendJsonErrorResponse(res, 400, "Invalid request body");
+    return null;
+  }
+
+  if (chunks.length === 0) return {};
+
+  try {
+    const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      sendJsonErrorResponse(res, 400, "Invalid JSON body");
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    sendJsonErrorResponse(res, 400, "Invalid JSON body");
+    return null;
+  }
+}
 
 type ComputerUseApprovalMode =
   | "full_control"

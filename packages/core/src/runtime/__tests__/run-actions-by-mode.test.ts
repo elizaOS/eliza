@@ -70,8 +70,7 @@ describe("runActionsByMode", () => {
 		});
 		// Register the runtime with a no-op composeState so we don't need a
 		// model provider.
-		(runtime as unknown as { composeState: () => Promise<{}> }).composeState =
-			async () => ({ values: {}, data: {}, text: "" });
+		runtime.composeState = async () => ({ values: {}, data: {}, text: "" });
 	});
 
 	it("filters actions by mode and ignores PLANNER actions", async () => {
@@ -143,20 +142,20 @@ describe("runActionsByMode", () => {
 	it("CONTEXT_* gates by intersection of action.contexts and selectedContexts", async () => {
 		const ledger: string[] = [];
 		const knowledge = makeProbe("k", "CONTEXT_BEFORE", ledger, {
-			contexts: ["knowledge"],
+			contexts: ["documents"],
 		});
 		const wallet = makeProbe("w", "CONTEXT_BEFORE", ledger, {
 			contexts: ["wallet"],
 		});
 		const both = makeProbe("kw", "CONTEXT_BEFORE", ledger, {
-			contexts: ["knowledge", "wallet"],
+			contexts: ["documents", "wallet"],
 		});
 		const none = makeProbe("n", "CONTEXT_BEFORE", ledger, { contexts: [] });
 		runtime.actions.length = 0;
 		runtime.actions.push(knowledge, wallet, both, none);
 
 		await runtime.runActionsByMode("CONTEXT_BEFORE", makeMessage(), undefined, {
-			selectedContexts: ["knowledge"],
+			selectedContexts: ["documents"],
 		});
 		expect(ledger.sort()).toEqual(["k", "kw"]);
 	});
@@ -178,9 +177,9 @@ describe("runActionsByMode", () => {
 	it("HOOK_MODES export covers all 9 hook positions", () => {
 		expect(HOOK_MODES.length).toBe(9);
 		expect(HOOK_MODES).toContain("ALWAYS_BEFORE");
-		expect(HOOK_MODES).toContain("MESSAGE_BEFORE");
-		expect(HOOK_MODES).toContain("MESSAGE_DURING");
-		expect(HOOK_MODES).toContain("MESSAGE_AFTER");
+		expect(HOOK_MODES).toContain("RESPONSE_HANDLER_BEFORE");
+		expect(HOOK_MODES).toContain("RESPONSE_HANDLER_DURING");
+		expect(HOOK_MODES).toContain("RESPONSE_HANDLER_AFTER");
 		expect(HOOK_MODES).toContain("CONTEXT_BEFORE");
 		expect(HOOK_MODES).toContain("CONTEXT_DURING");
 		expect(HOOK_MODES).toContain("CONTEXT_AFTER");

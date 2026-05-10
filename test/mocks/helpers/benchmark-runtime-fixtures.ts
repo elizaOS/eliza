@@ -96,7 +96,7 @@ async function startFixtureServer(): Promise<{
 }
 
 function installAppBlockerFixture(): Cleanup {
-  const capacitor = Capacitor as unknown as {
+  const capacitor = Capacitor as {
     Plugins?: Record<string, unknown>;
   };
   const previousPlugins = capacitor.Plugins;
@@ -191,11 +191,12 @@ function createBenchmarkComputerUseService() {
   return {
     getCapabilities() {
       return {
-        desktop: { available: true },
-        browser: { available: true },
-        window: { available: true },
-        file: { available: true },
-        terminal: { available: true },
+        screenshot: { available: true, tool: "fixture-screenshot" },
+        computerUse: { available: true, tool: "fixture-desktop" },
+        windowList: { available: true, tool: "fixture-window-list" },
+        browser: { available: true, tool: "fixture-browser" },
+        terminal: { available: true, tool: "fixture-terminal" },
+        fileSystem: { available: true, tool: "fixture-file-system" },
       };
     },
     async executeDesktopAction(params: { action?: string; text?: string }) {

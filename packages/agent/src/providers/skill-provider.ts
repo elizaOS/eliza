@@ -17,10 +17,11 @@ import type {
   Memory,
   Provider,
   ProviderResult,
+  Service,
   State,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
-import { hasAdminAccess } from "../security/access.js";
+import { hasAdminAccess } from "../security/access.ts";
 
 // ── Stopwords ────────────────────────────────────────────────────────────────
 
@@ -309,7 +310,7 @@ const MAX_SKILL_MATCHES = 3;
 
 // ── Provider ─────────────────────────────────────────────────────────────────
 
-import type { AgentSkillsServiceLike } from "../types/agent-skills.js";
+import type { AgentSkillsServiceLike } from "../types/agent-skills.ts";
 
 export function createDynamicSkillProvider(): Provider {
   let indexCache: BM25Index | null = null;
@@ -338,9 +339,9 @@ export function createDynamicSkillProvider(): Provider {
           return { text: "", values: {}, data: {} };
         }
 
-        const service = runtime.getService(
+        const service = runtime.getService<Service & AgentSkillsServiceLike>(
           "AGENT_SKILLS_SERVICE",
-        ) as unknown as AgentSkillsServiceLike | null;
+        );
         if (!service) return { text: "", values: {}, data: {} };
 
         const skills = service.getLoadedSkills();

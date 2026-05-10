@@ -12,6 +12,11 @@
  */
 
 import type http from "node:http";
+import {
+  type KvOffloadMode,
+  type LocalInferenceLoadOverrides,
+  validateLocalInferenceLoadArgs,
+} from "../services/local-inference/active-model";
 import { deviceBridge } from "../services/local-inference/device-bridge";
 import {
   handlerRegistry,
@@ -36,7 +41,7 @@ import {
   getCompatApiToken,
   getProvidedApiToken,
   tokenMatches,
-} from "./auth";
+} from "./auth.ts";
 import {
   type CompatRuntimeState,
   readCompatJsonBody,
@@ -45,6 +50,26 @@ import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
+
+function isCatalogModel(value: unknown): value is CatalogModel {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Partial<CatalogModel>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.displayName === "string" &&
+    typeof record.hfRepo === "string" &&
+    typeof record.ggufFile === "string" &&
+    typeof record.params === "string" &&
+    typeof record.quant === "string" &&
+    typeof record.sizeGb === "number" &&
+    typeof record.minRamGb === "number" &&
+    typeof record.category === "string" &&
+    typeof record.bucket === "string" &&
+    typeof record.blurb === "string"
+  );
+}
 
 function isStreamAuthorized(
   req: http.IncomingMessage,
@@ -82,6 +107,121 @@ function stringBody(
   if (!body) return null;
   const raw = body[key];
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
+
+/**
+ * Strict parser for the per-load `overrides` field on
+ * `POST /api/local-inference/active`. Returns either a validated
+ * `LocalInferenceLoadOverrides` value or a non-null `error` string.
+ *
+ * The parser is the single boundary where untrusted JSON becomes typed
+ * load args — `validateLocalInferenceLoadArgs` re-runs invariant checks
+ * after merging with catalog defaults to catch any catalog-side rule
+ * we haven't taught the route layer yet.
+ */
+function parseLocalInferenceLoadOverrides(raw: unknown):
+  | { overrides: LocalInferenceLoadOverrides; error: null }
+  | {
+      overrides: null;
+      error: string;
+    } {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { overrides: null, error: "overrides must be an object" };
+  }
+  const record = raw as Record<string, unknown>;
+  const out: LocalInferenceLoadOverrides = {};
+
+  if (record.contextSize !== undefined) {
+    if (
+      typeof record.contextSize !== "number" ||
+      !Number.isInteger(record.contextSize) ||
+      record.contextSize < 256
+    ) {
+      return {
+        overrides: null,
+        error: "overrides.contextSize must be an integer >= 256",
+      };
+    }
+    out.contextSize = record.contextSize;
+  }
+  for (const key of ["cacheTypeK", "cacheTypeV"] as const) {
+    const value = record[key];
+    if (value === undefined) continue;
+    if (typeof value !== "string" || value.trim().length === 0) {
+      return {
+        overrides: null,
+        error: `overrides.${key} must be a non-empty string`,
+      };
+    }
+    out[key] = value.trim().toLowerCase();
+  }
+  if (record.gpuLayers !== undefined) {
+    if (
+      typeof record.gpuLayers !== "number" ||
+      !Number.isInteger(record.gpuLayers) ||
+      record.gpuLayers < 0
+    ) {
+      return {
+        overrides: null,
+        error: "overrides.gpuLayers must be a non-negative integer",
+      };
+    }
+    out.gpuLayers = record.gpuLayers;
+  }
+  if (record.kvOffload !== undefined) {
+    const value = record.kvOffload;
+    if (typeof value === "string") {
+      if (value !== "cpu" && value !== "gpu" && value !== "split") {
+        return {
+          overrides: null,
+          error:
+            'overrides.kvOffload must be "cpu", "gpu", "split", or { gpuLayers: number }',
+        };
+      }
+      out.kvOffload = value as KvOffloadMode;
+    } else if (
+      value !== null &&
+      typeof value === "object" &&
+      typeof (value as { gpuLayers?: unknown }).gpuLayers === "number" &&
+      Number.isInteger((value as { gpuLayers: number }).gpuLayers) &&
+      (value as { gpuLayers: number }).gpuLayers >= 0
+    ) {
+      out.kvOffload = {
+        gpuLayers: (value as { gpuLayers: number }).gpuLayers,
+      };
+    } else {
+      return {
+        overrides: null,
+        error:
+          'overrides.kvOffload must be "cpu", "gpu", "split", or { gpuLayers: number }',
+      };
+    }
+  }
+  for (const key of ["flashAttention", "mmap", "mlock"] as const) {
+    const value = record[key];
+    if (value === undefined) continue;
+    if (typeof value !== "boolean") {
+      return {
+        overrides: null,
+        error: `overrides.${key} must be a boolean`,
+      };
+    }
+    out[key] = value;
+  }
+
+  // Run the same validation `resolveLocalInferenceLoadArgs` will run, but
+  // with `allowFork: false` so desktop callers can't ask for fork-only
+  // KV cache types and silently get fp16. AOSP / paired-device callers
+  // bypass this route entirely.
+  try {
+    validateLocalInferenceLoadArgs(out, { allowFork: false });
+  } catch (err) {
+    return {
+      overrides: null,
+      error: err instanceof Error ? err.message : "invalid overrides",
+    };
+  }
+  return { overrides: out, error: null };
 }
 
 /**
@@ -228,10 +368,12 @@ export async function handleLocalInferenceCompatRoutes(
     const rawSpec = body.spec;
     try {
       let job: Awaited<ReturnType<typeof localInferenceService.startDownload>>;
-      if (rawSpec && typeof rawSpec === "object" && !Array.isArray(rawSpec)) {
-        job = await localInferenceService.startDownload(
-          rawSpec as unknown as CatalogModel,
-        );
+      if (rawSpec) {
+        if (!isCatalogModel(rawSpec)) {
+          sendJsonErrorResponse(res, 400, "Invalid model spec");
+          return true;
+        }
+        job = await localInferenceService.startDownload(rawSpec);
       } else if (modelId) {
         job = await localInferenceService.startDownload(modelId);
       } else {
@@ -511,6 +653,14 @@ export async function handleLocalInferenceCompatRoutes(
   }
 
   // ── POST: switch active model ───────────────────────────────────────
+  // Accepts either:
+  //   { "modelId": "..." }                           — legacy shape
+  //   { "modelId": "...", "overrides": { ... } }    — per-load overrides
+  // Overrides honour: contextSize, cacheTypeK, cacheTypeV, gpuLayers,
+  // kvOffload, flashAttention, mmap, mlock. Validation is delegated to
+  // `validateLocalInferenceLoadArgs` (desktop-only acceptance set by
+  // default; AOSP / paired-device callers route through their own
+  // adapter and bypass this path).
   if (method === "POST" && pathname === "/api/local-inference/active") {
     if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
     const body = await readCompatJsonBody(req, res);
@@ -520,10 +670,20 @@ export async function handleLocalInferenceCompatRoutes(
       sendJsonErrorResponse(res, 400, "modelId is required");
       return true;
     }
+    let overrides: LocalInferenceLoadOverrides | undefined;
+    if (body.overrides !== undefined && body.overrides !== null) {
+      const parsed = parseLocalInferenceLoadOverrides(body.overrides);
+      if (parsed.error !== null) {
+        sendJsonErrorResponse(res, 400, parsed.error);
+        return true;
+      }
+      overrides = parsed.overrides;
+    }
     try {
       const active = await localInferenceService.setActive(
         state.current,
         modelId,
+        overrides,
       );
       sendJsonResponse(res, 200, active);
     } catch (err) {

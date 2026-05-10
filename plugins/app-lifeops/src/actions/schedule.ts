@@ -6,10 +6,12 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
+import { getCircadianInsightContract } from "@elizaos/plugin-health";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
+import { toActionData } from "../lifeops/google/format-helpers.js";
 import type { LifeOpsScheduleInspection } from "../lifeops/schedule-insight.js";
 import { LifeOpsService } from "../lifeops/service.js";
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 
 type ScheduleSubaction = "summary" | "inspect";
 
@@ -138,21 +140,35 @@ export const scheduleAction: Action = {
     "Subactions: summary (default high-level answer) or inspect (show the evidence windows, sleep episodes, and meal candidates).",
   descriptionCompressed:
     "passive schedule inference activity+screen-time+health: summary | inspect(sleep meals evidence-windows)",
-  contexts: ["calendar", "tasks", "health", "screen_time"],
+  // See `12-real-root-cause.md` — "general" is the messageHandler's most
+  // common context choice for ambiguous personal-assistant prompts; without
+  // it here, SCHEDULE is filtered out of retrieval for routine-creation flows.
+  tags: [
+    "domain:meta",
+    "capability:read",
+    "surface:internal",
+    "cost:cheap",
+  ],
+  contexts: ["general", "calendar", "tasks", "health", "screen_time"],
   roleGate: { minRole: "OWNER" },
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   parameters: [
     {
       name: "subaction",
-      description: "Optional. summary or inspect.",
+      description:
+        "Optional. summary (high-level circadian answer; default) or inspect (evidence windows, sleep episodes, meal candidates).",
+      descriptionCompressed: "schedule op: summary | inspect",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, enum: ["summary", "inspect"] },
+      examples: ["summary", "inspect"],
     },
     {
       name: "timezone",
-      description: "Optional IANA timezone override.",
+      description: "Optional IANA timezone override (e.g. America/Los_Angeles).",
+      descriptionCompressed: "IANA tz override",
       required: false,
       schema: { type: "string" as const },
+      examples: ["America/Los_Angeles", "UTC"],
     },
   ],
   examples: [
@@ -199,31 +215,42 @@ export const scheduleAction: Action = {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerScheduleParameters;
     const subaction = coerceSubaction(params.subaction, messageText(message));
+    const timezone =
+      typeof params.timezone === "string" && params.timezone.trim().length > 0
+        ? params.timezone.trim()
+        : resolveDefaultTimeZone();
+
+    // W3-C drift D-4: consult the CircadianInsightContract registered by
+    // plugin-health for high-level sleep / scheduling reads. The contract
+    // is the typed seam between this action and plugin-health's circadian
+    // domain; the detailed inspection view still goes through
+    // LifeOpsService.inspectSchedule because the inspection record is
+    // produced by app-lifeops's own scheduler tick.
+    const circadianContract = getCircadianInsightContract(runtime);
+    const sleepWindow = circadianContract
+      ? await circadianContract.getCurrentSleepWindow({ timezone })
+      : null;
+
     const service = new LifeOpsService(runtime);
-    const inspection = await service.inspectSchedule({
-      timezone:
-        typeof params.timezone === "string" && params.timezone.trim().length > 0
-          ? params.timezone.trim()
-          : resolveDefaultTimeZone(),
-    });
+    const inspection = await service.inspectSchedule({ timezone });
     const text =
       subaction === "inspect"
         ? formatScheduleInspection(inspection)
         : formatScheduleSummary(inspection);
-    const data = scheduleInspectionActionData(inspection);
-    // Domain shapes; the runtime callback/result accept structured data and
-    // cannot statically prove the inspection schema is JSON-safe. Cast
-    // through unknown — these fields are produced by LifeOpsService and
-    // never contain non-serializable values.
-    type CallbackData = Parameters<NonNullable<typeof callback>>[0]["data"];
+    const data = toActionData({
+      ...scheduleInspectionActionData(inspection),
+      ...(sleepWindow
+        ? { circadianContractView: sleepWindow }
+        : { circadianContractView: null }),
+    });
     await callback?.({
       text,
-      data: data as unknown as CallbackData,
+      data: data as any,
     });
     return {
       text,
       success: true,
-      data: data as unknown as ActionResult["data"],
+      data: data as any,
     };
   },
 };

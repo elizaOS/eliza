@@ -244,7 +244,7 @@ describe("SubAgentRouter", () => {
     const acpWithStop = {
       ...acp.service,
       stopSession,
-    } as unknown as Parameters<typeof makeRuntime>[0]["acp"];
+    } as Parameters<typeof makeRuntime>[0]["acp"];
     const { runtime, handleMessage } = makeRuntime({
       acp: acpWithStop,
       setting: { ACPX_SUB_AGENT_ROUND_TRIP_CAP: "3" },
@@ -274,7 +274,7 @@ describe("SubAgentRouter", () => {
     const acpWithStop = {
       ...acp.service,
       stopSession,
-    } as unknown as Parameters<typeof makeRuntime>[0]["acp"];
+    } as Parameters<typeof makeRuntime>[0]["acp"];
     const { runtime, handleMessage } = makeRuntime({
       acp: acpWithStop,
       setting: { ACPX_SUB_AGENT_ROUND_TRIP_CAP: "1" },

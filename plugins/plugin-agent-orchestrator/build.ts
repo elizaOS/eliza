@@ -10,8 +10,6 @@ import { join } from "node:path";
 
 const externalDeps = [
   "@elizaos/core",
-  "@elizaos/agent",
-  "@elizaos/app-core",
   "@elizaos/app-task-coordinator",
   "coding-agent-adapters",
   "drizzle-orm",
@@ -51,7 +49,9 @@ async function build() {
   // purposes but the runtime is Node/bun.
 
   const cjsStart = Date.now();
-  console.log("🧱 Building @elizaos/plugin-agent-orchestrator for Node (CJS)...");
+  console.log(
+    "🧱 Building @elizaos/plugin-agent-orchestrator for Node (CJS)...",
+  );
   const cjsResult = await Bun.build({
     entrypoints: ["index.node.ts"],
     outdir: join(distDir, "cjs"),

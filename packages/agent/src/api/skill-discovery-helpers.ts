@@ -9,15 +9,34 @@
 import fs from "node:fs";
 import path from "node:path";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.js";
-import { resolveStateDir } from "../config/paths.js";
-import type { SkillEntry } from "./skills-routes.js";
+import type { ElizaConfig } from "../config/config.ts";
+import { resolveStateDir } from "../config/paths.ts";
+import type { SkillEntry } from "./skills-routes.ts";
 
 /** Cache key for persisting skill enable/disable state in the agent database. */
 const SKILL_PREFS_CACHE_KEY = "eliza:skill-preferences";
 
 /** Shape stored in the cache: maps skill ID → enabled flag. */
 type SkillPreferencesMap = Record<string, boolean>;
+
+interface AgentSkillsServiceLike {
+  getLoadedSkills?: () => Array<{
+    slug: string;
+    name: string;
+    description: string;
+    source: string;
+    path: string;
+  }>;
+  getSkillScanStatus?: (
+    slug: string,
+  ) => "clean" | "warning" | "critical" | "blocked" | null;
+}
+
+function isAgentSkillsServiceLike(
+  service: unknown,
+): service is AgentSkillsServiceLike {
+  return typeof service === "object" && service !== null;
+}
 
 /**
  * Load persisted skill preferences from the agent's database.
@@ -253,21 +272,7 @@ export async function discoverSkills(
   if (runtime) {
     try {
       const service = runtime.getService("AGENT_SKILLS_SERVICE");
-      // eslint-disable-next-line -- runtime service is loosely typed; cast via unknown
-      const svc = service as unknown as
-        | {
-            getLoadedSkills?: () => Array<{
-              slug: string;
-              name: string;
-              description: string;
-              source: string;
-              path: string;
-            }>;
-            getSkillScanStatus?: (
-              slug: string,
-            ) => "clean" | "warning" | "critical" | "blocked" | null;
-          }
-        | undefined;
+      const svc = isAgentSkillsServiceLike(service) ? service : undefined;
       if (svc && typeof svc.getLoadedSkills === "function") {
         const loadedSkills = svc.getLoadedSkills();
 

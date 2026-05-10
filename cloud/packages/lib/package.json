@@ -5,24 +5,8 @@
   "type": "module",
   "private": true,
   "exports": {
-    "./package.json": "./package.json",
-    "./types": "./types.ts",
-    "./types/*": "./types/*.ts",
-    "./blog": "./blog.ts",
-    "./pricing": "./pricing.ts",
-    "./pricing-constants": "./pricing-constants.ts",
-    "./promotion-pricing": "./promotion-pricing.ts",
-    "./utils": "./utils.ts",
-    "./utils/*": "./utils/*.ts",
-    "./constants/*": "./constants/*.ts",
-    "./config/*": "./config/*.ts",
-    "./hooks/*": "./hooks/*.ts",
-    "./providers/*": "./providers/*.tsx",
-    "./internal/api/*": "./api/*.ts",
-    "./internal/auth/*": "./auth/*.ts",
-    "./internal/cache/*": "./cache/*.ts",
-    "./internal/runtime/*": "./runtime/*.ts",
-    "./internal/services/*": "./services/*.ts"
+    ".": "./index.ts",
+    "./package.json": "./package.json"
   },
   "scripts": {
     "lint": "biome check .",
@@ -30,12 +14,13 @@
     "typecheck": "tsc --noEmit --project tsconfig.json"
   },
   "dependencies": {
+    "@elizaos/billing": "workspace:*",
     "@elizaos/cloud-db": "workspace:*",
     "@elizaos/cloud-types": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "22.19.17",
     "@types/react": "^19.2.14",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   }
 }

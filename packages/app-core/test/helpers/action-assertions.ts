@@ -33,7 +33,7 @@ export interface ActionInvocation {
   params?: Record<string, unknown>;
   /** The full result data payload from the action, if any. */
   result?: unknown;
-  /** Run ID grouping related action invocations in a single processActions pass. */
+  /** Run ID grouping related action invocations in a single execution pass. */
   runId?: string;
   /** Unix timestamp (ms) when the memory was created. */
   timestamp?: number;
@@ -81,8 +81,7 @@ function formatInvocations(invocations: ActionInvocation[]): string {
  * `ActionInvocation` objects sorted by timestamp ascending (oldest first).
  *
  * The runtime persists action results as memories in the "messages" table
- * with `content.type === "action_result"`. See `runtime.ts processActions()`
- * for the persistence logic.
+ * with `content.type === "action_result"`.
  */
 export async function getActionInvocations(
   runtime: AgentRuntime,
@@ -325,7 +324,7 @@ export function expectActionOrder(
 /**
  * Assert that at least one of the given action names was called. Useful when
  * multiple actions could satisfy a user request (e.g. the agent might choose
- * SEND_DRAFT or RESPOND_TO_MESSAGE for an email task).
+ * MESSAGE or MESSAGE for an email task).
  */
 export function expectAnyActionCalled(
   spy: ActionSpy,

@@ -18,9 +18,20 @@ tools:
   - read
 
 # Default prompt sent to the agent
-prompt: >
-  Review my inbox and draft replies for urgent emails.
-  Don't send anything without my approval.
+prompt: |
+  Triage the emails in BENCHMARK CONTEXT (`inbox`) right now and reply
+  inline. Do NOT call tools to fetch them — they are already attached.
+
+  Your reply must include, in plain text:
+  1. A categorized summary by priority. Urgent / high-priority items first
+     (boss/Q4, HR/benefits, client/BigCorp), then low-priority (newsletter,
+     promo). Mention each email by sender or subject keyword.
+  2. Drafted replies for each urgent/important email (boss, client, HR).
+     Label them clearly as "Draft reply" so they're identifiable.
+  3. A closing line asking for approval before sending the drafts. Do not
+     send anything yourself.
+
+  Skip reading newsletter/promo bodies. Be concise — under 8 tool calls.
 
 # AGENTS.md policy variants to A/B test
 variants:

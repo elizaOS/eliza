@@ -6,7 +6,6 @@ import { join } from "node:path";
 
 const externalDeps = [
   "@elizaos/core",
-  "@elizaos/shared",
   "@elizaos/cloud-sdk",
   "@ai-sdk/openai",
   "ai",
@@ -28,7 +27,7 @@ async function build() {
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-elizacloud for Node...");
   const nodeResult = await Bun.build({
-    entrypoints: ["index.node.ts"],
+    entrypoints: ["src/index.node.ts"],
     outdir: "dist/node",
     target: "node",
     format: "esm",
@@ -45,7 +44,7 @@ async function build() {
   const browserStart = Date.now();
   console.log("🌐 Building @elizaos/plugin-elizacloud for Browser...");
   const browserResult = await Bun.build({
-    entrypoints: ["index.browser.ts"],
+    entrypoints: ["src/index.browser.ts"],
     outdir: "dist/browser",
     target: "browser",
     format: "esm",
@@ -62,7 +61,7 @@ async function build() {
   const cjsStart = Date.now();
   console.log("🧱 Building @elizaos/plugin-elizacloud for Node (CJS)...");
   const cjsResult = await Bun.build({
-    entrypoints: ["index.node.ts"],
+    entrypoints: ["src/index.node.ts"],
     outdir: "dist/cjs",
     target: "node",
     format: "cjs",
@@ -81,6 +80,38 @@ async function build() {
   }
   console.log(`✅ CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`);
 
+  const subpathStart = Date.now();
+  console.log("📦 Building exported subpaths...");
+  const subpathEntries = Array.from(new Bun.Glob("src/**/*.{ts,tsx}").scanSync("."))
+    .filter((entry) => {
+      if (entry.includes("__tests__/") || entry.endsWith(".test.ts")) return false;
+      if (entry === "src/index.node.ts" || entry === "src/index.browser.ts") return false;
+      return true;
+    })
+    .sort();
+  const subpathResult = await Bun.build({
+    entrypoints: subpathEntries,
+    outdir: "dist",
+    target: "node",
+    format: "esm",
+    sourcemap: "external",
+    minify: false,
+    external: [...externalDeps, "undici"],
+    naming: {
+      entry: "[dir]/[name].[ext]",
+      chunk: "chunks/[name]-[hash].[ext]",
+      asset: "assets/[name]-[hash].[ext]",
+    },
+  });
+  if (!subpathResult.success) {
+    console.error(subpathResult.logs);
+    throw new Error("Subpath build failed");
+  }
+  if (existsSync("dist/src")) {
+    await Bun.$`cp -R dist/src/. dist/ && rm -rf dist/src`;
+  }
+  console.log(`✅ Exported subpaths built in ${((Date.now() - subpathStart) / 1000).toFixed(2)}s`);
+
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
   await Bun.$`tsc --project tsconfig.build.json`;
@@ -89,8 +120,8 @@ async function build() {
   await mkdir("dist/cjs", { recursive: true });
   await writeFile(
     "dist/node/index.d.ts",
-    `export * from '../index';
-export { default } from '../index';
+    `export * from '../index.node';
+export { default } from '../index.node';
 `
   );
   await writeFile(
@@ -101,8 +132,8 @@ export { default } from '../index';
   );
   await writeFile(
     "dist/cjs/index.d.ts",
-    `export * from '../index';
-export { default } from '../index';
+    `export * from '../index.node';
+export { default } from '../index.node';
 `
   );
   console.log(`✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`);

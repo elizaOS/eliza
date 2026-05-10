@@ -15,8 +15,8 @@
 
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import type { UserCharacterDto } from "@/types/cloud-api";
 import type { AffiliateTheme } from "@/lib/config/affiliate-themes";
+import type { UserCharacterDto } from "@/types/cloud-api";
 import { CharacterIntroPage } from "./character-intro-page";
 
 interface CharacterIntroPageWrapperProps {

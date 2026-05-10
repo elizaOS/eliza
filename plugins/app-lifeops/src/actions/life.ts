@@ -1,8 +1,8 @@
-import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
 import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,
-} from "@elizaos/agent/api/conversation-metadata";
+  renderGroundedActionReply,
+} from "@elizaos/agent";
 import type {
   Action,
   HandlerOptions,
@@ -30,7 +30,18 @@ import {
   resolveDefaultTimeZone,
   resolveDefaultWindowPolicy,
 } from "../lifeops/defaults.js";
+import {
+  detailBoolean,
+  detailNumber,
+  detailObject,
+  detailString,
+  formatOverviewForQuery,
+  messageText,
+  toActionData,
+} from "../lifeops/google/format-helpers.js";
+import { getDefaultPromptExamplePair } from "../lifeops/i18n/prompt-registry.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { normalizeExplicitTimeZoneToken } from "../lifeops/time/timezone.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
@@ -66,20 +77,13 @@ import {
   latestDeferredLifeDraft,
 } from "./lib/lifeops-deferred-draft.js";
 import {
+  applyOwnerPolicyConfigureEscalation,
+  applyOwnerPolicySetReminder,
+} from "./lib/owner-policy-writes.js";
+import {
   resolveActionArgs,
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
-import {
-  detailBoolean,
-  detailNumber,
-  detailObject,
-  detailString,
-  formatOverviewForQuery,
-  messageText,
-  toActionData,
-} from "./lifeops-google-helpers.js";
-import { looksLikeCodingTaskRequest } from "./non-actionable-request.js";
-import { normalizeExplicitTimeZoneToken } from "./timezone-normalization.js";
 
 // ── Types ─────────────────────────────────────────────
 
@@ -96,12 +100,13 @@ type LifeKind = "definition" | "goal";
 type ResolvedLifeOperationPlan = {
   confidence: number | null;
   missing: ExtractedLifeMissingField[];
-  operation: LifeOwnedOperation | null;
+  operation: LifeOperation | null;
   kind?: LifeKind;
   shouldAct: boolean;
 };
 
 type LifeParams = {
+  action?: string;
   subaction?: LifeOperation;
   kind?: LifeKind;
   intent?: string;
@@ -154,6 +159,22 @@ const SUBACTIONS = {
     descriptionCompressed: "review goal progress",
     required: ["target"],
   },
+  policy_set_reminder: {
+    description:
+      "Set reminder intensity policy on the OwnerFactStore: minimal | normal | persistent | high_priority_only. Optional per-definition target.",
+    descriptionCompressed:
+      "policy.set_reminder: intensity=minimal|normal|persistent|high_priority_only",
+    required: [],
+    optional: ["intent", "details"],
+  },
+  policy_configure_escalation: {
+    description:
+      "Configure escalation policy on the OwnerFactStore (timeoutMinutes, callAfterMinutes). Optional per-definition target.",
+    descriptionCompressed:
+      "policy.configure_escalation: timeout-minutes call-after-no-response",
+    required: [],
+    optional: ["intent", "details"],
+  },
 } as const satisfies SubactionsMap<LifeOwnedOperation>;
 
 /**
@@ -173,7 +194,9 @@ type InternalLifeOp =
   | "complete_occurrence"
   | "skip_occurrence"
   | "snooze_occurrence"
-  | "review_goal";
+  | "review_goal"
+  | "policy_set_reminder"
+  | "policy_configure_escalation";
 
 function toInternalLifeOp(
   operation: LifeOwnedOperation,
@@ -194,6 +217,10 @@ function toInternalLifeOp(
       return "snooze_occurrence";
     case "review":
       return "review_goal";
+    case "policy_set_reminder":
+      return "policy_set_reminder";
+    case "policy_configure_escalation":
+      return "policy_configure_escalation";
   }
 }
 
@@ -229,12 +256,57 @@ function isLifeOwnedOperation(
   );
 }
 
+function normalizeExplicitLifeAction(value: unknown):
+  | {
+      operation: LifeOperation;
+      kind?: LifeKind;
+    }
+  | "phone"
+  | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[-\s]+/g, "_");
+  switch (normalized) {
+    case "create_goal":
+    case "goal_create":
+      return { operation: "create", kind: "goal" };
+    case "create_definition":
+    case "create_habit":
+    case "create_routine":
+    case "create_reminder":
+    case "create_todo":
+      return { operation: "create", kind: "definition" };
+    case "calendar":
+    case "query_calendar":
+    case "query_calendar_today":
+      return { operation: "query_calendar_today" };
+    case "query_calendar_next":
+    case "next_calendar":
+      return { operation: "query_calendar_next" };
+    case "email":
+    case "gmail":
+    case "query_email":
+      return { operation: "query_email" };
+    case "overview":
+    case "query_overview":
+      return { operation: "query_overview" };
+    case "phone":
+    case "capture_phone":
+      return "phone";
+    default:
+      return isLifeOwnedOperation(normalized as LifeOperation)
+        ? { operation: normalized as LifeOwnedOperation }
+        : null;
+  }
+}
+
 async function resolveLifeOperationPlan(args: {
   runtime: IAgentRuntime;
   message: Memory;
   state: State | undefined;
   intent: string;
-  explicitOperation: LifeOwnedOperation | undefined;
+  explicitOperation: LifeOperation | undefined;
 }): Promise<ResolvedLifeOperationPlan> {
   const { runtime, message, state, intent, explicitOperation } = args;
   if (explicitOperation) {
@@ -289,9 +361,17 @@ async function routeLifeSubaction(args: {
   state: State | undefined;
   options: HandlerOptions | undefined;
   intent: string;
-  explicitSubaction: LifeOwnedOperation | undefined;
+  explicitSubaction: LifeOperation | undefined;
 }): Promise<ResolvedLifeOperationPlan> {
   const { runtime, message, state, options, intent, explicitSubaction } = args;
+  if (explicitSubaction && !isLifeOwnedOperation(explicitSubaction)) {
+    return {
+      operation: explicitSubaction,
+      confidence: 1,
+      missing: [],
+      shouldAct: true,
+    };
+  }
   const resolved = await resolveActionArgs<LifeOwnedOperation, LifeParams>({
     runtime,
     message,
@@ -340,10 +420,11 @@ function resolveDeferredLifeDraftReuseMode(args: {
     return "confirm";
   }
 
-  if (
-    args.explicitOperation &&
-    args.explicitOperation !== args.draft.operation
-  ) {
+  const explicitOperation = args.explicitOperation
+    ? String(args.explicitOperation)
+    : undefined;
+  const draftOperation = String(args.draft.operation);
+  if (explicitOperation && explicitOperation !== draftOperation) {
     return null;
   }
 
@@ -1931,7 +2012,7 @@ function formatWeeklyGoalReview(args: {
 
 // LIFE belongs to the LifeOps surface (home chat / page-lifeops /
 // app-lifeops direct rooms). On foreign page-* scopes the action set is
-// scoped to that surface (page-automations → CREATE_TRIGGER_TASK,
+// scoped to that surface (page-automations → WORKFLOW,
 // page-browser → browser actions, etc.). When LIFE stays eligible on those
 // scopes its long description contaminates the ACTION_PLANNER candidate
 // list, driving the LLM to mimic the life-param-extractor structured schema and
@@ -1963,39 +2044,103 @@ export const lifeAction: Action & {
     "REMINDERS",
     "ALARM",
     "ROUTINE",
+    "ROUTINES",
     "TASK",
+    "TASKS",
     "TRACK_HABIT",
     "MARK_DONE",
+    "MARK_COMPLETE",
     "SNOOZE",
     "SET_REMINDER",
     "NEW_HABIT",
     "NEW_GOAL",
+    "NEW_REMINDER",
+    "NEW_ROUTINE",
+    "NEW_TODO",
+    "RECURRING_TASK",
+    "DAILY_TASK",
+    "WEEKLY_TASK",
+    "EVERY_DAY",
+    "EVERY_MORNING",
+    "EVERY_NIGHT",
+    "EVERY_WEEK",
+    "REMIND_ME",
+    "REMIND_ME_TO",
+    "WAKE_ME",
+    "MEDICATION_REMINDER",
+    "VITAMIN_REMINDER",
+    "WORKOUT_HABIT",
+    "EXERCISE_HABIT",
+    "BRUSH_TEETH",
+    "DRINK_WATER",
+    "HYDRATION",
+    "STRETCH_BREAK",
+    "BEDTIME",
+    // Owner-policy aliases — the canonical surface is
+    // `LIFE.policy_set_reminder` / `LIFE.policy_configure_escalation`.
+    "SET_REMINDER_INTENSITY",
+    "CONFIGURE_ESCALATION",
   ],
-  description:
-    "Owner-only personal life-management surface for the LifeOps app. Subactions: create / update / delete a life-item (kind=definition for habit/routine/reminder/alarm/todo, or kind=goal for a long-term aspiration); complete / skip / snooze the next occurrence of a definition; review progress on a goal. Cadence (once / daily / weekly / interval / times_per_day) is parsed from the natural-language intent. Owner profile persistence (phone, escalation rules, reminder preferences) lives in PROFILE; calendar/email/overview queries belong to CALENDAR and CHECKIN.",
+  description: [
+    "Personal-life action surface for the user's own habits, routines, reminders, alarms, todos, and long-term goals. Use whenever the user asks the assistant to set up, change, complete, skip, snooze, or review one of their own recurring or one-off personal tasks.",
+    "",
+    "Sub-actions:",
+    "- create  — make a new life-item. `kind=definition` covers habit/routine/reminder/alarm/todo (single or recurring); `kind=goal` covers a long-term aspiration with progress tracking.",
+    "  args: { kind: 'definition'|'goal', title, intent, cadence: 'once'|'daily'|'weekly'|'interval'|'times_per_day', time_of_day?, days_of_week?, every_minutes?, times_per_day?, target_date?, notes? }",
+    "  examples: 'remind me to brush my teeth every morning and night', 'set up a daily workout habit', 'every weekday at noon, take vitamins', 'goal: stabilize sleep schedule by end of month'",
+    "- update  — modify a definition or goal. args: { id?, title?, cadence?, time_of_day?, days_of_week?, intent?, notes? }",
+    "- delete  — remove a definition or goal. args: { id }",
+    "- complete — mark the next occurrence of a definition done. args: { id, occurrence_at? }",
+    "- skip — skip the next occurrence. args: { id, occurrence_at?, reason? }",
+    "- snooze — defer the next occurrence. args: { id, until }",
+    "- review — read progress on a goal. args: { id }",
+    "- policy_set_reminder — set reminder intensity on the OwnerFactStore. args: { intensity: 'gentle'|'standard'|'firm' }",
+    "- policy_configure_escalation — set timeout / call-after rules. args: { timeout_minutes, escalation_channels: string[] }",
+    "",
+    "Cadence parsing rules:",
+    "- 'every morning/night/day' or 'twice a day' or '2x daily' -> cadence='daily', set time_of_day appropriately",
+    "- 'every weekday' / 'weekdays' / 'M-F' -> cadence='weekly' with days_of_week=['Mon','Tue','Wed','Thu','Fri']",
+    "- 'every 2 hours' / 'every 30 min' -> cadence='interval' with every_minutes",
+    "- '3 times a day' / 'twice a day' -> cadence='times_per_day' with times_per_day",
+    "- 'once' / 'just one time' / 'tomorrow' / specific date -> cadence='once', set target_date",
+    "",
+    "Routing:",
+    "- Owner profile fields (name, phone, location, preferences) -> PROFILE, not LIFE",
+    "- Calendar event creation/move/cancel of meetings/appointments -> CALENDAR",
+    "- Reading wearable / sleep / step data -> HEALTH",
+    "- One-off message-to-someone reminders ('remember to call mom Sunday') -> LIFE.create kind=definition cadence=once",
+  ].join("\n"),
   descriptionCompressed:
-    "life:subaction=create|update|delete(kind=definition|goal) + complete|skip|snooze occurrence + review goal",
-  contexts: ["tasks", "calendar", "health"],
+    "manage personal habits+routines+reminders+alarms+todos+goals; subactions create|update|delete|complete|skip|snooze|review|policy_set_reminder|policy_configure_escalation; cadence once|daily|weekly|interval|times_per_day",
+  routingHint:
+    'any imperative to set up / change / track a personal habit, routine, reminder, alarm, todo, or goal -> LIFE. Phrases: "remind me to…", "set up a … habit", "create a routine", "every day / morning / night / weekday", "track my…", "twice a week", "every 2 hours", "once tomorrow", "cancel my … habit", "complete today\'s …", "snooze the … reminder". One-off dated reminders to call/text someone also belong here. Never answer from provider summaries; never use REPLY when the user is asking for a habit/reminder/routine setup.',
+  // Include "general" so habit/routine/reminder requests still surface LIFE
+  // when the messageHandler picks "general" as the conversational frame
+  // (which it does for ~90% of self-care prompts in the benchmark — phrases
+  // like "remind me to brush my teeth" route to general first, and the
+  // tool-retrieval filter would otherwise exclude LIFE entirely).
+  tags: [
+    "domain:reminders",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "capability:delete",
+    "capability:schedule",
+    "surface:internal",
+  ],
+  contexts: ["general", "tasks", "todos", "calendar", "health"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
-    if (looksLikeCodingTaskRequest(messageText(message))) {
-      return false;
-    }
     if (await isForeignPageScope(runtime, message)) {
       return false;
     }
+    return true;
   },
   handler: async (runtime, message, state, options) => {
-    // Defense-in-depth at dispatch time: validate() above excludes LIFE
-    // from the ACTION_PLANNER candidate list on foreign page-* scopes, but
-    // runtime.processActions dispatches by name/simile WITHOUT re-calling
-    // validate. When the LLM emits LIFE or a LIFE simile directly, the
-    // handler still fires. This guard mirrors validate()'s scope check so
-    // LIFE stays a no-op on foreign page-* scopes regardless of how it got
-    // dispatched. Returns empty text so the runtime callback does not
-    // render a user-visible message — any streamed tokens from the outer
-    // LLM reply already landed before this handler runs.
+    // Defense-in-depth: validate() excludes LIFE from planner candidates on
+    // foreign page-* scopes, and this handler keeps direct tool execution a
+    // no-op if a stale or malformed plan still reaches it.
     if (await isForeignPageScope(runtime, message)) {
       return {
         success: false,
@@ -2076,11 +2221,22 @@ export const lifeAction: Action & {
         },
       };
     }
+    const explicitAction = normalizeExplicitLifeAction(params.action);
+    if (explicitAction === "phone") {
+      return {
+        success: false,
+        text: "I need the phone number before I can save text reminders.",
+        data: {
+          actionName: "LIFE",
+          missingField: "phone_number",
+        },
+      };
+    }
     const explicitSubaction =
       typeof params.subaction === "string" &&
       Object.hasOwn(SUBACTIONS, params.subaction)
         ? (params.subaction as LifeOwnedOperation)
-        : undefined;
+        : explicitAction?.operation;
     const deferredDraftReuseMode = resolveDeferredLifeDraftReuseMode({
       details,
       draft: deferredDraft,
@@ -2115,7 +2271,7 @@ export const lifeAction: Action & {
     // Pre-routing: pick the subaction. When reusing a deferred draft we
     // inherit its operation. When the planner supplied an explicit subaction
     // we trust it. Otherwise dispatch through resolveActionArgs (the
-    // shared LLM pre-routing substrate). The legacy extractLifeOperationWithLlm
+    // shared LLM pre-routing substrate). The text extractor
     // stays available as a fallback for richer "missing field" diagnostics.
     const operationPlan: ResolvedLifeOperationPlan =
       reuseDeferredDraft && deferredDraft
@@ -2127,14 +2283,22 @@ export const lifeAction: Action & {
               deferredDraft.operation === "create_goal" ? "goal" : "definition",
             shouldAct: true,
           }
-        : await routeLifeSubaction({
-            runtime,
-            message,
-            state,
-            options,
-            intent,
-            explicitSubaction,
-          });
+        : explicitAction
+          ? {
+              confidence: 1,
+              missing: [],
+              operation: explicitAction.operation,
+              kind: explicitAction.kind,
+              shouldAct: true,
+            }
+          : await routeLifeSubaction({
+              runtime,
+              message,
+              state,
+              options,
+              intent,
+              explicitSubaction,
+            });
     const explicitKind: LifeKind | undefined =
       params.kind === "definition" || params.kind === "goal"
         ? params.kind
@@ -2181,7 +2345,74 @@ export const lifeAction: Action & {
     }
     const operation: LifeOwnedOperation | null = forceCreateExecution
       ? "create"
-      : operationPlan.operation;
+      : isLifeOwnedOperation(operationPlan.operation)
+        ? operationPlan.operation
+        : null;
+    const queryOperation = forceCreateExecution
+      ? null
+      : !isLifeOwnedOperation(operationPlan.operation)
+        ? operationPlan.operation
+        : null;
+    const service = new LifeOpsService(runtime);
+    if (queryOperation === "query_calendar_today") {
+      return {
+        success: false,
+        text:
+          "Google Calendar is not connected. Connect Google in LifeOps settings to use calendar actions.",
+        data: {
+          actionName: "LIFE",
+          operation: queryOperation,
+        },
+      };
+    }
+    if (queryOperation === "query_calendar_next") {
+      return {
+        success: false,
+        text:
+          "Google Calendar is not connected. Connect Google in LifeOps settings to use calendar actions.",
+        data: {
+          actionName: "LIFE",
+          operation: queryOperation,
+        },
+      };
+    }
+    if (queryOperation === "query_email") {
+      return {
+        success: false,
+        text:
+          "Gmail is not connected. Connect Google in LifeOps settings to use Gmail actions.",
+        data: {
+          actionName: "LIFE",
+          operation: queryOperation,
+        },
+      };
+    }
+    if (queryOperation === "query_overview") {
+      const overview = await service.getOverview();
+      const userQuery = messageText(message) || intent || "overview";
+      const fallback = formatOverviewForQuery(overview, userQuery);
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent: userQuery,
+          scenario: "overview",
+          fallback,
+          context: {
+            summary: overview.owner.summary,
+            occurrenceTitles: overview.owner.occurrences
+              .slice(0, 6)
+              .map((occurrence) => occurrence.title),
+            goalTitles: overview.owner.goals
+              .slice(0, 3)
+              .map((goal) => goal.title),
+          },
+        }),
+        data: toActionData(overview),
+      };
+    }
     // Internal handler dispatch key (definition vs goal split lives here).
     // For create/update/delete, infer kind from explicit param, plan, draft, or
     // intent; for occurrence-level verbs the kind is irrelevant.
@@ -2216,7 +2447,6 @@ export const lifeAction: Action & {
         },
       };
     }
-    const service = new LifeOpsService(runtime);
     const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
     const ownership = requestedOwnership(domain);
     const targetName = params.target ?? params.title;
@@ -2280,11 +2510,9 @@ export const lifeAction: Action & {
             : deferredDefinitionDraft?.request.title) ?? params.title,
         );
 
-        // ── Legacy parameter enhancement (fills gaps) ─────
-        // Skip when native options.parameters already contain the complete
+        // Parameter enhancement fills gaps when structured planner input is incomplete.
+        // Skip when options.parameters already contain the complete
         // definition-create shape, or when reusing a confirmed deferred draft.
-        // TODO(native-parameters): delete this extractor once planners supply
-        // title/details.cadence/details.kind consistently.
         let llmPlan: Awaited<
           ReturnType<typeof extractTaskCreatePlanWithLlm>
         > | null = null;
@@ -2963,7 +3191,7 @@ export const lifeAction: Action & {
           description: detailString(details, "description"),
           cadence: normalizeCadenceDetail(
             detailObject(details, "cadence"),
-          ) as unknown as UpdateLifeOpsGoalRequest["cadence"],
+          ) as UpdateLifeOpsGoalRequest["cadence"],
           supportStrategy: detailObject(details, "supportStrategy"),
           successCriteria: detailObject(details, "successCriteria"),
         };
@@ -3332,6 +3560,39 @@ export const lifeAction: Action & {
         };
       }
 
+      if (internalOp === "policy_set_reminder") {
+        const intensityDetail = detailString(details, "intensity");
+        const intensity =
+          intensityDetail === "minimal" ||
+          intensityDetail === "normal" ||
+          intensityDetail === "persistent" ||
+          intensityDetail === "high_priority_only"
+            ? intensityDetail
+            : undefined;
+        return applyOwnerPolicySetReminder({
+          runtime,
+          message,
+          intent,
+          resolveDefinition: resolveDefinitionFromIntent,
+          intensity,
+          target: targetName,
+          details,
+        });
+      }
+
+      if (internalOp === "policy_configure_escalation") {
+        return applyOwnerPolicyConfigureEscalation({
+          runtime,
+          message,
+          intent,
+          resolveDefinition: resolveDefinitionFromIntent,
+          target: targetName,
+          timeoutMinutes: detailNumber(details, "timeoutMinutes"),
+          callAfterMinutes: detailNumber(details, "callAfterMinutes"),
+          details,
+        });
+      }
+
       return {
         success: false,
         text: "I didn't understand that life management request.",
@@ -3361,7 +3622,8 @@ export const lifeAction: Action & {
   parameters: [
     {
       name: "subaction",
-      description: "Which life operation to perform.",
+      description:
+        "Which life operation to perform. Owner-policy verbs (policy_set_reminder, policy_configure_escalation) write to OwnerFactStore.",
       required: false,
       schema: {
         type: "string" as const,
@@ -3373,6 +3635,8 @@ export const lifeAction: Action & {
           "skip",
           "snooze",
           "review",
+          "policy_set_reminder",
+          "policy_configure_escalation",
         ],
       },
     },
@@ -3417,7 +3681,7 @@ export const lifeAction: Action & {
       description:
         "Structured data when needed. May include: cadence schedule record, kind (task/habit/routine), description, priority, progressionRule, reminderPlan, confirmed (boolean when the user explicitly approves a previewed create), preset (snooze preset like 15m/30m/1h/tonight/tomorrow_morning), occurrenceId (target an existing occurrence directly for snooze/complete reminder mutations), goalId, goalTitle, supportStrategy, successCriteria, note, limit, domain (user_lifeops/agent_ops).",
       required: false,
-      schema: { type: "object" as const },
+      schema: { type: "object" as const, additionalProperties: true },
     },
   ],
   examples: [
@@ -3511,35 +3775,21 @@ export const lifeAction: Action & {
         },
       },
     ],
+    // W2-E: multilingual brush-teeth examples now resolve from the
+    // `MultilingualPromptRegistry` default pack via `exampleKey`. The
+    // Spanish row that previously lived inline here moved into the
+    // registry table at `lifeops/i18n/prompt-registry.ts`.
     [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "recuérdame cepillarme los dientes por la mañana y por la noche",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'Puedo guardar el hábito "Brush teeth" para la mañana y la noche. Confirma y lo guardo.',
-          actions: ["LIFE"],
-        },
-      },
+      ...getDefaultPromptExamplePair(
+        "life.brush_teeth.create_definition",
+        "es",
+      ),
     ],
     [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "help me brush my teeth at 8 am and 9 pm every day",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'I can set up a habit named "Brush teeth" for 8 am and 9 pm daily. Confirm and I\'ll save it.',
-          actions: ["LIFE"],
-        },
-      },
+      ...getDefaultPromptExamplePair(
+        "life.brush_teeth.create_definition",
+        "en",
+      ),
     ],
     [
       {

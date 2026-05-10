@@ -125,7 +125,8 @@ export async function buildTransferDetails(
   return transferDetails;
 }
 
-const spec = requireActionSpec("EVM_TRANSFER");
+const legacySpec = requireActionSpec("EVM_TRANSFER");
+const spec = { ...legacySpec, name: "WALLET" };
 
 export const transferAction: Action = {
   name: spec.name,

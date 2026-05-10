@@ -55,7 +55,7 @@ Import `outgoingPipelineHookContext` from `@elizaos/core` (or `../types/pipeline
 | `source` | When |
 |----------|------|
 | `simple` | Main pipeline: simple reply after final content is ready |
-| `action` | `processActions` immediately before each action `callback` |
+| `action` | Planned tool execution immediately before each action `callback` |
 | `continuation_simple` | Post-action / reflection continuation in simple mode |
 | `excluded` | Terminal IGNORE/STOP-style payloads and autonomy STOP |
 | `evaluate` | Evaluator-driven callback from the main message handler |

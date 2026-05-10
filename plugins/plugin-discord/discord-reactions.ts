@@ -30,6 +30,7 @@ import { normalizeDiscordMessageText } from "./utils";
  * Subset of DiscordService fields needed by reaction handlers.
  */
 export interface ReactionServiceInternals {
+	accountId?: string;
 	runtime: DiscordService["runtime"];
 	resolveDiscordEntityId(userId: string): UUID;
 	getChannelType(channel: Channel): Promise<ChannelType>;
@@ -45,6 +46,7 @@ export async function handleReaction(
 	type: "add" | "remove",
 ): Promise<void> {
 	try {
+		const accountId = service.accountId ?? "default";
 		const actionVerb = type === "add" ? "added" : "removed";
 		const actionText = type === "add" ? "Added" : "Removed";
 		const preposition = type === "add" ? "to" : "from";
@@ -160,11 +162,14 @@ export async function handleReaction(
 				? stringToUuid(reaction.message.guild.id)
 				: undefined,
 			type: channelType,
-			userId: user.id as unknown as UUID,
-			metadata: buildDiscordWorldMetadata(
-				service.runtime,
-				reaction.message.guild?.ownerId,
-			),
+			userId: user.id as UUID,
+			metadata: {
+				...buildDiscordWorldMetadata(
+					service.runtime,
+					reaction.message.guild?.ownerId,
+				),
+				accountId,
+			},
 		});
 
 		const inReplyTo = createUniqueUuid(service.runtime, reaction.message.id);
@@ -180,6 +185,7 @@ export async function handleReaction(
 				channelType,
 			},
 			metadata: {
+				accountId,
 				entityName: name,
 				entityUserName: userName,
 				fromId: user.id,
@@ -220,6 +226,7 @@ export async function handleReaction(
 			originalReaction: reaction as MessageReaction,
 			user: user as User,
 			source: "discord",
+			accountId,
 			callback,
 		};
 		service.runtime.emitEvent(events, reactionPayload);

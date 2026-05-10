@@ -4,37 +4,27 @@ sidebarTitle: "Local Models"
 description: "Download and run AI models locally for offline inference."
 ---
 
-Eliza can download and run AI models locally for vision, text generation, text-to-speech, speech-to-text, and embedding tasks. Models are downloaded from HuggingFace or pulled via Ollama, cached on disk, and available for offline use.
+Eliza can download and run Eliza-1 GGUF models locally for text generation and embedding. Models are downloaded from HuggingFace or created for Ollama from the Eliza-1 Modelfiles, cached on disk, and available for offline use.
 
 ## Model Types
 
 | Type | Purpose | Example Models |
 |------|---------|---------------|
-| `vision` | Image captioning and analysis | BLIP, Florence-2, Moondream2 |
-| `llm` | Text generation (via Ollama) | Llama 3.2, Qwen 2.5, Phi-3 |
+| `llm` | Text generation | Eliza-1 mobile, desktop, pro |
 | `tts` | Text-to-speech | Parler TTS, Bark, SpeechT5 |
 | `stt` | Speech-to-text | Whisper (tiny through medium) |
-| `embedding` | Text embeddings | MiniLM, BGE, Nomic Embed |
+| `embedding` | Text embeddings | Eliza-1 lite |
 
 ## Available Models
 
-### Vision Models
-
-| ID | Name | Size | Format |
-|----|------|------|--------|
-| `Salesforce/blip-image-captioning-base` | BLIP Caption (Base) | 990 MB | ONNX |
-| `Salesforce/blip-image-captioning-large` | BLIP Caption (Large) | 1.9 GB | ONNX |
-| `microsoft/Florence-2-base` | Florence-2 (Base) | 460 MB | — |
-| `vikhyatk/moondream2` | Moondream2 (Tiny Vision LLM) | 3.6 GB | Ollama |
-
-### LLM Models (via Ollama)
+### Eliza-1 GGUF Models
 
 | ID | Name | Size |
 |----|------|------|
-| `ollama/llama3.2:1b` | Llama 3.2 1B (Tiny) | 1.3 GB |
-| `ollama/llama3.2:3b` | Llama 3.2 3B (Small) | 2 GB |
-| `ollama/qwen2.5:0.5b` | Qwen 2.5 0.5B (Micro) | 400 MB |
-| `ollama/phi3:mini` | Phi-3 Mini (3.8B) | 2.3 GB |
+| `elizaos/eliza-1-lite-0_6b` | Eliza-1 Lite Embedding | varies |
+| `elizaos/eliza-1-mobile-1_7b` | Eliza-1 Mobile Chat | varies |
+| `elizaos/eliza-1-desktop-9b` | Eliza-1 Desktop Chat | varies |
+| `elizaos/eliza-1-pro-27b` | Eliza-1 Pro Chat | varies |
 
 ### Text-to-Speech Models
 
@@ -53,14 +43,6 @@ Eliza can download and run AI models locally for vision, text generation, text-t
 | `openai/whisper-small` | Whisper Small | 970 MB | ONNX |
 | `openai/whisper-medium` | Whisper Medium | 3.1 GB | ONNX |
 
-### Embedding Models
-
-| ID | Name | Size | Format |
-|----|------|------|--------|
-| `sentence-transformers/all-MiniLM-L6-v2` | MiniLM L6 v2 (Fast) | 90 MB | ONNX |
-| `BAAI/bge-small-en-v1.5` | BGE Small EN | 130 MB | ONNX |
-| `nomic-ai/nomic-embed-text-v1.5` | Nomic Embed v1.5 | 270 MB | ONNX |
-
 ## Storage
 
 Models are cached at `~/.cache/eliza/models/`. A `manifest.json` file tracks all downloaded models:
@@ -71,9 +53,9 @@ Models are cached at `~/.cache/eliza/models/`. A `manifest.json` file tracks all
     "downloadedAt": "2026-01-15T10:00:00.000Z",
     "path": "/Users/name/.cache/eliza/models/Salesforce_blip-image-captioning-base"
   },
-  "ollama/llama3.2:1b": {
+  "elizaos/eliza-1-mobile-1_7b": {
     "downloadedAt": "2026-01-15T10:00:00.000Z",
-    "path": "ollama:llama3.2:1b"
+    "path": "/Users/name/.cache/eliza/models/elizalabs_eliza-1-mobile-1_7b/text/eliza-1-mobile-1_7b-32k.gguf"
   }
 }
 ```
@@ -82,11 +64,11 @@ Models are cached at `~/.cache/eliza/models/`. A `manifest.json` file tracks all
 
 ### HuggingFace Models
 
-For non-Ollama models, the manager fetches the file list from `https://huggingface.co/api/models/<modelId>`, filters to essential files (config, tokenizer, model weights in `.bin`, `.safetensors`, or `.onnx` format), and downloads each file.
+The manager fetches the file list from `https://huggingface.co/api/models/<modelId>`, filters to published Eliza-1 GGUF files, and downloads only the files needed for the selected tier.
 
 ### Ollama Models
 
-For models with an Ollama tag (e.g., `ollama/llama3.2:1b`), the manager calls `POST http://localhost:11434/api/pull` with the model name. Requires a running Ollama server.
+For Ollama, create the Eliza-1 model from the repo Modelfiles in `packages/training/cloud/ollama/`. Requires a running Ollama server.
 
 ## Management
 

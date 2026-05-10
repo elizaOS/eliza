@@ -7,9 +7,9 @@
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": true,
+    "ignoreDeprecations": "6.0",
     "paths": {
-      "@elizaos/core": ["../../../packages/core/dist"],
-      "@elizaos/core/*": ["../../../packages/core/dist/*"]
+      "@elizaos/core": ["../../../packages/core/dist"]
     },
     "types": ["node", "bun-types"]
   },

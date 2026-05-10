@@ -1,27 +1,27 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import {
+  animated,
+  to,
+  useSpring,
+  useSprings,
+  useTrail,
+} from "@react-spring/web";
+import { useDrag } from "@use-gesture/react";
+import { getCountries, getCountryCallingCode } from "libphonenumber-js";
 import type {
   ButtonHTMLAttributes,
   ComponentType,
   HTMLAttributes,
   SVGProps,
 } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  useSpring,
-  useSprings,
-  useTrail,
-  animated,
-  to,
-} from "@react-spring/web";
-import { useDrag } from "@use-gesture/react";
-import { getCountries, getCountryCallingCode } from "libphonenumber-js";
-import ShaderBackground from "@/components/ShaderBackground/ShaderBackground";
-import ModelB, { type ModelBHandle } from "@/components/ModelViewers/ModelB";
 import BlobButton from "@/components/BlobButton";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
+import ModelB, { type ModelBHandle } from "@/components/ModelViewers/ModelB";
+import ShaderBackground from "@/components/ShaderBackground/ShaderBackground";
+import VideoCall from "@/components/VideoCall";
 import { ELIZA_PHONE_NUMBER } from "@/lib/contact";
 import type { SpringAnimatedStyle } from "@/lib/spring-types";
-import VideoCall from "@/components/VideoCall";
 
 type AnimatedHtmlProps<T extends HTMLElement> = Omit<
   HTMLAttributes<T>,
@@ -135,10 +135,19 @@ type Platform = "imessage" | "telegram" | "discord" | "try";
 
 const INTRO_DELAY = 1000;
 const PLATFORMS: Platform[] = ["imessage", "telegram", "discord", "try"];
+const VERIFY_CODE_INPUT_KEYS = [
+  "verify-0",
+  "verify-1",
+  "verify-2",
+  "verify-3",
+  "verify-4",
+  "verify-5",
+];
 
 function IMessageIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <title>iMessage</title>
       <path d="M12 2C6.477 2 2 5.813 2 10.5c0 2.592 1.392 4.912 3.57 6.462-.18 1.29-.612 2.842-1.57 4.038 2.16-.4 3.87-1.2 4.925-1.87A11.7 11.7 0 0012 19.5c5.523 0 10-3.813 10-8.5S17.523 2 12 2z" />
     </svg>
   );
@@ -147,6 +156,7 @@ function IMessageIcon({ className }: { className?: string }) {
 function TelegramIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <title>Telegram</title>
       <path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
     </svg>
   );
@@ -155,6 +165,7 @@ function TelegramIcon({ className }: { className?: string }) {
 function DiscordIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <title>Discord</title>
       <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
     </svg>
   );
@@ -169,7 +180,12 @@ function AnimatedLetters({
   show: boolean;
   delay?: number;
 }) {
-  const letters = text.split("");
+  const letterCounts = new Map<string, number>();
+  const letters = text.split("").map((char) => {
+    const count = letterCounts.get(char) ?? 0;
+    letterCounts.set(char, count + 1);
+    return { char, key: `${char}-${count}` };
+  });
   const trail = useTrail(letters.length, {
     opacity: show ? 1 : 0,
     y: show ? 0 : -4,
@@ -180,18 +196,22 @@ function AnimatedLetters({
 
   return (
     <>
-      {trail.map((style, i) => (
-        <AnimatedSpan
-          key={i}
-          style={{
-            opacity: style.opacity,
-            transform: style.y.to((v) => `translateY(${v}px)`),
-            display: "inline-block",
-          }}
-        >
-          {letters[i] === " " ? "\u00A0" : letters[i]}
-        </AnimatedSpan>
-      ))}
+      {letters.map(({ char, key }, i) => {
+        const style = trail[i];
+        if (!style) return null;
+        return (
+          <AnimatedSpan
+            key={key}
+            style={{
+              opacity: style.opacity,
+              transform: style.y.to((v) => `translateY(${v}px)`),
+              display: "inline-block",
+            }}
+          >
+            {char === " " ? "\u00A0" : char}
+          </AnimatedSpan>
+        );
+      })}
     </>
   );
 }
@@ -221,7 +241,7 @@ export default function Leaderboard() {
     // Phase 1: scale up to 1.05 (0-500ms)
     lScaleApi.start({
       scale: 1.15,
-      config: { duration: 500, easing: (t: number) => 1 - Math.pow(1 - t, 3) },
+      config: { duration: 500, easing: (t: number) => 1 - (1 - t) ** 3 },
     });
     // Phase 2: scale down to 0.8 (500-1000ms)
     const t1 = setTimeout(() => {
@@ -309,7 +329,7 @@ export default function Leaderboard() {
     const phase1 = () => {
       const elapsed = performance.now() - t0;
       const progress = Math.min(elapsed / 400, 1);
-      const s = 1 - Math.pow(1 - progress, 3);
+      const s = 1 - (1 - progress) ** 3;
       const scale = 800 + (14 - 800) * s;
       eDisplaceRef.current?.setAttribute("scale", String(scale));
       if (progress < 1) {
@@ -366,7 +386,7 @@ export default function Leaderboard() {
     const phase1 = () => {
       const elapsed = performance.now() - t0;
       const progress = Math.min(elapsed / blurDuration, 1);
-      const ease = 1 - Math.pow(1 - progress, 3);
+      const ease = 1 - (1 - progress) ** 3;
       aBlurRef.current?.setAttribute(
         "stdDeviation",
         String(startBlur * (1 - ease)),
@@ -392,7 +412,7 @@ export default function Leaderboard() {
         // Scale #fa from 1.2 -> 1 (ease-out cubic, starts from swap point)
         if (progress >= 0.5) {
           const scaleProgress = Math.min((progress - 0.5) / 0.5, 1);
-          const ease = 1 - Math.pow(1 - scaleProgress, 3);
+          const ease = 1 - (1 - scaleProgress) ** 3;
           const s = startScale + (1 - startScale) * ease;
           faScaleRef.current?.setAttribute(
             "transform",
@@ -425,7 +445,7 @@ export default function Leaderboard() {
         const elapsed = performance.now() - t0;
         const progress = Math.min(elapsed / duration, 1);
         // ease-out cubic
-        const w = 1 - Math.pow(1 - progress, 3);
+        const w = 1 - (1 - progress) ** 3;
         const wipeX = 315 + w * 475;
         clipOldRef.current?.setAttribute(
           "points",
@@ -512,8 +532,8 @@ export default function Leaderboard() {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 320) + "px";
-  }, [tryInput]);
+    el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+  }, []);
 
   const formatPhone = useCallback((digits: string, pattern: string) => {
     let result = "";
@@ -685,42 +705,39 @@ export default function Leaderboard() {
 
   const targetIndex = platforms.indexOf(platform);
 
-  const changePlatform = useCallback(
-    (newPlatform: Platform) => {
-      const newIndex = platforms.indexOf(newPlatform);
-      const oldIndex = prevIndex.current;
-      if (newIndex === oldIndex) return;
+  const changePlatform = useCallback((newPlatform: Platform) => {
+    const newIndex = platforms.indexOf(newPlatform);
+    const oldIndex = prevIndex.current;
+    if (newIndex === oldIndex) return;
 
-      setPlatform(newPlatform);
-      if (newPlatform !== "try") setTryPlatform(newPlatform);
-      setSquishing(true);
-      if (newPlatform !== "try") {
-        modelRef.current?.spin(newIndex > oldIndex ? -1 : 1);
-        setTimeout(() => modelRef.current?.restartMessages(), 200);
-      }
-      setTimeout(() => {
-        setSquishing(false);
-        prevIndex.current = newIndex;
-      }, 100);
+    setPlatform(newPlatform);
+    if (newPlatform !== "try") setTryPlatform(newPlatform);
+    setSquishing(true);
+    if (newPlatform !== "try") {
+      modelRef.current?.spin(newIndex > oldIndex ? -1 : 1);
+      setTimeout(() => modelRef.current?.restartMessages(), 200);
+    }
+    setTimeout(() => {
+      setSquishing(false);
+      prevIndex.current = newIndex;
+    }, 100);
 
-      if (newIndex === 0) {
-        setBarBounceLeft(true);
-        setTimeout(() => setBarBounceLeft(false), 150);
-      }
-      if (newIndex === 2) {
-        setBarBounceRight(true);
-        setTimeout(() => setBarBounceRight(false), 150);
-      }
-      if (newIndex === 3) {
-        setTryBounce("enter");
-        setTimeout(() => setTryBounce(false), 150);
-      } else if (oldIndex === 3) {
-        setTryBounce("leave");
-        setTimeout(() => setTryBounce(false), 150);
-      }
-    },
-    [platforms],
-  );
+    if (newIndex === 0) {
+      setBarBounceLeft(true);
+      setTimeout(() => setBarBounceLeft(false), 150);
+    }
+    if (newIndex === 2) {
+      setBarBounceRight(true);
+      setTimeout(() => setBarBounceRight(false), 150);
+    }
+    if (newIndex === 3) {
+      setTryBounce("enter");
+      setTimeout(() => setTryBounce(false), 150);
+    } else if (oldIndex === 3) {
+      setTryBounce("leave");
+      setTimeout(() => setTryBounce(false), 150);
+    }
+  }, []);
 
   // Indicator left offsets relative to the flex wrapper
   // 0-2: barBorder(1) + barPad(6) + index * 52
@@ -753,7 +770,7 @@ export default function Leaderboard() {
       if (next < 0 || next > 3) return;
       changePlatform(platforms[next]);
     },
-    [platform, platforms, changePlatform],
+    [platform, changePlatform],
   );
 
   const bind = useDrag(
@@ -800,17 +817,22 @@ export default function Leaderboard() {
       />
       <div className="relative z-30 pointer-events-none">
         <header className="flex items-center justify-between p-5 pointer-events-auto">
-          <div
+          <button
+            type="button"
             onClick={() => {
               if (switcherOpen) {
                 setLoginSettled(false);
                 setSwitcherOpen(false);
               }
             }}
-            className={switcherOpen ? "cursor-pointer" : ""}
+            disabled={!switcherOpen}
+            aria-label={switcherOpen ? "Close platform switcher" : "Eliza"}
+            className={`appearance-none bg-transparent border-0 p-0 ${
+              switcherOpen ? "cursor-pointer" : "cursor-default"
+            }`}
           >
             <ElizaLogo className="h-8 md:h-10 lg:h-12 w-auto" />
-          </div>
+          </button>
           <nav className="flex items-center gap-4">
             <BlobButton
               href={`sms:${ELIZA_PHONE_NUMBER}?body=Hi%20Eliza`}
@@ -990,8 +1012,7 @@ export default function Leaderboard() {
                 onChange={(e) => {
                   setTryInput(e.target.value);
                   e.target.style.height = "auto";
-                  e.target.style.height =
-                    Math.min(e.target.scrollHeight, 320) + "px";
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 320)}px`;
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
@@ -1016,6 +1037,7 @@ export default function Leaderboard() {
               />
             </div>
             <button
+              type="button"
               onClick={() => {
                 if (tryInput.trim() && !waiting) {
                   if (listening) recognitionRef.current?.stop();
@@ -1027,6 +1049,9 @@ export default function Leaderboard() {
                   toggleVoiceInput();
                 }
               }}
+              aria-label={
+                tryInput.trim() ? "Send message" : "Start voice input"
+              }
               className={`shrink-0 flex items-center justify-center rounded-full cursor-pointer ${tryInput.trim() ? (waiting ? "size-12 bg-neutral-300 text-white" : tryPlatform === "discord" ? "size-12 text-[#5865F2]" : "size-12 text-[#2AABEE]") : listening ? (tryPlatform === "discord" ? "size-12 bg-[#5865F2] text-white" : "size-12 bg-[#2AABEE] text-white") : "size-12 text-neutral-400"}`}
             >
               {tryInput.trim() ? (
@@ -1036,6 +1061,7 @@ export default function Leaderboard() {
                     fill="currentColor"
                     className="size-12"
                   >
+                    <title>Telegram</title>
                     <path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
                   </svg>
                 ) : (
@@ -1044,6 +1070,7 @@ export default function Leaderboard() {
                     fill="currentColor"
                     className="size-5"
                   >
+                    <title>Send message</title>
                     <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
                   </svg>
                 )
@@ -1057,6 +1084,7 @@ export default function Leaderboard() {
                   strokeLinejoin="round"
                   className="size-6"
                 >
+                  <title>Voice input</title>
                   <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
                   <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                   <path d="M12 19v4M8 23h8" />
@@ -1078,8 +1106,7 @@ export default function Leaderboard() {
               onChange={(e) => {
                 setTryInput(e.target.value);
                 e.target.style.height = "auto";
-                e.target.style.height =
-                  Math.min(e.target.scrollHeight, 320) + "px";
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 320)}px`;
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -1097,6 +1124,7 @@ export default function Leaderboard() {
               className="flex-1 bg-transparent text-black placeholder-black/40 font-light text-lg outline-none resize-none py-1.5 max-h-80 leading-snug caret-blue-500 scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none]"
             />
             <button
+              type="button"
               onClick={() => {
                 if (tryInput.trim() && !waiting) {
                   if (listening) recognitionRef.current?.stop();
@@ -1108,6 +1136,9 @@ export default function Leaderboard() {
                   toggleVoiceInput();
                 }
               }}
+              aria-label={
+                tryInput.trim() ? "Send message" : "Start voice input"
+              }
               className={`shrink-0 flex items-center justify-center rounded-full mb-0.5 cursor-pointer ${tryInput.trim() ? (waiting ? "w-12 h-9 bg-neutral-300 text-white" : "w-12 h-9 bg-blue-500 text-white") : listening ? "w-12 h-9 bg-blue-500 text-white" : "w-9 h-9 text-black/40"}`}
             >
               {tryInput.trim() ? (
@@ -1120,6 +1151,7 @@ export default function Leaderboard() {
                   strokeLinejoin="round"
                   className="size-5"
                 >
+                  <title>Send message</title>
                   <path d="M12 22V4M5 11l7-7 7 7" />
                 </svg>
               ) : listening ? (
@@ -1132,6 +1164,7 @@ export default function Leaderboard() {
                   strokeLinejoin="round"
                   className="size-5"
                 >
+                  <title>Voice input</title>
                   <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
                   <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                   <path d="M12 19v4M8 23h8" />
@@ -1146,6 +1179,7 @@ export default function Leaderboard() {
                   strokeLinejoin="round"
                   className="size-5"
                 >
+                  <title>Voice input</title>
                   <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
                   <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                   <path d="M12 19v4M8 23h8" />
@@ -1182,6 +1216,7 @@ export default function Leaderboard() {
               strokeLinejoin="round"
               className="size-4"
             >
+              <title>Select country</title>
               <path d="M6 9l6 6 6-6" />
             </svg>
             <span className="text-3xl leading-none">{country.flag}</span>
@@ -1214,6 +1249,7 @@ export default function Leaderboard() {
           />
         </div>
         <button
+          type="button"
           disabled={
             phoneDigits.length !== country.placeholder.replace(/\D/g, "").length
           }
@@ -1256,54 +1292,58 @@ export default function Leaderboard() {
         }}
       >
         <div className="flex items-center gap-2">
-          {verifyCode.map((digit, i) => (
-            <input
-              key={i}
-              ref={(el) => {
-                verifyInputsRef.current[i] = el;
-              }}
-              type="text"
-              inputMode="numeric"
-              maxLength={1}
-              value={digit}
-              onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, "");
-                if (!val && !digit) return;
-                const newCode = [...verifyCode];
-                newCode[i] = val.slice(-1);
-                setVerifyCode(newCode);
-                if (val && i < 5) {
-                  verifyInputsRef.current[i + 1]?.focus();
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Backspace" && !digit && i > 0) {
+          {VERIFY_CODE_INPUT_KEYS.map((key, i) => {
+            const digit = verifyCode[i] ?? "";
+            return (
+              <input
+                key={key}
+                ref={(el) => {
+                  verifyInputsRef.current[i] = el;
+                }}
+                type="text"
+                inputMode="numeric"
+                maxLength={1}
+                value={digit}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, "");
+                  if (!val && !digit) return;
                   const newCode = [...verifyCode];
-                  newCode[i - 1] = "";
+                  newCode[i] = val.slice(-1);
                   setVerifyCode(newCode);
-                  verifyInputsRef.current[i - 1]?.focus();
-                }
-              }}
-              onPaste={(e) => {
-                e.preventDefault();
-                const pasted = e.clipboardData
-                  .getData("text")
-                  .replace(/\D/g, "")
-                  .slice(0, 6);
-                if (!pasted) return;
-                const newCode = [...verifyCode];
-                for (let j = 0; j < pasted.length && i + j < 6; j++) {
-                  newCode[i + j] = pasted[j];
-                }
-                setVerifyCode(newCode);
-                const focusIdx = Math.min(i + pasted.length, 5);
-                verifyInputsRef.current[focusIdx]?.focus();
-              }}
-              className="flex-1 min-w-0 aspect-square bg-neutral-200/50 rounded-xl text-center text-3xl font-semibold text-black outline-none focus:ring-2 focus:ring-neutral-400"
-            />
-          ))}
+                  if (val && i < 5) {
+                    verifyInputsRef.current[i + 1]?.focus();
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Backspace" && !digit && i > 0) {
+                    const newCode = [...verifyCode];
+                    newCode[i - 1] = "";
+                    setVerifyCode(newCode);
+                    verifyInputsRef.current[i - 1]?.focus();
+                  }
+                }}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  const pasted = e.clipboardData
+                    .getData("text")
+                    .replace(/\D/g, "")
+                    .slice(0, 6);
+                  if (!pasted) return;
+                  const newCode = [...verifyCode];
+                  for (let j = 0; j < pasted.length && i + j < 6; j++) {
+                    newCode[i + j] = pasted[j];
+                  }
+                  setVerifyCode(newCode);
+                  const focusIdx = Math.min(i + pasted.length, 5);
+                  verifyInputsRef.current[focusIdx]?.focus();
+                }}
+                className="flex-1 min-w-0 aspect-square bg-neutral-200/50 rounded-xl text-center text-3xl font-semibold text-black outline-none focus:ring-2 focus:ring-neutral-400"
+              />
+            );
+          })}
         </div>
         <button
+          type="button"
           disabled={verifyCode.some((d) => !d)}
           className={`w-full rounded-3xl py-4 text-[17px] font-semibold transition-colors ${
             verifyCode.every((d) => d)
@@ -1325,6 +1365,7 @@ export default function Leaderboard() {
             <>
               Didn&apos;t receive a code?{" "}
               <button
+                type="button"
                 onClick={startResendCountdown}
                 className="text-neutral-900 font-medium underline cursor-pointer"
               >

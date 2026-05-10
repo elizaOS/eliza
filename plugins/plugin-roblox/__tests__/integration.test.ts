@@ -7,7 +7,7 @@ import { ROBLOX_SERVICE_NAME } from "../types";
 import { hasRobloxEnabled, validateRobloxConfig } from "../utils/config";
 
 function createMockRuntime(settings: Record<string, string> = {}): IAgentRuntime {
-  return {
+  const runtime = {
     agentId: "test-agent-00000000" as UUID,
     getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn(() => null),
@@ -19,7 +19,9 @@ function createMockRuntime(settings: Record<string, string> = {}): IAgentRuntime
       success: vi.fn(),
     },
     character: { name: "TestAgent" },
-  } as unknown as IAgentRuntime;
+  };
+
+  return runtime as IAgentRuntime;
 }
 
 function createMockMemory(text: string): Memory {
@@ -34,13 +36,13 @@ function createMockMemory(text: string): Memory {
 describe("Roblox plugin metadata", () => {
   it("registers one compact action and one real provider", () => {
     expect(robloxPlugin.name).toBe("roblox");
-    expect(robloxPlugin.actions?.map((action) => action.name)).toEqual(["ROBLOX_ACTION"]);
+    expect(robloxPlugin.actions?.map((action) => action.name)).toEqual(["ROBLOX"]);
     expect(robloxPlugin.providers?.map((provider) => provider.name)).toEqual(["roblox-game-state"]);
     expect(robloxPlugin.services).toHaveLength(1);
   });
 });
 
-describe("ROBLOX_ACTION", () => {
+describe("ROBLOX", () => {
   it("validates only when Roblox settings are present", async () => {
     const configured = createMockRuntime({
       ROBLOX_API_KEY: "key",

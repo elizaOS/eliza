@@ -2,7 +2,6 @@ import type {
   GenerateTextParams,
   IAgentRuntime,
   ImageDescriptionParams,
-  ObjectGenerationParams,
   Plugin,
   TextEmbeddingParams,
 } from "@elizaos/core";
@@ -26,14 +25,15 @@ const warnUnsupported = (modelType: string): void => {
   logger.warn(`[plugin-${pluginName}] ${modelType} is not available in browsers.`);
 };
 
-const unsupportedText = (modelType: string): string => {
+const unsupportedText = (modelType: string, params?: GenerateTextParams): string => {
   warnUnsupported(modelType);
+  if (params && (params.tools || params.responseSchema || params.toolChoice)) {
+    throw new Error(
+      `[plugin-${pluginName}] Tool calling and structured output require the Node runtime. ` +
+        "Browsers cannot execute llama.cpp directly — switch providers or proxy through a server."
+    );
+  }
   return unsupportedMessage;
-};
-
-const unsupportedObject = (modelType: string): Record<string, string> => {
-  warnUnsupported(modelType);
-  return { error: unsupportedMessage };
 };
 
 const unsupportedImageDescription = (modelType: string): ImageDescriptionResult => {
@@ -55,12 +55,12 @@ export const localAiPlugin: Plugin = {
   models: {
     [ModelType.TEXT_SMALL]: async (
       _runtime: IAgentRuntime,
-      _params: GenerateTextParams
-    ): Promise<string> => unsupportedText(ModelType.TEXT_SMALL),
+      params: GenerateTextParams
+    ): Promise<string> => unsupportedText(ModelType.TEXT_SMALL, params),
     [ModelType.TEXT_LARGE]: async (
       _runtime: IAgentRuntime,
-      _params: GenerateTextParams
-    ): Promise<string> => unsupportedText(ModelType.TEXT_LARGE),
+      params: GenerateTextParams
+    ): Promise<string> => unsupportedText(ModelType.TEXT_LARGE, params),
     [ModelType.TEXT_REASONING_SMALL]: async (
       _runtime: IAgentRuntime,
       _params: GenerateTextParams
@@ -78,7 +78,7 @@ export const localAiPlugin: Plugin = {
       _params: TextEmbeddingParams | string | null
     ): Promise<number[]> => {
       warnUnsupported(ModelType.TEXT_EMBEDDING);
-      return new Array(384).fill(0);
+      return new Array(1024).fill(0);
     },
     [ModelType.TEXT_TOKENIZER_ENCODE]: async (): Promise<number[]> => {
       warnUnsupported(ModelType.TEXT_TOKENIZER_ENCODE);
@@ -88,14 +88,6 @@ export const localAiPlugin: Plugin = {
       warnUnsupported(ModelType.TEXT_TOKENIZER_DECODE);
       return "";
     },
-    [ModelType.OBJECT_SMALL]: async (
-      _runtime: IAgentRuntime,
-      _params: ObjectGenerationParams
-    ): Promise<Record<string, string>> => unsupportedObject(ModelType.OBJECT_SMALL),
-    [ModelType.OBJECT_LARGE]: async (
-      _runtime: IAgentRuntime,
-      _params: ObjectGenerationParams
-    ): Promise<Record<string, string>> => unsupportedObject(ModelType.OBJECT_LARGE),
     [ModelType.IMAGE_DESCRIPTION]: async (
       _runtime: IAgentRuntime,
       _params: ImageDescriptionParams | string

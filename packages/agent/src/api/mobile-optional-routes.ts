@@ -1,11 +1,11 @@
 import type http from "node:http";
-import { isMobilePlatform } from "@elizaos/shared";
-import { readRequestBody, sendJson, sendJsonError } from "./http-helpers.js";
+import { readRequestBody, sendJson, sendJsonError } from "@elizaos/core";
 import {
   readStreamSettings,
   validateStreamSettings,
   writeStreamSettings,
-} from "./stream-persistence.js";
+} from "@elizaos/plugin-streaming";
+import { isMobilePlatform } from "@elizaos/shared";
 
 function mobileLocalCompatibilityEnabled(): boolean {
   return (
@@ -75,6 +75,11 @@ export async function handleMobileOptionalRoutes(
       shinyPrice: "0.1",
       userHasMinted: false,
     });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/coding-agents/preflight") {
+    sendJson(res, { installed: [], available: false });
     return true;
   }
 

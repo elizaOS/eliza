@@ -1,36 +1,57 @@
 {
   "name": "@elizaos/plugin-sql",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "",
   "type": "module",
-  "main": "typescript/dist/index.js",
-  "types": "typescript/dist/index.d.ts",
+  "main": "src/dist/index.js",
+  "types": "src/dist/index.d.ts",
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./typescript/dist/index.d.ts",
-      "import": "./typescript/dist/index.js",
-      "default": "./typescript/dist/index.js"
-    },
-    "./schema": {
-      "types": "./typescript/schema/index.ts",
-      "import": "./typescript/schema/index.ts",
-      "default": "./typescript/schema/index.ts"
+      "types": "./src/dist/index.node.d.ts",
+      "bun": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "browser": {
+        "types": "./src/dist/index.d.ts",
+        "import": "./src/dist/browser/index.browser.js",
+        "default": "./src/dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./src/dist/index.d.ts",
+        "import": "./src/dist/node/index.node.js",
+        "default": "./src/dist/node/index.node.js"
+      },
+      "import": "./src/dist/index.js",
+      "default": "./src/dist/index.js"
     },
     "./drizzle": {
-      "types": "./typescript/drizzle/index.ts",
-      "import": "./typescript/drizzle/index.ts",
-      "default": "./typescript/drizzle/index.ts"
+      "types": "./src/dist/drizzle/index.d.ts",
+      "bun": {
+        "types": "./src/drizzle/index.ts",
+        "import": "./src/drizzle/index.ts",
+        "default": "./src/drizzle/index.ts"
+      },
+      "import": "./src/dist/drizzle/index.js",
+      "default": "./src/dist/drizzle/index.js"
     },
-    "./types": {
-      "types": "./typescript/types.ts",
-      "import": "./typescript/types.ts",
-      "default": "./typescript/types.ts"
+    "./schema": {
+      "types": "./src/dist/schema/index.d.ts",
+      "bun": {
+        "types": "./src/schema/index.ts",
+        "import": "./src/schema/index.ts",
+        "default": "./src/schema/index.ts"
+      },
+      "import": "./src/dist/schema/index.js",
+      "default": "./src/dist/schema/index.js"
     }
   },
   "files": [
-    "typescript/dist",
-    "README.md"
+    "src/dist",
+    "README.md",
+    "dist"
   ],
   "keywords": [],
   "author": "elizaOS",
@@ -40,15 +61,15 @@
     "url": "https://github.com/elizaos-plugins/plugin-sql"
   },
   "scripts": {
-    "build": "cd typescript && bun run build.ts",
-    "dev": "cd typescript && bun --hot build.ts",
-    "test": "cd typescript && vitest run",
-    "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
-    "lint": "cd typescript && bun run lint",
-    "lint:check": "cd typescript && bun run lint:check",
-    "clean": "rm -rf typescript/dist .turbo node_modules",
-    "format": "cd typescript && bun run format",
-    "format:check": "cd typescript && bun run format:check",
+    "build": "cd src && bun run build.ts",
+    "dev": "cd src && bun --hot build.ts",
+    "test": "cd src && vitest run",
+    "typecheck": "tsc --noEmit -p src/tsconfig.json",
+    "lint": "cd src && bun run lint",
+    "lint:check": "cd src && bun run lint:check",
+    "clean": "rm -rf src/dist .turbo",
+    "format": "cd src && bun run format",
+    "format:check": "cd src && bun run format:check",
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
     "test:live": "bun run test:e2e"
   },
@@ -68,11 +89,11 @@
     "@types/ws": "^8.18.1",
     "dotenv": "^17.2.3",
     "drizzle-kit": "^0.31.8",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543",
   "publishConfig": {

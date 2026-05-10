@@ -2,14 +2,15 @@
  * Twitter Connection Adapter
  *
  * OAuth 1.0a - tokens don't expire but can be revoked.
- * Connection ID format: twitter:{organizationId}:{owner|agent}
+ * Connection ID format: twitter:{organizationId}:{owner|agent|team}
  */
 
 import { secretsService } from "@/lib/services/secrets";
 import { logger } from "@/lib/utils/logger";
 import { Errors } from "../errors";
 import { OAUTH_PROVIDERS } from "../provider-registry";
-import type { OAuthConnection, TokenResult } from "../types";
+import type { OAuthConnection, OAuthStandardConnectionRole, TokenResult } from "../types";
+import { formatOAuthConnectionRole } from "../types";
 import {
   deletePlatformSecrets,
   fetchPlatformSecrets,
@@ -23,8 +24,8 @@ import type { ConnectionAdapter } from "./types";
 const PLATFORM = "twitter";
 const PREFIX = "TWITTER_";
 const PATTERNS = OAUTH_PROVIDERS.twitter.secretPatterns!;
-const ROLES = ["owner", "agent"] as const;
-type TwitterConnectionRole = (typeof ROLES)[number];
+const ROLES: OAuthStandardConnectionRole[] = ["OWNER", "AGENT", "TEAM"];
+type TwitterConnectionRole = OAuthStandardConnectionRole;
 
 const LEGACY_SECRET_NAMES = {
   accessToken: PATTERNS.accessToken!,
@@ -56,7 +57,7 @@ function roleSecretNames(role: TwitterConnectionRole) {
 }
 
 function connectionId(organizationId: string, role: TwitterConnectionRole): string {
-  return `${PLATFORM}:${organizationId}:${role}`;
+  return `${PLATFORM}:${organizationId}:${role.toLowerCase()}`;
 }
 
 function parseConnectionId(organizationId: string, rawConnectionId: string): TwitterConnectionRole {
@@ -110,7 +111,7 @@ export const twitterAdapter: ConnectionAdapter = {
       );
       connections.push({
         id: connectionId(organizationId, role),
-        connectionRole: role,
+        connectionRole: formatOAuthConnectionRole(role),
         platform: PLATFORM,
         platformUserId: userId || "unknown",
         username: username || undefined,
@@ -144,7 +145,7 @@ export const twitterAdapter: ConnectionAdapter = {
         "twitter.legacy.oauth2Scope",
       );
       connections.push({
-        id: connectionId(organizationId, "owner"),
+        id: connectionId(organizationId, "OWNER"),
         connectionRole: "owner",
         platform: PLATFORM,
         platformUserId: userId || "unknown",
@@ -167,13 +168,13 @@ export const twitterAdapter: ConnectionAdapter = {
 
     const oauth1AccessToken =
       (await getSecretValue(organizationId, names.accessToken)) ??
-      (role === "owner"
+      (role === "OWNER"
         ? await getSecretValue(organizationId, LEGACY_SECRET_NAMES.accessToken)
         : null);
     if (oauth1AccessToken) {
       const accessTokenSecret =
         (await getSecretValue(organizationId, names.accessTokenSecret)) ??
-        (role === "owner"
+        (role === "OWNER"
           ? await getSecretValue(organizationId, LEGACY_SECRET_NAMES.accessTokenSecret)
           : null);
       await updateSecretAccessTime(organizationId, names.accessToken);
@@ -189,13 +190,13 @@ export const twitterAdapter: ConnectionAdapter = {
 
     const oauth2AccessToken =
       (await getSecretValue(organizationId, names.oauth2AccessToken)) ??
-      (role === "owner"
+      (role === "OWNER"
         ? await getSecretValue(organizationId, LEGACY_SECRET_NAMES.oauth2AccessToken)
         : null);
     if (!oauth2AccessToken) throw Errors.platformNotConnected(PLATFORM);
     const oauth2Scope =
       (await getSecretValue(organizationId, names.oauth2Scope)) ??
-      (role === "owner"
+      (role === "OWNER"
         ? await getSecretValue(organizationId, LEGACY_SECRET_NAMES.oauth2Scope)
         : null);
     await updateSecretAccessTime(organizationId, names.oauth2AccessToken);
@@ -216,7 +217,7 @@ export const twitterAdapter: ConnectionAdapter = {
       "oauth-service",
     );
     let legacyCount = 0;
-    if (role === "owner") {
+    if (role === "OWNER") {
       const audit = {
         actorType: "system" as const,
         actorId: "oauth-service",

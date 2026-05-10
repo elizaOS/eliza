@@ -50,8 +50,8 @@ def create_true_believer_tarot() -> Persona:
             resistance_topics=["money worries", "failure", "competition"],
         ),
         engagement_style="verbose",
-        payment_willingness=0.9,
-        patience=25,
+        payment_willingness=0.95,
+        patience=40,
         max_payment=10.0,
         haggle_tendency=0.0,
         birth_data=BirthData(

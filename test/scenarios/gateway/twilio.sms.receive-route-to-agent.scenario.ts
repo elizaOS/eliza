@@ -27,7 +27,7 @@ export default scenario({
       room: "main",
       text: 'Please route this incoming Twilio text to the right agent and reply naturally. Exact SMS: "I am running 20 minutes late, the freeway is backed up, I will update you when I am parked, and please start the meeting without me if I am not there by 9:15."',
       assertTurn: expectTurnToCallAction({
-        acceptedActions: ["REPLY", "SEND_DRAFT", "SEND_DRAFT"],
+        acceptedActions: ["REPLY", "MESSAGE", "MESSAGE"],
         description: "twilio sms route-to-agent",
         includesAny: ["got", "received", "text", "SMS"],
       }),
@@ -37,7 +37,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: ["REPLY", "SEND_DRAFT", "SEND_DRAFT"],
+      actionName: ["REPLY", "MESSAGE", "MESSAGE"],
     },
     {
       type: "custom",

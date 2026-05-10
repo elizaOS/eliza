@@ -29,7 +29,7 @@ function makeRuntime(registrations: MessageConnectorRegistration[]): IAgentRunti
     registerSendHandler: vi.fn(),
     getRoom: vi.fn(async () => null),
     getMemoryById: vi.fn(async () => null),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 describe("iMessage message connector registration", () => {
@@ -43,7 +43,7 @@ describe("iMessage message connector registration", () => {
       getRecentMessages: vi.fn(async () => []),
       getMessages: vi.fn(async () => []),
       sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-1" })),
-    } as unknown as IMessageService;
+    } as IMessageService;
 
     IMessageService.registerSendHandlers(runtime, service);
 
@@ -62,7 +62,11 @@ describe("iMessage message connector registration", () => {
         kind: "phone",
         target: expect.objectContaining({
           source: "imessage",
+          accountId: "default",
           channelId: "+14155552671",
+        }),
+        metadata: expect.objectContaining({
+          accountId: "default",
         }),
       })
     );
@@ -73,6 +77,40 @@ describe("iMessage message connector registration", () => {
       { text: "hello" } as ConnectorContent
     );
 
-    expect(service.sendMessage).toHaveBeenCalledWith("+14155552671", "hello", undefined);
+    expect(service.sendMessage).toHaveBeenCalledWith("+14155552671", "hello", {
+      accountId: "default",
+    });
+  });
+
+  it("stamps fetched platform memories with the local accountId", async () => {
+    const registrations: MessageConnectorRegistration[] = [];
+    const runtime = makeRuntime(registrations);
+    const service = {
+      getStatus: vi.fn(makeStatus),
+      getContacts: vi.fn(() => new Map()),
+      getChats: vi.fn(async () => []),
+      getRecentMessages: vi.fn(async () => []),
+      getMessages: vi.fn(async () => [
+        {
+          id: "1",
+          text: "hello",
+          handle: "+14155552671",
+          chatId: "iMessage;-;+14155552671",
+          timestamp: 123,
+          isFromMe: false,
+          hasAttachments: false,
+        },
+      ]),
+      sendMessage: vi.fn(async () => ({ success: true, messageId: "msg-1" })),
+    } as IMessageService;
+
+    IMessageService.registerSendHandlers(runtime, service);
+    const memories = await registrations[0].fetchMessages?.({ runtime }, { limit: 1 });
+
+    expect(memories?.[0]?.metadata).toEqual(
+      expect.objectContaining({
+        accountId: "default",
+      })
+    );
   });
 });

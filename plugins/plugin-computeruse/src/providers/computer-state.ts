@@ -34,7 +34,7 @@ export const computerStateProvider: Provider = {
     _state: State,
   ): Promise<ProviderResult> => {
     try {
-      const service = runtime.getService("computeruse") as unknown as
+      const service = runtime.getService("computeruse") as
         | ComputerUseService
         | undefined;
       if (!service) {

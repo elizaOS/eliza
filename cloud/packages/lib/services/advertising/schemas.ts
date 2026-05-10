@@ -47,6 +47,7 @@ export const CreativeMediaSchema = z.object({
   id: z.string().uuid(),
   source: MediaSourceSchema,
   url: z.string().url(),
+  providerAssetId: z.string().min(1).optional(),
   thumbnailUrl: z.string().url().optional(),
   type: MediaTypeSchema,
   order: z.number().int().min(0),
@@ -58,6 +59,11 @@ export const ConnectAccountSchema = z.object({
   refreshToken: z.string().optional(),
   externalAccountId: z.string().optional(),
   accountName: z.string().optional(),
+});
+
+export const DiscoverAdAccountsSchema = z.object({
+  platform: AdPlatformSchema,
+  accessToken: z.string().min(1),
 });
 
 export const CreateCampaignSchema = z.object({
@@ -90,6 +96,10 @@ export const CreateCreativeSchema = z.object({
   callToAction: CallToActionSchema.optional(),
   destinationUrl: z.string().url().optional(),
   media: z.array(CreativeMediaSchema),
+  pageId: z.string().min(1).optional(),
+  instagramActorId: z.string().min(1).optional(),
+  tiktokIdentityId: z.string().min(1).optional(),
+  tiktokIdentityType: z.string().min(1).optional(),
 });
 
 export const CampaignIdSchema = z.object({

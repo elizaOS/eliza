@@ -1,12 +1,12 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
+import type { RouteRequestContext } from "@elizaos/shared";
 import {
   buildCharacterHistorySnapshot,
   listCharacterHistory,
   type RuntimeCharacterLike,
   recordCharacterHistory,
-} from "../services/character-history.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+} from "../services/character-history.ts";
 
 interface CharacterGenerateContext {
   name?: string;
@@ -42,7 +42,7 @@ interface AgentConfigLike {
   postExamples?: string[];
 }
 
-import type { AutonomousConfigLike } from "../types/config-like.js";
+import type { AutonomousConfigLike } from "../types/config-like.ts";
 
 export interface CharacterAutonomousConfigLike extends AutonomousConfigLike {
   agents?: {

@@ -73,7 +73,7 @@ async function forwardControlPlaneRequest(
         code: "CONTAINER_CONTROL_PLANE_UNREACHABLE",
         error: "Container control plane is unreachable",
       },
-      502,
+      503,
     );
   }
 }

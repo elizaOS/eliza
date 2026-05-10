@@ -13,7 +13,12 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import {
+  getElizaNamespace,
+  logger,
+  resolveStateDir,
+  resolveUserPath,
+} from "@elizaos/core";
 import {
   type AccountCredentialRecord,
   deleteAccount,
@@ -21,18 +26,24 @@ import {
   loadAccount,
   migrateLegacySingleAccount,
   saveAccount,
-} from "./account-storage.js";
-import { refreshAnthropicToken } from "./anthropic.js";
-import { refreshCodexToken } from "./openai-codex.js";
-import { accountRefreshMutex } from "./refresh-mutex.js";
+} from "./account-storage.ts";
+import { refreshAnthropicToken } from "./anthropic.ts";
+import { refreshCodexToken } from "./openai-codex.ts";
+import { accountRefreshMutex } from "./refresh-mutex.ts";
 import {
   type AccountCredentialProvider,
+  isCodingPlanKeySubscriptionProvider,
+  isExternalCliSubscriptionProvider,
+  isOAuthSubscriptionProvider,
   isSubscriptionProvider,
+  isUnavailableSubscriptionProvider,
   type OAuthCredentials,
   type StoredCredentials,
+  SUBSCRIPTION_PROVIDER_IDS,
   SUBSCRIPTION_PROVIDER_MAP,
+  SUBSCRIPTION_PROVIDER_METADATA,
   type SubscriptionProvider,
-} from "./types.js";
+} from "./types.ts";
 
 const DEFAULT_ACCOUNT_ID = "default";
 
@@ -114,6 +125,19 @@ export function deleteCredentials(
 }
 
 /**
+ * Delete every stored credential account for a provider.
+ */
+export function deleteProviderCredentials(
+  provider: AccountCredentialProvider,
+): number {
+  const accounts = listProviderAccounts(provider);
+  for (const account of accounts) {
+    deleteAccount(provider, account.id);
+  }
+  return accounts.length;
+}
+
+/**
  * Check if credentials exist and are not expired.
  */
 export function hasValidCredentials(
@@ -161,6 +185,22 @@ export async function getAccessToken(
     return initial.credentials.access;
   }
 
+  if (isCodingPlanKeySubscriptionProvider(provider)) {
+    return initial.credentials.expires > Date.now()
+      ? initial.credentials.access
+      : null;
+  }
+
+  if (
+    isExternalCliSubscriptionProvider(provider) ||
+    isUnavailableSubscriptionProvider(provider)
+  ) {
+    logger.info(
+      `[auth] ${provider} is not an importable OAuth credential; use its first-party coding client or supported coding endpoint.`,
+    );
+    return null;
+  }
+
   return accountRefreshMutex.acquire(`${provider}:${accountId}`, async () => {
     // Re-read after acquiring the lock — a concurrent caller may have
     // already refreshed the token, in which case we want the new one.
@@ -180,8 +220,13 @@ export async function getAccessToken(
         refreshed = await refreshAnthropicToken(credentials.refresh);
       } else if (provider === "openai-codex") {
         refreshed = await refreshCodexToken(credentials.refresh);
-      } else {
+      } else if (!isOAuthSubscriptionProvider(provider)) {
         logger.error(`[auth] Unknown provider: ${provider}`);
+        return null;
+      } else {
+        logger.error(
+          `[auth] Refresh not implemented for provider: ${provider}`,
+        );
         return null;
       }
     } catch (err) {
@@ -216,35 +261,12 @@ function parseCodexCliAuthJson(raw: string): CodexCliAuthJson | null {
   }
 }
 
-/**
- * OAuth / subscription-style access token from the Codex CLI auth file.
- * Returns null for plain API-key installs (`auth_mode === "api-key"`).
- */
-function readCodexCliAuthAccessToken(): string | null {
-  const authPath = path.join(os.homedir(), ".codex", "auth.json");
-  try {
-    const parsed = parseCodexCliAuthJson(fs.readFileSync(authPath, "utf-8"));
-    if (!parsed) return null;
-    const oauthAccess = parsed.tokens?.access_token?.trim();
-    if (oauthAccess) return oauthAccess;
-    const mode = parsed.auth_mode?.trim().toLowerCase();
-    const legacy = parsed.OPENAI_API_KEY?.trim();
-    if (legacy && mode && mode !== "api-key") return legacy;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 function readConfiguredAnthropicSetupToken(): string | null {
-  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
-  const configPath =
-    process.env.ELIZA_CONFIG_PATH?.trim() ||
-    path.join(
-      process.env.ELIZA_STATE_DIR?.trim() ||
-        path.join(os.homedir(), `.${namespace}`),
-      `${namespace}.json`,
-    );
+  const namespace = getElizaNamespace();
+  const explicitConfig = process.env.ELIZA_CONFIG_PATH?.trim();
+  const configPath = explicitConfig
+    ? resolveUserPath(explicitConfig)
+    : path.join(resolveStateDir(), `${namespace}.json`);
   try {
     const parsed = JSON.parse(fs.readFileSync(configPath, "utf-8")) as {
       env?: Record<string, unknown>;
@@ -277,6 +299,9 @@ export type SubscriptionCredentialSource =
   | "claude-code-cli"
   | "setup-token"
   | "codex-cli"
+  | "gemini-cli"
+  | "coding-plan-key"
+  | "unavailable"
   | null;
 
 /**
@@ -295,26 +320,65 @@ export interface SubscriptionAccountStatus {
   valid: boolean;
   expiresAt: number | null;
   source: SubscriptionCredentialSource;
+  available?: boolean;
+  availabilityReason?: string;
+  allowedClient?: string;
+  loginHint?: string;
+  billingMode?: "subscription-coding-plan" | "subscription-coding-cli";
+}
+
+function subscriptionStatusMetadata(
+  provider: SubscriptionProvider,
+): Pick<
+  SubscriptionAccountStatus,
+  "available" | "allowedClient" | "loginHint" | "billingMode"
+> & { availabilityReason?: string } {
+  const metadata = SUBSCRIPTION_PROVIDER_METADATA[provider];
+  return {
+    available: metadata.availability !== "unavailable",
+    allowedClient: metadata.allowedClient,
+    loginHint: metadata.setupHint,
+    billingMode: metadata.billingMode,
+    ...(metadata.availabilityReason
+      ? { availabilityReason: metadata.availabilityReason }
+      : {}),
+  };
+}
+
+function hasCommandOnPath(commandName: string): boolean {
+  const command = process.platform === "win32" ? "where" : "command -v";
+  try {
+    execSync(`${command} ${commandName}`, {
+      encoding: "utf8",
+      timeout: 1500,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
-  const providers: SubscriptionProvider[] = [
-    "anthropic-subscription",
-    "openai-codex",
-  ];
   const rows: SubscriptionAccountStatus[] = [];
 
-  for (const provider of providers) {
+  for (const provider of SUBSCRIPTION_PROVIDER_IDS) {
+    const metadata = subscriptionStatusMetadata(provider);
     const accounts = listProviderAccounts(provider);
     for (const account of accounts) {
       rows.push({
+        ...metadata,
         provider,
         accountId: account.id,
         label: account.label,
         configured: true,
         valid: account.credentials.expires > Date.now(),
         expiresAt: account.credentials.expires,
-        source: "app",
+        source:
+          isCodingPlanKeySubscriptionProvider(provider) &&
+          account.source === "api-key"
+            ? "coding-plan-key"
+            : "app",
       });
     }
 
@@ -348,6 +412,7 @@ export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
             ? "Claude Code CLI"
             : "Setup Token";
         rows.push({
+          ...metadata,
           provider,
           accountId,
           label,
@@ -361,6 +426,7 @@ export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
 
     if (provider === "openai-codex" && hasCodexCliSubscriptionAuth()) {
       rows.push({
+        ...metadata,
         provider,
         accountId: "codex-cli",
         label: "Codex CLI",
@@ -368,6 +434,33 @@ export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
         valid: true,
         expiresAt: null,
         source: "codex-cli",
+      });
+    }
+
+    if (provider === "gemini-cli") {
+      const geminiCliDetected = hasCommandOnPath("gemini");
+      rows.push({
+        ...metadata,
+        provider,
+        accountId: "gemini-cli",
+        label: "Gemini CLI",
+        configured: geminiCliDetected,
+        valid: geminiCliDetected,
+        expiresAt: null,
+        source: geminiCliDetected ? "gemini-cli" : null,
+      });
+    }
+
+    if (provider === "deepseek-coding") {
+      rows.push({
+        ...metadata,
+        provider,
+        accountId: "deepseek-coding",
+        label: "DeepSeek Coding Plan",
+        configured: false,
+        valid: false,
+        expiresAt: null,
+        source: "unavailable",
       });
     }
   }
@@ -527,12 +620,8 @@ async function importClaudeCodeOAuthToken(): Promise<string | null> {
  * subprocesses) but never injecting it into `process.env.ANTHROPIC_API_KEY`
  * or installing the stealth fetch interceptor.
  *
- * Codex / ChatGPT subscription tokens *are* applied to the environment
- * because OpenAI permits direct API usage with those tokens.
- *
- * For multi-account installs the FIRST configured Codex account is the one
- * applied to `process.env.OPENAI_API_KEY`. Real account selection lands in
- * WS2 (AccountPool).
+ * Codex / ChatGPT subscription tokens are also CLI credentials. They are used
+ * by the Codex CLI-backed provider, not injected into `OPENAI_API_KEY`.
  */
 export async function applySubscriptionCredentials(config?: {
   agents?: {
@@ -581,53 +670,52 @@ export async function applySubscriptionCredentials(config?: {
     }
   }
 
-  // ── OpenAI Codex subscription → set OPENAI_API_KEY ────────────────────
+  // ── OpenAI Codex subscription ────────────────────────────────────────
   //
-  // Account selection goes through the WS2 AccountPool when its shim is
-  // installed (via `app-core`'s `getDefaultAccountPool()` accessor). The
-  // shim is symbol-keyed on `globalThis` so this package doesn't need to
-  // depend on `@elizaos/app-core`. When the shim is absent (e.g. agent
-  // running without app-core), we fall back to the lowest-createdAt
-  // account, which is stable for single-account installs.
+  // Codex subscriptions power the Codex CLI-backed provider and task-agent
+  // subprocesses. Do not inject their OAuth access tokens into OPENAI_API_KEY:
+  // the normal OpenAI API path expects scoped API keys.
   const codexAccounts = listProviderAccounts("openai-codex");
   if (codexAccounts.length > 0) {
-    const selectorSymbol = Symbol.for(
-      "eliza.account-pool.subscription-selector.v1",
+    const labels = codexAccounts
+      .map((a) => `"${a.label}" (${a.id})`)
+      .join(", ");
+    logger.info(
+      `[auth] OpenAI Codex subscription accounts configured: ${labels} — available for Codex CLI-backed coding/model providers. ` +
+        "Not applied to OPENAI_API_KEY; add a direct OpenAI API key for @elizaos/plugin-openai runtime inference.",
     );
-    const selector = (globalThis as Record<symbol, unknown>)[selectorSymbol] as
-      | {
-          pickAccountId(
-            providerId: SubscriptionProvider,
-          ): Promise<string | null>;
-        }
-      | undefined;
-    let chosenId: string | null = null;
-    if (selector) {
-      chosenId = await selector.pickAccountId("openai-codex");
-    }
-    const primary =
-      codexAccounts.find((a) => a.id === chosenId) ??
-      codexAccounts.slice().sort((a, b) => a.createdAt - b.createdAt)[0];
-    const codexToken = await getAccessToken("openai-codex", primary.id);
-    if (codexToken) {
-      process.env.OPENAI_API_KEY = codexToken;
-      logger.info(
-        `[auth] Applied OpenAI Codex subscription credentials to environment from account "${primary.label}" (${primary.id})`,
-      );
-    }
   } else {
-    const existing = process.env.OPENAI_API_KEY?.trim();
-    const cliToken = readCodexCliAuthAccessToken();
-    if (cliToken && !existing) {
-      process.env.OPENAI_API_KEY = cliToken;
+    if (hasCodexCliSubscriptionAuth()) {
       logger.info(
-        "[auth] Applied OpenAI Codex credentials from ~/.codex/auth.json (CLI; no eliza auth account)",
+        "[auth] OpenAI Codex CLI auth detected in ~/.codex/auth.json — available for Codex CLI-backed coding/model providers. " +
+          "Not applied to OPENAI_API_KEY; add a direct OpenAI API key for @elizaos/plugin-openai runtime inference.",
       );
     }
   }
 
-  // Auto-set model.primary from subscription provider (Codex only —
-  // anthropic subscription tokens don't power the runtime directly).
+  const geminiAccounts = listProviderAccounts("gemini-cli");
+  if (geminiAccounts.length > 0 || hasCommandOnPath("gemini")) {
+    logger.info(
+      "[auth] Gemini CLI subscription surface detected/configured — available only through Gemini CLI task agents. " +
+        "Not applied to GOOGLE_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY.",
+    );
+  }
+
+  for (const provider of ["zai-coding", "kimi-coding"] as const) {
+    const accounts = listProviderAccounts(provider);
+    if (accounts.length === 0) continue;
+    const labels = accounts.map((a) => `"${a.label}" (${a.id})`).join(", ");
+    const envName =
+      provider === "zai-coding" ? "ZAI_API_KEY" : "MOONSHOT_API_KEY";
+    logger.info(
+      `[auth] ${provider} coding-plan accounts configured: ${labels} — available only for the provider's dedicated coding endpoint. ` +
+        `Not applied to ${envName}.`,
+    );
+  }
+
+  // Auto-set model.primary only for subscription providers that have a runtime
+  // model-provider plugin. CLI-only subscriptions should not point the runtime
+  // at direct API-key plugins.
   if (config?.agents?.defaults) {
     const defaults = config.agents.defaults;
     const provider =
@@ -635,7 +723,8 @@ export async function applySubscriptionCredentials(config?: {
 
     if (provider) {
       const modelId = SUBSCRIPTION_PROVIDER_MAP[provider];
-      if (modelId) {
+      const runtimeApplicable = provider === "openai-codex";
+      if (modelId && runtimeApplicable) {
         if (!defaults.model) {
           defaults.model = { primary: modelId };
           logger.info(

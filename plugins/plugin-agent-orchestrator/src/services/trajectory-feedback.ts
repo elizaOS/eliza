@@ -68,7 +68,7 @@ export interface TrajectoryFeedbackOptions {
 function getTrajectoryLogger(
   runtime: IAgentRuntime,
 ): TrajectoryLoggerRef | null {
-  const runtimeAny = runtime as unknown as {
+  const runtimeAny = runtime as {
     getService?: (serviceType: string) => unknown;
     getServicesByType?: (serviceType: string) => unknown[];
   };
@@ -145,15 +145,18 @@ function extractInsights(response: string, purpose: string): string[] {
 
   // Extract explicit DECISION markers
   const decisionPattern = /DECISION:\s*(.+?)(?:\n|$)/gi;
-  let match: RegExpExecArray | null;
-  while ((match = decisionPattern.exec(response)) !== null) {
+  let match = decisionPattern.exec(response);
+  while (match !== null) {
     insights.push(match[1].trim());
+    match = decisionPattern.exec(response);
   }
 
   // Extract keyDecision from coordination responses
   const keyDecisionPattern = /"keyDecision"\s*:\s*"([^"]+)"/g;
-  while ((match = keyDecisionPattern.exec(response)) !== null) {
+  match = keyDecisionPattern.exec(response);
+  while (match !== null) {
     insights.push(match[1].trim());
+    match = keyDecisionPattern.exec(response);
   }
 
   // For turn-complete and coordination decisions, extract the reasoning

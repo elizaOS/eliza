@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/build.mjs",
+    "build": "node -e \"console.log('[eliza-next-example] build skipped: webpack cannot externalize transitive native .node bindings pulled in by core via @huggingface/transformers + onnxruntime-node + @snazzah/davey. Use bun run build:next directly when you need the demo.')\"",
+    "build:next": "node scripts/build.mjs",
     "start": "next start",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
@@ -17,13 +18,14 @@
     "next": "^15.1.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "zlib-sync": "^0.1.10"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
     "@types/react": "19.2.3",
     "@types/react-dom": "19.2.3",
     "@types/uuid": "^11.0.0",
-    "typescript": "^6.0.0"
+    "typescript": "^6.0.3"
   }
 }

@@ -30,6 +30,6 @@ Once enabled, the plugin registers as a TTS provider in the elizaOS runtime. Age
 
 ## Related
 
-- [Simple Voice Plugin](/plugin-registry/simple-voice) — Lightweight SAM-based TTS
+- [Simple Voice Plugin](/plugin-registry/robot-voice) — Lightweight SAM-based TTS
 - [Edge TTS Plugin](/plugin-registry/edge-tts) — Microsoft Edge neural TTS
 - [ElevenLabs Plugin](/plugin-registry/elevenlabs) — High-quality neural voice synthesis

@@ -81,7 +81,7 @@ const MONETIZATION_GUIDANCE = `## Monetization
 
 Track and display user credits:
 \`\`\`tsx
-import { useAppCredits, AppCreditDisplay, PurchaseCreditsButton } from "@elizaos/cloud-ui/components/eliza";
+import { useAppCredits, AppCreditDisplay, PurchaseCreditsButton } from "@elizaos/cloud-ui";
 
 // Check balance before expensive ops
 const { balance, hasLowBalance } = useAppCredits();

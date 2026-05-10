@@ -3,7 +3,7 @@
  *
  * Boots a real AgentRuntime on PGLite, seeds messages into five rooms
  * (each pinned to a different platform via `source`), runs the
- * SEARCH_MESSAGES action (with direct query — no LLM required),
+ * MESSAGE action (with direct query — no LLM required),
  * and asserts merged citations across all five platforms.
  *
  * Run:
@@ -17,7 +17,6 @@ import type { AgentRuntime, UUID } from "@elizaos/core";
 import { ChannelType, stringToUuid } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../test/helpers/real-runtime";
-import { searchAcrossChannelsAction } from "../src/actions/search-across-channels.js";
 import { runCrossChannelSearch } from "../src/lifeops/cross-channel-search.js";
 import { appLifeOpsPlugin } from "../src/plugin.js";
 
@@ -134,31 +133,31 @@ beforeAll(async () => {
   // room even though the surrounding text is different per platform.
   await seedMessage({
     platform: "discord",
-    speakerName: "Jill",
+    speakerName: "PartnerOne",
     text: "ProjectAtlas timeline slipped again — we need to regroup before Friday.",
     ageMs: 60_000,
   });
   await seedMessage({
     platform: "telegram",
-    speakerName: "Jill",
+    speakerName: "PartnerOne",
     text: "Just sent you the ProjectAtlas milestone doc, please review tonight.",
     ageMs: 30_000,
   });
   await seedMessage({
     platform: "imessage",
-    speakerName: "Jill",
+    speakerName: "PartnerOne",
     text: "Heads up: ProjectAtlas standup is moving to 9am tomorrow.",
     ageMs: 10_000,
   });
   await seedMessage({
     platform: "signal",
-    speakerName: "Jill",
+    speakerName: "PartnerOne",
     text: "ProjectAtlas Signal fallback thread has the vendor call note.",
     ageMs: 8_000,
   });
   await seedMessage({
     platform: "whatsapp",
-    speakerName: "Jill",
+    speakerName: "PartnerOne",
     text: "ProjectAtlas WhatsApp room has the launch checklist screenshot.",
     ageMs: 6_000,
   });
@@ -209,92 +208,4 @@ describe("cross-channel-search WS1 integration", () => {
     expect(gmailStatus).toBeTruthy();
   }, 120_000);
 
-  it("SEARCH_MESSAGES action returns merged clipboard-ready payload with citations", async () => {
-    const handler = searchAcrossChannelsAction.handler;
-    if (!handler) throw new Error("searchAcrossChannelsAction.handler missing");
-
-    const result = await handler(
-      runtime,
-      {
-        entityId: runtime.agentId,
-        content: {
-          source: "autonomy",
-          text: "search for ProjectAtlas across all my channels",
-        },
-      } as never,
-      {} as never,
-      {
-        parameters: {
-          query: "ProjectAtlas",
-          limit: 5,
-        },
-      } as never,
-    );
-
-    expect(result).toBeTruthy();
-    const record = result as {
-      success: boolean;
-      text: string;
-      data: {
-        hits: Array<{
-          line: number;
-          channel: string;
-          citation: { platform: string; label: string };
-          timestamp: string;
-        }>;
-        channelsWithHits: string[];
-      };
-    };
-    expect(record.success).toBe(true);
-    expect(record.text).toContain("ProjectAtlas");
-
-    const channels = new Set(record.data.hits.map((h) => h.channel));
-    expect(channels.has("discord")).toBe(true);
-    expect(channels.has("telegram")).toBe(true);
-    expect(channels.has("imessage")).toBe(true);
-    expect(channels.has("signal")).toBe(true);
-    expect(channels.has("whatsapp")).toBe(true);
-
-    for (const hit of record.data.hits) {
-      expect(typeof hit.line).toBe("number");
-      expect(hit.citation.platform).toBeTruthy();
-      expect(hit.citation.label).toBeTruthy();
-    }
-
-    expect(record.data.channelsWithHits.length).toBeGreaterThanOrEqual(5);
-  }, 120_000);
-
-  it("handler asks for clarification when query cannot be derived and no LLM is available", async () => {
-    const handler = searchAcrossChannelsAction.handler;
-    if (!handler) throw new Error("searchAcrossChannelsAction.handler missing");
-
-    const runtimeWithoutLlm = runtime as AgentRuntime & {
-      useModel?: AgentRuntime["useModel"];
-    };
-    const originalUseModel = runtimeWithoutLlm.useModel;
-    runtimeWithoutLlm.useModel = undefined;
-    let result: Awaited<ReturnType<typeof handler>>;
-    try {
-      result = await handler(
-        runtimeWithoutLlm,
-        {
-          entityId: runtime.agentId,
-          content: { source: "autonomy", text: "" },
-        } as never,
-        {} as never,
-        { parameters: {} } as never,
-      );
-    } finally {
-      runtimeWithoutLlm.useModel = originalUseModel;
-    }
-
-    const record = result as {
-      success: boolean;
-      data: { noop?: boolean };
-    };
-    expect(record.success).toBe(true);
-    expect(record.data?.noop === true || record.data?.noop === undefined).toBe(
-      true,
-    );
-  }, 60_000);
 });

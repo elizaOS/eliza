@@ -13,6 +13,7 @@
     "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
     "types": [
       "node"
     ],
@@ -25,5 +26,11 @@
   },
   "include": [
     "src/**/*.ts"
+  ],
+  "exclude": [
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
   ]
 }

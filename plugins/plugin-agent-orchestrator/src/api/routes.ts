@@ -9,9 +9,9 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { PTYService } from "../services/pty-service.js";
+import { getCoordinator, getPtyService } from "../services/pty-service.js";
 import type { SwarmCoordinator } from "../services/swarm-coordinator.js";
-import type { CodingWorkspaceService } from "../services/workspace-service.js";
+import { getCodingWorkspaceService } from "../services/workspace-service.js";
 import { handleAgentRoutes } from "./agent-routes.js";
 import { handleBridgeRoutes } from "./bridge-routes.js";
 import { handleCoordinatorRoutes } from "./coordinator-routes.js";
@@ -86,17 +86,9 @@ export function createCodingAgentRouteHandler(
   return (req: IncomingMessage, res: ServerResponse, pathname: string) => {
     const ctx: RouteContext = {
       runtime,
-      ptyService: runtime.getService(
-        "PTY_SERVICE",
-      ) as unknown as PTYService | null,
-      workspaceService: runtime.getService(
-        "CODING_WORKSPACE_SERVICE",
-      ) as unknown as CodingWorkspaceService | null,
-      coordinator:
-        coordinator ??
-        (runtime.getService("SWARM_COORDINATOR") as unknown as
-          | SwarmCoordinator
-          | undefined),
+      ptyService: getPtyService(runtime),
+      workspaceService: getCodingWorkspaceService(runtime),
+      coordinator: coordinator ?? getCoordinator(runtime),
     };
     return handleCodingAgentRoutes(req, res, pathname, ctx);
   };

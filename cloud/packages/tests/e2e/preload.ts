@@ -28,6 +28,7 @@ process.env.INTERNAL_SECRET ??= "test-internal-secret";
 process.env.AGENT_TEST_BOOTSTRAP_ADMIN ??= "true";
 process.env.PLAYWRIGHT_TEST_AUTH ??= "true";
 process.env.PLAYWRIGHT_TEST_AUTH_SECRET ??= "playwright-local-auth-secret";
+process.env.PAYOUT_STATUS_SKIP_LIVE_BALANCE ??= "1";
 
 // `/api/v1/models` and `/api/v1/messages` short-circuit to 503 when no AI
 // provider is configured. The e2e test fixtures don't actually call the

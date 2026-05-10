@@ -1,7 +1,7 @@
 import {
   registerDetailExtension,
   registerOperatorSurface,
-} from "@elizaos/app-core";
+} from "@elizaos/ui";
 import { ClawvilleDetailExtension } from "./ClawvilleDetailExtension.js";
 import { ClawvilleOperatorSurface } from "./ClawvilleOperatorSurface.js";
 

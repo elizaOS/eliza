@@ -76,7 +76,7 @@ Similar a la eyección de plugins pero para el propio framework núcleo de eliza
 
 </div>
 
-**SEND_MESSAGE** -- Envía un mensaje a un usuario o sala en una plataforma/servicio específico. Requiere `targetType` (`user` o `room`), `source` (nombre del servicio como `telegram`), `target` (ID de entidad/sala), y `text`. Busca el servicio mediante `runtime.getService()` y llama al método de envío apropiado.
+**MESSAGE** -- Envía un mensaje a un usuario o sala en una plataforma/servicio específico. Requiere `targetType` (`user` o `room`), `source` (nombre del servicio como `telegram`), `target` (ID de entidad/sala), y `text`. Busca el servicio mediante `runtime.getService()` y llama al método de envío apropiado.
 
 <div id="media-generation">
 
@@ -86,9 +86,7 @@ Similar a la eyección de plugins pero para el propio framework núcleo de eliza
 
 | Action | Descripción | Parámetros Requeridos |
 |--------|-------------|----------------------|
-| `GENERATE_IMAGE` | Genera una imagen a partir de un prompt de texto. Soporta tamaño, calidad (`standard`/`hd`), estilo (`natural`/`vivid`), y prompts negativos. | `prompt` |
-| `GENERATE_VIDEO` | Genera un video a partir de un prompt de texto. Soporta duración, relación de aspecto, e imagen-a-video mediante `imageUrl`. | `prompt` |
-| `GENERATE_AUDIO` | Genera audio/música a partir de un prompt de texto. Soporta duración, modo instrumental y género. | `prompt` |
+| `GENERATE_MEDIA` | Genera imagen, video o audio a partir de un prompt de texto. Soporta opciones de imagen, video y audio; usa `mediaType` para forzar `image`, `video` o `audio`. | `prompt` |
 | `ANALYZE_IMAGE` | Analiza una imagen usando visión IA. Acepta `imageUrl` o `imageBase64` con un `prompt` de análisis opcional. | `imageUrl` o `imageBase64` |
 
 Todas las acciones de medios usan el proveedor configurado (Eliza Cloud por defecto, o FAL/OpenAI/Google/Anthropic).

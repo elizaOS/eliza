@@ -216,15 +216,23 @@ echo ""
 
 # ── 5. Flatpak Package ──────────────────────────────────────────────────────
 bold "5. Flatpak Package"
-check_file "Flatpak manifest" "$SCRIPT_DIR/flatpak/ai.elizaos.App.yml"
+check_file "Flatpak manifest (direct)" "$SCRIPT_DIR/flatpak/ai.elizaos.App.yml"
+check_file "Flatpak manifest (store)" "$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml"
+check_file "Flatpak README" "$SCRIPT_DIR/flatpak/README.md"
 check_file "Desktop entry" "$SCRIPT_DIR/flatpak/ai.elizaos.App.desktop"
 check_file "Metainfo XML" "$SCRIPT_DIR/flatpak/ai.elizaos.App.metainfo.xml"
+check_file "Direct wrapper" "$SCRIPT_DIR/flatpak/elizaos-app-wrapper.sh"
+check_file "Store wrapper" "$SCRIPT_DIR/flatpak/elizaos-app-wrapper.store.sh"
 
 # Validate YAML
 if python_has_module yaml; then
-  check "Manifest YAML valid" python3 -c "
+  check "Direct manifest YAML valid" python3 -c "
 import yaml, pathlib
 yaml.safe_load(pathlib.Path('$SCRIPT_DIR/flatpak/ai.elizaos.App.yml').read_text())
+"
+  check "Store manifest YAML valid" python3 -c "
+import yaml, pathlib
+yaml.safe_load(pathlib.Path('$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml').read_text())
 "
 elif command -v python3 &>/dev/null; then
   skip "Manifest YAML valid" "pyyaml not installed"
@@ -236,6 +244,19 @@ check "Has app-id" grep -q "^app-id: ai.elizaos.App" "$SCRIPT_DIR/flatpak/ai.eli
 check "Has runtime" grep -q "runtime: org.freedesktop" "$SCRIPT_DIR/flatpak/ai.elizaos.App.yml"
 check "Desktop entry has Exec" grep -q "^Exec=" "$SCRIPT_DIR/flatpak/ai.elizaos.App.desktop"
 check "Metainfo has app-id" grep -q "ai.elizaos.App" "$SCRIPT_DIR/flatpak/ai.elizaos.App.metainfo.xml"
+
+# Store manifest sandbox lockdown — these grants would defeat the
+# Flathub posture, so the manifest must NOT contain them.
+check "Store: no --filesystem=home" bash -c "! grep -E -q -- '^[[:space:]]*-[[:space:]]+--filesystem=home' '$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml'"
+check "Store: no --filesystem=host" bash -c "! grep -E -q -- '^[[:space:]]*-[[:space:]]+--filesystem=host' '$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml'"
+check "Store: no host-spawn portal" bash -c "! grep -E -q -- '^[[:space:]]*-[[:space:]]+--talk-name=org\.freedesktop\.Flatpak' '$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml'"
+check "Store: no --device=all" bash -c "! grep -E -q -- '^[[:space:]]*-[[:space:]]+--device=all' '$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml'"
+check "Store: no session/system bus socket" bash -c "! grep -E -q -- '^[[:space:]]*-[[:space:]]+--socket=(session|system)-bus' '$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml'"
+check "Store: has --share=network" grep -E -q -- "--share=network" "$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml"
+check "Store: has wayland socket" grep -E -q -- "--socket=wayland" "$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml"
+check "Store: has fallback-x11 socket" grep -E -q -- "--socket=fallback-x11" "$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml"
+check "Store: persists state dir" grep -E -q -- "--persist=\.milady" "$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml"
+check "Store wrapper sets MILADY_BUILD_VARIANT=store" grep -q 'MILADY_BUILD_VARIANT=store' "$SCRIPT_DIR/flatpak/elizaos-app-wrapper.store.sh"
 
 echo ""
 

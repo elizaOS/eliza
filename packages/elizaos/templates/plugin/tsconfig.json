@@ -27,12 +27,5 @@
 		"noEmit": true
 	},
 	"include": ["src/**/*.ts", "src/**/*.tsx"],
-	"exclude": [
-		"e2e/**/*",
-		"src/__tests__/**",
-		"**/*.test.ts",
-		"**/*.spec.ts",
-		"**/*.cy.tsx",
-		"**/cypress/**/*"
-	]
+	"exclude": []
 }

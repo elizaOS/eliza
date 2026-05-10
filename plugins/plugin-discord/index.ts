@@ -1,49 +1,47 @@
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import channelOp from "./actions/channelOp";
-import chatWithAttachments from "./actions/chatWithAttachments";
-import createPoll from "./actions/createPoll";
-import getUserInfo from "./actions/getUserInfo";
-import mediaOp from "./actions/mediaOp";
-import messageOp from "./actions/messageOp";
-import setupCredentials from "./actions/setup-credentials";
-import { summarize } from "./actions/summarizeConversation";
+import {
+	getConnectorAccountManager,
+	type IAgentRuntime,
+	logger,
+	type Plugin,
+} from "@elizaos/core";
 import { printBanner } from "./banner";
+import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
-import { discordChannelsProvider } from "./providers/discordChannels";
-import { discordServerInfoProvider } from "./providers/discordServerInfo";
-import { guildInfoProvider } from "./providers/guildInfo";
-import { voiceStateProvider } from "./providers/voiceState";
-import { registerDiscordSearchCategory } from "./search-category";
 import { DiscordService } from "./service";
 import { discordSetupRoutes } from "./setup-routes";
 import { DiscordTestSuite } from "./tests";
+import { DiscordUserAccountScraperImpl } from "./user-account-scraper/service";
 
 const discordPlugin: Plugin = {
 	name: "discord",
 	description:
 		"Discord service plugin for integration with Discord servers and channels",
-	services: [DiscordService, DiscordOwnerPairingServiceImpl],
+	services: [
+		DiscordService,
+		DiscordOwnerPairingServiceImpl,
+		DiscordUserAccountScraperImpl,
+	],
 	routes: discordSetupRoutes,
-	actions: [
-		messageOp,
-		channelOp,
-		mediaOp,
-		chatWithAttachments,
-		summarize,
-		createPoll,
-		getUserInfo,
-		setupCredentials,
-	],
-	providers: [
-		voiceStateProvider,
-		guildInfoProvider,
-		discordChannelsProvider,
-		discordServerInfoProvider,
-	],
+	actions: [],
+	providers: [],
 	tests: [new DiscordTestSuite()],
+	autoEnable: {
+		connectorKeys: ["discord"],
+	},
 	init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-		registerDiscordSearchCategory(runtime);
+		try {
+			const manager = getConnectorAccountManager(runtime);
+			manager.registerProvider(createDiscordConnectorAccountProvider(runtime));
+		} catch (err) {
+			logger.warn(
+				{
+					src: "plugin:discord",
+					err: err instanceof Error ? err.message : String(err),
+				},
+				"Failed to register Discord provider with ConnectorAccountManager",
+			);
+		}
 
 		const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
 		const botTokens = runtime.getSetting("DISCORD_BOT_TOKENS") as string;
@@ -191,6 +189,14 @@ export type {
 	DiscordReactionNotificationMode,
 } from "./config";
 export { DISCORD_SERVICE_NAME } from "./constants";
+export {
+	buildDiscordAvatarCacheFileName,
+	cacheDiscordAvatarUrl,
+	getDiscordAvatarCacheDir,
+	getDiscordAvatarCachePath,
+	getDiscordAvatarPublicPath,
+	isDiscordAvatarUrl,
+} from "./discord-avatar-cache";
 // Discord local IPC service + setup routes
 export {
 	DISCORD_LOCAL_PLUGIN_NAME,
@@ -198,6 +204,14 @@ export {
 	DiscordLocalService,
 	default as discordLocalPlugin,
 } from "./discord-local-service";
+export {
+	cacheDiscordAvatarForRuntime,
+	isCanonicalDiscordSource,
+	resolveDiscordMessageAuthorProfile,
+	resolveDiscordRoomProfile,
+	resolveDiscordUserProfile,
+	resolveStoredDiscordEntityProfile,
+} from "./discord-profiles";
 // Messaging utilities exports
 export {
 	buildChannelLink,
@@ -282,3 +296,4 @@ export type {
 	RolePermissionsChangedPayload,
 } from "./types";
 export { DiscordEventTypes } from "./types";
+export * from "./user-account-scraper";

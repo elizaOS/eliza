@@ -1,5 +1,12 @@
 {
 	"compilerOptions": {
+		"baseUrl": ".",
+		"paths": {
+			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
+			"@elizaos/core/*": ["../../packages/core/src/*"],
+			"@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"]
+		},
+		"ignoreDeprecations": "6.0",
 		"target": "ES2022",
 		"module": "ESNext",
 		"moduleResolution": "bundler",
@@ -12,8 +19,8 @@
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
 		"allowImportingTsExtensions": true,
-		"declaration": true,
-		"declarationMap": true,
+		"declaration": false,
+		"declarationMap": false,
 		"noUnusedLocals": false,
 		"noUnusedParameters": false,
 		"noImplicitReturns": false,
@@ -26,10 +33,11 @@
 	"exclude": [
 		"node_modules",
 		"dist",
-		"test/**",
+		"build.ts",
+		"./generated/**",
 		"**/__tests__/**",
 		"**/*.test.ts",
-		"build.ts",
-		"./generated/**"
+		"**/*.test.tsx",
+		"**/*.e2e.test.ts"
 	]
 }

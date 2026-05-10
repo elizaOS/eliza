@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-farcaster",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -33,25 +33,34 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "social-posting"
+      ]
+    }
+  },
   "sideEffects": false,
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "@neynar/nodejs-sdk": "^3.34.0",
     "lru-cache": "^11.1.0",
-    "typescript": "^6.0.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.0.3",
     "esbuild": "^0.28.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit -p tsconfig.json",

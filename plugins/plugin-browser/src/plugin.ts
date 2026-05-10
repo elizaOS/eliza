@@ -1,5 +1,5 @@
 /**
- * Agent Browser Bridge plugin export.
+ * @elizaos/plugin-browser plugin export.
  *
  * plugin-collector discovers `routes` and `schema` at runtime. Eliza loads
  * this as a core plugin so the Browser Workspace UI and browser companion
@@ -7,19 +7,30 @@
  */
 
 import type http from "node:http";
-import { TLSSocket } from "node:tls";
 import {
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-} from "@elizaos/agent/api/http-helpers";
-import type { AgentRuntime, Plugin, Route, UUID } from "@elizaos/core";
+  promoteSubactionsToActions,
+} from "@elizaos/core";
+import { TLSSocket } from "node:tls";
+import type {
+  AgentRuntime,
+  Plugin,
+  Route,
+  ServiceClass,
+  UUID,
+} from "@elizaos/core";
 import { resolveCanonicalOwnerId } from "@elizaos/core";
-import { browserBridgeActions } from "./actions.js";
+import { browserAction } from "./actions/browser.js";
+import { manageBrowserBridgeAction } from "./actions/manage-browser-bridge.js";
+import { BrowserService } from "./browser-service.js";
+import { browserWorkspaceProvider } from "./providers/workspace.js";
 import {
   type BrowserBridgeRouteContext,
   handleBrowserBridgeRoutes,
-} from "./routes.js";
+} from "./routes/bridge.js";
+import { browserWorkspaceRoutes } from "./routes/workspace-setup.js";
 import { browserBridgeSchema } from "./schema.js";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
@@ -104,6 +115,7 @@ const STATIC_ROUTES: Array<{ type: string; path: string; public?: boolean }> = [
   { type: "POST", path: "/api/browser-bridge/companions/pair" },
   { type: "POST", path: "/api/browser-bridge/companions/auto-pair" },
   { type: "GET", path: "/api/browser-bridge/companions" },
+  { type: "POST", path: "/api/browser-bridge/companions/revoke", public: true },
   { type: "GET", path: "/api/browser-bridge/packages" },
   { type: "POST", path: "/api/browser-bridge/packages/open-path" },
   { type: "POST", path: "/api/browser-bridge/companions/sync", public: true },
@@ -119,6 +131,7 @@ const DYNAMIC_ROUTES: Array<{ type: string; path: string; public?: boolean }> =
     { type: "POST", path: "/api/browser-bridge/sessions/:id/confirm" },
     { type: "POST", path: "/api/browser-bridge/sessions/:id/progress" },
     { type: "POST", path: "/api/browser-bridge/sessions/:id/complete" },
+    { type: "POST", path: "/api/browser-bridge/companions/:id/revoke" },
     {
       type: "POST",
       path: "/api/browser-bridge/companions/sessions/:id/progress",
@@ -182,8 +195,26 @@ const browserBridgePluginRoutes: Route[] = [
 export const browserPlugin: Plugin = {
   name: "@elizaos/plugin-browser",
   description:
-    "Browser plugin: unified BROWSER and MANAGE_BROWSER_BRIDGE actions. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge — settings, pairing, tab + page-context sync, and packaging artifacts.",
+    "Browser plugin: BROWSER (including autofill-login subaction) + MANAGE_BROWSER_BRIDGE; workspace browser command router (electrobun-embedded BrowserView + JSDOM fallback) and Chrome/Safari companion bridge (settings, pairing, tab + page-context sync, packaging artifacts).",
   schema: browserBridgeSchema,
-  routes: browserBridgePluginRoutes,
-  actions: browserBridgeActions,
+  routes: [...browserBridgePluginRoutes, ...browserWorkspaceRoutes],
+  services: [BrowserService as ServiceClass],
+  providers: [browserWorkspaceProvider],
+  actions: [
+    ...promoteSubactionsToActions(browserAction),
+    ...promoteSubactionsToActions(manageBrowserBridgeAction),
+  ],
+  // Self-declared auto-enable: activate when features.browser is enabled.
+  autoEnable: {
+    shouldEnable: (_env, config) => {
+      const f = (config?.features as Record<string, unknown> | undefined)
+        ?.browser;
+      return (
+        f === true ||
+        (typeof f === "object" &&
+          f !== null &&
+          (f as { enabled?: unknown }).enabled !== false)
+      );
+    },
+  },
 };

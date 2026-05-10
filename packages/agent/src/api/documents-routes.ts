@@ -1,21 +1,17 @@
-import type { AgentRuntime } from "@elizaos/core";
-import type { RouteHelpers, RouteRequestContext } from "./route-helpers.js";
+import type { AgentRuntime, RouteRequestContext } from "@elizaos/core";
+import type { RouteHelpers } from "@elizaos/shared";
 
-const KNOWLEDGE_ROUTES_MODULE: string = "@elizaos/app-knowledge";
+const DOCUMENTS_ROUTES_MODULE: string = "@elizaos/app-documents";
 
 export type DocumentRouteHelpers = RouteHelpers;
-/** @deprecated Use DocumentRouteHelpers */
-export type KnowledgeRouteHelpers = DocumentRouteHelpers;
 
 export interface DocumentRouteContext extends RouteRequestContext {
   url: URL;
   runtime: AgentRuntime | null;
 }
-/** @deprecated Use DocumentRouteContext */
-export type KnowledgeRouteContext = DocumentRouteContext;
 
-type KnowledgeRoutesModule = {
-  handleKnowledgeRoutes?: (
+type DocumentsRoutesModule = {
+  handleDocumentsRoutes?: (
     ctx: DocumentRouteContext,
   ) => Promise<boolean> | boolean;
 };
@@ -23,26 +19,19 @@ type KnowledgeRoutesModule = {
 export async function handleDocumentsRoutes(
   ctx: DocumentRouteContext,
 ): Promise<boolean> {
-  if (
-    !ctx.pathname.startsWith("/api/knowledge") &&
-    !ctx.pathname.startsWith("/api/documents")
-  )
-    return false;
+  if (!ctx.pathname.startsWith("/api/documents")) return false;
 
   try {
     const loaded = (await import(
-      /* @vite-ignore */ KNOWLEDGE_ROUTES_MODULE
-    )) as KnowledgeRoutesModule;
-    if (typeof loaded.handleKnowledgeRoutes !== "function") {
-      ctx.error(ctx.res, "Knowledge app routes are not available", 503);
+      /* @vite-ignore */ DOCUMENTS_ROUTES_MODULE
+    )) as DocumentsRoutesModule;
+    if (typeof loaded.handleDocumentsRoutes !== "function") {
+      ctx.error(ctx.res, "Documents app routes are not available", 503);
       return true;
     }
-    return await loaded.handleKnowledgeRoutes(ctx);
+    return await loaded.handleDocumentsRoutes(ctx);
   } catch {
-    ctx.error(ctx.res, "Knowledge app routes are not available", 503);
+    ctx.error(ctx.res, "Documents app routes are not available", 503);
     return true;
   }
 }
-
-/** @deprecated Use handleDocumentsRoutes */
-export const handleKnowledgeRoutes = handleDocumentsRoutes;

@@ -119,10 +119,32 @@ function parsePlannerObject(text: string): Record<string, unknown> {
 /**
  * Extract the first action name from planner output. JSON is preferred; a
  * small line-based reader keeps older key/value rows comparable.
+ *
+ * Schemas understood (in priority order):
+ *   1. v5 planner: `{toolCalls:[{name:"LIFE","args":{...}}]}` — handled directly.
+ *   2. Legacy structured: top-level `action`/`actionName`/`name`/`type`/`actions` field.
+ *   3. Legacy line-based: `action: LIFE` or similar key:value rows.
+ *   4. Last-resort: any uppercase identifier in the text.
+ *
+ * The regex fallback is intentionally last — it matches identifiers like
+ * `OWNER`, `OPTIONAL`, `JSON`, etc. that show up in field names, so it can
+ * mislabel non-action text. Prefer the JSON paths when the runtime emits
+ * structured output (which is the common case post-v5).
  */
 export function extractPlannerAction(text: string): string | null {
   if (!text) return null;
   const parsed = parsePlannerObject(text);
+  // v5 toolCalls shape — most common in current trajectories
+  if (parsed && Array.isArray(parsed.toolCalls)) {
+    const first = parsed.toolCalls[0];
+    if (first && typeof first === "object") {
+      const record = first as Record<string, unknown>;
+      const name = record.name ?? record.action ?? record.actionName;
+      if (typeof name === "string" && name.trim().length > 0) {
+        return name.trim().toUpperCase();
+      }
+    }
+  }
   const raw =
     parsed?.action ??
     parsed?.actionName ??

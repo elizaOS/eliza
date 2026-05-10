@@ -1,4 +1,4 @@
-import { ElizaClient } from "@elizaos/app-core/api/client-base";
+import { ElizaClient } from "@elizaos/ui";
 import type {
   HyperliquidMarketsResponse,
   HyperliquidOrdersResponse,
@@ -6,7 +6,7 @@ import type {
   HyperliquidStatusResponse,
 } from "./hyperliquid-contracts";
 
-declare module "@elizaos/app-core/api/client-base" {
+declare module "@elizaos/ui" {
   interface ElizaClient {
     hyperliquidStatus(): Promise<HyperliquidStatusResponse>;
     hyperliquidMarkets(): Promise<HyperliquidMarketsResponse>;
@@ -15,18 +15,28 @@ declare module "@elizaos/app-core/api/client-base" {
   }
 }
 
-ElizaClient.prototype.hyperliquidStatus = async function () {
+type HyperliquidClientPrototype = ElizaClient & {
+  hyperliquidStatus(): Promise<HyperliquidStatusResponse>;
+  hyperliquidMarkets(): Promise<HyperliquidMarketsResponse>;
+  hyperliquidPositions(): Promise<HyperliquidPositionsResponse>;
+  hyperliquidOrders(): Promise<HyperliquidOrdersResponse>;
+};
+
+const elizaClientPrototype =
+  ElizaClient.prototype as unknown as HyperliquidClientPrototype;
+
+elizaClientPrototype.hyperliquidStatus = async function () {
   return this.fetch("/api/hyperliquid/status");
 };
 
-ElizaClient.prototype.hyperliquidMarkets = async function () {
+elizaClientPrototype.hyperliquidMarkets = async function () {
   return this.fetch("/api/hyperliquid/markets");
 };
 
-ElizaClient.prototype.hyperliquidPositions = async function () {
+elizaClientPrototype.hyperliquidPositions = async function () {
   return this.fetch("/api/hyperliquid/positions");
 };
 
-ElizaClient.prototype.hyperliquidOrders = async function () {
+elizaClientPrototype.hyperliquidOrders = async function () {
   return this.fetch("/api/hyperliquid/orders");
 };

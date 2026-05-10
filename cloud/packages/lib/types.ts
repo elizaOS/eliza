@@ -71,8 +71,8 @@ export type {
 export type { LogLevel, ParsedLogEntry } from "./types/containers";
 export type { CryptoStatusResponse } from "./types/crypto-status";
 export type { DashboardAgentStats } from "./types/dashboard-agent-stats";
-// Shared knowledge types
-export type { KnowledgeDocument, QueryResult } from "./types/knowledge";
+// Shared document types
+export type { CloudDocument, QueryResult } from "./types/documents";
 // Shared MCP types
 export type { McpServerConfig, McpSettings } from "./types/mcp";
 // Shared video types

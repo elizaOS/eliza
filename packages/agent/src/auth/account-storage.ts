@@ -14,14 +14,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import { writeJsonAtomicSync } from "../utils/atomic-json.js";
+import { writeJsonAtomicSync } from "../utils/atomic-json.ts";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   type AccountCredentialProvider,
   isSubscriptionProvider,
   type OAuthCredentials,
+  SUBSCRIPTION_PROVIDER_IDS,
   type SubscriptionProvider,
-} from "./types.js";
+} from "./types.ts";
 
 export interface AccountCredentialRecord {
   /** accountId, e.g. "default" or a uuid */
@@ -184,12 +185,8 @@ export function migrateLegacySingleAccount(): {
   migrated: SubscriptionProvider[];
 } {
   migrationRunAtLeastOnce = true;
-  const providers: SubscriptionProvider[] = [
-    "anthropic-subscription",
-    "openai-codex",
-  ];
   const migrated: SubscriptionProvider[] = [];
-  for (const p of providers) {
+  for (const p of SUBSCRIPTION_PROVIDER_IDS) {
     if (migrateProvider(p)) migrated.push(p);
   }
   return { migrated };

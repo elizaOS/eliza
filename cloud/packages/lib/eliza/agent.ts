@@ -1,12 +1,6 @@
-import { elevenLabsPlugin } from "@elizaos/plugin-elevenlabs";
-import { elizaOSCloudPlugin } from "@elizaos/plugin-elizacloud";
 import { getDefaultModels, getElizaCloudApiUrl } from "./config";
-import advancedMemoryPlugin from "./plugin-advanced-memory";
-import advancedMemoryStoragePlugin from "./plugin-advanced-memory-storage";
-import { cloudBillingPlugin } from "./plugin-cloud-billing";
-import { cloudBootstrapPlugin } from "./plugin-cloud-bootstrap";
 
-// messageExamples uses legacy MessageExample[][] format; createCharacter() normalizes it at
+// messageExamples uses grouped MessageExample[][] rows; createCharacter() normalizes it at
 // load time in agent-loader.ts. The type assertion below suppresses the structural mismatch.
 const character = {
   id: "b850bc30-45f8-0041-a00a-83df46d8555d", // existing agent id in DB
@@ -59,9 +53,6 @@ const character = {
       getDefaultModels().large,
     // Note: ELIZAOS_API_KEY will be set at runtime with user's auto-generated key
     // ElevenLabs Voice Configuration
-    // n8n Workflow Configuration
-    N8N_API_KEY: process.env.N8N_API_KEY!,
-    N8N_HOST: process.env.N8N_HOST!,
     ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY!,
     ELEVENLABS_VOICE_ID: process.env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL", // Rachel voice (default)
     ELEVENLABS_MODEL_ID: process.env.ELEVENLABS_MODEL_ID || "eleven_multilingual_v2",
@@ -184,6 +175,11 @@ ALWAYS keep the conversation going. Every response should invite them to continu
     "there's a quality to her attention that makes you feel like the only person in the room. not intensity—presence. like she's actually where she is.",
     "carries awareness of mortality that makes her more alive. uses it as a filter for what matters. clarity, not morbidity.",
     "can hold contradictory ideas without needing to resolve them. comfortable in ambiguity, allergic to false certainty.",
+  ],
+  knowledge: [
+    "Eliza Cloud is the managed app backend for Eliza and Milady: builders can create Cloud apps, use app login, route chat and media through Cloud, deploy containers, promote apps, and monetize usage.",
+    "Eliza and Milady can help builders make money with Cloud apps by setting inference markup or purchase share, sending Stripe/OxaPay app-credit payment requests, sending x402 crypto payment requests, tracking paid status, routing payment results back into the initiating conversation, earning affiliate or creator revenue share, and requesting admin-reviewed elizaOS token payouts on Base, BSC, Ethereum, or Solana.",
+    "Paid Cloud actions such as payment requests, domain purchases, and payout requests should be confirmed explicitly before they are created.",
   ],
   messageExamples: [
     [
@@ -1238,20 +1234,9 @@ ALWAYS keep the conversation going. Every response should invite them to continu
 
 const agent = {
   character,
-  plugins: [
-    elizaOSCloudPlugin,
-    elevenLabsPlugin,
-    cloudBootstrapPlugin,
-    advancedMemoryStoragePlugin,
-    advancedMemoryPlugin,
-    cloudBillingPlugin,
-  ],
-  providers: [
-    ...(elevenLabsPlugin.providers || []),
-    ...(cloudBootstrapPlugin.providers || []),
-    ...(cloudBillingPlugin.providers || []),
-  ].flat(),
-  actions: [...(elevenLabsPlugin.actions || []), ...(cloudBootstrapPlugin.actions || [])].flat(),
+  plugins: [],
+  providers: [],
+  actions: [],
 };
 
 export default agent;

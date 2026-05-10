@@ -1,35 +1,64 @@
-import { describe, expect, test, beforeEach, vi } from "vitest";
+import type {
+  Content,
+  IAgentRuntime,
+  Memory,
+  MessageConnectorRegistration,
+  State,
+} from "@elizaos/core";
+import { describe, expect, test, vi } from "vitest";
 import twitchPlugin, {
-  TwitchService,
-  twitchChannelAction,
-  twitchChannelsProvider,
-  userContextProvider,
-  normalizeChannel,
   formatChannelForDisplay,
   getTwitchUserDisplayName,
-  stripMarkdownForTwitch,
-  splitMessageForTwitch,
   MAX_TWITCH_MESSAGE_LENGTH,
+  normalizeChannel,
+  splitMessageForTwitch,
+  stripMarkdownForTwitch,
   TWITCH_SERVICE_NAME,
-  TwitchEventTypes,
-  TwitchPluginError,
-  TwitchServiceNotInitializedError,
-  TwitchNotConnectedError,
-  TwitchConfigurationError,
   TwitchApiError,
-  type TwitchSettings,
-  type TwitchUserInfo,
+  TwitchConfigurationError,
+  TwitchEventTypes,
   type TwitchMessage,
   type TwitchMessageSendOptions,
+  type TwitchSettings,
+  TwitchNotConnectedError,
+  TwitchPluginError,
   type TwitchSendResult,
+  TwitchService,
+  TwitchServiceNotInitializedError,
+  type TwitchUserInfo,
 } from "../src/index.ts";
+import { TwitchWorkflowCredentialProvider } from "../src/workflow-credential-provider.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers: mock runtime, memory, state
 // ---------------------------------------------------------------------------
 
-function makeMockRuntime(overrides: Record<string, unknown> = {}) {
+type RegisterMessageConnectorMock = ReturnType<
+  typeof vi.fn<(registration: MessageConnectorRegistration) => void>
+>;
+
+type MockRuntime = IAgentRuntime & {
+  registerMessageConnector: RegisterMessageConnectorMock;
+  registerSendHandler: ReturnType<typeof vi.fn>;
+};
+
+type MockRuntimeOverrides = Partial<IAgentRuntime> &
+  Record<string, unknown> & {
+    modelResponse?: string;
+    service?: unknown;
+    registerMessageConnector?: RegisterMessageConnectorMock;
+    registerSendHandler?: ReturnType<typeof vi.fn>;
+  };
+
+type TwitchServiceHarnessFields = {
+  settings?: TwitchSettings;
+  joinedChannels?: Set<string>;
+  accountServices?: Map<string, TwitchService>;
+};
+
+function makeMockRuntime(overrides: MockRuntimeOverrides = {}): MockRuntime {
   return {
+    agentId: "agent-1",
     getSetting: (key: string) =>
       (overrides as Record<string, string>)[key] ?? null,
     getService: (_name: string) => overrides.service ?? null,
@@ -37,25 +66,57 @@ function makeMockRuntime(overrides: Record<string, unknown> = {}) {
     useModel: async (_type: string, _opts: unknown) =>
       overrides.modelResponse ?? "{}",
     emitEvent: async () => {},
+    registerMessageConnector:
+      vi.fn<(registration: MessageConnectorRegistration) => void>(),
+    registerSendHandler: vi.fn(),
     ...overrides,
-  } as any;
+  } as MockRuntime;
 }
 
-function makeMemory(source: string = "twitch", text: string = "hello") {
+function makeMemory(
+  source: string = "twitch",
+  text: string = "hello",
+): Partial<Memory> {
   return {
     content: { text, source },
     userId: "user-1",
     roomId: "room-1",
-  } as any;
+  };
 }
 
-function makeState(extra: Record<string, unknown> = {}) {
+function makeState(extra: Record<string, unknown> = {}): Partial<State> {
   return {
     agentName: "TestBot",
     recentMessages: "",
     data: {},
     ...extra,
-  } as any;
+  };
+}
+
+function makeTwitchSettings(
+  overrides: Partial<TwitchSettings>,
+): TwitchSettings {
+  return {
+    username: "testbot",
+    clientId: "client-id",
+    accessToken: "access-token",
+    channel: "mainchannel",
+    additionalChannels: [],
+    requireMention: false,
+    allowedRoles: ["all"],
+    allowedUserIds: [],
+    enabled: true,
+    ...overrides,
+  };
+}
+
+function makeTwitchServiceHarness(
+  fields: TwitchServiceHarnessFields = {},
+): TwitchService & TwitchServiceHarnessFields {
+  return Object.assign(
+    Object.create(TwitchService.prototype),
+    fields,
+  ) as TwitchService & TwitchServiceHarnessFields;
 }
 
 function makeMockTwitchService(overrides: Record<string, unknown> = {}) {
@@ -88,22 +149,18 @@ describe("Plugin metadata", () => {
     expect(twitchPlugin.description).toContain("Twitch");
   });
 
-  test("registers the channel router action (sends route through SEND_MESSAGE connector)", () => {
-    expect(twitchPlugin.actions).toHaveLength(1);
-    const names = twitchPlugin.actions!.map((a) => a.name);
-    expect(names).toContain("TWITCH_CHANNEL_OP");
+  test("does not register platform-specific chat actions", () => {
+    expect(twitchPlugin.actions).toHaveLength(0);
   });
 
-  test("registers the user context and channels providers", () => {
-    expect(twitchPlugin.providers).toHaveLength(2);
-    const names = twitchPlugin.providers!.map((p) => p.name);
-    expect(names).toContain("twitchUserContext");
-    expect(names).toContain("twitchChannels");
+  test("does not register platform-specific context providers", () => {
+    expect(twitchPlugin.providers).toHaveLength(0);
   });
 
-  test("registers exactly 1 service", () => {
-    expect(twitchPlugin.services).toHaveLength(1);
-    expect(twitchPlugin.services![0]).toBe(TwitchService);
+  test("registers Twitch and workflow credential services", () => {
+    expect(twitchPlugin.services).toHaveLength(2);
+    expect(twitchPlugin.services).toContain(TwitchService);
+    expect(twitchPlugin.services).toContain(TwitchWorkflowCredentialProvider);
   });
 
   test("has an init function", () => {
@@ -242,7 +299,7 @@ describe("splitMessageForTwitch", () => {
     // lastIndexOf(". ", maxLength) returns the index of the ".", so the
     // split point is at that index — everything before goes to chunk 0.
     const prefix = "A".repeat(300);
-    const text = prefix + ". " + "B".repeat(250); // total 552
+    const text = `${prefix}. ${"B".repeat(250)}`; // total 552
     const result = splitMessageForTwitch(text, 500);
     expect(result.length).toBe(2);
     expect(result[0]).toBe(prefix);
@@ -319,232 +376,103 @@ describe("Custom Errors", () => {
   });
 });
 
-// ===========================================================================
-// 6. twitchChannelAction Router
-// ===========================================================================
+describe("Twitch message connector accounts", () => {
+  test("registers one connector for each started account", () => {
+    const runtime = makeMockRuntime({
+      registerMessageConnector:
+        vi.fn<(registration: MessageConnectorRegistration) => void>(),
+      registerSendHandler: vi.fn(),
+      logger: { info: vi.fn() },
+    });
+    const primary = makeTwitchServiceHarness({
+      settings: makeTwitchSettings({
+        accountId: "primary",
+        username: "bot_one",
+        channel: "one",
+      }),
+      joinedChannels: new Set(["one"]),
+    });
+    const secondary = makeTwitchServiceHarness({
+      settings: makeTwitchSettings({
+        accountId: "secondary",
+        username: "bot_two",
+        channel: "two",
+      }),
+      joinedChannels: new Set(["two"]),
+    });
+    const service = makeTwitchServiceHarness({
+      accountServices: new Map([
+        ["primary", primary],
+        ["secondary", secondary],
+      ]),
+    });
 
-describe("twitchChannelAction", () => {
-  test("has router metadata", () => {
-    expect(twitchChannelAction.name).toBe("TWITCH_CHANNEL_OP");
-    expect(twitchChannelAction.similes).toContain("TWITCH_CHANNEL");
-    expect(twitchChannelAction.similes).toContain("TWITCH_JOIN_CHANNEL");
-    expect(twitchChannelAction.similes).toContain("TWITCH_LEAVE_CHANNEL");
+    TwitchService.registerSendHandlers(runtime, service);
+
+    expect(runtime.registerMessageConnector).toHaveBeenCalledTimes(2);
+    expect(
+      runtime.registerMessageConnector.mock.calls.map(
+        ([registration]) => registration.accountId,
+      ),
+    ).toEqual(["primary", "secondary"]);
+  });
+
+  test("registers accountId and routes sends through that account", async () => {
+    const runtime = makeMockRuntime({
+      registerMessageConnector:
+        vi.fn<(registration: MessageConnectorRegistration) => void>(),
+      registerSendHandler: vi.fn(),
+      getRoom: vi.fn(),
+      logger: { info: vi.fn() },
+      TWITCH_DEFAULT_ACCOUNT_ID: "streamer",
+    });
+    const service = makeTwitchServiceHarness({
+      settings: makeTwitchSettings({
+        accountId: "streamer",
+        username: "testbot",
+        channel: "mainchannel",
+      }),
+    });
+    const sendMessage = vi
+      .spyOn(service, "sendMessage")
+      .mockResolvedValue({ success: true, messageId: "msg-1" });
+
+    TwitchService.registerSendHandlers(runtime, service);
+
+    expect(runtime.registerMessageConnector).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "twitch",
+        accountId: "streamer",
+        joinHandler: expect.any(Function),
+        leaveHandler: expect.any(Function),
+      }),
+    );
+
+    const registration = runtime.registerMessageConnector.mock.calls[0][0];
+    await registration.sendHandler!(
+      runtime,
+      {
+        source: "twitch",
+        accountId: "streamer",
+        channelId: "mainchannel",
+      },
+      { text: "hello" } satisfies Content,
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      "hello",
+      expect.objectContaining({ channel: "mainchannel" }),
+    );
   });
 });
 
 // ===========================================================================
 // 7. sendMessage path
 // ===========================================================================
-// TWITCH_SEND_MESSAGE used to be a standalone action; now the Twitch
+// Twitch send used to be a standalone action; now the Twitch
 // MessageConnector (registered by TwitchService.registerSendHandlers) is the
-// canonical send path through SEND_MESSAGE. Action-shape and handler tests
-// retired with the action.
-
-// ===========================================================================
-// 7. twitchChannelsProvider
-// ===========================================================================
-
-describe("twitchChannelsProvider", () => {
-  test("has correct metadata", () => {
-    expect(twitchChannelsProvider.name).toBe("twitchChannels");
-    expect(twitchChannelsProvider.description).toContain("Twitch");
-    expect(twitchChannelsProvider.dynamic).toBe(true);
-  });
-
-  test("returns not_connected when service unavailable", async () => {
-    const runtime = makeMockRuntime({ service: null });
-    const result = await twitchChannelsProvider.get!(
-      runtime,
-      makeMemory("twitch"),
-      makeState(),
-    );
-    expect(String(result.text)).toContain("not_connected");
-  });
-
-  test("returns channel list when service connected", async () => {
-    const service = makeMockTwitchService({
-      connected: true,
-      primaryChannel: "mainchannel",
-      joinedChannels: ["mainchannel", "otherchannel"],
-    });
-    const runtime = makeMockRuntime({
-      service,
-      getService: () => service,
-    });
-    const result = await twitchChannelsProvider.get!(
-      runtime,
-      makeMemory("twitch"),
-      makeState(),
-    );
-
-    expect(result.data!.channelCount).toBe(2);
-    expect(result.data!.channels).toEqual(["mainchannel", "otherchannel"]);
-    expect(result.data!.primaryChannel).toBe("mainchannel");
-    expect(String(result.text)).toContain("ready");
-    expect(String(result.text)).toContain("mainchannel");
-  });
-
-  test("returns empty list when no channels", async () => {
-    const service = makeMockTwitchService({
-      connected: true,
-      primaryChannel: "main",
-      joinedChannels: [],
-    });
-    const runtime = makeMockRuntime({
-      service,
-      getService: () => service,
-    });
-    const result = await twitchChannelsProvider.get!(
-      runtime,
-      makeMemory("twitch"),
-      makeState(),
-    );
-    expect(result.data!.channelCount).toBe(0);
-  });
-});
-
-// ===========================================================================
-// 10. userContextProvider
-// ===========================================================================
-
-describe("userContextProvider", () => {
-  test("has correct metadata", () => {
-    expect(userContextProvider.name).toBe("twitchUserContext");
-    expect(userContextProvider.description).toContain("Twitch user");
-  });
-
-  test("returns empty for non-twitch source", async () => {
-    const runtime = makeMockRuntime();
-    const memory = makeMemory("discord");
-    const result = await userContextProvider.get(runtime, memory, makeState());
-    expect(result.text).toBe("");
-    expect(result.data).toEqual({});
-  });
-
-  test("returns empty when service unavailable", async () => {
-    const runtime = makeMockRuntime({ service: null });
-    const memory = makeMemory("twitch");
-    const result = await userContextProvider.get(runtime, memory, makeState());
-    expect(result.text).toBe("");
-    expect(result.data).toEqual({});
-  });
-
-  test("returns empty when no user info in metadata", async () => {
-    const service = makeMockTwitchService({ connected: true });
-    const runtime = makeMockRuntime({
-      service,
-      getService: () => service,
-    });
-    const memory = makeMemory("twitch");
-    const result = await userContextProvider.get(runtime, memory, makeState());
-    expect(result.text).toBe("");
-  });
-
-  test("returns user context for broadcaster", async () => {
-    const service = makeMockTwitchService({ connected: true });
-    const runtime = makeMockRuntime({
-      service,
-      getService: () => service,
-    });
-    const memory = {
-      content: {
-        text: "hello",
-        source: "twitch",
-        metadata: {
-          user: {
-            userId: "12345",
-            username: "streamer_dude",
-            displayName: "Streamer_Dude",
-            isModerator: false,
-            isBroadcaster: true,
-            isVip: false,
-            isSubscriber: true,
-            badges: new Map(),
-          } as TwitchUserInfo,
-        },
-      },
-    } as any;
-    const state = makeState({ agentName: "MyBot" });
-
-    const result = await userContextProvider.get(runtime, memory, state);
-
-    expect(result.data.userId).toBe("12345");
-    expect(result.data.username).toBe("streamer_dude");
-    expect(result.data.displayName).toBe("Streamer_Dude");
-    expect(result.data.isBroadcaster).toBe(true);
-    expect(result.data.isSubscriber).toBe(true);
-    expect(result.data.roles).toContain("broadcaster");
-    expect(result.data.roles).toContain("subscriber");
-    expect(result.values.roleText).toContain("broadcaster");
-    expect(result.text).toContain("MyBot");
-    expect(result.text).toContain("Streamer_Dude");
-    expect(result.text).toContain("broadcaster");
-    expect(result.text).toContain("channel owner/broadcaster");
-  });
-
-  test("returns viewer role when user has no special roles", async () => {
-    const service = makeMockTwitchService({ connected: true });
-    const runtime = makeMockRuntime({
-      service,
-      getService: () => service,
-    });
-    const memory = {
-      content: {
-        text: "hi",
-        source: "twitch",
-        metadata: {
-          user: {
-            userId: "99",
-            username: "viewer99",
-            displayName: "Viewer99",
-            isModerator: false,
-            isBroadcaster: false,
-            isVip: false,
-            isSubscriber: false,
-            badges: new Map(),
-          } as TwitchUserInfo,
-        },
-      },
-    } as any;
-
-    const result = await userContextProvider.get(runtime, memory, makeState());
-
-    expect(result.values.roleText).toBe("viewer");
-    expect(result.data.roles).toEqual([]);
-  });
-
-  test("returns moderator context text for moderator", async () => {
-    const service = makeMockTwitchService({ connected: true });
-    const runtime = makeMockRuntime({
-      service,
-      getService: () => service,
-    });
-    const memory = {
-      content: {
-        text: "hi",
-        source: "twitch",
-        metadata: {
-          user: {
-            userId: "55",
-            username: "modperson",
-            displayName: "ModPerson",
-            isModerator: true,
-            isBroadcaster: false,
-            isVip: false,
-            isSubscriber: false,
-            badges: new Map(),
-          } as TwitchUserInfo,
-        },
-      },
-    } as any;
-
-    const result = await userContextProvider.get(runtime, memory, makeState());
-
-    expect(result.data.isModerator).toBe(true);
-    expect(result.text).toContain("channel moderator");
-    expect(result.text).not.toContain("broadcaster");
-  });
-});
+// canonical send path through MESSAGE operation=send. Action-shape and handler
+// tests retired with the action.
 
 // ===========================================================================
 // 12. Type Construction

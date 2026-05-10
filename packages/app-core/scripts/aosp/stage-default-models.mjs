@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // eliza/packages/app-core/scripts/aosp/stage-default-models.mjs —
-// fetch and stage the default chat + embedding GGUF models into the
+// fetch and stage the default Eliza-1 GGUF models into the
 // privileged AOSP system app's android assets so a fresh install
 // boots straight into a working chat without needing network access.
 //
@@ -24,26 +24,10 @@
 // (e.g. `"acme-download"` for a fork named "AcmeOS").
 //
 // APK size impact (Q4_K_M quants):
-//   Llama-3.2-1B-Instruct          ~770 MB
-//   bge-small-en-v1.5              ~28 MB
+//   Eliza-1 mobile                 ~1.2 GB
+//   Eliza-1 lite                   ~0.5 GB
 //   --------------------------------------
-//   total                          ~800 MB
-//
-// Why Llama-3.2-1B over SmolLM2-360M (the previous default):
-//   - 128k native context window vs SmolLM2's 8k. The planner builds
-//     ~12k-token prompts on every chat turn (system + tools + history +
-//     user message). With 8k ctx we head-truncated 8k+ tokens per turn,
-//     dropping the planner's tool descriptions and producing malformed
-//     output. With 128k ctx the entire prompt fits, the planner gets
-//     coherent tool grammar, and the model produces parseable actions.
-//   - 1B parameters vs 360M. 1B is the smallest model that reliably
-//     follows the planner's output schema without producing Python
-//     test code, repeated fragments, or unrelated text. The size cost
-//     (~500 MB more APK) is paid once at build time; on-device inference
-//     speed difference is small on CPU (both are bottlenecked on memory
-//     bandwidth, not compute).
-//   - Same Q4_K_M quant, same Bartowski repo conventions, same FFI
-//     loader path. No code changes elsewhere.
+//   total                          ~1.7 GB
 //
 // Opt out for builders who want to download at runtime instead:
 //   --skip-bundled-models       (passed by build-aosp.mjs)
@@ -81,32 +65,29 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
  * a smaller file (e.g. partial download, repo deleted, replaced) the
  * staging step fails loudly rather than shipping a broken APK.
  */
+const CHAT_MODEL_ELIZA_1_MOBILE = {
+  id: "eliza-1-mobile-1_7b",
+  displayName: "Eliza-1 mobile",
+  hfRepo: "elizaos/eliza-1-mobile-1_7b",
+  ggufFile: "text/eliza-1-mobile-1_7b-32k.gguf",
+  expectedMinBytes: 900 * 1024 * 1024,
+  expectedMaxBytes: 1700 * 1024 * 1024,
+  role: "chat",
+};
+
+const EMBEDDING_MODEL_ELIZA_1_LITE = {
+  id: "eliza-1-lite-0_6b",
+  displayName: "Eliza-1 lite",
+  hfRepo: "elizaos/eliza-1-lite-0_6b",
+  ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
+  expectedMinBytes: 300 * 1024 * 1024,
+  expectedMaxBytes: 800 * 1024 * 1024,
+  role: "embedding",
+};
+
 export const DEFAULT_MODELS = [
-  {
-    id: "llama-3.2-1b",
-    displayName: "Llama 3.2 1B Instruct",
-    hfRepo: "bartowski/Llama-3.2-1B-Instruct-GGUF",
-    ggufFile: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
-    // Q4_K_M quant of Llama-3.2-1B is ~808 MB on HuggingFace
-    // (807,694,464 bytes observed on 2026-04-29). Bracket loosely so
-    // a future re-quant of slightly different size still passes.
-    expectedMinBytes: 700 * 1024 * 1024, // 700 MB lower bound
-    expectedMaxBytes: 900 * 1024 * 1024, // 900 MB upper bound
-    role: "chat",
-  },
-  {
-    id: "bge-small-en-v1.5",
-    displayName: "BGE Small EN v1.5 (embedding)",
-    hfRepo: "ChristianAzinn/bge-small-en-v1.5-gguf",
-    ggufFile: "bge-small-en-v1.5.Q4_K_M.gguf",
-    // The Q4_K_M quant of BGE small en v1.5 is ~28 MB (29,203,744 bytes
-    // observed on HuggingFace). The lower bound was previously 30 MB, which
-    // rejected the legitimate file. Loosen to 25 MB so transient HF
-    // re-quants of slightly different sizes still pass the sanity check.
-    expectedMinBytes: 25 * 1024 * 1024, // 25 MB lower bound
-    expectedMaxBytes: 200 * 1024 * 1024, // 200 MB upper bound
-    role: "embedding",
-  },
+  CHAT_MODEL_ELIZA_1_MOBILE,
+  EMBEDDING_MODEL_ELIZA_1_LITE,
 ];
 
 const ASSETS_MODELS_DIR = path.join(
@@ -127,7 +108,11 @@ const MANIFEST_PATH = path.join(ASSETS_MODELS_DIR, "manifest.json");
 function hfResolveUrl(repo, file) {
   // The /resolve/main/ path serves the LFS-hydrated file, not the
   // pointer. /raw/ would serve the LFS pointer text and break us.
-  return `https://huggingface.co/${repo}/resolve/main/${encodeURIComponent(file)}`;
+  const encodedPath = file
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return `https://huggingface.co/${repo}/resolve/main/${encodedPath}?download=true`;
 }
 
 async function fileSize(p) {

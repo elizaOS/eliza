@@ -15,7 +15,6 @@ import {
 } from "node:http";
 import { request as requestHttps } from "node:https";
 import net from "node:net";
-import { Readable } from "node:stream";
 import {
   type Action,
   type HandlerOptions,
@@ -23,16 +22,16 @@ import {
   logger,
 } from "@elizaos/core";
 import { resolveApiToken, resolveServerOnlyPort } from "@elizaos/shared";
-import { hasSelectedContextOrSignalSync } from "../actions/context-signal.js";
-import { loadElizaConfig } from "../config/config.js";
+import { hasSelectedContextOrSignalSync } from "../actions/context-signal.ts";
+import { loadElizaConfig } from "../config/config.ts";
 import type {
   CustomActionDef,
   CustomActionHandler,
-} from "../config/types.eliza.js";
+} from "../config/types.eliza.ts";
 import {
   isBlockedPrivateOrLinkLocalIp,
   normalizeHostLike,
-} from "../security/network-policy.js";
+} from "../security/network-policy.ts";
 
 /** Cached runtime reference for hot-registration of new actions. */
 let _runtime: IAgentRuntime | null = null;
@@ -77,6 +76,9 @@ const CUSTOM_ACTION_CONTEXTS = [
   "connectors",
   "agent_internal",
 ] as const;
+
+type FetchInput = Parameters<typeof fetch>[0];
+type FetchBody = RequestInit["body"];
 
 export class CustomActionTimeoutError extends Error {
   constructor(message: string) {
@@ -144,7 +146,7 @@ async function fetchWithTimeout(
   });
 }
 
-function resolveFetchInputUrl(input: RequestInfo | URL): string | null {
+function resolveFetchInputUrl(input: FetchInput | URL): string | null {
   if (typeof input === "string") return input;
   if (input instanceof URL) return input.toString();
   if (typeof Request !== "undefined" && input instanceof Request) {
@@ -154,7 +156,7 @@ function resolveFetchInputUrl(input: RequestInfo | URL): string | null {
 }
 
 async function safeCodeFetch(
-  input: RequestInfo | URL,
+  input: FetchInput | URL,
   init?: RequestInit,
 ): Promise<Response> {
   const url = resolveFetchInputUrl(input);
@@ -240,7 +242,7 @@ function toRequestHeaders(headers: Headers): Record<string, string> {
 }
 
 async function toRequestBodyBuffer(
-  body: BodyInit | null | undefined,
+  body: FetchBody | null | undefined,
 ): Promise<Buffer | null> {
   if (body === null || body === undefined) return null;
   if (typeof body === "string") return Buffer.from(body);
@@ -251,6 +253,27 @@ async function toRequestBodyBuffer(
     return Buffer.from(body.buffer, body.byteOffset, body.byteLength);
   }
   throw new Error("Unsupported request body type for custom action fetch");
+}
+
+function incomingMessageBody(
+  response: IncomingMessage,
+): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      response.on("data", (chunk: Buffer | string) => {
+        controller.enqueue(
+          typeof chunk === "string"
+            ? Buffer.from(chunk)
+            : new Uint8Array(chunk),
+        );
+      });
+      response.on("end", () => controller.close());
+      response.on("error", (error) => controller.error(error));
+    },
+    cancel() {
+      response.destroy();
+    },
+  });
 }
 
 function responseFromIncomingMessage(response: IncomingMessage): Response {
@@ -267,7 +290,7 @@ function responseFromIncomingMessage(response: IncomingMessage): Response {
   const body =
     status === 204 || status === 205 || status === 304
       ? null
-      : (Readable.toWeb(response) as unknown as ReadableStream<Uint8Array>);
+      : incomingMessageBody(response);
 
   return new Response(body, {
     status,
@@ -282,9 +305,7 @@ async function requestWithPinnedAddress(
   const { url, init, target, timeoutMs } = input;
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
-  const bodyBuffer = await toRequestBodyBuffer(
-    init.body as BodyInit | undefined,
-  );
+  const bodyBuffer = await toRequestBodyBuffer(init.body);
   if (bodyBuffer && !headers.has("content-length")) {
     headers.set("content-length", String(bodyBuffer.byteLength));
   }
@@ -426,7 +447,7 @@ async function resolveUrlSafety(url: string): Promise<{
 }
 
 async function buildPinnedFetchInit(
-  input: RequestInfo | URL,
+  input: FetchInput | URL,
   init?: RequestInit,
 ): Promise<RequestInit> {
   if (typeof Request !== "undefined" && input instanceof Request) {

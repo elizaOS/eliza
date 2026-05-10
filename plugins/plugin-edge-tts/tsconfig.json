@@ -16,10 +16,10 @@
     "moduleDetection": "force",
     "allowArbitraryExtensions": true,
     "paths": {
-      "@elizaos/core": ["../../../core/src"],
-      "@elizaos/core/*": ["../../../core/src/*"]
+      "@elizaos/core": ["../../../core/src"]
     },
     "types": ["node", "bun-types"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/__tests__/**", "**/*.test.ts", "**/*.test.tsx", "**/*.e2e.test.ts"]
 }

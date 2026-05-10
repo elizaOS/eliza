@@ -79,7 +79,7 @@ export const lsAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: ["LIST_DIR", "DIR"],
   description:
-    "List entries in a directory, sorted with directories first then files. Each directory name has a trailing '/'. Pass an `ignore` array of glob patterns to skip entries. Use this instead of BASH for directory listing.",
+    "List entries in a directory, sorted with directories first then files. Each directory name has a trailing '/'. Pass an `ignore` array of glob patterns to skip entries. Use this instead of SHELL for directory listing.",
   descriptionCompressed:
     "List a directory; dirs first, files second; supports ignore globs.",
   parameters: [
@@ -98,13 +98,7 @@ export const lsAction: Action = {
       schema: { type: "array", items: { type: "string" } },
     },
   ],
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
-  ) => {
-    return true;
-  },
+  validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -140,7 +134,7 @@ export const lsAction: Action = {
     const targetPath = requestedPath ?? session.getCwd(conversationId);
 
     const validation = await sandbox.validatePath(conversationId, targetPath);
-    if (!validation.ok) {
+    if (validation.ok === false) {
       const reason =
         validation.reason === "blocked" ? "path_blocked" : "invalid_param";
       return failureToActionResult({ reason, message: validation.message });
@@ -225,4 +219,39 @@ export const lsAction: Action = {
       truncated,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "List the files in /tmp.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Listing /tmp.",
+          actions: ["LS"],
+          thought:
+            "Directory listing maps to LS with path='/tmp'.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Show me what's in src/lib, just the .ts files.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Listing src/lib (TypeScript files only).",
+          actions: ["LS"],
+          thought:
+            "LS with path='src/lib' and ignore patterns to filter for *.ts entries.",
+        },
+      },
+    ],
+  ],
 };

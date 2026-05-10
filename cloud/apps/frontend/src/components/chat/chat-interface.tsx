@@ -5,10 +5,10 @@ import { InfoIcon, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import type { UserCharacterDto } from "@/types/cloud-api";
 import type { AffiliateTheme } from "@/lib/config/affiliate-themes";
 import { getThemeCSSVariables } from "@/lib/config/affiliate-themes";
 import { useChatStore } from "@/lib/stores/chat-store";
+import type { UserCharacterDto } from "@/types/cloud-api";
 import { ElizaChatInterface } from "./eliza-chat-interface";
 
 /**

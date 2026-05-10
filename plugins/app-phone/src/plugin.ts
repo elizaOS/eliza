@@ -1,6 +1,8 @@
 /**
- * elizaOS runtime plugin for the Phone app: exposes the live PLACE_CALL action
- * and a read-only phoneCallLog provider for recent-calls context. The agent
+ * elizaOS runtime plugin for the Phone app: exposes a read-only phoneCallLog
+ * provider for recent-calls context. Outbound calls are owned by the canonical
+ * VOICE_CALL action; the Android dialer implementation remains internal until
+ * it is wired as a VOICE_CALL provider. The agent
  * Android adapter applies hosted-app session gating when this package's
  * `/plugin` export is registered.
  *
@@ -10,7 +12,6 @@
  */
 
 import type { Plugin } from "@elizaos/core";
-import { placeCallAction } from "./actions/place-call";
 import { phoneCallLogProvider } from "./providers/call-log";
 
 const PHONE_APP_NAME = "@elizaos/app-phone";
@@ -18,12 +19,12 @@ const PHONE_APP_NAME = "@elizaos/app-phone";
 export const appPhonePlugin: Plugin = {
   name: PHONE_APP_NAME,
   description:
-    "Phone overlay: Android dialer + recent-calls context. PLACE_CALL is a " +
-    "live action; recent calls are surfaced read-only via the phoneCallLog " +
-    "provider. Actions apply only while the Phone app session is active. " +
+    "Phone overlay: Android dialer + recent-calls context. Recent calls are " +
+    "surfaced read-only via the phoneCallLog provider. Outbound call placement " +
+    "routes through the canonical VOICE_CALL surface when a provider is wired. " +
     "Also hosts the Phone Companion (Capacitor pairing + remote-session) " +
     "surface.",
-  actions: [placeCallAction],
+  actions: [],
   providers: [phoneCallLogProvider],
   app: {
     navTabs: [
@@ -32,7 +33,7 @@ export const appPhonePlugin: Plugin = {
         label: "Phone Companion",
         icon: "Smartphone",
         path: "/phone-companion",
-        componentExport: "@elizaos/app-phone/ui#PhoneCompanionApp",
+        componentExport: "@elizaos/app-phone#PhoneCompanionApp",
       },
     ],
   },

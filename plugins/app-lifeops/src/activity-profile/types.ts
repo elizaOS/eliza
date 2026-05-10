@@ -131,7 +131,6 @@ export interface ProactiveAction {
     | "gn"
     | "pre_activity_nudge"
     | "goal_check_in"
-    | "onboarding_seed"
     | "social_overuse_check";
   scheduledFor: number;
   targetPlatform: string;
@@ -151,6 +150,12 @@ export interface FiredActionsLog {
   nudgedOccurrenceIds: string[];
   nudgedCalendarEventIds: string[];
   checkedGoalIds?: string[];
+  /**
+   * Wave-2 W2-A: legacy `seedingOfferedAt` is preserved on the persisted
+   * record for backward compatibility with old logs but the proactive
+   * worker no longer writes or reads it. The legacy `onboarding_seed`
+   * action kind has been removed.
+   */
   seedingOfferedAt?: number;
   /** Epoch ms of the most recent social_overuse_check delivery, if any. */
   socialOveruseCheckedAt?: number;

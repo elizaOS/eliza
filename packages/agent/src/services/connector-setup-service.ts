@@ -14,10 +14,10 @@ import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   type OwnerContactUpdate,
   setOwnerContact,
-} from "../api/owner-contact-helpers.js";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
-import { registerEscalationChannel } from "./escalation.js";
+} from "../api/owner-contact-helpers.ts";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
+import { registerEscalationChannel } from "./escalation.ts";
 
 export type { OwnerContactUpdate };
 

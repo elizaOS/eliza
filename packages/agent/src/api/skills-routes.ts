@@ -3,16 +3,17 @@ import type http from "node:http";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.js";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import type { ElizaConfig } from "../config/config.ts";
 import {
   installMarketplaceSkill,
   listInstalledMarketplaceSkills,
   searchSkillsMarketplace,
   uninstallMarketplaceSkill,
-} from "../services/skill-marketplace.js";
-import { parseClampedInteger } from "../utils/number-parsing.js";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
+} from "../services/skill-marketplace.ts";
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
+import { skillScaffoldMarkdown } from "../templates/skill-scaffold.ts";
+import { parseClampedInteger } from "../utils/number-parsing.ts";
 
 // ---------------------------------------------------------------------------
 // Types shared with server.ts (kept lean to avoid circular deps)
@@ -268,7 +269,7 @@ export async function handleSkillsRoutes(
   if (method === "GET" && pathname === "/api/skills/catalog") {
     try {
       const { getCatalogSkills } = await import(
-        "../services/skill-catalog-client.js"
+        "../services/skill-catalog-client.ts"
       );
       const all = (await getCatalogSkills()).filter((skill) =>
         shouldExposeBinanceSkillRecord(skill),
@@ -354,7 +355,7 @@ export async function handleSkillsRoutes(
     }
     try {
       const { searchCatalogSkills } = await import(
-        "../services/skill-catalog-client.js"
+        "../services/skill-catalog-client.ts"
       );
       const limit = Math.min(
         100,
@@ -387,7 +388,7 @@ export async function handleSkillsRoutes(
       }
       try {
         const { getCatalogSkill } = await import(
-          "../services/skill-catalog-client.js"
+          "../services/skill-catalog-client.ts"
         );
         const skill = await getCatalogSkill(slug);
         if (!skill) {
@@ -423,7 +424,7 @@ export async function handleSkillsRoutes(
       }
       // Then re-read the now-updated local catalog file
       const { refreshCatalog } = await import(
-        "../services/skill-catalog-client.js"
+        "../services/skill-catalog-client.ts"
       );
       const skills = await refreshCatalog();
       json(res, { ok: true, count: skills.length });
@@ -759,7 +760,9 @@ export async function handleSkillsRoutes(
     const escapedDescription = description
       .replace(/\\/g, "\\\\")
       .replace(/"/g, '\\"');
-    const template = `---\nname: ${slug}\ndescription: ${escapedDescription}\n---\n\n## Instructions\n\n[Describe what this skill does and how the agent should use it]\n\n## When to Use\n\nUse this skill when [describe trigger conditions].\n\n## Steps\n\n1. [First step]\n2. [Second step]\n3. [Third step]\n`;
+    const template = skillScaffoldMarkdown
+      .replace(/__SLUG__/g, slug)
+      .replace(/__DESCRIPTION__/g, escapedDescription);
 
     fs.mkdirSync(skillDir, { recursive: true });
     fs.writeFileSync(path.join(skillDir, "SKILL.md"), template, "utf-8");
@@ -1167,7 +1170,7 @@ export async function handleSkillsRoutes(
     } else if (fs.existsSync(path.join(mpDir, "SKILL.md"))) {
       try {
         const { uninstallMarketplaceSkill: uninstallMp } = await import(
-          "../services/skill-marketplace.js"
+          "../services/skill-marketplace.ts"
         );
         await uninstallMp(workspaceDir, skillId);
         deleted = true;

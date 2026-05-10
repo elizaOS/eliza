@@ -24,6 +24,10 @@ import type { AgentCredentials, ApprovalPreset } from "coding-agent-adapters";
 import { buildOpencodeSpawnConfig } from "../services/agent-credentials.js";
 import type { AgentSelectionStrategy } from "../services/agent-selection.js";
 import { readConfigEnvKey } from "../services/config-env.js";
+import {
+  PARENT_AGENT_BROKER_MANIFEST_ENTRY,
+  PARENT_AGENT_BROKER_SLUG,
+} from "../services/parent-agent-broker.js";
 import type { PTYService } from "../services/pty-service.js";
 import { getCoordinator } from "../services/pty-service.js";
 import {
@@ -91,7 +95,12 @@ const KNOWN_AGENT_PREFIXES = [
 ] as const;
 
 const SHELL_COMMAND_RE =
-  /(?:^|[:\s])(?:awk|bun|cat|curl|cut|echo|find|gh|git|grep|head|jq|node|npm|pnpm|sed|tail|tee|tr|xargs|yarn)\b\s+(?:[-./~"'({[<>&|]|https?:\/\/|\w+=|\w+\.(?:cjs|css|html|js|json|md|mjs|ts|tsx|yaml|yml)\b|\b(?:add|build|commit|diff|exec|fetch|install|log|pull|push|rebase|run|show|status|test)\b)/;
+  /(?:^|[:\s])(?:awk|bun|cat|curl|cut|echo|find|gh|git|grep|head|jq|node|npm|sed|tail|tee|tr|xargs|yarn)\b\s+(?:[-./~"'({[<>&|]|https?:\/\/|\w+=|\w+\.(?:cjs|css|html|js|json|md|mjs|ts|tsx|yaml|yml)\b|\b(?:add|build|commit|diff|exec|fetch|install|log|pull|push|rebase|run|show|status|test)\b)/;
+
+function getMessageUserId(message: Memory): string | undefined {
+  const value = (message as Memory & { userId?: unknown }).userId;
+  return typeof value === "string" ? value : undefined;
+}
 
 function isShellPipelineBoundary(
   left: string,
@@ -109,7 +118,7 @@ function isShellPipelineBoundary(
     SHELL_COMMAND_RE.test(leftTrimmed) ||
     /[`$;]|\$\(|\b[A-Z][A-Z0-9_]*=/.test(leftTrimmed);
   const rightStartsShell =
-    /^(?:awk|bun|cat|curl|cut|echo|find|gh|git|grep|head|jq|node|npm|pnpm|sed|tail|tee|tr|xargs|yarn)\b/.test(
+    /^(?:awk|bun|cat|curl|cut|echo|find|gh|git|grep|head|jq|node|npm|sed|tail|tee|tr|xargs|yarn)\b/.test(
       rightTrimmed,
     );
   return leftLooksShell && rightStartsShell;
@@ -190,10 +199,10 @@ export function splitAgentSpecsParam(input: string): string[] {
 const SKILLS_MANIFEST_FILENAME = "SKILLS.md";
 
 /**
- * Shared registry that maps spawned PTY session IDs to the recommended-skills
- * allow-list for that spawn. Created once at module load; the skill-callback
- * bridge reads from it when a child emits a USE_SKILL directive, and the
- * multi-agent spawn loop registers entries after `recommendSkillsForTask`.
+ * Shared registry that maps spawned PTY session IDs to the requestable skills
+ * rendered into that spawn's SKILLS.md. Created once at module load; the
+ * skill-callback bridge reads from it when a child emits a USE_SKILL directive,
+ * and the multi-agent spawn loop registers entries after manifest generation.
  *
  * Entries must be cleared explicitly on session teardown to avoid leaks;
  * `registerSessionEvents` owns that responsibility.
@@ -479,25 +488,39 @@ async function prepareSkillAwareness(
     taskText,
     recommendations,
   );
-  const recommendedSlugs = taskRecommendations.map((rec) => rec.slug);
+  const recommendationsWithParent: RecommendedSkill[] = [
+    {
+      slug: PARENT_AGENT_BROKER_SLUG,
+      name: PARENT_AGENT_BROKER_MANIFEST_ENTRY.name,
+      score: 1,
+      reason:
+        "bridge to parent runtime actions, connectors, Cloud commands, and confirmation flow",
+    },
+    ...taskRecommendations.filter(
+      (rec) => rec.slug !== PARENT_AGENT_BROKER_SLUG,
+    ),
+  ];
+  const recommendedSlugs = recommendationsWithParent.map((rec) => rec.slug);
   const includeLifeOpsBroker = recommendedSlugs.includes(
     LIFEOPS_CONTEXT_BROKER_SLUG,
   );
+  const virtualSkills = [
+    PARENT_AGENT_BROKER_MANIFEST_ENTRY,
+    ...(includeLifeOpsBroker ? [LIFEOPS_CONTEXT_BROKER_MANIFEST_ENTRY] : []),
+  ];
   const manifest = await buildSkillsManifest(runtime, {
     onlyEligible: true,
     recommendedSlugs,
-    virtualSkills: includeLifeOpsBroker
-      ? [LIFEOPS_CONTEXT_BROKER_MANIFEST_ENTRY]
-      : undefined,
+    virtualSkills,
   });
 
-  if (manifest.slugs.length === 0 && taskRecommendations.length === 0) {
+  if (manifest.slugs.length === 0 && recommendationsWithParent.length === 0) {
     return null;
   }
 
   const manifestPath = path.join(workdir, SKILLS_MANIFEST_FILENAME);
   await fs.writeFile(manifestPath, manifest.markdown, "utf8");
-  return { manifestPath, recommendations: taskRecommendations, manifest };
+  return { manifestPath, recommendations: recommendationsWithParent, manifest };
 }
 
 /**
@@ -533,7 +556,7 @@ function decorateTaskWithSkillHint(
     )
   ) {
     lines.push(
-      `For LifeOps context, ask the parent with \`USE_SKILL lifeops-context {"category":"email|calendar|inbox|priority|contacts|scratchpad|search|context","query":"...","limit":5}\`.`,
+      `For LifeOps context, ask the parent with \`USE_SKILL lifeops-context {"category":"email|calendar|inbox|priority|contacts|documents|search|context","query":"...","limit":5}\`.`,
     );
   }
   lines.push("--- End skills ---");
@@ -890,10 +913,7 @@ export async function handleMultiAgent(
         originalRequest: userRequest,
         roomId: message.roomId,
         worldId: message.worldId,
-        ownerUserId:
-          ((message as unknown as Record<string, unknown>).userId as
-            | string
-            | undefined) ?? message.entityId,
+        ownerUserId: getMessageUserId(message) ?? message.entityId,
         scenarioId: evalMetadata.scenarioId,
         batchId: evalMetadata.batchId,
         currentPlan:
@@ -1127,7 +1147,7 @@ export async function handleMultiAgent(
           taskNodeId,
           requestedType: specRequestedType,
           messageId: message.id,
-          userId: (message as unknown as Record<string, unknown>).userId,
+          userId: getMessageUserId(message),
           workspaceId,
           label: specLabel,
           multiAgentIndex: i,
@@ -1139,12 +1159,13 @@ export async function handleMultiAgent(
         },
       });
 
-      // Register this session's recommended-skills allow-list so the skill
-      // callback bridge can reject out-of-scope USE_SKILL directives.
-      if (skillAwareness && skillAwareness.recommendations.length > 0) {
+      // Register every requestable slug from SKILLS.md. The bridge uses this
+      // task-local allow-list for enforcement, so it must match the manifest
+      // rather than only the top recommendations.
+      if (skillAwareness && skillAwareness.manifest.slugs.length > 0) {
         sessionSkillAllowList.register(
           session.id,
-          skillAwareness.recommendations.map((rec) => rec.slug),
+          skillAwareness.manifest.slugs,
         );
       }
 

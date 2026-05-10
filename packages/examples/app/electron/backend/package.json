@@ -4,7 +4,7 @@
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc --noCheck -p tsconfig.json",
     "copy-renderer": "node -e \"import('node:fs/promises').then(async fs=>{const {cp,rm,mkdir}=fs;await rm('renderer',{recursive:true,force:true});await mkdir('renderer',{recursive:true});await cp('../frontend/dist','renderer',{recursive:true});})\"",
     "start": "bun run build && bun run copy-renderer && electron .",
     "dev": "bun run build && ELECTRON_RENDERER_URL=http://localhost:5177 electron .",
@@ -28,7 +28,7 @@
   "devDependencies": {
     "@types/node": "^25.0.3",
     "@types/uuid": "^11.0.0",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.17"
   }
 }

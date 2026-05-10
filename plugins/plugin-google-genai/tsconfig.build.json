@@ -8,6 +8,7 @@
     "types": ["bun-types", "node"],
     "outDir": "../dist",
     "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
     "moduleResolution": "bundler",
     "resolvePackageJsonExports": true,
     "resolvePackageJsonImports": true,

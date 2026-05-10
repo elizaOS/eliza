@@ -74,6 +74,13 @@ function isMcpSettings(value: unknown): value is McpSettings {
   return true;
 }
 
+function toCharacterMcpSettings(settings: McpSettings): Record<string, unknown> {
+  return {
+    ...settings,
+    servers: settings.servers,
+  };
+}
+
 const iconMap: Record<string, typeof Puzzle> = {
   puzzle: Puzzle,
   clock: Clock,
@@ -160,7 +167,7 @@ export function PluginsTab({ character, onChange }: PluginsTabProps) {
     // Update character settings with new MCP config
     const newSettings = {
       ...character.settings,
-      mcp: newMcpSettings as unknown as Record<string, unknown>,
+      mcp: toCharacterMcpSettings(newMcpSettings),
     };
 
     // Also ensure plugin-mcp is in the plugins list
@@ -191,7 +198,7 @@ export function PluginsTab({ character, onChange }: PluginsTabProps) {
     // Update character settings
     const newSettings = {
       ...character.settings,
-      mcp: newMcpSettings as unknown as Record<string, unknown>,
+      mcp: toCharacterMcpSettings(newMcpSettings),
     };
 
     // Remove plugin-mcp from plugins if no servers left

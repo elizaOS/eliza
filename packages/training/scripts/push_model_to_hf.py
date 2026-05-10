@@ -90,6 +90,12 @@ class PushConfig:
     readme_only: bool
     dry_run: bool
     eval_results: dict[str, Any] = field(default_factory=dict)
+    milady_manifest: Path | None = None
+    """Path to a milady_manifest.json describing the optimization stack
+    applied to a Milady-optimized GGUF. Set by ``optimize_for_milady.py``;
+    when present, the published model card uses the manifest's runtime
+    block to document the load command and the ``milady-ai/llama.cpp``
+    pin instead of the generic per-quant template."""
 
 
 def hf_token() -> str | None:
@@ -106,10 +112,18 @@ def resolve_repo_id(
 
     Override > registry's eliza_repo_id / abliteration_repo_id (+ quant suffix).
     The abliterated variant ships under a separate org so the safety-tuned
-    line's reputation is not contaminated.
+    line's reputation is not contaminated. Milady-optimized publishes
+    always pass an explicit ``--repo-id``; the registry path is only the
+    historical eliza-1 sibling-repo flow.
     """
     if override:
         return override
+    if registry_key not in REGISTRY:
+        raise SystemExit(
+            f"--registry-key {registry_key!r} is not in the registry; "
+            "either pass --repo-id explicitly (e.g. for milady-ai/* repos) "
+            f"or pick one of: {sorted(REGISTRY.keys())}"
+        )
     entry = registry_get(registry_key)
     if variant == "abliterated":
         base = entry.abliteration_repo_id
@@ -471,6 +485,89 @@ def _select_template_path(config: PushConfig) -> Path:
     return TEMPLATES_DIR / "model_card_base.md"
 
 
+def _build_milady_manifest_card(
+    config: PushConfig, manifest: dict[str, Any]
+) -> str:
+    """Render a model-card README from a Milady optimization manifest.
+
+    The manifest comes from ``scripts/optimize_for_milady.py`` and
+    declares the applied stack + the exact ``llama-server`` invocation
+    consumers should run. The manifest IS the source of truth — this
+    function only renders it for HF discoverability.
+    """
+    runtime = manifest.get("runtime", {})
+    args = runtime.get("args", [])
+    # Group flag/value pairs on the same line for a tidy bash invocation.
+    pairs: list[str] = []
+    i = 0
+    while i < len(args):
+        arg = str(args[i])
+        if arg.startswith("--") and i + 1 < len(args) and not str(args[i + 1]).startswith("--"):
+            pairs.append(f"{arg} {args[i + 1]}")
+            i += 2
+        else:
+            pairs.append(arg)
+            i += 1
+    cmd = (
+        str(runtime.get("binary", "llama-server"))
+        + (" \\\n  " + " \\\n  ".join(pairs) if pairs else "")
+    )
+    gguf = manifest.get("gguf", {})
+    types = gguf.get("ggml_types", {})
+
+    applied_rows = []
+    for name, block in (manifest.get("applied") or {}).items():
+        applied = block.get("applied", False)
+        sidecar = block.get("sidecar", "—")
+        skip_reason = block.get("reason", "")
+        marker = "yes" if applied else f"skipped — {skip_reason}"
+        applied_rows.append(f"| `{name}` | {marker} | {sidecar} |")
+    applied_table = "\n".join(applied_rows) if applied_rows else "| — | — | — |"
+
+    return (
+        "---\n"
+        "library_name: llama.cpp\n"
+        "tags:\n"
+        "  - milady\n"
+        "  - milady-optimized\n"
+        "  - gguf\n"
+        "  - polarquant\n"
+        "  - qjl\n"
+        "  - turboquant\n"
+        "  - dflash\n"
+        "---\n"
+        "\n"
+        "# Milady-optimized GGUF\n"
+        "\n"
+        f"Base model: `{manifest.get('base_model')}`  \n"
+        f"Repo: `{config.repo_id}`  \n"
+        f"GGUF tensor file: `{gguf.get('filename')}`  \n"
+        "\n"
+        "## Applied optimizations\n"
+        "\n"
+        "| step | applied | sidecar |\n"
+        "|---|---|---|\n"
+        + applied_table
+        + "\n\n"
+        "## GGML types in this file\n"
+        "\n"
+        f"- Weights: `{types.get('weights', 'Q4_POLAR=47')}` (PolarQuant 4-bit)\n"
+        f"- K cache: `{types.get('k_cache', 'QJL1_256=46')}` (QJL 1-bit JL projection)\n"
+        f"- V cache: `{types.get('v_cache', 'TBQ3_0=43')}` (TurboQuant 3-bit)\n"
+        "\n"
+        "These types only exist in `milady-ai/llama.cpp` "
+        f"`>= {runtime.get('min_llama_cpp_tag', 'v0.4.0-milady')}` "
+        f"(commit `{runtime.get('min_llama_cpp_commit', '')}`); the upstream "
+        "`ggml-org/llama.cpp` build will refuse to load this file.\n"
+        "\n"
+        "## Load command\n"
+        "\n"
+        "```bash\n"
+        f"{cmd}\n"
+        "```\n"
+    )
+
+
 def build_model_card(
     config: PushConfig,
     training_args: dict[str, Any],
@@ -479,16 +576,29 @@ def build_model_card(
     """Construct an HF model card for the eliza-1 release.
 
     Resolution order:
-      1. If the checkpoint dir already contains a README.md, ship it verbatim
+      1. If a ``--milady-manifest`` was passed, render directly from the
+         manifest (canonical Milady-optimized release path).
+      2. If the checkpoint dir already contains a README.md, ship it verbatim
          (downstream tools — e.g. abliterate.py — can author a richer card
          than this template covers).
-      2. Otherwise render the template under scripts/templates/ that matches
+      3. Otherwise render the template under scripts/templates/ that matches
          this push's variant + quant flavor.
 
     The legacy ``bench`` arg is folded into ``config.eval_results`` if the
     latter is empty, for backwards compatibility with checkpoints that wrote
     a benchmark.json sidecar.
     """
+    if config.milady_manifest is not None:
+        try:
+            manifest = json.loads(config.milady_manifest.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SystemExit(
+                f"--milady-manifest is unreadable: {config.milady_manifest}: {exc}"
+            ) from exc
+        log.info("rendering model card from milady manifest %s",
+                 config.milady_manifest)
+        return _build_milady_manifest_card(config, manifest)
+
     checkpoint_readme = config.checkpoint / "README.md"
     if checkpoint_readme.exists():
         log.info("using checkpoint-bundled README.md (%s)", checkpoint_readme)
@@ -674,6 +784,12 @@ def main() -> int:
              "Evaluation section of the model card. Without it the section "
              "shows a TBD placeholder.",
     )
+    ap.add_argument(
+        "--milady-manifest", type=Path, default=None,
+        help="Path to a milady_manifest.json from optimize_for_milady.py. "
+             "Triggers manifest-driven model card rendering and supersedes "
+             "the per-quant template. Use for milady-ai/* repo publishes.",
+    )
     ap.add_argument("--dry-run", action="store_true",
                     help="Print the resolved config + card preview, no network calls.")
     args = ap.parse_args()
@@ -687,6 +803,11 @@ def main() -> int:
         except json.JSONDecodeError as exc:
             raise SystemExit(f"--eval-results is not valid JSON: {exc}") from exc
 
+    if args.milady_manifest is not None and not args.milady_manifest.exists():
+        raise SystemExit(
+            f"--milady-manifest does not exist: {args.milady_manifest}"
+        )
+
     config = PushConfig(
         registry_key=args.registry_key,
         checkpoint=args.checkpoint,
@@ -699,6 +820,7 @@ def main() -> int:
         readme_only=args.readme_only,
         dry_run=args.dry_run,
         eval_results=eval_results,
+        milady_manifest=args.milady_manifest,
     )
     return push(config)
 

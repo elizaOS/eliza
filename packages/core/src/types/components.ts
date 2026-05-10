@@ -5,15 +5,7 @@ import type {
 	RoleGate,
 } from "./contexts";
 import type { Memory } from "./memory";
-import type { Content } from "./primitives";
-import type {
-	JsonValue,
-	ActionExample as ProtoActionExample,
-	ActionParameter as ProtoActionParameter,
-	ActionParameterSchema as ProtoActionParameterSchema,
-	ActionParameters as ProtoActionParametersType,
-	EvaluationExample as ProtoEvaluationExample,
-} from "./proto.js";
+import type { Content, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
 
@@ -28,19 +20,9 @@ export type {
  * JSON Schema type for action parameter validation.
  * Supports basic JSON Schema properties for parameter definition.
  */
-export interface ActionParameterSchema
-	extends Omit<
-		ProtoActionParameterSchema,
-		| "$typeName"
-		| "$unknown"
-		| "defaultValue"
-		| "properties"
-		| "items"
-		| "enumValues"
-		| "required"
-		| "type"
-	> {
+export interface ActionParameterSchema {
 	type: string;
+	description?: string;
 	/** Default value if parameter is not provided */
 	default?: JsonValue | null;
 	/** For object types, define nested properties */
@@ -61,6 +43,10 @@ export interface ActionParameterSchema
 	maxLength?: number;
 	/** Regular expression pattern for string-valued parameters */
 	pattern?: string;
+	/** Numeric minimum */
+	minimum?: number;
+	/** Numeric maximum */
+	maximum?: number;
 	/** JSON Schema `oneOf`: value must match exactly one sub-schema */
 	oneOf?: ReadonlyArray<ActionParameterSchema>;
 	/** JSON Schema `anyOf`: value must match at least one sub-schema */
@@ -71,8 +57,7 @@ export interface ActionParameterSchema
  * Defines a single parameter for an action.
  * Parameters are extracted from the conversation by the LLM and passed to the action handler.
  */
-export interface ActionParameter
-	extends Omit<ProtoActionParameter, "$typeName" | "$unknown" | "schema"> {
+export interface ActionParameter {
 	/** Parameter name (used as the key in the parameters object) */
 	name: string;
 	/** Human-readable description for LLM guidance */
@@ -104,6 +89,7 @@ export type ActionParameterValue = string | number | boolean | null;
 export type ActionParameterExampleValue =
 	| ActionParameterValue
 	| ActionParameters
+	| JsonValue
 	| ActionParameterValue[]
 	| ActionParameters[];
 
@@ -121,19 +107,12 @@ export interface ActionParameters {
 		| JsonValue;
 }
 
-export type ProtoActionParameters = ProtoActionParametersType;
-
 /**
  * Example content with associated user for demonstration purposes
  */
-export interface ActionExample
-	extends Omit<ProtoActionExample, "$typeName" | "$unknown" | "content"> {
+export interface ActionExample {
+	name: string;
 	content: Content;
-}
-
-export interface EvaluationExample
-	extends Omit<ProtoEvaluationExample, "$typeName" | "$unknown" | "messages"> {
-	messages: ActionExample[];
 }
 
 export type MessageHandlerAction = "RESPOND" | "IGNORE" | "STOP";
@@ -141,13 +120,44 @@ export type MessageHandlerAction = "RESPOND" | "IGNORE" | "STOP";
 export interface MessageHandlerPlan {
 	contexts: AgentContext[];
 	reply?: string;
+	/**
+	 * When true, Stage 1 marks this turn as requiring a tool call. The router
+	 * upgrades empty / simple-only plans to planning against `general` and the
+	 * planner loop will retry if the planner returns terminal output before any
+	 * non-terminal tool has executed.
+	 */
+	requiresTool?: boolean;
+	/** Legacy flag (pre-`contexts: ["simple"]`); honored as a back-compat hint. */
+	simple?: boolean;
+	contextSlices?: string[];
+	candidateActions?: string[];
+	parentActionHints?: string[];
 	[key: string]: JsonValue | undefined;
+}
+
+export interface MessageHandlerExtractedRelationship {
+	subject: string;
+	predicate: string;
+	object: string;
+}
+
+export interface MessageHandlerExtract {
+	facts?: string[];
+	relationships?: MessageHandlerExtractedRelationship[];
+	/**
+	 * Entities the inbound message is directed at — entity UUIDs or
+	 * participant names that the post-parse pipeline resolves to UUIDs.
+	 * Empty / omitted means "unknown / not directed at anyone in particular".
+	 * Drives the "addressed" relationship edge from speaker → target.
+	 */
+	addressedTo?: string[];
 }
 
 export interface MessageHandlerResult {
 	processMessage: MessageHandlerAction;
 	plan: MessageHandlerPlan;
 	thought: string;
+	extract?: MessageHandlerExtract;
 }
 
 export type EvaluationDecision = "FINISH" | "NEXT_RECOMMENDED" | "CONTINUE";
@@ -227,9 +237,9 @@ export const ActionMode = {
 	CONTEXT_BEFORE: "CONTEXT_BEFORE",
 	CONTEXT_DURING: "CONTEXT_DURING",
 	CONTEXT_AFTER: "CONTEXT_AFTER",
-	MESSAGE_BEFORE: "MESSAGE_BEFORE",
-	MESSAGE_DURING: "MESSAGE_DURING",
-	MESSAGE_AFTER: "MESSAGE_AFTER",
+	RESPONSE_HANDLER_BEFORE: "RESPONSE_HANDLER_BEFORE",
+	RESPONSE_HANDLER_DURING: "RESPONSE_HANDLER_DURING",
+	RESPONSE_HANDLER_AFTER: "RESPONSE_HANDLER_AFTER",
 } as const;
 export type ActionMode = (typeof ActionMode)[keyof typeof ActionMode];
 
@@ -237,15 +247,15 @@ export type ActionMode = (typeof ActionMode)[keyof typeof ActionMode];
 export const NON_BLOCKING_MODES = new Set<ActionMode>([
 	ActionMode.ALWAYS_DURING,
 	ActionMode.CONTEXT_DURING,
-	ActionMode.MESSAGE_DURING,
+	ActionMode.RESPONSE_HANDLER_DURING,
 ]);
 
 /** All non-PLANNER hook modes, in canonical pipeline order. */
 export const HOOK_MODES: readonly ActionMode[] = [
 	ActionMode.ALWAYS_BEFORE,
-	ActionMode.MESSAGE_BEFORE,
-	ActionMode.MESSAGE_DURING,
-	ActionMode.MESSAGE_AFTER,
+	ActionMode.RESPONSE_HANDLER_BEFORE,
+	ActionMode.RESPONSE_HANDLER_DURING,
+	ActionMode.RESPONSE_HANDLER_AFTER,
 	ActionMode.CONTEXT_BEFORE,
 	ActionMode.CONTEXT_DURING,
 	ActionMode.CONTEXT_AFTER,
@@ -285,6 +295,18 @@ export interface Action {
 
 	/** Optional tags for categorization */
 	tags?: string[];
+
+	/**
+	 * One-line routing hint surfaced to the planner. Replaces hand-written
+	 * domain-routing prose in the v5 planner template. Format:
+	 *   "<TRIGGER> -> <action> [+ secondary contexts]; <do/don't note>"
+	 * Examples:
+	 *   - BOOK_TRAVEL: "real flight/hotel/trip booking -> BOOK_TRAVEL; no browse-first or web-search-first"
+	 *   - VOICE_CALL:  "explicit call/phone/dial a person/business -> VOICE_CALL first; calendar/email secondary"
+	 * Surfaced into the planner prompt via {{actionRoutingHints}} so each
+	 * action carries its own routing rule alongside its description.
+	 */
+	routingHint?: string;
 
 	/**
 	 * When true, the message service treats this action as owning the turn
@@ -350,6 +372,21 @@ export interface Action {
 	/** Optional role gate checked by planners before exposing this action. */
 	roleGate?: RoleGate;
 
+	/**
+	 * Optional connector account policy checked by planner tool exposure and
+	 * again immediately before handler execution. This must not be implemented
+	 * only inside validate(); validate is advisory and can be bypassed by native
+	 * tool calls.
+	 */
+	connectorAccountPolicy?:
+		| import("../connectors/account-manager").ConnectorAccountPolicy
+		| readonly import("../connectors/account-manager").ConnectorAccountPolicy[];
+
+	/** Compatibility alias for early adopters of connectorAccountPolicy. */
+	accountPolicy?:
+		| import("../connectors/account-manager").ConnectorAccountPolicy
+		| readonly import("../connectors/account-manager").ConnectorAccountPolicy[];
+
 	/** Child tool/action names or inline definitions exposed beneath this action. */
 	subActions?: Array<string | Action>;
 
@@ -372,38 +409,6 @@ export interface Action {
 }
 
 /**
- * Evaluator for assessing agent responses
- */
-export interface Evaluator {
-	/** Whether to always run */
-	alwaysRun?: boolean;
-
-	/** Detailed description */
-	description: string;
-
-	/** Compressed description for prompt-optimized evaluator selection */
-	descriptionCompressed?: string;
-
-	/** Alias accepted for plugin compatibility; canonical output uses descriptionCompressed */
-	compressedDescription?: string;
-
-	/** Similar evaluator descriptions */
-	similes?: string[];
-
-	/** Example evaluations */
-	examples: EvaluationExample[];
-
-	/** Handler function */
-	handler: Handler;
-
-	/** Evaluator name */
-	name: string;
-
-	/** Validation function */
-	validate: Validator;
-}
-
-/**
  * JSON-serializable primitive values.
  * These are the basic types that can be serialized to JSON.
  */
@@ -419,7 +424,7 @@ export type JsonPrimitive = string | number | boolean | null;
  *
  * The broad object type (Record<string, unknown>) ensures that domain types
  * like Memory[], Character, Content, etc. are accepted without requiring
- * unsafe 'as unknown as' casts, while still maintaining JSON-serializable
+ * unsafe double assertions, while still maintaining JSON-serializable
  * semantics at runtime.
  */
 export type ProviderValue =

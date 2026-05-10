@@ -150,6 +150,41 @@ export function _clearDefaultBranchCache(): void {
   defaultBranchCache.clear();
 }
 
+/**
+ * Resolve the default base directory for coding workspaces.
+ *
+ * Resolution order:
+ *   1. `MILADY_WORKSPACE_DIR` runtime setting (set by store builds after the
+ *      user picks a folder via the native picker — see desktopPickWorkspaceFolder).
+ *   2. `MILADY_WORKSPACE_DIR` env var.
+ *   3. `~/.eliza/workspaces` (direct-build default; invisible inside an OS
+ *      sandbox container, hence the picker requirement for store builds).
+ */
+function resolveDefaultBaseDir(runtime: IAgentRuntime): string {
+  const fromSetting = runtime.getSetting("MILADY_WORKSPACE_DIR");
+  if (typeof fromSetting === "string" && fromSetting.trim().length > 0) {
+    return expandHome(fromSetting.trim());
+  }
+  const fromEnv = process.env.MILADY_WORKSPACE_DIR;
+  if (typeof fromEnv === "string" && fromEnv.trim().length > 0) {
+    return expandHome(fromEnv.trim());
+  }
+  return path.join(os.homedir(), ".eliza", "workspaces");
+}
+
+function expandHome(p: string): string {
+  if (p.startsWith("~/")) return path.join(os.homedir(), p.slice(2));
+  if (p === "~") return os.homedir();
+  return path.resolve(p);
+}
+
+export function getCodingWorkspaceService(
+  runtime: IAgentRuntime,
+): CodingWorkspaceService | null {
+  const service = runtime.getService("CODING_WORKSPACE_SERVICE");
+  return service instanceof CodingWorkspaceService ? service : null;
+}
+
 export class CodingWorkspaceService {
   static serviceType = "CODING_WORKSPACE_SERVICE";
   capabilityDescription = "Manages git workspaces for coding tasks";
@@ -175,8 +210,7 @@ export class CodingWorkspaceService {
   constructor(runtime: IAgentRuntime, config: CodingWorkspaceConfig = {}) {
     this.runtime = runtime;
     this.serviceConfig = {
-      baseDir:
-        config.baseDir ?? path.join(os.homedir(), ".eliza", "workspaces"),
+      baseDir: config.baseDir ?? resolveDefaultBaseDir(runtime),
       branchPrefix: config.branchPrefix ?? "eliza",
       debug: config.debug ?? false,
       workspaceTtlMs: config.workspaceTtlMs ?? 24 * 60 * 60 * 1000,
@@ -194,9 +228,7 @@ export class CodingWorkspaceService {
   }
 
   static async stopRuntime(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService("CODING_WORKSPACE_SERVICE") as unknown as
-      | CodingWorkspaceService
-      | undefined;
+    const service = getCodingWorkspaceService(runtime);
     if (service) {
       await service.stop();
     }

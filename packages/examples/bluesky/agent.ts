@@ -78,9 +78,9 @@ async function main(): Promise<void> {
   const runtime = new AgentRuntime({
     character,
     plugins: [
-      sqlPlugin, // Database persistence (PGLite by default, or Postgres)
-      openaiPlugin, // LLM provider (registers TEXT_SMALL, TEXT_LARGE models)
-      blueSkyPlugin, // Bluesky client (polls notifications, handles DMs)
+      sqlPlugin as Plugin,
+      openaiPlugin as Plugin,
+      blueSkyPlugin as Plugin,
     ],
     // These are the defaults, explicitly shown for clarity:
     // disableBasicCapabilities: false,  // Keep basic actions (REPLY, IGNORE, NONE)

@@ -1,296 +1,155 @@
 /**
  * Eliza-curated local model catalog.
  *
- * Hand-picked as of April 2026. All entries reference public GGUF repos on
- * HuggingFace. Quants default to Q4_K_M (the usual sweet spot). When upstream
- * naming conventions drift, update `ggufFile` here — we rely on the exact
- * filename for resolved-URL construction in the downloader.
+ * Eliza-1 is the only default-eligible model line. There is exactly one
+ * default per device tier (`lite-0_6b`, `mobile-1_7b`, `desktop-9b`,
+ * `pro-27b`, `server-h200`). The recommendation engine picks one of
+ * these tiers based on hardware. See
+ * `/Users/shawwalters/eliza-workspace/milady/packages/inference/AGENTS.md`
+ * §2 for the binding tier matrix.
+ *
+ * HF-search results from outside `elizaos/eliza-1-*` MUST never be
+ * marked default-eligible (handled by `hf-search.ts`, which produces
+ * entries that are absent from `DEFAULT_ELIGIBLE_MODEL_IDS`).
+ *
+ * When upstream naming conventions drift, update `ggufFile` here — we
+ * rely on the exact filename for resolved-URL construction in the
+ * downloader.
  */
 
+import { ELIZA_1_TIERS, type Eliza1Tier } from "./manifest";
 import type { CatalogModel } from "./types";
 
+/**
+ * Eliza-1 tier identifiers, in tier-matrix order. Derived from the
+ * manifest module's `ELIZA_1_TIERS` so the bundle tier list and the
+ * catalog model-id list never drift.
+ */
+export type Eliza1TierId = `eliza-1-${Eliza1Tier}`;
+
+export const ELIZA_1_TIER_IDS: ReadonlyArray<Eliza1TierId> = ELIZA_1_TIERS.map(
+  (tier) => `eliza-1-${tier}` as Eliza1TierId,
+);
+
+/**
+ * The model id the engine auto-loads on first run when no preference is
+ * set. Resolves to the `mobile-1_7b` tier — the smallest Eliza-1 tier
+ * that fits the broadest range of hardware (modern phone or laptop).
+ * Hosts that can't fit `mobile-1_7b` get the `lite-0_6b` fallback via
+ * the recommendation ladder.
+ */
+export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-mobile-1_7b";
+
+/**
+ * The single source of truth for default-eligibility. Only Eliza-1
+ * tiers are default-eligible. The recommendation engine MUST refuse to
+ * surface anything outside this set as a default; HF-search results
+ * MUST never appear here.
+ */
+export const DEFAULT_ELIGIBLE_MODEL_IDS: ReadonlySet<string> = new Set(
+  ELIZA_1_TIER_IDS,
+);
+
+export function isDefaultEligibleId(id: string): boolean {
+  return DEFAULT_ELIGIBLE_MODEL_IDS.has(id);
+}
+
+/** Compatibility export for callers that need the Eliza-1 model id set. */
+export const ELIZA_1_PLACEHOLDER_IDS: ReadonlySet<string> = new Set(
+  ELIZA_1_TIER_IDS,
+);
+
 export const MODEL_CATALOG: CatalogModel[] = [
-  // ─── tiny / testing ─────────────────────────────────────────────────
+  // ─── Eliza-1 lite (low-RAM phones, CPU fallback) ────────────────────
   {
-    id: "smollm2-360m",
-    displayName: "SmolLM2 360M Instruct",
-    hfRepo: "bartowski/SmolLM2-360M-Instruct-GGUF",
-    ggufFile: "SmolLM2-360M-Instruct-Q4_K_M.gguf",
-    params: "360M",
-    quant: "Q4_K_M",
-    sizeGb: 0.27,
-    minRamGb: 1,
-    category: "tiny",
-    bucket: "small",
-    blurb:
-      "Mobile-friendly default. ~270MB on disk, runs on phones and 1GB-RAM hosts.",
-  },
-  {
-    id: "smollm2-1.7b",
-    displayName: "SmolLM2 1.7B Instruct",
-    hfRepo: "bartowski/SmolLM2-1.7B-Instruct-GGUF",
-    ggufFile: "SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
-    params: "1.7B",
-    quant: "Q4_K_M",
-    sizeGb: 1.1,
-    minRamGb: 3,
-    category: "tiny",
-    bucket: "small",
-    blurb:
-      "Smallest genuinely useful chat model. Perfect for CI and smoke tests.",
-  },
-  {
-    id: "llama-3.2-1b",
-    displayName: "Llama 3.2 1B Instruct",
-    hfRepo: "bartowski/Llama-3.2-1B-Instruct-GGUF",
-    ggufFile: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+    id: "eliza-1-lite-0_6b",
+    displayName: "Eliza-1 lite",
+    hfRepo: "elizaos/eliza-1-lite-0_6b",
+    ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
     params: "1B",
-    quant: "Q4_K_M",
-    sizeGb: 0.8,
+    quant: "TurboQuant Q3 + Polar Q4 KV",
+    sizeGb: 0.5,
     minRamGb: 2,
-    category: "tiny",
-    bucket: "small",
-    blurb: "Ultra-light Llama for edge devices and integration tests.",
-  },
-  {
-    id: "llama-3.2-3b",
-    displayName: "Llama 3.2 3B Instruct",
-    hfRepo: "bartowski/Llama-3.2-3B-Instruct-GGUF",
-    ggufFile: "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
-    params: "3B",
-    quant: "Q4_K_M",
-    sizeGb: 2.0,
-    minRamGb: 4,
     category: "chat",
     bucket: "small",
-    blurb: "Fast general chat for 8GB laptops; coherent summaries and Q&A.",
-  },
-  {
-    id: "qwen2.5-3b",
-    displayName: "Qwen2.5 3B Instruct",
-    hfRepo: "bartowski/Qwen2.5-3B-Instruct-GGUF",
-    ggufFile: "Qwen2.5-3B-Instruct-Q4_K_M.gguf",
-    params: "3B",
-    quant: "Q4_K_M",
-    sizeGb: 2.0,
-    minRamGb: 4,
-    category: "chat",
-    bucket: "small",
+    contextLength: 32768,
+    tokenizerFamily: "eliza1",
     blurb:
-      "Punchy small model with strong multilingual and instruction following.",
+      "Eliza-1 lite — fits low-RAM phones and CPU-only fallback. Fused text + voice bundle with TurboQuant Q3 + Polar KV.",
   },
 
-  // ─── mid (4-8 GB) ───────────────────────────────────────────────────
+  // ─── Eliza-1 mobile (modern phones) ─────────────────────────────────
   {
-    id: "llama-3.1-8b",
-    displayName: "Llama 3.1 8B Instruct",
-    hfRepo: "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
-    ggufFile: "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
-    params: "8B",
-    quant: "Q4_K_M",
-    sizeGb: 4.9,
-    minRamGb: 10,
-    category: "chat",
-    bucket: "mid",
-    blurb: "Battle-tested general chat; the default 8GB-VRAM daily driver.",
-  },
-  {
-    id: "qwen2.5-7b",
-    displayName: "Qwen2.5 7B Instruct",
-    hfRepo: "bartowski/Qwen2.5-7B-Instruct-GGUF",
-    ggufFile: "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
-    params: "7B",
-    quant: "Q4_K_M",
-    sizeGb: 4.7,
-    minRamGb: 10,
-    category: "chat",
-    bucket: "mid",
-    blurb: "Strong reasoning and multilingual chat; rivals Llama-3.1-8B.",
-  },
-  {
-    id: "gemma-2-9b",
-    displayName: "Gemma 2 9B Instruct",
-    hfRepo: "bartowski/gemma-2-9b-it-GGUF",
-    ggufFile: "gemma-2-9b-it-Q4_K_M.gguf",
-    params: "9B",
-    quant: "Q4_K_M",
-    sizeGb: 5.8,
-    minRamGb: 12,
-    category: "chat",
-    bucket: "mid",
-    blurb: "Google Gemma. Excellent writing quality and safety tuning.",
-  },
-  {
-    id: "qwen2.5-coder-7b",
-    displayName: "Qwen2.5 Coder 7B Instruct",
-    hfRepo: "bartowski/Qwen2.5-Coder-7B-Instruct-GGUF",
-    ggufFile: "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
-    params: "7B",
-    quant: "Q4_K_M",
-    sizeGb: 4.7,
-    minRamGb: 10,
-    category: "code",
-    bucket: "mid",
-    blurb:
-      "Top small coder. Fill-in-the-middle, repo-level context, 128k window.",
-  },
-  {
-    id: "hermes-3-llama-8b",
-    displayName: "Hermes 3 Llama 3.1 8B",
-    hfRepo: "bartowski/Hermes-3-Llama-3.1-8B-GGUF",
-    ggufFile: "Hermes-3-Llama-3.1-8B-Q4_K_M.gguf",
-    params: "8B",
-    quant: "Q4_K_M",
-    sizeGb: 4.9,
-    minRamGb: 10,
-    category: "tools",
-    bucket: "mid",
-    blurb: "Nous Hermes 3. Function calling, JSON mode, agentic tool use.",
-  },
-  {
-    id: "bonsai-8b-1bit",
-    displayName: "Bonsai 8B 1-bit (TurboQuant)",
-    hfRepo: "apothic/bonsai-8B-1bit-turboquant",
-    ggufFile: "models/gguf/8B/Bonsai-8B.gguf",
-    params: "8B",
-    quant: "1-bit TurboQuant",
+    id: "eliza-1-mobile-1_7b",
+    displayName: "Eliza-1 mobile",
+    hfRepo: "elizaos/eliza-1-mobile-1_7b",
+    ggufFile: "text/eliza-1-mobile-1_7b-32k.gguf",
+    params: "1.7B",
+    quant: "TurboQuant Q3/Q4 + QJL K-cache",
     sizeGb: 1.2,
-    minRamGb: 8,
-    category: "chat",
-    bucket: "mid",
-    blurb:
-      '1-bit weights with TurboQuant KV-cache compression (~4-4.6x KV memory cut) on phone CPU via the apothic/llama.cpp-1bit-turboquant fork. Auto-enabled when the AOSP runtime loads any GGUF whose filename contains "bonsai" (k=tbq4_0, v=tbq3_0); override with ELIZA_LLAMA_CACHE_TYPE_K/_V. Apple Silicon (Metal) and Vulkan GPU still run at full fp16 KV cache.',
-  },
-
-  // ─── large (8-20 GB) ────────────────────────────────────────────────
-  {
-    id: "deepseek-coder-v2-lite",
-    displayName: "DeepSeek Coder V2 Lite 16B",
-    hfRepo: "bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
-    ggufFile: "DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
-    params: "16B",
-    quant: "Q4_K_M",
-    sizeGb: 10.4,
-    minRamGb: 20,
-    category: "code",
-    bucket: "large",
-    blurb: "MoE coder. Near-32B coding quality with ~2.4B active params.",
-  },
-  {
-    id: "qwen2.5-coder-14b",
-    displayName: "Qwen2.5 Coder 14B Instruct",
-    hfRepo: "bartowski/Qwen2.5-Coder-14B-Instruct-GGUF",
-    ggufFile: "Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf",
-    params: "14B",
-    quant: "Q4_K_M",
-    sizeGb: 9.0,
-    minRamGb: 18,
-    category: "code",
-    bucket: "large",
-    blurb: "Sweet-spot coder for 16GB VRAM. Fluent in most languages.",
-  },
-  {
-    id: "mistral-small-3-24b",
-    displayName: "Mistral Small 3 24B Instruct",
-    hfRepo: "bartowski/Mistral-Small-24B-Instruct-2501-GGUF",
-    ggufFile: "Mistral-Small-24B-Instruct-2501-Q4_K_M.gguf",
-    params: "24B",
-    quant: "Q4_K_M",
-    sizeGb: 14.3,
-    minRamGb: 28,
-    category: "chat",
-    bucket: "large",
-    blurb: "Mistral's 2025 flagship small. Strong reasoning, creative writing.",
-  },
-  {
-    id: "gemma-2-27b",
-    displayName: "Gemma 2 27B Instruct",
-    hfRepo: "bartowski/gemma-2-27b-it-GGUF",
-    ggufFile: "gemma-2-27b-it-Q4_K_M.gguf",
-    params: "27B",
-    quant: "Q4_K_M",
-    sizeGb: 16.6,
-    minRamGb: 32,
-    category: "chat",
-    bucket: "large",
-    blurb: "Largest Gemma 2. Excellent for long-form writing and reasoning.",
-  },
-
-  // ─── xl (>20 GB) ────────────────────────────────────────────────────
-  {
-    id: "qwq-32b",
-    displayName: "QwQ 32B Reasoning",
-    hfRepo: "bartowski/QwQ-32B-GGUF",
-    ggufFile: "QwQ-32B-Q4_K_M.gguf",
-    params: "32B",
-    quant: "Q4_K_M",
-    sizeGb: 19.9,
-    minRamGb: 38,
-    category: "reasoning",
-    bucket: "xl",
-    blurb:
-      "Qwen reasoning model. Chain-of-thought, math, code. o1-class open model.",
-  },
-  {
-    id: "deepseek-r1-distill-qwen-32b",
-    displayName: "DeepSeek R1 Distill Qwen 32B",
-    hfRepo: "bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
-    ggufFile: "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
-    params: "32B",
-    quant: "Q4_K_M",
-    sizeGb: 19.9,
-    minRamGb: 38,
-    category: "reasoning",
-    bucket: "xl",
-    blurb:
-      "R1 reasoning distilled into Qwen-32B. 128k context, strong math/code.",
-  },
-
-  // ─── eliza-1 series (Milady fine-tunes of Qwen3.5/3.6) ──────────────
-  // Published from training/scripts/push_model_to_hf.py — quant lineage
-  // is per-K-quant (one HF repo per Q4_K_M / Q5_K_M / Q6_K).
-  {
-    id: "eliza-1-2b",
-    displayName: "Eliza-1 2B (Qwen3.5)",
-    hfRepo: "elizaos/eliza-1-2b-gguf-q4_k_m",
-    ggufFile: "eliza-1-2b-Q4_K_M.gguf",
-    params: "2B",
-    quant: "Q4_K_M",
-    sizeGb: 1.3,
     minRamGb: 4,
     category: "chat",
     bucket: "small",
+    contextLength: 32768,
+    tokenizerFamily: "eliza1",
     blurb:
-      "Milady's smallest fine-tune. 16GB-VRAM-friendly daily driver tuned for the elizaOS prompt and structured chat output.",
+      "Eliza-1 mobile — modern phone default. Fused text + voice with TurboQuant Q3/Q4 and QJL K-cache.",
   },
+
+  // ─── Eliza-1 desktop (laptops, 24GB phones, 48GB Mac) ───────────────
   {
-    id: "eliza-1-9b",
-    displayName: "Eliza-1 9B (Qwen3.5)",
-    hfRepo: "elizaos/eliza-1-9b-gguf-q4_k_m",
-    ggufFile: "eliza-1-9b-Q4_K_M.gguf",
+    id: "eliza-1-desktop-9b",
+    displayName: "Eliza-1 desktop",
+    hfRepo: "elizaos/eliza-1-desktop-9b",
+    ggufFile: "text/eliza-1-desktop-9b-64k.gguf",
     params: "9B",
-    quant: "Q4_K_M",
+    quant: "TurboQuant Q4 + QJL + Polar",
     sizeGb: 5.4,
     minRamGb: 12,
     category: "chat",
     bucket: "mid",
+    contextLength: 65536,
+    tokenizerFamily: "eliza1",
     blurb:
-      "Workstation-class Milady tune with 128k context, agentic tool calling, and structured output.",
+      "Eliza-1 desktop — laptop / 24 GB phone / 48 GB Mac default. Fused text + voice + vision with TurboQuant Q4, QJL, PolarQuant.",
   },
+
+  // ─── Eliza-1 pro (96GB+ Mac, high-VRAM desktop) ─────────────────────
   {
-    id: "eliza-1-27b",
-    displayName: "Eliza-1 27B (Qwen3.6)",
-    hfRepo: "elizaos/eliza-1-27b-gguf-q4_k_m",
-    ggufFile: "eliza-1-27b-Q4_K_M.gguf",
+    id: "eliza-1-pro-27b",
+    displayName: "Eliza-1 pro",
+    hfRepo: "elizaos/eliza-1-pro-27b",
+    ggufFile: "text/eliza-1-pro-27b-128k.gguf",
     params: "27B",
-    quant: "Q4_K_M",
+    quant: "TurboQuant Q4 + QJL + Polar",
     sizeGb: 16.8,
     minRamGb: 32,
     category: "chat",
     bucket: "large",
+    contextLength: 131072,
+    tokenizerFamily: "eliza1",
     blurb:
-      "Cloud-tier Milady tune. Best agentic + tool-calling quality in the eliza-1 series; 128k context, 256k native window.",
+      "Eliza-1 pro — 96 GB+ Mac and high-VRAM desktop default. Fused text + voice + vision; longest-context Eliza-1 tier on workstation hardware.",
   },
+
+  // ─── Eliza-1 server (workstation / server) ──────────────────────────
+  {
+    id: "eliza-1-server-h200",
+    displayName: "Eliza-1 server",
+    hfRepo: "elizaos/eliza-1-server-h200",
+    ggufFile: "text/eliza-1-server-h200-256k.gguf",
+    params: "27B",
+    quant: "CUDA TurboQuant + QJL + Polar",
+    sizeGb: 16.8,
+    minRamGb: 96,
+    category: "chat",
+    bucket: "large",
+    contextLength: 262144,
+    tokenizerFamily: "eliza1",
+    blurb:
+      "Eliza-1 server — H200-class workstation / server. CUDA TurboQuant + QJL + Polar with the largest context window in the line.",
+  },
+
 ];
 
 export function findCatalogModel(id: string): CatalogModel | undefined {
@@ -308,9 +167,8 @@ export function buildHuggingFaceResolveUrl(model: CatalogModel): string {
   const base =
     process.env.ELIZA_HF_BASE_URL?.trim().replace(/\/+$/, "") ||
     "https://huggingface.co";
-  // Encode each path segment separately so nested layouts like
-  // `models/gguf/8B/Bonsai-8B.gguf` keep their slashes (HF resolve URLs
-  // require a real path, not a `%2F`-mangled basename).
+  // Encode each path segment separately so nested bundle layouts like
+  // `text/eliza-1-mobile-1_7b-32k.gguf` keep their slashes.
   const encodedPath = model.ggufFile
     .split("/")
     .map((segment) => encodeURIComponent(segment))

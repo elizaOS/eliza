@@ -1,4 +1,4 @@
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 
 // ---------------------------------------------------------------------------
@@ -65,6 +65,10 @@ export interface SendPushResult {
 // Client
 // ---------------------------------------------------------------------------
 
+/** Hard timeout on the Ntfy publish HTTP call. Push delivery is best-effort,
+ *  so we cap latency rather than letting a slow upstream stall the caller. */
+const NTFY_PUBLISH_TIMEOUT_MS = 10_000;
+
 /** Validates and coerces priority to the 1–5 range. */
 function normalizePriority(value: number | undefined): NtfyPriority {
   if (value === undefined) return 3;
@@ -101,7 +105,7 @@ export async function sendPush(
   const span = createIntegrationTelemetrySpan({
     boundary: "lifeops",
     operation: "ntfy_publish",
-    timeoutMs: 10_000,
+    timeoutMs: NTFY_PUBLISH_TIMEOUT_MS,
   });
 
   let response: Response;
@@ -110,7 +114,7 @@ export async function sendPush(
       method: "POST",
       headers,
       body: request.message,
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(NTFY_PUBLISH_TIMEOUT_MS),
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);

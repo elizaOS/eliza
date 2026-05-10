@@ -1,14 +1,18 @@
-import type { UnknownField } from "@bufbuild/protobuf";
-import type {
-	JsonObject,
-	Content as ProtoContent,
-	JsonValue as ProtoJsonValue,
-	Media as ProtoMedia,
-	MentionContext as ProtoMentionContext,
-} from "./proto.js";
+/**
+ * JSON-serializable primitive value.
+ */
+export type JsonValue =
+	| string
+	| number
+	| boolean
+	| null
+	| JsonValue[]
+	| { [key: string]: JsonValue };
 
-// Re-export JsonValue for use by other modules
-export type JsonValue = ProtoJsonValue;
+/**
+ * JSON-serializable object (used for dynamic properties).
+ */
+export type JsonObject = { [key: string]: JsonValue };
 
 /**
  * Defines a UUID as a string for protobuf interoperability.
@@ -60,7 +64,7 @@ export function asUUID(id: string): UUID {
  * Allowed value types for content dynamic properties
  */
 export type ContentValue =
-	| ProtoJsonValue
+	| JsonValue
 	| undefined
 	| ContentValue[]
 	| { [key: string]: ContentValue };
@@ -70,20 +74,7 @@ export type ContentValue =
  * This is the primary data structure for messages exchanged between
  * users, agents, and the system.
  */
-export interface Content
-	extends Omit<
-		ProtoContent,
-		| "$typeName"
-		| "$unknown"
-		| "actions"
-		| "providers"
-		| "attachments"
-		| "channelType"
-		| "inReplyTo"
-		| "mentionContext"
-		| "responseMessageId"
-		| "responseId"
-	> {
+export interface Content {
 	/** The agent's internal thought process */
 	thought?: string;
 
@@ -167,18 +158,14 @@ export interface Content
 		| MentionContext
 		| Media[]
 		| Content
-		| UnknownField[]
 		| undefined;
 }
 
 /**
  * Platform-provided metadata about mentions.
  * Contains ONLY technical facts from the platform API.
- * This allows basic-capabilities to make intelligent decisions about responding
- * while keeping platform-specific logic isolated.
  */
-export interface MentionContext
-	extends Omit<ProtoMentionContext, "$typeName" | "$unknown"> {
+export interface MentionContext {
 	/** Platform native mention (@Discord, @Telegram, etc.) */
 	isMention: boolean;
 
@@ -195,10 +182,7 @@ export interface MentionContext
 /**
  * Represents a media attachment
  */
-export type Media = Omit<
-	ProtoMedia,
-	"$typeName" | "$unknown" | "contentType"
-> & {
+export interface Media {
 	/** Unique identifier */
 	id: string;
 
@@ -219,7 +203,7 @@ export type Media = Omit<
 
 	/** Content type */
 	contentType?: ContentType;
-};
+}
 
 export const ContentType = {
 	IMAGE: "image",
@@ -241,10 +225,10 @@ export type ContentType = (typeof ContentType)[keyof typeof ContentType];
  *
  * The Record<string, unknown> union member ensures that domain types like
  * ContactInfo, RelationshipData, etc. are accepted without requiring
- * unsafe 'as unknown as' casts.
+ * unsafe double assertions.
  */
 export type MetadataValue =
-	| ProtoJsonValue
+	| JsonValue
 	| undefined
 	| MetadataValue[]
 	| { readonly [key: string]: MetadataValue | undefined }

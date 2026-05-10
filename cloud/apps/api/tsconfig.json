@@ -20,6 +20,10 @@
       "@/db/*": ["../../packages/db/*"],
       "@/types/*": ["../../packages/types/*"],
       "@/api/*": ["./*"],
+      "@elizaos/billing": ["../../packages/billing/src/index.ts"],
+      "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
+      "drizzle-orm": ["../../../plugins/plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
       "@/*": ["../../*"]
     }
   },

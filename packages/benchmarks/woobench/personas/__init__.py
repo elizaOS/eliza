@@ -2,6 +2,7 @@
 
 from .true_believer import create_true_believer_tarot
 from .skeptic import create_skeptic_tarot
+from .scientist import create_scientist_tarot
 from .curious_newbie import create_curious_newbie_iching
 from .time_waster import create_time_waster_tarot
 from .scammer import create_scammer_astrology, create_scammer_tarot
@@ -12,6 +13,7 @@ from .antagonist import create_antagonist_tarot, create_antagonist_iching
 ALL_PERSONAS = [
     create_true_believer_tarot,
     create_skeptic_tarot,
+    create_scientist_tarot,
     create_curious_newbie_iching,
     create_time_waster_tarot,
     create_scammer_astrology,
@@ -27,6 +29,7 @@ ALL_PERSONAS = [
 __all__ = [
     "create_true_believer_tarot",
     "create_skeptic_tarot",
+    "create_scientist_tarot",
     "create_curious_newbie_iching",
     "create_time_waster_tarot",
     "create_scammer_astrology",

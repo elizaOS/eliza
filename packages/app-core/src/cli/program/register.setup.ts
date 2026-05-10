@@ -1,10 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveConfigPath } from "@elizaos/agent";
+import { formatDocsLink, theme } from "@elizaos/shared";
 import type { Command } from "commander";
 import JSON5 from "json5";
-import { formatDocsLink } from "../../terminal/links";
-import { theme } from "../../terminal/theme";
 import { runCommandWithRuntime } from "../cli-utils";
 
 const defaultRuntime = { error: console.error, exit: process.exit };
@@ -317,9 +316,9 @@ export function registerSetupCommand(program: Command) {
         wizard: boolean;
       }) => {
         await runCommandWithRuntime(defaultRuntime, async () => {
-          const { loadElizaConfig } = await import("../../config/config");
+          const { loadElizaConfig } = await import("@elizaos/agent");
           const { ensureAgentWorkspace, resolveDefaultAgentWorkspaceDir } =
-            await import("@elizaos/agent/providers/workspace");
+            await import("@elizaos/agent");
 
           const configPath = resolveConfigPath();
           const keyFromStdin = opts.keyStdin ? await readStdinValue() : "";

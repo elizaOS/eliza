@@ -8,17 +8,27 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import sqlPlugin from "@elizaos/plugin-sql";
+import workflowPlugin from "@elizaos/plugin-workflow";
 import { getAdvertisedServerUrl } from "./config";
 import { type DispatchResult, dispatchEvent, type JsonObject } from "./handlers/event";
 import { logger } from "./logger";
 import { getRedis } from "./redis";
 
-interface AgentEntry {
+interface AgentEntryBase {
   agentId: string;
   characterRef: string;
-  runtime: IAgentRuntime;
-  state: "running" | "stopped";
 }
+
+interface RunningAgentEntry extends AgentEntryBase {
+  runtime: IAgentRuntime;
+  state: "running";
+}
+
+interface StoppedAgentEntry extends AgentEntryBase {
+  state: "stopped";
+}
+
+type AgentEntry = RunningAgentEntry | StoppedAgentEntry;
 
 /**
  * Platform metadata forwarded by the gateway webhook alongside a user message.
@@ -215,7 +225,6 @@ export class AgentManager {
     this.agents.set(agentId, {
       agentId,
       characterRef,
-      runtime: null as unknown as IAgentRuntime,
       state: "stopped",
     });
 
@@ -230,7 +239,7 @@ export class AgentManager {
       });
 
       // Priority: elizacloud (proxy) > openai
-      const plugins: Plugin[] = [sqlPlugin as Plugin];
+      const plugins: Plugin[] = [sqlPlugin as Plugin, workflowPlugin as Plugin];
       if (process.env.ELIZAOS_CLOUD_API_KEY) {
         const elizacloudPlugin = await import("@elizaos/plugin-elizacloud");
         plugins.push(elizacloudPlugin.default as Plugin);
@@ -269,7 +278,11 @@ export class AgentManager {
     if (!entry) throw new Error("Agent not found");
     if (entry.state === "stopped") return;
     await entry.runtime.stop();
-    entry.state = "stopped";
+    this.agents.set(id, {
+      agentId: entry.agentId,
+      characterRef: entry.characterRef,
+      state: "stopped",
+    });
     await this.refreshRedisState();
   }
 
@@ -281,6 +294,16 @@ export class AgentManager {
     this.agents.delete(id);
     await getRedis().del(`agent:${id}:server`);
     await this.refreshRedisState();
+  }
+
+  /** Runs work against a loaded runtime while participating in drain tracking. */
+  async useRuntime<T>(agentId: string, fn: (runtime: IAgentRuntime) => Promise<T>): Promise<T> {
+    this.inFlight++;
+    try {
+      return await fn(this.getRuntime(agentId));
+    } finally {
+      this.inFlight--;
+    }
   }
 
   /**
@@ -387,7 +410,11 @@ export class AgentManager {
     for (const [, entry] of this.agents) {
       if (entry.state === "running") {
         await entry.runtime.stop();
-        entry.state = "stopped";
+        this.agents.set(entry.agentId, {
+          agentId: entry.agentId,
+          characterRef: entry.characterRef,
+          state: "stopped",
+        });
       }
     }
   }

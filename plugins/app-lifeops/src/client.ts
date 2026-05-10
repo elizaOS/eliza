@@ -1,9 +1,8 @@
 // Side-effect: register LifeOps methods on ElizaClient.
 import "./api/client-lifeops.js";
-// `ElizaClient` MUST come from `@elizaos/app-core/api/client-base` (the
-// source module) — the `@elizaos/app-core` barrel imports this file as a
-// side-effect and would resolve to `undefined` here at module-init time.
-import { ElizaClient } from "@elizaos/app-core/api/client-base";
+// `ElizaClient` comes from the UI barrel so the client extension augments the
+// same class instance used by the frontend shell.
+import { ElizaClient } from "@elizaos/ui";
 import {
   type AppBlockerPermissionResult,
   type AppBlockerPluginLike,
@@ -14,7 +13,7 @@ import {
   type InstalledApp,
   type SelectAppsResult,
   type UnblockAppsResult,
-} from "@elizaos/app-core/bridge/native-plugins";
+} from "@elizaos/ui";
 
 function requireAppBlockerPlugin(): AppBlockerPluginLike {
   const plugin = getAppBlockerPlugin();
@@ -32,7 +31,7 @@ function requireAppBlockerPlugin(): AppBlockerPluginLike {
   return plugin;
 }
 
-declare module "@elizaos/app-core/api/client-base" {
+declare module "@elizaos/ui" {
   interface ElizaClient {
     checkAppBlockerPermissions(): Promise<AppBlockerPermissionResult>;
     requestAppBlockerPermissions(): Promise<AppBlockerPermissionResult>;

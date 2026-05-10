@@ -1,42 +1,20 @@
 /**
- * Swarm Coordinator: event bridge and autonomous coordination loop.
+ * Swarm Coordinator: autonomous coordination loop bound to PTYService.
  *
- * Bridges PTY session events to:
- * 1. SSE clients (frontend dashboard) for real-time status
- * 2. LLM coordination decisions for unhandled blocking prompts
+ * Subscribes to PTY session events and routes unhandled blocking prompts
+ * through an autonomous LLM decision pipeline. Heavy logic is extracted into
+ * swarm-decision-loop.ts (blocked / turn-complete / LLM decisions) and
+ * swarm-idle-watchdog.ts (idle session scanning).
  *
- * The coordinator subscribes to PTYService session events and:
- * - Skips events already handled by auto-response rules (autoResponded=true)
- * - Routes unhandled blocking prompts through supervision levels:
- *   - autonomous: LLM decides immediately
- *   - confirm: queued for human approval
- *   - notify: broadcast only (no action)
- *
- * Heavy logic is extracted into:
- * - swarm-decision-loop.ts  (blocked, turn-complete, LLM decisions)
- * - swarm-idle-watchdog.ts  (idle session scanning)
- *
- * ## Status (2026-05-07): legacy autonomous-coordinator path
- *
- * This coordinator is the LEGACY orchestration path. It is bound only to
- * `PTYService` and is naturally dormant for sessions spawned via
- * `@elizaos/plugin-agent-orchestrator`. The canonical path is now:
- *
+ * It is bound only to PTYService and is dormant for sessions spawned via
+ * AcpService. The ACP flow is:
  *   AcpService session events → SubAgentRouter
  *     → synthetic Memory posted to runtime.messageService.handleMessage
- *     → main agent's planner decides REPLY / SEND_TO_AGENT / both
- *     → activeSubAgentsProvider supplies cache-stable session context
+ *     → main agent's planner decides REPLY / SEND_TO_AGENT / both.
  *
- * Prefer the runtime-driven path. New work should not extend this
- * coordinator. The blocking-prompt and turn-complete logic here will be
- * retired once all PTY-spawned call sites migrate to AcpService.
- *
- * See `plugins/plugin-acpx/docs/sub-agent-routing.md` for the new design.
+ * See `docs/sub-agent-routing.md`.
  *
  * @module services/swarm-coordinator
- * @deprecated New sessions should use plugin-acpx's SubAgentRouter; this
- *   coordinator remains only for back-compat with PTY-spawned sessions
- *   that have not yet migrated.
  */
 
 import { promises as fs } from "node:fs";
@@ -86,6 +64,7 @@ import {
   executeDecision as execDecision,
   handleBlocked,
   handleTurnComplete,
+  shouldIgnoreStoppedEventDuringCompletion,
 } from "./swarm-decision-loop.js";
 import { SwarmHistory } from "./swarm-history.js";
 import { scanIdleSessions } from "./swarm-idle-watchdog.js";
@@ -151,6 +130,8 @@ export interface TaskCompletionSummary {
   originalTask: string;
   status: string;
   completionSummary: string;
+  /** Validator-accepted user-facing summary, when a completion validator ran. */
+  validationSummary?: string;
   /** Subagent's working directory — used by synthesis to read the final
    *  assistant response from the Claude Code session jsonl after the PTY
    *  session has been cleaned up. */
@@ -204,6 +185,8 @@ export interface TaskContext {
   taskDelivered: boolean;
   /** Summary of what the agent accomplished, populated on completion. */
   completionSummary?: string;
+  /** Validator-accepted summary to use as final-answer evidence. */
+  validationSummary?: string;
   /** Index into sharedDecisions[]: tracks which decisions this agent has already seen. */
   lastSeenDecisionIndex: number;
   /** Timestamp of last coordinator-sent input. Used to suppress stall/turn-complete
@@ -475,9 +458,7 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
    */
   private wireScratchDecisionCallback(): void {
     if (this.scratchDecisionWired || !this.chatCallback) return;
-    const wsService = this.runtime.getService(
-      "CODING_WORKSPACE_SERVICE",
-    ) as unknown as
+    const wsService = this.runtime.getService("CODING_WORKSPACE_SERVICE") as
       | {
           setScratchDecisionCallback?: (
             cb: (record: {
@@ -678,6 +659,9 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
       taskDelivered: raw.taskDelivered === true,
       ...(typeof raw.completionSummary === "string"
         ? { completionSummary: raw.completionSummary }
+        : {}),
+      ...(typeof raw.validationSummary === "string"
+        ? { validationSummary: raw.validationSummary }
         : {}),
       lastSeenDecisionIndex:
         typeof raw.lastSeenDecisionIndex === "number"
@@ -1896,6 +1880,9 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
       lastSeenDecisionIndex: taskCtx.lastSeenDecisionIndex,
       lastInputSentAt: taskCtx.lastInputSentAt,
       stoppedAt: taskCtx.stoppedAt,
+      metadata: {
+        validationSummary: taskCtx.validationSummary ?? null,
+      },
     });
     if (!taskCtx.taskNodeId) {
       return;
@@ -1913,6 +1900,7 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
       repo: taskCtx.repo ?? null,
       metadata: {
         completionSummary: taskCtx.completionSummary ?? null,
+        validationSummary: taskCtx.validationSummary ?? null,
       },
     });
 
@@ -1936,6 +1924,7 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
           releasedAt: new Date().toISOString(),
           metadata: {
             completionSummary: taskCtx.completionSummary ?? null,
+            validationSummary: taskCtx.validationSummary ?? null,
           },
         });
       }
@@ -2879,6 +2868,28 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
         const coalesceTimer = setTimeout(() => {
           this.turnCompleteCoalesceTimers.delete(sessionId);
           const currentTask = this.tasks.get(sessionId);
+          if (
+            currentTask?.completionSummary &&
+            !this.ptyService?.getSession(sessionId)
+          ) {
+            currentTask.status = "completed";
+            this.log(
+              `Skipping coalesced turn-complete for "${currentTask.label}": PTY is gone after captured completion`,
+            );
+            void this.syncTaskContext(currentTask)
+              .catch((err) => {
+                this.log(
+                  `Failed to sync completed task after coalesced turn-complete: ${err}`,
+                );
+              })
+              .then(() => checkAllTasksComplete(this))
+              .catch((err) => {
+                this.log(
+                  `Failed to finish swarm after coalesced completion: ${err}`,
+                );
+              });
+            return;
+          }
           // Accept both "active" and "tool_running" as live pre-validation
           // states. Subagents that use tools (curl, file ops, etc.) sit in
           // "tool_running" almost continuously, so by the time task_complete
@@ -2956,6 +2967,18 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
       }
 
       case "stopped": {
+        if (
+          shouldIgnoreStoppedEventDuringCompletion({
+            task: taskCtx,
+            hasInFlightDecision: this.inFlightDecisions.has(sessionId),
+            hasPendingTurnComplete: this.pendingTurnComplete.has(sessionId),
+          })
+        ) {
+          this.log(
+            `Ignoring stopped event for ${taskCtx.label}; completion is already being finalized`,
+          );
+          break;
+        }
         // Don't downgrade "completed" or "error" to "stopped": the async
         // stopSession fires after executeDecision already marked the task.
         if (taskCtx.status !== "completed" && taskCtx.status !== "error") {
@@ -3178,7 +3201,8 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
     promptText: string,
     recentOutput: string,
   ): Promise<CoordinationLLMResponse | null> {
-    // Re-export for backward compatibility. Delegates to module function.
+    // Keep this method on the coordinator while the implementation lives in
+    // the decision-loop module.
     const { makeCoordinationDecision: mkDecision } = await import(
       "./swarm-decision-loop.js"
     );

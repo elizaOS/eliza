@@ -5,7 +5,7 @@ export { logger } from "../logger";
 export {
 	addHeader,
 	composePromptFromState,
-	parseKeyValueXml,
+	parseKeyValueXml, // audit:allowlist - retained for cloud/ XML evaluators; new prompts must use JSON
 } from "../utils";
 export * from "./agent";
 // Channel configuration types for plugins
@@ -13,10 +13,11 @@ export * from "./channel-config";
 export * from "./components";
 export * from "./contexts";
 export * from "./database";
+export * from "./documents";
 export * from "./environment";
+export * from "./evaluator";
 export * from "./events";
 export * from "./hook";
-export * from "./knowledge";
 export * from "./memory";
 export * from "./memory-storage";
 export * from "./messaging";
@@ -34,13 +35,6 @@ export * from "./prompt-optimization-hooks";
 export * from "./prompt-optimization-score-card";
 export * from "./prompt-optimization-trace";
 export * from "./prompts";
-// Re-export proto utilities for JSON conversion
-// JsonValue is also exported from primitives.ts, but we explicitly export it here for clarity
-export type { JsonObject, JsonValue } from "./proto.js";
-// Proto-generated types (single source of truth)
-// These types are generated from /schemas/eliza/v1/*.proto
-// Use these for new code and cross-language interoperability
-export * as proto from "./proto.js";
 export * from "./runtime";
 export * from "./schema";
 export * from "./schema-builder";

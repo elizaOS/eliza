@@ -12,28 +12,12 @@ export type { ToolPolicyConfig, ToolProfileId } from "./channel-config";
 import type { ToolPolicyConfig, ToolProfileId } from "./channel-config";
 
 /**
- * Canonical tool name aliases for backward compatibility.
- * Maps legacy names to canonical names.
- */
-export const TOOL_NAME_ALIASES: Record<string, string> = {
-	bash: "exec",
-	"apply-patch": "apply_patch",
-};
-
-/**
  * Predefined tool groups for easier policy configuration.
  * Use "group:<name>" syntax in policy configs (e.g., "group:fs").
  */
 export const TOOL_GROUPS: Record<string, string[]> = {
-	// Memory tools and registered scratchpad actions.
-	"group:memory": [
-		"scratchpad_add",
-		"scratchpad_search",
-		"scratchpad_read",
-		"scratchpad_replace",
-		"scratchpad_delete",
-		"read_attachment",
-	],
+	// Memory tools.
+	"group:memory": ["read_attachment"],
 	// Web tools
 	"group:web": ["web_search", "web_fetch"],
 	// Basic workspace/file tools
@@ -70,11 +54,6 @@ export const TOOL_GROUPS: Record<string, string[]> = {
 		"sessions_send",
 		"sessions_spawn",
 		"session_status",
-		"scratchpad_add",
-		"scratchpad_search",
-		"scratchpad_read",
-		"scratchpad_replace",
-		"scratchpad_delete",
 		"read_attachment",
 		"read_file",
 		"web_search",
@@ -176,15 +155,17 @@ export interface ToolPolicyResult {
 // ============================================================================
 
 /**
- * Normalize a tool name to its canonical form.
- * Handles aliases and case normalization.
+ * Normalize a plugin-tool name for case-insensitive policy matching.
  *
- * @param name - The tool name to normalize
- * @returns The canonical tool name
+ * IMPORTANT: this only normalizes plugin-tool names (e.g. `web_search`,
+ * `read_file`) used by the tool-policy engine. Action names (e.g.
+ * `MESSAGE`) are matched verbatim by the planner — the action name
+ * shown in the system prompt's available-actions list is the exact string
+ * the LLM must pass back as `actionName` in `call_action`. There is no
+ * alias mapping for actions; the displayed name IS the invocation key.
  */
 export function normalizeToolName(name: string): string {
-	const normalized = name.trim().toLowerCase();
-	return TOOL_NAME_ALIASES[normalized] ?? normalized;
+	return name.trim().toLowerCase();
 }
 
 /**

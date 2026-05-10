@@ -8,7 +8,7 @@ describe("LINE message connector", () => {
       registerMessageConnector: vi.fn(),
       registerSendHandler: vi.fn(),
       getRoom: vi.fn(),
-    } as unknown as IAgentRuntime;
+    } as IAgentRuntime;
     const service = Object.create(LineService.prototype) as LineService;
     const sendLocationSpy = vi
       .spyOn(service, "sendLocationMessage")

@@ -42,7 +42,7 @@ Un nuevo [conector BlueBubbles](/es/connectors/bluebubbles) permite a tu agente 
 - **Pulido de chat y páginas** — El contexto de chat con ámbito de página, el encabezado del widget de chat, el título del chat y la barra lateral del chat se han refinado para diseños más limpios y un contexto más confiable al cambiar entre páginas.
 - **Modernización de la barra lateral y la vista de apps** — Los controles de la barra lateral del panel de control, el catálogo de [vista de apps](/es/dashboard/apps) y la barra lateral de apps se han limpiado con controles colapsados y mayor densidad. El editor de personajes, el diseño de [personaje](/es/agents/character-interface), el panel de personajes y la barra lateral de personajes también se han pulido para una experiencia de navegación más consistente.
 - **Limpieza de la barra lateral de conectores** — La barra lateral de configuración de conectores se ha limpiado y pulido, con conmutadores más claros e interruptores de conectores para habilitar/deshabilitar plataformas individuales.
-- **Cargas de conocimiento embebidas** — El sistema de [conocimiento](/es/guides/knowledge) ahora admite cargas embebidas directamente desde el editor de personajes, para que puedas adjuntar material de referencia mientras configuras la personalidad de tu agente.
+- **Cargas de conocimiento embebidas** — El sistema de [conocimiento](/es/guides/documents) ahora admite cargas embebidas directamente desde el editor de personajes, para que puedas adjuntar material de referencia mientras configuras la personalidad de tu agente.
 - **Facturación y estado de X (Twitter)** — La facturación del conector X ahora se muestra junto con otros usos en la nube, y los informes de estado se han reforzado con nueva cobertura de pruebas.
 - **Corrección de migración en la nube** — Se ha resuelto un problema de migración que afectaba a los agentes desplegados en la nube para que las actualizaciones se apliquen limpiamente en el primer arranque.
 - **Modos de onboarding de runtime en iOS** — La aplicación de iOS ahora admite modos distintos de compilación de runtime y onboarding, brindando a los usuarios móviles una experiencia de primera ejecución más fluida.
@@ -210,7 +210,7 @@ Cuando el backend de tu agente se vuelve inaccesible, el dashboard ahora muestra
 - **Agrupación de escenarios en trayectorias** — La [vista de trayectorias](/es/advanced/trajectories) ahora agrupa llamadas LLM relacionadas en escenarios nombrados con filtros de historial, facilitando la revisión y comparación del comportamiento del agente entre sesiones.
 - **Almacenamiento de memoria avanzado** — Tu agente ahora puede persistir memorias estructuradas más allá del historial de conversación predeterminado. Esto permite un mejor recuerdo de contexto entre sesiones y está disponible a través de la configuración del agente.
 - **Soporte de voz en la nube reforzado** — Los contenedores en la nube ahora incluyen dependencias nativas de codificación de audio, por lo que la voz de Discord y TTS funcionan de forma fiable sin configuración adicional. Cuando faltan las dependencias de voz, el sistema degrada de forma elegante con un error claro en lugar de fallar.
-- **Autoconfiguración del plugin de conocimiento** — El plugin de conocimiento ahora se habilita automáticamente cuando hay claves de API o un proveedor en la nube disponible, y detecta automáticamente tu proveedor de texto y modelo desde tu configuración existente. No se necesita configuración manual para empezar a usar el [conocimiento](/es/guides/knowledge).
+- **Autoconfiguración del plugin de conocimiento** — El plugin de conocimiento ahora se habilita automáticamente cuando hay claves de API o un proveedor en la nube disponible, y detecta automáticamente tu proveedor de texto y modelo desde tu configuración existente. No se necesita configuración manual para empezar a usar el [conocimiento](/es/guides/documents).
 
 <div id="bug-fixes">
 ## Correcciones de errores
@@ -721,7 +721,7 @@ Una nueva ventana independiente de Ajustes te da acceso rápido a las pestañas 
 ## Renovación del menú de la aplicación
 </div>
 
-La barra de menú ha sido reorganizada con un nuevo menú Agente que te da acceso con un clic a [Conocimiento](/es/guides/knowledge), [Habilidades](/es/plugins/skills), [Plugins](/es/plugins/overview) y [Conectores sociales](/es/guides/connectors). Los menús Archivo, Vista y Ventana también se han ampliado para una navegación más rápida.
+La barra de menú ha sido reorganizada con un nuevo menú Agente que te da acceso con un clic a [Conocimiento](/es/guides/documents), [Habilidades](/es/plugins/skills), [Plugins](/es/plugins/overview) y [Conectores sociales](/es/guides/connectors). Los menús Archivo, Vista y Ventana también se han ampliado para una navegación más rápida.
 
 <div id="interactive-tray-provider-management">
 ## Gestión interactiva de proveedores desde la bandeja
@@ -989,7 +989,7 @@ El nuevo plugin Blooio añade iMessage y SMS como un conector de mensajería de 
 ## Importación masiva de conocimiento
 </div>
 
-Ahora puedes subir múltiples archivos y carpetas enteras a la [base de conocimiento](/es/guides/knowledge) de una vez. Las importaciones grandes se procesan en lotes de transmisión para que no necesites subir archivos uno por uno.
+Ahora puedes subir múltiples archivos y carpetas enteras a la [base de conocimiento](/es/guides/documents) de una vez. Las importaciones grandes se procesan en lotes de transmisión para que no necesites subir archivos uno por uno.
 
 <div id="in-app-bug-reports">
 ## Reportes de errores dentro de la aplicación

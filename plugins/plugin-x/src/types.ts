@@ -17,11 +17,19 @@ import type { TwitterPostClient } from "./post";
  * Runtime-provided state passed into the Twitter client constructors.
  *
  * In practice this is either an empty object (when the runtime holds all
- * settings) or a subset of {@link TwitterConfig}. We intentionally do not
- * add an index signature here: extra, unknown keys should be pushed into
- * runtime settings rather than carried on `state`.
+ * settings), a subset of {@link TwitterConfig}, or an account-scoped state
+ * resolved by the plugin-local X account resolver. We intentionally do not add
+ * an index signature here: extra, unknown keys should be pushed into runtime
+ * settings or the connector account store rather than carried on `state`.
  */
-export type TwitterClientState = Partial<TwitterConfig>;
+export type TwitterClientState = Partial<TwitterConfig> & {
+  /**
+   * Connector account identifier this client instance is bound to. Defaults
+   * to "default" in single-account mode; resolved via the connector account
+   * manager or the plugin-local resolver otherwise.
+   */
+  accountId?: string;
+};
 
 /**
  * Defines a type for media data, which includes a Buffer representing the actual data
@@ -64,21 +72,6 @@ export interface ITwitterClient {
   interaction?: TwitterInteractionClient;
 }
 
-export const ServiceType = {
-  TWITTER: "twitter",
-} as const;
-
-/**
- * Extended interface for TwitterService with proper typing
- */
-export interface ITwitterService extends Service {
-  twitterClient?: TwitterClientInstance;
-}
-
-// Import types for the service interface
-import type { Service } from "@elizaos/core";
-import type { TwitterClientInstance } from "./services/x.service";
-
 /**
  * Twitter-specific tweet type
  */
@@ -107,7 +100,7 @@ export function convertClientTweetToCoreTweet(tweet: ClientTweet): Tweet {
   const mentions = Array.isArray(tweet.mentions)
     ? tweet.mentions
         .filter(
-          (mention): mention is Mention =>
+          (mention): mention is Mention & { username: string } =>
             typeof mention === "object" &&
             mention !== null &&
             typeof mention.username === "string",
@@ -122,7 +115,7 @@ export function convertClientTweetToCoreTweet(tweet: ClientTweet): Tweet {
           const tagObj = tag as { text?: string };
           return typeof tagObj.text === "string" ? tagObj.text : "";
         })
-        .filter((text) => text !== "")
+        .filter((text): text is string => text !== "")
     : [];
 
   const urls = Array.isArray(tweet.urls)
@@ -134,7 +127,7 @@ export function convertClientTweetToCoreTweet(tweet: ClientTweet): Tweet {
             ? urlObj.expanded_url
             : "";
         })
-        .filter((url) => url !== "")
+        .filter((url): url is string => url !== "")
     : [];
 
   return {
@@ -220,10 +213,8 @@ export interface TwitterUserRef {
 /**
  * Twitter-specific message received payload
  */
-export interface TwitterMessageReceivedPayload extends Omit<
-  MessagePayload,
-  "message"
-> {
+export interface TwitterMessageReceivedPayload
+  extends Omit<MessagePayload, "message"> {
   message: TwitterMemory;
   tweet: Tweet;
   user: TwitterUserRef;
@@ -254,10 +245,8 @@ export interface TwitterReactionReceivedPayload extends MessagePayload {
 /**
  * Twitter-specific quote tweet received payload
  */
-export interface TwitterQuoteReceivedPayload extends Omit<
-  MessagePayload,
-  "message" | "reaction"
-> {
+export interface TwitterQuoteReceivedPayload
+  extends Omit<MessagePayload, "message" | "reaction"> {
   /** The original tweet that was quoted */
   quotedTweet: Tweet;
   /** The quote tweet */
@@ -278,10 +267,8 @@ export interface TwitterQuoteReceivedPayload extends Omit<
 /**
  * Twitter-specific mention received payload
  */
-export interface TwitterMentionReceivedPayload extends Omit<
-  MessagePayload,
-  "message"
-> {
+export interface TwitterMentionReceivedPayload
+  extends Omit<MessagePayload, "message"> {
   /** The tweet containing the mention */
   tweet: Tweet;
   /** The user who mentioned */

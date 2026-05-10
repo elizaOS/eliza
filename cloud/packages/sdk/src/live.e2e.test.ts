@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { CloudApiClient, createElizaCloudClient, ElizaCloudClient } from "./index";
+import { CloudApiClient, createElizaCloudClient, ElizaCloudClient } from "./index.js";
+import { DEFAULT_ELIZA_CLOUD_API_BASE_URL, DEFAULT_ELIZA_CLOUD_BASE_URL } from "./types.js";
 
 const trimmed = (value: string | undefined): string | undefined => {
   if (value === undefined) return undefined;
@@ -8,8 +9,9 @@ const trimmed = (value: string | undefined): string | undefined => {
 };
 
 const liveEnabled = process.env.ELIZA_CLOUD_SDK_LIVE === "1";
-const baseUrl = trimmed(process.env.ELIZA_CLOUD_BASE_URL) ?? "https://www.elizacloud.ai";
-const apiBaseUrl = trimmed(process.env.ELIZA_CLOUD_API_BASE_URL) ?? `${baseUrl}/api/v1`;
+const baseUrl = trimmed(process.env.ELIZA_CLOUD_BASE_URL) ?? DEFAULT_ELIZA_CLOUD_BASE_URL;
+const apiBaseUrl =
+  trimmed(process.env.ELIZA_CLOUD_API_BASE_URL) ?? DEFAULT_ELIZA_CLOUD_API_BASE_URL;
 const apiKey =
   trimmed(process.env.ELIZAOS_CLOUD_API_KEY) ?? trimmed(process.env.ELIZA_CLOUD_API_KEY);
 const sessionToken = trimmed(process.env.ELIZA_CLOUD_SESSION_TOKEN);
@@ -214,7 +216,7 @@ containerDescribe("ElizaCloudClient real API e2e: container lifecycle", () => {
     const created = await client.createContainer({
       name: `sdk-e2e-${Date.now()}`,
       project_name: "sdk-e2e",
-      ecr_image_uri: imageUri,
+      image: imageUri,
     });
     const containerId = created.data.id;
     expect(containerId).toBeTruthy();
@@ -245,7 +247,9 @@ agentDescribe("ElizaCloudClient real API e2e: Eliza agent lifecycle", () => {
     try {
       await expect(client.getAgent(agentId)).resolves.toHaveProperty("success", true);
       await expect(
-        client.updateAgent(agentId, { agentName: created.data.agentName }),
+        client.updateAgent(agentId, {
+          agentName: created.data.agentName ?? undefined,
+        }),
       ).resolves.toBeTruthy();
       await expect(client.listAgentBackups(agentId)).resolves.toBeTruthy();
       await expect(

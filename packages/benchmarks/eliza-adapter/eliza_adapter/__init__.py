@@ -72,6 +72,18 @@ __all__.append("ElizaBridgeTrustHandler")
 from eliza_adapter.woobench import build_eliza_bridge_agent_fn  # noqa: F401  # noqa: E402
 __all__.append("build_eliza_bridge_agent_fn")
 
+# LifeOpsBench bridge — depends on the HTTP client. The MessageTurn type used
+# in the agent_fn return is imported lazily inside the builder, so this module
+# is importable even when the lifeops-bench package is not installed.
+from eliza_adapter.lifeops_bench import (  # noqa: F401  # noqa: E402
+    build_lifeops_bench_agent_fn,
+    fetch_world_state,
+    teardown_lifeops_session,
+)
+__all__.extend(
+    ["build_lifeops_bench_agent_fn", "fetch_world_state", "teardown_lifeops_session"]
+)
+
 # Optional: Solana bridge — only loaded when benchmarks.solana + voyager are on sys.path.
 try:
     from eliza_adapter.solana import ElizaBridgeSolanaExplorer  # noqa: F401

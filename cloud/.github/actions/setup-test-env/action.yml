@@ -40,12 +40,12 @@ runs:
       run: |
         for attempt in 1 2 3; do
           if [ "$attempt" -eq 3 ]; then
-            bun install --frozen-lockfile --verbose && exit 0
+            bun install --no-save --verbose && git diff --exit-code -- bun.lock && exit 0
           else
-            bun install --frozen-lockfile && exit 0
+            bun install --no-save && git diff --exit-code -- bun.lock && exit 0
           fi
 
-          echo "bun install attempt $attempt failed; retrying in 10s..."
+          echo "bun install attempt $attempt failed or changed bun.lock; retrying in 10s..."
           sleep 10
         done
 

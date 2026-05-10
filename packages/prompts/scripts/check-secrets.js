@@ -5,9 +5,17 @@
  * This is intentionally conservative: it only fails on patterns that strongly
  * resemble real credentials (or private key material) to avoid false positives.
  *
+ * Wave 1 of the prompt migration moved every prompt body from a sibling
+ * `.txt` file to a TypeScript template-literal export. The scanner now walks
+ * those TS prompt-source locations directly.
+ *
  * Scans:
- * - all .txt files under packages/prompts/prompts/
- * - all .txt files under plugin prompt folders (if plugins/ exists)
+ * - packages/prompts/src/**\/*.ts
+ * - packages/core/src/prompts.ts and packages/core/src/services/message.ts
+ * - plugins/* TS modules whose path matches `prompts.ts`,
+ *   `prompts/<name>.ts`, `workflow-prompts/<name>.ts`, or `templates.ts`
+ *
+ * Generated mirrors and test files are skipped.
  */
 
 import fs from "node:fs/promises";
@@ -20,39 +28,97 @@ const __dirname = path.dirname(__filename);
 const PROMPTS_PKG_DIR = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(PROMPTS_PKG_DIR, "..", "..");
 
-const PROMPTS_DIR = path.join(PROMPTS_PKG_DIR, "prompts");
-const PLUGINS_DIR = path.join(REPO_ROOT, "plugins");
+// Roots under which to look for prompt-bearing TS files.
+const PROMPT_SCAN_TS_ROOTS = [
+  "packages/prompts/src",
+  "packages/core/src",
+  "plugins",
+];
+
+// Always include these high-traffic prompt modules even if they don't match
+// the heuristic file-name patterns above.
+const PROMPT_SCAN_FILES = [
+  "packages/core/src/prompts.ts",
+  "packages/core/src/services/message.ts",
+  "plugins/plugin-music/src/actions/music-player-action-docs.ts",
+];
+
+const PROMPT_SCAN_FILE_PATTERNS = [
+  /(^|\/)prompts?\.ts$/,
+  /(^|\/)prompts\/[^/]+\.ts$/,
+  /(^|\/)workflow-prompts\/[^/]+\.ts$/,
+  /(^|\/)templates?\.ts$/,
+];
+
+const TEST_SOURCE_PATH_PATTERN =
+  /(^|\/)(__tests__|tests?|e2e)(\/|$)|\.(test|spec)\.tsx?$/;
+
+const SKIP_DIR_NAMES = new Set([
+  ".git",
+  ".turbo",
+  ".next",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "generated",
+]);
 
 /**
- * @param {string} dir
+ * @param {string} root
+ * @param {(absPath: string, relPath: string) => boolean} predicate
  * @returns {Promise<string[]>}
  */
-async function listPromptTxtFiles(dir) {
+async function walkFiles(root, predicate) {
   /** @type {string[]} */
   const out = [];
 
   /** @param {string} current */
   async function walk(current) {
-    const entries = await fs.readdir(current, { withFileTypes: true });
+    /** @type {Awaited<ReturnType<typeof fs.readdir>>} */
+    let entries;
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const entry of entries) {
       const full = path.join(current, entry.name);
       if (entry.isDirectory()) {
+        if (SKIP_DIR_NAMES.has(entry.name)) continue;
         await walk(full);
         continue;
       }
-      if (entry.isFile() && entry.name.endsWith(".txt")) {
-        out.push(full);
-      }
+      if (!entry.isFile()) continue;
+      const rel = path.relative(REPO_ROOT, full);
+      if (predicate(full, rel)) out.push(full);
     }
   }
 
-  try {
-    await walk(dir);
-  } catch (_e) {
-    // Directory might not exist (e.g., plugins/ in minimal checkouts).
-  }
-
+  await walk(root);
   return out;
+}
+
+/**
+ * @returns {Promise<string[]>}
+ */
+async function listPromptTsFiles() {
+  /** @type {Set<string>} */
+  const set = new Set();
+  for (const file of PROMPT_SCAN_FILES) {
+    set.add(path.join(REPO_ROOT, file));
+  }
+  for (const root of PROMPT_SCAN_TS_ROOTS) {
+    const absRoot = path.join(REPO_ROOT, root);
+    const files = await walkFiles(absRoot, (_abs, rel) => {
+      if (!rel.endsWith(".ts") && !rel.endsWith(".tsx")) return false;
+      if (TEST_SOURCE_PATH_PATTERN.test(rel)) return false;
+      if (/(^|\/)generated\//.test(rel)) return false;
+      return PROMPT_SCAN_FILE_PATTERNS.some((p) => p.test(rel));
+    });
+    for (const f of files) set.add(f);
+  }
+  return [...set].sort();
 }
 
 /**
@@ -128,25 +194,7 @@ function scanContent(filePath, content) {
 }
 
 async function main() {
-  const promptFiles = await listPromptTxtFiles(PROMPTS_DIR);
-
-  /** @type {string[]} */
-  let pluginPromptFiles = [];
-  try {
-    const pluginEntries = await fs.readdir(PLUGINS_DIR, {
-      withFileTypes: true,
-    });
-    for (const entry of pluginEntries) {
-      if (!entry.isDirectory()) continue;
-      const candidate = path.join(PLUGINS_DIR, entry.name, "prompts");
-      const files = await listPromptTxtFiles(candidate);
-      pluginPromptFiles = pluginPromptFiles.concat(files);
-    }
-  } catch {
-    // plugins directory missing; ok.
-  }
-
-  const allFiles = [...promptFiles, ...pluginPromptFiles].sort();
+  const allFiles = await listPromptTsFiles();
 
   /** @type {string[]} */
   const errors = [];
@@ -154,26 +202,27 @@ async function main() {
   const warnings = [];
 
   for (const file of allFiles) {
-    const content = await fs.readFile(file, "utf-8");
+    let content;
+    try {
+      content = await fs.readFile(file, "utf-8");
+    } catch {
+      continue;
+    }
     const result = scanContent(file, content);
     errors.push(...result.errors);
     warnings.push(...result.warnings);
   }
 
   if (warnings.length > 0) {
-    // eslint-disable-next-line no-console
     console.warn("\nPrompt secret scan warnings (review recommended):\n");
     for (const w of warnings) {
-      // eslint-disable-next-line no-console
       console.warn(`- ${w}`);
     }
   }
 
   if (errors.length > 0) {
-    // eslint-disable-next-line no-console
     console.error("\nPrompt secret scan errors (must fix):\n");
     for (const e of errors) {
-      // eslint-disable-next-line no-console
       console.error(`- ${e}`);
     }
     process.exit(1);
@@ -181,7 +230,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error(err);
   process.exit(2);
 });

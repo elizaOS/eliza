@@ -2,6 +2,7 @@ import type {
   GenerateTextParams,
   IAgentRuntime,
   ModelTypeName,
+  PromptSegment,
   TextStreamResult,
 } from "@elizaos/core";
 import {
@@ -14,6 +15,7 @@ import {
 import {
   generateText,
   type JSONSchema7,
+  jsonSchema,
   type ModelMessage,
   streamText,
   type ToolChoice,
@@ -21,7 +23,7 @@ import {
   type UserContent,
 } from "ai";
 import { createAnthropicClientWithTopPSupport } from "../providers";
-import type { ModelName, ModelSize, ProviderOptions } from "../types";
+import type { ModelName, ModelSize, ProviderOptions, ProviderOptionValue } from "../types";
 import { generateViaCli, streamViaCli } from "../utils/claude-cli";
 import {
   getActionPlannerModel,
@@ -58,7 +60,10 @@ interface ResolvedTextParams {
 }
 
 interface GenerateTextParamsWithProviderOptions
-  extends Omit<GenerateTextParams, "messages" | "tools" | "toolChoice" | "responseSchema"> {
+  extends Omit<
+    GenerateTextParams,
+    "messages" | "tools" | "toolChoice" | "responseSchema" | "providerOptions"
+  > {
   attachments?: ChatAttachment[];
   messages?: ModelMessage[];
   tools?: ToolSet;
@@ -80,15 +85,33 @@ type NativeProviderOptions = NativeTextParams["providerOptions"];
 type NativeTelemetrySettings = NativeTextParams["experimental_telemetry"];
 
 type AnthropicCacheControl = NonNullable<NonNullable<ProviderOptions["anthropic"]>["cacheControl"]>;
+type AnthropicCacheBreakpoint = {
+  segmentIndex?: number;
+  ttl?: "short" | "long" | "5m" | "1h";
+  cacheControl?: AnthropicCacheControl;
+};
 
 interface AnthropicUsageWithCache {
+  // Legacy (older AI SDK / direct Anthropic SDK) field names — kept for
+  // back-compat with stream usage emitted in pre-v6 callers.
   promptTokens?: number;
   completionTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  // AI SDK v6 LanguageModelUsage shape — what `generateText`/`streamText`
+  // actually return today. The Anthropic provider populates
+  // `inputTokenDetails.cacheReadTokens` for cache hits, and exposes
+  // `cacheCreationInputTokens` via `providerMetadata.anthropic` (read by the
+  // caller, not on the usage object directly).
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
-  cacheReadInputTokens?: number;
-  cacheCreationInputTokens?: number;
+  cachedInputTokens?: number;
+  inputTokenDetails?: {
+    noCacheTokens?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+  };
 }
 
 interface AnthropicNormalizedUsage {
@@ -104,6 +127,7 @@ interface NativeGenerateTextResult {
   toolCalls?: unknown[];
   finishReason?: string;
   usage?: AnthropicNormalizedUsage;
+  providerMetadata?: Record<string, unknown>;
 }
 
 const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as ModelTypeName;
@@ -125,9 +149,10 @@ type TextModelType =
 type AnthropicTextPart = {
   type: "text";
   text: string;
-  cache_control?: {
-    type: "ephemeral";
-    ttl?: "5m" | "1h";
+  providerOptions?: {
+    anthropic?: {
+      cacheControl?: AnthropicCacheControl;
+    };
   };
 };
 type AnthropicFilePart = {
@@ -138,6 +163,170 @@ type AnthropicFilePart = {
 };
 type AnthropicUserContentPart = AnthropicTextPart | AnthropicFilePart;
 
+function isProviderOptionValue(value: unknown): value is ProviderOptionValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.every(isProviderOptionValue);
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.values(value).every(
+      (entry) => entry === undefined || isProviderOptionValue(entry)
+    );
+  }
+  return false;
+}
+
+function readProviderOptions(value: unknown): ProviderOptions | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const entries = Object.entries(value);
+  if (!entries.every(([, entry]) => entry === undefined || isProviderOptionValue(entry))) {
+    return undefined;
+  }
+
+  return Object.fromEntries(entries) as ProviderOptions;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isModelMessage(value: unknown): value is ModelMessage {
+  if (!isRecord(value) || typeof value.role !== "string") {
+    return false;
+  }
+  switch (value.role) {
+    case "system":
+      return typeof value.content === "string";
+    case "user":
+    case "assistant":
+    case "tool":
+      // Accept string or array content. Eliza runtime synthesizes tool / assistant
+      // messages with string content (see buildStageChatMessages); the AI SDK
+      // accepts these and the underlying provider normalizes them.
+      return typeof value.content === "string" || Array.isArray(value.content);
+    default:
+      return false;
+  }
+}
+
+function readModelMessages(value: GenerateTextParams["messages"]): ModelMessage[] | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const messages: ModelMessage[] = [];
+  for (const message of value) {
+    if (!isModelMessage(message)) {
+      return undefined;
+    }
+    messages.push(message as ModelMessage);
+  }
+  return messages;
+}
+
+function readToolSet(value: GenerateTextParams["tools"]): ToolSet | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  // Source can be either an array of ToolDefinition (each with .name) or a
+  // Record<string, ...>. ELIZAOS upstream sometimes passes the array as a
+  // Record with numeric keys (`{0: tool, 1: tool}`), which makes the AI SDK
+  // wire the tool name as "0" / "1" — the runtime parser then can't match
+  // the response against canonical names like HANDLE_RESPONSE / PLAN_ACTIONS.
+  // Walk both forms and rebuild keyed by tool.name when present. Heterogeneous
+  // Records (raw ToolDefinitions mixed with already-built AI SDK Tool objects
+  // that lack `.name`) preserve the SDK Tool entries under their original key
+  // so we don't silently drop them. Two passes so named-tool keys always win
+  // deterministically over an SDK passthrough at the same key, regardless of
+  // iteration order.
+  const isArr = Array.isArray(value);
+  const entries: Array<[string, unknown]> = isArr
+    ? (value as unknown[]).map((v, i) => [String(i), v] as [string, unknown])
+    : Object.entries(value as Record<string, unknown>);
+
+  const namedKeys = new Set<string>();
+  for (const [, rawTool] of entries) {
+    if (isRecord(rawTool) && typeof rawTool.name === "string" && rawTool.name) {
+      namedKeys.add(rawTool.name);
+    }
+  }
+
+  const tools: Record<string, unknown> = {};
+  let sawNamedTool = false;
+  for (const [origKey, rawTool] of entries) {
+    if (!isRecord(rawTool)) {
+      continue;
+    }
+    if (typeof rawTool.name === "string" && rawTool.name) {
+      sawNamedTool = true;
+      const schema = isRecord(rawTool.parameters)
+        ? (rawTool.parameters as JSONSchema7)
+        : isRecord(rawTool.input_schema)
+          ? (rawTool.input_schema as JSONSchema7)
+          : ({ type: "object" } satisfies JSONSchema7);
+      tools[rawTool.name] = {
+        ...(typeof rawTool.description === "string" ? { description: rawTool.description } : {}),
+        inputSchema: jsonSchema(schema),
+      };
+    } else if (!isArr && !namedKeys.has(origKey)) {
+      // Pre-built AI SDK Tool entry inside a Record — pass through under its
+      // original string key, but only if no named tool will claim that key
+      // later in the same pass; otherwise the named tool would silently
+      // overwrite (or be overwritten by) this entry depending on order.
+      tools[origKey] = rawTool;
+    }
+  }
+
+  if (sawNamedTool) {
+    return Object.keys(tools).length > 0 ? (tools as ToolSet) : undefined;
+  }
+  // Fall back to the original Record (already keyed by canonical names).
+  return !isArr && isRecord(value) ? (value as ToolSet) : undefined;
+}
+
+function readToolChoice(value: GenerateTextParams["toolChoice"]): ToolChoice<ToolSet> | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (typeof value === "string" && (value === "auto" || value === "none" || value === "required")) {
+    return value;
+  }
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const choice = value as Record<string, unknown>;
+  if (choice.type === "tool" && typeof choice.name === "string") {
+    return { type: "tool", toolName: choice.name };
+  }
+  if (choice.type === "function" && isRecord(choice.function)) {
+    const name = choice.function.name;
+    return typeof name === "string" ? { type: "tool", toolName: name } : undefined;
+  }
+  return typeof choice.name === "string" ? { type: "tool", toolName: choice.name } : undefined;
+}
+
+function toAnthropicTextParams(params: GenerateTextParams): GenerateTextParamsWithProviderOptions {
+  const { messages, providerOptions, tools, toolChoice, ...rest } = params;
+  const normalized: GenerateTextParamsWithProviderOptions = {
+    ...rest,
+    messages: readModelMessages(messages),
+    tools: readToolSet(tools),
+    toolChoice: readToolChoice(toolChoice),
+    providerOptions: readProviderOptions(providerOptions),
+  };
+  return normalized;
+}
+
 function isOpus4Model(modelName: ModelName): boolean {
   return modelName.toLowerCase().includes("opus-4");
 }
@@ -145,39 +334,16 @@ function isOpus4Model(modelName: ModelName): boolean {
 function buildUserContent(params: GenerateTextParamsWithProviderOptions): UserContent {
   const content: AnthropicUserContentPart[] = [{ type: "text", text: params.prompt }];
 
-  for (const attachment of params.attachments ?? []) {
-    content.push({
-      type: "file",
-      data: attachment.data,
-      mediaType: attachment.mediaType,
-      ...(attachment.filename ? { filename: attachment.filename } : {}),
-    });
-  }
+  appendAttachments(content, params.attachments);
 
   return content;
 }
 
-function buildSegmentedUserContent(
-  params: GenerateTextParamsWithProviderOptions,
-  cacheControl?: AnthropicCacheControl
-): UserContent {
-  const content: AnthropicUserContentPart[] = [];
-
-  for (const segment of params.promptSegments ?? []) {
-    const textPart: AnthropicTextPart = {
-      type: "text",
-      text: segment.content,
-    };
-    if (segment.stable && cacheControl) {
-      textPart.cache_control = {
-        type: cacheControl.type,
-        ...(cacheControl.ttl ? { ttl: cacheControl.ttl } : {}),
-      };
-    }
-    content.push(textPart);
-  }
-
-  for (const attachment of params.attachments ?? []) {
+function appendAttachments(
+  content: AnthropicUserContentPart[],
+  attachments: ChatAttachment[] | undefined
+): void {
+  for (const attachment of attachments ?? []) {
     content.push({
       type: "file",
       data: attachment.data,
@@ -185,8 +351,142 @@ function buildSegmentedUserContent(
       ...(attachment.filename ? { filename: attachment.filename } : {}),
     });
   }
+}
+
+function buildSegmentedUserContent(
+  params: GenerateTextParamsWithProviderOptions,
+  anthropicOptions?: ProviderOptions["anthropic"],
+  fallbackCacheControl?: AnthropicCacheControl
+): UserContent {
+  const segmentCacheControls = buildSegmentCacheControls(
+    params,
+    anthropicOptions,
+    fallbackCacheControl
+  );
+  return buildSegmentedUserContentFromSegments(
+    params.promptSegments ?? [],
+    params.attachments,
+    segmentCacheControls
+  );
+}
+
+function buildSegmentedUserContentFromSegments(
+  segments: readonly PromptSegment[],
+  attachments: ChatAttachment[] | undefined,
+  segmentCacheControls: Map<number, AnthropicCacheControl> = new Map()
+): UserContent {
+  const content: AnthropicUserContentPart[] = [];
+
+  for (const [index, segment] of segments.entries()) {
+    const textPart: AnthropicTextPart = {
+      type: "text",
+      text: segment.content,
+    };
+    const cacheControl = segmentCacheControls.get(index);
+    if (cacheControl) {
+      textPart.providerOptions = { anthropic: { cacheControl } };
+    }
+    content.push(textPart);
+  }
+
+  appendAttachments(content, attachments);
 
   return content;
+}
+
+function buildSegmentedUserContentForMessages(
+  params: GenerateTextParamsWithProviderOptions
+): UserContent | undefined {
+  const dynamicSegments = (params.promptSegments ?? []).filter((segment) => !segment.stable);
+  if (dynamicSegments.length === 0 && (params.attachments?.length ?? 0) === 0) {
+    return undefined;
+  }
+  return buildSegmentedUserContentFromSegments(dynamicSegments, params.attachments);
+}
+
+function buildPlannerWireMessages(
+  wireMessages: ModelMessage[],
+  userContent: UserContent | string
+): ModelMessage[] {
+  if (wireMessages[0]?.role === "user") {
+    const [first, ...tail] = wireMessages;
+    return [{ ...first, content: userContent }, ...tail];
+  }
+  return [{ role: "user", content: userContent }, ...wireMessages];
+}
+
+function buildSegmentCacheControls(
+  params: GenerateTextParamsWithProviderOptions,
+  anthropicOptions?: ProviderOptions["anthropic"],
+  fallbackCacheControl?: AnthropicCacheControl
+): Map<number, AnthropicCacheControl> {
+  const controls = new Map<number, AnthropicCacheControl>();
+  if (!fallbackCacheControl) {
+    return controls;
+  }
+
+  const maxBreakpointsRaw = anthropicOptions?.maxBreakpoints;
+  const maxBreakpoints =
+    typeof maxBreakpointsRaw === "number" && Number.isFinite(maxBreakpointsRaw)
+      ? Math.max(0, Math.floor(maxBreakpointsRaw))
+      : 4;
+  const systemConsumesBreakpoint = anthropicOptions?.cacheSystem !== false;
+  const maxSegmentBreakpoints = Math.max(0, maxBreakpoints - (systemConsumesBreakpoint ? 1 : 0));
+  const plannedBreakpoints = Array.isArray(anthropicOptions?.cacheBreakpoints)
+    ? (anthropicOptions.cacheBreakpoints as AnthropicCacheBreakpoint[])
+    : undefined;
+
+  if (plannedBreakpoints) {
+    for (const breakpoint of plannedBreakpoints.slice(0, maxSegmentBreakpoints)) {
+      if (typeof breakpoint.segmentIndex !== "number") {
+        continue;
+      }
+      controls.set(
+        breakpoint.segmentIndex,
+        normalizeBreakpointCacheControl(breakpoint, fallbackCacheControl)
+      );
+    }
+    return controls;
+  }
+
+  // Pick the LAST N stable segments rather than the first N. A cache_control
+  // breakpoint says "everything up to here is cached"; placing breakpoints at
+  // late stable segments creates the longest matching cached prefix on
+  // subsequent calls. Earlier stable segments still ride along inside any
+  // longer matching prefix that a later breakpoint creates — we lose
+  // granularity on partial-prefix hits but not coverage.
+  const stableIndices: number[] = [];
+  (params.promptSegments ?? []).forEach((segment, index) => {
+    if (segment.stable) stableIndices.push(index);
+  });
+  for (const index of stableIndices.slice(-maxSegmentBreakpoints)) {
+    controls.set(index, fallbackCacheControl);
+  }
+  return controls;
+}
+
+function normalizeBreakpointCacheControl(
+  breakpoint: AnthropicCacheBreakpoint,
+  fallbackCacheControl: AnthropicCacheControl
+): AnthropicCacheControl {
+  if (isAnthropicCacheControl(breakpoint.cacheControl)) {
+    return breakpoint.cacheControl;
+  }
+  if (breakpoint.ttl === "long" || breakpoint.ttl === "1h") {
+    return { type: "ephemeral", ttl: "1h" };
+  }
+  if (breakpoint.ttl === "short" || breakpoint.ttl === "5m") {
+    return { ...fallbackCacheControl };
+  }
+  return fallbackCacheControl;
+}
+
+function isAnthropicCacheControl(value: unknown): value is AnthropicCacheControl {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { type?: unknown }).type === "ephemeral"
+  );
 }
 
 function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl {
@@ -202,26 +502,108 @@ function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl {
   return { type: "ephemeral" };
 }
 
+function buildCacheableSystemPrompt(
+  systemPrompt: string | undefined,
+  cacheControl: AnthropicCacheControl | undefined
+): NativeTextParams["system"] {
+  if (!systemPrompt) {
+    return undefined;
+  }
+  if (!cacheControl) {
+    return systemPrompt;
+  }
+  return {
+    role: "system",
+    content: systemPrompt,
+    providerOptions: {
+      anthropic: { cacheControl },
+    },
+  };
+}
+
+function stripLocalAnthropicCacheOptions(
+  anthropicOptions: ProviderOptions["anthropic"] | undefined
+): ProviderOptions["anthropic"] | undefined {
+  if (!anthropicOptions) {
+    return undefined;
+  }
+  const {
+    cacheControl: _cacheControl,
+    cacheBreakpoints: _cacheBreakpoints,
+    cacheSystem: _cacheSystem,
+    maxBreakpoints: _maxBreakpoints,
+    ...wireOptions
+  } = anthropicOptions as Record<string, unknown>;
+  return Object.keys(wireOptions).length > 0
+    ? (wireOptions as ProviderOptions["anthropic"])
+    : undefined;
+}
+
+function firstNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function readAnthropicCacheCreationFromProviderMetadata(
+  providerMetadata: unknown
+): number | undefined {
+  if (
+    !providerMetadata ||
+    typeof providerMetadata !== "object" ||
+    Array.isArray(providerMetadata)
+  ) {
+    return undefined;
+  }
+  const anthropic = (providerMetadata as Record<string, unknown>).anthropic;
+  if (!anthropic || typeof anthropic !== "object" || Array.isArray(anthropic)) {
+    return undefined;
+  }
+  const value = (anthropic as Record<string, unknown>).cacheCreationInputTokens;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 function normalizeAnthropicUsage(
-  usage: AnthropicUsageWithCache | undefined
+  usage: AnthropicUsageWithCache | undefined,
+  providerMetadata?: unknown
 ): AnthropicNormalizedUsage | undefined {
   if (!usage) {
     return undefined;
   }
 
-  const promptTokens = usage.promptTokens ?? usage.inputTokens ?? 0;
-  const completionTokens = usage.completionTokens ?? usage.outputTokens ?? 0;
+  const promptTokens = firstNumber(usage.promptTokens, usage.inputTokens) ?? 0;
+  const completionTokens = firstNumber(usage.completionTokens, usage.outputTokens) ?? 0;
+
+  // The AI SDK v6 Anthropic provider reports cache reads via
+  // `inputTokenDetails.cacheReadTokens` (and the deprecated `cachedInputTokens`
+  // mirror). Older callers may still pass the legacy `cacheReadInputTokens`
+  // field directly. Read both.
+  const cacheRead = firstNumber(
+    usage.cacheReadInputTokens,
+    usage.inputTokenDetails?.cacheReadTokens,
+    usage.cachedInputTokens
+  );
+
+  // Cache writes ride on `inputTokenDetails.cacheWriteTokens` in the v6 SDK
+  // shape, with the canonical count exposed via
+  // `providerMetadata.anthropic.cacheCreationInputTokens`. Either source is
+  // authoritative; fall back to the legacy direct field for callers that still
+  // emit the pre-v6 shape (e.g. our streaming usage promise).
+  const cacheCreation = firstNumber(
+    usage.cacheCreationInputTokens,
+    usage.inputTokenDetails?.cacheWriteTokens,
+    readAnthropicCacheCreationFromProviderMetadata(providerMetadata)
+  );
 
   return {
     promptTokens,
     completionTokens,
     totalTokens: usage.totalTokens ?? promptTokens + completionTokens,
-    ...(usage.cacheReadInputTokens !== undefined
-      ? { cacheReadInputTokens: usage.cacheReadInputTokens }
-      : {}),
-    ...(usage.cacheCreationInputTokens !== undefined
-      ? { cacheCreationInputTokens: usage.cacheCreationInputTokens }
-      : {}),
+    ...(cacheRead !== undefined ? { cacheReadInputTokens: cacheRead } : {}),
+    ...(cacheCreation !== undefined ? { cacheCreationInputTokens: cacheCreation } : {}),
   };
 }
 
@@ -264,18 +646,47 @@ function usesNativeTextResult(params: GenerateTextParamsWithProviderOptions): bo
   return Boolean(params.messages || params.tools || params.toolChoice || params.responseSchema);
 }
 
-function buildNativeTextResult(result: {
-  text: string;
-  toolCalls?: unknown[];
-  finishReason?: string;
-  usage?: AnthropicUsageWithCache;
-}): NativeGenerateTextResult {
+function buildNativeTextResult(
+  result: {
+    text: string;
+    toolCalls?: unknown[];
+    finishReason?: string;
+    usage?: AnthropicUsageWithCache;
+    providerMetadata?: unknown;
+  },
+  modelName?: string
+): NativeGenerateTextResult {
   return {
     text: result.text,
     toolCalls: result.toolCalls ?? [],
     finishReason: result.finishReason,
-    usage: normalizeAnthropicUsage(result.usage),
+    usage: normalizeAnthropicUsage(result.usage, result.providerMetadata),
+    providerMetadata: mergeProviderModelName(result.providerMetadata, modelName),
   };
+}
+
+function mergeProviderModelName(
+  providerMetadata: unknown,
+  modelName?: string
+): Record<string, unknown> | undefined {
+  if (!modelName) {
+    return providerMetadata &&
+      typeof providerMetadata === "object" &&
+      !Array.isArray(providerMetadata)
+      ? (providerMetadata as Record<string, unknown>)
+      : undefined;
+  }
+  if (
+    providerMetadata &&
+    typeof providerMetadata === "object" &&
+    !Array.isArray(providerMetadata)
+  ) {
+    return {
+      ...(providerMetadata as Record<string, unknown>),
+      modelName,
+    };
+  }
+  return { modelName };
 }
 
 function resolveTextParams(
@@ -324,12 +735,15 @@ function resolveTextParams(
     isOpus4Model(modelName) ? 32_000 : 64_000
   );
 
-  const rawProviderOptions = (params as unknown as GenerateTextParamsWithProviderOptions)
-    .providerOptions;
+  const rawProviderOptions = params.providerOptions;
+  const rawAnthropicOptions = rawProviderOptions?.anthropic;
   const baseProviderOptions: ProviderOptions = rawProviderOptions
     ? {
         ...rawProviderOptions,
-        anthropic: rawProviderOptions.anthropic ? { ...rawProviderOptions.anthropic } : undefined,
+        anthropic:
+          rawAnthropicOptions && typeof rawAnthropicOptions === "object"
+            ? { ...(rawAnthropicOptions as Record<string, ProviderOptionValue | undefined>) }
+            : undefined,
       }
     : {};
 
@@ -363,7 +777,7 @@ async function generateTextWithModel(
   modelSize: ModelSize,
   modelType: TextModelType
 ): Promise<string | TextStreamResult> {
-  const paramsWithAttachments = params as unknown as GenerateTextParamsWithProviderOptions;
+  const paramsWithAttachments = toAnthropicTextParams(params);
   const shouldReturnNativeResult = usesNativeTextResult(paramsWithAttachments);
   const systemPrompt = resolveEffectiveSystemPrompt({
     params: paramsWithAttachments,
@@ -420,18 +834,17 @@ async function generateTextWithModel(
     Array.isArray(paramsWithAttachments.promptSegments) &&
     paramsWithAttachments.promptSegments.length > 0;
   const cacheControl = providerOptions.anthropic?.cacheControl;
+  const cacheSystem = providerOptions.anthropic?.cacheSystem !== false;
+  const system = buildCacheableSystemPrompt(systemPrompt, cacheSystem ? cacheControl : undefined);
   const userContent =
     segmentedPrompt || (paramsWithAttachments.attachments?.length ?? 0) > 0
       ? segmentedPrompt
-        ? buildSegmentedUserContent(paramsWithAttachments, cacheControl)
+        ? buildSegmentedUserContent(paramsWithAttachments, providerOptions.anthropic, cacheControl)
         : buildUserContent(paramsWithAttachments)
       : undefined;
   const anthropicOptions =
-    providerOptions.anthropic && segmentedPrompt
-      ? {
-          ...providerOptions.anthropic,
-          cacheControl: undefined,
-        }
+    providerOptions.anthropic && (segmentedPrompt || system)
+      ? stripLocalAnthropicCacheOptions(providerOptions.anthropic)
       : providerOptions.anthropic;
   const anthropicProviderOptions = anthropicOptions ? { anthropic: anthropicOptions } : undefined;
 
@@ -446,9 +859,28 @@ async function generateTextWithModel(
     paramsWithAttachments.messages,
     systemPrompt
   );
+  // Planner / evaluator wire path: when the runtime passes BOTH `messages`
+  // (system + user + assistant/tool trajectory built by `buildStageChatMessages`)
+  // AND `promptSegments` (the same content as labeled stable/dynamic parts),
+  // the segmented `userContent` carries cache_control on stable parts. Without
+  // this branch the segmented content is built and discarded because the
+  // messages path sends `wireMessages` directly with flat string content. We
+  // inject `userContent` as the leading user message and keep the trajectory
+  // turns verbatim. The leading user message in `wireMessages` was synthesized
+  // from dynamic context that is fully covered by `promptSegments`, so we drop
+  // it to avoid duplicating tokens. Unlike PR #7469 we keep `system` because
+  // our `buildCacheableSystemPrompt` puts cache_control on the system param
+  // itself (Anthropic's separate `system` parameter accepts cache_control via
+  // providerOptions).
+  const segmentedMessageUserContent =
+    segmentedPrompt && paramsWithAttachments.messages
+      ? buildSegmentedUserContentForMessages(paramsWithAttachments)
+      : undefined;
   const promptOrMessages: NativePrompt = paramsWithAttachments.messages
     ? wireMessages && wireMessages.length > 0
-      ? { messages: wireMessages }
+      ? segmentedMessageUserContent
+        ? { messages: buildPlannerWireMessages(wireMessages, segmentedMessageUserContent) }
+        : { messages: wireMessages }
       : {
           messages: [
             {
@@ -468,7 +900,7 @@ async function generateTextWithModel(
   const generateParams: NativeTextParams = {
     model: anthropic(modelName),
     ...promptOrMessages,
-    system: systemPrompt,
+    system,
     temperature: resolved.temperature,
     stopSequences: resolved.stopSequences as string[],
     frequencyPenalty: resolved.frequencyPenalty,
@@ -491,7 +923,10 @@ async function generateTextWithModel(
   if (params.stream) {
     try {
       const streamResult = streamText(generateParams);
-      const usagePromise = Promise.resolve(streamResult.usage).then((usage) => {
+      const providerMetadataPromise: Promise<unknown> = Promise.resolve(
+        (streamResult as { providerMetadata?: PromiseLike<unknown> }).providerMetadata
+      ).catch((): undefined => undefined);
+      const usagePromise = Promise.resolve(streamResult.usage).then(async (usage) => {
         if (!usage) {
           return undefined;
         }
@@ -503,7 +938,8 @@ async function generateTextWithModel(
           usage as AnthropicUsageWithCache,
           modelName
         );
-        return normalizeAnthropicUsage(usage as AnthropicUsageWithCache);
+        const providerMetadata = await providerMetadataPromise;
+        return normalizeAnthropicUsage(usage as AnthropicUsageWithCache, providerMetadata);
       });
       const ignoreUsageError = (): undefined => undefined;
       async function* textStreamWithUsage(): AsyncIterable<string> {
@@ -548,7 +984,7 @@ async function generateTextWithModel(
     }
 
     if (shouldReturnNativeResult) {
-      return buildNativeTextResult(response) as unknown as string;
+      return buildNativeTextResult(response, modelName) as string & NativeGenerateTextResult;
     }
 
     return response.text;

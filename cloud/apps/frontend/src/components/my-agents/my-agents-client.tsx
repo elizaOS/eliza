@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useSetPageHeader } from "@elizaos/cloud-ui/primitives";
+import { useSetPageHeader } from "@elizaos/cloud-ui";
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ElizaCharacter } from "@/lib/types";
@@ -64,7 +64,7 @@ export function MyAgentsClient({ initialCharacters }: MyAgentsClientProps) {
   }));
 
   const handleCreateNew = useCallback(() => {
-    navigate("/dashboard/build");
+    navigate("/dashboard/chat");
   }, [navigate]);
 
   useSetPageHeader(

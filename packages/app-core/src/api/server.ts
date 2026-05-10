@@ -1,4 +1,4 @@
-import "../utils/namespace-defaults.js";
+import "@elizaos/shared";
 import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
@@ -11,6 +11,7 @@ import {
   cloneWithoutBlockedObjectKeys,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
+  type ElizaConfig,
   extractAuthToken,
   fetchWithTimeoutGuard,
   handleCloudBillingRoute,
@@ -18,6 +19,7 @@ import {
   initStewardWalletCache,
   isAllowedHost,
   isAuthorized,
+  loadElizaConfig,
   normalizeWsClientId,
   persistConversationRoomTitle,
   resolveDefaultAgentWorkspaceDir,
@@ -25,23 +27,19 @@ import {
   resolvePluginConfigMutationRejections,
   resolveUserPath,
   routeAutonomyTextToUser,
+  saveElizaConfig,
   streamResponseBodyWithByteLimit,
   startApiServer as upstreamStartApiServer,
   validateMcpServerConfig,
 } from "@elizaos/agent";
-import {
-  type ElizaConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "@elizaos/agent/config";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
-import { type AgentRuntime, logger } from "@elizaos/core";
+import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
-} from "./auth";
+} from "./auth.ts";
 import { handleAutomationsCompatRoutes } from "./automations-compat-routes";
 import {
   type CompatRuntimeState,
@@ -49,13 +47,16 @@ import {
   getConfiguredCompatAgentName,
 } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
+import { applyRouteModeGuard } from "../runtime/mode/route-mode-guard";
+import { forwardRemoteCloudMutation } from "../runtime/mode/remote-forwarder";
+import { handleRuntimeModeRoute } from "./runtime-mode-routes";
 
 export {
   __resetCloudBaseUrlCache,
   ensureCloudTtsApiKeyAlias,
   resolveCloudTtsBaseUrl,
   resolveElevenLabsApiKeyForCloudMode,
-} from "@elizaos/plugin-elizacloud/lib/server-cloud-tts";
+} from "@elizaos/plugin-elizacloud";
 export {
   type CompatRuntimeState,
   DATABASE_UNAVAILABLE_MESSAGE,
@@ -108,17 +109,15 @@ export {
 };
 
 import {
+  ensureRuntimeSqlCompatibility,
+  executeRawSql,
   isElizaSettingsDebugEnabled,
+  sanitizeIdentifier,
   settingsDebugCloudSummary,
+  sqlLiteral,
 } from "@elizaos/shared";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
 import { deviceBridge } from "../services/local-inference/device-bridge";
-import {
-  ensureRuntimeSqlCompatibility,
-  executeRawSql,
-  sanitizeIdentifier,
-  sqlLiteral,
-} from "../utils/sql-compat";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
@@ -143,7 +142,7 @@ import { handleWorkbenchCompatRoutes } from "./workbench-compat-routes";
 
 const _require = createRequire(import.meta.url);
 
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
+import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/shared";
 
 // Lazy-imported to avoid circular dependency with runtime/eliza.ts
 const lazyEnsureTTS = () =>
@@ -151,12 +150,10 @@ const lazyEnsureTTS = () =>
     (m) => m.ensureTextToSpeechHandler,
   );
 
-import {
-  clearCloudSecrets,
-  getCloudSecret,
-} from "@elizaos/plugin-elizacloud/lib/cloud-secrets";
+import { clearCloudSecrets, getCloudSecret } from "@elizaos/plugin-elizacloud";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
+import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
 import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
 
 // ---------------------------------------------------------------------------
@@ -167,7 +164,7 @@ import {
   handleCloudTtsPreviewRoute as _handleCloudTtsPreviewRoute,
   ensureCloudTtsApiKeyAlias,
   mirrorCompatHeaders,
-} from "@elizaos/plugin-elizacloud/lib/server-cloud-tts";
+} from "@elizaos/plugin-elizacloud";
 import { filterConfigEnvForResponse as _filterConfigEnvForResponse } from "./server-config-filter";
 
 // ---------------------------------------------------------------------------
@@ -200,9 +197,14 @@ function hydrateWalletOsStoreFlagFromConfig(): void {
     const raw = persistedEnv?.ELIZA_WALLET_OS_STORE;
     if (typeof raw === "string" && raw.trim()) {
       process.env.ELIZA_WALLET_OS_STORE = raw.trim();
+      return;
     }
   } catch {
     // Best effort only; upstream startup will still load config normally.
+  }
+
+  if (isNodePlatformSecureStoreDefaultAvailable()) {
+    process.env.ELIZA_WALLET_OS_STORE = "1";
   }
 }
 
@@ -210,10 +212,13 @@ function resolveCompatConfigPaths(): {
   elizaConfigPath?: string;
   appConfigPath?: string;
 } {
-  const sharedStateDir = process.env.ELIZA_STATE_DIR?.trim();
+  const explicitConfig = process.env.ELIZA_CONFIG_PATH?.trim();
+  const hasStateOverride =
+    Boolean(process.env.MILADY_STATE_DIR?.trim()) ||
+    Boolean(process.env.ELIZA_STATE_DIR?.trim());
   const configPath =
-    process.env.ELIZA_CONFIG_PATH?.trim() ||
-    (sharedStateDir ? path.join(sharedStateDir, "eliza.json") : undefined);
+    explicitConfig ||
+    (hasStateOverride ? path.join(resolveStateDir(), "eliza.json") : undefined);
 
   return { elizaConfigPath: configPath, appConfigPath: configPath };
 }
@@ -580,6 +585,24 @@ async function handleCompatRoute(
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
 
+  // ── Mode visibility gate ──────────────────────────────────────────────
+  // AGENTS.md §1: cloud mode hides /api/local-inference/*, local-only mode
+  // hides /api/cloud/*. Hidden = 404 (not 403) so callers cannot probe
+  // mode state.
+  const gate = applyRouteModeGuard(req, res);
+  if (gate.handled) return true;
+
+  // ── Remote-mode forward ───────────────────────────────────────────────
+  // AGENTS.md §1: in remote mode, mutations to cloud settings target the
+  // controlled local instance, not the controller's own config.
+  if (gate.mode === "remote") {
+    if (await forwardRemoteCloudMutation(req, res)) return true;
+  }
+
+  // Runtime mode introspection — UI shells hit this on boot for the
+  // useRuntimeMode() hook.
+  if (await handleRuntimeModeRoute(req, res, state)) return true;
+
   // Eliza Cloud thin-client proxy (compat agents, jobs, OAuth, …). Keep this
   // before the local /api/cloud handler so /api/cloud/v1/* forwards to Cloud.
   if (
@@ -626,8 +649,8 @@ async function handleCompatRoute(
   if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 
-  // n8n routes — extracted to plugins/plugin-n8n-workflow/src/plugin-routes.ts.
-  // Now served via n8nWorkflowRoutePlugin.routes (rawPath) on the runtime
+  // workflow routes — extracted to plugins/plugin-workflow/src/plugin-routes.ts.
+  // Now served via workflowRoutePlugin.routes (rawPath) on the runtime
   // plugin route system.
 
   // GitHub PAT routes — extracted to plugins/plugin-github/src/routes/github-routes.ts.
@@ -762,9 +785,7 @@ async function handleCompatRoute(
   if (uiSpecMatch) {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const pluginId = decodeURIComponent(uiSpecMatch[1]);
-    const { buildPluginConfigUiSpec } = await import(
-      "../config/plugin-ui-spec"
-    );
+    const { buildPluginConfigUiSpec } = await import("@elizaos/shared");
     const { buildPluginListResponse } = await import("./plugins-compat-routes");
     const pluginList = buildPluginListResponse(state.current);
     const plugin = pluginList.plugins.find((p) => p.id === pluginId);

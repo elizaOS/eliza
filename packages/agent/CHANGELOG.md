@@ -23,7 +23,7 @@ All notable changes to `@elizaos/agent` are documented here. This file follows t
 
 ### Changed
 
-- **Default facilitator base** for standard flows: `https://x402.elizaos.ai/api/v1/x402` with `/verify` and `/settle` appended unless overridden (`X402_FACILITATOR_URL`, `X402_FACILITATOR_VERIFY_URL`, `X402_FACILITATOR_SETTLE_URL`).
+- **Default facilitator base** for standard flows: `https://x402.elizacloud.ai/api/v1/x402` with `/verify` and `/settle` appended unless overridden (`X402_FACILITATOR_URL`, `X402_FACILITATOR_VERIFY_URL`, `X402_FACILITATOR_SETTLE_URL`).
   - **Why:** A single obvious default lowers setup friction; explicit overrides exist because hosted facilitators differ in path layout.
 
 ### Notes

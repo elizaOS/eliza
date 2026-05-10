@@ -2,20 +2,16 @@
  * Side-effect module: registers the wallet UI plugin (route loader + bundled
  * shell page + bundled chat sidebar widget) with @elizaos/app-core.
  *
- * Hosts that bundle @elizaos/app-wallet should `import "@elizaos/app-wallet/register"`
- * (or just `import "@elizaos/app-wallet"`, which re-exports this side effect)
- * exactly once at boot so the registry entries are seeded before the shell
- * mounts.
+ * Hosts that bundle @elizaos/app-wallet should load this module exactly once
+ * at boot so the registry entries are seeded before the shell mounts.
  */
 
-import { registerAppShellPage } from "@elizaos/app-core/app-shell-components";
-import { registerAppRoutePluginLoader } from "@elizaos/app-core/runtime/app-route-plugin-registry";
-import { registerBuiltinWidgets } from "@elizaos/app-core/widgets/registry";
-import { InventoryView } from "./InventoryView";
-import { WALLET_STATUS_WIDGET } from "./widgets/wallet-status";
+import { registerAppRoutePluginLoader } from "@elizaos/core";
+import { registerAppShellPage, registerBuiltinWidgets } from "@elizaos/ui";
+import { InventoryView } from "./InventoryView.tsx";
 
 registerAppRoutePluginLoader("@elizaos/app-wallet", async () => {
-  const { walletAppPlugin } = await import("./plugin");
+  const { walletAppPlugin } = await import("./plugin.ts");
   return walletAppPlugin;
 });
 
@@ -29,4 +25,13 @@ registerAppShellPage({
   Component: InventoryView,
 });
 
-registerBuiltinWidgets([WALLET_STATUS_WIDGET]);
+queueMicrotask(async () => {
+  try {
+    const { WALLET_STATUS_WIDGET } = await import(
+      "./widgets/wallet-status.tsx"
+    );
+    registerBuiltinWidgets([WALLET_STATUS_WIDGET]);
+  } catch {
+    // Widget registration is best-effort; route registration above is the critical path.
+  }
+});

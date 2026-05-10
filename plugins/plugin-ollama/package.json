@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-ollama",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -31,30 +31,41 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "auto-enable.ts"
   ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "embedding"
+      ]
+    }
+  },
   "sideEffects": false,
   "dependencies": {
     "@ai-sdk/ui-utils": "^1.2.8",
     "ai": "^6.0.174",
     "js-tiktoken": "^1.0.18",
-    "ollama-ai-provider": "^1.2.0"
+    "ollama-ai-provider-v2": "^3.5.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "@types/node": "^25.0.3",
     "bun-types": "^1.3.12",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit --noCheck -p tsconfig.json",
@@ -81,7 +92,7 @@
         "type": "string",
         "description": "Name or tag of the small-sized Ollama model to use for text and object generation.",
         "required": false,
-        "default": "gemma3:latest",
+        "default": "eliza-1-2b",
         "sensitive": false
       },
       "OLLAMA_MEDIUM_MODEL": {
@@ -94,28 +105,34 @@
         "type": "string",
         "description": "Name or tag of the large-sized Ollama model to use for text and object generation.",
         "required": false,
-        "default": "gemma3:latest",
+        "default": "eliza-1-9b",
         "sensitive": false
       },
       "OLLAMA_EMBEDDING_MODEL": {
         "type": "string",
         "description": "Name or tag of the Ollama model used to generate text embeddings.",
         "required": false,
-        "default": "nomic-embed-text:latest",
+        "default": "eliza-1-2b",
+        "sensitive": false
+      },
+      "OLLAMA_DISABLE_STRUCTURED_OUTPUT": {
+        "type": "string",
+        "description": "When set to 1/true/yes/on, JSON-schema structured text (responseSchema) is disabled and calls use plain generation. Use if local models misbehave with Ollama format=json.",
+        "required": false,
         "sensitive": false
       },
       "SMALL_MODEL": {
         "type": "string",
         "description": "Fallback environment variable for specifying a small model if OLLAMA_SMALL_MODEL is not set.",
         "required": false,
-        "default": "gemma3:latest",
+        "default": "eliza-1-2b",
         "sensitive": false
       },
       "LARGE_MODEL": {
         "type": "string",
         "description": "Fallback environment variable for specifying a large model if OLLAMA_LARGE_MODEL is not set.",
         "required": false,
-        "default": "gemma3:latest",
+        "default": "eliza-1-9b",
         "sensitive": false
       }
     }

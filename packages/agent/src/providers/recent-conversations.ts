@@ -13,13 +13,13 @@ import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
   isPageScopedConversationMetadata,
-} from "../api/conversation-metadata.js";
-import { hasAdminAccess } from "../security/access.js";
+} from "../api/conversation-metadata.ts";
+import { hasAdminAccess } from "../security/access.ts";
 import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
   roomSourceTag,
-} from "./conversation-utils.js";
+} from "../shared/conversation-format.ts";
 
 const MAX_RECENT_MESSAGES = 10;
 const MAX_ROOMS_TO_SCAN = 10;

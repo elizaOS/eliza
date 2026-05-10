@@ -8,6 +8,7 @@
 import { type Address, createPublicClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { ELIZA_DECIMALS, EVM_CHAINS } from "@/lib/config/token-constants";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { logger } from "@/lib/utils/logger";
 import { ELIZA_TOKEN_ADDRESSES, type SupportedNetwork } from "./eliza-token-price";
 
@@ -61,13 +62,22 @@ class PayoutStatusService {
 
     const networks: NetworkStatus[] = [];
     const warnings: string[] = [];
+    const env = getCloudAwareEnv();
+    const skipLiveBalanceChecks = this.shouldSkipLiveBalanceChecks(env);
 
     // Check EVM networks (support both naming conventions)
-    const evmPrivateKey = process.env.EVM_PAYOUT_PRIVATE_KEY || process.env.EVM_PRIVATE_KEY;
-    const evmWalletAddress = evmPrivateKey ? this.getEvmWalletAddress(evmPrivateKey) : null;
+    const evmPrivateKey = env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY;
+    const evmConfigured = Boolean(evmPrivateKey || env.EVM_PAYOUT_WALLET_ADDRESS);
+    const evmWalletAddress = skipLiveBalanceChecks
+      ? (env.EVM_PAYOUT_WALLET_ADDRESS ?? (evmPrivateKey ? "configured" : null))
+      : evmPrivateKey
+        ? this.getEvmWalletAddress(evmPrivateKey)
+        : null;
 
     for (const network of ["ethereum", "base", "bnb"] as const) {
-      const status = await this.checkEvmNetwork(network, evmWalletAddress);
+      const status = skipLiveBalanceChecks
+        ? this.buildSkippedBalanceStatus(network, evmConfigured, evmWalletAddress)
+        : await this.checkEvmNetwork(network, evmWalletAddress);
       networks.push(status);
 
       if (status.status !== "operational") {
@@ -76,12 +86,17 @@ class PayoutStatusService {
     }
 
     // Check Solana
-    const solanaPrivateKey = process.env.SOLANA_PAYOUT_PRIVATE_KEY;
-    const solanaWalletAddress = solanaPrivateKey
-      ? this.getSolanaWalletAddress(solanaPrivateKey)
-      : null;
+    const solanaPrivateKey = env.SOLANA_PAYOUT_PRIVATE_KEY;
+    const solanaConfigured = Boolean(solanaPrivateKey || env.SOLANA_PAYOUT_WALLET_ADDRESS);
+    const solanaWalletAddress = skipLiveBalanceChecks
+      ? (env.SOLANA_PAYOUT_WALLET_ADDRESS ?? (solanaPrivateKey ? "configured" : null))
+      : solanaPrivateKey
+        ? this.getSolanaWalletAddress(solanaPrivateKey)
+        : null;
 
-    const solanaStatus = await this.checkSolanaNetwork(solanaWalletAddress);
+    const solanaStatus = skipLiveBalanceChecks
+      ? this.buildSkippedBalanceStatus("solana", solanaConfigured, solanaWalletAddress)
+      : await this.checkSolanaNetwork(solanaWalletAddress);
     networks.push(solanaStatus);
 
     if (solanaStatus.status !== "operational") {
@@ -135,7 +150,7 @@ class PayoutStatusService {
     }
 
     return {
-      available: networkStatus.status === "operational",
+      available: networkStatus.status === "operational" || networkStatus.status === "low_balance",
       message: networkStatus.message,
     };
   }
@@ -144,8 +159,9 @@ class PayoutStatusService {
    * Get user-friendly message for payout unavailability
    */
   getUserMessage(network?: SupportedNetwork): string | null {
-    const evmConfigured = !!(process.env.EVM_PAYOUT_PRIVATE_KEY || process.env.EVM_PRIVATE_KEY);
-    const solanaConfigured = !!process.env.SOLANA_PAYOUT_PRIVATE_KEY;
+    const env = getCloudAwareEnv();
+    const evmConfigured = !!(env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY);
+    const solanaConfigured = !!env.SOLANA_PAYOUT_PRIVATE_KEY;
 
     if (!evmConfigured && !solanaConfigured) {
       return "Token redemption is temporarily unavailable. We're setting up our payout infrastructure. Please check back soon!";
@@ -166,6 +182,41 @@ class PayoutStatusService {
   // ========================================
   // Private methods
   // ========================================
+
+  private shouldSkipLiveBalanceChecks(env: NodeJS.ProcessEnv): boolean {
+    return env.PAYOUT_STATUS_SKIP_LIVE_BALANCE === "1" || env.SKIP_PAYOUT_BALANCE_CHECKS === "1";
+  }
+
+  private buildSkippedBalanceStatus(
+    network: SupportedNetwork,
+    configured: boolean,
+    walletAddress: string | null,
+  ): NetworkStatus {
+    if (!configured) {
+      return {
+        network,
+        configured: false,
+        walletAddress: null,
+        balance: 0,
+        hasBalance: false,
+        status: "not_configured",
+        message:
+          network === "solana"
+            ? "Solana payout wallet not configured"
+            : "EVM payout wallet not configured",
+      };
+    }
+
+    return {
+      network,
+      configured: true,
+      walletAddress: walletAddress ? this.maskAddress(walletAddress) : null,
+      balance: 0,
+      hasBalance: false,
+      status: "no_balance",
+      message: "Live payout balance check skipped",
+    };
+  }
 
   private getEvmWalletAddress(privateKey: string): string | null {
     const key = privateKey.startsWith("0x")
@@ -291,7 +342,8 @@ class PayoutStatusService {
       };
     }
 
-    const solanaRpc = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+    const env = getCloudAwareEnv();
+    const solanaRpc = env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
     const { Connection, PublicKey } =
       require("@solana/web3.js") as typeof import("@solana/web3.js");
     const { getAssociatedTokenAddress, getAccount } =

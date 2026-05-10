@@ -196,9 +196,7 @@ export class AppsService {
     return await appsRepository.listByOrganization(organizationId);
   }
 
-  async listByOrganizationWithDatabaseState(
-    organizationId: string,
-  ): Promise<App[]> {
+  async listByOrganizationWithDatabaseState(organizationId: string): Promise<App[]> {
     return await appsRepository.listByOrganization(organizationId);
   }
 

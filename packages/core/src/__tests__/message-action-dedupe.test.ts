@@ -13,7 +13,7 @@ function runtime(
 			warn: vi.fn(),
 			error: vi.fn(),
 		},
-	} as unknown as Pick<IAgentRuntime, "actions" | "logger">;
+	} as Pick<IAgentRuntime, "actions" | "logger">;
 }
 
 describe("stripReplyWhenActionOwnsTurn", () => {

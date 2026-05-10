@@ -16,14 +16,16 @@ function createRuntime(): IAgentRuntime {
     log: vi.fn(),
     warn: vi.fn(),
   };
-  return {
+  const runtime = {
     agentId: "test-agent",
     character: { name: "Test Agent", settings: {} },
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
     getSetting: vi.fn(() => null),
     logger,
-  } as unknown as IAgentRuntime;
+  };
+
+  return runtime as IAgentRuntime;
 }
 
 function createService(): {

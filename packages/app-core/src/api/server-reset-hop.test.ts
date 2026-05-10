@@ -8,11 +8,12 @@ vi.mock(import("@elizaos/core"), async (importOriginal) => {
   return {
     ...actual,
     logger: {
+      ...actual.logger,
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
       debug: vi.fn(),
-    } as unknown as (typeof actual)["logger"],
+    },
   };
 });
 
@@ -49,8 +50,8 @@ describe("server reset hop (regression for #7409)", () => {
   it("stops the runtime and removes the .elizadb dir without issuing any HTTP requests", async () => {
     const fetchSpy = vi.fn(async () => {
       throw new Error("loopback fetch detected — would deadlock");
-    });
-    globalThis.fetch = fetchSpy as unknown as typeof globalThis.fetch;
+    }) as unknown as typeof globalThis.fetch;
+    globalThis.fetch = fetchSpy;
 
     const stop = vi.fn().mockResolvedValue(undefined);
     const runtime = { stop } as unknown as Parameters<
@@ -59,7 +60,7 @@ describe("server reset hop (regression for #7409)", () => {
 
     const config = {
       database: { pglite: { dataDir: elizadb } },
-    } as unknown as Parameters<typeof _clearCompatPgliteDataDirForTests>[1];
+    } as Parameters<typeof _clearCompatPgliteDataDirForTests>[1];
 
     const start = Date.now();
     await _clearCompatPgliteDataDirForTests(runtime, config);
@@ -78,7 +79,7 @@ describe("server reset hop (regression for #7409)", () => {
 
     const config = {
       database: { pglite: { dataDir: wrongDir } },
-    } as unknown as Parameters<typeof _clearCompatPgliteDataDirForTests>[1];
+    } as Parameters<typeof _clearCompatPgliteDataDirForTests>[1];
 
     await _clearCompatPgliteDataDirForTests(null, config);
 
@@ -89,7 +90,7 @@ describe("server reset hop (regression for #7409)", () => {
     const missing = join(dataParent, "absent", ".elizadb");
     const config = {
       database: { pglite: { dataDir: missing } },
-    } as unknown as Parameters<typeof _clearCompatPgliteDataDirForTests>[1];
+    } as Parameters<typeof _clearCompatPgliteDataDirForTests>[1];
 
     await expect(
       _clearCompatPgliteDataDirForTests(null, config),

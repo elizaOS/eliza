@@ -33,7 +33,7 @@ export const botStateProvider: Provider = {
     try {
       const service = runtime.getService(
         "scape_game",
-      ) as unknown as ScapeGameService | null;
+      ) as ScapeGameService | null;
       if (!service) return { text: "" };
       const snapshot = service.getPerception();
       if (!snapshot) {

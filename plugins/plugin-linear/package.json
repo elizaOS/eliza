@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-linear",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Linear integration plugin for ElizaOS (TypeScript)",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -28,7 +28,7 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
@@ -53,7 +53,7 @@
   },
   "homepage": "https://github.com/elizaos/eliza#readme",
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "@linear/sdk": "^83.0.0"
   },
   "devDependencies": {

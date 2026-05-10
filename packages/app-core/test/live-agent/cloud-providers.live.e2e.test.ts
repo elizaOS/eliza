@@ -3,8 +3,8 @@ import { describeIf } from "../helpers/conditional-tests.ts";
 import {
   type LiveProviderConfig,
   selectLiveProvider,
-} from "../helpers/live-provider";
-import { createRealTestRuntime } from "../helpers/real-runtime";
+} from "../helpers/live-provider.ts";
+import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 
 const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const liveProvider = LIVE_TESTS_ENABLED ? selectLiveProvider() : null;

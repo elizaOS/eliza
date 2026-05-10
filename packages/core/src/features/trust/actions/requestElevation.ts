@@ -5,8 +5,12 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import { parseJSONObjectFromText } from "../../../utils.ts";
+import type {
+	ContextualPermissionSystemServiceWrapper,
+	TrustEngineServiceWrapper,
+} from "../services/wrappers.ts";
 import type { ElevationRequest } from "../types/permissions.ts";
 
 export const requestElevationAction: ElizaAction = {
@@ -59,7 +63,7 @@ export const requestElevationAction: ElizaAction = {
 				typeof params.action === "string" && params.action.trim().length > 0;
 			return (
 				hasStructuredAction ||
-				hasActionContextOrKeyword(message, state, {
+				hasActionContext(message, state, {
 					contexts: ["admin", "settings", "agent_internal"],
 					keywords: [
 						"request elevation",
@@ -76,26 +80,14 @@ export const requestElevationAction: ElizaAction = {
 	},
 
 	handler: async (runtime: IAgentRuntime, message: Memory, _state, options) => {
-		const permissionSystem = runtime.getService(
-			"contextual-permissions",
-		) as unknown as {
-			requestElevation: (request: ElevationRequest) => Promise<{
-				allowed: boolean;
-				ttl?: number;
-				method?: string;
-				reason?: string;
-				suggestions?: string[];
-			}>;
-		} | null;
-		const trustEngine = runtime.getService("trust-engine") as unknown as {
-			evaluateTrust: (
-				entityId: unknown,
-				evaluatorId: unknown,
-				context?: Record<string, unknown>,
-			) => Promise<{ overallTrust: number }>;
-		} | null;
+		const permissionSystemService =
+			runtime.getService<ContextualPermissionSystemServiceWrapper>(
+				"contextual-permissions",
+			);
+		const trustEngineService =
+			runtime.getService<TrustEngineServiceWrapper>("trust-engine");
 
-		if (!permissionSystem || !trustEngine) {
+		if (!permissionSystemService || !trustEngineService) {
 			throw new Error("Required services not available");
 		}
 
@@ -126,7 +118,7 @@ export const requestElevationAction: ElizaAction = {
 			};
 		}
 
-		const trustProfile = await trustEngine.evaluateTrust(
+		const trustProfile = await trustEngineService.trustEngine.evaluateTrust(
 			message.entityId,
 			runtime.agentId,
 			{
@@ -149,11 +141,14 @@ export const requestElevationAction: ElizaAction = {
 		};
 
 		try {
-			const result = await permissionSystem.requestElevation(elevationRequest);
+			const result =
+				await permissionSystemService.permissionSystem.requestElevation(
+					elevationRequest,
+				);
 
-			if (result.allowed) {
-				const expiryTime = result.ttl
-					? new Date(Date.now() + result.ttl).toLocaleString()
+			if (result.granted) {
+				const expiryTime = result.expiresAt
+					? new Date(result.expiresAt).toLocaleString()
 					: "session end";
 				return {
 					success: true,
@@ -163,8 +158,7 @@ Please use these permissions responsibly. All actions will be logged for audit.`
 					data: {
 						actionName: "REQUEST_ELEVATION",
 						approved: true,
-						expiresAt: result.ttl ? Date.now() + result.ttl : undefined,
-						method: result.method,
+						expiresAt: result.expiresAt,
 					},
 				};
 			} else {

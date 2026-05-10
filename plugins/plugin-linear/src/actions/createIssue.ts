@@ -9,9 +9,10 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import { createIssueTemplate } from "../generated/prompts/typescript/prompts.js";
+import { createIssueTemplate } from "../prompts.js";
 import type { LinearService } from "../services/linear";
 import type { CreateIssueParameters, LinearIssueInput } from "../types/index.js";
+import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import {
   getPriorityNumberValue,
   getStringArrayValue,
@@ -25,7 +26,8 @@ export const createIssueAction: Action = {
   contexts: ["tasks", "connectors", "automation"],
   contextGate: { anyOf: ["tasks", "connectors", "automation"] },
   roleGate: { minRole: "USER" },
-  description: "Create a new issue in Linear",
+  description:
+    "Create a new Linear issue with title, description, priority, team, assignee, and labels. Use when the user wants to file, log, or track a new ticket, bug, story, or task in Linear from chat.",
   descriptionCompressed: "create new issue Linear",
   parameters: [
     {
@@ -44,6 +46,7 @@ export const createIssueAction: Action = {
         },
       },
     },
+    linearAccountIdParameter,
   ],
   similes: ["create-linear-issue", "new-linear-issue", "add-linear-issue"],
 
@@ -98,6 +101,7 @@ export const createIssueAction: Action = {
       if (!linearService) {
         throw new Error("Linear service not available");
       }
+      const accountId = getLinearAccountId(runtime, _options);
 
       const content = message.content.text;
       if (!content) {
@@ -144,7 +148,7 @@ export const createIssueAction: Action = {
 
           const teamKey = getStringValue(parsed.teamKey);
           if (teamKey) {
-            const teams = await linearService.getTeams();
+            const teams = await linearService.getTeams(accountId);
             const team = teams.find((t) => t.key.toLowerCase() === teamKey.toLowerCase());
             if (team) {
               issueData.teamId = team.id;
@@ -155,7 +159,7 @@ export const createIssueAction: Action = {
           if (assignee) {
             const cleanAssignee = assignee.replace(/^@/, "");
 
-            const users = await linearService.getUsers();
+            const users = await linearService.getUsers(accountId);
             const user = users.find(
               (u) =>
                 u.email === cleanAssignee ||
@@ -168,7 +172,7 @@ export const createIssueAction: Action = {
 
           const parsedLabels = getStringArrayValue(parsed.labels);
           if (parsedLabels && parsedLabels.length > 0) {
-            const labels = await linearService.getLabels(issueData.teamId);
+            const labels = await linearService.getLabels(issueData.teamId, accountId);
             const labelIds: string[] = [];
 
             for (const labelName of parsedLabels) {
@@ -184,10 +188,12 @@ export const createIssueAction: Action = {
           }
 
           if (!issueData.teamId) {
-            const defaultTeamKey = runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string;
+            const defaultTeamKey =
+              linearService.getDefaultTeamKey(accountId) ??
+              (runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string);
 
             if (defaultTeamKey) {
-              const teams = await linearService.getTeams();
+              const teams = await linearService.getTeams(accountId);
               const defaultTeam = teams.find(
                 (t) => t.key.toLowerCase() === defaultTeamKey.toLowerCase()
               );
@@ -202,7 +208,7 @@ export const createIssueAction: Action = {
             }
 
             if (!issueData.teamId) {
-              const teams = await linearService.getTeams();
+              const teams = await linearService.getTeams(accountId);
               if (teams.length > 0) {
                 issueData.teamId = teams[0].id;
                 logger.warn(`No team specified, using first available team: ${teams[0].name}`);
@@ -216,8 +222,10 @@ export const createIssueAction: Action = {
             description: content,
           };
 
-          const defaultTeamKey = runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string;
-          const teams = await linearService.getTeams();
+          const defaultTeamKey =
+            linearService.getDefaultTeamKey(accountId) ??
+            (runtime.getSetting("LINEAR_DEFAULT_TEAM_KEY") as string);
+          const teams = await linearService.getTeams(accountId);
 
           if (defaultTeamKey) {
             const defaultTeam = teams.find(
@@ -263,7 +271,7 @@ export const createIssueAction: Action = {
         };
       }
 
-      const issue = await linearService.createIssue(issueData as LinearIssueInput);
+      const issue = await linearService.createIssue(issueData as LinearIssueInput, accountId);
 
       const successMessage = `✅ Created Linear issue: ${issue.title} (${issue.identifier})\n\nView it at: ${issue.url}`;
       await callback?.({
@@ -278,6 +286,7 @@ export const createIssueAction: Action = {
           issueId: issue.id,
           identifier: issue.identifier,
           url: issue.url,
+          accountId,
         },
       };
     } catch (error) {

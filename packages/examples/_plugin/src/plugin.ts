@@ -90,6 +90,7 @@ const helloWorldAction: Action = {
   description: "Responds with a simple hello world message",
   contexts: [...HELLO_WORLD_CONTEXTS],
   contextGate: { anyOf: [...HELLO_WORLD_CONTEXTS] },
+  roleGate: { minRole: "USER" },
 
   validate: async (
     _runtime: IAgentRuntime,
@@ -282,7 +283,7 @@ export const starterPlugin: Plugin = {
   actions: [helloWorldAction],
   providers: [helloWorldProvider],
   tests: [StarterPluginTestSuite],
-  // dependencies: ['@elizaos/plugin-knowledge'], <--- plugin dependencies go here (if requires another plugin)
+  // dependencies: [], <--- plugin dependencies go here (if requires another plugin)
 };
 
 export default starterPlugin;

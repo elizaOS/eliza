@@ -89,7 +89,7 @@ export class BlueBubblesClient {
 		options: SendMessageOptions = {},
 	): Promise<SendMessageResult> {
 		const response = await this.request<{ data: BlueBubblesMessage }>(
-			API_ENDPOINTS.SEND_MESSAGE,
+			API_ENDPOINTS.MESSAGE_TEXT,
 			{
 				method: "POST",
 				body: JSON.stringify({

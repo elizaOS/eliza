@@ -2,8 +2,8 @@ import type {
   CloudCompatAgent,
   CloudCompatManagedGithubStatus,
   CloudOAuthConnection,
-} from "@elizaos/app-core";
-import { Badge, Button } from "@elizaos/app-core";
+} from "@elizaos/ui";
+import { Badge, Button } from "@elizaos/ui";
 import { ExternalLink } from "lucide-react";
 import type { ReactNode } from "react";
 import type {

@@ -21,7 +21,9 @@ import {
 import { logger } from "@/lib/utils/logger";
 import {
   ELEVENLABS_SNAPSHOT_PRICING,
+  getSupportedMusicModelDefinition,
   getSupportedVideoModelDefinition,
+  MUSIC_SNAPSHOT_PRICING,
   PRICING_LEGACY_IDS_BY_TARGET,
   PRICING_MODEL_ALIASES,
   type PricingBillingSource,
@@ -38,7 +40,7 @@ const DEFAULT_OPENROUTER_IMAGE_OUTPUT_TOKENS = 1300;
 
 type PriceLookupSource = PricingBillingSource | "seed";
 
-type PricingRefreshSource = "gateway" | "openrouter" | "fal" | "elevenlabs";
+type PricingRefreshSource = "gateway" | "openrouter" | "fal" | "elevenlabs" | "suno";
 
 type PreparedPricingEntry = {
   billingSource: PriceLookupSource;
@@ -218,6 +220,7 @@ function normalizeBillingSourceCandidates(
   if (!requested) {
     if (provider === "elevenlabs") return ["elevenlabs"];
     if (provider === "fal") return ["fal"];
+    if (provider === "suno") return ["suno"];
     return ["openrouter"];
   }
 
@@ -733,7 +736,6 @@ const OPENROUTER_EMBEDDING_MODEL_IDS = [
   "openai/text-embedding-3-small",
   "openai/text-embedding-3-large",
   "openai/text-embedding-ada-002",
-  "qwen/qwen3-embedding-8b",
 ] as const;
 
 async function fetchOpenRouterEmbeddingEndpointEntries(): Promise<PreparedPricingEntry[]> {
@@ -887,8 +889,39 @@ async function fetchFalCatalogEntries(): Promise<PreparedPricingEntry[]> {
       }),
     );
 
-    return entryArrays.flat();
+    return [...entryArrays.flat(), ...buildMusicSnapshotEntries("fal", "fal_model_page")];
   });
+}
+
+function buildMusicSnapshotEntries(
+  billingSource?: PricingBillingSource,
+  sourceKind?: string,
+): PreparedPricingEntry[] {
+  const fetchedAt = new Date();
+  const staleAfter = new Date(fetchedAt.getTime() + EXTERNAL_CACHE_TTL_MS);
+  return MUSIC_SNAPSHOT_PRICING.filter(
+    (entry) => !billingSource || entry.billingSource === billingSource,
+  ).map((entry) => ({
+    billingSource: entry.billingSource,
+    provider: entry.provider,
+    model: entry.modelId,
+    productFamily: entry.productFamily,
+    chargeType: entry.chargeType,
+    unit: entry.unit,
+    unitPrice: entry.unitPrice,
+    dimensions: entry.dimensions,
+    sourceKind:
+      sourceKind ??
+      (entry.billingSource === "suno"
+        ? "suno_snapshot"
+        : entry.billingSource === "fal"
+          ? "fal_model_page"
+          : "elevenlabs_snapshot"),
+    sourceUrl: entry.sourceUrl,
+    fetchedAt,
+    staleAfter,
+    metadata: entry.metadata,
+  }));
 }
 
 async function fetchElevenLabsEntries(): Promise<PreparedPricingEntry[]> {
@@ -896,22 +929,31 @@ async function fetchElevenLabsEntries(): Promise<PreparedPricingEntry[]> {
     const fetchedAt = new Date();
     const staleAfter = new Date(fetchedAt.getTime() + EXTERNAL_CACHE_TTL_MS);
 
-    return ELEVENLABS_SNAPSHOT_PRICING.map((entry) => ({
-      billingSource: entry.billingSource,
-      provider: entry.provider,
-      model: entry.modelId,
-      productFamily: entry.productFamily,
-      chargeType: entry.chargeType,
-      unit: entry.unit,
-      unitPrice: entry.unitPrice,
-      dimensions: entry.dimensions,
-      sourceKind: "elevenlabs_snapshot",
-      sourceUrl: entry.sourceUrl,
-      fetchedAt,
-      staleAfter,
-      metadata: entry.metadata,
-    }));
+    return [
+      ...ELEVENLABS_SNAPSHOT_PRICING.map((entry) => ({
+        billingSource: entry.billingSource,
+        provider: entry.provider,
+        model: entry.modelId,
+        productFamily: entry.productFamily,
+        chargeType: entry.chargeType,
+        unit: entry.unit,
+        unitPrice: entry.unitPrice,
+        dimensions: entry.dimensions,
+        sourceKind: "elevenlabs_snapshot",
+        sourceUrl: entry.sourceUrl,
+        fetchedAt,
+        staleAfter,
+        metadata: entry.metadata,
+      })),
+      ...buildMusicSnapshotEntries("elevenlabs", "elevenlabs_snapshot"),
+    ];
   });
+}
+
+async function fetchSunoEntries(): Promise<PreparedPricingEntry[]> {
+  return await getCachedExternalEntries("suno", async () =>
+    buildMusicSnapshotEntries("suno", "suno_snapshot"),
+  );
 }
 
 async function fetchEntriesForSource(source: PriceLookupSource): Promise<PreparedPricingEntry[]> {
@@ -926,6 +968,9 @@ async function fetchEntriesForSource(source: PriceLookupSource): Promise<Prepare
       return await fetchFalCatalogEntries();
     case "elevenlabs":
       return await fetchElevenLabsEntries();
+    case "suno":
+      return await fetchSunoEntries();
+    case "vast":
     case "seed":
       return [];
   }
@@ -1339,6 +1384,34 @@ export async function calculateVideoGenerationCostFromCatalog(params: {
   );
 }
 
+export async function calculateMusicGenerationCostFromCatalog(params: {
+  model: string;
+  provider?: "fal" | "elevenlabs" | "suno";
+  billingSource?: "fal" | "elevenlabs" | "suno";
+  durationSeconds?: number;
+  dimensions?: Record<string, unknown>;
+}): Promise<FlatOperationCost> {
+  const definition = getSupportedMusicModelDefinition(params.model);
+  const provider =
+    params.provider ?? definition?.provider ?? inferProviderFromCanonicalModel(params.model);
+  const entry = await resolvePreparedPricingEntry({
+    billingSource: params.billingSource,
+    provider,
+    model: params.model,
+    productFamily: "music",
+    chargeType: "generation",
+    dimensions: params.dimensions,
+  });
+
+  return computeCostFromEntry(
+    entry,
+    quantityForEntryUnit(entry.unit, {
+      durationSeconds: params.durationSeconds ?? definition?.defaultParameters.durationSeconds,
+      requests: 1,
+    }),
+  );
+}
+
 export async function calculateTTSCostFromCatalog(params: {
   model: string;
   characterCount: number;
@@ -1550,6 +1623,14 @@ export async function refreshPricingCatalog(
     results.push(
       await refreshSourceEntries("elevenlabs", "https://elevenlabs.io/pricing/api", async () => {
         return await fetchElevenLabsEntries();
+      }),
+    );
+  }
+
+  if (sources.includes("suno")) {
+    results.push(
+      await refreshSourceEntries("suno", "https://docs.sunoapi.org/suno-api/", async () => {
+        return await fetchSunoEntries();
       }),
     );
   }

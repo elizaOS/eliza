@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-local-embedding",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Local AI model embedding and inference plugin for ElizaOS",
   "type": "module",
   "main": "dist/index.js",
@@ -19,7 +19,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
-    "clean": "rm -rf dist .turbo node_modules",
+    "clean": "rm -rf dist .turbo",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -27,14 +27,10 @@
     "typecheck": "tsc --noEmit --noCheck"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "@huggingface/transformers": "^4.0.0",
-    "node-llama-cpp": "^3.15.1",
-    "nodejs-whisper": "^0.3.0",
-    "stream-browserify": "^3.0.0",
-    "undici": "^8.0.0",
+    "node-llama-cpp": "github:milady-ai/node-llama-cpp#v3.18.1-milady.3",
     "uuid": "^14.0.0",
-    "whisper-node": "^1.1.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -42,7 +38,7 @@
     "@types/node": "^25.0.3",
     "@types/uuid": "^11.0.0",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.4"
   },
   "publishConfig": {
@@ -67,21 +63,21 @@
         "type": "string",
         "description": "Filename of the small local AI model; overrides the built-in default model if provided.",
         "required": false,
-        "default": "DeepHermes-3-Llama-3-3B-Preview-q4.gguf",
+        "default": "text/eliza-1-mobile-1_7b-32k.gguf",
         "sensitive": false
       },
       "LOCAL_LARGE_MODEL": {
         "type": "string",
         "description": "Filename of the large local AI model; overrides the built-in default model if provided.",
         "required": false,
-        "default": "DeepHermes-3-Llama-3-8B-q4.gguf",
+        "default": "text/eliza-1-desktop-9b-64k.gguf",
         "sensitive": false
       },
       "LOCAL_EMBEDDING_MODEL": {
         "type": "string",
         "description": "Filename of the embedding model used for vector embeddings; overrides the default if supplied.",
         "required": false,
-        "default": "bge-small-en-v1.5.Q4_K_M.gguf",
+        "default": "text/eliza-1-lite-0_6b-32k.gguf",
         "sensitive": false
       },
       "LOCAL_EMBEDDING_MODEL_REPO": {
@@ -100,6 +96,41 @@
         "type": "number",
         "description": "Optional embedding context size override; when omitted, context size is inferred from model defaults/hints.",
         "required": false,
+        "sensitive": false
+      },
+      "LOCAL_EMBEDDING_BATCH_SIZE": {
+        "type": "number",
+        "description": "Number of inputs processed per batch when callers pass arrays. Defaults to 16.",
+        "required": false,
+        "default": 16,
+        "sensitive": false
+      },
+      "LOCAL_EMBEDDING_CHUNK_OVERLAP": {
+        "type": "number",
+        "description": "Token overlap between sliding-window chunks for inputs that exceed the model's context window. Defaults to 64.",
+        "required": false,
+        "default": 64,
+        "sensitive": false
+      },
+      "LOCAL_EMBEDDING_POOLING": {
+        "type": "string",
+        "description": "Pooling strategy for chunked inputs: 'mean' (default), 'cls', or 'last'.",
+        "required": false,
+        "default": "mean",
+        "sensitive": false
+      },
+      "LOCAL_EMBEDDING_NORMALIZE": {
+        "type": "string",
+        "description": "L2-normalize the output embedding. Set to 'false' or '0' to disable. Defaults to true.",
+        "required": false,
+        "default": "true",
+        "sensitive": false
+      },
+      "LOCAL_EMBEDDING_FORCE_CPU": {
+        "type": "string",
+        "description": "Force CPU backend even when GPU is available. Set to '1' to enable.",
+        "required": false,
+        "default": "false",
         "sensitive": false
       },
       "CUDA_VISIBLE_DEVICES": {

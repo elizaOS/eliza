@@ -1,12 +1,12 @@
-import { type IAgentRuntime, logger, type TestSuite } from '@elizaos/core';
-import type { Chat, Message, User } from '@telegraf/types';
-import type { Context, Telegraf } from 'telegraf';
-import type { MessageManager } from './messageManager';
-import type { TelegramService } from './service';
-import type { TelegramContent } from './types';
+import { type IAgentRuntime, logger, type TestSuite } from "@elizaos/core";
+import type { Chat, Message, User } from "@telegraf/types";
+import type { Context, Telegraf } from "telegraf";
+import type { MessageManager } from "./messageManager";
+import type { TelegramService } from "./service";
+import type { TelegramContent } from "./types";
 
 const TEST_IMAGE_URL =
-  'https://github.com/elizaOS/awesome-eliza/blob/main/assets/eliza-logo.jpg?raw=true';
+  "https://github.com/elizaOS/awesome-eliza/blob/main/assets/eliza-logo.jpg?raw=true";
 
 /**
  * Represents a test suite for testing Telegram functionality.
@@ -20,7 +20,7 @@ const TEST_IMAGE_URL =
  */
 
 export class TelegramTestSuite implements TestSuite {
-  name = 'telegram';
+  name = "telegram";
   private telegramClient: TelegramService | null = null;
   private bot: Telegraf<Context> | null = null;
   private messageManager: MessageManager | null = null;
@@ -37,23 +37,23 @@ export class TelegramTestSuite implements TestSuite {
   constructor() {
     this.tests = [
       {
-        name: 'Initialize and Validate Telegram Bot Connection',
+        name: "Initialize and Validate Telegram Bot Connection",
         fn: this.testCreatingTelegramBot.bind(this),
       },
       {
-        name: 'Send Basic Text Message to Telegram Chat',
+        name: "Send Basic Text Message to Telegram Chat",
         fn: this.testSendingTextMessage.bind(this),
       },
       {
-        name: 'Send Text Message with an Image Attachment',
+        name: "Send Text Message with an Image Attachment",
         fn: this.testSendingMessageWithAttachment.bind(this),
       },
       {
-        name: 'Handle and Process Incoming Telegram Messages',
+        name: "Handle and Process Incoming Telegram Messages",
         fn: this.testHandlingMessage.bind(this),
       },
       {
-        name: 'Process and Validate Image Attachments in Incoming Messages',
+        name: "Process and Validate Image Attachments in Incoming Messages",
         fn: this.testProcessingImages.bind(this),
       },
     ];
@@ -74,24 +74,24 @@ export class TelegramTestSuite implements TestSuite {
    */
   validateChatId(runtime: IAgentRuntime): string | number {
     const testChatId =
-      runtime.getSetting('TELEGRAM_TEST_CHAT_ID') ||
+      runtime.getSetting("TELEGRAM_TEST_CHAT_ID") ||
       process.env.TELEGRAM_TEST_CHAT_ID;
-    if (!testChatId || typeof testChatId === 'boolean') {
+    if (!testChatId || typeof testChatId === "boolean") {
       throw new Error(
-        'TELEGRAM_TEST_CHAT_ID is not set. Please provide a valid chat ID in the environment variables.',
+        "TELEGRAM_TEST_CHAT_ID is not set. Please provide a valid chat ID in the environment variables.",
       );
     }
     return testChatId;
   }
 
-  async getChatInfo(runtime: IAgentRuntime): Promise<Context['chat']> {
+  async getChatInfo(runtime: IAgentRuntime): Promise<Context["chat"]> {
     try {
       const chatId = this.validateChatId(runtime);
       if (!this.bot) {
-        throw new Error('Bot is not initialized.');
+        throw new Error("Bot is not initialized.");
       }
       const chat = await this.bot.telegram.getChat(chatId);
-      logger.debug({ src: 'plugin:telegram', chatId }, 'Fetched real chat');
+      logger.debug({ src: "plugin:telegram", chatId }, "Fetched real chat");
       return chat;
     } catch (error) {
       throw new Error(`Error fetching real Telegram chat: ${error}`);
@@ -99,31 +99,31 @@ export class TelegramTestSuite implements TestSuite {
   }
 
   async testCreatingTelegramBot(runtime: IAgentRuntime) {
-    this.telegramClient = runtime.getService('telegram') as TelegramService;
+    this.telegramClient = runtime.getService("telegram") as TelegramService;
     if (!this.telegramClient?.messageManager) {
       throw new Error(
-        'Telegram service or message manager not initialized - check TELEGRAM_BOT_TOKEN',
+        "Telegram service or message manager not initialized - check TELEGRAM_BOT_TOKEN",
       );
     }
     this.bot = this.telegramClient.messageManager.bot;
     this.messageManager = this.telegramClient.messageManager;
     logger.debug(
-      { src: 'plugin:telegram' },
-      'Telegram bot initialized successfully',
+      { src: "plugin:telegram" },
+      "Telegram bot initialized successfully",
     );
   }
 
   async testSendingTextMessage(runtime: IAgentRuntime) {
     try {
       if (!this.bot) {
-        throw new Error('Bot not initialized.');
+        throw new Error("Bot not initialized.");
       }
 
       const chatId = this.validateChatId(runtime);
-      await this.bot.telegram.sendMessage(chatId, 'Testing Telegram message!');
+      await this.bot.telegram.sendMessage(chatId, "Testing Telegram message!");
       logger.debug(
-        { src: 'plugin:telegram', chatId },
-        'Message sent successfully',
+        { src: "plugin:telegram", chatId },
+        "Message sent successfully",
       );
     } catch (error) {
       throw new Error(`Error sending Telegram message: ${error}`);
@@ -133,30 +133,30 @@ export class TelegramTestSuite implements TestSuite {
   async testSendingMessageWithAttachment(runtime: IAgentRuntime) {
     try {
       if (!this.messageManager) {
-        throw new Error('MessageManager not initialized.');
+        throw new Error("MessageManager not initialized.");
       }
       if (!this.bot) {
-        throw new Error('Bot not initialized.');
+        throw new Error("Bot not initialized.");
       }
 
       const chat = await this.getChatInfo(runtime);
       const mockContext: Partial<Context> = {
         chat,
-        from: { id: 123, username: 'TestUser' } as User,
+        from: { id: 123, username: "TestUser" } as User,
         telegram: this.bot.telegram,
       };
 
       const messageContent = {
-        text: 'Here is an image attachment:',
+        text: "Here is an image attachment:",
         attachments: [
           {
-            id: '123',
-            title: 'Sample Image',
+            id: "123",
+            title: "Sample Image",
             source: TEST_IMAGE_URL,
-            text: 'Sample Image',
+            text: "Sample Image",
             url: TEST_IMAGE_URL,
-            contentType: 'image/png',
-            description: 'Sample Image',
+            contentType: "image/png",
+            description: "Sample Image",
           },
         ],
       };
@@ -167,8 +167,8 @@ export class TelegramTestSuite implements TestSuite {
       );
 
       logger.success(
-        { src: 'plugin:telegram' },
-        'Message with image attachment sent successfully',
+        { src: "plugin:telegram" },
+        "Message with image attachment sent successfully",
       );
     } catch (error) {
       throw new Error(
@@ -180,10 +180,10 @@ export class TelegramTestSuite implements TestSuite {
   async testHandlingMessage(runtime: IAgentRuntime) {
     try {
       if (!this.bot) {
-        throw new Error('Bot not initialized.');
+        throw new Error("Bot not initialized.");
       }
       if (!this.messageManager) {
-        throw new Error('MessageManager not initialized.');
+        throw new Error("MessageManager not initialized.");
       }
 
       const chat = await this.getChatInfo(runtime);
@@ -191,17 +191,17 @@ export class TelegramTestSuite implements TestSuite {
         chat,
         from: {
           id: 123,
-          username: 'TestUser',
+          username: "TestUser",
           is_bot: false,
-          first_name: 'Test',
-          last_name: 'User',
+          first_name: "Test",
+          last_name: "User",
         } as User,
         message: {
           message_id: 12345,
           text: `@${this.bot.botInfo?.username}! Hello!`,
           date: Math.floor(Date.now() / 1000),
           chat,
-        } as unknown as Context['message'],
+        } as Context["message"],
         telegram: this.bot.telegram,
       };
 
@@ -218,10 +218,10 @@ export class TelegramTestSuite implements TestSuite {
   async testProcessingImages(runtime: IAgentRuntime) {
     try {
       if (!this.bot) {
-        throw new Error('Bot not initialized.');
+        throw new Error("Bot not initialized.");
       }
       if (!this.messageManager) {
-        throw new Error('MessageManager not initialized.');
+        throw new Error("MessageManager not initialized.");
       }
 
       const chatId = this.validateChatId(runtime);
@@ -229,7 +229,7 @@ export class TelegramTestSuite implements TestSuite {
 
       const mockMessage = {
         message_id: 12345,
-        chat: { id: chatId, type: 'private' } as Chat,
+        chat: { id: chatId, type: "private" } as Chat,
         date: Math.floor(Date.now() / 1000),
         photo: [
           {
@@ -247,13 +247,13 @@ export class TelegramTestSuite implements TestSuite {
       );
       if (!result?.description) {
         throw new Error(
-          'Error processing Telegram image or description not found',
+          "Error processing Telegram image or description not found",
         );
       }
       const { description } = result;
       logger.debug(
-        { src: 'plugin:telegram', description },
-        'Processing Telegram image successfully',
+        { src: "plugin:telegram", description },
+        "Processing Telegram image successfully",
       );
     } catch (error) {
       throw new Error(`Error processing Telegram image: ${error}`);
@@ -263,21 +263,21 @@ export class TelegramTestSuite implements TestSuite {
   async getFileId(chatId: string, imageUrl: string) {
     try {
       if (!this.bot) {
-        throw new Error('Bot is not initialized.');
+        throw new Error("Bot is not initialized.");
       }
       const message = await this.bot.telegram.sendPhoto(chatId, imageUrl);
       if (message.photo.length === 0) {
-        throw new Error('No photo received in the message response.');
+        throw new Error("No photo received in the message response.");
       }
       return message.photo[message.photo.length - 1].file_id;
     } catch (error) {
       logger.error(
         {
-          src: 'plugin:telegram',
+          src: "plugin:telegram",
           chatId,
           error: error instanceof Error ? error.message : String(error),
         },
-        'Error sending image',
+        "Error sending image",
       );
       throw error;
     }

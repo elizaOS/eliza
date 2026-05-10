@@ -28,6 +28,37 @@ function normalizeStringSetting(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function toAppSessionJsonValue(
+  value: unknown,
+  depth = 0,
+): AppSessionJsonValue | undefined {
+  if (depth > 6) return null;
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value as AppSessionJsonValue;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => toAppSessionJsonValue(entry, depth + 1))
+      .filter((entry): entry is AppSessionJsonValue => entry !== undefined);
+  }
+  if (typeof value === "object") {
+    const record: Record<string, AppSessionJsonValue> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      const next = toAppSessionJsonValue(entry, depth + 1);
+      if (next !== undefined) {
+        record[key] = next;
+      }
+    }
+    return record;
+  }
+  return undefined;
+}
+
 function resolveSettingLike(
   runtime: IAgentRuntime | null | undefined,
   key: string,
@@ -187,7 +218,7 @@ async function resolveRuntimeEvmAddress(
   if (!existingPk) {
     return null;
   }
-  const walletApiModule = "@elizaos/agent/api/wallet";
+  const walletApiModule = "@elizaos/agent";
   const { deriveEvmAddress } = (await import(
     /* webpackIgnore: true */ walletApiModule
   )) as {
@@ -374,19 +405,21 @@ function buildSession(
     .filter((c) => c.available !== false && typeof c.command === "string")
     .map((c) => c.command as string);
 
-  const recommendedGoals = availableGoals.map((g, i) => ({
+  const recommendedGoals: AppSessionJsonValue[] = availableGoals.map((g, i) => ({
     id: `goal-${i}`,
     type: g.type ?? "general",
     description: g.description ?? "",
-    reason: g.reason,
+    reason: typeof g.reason === "string" ? g.reason : null,
   }));
 
-  const recentThoughts = thoughts.slice(0, THOUGHTS_LIMIT).map((t) => ({
-    id: t.id,
-    type: t.type,
-    content: t.content,
-    timestamp: t.timestamp,
-  }));
+  const recentThoughts: AppSessionJsonValue[] = thoughts
+    .slice(0, THOUGHTS_LIMIT)
+    .map((t) => ({
+      id: t.id,
+      type: t.type,
+      content: toAppSessionJsonValue(t.content) ?? null,
+      timestamp: t.timestamp,
+    }));
 
   const telemetry: Record<string, AppSessionJsonValue> = {
     goalsPaused,
@@ -400,11 +433,10 @@ function buildSession(
     telemetry.lastActivity = agentRecord.lastActivity;
   }
   if (recommendedGoals.length > 0) {
-    telemetry.recommendedGoals =
-      recommendedGoals as unknown as AppSessionJsonValue;
+    telemetry.recommendedGoals = recommendedGoals;
   }
   if (recentThoughts.length > 0) {
-    telemetry.recentThoughts = recentThoughts as unknown as AppSessionJsonValue;
+    telemetry.recentThoughts = recentThoughts;
   }
 
   return {

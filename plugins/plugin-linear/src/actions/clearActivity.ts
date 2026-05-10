@@ -10,6 +10,7 @@ import {
   type State,
 } from "@elizaos/core";
 import type { LinearService } from "../services/linear";
+import { getLinearAccountId, linearAccountIdParameter } from "./account-options";
 import { validateLinearActionIntent } from "./validate-linear-intent";
 
 const CLEAR_ACTIVITY_TIMEOUT_MS = 10_000;
@@ -19,10 +20,11 @@ export const clearActivityAction: Action = {
   contexts: ["tasks", "connectors", "automation"],
   contextGate: { anyOf: ["tasks", "connectors", "automation"] },
   roleGate: { minRole: "USER" },
-  description: "Clear the Linear activity log",
+  description:
+    "Clear the cached Linear activity log for the connected Linear account. Use when the user asks to reset, wipe, or refresh their Linear activity history before pulling a fresh view of recent issue and comment events.",
   descriptionCompressed: "clear Linear activity log",
   similes: ["clear-linear-activity", "reset-linear-activity", "delete-linear-activity"],
-  parameters: [],
+  parameters: [linearAccountIdParameter],
 
   examples: [
     [
@@ -75,6 +77,7 @@ export const clearActivityAction: Action = {
       if (!linearService) {
         throw new Error("Linear service not available");
       }
+      const accountId = getLinearAccountId(runtime, _options);
 
       // Two-phase confirmation: clearing the activity log is destructive
       // and not undoable from the agent's side.
@@ -82,7 +85,7 @@ export const clearActivityAction: Action = {
         runtime,
         message,
         actionName: "CLEAR_LINEAR_ACTIVITY",
-        pendingKey: "clear_log",
+        pendingKey: `clear_log:${accountId}`,
         prompt: 'Clear the Linear activity log? Reply "yes" to confirm.',
         callback,
       });
@@ -104,7 +107,7 @@ export const clearActivityAction: Action = {
       }
 
       await Promise.race([
-        linearService.clearActivityLog(),
+        linearService.clearActivityLog(accountId),
         new Promise<never>((_, reject) =>
           setTimeout(
             () => reject(new Error("Linear clear activity timeout")),

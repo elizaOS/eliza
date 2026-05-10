@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  getGreeting,
-  getRuntime,
-  isRuntimeInitialized,
-  sendMessage,
-} from "./eliza-runtime";
 import "./App.css";
+
+type ElizaRuntimeModule = typeof import("./eliza-runtime");
+
+let elizaRuntimeModulePromise: Promise<ElizaRuntimeModule> | null = null;
+
+function loadElizaRuntime(): Promise<ElizaRuntimeModule> {
+  elizaRuntimeModulePromise ??= import("./eliza-runtime");
+  return elizaRuntimeModulePromise;
+}
 
 interface Message {
   id: string;
@@ -19,6 +22,7 @@ function App() {
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [isBooted, setIsBooted] = useState(false);
+  const [runtimeInitialized, setRuntimeInitialized] = useState(false);
   const [bootStatus, setBootStatus] = useState("Initializing...");
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -42,18 +46,20 @@ function App() {
     const initializeEliza = async () => {
       setBootStatus("Loading elizaOS runtime...");
 
-      // Initialize the AgentRuntime
-      await getRuntime();
+      // Load and initialize the AgentRuntime after the shell renders.
+      const runtimeModule = await loadElizaRuntime();
+      await runtimeModule.getRuntime();
 
       if (!mounted) return;
 
       setBootStatus("Runtime initialized");
       setIsBooted(true);
+      setRuntimeInitialized(true);
 
       // Add initial greeting after boot
       setTimeout(() => {
         if (mounted) {
-          addElizaMessage(getGreeting());
+          addElizaMessage(runtimeModule.getGreeting());
         }
       }, 500);
     };
@@ -101,7 +107,8 @@ function App() {
       setIsTyping(true);
 
       // Send message through elizaOS runtime
-      const response = await sendMessage(text);
+      const runtimeModule = await loadElizaRuntime();
+      const response = await runtimeModule.sendMessage(text);
       addElizaMessage(response);
       setIsTyping(false);
     },
@@ -135,7 +142,7 @@ function App() {
             </div>
             <div className="status-item">
               <span>
-                {isRuntimeInitialized()
+                {runtimeInitialized
                   ? "elizaOS Runtime Active"
                   : "elizaOS React Demo"}
               </span>

@@ -8,7 +8,7 @@
 
 import { logger } from "@elizaos/core";
 import { ethers } from "ethers";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 
 export interface JsonRpcEndpointProbeResult {
   ok: boolean;

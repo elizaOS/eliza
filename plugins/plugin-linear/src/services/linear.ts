@@ -9,16 +9,28 @@ import {
   type User,
   type WorkflowState,
 } from "@linear/sdk";
+import {
+  DEFAULT_LINEAR_ACCOUNT_ID,
+  type LinearAccountConfig,
+  normalizeLinearAccountId,
+  readLinearAccounts,
+  resolveLinearDefaultAccount,
+} from "../accounts";
 import type {
   ActivityDetailObject,
   ActivityDetailValue,
   LinearActivityItem,
   LinearCommentInput,
-  LinearConfig,
   LinearIssueInput,
   LinearSearchFilters,
 } from "../types";
 import { LinearAuthenticationError } from "../types";
+
+interface LinearClientState {
+  accountId: string;
+  config: LinearAccountConfig;
+  client: LinearClient;
+}
 
 export class LinearService extends Service {
   static serviceType = "linear";
@@ -26,31 +38,36 @@ export class LinearService extends Service {
   capabilityDescription =
     "Linear API integration for issue tracking, project management, and team collaboration";
 
-  private client: LinearClient;
+  private clients = new Map<string, LinearClientState>();
   private activityLog: LinearActivityItem[] = [];
-  private linearConfig: LinearConfig;
+  private defaultAccountId = DEFAULT_LINEAR_ACCOUNT_ID;
   public workspaceId?: string;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
 
-    const apiKey = runtime?.getSetting("LINEAR_API_KEY") as string;
-    const workspaceId = runtime?.getSetting("LINEAR_WORKSPACE_ID") as string;
+    const accounts = runtime ? readLinearAccounts(runtime) : [];
+    const requestedDefault = runtime
+      ? normalizeLinearAccountId(
+          runtime.getSetting("LINEAR_DEFAULT_ACCOUNT_ID") ?? runtime.getSetting("LINEAR_ACCOUNT_ID")
+        )
+      : DEFAULT_LINEAR_ACCOUNT_ID;
+    const defaultAccount = resolveLinearDefaultAccount(accounts, requestedDefault);
 
-    if (!apiKey) {
+    if (!defaultAccount) {
       throw new LinearAuthenticationError("Linear API key is required");
     }
 
-    this.linearConfig = {
-      LINEAR_API_KEY: apiKey,
-      LINEAR_WORKSPACE_ID: workspaceId,
-    };
+    this.defaultAccountId = defaultAccount.accountId;
+    this.workspaceId = defaultAccount.workspaceId;
 
-    this.workspaceId = workspaceId;
-
-    this.client = new LinearClient({
-      apiKey: this.linearConfig.LINEAR_API_KEY,
-    });
+    for (const account of accounts) {
+      this.clients.set(account.accountId, {
+        accountId: account.accountId,
+        config: account,
+        client: new LinearClient({ apiKey: account.apiKey }),
+      });
+    }
   }
 
   static async start(runtime: IAgentRuntime): Promise<LinearService> {
@@ -65,13 +82,42 @@ export class LinearService extends Service {
     logger.info("Linear service stopped");
   }
 
-  private async validateConnection(): Promise<void> {
+  private async validateConnection(accountId?: string): Promise<void> {
     try {
-      const viewer = await this.client.viewer;
-      logger.info(`Linear connected as user: ${viewer.email}`);
+      const state = this.getAccountState(accountId);
+      const viewer = await state.client.viewer;
+      logger.info(`Linear connected as user: ${viewer.email} (accountId=${state.accountId})`);
     } catch (_error) {
       throw new LinearAuthenticationError("Failed to authenticate with Linear API");
     }
+  }
+
+  hasAccount(accountId?: string): boolean {
+    return Boolean(this.getAccountState(accountId, false));
+  }
+
+  getDefaultTeamKey(accountId?: string): string | undefined {
+    return this.getAccountState(accountId).config.defaultTeamKey;
+  }
+
+  private getAccountState(accountId?: string): LinearClientState;
+  private getAccountState(
+    accountId: string | undefined,
+    throwOnMissing: false
+  ): LinearClientState | null;
+  private getAccountState(accountId?: string, throwOnMissing = true): LinearClientState | null {
+    const normalized = normalizeLinearAccountId(accountId);
+    const state = accountId
+      ? (this.clients.get(normalized) ?? null)
+      : (this.clients.get(this.defaultAccountId) ?? Array.from(this.clients.values())[0] ?? null);
+    if (!state && throwOnMissing) {
+      throw new LinearAuthenticationError("Linear API key is required");
+    }
+    return state;
+  }
+
+  private getClient(accountId?: string): LinearClient {
+    return this.getAccountState(accountId)?.client as LinearClient;
   }
 
   private logActivity(
@@ -100,7 +146,11 @@ export class LinearService extends Service {
     }
   }
 
-  getActivityLog(limit?: number, filter?: Partial<LinearActivityItem>): LinearActivityItem[] {
+  getActivityLog(
+    limit?: number,
+    filter?: Partial<LinearActivityItem>,
+    accountId?: string
+  ): LinearActivityItem[] {
     let filtered = [...this.activityLog];
 
     if (filter) {
@@ -110,31 +160,54 @@ export class LinearService extends Service {
         });
       });
     }
+    if (accountId) {
+      filtered = filtered.filter((item) => item.details.accountId === accountId);
+    }
 
     return filtered.slice(-(limit || 100));
   }
 
-  clearActivityLog(): void {
+  clearActivityLog(accountId?: string): void {
+    if (accountId) {
+      this.activityLog = this.activityLog.filter((item) => item.details.accountId !== accountId);
+      logger.info(`Linear activity log cleared for accountId=${accountId}`);
+      return;
+    }
     this.activityLog = [];
     logger.info("Linear activity log cleared");
   }
 
-  async getTeams(): Promise<Team[]> {
-    const teams = await this.client.teams();
+  async getTeams(accountId?: string): Promise<Team[]> {
+    const state = this.getAccountState(accountId);
+    const teams = await state.client.teams();
     const teamList = await teams.nodes;
 
-    this.logActivity("list_teams", "team", "all", { count: teamList.length }, true);
+    this.logActivity(
+      "list_teams",
+      "team",
+      "all",
+      { count: teamList.length, accountId: state.accountId },
+      true
+    );
     return teamList;
   }
 
-  async getTeam(teamId: string): Promise<Team> {
-    const team = await this.client.team(teamId);
-    this.logActivity("get_team", "team", teamId, { name: team.name }, true);
+  async getTeam(teamId: string, accountId?: string): Promise<Team> {
+    const state = this.getAccountState(accountId);
+    const team = await state.client.team(teamId);
+    this.logActivity(
+      "get_team",
+      "team",
+      teamId,
+      { name: team.name, accountId: state.accountId },
+      true
+    );
     return team;
   }
 
-  async createIssue(input: LinearIssueInput): Promise<Issue> {
-    const issuePayload = await this.client.createIssue({
+  async createIssue(input: LinearIssueInput, accountId?: string): Promise<Issue> {
+    const state = this.getAccountState(accountId);
+    const issuePayload = await state.client.createIssue({
       title: input.title,
       description: input.description,
       teamId: input.teamId,
@@ -159,6 +232,7 @@ export class LinearService extends Service {
       {
         title: input.title,
         teamId: input.teamId,
+        accountId: state.accountId,
       },
       true
     );
@@ -166,8 +240,9 @@ export class LinearService extends Service {
     return issue;
   }
 
-  async getIssue(issueId: string): Promise<Issue> {
-    const issue = await this.client.issue(issueId);
+  async getIssue(issueId: string, accountId?: string): Promise<Issue> {
+    const state = this.getAccountState(accountId);
+    const issue = await state.client.issue(issueId);
     this.logActivity(
       "get_issue",
       "issue",
@@ -175,14 +250,20 @@ export class LinearService extends Service {
       {
         title: issue.title,
         identifier: issue.identifier,
+        accountId: state.accountId,
       },
       true
     );
     return issue;
   }
 
-  async updateIssue(issueId: string, updates: Partial<LinearIssueInput>): Promise<Issue> {
-    const updatePayload = await this.client.updateIssue(issueId, {
+  async updateIssue(
+    issueId: string,
+    updates: Partial<LinearIssueInput>,
+    accountId?: string
+  ): Promise<Issue> {
+    const state = this.getAccountState(accountId);
+    const updatePayload = await state.client.updateIssue(issueId, {
       title: updates.title,
       description: updates.description,
       priority: updates.priority,
@@ -199,22 +280,36 @@ export class LinearService extends Service {
       throw new Error("Failed to update issue");
     }
 
-    this.logActivity("update_issue", "issue", issueId, updates, true);
+    this.logActivity(
+      "update_issue",
+      "issue",
+      issueId,
+      { ...updates, accountId: state.accountId },
+      true
+    );
     return issue;
   }
 
-  async deleteIssue(issueId: string): Promise<void> {
-    const archivePayload = await this.client.archiveIssue(issueId);
+  async deleteIssue(issueId: string, accountId?: string): Promise<void> {
+    const state = this.getAccountState(accountId);
+    const archivePayload = await state.client.archiveIssue(issueId);
 
     const success = await archivePayload.success;
     if (!success) {
       throw new Error("Failed to archive issue");
     }
 
-    this.logActivity("delete_issue", "issue", issueId, { action: "archived" }, true);
+    this.logActivity(
+      "delete_issue",
+      "issue",
+      issueId,
+      { action: "archived", accountId: state.accountId },
+      true
+    );
   }
 
-  async searchIssues(filters: LinearSearchFilters): Promise<Issue[]> {
+  async searchIssues(filters: LinearSearchFilters, accountId?: string): Promise<Issue[]> {
+    const state = this.getAccountState(accountId);
     const filterObject: Record<string, string | number | boolean | object | null | undefined> = {};
 
     if (filters.query) {
@@ -225,7 +320,7 @@ export class LinearService extends Service {
     }
 
     if (filters.team) {
-      const teams = await this.getTeams();
+      const teams = await this.getTeams(state.accountId);
       const team = teams.find(
         (t) =>
           t.key.toLowerCase() === filters.team?.toLowerCase() ||
@@ -238,7 +333,7 @@ export class LinearService extends Service {
     }
 
     if (filters.assignee && filters.assignee.length > 0) {
-      const users = await this.getUsers();
+      const users = await this.getUsers(state.accountId);
       const assigneeIds = filters.assignee
         .map((assigneeName) => {
           const user = users.find(
@@ -273,7 +368,7 @@ export class LinearService extends Service {
       };
     }
 
-    const query = this.client.issues({
+    const query = state.client.issues({
       first: filters.limit || 50,
       filter: Object.keys(filterObject).length > 0 ? filterObject : undefined,
     });
@@ -286,7 +381,7 @@ export class LinearService extends Service {
       "issue",
       "search",
       {
-        filters: { ...filters } as ActivityDetailObject,
+        filters: { ...filters, accountId: state.accountId } as ActivityDetailObject,
         count: issueList.length,
       },
       true
@@ -295,8 +390,9 @@ export class LinearService extends Service {
     return issueList;
   }
 
-  async createComment(input: LinearCommentInput): Promise<Comment> {
-    const commentPayload = await this.client.createComment({
+  async createComment(input: LinearCommentInput, accountId?: string): Promise<Comment> {
+    const state = this.getAccountState(accountId);
+    const commentPayload = await state.client.createComment({
       body: input.body,
       issueId: input.issueId,
     });
@@ -313,6 +409,7 @@ export class LinearService extends Service {
       {
         issueId: input.issueId,
         bodyLength: input.body.length,
+        accountId: state.accountId,
       },
       true
     );
@@ -320,35 +417,44 @@ export class LinearService extends Service {
     return comment;
   }
 
-  async updateComment(commentId: string, body: string): Promise<Comment> {
-    const commentPayload = await this.client.updateComment(commentId, {
+  async updateComment(commentId: string, body: string, accountId?: string): Promise<Comment> {
+    const state = this.getAccountState(accountId);
+    const commentPayload = await state.client.updateComment(commentId, {
       body,
     });
     const comment = await commentPayload.comment;
     if (!comment) {
       throw new Error("Failed to update comment");
     }
-    this.logActivity("update_comment", "comment", commentId, { bodyLength: body.length }, true);
+    this.logActivity(
+      "update_comment",
+      "comment",
+      commentId,
+      { bodyLength: body.length, accountId: state.accountId },
+      true
+    );
     return comment;
   }
 
-  async deleteComment(commentId: string): Promise<void> {
-    const payload = await this.client.deleteComment(commentId);
+  async deleteComment(commentId: string, accountId?: string): Promise<void> {
+    const state = this.getAccountState(accountId);
+    const payload = await state.client.deleteComment(commentId);
     if (!payload.success) {
       throw new Error("Failed to delete comment");
     }
-    this.logActivity("delete_comment", "comment", commentId, {}, true);
+    this.logActivity("delete_comment", "comment", commentId, { accountId: state.accountId }, true);
   }
 
-  async listComments(issueId: string, limit = 25): Promise<Comment[]> {
-    const issue = await this.client.issue(issueId);
+  async listComments(issueId: string, limit = 25, accountId?: string): Promise<Comment[]> {
+    const issue = await this.getClient(accountId).issue(issueId);
     const connection = await issue.comments({ first: Math.min(limit, 100) });
     return connection.nodes;
   }
 
-  async getProjects(teamId?: string): Promise<Project[]> {
+  async getProjects(teamId?: string, accountId?: string): Promise<Project[]> {
+    const state = this.getAccountState(accountId);
     // Linear SDK v51 requires manual team filtering on projects
-    const query = this.client.projects({
+    const query = state.client.projects({
       first: 100,
     });
 
@@ -374,6 +480,7 @@ export class LinearService extends Service {
       {
         count: projectList.length,
         teamId,
+        accountId: state.accountId,
       },
       true
     );
@@ -381,22 +488,25 @@ export class LinearService extends Service {
     return projectList;
   }
 
-  async getProject(projectId: string): Promise<Project> {
-    const project = await this.client.project(projectId);
+  async getProject(projectId: string, accountId?: string): Promise<Project> {
+    const state = this.getAccountState(accountId);
+    const project = await state.client.project(projectId);
     this.logActivity(
       "get_project",
       "project",
       projectId,
       {
         name: project.name,
+        accountId: state.accountId,
       },
       true
     );
     return project;
   }
 
-  async getUsers(): Promise<User[]> {
-    const users = await this.client.users();
+  async getUsers(accountId?: string): Promise<User[]> {
+    const state = this.getAccountState(accountId);
+    const users = await state.client.users();
     const userList = await users.nodes;
 
     this.logActivity(
@@ -405,6 +515,7 @@ export class LinearService extends Service {
       "all",
       {
         count: userList.length,
+        accountId: state.accountId,
       },
       true
     );
@@ -412,8 +523,9 @@ export class LinearService extends Service {
     return userList;
   }
 
-  async getCurrentUser(): Promise<User> {
-    const user = await this.client.viewer;
+  async getCurrentUser(accountId?: string): Promise<User> {
+    const state = this.getAccountState(accountId);
+    const user = await state.client.viewer;
     this.logActivity(
       "get_current_user",
       "user",
@@ -421,14 +533,16 @@ export class LinearService extends Service {
       {
         email: user.email,
         name: user.name,
+        accountId: state.accountId,
       },
       true
     );
     return user;
   }
 
-  async getUserTeams(): Promise<Team[]> {
-    const viewer = await this.client.viewer;
+  async getUserTeams(accountId?: string): Promise<Team[]> {
+    const state = this.getAccountState(accountId);
+    const viewer = await state.client.viewer;
     const teams = await viewer.teams();
     const teamList = await teams.nodes;
 
@@ -438,6 +552,7 @@ export class LinearService extends Service {
       viewer.id,
       {
         count: teamList.length,
+        accountId: state.accountId,
       },
       true
     );
@@ -445,8 +560,9 @@ export class LinearService extends Service {
     return teamList;
   }
 
-  async getLabels(teamId?: string): Promise<IssueLabel[]> {
-    const query = this.client.issueLabels({
+  async getLabels(teamId?: string, accountId?: string): Promise<IssueLabel[]> {
+    const state = this.getAccountState(accountId);
+    const query = state.client.issueLabels({
       first: 100,
       filter: teamId
         ? {
@@ -465,6 +581,7 @@ export class LinearService extends Service {
       {
         count: labelList.length,
         teamId,
+        accountId: state.accountId,
       },
       true
     );
@@ -472,8 +589,9 @@ export class LinearService extends Service {
     return labelList;
   }
 
-  async getWorkflowStates(teamId: string): Promise<WorkflowState[]> {
-    const states = await this.client.workflowStates({
+  async getWorkflowStates(teamId: string, accountId?: string): Promise<WorkflowState[]> {
+    const state = this.getAccountState(accountId);
+    const states = await state.client.workflowStates({
       filter: {
         team: { id: { eq: teamId } },
       },
@@ -487,6 +605,7 @@ export class LinearService extends Service {
       teamId,
       {
         count: stateList.length,
+        accountId: state.accountId,
       },
       true
     );

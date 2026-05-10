@@ -33,6 +33,74 @@ const OUTPUT_PATH = path.join(
   "plugins.generated.json",
 );
 
+const RETIRED_IMPLEMENTATION_ONLY_ACTIONS = new Set([
+  "ASK_USER_QUESTION",
+  "CHECKIN",
+  "CHECK_AVAILABILITY",
+  "DISCORD_SETUP_CREDENTIALS",
+  "EDIT",
+  "ENTER_WORKTREE",
+  "EXIT_WORKTREE",
+  "FIRST_RUN",
+  "FORM_RESTORE",
+  "GET_TUNNEL_STATUS",
+  "GLOB",
+  "GREP",
+  "HEALTH",
+  "LIFE",
+  "LIFEOPS",
+  "LIST_ACTIVE_BLOCKS",
+  "PROFILE",
+  "RELATIONSHIP",
+  "MONEY",
+  "PAYMENTS",
+  "SUBSCRIPTIONS",
+  "SCHEDULE",
+  "BOOK_TRAVEL",
+  "SCHEDULING_NEGOTIATION",
+  "DEVICE_INTENT",
+  "MESSAGE_HANDOFF",
+  "APP_BLOCK",
+  "WEBSITE_BLOCK",
+  "AUTOFILL",
+  "PASSWORD_MANAGER",
+  "GOOGLE_CALENDAR",
+  "LIFEOPS_PAUSE",
+  "NOSTR_PUBLISH_PROFILE",
+  "PAYMENT",
+  "PLACE_CALL",
+  "PLAY_AUDIO",
+  "PLAYBACK",
+  "READ",
+  "RELEASE_BLOCK",
+  "SCREEN_TIME",
+  "TOGGLE_FEATURE",
+  "TAILSCALE",
+  "START_TUNNEL",
+  "STOP_TUNNEL",
+  "WEB_FETCH",
+  "WRITE",
+  "LS",
+  "MUSIC_LIBRARY",
+  "LIST_OVERDUE_FOLLOWUPS",
+  "MARK_FOLLOWUP_DONE",
+  "SET_FOLLOWUP_THRESHOLD",
+  "LINEAR_ISSUE",
+  "LINEAR_COMMENT",
+  "LINEAR_WORKFLOW",
+  "CREATE_LINEAR_ISSUE",
+  "GET_LINEAR_ISSUE",
+  "UPDATE_LINEAR_ISSUE",
+  "DELETE_LINEAR_ISSUE",
+  "CREATE_LINEAR_COMMENT",
+  "UPDATE_LINEAR_COMMENT",
+  "DELETE_LINEAR_COMMENT",
+  "LIST_LINEAR_COMMENTS",
+  "GET_LINEAR_ACTIVITY",
+  "CLEAR_LINEAR_ACTIVITY",
+  "SEARCH_LINEAR_ISSUES",
+]);
+
 function readText(filePath) {
   return fs.readFileSync(filePath, "utf-8");
 }
@@ -1215,6 +1283,7 @@ function main() {
     for (const obj of objects) {
       const name = extractTopLevelStringProp(obj.objectText, "name");
       if (!name) continue;
+      if (RETIRED_IMPLEMENTATION_ONLY_ACTIONS.has(name)) continue;
       if (coreActionNames.has(name)) continue;
       const description = expandDescriptionTemplateLiterals(
         extractTopLevelStringProp(obj.objectText, "description") ?? "",
@@ -1232,7 +1301,7 @@ function main() {
       const jsonTemplateParameters =
         explicitParameters.length === 0 &&
         descriptionParameters.length === 0 &&
-        (name.endsWith("_OP") || description.toLowerCase().includes("router"))
+        (name.endsWith("") || description.toLowerCase().includes("router"))
           ? inferParametersFromJsonTemplate(src)
           : [];
       const parameters =

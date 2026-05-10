@@ -14,7 +14,7 @@ stack to extract structure out of terminal byte streams. The Agent Client Protoc
 protocol underneath, `tool_call`, `thinking`, `diff`, `done` events, typed
 auth handshake, cooperative `session/cancel`. ACPX provides one CLI surface
 across 15 Agent Client Protocol (ACP)-compatible coding agents (codex, claude-code, gemini, copilot,
-cursor, droid, qwen, etc).
+cursor, droid, local Eliza-1 agents, etc).
 
 This plugin is a sibling-not-replacement: deploys alongside
 `plugin-agent-orchestrator`, exposes the same action names so users can switch
@@ -65,7 +65,7 @@ Match `plugin-agent-orchestrator` exactly:
 └──────────┬──────────────┘
            │
 ┌──────────v──────────────┐
-│ AcpxSubprocessService   │
+│ AcpService              │
 │  - spawn `acpx` proc    │
 │  - parse NDJSON stream  │
 │  - emit typed events    │
@@ -81,14 +81,9 @@ Match `plugin-agent-orchestrator` exactly:
 
 ## Reference materials
 
-In `.research/`:
-- `plugin-agent-orchestrator-src/`, full source of the PTY plugin we're paralleling
-- `plugin-agent-orchestrator-package.json`, its deps
-- `plugin-agent-orchestrator-README.md`, its surface
 - `acpx-docs/README.md`, acpx README
 - `acpx-docs/docs_CLI.md`, full acpx CLI reference
 - `acpx-docs/skills_acpx_SKILL.md`, skill reference
-- `nyx-spawn-codex/spawn_codex.js`, example of how nyx wraps plugin-agent-orchestrator's CREATE_TASK today
 
 ## Layout
 
@@ -105,14 +100,13 @@ src/
   providers/
     available-agents.ts
   services/
-    acpx-subprocess.ts  # core ACPX wrapper
+    acp-service.ts      # core ACPX wrapper
     session-store.ts    # persistent session state
     types.ts            # acpx event types
   __tests__/
     *.test.ts
 docs/
-  ACPX_REFERENCE.md     # W2 output
-  PARITY_SPEC.md        # W3 output
+  sub-agent-routing.md
 PROJECT.md              # this file
 ```
 

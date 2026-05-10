@@ -1,5 +1,5 @@
+import type { Voice } from "@elizaos/cloud-ui";
 import { useQuery } from "@tanstack/react-query";
-import type { Voice } from "@elizaos/cloud-ui/components/voice/types";
 import { api } from "../api-client";
 import { authenticatedQueryKey, useAuthenticatedQueryGate } from "./auth-query";
 

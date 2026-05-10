@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-mcp",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "elizaOS plugin to integrate with MCP (Model Context Protocol) servers",
   "type": "module",
   "main": "dist/node/index.js",
@@ -36,7 +36,7 @@
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
     "dev": "bun --hot build.ts",
-    "clean": "rm -rf dist .turbo node_modules",
+    "clean": "rm -rf dist .turbo",
     "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -45,7 +45,7 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "@modelcontextprotocol/sdk": "^1.7.0",
     "ajv": "^8.17.1",
     "json5": "^2.2.3"
@@ -57,7 +57,7 @@
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "publishConfig": {
     "access": "public"

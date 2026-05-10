@@ -6,10 +6,11 @@
     "types": ["node"],
     "target": "ESNext",
     "module": "Preserve",
-    "moduleResolution": "Bundler",
+    "moduleResolution": "bundler",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
     "forceConsistentCasingInFileNames": false,
     "allowImportingTsExtensions": true,
     "declaration": true,
@@ -25,5 +26,11 @@
     "noUnusedParameters": true,
     "allowUnusedLabels": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
+  ]
 }

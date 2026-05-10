@@ -1,61 +1,38 @@
 {
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "useDefineForClassFields": true,
-    "module": "ESNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "skipLibCheck": true,
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "jsx": "react-jsx",
-    "strict": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noFallthroughCasesInSwitch": true,
-    "forceConsistentCasingInFileNames": true,
-    "experimentalDecorators": true,
-    "useUnknownInCatchVariables": true,
-    "types": ["vite/client", "bun-types"],
     "paths": {
       "@elizaos/app-core": ["../app-core/src/index.ts"],
-      "@elizaos/app-core/platform/native-plugin-entrypoints": [
-        "../app-core/src/platform/native-plugin-entrypoints.ts"
-      ],
-      "@elizaos/app-core/*": ["../app-core/src/*"],
       "@elizaos/app-elizamaker": ["../../plugins/app-elizamaker/src/index.ts"],
-      "@elizaos/app-elizamaker/*": ["../../plugins/app-elizamaker/src/*"],
       "@elizaos/app-task-coordinator": [
         "../../plugins/app-task-coordinator/src/index.ts"
       ],
-      "@elizaos/app-task-coordinator/*": [
-        "../../plugins/app-task-coordinator/src/*"
-      ],
       "@elizaos/app-companion": ["../../plugins/app-companion/src/index.ts"],
-      "@elizaos/app-companion/*": ["../../plugins/app-companion/src/*"],
       "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
-      "@elizaos/app-lifeops/*": ["../../plugins/app-lifeops/src/*"],
       "@elizaos/app-phone": ["../../plugins/app-phone/src/index.ts"],
-      "@elizaos/app-phone/*": ["../../plugins/app-phone/src/*"],
       "@elizaos/app-shopify": ["../../plugins/app-shopify/src/index.ts"],
-      "@elizaos/app-shopify/*": ["../../plugins/app-shopify/src/*"],
       "@elizaos/app-steward": ["../../plugins/app-steward/src/index.ts"],
-      "@elizaos/app-steward/*": ["../../plugins/app-steward/src/*"],
       "@elizaos/app-training": ["../../plugins/app-training/src/index.ts"],
-      "@elizaos/app-training/*": ["../../plugins/app-training/src/*"],
       "@elizaos/app-vincent": ["../../plugins/app-vincent/src/index.ts"],
-      "@elizaos/app-vincent/*": ["../../plugins/app-vincent/src/*"],
       "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
-      "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
+      "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/agent": ["../agent/src/index.ts"],
-      "@elizaos/agent/*": ["../agent/src/*"],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
+      "@elizaos/plugin-elizacloud": [
+        "../../plugins/plugin-elizacloud/src/index.node.ts"
+      ],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/dist/index.d.ts"],
+      "@elizaos/plugin-computeruse": [
+        "../../plugins/plugin-computeruse/src/index.ts"
+      ],
+      "@elizaos/plugin-whatsapp": ["../../plugins/plugin-whatsapp/src/index.ts"],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
+      "@elizaos/plugin-telegram": ["../../plugins/plugin-telegram/src/index.ts"],
       "@elizaos/core": ["../core/src/index.ts"],
-      "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/capacitor-agent": ["../native-plugins/agent/src/index.ts"],
       "@elizaos/capacitor-desktop": ["../native-plugins/desktop/src/index.ts"],
       "@elizaos/capacitor-llama": ["../native-plugins/llama/src/index.ts"],
@@ -69,25 +46,18 @@
         "../native-plugins/mobile-signals/src/index.ts"
       ],
       "@elizaos/ui": ["../ui/src/index.ts"],
-      "@elizaos/ui/*": ["../ui/src/*"],
       "react": ["../../node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": ["../../node_modules/@types/react/jsx-runtime.d.ts"],
+      "react/jsx-runtime": [
+        "../../node_modules/@types/react/jsx-runtime.d.ts"
+      ],
       "react/jsx-dev-runtime": [
         "../../node_modules/@types/react/jsx-dev-runtime.d.ts"
       ],
       "react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
-      "react-dom/client": ["../../node_modules/@types/react-dom/client.d.ts"],
-      "@elizaos/*": ["../../node_modules/@elizaos/*"],
-      "@clawville/app-clawville": ["../../plugins/app-clawville/src/index.ts"],
-      "@clawville/app-clawville/*": ["../../plugins/app-clawville/src/*"]
+      "react-dom/client": [
+        "../../node_modules/@types/react-dom/client.d.ts"
+      ],
+      "@clawville/app-clawville": ["../../plugins/app-clawville/src/index.ts"]
     }
-  },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "../../packages/app-core/src/ambient-modules.d.ts",
-    "../../packages/app-core/src/platform/capacitor-plugin-modules.d.ts",
-    "../../packages/agent/src/external-modules.d.ts"
-  ],
-  "exclude": ["node_modules", "dist", "ios", "android", "electrobun"]
+  }
 }

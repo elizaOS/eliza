@@ -10,7 +10,7 @@
 
 LifeOps is implemented as a broad app plugin in `plugins/app-lifeops`. The plugin registers LifeOps actions for browser bridge management, calendar/inbox, X, approvals, routines, relationships/followups, Twilio, remote desktop, cross-channel send, intent sync, password/autofill, health, subscriptions, unsubscribe, payments, connector management, and mutations (`plugins/app-lifeops/src/plugin.ts:207`). It also registers providers/services for browser bridge context, blockers, LifeOps context, health, inbox triage, cross-channel context, activity profile, browser bridge service, website blocker service, activity tracking, and presence signal bridging (`plugins/app-lifeops/src/plugin.ts:254`).
 
-The HTTP surface is explicit and large: Google, calendar, Gmail, X, iMessage, Telegram, Signal, Discord, WhatsApp, channel policies, phone consent, reminders, workflows, schedule, permissions, screen time, health, money, smart features, subscriptions, unsubscribe, definitions, goals, and feature toggles are all present in the LifeOps route plugin (`plugins/app-lifeops/src/routes/plugin.ts:153`, `plugins/app-lifeops/src/routes/plugin.ts:297`). Browser companion routes have moved out of LifeOps into `@elizaos/plugin-browser-bridge` under `/api/browser-bridge/*` (`plugins/app-lifeops/src/routes/plugin.ts:251`).
+The HTTP surface is explicit and large: Google, calendar, Gmail, X, iMessage, Telegram, Signal, Discord, WhatsApp, channel policies, phone consent, reminders, workflows, schedule, permissions, screen time, health, money, smart features, subscriptions, unsubscribe, definitions, goals, and feature toggles are all present in the LifeOps route plugin (`plugins/app-lifeops/src/routes/plugin.ts:153`, `plugins/app-lifeops/src/routes/plugin.ts:297`). Browser companion routes have moved out of LifeOps into `@elizaos/plugin-browser` under `/api/browser-bridge/*` (`plugins/app-lifeops/src/routes/plugin.ts:251`).
 
 The service layer is a mixin facade. Google auth is composed before Calendar/Gmail/Drive, then reminders/browser/workflows/goals, then messaging/social connectors and status surfaces (`plugins/app-lifeops/src/lifeops/service.ts:45`). Persistent state includes connector grants with `side`, `mode`, `executionTarget`, `sourceOfTruth`, `preferredByAgent`, and `cloudConnectionId` (`plugins/app-lifeops/src/lifeops/schema.ts:34`), plus calendar events/sync state, Gmail messages/sync state, inbox messages, local intents, relationships, and follow-ups (`plugins/app-lifeops/src/lifeops/schema.ts:609`, `plugins/app-lifeops/src/lifeops/schema.ts:657`, `plugins/app-lifeops/src/lifeops/schema.ts:691`, `plugins/app-lifeops/src/lifeops/schema.ts:955`, `plugins/app-lifeops/src/lifeops/schema.ts:1004`).
 
@@ -61,11 +61,11 @@ Background scheduling is partly bootstrapped. The proactive worker and LifeOps s
 
 ### P1
 
-- Follow-up tracker is registered but appears not to be scheduled on clean startup. `plugin.ts` registers `registerFollowupTrackerWorker(runtime)` (`plugins/app-lifeops/src/plugin.ts:308`), while proactive and scheduler workers also call ensure functions that create/update task rows (`plugins/app-lifeops/src/plugin.ts:294`, `plugins/app-lifeops/src/plugin.ts:327`). `rg` found no `ensureFollowup...` task creation path. The follow-up worker tests validate registration/manual execution only (`plugins/app-lifeops/test/followup-tracker.test.ts:234`). On a fresh runtime, hourly follow-up reconciliation may never run unless some other path creates the `FOLLOWUP_TRACKER_RECONCILE` task row.
+- ~~Follow-up tracker is registered but appears not to be scheduled on clean startup.~~ **Resolved 2026-05-09.** `ensureFollowupTrackerTask` is imported and invoked at runtime init alongside the scheduler/proactive ensure paths; verified at `plugins/app-lifeops/src/plugin.ts:42` (import), `:44` (worker registration), `:450` (`registerFollowupTrackerWorker(runtime)`), `:456` (`await ensureFollowupTrackerTask(runtime)`).
 
 ### P2
 
-- Google OAuth callback refresh fallbacks use mismatched channel/storage keys. The hook listens on `elizaos:lifeops:google-connector` and `elizaos:lifeops:google-connector-refresh` (`plugins/app-lifeops/src/hooks/useGoogleLifeOpsConnector.ts:32`), but callback HTML posts to `eliza:lifeops:google-connector` and `eliza:lifeops:google-connector-refresh` (`plugins/app-lifeops/src/routes/lifeops-routes.ts:800`). `window.opener.postMessage`, focus, visibility, and polling can still hide this, but the BroadcastChannel/localStorage fallback path is broken and can leave the connector UI stale after OAuth.
+- ~~Google OAuth callback refresh fallbacks use mismatched channel/storage keys.~~ **Resolved 2026-05-09.** The callback HTML now posts to BOTH `elizaos:` and `eliza:` BroadcastChannel + localStorage keys; verified at `plugins/app-lifeops/src/routes/lifeops-routes.ts:802-813` (BroadcastChannel dual-publish) and `:817-820` (localStorage dual-write). The hook continues to listen on the `elizaos:` keys.
 - Intent sync wording and behavior are easy to overread as cross-device sync, but the implementation says it is local-only and not wire-replicated (`plugins/app-lifeops/src/lifeops/intent-sync.ts:5`). Scheduler code escalates unacknowledged intents to mobile by writing more local intent records (`plugins/app-lifeops/src/lifeops/runtime.ts:61`). Launch QA should treat remote/mobile intent delivery as unvalidated unless another device-bus layer is present.
 - WhatsApp pairing for LifeOps uses the generic app-core WhatsApp routes with `{ authScope: "lifeops", configurePlugin: false }` (`plugins/app-lifeops/src/hooks/useWhatsAppPairing.ts:30`, `packages/app-core/src/api/client-skills.ts:1123`), while LifeOps routes expose only status/send/messages (`plugins/app-lifeops/src/routes/plugin.ts:233`). This can be correct, but launch depends on the generic WhatsApp route/plugin being loaded and preserving LifeOps-vs-platform auth separation.
 
@@ -73,12 +73,12 @@ Background scheduling is partly bootstrapped. The proactive worker and LifeOps s
 
 - Ntfy push has config/unit coverage but no CI-safe HTTP integration coverage; the live test is skipped in CI and warns not to run against a public broker (`plugins/app-lifeops/test/notifications-push.integration.test.ts:13`).
 - Remote session control-plane tests cover pairing and explicit no-data-plane responses, but actual remote usability depends on Tailscale/cloud tunnel configuration (`plugins/app-lifeops/src/remote/remote-session-service.ts:11`, `plugins/app-lifeops/src/remote/tailscale-transport.ts:109`).
-- Browser Bridge routes have moved to `@elizaos/plugin-browser-bridge`; LifeOps launch must verify that plugin is included wherever `app-lifeops` is enabled, or browser setup UI/actions will be present without their route backend.
+- Browser Bridge routes have moved to `@elizaos/plugin-browser`; LifeOps launch must verify that plugin is included wherever `app-lifeops` is enabled, or browser setup UI/actions will be present without their route backend.
 
 ## Codex-fixable work
 
-- Add `ensureFollowupTrackerTask(runtime)` mirroring `ensureLifeOpsSchedulerTask` / `ensureProactiveAgentTask`, schedule it after runtime init, and add an init test that all three recurring worker task rows are created or updated.
-- Share Google connector refresh constants between callback route and hook, or dual-listen for the current `eliza:` and `elizaos:` keys. Add a regression test that callback HTML refreshes the hook through `postMessage`, `BroadcastChannel`, and `storage`.
+- ~~Add `ensureFollowupTrackerTask(runtime)` mirroring `ensureLifeOpsSchedulerTask` / `ensureProactiveAgentTask`, schedule it after runtime init.~~ **Done 2026-05-09**, see P1 above.
+- ~~Share Google connector refresh constants between callback route and hook, or dual-listen for the current `eliza:` and `elizaos:` keys.~~ **Done 2026-05-09**, see P2 above.
 - Add a route/client parity test for the LifeOps route table and all `client-lifeops` connector methods, including rate-limit bucket assignment for outbound sends.
 - Add an offline Ntfy HTTP-server stub test so notification publishing can be covered without a public broker.
 - Add a WhatsApp auth-scope contract test proving LifeOps QR pairing uses `authScope: "lifeops"` and does not mutate platform WhatsApp auth.
@@ -100,7 +100,7 @@ Background scheduling is partly bootstrapped. The proactive worker and LifeOps s
 - OAuth callback refresh integration test covering the hook against generated callback HTML.
 - Fixture-backed Google OAuth/status tests for cloud/local/remote modes, preferred grant switching, disconnect, and token-missing/needs-reauth states.
 - Fake-adapter tests for Telegram, Signal, Discord, iMessage, WhatsApp, and X status/start/send/disconnect flows with owner/agent side assertions.
-- Browser Bridge fake companion route tests and UI smoke tests that fail if `@elizaos/plugin-browser-bridge` routes are absent.
+- Browser Bridge fake companion route tests and UI smoke tests that fail if `@elizaos/plugin-browser` routes are absent.
 - Scheduler fake-clock tests for reminder attempts across in-app, push, email, SMS/voice, and chat channels with consent/channel-policy gates.
 - Remote-session tests with fake Tailscale/cloud data-plane resolver and UI/action assertions that null ingress is treated as non-usable.
 - Local HTTP-server Ntfy integration test.

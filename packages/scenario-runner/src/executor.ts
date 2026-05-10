@@ -57,6 +57,10 @@ type ScenarioRoomDefinition = {
 };
 
 type ScenarioComputerUseService = {
+  getCapabilities: () => Record<
+    string,
+    { available: boolean; tool: string }
+  >;
   executeDesktopAction: (params: Record<string, unknown>) => Promise<unknown>;
   executeBrowserAction: (params: Record<string, unknown>) => Promise<unknown>;
   executeFileAction: (params: Record<string, unknown>) => Promise<unknown>;
@@ -824,6 +828,16 @@ function createScenarioComputerUseService(): ScenarioComputerUseService {
   };
 
   return {
+    getCapabilities() {
+      return {
+        screenshot: { available: true, tool: "scenario-screenshot" },
+        computerUse: { available: true, tool: "scenario-desktop" },
+        windowList: { available: true, tool: "scenario-window-list" },
+        browser: { available: true, tool: "scenario-browser" },
+        terminal: { available: true, tool: "scenario-terminal" },
+        fileSystem: { available: true, tool: "scenario-file-system" },
+      };
+    },
     executeDesktopAction: run,
     executeBrowserAction: run,
     executeFileAction: run,
@@ -1179,11 +1193,11 @@ async function executeTickTurn(args: {
       : undefined;
   const startedAt = Date.now();
   const { executeLifeOpsSchedulerTask } = await import(
-    "@elizaos/app-lifeops/lifeops/runtime"
+    "@elizaos/app-lifeops"
   );
   const result = await withTimeout(
     executeLifeOpsSchedulerTask(args.runtime, {
-      ...toRecord(options),
+      ...(toRecord(options) ?? {}),
       ...(now ? { now } : {}),
     }),
     typeof args.turn.timeoutMs === "number"
@@ -1371,10 +1385,8 @@ export async function runScenario(
     id: scenario.id,
     title: scenario.title,
     domain: scenario.domain,
-    tags: Array.isArray((scenario as unknown as { tags?: unknown }).tags)
-      ? ((scenario as unknown as { tags: unknown[] }).tags.filter(
-          (t): t is string => typeof t === "string",
-        ) as readonly string[])
+    tags: Array.isArray(scenario.tags)
+      ? scenario.tags.filter((t): t is string => typeof t === "string")
       : [],
     status: "passed",
     durationMs: 0,
@@ -1456,9 +1468,7 @@ export async function runScenario(
           typeof (candidate as { name?: unknown }).name === "string"
         ) {
           await runtime.registerPlugin(
-            candidate as unknown as Parameters<
-              AgentRuntime["registerPlugin"]
-            >[0],
+            candidate as Parameters<AgentRuntime["registerPlugin"]>[0],
           );
         }
       } catch (err) {
@@ -1537,7 +1547,7 @@ export async function runScenario(
       // Synthesize an implicit REPLY capture when the runtime emitted text
       // via the message callback but the LLM failed to select REPLY in its
       // structured response. This happens regularly
-      // with smaller models (e.g. Groq llama-3.1-8b) on plain conversational
+      // with smaller models (e.g. hosted fast models) on plain conversational
       // turns. The scenario intent is "a conversational reply happened" —
       // without this, ~30% of cross-cutting scenarios fail on provider-quirk
       // rather than semantic regression.

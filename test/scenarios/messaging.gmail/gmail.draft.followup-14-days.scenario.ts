@@ -53,12 +53,12 @@ export default scenario({
   finalChecks: [
     {
       type: "gmailActionArguments",
-      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES", "RELATIONSHIP"],
+      actionName: ["MESSAGE", "MESSAGE", "RELATIONSHIP"],
       subaction: "unresponded",
     },
     {
       type: "gmailActionArguments",
-      actionName: ["TRIAGE_MESSAGES", "TRIAGE_MESSAGES"],
+      actionName: ["MESSAGE", "MESSAGE"],
       subaction: "draft_reply",
     },
     {

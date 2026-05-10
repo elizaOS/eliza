@@ -23,12 +23,12 @@
  *     ↳ dispatchFromLoop(parsed)              ← bypasses Actions entirely
  *
  * Action path (operator / elizaOS routing):
- *   runtime.processActions(message)
- *     ↳ validate(runtime, message)            ← hasActionRequest(message, "SCAPE_WALK_TO")
+ *   planned tool execution
+ *     ↳ gate + parameter validation
  *     ↳ handler(runtime, message, …)          ← reads message.content.text
  */
 
-import { parseJSONObjectFromText, type Memory } from "@elizaos/core";
+import { type Memory, parseJSONObjectFromText } from "@elizaos/core";
 
 let currentLlmResponse = "";
 
@@ -65,7 +65,10 @@ export function hasActionRequest(
 ): boolean {
   const text = message?.content?.text;
   if (typeof text !== "string" || text.length === 0) return false;
-  const parsed = parseJSONObjectFromText(text) as Record<string, unknown> | null;
+  const parsed = parseJSONObjectFromText(text) as Record<
+    string,
+    unknown
+  > | null;
   if (!parsed) return false;
   const expected = normalizeActionName(actionName);
   return extractActionNames(parsed).some(

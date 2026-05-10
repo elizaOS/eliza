@@ -9,10 +9,9 @@
 
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { ModelType, resolveStateDir } from "@elizaos/core";
 
 export type Diagnostic = {
 	file: string;
@@ -22,7 +21,7 @@ export type Diagnostic = {
 	severity: "error" | "warning";
 };
 
-export type PackageManager = "bun" | "pnpm" | "npm";
+export type PackageManager = "bun" | "npm";
 
 /**
  * Detect the package manager for a workdir by looking at lockfiles.
@@ -33,7 +32,6 @@ export function detectPackageManager(workdir: string): PackageManager {
 	while (true) {
 		if (existsSync(path.join(current, "bun.lock"))) return "bun";
 		if (existsSync(path.join(current, "bun.lockb"))) return "bun";
-		if (existsSync(path.join(current, "pnpm-lock.yaml"))) return "pnpm";
 		if (existsSync(path.join(current, "package-lock.json"))) return "npm";
 		if (existsSync(path.join(current, "yarn.lock"))) return "npm"; // best fallback
 
@@ -182,13 +180,11 @@ export function parseVitestOutput(output: string): VitestSummary {
 }
 
 /**
- * Resolve the root state directory honoring Eliza/Eliza env overrides.
+ * Resolve the root state directory honoring `MILADY_STATE_DIR` >
+ * `ELIZA_STATE_DIR` > `~/.${ELIZA_NAMESPACE ?? "eliza"}` precedence.
  */
 export function getStateDir(): string {
-	const fromEnv = process.env.ELIZA_STATE_DIR?.trim();
-	return fromEnv && fromEnv.length > 0
-		? fromEnv
-		: path.join(homedir(), ".eliza");
+	return resolveStateDir();
 }
 
 /**

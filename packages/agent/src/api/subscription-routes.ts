@@ -1,16 +1,15 @@
-import { logger } from "@elizaos/core";
+import { logger, type RouteRequestContext } from "@elizaos/core";
 import type {
   LinkedAccountConfig,
   LinkedAccountHealth,
   LinkedAccountUsage,
 } from "@elizaos/shared";
-import type { AnthropicFlow } from "../auth/anthropic.js";
-import type { CodexFlow } from "../auth/openai-codex.js";
-import type { OAuthCredentials } from "../auth/types.js";
-import type { ElizaConfig } from "../config/types.eliza.js";
-import type { RouteRequestContext } from "./route-helpers.js";
+import type { AnthropicFlow } from "../auth/anthropic.ts";
+import type { CodexFlow } from "../auth/openai-codex.ts";
+import type { OAuthCredentials } from "../auth/types.ts";
+import type { ElizaConfig } from "../config/types.eliza.ts";
 
-type AuthModule = typeof import("../auth/index.js");
+type AuthModule = typeof import("../auth/index.ts");
 
 export type SubscriptionAuthApi = Pick<
   AuthModule,
@@ -20,6 +19,7 @@ export type SubscriptionAuthApi = Pick<
   | "saveCredentials"
   | "applySubscriptionCredentials"
   | "deleteCredentials"
+  | "deleteProviderCredentials"
 >;
 
 export interface SubscriptionRouteState {
@@ -271,8 +271,8 @@ export async function handleSubscriptionRoutes(
     const provider = pathname.split("/").pop();
     if (provider === "anthropic-subscription" || provider === "openai-codex") {
       try {
-        const { deleteCredentials } = await loadSubscriptionAuth();
-        deleteCredentials(provider);
+        const { deleteProviderCredentials } = await loadSubscriptionAuth();
+        deleteProviderCredentials(provider);
 
         if (provider === "anthropic-subscription" && state.config.env) {
           delete (state.config.env as Record<string, unknown>)
@@ -316,8 +316,9 @@ async function readRichLinkedAccountsFromPool(): Promise<
   Record<string, LinkedAccountConfig>
 > {
   try {
-    const moduleId = "@elizaos/app-core/account-pool";
-    const mod = (await import(/* @vite-ignore */ moduleId)) as {
+    // String-literal dynamic import — see comment in
+    // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue.
+    const mod = (await import(/* @vite-ignore */ "@elizaos/app-core")) as {
       getDefaultAccountPool: () => {
         list(): LinkedAccountConfig[];
       };

@@ -9,6 +9,7 @@ import {
   type ContentType,
   createMessageMemory,
   createUniqueUuid,
+  type EventPayload,
   type HandlerCallback,
   type IAgentRuntime,
   type IMessageService,
@@ -16,6 +17,7 @@ import {
   type Media,
   type Memory,
   type MessageConnectorChatContext,
+  type MessageConnectorQueryContext,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
   type Room,
@@ -24,6 +26,12 @@ import {
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
+import {
+  DEFAULT_ACCOUNT_ID,
+  listEnabledSignalAccounts,
+  normalizeAccountId as normalizeSignalAccountId,
+  resolveDefaultSignalAccountId,
+} from "./accounts";
 import {
   createSignalEventStream,
   parseSignalEventData,
@@ -37,6 +45,56 @@ import {
 } from "./rpc";
 
 type MessageService = Pick<IMessageService, "handleMessage">;
+type MessageConnectorRegistration = Parameters<IAgentRuntime["registerMessageConnector"]>[0];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+type ConnectorFetchMessagesParams = {
+  target?: TargetInfo;
+  limit?: number;
+  before?: string;
+  after?: string;
+  channelId?: string;
+  roomId?: UUID;
+};
+
+type ConnectorSearchMessagesParams = ConnectorFetchMessagesParams & {
+  query?: string;
+};
+
+type ConnectorReactionParams = {
+  target?: TargetInfo;
+  channelId?: string;
+  roomId?: UUID;
+  messageId?: string;
+  targetTimestamp?: number;
+  targetAuthor?: string;
+  emoji?: string;
+  remove?: boolean;
+};
+
+type ConnectorUserLookupParams = {
+  userId?: string;
+  username?: string;
+  handle?: string;
+  query?: string;
+  target?: TargetInfo;
+};
+
+type ExtendedMessageConnectorRegistration = MessageConnectorRegistration & {
+  fetchMessages?: (
+    context: MessageConnectorQueryContext,
+    params: ConnectorFetchMessagesParams
+  ) => Promise<Memory[]>;
+  searchMessages?: (
+    context: MessageConnectorQueryContext,
+    params: ConnectorSearchMessagesParams
+  ) => Promise<Memory[]>;
+  reactHandler?: (runtime: IAgentRuntime, params: ConnectorReactionParams) => Promise<void>;
+  getUser?: (runtime: IAgentRuntime, params: ConnectorUserLookupParams) => Promise<unknown>;
+};
 
 const getMessageService = (runtime: IAgentRuntime): MessageService | null => {
   if ("messageService" in runtime) {
@@ -79,12 +137,14 @@ function scoreSignalCandidate(values: Array<string | undefined>, query: string):
 
 function signalContactToConnectorTarget(
   contact: SignalContact,
+  accountId: string,
   score = 0.5
 ): MessageConnectorTarget {
   const label = getSignalContactDisplayName(contact);
   return {
     target: {
       source: SIGNAL_SERVICE_NAME,
+      accountId,
       channelId: contact.number,
       entityId: stringToUuid(`signal-user-${contact.number}`),
     },
@@ -94,6 +154,7 @@ function signalContactToConnectorTarget(
     score,
     contexts: ["social", "connectors"],
     metadata: {
+      accountId,
       number: contact.number,
       uuid: contact.uuid,
       blocked: contact.blocked,
@@ -101,10 +162,15 @@ function signalContactToConnectorTarget(
   };
 }
 
-function signalGroupToConnectorTarget(group: SignalGroup, score = 0.5): MessageConnectorTarget {
+function signalGroupToConnectorTarget(
+  group: SignalGroup,
+  accountId: string,
+  score = 0.5
+): MessageConnectorTarget {
   return {
     target: {
       source: SIGNAL_SERVICE_NAME,
+      accountId,
       channelId: group.id,
     },
     label: group.name || `Signal Group ${group.id}`,
@@ -115,6 +181,7 @@ function signalGroupToConnectorTarget(group: SignalGroup, score = 0.5): MessageC
     score,
     contexts: ["social", "connectors"],
     metadata: {
+      accountId,
       groupId: group.id,
       isMember: group.isMember,
       isBlocked: group.isBlocked,
@@ -125,11 +192,13 @@ function signalGroupToConnectorTarget(group: SignalGroup, score = 0.5): MessageC
 
 function signalRecentToConnectorTarget(
   recent: SignalRecentMessage,
+  accountId: string,
   score = 0.55
 ): MessageConnectorTarget {
   return {
     target: {
       source: SIGNAL_SERVICE_NAME,
+      accountId,
       roomId: recent.roomId as UUID,
       channelId: recent.channelId,
     },
@@ -139,6 +208,7 @@ function signalRecentToConnectorTarget(
     score,
     contexts: ["social", "connectors"],
     metadata: {
+      accountId,
       recentMessageId: recent.id,
       isGroup: recent.isGroup,
       createdAt: recent.createdAt,
@@ -295,8 +365,8 @@ class SignalApiClient {
     return groups.find((g) => g.id === groupId) || null;
   }
 
-  async receive(): Promise<SignalMessage[]> {
-    return signalRpcRequest<SignalMessage[]>(
+  async receive(): Promise<Record<string, unknown>[]> {
+    return signalRpcRequest<Record<string, unknown>[]>(
       "receive",
       { account: this.accountNumber },
       this.rpcOptions(1_500)
@@ -368,12 +438,18 @@ export class SignalService extends Service implements ISignalService {
   accountNumber: string | null = null;
   isConnected = false;
 
+  private defaultAccountId = DEFAULT_ACCOUNT_ID;
+  private accountNumbers: Map<string, string> = new Map();
+  private clients: Map<string, SignalApiClient> = new Map();
   private client: SignalApiClient | null = null;
   private settings: SignalSettings;
   private contactCache: Map<string, SignalContact> = new Map();
+  private contactCaches: Map<string, Map<string, SignalContact>> = new Map();
   private groupCache: Map<string, SignalGroup> = new Map();
+  private groupCaches: Map<string, Map<string, SignalGroup>> = new Map();
   private pollInterval: NodeJS.Timeout | null = null;
   private eventStream: ReturnType<typeof createSignalEventStream> | null = null;
+  private eventStreams: Map<string, ReturnType<typeof createSignalEventStream>> = new Map();
   private isPolling = false;
   private daemonProcess: ChildProcess | null = null;
 
@@ -410,29 +486,85 @@ export class SignalService extends Service implements ISignalService {
     };
   }
 
+  private normalizeAccountId(accountId?: string | null): string {
+    return normalizeSignalAccountId(accountId ?? this.defaultAccountId);
+  }
+
+  private getConnectorAccountIds(): string[] {
+    const ids = this.clients instanceof Map ? Array.from(this.clients.keys()) : [];
+    if (ids.length > 0) {
+      return ids;
+    }
+    return [this.defaultAccountId];
+  }
+
+  private getClientForAccount(accountId?: string | null): SignalApiClient | null {
+    const normalized = this.normalizeAccountId(accountId);
+    return (
+      (this.clients instanceof Map ? this.clients.get(normalized) : null) ??
+      (normalized === this.defaultAccountId ? this.client : null)
+    );
+  }
+
+  private getAccountNumberForAccount(accountId?: string | null): string | null {
+    const normalized = this.normalizeAccountId(accountId);
+    return (
+      (this.accountNumbers instanceof Map ? this.accountNumbers.get(normalized) : null) ??
+      (normalized === this.defaultAccountId ? this.accountNumber : null)
+    );
+  }
+
+  private cacheContacts(accountId: string, contacts: SignalContact[]): void {
+    const accountCache = this.contactCaches.get(accountId) ?? new Map<string, SignalContact>();
+    for (const contact of contacts) {
+      accountCache.set(contact.number, contact);
+      if (accountId === this.defaultAccountId) {
+        this.contactCache.set(contact.number, contact);
+      }
+    }
+    this.contactCaches.set(accountId, accountCache);
+  }
+
+  private cacheGroups(accountId: string, groups: SignalGroup[]): void {
+    const accountCache = this.groupCaches.get(accountId) ?? new Map<string, SignalGroup>();
+    for (const group of groups) {
+      accountCache.set(group.id, group);
+      if (accountId === this.defaultAccountId) {
+        this.groupCache.set(group.id, group);
+      }
+    }
+    this.groupCaches.set(accountId, accountCache);
+  }
+
+  private getCachedContact(number: string, accountId?: string | null): SignalContact | undefined {
+    const normalized = this.normalizeAccountId(accountId);
+    return this.contactCaches.get(normalized)?.get(number) ?? this.contactCache.get(number);
+  }
+
+  private getCachedGroupForAccount(
+    groupId: string,
+    accountId?: string | null
+  ): SignalGroup | undefined {
+    const normalized = this.normalizeAccountId(accountId);
+    return this.groupCaches.get(normalized)?.get(groupId) ?? this.groupCache.get(groupId);
+  }
+
+  private accountScopedKey(accountId: string, kind: string, value: string): string {
+    return accountId === DEFAULT_ACCOUNT_ID
+      ? `signal-${kind}-${value}`
+      : `signal-${kind}-${accountId}-${value}`;
+  }
+
   static async start(runtime: IAgentRuntime): Promise<SignalService> {
     const service = new SignalService(runtime);
-
-    const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;
-    const httpUrl = runtime.getSetting("SIGNAL_HTTP_URL") as string;
+    const accounts = listEnabledSignalAccounts(runtime);
     const rawAuthDir = runtime.getSetting("SIGNAL_AUTH_DIR") as string | undefined;
-    const authDir =
+    const defaultAuthDir =
       typeof rawAuthDir === "string" && rawAuthDir.trim().length > 0
         ? rawAuthDir.trim()
         : defaultSignalAuthDir();
     const configuredCliPath =
       (runtime.getSetting("SIGNAL_CLI_PATH") as string | undefined) || DEFAULT_SIGNAL_CLI_PATH;
-    const httpHost =
-      (runtime.getSetting("SIGNAL_HTTP_HOST") as string | undefined)?.trim() ||
-      DEFAULT_SIGNAL_HTTP_HOST;
-    const parsedHttpPort = Number.parseInt(
-      String(runtime.getSetting("SIGNAL_HTTP_PORT") ?? ""),
-      10
-    );
-    const httpPort =
-      Number.isFinite(parsedHttpPort) && parsedHttpPort > 0
-        ? parsedHttpPort
-        : DEFAULT_SIGNAL_HTTP_PORT;
     const parsedStartupTimeout = Number.parseInt(
       String(runtime.getSetting("SIGNAL_STARTUP_TIMEOUT_MS") ?? ""),
       10
@@ -442,7 +574,7 @@ export class SignalService extends Service implements ISignalService {
         ? Math.min(parsedStartupTimeout, 120_000)
         : DEFAULT_SIGNAL_DAEMON_STARTUP_TIMEOUT_MS;
 
-    if (!accountNumber) {
+    if (accounts.length === 0) {
       runtime.logger.warn(
         { src: "plugin:signal", agentId: runtime.agentId },
         "SIGNAL_ACCOUNT_NUMBER not provided, Signal service will not start"
@@ -450,54 +582,90 @@ export class SignalService extends Service implements ISignalService {
       return service;
     }
 
-    const normalizedNumber = normalizeE164(accountNumber);
-    if (!normalizedNumber) {
-      runtime.logger.error(
-        { src: "plugin:signal", agentId: runtime.agentId, accountNumber },
-        "Invalid SIGNAL_ACCOUNT_NUMBER format"
-      );
-      return service;
-    }
+    service.defaultAccountId = resolveDefaultSignalAccountId(runtime);
 
-    service.accountNumber = normalizedNumber;
-
-    const baseUrl = httpUrl?.trim() ? normalizeBaseUrl(httpUrl) : `http://${httpHost}:${httpPort}`;
-
-    if (!httpUrl) {
-      // authDir is now guaranteed non-empty (falls back to defaultSignalAuthDir()).
-      // If the directory does not exist, signal-cli would fail on startup with
-      // a confusing "No linked devices" error — pre-empt that with a clearer
-      // warning that points at the user's next action.
-      if (!fs.existsSync(authDir)) {
+    for (const account of accounts) {
+      const accountNumber = account.account;
+      if (!accountNumber) {
         runtime.logger.warn(
-          {
-            src: "plugin:signal",
-            agentId: runtime.agentId,
-            authDir,
-          },
-          "Signal auth directory does not exist yet — run `signal-cli -a <number> link` (or set SIGNAL_AUTH_DIR to a pre-existing install) before starting the plugin"
+          { src: "plugin:signal", agentId: runtime.agentId, accountId: account.accountId },
+          "Signal account is missing account number, skipping"
         );
-        return service;
+        continue;
       }
 
-      try {
-        await service.ensureDaemonRunning(configuredCliPath, authDir, baseUrl, startupTimeoutMs);
-      } catch (error) {
+      const normalizedNumber = normalizeE164(accountNumber);
+      if (!normalizedNumber) {
         runtime.logger.error(
           {
             src: "plugin:signal",
             agentId: runtime.agentId,
-            error: String(error),
-            authDir,
-            cliPath: configuredCliPath,
+            accountId: account.accountId,
+            accountNumber,
           },
-          "Failed to start signal-cli daemon"
+          "Invalid Signal account number format"
         );
-        return service;
+        continue;
+      }
+
+      const baseUrl = normalizeBaseUrl(account.baseUrl);
+      const explicitHttpUrl = Boolean(account.config.httpUrl?.trim());
+      const authDir = account.config.authDir?.trim() || defaultAuthDir;
+      const accountCliPath = account.config.cliPath?.trim() || configuredCliPath;
+
+      if (!explicitHttpUrl) {
+        // authDir is now guaranteed non-empty (falls back to defaultSignalAuthDir()).
+        // If the directory does not exist, signal-cli would fail on startup with
+        // a confusing "No linked devices" error — pre-empt that with a clearer
+        // warning that points at the user's next action.
+        if (!fs.existsSync(authDir)) {
+          runtime.logger.warn(
+            {
+              src: "plugin:signal",
+              agentId: runtime.agentId,
+              accountId: account.accountId,
+              authDir,
+            },
+            "Signal auth directory does not exist yet — run `signal-cli -a <number> link` (or set SIGNAL_AUTH_DIR to a pre-existing install) before starting the plugin"
+          );
+          continue;
+        }
+
+        try {
+          await service.ensureDaemonRunning(accountCliPath, authDir, baseUrl, startupTimeoutMs);
+        } catch (error) {
+          runtime.logger.error(
+            {
+              src: "plugin:signal",
+              agentId: runtime.agentId,
+              accountId: account.accountId,
+              error: String(error),
+              authDir,
+              cliPath: accountCliPath,
+            },
+            "Failed to start signal-cli daemon"
+          );
+          continue;
+        }
+      }
+
+      const client = new SignalApiClient(baseUrl, normalizedNumber);
+      service.clients.set(account.accountId, client);
+      service.accountNumbers.set(account.accountId, normalizedNumber);
+      if (account.accountId === service.defaultAccountId || !service.client) {
+        service.client = client;
+        service.accountNumber = normalizedNumber;
       }
     }
 
-    service.client = new SignalApiClient(baseUrl, normalizedNumber);
+    if (service.clients.size === 0) {
+      runtime.logger.warn(
+        { src: "plugin:signal", agentId: runtime.agentId },
+        "No configured Signal accounts could be initialized"
+      );
+      return service;
+    }
+
     try {
       await service.initialize();
     } catch (error) {
@@ -506,7 +674,6 @@ export class SignalService extends Service implements ISignalService {
           src: "plugin:signal",
           agentId: runtime.agentId,
           error: String(error),
-          baseUrl,
         },
         "Signal service failed to initialize"
       );
@@ -517,6 +684,7 @@ export class SignalService extends Service implements ISignalService {
 
   static registerSendHandlers(runtime: IAgentRuntime, service: SignalService): void {
     const sendHandler = async (_runtime: IAgentRuntime, target: TargetInfo, content: Content) => {
+      const accountId = service.normalizeAccountId(target.accountId);
       const text = typeof content.text === "string" ? content.text.trim() : "";
       if (!text) {
         return;
@@ -530,150 +698,258 @@ export class SignalService extends Service implements ISignalService {
 
       const isGroup = room?.type === ChannelType.GROUP;
       const result = isGroup
-        ? await service.sendGroupMessage(channelId, text, { record: false })
-        : await service.sendMessage(channelId, text, { record: false });
+        ? await service.sendGroupMessage(channelId, text, { record: false, accountId })
+        : await service.sendMessage(channelId, text, { record: false, accountId });
 
       if (!target.roomId) {
         return;
       }
 
-      await runtime.createMemory(
-        createMessageMemory({
-          id: createUniqueUuid(runtime, `signal:${result.timestamp}`),
-          entityId: runtime.agentId,
-          roomId: target.roomId,
-          content: {
-            ...content,
-            text,
-            source: "signal",
-          },
-        }),
-        "messages"
-      );
+      const memory = createMessageMemory({
+        id: createUniqueUuid(runtime, `signal:${result.timestamp}`),
+        entityId: runtime.agentId,
+        roomId: target.roomId,
+        content: {
+          ...content,
+          text,
+          source: "signal",
+        },
+      }) as Memory;
+      memory.metadata = {
+        ...(memory.metadata ?? {}),
+        type: "message",
+        accountId,
+        messageIdFull: String(result.timestamp),
+        signalTimestamp: result.timestamp,
+        signal: {
+          timestamp: result.timestamp,
+        },
+      } satisfies Memory["metadata"];
+      return memory;
     };
 
     if (typeof runtime.registerMessageConnector === "function") {
-      runtime.registerMessageConnector({
-        source: SIGNAL_SERVICE_NAME,
-        label: "Signal",
-        capabilities: [
-          "send_message",
-          "send_direct_message",
-          "send_group_message",
-          "send_reaction",
-          "list_contacts",
-          "list_groups",
-          "read_recent_messages",
-        ],
-        supportedTargetKinds: ["contact", "phone", "group", "room"],
-        contexts: ["social", "connectors"],
-        description:
-          "Send Signal direct and group messages to known contacts, phone numbers, groups, and recent Signal rooms.",
-        sendHandler,
-        resolveTargets: async (query) => {
-          const contacts = await service.listConnectorContacts();
-          const groups = await service.listConnectorGroups();
-          const recentMessages = await service.getRecentMessages(30).catch(() => []);
-          const recentTargets = recentMessages
-            .map((recent) => ({
-              recent,
-              score: scoreSignalCandidate(
-                [recent.roomName, recent.channelId, recent.speakerName, recent.text],
-                query
-              ),
-            }))
-            .filter(({ score }) => score > 0)
-            .map(({ recent, score }) => signalRecentToConnectorTarget(recent, score));
+      const accountIds = service.getConnectorAccountIds();
+      const registrationAccountIds =
+        accountIds.length > 1 ? accountIds : [undefined as string | undefined];
 
-          const contactTargets = contacts
-            .map((contact) => ({
-              contact,
-              score: scoreSignalCandidate(
-                [contact.number, contact.name, contact.profileName, contact.uuid],
-                query
-              ),
-            }))
-            .filter(({ score }) => score > 0)
-            .map(({ contact, score }) => signalContactToConnectorTarget(contact, score));
-
-          const groupTargets = groups
-            .map((group) => ({
-              group,
-              score: scoreSignalCandidate([group.id, group.name, group.description], query),
-            }))
-            .filter(({ score }) => score > 0)
-            .map(({ group, score }) => signalGroupToConnectorTarget(group, score));
-
-          return [...contactTargets, ...groupTargets, ...recentTargets]
-            .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
-            .slice(0, 12);
-        },
-        listRecentTargets: async () => {
-          const recent = await service.getRecentMessages(12).catch(() => []);
-          return recent.map((message) => signalRecentToConnectorTarget(message));
-        },
-        listRooms: async () => {
-          const groups = await service.listConnectorGroups();
-          return groups.map((group) => signalGroupToConnectorTarget(group));
-        },
-        getChatContext: async (target, context) => {
-          const room = target.roomId ? await context.runtime.getRoom(target.roomId) : null;
-          const channelId = String(target.channelId ?? room?.channelId ?? "").trim();
-          if (!channelId) {
-            return null;
-          }
-
-          const recentMessages = (await service.getRecentMessages(50).catch(() => []))
-            .filter((recent) => recent.channelId === channelId || recent.roomId === target.roomId)
-            .slice(0, 10)
-            .map((recent) => ({
-              name: recent.speakerName,
-              text: recent.text,
-              timestamp: recent.createdAt,
-              metadata: {
-                isFromAgent: recent.isFromAgent,
-                isGroup: recent.isGroup,
-              },
-            }));
-
-          return {
-            target: {
-              source: SIGNAL_SERVICE_NAME,
-              roomId: target.roomId,
-              channelId,
-            },
-            label: room?.name || channelId,
-            recentMessages,
-            metadata: {
-              isGroup: room?.type === ChannelType.GROUP,
-              channelId,
-            },
-          } satisfies MessageConnectorChatContext;
-        },
-        getUserContext: async (entityId) => {
-          const contacts = await service.listConnectorContacts();
-          const contact = contacts.find(
-            (candidate) => stringToUuid(`signal-user-${candidate.number}`) === entityId
-          );
-          if (!contact) {
-            return null;
-          }
-          return {
-            entityId,
-            label: getSignalContactDisplayName(contact),
-            aliases: [contact.name, contact.profileName, contact.number].filter(
-              (value): value is string => typeof value === "string" && value.length > 0
+      for (const registrationAccountId of registrationAccountIds) {
+        const connectorAccountId = service.normalizeAccountId(registrationAccountId);
+        const registration: ExtendedMessageConnectorRegistration = {
+          source: SIGNAL_SERVICE_NAME,
+          ...(registrationAccountId ? { accountId: connectorAccountId } : {}),
+          label:
+            registrationAccountId && connectorAccountId !== DEFAULT_ACCOUNT_ID
+              ? `Signal (${connectorAccountId})`
+              : "Signal",
+          capabilities: [
+            "send_message",
+            "send_direct_message",
+            "send_group_message",
+            "send_reaction",
+            "read_messages",
+            "search_messages",
+            "list_contacts",
+            "list_groups",
+            "read_recent_messages",
+            "get_user",
+          ],
+          supportedTargetKinds: ["contact", "phone", "group", "room"],
+          contexts: ["social", "connectors"],
+          description:
+            "Send, read, search, and react in Signal direct and group conversations with known contacts, phone numbers, groups, and recent Signal rooms.",
+          metadata: {
+            accountId: connectorAccountId,
+          },
+          sendHandler: (handlerRuntime, target, content) =>
+            sendHandler(
+              handlerRuntime,
+              target.accountId
+                ? target
+                : ({ ...target, accountId: connectorAccountId } as TargetInfo),
+              content
             ),
-            handles: {
-              signal: contact.number,
-            },
-            metadata: {
-              uuid: contact.uuid,
-              blocked: contact.blocked,
-            },
-          } satisfies MessageConnectorUserContext;
-        },
-      });
+          resolveTargets: async (query) => {
+            const contacts = await service.listConnectorContacts(connectorAccountId);
+            const groups = await service.listConnectorGroups(connectorAccountId);
+            const recentMessages = await service
+              .getRecentMessages(30, connectorAccountId)
+              .catch(() => []);
+            const recentTargets = recentMessages
+              .map((recent) => ({
+                recent,
+                score: scoreSignalCandidate(
+                  [recent.roomName, recent.channelId, recent.speakerName, recent.text],
+                  query
+                ),
+              }))
+              .filter(({ score }) => score > 0)
+              .map(({ recent, score }) =>
+                signalRecentToConnectorTarget(recent, connectorAccountId, score)
+              );
+
+            const contactTargets = contacts
+              .map((contact) => ({
+                contact,
+                score: scoreSignalCandidate(
+                  [contact.number, contact.name, contact.profileName, contact.uuid],
+                  query
+                ),
+              }))
+              .filter(({ score }) => score > 0)
+              .map(({ contact, score }) =>
+                signalContactToConnectorTarget(contact, connectorAccountId, score)
+              );
+
+            const groupTargets = groups
+              .map((group) => ({
+                group,
+                score: scoreSignalCandidate([group.id, group.name, group.description], query),
+              }))
+              .filter(({ score }) => score > 0)
+              .map(({ group, score }) =>
+                signalGroupToConnectorTarget(group, connectorAccountId, score)
+              );
+
+            return [...contactTargets, ...groupTargets, ...recentTargets]
+              .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
+              .slice(0, 12);
+          },
+          listRecentTargets: async () => {
+            const recent = await service.getRecentMessages(12, connectorAccountId).catch(() => []);
+            return recent.map((message) =>
+              signalRecentToConnectorTarget(message, connectorAccountId)
+            );
+          },
+          listRooms: async () => {
+            const groups = await service.listConnectorGroups(connectorAccountId);
+            return groups.map((group) => signalGroupToConnectorTarget(group, connectorAccountId));
+          },
+          fetchMessages: (context, params) =>
+            service.fetchConnectorMessages(
+              {
+                ...context,
+                accountId: context.accountId ?? connectorAccountId,
+                target:
+                  context.target && !context.target.accountId
+                    ? ({ ...context.target, accountId: connectorAccountId } as TargetInfo)
+                    : context.target,
+              },
+              {
+                ...params,
+                target:
+                  params.target && !params.target.accountId
+                    ? ({ ...params.target, accountId: connectorAccountId } as TargetInfo)
+                    : params.target,
+              }
+            ),
+          searchMessages: (context, params) =>
+            service.searchConnectorMessages(
+              {
+                ...context,
+                accountId: context.accountId ?? connectorAccountId,
+                target:
+                  context.target && !context.target.accountId
+                    ? ({ ...context.target, accountId: connectorAccountId } as TargetInfo)
+                    : context.target,
+              },
+              {
+                ...params,
+                target:
+                  params.target && !params.target.accountId
+                    ? ({ ...params.target, accountId: connectorAccountId } as TargetInfo)
+                    : params.target,
+              }
+            ),
+          reactHandler: (handlerRuntime, params) => {
+            const channelId =
+              params.target?.channelId ?? ("channelId" in params ? params.channelId : undefined);
+            const roomId =
+              params.target?.roomId ?? ("roomId" in params ? params.roomId : undefined);
+            return service.reactConnectorMessage(handlerRuntime, {
+              ...params,
+              target: params.target
+                ? params.target.accountId
+                  ? params.target
+                  : ({ ...params.target, accountId: connectorAccountId } as TargetInfo)
+                : ({
+                    source: SIGNAL_SERVICE_NAME,
+                    accountId: connectorAccountId,
+                    channelId,
+                    roomId,
+                  } as TargetInfo),
+            });
+          },
+          getUser: service.getConnectorUser.bind(service),
+          getChatContext: async (target, context) => {
+            const targetAccountId = service.normalizeAccountId(
+              target.accountId ?? context.accountId ?? connectorAccountId
+            );
+            const room = target.roomId ? await context.runtime.getRoom(target.roomId) : null;
+            const channelId = String(target.channelId ?? room?.channelId ?? "").trim();
+            if (!channelId) {
+              return null;
+            }
+
+            const recentMessages = (
+              await service.getRecentMessages(50, targetAccountId).catch(() => [])
+            )
+              .filter((recent) => recent.channelId === channelId || recent.roomId === target.roomId)
+              .slice(0, 10)
+              .map((recent) => ({
+                name: recent.speakerName,
+                text: recent.text,
+                timestamp: recent.createdAt,
+                metadata: {
+                  accountId: targetAccountId,
+                  isFromAgent: recent.isFromAgent,
+                  isGroup: recent.isGroup,
+                },
+              }));
+
+            return {
+              target: {
+                source: SIGNAL_SERVICE_NAME,
+                accountId: targetAccountId,
+                roomId: target.roomId,
+                channelId,
+              },
+              label: room?.name || channelId,
+              recentMessages,
+              metadata: {
+                accountId: targetAccountId,
+                isGroup: room?.type === ChannelType.GROUP,
+                channelId,
+              },
+            } satisfies MessageConnectorChatContext;
+          },
+          getUserContext: async (entityId) => {
+            const contacts = await service.listConnectorContacts(connectorAccountId);
+            const contact = contacts.find(
+              (candidate) => service.getEntityId(candidate.number, connectorAccountId) === entityId
+            );
+            if (!contact) {
+              return null;
+            }
+            return {
+              entityId,
+              label: getSignalContactDisplayName(contact),
+              aliases: [contact.name, contact.profileName, contact.number].filter(
+                (value): value is string => typeof value === "string" && value.length > 0
+              ),
+              handles: {
+                signal: contact.number,
+              },
+              metadata: {
+                accountId: connectorAccountId,
+                uuid: contact.uuid,
+                blocked: contact.blocked,
+              },
+            } satisfies MessageConnectorUserContext;
+          },
+        };
+        runtime.registerMessageConnector(registration);
+      }
       return;
     }
 
@@ -681,37 +957,38 @@ export class SignalService extends Service implements ISignalService {
   }
 
   private async initialize(): Promise<void> {
-    if (!this.client) return;
+    if (this.clients.size === 0 && this.client) {
+      this.clients.set(this.defaultAccountId, this.client);
+      if (this.accountNumber) {
+        this.accountNumbers.set(this.defaultAccountId, this.accountNumber);
+      }
+    }
+    if (this.clients.size === 0) return;
 
     this.runtime.logger.info(
       {
         src: "plugin:signal",
         agentId: this.runtime.agentId,
-        accountNumber: this.accountNumber,
+        accountIds: Array.from(this.clients.keys()),
       },
       "Initializing Signal service"
     );
 
-    // Test connection by getting contacts
-    const contacts = await this.client.getContacts();
-    this.runtime.logger.info(
-      {
-        src: "plugin:signal",
-        agentId: this.runtime.agentId,
-        contactCount: contacts.length,
-      },
-      "Signal service connected"
-    );
+    for (const [accountId, client] of this.clients) {
+      // Test connection by getting contacts
+      const contacts = await client.getContacts();
+      this.runtime.logger.info(
+        {
+          src: "plugin:signal",
+          agentId: this.runtime.agentId,
+          accountId,
+          contactCount: contacts.length,
+        },
+        "Signal account connected"
+      );
 
-    // Cache contacts
-    for (const contact of contacts) {
-      this.contactCache.set(contact.number, contact);
-    }
-
-    // Cache groups
-    const groups = await this.client.getGroups();
-    for (const group of groups) {
-      this.groupCache.set(group.id, group);
+      this.cacheContacts(accountId, contacts);
+      this.cacheGroups(accountId, await client.getGroups());
     }
 
     this.isConnected = true;
@@ -732,6 +1009,8 @@ export class SignalService extends Service implements ISignalService {
 
   private async shutdown(): Promise<void> {
     this.stopPolling();
+    this.clients.clear();
+    this.accountNumbers.clear();
     this.client = null;
     this.isConnected = false;
     if (this.daemonProcess) {
@@ -837,26 +1116,32 @@ export class SignalService extends Service implements ISignalService {
   }
 
   private startPolling(): void {
-    if (this.pollInterval || this.eventStream) return;
+    if (this.pollInterval || this.eventStreams.size > 0 || this.eventStream) return;
 
-    if (this.client) {
-      this.eventStream = createSignalEventStream({
-        baseUrl: this.client.baseUrl,
-        account: this.client.accountNumber,
-        onEvent: (event) => {
-          const data = parseSignalEventData<unknown>(event.data);
-          if (data !== null) {
-            this.handleSignalEventPayload(data);
-          }
-        },
-        onError: (error) => {
-          this.runtime.logger.error(
-            { src: "plugin:signal", error: String(error) },
-            "Signal event stream error"
-          );
-        },
-      });
-      this.eventStream.start();
+    if (this.clients.size > 0) {
+      for (const [accountId, client] of this.clients) {
+        const eventStream = createSignalEventStream({
+          baseUrl: client.baseUrl,
+          account: client.accountNumber,
+          onEvent: (event) => {
+            const data = parseSignalEventData<unknown>(event.data);
+            if (data !== null) {
+              this.handleSignalEventPayload(data, accountId);
+            }
+          },
+          onError: (error) => {
+            this.runtime.logger.error(
+              { src: "plugin:signal", accountId, error: String(error) },
+              "Signal event stream error"
+            );
+          },
+        });
+        this.eventStreams.set(accountId, eventStream);
+        if (accountId === this.defaultAccountId) {
+          this.eventStream = eventStream;
+        }
+        eventStream.start();
+      }
       return;
     }
 
@@ -874,6 +1159,10 @@ export class SignalService extends Service implements ISignalService {
       this.eventStream.stop();
       this.eventStream = null;
     }
+    for (const eventStream of this.eventStreams.values()) {
+      eventStream.stop();
+    }
+    this.eventStreams.clear();
   }
 
   /**
@@ -883,7 +1172,24 @@ export class SignalService extends Service implements ISignalService {
    * but the plugin expects flat `{sender, message, timestamp, ...}` objects.
    */
   static unwrapEnvelope(raw: Record<string, unknown>): SignalMessage | null {
-    if (!raw || !("envelope" in raw)) return raw as unknown as SignalMessage;
+    if (!("envelope" in raw)) {
+      if (typeof raw.sender !== "string" || typeof raw.timestamp !== "number") {
+        return null;
+      }
+      return {
+        sender: raw.sender,
+        senderUuid: typeof raw.senderUuid === "string" ? raw.senderUuid : undefined,
+        message: typeof raw.message === "string" ? raw.message : undefined,
+        timestamp: raw.timestamp,
+        groupId: typeof raw.groupId === "string" ? raw.groupId : undefined,
+        attachments: Array.isArray(raw.attachments) ? (raw.attachments as SignalAttachment[]) : [],
+        reaction: raw.reaction as SignalReactionInfo | undefined,
+        expiresInSeconds:
+          typeof raw.expiresInSeconds === "number" ? raw.expiresInSeconds : undefined,
+        viewOnce: raw.viewOnce === true,
+        quote: raw.quote as SignalQuote | undefined,
+      };
+    }
 
     const env = raw.envelope as Record<string, unknown>;
     const dm = (env.dataMessage || {}) as Record<string, unknown>;
@@ -909,30 +1215,50 @@ export class SignalService extends Service implements ISignalService {
     };
   }
 
-  private async pollMessages(): Promise<void> {
-    if (!this.client || this.isPolling) return;
+  private async pollMessages(accountId?: string | null): Promise<void> {
+    if (this.isPolling) return;
+
+    const entries = accountId
+      ? ([[this.normalizeAccountId(accountId), this.getClientForAccount(accountId)]].filter(
+          ([, client]) => Boolean(client)
+        ) as Array<[string, SignalApiClient]>)
+      : Array.from(this.clients.entries());
+    if (entries.length === 0 && this.client) {
+      entries.push([this.defaultAccountId, this.client]);
+    }
+    if (entries.length === 0) return;
 
     this.isPolling = true;
 
     try {
-      const rawMessages = (await this.client.receive()) || [];
+      for (const [entryAccountId, client] of entries) {
+        const rawMessages = (await client.receive()) || [];
 
-      for (const raw of rawMessages) {
-        try {
-          const msg = SignalService.unwrapEnvelope(raw as unknown as Record<string, unknown>);
-          if (!msg) {
-            this.runtime.logger.warn(
-              { src: "plugin:signal" },
-              "Skipping malformed envelope (missing sender or timestamp)"
+        for (const raw of rawMessages) {
+          try {
+            if (!isRecord(raw)) {
+              this.runtime.logger.warn(
+                { src: "plugin:signal", accountId: entryAccountId },
+                "Skipping malformed envelope (not an object)"
+              );
+              continue;
+            }
+
+            const msg = SignalService.unwrapEnvelope(raw);
+            if (!msg) {
+              this.runtime.logger.warn(
+                { src: "plugin:signal", accountId: entryAccountId },
+                "Skipping malformed envelope (missing sender or timestamp)"
+              );
+              continue;
+            }
+            await this.handleIncomingMessage(msg, entryAccountId);
+          } catch (msgErr) {
+            this.runtime.logger.error(
+              { src: "plugin:signal", accountId: entryAccountId, error: String(msgErr) },
+              "Error handling incoming message"
             );
-            continue;
           }
-          await this.handleIncomingMessage(msg);
-        } catch (msgErr) {
-          this.runtime.logger.error(
-            { src: "plugin:signal", error: String(msgErr) },
-            "Error handling incoming message"
-          );
         }
       }
     } catch (err) {
@@ -945,7 +1271,8 @@ export class SignalService extends Service implements ISignalService {
     }
   }
 
-  private handleSignalEventPayload(raw: unknown): void {
+  private handleSignalEventPayload(raw: unknown, accountId?: string | null): void {
+    const normalizedAccountId = this.normalizeAccountId(accountId);
     const payloads = Array.isArray(raw) ? raw : [raw];
     for (const payload of payloads) {
       if (!payload || typeof payload !== "object") {
@@ -961,7 +1288,7 @@ export class SignalService extends Service implements ISignalService {
             );
             return;
           }
-          await this.handleIncomingMessage(msg);
+          await this.handleIncomingMessage(msg, normalizedAccountId);
         } catch (error) {
           this.runtime.logger.error(
             { src: "plugin:signal", error: String(error) },
@@ -972,10 +1299,14 @@ export class SignalService extends Service implements ISignalService {
     }
   }
 
-  private async handleIncomingMessage(msg: SignalMessage): Promise<void> {
+  private async handleIncomingMessage(
+    msg: SignalMessage,
+    accountId = this.defaultAccountId
+  ): Promise<void> {
+    const normalizedAccountId = this.normalizeAccountId(accountId);
     // Handle reactions separately
     if (msg.reaction) {
-      await this.handleReaction(msg);
+      await this.handleReaction(msg, normalizedAccountId);
       return;
     }
 
@@ -993,10 +1324,15 @@ export class SignalService extends Service implements ISignalService {
 
     // Ensure entity, room, and world exist before creating memories.
     // Without this, the DB insert fails because the foreign keys don't exist.
-    const entityId = this.getEntityId(msg.sender);
-    const roomId = await this.getRoomId(msg.sender, msg.groupId);
-    const worldId = createUniqueUuid(this.runtime, "signal-world");
-    const contact = this.contactCache.get(msg.sender);
+    const entityId = this.getEntityId(msg.sender, normalizedAccountId);
+    const roomId = await this.getRoomId(msg.sender, msg.groupId, normalizedAccountId);
+    const worldId = createUniqueUuid(
+      this.runtime,
+      normalizedAccountId === DEFAULT_ACCOUNT_ID
+        ? "signal-world"
+        : `signal-world-${normalizedAccountId}`
+    );
+    const contact = this.getCachedContact(msg.sender, normalizedAccountId);
     const displayName = contact ? getSignalContactDisplayName(contact) : msg.sender;
 
     await this.runtime.ensureConnection({
@@ -1004,36 +1340,48 @@ export class SignalService extends Service implements ISignalService {
       roomId,
       worldId,
       worldName: "Signal",
-      userId: msg.sender as unknown as UUID,
+      userId: msg.sender,
       userName: displayName,
       name: displayName,
       source: "signal",
       type: isGroupMessage ? ChannelType.GROUP : ChannelType.DM,
       channelId: msg.groupId || msg.sender,
+      metadata: {
+        accountId: normalizedAccountId,
+        isGroup: isGroupMessage,
+        ...(msg.groupId ? { groupId: msg.groupId } : {}),
+        sender: msg.sender,
+      },
     });
+    await this.ensureRoomExists(msg.sender, msg.groupId, normalizedAccountId);
 
     // Build memory from message
-    const memory = await this.buildMemoryFromMessage(msg);
+    const memory = await this.buildMemoryFromMessage(msg, normalizedAccountId);
     if (!memory) return;
 
     // Store the memory
     await this.runtime.createMemory(memory, "messages");
 
     // Emit event
-    await this.runtime.emitEvent(SignalEventTypes.MESSAGE_RECEIVED as string, {
-      runtime: this.runtime,
-      source: "signal",
-    });
+    await this.runtime.emitEvent(
+      SignalEventTypes.MESSAGE_RECEIVED as string,
+      {
+        runtime: this.runtime,
+        source: "signal",
+        accountId: normalizedAccountId,
+        message: memory,
+      } as EventPayload
+    );
 
     // Get the room for processMessage; fall back to ensureRoomExists if
     // getRoom returns null (e.g. race condition after ensureConnection).
     let room = await this.runtime.getRoom(roomId);
     if (!room) {
       this.runtime.logger.warn(
-        { src: "plugin:signal", roomId, sender: msg.sender },
+        { src: "plugin:signal", accountId: normalizedAccountId, roomId, sender: msg.sender },
         "Room not found after ensureConnection, creating via ensureRoomExists"
       );
-      room = await this.ensureRoomExists(msg.sender, msg.groupId);
+      room = await this.ensureRoomExists(msg.sender, msg.groupId, normalizedAccountId);
     }
 
     // Inbound messages are always ingested (memory + MESSAGE_RECEIVED event)
@@ -1042,30 +1390,43 @@ export class SignalService extends Service implements ISignalService {
     // enabled — default-off prevents the runtime from speaking on the user's
     // behalf to real Signal contacts.
     if (this.settings.autoReply && !lifeOpsPassiveConnectorsEnabled(this.runtime)) {
-      await this.processMessage(memory, room, msg.sender, msg.groupId);
+      await this.processMessage(memory, room, msg.sender, msg.groupId, normalizedAccountId);
     }
   }
 
-  private async handleReaction(msg: SignalMessage): Promise<void> {
+  private async handleReaction(
+    msg: SignalMessage,
+    accountId = this.defaultAccountId
+  ): Promise<void> {
     if (!msg.reaction) return;
 
-    await this.runtime.emitEvent(SignalEventTypes.REACTION_RECEIVED as string, {
-      runtime: this.runtime,
-      source: "signal",
-    });
+    await this.runtime.emitEvent(
+      SignalEventTypes.REACTION_RECEIVED as string,
+      {
+        runtime: this.runtime,
+        source: "signal",
+        accountId: this.normalizeAccountId(accountId),
+      } as EventPayload
+    );
   }
 
   private async processMessage(
     memory: Memory,
     room: Room,
     sender: string,
-    groupId?: string
+    groupId?: string,
+    accountId = this.defaultAccountId
   ): Promise<void> {
+    const normalizedAccountId = this.normalizeAccountId(accountId);
     const callback: HandlerCallback = async (response: Content): Promise<Memory[]> => {
       if (groupId) {
-        await this.sendGroupMessage(groupId, response.text || "");
+        await this.sendGroupMessage(groupId, response.text || "", {
+          accountId: normalizedAccountId,
+        });
       } else {
-        await this.sendMessage(sender, response.text || "");
+        await this.sendMessage(sender, response.text || "", {
+          accountId: normalizedAccountId,
+        });
       }
 
       // Create memory for the response
@@ -1079,35 +1440,47 @@ export class SignalService extends Service implements ISignalService {
           source: "signal",
           inReplyTo: memory.id,
         },
+        metadata: {
+          accountId: normalizedAccountId,
+          source: "signal",
+          provider: "signal",
+          signal: {
+            groupId,
+          },
+        } satisfies Memory["metadata"],
         createdAt: Date.now(),
       };
 
       await this.runtime.createMemory(responseMemory, "messages");
 
-      await this.runtime.emitEvent(SignalEventTypes.MESSAGE_SENT as string, {
-        runtime: this.runtime,
-        source: "signal",
-      });
+      await this.runtime.emitEvent(
+        SignalEventTypes.MESSAGE_SENT as string,
+        {
+          runtime: this.runtime,
+          source: "signal",
+          accountId: normalizedAccountId,
+        } as EventPayload
+      );
 
       return [responseMemory];
     };
 
     const messageService = getMessageService(this.runtime);
     if (messageService) {
-      await messageService.handleMessage(this.runtime, memory, callback, {
-        onBeforeActionExecution: async () => {
-          await this.sendTypingBeforeActions(sender, groupId);
-        },
-      });
+      await messageService.handleMessage(this.runtime, memory, callback);
     }
   }
 
-  private async buildMemoryFromMessage(msg: SignalMessage): Promise<Memory | null> {
-    const roomId = await this.getRoomId(msg.sender, msg.groupId);
-    const entityId = this.getEntityId(msg.sender);
+  private async buildMemoryFromMessage(
+    msg: SignalMessage,
+    accountId = this.defaultAccountId
+  ): Promise<Memory | null> {
+    const normalizedAccountId = this.normalizeAccountId(accountId);
+    const roomId = await this.getRoomId(msg.sender, msg.groupId, normalizedAccountId);
+    const entityId = this.getEntityId(msg.sender, normalizedAccountId);
 
     // Get contact info for display name
-    const contact = this.contactCache.get(msg.sender);
+    const contact = this.getCachedContact(msg.sender, normalizedAccountId);
     const displayName = contact ? getSignalContactDisplayName(contact) : msg.sender;
 
     // Extract media from attachments
@@ -1135,6 +1508,7 @@ export class SignalService extends Service implements ISignalService {
         type: "message",
         source: "signal",
         provider: "signal",
+        accountId: normalizedAccountId,
         timestamp: msg.timestamp,
         entityName: displayName,
         entityUserName: msg.sender,
@@ -1149,40 +1523,56 @@ export class SignalService extends Service implements ISignalService {
           username: msg.sender,
         },
         signal: {
-          id: msg.sender,
-          userId: msg.sender,
-          username: msg.sender,
-          userName: msg.sender,
-          name: displayName,
           senderId: msg.sender,
           groupId: msg.groupId,
           timestamp: msg.timestamp,
         },
-      } as unknown as Memory["metadata"],
+      } satisfies Memory["metadata"],
       createdAt: msg.timestamp,
     };
 
     return memory;
   }
 
-  private async getRoomId(sender: string, groupId?: string): Promise<UUID> {
+  private async getRoomId(
+    sender: string,
+    groupId?: string,
+    accountId = this.defaultAccountId
+  ): Promise<UUID> {
+    const normalizedAccountId = this.normalizeAccountId(accountId);
     const roomKey = groupId || sender;
-    return createUniqueUuid(this.runtime, `signal-room-${roomKey}`);
+    return createUniqueUuid(
+      this.runtime,
+      this.accountScopedKey(normalizedAccountId, "room", roomKey)
+    );
   }
 
-  private getEntityId(number: string): UUID {
-    return stringToUuid(`signal-user-${number}`);
+  private getEntityId(number: string, accountId = this.defaultAccountId): UUID {
+    const normalizedAccountId = this.normalizeAccountId(accountId);
+    return normalizedAccountId === DEFAULT_ACCOUNT_ID
+      ? stringToUuid(`signal-user-${number}`)
+      : stringToUuid(`signal-user-${normalizedAccountId}-${number}`);
   }
 
-  private async ensureRoomExists(sender: string, groupId?: string): Promise<Room> {
-    const roomId = await this.getRoomId(sender, groupId);
+  private async ensureRoomExists(
+    sender: string,
+    groupId?: string,
+    accountId = this.defaultAccountId
+  ): Promise<Room> {
+    const normalizedAccountId = this.normalizeAccountId(accountId);
+    const roomId = await this.getRoomId(sender, groupId, normalizedAccountId);
 
     const existingRoom = await this.runtime.getRoom(roomId);
-    if (existingRoom) return existingRoom;
 
     const isGroup = Boolean(groupId);
-    const group = groupId ? this.groupCache.get(groupId) : null;
-    const contact = this.contactCache.get(sender);
+    const group = groupId ? this.getCachedGroupForAccount(groupId, normalizedAccountId) : null;
+    const contact = this.getCachedContact(sender, normalizedAccountId);
+    const worldId = createUniqueUuid(
+      this.runtime,
+      normalizedAccountId === DEFAULT_ACCOUNT_ID
+        ? "signal-world"
+        : `signal-world-${normalizedAccountId}`
+    );
 
     const room: Room = {
       id: roomId,
@@ -1195,7 +1585,10 @@ export class SignalService extends Service implements ISignalService {
       source: "signal",
       type: isGroup ? ChannelType.GROUP : ChannelType.DM,
       channelId: groupId || sender,
+      worldId,
       metadata: {
+        ...(existingRoom?.metadata as Record<string, unknown> | undefined),
+        accountId: normalizedAccountId,
         isGroup,
         groupId,
         sender,
@@ -1204,7 +1597,11 @@ export class SignalService extends Service implements ISignalService {
       },
     };
 
-    await this.runtime.createRoom(room);
+    if (typeof this.runtime.ensureRoomExists === "function") {
+      await this.runtime.ensureRoomExists(room);
+    } else if (!existingRoom) {
+      await this.runtime.createRoom(room);
+    }
 
     return room;
   }
@@ -1214,7 +1611,9 @@ export class SignalService extends Service implements ISignalService {
     text: string,
     options?: SignalMessageSendOptions
   ): Promise<{ timestamp: number }> {
-    if (!this.client) {
+    const accountId = this.normalizeAccountId(options?.accountId);
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Signal client not initialized");
     }
 
@@ -1232,12 +1631,13 @@ export class SignalService extends Service implements ISignalService {
     for (let i = 0; i < messages.length; i++) {
       // Only send attachments/quote with the first chunk
       const chunkOptions = i === 0 ? options : undefined;
-      const result = await this.client.sendMessage(normalizedRecipient, messages[i], chunkOptions);
+      const result = await client.sendMessage(normalizedRecipient, messages[i], chunkOptions);
       lastTimestamp = result.timestamp;
     }
 
     if (options?.record !== false) {
       await this.recordOutgoingMessage({
+        accountId,
         channelId: normalizedRecipient,
         text,
         timestamp: lastTimestamp,
@@ -1253,7 +1653,9 @@ export class SignalService extends Service implements ISignalService {
     text: string,
     options?: SignalMessageSendOptions
   ): Promise<{ timestamp: number }> {
-    if (!this.client) {
+    const accountId = this.normalizeAccountId(options?.accountId);
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Signal client not initialized");
     }
 
@@ -1264,12 +1666,13 @@ export class SignalService extends Service implements ISignalService {
     for (let i = 0; i < messages.length; i++) {
       // Only send attachments with the first chunk
       const chunkOptions = i === 0 ? options : undefined;
-      const result = await this.client.sendGroupMessage(groupId, messages[i], chunkOptions);
+      const result = await client.sendGroupMessage(groupId, messages[i], chunkOptions);
       lastTimestamp = result.timestamp;
     }
 
     if (options?.record !== false) {
       await this.recordOutgoingMessage({
+        accountId,
         channelId: groupId,
         text,
         timestamp: lastTimestamp,
@@ -1301,16 +1704,22 @@ export class SignalService extends Service implements ISignalService {
   }
 
   private async recordOutgoingMessage(args: {
+    accountId?: string;
     channelId: string;
     text: string;
     timestamp: number;
     isGroup: boolean;
   }): Promise<void> {
+    const accountId = this.normalizeAccountId(args.accountId);
     const roomId = await this.getRoomId(
-      args.isGroup ? this.accountNumber || "signal-agent" : args.channelId,
-      args.isGroup ? args.channelId : undefined
+      args.isGroup ? this.getAccountNumberForAccount(accountId) || "signal-agent" : args.channelId,
+      args.isGroup ? args.channelId : undefined,
+      accountId
     );
-    const worldId = createUniqueUuid(this.runtime, "signal-world");
+    const worldId = createUniqueUuid(
+      this.runtime,
+      accountId === DEFAULT_ACCOUNT_ID ? "signal-world" : `signal-world-${accountId}`
+    );
     const displayName = this.character?.name || "Agent";
 
     await this.runtime.ensureConnection({
@@ -1324,6 +1733,11 @@ export class SignalService extends Service implements ISignalService {
       source: "signal",
       type: args.isGroup ? ChannelType.GROUP : ChannelType.DM,
       channelId: args.channelId,
+      metadata: {
+        accountId,
+        isGroup: args.isGroup,
+        channelId: args.channelId,
+      },
     });
 
     const memory = createMessageMemory({
@@ -1335,82 +1749,130 @@ export class SignalService extends Service implements ISignalService {
         source: "signal",
       },
     });
-    await this.runtime.createMemory({ ...memory, createdAt: args.timestamp }, "messages");
+    await this.runtime.createMemory(
+      {
+        ...memory,
+        metadata: {
+          ...(memory.metadata ?? {}),
+          type: "message",
+          accountId,
+          source: "signal",
+          provider: "signal",
+          timestamp: args.timestamp,
+          messageIdFull: String(args.timestamp),
+          signal: {
+            timestamp: args.timestamp,
+          },
+        } satisfies Memory["metadata"],
+        createdAt: args.timestamp,
+      },
+      "messages"
+    );
   }
 
   async sendReaction(
     recipient: string,
     emoji: string,
     targetTimestamp: number,
-    targetAuthor: string
+    targetAuthor: string,
+    accountId?: string
   ): Promise<void> {
-    if (!this.client) {
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Signal client not initialized");
     }
 
-    await this.client.sendReaction(recipient, emoji, targetTimestamp, targetAuthor);
+    await client.sendReaction(recipient, emoji, targetTimestamp, targetAuthor);
   }
 
   async removeReaction(
     recipient: string,
     emoji: string,
     targetTimestamp: number,
-    targetAuthor: string
+    targetAuthor: string,
+    accountId?: string
   ): Promise<void> {
-    if (!this.client) {
+    const client = this.getClientForAccount(accountId);
+    if (!client) {
       throw new Error("Signal client not initialized");
     }
 
-    await this.client.sendReaction(recipient, emoji, targetTimestamp, targetAuthor, true);
+    await client.sendReaction(recipient, emoji, targetTimestamp, targetAuthor, true);
   }
 
-  async getContacts(): Promise<SignalContact[]> {
-    if (!this.client) {
+  async getContacts(accountId?: string): Promise<SignalContact[]> {
+    const normalizedAccountId = this.normalizeAccountId(accountId);
+    const client = this.getClientForAccount(normalizedAccountId);
+    if (!client) {
       throw new Error("Signal client not initialized");
     }
 
-    const contacts = await this.client.getContacts();
+    const contacts = await client.getContacts();
 
-    // Update cache
-    for (const contact of contacts) {
-      this.contactCache.set(contact.number, contact);
-    }
+    this.cacheContacts(normalizedAccountId, contacts);
 
     return contacts;
   }
 
-  private async listConnectorContacts(): Promise<SignalContact[]> {
+  private async listConnectorContacts(accountId?: string): Promise<SignalContact[]> {
+    const normalizedAccountId = this.normalizeAccountId(accountId);
     try {
-      return await this.getContacts();
+      return await this.getContacts(normalizedAccountId);
     } catch {
-      return Array.from(this.contactCache.values());
+      return Array.from(
+        this.contactCaches.get(normalizedAccountId)?.values() ?? this.contactCache.values()
+      );
     }
   }
 
-  async getGroups(): Promise<SignalGroup[]> {
-    if (!this.client) {
+  async getGroups(accountId?: string): Promise<SignalGroup[]> {
+    const normalizedAccountId = this.normalizeAccountId(accountId);
+    const client = this.getClientForAccount(normalizedAccountId);
+    if (!client) {
       throw new Error("Signal client not initialized");
     }
 
-    const groups = await this.client.getGroups();
+    const groups = await client.getGroups();
 
-    // Update cache
-    for (const group of groups) {
-      this.groupCache.set(group.id, group);
-    }
+    this.cacheGroups(normalizedAccountId, groups);
 
     return groups;
   }
 
-  private async listConnectorGroups(): Promise<SignalGroup[]> {
+  private async listConnectorGroups(accountId?: string): Promise<SignalGroup[]> {
+    const normalizedAccountId = this.normalizeAccountId(accountId);
     try {
-      return await this.getGroups();
+      return await this.getGroups(normalizedAccountId);
     } catch {
-      return Array.from(this.groupCache.values());
+      return Array.from(
+        this.groupCaches.get(normalizedAccountId)?.values() ?? this.groupCache.values()
+      );
     }
   }
 
-  async getRecentMessages(limit: number = 20): Promise<SignalRecentMessage[]> {
+  private roomMatchesAccount(room: Room, accountId: string): boolean {
+    const metadata = room.metadata as Record<string, unknown> | undefined;
+    const roomAccountId =
+      typeof metadata?.accountId === "string" && metadata.accountId.trim()
+        ? this.normalizeAccountId(metadata.accountId)
+        : undefined;
+    return roomAccountId ? roomAccountId === accountId : accountId === DEFAULT_ACCOUNT_ID;
+  }
+
+  private memoryMatchesAccount(memory: Memory, accountId: string): boolean {
+    const metadata = memory.metadata as Record<string, unknown> | undefined;
+    const memoryAccountId =
+      typeof metadata?.accountId === "string" && metadata.accountId.trim()
+        ? this.normalizeAccountId(metadata.accountId)
+        : undefined;
+    return memoryAccountId ? memoryAccountId === accountId : accountId === DEFAULT_ACCOUNT_ID;
+  }
+
+  async getRecentMessages(
+    limit: number = 20,
+    accountId = this.defaultAccountId
+  ): Promise<SignalRecentMessage[]> {
+    const normalizedAccountId = this.normalizeAccountId(accountId);
     if (
       typeof this.runtime.getRoomsForParticipant !== "function" ||
       typeof this.runtime.getMemoriesByRoomIds !== "function"
@@ -1424,7 +1886,7 @@ export class SignalService extends Service implements ISignalService {
     const signalRooms: Room[] = [];
     for (const roomId of participantRoomIds) {
       const room = await this.runtime.getRoom(roomId);
-      if (room?.source === "signal") {
+      if (room?.source === "signal" && this.roomMatchesAccount(room, normalizedAccountId)) {
         signalRooms.push(room);
       }
     }
@@ -1443,6 +1905,7 @@ export class SignalService extends Service implements ISignalService {
 
     return memories
       .filter((memory) => memory.content?.source === "signal")
+      .filter((memory) => this.memoryMatchesAccount(memory, normalizedAccountId))
       .filter(
         (memory) =>
           typeof memory.content?.text === "string" && memory.content.text.trim().length > 0
@@ -1476,37 +1939,218 @@ export class SignalService extends Service implements ISignalService {
       });
   }
 
-  async getGroup(groupId: string): Promise<SignalGroup | null> {
-    if (!this.client) {
+  private async getSignalRooms(
+    channelId?: string,
+    roomId?: UUID,
+    accountId = this.defaultAccountId
+  ): Promise<Room[]> {
+    const normalizedAccountId = this.normalizeAccountId(accountId);
+    if (roomId) {
+      const room = await this.runtime.getRoom(roomId);
+      return room?.source === "signal" && this.roomMatchesAccount(room, normalizedAccountId)
+        ? [room]
+        : [];
+    }
+
+    if (
+      typeof this.runtime.getRoomsForParticipant !== "function" ||
+      typeof this.runtime.getRoom !== "function"
+    ) {
+      return [];
+    }
+
+    const participantRoomIds = await this.runtime.getRoomsForParticipant(this.runtime.agentId);
+    const rooms: Room[] = [];
+    for (const participantRoomId of participantRoomIds) {
+      const room = await this.runtime.getRoom(participantRoomId);
+      if (room?.source !== "signal") {
+        continue;
+      }
+      if (!this.roomMatchesAccount(room, normalizedAccountId)) {
+        continue;
+      }
+      if (channelId && room.channelId !== channelId) {
+        continue;
+      }
+      rooms.push(room);
+    }
+    return rooms;
+  }
+
+  async fetchConnectorMessages(
+    context: MessageConnectorQueryContext,
+    params: ConnectorFetchMessagesParams
+  ): Promise<Memory[]> {
+    if (typeof this.runtime.getMemoriesByRoomIds !== "function") {
+      return [];
+    }
+
+    const target = params.target ?? context.target;
+    const accountId = this.normalizeAccountId(target?.accountId ?? context.accountId);
+    const channelId = params.channelId ?? target?.channelId;
+    const roomId = params.roomId ?? target?.roomId;
+    const rooms = await this.getSignalRooms(channelId, roomId, accountId);
+    if (rooms.length === 0) {
+      return [];
+    }
+
+    const limit = Number.isFinite(params.limit)
+      ? Math.max(1, Math.min(Number(params.limit), 100))
+      : 25;
+    const memories = await this.runtime.getMemoriesByRoomIds({
+      tableName: "messages",
+      roomIds: rooms.map((room) => room.id),
+      limit: limit * Math.max(rooms.length, 1),
+    });
+    const before = params.before ? Number(params.before) : undefined;
+    const after = params.after ? Number(params.after) : undefined;
+
+    return memories
+      .filter((memory) => memory.content?.source === "signal")
+      .filter((memory) => this.memoryMatchesAccount(memory, accountId))
+      .filter((memory) => {
+        const createdAt = Number(memory.createdAt ?? 0);
+        if (before !== undefined && Number.isFinite(before) && createdAt >= before) {
+          return false;
+        }
+        if (after !== undefined && Number.isFinite(after) && createdAt <= after) {
+          return false;
+        }
+        return true;
+      })
+      .sort((left, right) => Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0))
+      .slice(0, limit);
+  }
+
+  async searchConnectorMessages(
+    context: MessageConnectorQueryContext,
+    params: ConnectorSearchMessagesParams
+  ): Promise<Memory[]> {
+    const query = params.query?.trim().toLowerCase();
+    if (!query) {
+      return [];
+    }
+    const memories = await this.fetchConnectorMessages(context, {
+      ...params,
+      limit: Math.max(params.limit ?? 100, 100),
+    });
+    return memories
+      .filter((memory) => {
+        const text = String(memory.content?.text ?? "").toLowerCase();
+        const name = String(memory.content?.name ?? "").toLowerCase();
+        return text.includes(query) || name.includes(query);
+      })
+      .slice(0, params.limit ?? 25);
+  }
+
+  async reactConnectorMessage(
+    runtime: IAgentRuntime,
+    params: ConnectorReactionParams
+  ): Promise<void> {
+    const target = params.target;
+    const accountId = this.normalizeAccountId(target?.accountId);
+    const room =
+      params.roomId || target?.roomId
+        ? await runtime.getRoom((params.roomId ?? target?.roomId) as UUID)
+        : null;
+    const recipient = params.channelId ?? target?.channelId ?? room?.channelId;
+    if (!recipient) {
+      throw new Error("Signal reaction requires a target recipient or room.");
+    }
+
+    let targetTimestamp = params.targetTimestamp;
+    let targetAuthor = params.targetAuthor;
+    if ((!targetTimestamp || !targetAuthor) && params.messageId) {
+      const memory = await runtime.getMemoryById(params.messageId as UUID).catch(() => null);
+      const metadata = memory?.metadata as Record<string, unknown> | undefined;
+      const sender = metadata?.sender as Record<string, unknown> | undefined;
+      targetTimestamp =
+        targetTimestamp ??
+        Number(metadata?.messageIdFull ?? metadata?.timestamp ?? memory?.createdAt);
+      targetAuthor =
+        targetAuthor ??
+        (typeof sender?.id === "string"
+          ? sender.id
+          : typeof metadata?.fromId === "string"
+            ? metadata.fromId
+            : undefined);
+    }
+
+    if (!params.emoji || !targetTimestamp || !targetAuthor) {
+      throw new Error("Signal reaction requires emoji, targetTimestamp, and targetAuthor.");
+    }
+
+    if (params.remove) {
+      await this.removeReaction(recipient, params.emoji, targetTimestamp, targetAuthor, accountId);
+      return;
+    }
+    await this.sendReaction(recipient, params.emoji, targetTimestamp, targetAuthor, accountId);
+  }
+
+  async getConnectorUser(
+    _runtime: IAgentRuntime,
+    params: ConnectorUserLookupParams
+  ): Promise<unknown> {
+    const lookup = params.userId ?? params.handle ?? params.username ?? params.query;
+    if (!lookup) {
+      return null;
+    }
+    const accountId = this.normalizeAccountId(params.target?.accountId);
+    const contacts = await this.listConnectorContacts(accountId);
+    const normalizedLookup = normalizeSignalQuery(lookup);
+    const contact = contacts.find((candidate) =>
+      [candidate.number, candidate.uuid, candidate.name, candidate.profileName]
+        .filter((value): value is string => typeof value === "string" && value.length > 0)
+        .some((value) => normalizeSignalQuery(value).includes(normalizedLookup))
+    );
+    if (!contact) {
+      return null;
+    }
+    const label = getSignalContactDisplayName(contact);
+    return {
+      id: this.getEntityId(contact.number, accountId),
+      agentId: this.runtime.agentId,
+      names: [label, contact.name, contact.profileName, contact.number].filter(
+        (value): value is string => typeof value === "string" && value.length > 0
+      ),
+      metadata: {
+        source: "signal",
+        accountId,
+        signal: {
+          accountId,
+          number: contact.number,
+          uuid: contact.uuid,
+          blocked: contact.blocked,
+        },
+      },
+    };
+  }
+
+  async getGroup(groupId: string, accountId?: string): Promise<SignalGroup | null> {
+    const normalizedAccountId = this.normalizeAccountId(accountId);
+    const client = this.getClientForAccount(normalizedAccountId);
+    if (!client) {
       throw new Error("Signal client not initialized");
     }
 
-    const group = await this.client.getGroup(groupId);
+    const group = await client.getGroup(groupId);
     if (group) {
-      this.groupCache.set(group.id, group);
+      this.cacheGroups(normalizedAccountId, [group]);
     }
 
     return group;
   }
 
-  async sendTypingIndicator(recipient: string): Promise<void> {
-    if (!this.client) return;
-    await this.client.sendTyping(recipient);
+  async sendTypingIndicator(recipient: string, accountId?: string): Promise<void> {
+    const client = this.getClientForAccount(accountId);
+    if (!client) return;
+    await client.sendTyping(recipient);
   }
 
-  /**
-   * Typing after planning when the pipeline will run actions (not a simple reply).
-   * Uses the same addressing scheme as send (E.164 / UUID for DM, `group.{id}` for groups).
-   */
-  async sendTypingBeforeActions(sender: string, groupId?: string): Promise<void> {
-    if (!this.client) return;
-    const target = groupId ? `group.${groupId}` : sender;
-    await this.client.sendTyping(target);
-  }
-
-  async stopTypingIndicator(recipient: string): Promise<void> {
-    if (!this.client) return;
-    await this.client.sendTyping(recipient, true);
+  async stopTypingIndicator(recipient: string, accountId?: string): Promise<void> {
+    const client = this.getClientForAccount(accountId);
+    if (!client) return;
+    await client.sendTyping(recipient, true);
   }
 
   private splitMessage(text: string): string[] {

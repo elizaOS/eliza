@@ -35,6 +35,10 @@ export type LinkedAccountFlagsConfig = Record<string, LinkedAccountFlagConfig>;
 export type LinkedAccountProviderId =
   | "anthropic-subscription"
   | "openai-codex"
+  | "gemini-cli"
+  | "zai-coding"
+  | "kimi-coding"
+  | "deepseek-coding"
   | "anthropic-api"
   | "openai-api"
   | "deepseek-api"
@@ -366,12 +370,21 @@ export function normalizeLinkedAccountFlagsConfig(
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
+// Compat alias used by the published `@elizaos/app-core@2.0.0-alpha.5xx`
+// bundle (embedded under `eliza-dist/` for packaged Electrobun) which
+// imports `normalizeLinkedAccountsConfig` from `@elizaos/shared`.
+export const normalizeLinkedAccountsConfig = normalizeLinkedAccountFlagsConfig;
+
 export function isLinkedAccountProviderId(
   value: unknown,
 ): value is LinkedAccountProviderId {
   return (
     value === "anthropic-subscription" ||
     value === "openai-codex" ||
+    value === "gemini-cli" ||
+    value === "zai-coding" ||
+    value === "kimi-coding" ||
+    value === "deepseek-coding" ||
     value === "anthropic-api" ||
     value === "openai-api" ||
     value === "deepseek-api" ||

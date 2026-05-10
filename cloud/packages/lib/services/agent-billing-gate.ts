@@ -1,7 +1,7 @@
 /**
  * Agent billing gate — pre-provisioning credit check.
  *
- * Ensures an organization has the minimum deposit ($5) before
+ * Ensures an organization has more than the minimum running balance before
  * allowing agent creation, provisioning, or resume.
  */
 
@@ -18,7 +18,7 @@ export interface CreditGateResult {
 /**
  * Check whether an organization has sufficient credits for Eliza agent operations.
  *
- * Returns `{ allowed: true }` if `credit_balance >= MINIMUM_DEPOSIT`,
+ * Returns `{ allowed: true }` if `credit_balance > MINIMUM_DEPOSIT`,
  * otherwise returns a user-facing error message directing them to add funds.
  */
 export async function checkAgentCreditGate(organizationId: string): Promise<CreditGateResult> {
@@ -34,12 +34,12 @@ export async function checkAgentCreditGate(organizationId: string): Promise<Cred
 
     const balance = Number(org.credit_balance);
 
-    if (balance < AGENT_PRICING.MINIMUM_DEPOSIT) {
-      const deficit = AGENT_PRICING.MINIMUM_DEPOSIT - balance;
+    if (balance <= AGENT_PRICING.MINIMUM_DEPOSIT) {
+      const deficit = Math.max(AGENT_PRICING.MINIMUM_DEPOSIT - balance, 0.01);
       return {
         allowed: false,
         balance,
-        error: `Insufficient credits. A minimum balance of $${AGENT_PRICING.MINIMUM_DEPOSIT.toFixed(2)} is required to create or run Eliza agents. Please add at least $${deficit.toFixed(2)} to your account at /dashboard/billing.`,
+        error: `Insufficient credits. A balance greater than $${AGENT_PRICING.MINIMUM_DEPOSIT.toFixed(2)} is required to create or run Eliza agents. Please add at least $${deficit.toFixed(2)} to your account at /dashboard/billing.`,
       };
     }
 

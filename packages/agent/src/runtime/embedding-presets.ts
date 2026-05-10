@@ -14,12 +14,12 @@ export interface EmbeddingPreset {
   downloadSizeMB: number;
 }
 
-const COMPACT_BGE_EMBEDDING = {
-  model: "bge-small-en-v1.5.Q4_K_M.gguf",
-  modelRepo: "ChristianAzinn/bge-small-en-v1.5-gguf",
-  dimensions: 384,
-  contextSize: 512,
-  downloadSizeMB: 133,
+const COMPACT_ELIZA_1_EMBEDDING = {
+  model: "text/eliza-1-lite-0_6b-32k.gguf",
+  modelRepo: "elizaos/eliza-1-lite-0_6b",
+  dimensions: 1024,
+  contextSize: 32768,
+  downloadSizeMB: 512,
 } as const;
 
 /** All available presets, indexed by tier. */
@@ -28,37 +28,35 @@ export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
     tier: "fallback",
     label: "Efficient (CPU)",
     description:
-      "384-dim, 133MB download — compact BGE default for Intel Macs and low-RAM machines",
-    model: COMPACT_BGE_EMBEDDING.model,
-    modelRepo: COMPACT_BGE_EMBEDDING.modelRepo,
-    dimensions: COMPACT_BGE_EMBEDDING.dimensions,
+      "Eliza-1 lite local embeddings for Intel Macs and low-RAM machines",
+    model: COMPACT_ELIZA_1_EMBEDDING.model,
+    modelRepo: COMPACT_ELIZA_1_EMBEDDING.modelRepo,
+    dimensions: COMPACT_ELIZA_1_EMBEDDING.dimensions,
     gpuLayers: 0,
-    contextSize: COMPACT_BGE_EMBEDDING.contextSize,
-    downloadSizeMB: COMPACT_BGE_EMBEDDING.downloadSizeMB,
+    contextSize: COMPACT_ELIZA_1_EMBEDDING.contextSize,
+    downloadSizeMB: COMPACT_ELIZA_1_EMBEDDING.downloadSizeMB,
   },
   standard: {
     tier: "standard",
     label: "Efficient (Metal GPU)",
-    description:
-      "384-dim, 133MB download — compact BGE default with Metal acceleration",
-    model: COMPACT_BGE_EMBEDDING.model,
-    modelRepo: COMPACT_BGE_EMBEDDING.modelRepo,
-    dimensions: COMPACT_BGE_EMBEDDING.dimensions,
+    description: "Eliza-1 lite local embeddings with Metal acceleration",
+    model: COMPACT_ELIZA_1_EMBEDDING.model,
+    modelRepo: COMPACT_ELIZA_1_EMBEDDING.modelRepo,
+    dimensions: COMPACT_ELIZA_1_EMBEDDING.dimensions,
     gpuLayers: "auto",
-    contextSize: COMPACT_BGE_EMBEDDING.contextSize,
-    downloadSizeMB: COMPACT_BGE_EMBEDDING.downloadSizeMB,
+    contextSize: COMPACT_ELIZA_1_EMBEDDING.contextSize,
+    downloadSizeMB: COMPACT_ELIZA_1_EMBEDDING.downloadSizeMB,
   },
   performance: {
     tier: "performance",
     label: "Efficient (High-memory GPU)",
-    description:
-      "384-dim, 133MB download — keep local embeddings compact, SQL-safe, and fast even on high-memory Macs",
-    model: COMPACT_BGE_EMBEDDING.model,
-    modelRepo: COMPACT_BGE_EMBEDDING.modelRepo,
-    dimensions: COMPACT_BGE_EMBEDDING.dimensions,
+    description: "Eliza-1 lite local embeddings for high-memory Macs",
+    model: COMPACT_ELIZA_1_EMBEDDING.model,
+    modelRepo: COMPACT_ELIZA_1_EMBEDDING.modelRepo,
+    dimensions: COMPACT_ELIZA_1_EMBEDDING.dimensions,
     gpuLayers: "auto",
-    contextSize: COMPACT_BGE_EMBEDDING.contextSize,
-    downloadSizeMB: COMPACT_BGE_EMBEDDING.downloadSizeMB,
+    contextSize: COMPACT_ELIZA_1_EMBEDDING.contextSize,
+    downloadSizeMB: COMPACT_ELIZA_1_EMBEDDING.downloadSizeMB,
   },
 };
 

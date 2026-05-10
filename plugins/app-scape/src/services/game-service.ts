@@ -31,7 +31,7 @@ import {
 import {
   formatScapeRouterPrompt,
   resolveScapeRouterAction,
-} from "../actions/router-definitions.js";
+} from "./autonomous-loop-prompt.js";
 import { botStateProvider } from "../providers/bot-state.js";
 import { goalsProvider } from "../providers/goals.js";
 import { inventoryProvider } from "../providers/inventory.js";
@@ -540,12 +540,12 @@ export class ScapeGameService extends Service {
     // (runtime, message, state → ProviderResult).
     const dummyMemory = {
       content: { text: "" },
-    } as unknown as import("@elizaos/core").Memory;
+    } as import("@elizaos/core").Memory;
     const dummyState = {
       values: {},
       data: {},
       text: "",
-    } as unknown as import("@elizaos/core").State;
+    } as import("@elizaos/core").State;
     const sections: string[] = [];
     // Order matters for prompt readability: self / inventory
     // come first (short), nearby next (variable), then the

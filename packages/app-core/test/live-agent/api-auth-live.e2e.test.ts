@@ -6,6 +6,7 @@
  */
 
 import path from "node:path";
+import crypto from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createElizaPlugin } from "@elizaos/agent";
 import { config as loadDotenv } from "dotenv";
@@ -21,20 +22,61 @@ import {
   isLiveTestEnabled,
   LIVE_PROVIDER_ENV_KEYS,
   selectLiveProvider,
-} from "../helpers/live-provider";
-import { createRealTestRuntime } from "../helpers/real-runtime";
+} from "../helpers/live-provider.ts";
+import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 import { saveEnv } from "../helpers/test-utils";
 
 const envPath = path.resolve(import.meta.dirname, "..", "..", "..", ".env");
 loadDotenv({ path: envPath });
 
-const LIVE_PROVIDER = selectLiveProvider("openai") ?? selectLiveProvider();
+const LIVE_PROVIDER =
+  selectLiveProvider("cerebras") ??
+  selectLiveProvider("openai") ??
+  selectLiveProvider();
 const CAN_RUN = isLiveTestEnabled() && Boolean(LIVE_PROVIDER);
 
 type StartedLiveServer = {
   close: () => Promise<void>;
   port: number;
 };
+
+async function seedMachineSession(
+  runtimeResult: Awaited<ReturnType<typeof createRealTestRuntime>>,
+  sessionId: string,
+): Promise<void> {
+  const db = (runtimeResult.runtime.adapter as { db?: unknown } | undefined)
+    ?.db;
+  if (!db) {
+    throw new Error("Auth session seed requires a runtime database");
+  }
+
+  const { AuthStore } = await import("../../src/services/auth-store");
+  const store = new AuthStore(
+    db as ConstructorParameters<typeof AuthStore>[0],
+  );
+  const now = Date.now();
+  const identity = await store.createIdentity({
+    id: crypto.randomUUID(),
+    kind: "machine",
+    displayName: "Live Auth E2E",
+    createdAt: now,
+    passwordHash: null,
+    cloudUserId: null,
+  });
+  await store.createSession({
+    id: sessionId,
+    identityId: identity.id,
+    kind: "machine",
+    createdAt: now,
+    lastSeenAt: now,
+    expiresAt: now + 60 * 60 * 1000,
+    rememberDevice: false,
+    csrfSecret: crypto.randomBytes(32).toString("hex"),
+    ip: null,
+    userAgent: "api-auth-live-e2e",
+    scopes: ["*"],
+  });
+}
 
 async function assertWalletExportRejected(
   port: number,
@@ -117,7 +159,7 @@ async function ensureWalletKeys(): Promise<void> {
   }
 
   const { deriveEvmAddress, deriveSolanaAddress, generateWalletKeys } =
-    await import("@elizaos/agent/api/wallet");
+    await import("@elizaos/agent");
 
   let generatedKeys: {
     evmPrivateKey: string;
@@ -187,9 +229,10 @@ async function startLiveServer(args: {
     preferredProvider: LIVE_PROVIDER?.name,
     plugins: [createElizaPlugin({ agentId: "main" })],
   });
+  await seedMachineSession(runtimeResult, args.apiToken);
   const { startApiServer } = await import("../../src/api/server");
   const { _resetForTesting } = await import(
-    "@elizaos/app-steward/routes/wallet-export-guard"
+    "@elizaos/plugin-wallet"
   );
   _resetForTesting();
   const server = await startApiServer({

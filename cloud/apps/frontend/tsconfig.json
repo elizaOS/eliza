@@ -23,11 +23,12 @@
       "@/types/*": ["../../packages/types/*"],
       "@/components/*": ["../../packages/ui/src/components/*"],
       "@/packages/*": ["../../packages/*"],
+      "@elizaos/billing": ["../../packages/billing/src/index.ts"],
       "@elizaos/cloud-ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/cloud-ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "vite.config.ts", "../../packages/types/plugin-sql.d.ts"],
+  "include": ["src", "vite.config.ts"],
   "exclude": ["node_modules", "dist", "src/legacy"]
 }

@@ -76,10 +76,11 @@ class IncludeProcessor {
     if (!isPlainObject(obj)) {
       return obj;
     }
-    if (!(INCLUDE_KEY in obj)) {
-      return this.processObject(obj);
+    const record = obj as Record<string, unknown>;
+    if (!(INCLUDE_KEY in record)) {
+      return this.processObject(record);
     }
-    return this.processInclude(obj);
+    return this.processInclude(record);
   }
 
   private processObject(obj: Record<string, unknown>): Record<string, unknown> {

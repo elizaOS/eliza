@@ -19,13 +19,13 @@ import type {
   TrajectoryListResult,
   TrajectoryStatus,
   TrajectoryStepKind,
-} from "../types/trajectory.js";
+} from "../types/trajectory.ts";
 import {
   exportPersistedTrajectories,
   persistedTrajectoryToDetailRecord,
   type RuntimeTrajectoryExportOptions,
   trajectoryRowToListItem,
-} from "./trajectory-export.js";
+} from "./trajectory-export.ts";
 import {
   asRecord,
   type CompleteStepOptions,
@@ -71,13 +71,13 @@ import {
   truncateRecord,
   warnRuntime,
   writeCompressedJsonlRows,
-} from "./trajectory-internals.js";
+} from "./trajectory-internals.ts";
 
 // Re-export types needed by consumers
 export type {
   CompleteStepOptions,
   StartStepOptions,
-} from "./trajectory-internals.js";
+} from "./trajectory-internals.ts";
 
 // ---------------------------------------------------------------------------
 // appendLlmCall / appendProviderAccess
@@ -310,15 +310,9 @@ function notifyTrainingTrigger(
   runtime: IAgentRuntime,
   trajectoryId: string,
 ): void {
-  const services = (
-    runtime as unknown as {
-      services?: Map<string, unknown[]>;
-    }
-  ).services;
-  if (!services) return;
-  const entries = services.get("TRAINING_TRIGGER_SERVICE");
+  const entries = runtime.services.get("TRAINING_TRIGGER_SERVICE" as never);
   if (!Array.isArray(entries) || entries.length === 0) return;
-  const entry = entries[0];
+  const entry: unknown = entries[0];
   if (
     !entry ||
     typeof entry !== "object" ||
@@ -535,21 +529,19 @@ export async function installDatabaseTrajectoryLogger(
     logger.providerAccess.splice(0, logger.providerAccess.length);
   }
 
-  type VariadicLoggerCall = (...args: unknown[]) => unknown;
+  const llmLogger = logger.logLlmCall;
   const originalLogLlmCall =
-    typeof logger.logLlmCall === "function"
-      ? ((logger.logLlmCall as unknown as VariadicLoggerCall).bind(
-          logger,
-        ) as VariadicLoggerCall)
+    typeof llmLogger === "function"
+      ? (...args: unknown[]) => Reflect.apply(llmLogger, logger, args)
       : null;
+  const providerAccessLogger = logger.logProviderAccess;
   const originalLogProviderAccess =
-    typeof logger.logProviderAccess === "function"
-      ? ((logger.logProviderAccess as unknown as VariadicLoggerCall).bind(
-          logger,
-        ) as VariadicLoggerCall)
+    typeof providerAccessLogger === "function"
+      ? (...args: unknown[]) =>
+          Reflect.apply(providerAccessLogger, logger, args)
       : null;
 
-  logger.logLlmCall = ((...args: unknown[]) => {
+  logger.logLlmCall = (...args: unknown[]) => {
     if (originalLogLlmCall) {
       try {
         originalLogLlmCall(...args);
@@ -572,9 +564,9 @@ export async function installDatabaseTrajectoryLogger(
     );
     const runtimeKey = runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
-  }) as unknown as (params: Record<string, unknown>) => void;
+  };
 
-  logger.logProviderAccess = ((...args: unknown[]) => {
+  logger.logProviderAccess = (...args: unknown[]) => {
     if (originalLogProviderAccess) {
       try {
         originalLogProviderAccess(...args);
@@ -601,12 +593,12 @@ export async function installDatabaseTrajectoryLogger(
     );
     const runtimeKey = runtime as object;
     lastWritePromises.set(runtimeKey, writePromise);
-  }) as unknown as (params: Record<string, unknown>) => void;
+  };
 
   logger.getLlmCallLogs = () => [];
   logger.getProviderAccessLogs = () => [];
 
-  const loggerAny = logger as unknown as {
+  const loggerAny = logger as typeof logger & {
     startTrajectory?: (
       stepIdOrAgentId: string,
       options?: {
@@ -810,7 +802,7 @@ export async function installDatabaseTrajectoryLogger(
   };
 
   // Add methods required by the trajectory-routes duck-type check
-  const loggerForRoutes = logger as unknown as {
+  const loggerForRoutes = logger as typeof logger & {
     isEnabled?: () => boolean;
     setEnabled?: (enabled: boolean) => void;
     deleteTrajectories?: (trajectoryIds: string[]) => Promise<number>;
@@ -922,11 +914,10 @@ export async function startTrajectoryStepInDatabase({
 }
 
 /**
- * Annotate an existing trajectory step with the structural metadata Track A
- * relies on (kind discriminator, executeCode script, child step IDs, used
- * skills). Safe to call for any of the new trajectory step fields; passing
- * `undefined` for a field leaves the existing value alone, while passing an
- * explicit value overwrites.
+ * Annotate an existing trajectory step with structural metadata (kind
+ * discriminator, script, child step IDs, used skills). Safe to call for any
+ * of the new trajectory step fields; passing `undefined` for a field leaves
+ * the existing value alone, while passing an explicit value overwrites.
  */
 export async function annotateTrajectoryStep({
   runtime,

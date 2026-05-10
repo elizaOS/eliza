@@ -252,9 +252,8 @@ export async function requireInferenceProvider(): Promise<InferenceProviderInfo>
 				"Options:\n" +
 				"  1. Start Ollama locally:\n" +
 				"     $ ollama serve\n" +
-				"     $ ollama pull llama3.2:1b  # for TEXT_SMALL\n" +
-				"     $ ollama pull llama3.2:3b  # for TEXT_LARGE\n" +
-				"     $ ollama pull nomic-embed-text  # for embeddings\n\n" +
+				"     $ ollama create eliza-1-2b -f packages/training/cloud/ollama/Modelfile.eliza-1-2b-q4_k_m  # for TEXT_SMALL\n" +
+				"     $ ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m  # for TEXT_LARGE\n\n" +
 				"  2. Set a cloud API key:\n" +
 				"     $ export OPENAI_API_KEY=sk-...\n" +
 				"     $ export ANTHROPIC_API_KEY=sk-...\n" +

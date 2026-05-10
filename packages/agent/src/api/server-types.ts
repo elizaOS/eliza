@@ -6,11 +6,11 @@
 
 import type http from "node:http";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.js";
-import type { AppManager } from "../services/app-manager.js";
-import type { SandboxManager } from "../services/sandbox-manager.js";
-import type { CloudRouteState } from "./cloud-routes.js";
-import type { ConnectorHealthMonitor } from "./connector-health.js";
+import type { CloudRouteState } from "@elizaos/plugin-elizacloud";
+import type { ElizaConfig } from "../config/config.ts";
+import type { AppManager } from "../services/app-manager.ts";
+import type { SandboxManager } from "../services/sandbox-manager.ts";
+import type { ConnectorHealthMonitor } from "./connector-health.ts";
 
 // PluginEntry and PluginParamDef are defined here to avoid a circular dependency
 // with plugin-discovery-helpers.ts (which imports from server-helpers.ts).
@@ -18,9 +18,9 @@ import type { ConnectorHealthMonitor } from "./connector-health.js";
 export type {
   TrainingServiceLike,
   TrainingServiceWithRuntime,
-} from "./training-service-like.js";
+} from "./training-service-like.ts";
 
-import type { TrainingServiceWithRuntime } from "./training-service-like.js";
+import type { TrainingServiceWithRuntime } from "./training-service-like.ts";
 
 // ---------------------------------------------------------------------------
 // Conversation metadata
@@ -43,7 +43,7 @@ export type ConversationScope =
   | "page-browser"
   | "page-automations";
 
-export type ConversationAutomationType = "coordinator_text" | "n8n_workflow";
+export type ConversationAutomationType = "coordinator_text" | "workflow";
 
 export interface ConversationMetadata {
   scope?: ConversationScope;
@@ -142,7 +142,7 @@ export type ConnectorRouteHandler = (
 export type AgentAutomationMode = "connectors-only" | "full";
 
 export type TradePermissionMode =
-  import("./trade-safety.js").TradePermissionMode;
+  import("./trade-safety.ts").TradePermissionMode;
 
 // ---------------------------------------------------------------------------
 // Plugin entry types (canonical definitions — re-exported by plugin-discovery-helpers)
@@ -267,14 +267,11 @@ export interface ServerState {
   /** Currently active conversation ID from the frontend (sent via WS). */
   activeConversationId: string | null;
   /** Transient OAuth flow state for subscription auth. */
-  _anthropicFlow?: import("../auth/anthropic.js").AnthropicFlow;
-  _codexFlow?: import("../auth/openai-codex.js").CodexFlow;
+  _anthropicFlow?: import("../auth/anthropic.ts").AnthropicFlow;
+  _codexFlow?: import("../auth/openai-codex.ts").CodexFlow;
   _codexFlowTimer?: ReturnType<typeof setTimeout>;
   /** System permission states (cached from the desktop bridge). */
-  permissionStates?: Record<
-    string,
-    import("@elizaos/shared/contracts/permissions").PermissionState
-  >;
+  permissionStates?: Record<string, import("@elizaos/shared").PermissionState>;
   /** Whether shell access is enabled (can be toggled in UI). */
   shellEnabled?: boolean;
   /** Agent automation permission mode for self-directed config changes. */
@@ -290,27 +287,27 @@ export interface ServerState {
   /** Active WhatsApp pairing sessions (QR code flow). */
   whatsappPairingSessions?: Map<
     string,
-    import("../services/whatsapp-pairing.js").WhatsAppPairingSession
+    import("@elizaos/plugin-whatsapp").WhatsAppPairingSession
   >;
   /** Active Signal pairing sessions (device linking flow). */
   signalPairingSessions?: Map<
     string,
-    import("../services/signal-pairing.js").SignalPairingSession
+    import("@elizaos/plugin-signal").SignalPairingSession
   >;
   /** Last known Signal pairing snapshots, including terminal failures. */
   signalPairingSnapshots?: Map<
     string,
-    import("../services/signal-pairing.js").SignalPairingSnapshot
+    import("@elizaos/plugin-signal").SignalPairingSnapshot
   >;
   /** Active Telegram account auth session (user-account login flow). */
   telegramAccountAuthSession?:
-    | import("../services/telegram-account-auth.js").TelegramAccountAuthSessionLike
+    | import("@elizaos/plugin-telegram").TelegramAccountAuthSessionLike
     | null;
 }
 
 /**
  * Extension of the core Media attachment shape that carries raw image bytes for
- * action handlers (e.g. POST_TWEET) while the message is in-memory.
+ * action handlers (e.g. POST operation=send) while the message is in-memory.
  */
 export interface ChatAttachmentWithData extends Media {
   /** Raw base64 image data -- never written to the database. */

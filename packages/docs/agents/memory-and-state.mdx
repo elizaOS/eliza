@@ -362,12 +362,12 @@ async function learnFact(runtime: IAgentRuntime, fact: string) {
   });
 }
 
-// Retrieving knowledge
-async function getKnowledge(runtime: IAgentRuntime, topic: string) {
+// Retrieving documents
+async function searchDocuments(runtime: IAgentRuntime, topic: string) {
   return await runtime.searchMemories({
     query: topic,
     filter: {
-      "metadata.type": "knowledge",
+      "metadata.type": "document",
     },
     match_threshold: 0.7,
   });

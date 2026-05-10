@@ -2012,6 +2012,35 @@ X-GNOME-Autostart-enabled=true
 		return { canceled, filePaths: canceled ? [] : filePaths };
 	}
 
+	/**
+	 * Pick a workspace folder for store-distributed builds. Maps to a directory-only
+	 * NSOpenPanel on macOS (via Electrobun's openFileDialog).
+	 *
+	 * The `bookmark` field is the OS-specific persistence handle: on macOS, a
+	 * base64 NSURLBookmarkCreationOptions.WithSecurityScope blob the caller
+	 * stores and re-resolves on next launch. Bookmark creation requires a
+	 * native bridge that this build does not yet ship, so we currently return
+	 * `bookmark: null` and rely on the picker re-prompt at next launch when
+	 * the path no longer resolves under the sandbox. TODO: wire into the
+	 * `native/` module's NSURL bookmark API to make grants persistent.
+	 */
+	async pickWorkspaceFolder(options: {
+		defaultPath?: string;
+		promptTitle?: string;
+	}): Promise<{ canceled: boolean; path: string; bookmark: string | null }> {
+		const filePaths = await Utils.openFileDialog({
+			startingFolder: options.defaultPath,
+			canChooseFiles: false,
+			canChooseDirectory: true,
+			allowsMultipleSelection: false,
+		});
+		const canceled = filePaths.length === 0 || filePaths[0] === "";
+		if (canceled) {
+			return { canceled: true, path: "", bookmark: null };
+		}
+		return { canceled: false, path: filePaths[0], bookmark: null };
+	}
+
 	// MARK: - Helpers
 
 	/**
@@ -2054,9 +2083,7 @@ X-GNOME-Autostart-enabled=true
 			path: cookie.path,
 			secure: cookie.secure,
 			httpOnly: cookie.httpOnly,
-			session: (cookie as unknown as Record<string, unknown>).session as
-				| boolean
-				| undefined,
+			session: (cookie as typeof cookie & { session?: boolean }).session,
 			expirationDate: cookie.expirationDate,
 		}));
 

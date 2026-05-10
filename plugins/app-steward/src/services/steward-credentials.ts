@@ -1,1 +1,1 @@
-export * from "@elizaos/app-core/services/steward-credentials";
+export * from "@elizaos/app-core";

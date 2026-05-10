@@ -469,6 +469,10 @@ describe.skipIf(!TEST_DB_URL)("Generic OAuth Provider E2E Tests", () => {
     });
 
     it("should redirect with error when Google OAuth is not configured", async () => {
+      if (shouldSkipIfProviderConfigured("google")) {
+        return;
+      }
+
       const response = await fetch(
         `${BASE_URL}/api/v1/oauth/google/callback?code=test&state=test`,
         withOAuthIp({
@@ -561,7 +565,7 @@ describe.skipIf(!TEST_DB_URL)("Generic OAuth Provider E2E Tests", () => {
         return;
       }
 
-      expect(response.status).toBe(307);
+      expect([302, 307]).toContain(response.status);
       const location = response.headers.get("location");
       expect(location).toContain("linear_error=missing_params");
     });
@@ -584,7 +588,7 @@ describe.skipIf(!TEST_DB_URL)("Generic OAuth Provider E2E Tests", () => {
         return;
       }
 
-      expect(response.status).toBe(307);
+      expect([302, 307]).toContain(response.status);
       const location = response.headers.get("location");
       expect(location).toContain("linear_error=missing_params");
     });
@@ -607,7 +611,7 @@ describe.skipIf(!TEST_DB_URL)("Generic OAuth Provider E2E Tests", () => {
         return;
       }
 
-      expect(response.status).toBe(307);
+      expect([302, 307]).toContain(response.status);
       const location = response.headers.get("location");
       expect(location).toContain("linear_error=access_denied");
       expect(location).toContain("linear_error_description=");
@@ -631,7 +635,7 @@ describe.skipIf(!TEST_DB_URL)("Generic OAuth Provider E2E Tests", () => {
         return;
       }
 
-      expect(response.status).toBe(307);
+      expect([302, 307]).toContain(response.status);
       const location = response.headers.get("location");
       expect(location).toContain("linear_error=");
     });
@@ -676,11 +680,6 @@ describe.skipIf(!TEST_DB_URL)("Generic OAuth Provider E2E Tests", () => {
         return;
       }
 
-      // The redirect URL is validated in the callback, so we need to test
-      // that malicious redirects stored in state are caught.
-      // For now, we verify the initiate endpoint accepts the redirect
-      // and the callback validates it.
-
       const response = await fetch(
         `${BASE_URL}/api/v1/oauth/linear/initiate`,
         withOAuthIp({
@@ -696,9 +695,9 @@ describe.skipIf(!TEST_DB_URL)("Generic OAuth Provider E2E Tests", () => {
         }),
       );
 
-      // Initiate should succeed (validation happens in callback)
-      // This tests that the flow works end-to-end
-      expect(response.status === 200 || response.status === 503).toBe(true);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toBe("INVALID_REDIRECT_URL");
     });
 
     it("should allow valid redirect paths", async () => {

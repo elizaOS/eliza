@@ -1,8 +1,14 @@
 import { logger } from "../../../logger.ts";
 import { extractSecretRequestTemplate as extractRequestTemplate } from "../../../prompts.ts";
 import {
+	resolveSensitiveRequestDelivery,
+	type SensitiveRequestDeliveryPlan,
+	sensitiveRequestEnvironmentFromSettings,
+} from "../../../sensitive-request-policy.ts";
+import {
 	type Action,
 	type ActionExample,
+	ChannelType,
 	type HandlerCallback,
 	type HandlerOptions,
 	type IAgentRuntime,
@@ -10,7 +16,8 @@ import {
 	ModelType,
 	type State,
 } from "../../../types/index.ts";
-import { hasActionContextOrKeyword } from "../../../utils/action-validation.ts";
+import type { JsonObject } from "../../../types/primitives.ts";
+import { hasActionContext } from "../../../utils/action-validation.ts";
 import {
 	SECRETS_SERVICE_TYPE,
 	type SecretsService,
@@ -59,20 +66,10 @@ export const requestSecretAction: Action = {
 				: {};
 		const hasStructuredKey =
 			typeof params.key === "string" && params.key.trim().length > 0;
-		const text = message.content?.text?.toLowerCase() ?? "";
 		return (
 			hasStructuredKey ||
-			/\b(?:request|need|missing|require).*\b(?:secret|key|token|credential)\b/i.test(
-				text,
-			) ||
-			hasActionContextOrKeyword(message, _state, {
+			hasActionContext(message, _state, {
 				contexts: ["secrets", "settings", "connectors"],
-				keywords: [
-					"request secret",
-					"need secret",
-					"missing secret",
-					"require api key",
-				],
 			})
 		);
 	},
@@ -168,7 +165,12 @@ export const requestSecretAction: Action = {
 					: typeof result?.reason === "string" && result.reason.trim()
 						? result.reason.trim()
 						: undefined;
-			const text = `I require the secret '${key}' to proceed${reason ? ` (${reason})` : ""}. Please provide it securely using 'set secret ${key} <value>'.`;
+			const delivery = resolveSensitiveRequestDelivery({
+				kind: "secret",
+				channelType: message.content.channelType,
+				environment: buildSecretRequestEnvironment(runtime, message, params),
+			});
+			const text = buildSecretRequestText(key, reason, delivery);
 
 			if (callback) {
 				await callback({
@@ -178,6 +180,7 @@ export const requestSecretAction: Action = {
 						secretRequest: {
 							key,
 							reason,
+							delivery: toJsonObject(delivery),
 						},
 					},
 				});
@@ -230,3 +233,82 @@ export const requestSecretAction: Action = {
 		],
 	] as ActionExample[][],
 };
+
+function runtimeSetting(runtime: IAgentRuntime, key: string): unknown {
+	try {
+		return runtime.getSetting(key);
+	} catch {
+		return undefined;
+	}
+}
+
+function buildSecretRequestEnvironment(
+	runtime: IAgentRuntime,
+	message: Memory,
+	params: Record<string, unknown>,
+) {
+	const tunnelService = runtime.getService("tunnel") as {
+		getStatus?: () => {
+			active?: boolean;
+			url?: string | null;
+		};
+		getUrl?: () => string | null;
+		isActive?: () => boolean;
+	} | null;
+	const tunnelStatus = tunnelService?.getStatus?.();
+	const tunnelUrl =
+		typeof tunnelStatus?.url === "string"
+			? tunnelStatus.url
+			: tunnelService?.getUrl?.();
+	const tunnelActive =
+		tunnelStatus?.active ?? tunnelService?.isActive?.() ?? false;
+	const ownerAppPrivateChat =
+		params.ownerAppPrivateChat === true ||
+		(message.content.channelType === ChannelType.DM &&
+			["app", "in_app", "eliza_app", "owner_app"].includes(
+				String(message.content.source ?? "").toLowerCase(),
+			));
+
+	return sensitiveRequestEnvironmentFromSettings({
+		cloudApiKey: runtimeSetting(runtime, "ELIZAOS_CLOUD_API_KEY"),
+		cloudEnabled: runtimeSetting(runtime, "ELIZAOS_CLOUD_ENABLED"),
+		cloudBaseUrl:
+			runtimeSetting(runtime, "ELIZAOS_CLOUD_REQUEST_BASE_URL") ??
+			runtimeSetting(runtime, "ELIZAOS_CLOUD_BASE_URL"),
+		tunnelActive,
+		tunnelUrl,
+		tunnelAuthenticated:
+			params.tunnelAuthenticated ??
+			runtimeSetting(runtime, "ELIZA_TUNNEL_SENSITIVE_REQUEST_AUTH"),
+		dmAvailable: params.dmAvailable ?? true,
+		ownerAppPrivateChat,
+	});
+}
+
+function toJsonObject(value: unknown): JsonObject {
+	return JSON.parse(JSON.stringify(value)) as JsonObject;
+}
+
+function buildSecretRequestText(
+	key: string,
+	reason: string | undefined,
+	delivery: SensitiveRequestDeliveryPlan,
+): string {
+	const reasonText = reason ? ` (${reason})` : "";
+	const prefix = `I need ${key}${reasonText}.`;
+
+	switch (delivery.mode) {
+		case "inline_owner_app":
+			return `${prefix} I can collect it in this owner-only app chat and will only show the setup status here.`;
+		case "cloud_authenticated_link":
+			return `${prefix} Use the authenticated Eliza Cloud setup link when it appears. Do not paste the value into a public channel.`;
+		case "tunnel_authenticated_link":
+			return `${prefix} Use the authenticated local tunnel setup link when it appears. Do not paste the value into a public channel.`;
+		case "private_dm":
+			return `${prefix} This is a private channel, so you can set it here if needed, but a secure form is preferred when available.`;
+		case "public_link":
+			return `${prefix} A public link is not allowed for secret collection. I will use a private or authenticated route instead.`;
+		case "dm_or_owner_app_instruction":
+			return `${prefix} I cannot collect secrets in this channel. Please DM me or open the owner app to enter it securely.`;
+	}
+}

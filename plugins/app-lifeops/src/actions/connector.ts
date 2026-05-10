@@ -1,4 +1,4 @@
-import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -11,11 +11,22 @@ import type {
 } from "@elizaos/core";
 import type { LifeOpsGoogleCapability } from "../contracts/index.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { INTERNAL_URL } from "./lifeops-google-helpers.js";
+import { INTERNAL_URL } from "../lifeops/access.js";
+import { getConnectorRegistry } from "../lifeops/connectors/index.js";
 
 const ACTION_NAME = "CONNECTOR";
 
-const VALID_CONNECTORS = [
+/**
+ * Connector kinds the action's verbose dispatcher table understands.
+ *
+ * The W2-B migration replaced the old hardcoded `VALID_CONNECTORS` enum with
+ * `ConnectorRegistry`-driven validation. The values below are kept narrow so
+ * the verbose-result dispatchers (with rich provider-specific verify probes)
+ * keep their typed surface; any connector registered via `ConnectorRegistry`
+ * but not present here resolves through the generic registry-backed
+ * fallback dispatcher.
+ */
+const VERBOSE_DISPATCHER_KINDS = [
   "google",
   "x",
   "telegram",
@@ -39,18 +50,17 @@ const VALID_SUBACTIONS = [
 // Types
 // ---------------------------------------------------------------------------
 
-type ConnectorKind = (typeof VALID_CONNECTORS)[number];
+type ConnectorKind = string;
+type VerboseConnectorKind = (typeof VERBOSE_DISPATCHER_KINDS)[number];
 type ConnectorSubaction = (typeof VALID_SUBACTIONS)[number];
 
 type ConnectorActionParams = {
   connector?: ConnectorKind;
+  action?: ConnectorSubaction;
   subaction?: ConnectorSubaction;
   side?: "owner" | "agent";
   mode?: "local" | "cloud_managed" | "remote";
   // Connector-specific params (passed through to underlying service methods).
-  phone?: string;
-  apiId?: number;
-  apiHash?: string;
   recentLimit?: number;
   query?: string;
   sendTarget?: string;
@@ -70,6 +80,9 @@ type ConnectorDispatchContext = {
 type GmailTriageResult = Awaited<ReturnType<LifeOpsService["getGmailTriage"]>>;
 type CalendarFeedResult = Awaited<
   ReturnType<LifeOpsService["getCalendarFeed"]>
+>;
+type RegistrySendVerificationResult = NonNullable<
+  Awaited<ReturnType<typeof sendVerificationThroughRegistry>>
 >;
 
 type GoogleVerifyProbeSkipped = {
@@ -102,9 +115,7 @@ type ConnectorDispatcher = (
   params: ConnectorActionParams,
 ) => Promise<ActionResult>;
 
-const MESSAGE_CONNECTOR_SOURCE_BY_LIFEOPS_CONNECTOR: Partial<
-  Record<ConnectorKind, string>
-> = {
+const MESSAGE_CONNECTOR_SOURCE_BY_LIFEOPS_CONNECTOR: Record<string, string> = {
   x: "x",
   telegram: "telegram",
   signal: "signal",
@@ -113,12 +124,28 @@ const MESSAGE_CONNECTOR_SOURCE_BY_LIFEOPS_CONNECTOR: Partial<
   whatsapp: "whatsapp",
 };
 
-function normalizeConnector(value: unknown): ConnectorKind | null {
+function normalizeConnectorKind(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase().replace(/[- ]/g, "_");
-  return (VALID_CONNECTORS as readonly string[]).includes(normalized)
-    ? (normalized as ConnectorKind)
-    : null;
+  return normalized.length > 0 ? normalized : null;
+}
+
+function listKnownConnectorKinds(runtime: IAgentRuntime): string[] {
+  const registry = getConnectorRegistry(runtime);
+  const fromRegistry = registry
+    ? registry.list().map((contribution) => contribution.kind)
+    : [];
+  // Verbose dispatcher kinds are always valid (they cover diagnostic verbs
+  // like `health` and `browser_bridge` that aren't connector contributions
+  // in the W1-F sense — those still flow through this action).
+  return [...new Set([...VERBOSE_DISPATCHER_KINDS, ...fromRegistry])];
+}
+
+function isValidConnectorKind(
+  runtime: IAgentRuntime,
+  kind: string,
+): boolean {
+  return listKnownConnectorKinds(runtime).includes(kind);
 }
 
 function normalizeSubaction(value: unknown): ConnectorSubaction | null {
@@ -158,7 +185,7 @@ function mergeParams(
 }
 
 function unsupportedOperation(
-  connector: ConnectorKind,
+  connector: string,
   subaction: ConnectorSubaction,
   detail?: string,
 ): ActionResult {
@@ -178,7 +205,7 @@ function unsupportedOperation(
 }
 
 function missingParamResult(
-  connector: ConnectorKind,
+  connector: string,
   subaction: ConnectorSubaction,
   missing: string[],
 ): ActionResult {
@@ -197,7 +224,7 @@ function missingParamResult(
 
 function getRuntimeMessageConnector(
   runtime: IAgentRuntime,
-  connector: ConnectorKind,
+  connector: string,
 ): MessageConnector | null {
   const source = MESSAGE_CONNECTOR_SOURCE_BY_LIFEOPS_CONNECTOR[connector];
   if (!source) {
@@ -224,7 +251,7 @@ function getRuntimeMessageConnector(
 
 function registryStatusResult(
   runtime: IAgentRuntime,
-  connector: ConnectorKind,
+  connector: string,
   subaction: ConnectorSubaction,
 ): ActionResult | null {
   const registration = getRuntimeMessageConnector(runtime, connector);
@@ -257,7 +284,7 @@ function registryStatusResult(
 
 async function sendVerificationThroughRegistry(args: {
   runtime: IAgentRuntime;
-  connector: ConnectorKind;
+  connector: string;
   target: string | undefined;
   text: string;
 }): Promise<
@@ -325,7 +352,7 @@ async function dispatchListAll(
 ): Promise<ActionResult> {
   const { runtime, service } = context;
   const registryOrReadStatus = async (
-    connector: ConnectorKind,
+    connector: string,
     readStatus: () => Promise<unknown>,
   ) => {
     const registryStatus = registryStatusResult(runtime, connector, "list")
@@ -361,11 +388,13 @@ async function dispatchListAll(
     service.getBrowserSettings(),
     service.listBrowserCompanions(),
   ]);
+  const known = listKnownConnectorKinds(runtime);
   return {
     success: true,
-    text: `Listed status for all ${VALID_CONNECTORS.length} LifeOps connectors.`,
+    text: `Listed status for ${known.length} LifeOps connectors.`,
     data: {
       actionName: ACTION_NAME,
+      connectorKinds: known,
       connectors: {
         google,
         x,
@@ -730,38 +759,17 @@ async function dispatchTelegram(
   const side = normalizeSide(params.side) ?? "owner";
   switch (subaction) {
     case "connect": {
-      if (side === "agent") {
-        const status = await service.getTelegramConnectorStatus(side);
-        return {
-          success: status.connected,
-          text: status.connected
-            ? "Agent Telegram is connected through @elizaos/plugin-telegram."
-            : "Agent Telegram is managed by @elizaos/plugin-telegram. Configure and enable the Telegram bot connector, then check status again.",
-          data: {
-            actionName: ACTION_NAME,
-            connector: "telegram",
-            subaction,
-            status,
-          },
-        };
-      }
-      if (!params.phone) {
-        return missingParamResult("telegram", subaction, ["phone"]);
-      }
-      const response = await service.startTelegramAuth({
-        side,
-        phone: params.phone,
-        apiId: params.apiId,
-        apiHash: params.apiHash,
-      });
+      const status = await service.getTelegramConnectorStatus(side);
       return {
-        success: true,
-        text: `Telegram auth started (state=${response.state}). Submit the SMS code to finish connecting.`,
+        success: status.connected,
+        text: status.connected
+          ? `Telegram is connected through @elizaos/plugin-telegram (side=${side}).`
+          : `Telegram connection is managed by @elizaos/plugin-telegram (side=${side}). Configure the Telegram connector plugin, then check status again.`,
         data: {
           actionName: ACTION_NAME,
           connector: "telegram",
           subaction,
-          response,
+          status,
         },
       };
     }
@@ -837,30 +845,17 @@ async function dispatchSignal(
   const side = normalizeSide(params.side) ?? "owner";
   switch (subaction) {
     case "connect": {
-      if (side === "agent") {
-        const status = await service.getSignalConnectorStatus(side);
-        return {
-          success: status.connected,
-          text: status.connected
-            ? "Agent Signal is connected through @elizaos/plugin-signal."
-            : "Agent Signal is managed by @elizaos/plugin-signal. Configure and enable the Signal plugin, then check status again.",
-          data: {
-            actionName: ACTION_NAME,
-            connector: "signal",
-            subaction,
-            status,
-          },
-        };
-      }
-      const response = await service.startSignalPairing(side);
+      const status = await service.getSignalConnectorStatus(side);
       return {
-        success: true,
-        text: `Signal pairing started (sessionId=${response.sessionId}). Scan the QR code from Signal mobile to link.`,
+        success: status.connected,
+        text: status.connected
+          ? `Signal is connected through @elizaos/plugin-signal (side=${side}).`
+          : `Signal pairing is managed by @elizaos/plugin-signal (side=${side}). Configure the Signal connector plugin, then check status again.`,
         data: {
           actionName: ACTION_NAME,
           connector: "signal",
           subaction,
-          response,
+          status,
         },
       };
     }
@@ -907,35 +902,57 @@ async function dispatchSignalVerify(
   params: ConnectorActionParams,
 ): Promise<ActionResult> {
   const limit = params.recentLimit ?? 10;
-  const [status, messages] = await Promise.all([
-    service.getSignalConnectorStatus(side),
-    service.readSignalInbound(limit),
-  ]);
+  const status = await service.getSignalConnectorStatus(side);
+  let messages: Awaited<ReturnType<LifeOpsService["readSignalInbound"]>> = [];
+  let readError: string | null = null;
+  if (status.inbound) {
+    try {
+      messages = await service.readSignalInbound(limit, side);
+    } catch (error) {
+      readError = error instanceof Error ? error.message : String(error);
+    }
+  } else {
+    readError = "Signal plugin inbound read is unavailable.";
+  }
   const sendText =
     params.sendMessage ?? "LifeOps Signal connector verification ping.";
-  const send =
-    (await sendVerificationThroughRegistry({
-      runtime,
-      connector: "signal",
-      target: params.sendTarget,
-      text: sendText,
-    })) ??
-    (params.sendTarget
-      ? await service.sendSignalMessage({
+  let send:
+    | Awaited<ReturnType<LifeOpsService["sendSignalMessage"]>>
+    | RegistrySendVerificationResult
+    | null = null;
+  let sendError: string | null = null;
+  if (params.sendTarget) {
+    try {
+      send =
+        (await sendVerificationThroughRegistry({
+          runtime,
+          connector: "signal",
+          target: params.sendTarget,
+          text: sendText,
+        })) ??
+        (await service.sendSignalMessage({
+          side,
           recipient: params.sendTarget,
           text: sendText,
-        })
-      : null);
+        }));
+    } catch (error) {
+      sendError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  const readOk = readError === null;
+  const sendOk = !params.sendTarget || send?.ok === true;
   return {
-    success: status.connected && (!params.sendTarget || send?.ok === true),
-    text: `Signal verify: status=${status.connected ? "connected" : "disconnected"}, read=${messages.length} message${messages.length === 1 ? "" : "s"}, send=${send ? "ok" : "skipped"}.`,
+    success: status.connected && readOk && sendOk,
+    text: `Signal verify: status=${status.connected ? "connected" : "disconnected"}, read=${readOk ? `${messages.length} message${messages.length === 1 ? "" : "s"}` : "failed"}, send=${params.sendTarget ? (sendOk ? "ok" : "failed") : "skipped"}.`,
     data: {
       actionName: ACTION_NAME,
       connector: "signal",
       subaction: "verify",
       status,
-      read: { ok: true, count: messages.length, messages },
-      send,
+      read: { ok: readOk, error: readError, count: messages.length, messages },
+      send: send
+        ? { ...send, error: sendError }
+        : { ok: !params.sendTarget, error: sendError },
     },
   };
 }
@@ -1165,7 +1182,7 @@ async function dispatchWhatsApp(
       return unsupportedOperation(
         "whatsapp",
         subaction,
-        "WhatsApp connection is configured via env vars (ELIZA_WHATSAPP_ACCESS_TOKEN / ELIZA_WHATSAPP_PHONE_NUMBER_ID); nothing to do via the action layer.",
+        "WhatsApp connection is managed by @elizaos/plugin-whatsapp. Configure the WhatsApp connector plugin; LifeOps no longer owns local WhatsApp API credentials.",
       );
     case "disconnect":
       return unsupportedOperation(
@@ -1185,7 +1202,7 @@ async function dispatchWhatsAppVerify(
 ): Promise<ActionResult> {
   const limit = params.recentLimit ?? 10;
   const status = await service.getWhatsAppConnectorStatus();
-  const recent = service.pullWhatsAppRecent(limit);
+  const recent = await service.pullWhatsAppRecent(limit);
   const sendText =
     params.sendMessage ?? "LifeOps WhatsApp connector verification ping.";
   const send =
@@ -1303,7 +1320,14 @@ async function dispatchBrowserBridge(
   }
 }
 
-const CONNECTOR_DISPATCHERS = {
+/**
+ * Verbose dispatchers cover the rich verify probes (gmail+calendar reads,
+ * inbound DM checks, browser companion enumeration). Connectors registered
+ * via `ConnectorRegistry` that lack a verbose dispatcher fall back to
+ * {@link dispatchGenericRegistry} which exercises the W1-F contract verbs
+ * (`start`/`disconnect`/`verify`/`status`/`send`) directly.
+ */
+const VERBOSE_DISPATCHERS: Record<VerboseConnectorKind, ConnectorDispatcher> = {
   google: dispatchGoogle,
   x: dispatchX,
   telegram: dispatchTelegram,
@@ -1313,7 +1337,93 @@ const CONNECTOR_DISPATCHERS = {
   whatsapp: dispatchWhatsApp,
   health: dispatchHealth,
   browser_bridge: dispatchBrowserBridge,
-} satisfies Record<ConnectorKind, ConnectorDispatcher>;
+};
+
+async function dispatchGenericRegistry(
+  context: ConnectorDispatchContext,
+  subaction: ConnectorSubaction,
+  params: ConnectorActionParams,
+  connectorKind: string,
+): Promise<ActionResult> {
+  const registry = getConnectorRegistry(context.runtime);
+  const contribution = registry?.get(connectorKind);
+  if (!contribution) {
+    return {
+      success: false,
+      text: `[${ACTION_NAME}] no connector contribution registered for "${connectorKind}".`,
+      data: {
+        actionName: ACTION_NAME,
+        connector: connectorKind,
+        error: "CONNECTOR_NOT_REGISTERED",
+      },
+    };
+  }
+  switch (subaction) {
+    case "connect": {
+      await contribution.start();
+      return {
+        success: true,
+        text: `${contribution.describe.label} start invoked.`,
+        data: {
+          actionName: ACTION_NAME,
+          connector: connectorKind,
+          subaction,
+        },
+      };
+    }
+    case "disconnect": {
+      await contribution.disconnect();
+      return {
+        success: true,
+        text: `${contribution.describe.label} disconnected.`,
+        data: {
+          actionName: ACTION_NAME,
+          connector: connectorKind,
+          subaction,
+        },
+      };
+    }
+    case "verify": {
+      const verified = await contribution.verify();
+      const sendResult = params.sendTarget
+        ? await contribution.send?.({
+            target: params.sendTarget,
+            message:
+              params.sendMessage ??
+              `LifeOps ${contribution.describe.label} verification ping.`,
+          })
+        : null;
+      return {
+        success: verified && (!params.sendTarget || sendResult?.ok === true),
+        text: `${contribution.describe.label} verify: connected=${verified}, send=${sendResult ? (sendResult.ok ? "ok" : "fail") : "skipped"}.`,
+        data: {
+          actionName: ACTION_NAME,
+          connector: connectorKind,
+          subaction,
+          verified,
+          send: sendResult,
+        },
+      };
+    }
+    case "status":
+    case "list": {
+      const status = await contribution.status();
+      return {
+        success: true,
+        text: `${contribution.describe.label} status: ${status.state}.`,
+        data: {
+          actionName: ACTION_NAME,
+          connector: connectorKind,
+          subaction,
+          status,
+          capabilities: contribution.capabilities,
+          modes: contribution.modes,
+          requiresApproval: contribution.requiresApproval ?? false,
+        },
+      };
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Action
@@ -1331,12 +1441,21 @@ export const connectorAction: Action & {
     "CHECK_CONNECTION",
     "SERVICE_STATUS",
   ],
+  tags: [
+    "domain:meta",
+    "capability:read",
+    "capability:write",
+    "capability:update",
+    "capability:delete",
+    "surface:remote-api",
+    "surface:internal",
+  ],
   description:
-    "Manage LifeOps connector lifecycle and active verification probes. " +
-    `Connectors: ${VALID_CONNECTORS.join(" | ")}. ` +
-    `Subactions: ${VALID_SUBACTIONS.join(" | ")}.`,
+    "Manage external service connections (Google, Telegram, Discord, Slack, etc.). " +
+    `Actions: ${VALID_SUBACTIONS.join(", ")}. ` +
+    "Connector kinds resolve through the runtime ConnectorRegistry; verify runs an active probe against the upstream API.",
   descriptionCompressed:
-    "connector lifecycle+verify-probes (google|x|telegram|signal|discord|imessage|whatsapp|health|browser-bridge): connect disconnect verify status list",
+    "connector lifecycle: connect|disconnect|verify|status|list; registry-driven kinds",
   contexts: [
     "connectors",
     "settings",
@@ -1359,6 +1478,9 @@ export const connectorAction: Action & {
     options?: HandlerOptions,
   ): Promise<ActionResult> => {
     const merged = mergeParams(message, options);
+    if (merged.action === undefined && merged.subaction !== undefined) {
+      merged.action = merged.subaction;
+    }
     const params = (await extractActionParamsViaLlm<ConnectorActionParams>({
       runtime,
       message,
@@ -1367,17 +1489,17 @@ export const connectorAction: Action & {
       actionDescription: connectorAction.description ?? "",
       paramSchema: connectorAction.parameters ?? [],
       existingParams: merged,
-      requiredFields: ["subaction"],
+      requiredFields: ["action"],
     })) as ConnectorActionParams;
-    const subaction = normalizeSubaction(params.subaction);
+    const subaction = normalizeSubaction(params.action ?? params.subaction);
     if (!subaction) {
       return {
         success: false,
-        text: `[${ACTION_NAME}] missing subaction; choose one of ${VALID_SUBACTIONS.join(" | ")}.`,
+        text: `[${ACTION_NAME}] missing action; choose one of ${VALID_SUBACTIONS.join(" | ")}.`,
         data: {
           actionName: ACTION_NAME,
-          error: "MISSING_SUBACTION",
-          validSubactions: VALID_SUBACTIONS,
+          error: "MISSING_ACTION",
+          validSubactions: [...VALID_SUBACTIONS],
         },
       };
     }
@@ -1386,7 +1508,7 @@ export const connectorAction: Action & {
     const dispatchContext = { runtime, service };
 
     // `list` with no connector means "list all connectors".
-    const connector = normalizeConnector(params.connector);
+    const connector = normalizeConnectorKind(params.connector);
     if (subaction === "list" && !connector) {
       try {
         return await dispatchListAll(dispatchContext);
@@ -1402,23 +1524,44 @@ export const connectorAction: Action & {
       }
     }
 
+    const known = listKnownConnectorKinds(runtime);
     if (!connector) {
       return {
         success: false,
-        text: `[${ACTION_NAME}] missing connector; choose one of ${VALID_CONNECTORS.join(" | ")}.`,
+        text: `[${ACTION_NAME}] missing connector; choose one of ${known.join(" | ")}.`,
         data: {
           actionName: ACTION_NAME,
           error: "MISSING_CONNECTOR",
-          validConnectors: VALID_CONNECTORS,
+          validConnectors: known,
+        },
+      };
+    }
+
+    if (!isValidConnectorKind(runtime, connector)) {
+      return {
+        success: false,
+        text: `[${ACTION_NAME}] unknown connector "${connector}"; choose one of ${known.join(" | ")}.`,
+        data: {
+          actionName: ACTION_NAME,
+          error: "UNKNOWN_CONNECTOR",
+          connector,
+          validConnectors: known,
         },
       };
     }
 
     try {
-      return await CONNECTOR_DISPATCHERS[connector](
+      const verboseDispatcher = (
+        VERBOSE_DISPATCHERS as Record<string, ConnectorDispatcher | undefined>
+      )[connector];
+      if (verboseDispatcher) {
+        return await verboseDispatcher(dispatchContext, subaction, params);
+      }
+      return await dispatchGenericRegistry(
         dispatchContext,
         subaction,
         params,
+        connector,
       );
     } catch (error) {
       if (error instanceof LifeOpsServiceError) {
@@ -1441,14 +1584,14 @@ export const connectorAction: Action & {
     {
       name: "connector",
       description:
-        "Which connector to manage. One of: google, x, telegram, signal, discord, imessage, whatsapp, health, browser_bridge. Optional when subaction=list.",
+        "Which connector to manage (kind from ConnectorRegistry, e.g. google, x, telegram, signal, discord, imessage, whatsapp, twilio, calendly, duffel, health, browser_bridge). Optional when subaction=list.",
       required: false,
-      schema: { type: "string" as const, enum: [...VALID_CONNECTORS] },
+      schema: { type: "string" as const },
     },
     {
-      name: "subaction",
+      name: "action",
       description:
-        "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (active read/send probe where available). status/list are read-only diagnostics for explicit troubleshooting; prefer provider/core registry context when available. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+        "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (active read/send probe where available). status/list are read-only diagnostics for explicit troubleshooting; prefer provider/core registry context when available. Strongly preferred - when omitted, the handler runs an LLM extraction over the conversation to recover it.",
       required: false,
       schema: { type: "string" as const, enum: [...VALID_SUBACTIONS] },
     },
@@ -1467,26 +1610,6 @@ export const connectorAction: Action & {
         type: "string" as const,
         enum: ["local", "cloud_managed", "remote"],
       },
-    },
-    {
-      name: "phone",
-      description:
-        "Telegram connect only — full phone number with country code.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "apiId",
-      description: "Telegram connect only — optional Telegram apiId override.",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
-      name: "apiHash",
-      description:
-        "Telegram connect only — optional Telegram apiHash override.",
-      required: false,
-      schema: { type: "string" as const },
     },
     {
       name: "recentLimit",
@@ -1568,7 +1691,7 @@ export const connectorAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: "I'll start the Google OAuth flow and return the auth URL.",
+          text: "I'll start the plugin-google account OAuth flow and return the auth URL.",
         },
       },
     ],

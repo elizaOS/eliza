@@ -1,4 +1,9 @@
-import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  listSubactionsFromParameters,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { calendarAction } from "../src/actions/calendar.js";
 import { resolveRequestAction } from "../src/actions/resolve-request.js";
@@ -13,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@elizaos/agent/security/access", () => ({
+vi.mock("@elizaos/agent", () => ({
   hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
@@ -27,7 +32,7 @@ function makeRuntime(): IAgentRuntime {
     useModel: vi.fn(() => {
       throw new Error("legacy extractor should not be called");
     }),
-  } as unknown as IAgentRuntime;
+  } as IAgentRuntime;
 }
 
 function makeMessage(text = "reject req-1"): Memory {
@@ -114,23 +119,25 @@ describe("LifeOps native options.parameters migration", () => {
     expect(runtime.useModel).not.toHaveBeenCalled();
   });
 
-  it("CALENDAR exposes concrete context and child action metadata", () => {
+  it("CALENDAR exposes concrete contexts and is a flat-subaction umbrella (no nested subActions/subPlanner)", () => {
     expect(calendarAction.contexts).toEqual([
+      "general",
       "calendar",
       "contacts",
       "tasks",
+      "connectors",
+      "web",
     ]);
-    expect(
-      calendarAction.subActions?.map((action) =>
-        typeof action === "string" ? action : action.name,
-      ),
-    ).toEqual([
-      "CALENDAR",
-      "PROPOSE_MEETING_TIMES",
-      "CHECK_AVAILABILITY",
-      "UPDATE_MEETING_PREFERENCES",
-      "CALENDLY",
-      "SCHEDULING",
-    ]);
+    // The legacy 2-layer `subActions` + `subPlanner` dispatch was removed in
+    // favor of a flat subaction enum + `promoteSubactionsToActions` virtuals
+    // (CALENDAR_FEED, CALENDAR_CREATE_EVENT, CALENDAR_PROPOSE_TIMES, etc.).
+    expect(calendarAction.subActions).toBeUndefined();
+    expect(calendarAction.subPlanner).toBeUndefined();
+    const enumVerbs = listSubactionsFromParameters(calendarAction.parameters);
+    expect(enumVerbs).toContain("feed");
+    expect(enumVerbs).toContain("create_event");
+    expect(enumVerbs).toContain("propose_times");
+    expect(enumVerbs).toContain("check_availability");
+    expect(enumVerbs).toContain("update_preferences");
   });
 });

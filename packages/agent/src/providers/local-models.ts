@@ -114,31 +114,31 @@ export const LOCAL_MODEL_REGISTRY: Record<ModelType, LocalModelConfig[]> = {
   llm: [
     {
       type: "llm",
-      modelId: "ollama/llama3.2:1b",
-      name: "Llama 3.2 1B (Tiny)",
-      sizeInMb: 1300,
-      ollamaModel: "llama3.2:1b",
+      modelId: "elizaos/eliza-1-lite-0_6b",
+      name: "Eliza-1 lite",
+      sizeInMb: 512,
+      requiredFiles: ["text/eliza-1-lite-0_6b-32k.gguf"],
     },
     {
       type: "llm",
-      modelId: "ollama/llama3.2:3b",
-      name: "Llama 3.2 3B (Small)",
-      sizeInMb: 2000,
-      ollamaModel: "llama3.2:3b",
+      modelId: "elizaos/eliza-1-mobile-1_7b",
+      name: "Eliza-1 mobile",
+      sizeInMb: 1229,
+      requiredFiles: ["text/eliza-1-mobile-1_7b-32k.gguf"],
     },
     {
       type: "llm",
-      modelId: "ollama/qwen2.5:0.5b",
-      name: "Qwen 2.5 0.5B (Micro)",
-      sizeInMb: 400,
-      ollamaModel: "qwen2.5:0.5b",
+      modelId: "elizaos/eliza-1-desktop-9b",
+      name: "Eliza-1 desktop",
+      sizeInMb: 5529,
+      requiredFiles: ["text/eliza-1-desktop-9b-64k.gguf"],
     },
     {
       type: "llm",
-      modelId: "ollama/phi3:mini",
-      name: "Phi-3 Mini (3.8B)",
-      sizeInMb: 2300,
-      ollamaModel: "phi3:mini",
+      modelId: "elizaos/eliza-1-pro-27b",
+      name: "Eliza-1 pro",
+      sizeInMb: 17203,
+      requiredFiles: ["text/eliza-1-pro-27b-128k.gguf"],
     },
   ],
   tts: [
@@ -197,24 +197,10 @@ export const LOCAL_MODEL_REGISTRY: Record<ModelType, LocalModelConfig[]> = {
   embedding: [
     {
       type: "embedding",
-      modelId: "sentence-transformers/all-MiniLM-L6-v2",
-      name: "MiniLM L6 v2 (Fast)",
-      sizeInMb: 90,
-      useOnnx: true,
-    },
-    {
-      type: "embedding",
-      modelId: "BAAI/bge-small-en-v1.5",
-      name: "BGE Small EN",
-      sizeInMb: 130,
-      useOnnx: true,
-    },
-    {
-      type: "embedding",
-      modelId: "nomic-ai/nomic-embed-text-v1.5",
-      name: "Nomic Embed v1.5",
-      sizeInMb: 270,
-      useOnnx: true,
+      modelId: "elizaos/eliza-1-lite-0_6b",
+      name: "Eliza-1 lite embeddings",
+      sizeInMb: 512,
+      requiredFiles: ["text/eliza-1-lite-0_6b-32k.gguf"],
     },
   ],
 };
@@ -345,11 +331,13 @@ export class LocalModelManager {
       /preprocessor_config\.json$/,
     ];
 
-    const filesToDownload = files
-      .map((file) => file.rfilename)
-      .filter((filename) =>
-        essentialPatterns.some((pattern) => pattern.test(filename)),
-      );
+    const filesToDownload =
+      config?.requiredFiles ??
+      files
+        .map((file) => file.rfilename)
+        .filter((filename) =>
+          essentialPatterns.some((pattern) => pattern.test(filename)),
+        );
 
     const downloadList =
       filesToDownload.length > 0

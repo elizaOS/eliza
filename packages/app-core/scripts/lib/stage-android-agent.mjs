@@ -45,6 +45,12 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const BUN_VERSION = "1.3.13";
+// Bun 1.3.13 has a segfault we hit during inference on Cuttlefish at
+// peak ~2.3 GB RSS ("panic(main thread): Segmentation fault at address
+// 0x5420"). The canary channel ships the upstream fix while we wait for
+// 1.3.14+. MILADY_BUN_CHANNEL=stable forces back to BUN_VERSION; default
+// is canary so AOSP/cvd inference doesn't crash mid-token.
+const BUN_CHANNEL = (process.env.MILADY_BUN_CHANNEL ?? "canary").toLowerCase();
 const ALPINE_BRANCH = "v3.21";
 
 /**
@@ -86,6 +92,14 @@ function jniLoaderName(ldName) {
   if (ldName.includes("aarch64")) return "libeliza_ld_musl_aarch64.so";
   if (ldName.includes("x86_64")) return "libeliza_ld_musl_x86_64.so";
   return `libeliza_${ldName.replace(/[^a-zA-Z0-9]+/g, "_")}.so`;
+}
+
+// Sibling JNI-lib name for the SIGSYS-shim'd "real" musl loader. The
+// loader-wrap binary at jniLoaderName(ldName) detects this layout (".so"
+// → "_real.so") so it can find the underlying musl loader without falling
+// back to the agent data dir (untrusted_app SELinux denies execve there).
+function jniRealLoaderName(ldName) {
+  return jniLoaderName(ldName).replace(/\.so$/, "_real.so");
 }
 
 /**
@@ -169,15 +183,31 @@ async function downloadFile(url, targetPath) {
 }
 
 async function ensureBunBinary({ cacheDir, bunArch, log }) {
-  const archCache = path.join(cacheDir, `bun-${bunArch}`);
+  const channelTag =
+    BUN_CHANNEL === "canary" ? "canary" : `bun-${BUN_VERSION}`;
+  const cacheKey = BUN_CHANNEL === "canary" ? "canary" : BUN_VERSION;
+  const archCache = path.join(cacheDir, `bun-${bunArch}-${cacheKey}`);
   const bunPath = path.join(archCache, "bun");
-  if (fs.existsSync(bunPath) && fs.statSync(bunPath).size > 1_000_000) {
-    return bunPath;
-  }
+  // Canary cache invalidates after 24h so we pull bug-fix snapshots
+  // automatically without forcing every CI run to re-download.
+  const isFresh = (() => {
+    if (!fs.existsSync(bunPath)) return false;
+    const st = fs.statSync(bunPath);
+    if (st.size <= 1_000_000) return false;
+    if (BUN_CHANNEL !== "canary") return true;
+    const ageMs = Date.now() - st.mtimeMs;
+    return ageMs < 24 * 60 * 60 * 1000;
+  })();
+  if (isFresh) return bunPath;
   fs.mkdirSync(archCache, { recursive: true });
   const zipPath = path.join(archCache, "bun.zip");
-  const url = `https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-${bunArch}-musl.zip`;
-  log(`Downloading bun-${BUN_VERSION} (${bunArch}-musl) from ${url}`);
+  const url =
+    BUN_CHANNEL === "canary"
+      ? `https://github.com/oven-sh/bun/releases/download/canary/bun-linux-${bunArch}-musl.zip`
+      : `https://github.com/oven-sh/bun/releases/download/${channelTag}/bun-linux-${bunArch}-musl.zip`;
+  const channelLabel =
+    BUN_CHANNEL === "canary" ? "bun-canary" : `bun-${BUN_VERSION}`;
+  log(`Downloading ${channelLabel} (${bunArch}-musl) from ${url}`);
   await downloadFile(url, zipPath);
   await run("unzip", ["-q", "-o", zipPath, "-d", archCache]);
   const extractedDir = path.join(archCache, `bun-linux-${bunArch}-musl`);
@@ -185,6 +215,7 @@ async function ensureBunBinary({ cacheDir, bunArch, log }) {
   if (!fs.existsSync(extractedBun)) {
     throw new Error(`bun zip did not contain bun at ${extractedBun}`);
   }
+  if (fs.existsSync(bunPath)) fs.unlinkSync(bunPath);
   fs.renameSync(extractedBun, bunPath);
   fs.rmSync(extractedDir, { recursive: true, force: true });
   fs.rmSync(zipPath, { force: true });
@@ -400,7 +431,7 @@ export async function stageAndroidAgentRuntime({
     os.homedir(),
     ".cache",
     "eliza-android-agent",
-    `bun-${BUN_VERSION}`,
+    `bun-${BUN_CHANNEL === "canary" ? "canary" : BUN_VERSION}`,
   ),
   log = console.log,
 } = {}) {
@@ -465,6 +496,28 @@ export async function stageAndroidAgentRuntime({
       if (copyIfDifferent(src, dst)) abiChanges += 1;
     }
 
+    // llama-server is produced by compile-libllama.mjs (per-ABI). It already
+    // lands at <abiAssetsDir>/llama-server when that script ran successfully,
+    // so we don't re-copy here — but we do ensure the bit is +x because some
+    // file-copy paths (e.g. zip → unzip on Windows builders) lose the
+    // executable bit. The aosp-llama-adapter spawns it for DFlash decode;
+    // without +x exec fails with EACCES at runtime.
+    const llamaServerStaged = path.join(abiAssetsDir, "llama-server");
+    if (fs.existsSync(llamaServerStaged)) {
+      const mode = fs.statSync(llamaServerStaged).mode;
+      if ((mode & 0o111) !== 0o111) {
+        fs.chmodSync(llamaServerStaged, mode | 0o755);
+        abiChanges += 1;
+        tlog(`Restored +x on ${androidAbi}/llama-server.`);
+      }
+    } else {
+      tlog(
+        `No llama-server staged for ${androidAbi}; DFlash spec-decode on AOSP ` +
+          `will fall back to single-model decode. Run \`node ` +
+          `packages/app-core/scripts/aosp/compile-libllama.mjs\` to build it.`,
+      );
+    }
+
     // Per-ABI seccomp shim install. Only x86_64 has compiled shim
     // artifacts (arm64's kernel ABI omits the legacy syscalls Android's
     // x86_64 seccomp filter traps on, so the shim is irrelevant). When
@@ -503,6 +556,29 @@ export async function stageAndroidAgentRuntime({
         path.join(abiJniDir, "libeliza_gcc_s.so"),
       ],
     ];
+    // When the seccomp-shim is in play (x86_64), `<ldName>` in
+    // `abiAssetsDir/` is the loader-wrap binary and the real musl loader
+    // sits next to it as `<ldName>.real`. ElizaAgentService swaps the
+    // wrapper for its packaged JNI-lib copy at exec time, so the wrapper
+    // ends up running from `<install>/lib/<abi>/` where `<ldName>.real`
+    // does not exist; the fallback `_real.so` JNI sibling fixes that.
+    // `libsigsys-handler.so` follows the same logic — same dirname,
+    // unchanged basename so the wrapper's existing `<dir>/libsigsys-handler.so`
+    // heuristic finds it.
+    const realLoaderSrc = path.join(abiAssetsDir, `${ldName}.real`);
+    if (fs.existsSync(realLoaderSrc)) {
+      jniSources.push([
+        realLoaderSrc,
+        path.join(abiJniDir, jniRealLoaderName(ldName)),
+      ]);
+    }
+    const sigsysShimSrc = path.join(abiAssetsDir, "libsigsys-handler.so");
+    if (fs.existsSync(sigsysShimSrc)) {
+      jniSources.push([
+        sigsysShimSrc,
+        path.join(abiJniDir, "libsigsys-handler.so"),
+      ]);
+    }
     for (const [src, dst] of jniSources) {
       if (copyIfDifferent(src, dst)) abiChanges += 1;
     }

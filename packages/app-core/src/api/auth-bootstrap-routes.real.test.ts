@@ -35,7 +35,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-
+import type { AgentRuntime } from "@elizaos/core";
 import {
   createDatabaseAdapter,
   DatabaseMigrationService,
@@ -69,6 +69,13 @@ interface Harness {
   privateKey: KeyObject;
   attackerPrivateKey: KeyObject;
   cleanup: () => Promise<void>;
+}
+
+function asJoseKeyObject(key: unknown): KeyObject {
+  if (!key || typeof key !== "object") {
+    throw new Error("Expected jose to return a KeyObject");
+  }
+  return key as KeyObject;
 }
 
 async function startJwksServer(jwk: JWK): Promise<{
@@ -109,11 +116,11 @@ async function startApiServer(db: DrizzleDatabase): Promise<{
   // The route handlers expect `state.current` to be a runtime with an
   // `adapter.db`. The bootstrap exchange route only reads `adapter.db`,
   // so a minimal stub is sufficient for the smoke contract.
-  const state = {
-    current: { adapter: { db } },
+  const state: CompatRuntimeState = {
+    current: { adapter: { db } } as AgentRuntime,
     pendingAgentName: null,
     pendingRestartReasons: [],
-  } as unknown as CompatRuntimeState;
+  };
 
   const server = http.createServer((req, res) => {
     void (async () => {
@@ -170,7 +177,7 @@ async function open(): Promise<Harness> {
   const adapter = createDatabaseAdapter(
     { dataDir },
     "00000000-0000-0000-0000-000000000099" as `${string}-${string}-${string}-${string}-${string}`,
-  ) as unknown as DbAdapterLike;
+  ) as DbAdapterLike;
   if (typeof adapter.initialize === "function") await adapter.initialize();
   else if (typeof adapter.init === "function") await adapter.init();
   if (!adapter.db) throw new Error("smoke: adapter exposed no .db");
@@ -200,8 +207,8 @@ async function open(): Promise<Harness> {
     baseUrl: `http://127.0.0.1:${api.port}`,
     containerId,
     issuer: jwksServer.issuer,
-    privateKey: real.privateKey as unknown as KeyObject,
-    attackerPrivateKey: attacker.privateKey as unknown as KeyObject,
+    privateKey: asJoseKeyObject(real.privateKey),
+    attackerPrivateKey: asJoseKeyObject(attacker.privateKey),
     cleanup: async () => {
       await api.close();
       await jwksServer.close();

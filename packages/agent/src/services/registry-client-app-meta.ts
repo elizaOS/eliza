@@ -5,7 +5,7 @@ import type {
   RegistryAppMeta,
   RegistryAppSessionMeta,
   RegistryAppViewerMeta,
-} from "./registry-client-types.js";
+} from "./registry-client-types.ts";
 
 export const LOCAL_APP_DEFAULT_SANDBOX =
   "allow-scripts allow-same-origin allow-popups";
@@ -152,6 +152,7 @@ export function mergeAppMeta(
     session: mergeSession(base.session, patch.session),
     developerOnly: patch.developerOnly ?? base.developerOnly,
     visibleInAppStore: patch.visibleInAppStore ?? base.visibleInAppStore,
+    mainTab: patch.mainTab ?? base.mainTab,
   };
 }
 

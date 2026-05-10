@@ -9,7 +9,14 @@ const DEFAULT_PARTITION = getBrandConfig().browserWorkspacePartition;
 const DEFAULT_EVAL_TIMEOUT_MS = 30_000;
 const MIN_EVAL_TIMEOUT_MS = 1_000;
 const MAX_EVAL_TIMEOUT_MS = 5 * 60 * 1_000;
+const CONNECTOR_PARTITION_PREFIX = "persist:connector-";
 type BrowserWorkspaceTabKind = "internal" | "standard";
+type BrowserWorkspaceConnectorAuthState =
+	| "unknown"
+	| "ready"
+	| "auth_pending"
+	| "needs_reauth"
+	| "manual_handoff";
 
 export interface BrowserWorkspaceTabSnapshot {
 	id: string;
@@ -30,9 +37,47 @@ export interface OpenBrowserWorkspaceTabOptions {
 	title?: string;
 	show?: boolean;
 	partition?: string;
+	connectorProvider?: string;
+	connectorAccountId?: string;
 	kind?: BrowserWorkspaceTabKind;
 	width?: number;
 	height?: number;
+}
+
+export interface AcquireBrowserWorkspaceConnectorSessionOptions {
+	provider: string;
+	accountId: string;
+	url?: string;
+	title?: string;
+	show?: boolean;
+	reuse?: boolean;
+	authState?: BrowserWorkspaceConnectorAuthState;
+	manualHandoffReason?: string | null;
+}
+
+export interface BrowserWorkspaceConnectorSessionHandle {
+	provider: string;
+	accountId: string;
+	authState: BrowserWorkspaceConnectorAuthState;
+	requiresManualHandoff: boolean;
+	sessionRef: {
+		kind: "internal-browser";
+		handleId: string;
+		partition: string;
+		tabId: string;
+		browser: null;
+		companionId: null;
+		profileId: null;
+		profileLabel: null;
+	};
+	partition: string;
+	tabId: string;
+	companionId: null;
+	browser: null;
+	profileId: null;
+	profileLabel: null;
+	created: boolean;
+	message: string | null;
 }
 
 /**
@@ -84,6 +129,78 @@ function assertBrowserWorkspaceUrl(url: string): string {
 	}
 
 	return parsed.toString();
+}
+
+function normalizeConnectorPartitionSegment(
+	value: string,
+	fieldName: string,
+): string {
+	const normalized = value
+		.trim()
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.replace(/-{2,}/g, "-")
+		.slice(0, 64);
+	if (!normalized) {
+		throw new Error(`browser connector session requires ${fieldName}`);
+	}
+	return normalized;
+}
+
+function hashConnectorPartitionKey(
+	provider: string,
+	accountId: string,
+): string {
+	const input = `${provider.trim().toLowerCase()}\0${accountId.trim().toLowerCase()}`;
+	let hash = 0x811c9dc5;
+	for (let i = 0; i < input.length; i++) {
+		hash ^= input.charCodeAt(i);
+		hash = Math.imul(hash, 0x01000193) >>> 0;
+	}
+	return hash.toString(36).padStart(7, "0");
+}
+
+export function resolveBrowserWorkspaceConnectorPartition(
+	provider: string,
+	accountId: string,
+): string {
+	const providerSegment = normalizeConnectorPartitionSegment(
+		provider,
+		"provider",
+	);
+	const accountSegment = normalizeConnectorPartitionSegment(
+		accountId,
+		"accountId",
+	);
+	const suffix = hashConnectorPartitionKey(provider, accountId);
+	return `${CONNECTOR_PARTITION_PREFIX}${providerSegment}-${accountSegment}-${suffix}`;
+}
+
+function normalizeConnectorAuthState(
+	value: BrowserWorkspaceConnectorAuthState | undefined,
+	fallback: BrowserWorkspaceConnectorAuthState,
+): BrowserWorkspaceConnectorAuthState {
+	switch (value) {
+		case "unknown":
+		case "ready":
+		case "auth_pending":
+		case "needs_reauth":
+		case "manual_handoff":
+			return value;
+		default:
+			return fallback;
+	}
+}
+
+function requiresManualHandoff(
+	state: BrowserWorkspaceConnectorAuthState,
+): boolean {
+	return (
+		state === "auth_pending" ||
+		state === "needs_reauth" ||
+		state === "manual_handoff"
+	);
 }
 
 function resolveEvalTimeoutMs(): number {
@@ -240,7 +357,14 @@ export class BrowserWorkspaceManager {
 		const url = assertBrowserWorkspaceUrl(options.url ?? "about:blank");
 		const title =
 			options.title?.trim() || `${getBrandConfig().appName} Browser`;
-		const partition = options.partition?.trim() || DEFAULT_PARTITION;
+		const partition =
+			options.partition?.trim() ||
+			(options.connectorProvider?.trim() && options.connectorAccountId?.trim()
+				? resolveBrowserWorkspaceConnectorPartition(
+						options.connectorProvider,
+						options.connectorAccountId,
+					)
+				: DEFAULT_PARTITION);
 		const kind: BrowserWorkspaceTabKind =
 			options.kind === "internal" ? "internal" : "standard";
 		const id = `btab_${++browserWorkspaceCounter}`;
@@ -261,6 +385,82 @@ export class BrowserWorkspaceManager {
 		this.tabs.set(id, tab);
 		this.notify("opened", { tab: this.toSnapshot(tab) });
 		return this.toSnapshot(tab);
+	}
+
+	async acquireConnectorSession(
+		options: AcquireBrowserWorkspaceConnectorSessionOptions,
+	): Promise<BrowserWorkspaceConnectorSessionHandle> {
+		const provider = options.provider.trim();
+		const accountId = options.accountId.trim();
+		if (!provider) {
+			throw new Error("browser connector session requires provider");
+		}
+		if (!accountId) {
+			throw new Error("browser connector session requires accountId");
+		}
+
+		const partition = resolveBrowserWorkspaceConnectorPartition(
+			provider,
+			accountId,
+		);
+		const existing =
+			options.reuse === false
+				? null
+				: (Array.from(this.tabs.values()).find(
+						(tab) => tab.partition === partition,
+					) ?? null);
+		let tab = existing ? this.toSnapshot(existing) : null;
+		let created = false;
+
+		if (!tab) {
+			tab = await this.openTab({
+				kind: "internal",
+				partition,
+				show: options.show ?? true,
+				title: options.title,
+				url: options.url,
+			});
+			created = true;
+		} else if (options.show === true) {
+			tab = await this.showTab({ id: tab.id });
+			if (!tab) {
+				throw new Error("browser connector session tab disappeared");
+			}
+		}
+
+		const authState = normalizeConnectorAuthState(
+			options.authState,
+			created ? "auth_pending" : "ready",
+		);
+		const sessionRef = {
+			kind: "internal-browser" as const,
+			handleId: `internal-browser:${partition}`,
+			partition,
+			tabId: tab.id,
+			browser: null,
+			companionId: null,
+			profileId: null,
+			profileLabel: null,
+		};
+		return {
+			provider,
+			accountId,
+			authState,
+			requiresManualHandoff: requiresManualHandoff(authState),
+			sessionRef,
+			partition,
+			tabId: tab.id,
+			companionId: null,
+			browser: null,
+			profileId: null,
+			profileLabel: null,
+			created,
+			message:
+				options.manualHandoffReason ??
+				(requiresManualHandoff(authState)
+					? "Manual login, MFA, or CAPTCHA may be required in this isolated connector browser session."
+					: null),
+		};
 	}
 
 	async navigateTab(options: {

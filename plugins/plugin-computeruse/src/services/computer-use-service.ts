@@ -96,9 +96,31 @@ import type {
 } from "../types.js";
 
 const MAX_RECENT_ACTIONS = 10;
+const BROWSER_NOT_OPEN_ERROR = "Browser not open";
+const BROWSER_LIFECYCLE_ACTIONS = new Set<BrowserActionParams["action"]>([
+  "open",
+  "connect",
+  "close",
+]);
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isBrowserNotOpenMessage(message: unknown): boolean {
+  const text =
+    typeof message === "string"
+      ? message
+      : message instanceof Error
+        ? message.message
+        : "";
+  return text.includes(BROWSER_NOT_OPEN_ERROR);
+}
+
+function commandParameters<TParams extends object>(
+  parameters: Record<string, unknown>,
+): Omit<TParams, "action"> {
+  return parameters as Omit<TParams, "action">;
 }
 
 function stringifyData(value: unknown): string {
@@ -203,7 +225,7 @@ export class ComputerUseService extends Service {
       case "detect_elements":
       case "ocr":
         return this.executeDesktopAction({
-          ...(parameters as unknown as DesktopActionParams),
+          ...commandParameters<DesktopActionParams>(parameters),
           action: this.mapDesktopCommandToAction(command),
         });
       case "browser_open":
@@ -228,7 +250,7 @@ export class ComputerUseService extends Service {
       case "browser_close_tab":
       case "browser_switch_tab":
         return this.executeBrowserAction({
-          ...(parameters as unknown as BrowserActionParams),
+          ...commandParameters<BrowserActionParams>(parameters),
           action: this.mapBrowserCommandToAction(command),
         });
       case "list_windows":
@@ -240,7 +262,7 @@ export class ComputerUseService extends Service {
       case "restore_window":
       case "close_window":
         return this.executeWindowAction({
-          ...(parameters as unknown as WindowActionParams),
+          ...commandParameters<WindowActionParams>(parameters),
           action: this.mapWindowCommandToAction(command),
         });
       case "file_read":
@@ -255,7 +277,7 @@ export class ComputerUseService extends Service {
       case "file_download":
       case "file_list_downloads":
         return this.executeFileAction({
-          ...(parameters as unknown as FileActionParams),
+          ...commandParameters<FileActionParams>(parameters),
           action: this.mapFileCommandToAction(command),
         });
       case "terminal_connect":
@@ -266,7 +288,7 @@ export class ComputerUseService extends Service {
       case "terminal_close":
       case "execute_command":
         return this.executeTerminalAction({
-          ...(parameters as unknown as TerminalActionParams),
+          ...commandParameters<TerminalActionParams>(parameters),
           action: this.mapTerminalCommandToAction(command),
         });
       default:
@@ -432,217 +454,264 @@ export class ComputerUseService extends Service {
         return this.failEntry(entry, { success: false, error: approvalError });
       }
 
-      switch (params.action) {
-        case "open":
-        case "connect": {
-          const state = await openBrowser(params.url);
-          return this.succeedEntry(entry, {
-            success: true,
-            url: state.url,
-            title: state.title,
-            isOpen: true,
-            is_open: true,
-            data: state,
-            content: stringifyData(state),
-            message: `Opened browser: ${state.url}`,
-          });
-        }
-        case "close":
-          await closeBrowser();
-          return this.succeedEntry(entry, {
-            success: true,
-            isOpen: false,
-            is_open: false,
-            message: "Browser closed.",
-          });
-        case "navigate": {
-          const url = this.requireIdentifier(
-            params.url,
-            "url is required for navigate",
-          );
-          const state = await navigateBrowser(url);
-          return this.succeedEntry(entry, {
-            success: true,
-            url: state.url,
-            title: state.title,
-            isOpen: true,
-            is_open: true,
-            data: state,
-            content: stringifyData(state),
-            message: `Navigated to ${state.url}`,
-          });
-        }
-        case "click":
-          await clickBrowser(params.selector, params.coordinate, params.text);
-          return this.succeedEntry(entry, {
-            success: true,
-            message: "Clicked browser target.",
-          });
-        case "type":
-          if (!params.text) {
-            throw new Error("text is required for browser type");
-          }
-          await typeBrowser(params.text, params.selector);
-          return this.succeedEntry(entry, {
-            success: true,
-            message: "Typed browser text.",
-          });
-        case "scroll":
-          await scrollBrowser(params.direction ?? "down", params.amount ?? 300);
-          return this.succeedEntry(entry, {
-            success: true,
-            message: `Scrolled browser ${params.direction ?? "down"}.`,
-          });
-        case "screenshot": {
-          const screenshot = await screenshotBrowser();
-          return this.succeedEntry(entry, {
-            success: true,
-            screenshot,
-            frontendScreenshot: screenshot,
-            message: "Captured browser screenshot.",
-          });
-        }
-        case "dom":
-        case "get_dom": {
-          const content = await getBrowserDom();
-          return this.succeedEntry(entry, {
-            success: true,
-            content,
-            message: "Fetched browser DOM.",
-          });
-        }
-        case "clickables":
-        case "get_clickables": {
-          const elements = await getBrowserClickables();
-          return this.succeedEntry(entry, {
-            success: true,
-            elements,
-            count: elements.length,
-            data: elements,
-            content: stringifyData(elements),
-            message: "Fetched browser clickables.",
-          });
-        }
-        case "execute": {
-          const code = this.requireIdentifier(
-            params.code,
-            "code is required for browser execute",
-          );
-          const content = await executeBrowser(code);
-          return this.succeedEntry(entry, {
-            success: true,
-            content,
-            message: "Executed browser JavaScript.",
-          });
-        }
-        case "state": {
-          const data = await getBrowserState();
-          return this.succeedEntry(entry, {
-            success: true,
-            url: data.url,
-            title: data.title,
-            isOpen: true,
-            is_open: true,
-            data,
-            content: stringifyData(data),
-          });
-        }
-        case "info": {
-          const info = await getBrowserInfo();
-          const result: BrowserActionResult = {
-            success: info.success,
-            url: info.url,
-            title: info.title,
-            isOpen: info.isOpen,
-            is_open: info.is_open,
-            data: info,
-            content: stringifyData(info),
-            ...(info.success ? {} : { error: info.error }),
-          };
-          return info.success
-            ? this.succeedEntry(entry, result)
-            : this.failEntry(entry, result);
-        }
-        case "context": {
-          const data = await getBrowserContext();
-          return this.succeedEntry(entry, {
-            success: true,
-            url: data.url,
-            title: data.title,
-            isOpen: true,
-            is_open: true,
-            data,
-            content: stringifyData(data),
-          });
-        }
-        case "wait":
-          await waitBrowser(
-            params.selector,
-            params.text,
-            params.timeout ?? this.cuConfig.actionTimeoutMs,
-          );
-          return this.succeedEntry(entry, {
-            success: true,
-            message: "Browser wait condition satisfied.",
-          });
-        case "list_tabs": {
-          const tabs = await listBrowserTabs();
-          return this.succeedEntry(entry, {
-            success: true,
-            tabs,
-            count: tabs.length,
-            data: tabs,
-            content: stringifyData(tabs),
-          });
-        }
-        case "open_tab": {
-          const tab = await openBrowserTab(params.url);
-          return this.succeedEntry(entry, {
-            success: true,
-            data: tab,
-            content: stringifyData(tab),
-            message: `Opened tab ${tab.id}.`,
-          });
-        }
-        case "close_tab": {
-          const tabId = this.requireIdentifier(
-            params.tabId,
-            "tabId is required for close_tab",
-          );
-          await closeBrowserTab(tabId);
-          return this.succeedEntry(entry, {
-            success: true,
-            message: `Closed tab ${tabId}.`,
-          });
-        }
-        case "switch_tab": {
-          const tabId = this.requireIdentifier(
-            params.tabId,
-            "tabId is required for switch_tab",
-          );
-          const state = await switchBrowserTab(tabId);
-          return this.succeedEntry(entry, {
-            success: true,
-            url: state.url,
-            title: state.title,
-            isOpen: true,
-            is_open: true,
-            data: state,
-            content: stringifyData(state),
-            message: `Switched to tab ${tabId}.`,
-          });
-        }
-        default:
-          return this.failEntry(entry, {
-            success: false,
-            error: `Unknown browser action: ${(params as { action: string }).action}`,
-          });
+      const result = await this.runBrowserAction(params);
+      if (this.shouldAutoOpenBrowser(params.action, result.error)) {
+        return await this.retryBrowserActionAfterOpen(entry, params);
       }
+      return result.success
+        ? this.succeedEntry(entry, result)
+        : this.failEntry(entry, result);
+    } catch (error) {
+      if (this.shouldAutoOpenBrowser(params.action, error)) {
+        return await this.retryBrowserActionAfterOpen(entry, params);
+      }
+      return this.failEntry(entry, {
+        success: false,
+        error: errorMessage(error),
+      });
+    }
+  }
+
+  private async retryBrowserActionAfterOpen(
+    entry: ActionHistoryEntry,
+    params: BrowserActionParams,
+  ): Promise<BrowserActionResult> {
+    try {
+      const openResult = await this.runBrowserAction({
+        ...params,
+        action: "open",
+      });
+      if (!openResult.success) {
+        return this.failEntry(entry, openResult);
+      }
+
+      const retryResult = await this.runBrowserAction(params);
+      return retryResult.success
+        ? this.succeedEntry(entry, retryResult)
+        : this.failEntry(entry, retryResult);
     } catch (error) {
       return this.failEntry(entry, {
         success: false,
         error: errorMessage(error),
       });
+    }
+  }
+
+  private shouldAutoOpenBrowser(
+    action: BrowserActionParams["action"],
+    error: unknown,
+  ): boolean {
+    return (
+      !BROWSER_LIFECYCLE_ACTIONS.has(action) && isBrowserNotOpenMessage(error)
+    );
+  }
+
+  private async runBrowserAction(
+    params: BrowserActionParams,
+  ): Promise<BrowserActionResult> {
+    switch (params.action) {
+      case "open":
+      case "connect": {
+        const state = await openBrowser(params.url);
+        return {
+          success: true,
+          url: state.url,
+          title: state.title,
+          isOpen: true,
+          is_open: true,
+          data: state,
+          content: stringifyData(state),
+          message: `Opened browser: ${state.url}`,
+        };
+      }
+      case "close":
+        await closeBrowser();
+        return {
+          success: true,
+          isOpen: false,
+          is_open: false,
+          message: "Browser closed.",
+        };
+      case "navigate": {
+        const url = this.requireIdentifier(
+          params.url,
+          "url is required for navigate",
+        );
+        const state = await navigateBrowser(url);
+        return {
+          success: true,
+          url: state.url,
+          title: state.title,
+          isOpen: true,
+          is_open: true,
+          data: state,
+          content: stringifyData(state),
+          message: `Navigated to ${state.url}`,
+        };
+      }
+      case "click":
+        await clickBrowser(params.selector, params.coordinate, params.text);
+        return {
+          success: true,
+          message: "Clicked browser target.",
+        };
+      case "type":
+        if (!params.text) {
+          throw new Error("text is required for browser type");
+        }
+        await typeBrowser(params.text, params.selector);
+        return {
+          success: true,
+          message: "Typed browser text.",
+        };
+      case "scroll":
+        await scrollBrowser(params.direction ?? "down", params.amount ?? 300);
+        return {
+          success: true,
+          message: `Scrolled browser ${params.direction ?? "down"}.`,
+        };
+      case "screenshot": {
+        const screenshot = await screenshotBrowser();
+        return {
+          success: true,
+          screenshot,
+          frontendScreenshot: screenshot,
+          message: "Captured browser screenshot.",
+        };
+      }
+      case "dom":
+      case "get_dom": {
+        const content = await getBrowserDom();
+        return {
+          success: true,
+          content,
+          message: "Fetched browser DOM.",
+        };
+      }
+      case "clickables":
+      case "get_clickables": {
+        const elements = await getBrowserClickables();
+        return {
+          success: true,
+          elements,
+          count: elements.length,
+          data: elements,
+          content: stringifyData(elements),
+          message: "Fetched browser clickables.",
+        };
+      }
+      case "execute": {
+        const code = this.requireIdentifier(
+          params.code,
+          "code is required for browser execute",
+        );
+        const content = await executeBrowser(code);
+        return {
+          success: true,
+          content,
+          message: "Executed browser JavaScript.",
+        };
+      }
+      case "state": {
+        const data = await getBrowserState();
+        return {
+          success: true,
+          url: data.url,
+          title: data.title,
+          isOpen: true,
+          is_open: true,
+          data,
+          content: stringifyData(data),
+        };
+      }
+      case "info": {
+        const info = await getBrowserInfo();
+        return {
+          success: info.success,
+          url: info.url,
+          title: info.title,
+          isOpen: info.isOpen,
+          is_open: info.is_open,
+          data: info,
+          content: stringifyData(info),
+          ...(info.success ? {} : { error: info.error }),
+        };
+      }
+      case "context":
+      case "get_context": {
+        const data = await getBrowserContext();
+        return {
+          success: true,
+          url: data.url,
+          title: data.title,
+          isOpen: true,
+          is_open: true,
+          data,
+          content: stringifyData(data),
+        };
+      }
+      case "wait":
+        await waitBrowser(
+          params.selector,
+          params.text,
+          params.timeout ?? this.cuConfig.actionTimeoutMs,
+        );
+        return {
+          success: true,
+          message: "Browser wait condition satisfied.",
+        };
+      case "list_tabs": {
+        const tabs = await listBrowserTabs();
+        return {
+          success: true,
+          tabs,
+          count: tabs.length,
+          data: tabs,
+          content: stringifyData(tabs),
+        };
+      }
+      case "open_tab": {
+        const tab = await openBrowserTab(params.url);
+        return {
+          success: true,
+          data: tab,
+          content: stringifyData(tab),
+          message: `Opened tab ${tab.id}.`,
+        };
+      }
+      case "close_tab": {
+        const tabId = this.requireIdentifier(
+          params.tabId,
+          "tabId is required for close_tab",
+        );
+        await closeBrowserTab(tabId);
+        return {
+          success: true,
+          message: `Closed tab ${tabId}.`,
+        };
+      }
+      case "switch_tab": {
+        const tabId = this.requireIdentifier(
+          params.tabId,
+          "tabId is required for switch_tab",
+        );
+        const state = await switchBrowserTab(tabId);
+        return {
+          success: true,
+          url: state.url,
+          title: state.title,
+          isOpen: true,
+          is_open: true,
+          data: state,
+          content: stringifyData(state),
+          message: `Switched to tab ${tabId}.`,
+        };
+      }
+      default:
+        return {
+          success: false,
+          error: `Unknown browser action: ${(params as { action: string }).action}`,
+        };
     }
   }
 
@@ -1047,6 +1116,8 @@ export class ComputerUseService extends Service {
         return "dom";
       case "get_clickables":
         return "clickables";
+      case "get_context":
+        return "context";
       default:
         return action;
     }

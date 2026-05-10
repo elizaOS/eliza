@@ -69,7 +69,7 @@ export const enabledSkillsProvider: Provider = {
 
 		const overflow =
 			remaining > 0
-				? `\n\n…and ${remaining} more — use SEARCH_SKILLS to find them.`
+				? `\n\n…and ${remaining} more — use SKILL op=search to find them.`
 				: "";
 
 		const text =

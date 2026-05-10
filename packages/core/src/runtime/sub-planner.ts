@@ -1,8 +1,10 @@
 import { actionToJsonSchema } from "../actions/action-schema";
+import { PLAN_ACTIONS_TOOL, PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { Action, ActionResult, IAgentRuntime } from "../types";
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { JSONSchema, ToolDefinition } from "../types/model";
+import { filterByContextGate } from "./context-gates";
 import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
@@ -17,6 +19,66 @@ import {
 	runPlannerLoop,
 } from "./planner-loop";
 import type { RecordedStage, TrajectoryRecorder } from "./trajectory-recorder";
+
+/**
+ * Unwrap a `PLAN_ACTIONS` tool call into its target action. Mirrors the
+ * helper in services/message.ts — duplicated here to keep the sub-planner
+ * import surface tight (no cycle through services).
+ *
+ * Preserves the optional `subaction` hint on `params.subaction` for
+ * router-style actions.
+ */
+function unwrapSubPlannerToolCall(toolCall: PlannerToolCall): PlannerToolCall {
+	if (toolCall.name !== PLAN_ACTIONS_TOOL_NAME) {
+		return toolCall;
+	}
+	const params = toolCall.params ?? {};
+	const rawAction = params.action;
+	const actionName = typeof rawAction === "string" ? rawAction.trim() : "";
+	const rawSubaction = params.subaction;
+	const subaction =
+		typeof rawSubaction === "string" && rawSubaction.trim().length > 0
+			? rawSubaction.trim()
+			: undefined;
+	const rawActionParameters = params.parameters;
+	const baseParameters =
+		rawActionParameters &&
+		typeof rawActionParameters === "object" &&
+		!Array.isArray(rawActionParameters)
+			? (rawActionParameters as Record<string, unknown>)
+			: {};
+	const mergedParameters: Record<string, unknown> = subaction
+		? { ...baseParameters, subaction }
+		: baseParameters;
+	return {
+		id: toolCall.id,
+		name: actionName,
+		params: mergedParameters,
+	};
+}
+
+function normalizeSubPlannerActionIdentifier(actionName: string): string {
+	return actionName
+		.trim()
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, "");
+}
+
+function buildSubPlannerActionLookup(
+	actions: readonly Action[],
+): Map<string, Action> {
+	const lookup = new Map<string, Action>();
+	for (const action of actions) {
+		const names = [action.name, ...(action.similes ?? [])];
+		for (const name of names) {
+			if (typeof name !== "string" || name.trim().length === 0) {
+				continue;
+			}
+			lookup.set(normalizeSubPlannerActionIdentifier(name), action);
+		}
+	}
+	return lookup;
+}
 
 export function actionHasSubActions(action: Action): boolean {
 	return Array.isArray(action.subActions) && action.subActions.length > 0;
@@ -123,9 +185,24 @@ export interface RunSubPlannerParams {
 export async function runSubPlanner(
 	params: RunSubPlannerParams,
 ): Promise<PlannerLoopResult> {
-	const childActions = resolveSubActions(params.runtime, params.action);
-	if (childActions.length === 0) {
+	const declaredChildActions = resolveSubActions(params.runtime, params.action);
+	if (declaredChildActions.length === 0) {
 		throw new Error(`Action ${params.action.name} has no sub-actions`);
+	}
+	const authorizedActiveContexts = unionContexts(
+		params.ctx.activeContexts,
+		params.action.contexts,
+		...declaredChildActions.map((child) => child.contexts),
+	);
+	const childActions = filterByContextGate(
+		declaredChildActions,
+		authorizedActiveContexts,
+		params.ctx.userRoles,
+	);
+	if (childActions.length === 0) {
+		throw new Error(
+			`Action ${params.action.name} has no sub-actions available in the current context`,
+		);
 	}
 
 	const cycles = detectSubActionCycles([params.action, ...childActions]);
@@ -136,15 +213,14 @@ export async function runSubPlanner(
 	}
 
 	const childActionNames = new Set(childActions.map((action) => action.name));
-	const tools: ToolDefinition[] = childActions.map((action) => ({
-		name: action.name,
-		description:
-			action.descriptionCompressed ??
-			action.compressedDescription ??
-			action.description,
-		parameters: actionToJsonSchema(action) as JSONSchema,
-		type: "function",
-	}));
+	const childActionLookup = buildSubPlannerActionLookup(childActions);
+	// Sub-planner only ever needs the Stage 2 PLAN_ACTIONS tool — Stage 1
+	// routing already happened at the top level. Holding the tool list to a
+	// single stable entry keeps the prompt-cache key byte-stable across
+	// descents within the same sub-planner. Child action specs render into
+	// the sub-planner's available-actions block; the LLM picks one by name
+	// and passes it back via PLAN_ACTIONS({ action, … }).
+	const tools: ToolDefinition[] = [PLAN_ACTIONS_TOOL];
 	const execute = params.execute ?? executePlannedToolCall;
 	const context = buildSubPlannerContext(
 		params.context,
@@ -154,6 +230,11 @@ export async function runSubPlanner(
 	await emitAppendedContextEvents(
 		context.events.slice(params.context.events?.length ?? 0),
 	);
+
+	const subPlannerCtx: ExecutePlannedToolCallContext = {
+		...params.ctx,
+		activeContexts: authorizedActiveContexts,
+	};
 
 	// Mark a sub-planner descent so trajectory consumers can render the tree.
 	const subPlannerStageId = await recordSubPlannerStage({
@@ -179,20 +260,54 @@ export async function runSubPlanner(
 		trajectoryId: params.trajectoryId,
 		parentStageId: subPlannerStageId ?? params.parentStageId,
 		executeToolCall: async (toolCall) => {
-			if (!childActionNames.has(toolCall.name)) {
+			const unwrapped = unwrapSubPlannerToolCall(toolCall);
+			if (!unwrapped.name) {
 				return {
 					success: false,
-					error: `Tool ${toolCall.name} is not available to sub-planner ${params.action.name}`,
+					error: `${PLAN_ACTIONS_TOOL_NAME} requires a non-empty action in sub-planner ${params.action.name}`,
+				};
+			}
+			const resolvedChildAction =
+				childActionLookup.get(
+					normalizeSubPlannerActionIdentifier(unwrapped.name),
+				) ??
+				(childActionNames.has(unwrapped.name)
+					? { name: unwrapped.name }
+					: null);
+			if (!resolvedChildAction) {
+				return {
+					success: false,
+					error: `Action ${unwrapped.name} is not available to sub-planner ${params.action.name}`,
 				};
 			}
 
-			const result = await execute(params.runtime, params.ctx, toolCall, {
-				...(params.options ?? {}),
-				actions: childActions,
-			});
+			const result = await execute(
+				params.runtime,
+				subPlannerCtx,
+				{ ...unwrapped, name: resolvedChildAction.name },
+				{
+					...(params.options ?? {}),
+					actions: childActions,
+				},
+			);
 			return actionResultToPlannerToolResult(result);
 		},
 	});
+}
+
+function unionContexts(
+	...lists: Array<readonly string[] | undefined>
+): string[] {
+	const seen = new Set<string>();
+	for (const list of lists) {
+		if (!list) continue;
+		for (const ctx of list) {
+			if (typeof ctx === "string" && ctx.length > 0) {
+				seen.add(ctx);
+			}
+		}
+	}
+	return [...seen];
 }
 
 async function recordSubPlannerStage(args: {

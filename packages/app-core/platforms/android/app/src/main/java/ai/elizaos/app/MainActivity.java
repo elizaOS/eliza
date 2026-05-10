@@ -6,6 +6,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.webkit.WebSettings;
+import android.webkit.WebView;
 
 import androidx.core.content.ContextCompat;
 
@@ -56,6 +57,14 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Per Android docs, must precede the first WebView instantiation.
+        // BridgeActivity.super.onCreate constructs the Capacitor WebView,
+        // so the toggle is set first to stay race-proof against future
+        // Capacitor versions that eagerly start the renderer.
+        if (BuildConfig.DEBUG) {
+            WebView.setWebContentsDebuggingEnabled(true);
+        }
+
         registerPlugin(AgentPlugin.class);
         super.onCreate(savedInstanceState);
 
@@ -73,6 +82,11 @@ public class MainActivity extends BridgeActivity {
             WebSettings settings = getBridge().getWebView().getSettings();
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
             applyBrandUserAgentMarkers(settings);
+            // Synchronous fast path for the on-device agent bearer that
+            // bypasses Capacitor's plugin executor. See ElizaNativeBridge
+            // for the dead-Handler bug it works around.
+            getBridge().getWebView().addJavascriptInterface(
+                new ElizaNativeBridge(), ElizaNativeBridge.JS_NAME);
         }
 
         // Auto-start the local Eliza agent runtime as a foreground service.
