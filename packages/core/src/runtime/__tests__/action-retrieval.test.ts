@@ -167,6 +167,33 @@ describe("action catalogue and retrieval", () => {
 		expect(response.results[0].stageScores.keyword).toBeGreaterThan(0);
 	});
 
+	it("does not retrieve actions from context match alone", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "MUSIC",
+				description: "Control music playback.",
+				contexts: ["music"],
+			},
+			{
+				name: "EMAIL",
+				description: "Read, draft, and send email.",
+				contexts: ["email"],
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "please play the new album",
+			candidateActions: ["play_music"],
+			selectedContexts: ["email"],
+		});
+		const email = response.results.find((result) => result.name === "EMAIL");
+
+		expect(email).toMatchObject({
+			score: 0,
+			matchedBy: [],
+		});
+	});
+
 	it("uses reciprocal rank fusion and optional embedding scores only when provided", () => {
 		const catalog = buildActionCatalog(actions);
 		const response = retrieveActions({
