@@ -414,12 +414,12 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install root dependencies
-        run: bun install && git diff --exit-code -- bun.lock
+        run: bun install --no-save && git diff --exit-code -- bun.lock
 
       - name: Install service dependencies
         run: |
           cd services/gateway-discord
-          bun install
+          bun install --no-save
           cd ../..
           git diff --exit-code -- bun.lock services/gateway-discord/bun.lock
 
