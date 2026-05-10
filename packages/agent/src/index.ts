@@ -127,10 +127,10 @@ export * from "./runtime/embedding-presets.ts";
 export {
   isCloudExecutionMode,
   type LocalExecutionMode,
-  resolveLocalExecutionMode,
-  resolveRuntimeExecutionMode,
   type RuntimeExecutionMode,
   type RuntimeExecutionModeSource,
+  resolveLocalExecutionMode,
+  resolveRuntimeExecutionMode,
   shouldUseSandboxExecution,
 } from "./runtime/local-execution-mode.ts";
 export * from "./runtime/onboarding-names.ts";
@@ -182,9 +182,6 @@ export {
   resolveRelationshipsGraphService,
   searchMemoriesForCluster,
 } from "./services/relationships-graph.ts";
-// Re-export the shell-execution router by name to keep a stable surface for
-// callers that consume the chokepoint directly without unpacking the wider
-// services barrel.
 export {
   runShell,
   type ShellExecutionMode,
