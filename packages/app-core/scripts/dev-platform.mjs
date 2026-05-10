@@ -66,8 +66,8 @@ import {
 import { createConnection } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { colorizeDevSettingsStartupBanner } from "@elizaos/shared";
 import {
+  colorizeDevSettingsStartupBanner,
   resolveDesktopApiPort,
   resolveDesktopUiPort,
 } from "@elizaos/shared";
@@ -79,6 +79,7 @@ import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { killUiListenPort } from "./lib/kill-ui-listen-port.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
 import { formatOrchestratorDesktopDevBanner } from "./lib/orchestrator-desktop-dev-banner.mjs";
+import { appIdentityEnv } from "./lib/read-app-identity.mjs";
 import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -367,9 +368,7 @@ if (needRendererBuild) {
 
 const rootDistEntry = path.join(bundleRoot, "dist", "entry.js");
 if (!existsSync(rootDistEntry)) {
-  console.log(
-    "\n[eliza] Building root bundle for Electrobun eliza-dist…\n",
-  );
+  console.log("\n[eliza] Building root bundle for Electrobun eliza-dist…\n");
   // In a standalone-eliza checkout the repo root has no tsdown config /
   // src/index.ts, AND tsdown's plugin chain trips over `@tsdown/css`'s
   // self-resolution under Bun on Windows ("Cannot find module
@@ -875,6 +874,7 @@ async function launch() {
   pushChild("electrobun", "bun", ["run", "dev"], electrobunDir, {
     NODE_ENV: "development",
     ELECTROBUN_SKIP_CODESIGN: "1",
+    ...appIdentityEnv(appDir),
     ...(desktopCefWorkaroundEnv
       ? { ELIZA_DESKTOP_FORCE_CEF: desktopCefWorkaroundEnv }
       : {}),
