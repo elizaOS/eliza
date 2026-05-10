@@ -805,6 +805,7 @@ async function callPlanner(params: {
 	let renderedInput = renderPlannerModelInput({
 		context: params.context,
 		trajectory: params.trajectory,
+		template: resolveOptimizedPlannerTemplate(params.runtime),
 	});
 	let modelInputBudget = buildModelInputBudget({
 		messages: renderedInput.messages,
@@ -828,6 +829,7 @@ async function callPlanner(params: {
 			renderedInput = renderPlannerModelInput({
 				context: params.trajectory.context,
 				trajectory: params.trajectory,
+				template: resolveOptimizedPlannerTemplate(params.runtime),
 			});
 			modelInputBudget = buildModelInputBudget({
 				messages: renderedInput.messages,
