@@ -84,9 +84,9 @@ export type MessageOperation = (typeof MESSAGE_OPS)[number];
 const MESSAGE_CONTEXTS = ["messaging", "email", "contacts", "connectors"];
 
 const MESSAGE_DESCRIPTION =
-	"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Use operation to choose the subaction. Public feed publishing belongs to POST.";
+	"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Use action to choose the operation. Public feed publishing belongs to POST.";
 const MESSAGE_COMPRESSED =
-	"primary message action ops send read_channel read_with_contact search list_channels list_servers join leave react edit delete pin get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft";
+	"primary message action send read_channel read_with_contact search list_channels list_servers join leave react edit delete pin get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft";
 
 // ---------------------------------------------------------------------------
 // Param coercion / op normalization
