@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { LocalEmbeddingManager } from "../src/index.ts";
 
 /**
  * Speedup measurement for the batched-embed path.
@@ -16,12 +17,15 @@ import { describe, expect, it, vi } from "vitest";
  * speedup floor that would flap on CI.
  */
 describe("LocalEmbeddingManager batching", () => {
-  it("returns one vector per input and preserves order", async () => {
+  // Cold-start jitter: vitest's first transform of `../src/index.ts` plus
+  // the singleton's `validateConfig()` zod walk can punch through the
+  // default 5s timeout on a cold cache (W2-H observed ~21s transform).
+  // Warm runs are <100ms — bump only this test, not the whole file.
+  it("returns one vector per input and preserves order", { timeout: 30_000 }, async () => {
     // Stub the binding by replacing the manager's private context
     // before any real init runs. We construct a fresh manager and inject
     // a fake embedding context that returns deterministic vectors.
-    const mod = await import("../src/index.ts");
-    const manager = mod.LocalEmbeddingManager.getInstance();
+    const manager = LocalEmbeddingManager.getInstance();
 
     const dim = 768;
     const fakeContext = {
@@ -73,8 +77,7 @@ describe("LocalEmbeddingManager batching", () => {
   });
 
   it("returns a zero vector for blank inputs in a batch", async () => {
-    const mod = await import("../src/index.ts");
-    const manager = mod.LocalEmbeddingManager.getInstance();
+    const manager = LocalEmbeddingManager.getInstance();
 
     const dim = 768;
     const internal = manager as unknown as {
@@ -103,8 +106,7 @@ describe("LocalEmbeddingManager batching", () => {
   });
 
   it("chunks long inputs and pools the result to a normalised dim-N vector", async () => {
-    const mod = await import("../src/index.ts");
-    const manager = mod.LocalEmbeddingManager.getInstance();
+    const manager = LocalEmbeddingManager.getInstance();
 
     const dim = 768;
     const ctxTokens = 8192;

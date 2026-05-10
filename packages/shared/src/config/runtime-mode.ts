@@ -1,7 +1,6 @@
 import type { DeploymentTargetConfig } from "../contracts/service-routing.js";
 import { normalizeDeploymentTargetConfig } from "../contracts/service-routing.js";
 import { isPlainObject } from "../type-guards.js";
-import type { ElizaConfig } from "./types.eliza.js";
 
 export const RUNTIME_EXECUTION_MODES = [
   "cloud",
@@ -13,6 +12,11 @@ export type RuntimeExecutionMode = (typeof RUNTIME_EXECUTION_MODES)[number];
 
 export interface RuntimeModeConfig {
   executionMode?: RuntimeExecutionMode;
+}
+
+export interface RuntimeExecutionModeConfigSource {
+  runtime?: RuntimeModeConfig | Record<string, unknown> | null;
+  deploymentTarget?: DeploymentTargetConfig | null;
 }
 
 export interface RuntimeExecutionModeDefinition {
@@ -83,21 +87,11 @@ export function runtimeExecutionModeForDeploymentTarget(
   return deploymentTarget?.runtime === "cloud" ? "cloud" : "local-safe";
 }
 
-// `ElizaConfig` doesn't formally declare a top-level `runtime` field — it's an
-// optional, host-injected escape hatch some forks set in `milady.json` to
-// override the deployment-target-derived mode. `deploymentTarget` *is* declared
-// on `ElizaConfig`; we still intersect `{ runtime?: unknown }` so callers can
-// pass fork-shaped objects without widening every consumer's config type.
-export type RuntimeExecutionModeConfigInput = Pick<
-  ElizaConfig,
-  "deploymentTarget"
-> & { runtime?: unknown };
-
 export function readRuntimeExecutionModeConfig(
-  config: RuntimeExecutionModeConfigInput | null | undefined,
+  config: RuntimeExecutionModeConfigSource | null | undefined,
 ): RuntimeExecutionMode {
   const runtimeConfig = isPlainObject(config?.runtime)
-    ? (config.runtime as { executionMode?: unknown })
+    ? config.runtime
     : undefined;
   const explicitMode = normalizeRuntimeExecutionMode(
     runtimeConfig?.executionMode,

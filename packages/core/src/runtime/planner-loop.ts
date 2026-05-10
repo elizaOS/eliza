@@ -6,28 +6,6 @@ import {
 } from "../services/optimized-prompt";
 import { resolveOptimizedPrompt } from "../services/optimized-prompt-resolver";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
-
-/**
- * Resolve the planner system prompt for `runtime`. Looks up the optimised
- * planner template from `OptimizedPromptService` if one has been loaded
- * (artefact for `"action_planner"` task), and falls back to the static
- * `plannerTemplate` baseline otherwise.
- *
- * Two call sites use this — the initial render and the post-compaction
- * re-render — and both need to read the same template. The runtime arg
- * is typed as `unknown` because `PlannerRuntime` is structural and may
- * not surface `getService`; we narrow at the call site.
- */
-function resolveOptimizedPlannerTemplate(runtime: unknown): string {
-	const svc =
-		typeof (runtime as { getService?: (name: string) => unknown })
-			?.getService === "function"
-			? ((runtime as { getService: (name: string) => unknown }).getService(
-					OPTIMIZED_PROMPT_SERVICE,
-				) as OptimizedPromptService | null | undefined)
-			: null;
-	return resolveOptimizedPrompt(svc, "action_planner", plannerTemplate);
-}
 import type { ActionResult, ProviderDataRecord } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
 import {
@@ -892,9 +870,6 @@ async function callPlanner(params: {
 				promptSegments: renderedInput.promptSegments,
 				provider: params.provider,
 				hasTools,
-				// Pin local-inference slots per trajectory so a multi-turn
-				// planner loop reuses the same KV cache across iterations.
-				conversationId: params.trajectoryId,
 			}),
 			modelInputBudget,
 		),
@@ -2066,4 +2041,50 @@ function getNonEmptyString(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim().length > 0
 		? value
 		: undefined;
+}
+
+/**
+ * Look up the optimized `action_planner` prompt from the runtime's
+ * OptimizedPromptService, fall back to the baseline `plannerTemplate`. Keeps
+ * the planner loop using the latest artifact written by
+ * `bun run train -- --backend native --task action_planner` without any
+ * additional plumbing at the call site.
+ *
+ * `PlannerRuntime` is the minimal shape this module accepts; the full
+ * `IAgentRuntime` (with `getService`) flows in via the message handler at
+ * `services/message.ts`. Cast structurally so we don't widen `PlannerRuntime`
+ * just to read one optional service.
+ */
+function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {
+	const candidate = runtime as PlannerRuntime & {
+		getService?: <T>(name: string) => T | null | undefined;
+	};
+	const service =
+		candidate.getService?.<OptimizedPromptService>(OPTIMIZED_PROMPT_SERVICE) ??
+		null;
+	const resolved = resolveOptimizedPrompt(
+		service,
+		"action_planner",
+		plannerTemplate,
+	);
+	if (resolved !== plannerTemplate) {
+		runtime.logger?.debug?.(
+			{
+				src: "planner-loop",
+				task: "action_planner",
+				promptLength: resolved.length,
+			},
+			"Loaded optimized planner template (action_planner)",
+		);
+	} else {
+		runtime.logger?.debug?.(
+			{
+				src: "planner-loop",
+				hasService: !!service,
+				task: "action_planner",
+			},
+			"Using baseline planner template (no optimized artifact)",
+		);
+	}
+	return resolved;
 }

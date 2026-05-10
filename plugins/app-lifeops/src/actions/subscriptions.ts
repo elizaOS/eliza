@@ -21,8 +21,6 @@ type SubscriptionSubaction = "audit" | "cancel" | "status";
 
 type SubscriptionActionParams = {
   subaction?: SubscriptionSubaction;
-  /** One-release alias for `subaction`; planner cache hits keep working. */
-  mode?: SubscriptionSubaction;
   serviceName?: string;
   serviceSlug?: string;
   candidateId?: string;
@@ -182,8 +180,7 @@ async function resolveSubscriptionsPlanWithLlm(args: {
       return {};
     }
     return {
-      subaction:
-        normalizeSubaction(parsed.subaction) ?? normalizeSubaction(parsed.mode),
+      subaction: normalizeSubaction(parsed.subaction),
       serviceName: normalizePlannerResponse(parsed.serviceName),
       serviceSlug: normalizePlannerResponse(parsed.serviceSlug),
       executor: normalizeExecutor(parsed.executor),
@@ -236,12 +233,10 @@ async function runSubscriptionsAction(
 ): Promise<ActionResult> {
   const params = mergeParams(message, options);
   const service = new LifeOpsService(runtime);
-  // Trust the planner-supplied subaction. Accept the legacy `mode` alias for
-  // one release so cached planner outputs keep resolving. Skip the in-handler
-  // LLM only when neither field is populated — running it unconditionally
-  // just throws away correct hints.
-  const trustedSubaction =
-    normalizeSubaction(params.subaction) ?? normalizeSubaction(params.mode);
+  // Trust the planner-supplied subaction; skip the in-handler LLM only when
+  // it's absent. Running the LLM unconditionally just throws away correct
+  // hints.
+  const trustedSubaction = normalizeSubaction(params.subaction);
   const planner = trustedSubaction
     ? {
         subaction: trustedSubaction,
@@ -502,13 +497,6 @@ export const subscriptionsAction: Action & {
     {
       name: "subaction",
       description: "audit | cancel | status when supplied.",
-      required: false,
-      schema: { type: "string" as const, enum: ["audit", "cancel", "status"] },
-    },
-    {
-      name: "mode",
-      description:
-        "Legacy alias for `subaction`. Accepted for one release so cached planner outputs keep resolving; new callers should use `subaction`.",
       required: false,
       schema: { type: "string" as const, enum: ["audit", "cancel", "status"] },
     },

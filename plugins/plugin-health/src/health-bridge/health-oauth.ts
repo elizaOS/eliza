@@ -15,6 +15,10 @@ import {
   isEncryptedTokenEnvelope,
   resolveTokenEncryptionKey,
 } from "../util/token-encryption.js";
+import {
+  type HealthProviderSpec,
+  requireHealthProviderSpec,
+} from "./health-provider-registry.js";
 
 const HEALTH_OAUTH_SESSION_TTL_MS = 10 * 60 * 1000;
 const ACCESS_TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
@@ -87,19 +91,6 @@ interface PendingHealthOAuthSession {
   createdAt: number;
 }
 
-interface HealthOAuthProviderSpec {
-  provider: LifeOpsHealthConnectorProvider;
-  authUrl: string;
-  tokenUrl: string;
-  revokeUrl: string | null;
-  envPrefix: string;
-  defaultScopes: readonly string[];
-  capabilities: readonly LifeOpsHealthConnectorCapability[];
-  scopeSeparator: "space" | "comma";
-  usePkce: boolean;
-  tokenRequestStyle: "form" | "basic" | "withings";
-}
-
 interface HealthTokenResponse {
   access_token?: string;
   refresh_token?: string;
@@ -137,89 +128,14 @@ function unwrapHealthTokenResponse(
   return value as HealthTokenResponse;
 }
 
-const HEALTH_OAUTH_SPECS: Record<
-  LifeOpsHealthConnectorProvider,
-  HealthOAuthProviderSpec
-> = {
-  strava: {
-    provider: "strava",
-    authUrl: "https://www.strava.com/oauth/authorize",
-    tokenUrl: "https://www.strava.com/oauth/token",
-    revokeUrl: "https://www.strava.com/oauth/deauthorize",
-    envPrefix: "STRAVA",
-    defaultScopes: ["read", "profile:read_all", "activity:read_all"],
-    capabilities: ["health.activity.read", "health.workouts.read"],
-    scopeSeparator: "comma",
-    usePkce: false,
-    tokenRequestStyle: "form",
-  },
-  fitbit: {
-    provider: "fitbit",
-    authUrl: "https://www.fitbit.com/oauth2/authorize",
-    tokenUrl: "https://api.fitbit.com/oauth2/token",
-    revokeUrl: "https://api.fitbit.com/oauth2/revoke",
-    envPrefix: "FITBIT",
-    defaultScopes: ["profile", "activity", "heartrate", "sleep", "weight"],
-    capabilities: [
-      "health.activity.read",
-      "health.workouts.read",
-      "health.sleep.read",
-      "health.body.read",
-      "health.vitals.read",
-    ],
-    scopeSeparator: "space",
-    usePkce: true,
-    tokenRequestStyle: "basic",
-  },
-  withings: {
-    provider: "withings",
-    authUrl: "https://account.withings.com/oauth2_user/authorize2",
-    tokenUrl: "https://wbsapi.withings.net/v2/oauth2",
-    revokeUrl: null,
-    envPrefix: "WITHINGS",
-    defaultScopes: [
-      "user.info",
-      "user.metrics",
-      "user.activity",
-      "user.sleepevents",
-    ],
-    capabilities: [
-      "health.activity.read",
-      "health.sleep.read",
-      "health.body.read",
-      "health.vitals.read",
-    ],
-    scopeSeparator: "comma",
-    usePkce: false,
-    tokenRequestStyle: "withings",
-  },
-  oura: {
-    provider: "oura",
-    authUrl: "https://cloud.ouraring.com/oauth/authorize",
-    tokenUrl: "https://api.ouraring.com/oauth/token",
-    revokeUrl: "https://api.ouraring.com/oauth/revoke",
-    envPrefix: "OURA",
-    defaultScopes: [
-      "email",
-      "personal",
-      "daily",
-      "heartrate",
-      "workout",
-      "spo2",
-    ],
-    capabilities: [
-      "health.activity.read",
-      "health.workouts.read",
-      "health.sleep.read",
-      "health.readiness.read",
-      "health.body.read",
-      "health.vitals.read",
-    ],
-    scopeSeparator: "space",
-    usePkce: false,
-    tokenRequestStyle: "basic",
-  },
-};
+function providerSpec(
+  provider: LifeOpsHealthConnectorProvider,
+): HealthProviderSpec {
+  // The dispatcher iterates the health-provider registry instead of switching
+  // on provider name; URLs / scopes / token-request style come from the
+  // registered ConnectorContribution's spec, never from a hardcoded table.
+  return requireHealthProviderSpec(provider);
+}
 
 function isLoopbackHostname(hostname: string): boolean {
   const normalized = hostname.trim().toLowerCase();
@@ -236,18 +152,10 @@ function readEnv(
   provider: LifeOpsHealthConnectorProvider,
   suffix: "CLIENT_ID" | "CLIENT_SECRET" | "PUBLIC_BASE_URL",
 ): string | null {
-  const spec = HEALTH_OAUTH_SPECS[provider];
-  const keys = [
-    `ELIZA_${spec.envPrefix}_${suffix}`,
-    `ELIZA_${spec.envPrefix}_${suffix}`,
-  ];
-  for (const key of keys) {
-    const value = env[key]?.trim();
-    if (value) {
-      return value;
-    }
-  }
-  return null;
+  const spec = providerSpec(provider);
+  const key = `ELIZA_${spec.envPrefix}_${suffix}`;
+  const value = env[key]?.trim();
+  return value ?? null;
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -257,13 +165,13 @@ function normalizeBaseUrl(value: string): string {
 export function healthConnectorCapabilities(
   provider: LifeOpsHealthConnectorProvider,
 ): LifeOpsHealthConnectorCapability[] {
-  return [...HEALTH_OAUTH_SPECS[provider].capabilities];
+  return [...providerSpec(provider).capabilities];
 }
 
 export function healthConnectorScopes(
   provider: LifeOpsHealthConnectorProvider,
 ): string[] {
-  return [...HEALTH_OAUTH_SPECS[provider].defaultScopes];
+  return [...providerSpec(provider).oauth.defaultScopes];
 }
 
 export function healthScopesToCapabilities(
@@ -478,16 +386,16 @@ async function exchangeToken(
   session: PendingHealthOAuthSession,
   code: string,
 ): Promise<HealthTokenResponse> {
-  const spec = HEALTH_OAUTH_SPECS[session.provider];
+  const oauth = providerSpec(session.provider).oauth;
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
     redirect_uri: session.redirectUri,
   });
-  if (spec.tokenRequestStyle === "withings") {
+  if (oauth.tokenRequestStyle === "withings") {
     body.set("action", "requesttoken");
   }
-  if (spec.tokenRequestStyle !== "basic") {
+  if (oauth.tokenRequestStyle !== "basic") {
     body.set("client_id", session.clientId);
     if (session.clientSecret) body.set("client_secret", session.clientSecret);
   }
@@ -495,12 +403,12 @@ async function exchangeToken(
     body.set("code_verifier", session.codeVerifier);
   }
 
-  const response = await fetch(spec.tokenUrl, {
+  const response = await fetch(oauth.tokenUrl, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/x-www-form-urlencoded",
-      ...(spec.tokenRequestStyle === "basic" && session.clientSecret
+      ...(oauth.tokenRequestStyle === "basic" && session.clientSecret
         ? {
             Authorization: `Basic ${Buffer.from(
               `${session.clientId}:${session.clientSecret}`,
@@ -534,25 +442,25 @@ export async function refreshStoredHealthToken(
   ) {
     return token;
   }
-  const spec = HEALTH_OAUTH_SPECS[token.provider];
+  const oauth = providerSpec(token.provider).oauth;
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: token.refreshToken,
   });
-  if (spec.tokenRequestStyle === "withings") {
+  if (oauth.tokenRequestStyle === "withings") {
     body.set("action", "requesttoken");
     body.set("client_id", token.clientId);
     if (token.clientSecret) body.set("client_secret", token.clientSecret);
-  } else if (spec.tokenRequestStyle !== "basic") {
+  } else if (oauth.tokenRequestStyle !== "basic") {
     body.set("client_id", token.clientId);
     if (token.clientSecret) body.set("client_secret", token.clientSecret);
   }
-  const response = await fetch(spec.tokenUrl, {
+  const response = await fetch(oauth.tokenUrl, {
     method: "POST",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/x-www-form-urlencoded",
-      ...(spec.tokenRequestStyle === "basic" && token.clientSecret
+      ...(oauth.tokenRequestStyle === "basic" && token.clientSecret
         ? {
             Authorization: `Basic ${Buffer.from(
               `${token.clientId}:${token.clientSecret}`,
@@ -602,9 +510,9 @@ export function startHealthConnectorOAuth(args: {
     args.mode,
   );
   requireHealthOAuthConfig(config, args.requestUrl);
-  const spec = HEALTH_OAUTH_SPECS[args.provider];
+  const oauth = providerSpec(args.provider).oauth;
   const state = crypto.randomBytes(24).toString("hex");
-  const codeVerifier = spec.usePkce ? base64Url(crypto.randomBytes(32)) : null;
+  const codeVerifier = oauth.usePkce ? base64Url(crypto.randomBytes(32)) : null;
   const scopes = healthConnectorScopes(args.provider);
   pendingHealthOAuthSessions.set(state, {
     state,
@@ -623,17 +531,19 @@ export function startHealthConnectorOAuth(args: {
     createdAt: Date.now(),
   });
 
-  const authUrl = new URL(spec.authUrl);
+  const authUrl = new URL(oauth.authorizeUrl);
   authUrl.searchParams.set("client_id", config.clientId);
   authUrl.searchParams.set("response_type", "code");
   authUrl.searchParams.set("redirect_uri", config.redirectUri);
   authUrl.searchParams.set(
     "scope",
-    scopes.join(spec.scopeSeparator === "comma" ? "," : " "),
+    scopes.join(oauth.scopeSeparator === "comma" ? "," : " "),
   );
   authUrl.searchParams.set("state", state);
-  if (args.provider === "strava") {
-    authUrl.searchParams.set("approval_prompt", "auto");
+  if (oauth.extraAuthorizeParams) {
+    for (const [key, value] of Object.entries(oauth.extraAuthorizeParams)) {
+      authUrl.searchParams.set(key, value);
+    }
   }
   if (codeVerifier) {
     authUrl.searchParams.set("code_challenge", sha256Base64Url(codeVerifier));

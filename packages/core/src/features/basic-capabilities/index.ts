@@ -22,7 +22,7 @@ import { EmbeddingGenerationService } from "../../services/embedding.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";
 import {
 	OPTIMIZED_PROMPT_SERVICE,
-	type OptimizedPromptService,
+	OptimizedPromptService,
 } from "../../services/optimized-prompt.ts";
 import { resolveOptimizedPrompt } from "../../services/optimized-prompt-resolver.ts";
 import { TaskService } from "../../services/task.ts";
@@ -1291,6 +1291,11 @@ export const basicServices: ServiceClass[] = [
 	TaskService,
 	EmbeddingGenerationService,
 	EvaluatorService,
+	// Loads optimized prompts for action_planner / media_description / etc.
+	// from the on-disk store (~/.eliza/optimized-prompts/<task>/). Cheap
+	// in-memory cache; registering it on every runtime so the planner-loop
+	// can pick up artifacts produced by `bun run train -- --backend native`.
+	OptimizedPromptService as unknown as ServiceClass,
 ];
 
 /**

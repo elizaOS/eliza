@@ -197,7 +197,7 @@ export function buildSettings(
             : {}),
         }
       : {}),
-  } satisfies NonNullable<Character["settings"]>;
+  } as unknown as NonNullable<Character["settings"]>;
 
   return settings;
 }

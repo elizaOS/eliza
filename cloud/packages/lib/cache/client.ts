@@ -626,7 +626,7 @@ export class CacheClient {
     this.nativeRedisReady = false;
     this.nativeRedisConnectPromise = import("wadis")
       .then(({ Wadis }) => {
-        this.redis = new WadisRedisAdapter(new Wadis() as WadisClientLike);
+        this.redis = new WadisRedisAdapter(new Wadis() as unknown as WadisClientLike);
         this.nativeRedisReady = true;
         logger.info("[Cache] ✓ Cache client initialized with Wadis Wasm Redis");
       })

@@ -25,9 +25,11 @@ import {
   createBlockerRegistry,
   createEventKindRegistry,
   createFamilyRegistry,
+  createFeatureFlagRegistry,
   registerBlockerRegistry,
   registerEventKindRegistry,
   registerFamilyRegistry,
+  registerFeatureFlagRegistry,
 } from "../lifeops/registries/index.js";
 import {
   createCompletionCheckRegistry,
@@ -412,6 +414,19 @@ describe("scheduled-tasks REST handler", () => {
     });
     registerBlockerRegistry(fakeRuntime, blockerRegistry);
 
+    // Feature-flag registry — synthetic 3rd-party flag.
+    const featureFlagRegistry = createFeatureFlagRegistry({
+      builtinKeys: new Set(),
+    });
+    featureFlagRegistry.register({
+      key: "acme.experiment",
+      label: "Acme experiment",
+      description: "Synthetic feature flag for the composability proof.",
+      defaultEnabled: false,
+      namespace: "third_party",
+    });
+    registerFeatureFlagRegistry(fakeRuntime, featureFlagRegistry);
+
     const handler = makeScheduledTasksRouteHandler({
       resolveRunner: async () => runner,
     });
@@ -474,6 +489,11 @@ describe("scheduled-tasks REST handler", () => {
     expect(
       (payload.blockers as Array<{ kind: string }>).map((b) => b.kind),
     ).toContain("website");
+
+    // Feature flags.
+    expect(
+      (payload.featureFlags as Array<{ key: string }>).map((f) => f.key),
+    ).toContain("acme.experiment");
   });
 
   it("rejects /api/lifeops/dev/registries when not on loopback", async () => {

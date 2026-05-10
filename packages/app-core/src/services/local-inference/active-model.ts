@@ -117,10 +117,21 @@ export interface LocalInferenceLoadArgs {
  * resolved-args path) lets them through.
  */
 const FORK_ONLY_KV_CACHE_TYPES = new Set([
+  "tbq1_0",
+  "tbq2_0",
   "tbq3_0",
   "tbq4_0",
   "tbq3_0_tcq",
+  "turbo2",
+  "turbo3",
+  "turbo4",
+  "turbo2_0",
+  "turbo3_0",
+  "turbo4_0",
+  "turbo2_tcq",
+  "turbo3_tcq",
   "qjl1_256",
+  "qjl1_512",
 ]);
 
 const STOCK_KV_CACHE_TYPES = new Set([
@@ -141,12 +152,12 @@ const STOCK_KV_CACHE_TYPES = new Set([
 
 export function isForkOnlyKvCacheType(name: string | undefined): boolean {
   if (!name) return false;
-  return FORK_ONLY_KV_CACHE_TYPES.has(name.toLowerCase());
+  return FORK_ONLY_KV_CACHE_TYPES.has(name.trim().toLowerCase());
 }
 
 export function isStockKvCacheType(name: string | undefined): boolean {
   if (!name) return false;
-  return STOCK_KV_CACHE_TYPES.has(name.toLowerCase());
+  return STOCK_KV_CACHE_TYPES.has(name.trim().toLowerCase());
 }
 
 /**
@@ -395,6 +406,8 @@ export async function resolveLocalInferenceLoadArgs(
   }
 
   mergeOverrides(args, overrides);
+  if (args.cacheTypeK) args.cacheTypeK = args.cacheTypeK.trim().toLowerCase();
+  if (args.cacheTypeV) args.cacheTypeV = args.cacheTypeV.trim().toLowerCase();
 
   // Validate the final merged args. The catalog declares KV cache types
   // unconditionally for some entries (Bonsai → tbq4_0/tbq3_0); validation
@@ -402,7 +415,6 @@ export async function resolveLocalInferenceLoadArgs(
   // that calls `validateLocalInferenceLoadArgs` with `allowFork: false`
   // against just the overrides — see `local-inference-compat-routes.ts`.
   validateLocalInferenceLoadArgs(args, { allowFork: true });
-
   return args;
 }
 

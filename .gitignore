@@ -478,3 +478,4 @@ trajectories-eliza-cerebras/
 action-benchmark-report/
 artifacts/
 research/native-tool-calling
+test/mocks/mockoon/.mockoon-pids/

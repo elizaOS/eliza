@@ -33,11 +33,28 @@ export type DispatchResult =
       message?: string;
     };
 
+/**
+ * OAuth surface a connector contribution may advertise. URL provided by the
+ * connector contribution; the dispatcher does not hardcode. Health-bridge
+ * connectors (Strava, Fitbit, Withings, Oura) populate this so the OAuth
+ * driver iterates the registry — see `health-bridge/health-provider-registry.ts`.
+ */
+export interface ConnectorOAuthConfig {
+  readonly authorizeUrl: string;
+  readonly tokenUrl: string;
+  readonly revokeUrl?: string | null;
+  readonly scopes?: readonly string[];
+}
+
 export interface ConnectorContribution {
   kind: string;
   capabilities: string[];
   modes: ConnectorMode[];
   describe: { label: string };
+  /** URL provided by the connector contribution; the dispatcher does not hardcode. */
+  oauth?: ConnectorOAuthConfig;
+  /** URL provided by the connector contribution; the dispatcher does not hardcode. */
+  apiBaseUrl?: string;
   start(): Promise<void>;
   disconnect(): Promise<void>;
   verify(): Promise<boolean>;

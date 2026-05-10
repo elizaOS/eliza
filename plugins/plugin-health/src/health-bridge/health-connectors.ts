@@ -7,6 +7,7 @@ import type {
   LifeOpsHealthWorkout,
 } from "../contracts/health.js";
 import type { StoredHealthConnectorToken } from "./health-oauth.js";
+import { requireHealthProviderSpec } from "./health-provider-registry.js";
 import {
   createLifeOpsHealthMetricSample,
   createLifeOpsHealthSleepEpisode,
@@ -177,16 +178,10 @@ function providerBaseUrl(
   if (mock) {
     return mock;
   }
-  switch (provider) {
-    case "strava":
-      return "https://www.strava.com/api/v3";
-    case "fitbit":
-      return "https://api.fitbit.com";
-    case "withings":
-      return "https://wbsapi.withings.net";
-    case "oura":
-      return "https://api.ouraring.com";
-  }
+  // Base URL provided by the connector contribution; the dispatcher does not
+  // hardcode. The registry's `apiBaseUrl` is the single source of truth for
+  // the per-provider REST endpoint.
+  return requireHealthProviderSpec(provider).apiBaseUrl;
 }
 
 async function readJsonResponse(
