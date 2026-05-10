@@ -91,7 +91,15 @@ NDK_GLSLC := $(firstword \
 GLSLC := $(NDK_GLSLC)
 endif
 
-VULKAN_SHADERS = ../vulkan/turbo3.spv ../vulkan/turbo4.spv ../vulkan/turbo3_tcq.spv
+VULKAN_SHADERS = \
+    ../vulkan/turbo3.spv \
+    ../vulkan/turbo4.spv \
+    ../vulkan/turbo3_tcq.spv \
+    ../vulkan/qjl.spv \
+    ../vulkan/qjl_get_rows.spv \
+    ../vulkan/qjl_mul_mv.spv \
+    ../vulkan/polar.spv \
+    ../vulkan/polar_get_rows.spv
 
 vulkan-spirv: $(VULKAN_SHADERS)
 
