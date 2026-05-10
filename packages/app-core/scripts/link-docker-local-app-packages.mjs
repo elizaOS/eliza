@@ -309,7 +309,7 @@ for (const packagePath of localPackages) {
   }
 
   if (pkg.name === "@elizaos/app-core") {
-    for (const rootDep of ["jose"]) {
+    for (const rootDep of ["@node-rs/argon2", "jose"]) {
       linkRootDependency({
         packageName: rootDep,
         target: path.join(packageDir, "node_modules", rootDep),
