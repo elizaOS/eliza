@@ -19,9 +19,13 @@ import { looksLikeNonActionableChatter } from "../features/basic-capabilities/pr
 import { logger } from "../logger";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
 import { checkSenderRole } from "../roles";
-import { buildActionCatalog } from "../runtime/action-catalog";
+import {
+	buildActionCatalog,
+	type LocalizedActionExampleResolver,
+} from "../runtime/action-catalog";
 import { retrieveActions } from "../runtime/action-retrieval";
 import { tierActionResults } from "../runtime/action-tiering";
+import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import { applyAddressedTo } from "../runtime/addressed-to";
 import {
 	filterByContextGate,
@@ -1679,6 +1683,11 @@ function buildV5PlannerActionSurface(params: {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	logger?: IAgentRuntime["logger"];
+	// Optional locale-aware example swapper. Resolved by the caller (which
+	// has async access to `OwnerFactStore.locale`) and passed through to
+	// `buildActionCatalog` so the planner sees localized `ActionExample`
+	// pairs at catalog-build time.
+	localizedExamples?: LocalizedActionExampleResolver;
 }): V5PlannerActionSurface {
 	const candidateActions = getMessageHandlerCandidateActions(
 		params.messageHandler,
@@ -1699,7 +1708,9 @@ function buildV5PlannerActionSurface(params: {
 	}
 
 	const toolSearchStartedAt = Date.now();
-	const catalog = buildActionCatalog([...params.actions]);
+	const catalog = buildActionCatalog([...params.actions], {
+		localizedExamples: params.localizedExamples,
+	});
 	const retrieval = retrieveActions({
 		catalog,
 		messageText: getUserMessageText(params.message) ?? "",
@@ -4354,6 +4365,14 @@ export async function runV5MessageRuntimeStage1(args: {
 			selectedContexts,
 			userRoles: [senderRole],
 		});
+		const localizedExamplesProvider = getLocalizedExamplesProvider(
+			args.runtime,
+		);
+		const localizedExamples = localizedExamplesProvider
+			? await localizedExamplesProvider({
+					recentMessage: getUserMessageText(args.message),
+				})
+			: null;
 		const actionSurface = buildV5PlannerActionSurface({
 			actions: plannerCandidateActions,
 			message: args.message,
@@ -4363,6 +4382,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			recorder,
 			trajectoryId,
 			logger: args.runtime.logger,
+			localizedExamples: localizedExamples ?? undefined,
 		});
 		const exposedPlannerActions = plannerCandidateActions.filter((action) =>
 			actionSurface.exposedActionNames.has(
