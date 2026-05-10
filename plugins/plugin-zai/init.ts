@@ -14,15 +14,18 @@ export interface PluginConfig {
   readonly ZAI_COT_BUDGET_LARGE?: string;
 }
 
-const _globalThis = globalThis as typeof globalThis & {
-  AI_SDK_LOG_WARNINGS?: boolean;
-};
-if (_globalThis.AI_SDK_LOG_WARNINGS === undefined) {
-  _globalThis.AI_SDK_LOG_WARNINGS = false;
+function disableAiSdkWarningsForZai(): void {
+  const mutableGlobalThis = globalThis as typeof globalThis & {
+    AI_SDK_LOG_WARNINGS?: boolean;
+  };
+  if (mutableGlobalThis.AI_SDK_LOG_WARNINGS === undefined) {
+    mutableGlobalThis.AI_SDK_LOG_WARNINGS = false;
+  }
 }
 
 export function initializeZai(_config: PluginConfig, runtime: IAgentRuntime): void {
   void (async () => {
+    disableAiSdkWarningsForZai();
     const apiKey = getApiKeyOptional(runtime);
 
     if (!apiKey && !isBrowser()) {
