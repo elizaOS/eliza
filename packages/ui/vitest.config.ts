@@ -67,6 +67,13 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    environmentOptions: {
+      // jsdom 29 throws `SecurityError: localStorage is not available for
+      // opaque origins` unless a concrete url is configured. Tests that
+      // declare `// @vitest-environment jsdom` need this to access
+      // window.localStorage / window.sessionStorage.
+      jsdom: { url: "http://localhost/" },
+    },
     server: {
       deps: {
         inline: [
