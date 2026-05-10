@@ -120,7 +120,15 @@ function installMocks(state: MockState): void {
   }));
 
   mock.module("@/lib/constants/agent-pricing", () => ({
-    AGENT_PRICING: { MINIMUM_DEPOSIT: 5 },
+    AGENT_PRICING: {
+      RUNNING_HOURLY_RATE: 0.01,
+      IDLE_HOURLY_RATE: 0.0025,
+      DAILY_RUNNING_COST: 0.24,
+      DAILY_IDLE_COST: 0.06,
+      MINIMUM_DEPOSIT: 0.1,
+      LOW_CREDIT_WARNING: 2,
+      GRACE_PERIOD_HOURS: 48,
+    },
   }));
 
   mock.module("@/lib/security/outbound-url", () => ({
@@ -423,7 +431,7 @@ describe("eliza agent provision route", () => {
     const state = makeState({
       creditGate: {
         allowed: false,
-        balance: 1.25,
+        balance: 0.05,
         error: "Insufficient credits",
       },
     });
@@ -442,8 +450,8 @@ describe("eliza agent provision route", () => {
     expect(body).toEqual({
       success: false,
       error: "Insufficient credits",
-      requiredBalance: 5,
-      currentBalance: 1.25,
+      requiredBalance: 0.1,
+      currentBalance: 0.05,
     });
     expect(state.creditChecks).toEqual(["o1"]);
     expect(state.enqueueCalls).toEqual([]);

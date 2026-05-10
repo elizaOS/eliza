@@ -183,8 +183,8 @@ Summary: Build, deploy, and scale intelligent AI agents with elizaOS Cloud.
       <div className="font-bold text-white">Model Gateway</div>
     </div>
     <div className="text-white/50 text-sm leading-relaxed">
-      Access OpenAI, Anthropic, Google, and more through a unified API
-      interface.
+      Access configured text, image, video, and embedding providers through a
+      unified API interface.
     </div>
   </div>
   <div className="docs-feature-card">
@@ -249,7 +249,7 @@ Summary: Build, deploy, and scale intelligent AI agents with elizaOS Cloud.
       <div className="font-bold text-white mb-1 group-hover:text-[#ff5800] transition-colors">
         Image Generation
       </div>
-      <div className="text-white/40 text-sm">Powered by Fal.ai</div>
+      <div className="text-white/40 text-sm">Catalog-driven models</div>
     </div>
   </a>
   <a
@@ -261,7 +261,7 @@ Summary: Build, deploy, and scale intelligent AI agents with elizaOS Cloud.
       <div className="flex items-center justify-between mb-3">
         <span className="text-[#0b35f1] text-2xl">🎬</span>
         <span className="text-[10px] font-bold uppercase tracking-wider text-[#0b35f1]/60 px-2 py-1 bg-[#0b35f1]/10 border border-[#0b35f1]/20">
-          MiniMax • Runway
+          Video
         </span>
       </div>
       <div className="font-bold text-white mb-1 group-hover:text-[#0b35f1] transition-colors">
@@ -803,11 +803,8 @@ knowledgeable, thorough, patient, analytical, helpful
 
 ### Supported Providers
 
-| Provider      | Models                           | Best For                    |
-| ------------- | -------------------------------- | --------------------------- |
-| **OpenAI**    | GPT-4o, gpt-5-mini, GPT-4-turbo | General purpose, coding     |
-| **Anthropic** | Claude Sonnet 4.6, Claude Opus 4.7 | Long-form content, analysis |
-| **Google**    | Gemini Pro, Gemini Flash         | Multimodal, fast responses  |
+Available providers and models come from the current model catalog. Use the
+dashboard model selector or [Models API](/docs/api/models) for the live list.
 
 ### Temperature Settings
 
@@ -860,7 +857,7 @@ Always be helpful and accurate.
 
 Connect documents to enhance your agent's knowledge:
 
-1. Navigate to [Knowledge Base](/dashboard/knowledge)
+1. Navigate to [Knowledge Base](/dashboard/documents)
 2. Upload documents (PDF, TXT, MD)
 3. Link to your agent in the creator
 
@@ -991,11 +988,8 @@ Fill in the agent's personality:
 
 ### Select Model
 
-Choose your AI model provider and model:
-
-- OpenAI (GPT-4o, gpt-5-mini)
-- Anthropic (Claude Sonnet 4.6)
-- Google (Gemini Pro)
+Choose from the model providers and models currently available in the model
+catalog.
 
 ### Deploy
 
@@ -1035,14 +1029,16 @@ Response:
 ### Using the CLI
 
 ```bash
-# Install the CLI
-bun add -g @elizaos/cli
+# Install the scaffolding CLI
+bun add -g elizaos
 
-# Login to elizaOS Cloud
-elizaos login
+# Create a local project
+elizaos create research-assistant --template project
+cd research-assistant
 
-# Deploy from character file
-elizaos deploy --character ./character.json
+# Run the generated project scripts
+bun install
+bun run dev
 ```
 
   
@@ -1213,8 +1209,8 @@ curl -X GET "https://elizacloud.ai/api/v1/dashboard" \
 
 | Method    | Header                         | Use Case             |
 | --------- | ------------------------------ | -------------------- |
-| API Key   | `Authorization: Bearer ek_xxx` | Server-to-server     |
-| X-API-Key | `X-API-Key: ek_xxx`            | Alternative header   |
+| API Key   | `Authorization: Bearer eliza_xxx` | Server-to-server     |
+| X-API-Key | `X-API-Key: eliza_xxx`            | Alternative header   |
 | Session   | Cookie-based                   | Browser applications |
 
 ## API Categories
@@ -1494,9 +1490,9 @@ Create a copy of an existing agent.
   <span className="path">/api/my-agents/characters/{"{id}"}/stats</span>
 </div>
 
-Get usage statistics for an agent.
-
-Currently returns placeholder stats.
+Get usage statistics for an agent. The response currently exposes counters
+reported by the API; treat zero values as "no recorded activity" rather than a
+guarantee that deeper analytics are unavailable.
 
 ### Response
 
@@ -1540,6 +1536,11 @@ Summary: Manage API keys for elizaOS Cloud.
 
 Create and manage API keys for authentication.
 
+  Listing and creating API keys require a Steward browser session. Updating,
+  deleting, and regenerating existing keys can use a Steward session or an API
+  key from the same organization; use a different key than the one you are
+  changing.
+
 ## List API Keys
 
 <div className="api-endpoint">
@@ -1557,7 +1558,7 @@ Get all your API keys.
     {
       "id": "key_abc123",
       "name": "Production Key",
-      "prefix": "ek_live_abc...",
+      "prefix": "eliza_abc...",
       "permissions": ["chat", "embeddings"],
       "createdAt": "2024-01-15T10:30:00Z",
       "lastUsed": "2024-01-16T15:45:00Z"
@@ -1607,13 +1608,13 @@ Create a new API key.
     "id": "key_abc123",
     "name": "Production Key",
     "description": null,
-    "key_prefix": "ek_live_abc...",
+    "key_prefix": "eliza_abc...",
     "created_at": "2024-01-15T10:30:00Z",
     "permissions": ["chat", "embeddings", "images"],
     "rate_limit": 1000,
     "expires_at": null
   },
-  "plainKey": "ek_live_abc123xyz..."
+  "plainKey": "eliza_abc123xyz..."
 }
 ```
 
@@ -1680,7 +1681,7 @@ Generate a new secret for an existing key.
 ```json
 {
   "id": "key_abc123",
-  "key": "ek_live_newkey789...",
+  "key": "eliza_newkey789...",
   "regeneratedAt": "2024-01-16T10:30:00Z"
 }
 ```
@@ -1701,13 +1702,13 @@ Generate a new secret for an existing key.
 
 URL: https://elizacloud.ai/docs/api/apps
 
-Summary: Create and manage applications on elizaOS Cloud.
+Summary: Register, update, monetize, and route chat through Eliza Cloud apps.
 
 # Apps
 
 <div className="status-badge status-stable">Stable</div>
 
-Create and manage applications that use your AI agents.
+Apps are Cloud records used for app identity, hosting metadata, marketplace/domain settings, chat routing, analytics, and monetization.
 
 ## List Apps
 
@@ -1716,20 +1717,23 @@ Create and manage applications that use your AI agents.
   <span className="path">/api/v1/apps</span>
 </div>
 
-Get all your applications.
+Get all apps for your organization.
 
 ### Response
 
 ```json
 {
+  "success": true,
   "apps": [
     {
-      "id": "app_abc123",
+      "id": "uuid-abc123",
       "name": "Customer Portal",
-      "description": "AI-powered customer support",
-      "agentId": "char_xyz789",
-      "apiKey": "ak_...",
-      "createdAt": "2024-01-15T10:30:00Z"
+      "app_url": "https://customer.example.com",
+      "allowed_origins": ["https://customer.example.com"],
+      "monetization_enabled": true,
+      "inference_markup_percentage": "100.0000",
+      "purchase_share_percentage": "10.0000",
+      "created_at": "2026-05-05T10:30:00Z"
     }
   ]
 }
@@ -1744,17 +1748,20 @@ Get all your applications.
   <span className="path">/api/v1/apps</span>
 </div>
 
-Create a new application.
+Create a new Cloud app. The response includes a one-time app API key for server-side app administration.
 
 ### Request
 
 ```json
 {
   "name": "My App",
-  "app_url": "https://myapp.example.com",
+  "app_url": "https://placeholder.invalid",
   "description": "Customer support chatbot",
   "website_url": "https://example.com",
-  "contact_email": "support@example.com"
+  "contact_email": "support@example.com",
+  "allowed_origins": ["https://placeholder.invalid"],
+  "logo_url": "https://example.com/logo.png",
+  "skipGitHubRepo": true
 }
 ```
 
@@ -1766,12 +1773,17 @@ Create a new application.
   "app": {
     "id": "uuid-abc123",
     "name": "My App",
-    "app_url": "https://myapp.example.com",
-    "api_key": "ek_xxx...",
-    "created_at": "2024-01-15T10:30:00Z"
+    "app_url": "https://placeholder.invalid",
+    "allowed_origins": ["https://placeholder.invalid"],
+    "created_at": "2026-05-05T10:30:00Z"
+  },
+  "apiKey": {
+    "id": "key_abc123"
   }
 }
 ```
+
+  Store the returned API key securely. Use user bearer tokens, not this admin key, for user-facing app-scoped chat.
 
 ---
 
@@ -1782,7 +1794,7 @@ Create a new application.
   <span className="path">/api/v1/apps/{"{id}"}</span>
 </div>
 
-Get application details.
+Get app details.
 
 ---
 
@@ -1793,7 +1805,24 @@ Get application details.
   <span className="path">/api/v1/apps/{"{id}"}</span>
 </div>
 
-Update an application.
+<div className="api-endpoint">
+  <span className="method-badge method-badge-patch">PATCH</span>
+  <span className="path">/api/v1/apps/{"{id}"}</span>
+</div>
+
+Update all or part of an app record.
+
+### Request
+
+```json
+{
+  "app_url": "https://my-app.example.com",
+  "allowed_origins": ["https://my-app.example.com"],
+  "website_url": "https://example.com",
+  "contact_email": "support@example.com",
+  "is_active": true
+}
+```
 
 ---
 
@@ -1804,43 +1833,39 @@ Update an application.
   <span className="path">/api/v1/apps/{"{id}"}</span>
 </div>
 
-Delete an application.
+Delete an app and run cleanup. Pass `?deleteGitHubRepo=false` to keep the associated repository when one exists.
 
 ---
 
-## App Analytics
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-get">GET</span>
-  <span className="path">/api/v1/apps/{"{id}"}/analytics</span>
-</div>
-
-Get usage analytics for an app.
-
-### Response
-
-```json
-{
-  "requests": 15000,
-  "uniqueUsers": 500,
-  "tokensUsed": 1250000,
-  "costUsd": 12.5,
-  "period": "30d"
-}
-```
-
----
-
-## Regenerate API Key
+## App Chat
 
 <div className="api-endpoint">
   <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/apps/{"{id}"}/regenerate-api-key</span>
+  <span className="path">/api/v1/apps/{"{id}"}/chat</span>
 </div>
 
-Generate a new API key for the app.
+OpenAI-style chat completions scoped to a Cloud app. Monetized apps are public to authenticated users with credits; non-monetized apps are limited to the owning organization.
 
-  This invalidates the previous API key immediately.
+### Headers
+
+| Header | Description |
+| ------ | ----------- |
+| `Authorization: Bearer <user-token>` | Required for user-facing chat. Charges the user's organization credit balance. |
+| `Content-Type: application/json` | Required. |
+
+### Request
+
+```json
+{
+  "model": "provider/model-id",
+  "messages": [{ "role": "user", "content": "Hello" }],
+  "stream": false
+}
+```
+
+If monetization is enabled, the app creator earns `inferenceMarkupPercentage` on the base inference cost.
+
+  `X-Affiliate-Code` is implemented on generic `/api/v1/chat/completions` and `/api/v1/messages` routes. The app-scoped chat route does not currently read that header.
 
 ---
 
@@ -1851,7 +1876,64 @@ Generate a new API key for the app.
   <span className="path">/api/v1/apps/{"{id}"}/monetization</span>
 </div>
 
-Get monetization settings and earnings.
+Get monetization settings.
+
+### Response
+
+```json
+{
+  "success": true,
+  "monetization": {
+    "monetizationEnabled": true,
+    "inferenceMarkupPercentage": 100,
+    "purchaseSharePercentage": 10,
+    "platformOffsetAmount": 0,
+    "totalCreatorEarnings": 42.5
+  }
+}
+```
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-put">PUT</span>
+  <span className="path">/api/v1/apps/{"{id}"}/monetization</span>
+</div>
+
+Update monetization settings. All fields are optional.
+
+### Request
+
+```json
+{
+  "monetizationEnabled": true,
+  "inferenceMarkupPercentage": 100,
+  "purchaseSharePercentage": 10
+}
+```
+
+| Field | Range | Description |
+| ----- | ----- | ----------- |
+| `monetizationEnabled` | boolean | Enables creator earnings. |
+| `inferenceMarkupPercentage` | 0-1000 | Creator markup on inference calls. |
+| `purchaseSharePercentage` | 0-100 | Purchase share percentage. |
+
+Older `enabled` plus nested `pricing` request bodies are stale and should not be used.
+
+---
+
+## App Earnings
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/apps/{"{id}"}/earnings</span>
+</div>
+
+Get app earnings summary, breakdown, chart data, recent transactions, and monetization settings.
+
+### Query Parameters
+
+| Parameter | Description |
+| --------- | ----------- |
+| `days` | Chart range, 1-90 days. Default: 30. |
 
 ---
 
@@ -1868,32 +1950,6 @@ Manage custom domains for your multi-tenant applications. See the [App Domains](
 
 Get all domains for an app including subdomain and custom domain status.
 
-#### Response
-
-```json
-{
-  "success": true,
-  "domains": [
-    {
-      "id": "dom_abc123",
-      "subdomain": "myapp",
-      "subdomainUrl": "https://myapp.apps.elizacloud.ai",
-      "customDomain": "myapp.example.com",
-      "customDomainUrl": "https://myapp.example.com",
-      "customDomainVerified": true,
-      "sslStatus": "active",
-      "isPrimary": true,
-      "verificationRecords": [],
-      "createdAt": "2024-01-15T10:30:00Z",
-      "verifiedAt": "2024-01-15T11:00:00Z"
-    }
-  ],
-  "sandboxUrl": null
-}
-```
-
----
-
 ### Add Custom Domain
 
 <div className="api-endpoint">
@@ -1901,171 +1957,9 @@ Get all domains for an app including subdomain and custom domain status.
   <span className="path">/api/v1/apps/{"{id}"}/domains</span>
 </div>
 
-Add a custom domain to your app. Requires DNS configuration.
-
-#### Request
-
 ```json
 {
   "domain": "myapp.example.com"
-}
-```
-
-#### Response
-
-```json
-{
-  "success": true,
-  "domain": "myapp.example.com",
-  "verified": false,
-  "verificationRecords": [
-    {
-      "type": "TXT",
-      "name": "_vercel.myapp.example.com",
-      "value": "vc-domain-verify=abc123..."
-    }
-  ],
-  "dnsInstructions": [
-    {
-      "type": "CNAME",
-      "name": "myapp",
-      "value": "cname.vercel-dns.com"
-    }
-  ],
-  "isApexDomain": false
-}
-```
-
-  For apex domains (e.g., `example.com`), use an A record pointing to
-  `76.76.21.21` instead of a CNAME.
-
----
-
-### Remove Custom Domain
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-delete">DELETE</span>
-  <span className="path">/api/v1/apps/{"{id}"}/domains</span>
-</div>
-
-Remove a custom domain from your app.
-
-#### Request
-
-```json
-{
-  "domain": "myapp.example.com"
-}
-```
-
-#### Response
-
-```json
-{
-  "success": true,
-  "message": "Domain removed successfully"
-}
-```
-
----
-
-### Verify Domain
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/apps/{"{id}"}/domains/verify</span>
-</div>
-
-Trigger manual verification of domain ownership after configuring DNS records.
-
-#### Request
-
-```json
-{
-  "domain": "myapp.example.com"
-}
-```
-
-#### Response
-
-```json
-{
-  "success": true,
-  "verified": true,
-  "status": {
-    "domain": "myapp.example.com",
-    "status": "valid",
-    "configured": true,
-    "verified": true,
-    "sslStatus": "provisioning",
-    "configuredBy": "CNAME",
-    "isApexDomain": false,
-    "dnsInstructions": []
-  }
-}
-```
-
----
-
-### Check Domain Status
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/apps/{"{id}"}/domains/status</span>
-</div>
-
-Check the current DNS and SSL status of a domain.
-
-#### Request
-
-```json
-{
-  "domain": "myapp.example.com"
-}
-```
-
-#### Response
-
-```json
-{
-  "success": true,
-  "domain": "myapp.example.com",
-  "status": "valid",
-  "configured": true,
-  "verified": true,
-  "sslStatus": "active",
-  "sslExpiresAt": "2025-04-15T00:00:00Z",
-  "configuredBy": "CNAME",
-  "records": [],
-  "isApexDomain": false,
-  "dnsInstructions": [
-    {
-      "type": "CNAME",
-      "name": "myapp",
-      "value": "cname.vercel-dns.com"
-    }
-  ]
-}
-```
-
----
-
-### Sync Domain Status
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/apps/{"{id}"}/domains/sync</span>
-</div>
-
-Refresh all domain statuses from Vercel to the database.
-
-#### Response
-
-```json
-{
-  "success": true,
-  "domains": [...],
-  "syncedAt": "2024-01-15T12:00:00Z"
 }
 ```
 
@@ -2130,7 +2024,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/chat/completions', {
 const data = await response.json();
 console.log(data.choices[0].message.content);
 
-````
+```
   
   
 ```python
@@ -2153,7 +2047,7 @@ response = requests.post(
 
 data = response.json()
 print(data['choices'][0]['message']['content'])
-````
+```
 
   
 
@@ -2267,14 +2161,9 @@ You can use an agent ID as the model to chat with your custom AI agents:
 
 ## Available Models
 
-| Model                        | Provider  | Description              |
-| ---------------------------- | --------- | ------------------------ |
-| `gpt-4o`                     | OpenAI    | Most capable GPT-4 model |
-| `gpt-5-mini`                | OpenAI    | Fast and efficient       |
-| `claude-sonnet-4-6` | Anthropic | Latest Claude model      |
-| `gemini-1.5-pro`             | Google    | Gemini Pro model         |
-
-See the [Models API](/docs/api/models) for a complete list.
+Model availability changes as provider catalogs and account configuration
+change. See the [Models API](/docs/api/models) or API Explorer for the current
+catalog and defaults.
 
 ---
 
@@ -2282,54 +2171,13 @@ See the [Models API](/docs/api/models) for a complete list.
 
 URL: https://elizacloud.ai/docs/api/containers
 
-Summary: Deploy and manage containers on elizaOS Cloud.
+Summary: Deploy and manage containers on Eliza Cloud.
 
 # Containers
 
 <div className="status-badge status-stable">Stable</div>
 
-Deploy and manage containerized applications on AWS ECS.
-
-  Container deployments use AWS CloudFormation to provision dedicated EC2
-  instances. Deployments typically take 8-12 minutes to complete.
-
-## Prerequisites
-
-Before deploying a container, you need to:
-
-1. Build and push your Docker image to ECR
-2. Get ECR credentials from `/api/v1/containers/credentials`
-
----
-
-## Get ECR Credentials
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-get">GET</span>
-  <span className="path">/api/v1/containers/credentials</span>
-</div>
-
-Get temporary ECR credentials to push your Docker image.
-
-### Response
-
-```json
-{
-  "success": true,
-  "credentials": {
-    "username": "AWS",
-    "password": "eyJwYXlsb2FkIjoiLi4uIiwiZGF0YWtleSI6Ii4uLiJ9",
-    "proxyEndpoint": "https://123456789.dkr.ecr.us-east-1.amazonaws.com",
-    "expiresAt": "2024-01-15T22:30:00Z"
-  },
-  "repository": {
-    "uri": "123456789.dkr.ecr.us-east-1.amazonaws.com/eliza-user-images",
-    "name": "eliza-user-images"
-  }
-}
-```
-
----
+Deploy and manage Docker containers. The current public API accepts a generic image reference in `image`; it is not limited to ECR images.
 
 ## List Containers
 
@@ -2348,15 +2196,17 @@ Get all containers for your organization.
   "data": [
     {
       "id": "550e8400-e29b-41d4-a716-446655440000",
-      "name": "my-agent-runtime",
-      "project_name": "my-project",
+      "name": "my-app",
+      "project_name": "my-app",
       "status": "running",
-      "url": "https://my-project.containers.elizacloud.ai",
-      "cpu": 1792,
-      "memory": 1792,
+      "image_tag": "ghcr.io/acme/my-app:latest",
+      "load_balancer_url": "https://my-app.example.com",
+      "cpu": 256,
+      "memory": 512,
       "port": 3000,
-      "architecture": "arm64",
-      "created_at": "2024-01-15T10:30:00Z"
+      "desired_count": 1,
+      "billing_status": "active",
+      "created_at": "2026-05-05T10:30:00Z"
     }
   ]
 }
@@ -2371,68 +2221,65 @@ Get all containers for your organization.
   <span className="path">/api/v1/containers</span>
 </div>
 
-Deploy a new container to AWS ECS. Returns immediately with a 202 Accepted status while deployment proceeds asynchronously.
+Deploy a new container. Returns a container record and polling instructions.
 
 ### Request
 
 ```json
 {
-  "name": "My Agent Runtime",
-  "project_name": "my-project",
-  "ecr_image_uri": "123456789.dkr.ecr.us-east-1.amazonaws.com/eliza-user-images:my-tag",
+  "name": "My App",
+  "project_name": "my-app",
+  "image": "ghcr.io/acme/my-app:latest",
   "port": 3000,
-  "cpu": 1792,
-  "memory": 1792,
+  "cpu": 256,
+  "memory": 512,
   "desired_count": 1,
-  "architecture": "arm64",
   "health_check_path": "/health",
   "environment_vars": {
-    "NODE_ENV": "production",
-    "LOG_LEVEL": "info"
+    "PORT": "3000",
+    "ELIZA_APP_ID": "uuid-abc123"
   }
 }
 ```
 
 ### Parameters
 
-| Parameter           | Type    | Required | Description                                         |
-| ------------------- | ------- | -------- | --------------------------------------------------- |
-| `name`              | string  | ✓        | Display name (max 100 chars)                        |
-| `project_name`      | string  | ✓        | Project identifier (max 50 chars, used in URL)      |
-| `ecr_image_uri`     | string  | ✓        | Full ECR image URI with tag                         |
-| `port`              | integer |          | Container port. Default: 3000                       |
-| `cpu`               | integer |          | CPU units (256-2048). Default: 1792                 |
-| `memory`            | integer |          | Memory in MB (256-2048). Default: 1792              |
-| `desired_count`     | integer |          | Number of instances (1-10). Default: 1              |
-| `architecture`      | string  |          | `arm64` or `x86_64`. Default: `arm64`               |
-| `health_check_path` | string  |          | Health check endpoint. Default: `/health`           |
-| `environment_vars`  | object  |          | Environment variables (max 50 vars, 32KB per value) |
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `name` | string | yes | Display name. |
+| `project_name` | string | yes | Stable project identifier. |
+| `image` | string | yes | Full image reference, for example `ghcr.io/owner/repo:tag`. |
+| `port` | integer | no | Container port. Default: 3000. |
+| `cpu` | integer | no | CPU units. Default: 256. |
+| `memory` | integer | no | Memory in MB. Default: 512. |
+| `desired_count` | integer | no | Must be 1 on the current shared Docker pool. |
+| `health_check_path` | string | no | Health check endpoint. Default: `/health`. |
+| `environment_vars` | object | no | String environment variables. |
+| `persist_volume` | boolean | no | Mount project-scoped persistent storage at `/data`. |
+| `use_hetzner_volume` | boolean | no | Use a Hetzner Cloud volume when persistent volumes are enabled and configured. |
+| `volume_size_gb` | integer | no | Declared volume size in GiB. Default: 10. |
 
-### Response (202 Accepted)
+### Response
 
 ```json
 {
   "success": true,
   "data": {
     "id": "550e8400-e29b-41d4-a716-446655440000",
-    "name": "My Agent Runtime",
-    "project_name": "my-project",
-    "status": "pending"
+    "name": "My App",
+    "project_name": "my-app",
+    "status": "deploying",
+    "load_balancer_url": "https://my-app.example.com"
   },
-  "message": "Container deployment started. Poll GET /api/v1/containers/:id to check status.",
-  "creditsDeducted": 0.5,
-  "creditsRemaining": 49.5,
-  "stackName": "eliza-user-abc123-my-project",
   "polling": {
     "endpoint": "/api/v1/containers/550e8400-e29b-41d4-a716-446655440000",
-    "intervalMs": 10000,
-    "expectedDurationMs": 600000
+    "intervalMs": 5000,
+    "expectedDurationMs": 120000
   }
 }
 ```
 
-  Container deployments require sufficient credits and are subject to
-  organization quotas.
+  Container deployments require sufficient credits or available earnings and are subject to organization quotas.
 
 ---
 
@@ -2445,16 +2292,31 @@ Deploy a new container to AWS ECS. Returns immediately with a 202 Accepted statu
 
 Get container details and deployment status.
 
-### Container Status Values
+### Status Values
 
-| Status      | Description                             |
-| ----------- | --------------------------------------- |
-| `pending`   | Deployment initiated                    |
-| `building`  | Provisioning EC2 instance               |
-| `deploying` | CloudFormation stack creating           |
-| `running`   | Container is healthy and accessible     |
-| `failed`    | Deployment failed (check error message) |
-| `stopped`   | Container manually stopped              |
+| Status | Description |
+| ------ | ----------- |
+| `pending` | Deployment initiated. |
+| `deploying` | Image pull or container start in progress. |
+| `running` | Container is healthy and accessible. |
+| `failed` | Deployment failed; check `error_message` and logs. |
+| `stopped` | Container stopped. |
+| `suspended` | Billing or policy suspension. |
+
+---
+
+## Update Container
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-patch">PATCH</span>
+  <span className="path">/api/v1/containers/{"{id}"}</span>
+</div>
+
+Patch supports:
+
+- `environment_vars` to replace runtime environment variables.
+- `desired_count` to scale, currently only `1`.
+- `action: "restart"` to restart the container.
 
 ---
 
@@ -2465,7 +2327,7 @@ Get container details and deployment status.
   <span className="path">/api/v1/containers/{"{id}"}</span>
 </div>
 
-Stop and delete a container. This terminates the EC2 instance and deletes the CloudFormation stack.
+Stop and delete a container.
 
 ---
 
@@ -2476,38 +2338,13 @@ Stop and delete a container. This terminates the EC2 instance and deletes the Cl
   <span className="path">/api/v1/containers/{"{id}"}/logs</span>
 </div>
 
-Get container logs from CloudWatch.
+Get plain-text container logs.
 
 ### Query Parameters
 
-| Parameter | Type    | Description                    |
-| --------- | ------- | ------------------------------ |
-| `tail`    | integer | Number of lines (default: 100) |
-| `since`   | string  | Start time (ISO 8601)          |
-
-### Response
-
-```json
-{
-  "logs": [
-    {
-      "timestamp": "2024-01-15T10:30:00Z",
-      "message": "Server started on port 3000"
-    }
-  ]
-}
-```
-
----
-
-## Stream Logs
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-get">GET</span>
-  <span className="path">/api/v1/containers/{"{id}"}/logs/stream</span>
-</div>
-
-Stream logs in real-time using Server-Sent Events.
+| Parameter | Type | Description |
+| --------- | ---- | ----------- |
+| `tail` | integer | Number of lines. Default: 200. |
 
 ---
 
@@ -2518,64 +2355,29 @@ Stream logs in real-time using Server-Sent Events.
   <span className="path">/api/v1/containers/{"{id}"}/metrics</span>
 </div>
 
-Get container resource metrics.
-
-### Response
-
-```json
-{
-  "cpu": {
-    "usage": 15.5,
-    "limit": 100
-  },
-  "memory": {
-    "usage": 256,
-    "limit": 512,
-    "unit": "MB"
-  },
-  "network": {
-    "rx": 1024000,
-    "tx": 512000
-  }
-}
-```
+Get container metrics.
 
 ---
 
-## Container Health
+## Quota
 
 <div className="api-endpoint">
   <span className="method-badge method-badge-get">GET</span>
-  <span className="path">/api/v1/containers/{"{id}"}/health</span>
+  <span className="path">/api/v1/containers/quota</span>
 </div>
 
-Get container health status.
-
-### Response
-
-```json
-{
-  "status": "healthy",
-  "checks": {
-    "http": "passing",
-    "memory": "passing",
-    "disk": "passing"
-  }
-}
-```
+Get organization container quota.
 
 ---
 
-## Deployment Workflow
+## Credentials
 
-1. **Get ECR Credentials**: `GET /api/v1/containers/credentials`
-2. **Push Docker Image**: Use Docker CLI to push to ECR
-3. **Create Container**: `POST /api/v1/containers` with ECR image URI
-4. **Poll for Status**: `GET /api/v1/containers/:id` every 10 seconds
-5. **Access Your App**: Once status is `running`, use the provided URL
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/containers/credentials</span>
+</div>
 
-  Container logs are retained for 7 days. For production workloads, consider
-  setting up external log aggregation.
+Create or fetch registry credential helper data when configured. Public container creation can also use any image reference that the target node can pull.
 
 ---
 
@@ -2947,20 +2749,201 @@ Check crypto payment status.
 
 ## Pricing Reference
 
-| Service              | Unit       | Price          |
-| -------------------- | ---------- | -------------- |
-| GPT-4o               | 1M tokens  | $2.50 / $10.00 |
-| gpt-5-mini          | 1M tokens  | $0.15 / $0.60  |
-| Claude Sonnet 4.6    | 1M tokens  | $3.00 / $15.00 |
-| Claude 3.5 Haiku     | 1M tokens  | $1.00 / $5.00  |
-| Embeddings (3-small) | 1M tokens  | $0.02          |
-| Image Generation     | per image  | ~$0.02         |
-| Container Deployment | per deploy | ~$0.50         |
-
-_Input / Output token pricing shown for chat models_
+Pricing is calculated from current model/provider configuration and usage.
+Use the billing dashboard, API Explorer, and model catalog endpoints for live
+rates rather than copying static numbers from this page.
 
   Actual pricing is calculated based on model and token usage. Check the
   [Dashboard](/dashboard/billing) for real-time pricing.
+
+---
+
+## Knowledge
+
+URL: https://elizacloud.ai/docs/api/documents
+
+Summary: Upload and query documents for RAG on elizaOS Cloud.
+
+# Knowledge
+
+<div className="status-badge status-stable">Stable</div>
+
+Upload documents and query your knowledge base for RAG applications.
+
+## Upload Document
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/documents/upload-file</span>
+</div>
+
+Upload one or more documents to your knowledge base using multipart form data.
+
+### Request
+
+Use `multipart/form-data` with the `files` field:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/documents/upload-file" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "files=@document.pdf" \
+  -F "characterId=optional_agent_id"
+```
+
+### Parameters
+
+| Parameter     | Type   | Required | Description                          |
+| ------------- | ------ | -------- | ------------------------------------ |
+| `files`       | file[] | ✓        | One or more files to upload (max 5) |
+| `characterId` | string |          | Associate with a specific agent      |
+
+### Upload Limits
+
+| Limit                | Value         |
+| -------------------- | ------------- |
+| Max file size        | 5 MB per file |
+| Max files per batch  | 5 files       |
+| Max total batch size | 5 MB          |
+
+### Supported Formats
+
+| Format    | Extensions      |
+| --------- | --------------- |
+| PDF       | `.pdf`          |
+| Text      | `.txt`, `.md`   |
+| Documents | `.doc`, `.docx` |
+| Web       | `.html`         |
+| Data      | `.json`, `.csv` |
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "doc_abc123",
+      "filename": "document.pdf",
+      "type": "application/pdf",
+      "size": 1048576,
+      "uploadedAt": 1705312800000,
+      "fragmentCount": 42,
+      "status": "success"
+    }
+  ],
+  "message": "Successfully uploaded 1 file(s)",
+  "successCount": 1,
+  "failedCount": 0,
+  "totalCount": 1
+}
+```
+
+---
+
+## List Documents
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/documents</span>
+</div>
+
+Get all documents in your knowledge base.
+
+### Response
+
+```json
+{
+  "documents": [
+    {
+      "id": "doc_abc123",
+      "name": "company-handbook.pdf",
+      "size": 2097152,
+      "chunks": 85,
+      "createdAt": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "total": 15
+}
+```
+
+---
+
+## Query Knowledge
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/documents/query</span>
+</div>
+
+Search your knowledge base.
+
+### Request
+
+```json
+{
+  "query": "How do I reset my password?",
+  "limit": 5,
+  "minScore": 0.7
+}
+```
+
+### Parameters
+
+| Parameter  | Type    | Required | Description              |
+| ---------- | ------- | -------- | ------------------------ |
+| `query`    | string  | ✓        | Search query             |
+| `limit`    | integer |          | Max results (default: 5) |
+| `minScore` | number  |          | Minimum similarity (0-1) |
+
+### Response
+
+```json
+{
+  "results": [
+    {
+      "content": "To reset your password, go to Settings > Security > Reset Password...",
+      "score": 0.92,
+      "documentId": "doc_abc123",
+      "documentName": "user-guide.pdf"
+    }
+  ]
+}
+```
+
+---
+
+## Get Document
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/documents/{"{id}"}</span>
+</div>
+
+Get document details.
+
+---
+
+## Delete Document
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-delete">DELETE</span>
+  <span className="path">/api/v1/documents/{"{id}"}</span>
+</div>
+
+Remove a document from your knowledge base.
+
+---
+
+## Check Document
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/documents/check</span>
+</div>
+
+Check whether an agent or character has documents.
+
+  Documents are stored in the runtime documents table and chunked for search.
 
 ---
 
@@ -3015,7 +2998,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/embeddings', {
 const data = await response.json();
 console.log(data.data[0].embedding);
 
-````
+```
   
   
 ```python
@@ -3034,7 +3017,7 @@ response = requests.post(
 
 data = response.json()
 print(data['data'][0]['embedding'])
-````
+```
 
   
 
@@ -3090,11 +3073,9 @@ Embed multiple texts in a single request:
 
 ## Available Models
 
-| Model                    | Dimensions | Description                    |
-| ------------------------ | ---------- | ------------------------------ |
-| `text-embedding-3-small` | 1536       | Fast, cost-effective (default) |
-| `text-embedding-3-large` | 3072       | Higher quality embeddings      |
-| `text-embedding-ada-002` | 1536       | Legacy model                   |
+Embedding model availability and dimensions are deployment-specific. Use
+`/api/v1/models`, the API Explorer, or the embeddings response metadata for the
+current catalog.
 
 ---
 
@@ -3293,7 +3274,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/generate-image', {
 const data = await response.json();
 console.log(data.images[0].url);
 
-````
+```
   
   
 ```python
@@ -3314,7 +3295,7 @@ response = requests.post(
 
 data = response.json()
 print(data['images'][0]['url'])
-````
+```
 
   
 
@@ -3382,15 +3363,9 @@ print(data['images'][0]['url'])
 
 ## Available Models
 
-| Model                                   | Provider | Speed  | Best For                 |
-| --------------------------------------- | -------- | ------ | ------------------------ |
-| `google/gemini-2.5-flash-image`         | Google   | Fast   | General use (default)    |
-| `google/gemini-3.1-flash-image-preview` | Google   | Fast   | Preview/testing          |
-| `google/gemini-3-pro-image`             | Google   | Medium | Higher quality           |
-| `openai/gpt-5-nano`                     | OpenAI   | Medium | OpenAI image generation  |
-| `bfl/flux-kontext-max`                  | BFL      | Medium | Context-aware generation |
-
-  **Tip:** Start with `google/gemini-2.5-flash-image` for quick iterations.
+Model availability changes with provider catalogs and deployment configuration.
+Use `/api/v1/models`, the API Explorer, or the generated OpenAPI reference for
+the current image model list and defaults.
 
 ---
 
@@ -3492,195 +3467,6 @@ curl -X POST "https://elizacloud.ai/api/v1/generate-image" \
 ```
 
 Each image in the batch is generated with the style preset applied.
-
----
-
-## Knowledge
-
-URL: https://elizacloud.ai/docs/api/documents
-
-Summary: Upload and query documents for RAG on elizaOS Cloud.
-
-# Knowledge
-
-<div className="status-badge status-stable">Stable</div>
-
-Upload documents and query your knowledge base for RAG applications.
-
-## Upload Document
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/documents/upload-file</span>
-</div>
-
-Upload one or more documents to your knowledge base using multipart form data.
-
-### Request
-
-Use `multipart/form-data` with the `files` field:
-
-```bash
-curl -X POST "https://elizacloud.ai/api/v1/documents/upload-file" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -F "files=@document.pdf" \
-  -F "characterId=optional_agent_id"
-```
-
-### Parameters
-
-| Parameter     | Type   | Required | Description                          |
-| ------------- | ------ | -------- | ------------------------------------ |
-| `files`       | file[] | ✓        | One or more files to upload (max 10) |
-| `characterId` | string |          | Associate with a specific agent      |
-
-### Upload Limits
-
-| Limit                | Value         |
-| -------------------- | ------------- |
-| Max file size        | 5 MB per file |
-| Max files per batch  | 10 files      |
-| Max total batch size | 10 MB         |
-
-### Supported Formats
-
-| Format    | Extensions      |
-| --------- | --------------- |
-| PDF       | `.pdf`          |
-| Text      | `.txt`, `.md`   |
-| Documents | `.doc`, `.docx` |
-| Web       | `.html`         |
-| Data      | `.json`, `.csv` |
-
-### Response
-
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "doc_abc123",
-      "filename": "document.pdf",
-      "type": "application/pdf",
-      "size": 1048576,
-      "uploadedAt": 1705312800000,
-      "fragmentCount": 42,
-      "status": "success"
-    }
-  ],
-  "message": "Successfully uploaded 1 file(s)",
-  "successCount": 1,
-  "failedCount": 0,
-  "totalCount": 1
-}
-```
-
----
-
-## List Documents
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-get">GET</span>
-  <span className="path">/api/v1/documents</span>
-</div>
-
-Get all documents in your knowledge base.
-
-### Response
-
-```json
-{
-  "documents": [
-    {
-      "id": "doc_abc123",
-      "name": "company-handbook.pdf",
-      "size": 2097152,
-      "chunks": 85,
-      "createdAt": "2024-01-15T10:30:00Z"
-    }
-  ],
-  "total": 15
-}
-```
-
----
-
-## Query Knowledge
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/documents/query</span>
-</div>
-
-Search your knowledge base.
-
-### Request
-
-```json
-{
-  "query": "How do I reset my password?",
-  "limit": 5,
-  "minScore": 0.7
-}
-```
-
-### Parameters
-
-| Parameter  | Type    | Required | Description              |
-| ---------- | ------- | -------- | ------------------------ |
-| `query`    | string  | ✓        | Search query             |
-| `limit`    | integer |          | Max results (default: 5) |
-| `minScore` | number  |          | Minimum similarity (0-1) |
-
-### Response
-
-```json
-{
-  "results": [
-    {
-      "content": "To reset your password, go to Settings > Security > Reset Password...",
-      "score": 0.92,
-      "documentId": "doc_abc123",
-      "documentName": "user-guide.pdf"
-    }
-  ]
-}
-```
-
----
-
-## Get Document
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-get">GET</span>
-  <span className="path">/api/v1/documents/{"{id}"}</span>
-</div>
-
-Get document details.
-
----
-
-## Delete Document
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-delete">DELETE</span>
-  <span className="path">/api/v1/documents/{"{id}"}</span>
-</div>
-
-Remove a document from your knowledge base.
-
----
-
-## Check Document
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/documents/check</span>
-</div>
-
-Check if a document exists (by hash).
-
-  Documents are automatically chunked and embedded for semantic search.
 
 ---
 
@@ -3973,7 +3759,7 @@ Discover and list available AI models.
   <span className="path">/api/v1/models</span>
 </div>
 
-Returns a list of all available models.
+Returns a list of available models for the current deployment.
 
 ### Request
 
@@ -3989,17 +3775,11 @@ curl -X GET "https://elizacloud.ai/api/v1/models" \
   "object": "list",
   "data": [
     {
-      "id": "gpt-4o",
+      "id": "provider/model-id",
       "object": "model",
       "created": 1705312800,
-      "owned_by": "openai",
-      "capabilities": ["chat", "function_calling", "vision"]
-    },
-    {
-      "id": "claude-sonnet-4-6",
-      "object": "model",
-      "created": 1705312800,
-      "owned_by": "anthropic"
+      "owned_by": "provider",
+      "capabilities": ["chat"]
     }
   ]
 }
@@ -4009,65 +3789,30 @@ curl -X GET "https://elizacloud.ai/api/v1/models" \
 
 ## Chat Models
 
-The `/api/v1/models` response is the source of truth for the full live catalog. The tables below are representative examples, not an exhaustive list.
-
-### OpenAI
-
-| Model         | Context | Best For                |
-| ------------- | ------- | ----------------------- |
-| `gpt-4o`      | 128K    | General purpose, vision |
-| `gpt-5-mini` | 128K    | Fast, cost-effective    |
-| `gpt-5.5` | 128K    | Complex reasoning       |
-
-### Anthropic
-
-| Model                        | Context | Best For                 |
-| ---------------------------- | ------- | ------------------------ |
-| `claude-sonnet-4-6` | 200K    | Balance of speed/quality |
-| `claude-opus-4-7`     | 200K    | Most capable             |
-| `claude-haiku-4-5-20251001`    | 200K    | Fastest                  |
-
-### Google
-
-| Model              | Context | Best For       |
-| ------------------ | ------- | -------------- |
-| `gemini-1.5-pro`   | 1M      | Long context   |
-| `gemini-1.5-flash` | 1M      | Fast responses |
+The `/api/v1/models` response is the source of truth for the full live catalog.
+Provider availability, context windows, and capabilities can change with
+provider catalogs and deployment configuration.
 
 ---
 
 ## Embedding Models
 
-| Model                    | Dimensions | Description          |
-| ------------------------ | ---------- | -------------------- |
-| `text-embedding-3-small` | 1536       | Fast, cost-effective |
-| `text-embedding-3-large` | 3072       | Higher quality       |
+Embedding model availability and dimensions are returned by the model catalog
+or the embeddings API response for the current deployment.
 
 ---
 
 ## Image Models
 
-| Model                                   | Provider | Speed  | Best For                 |
-| --------------------------------------- | -------- | ------ | ------------------------ |
-| `google/gemini-2.5-flash-image`         | Google   | Fast   | General use (default)    |
-| `google/gemini-3.1-flash-image-preview` | Google   | Fast   | Preview/testing          |
-| `google/gemini-3-pro-image`             | Google   | Medium | Higher quality           |
-| `openai/gpt-5-nano`                     | OpenAI   | Medium | OpenAI image generation  |
-| `bfl/flux-kontext-max`                  | BFL      | Medium | Context-aware generation |
+Image model availability is also catalog-driven. Use `/api/v1/models` and the
+Image Generation API reference for current defaults.
 
 ---
 
 ## Model Selection Tips
 
-  Start with `gpt-5-mini` or `claude-sonnet-4-6` for a good balance.
-
-| Use Case          | Recommended Model   |
-| ----------------- | ------------------- |
-| General chat      | `gpt-5-mini`       |
-| Complex reasoning | `gpt-4o`            |
-| Code generation   | `claude-sonnet-4-6` |
-| Long documents    | `gemini-1.5-pro`    |
-| Fast responses    | `claude-haiku-4-5-20251001`    |
+  Start with the dashboard or API Explorer defaults, then switch models based
+  on observed quality, latency, and cost for your workload.
 
 ---
 
@@ -4133,13 +3878,13 @@ You can generate TypeScript types/clients from that spec using your preferred to
 
 URL: https://elizacloud.ai/docs/api/redemptions
 
-Summary: Redeem earnings on elizaOS Cloud.
+Summary: Redeem earnings for elizaOS tokens.
 
 # Redemptions
 
 <div className="status-badge status-stable">Stable</div>
 
-Redeem your earnings from agent usage.
+Redeem creator earnings for elizaOS tokens. Earnings balances are tracked in USD; redemption requests use integer `pointsAmount`, where 100 points equals $1.00.
 
 ## Get Redemption Balance
 
@@ -4148,16 +3893,35 @@ Redeem your earnings from agent usage.
   <span className="path">/api/v1/redemptions/balance</span>
 </div>
 
-Get your available balance for redemption.
+Get your redeemable earnings balance and eligibility.
 
 ### Response
 
 ```json
 {
-  "available": 125.5,
-  "pending": 24.0,
-  "lifetime": 500.0,
-  "currency": "USD"
+  "success": true,
+  "balance": {
+    "totalEarned": 500,
+    "availableBalance": 125.5,
+    "pendingBalance": 24,
+    "totalRedeemed": 100,
+    "totalPending": 24,
+    "totalConvertedToCredits": 12.25
+  },
+  "bySource": [
+    { "source": "miniapp", "totalEarned": 300, "count": 42 },
+    { "source": "agent", "totalEarned": 200, "count": 10 }
+  ],
+  "limits": {
+    "minRedemptionUsd": 1,
+    "maxSingleRedemptionUsd": 1000,
+    "userDailyLimitUsd": 1000,
+    "userHourlyLimitUsd": 250
+  },
+  "eligibility": {
+    "canRedeem": true,
+    "dailyLimitRemaining": 1000
+  }
 }
 ```
 
@@ -4172,21 +3936,75 @@ Get your available balance for redemption.
 
 Get redemption history.
 
+### Query Parameters
+
+| Parameter | Description |
+| --------- | ----------- |
+| `limit` | Maximum records to return, capped at 100. Default: 20. |
+
 ### Response
 
 ```json
 {
+  "success": true,
   "redemptions": [
     {
       "id": "red_abc123",
-      "amount": 100.0,
+      "pointsAmount": 10000,
+      "usdValue": 100,
+      "elizaAmount": 1234.5,
+      "elizaPriceUsd": 0.081,
+      "network": "base",
+      "payoutAddress": "0x1234...abcd",
       "status": "completed",
-      "method": "crypto",
-      "address": "0x...",
-      "createdAt": "2024-01-15T10:30:00Z",
-      "completedAt": "2024-01-15T11:00:00Z"
+      "txHash": "0x...",
+      "createdAt": "2026-05-05T10:30:00Z",
+      "completedAt": "2026-05-05T11:00:00Z",
+      "requiresReview": false
     }
-  ]
+  ],
+  "paused": false
+}
+```
+
+---
+
+## Get Redemption Quote
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/redemptions/quote</span>
+</div>
+
+Get a token quote before creating a redemption.
+
+### Query Parameters
+
+| Parameter | Required | Description |
+| --------- | -------- | ----------- |
+| `network` | yes | One of `ethereum`, `base`, `bnb`, `solana`. |
+| `pointsAmount` | no | Integer points to redeem. Defaults to 100. |
+
+### Response
+
+```json
+{
+  "success": true,
+  "quote": {
+    "network": "base",
+    "tokenAddress": "0x...",
+    "pointsAmount": 10000,
+    "usdValue": 100,
+    "twapPriceUsd": 0.081,
+    "spotPriceUsd": 0.08,
+    "priceMethod": "TWAP",
+    "elizaAmount": 1234.5,
+    "safetySpreadPercent": 5,
+    "validUntil": "2026-05-05T10:35:00Z",
+    "validitySeconds": 300,
+    "requiresAdminApproval": false
+  },
+  "canRedeem": true
 }
 ```
 
@@ -4199,58 +4017,40 @@ Get redemption history.
   <span className="path">/api/v1/redemptions</span>
 </div>
 
-Request a redemption.
+Create a redemption request.
 
 ### Request
 
 ```json
 {
-  "amount": 100.0,
-  "method": "crypto",
-  "address": "0x1234..."
+  "pointsAmount": 10000,
+  "network": "base",
+  "payoutAddress": "0x1234567890abcdef1234567890abcdef12345678",
+  "idempotencyKey": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
+
+| Field | Description |
+| ----- | ----------- |
+| `appId` | Optional app UUID for attribution. |
+| `pointsAmount` | Required integer, 100-100000. 100 points equals $1.00. |
+| `network` | Required: `ethereum`, `base`, `bnb`, or `solana`. |
+| `payoutAddress` | Required wallet address. |
+| `signature` | Optional wallet signature. |
+| `idempotencyKey` | Optional UUID for safe retries. |
 
 ### Response
 
 ```json
 {
-  "id": "red_abc123",
-  "amount": 100.0,
-  "status": "pending",
-  "estimatedCompletion": "2024-01-16T10:30:00Z"
-}
-```
-
----
-
-## Get Redemption Quote
-
-<div className="api-endpoint">
-  <span className="method-badge method-badge-post">POST</span>
-  <span className="path">/api/v1/redemptions/quote</span>
-</div>
-
-Get a quote for redemption.
-
-### Request
-
-```json
-{
-  "amount": 100.0,
-  "method": "crypto"
-}
-```
-
-### Response
-
-```json
-{
-  "amount": 100.0,
-  "fee": 2.5,
-  "netAmount": 97.5,
-  "rate": 1.0,
-  "expiresAt": "2024-01-15T10:35:00Z"
+  "success": true,
+  "redemptionId": "red_abc123",
+  "quote": {
+    "usdValue": 100,
+    "elizaAmount": 1234.5,
+    "requiresReview": false
+  },
+  "message": "Redemption created and will be processed shortly."
 }
 ```
 
@@ -4263,18 +4063,7 @@ Get a quote for redemption.
   <span className="path">/api/v1/redemptions/status</span>
 </div>
 
-Check overall redemption status.
-
-### Response
-
-```json
-{
-  "eligible": true,
-  "minAmount": 10.0,
-  "maxAmount": 10000.0,
-  "methods": ["crypto", "bank"]
-}
-```
+Check payout network availability.
 
 ---
 
@@ -4287,16 +4076,7 @@ Check overall redemption status.
 
 Get details about a specific redemption.
 
-Redemptions are processed within 24-48 hours.
-
----
-
-## Minimum Redemption
-
-| Method | Minimum |
-| ------ | ------- |
-| Crypto | $10     |
-| Bank   | $100    |
+  Large redemptions may require admin approval. Quote and create responses include review flags when applicable.
 
 ---
 
@@ -4310,7 +4090,8 @@ Summary: Generate videos from text prompts using elizaOS Cloud.
 
 <div className="status-badge status-stable">Stable</div>
 
-Generate AI-powered videos from text descriptions using Fal.ai models.
+Generate AI-powered videos from text descriptions using the configured video
+model catalog.
 
 ## Generate Video
 
@@ -4351,7 +4132,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/generate-video', {
 const data = await response.json();
 console.log(data.video.url);
 
-````
+```
   
   
 ```python
@@ -4370,7 +4151,7 @@ response = requests.post(
 
 data = response.json()
 print(data['video']['url'])
-````
+```
 
   
 
@@ -4379,7 +4160,7 @@ print(data['video']['url'])
 | Parameter | Type   | Required | Description                          |
 | --------- | ------ | -------- | ------------------------------------ |
 | `prompt`  | string | ✓        | Description of the video to generate |
-| `model`   | string |          | Model to use. Default: `fal-ai/veo3` |
+| `model`   | string |          | Model to use. Check the API Explorer for the current default. |
 
 ### Response
 
@@ -4397,22 +4178,9 @@ print(data['video']['url'])
 
 ## Available Models
 
-| Model                                             | Provider | Quality | Speed  |
-| ------------------------------------------------- | -------- | ------- | ------ |
-| `fal-ai/veo3`                                     | Google   | Highest | Slow   |
-| `fal-ai/veo3/fast`                                | Google   | High    | Fast   |
-| `fal-ai/veo3.1`                                   | Google   | Highest | Slow   |
-| `fal-ai/veo3.1/fast`                              | Google   | High    | Fast   |
-| `fal-ai/veo3.1/lite`                              | Google   | Good    | Fast   |
-| `fal-ai/kling-video/v3/pro/text-to-video`         | Kling    | Highest | Medium |
-| `fal-ai/kling-video/v3/standard/text-to-video`    | Kling    | High    | Fast   |
-| `fal-ai/kling-video/v2.6/pro/text-to-video`       | Kling    | High    | Medium |
-| `fal-ai/minimax/hailuo-2.3/pro/text-to-video`     | MiniMax  | High    | Medium |
-| `fal-ai/minimax/hailuo-2.3/standard/text-to-video`| MiniMax  | Good    | Fast   |
-| `wan/v2.6/text-to-video`                          | Wan      | High    | Medium |
-| `fal-ai/pixverse/v5.6/text-to-video`              | PixVerse | High    | Fast   |
-| `fal-ai/pixverse/v5.5/text-to-video`              | PixVerse | Good    | Fast   |
-| `fal-ai/pixverse/v5/text-to-video`                | PixVerse | Good    | Fast   |
+Model availability changes with provider catalogs and deployment configuration.
+Use `/api/v1/models`, the API Explorer, or the generated OpenAPI reference for
+the current video model list.
 
   Video pricing is model-specific and refreshed from fal provider pages. Default
   request costs vary materially by model; inspect the API Explorer or pricing
@@ -4529,7 +4297,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/voice/tts', {
 const audioBlob = await response.blob();
 const audioUrl = URL.createObjectURL(audioBlob);
 
-````
+```
   
   
 ```python
@@ -4549,7 +4317,7 @@ response = requests.post(
 
 with open('speech.mp3', 'wb') as f:
     f.write(response.content)
-````
+```
 
   
 
@@ -4815,11 +4583,9 @@ Check status of active voice cloning jobs.
 
 ## Pricing
 
-| Operation                     | Credits |
-| ----------------------------- | ------- |
-| Text-to-Speech (per 1K chars) | 1       |
-| Speech-to-Text (per minute)   | 2       |
-| Voice Clone (one-time)        | 10      |
+Voice pricing can vary by provider configuration and clone tier. See
+[Billing & Credits](/docs/billing) and the dashboard/API Explorer for current
+rates.
 
 ---
 
@@ -5267,276 +5033,147 @@ All domains are validated for:
 
 URL: https://elizacloud.ai/docs/apps
 
-Summary: Create and manage applications on elizaOS Cloud. Build integrations with your agents and APIs.
+Summary: Create and manage Eliza Cloud apps for hosting, chat routing, domains, analytics, and monetization.
 
 # Apps
 
-Apps let you build integrations and manage access to your elizaOS Cloud resources.
+Apps are Cloud records that connect your product to Eliza Cloud APIs. A Cloud app is separate from your deployable project and from any `@elizaos/app-*` app plugin loaded inside an Eliza runtime.
 
 <div className="status-badge status-stable">Stable</div>
 
 ## Overview
 
-An App in elizaOS Cloud provides:
+An Eliza Cloud app provides:
 
-- **API Keys**: Unique keys for programmatic access
-- **Usage Tracking**: Monitor API calls and costs
-- **User Management**: Track app users
-- **Analytics**: Insights into app performance
-- **Monetization**: Earn from app usage
+- **App identity**: A stable `id` for chat routing, domains, analytics, and marketplace records.
+- **API key**: A one-time key for server-side app administration.
+- **Allowed origins**: The browser origins allowed to call app-owned surfaces.
+- **Monetization**: Creator markup for app-scoped chat usage.
+- **Domains and hosting metadata**: App URL, managed app domains, and custom domains.
+
+Use a **project** for deployable product workspace state and container `project_name`. Use the **Cloud app** `id` when calling `/api/v1/apps/{id}/chat`.
 
 ## Quick Start
 
-### Dashboard
-
-Navigate to [Dashboard → Apps](/dashboard/apps) to create and manage apps.
-
-### API
-
 ```bash
-# Create a new app
-curl -X POST "https://elizacloud.ai/api/v1/apps" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+curl -X POST "https://www.elizacloud.ai/api/v1/apps" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "My Integration",
-    "app_url": "https://myapp.example.com",
-    "description": "Custom integration for my product",
-    "website_url": "https://example.com"
+    "name": "My App",
+    "app_url": "https://placeholder.invalid",
+    "allowed_origins": ["https://placeholder.invalid"],
+    "description": "Custom AI app",
+    "website_url": "https://example.com",
+    "skipGitHubRepo": true
   }'
 ```
-
-## Creating an App
-
-### Navigate to Apps
-Go to [Dashboard → Apps](/dashboard/apps) and click "Create App".
-
-### Configure App
-
-- **Name**: Display name for your app (required)
-- **App URL**: Your app's callback/webhook URL (required)
-- **Description**: What your app does
-- **Website URL**: (Optional) Your public website
-
-### Get API Key
-
-Your app receives a unique API key for authentication.
-
-### Integrate
-
-Use the API key to make requests on behalf of your app.
-
-### Response
 
 ```json
 {
   "success": true,
   "app": {
     "id": "uuid-abc123",
-    "name": "My Integration",
-    "app_url": "https://myapp.example.com",
-    "api_key": "ek_xxx...",
-    "created_at": "2024-01-15T10:30:00Z"
+    "name": "My App",
+    "app_url": "https://placeholder.invalid",
+    "allowed_origins": ["https://placeholder.invalid"],
+    "created_at": "2026-05-05T10:30:00Z"
+  },
+  "apiKey": {
+    "id": "key_abc123"
   }
 }
 ```
 
-  Save your API key securely. It will only be shown once.
+  The app API key is server-side only. For user-facing chat, forward the user's bearer token to the app-scoped chat endpoint so the user's organization balance is charged.
 
-## App Configuration
+## Creating an App
 
-### Basic Settings
+### Register the app
 
-| Field         | Description                        |
-| ------------- | ---------------------------------- |
-| `name`        | Display name for your app          |
-| `description` | Brief description of functionality |
-| `website`     | Public website URL                 |
-| `logo`        | App icon/logo image                |
+Create the Cloud app with `name`, `app_url`, and optional metadata. If your container URL does not exist yet, use a placeholder URL and patch it after deployment.
 
-### API Settings
-
-| Field              | Description                   |
-| ------------------ | ----------------------------- |
-| `rateLimit`        | Requests per minute           |
-| `allowedEndpoints` | Which APIs the app can access |
-| `webhookUrl`       | URL for event notifications   |
-
-## Usage Tracking
-
-Monitor your app's API usage:
+### Enable monetization
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/v1/apps/{appId}/analytics" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-### Response
-
-```json
-{
-  "appId": "app_abc123",
-  "period": "2024-01",
-  "usage": {
-    "totalRequests": 15000,
-    "chatCompletions": 12000,
-    "embeddings": 2500,
-    "images": 500
-  },
-  "costs": {
-    "total": 125.5,
-    "byEndpoint": {
-      "chat": 100.0,
-      "embeddings": 15.0,
-      "images": 10.5
-    }
-  },
-  "uniqueUsers": 234
-}
-```
-
-## User Management
-
-Track users of your app:
-
-```bash
-curl -X GET "https://elizacloud.ai/api/v1/apps/{appId}/users" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-### Response
-
-```json
-{
-  "users": [
-    {
-      "id": "user_123",
-      "firstSeen": "2024-01-10T08:00:00Z",
-      "lastSeen": "2024-01-15T12:30:00Z",
-      "requestCount": 150
-    }
-  ],
-  "total": 234,
-  "page": 1
-}
-```
-
-## Monetization
-
-<div className="status-badge status-new">New</div>
-
-Earn from your app's usage:
-
-```bash
-curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/monetization" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+curl -X PUT "https://www.elizacloud.ai/api/v1/apps/$APP_ID/monetization" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "enabled": true,
-    "pricing": {
-      "perRequest": 0.001,
-      "perToken": 0.00001
-    }
+    "monetizationEnabled": true,
+    "inferenceMarkupPercentage": 100,
+    "purchaseSharePercentage": 10
   }'
 ```
 
-### Earnings
+### Deploy your project
+
+Deploy your project as a container with `POST /api/v1/containers` or the SDK `createContainer()` helper. Use `project_name` for the deployment identifier and pass the Cloud app ID through environment variables.
+
+### Patch the app URL
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/v1/apps/{appId}/earnings" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-```json
-{
-  "total": 1250.0,
-  "pending": 150.0,
-  "available": 1100.0,
-  "history": [
-    {
-      "date": "2024-01-15",
-      "amount": 45.0,
-      "requests": 45000
-    }
-  ]
-}
-```
-
-## Webhooks
-
-Receive real-time notifications:
-
-```json
-{
-  "webhookUrl": "https://your-server.com/webhook",
-  "events": ["user.created", "usage.threshold", "error.occurred"]
-}
-```
-
-### Webhook Payload
-
-```json
-{
-  "event": "usage.threshold",
-  "timestamp": "2024-01-15T10:30:00Z",
-  "data": {
-    "appId": "app_abc123",
-    "threshold": "1000",
-    "currentUsage": 1050
-  }
-}
-```
-
-## API Key Management
-
-### Regenerate Key
-
-```bash
-curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/regenerate-api-key" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-  Regenerating invalidates the old key immediately. Update your integrations
-  promptly.
-
-### Key Permissions
-
-Restrict what your app key can access:
-
-```json
-{
-  "permissions": ["chat:read", "chat:write", "embeddings:read", "agents:read"]
-}
-```
-
-## Custom Domains
-
-Apps support custom domains for multi-tenant deployments:
-
-- **Wildcard Subdomains**: Every app gets `{app-slug}.apps.elizacloud.ai`
-- **Custom Domains**: Bring your own domain with automatic SSL
-- **DNS Management**: Easy verification and configuration
-
-```bash
-# Add a custom domain
-curl -X POST "https://elizacloud.ai/api/v1/apps/{appId}/domains" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+curl -X PATCH "https://www.elizacloud.ai/api/v1/apps/$APP_ID" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"domain": "myapp.example.com"}'
+  -d '{
+    "app_url": "https://my-app.example.com",
+    "allowed_origins": ["https://my-app.example.com"]
+  }'
 ```
 
-See [App Domains](/docs/app-domains) for complete domain management documentation.
+## App-Scoped Chat
+
+Route user chats through the Cloud app record:
+
+```ts
+const response = await fetch(`https://www.elizacloud.ai/api/v1/apps/${APP_ID}/chat`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${userStewardJwt}`,
+  },
+  body: JSON.stringify({
+    model: "provider/model-id",
+    messages: [{ role: "user", content: "Hello" }],
+    stream: false,
+  }),
+});
+```
+
+The app-scoped endpoint charges the user's organization credit balance. If `monetizationEnabled` is true, `inferenceMarkupPercentage` is credited to the Cloud app creator's redeemable earnings.
+
+  `X-Affiliate-Code` is currently implemented on generic chat/message routes such as `/api/v1/chat/completions` and `/api/v1/messages`. The app-scoped route `/api/v1/apps/{id}/chat` does not currently read that header.
+
+## Monetization Fields
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `monetizationEnabled` | boolean | Enables creator earnings for the app. |
+| `inferenceMarkupPercentage` | number | Creator markup on inference, 0-1000. |
+| `purchaseSharePercentage` | number | Purchase share percentage, 0-100. |
+
+Older `enabled` plus nested `pricing` payloads are not accepted by the current app monetization endpoint.
+
+## Earnings and Hosting
+
+Creator markup lands in redeemable earnings. Daily container billing can use those earnings first, then organization credits, when the billing setting `payAsYouGoFromEarnings` is enabled.
+
+Redeem available earnings for elizaOS tokens from [Dashboard -> Earnings](/dashboard/earnings) or the [Redemptions API](/docs/api/redemptions).
 
 ## Best Practices
 
-- **Secure Keys** — Never expose API keys in client-side code; use server-side proxying
-- **Monitor Usage** — Set up alerts in [Dashboard → Analytics](/dashboard/analytics) for unusual activity
-- **Rate Limiting** — Implement client-side rate limiting to avoid 429 errors
-- **Error Handling** — Handle API errors gracefully with retry logic (see [Error Handling](/docs/errors))
-- **Custom Domains** — Use canonical tags when serving from multiple domains to avoid SEO issues
+- Keep admin API keys on the server.
+- Forward user bearer tokens for user-facing app-scoped chat.
+- Store the Cloud app `id` separately from container `project_name`.
+- Patch `app_url` and `allowed_origins` after container deployment.
+- Handle 402 responses by sending users to [Dashboard -> Billing](/dashboard/billing).
 
 ## Next Steps
 
+  
+    Build and deploy a monetized app
+  
   
     Configure custom domains
   
@@ -5544,10 +5181,7 @@ See [App Domains](/docs/app-domains) for complete domain management documentatio
     Deploy custom containers
   
   
-    Complete API documentation
-  
-  
-    Set up monetization
+    API reference
 
 ---
 
@@ -5591,14 +5225,14 @@ elizaOS Cloud supports multiple authentication methods:
   
 ```bash
 curl -X GET "https://elizacloud.ai/api/v1/dashboard" \
-  -H "Authorization: Bearer ek_live_xxxxxxxxxxxx"
+  -H "Authorization: Bearer eliza_xxxxxxxxxxxx"
 ```
   
   
 ```javascript
 const response = await fetch('https://elizacloud.ai/api/v1/dashboard', {
   headers: {
-    'Authorization': 'Bearer ek_live_xxxxxxxxxxxx',
+    'Authorization': 'Bearer eliza_xxxxxxxxxxxx',
   },
 });
 ```
@@ -5608,18 +5242,16 @@ const response = await fetch('https://elizacloud.ai/api/v1/dashboard', {
 
 response = requests.get(
 'https://elizacloud.ai/api/v1/dashboard',
-headers={'Authorization': 'Bearer ek_live_xxxxxxxxxxxx'}
+headers={'Authorization': 'Bearer eliza_xxxxxxxxxxxx'}
 )
 
-````
+```
   
 
-### Key Types
+### Key Prefix
 
-| Prefix | Environment | Description |
-|--------|-------------|-------------|
-| `ek_live_` | Production | Live API access |
-| `ek_test_` | Testing | Sandbox environment |
+API keys use the `eliza_` prefix. The same header formats work for dashboard,
+server, CLI, and wallet-issued keys.
 
 ### Key Permissions
 
@@ -5635,7 +5267,7 @@ Restrict keys to specific endpoints:
   ],
   "rateLimit": 100
 }
-````
+```
 
 ### Available Permissions
 
@@ -5662,21 +5294,21 @@ Permissions can be used to restrict what operations an API key can perform.
 
 ```bash
 curl -X GET "https://elizacloud.ai/api/v1/api-keys" \
-  -H "Authorization: Bearer ek_live_xxxxxxxxxxxx"
+  -H "Authorization: Bearer eliza_xxxxxxxxxxxx"
 ```
 
 ### Regenerate Key
 
 ```bash
 curl -X POST "https://elizacloud.ai/api/v1/api-keys/{id}/regenerate" \
-  -H "Authorization: Bearer ek_live_xxxxxxxxxxxx"
+  -H "Authorization: Bearer eliza_xxxxxxxxxxxx"
 ```
 
 ### Revoke Key
 
 ```bash
 curl -X DELETE "https://elizacloud.ai/api/v1/api-keys/{id}" \
-  -H "Authorization: Bearer ek_live_xxxxxxxxxxxx"
+  -H "Authorization: Bearer eliza_xxxxxxxxxxxx"
 ```
 
 ## Session Authentication
@@ -5764,7 +5396,7 @@ curl -X POST "https://elizacloud.ai/api/v1/chat/completions" \
 
 ```bash
 # .env.local (never commit this file)
-ELIZA_API_KEY=ek_live_xxxxxxxxxxxx
+ELIZA_API_KEY=eliza_xxxxxxxxxxxx
 ```
 
 ```javascript
@@ -5809,15 +5441,9 @@ const apiKey = process.env.ELIZA_API_KEY;
 
 ## Rate Limiting
 
-API keys have rate limits based on your plan:
-
-| Plan       | Rate Limit  |
-| ---------- | ----------- |
-| Free       | 60 req/min  |
-| Pro        | 300 req/min |
-| Enterprise | Custom      |
-
-Rate limit headers:
+Rate limits are endpoint-specific. See [Rate Limits](/docs/rate-limits) for the
+current presets and retry guidance. Rate-limited responses include headers such
+as:
 
 ```
 X-RateLimit-Limit: 60
@@ -6172,7 +5798,8 @@ Stay up to date with the latest changes to elizaOS Cloud.
 - **Consistent ids** — Usage, cost breakdown, and pricing resolution treat **legacy** gateway-style ids (`xai/…`, `mistral/…`) and **OpenRouter** catalog ids (`x-ai/…`, `mistralai/…`) as the same logical model or provider where it matters for billing and charts. **Why:** After OpenRouter became the primary text path, stored settings and historical rows could use either spelling; without normalization the same model appeared twice in analytics or failed price lookup depending on which string was stored.
 - **SQL grouping for top-N** — Model breakdowns group on normalized keys in the database before `LIMIT`, so ranked “top models” stay correct when traffic was split across spellings. **Why:** Merging only in application code after a capped query can exclude rows that only qualify after merge.
 
-Docs: [OpenRouter model id compatibility](../../docs/openrouter-model-id-compatibility.md). Engineering: [CHANGELOG.md](../../CHANGELOG.md).
+Docs: see the [Models API](/docs/api/models) for current model identifiers and
+the [Billing guide](/docs/billing) for pricing behavior.
 
 ---
 
@@ -6184,7 +5811,8 @@ Docs: [OpenRouter model id compatibility](../../docs/openrouter-model-id-compati
 - **Session-only endpoints** — Some flows stay **browser session only** (e.g. accepting an invite, redeeming a signup code, Stripe checkout, CLI web **completion** after login). If you send `X-API-Key` or `Bearer eliza_…` there, the edge returns **`401`** with code **`session_auth_required`**. **Why:** Clear signal that the URL expects a logged-in user in the product, not a script key; reduces abuse on one-time or redirect flows.
 - **CLI login paths** — Creating a CLI session and polling status stay easy for the terminal; completing login in the browser follows normal API auth rules. **Why:** Completion issues API key material and must align with cookie session semantics.
 
-Docs: [API authentication](../../docs/api-authentication.md) (mechanics), [Auth consistency — WHY](../../docs/auth-api-consistency.md). Engineering: [CHANGELOG.md](../../CHANGELOG.md).
+Docs: see [Authentication](/docs/authentication) and the
+[API overview](/docs/api/overview).
 
 ---
 
@@ -6197,7 +5825,10 @@ Docs: [API authentication](../../docs/api-authentication.md) (mechanics), [Auth 
 - **`GET /api/v1/referrals`** — Returns the signed-in user’s referral row as flat JSON (`code`, `total_referrals`, `is_active`); creates a code via `getOrCreateCode` on first success. **Why:** One round trip for “my link,” no separate create endpoint; idempotent and safe for duplicate calls from header + Affiliates page.
 - **HTTP semantics** — `401` for auth failures (including `Authentication required` and API key errors), **`403` for `ForbiddenError`** (e.g. no org), `500` for unexpected errors. **Why:** Callers can tell “not logged in” from “logged in but not allowed” instead of masking 403 as 500.
 - **Dashboard** — Header **Invite** (lazy fetch, clipboard, toast; hidden for anonymous users and during `authGraceActive`). Affiliates page **Invite friends** card above the affiliate link (distinct styling); inactive codes show a warning and block copy in header. **Why:** Discoverability without a new nav item; avoids conflating `?ref=` with `?affiliate=`; grace-period gating avoids broken clicks mid-session sync.
-- **Docs** — [docs/referrals.md](../../docs/referrals.md) (flows, APIs, WHYs), [docs/affiliate-referral-comparison.md](../../docs/affiliate-referral-comparison.md); README subsection updated; [ROADMAP.md](../../docs/ROADMAP.md) entry. Shared type `ReferralMeResponse` + `parseReferralMeResponse` in `packages/lib/types/referral-me.ts`. **Why:** README previously linked to missing referral docs; flat JSON and parser reduce client bugs.
+- **Docs** — README referral docs were updated alongside the API and dashboard
+  changes. Shared type `ReferralMeResponse` + `parseReferralMeResponse` in
+  `packages/lib/types/referral-me.ts`. **Why:** flat JSON and parser reduce
+  client bugs.
 
 ### Mar 28, 2026
 
@@ -6206,7 +5837,8 @@ Docs: [API authentication](../../docs/api-authentication.md) (mechanics), [Auth 
 - **`user_characters.settings.anthropicThinkingBudgetTokens`**: integer token budget for Anthropic “extended thinking” on **`POST /api/agents/{id}/mcp`** (`chat`) and **`POST /api/agents/{id}/a2a`** (`chat`). **`0`** disables thinking for that agent even if `ANTHROPIC_COT_BUDGET` is set; omitted or invalid values fall back to env default. **Why:** Agent owners set inference policy in stored character data without redeploying; request bodies must not carry budgets so third-party MCP/A2A callers cannot inflate token spend.
 - **`ANTHROPIC_COT_BUDGET`**: clarified as **default** when the character does not set the key (and for routes that have no resolved character). **`ANTHROPIC_COT_BUDGET_MAX`**: optional ceiling on any effective budget. **Why:** Operators keep a baseline and a worst-case cap while still allowing per-agent overrides.
 
-Docs: [Anthropic CoT / thinking](../../docs/anthropic-cot-budget.md), [CHANGELOG.md](../../CHANGELOG.md).
+Docs: see [A2A Protocol](/docs/a2a) and [MCP Integration](/docs/mcps) for
+agent protocol usage.
 
 ### Mar 27, 2026
 
@@ -6220,7 +5852,8 @@ Docs: [Anthropic CoT / thinking](../../docs/anthropic-cot-budget.md), [CHANGELOG
 - **`mockAgentPricingMinimumDepositForRouteTests`**: route tests that tweak minimum deposit now spread the real `AGENT_PRICING` object instead of replacing it with `{ MINIMUM_DEPOSIT }` only. **Why:** `mock.module` replaces the entire module for the process; partial objects removed hourly rates and warning thresholds and broke Agent billing cron tests when the full unit suite ran.
 - Billing cron test file renamed to `z-agent-billing-route.test.ts` with stable queue-backed DB mocks re-registered in `beforeEach`. **Why:** Reduces order-dependent failures when other tests also mock `@/db/client`.
 
-Engineering details: [CHANGELOG.md](../../CHANGELOG.md), [docs/unit-testing-agent-mocks.md](../../docs/unit-testing-agent-mocks.md), [docs/anthropic-cot-budget.md](../../docs/anthropic-cot-budget.md).
+Engineering details live in the repository changelog and Cloud engineering
+notes.
 
 ### Mar 8, 2026
 
@@ -6244,21 +5877,29 @@ Engineering details: [CHANGELOG.md](../../CHANGELOG.md), [docs/unit-testing-agen
 - **Wallet header signature:** Per-request auth via `X-Wallet-Address`, `X-Timestamp`, `X-Wallet-Signature`. First valid request for an unknown wallet creates the account (same path as SIWE). **Why:** Clients that prefer not to store an API key can prove ownership on each request; method+path in the signed message prevents replay on other endpoints.
 - **x402 topup:** Can credit the signer when wallet sig headers are present, or use `body.walletAddress`. All wallet signup (SIWE, wallet-header, topup) uses shared `findOrCreateUserByWalletAddress` (slug `wallet-${address}`, optional initial credits, race handling). **Why:** One consistent signup path; topup with wallet sig ties payer to credited account.
 - **Proxy & CORS:** Requests with `X-Wallet-Signature` pass through without a browser session; wallet headers added to `Access-Control-Allow-Headers`; `/api/v1/topup` added to public paths. **Why:** Otherwise wallet-header auth would get 401 at the proxy before the API runs.
-- **Docs:** [docs/wallet-api.md](../docs/wallet-api.md) (WHYs, lifecycle, file list), [Wallet API](/docs/wallet-api) and [Authentication](/docs/authentication) updated, README subsection, changelog. llms.txt regenerated.
+- **Docs:** [Wallet API](/docs/wallet-api) and
+  [Authentication](/docs/authentication) updated, README subsection, changelog.
+  llms.txt regenerated.
 
 **Referrals & Affiliates — docs, safety, and cleanup**
 
-- **Documentation**: Added [docs/referrals.md](../docs/referrals.md) with full referral and affiliate flow, WHYs, and API. Referral revenue is 50/40/10 (ElizaCloud / app owner / creator); affiliate revenue is markup on top-up and MCP, passed to the customer. No double-apply on the same transaction.
+- **Documentation**: Added referral and affiliate flow notes. Referral revenue
+  is 50/40/10 (ElizaCloud / app owner / creator); affiliate revenue is markup on
+  top-up and MCP, passed to the customer. No double-apply on the same
+  transaction.
 - **Revenue math**: Single source of truth for referral splits (`REFERRAL_REVENUE_SPLITS` in `lib/services/referrals.ts`) with startup assertions (50+40+10=100%, 8+2=10%). `calculateRevenueSplits` now asserts total allocated equals purchase amount so changes to constants cannot silently over- or under-pay.
 - **Dead code removed**: Removed unused `processReferralCommission` and `COMMISSION_RATE` from referrals service and unused `referralSignupsRepository` import from Stripe webhook to avoid accidental re-use (which would have double-paid referral on top of 50/40/10).
-- **Comparison doc**: [docs/affiliate-referral-comparison.md](../docs/affiliate-referral-comparison.md) compares this repo with the other cloud repo (commission tiers vs 50/40/10, affiliate markup usage) and includes a revenue math audit.
+- **Comparison doc**: Added an affiliate/referral comparison note covering
+  commission tiers vs 50/40/10, affiliate markup usage, and revenue math.
 - **README**: Referrals & Affiliates subsection under Credit System & Billing with links to the new docs.
 
 **Signup codes — env config, Discord/Telegram wiring, docs**
 
 - **Config**: Signup codes now load from `SIGNUP_CODES_JSON` env var (JSON object); if unset, default to `{}`. **Why:** Env allows per-environment codes without a config file in the repo; default keeps the app runnable when the var is not set.
 - **Eliza App**: Optional `signup_code` in Discord and Telegram auth request bodies; for **new** users only, we apply the bonus in `createUserWithOrganization` (invalid or already-used code logs a warning and does not block account creation). **Why:** New users can get base credits + signup bonus in one step; existing users and bad codes do not break signup.
-- **Docs**: [docs/signup-codes.md](../docs/signup-codes.md) expanded with WHYs (why env var, why one per org, why session-only redeem, why CRITICAL rate limit, why no-cache, two-layer one-per-org). README Signup codes subsection and changelog entry added.
+- **Docs**: README signup code notes were expanded with WHYs (why env var, why
+  one per org, why session-only redeem, why CRITICAL rate limit, why no-cache,
+  two-layer one-per-org).
 
 ---
 
@@ -6545,7 +6186,7 @@ For social media interactions:
 
 | Provider    | Models                           |
 | ----------- | -------------------------------- |
-| `openai`    | gpt-4o, gpt-5-mini, gpt-5.5 |
+| `openai`    | OpenAI-compatible model ids from the current catalog |
 | `anthropic` | claude-sonnet-4-6, claude-opus-4-7 |
 | `google`    | gemini-1.5-pro, gemini-1.5-flash |
 
@@ -6713,11 +6354,11 @@ The character JSON is validated on upload. Common errors:
 
 URL: https://elizacloud.ai/docs/containers
 
-Summary: Deploy custom Docker containers on elizaOS Cloud with managed infrastructure and auto-scaling.
+Summary: Deploy custom Docker containers on Eliza Cloud.
 
 # Containers
 
-Deploy custom Docker containers with managed infrastructure on elizaOS Cloud.
+Deploy custom Docker images on Eliza Cloud managed container infrastructure.
 
 <div className="status-badge status-beta">Beta</div>
 
@@ -6725,29 +6366,28 @@ Deploy custom Docker containers with managed infrastructure on elizaOS Cloud.
 
 Container deployment provides:
 
-- **Custom Runtimes**: Run any Docker image
-- **Auto-scaling**: Scale based on load
-- **Managed Infrastructure**: No server management
-- **Health Monitoring**: Automatic health checks
-- **Logs & Metrics**: Built-in observability
+- **Custom runtimes**: Run your own Docker image.
+- **Project identity**: Use `project_name` as the stable deployment identifier.
+- **Managed health checks**: Poll your `health_check_path` and update status.
+- **Logs and metrics**: Fetch logs and runtime metrics through the API.
+- **Earnings-first billing**: Daily hosting can be paid from redeemable earnings before org credits.
 
 ## Quick Start
 
-### Dashboard
-
-Navigate to [Dashboard → Containers](/dashboard/containers) for the visual interface.
-
-### API
-
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/containers" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+curl -X POST "https://www.elizacloud.ai/api/v1/containers" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "my-service",
-    "image": "myregistry/myimage:latest",
+    "project_name": "my-service",
+    "image": "ghcr.io/acme/my-service:latest",
     "port": 3000,
-    "env": {
+    "cpu": 256,
+    "memory": 512,
+    "desired_count": 1,
+    "health_check_path": "/health",
+    "environment_vars": {
       "NODE_ENV": "production"
     }
   }'
@@ -6755,259 +6395,384 @@ curl -X POST "https://elizacloud.ai/api/v1/containers" \
 
 ## Deploying a Container
 
-### Prepare Your Image
-Build and push your Docker image to a registry.
+### Build and push your image
 
-### Configure Deployment
+Push to a registry that Cloud nodes can pull from, such as GHCR, Docker Hub, or your private registry.
 
-Set container settings via dashboard or API.
+### Create the container
 
-### Deploy
+Send `image`, `project_name`, `port`, resources, and any `environment_vars`.
 
-Launch your container on elizaOS Cloud.
+### Poll status
 
-### Monitor
+Poll `GET /api/v1/containers/{id}` until `data.status` is `running` or `failed`.
 
-Track logs, metrics, and health status.
+### Patch your Cloud app
 
-### Deployment Configuration
+For app projects, patch the Eliza Cloud app `app_url` and `allowed_origins` to the running container URL.
+
+## Deployment Configuration
 
 ```json
 {
   "name": "my-service",
-  "image": "myregistry/myimage:latest",
+  "project_name": "my-service",
+  "image": "ghcr.io/acme/my-service:latest",
   "port": 3000,
-  "replicas": 2,
-  "resources": {
-    "cpu": "0.5",
-    "memory": "512Mi"
-  },
-  "env": {
-    "NODE_ENV": "production",
-    "API_KEY": "{{secrets.API_KEY}}"
-  },
-  "healthCheck": {
-    "path": "/health",
-    "interval": 30,
-    "timeout": 5
+  "cpu": 256,
+  "memory": 512,
+  "desired_count": 1,
+  "health_check_path": "/health",
+  "environment_vars": {
+    "PORT": "3000",
+    "ELIZA_APP_ID": "uuid-abc123"
   }
 }
 ```
 
-## Container Settings
+| Field | Description |
+| ----- | ----------- |
+| `name` | Human-readable container name. |
+| `project_name` | Stable project identifier used for deployment records and project-scoped volumes. |
+| `image` | Full image reference pulled directly by the container backend. |
+| `port` | Application port. Default: 3000. |
+| `cpu` | CPU units used for API compatibility and billing. Default: 256. |
+| `memory` | Memory in MB. Default: 512. |
+| `desired_count` | Currently must be 1. |
+| `health_check_path` | HTTP health path. Default: `/health`. |
+| `environment_vars` | String key/value environment variables. |
 
-### Basic Settings
+  The current public create-container payload uses `image`, not the older `ecr_image_uri` field. The backend pulls the image directly on the target Docker node.
 
-| Field      | Type    | Description              |
-| ---------- | ------- | ------------------------ |
-| `name`     | string  | Container name (unique)  |
-| `image`    | string  | Docker image URL         |
-| `port`     | integer | Container port to expose |
-| `replicas` | integer | Number of instances      |
+## Billing
 
-### Resources
+Daily container billing calculates hosting cost and, when `payAsYouGoFromEarnings` is enabled for the organization, debits the owner's redeemable earnings first. Any remainder falls through to organization credits.
 
-| Field    | Options                     | Description  |
-| -------- | --------------------------- | ------------ |
-| `cpu`    | 0.25, 0.5, 1, 2, 4          | CPU cores    |
-| `memory` | 256Mi, 512Mi, 1Gi, 2Gi, 4Gi | Memory limit |
-
-### Environment Variables
-
-```json
-{
-  "env": {
-    "DATABASE_URL": "postgres://...",
-    "REDIS_URL": "redis://...",
-    "SECRET_KEY": "{{secrets.SECRET_KEY}}"
-  }
-}
-```
-
-Use `{{secrets.NAME}}` to reference secrets stored in elizaOS Cloud.
-
-## Registry Authentication
-
-### Add Credentials
-
-```bash
-curl -X POST "https://elizacloud.ai/api/v1/containers/credentials" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "registry": "ghcr.io",
-    "username": "your-username",
-    "password": "your-token"
-  }'
-```
-
-### Supported Registries
-
-- Docker Hub
-- GitHub Container Registry (ghcr.io)
-- Google Container Registry (gcr.io)
-- AWS ECR
-- Custom registries
-
-## Health Checks
-
-Configure health monitoring:
-
-```json
-{
-  "healthCheck": {
-    "type": "http",
-    "path": "/health",
-    "port": 3000,
-    "interval": 30,
-    "timeout": 5,
-    "retries": 3,
-    "startPeriod": 60
-  }
-}
-```
-
-### Health Check Types
-
-| Type   | Description              |
-| ------ | ------------------------ |
-| `http` | HTTP GET request to path |
-| `tcp`  | TCP connection to port   |
-| `exec` | Run command in container |
-
-## Logs & Metrics
-
-### View Logs
-
-```bash
-curl -X GET "https://elizacloud.ai/api/v1/containers/{id}/logs?lines=100" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-### Stream Logs
-
-```bash
-curl -X GET "https://elizacloud.ai/api/v1/containers/{id}/logs/stream" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Accept: text/event-stream"
-```
-
-### Get Metrics
-
-```bash
-curl -X GET "https://elizacloud.ai/api/v1/containers/{id}/metrics" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-```json
-{
-  "cpu": {
-    "usage": 0.25,
-    "limit": 1.0
-  },
-  "memory": {
-    "usage": 256000000,
-    "limit": 536870912
-  },
-  "network": {
-    "rxBytes": 1024000,
-    "txBytes": 512000
-  },
-  "requests": {
-    "total": 15000,
-    "errors": 12
-  }
-}
-```
-
-## Deployments
-
-### List Deployments
-
-```bash
-curl -X GET "https://elizacloud.ai/api/v1/containers/{id}/deployments" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-### Rollback
-
-```bash
-curl -X POST "https://elizacloud.ai/api/v1/containers/{id}/deployments/{deploymentId}/rollback" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-## Scaling
-
-### Manual Scaling
-
-```bash
-curl -X PATCH "https://elizacloud.ai/api/v1/containers/{id}" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"replicas": 5}'
-```
-
-### Auto-scaling
-
-```json
-{
-  "autoscaling": {
-    "enabled": true,
-    "minReplicas": 1,
-    "maxReplicas": 10,
-    "targetCPU": 70,
-    "targetMemory": 80
-  }
-}
-```
-
-## Quotas
-
-Check your container quota:
-
-```bash
-curl -X GET "https://elizacloud.ai/api/v1/containers/quota" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-```json
-{
-  "containers": {
-    "used": 3,
-    "limit": 10
-  },
-  "cpu": {
-    "used": 2.5,
-    "limit": 8.0
-  },
-  "memory": {
-    "used": "2.5Gi",
-    "limit": "8Gi"
-  }
-}
-```
-
-## Pricing
-
-See [Billing & Credits](/docs/billing) for current pricing on CPU, memory, network, and storage.
+When earnings-first billing is off, hosting bills come only from credits and earnings remain available for token cashout.
 
 ## Best Practices
 
-- **Health Checks** — Always configure health checks for reliability
-- **Resource Limits** — Set appropriate CPU and memory limits to control costs
-- **Secrets** — Use `{{secrets.NAME}}` references for sensitive data
-- **Monitoring** — Set up alerts in [Dashboard → Analytics](/dashboard/analytics) for critical metrics
+- Expose a fast `/health` route.
+- Keep `desired_count` at `1`.
+- Keep secrets server-side and pass only required runtime env vars.
+- Use a stable `project_name`; project-scoped persistent data is keyed by organization and project name.
+- For monetized apps, pass `ELIZA_APP_ID` to your container and patch the Cloud app URL after deploy.
 
 ## Next Steps
 
   
-    Create apps for your containers
+    Deploy an earning app
   
   
-    Connect containers to MCP
+    API reference
   
   
-    Understand container costs
+    Understand hosting costs
+
+---
+
+## Knowledge Base
+
+URL: https://elizacloud.ai/docs/documents
+
+Summary: Add documents to your agents' knowledge base for RAG-powered responses on elizaOS Cloud.
+
+# Knowledge Base
+
+Enhance your agents with document-based knowledge using Retrieval-Augmented Generation (RAG).
+
+<div className="status-badge status-stable">Stable</div>
+
+## Overview
+
+The Knowledge Base allows you to:
+
+- Upload documents (PDF, TXT, MD, etc.)
+- Automatically chunk and index content
+- Query for relevant context
+- Connect to agents for enhanced responses
+
+## Quick Start
+
+### Dashboard
+
+Navigate to [Dashboard → Knowledge](/dashboard/documents) for the visual interface.
+
+### API
+
+  
+```bash
+# Upload a document
+curl -X POST "https://elizacloud.ai/api/v1/documents/upload-file" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "files=@document.pdf" \
+  -F "characterId=agent_abc123"
+```
+  
+  
+```javascript
+const formData = new FormData();
+formData.append('files', file);
+formData.append('characterId', 'agent_abc123');
+
+const response = await fetch('https://elizacloud.ai/api/v1/documents/upload-file', {
+method: 'POST',
+headers: {
+'Authorization': 'Bearer YOUR_API_KEY',
+},
+body: formData,
+});
+
+const result = await response.json();
+console.log('Document uploaded:', result.id);
+
+```
+  
+  
+```python
+
+with open('document.pdf', 'rb') as f:
+    response = requests.post(
+        'https://elizacloud.ai/api/v1/documents/upload-file',
+        headers={'Authorization': 'Bearer YOUR_API_KEY'},
+        files={'files': f},
+        data={'characterId': 'agent_abc123'},
+    )
+
+result = response.json()
+print(f'Document uploaded: {result["id"]}')
+```
+
+  
+
+## Supported Formats
+
+| Format   | Extension | Max Size |
+| -------- | --------- | -------- |
+| PDF      | `.pdf`    | 5MB      |
+| Text     | `.txt`    | 5MB      |
+| Markdown | `.md`     | 5MB      |
+| Word     | `.docx`   | 5MB      |
+| JSON     | `.json`   | 5MB      |
+| XML      | `.xml`    | 5MB      |
+| YAML     | `.yaml`   | 5MB      |
+| CSV      | `.csv`    | 5MB      |
+
+**Note:** Maximum 5MB per file and 5MB total per batch upload.
+
+## Upload Documents
+
+### Prepare Your Documents
+Ensure documents are in a supported format and within size limits.
+
+### Upload via Dashboard or API
+
+Use the Knowledge dashboard or the upload API endpoint.
+
+### Wait for Processing
+
+Documents are stored as runtime documents and chunked for search.
+
+### Connect to Agent
+
+Link the knowledge base to your agent for RAG.
+
+### Upload Response
+
+```json
+{
+  "id": "doc_abc123",
+  "filename": "product-manual.pdf",
+  "status": "processing",
+  "chunks": null,
+  "createdAt": "2024-01-15T10:30:00Z"
+}
+```
+
+### Check Processing Status
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/documents/check?documentId=doc_abc123" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+```json
+{
+  "id": "doc_abc123",
+  "status": "completed",
+  "chunks": 42,
+  "tokensUsed": 15234
+}
+```
+
+## Query Knowledge
+
+Search your knowledge base:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/documents/query" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "How do I reset my password?",
+    "agentId": "agent_abc123",
+    "limit": 5
+  }'
+```
+
+### Response
+
+```json
+{
+  "results": [
+    {
+      "content": "To reset your password, navigate to Settings > Security > Reset Password...",
+      "score": 0.92,
+      "documentId": "doc_abc123",
+      "metadata": {
+        "page": 15,
+        "section": "Account Settings"
+      }
+    },
+    {
+      "content": "Password requirements include at least 8 characters...",
+      "score": 0.85,
+      "documentId": "doc_abc123",
+      "metadata": {
+        "page": 16,
+        "section": "Security"
+      }
+    }
+  ]
+}
+```
+
+## Managing Documents
+
+### List Documents
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/documents?agentId=agent_abc123" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Get Document Details
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/documents/doc_abc123" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Delete Document
+
+```bash
+curl -X DELETE "https://elizacloud.ai/api/v1/documents/doc_abc123" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## RAG Configuration
+
+### Chunk Settings
+
+Configure how documents are split:
+
+| Setting        | Default | Description            |
+| -------------- | ------- | ---------------------- |
+| `chunkSize`    | 1000    | Characters per chunk   |
+| `chunkOverlap` | 200     | Overlap between chunks |
+| `minChunkSize` | 100     | Minimum chunk size     |
+
+### Retrieval Settings
+
+Configure query behavior:
+
+| Setting    | Default | Description                   |
+| ---------- | ------- | ----------------------------- |
+| `limit`    | 5       | Number of results             |
+| `minScore` | 0.7     | Minimum relevance score       |
+| `rerank`   | true    | Re-rank results for relevance |
+
+## Agent Integration
+
+### Automatic RAG
+
+When knowledge is connected to an agent, relevant context is automatically retrieved:
+
+```javascript
+// Agent with knowledge base
+const response = await fetch("https://elizacloud.ai/api/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    Authorization: "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    model: "agent_abc123", // Agent with connected knowledge
+    messages: [{ role: "user", content: "How do I reset my password?" }],
+  }),
+});
+```
+
+The agent automatically queries the knowledge base and includes relevant context in its response.
+
+### Manual RAG
+
+Query knowledge and inject context manually:
+
+```javascript
+// 1. Query knowledge
+const knowledge = await fetch("https://elizacloud.ai/api/v1/documents/query", {
+  method: "POST",
+  headers: {
+    Authorization: "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    query: "password reset",
+    limit: 3,
+  }),
+}).then((r) => r.json());
+
+// 2. Include in chat
+const context = knowledge.results.map((r) => r.content).join("\n\n");
+
+const response = await fetch("https://elizacloud.ai/api/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    Authorization: "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    model: "gpt-4o",
+    messages: [
+      { role: "system", content: `Use this context:\n\n${context}` },
+      { role: "user", content: "How do I reset my password?" },
+    ],
+  }),
+});
+```
+
+## Pricing
+
+See [Billing & Credits](/docs/billing) for current pricing on document uploads, embeddings, queries, and storage.
+
+## Best Practices
+
+- **Quality Content** — Use well-structured, accurate documents
+- **Organize** — Group related documents for better retrieval
+- **Update Regularly** — Keep knowledge current by refreshing documents
+- **Test Queries** — Verify retrieval quality before production
+
+## Next Steps
+
+  
+    Create agents that use knowledge
+  
+  
+    Integrate RAG into your applications
+  
+  
+    Learn about vector embeddings
 
 ---
 
@@ -7015,243 +6780,101 @@ See [Billing & Credits](/docs/billing) for current pricing on CPU, memory, netwo
 
 URL: https://elizacloud.ai/docs/earnings
 
-Summary: Monetize your agents and apps on elizaOS Cloud. Earn from usage and marketplace listings.
+Summary: Track creator earnings and redeem them for elizaOS tokens.
 
 # Earnings
 
-Monetize your AI agents and apps on elizaOS Cloud.
+Monetize Eliza Cloud apps, agents, and MCPs. App creator markup lands in redeemable earnings and can be used for container hosting or redeemed for elizaOS tokens.
 
 <div className="status-badge status-new">New</div>
 
 ## Overview
 
-Earn credits from:
+Earn from:
 
-- **Agent Usage**: Users interact with your published agents
-- **App Revenue**: Third-party apps use your APIs
-- **Marketplace Sales**: Users clone your agent templates
-
-## Getting Started
-
-### Create an Agent
-Build and test your agent using the Agent Creator.
-
-### Publish to Marketplace
-
-Set pricing and publish to the elizaOS marketplace.
-
-### Track Earnings
-
-Monitor usage and earnings in the dashboard.
-
-### Redeem
-
-Convert earned credits to USDC or other currencies.
-
-## Publishing Agents
-
-### Publish via API
-
-```bash
-curl -X POST "https://elizacloud.ai/api/v1/agents/{agentId}/publish" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "visibility": "public",
-    "pricing": {
-      "perMessage": 0.001,
-      "perMinute": 0.01
-    },
-    "categories": ["assistant", "productivity"],
-    "tags": ["research", "analysis"]
-  }'
-```
-
-### Pricing Options
-
-| Model          | Description                    |
-| -------------- | ------------------------------ |
-| `perMessage`   | Charge per message sent        |
-| `perMinute`    | Charge per conversation minute |
-| `perSession`   | Flat fee per session           |
-| `subscription` | Monthly subscription           |
+- **Eliza Cloud apps**: App-scoped chat creator markup.
+- **Agents**: Published agent usage.
+- **MCPs**: Monetized MCP usage.
+- **Affiliates**: Affiliate markup on implemented generic chat/message routes.
 
 ## Earnings Dashboard
 
-View earnings at [Dashboard → Earnings](/dashboard/earnings).
-
-### API
+View balances, hosting spend, and redemptions at [Dashboard -> Earnings](/dashboard/earnings).
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/v1/redemptions/balance" \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl "https://www.elizacloud.ai/api/v1/redemptions/balance" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY"
 ```
 
 ```json
 {
-  "available": 1250.0,
-  "pending": 150.0,
-  "lifetime": 5000.0,
-  "breakdown": {
-    "agents": 4000.0,
-    "apps": 800.0,
-    "marketplace": 200.0
+  "success": true,
+  "balance": {
+    "totalEarned": 500,
+    "availableBalance": 125.5,
+    "pendingBalance": 24,
+    "totalRedeemed": 100,
+    "totalConvertedToCredits": 12.25
+  },
+  "eligibility": {
+    "canRedeem": true,
+    "dailyLimitRemaining": 1000
   }
 }
 ```
 
-## Revenue Split
+`totalConvertedToCredits` is the amount of earnings converted into organization credits by earnings-first hosting billing.
 
-| Source            | Your Share | Platform Fee |
-| ----------------- | ---------- | ------------ |
-| Agent Usage       | 80%        | 20%          |
-| App Revenue       | 85%        | 15%          |
-| Marketplace Sales | 70%        | 30%          |
+## Earnings-First Hosting
 
-## Redemptions
+Daily container billing can debit redeemable earnings before organization credits when `payAsYouGoFromEarnings` is enabled. This setting is on by default. When disabled, container hosting uses credits only and earnings remain untouched for cashout.
 
-### Request Redemption
+The Earnings dashboard shows "Spent on hosting" separately from token redemptions.
+
+## Redeem for elizaOS Tokens
+
+Redemptions use `pointsAmount`, where 100 points equals $1.00.
+
+1. Check `/api/v1/redemptions/balance`.
+2. Quote `/api/v1/redemptions/quote?network=base&pointsAmount=10000`.
+3. Create `POST /api/v1/redemptions`.
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/redemptions" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+curl -X POST "https://www.elizacloud.ai/api/v1/redemptions" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "amount": 500,
-    "method": "usdc",
-    "address": "0x..."
+    "pointsAmount": 10000,
+    "network": "base",
+    "payoutAddress": "0x1234567890abcdef1234567890abcdef12345678"
   }'
 ```
 
-### Redemption Methods
+Supported networks are `ethereum`, `base`, `bnb`, and `solana`, subject to payout availability.
 
-| Method          | Minimum     | Processing Time |
-| --------------- | ----------- | --------------- |
-| USDC (Base)     | 50 credits  | 1-3 days        |
-| USDC (Ethereum) | 100 credits | 1-3 days        |
-| Bank Transfer   | 500 credits | 5-7 days        |
+  Large redemptions can require admin approval, and network availability can change with hot-wallet balances. Always request a quote immediately before creating a redemption.
 
-### Check Status
+## App Earnings
+
+For per-app earnings, call:
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/v1/redemptions/status" \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl "https://www.elizacloud.ai/api/v1/apps/$APP_ID/earnings?days=30" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY"
 ```
 
-```json
-{
-  "pending": [
-    {
-      "id": "red_abc123",
-      "amount": 500,
-      "method": "usdc",
-      "status": "processing",
-      "createdAt": "2024-01-15T10:30:00Z"
-    }
-  ]
-}
-```
-
-## Agent Analytics
-
-Track your agent's performance:
-
-```bash
-curl -X GET "https://elizacloud.ai/api/v1/my-agents/characters/{id}/stats" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-```json
-{
-  "views": 15000,
-  "interactions": 5000,
-  "uniqueUsers": 1200,
-  "revenue": 450.0,
-  "rating": 4.7,
-  "period": "30d"
-}
-```
-
-## Marketplace
-
-### Listing Your Agent
-
-Publish to the public marketplace:
-
-```json
-{
-  "visibility": "public",
-  "listing": {
-    "title": "Research Assistant Pro",
-    "description": "Expert AI for academic research...",
-    "features": ["Literature review", "Data analysis", "Citation formatting"],
-    "screenshots": ["url1", "url2"],
-    "demo": true
-  }
-}
-```
-
-### Clone Pricing
-
-Let users clone your agent template:
-
-```json
-{
-  "cloneSettings": {
-    "enabled": true,
-    "price": 50.0,
-    "includesKnowledge": false
-  }
-}
-```
-
-## Payouts
-
-### Automatic Payouts
-
-Enable automatic monthly payouts:
-
-```bash
-curl -X POST "https://elizacloud.ai/api/v1/redemptions/auto" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "enabled": true,
-    "threshold": 100,
-    "method": "usdc",
-    "address": "0x..."
-  }'
-```
-
-### Payout History
-
-```bash
-curl -X GET "https://elizacloud.ai/api/v1/apps/{appId}/earnings/history" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-## Tax Information
-
-  You may need to provide tax information for payouts above certain thresholds.
-  Check your local regulations.
-
-## Best Practices
-
-- **Quality First** — High-quality agents earn more through better ratings and organic usage
-- **Clear Pricing** — Transparent, competitive pricing builds user trust and conversions
-- **Good Description** — Detailed listings with screenshots and features get more visibility
-- **Iterate** — Update your agent based on user feedback and analytics
+The response includes summary totals, breakdowns, chart data, recent transactions, and monetization settings.
 
 ## Next Steps
 
   
-    Create monetizable agents
+    Create an earning Cloud app
   
   
-    Build apps with revenue sharing
+    Redeem earnings programmatically
   
   
-    Understand the credit system
+    Manage credits and hosting billing
 
 ---
 
@@ -7496,9 +7119,9 @@ curl -X POST "https://elizacloud.ai/api/v1/chat/completions" \
 
 **Solutions**:
 
-1. Verify your API key starts with `ek_live_` or `ek_test_`
+1. Verify your API key starts with `eliza_`
 2. Check the key hasn't been revoked in [Dashboard → API Keys](/dashboard/api-keys)
-3. Ensure you're using `Authorization: Bearer YOUR_KEY` (not `X-API-Key`)
+3. Ensure you're sending either `Authorization: Bearer YOUR_KEY` or `X-API-Key: YOUR_KEY`
 
 ### "RATE_LIMITED" errors
 
@@ -7838,7 +7461,7 @@ console.log(image.galleryId); // gal_abc123
 
 URL: https://elizacloud.ai/docs/image-generation
 
-Summary: Generate images with AI on elizaOS Cloud using Google Gemini, OpenAI, and other models.
+Summary: Generate images with AI on elizaOS Cloud using the configured image model catalog.
 
 # Image Generation
 
@@ -7848,11 +7471,9 @@ Generate high-quality images from text prompts using state-of-the-art AI models.
 
 ## Overview
 
-elizaOS Cloud provides image generation through multiple providers:
-
-- **Google Gemini**: Fast, high-quality multimodal generation (default)
-- **OpenAI**: GPT-powered image generation
-- **BFL Flux Kontext**: Context-aware generation
+elizaOS Cloud provides image generation through the configured image provider
+catalog. See the [Images API reference](/docs/api/images) or API Explorer for
+current models and defaults.
 
 ## Quick Start
 
@@ -7894,7 +7515,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/generate-image', {
 const result = await response.json();
 console.log(result.images[0].url);
 
-````
+```
   
   
 ```python
@@ -7915,7 +7536,7 @@ response = requests.post(
 
 result = response.json()
 print(result['images'][0]['url'])
-````
+```
 
   
 
@@ -7937,53 +7558,49 @@ print(result['images'][0]['url'])
 
 ## Available Models
 
-| Model                                     | Provider | Speed  | Best For                 |
-| ----------------------------------------- | -------- | ------ | ------------------------ |
-| \`google/gemini-2.5-flash-image\`         | Google   | Fast   | General use (default)    |
-| \`google/gemini-3.1-flash-image-preview\` | Google   | Fast   | Preview/testing          |
-| \`google/gemini-3-pro-image\`             | Google   | Medium | Higher quality           |
-| \`openai/gpt-5-nano\`                     | OpenAI   | Medium | OpenAI image generation  |
-| \`bfl/flux-kontext-max\`                  | BFL      | Medium | Context-aware generation |
+Model availability and defaults are documented in the canonical
+[Images API reference](/docs/api/images). Use that page or the API Explorer for
+the current model catalog and pricing-sensitive defaults.
 
 ## Request Parameters
 
 | Parameter       | Type    | Required | Description                                               |
 | --------------- | ------- | -------- | --------------------------------------------------------- |
-| \`prompt\`      | string  | ✓        | Text description of the image                             |
-| \`model\`       | string  |          | Model to use (default: \`google/gemini-2.5-flash-image\`) |
-| \`aspectRatio\` | string  |          | Output aspect ratio (default: \`1:1\`)                    |
-| \`numImages\`   | integer |          | Number of images (1-4, default: 1)                        |
-| \`stylePreset\` | string  |          | Style preset to apply                                     |
-| \`sourceImage\` | string  |          | Base64 data URL for image-to-image                        |
+| `prompt`      | string  | ✓        | Text description of the image                             |
+| `model`       | string  |          | Model to use (default: `google/gemini-2.5-flash-image`) |
+| `aspectRatio` | string  |          | Output aspect ratio (default: `1:1`)                    |
+| `numImages`   | integer |          | Number of images (1-4, default: 1)                        |
+| `stylePreset` | string  |          | Style preset to apply                                     |
+| `sourceImage` | string  |          | Base64 data URL for image-to-image                        |
 
 ### Available Aspect Ratios
 
 | Aspect Ratio | Description          |
 | ------------ | -------------------- |
-| \`1:1\`      | Square (default)     |
-| \`16:9\`     | Wide landscape       |
-| \`9:16\`     | Tall portrait        |
-| \`4:3\`      | Standard landscape   |
-| \`3:4\`      | Standard portrait    |
-| \`21:9\`     | Ultra-wide cinematic |
-| \`9:21\`     | Ultra-tall vertical  |
+| `1:1`      | Square (default)     |
+| `16:9`     | Wide landscape       |
+| `9:16`     | Tall portrait        |
+| `4:3`      | Standard landscape   |
+| `3:4`      | Standard portrait    |
+| `21:9`     | Ultra-wide cinematic |
+| `9:21`     | Ultra-tall vertical  |
 
 ### Style Presets
 
 | Preset           | Description                       |
 | ---------------- | --------------------------------- |
-| \`none\`         | No style modification (default)   |
-| \`photographic\` | Realistic lighting and details    |
-| \`digital-art\`  | Vibrant colors, modern aesthetics |
-| \`comic-book\`   | Bold lines, dramatic shading      |
-| \`fantasy-art\`  | Magical and ethereal elements     |
-| \`analog-film\`  | Film grain and vintage tones      |
-| \`neon-punk\`    | Cyberpunk style with neon colors  |
-| \`cinematic\`    | Dramatic lighting and composition |
+| `none`         | No style modification (default)   |
+| `photographic` | Realistic lighting and details    |
+| `digital-art`  | Vibrant colors, modern aesthetics |
+| `comic-book`   | Bold lines, dramatic shading      |
+| `fantasy-art`  | Magical and ethereal elements     |
+| `analog-film`  | Film grain and vintage tones      |
+| `neon-punk`    | Cyberpunk style with neon colors  |
+| `cinematic`    | Dramatic lighting and composition |
 
 ## Image-to-Image Generation
 
-Transform existing images by providing a \`sourceImage\` parameter:
+Transform existing images by providing a `sourceImage` parameter:
 
 ```javascript
 const response = await fetch("https://elizacloud.ai/api/v1/generate-image", {
@@ -8070,7 +7687,7 @@ const response = await fetch("https://elizacloud.ai/api/v1/generate-image", {
 
 URL: https://elizacloud.ai/docs/installation
 
-Summary: Install the elizaOS SDK and CLI tools for local development.
+Summary: Install the elizaOS SDK and scaffolding CLI for local development.
 
 # Installation
 
@@ -8083,21 +7700,17 @@ Set up your development environment for elizaOS Cloud integration.
 Install the official elizaOS packages:
 
   
-    ```bash bun add @elizaos/core @elizaos/plugin-elizacloud ```
-  
-  
-    ```bash pnpm add @elizaos/core @elizaos/plugin-elizacloud ```
-  
-  
-    ```bash yarn add @elizaos/core @elizaos/plugin-elizacloud ```
+```bash
+bun add @elizaos/core @elizaos/plugin-elizacloud
+```
   
 
 ## CLI Installation
 
-Install the elizaOS CLI for deployment and management:
+Install the elizaOS CLI for project and plugin scaffolding:
 
 ```bash
-bun add -g @elizaos/cli
+bun add -g elizaos
 ```
 
 Verify the installation:
@@ -8110,7 +7723,7 @@ elizaos --version
 
 | Requirement | Version            |
 | ----------- | ------------------ |
-| Node.js     | 18.0+              |
+| Node.js     | 24.0+              |
 | Bun         | Latest             |
 | TypeScript  | 5.0+ (recommended) |
 
@@ -8119,7 +7732,7 @@ elizaos --version
 ### Initialize a New Project
 
 ```bash
-elizaos init my-agent
+elizaos create my-agent --template project
 cd my-agent
 ```
 
@@ -8181,311 +7794,6 @@ bun add @elizaos/core@latest @elizaos/plugin-elizacloud@latest
 
 - [Authentication](/docs/authentication) - Set up API authentication
 - [Quickstart](/docs/quickstart) - Build your first agent
-
----
-
-## Knowledge Base
-
-URL: https://elizacloud.ai/docs/documents
-
-Summary: Add documents to your agents' knowledge base for RAG-powered responses on elizaOS Cloud.
-
-# Knowledge Base
-
-Enhance your agents with document-based knowledge using Retrieval-Augmented Generation (RAG).
-
-<div className="status-badge status-stable">Stable</div>
-
-## Overview
-
-The Knowledge Base allows you to:
-
-- Upload documents (PDF, TXT, MD, etc.)
-- Automatically chunk and embed content
-- Query semantically for relevant context
-- Connect to agents for enhanced responses
-
-## Quick Start
-
-### Dashboard
-
-Navigate to [Dashboard → Knowledge](/dashboard/knowledge) for the visual interface.
-
-### API
-
-  
-```bash
-# Upload a document
-curl -X POST "https://elizacloud.ai/api/v1/documents/upload-file" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -F "file=@document.pdf" \
-  -F "agentId=agent_abc123"
-```
-  
-  
-```javascript
-const formData = new FormData();
-formData.append('file', file);
-formData.append('agentId', 'agent_abc123');
-
-const response = await fetch('https://elizacloud.ai/api/v1/documents/upload-file', {
-method: 'POST',
-headers: {
-'Authorization': 'Bearer YOUR_API_KEY',
-},
-body: formData,
-});
-
-const result = await response.json();
-console.log('Document uploaded:', result.id);
-
-````
-  
-  
-```python
-
-with open('document.pdf', 'rb') as f:
-    response = requests.post(
-        'https://elizacloud.ai/api/v1/documents/upload-file',
-        headers={'Authorization': 'Bearer YOUR_API_KEY'},
-        files={'file': f},
-        data={'agentId': 'agent_abc123'},
-    )
-
-result = response.json()
-print(f'Document uploaded: {result["id"]}')
-````
-
-  
-
-## Supported Formats
-
-| Format   | Extension | Max Size |
-| -------- | --------- | -------- |
-| PDF      | `.pdf`    | 5MB      |
-| Text     | `.txt`    | 5MB      |
-| Markdown | `.md`     | 5MB      |
-| Word     | `.docx`   | 5MB      |
-| JSON     | `.json`   | 5MB      |
-| XML      | `.xml`    | 5MB      |
-| YAML     | `.yaml`   | 5MB      |
-| CSV      | `.csv`    | 5MB      |
-
-**Note:** Maximum 5MB per file and 5MB total per batch upload.
-
-## Upload Documents
-
-### Prepare Your Documents
-Ensure documents are in a supported format and within size limits.
-
-### Upload via Dashboard or API
-
-Use the Knowledge dashboard or the upload API endpoint.
-
-### Wait for Processing
-
-Documents are automatically chunked and embedded.
-
-### Connect to Agent
-
-Link the knowledge base to your agent for RAG.
-
-### Upload Response
-
-```json
-{
-  "id": "doc_abc123",
-  "filename": "product-manual.pdf",
-  "status": "processing",
-  "chunks": null,
-  "createdAt": "2024-01-15T10:30:00Z"
-}
-```
-
-### Check Processing Status
-
-```bash
-curl -X GET "https://elizacloud.ai/api/v1/documents/check?documentId=doc_abc123" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-```json
-{
-  "id": "doc_abc123",
-  "status": "completed",
-  "chunks": 42,
-  "tokensUsed": 15234
-}
-```
-
-## Query Knowledge
-
-Search your knowledge base semantically:
-
-```bash
-curl -X POST "https://elizacloud.ai/api/v1/documents/query" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "How do I reset my password?",
-    "agentId": "agent_abc123",
-    "limit": 5
-  }'
-```
-
-### Response
-
-```json
-{
-  "results": [
-    {
-      "content": "To reset your password, navigate to Settings > Security > Reset Password...",
-      "score": 0.92,
-      "documentId": "doc_abc123",
-      "metadata": {
-        "page": 15,
-        "section": "Account Settings"
-      }
-    },
-    {
-      "content": "Password requirements include at least 8 characters...",
-      "score": 0.85,
-      "documentId": "doc_abc123",
-      "metadata": {
-        "page": 16,
-        "section": "Security"
-      }
-    }
-  ]
-}
-```
-
-## Managing Documents
-
-### List Documents
-
-```bash
-curl -X GET "https://elizacloud.ai/api/v1/documents?agentId=agent_abc123" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-### Get Document Details
-
-```bash
-curl -X GET "https://elizacloud.ai/api/v1/documents/doc_abc123" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-### Delete Document
-
-```bash
-curl -X DELETE "https://elizacloud.ai/api/v1/documents/doc_abc123" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-## RAG Configuration
-
-### Chunk Settings
-
-Configure how documents are split:
-
-| Setting        | Default | Description            |
-| -------------- | ------- | ---------------------- |
-| `chunkSize`    | 1000    | Characters per chunk   |
-| `chunkOverlap` | 200     | Overlap between chunks |
-| `minChunkSize` | 100     | Minimum chunk size     |
-
-### Retrieval Settings
-
-Configure query behavior:
-
-| Setting    | Default | Description                   |
-| ---------- | ------- | ----------------------------- |
-| `limit`    | 5       | Number of results             |
-| `minScore` | 0.7     | Minimum relevance score       |
-| `rerank`   | true    | Re-rank results for relevance |
-
-## Agent Integration
-
-### Automatic RAG
-
-When knowledge is connected to an agent, relevant context is automatically retrieved:
-
-```javascript
-// Agent with knowledge base
-const response = await fetch("https://elizacloud.ai/api/v1/chat/completions", {
-  method: "POST",
-  headers: {
-    Authorization: "Bearer YOUR_API_KEY",
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    model: "agent_abc123", // Agent with connected knowledge
-    messages: [{ role: "user", content: "How do I reset my password?" }],
-  }),
-});
-```
-
-The agent automatically queries the knowledge base and includes relevant context in its response.
-
-### Manual RAG
-
-Query knowledge and inject context manually:
-
-```javascript
-// 1. Query knowledge
-const knowledge = await fetch("https://elizacloud.ai/api/v1/documents/query", {
-  method: "POST",
-  headers: {
-    Authorization: "Bearer YOUR_API_KEY",
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    query: "password reset",
-    limit: 3,
-  }),
-}).then((r) => r.json());
-
-// 2. Include in chat
-const context = knowledge.results.map((r) => r.content).join("\n\n");
-
-const response = await fetch("https://elizacloud.ai/api/v1/chat/completions", {
-  method: "POST",
-  headers: {
-    Authorization: "Bearer YOUR_API_KEY",
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    model: "gpt-4o",
-    messages: [
-      { role: "system", content: `Use this context:\n\n${context}` },
-      { role: "user", content: "How do I reset my password?" },
-    ],
-  }),
-});
-```
-
-## Pricing
-
-See [Billing & Credits](/docs/billing) for current pricing on document uploads, embeddings, queries, and storage.
-
-## Best Practices
-
-- **Quality Content** — Use well-structured, accurate documents
-- **Organize** — Group related documents for better retrieval
-- **Update Regularly** — Keep knowledge current by refreshing documents
-- **Test Queries** — Verify retrieval quality before production
-
-## Next Steps
-
-  
-    Create agents that use knowledge
-  
-  
-    Integrate RAG into your applications
-  
-  
-    Learn about vector embeddings
 
 ---
 
@@ -9212,6 +8520,158 @@ curl -X POST "https://elizacloud.ai/api/v1/mcps/{mcpId}/publish" \
 
 ---
 
+## Monetized Apps
+
+URL: https://elizacloud.ai/docs/monetized-apps
+
+Summary: Create, deploy, and monetize Eliza Cloud apps.
+
+# Monetized Apps
+
+Build an Eliza Cloud app, route user chat through the app-scoped endpoint, earn creator markup, and deploy the app as a container whose hosting can be paid from earnings before credits.
+
+<div className="status-badge status-new">New</div>
+
+## Concepts
+
+- **Project**: Your deployable product workspace. For container hosting, use `project_name` as the stable project identifier.
+- **App plugin**: An `@elizaos/app-*` package inside Eliza. This is code loaded by an Eliza runtime.
+- **Eliza Cloud app**: The Cloud app record created with `POST /api/v1/apps`. It owns app hosting metadata, marketplace/domain settings, chat routing, analytics, and monetization settings.
+
+Keep the Cloud app `id` in your project configuration and pass it to the app-scoped chat endpoint. Do not use package names or deployment project names as app IDs.
+
+## Flow
+
+```
+user signs in and chats with your app
+  -> your server forwards the user's bearer token to /api/v1/apps/{id}/chat
+  -> Eliza Cloud charges the user's organization credit balance
+  -> creator markup is credited to your redeemable earnings
+  -> daily container billing uses your earnings first, then org credits
+  -> you redeem available earnings for elizaOS tokens
+```
+
+  The hosting funding loop is controlled by the organization billing setting `payAsYouGoFromEarnings`. It is on by default. When off, container hosting uses credits only and earnings remain available for token cashout.
+
+## Register and Configure
+
+### Create a Cloud app
+
+```bash
+curl -X POST "https://www.elizacloud.ai/api/v1/apps" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My App",
+    "app_url": "https://placeholder.invalid",
+    "allowed_origins": ["https://placeholder.invalid"],
+    "skipGitHubRepo": true
+  }'
+```
+
+The response includes `app.id` and a one-time `apiKey`. Store the app ID in your project; keep API keys server-side only.
+
+### Enable monetization
+
+```bash
+curl -X PUT "https://www.elizacloud.ai/api/v1/apps/$APP_ID/monetization" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "monetizationEnabled": true,
+    "inferenceMarkupPercentage": 100,
+    "purchaseSharePercentage": 10
+  }'
+```
+
+`inferenceMarkupPercentage` is the creator markup on app-scoped chat inference. `purchaseSharePercentage` is reserved for app credit purchase share flows.
+
+### Forward user chat
+
+```ts
+const response = await fetch(`${ELIZA_CLOUD_URL}/api/v1/apps/${APP_ID}/chat`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${userStewardJwt}`,
+  },
+  body: JSON.stringify({
+    model: "provider/model-id",
+    messages: [{ role: "user", content: "Hello" }],
+    stream: false,
+  }),
+});
+```
+
+Forward the user's bearer token, not your app admin API key, for user-facing chat. The user's organization credit balance is charged and your app's markup is recorded as creator earnings.
+
+### Deploy the container
+
+```ts
+
+const cloud = new ElizaCloudClient({ apiKey: process.env.ELIZA_CLOUD_API_KEY });
+
+const { data: container } = await cloud.createContainer({
+  name: "my-app",
+  project_name: "my-app",
+  image: "ghcr.io/acme/my-app:latest",
+  port: 3000,
+  cpu: 256,
+  memory: 512,
+  desired_count: 1,
+  health_check_path: "/health",
+  environment_vars: {
+    PORT: "3000",
+    ELIZA_APP_ID: APP_ID,
+    ELIZA_CLOUD_URL: "https://www.elizacloud.ai",
+  },
+});
+```
+
+When the container is running, patch the Cloud app to the real URL:
+
+```bash
+curl -X PATCH "https://www.elizacloud.ai/api/v1/apps/$APP_ID" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app_url": "https://my-app.example.com",
+    "allowed_origins": ["https://my-app.example.com"]
+  }'
+```
+
+### Redeem earnings
+
+Use [Dashboard -> Earnings](/dashboard/earnings), or call the redemptions API. Earnings are tracked in dollars; redemptions use `pointsAmount`, where 100 points equals $1.00.
+
+```bash
+curl "https://www.elizacloud.ai/api/v1/redemptions/balance" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY"
+```
+
+## Affiliate Header
+
+The optional `X-Affiliate-Code` header is implemented on the generic chat and messages APIs, including `POST /api/v1/chat/completions` and `POST /api/v1/messages`. It credits affiliate markup to the affiliate owner's redeemable earnings.
+
+  The app-scoped chat endpoint `POST /api/v1/apps/{id}/chat` does not currently read `X-Affiliate-Code` in the API route. Forwarding the header is harmless, but affiliate earnings on app-scoped chat need product/API confirmation.
+
+## Hosting Billing
+
+Daily container billing calculates the container's hosting cost, then tries to pay from the owner's redeemable earnings when `payAsYouGoFromEarnings` is enabled. Any remainder falls through to organization credits. Containers are suspended only when the configured funding sources cannot cover hosting.
+
+## Next Steps
+
+  
+    Register Cloud apps and configure monetization
+  
+  
+    Deploy and monitor app containers
+  
+  
+    Quote, create, and track token redemptions
+
+---
+
 ## Quickstart
 
 URL: https://elizacloud.ai/docs/quickstart
@@ -9337,7 +8797,7 @@ Navigate to [Dashboard → API Keys](/dashboard/api-keys) and create a new key.
 
 ```bash
 # Your API key will look like this:
-ELIZA_API_KEY=ek_live_xxxxxxxxxxxxxxxxxxxx
+ELIZA_API_KEY=eliza_xxxxxxxxxxxxxxxxxxxx
 ```
 
 ### Step 2: Create an Agent
@@ -9370,7 +8830,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/app/agents', {
 const agent = await response.json();
 console.log('Created agent:', agent.agent.id);
 
-````
+```
   
   
 ```python
@@ -9389,7 +8849,7 @@ response = requests.post(
 
 agent = response.json()
 print(f'Created agent: {agent["agent"]["id"]}')
-````
+```
 
   
 
@@ -9427,7 +8887,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/chat/completions', {
 const completion = await response.json();
 console.log(completion.choices[0].message.content);
 
-````
+```
   
   
 ```python
@@ -9447,33 +8907,35 @@ response = requests.post(
 
 completion = response.json()
 print(completion['choices'][0]['message']['content'])
-````
+```
 
   
 
 ## Using the CLI
 
-Deploy agents from your local elizaOS project.
+Create a local elizaOS project. Cloud deployment and hosted app registration use
+the dashboard, Cloud API, or SDK endpoints documented in the app and container
+sections.
 
 ### Install the CLI
 
 ```bash
-bun add -g @elizaos/cli
+bun add -g elizaos
 ```
 
-### Login to elizaOS Cloud
+### Create a Project
 
 ```bash
-elizaos login
+elizaos create my-cloud-app --template project
+cd my-cloud-app
 ```
 
-### Deploy Your Agent
+### Run Locally
 
 ```bash
-elizaos deploy --character ./character.json
+bun install
+bun run dev
 ```
-
-This uploads your character configuration and deploys it to elizaOS Cloud.
 
 ## Environment Variables
 
@@ -9481,7 +8943,7 @@ Configure your local development environment:
 
 ```bash
 # .env
-ELIZA_API_KEY=ek_live_xxxxxxxxxxxxxxxxxxxx
+ELIZA_API_KEY=eliza_xxxxxxxxxxxxxxxxxxxx
 ELIZA_API_URL=https://elizacloud.ai/api/v1
 ```
 
@@ -9616,7 +9078,8 @@ Custom rate limits based on your needs. Contact sales.
 
 ## Rate Limit Headers
 
-Every response includes rate limit information:
+Rate-limited responses include rate limit information. Some endpoints may also
+include these headers on successful responses:
 
 ```
 X-RateLimit-Limit: 200
@@ -9658,7 +9121,7 @@ async function fetchWithRetry(url, options, maxRetries = 3) {
     const response = await fetch(url, options);
 
     if (response.status === 429) {
-      const retryAfter = response.headers.get("X-RateLimit-Reset-After");
+      const retryAfter = response.headers.get("Retry-After");
       const waitTime = retryAfter
         ? parseInt(retryAfter) * 1000
         : Math.pow(2, i) * 1000;
@@ -9804,14 +9267,14 @@ messages: [{ role: 'user', content: 'Hello!' }],
 
 console.log(response.choices[0].message.content);
 
-````
+```
   
   
 ```python
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="ek_xxx",
+    api_key="eliza_xxx",
     base_url="https://elizacloud.ai/api/v1"
 )
 
@@ -9821,7 +9284,7 @@ response = client.chat.completions.create(
 )
 
 print(response.choices[0].message.content)
-````
+```
 
   
   
@@ -9893,7 +9356,7 @@ pip install openai
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="ek_xxx",
+    api_key="eliza_xxx",
     base_url="https://elizacloud.ai/api/v1"
 )
 
@@ -9984,7 +9447,7 @@ const { text } = await generateText({
 from llama_index.llms.openai import OpenAI
 
 llm = OpenAI(
-    api_key="ek_xxx",
+    api_key="eliza_xxx",
     api_base="https://elizacloud.ai/api/v1",
     model="gpt-4o"
 )
@@ -10064,7 +9527,7 @@ We welcome SDK contributions! See our [GitHub](https://github.com/elizaOS/eliza)
 
 URL: https://elizacloud.ai/docs/video-generation
 
-Summary: Generate AI videos from text prompts on elizaOS Cloud using Google Veo, Kling, and MiniMax video models.
+Summary: Generate AI videos from text prompts on elizaOS Cloud using the configured video model catalog.
 
 # Video Generation
 
@@ -10074,11 +9537,9 @@ Create AI-generated videos from text prompts.
 
 ## Overview
 
-elizaOS Cloud provides video generation through Fal.ai, supporting multiple models:
-
-- **Google Veo 3**: Highest quality, latest model
-- **Kling Video**: Multiple tiers from standard to master
-- **MiniMax Hailuo**: Fast and affordable
+elizaOS Cloud provides video generation through the configured video provider
+catalog. See the [Video API reference](/docs/api/video) or API Explorer for
+current models and defaults.
 
 ## Quick Start
 
@@ -10116,7 +9577,7 @@ const response = await fetch('https://elizacloud.ai/api/v1/generate-video', {
 const result = await response.json();
 console.log(result.video.url);
 
-````
+```
   
   
 ```python
@@ -10135,7 +9596,7 @@ response = requests.post(
 
 result = response.json()
 print(result['video']['url'])
-````
+```
 
   
 
@@ -10153,22 +9614,16 @@ print(result['video']['url'])
 
 ## Available Models
 
-| Model                                               | Provider | Quality | Speed  |
-| --------------------------------------------------- | -------- | ------- | ------ |
-| \`fal-ai/veo3\`                                     | Google   | Highest | Slow   |
-| \`fal-ai/veo3/fast\`                                | Google   | High    | Fast   |
-| \`fal-ai/kling-video/v2.1/master/text-to-video\`    | Kling    | Highest | Slow   |
-| \`fal-ai/kling-video/v2.1/pro/text-to-video\`       | Kling    | High    | Medium |
-| \`fal-ai/kling-video/v2.1/standard/text-to-video\`  | Kling    | Good    | Fast   |
-| \`fal-ai/minimax/hailuo-02/pro/text-to-video\`      | MiniMax  | High    | Medium |
-| \`fal-ai/minimax/hailuo-02/standard/text-to-video\` | MiniMax  | Good    | Fast   |
+Model availability and defaults are documented in the canonical
+[Video API reference](/docs/api/video). Use that page or the API Explorer for
+the current model catalog and pricing-sensitive defaults.
 
 ## Request Parameters
 
 | Parameter  | Type   | Required | Description                             |
 | ---------- | ------ | -------- | --------------------------------------- |
-| \`prompt\` | string | ✓        | Text description of the video           |
-| \`model\`  | string |          | Model to use (default: \`fal-ai/veo3\`) |
+| `prompt` | string | ✓        | Text description of the video           |
+| `model`  | string |          | Model to use (default: `fal-ai/veo3`) |
 
 ## Prompt Tips
 
@@ -10176,11 +9631,11 @@ print(result['video']['url'])
 
 Include camera direction for dynamic videos:
 
-- \`camera pan left/right\` - Horizontal movement
-- \`zoom in/out\` - Focal adjustment
-- \`dolly forward/backward\` - Physical camera movement
-- \`tracking shot\` - Following subject
-- \`aerial view\` - Bird's eye perspective
+- `camera pan left/right` - Horizontal movement
+- `zoom in/out` - Focal adjustment
+- `dolly forward/backward` - Physical camera movement
+- `tracking shot` - Following subject
+- `aerial view` - Bird's eye perspective
 
 ### Scene Description
 
@@ -10194,11 +9649,11 @@ Be specific about motion and timing:
 
 ### Style Modifiers
 
-- \`slow motion\` - Dramatic effect
-- \`timelapse\` - Accelerated time
-- \`cinematic\` - Movie-like quality
-- \`handheld\` - Organic movement
-- \`steady cam\` - Smooth, professional
+- `slow motion` - Dramatic effect
+- `timelapse` - Accelerated time
+- `cinematic` - Movie-like quality
+- `handheld` - Organic movement
+- `steady cam` - Smooth, professional
 
 ## Best Practices
 
@@ -10464,7 +9919,9 @@ curl -X POST "https://elizacloud.ai/api/elevenlabs/stt" \
 
 ## Pricing
 
-See [Billing & Credits](/docs/billing) for current pricing. Voice cloning costs 5 credits, TTS/STT are usage-based.
+See [Billing & Credits](/docs/billing) and the dashboard/API Explorer for
+current voice pricing. Voice cloning and TTS/STT billing can vary by provider
+configuration.
 
   Monitor your voice usage in the [billing dashboard](/dashboard/billing).
 
@@ -10552,5 +10009,4 @@ Wallet headers (`X-Wallet-Address`, `X-Timestamp`, `X-Wallet-Signature`) are all
 ## See also
 
 - [Authentication](/docs/authentication) — API key, session, wallet, x402 overview.
-- Repo doc `docs/wallet-api.md` — full WHYs, nonce lifecycle, shared signup behavior, file list.
 

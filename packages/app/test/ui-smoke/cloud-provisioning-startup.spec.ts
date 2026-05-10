@@ -143,7 +143,7 @@ for (const viewport of VIEWPORTS) {
     });
 
     await page.route(
-      "**/api/cloud/v1/app/agents/agent-1/provision",
+      "**/api/cloud/v1/eliza/agents/agent-1/provision",
       async (route) => {
         if (route.request().method() !== "POST") {
           await route.fallback();
