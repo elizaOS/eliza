@@ -696,7 +696,53 @@ export const liquidityAction: Action = {
     "START_MANAGING_RAYDIUM_POSITIONS",
   ],
 
-  examples: [] as ActionExample[][],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Open a Raydium LP position with 100 USDC paired against SOL.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Opening the LP position.",
+          actions: ["LIQUIDITY"],
+          thought:
+            "User wants to provide liquidity on a DEX; LIQUIDITY subaction=open with the token pair and amount routes to the LP manager.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Show my current liquidity positions.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Listing your LP positions.",
+          actions: ["LIQUIDITY"],
+          thought:
+            "Position inventory query maps to LIQUIDITY subaction=list which returns active LP positions across pools.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Close my SOL/USDC liquidity position.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Closing the LP position.",
+          actions: ["LIQUIDITY"],
+          thought:
+            "Withdraw / unwind intent maps to LIQUIDITY subaction=close on the named pair.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 
   validate: async (
     _runtime: IAgentRuntime,

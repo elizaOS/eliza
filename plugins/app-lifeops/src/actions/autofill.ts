@@ -400,7 +400,18 @@ async function handleWhitelistList(
   };
 }
 
-export const autofillAction: Action & {
+/**
+ * Internal implementation of the legacy `AUTOFILL` action surface.
+ *
+ * Audit B Defer #5 folded `AUTOFILL` and `PASSWORD_MANAGER` into the single
+ * `CREDENTIALS` umbrella (`./credentials.ts`). The umbrella forwards `fill`,
+ * `whitelist_add`, and `whitelist_list` to this impl. The legacy export name
+ * (`autofillAction`) is re-exported below as an alias for `credentialsAction`
+ * so cached planner outputs and downstream importers keep resolving — but no
+ * `AUTOFILL`-named action is registered in the plugin anymore; the umbrella
+ * simile carries the legacy name forward.
+ */
+export const autofillActionImpl: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
@@ -531,3 +542,8 @@ export const __internal = {
   saveUserDomains,
   WHITELIST_CACHE_KEY,
 };
+
+// Legacy export — the `AUTOFILL` name lives on as a simile of the new
+// CREDENTIALS umbrella. Importers that destructured `autofillAction` get the
+// umbrella back so they continue to dispatch through the unified entry.
+export { credentialsAction as autofillAction } from "./credentials.js";

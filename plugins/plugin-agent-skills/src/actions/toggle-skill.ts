@@ -23,7 +23,13 @@ export const toggleSkillAction = {
 	contexts: ["automation", "settings"],
 	contextGate: { anyOf: ["automation", "settings"] },
 	roleGate: { minRole: "USER" },
-	similes: [],
+	similes: [
+		"TOGGLE_SKILL",
+		"ENABLE_SKILL",
+		"DISABLE_SKILL",
+		"ACTIVATE_SKILL",
+		"DEACTIVATE_SKILL",
+	],
 	description:
 		"Enable or disable an installed skill. Say 'enable <skill>' or 'disable <skill>'.",
 	descriptionCompressed: "Enable/disable installed skill.",

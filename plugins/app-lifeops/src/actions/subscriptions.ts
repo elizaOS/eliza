@@ -475,7 +475,19 @@ const examples: ActionExample[][] = [
   ],
 ];
 
-export const subscriptionsAction: Action & {
+/**
+ * Internal implementation of the legacy `SUBSCRIPTIONS` action surface.
+ *
+ * Audit B Defer #4 folded `SUBSCRIPTIONS` and `PAYMENTS` into the single
+ * `MONEY` umbrella (`./money.ts`). The umbrella forwards `subscription_audit`
+ * → `audit`, `subscription_cancel` → `cancel`, and `subscription_status` →
+ * `status` to this impl. The legacy export name (`subscriptionsAction`) is
+ * re-exported below as an alias for `moneyAction` so cached planner outputs
+ * and downstream importers keep resolving — but no `SUBSCRIPTIONS`-named
+ * action is registered in the plugin anymore; the umbrella simile carries the
+ * legacy name forward.
+ */
+export const subscriptionsActionImpl: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
@@ -568,3 +580,9 @@ export const subscriptionsAction: Action & {
   },
   examples,
 };
+
+// Legacy export — the `SUBSCRIPTIONS` name lives on as a simile of the new
+// MONEY umbrella (subscription verbs are addressed there as `subscription_*`).
+// Importers that destructured `subscriptionsAction` get the umbrella back so
+// they continue to dispatch through the unified entry.
+export { moneyAction as subscriptionsAction } from "./money.js";

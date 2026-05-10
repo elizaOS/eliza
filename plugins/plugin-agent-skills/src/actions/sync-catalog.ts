@@ -22,7 +22,13 @@ export const syncCatalogAction = {
 	contexts: ["automation", "settings", "connectors"],
 	contextGate: { anyOf: ["automation", "settings", "connectors"] },
 	roleGate: { minRole: "USER" },
-	similes: [],
+	similes: [
+		"SYNC_SKILL_CATALOG",
+		"REFRESH_SKILL_CATALOG",
+		"UPDATE_SKILL_CATALOG",
+		"RELOAD_SKILL_CATALOG",
+		"REFRESH_SKILLS",
+	],
 	description:
 		"Sync the skill catalog from the registry to discover new skills.",
 	descriptionCompressed: "Sync skill catalog from registry.",

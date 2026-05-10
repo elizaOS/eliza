@@ -440,4 +440,51 @@ export const workflowAction: Action = {
         return handleExecutions(service, params, callback);
     }
   },
+  examples: [
+    [
+      {
+        name: '{{name1}}',
+        content: { text: 'Create a workflow that posts daily summaries to Slack at 5pm.', source: 'chat' },
+      },
+      {
+        name: '{{agentName}}',
+        content: {
+          text: 'Generating the workflow.',
+          actions: ['WORKFLOW'],
+          thought:
+            'New workflow from a natural-language seed maps to WORKFLOW op=create with seedPrompt set.',
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
+        content: { text: 'Pause the daily summary workflow.', source: 'chat' },
+      },
+      {
+        name: '{{agentName}}',
+        content: {
+          text: 'Deactivating the workflow.',
+          actions: ['WORKFLOW'],
+          thought:
+            'Pause/disable maps to WORKFLOW op=deactivate (or toggle_active with active=false) on the matching workflowId.',
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
+        content: { text: 'Show me the last 5 executions of workflow wf-123.', source: 'chat' },
+      },
+      {
+        name: '{{agentName}}',
+        content: {
+          text: 'Fetching recent executions.',
+          actions: ['WORKFLOW'],
+          thought:
+            'Execution history maps to WORKFLOW op=executions with workflowId=wf-123 and limit=5.',
+        },
+      },
+    ],
+  ],
 };
