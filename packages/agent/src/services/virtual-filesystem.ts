@@ -4,6 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.ts";
 import { writeJsonAtomic } from "../utils/atomic-json.ts";
+import {
+  type CapabilityBroker,
+  getCapabilityBroker,
+} from "./capability-broker.ts";
 
 const DEFAULT_QUOTA_BYTES = 50 * 1024 * 1024;
 const DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -16,6 +20,12 @@ export interface VirtualFilesystemOptions {
   quotaBytes?: number;
   maxFileBytes?: number;
   now?: () => Date;
+  /**
+   * Capability broker consulted before every read/write/list/delete. Defaults
+   * to `getCapabilityBroker()` so all VFS access lands in the unified audit
+   * log. Tests inject a broker pinned to a tmp state-dir + denying policy.
+   */
+  broker?: CapabilityBroker;
 }
 
 export interface VirtualFilesystemEntry {
@@ -84,6 +94,7 @@ export class VirtualFilesystemService {
   readonly quotaBytes: number;
   readonly maxFileBytes: number;
   private readonly now: () => Date;
+  private readonly broker: CapabilityBroker;
 
   constructor(options: VirtualFilesystemOptions) {
     this.projectId = sanitizeProjectId(options.projectId);
@@ -100,6 +111,27 @@ export class VirtualFilesystemService {
     this.quotaBytes = options.quotaBytes ?? DEFAULT_QUOTA_BYTES;
     this.maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
     this.now = options.now ?? (() => new Date());
+    this.broker = options.broker ?? getCapabilityBroker();
+  }
+
+  private brokerCheck(
+    op: "read" | "write" | "list",
+    virtualPath: string,
+  ): void {
+    // Targets are reported as `vfs://<projectId>/<virtualPath>` so the broker
+    // policy can distinguish VFS access from host-fs access. The default
+    // policy treats vfs:// targets as safe across all profiles.
+    const normalized = virtualPath.replace(/\\/g, "/").replace(/^\/+/, "");
+    const target = `vfs://${this.projectId}/${normalized}`;
+    const decision = this.broker.check({
+      kind: "fs",
+      op,
+      target,
+      toolName: `vfs.${op}`,
+    });
+    if (decision.allowed !== true) {
+      throw new Error(`[vfs] capability denied: ${decision.reason}`);
+    }
   }
 
   async initialize(): Promise<void> {
@@ -111,6 +143,7 @@ export class VirtualFilesystemService {
     virtualPath: string,
     contents: string | Uint8Array,
   ): Promise<VirtualFilesystemEntry> {
+    this.brokerCheck("write", virtualPath);
     const data =
       typeof contents === "string"
         ? Buffer.from(contents)
@@ -145,12 +178,14 @@ export class VirtualFilesystemService {
     virtualPath: string,
     encoding: BufferEncoding = "utf-8",
   ): Promise<string> {
+    this.brokerCheck("read", virtualPath);
     const target = this.resolvePath(virtualPath);
     await this.assertFile(target);
     return fsp.readFile(target, encoding);
   }
 
   async readFileBytes(virtualPath: string): Promise<Buffer> {
+    this.brokerCheck("read", virtualPath);
     const target = this.resolvePath(virtualPath);
     await this.assertFile(target);
     return fsp.readFile(target);
@@ -160,6 +195,7 @@ export class VirtualFilesystemService {
     virtualPath = ".",
     options: { recursive?: boolean } = {},
   ): Promise<VirtualFilesystemEntry[]> {
+    this.brokerCheck("list", virtualPath);
     const target = this.resolvePath(virtualPath);
     await this.assertDirectory(target);
     const entries = await this.listEntries(target, Boolean(options.recursive));
@@ -170,6 +206,9 @@ export class VirtualFilesystemService {
     virtualPath: string,
     options: { recursive?: boolean } = {},
   ): Promise<void> {
+    // Delete is a mutating op; the broker has no `delete` op so it is
+    // brokered as fs.write — same trust class as creating/overwriting a file.
+    this.brokerCheck("write", virtualPath);
     const target = this.resolvePath(virtualPath);
     await this.ensureSafeParentDirectory(target);
     await this.rejectSymlinkIfExists(target);
