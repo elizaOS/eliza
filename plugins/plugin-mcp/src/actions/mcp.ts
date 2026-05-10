@@ -420,7 +420,8 @@ export const mcpAction: Action = {
     },
     {
       name: "arguments",
-      description: "For action=call_tool: optional JSON arguments to pass to the selected MCP tool.",
+      description:
+        "For action=call_tool: optional JSON arguments to pass to the selected MCP tool.",
       required: false,
       schema: { type: "object" },
     },

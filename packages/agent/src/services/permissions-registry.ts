@@ -201,7 +201,8 @@ export class PermissionRegistry
     const cutoff = Date.now() - PENDING_BLOCK_WINDOW_MS;
     return this.list().filter((s) => {
       if (s.status === "not-determined") return true;
-      if (s.lastBlockedFeature && s.lastBlockedFeature.at >= cutoff) return true;
+      if (s.lastBlockedFeature && s.lastBlockedFeature.at >= cutoff)
+        return true;
       return false;
     });
   }

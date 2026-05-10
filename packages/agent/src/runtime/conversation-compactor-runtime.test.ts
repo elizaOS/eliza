@@ -150,7 +150,8 @@ describe("applyConversationCompaction", () => {
   });
 
   it("falls back to the original prompt when there is no conversation region", async () => {
-    const prompt = "totally unstructured prompt that exceeds budget but has no header";
+    const prompt =
+      "totally unstructured prompt that exceeds budget but has no header";
     const result = await applyConversationCompaction({
       prompt,
       strategy: "naive-summary",

@@ -8,7 +8,9 @@ const MODE_ENV_KEYS = [
 ] as const;
 
 describe("runShell", () => {
-  let saved: Partial<Record<(typeof MODE_ENV_KEYS)[number], string | undefined>> = {};
+  let saved: Partial<
+    Record<(typeof MODE_ENV_KEYS)[number], string | undefined>
+  > = {};
 
   beforeEach(() => {
     saved = {};

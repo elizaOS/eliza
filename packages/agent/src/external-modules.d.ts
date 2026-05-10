@@ -122,13 +122,17 @@ declare module "@elizaos/plugin-elizacloud" {
   export class CloudManager {
     constructor(...args: unknown[]);
     init(): Promise<void>;
-    connect(agentId: string): Promise<{ agentName?: string; [key: string]: unknown }>;
+    connect(
+      agentId: string,
+    ): Promise<{ agentName?: string; [key: string]: unknown }>;
     disconnect(): Promise<void>;
     [key: string]: unknown;
   }
 
   export function normalizeCloudSiteUrl(value?: string): string;
-  export function normalizeCloudSecret(value: string | null | undefined): string | null;
+  export function normalizeCloudSecret(
+    value: string | null | undefined,
+  ): string | null;
   export function validateCloudBaseUrl(value: string): string | null;
   export function resolveCloudApiBaseUrl(...args: unknown[]): string;
   export function resolveCloudApiKey(...args: unknown[]): string | null;
@@ -138,9 +142,7 @@ declare module "@elizaos/plugin-elizacloud" {
   export function getCloudSecret(...args: unknown[]): string | undefined;
   export function getOrCreateClientAddressKey(): Promise<{ address: string }>;
   export function isCloudProvisionedContainer(...args: unknown[]): boolean;
-  export function provisionCloudWalletsBestEffort(
-    ...args: unknown[]
-  ): Promise<{
+  export function provisionCloudWalletsBestEffort(...args: unknown[]): Promise<{
     descriptors: Partial<Record<"evm" | "solana", CloudWalletDescriptor>>;
     failures: Array<{ chain: "evm" | "solana"; error: unknown }>;
     warnings: string[];

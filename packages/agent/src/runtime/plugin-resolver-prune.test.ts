@@ -8,9 +8,7 @@ import { pruneStalePluginInstances } from "./plugin-resolver.ts";
 let tmpDir: string;
 
 beforeEach(async () => {
-  tmpDir = await fsp.mkdtemp(
-    path.join(os.tmpdir(), "plugin-resolver-prune-"),
-  );
+  tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "plugin-resolver-prune-"));
 });
 
 afterEach(async () => {
