@@ -468,7 +468,8 @@ const CLOUD_COMMANDS: CloudCommandDefinition[] = [
   },
   {
     command: "advertising.accounts.discover",
-    description: "List selectable provider ad accounts from a temporary provider access token.",
+    description:
+      "List selectable provider ad accounts from a temporary provider access token.",
     method: "POST",
     path: "/api/v1/advertising/accounts/discover",
     risk: "read",

@@ -496,7 +496,9 @@ async function prepareSkillAwareness(
       reason:
         "bridge to parent runtime actions, connectors, Cloud commands, and confirmation flow",
     },
-    ...taskRecommendations.filter((rec) => rec.slug !== PARENT_AGENT_BROKER_SLUG),
+    ...taskRecommendations.filter(
+      (rec) => rec.slug !== PARENT_AGENT_BROKER_SLUG,
+    ),
   ];
   const recommendedSlugs = recommendationsWithParent.map((rec) => rec.slug);
   const includeLifeOpsBroker = recommendedSlugs.includes(
@@ -1161,7 +1163,10 @@ export async function handleMultiAgent(
       // task-local allow-list for enforcement, so it must match the manifest
       // rather than only the top recommendations.
       if (skillAwareness && skillAwareness.manifest.slugs.length > 0) {
-        sessionSkillAllowList.register(session.id, skillAwareness.manifest.slugs);
+        sessionSkillAllowList.register(
+          session.id,
+          skillAwareness.manifest.slugs,
+        );
       }
 
       // Register event handler

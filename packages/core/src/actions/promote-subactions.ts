@@ -122,7 +122,8 @@ function mergeOptionsWithSubaction(
 		(options as HandlerOptions | undefined) ?? ({} as HandlerOptions);
 	const incomingParams = (incoming.parameters ?? {}) as ActionParameters;
 	const discriminatorKey =
-		findDiscriminatorParameter(parent.parameters)?.name ?? CANONICAL_SUBACTION_KEY;
+		findDiscriminatorParameter(parent.parameters)?.name ??
+		CANONICAL_SUBACTION_KEY;
 	const parentDeclaresNestedAction = parent.parameters?.some(
 		(parameter) => parameter.name === CANONICAL_SUBACTION_KEY,
 	);

@@ -179,7 +179,8 @@ const CATALOG: CatalogModel[] = [
 		minRamGb: 1,
 		category: "tiny",
 		bucket: "small",
-		blurb: "Default Eliza-1 local embedding model for memory and knowledge search.",
+		blurb:
+			"Default Eliza-1 local embedding model for memory and knowledge search.",
 		role: "embedding",
 	},
 ];
