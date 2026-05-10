@@ -82,12 +82,15 @@ Returns the merged view of declared + granted state for one app:
 type AppPermissionsView = {
   slug: string;
   trust: "first-party" | "external";
+  isolation: "none" | "worker";
   requestedPermissions: Record<string, unknown> | null;   // raw from manifest
   recognisedNamespaces: string[];                          // ["fs", "net"] subset actually present
   grantedNamespaces: string[];                             // current grant set
   grantedAt: string | null;                                // ISO timestamp, null if never granted
 };
 ```
+
+`isolation` is declared by the app in `elizaos.app.isolation` and defaults to `"none"` for older registry entries. It is advisory until Phase 2 worker execution lands.
 
 `404` if no app is registered under `:slug`.
 
