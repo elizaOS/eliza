@@ -22,9 +22,9 @@ export function createAnthropicClientWithTopPSupport(runtime: IAgentRuntime) {
         const body: Record<string, unknown> = JSON.parse(init.body);
 
         const hasTopP = Object.hasOwn(body, "top_p") && body["top_p"] != null;
-        const hasZeroTemp = Object.hasOwn(body, "temperature") && body["temperature"] === 0;
+        const hasAnyTemp = Object.hasOwn(body, "temperature");
 
-        if (hasTopP && hasZeroTemp) {
+        if (hasTopP && hasAnyTemp) {
           delete body["temperature"];
           init.body = JSON.stringify(body);
         }
