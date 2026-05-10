@@ -52,6 +52,26 @@ export interface LocalRuntimeAcceleration {
   };
 }
 
+/**
+ * Tokenizer family identifier used to verify that a DFlash target and its
+ * paired drafter share a vocabulary. Speculative decoding requires the
+ * target and drafter to emit token ids drawn from the same vocabulary —
+ * see `docs/porting/dflash-drafter-strategy.md` for why mismatched
+ * tokenizers cannot be bridged by metadata repair. Add new families here
+ * as the catalog grows.
+ */
+export type TokenizerFamily =
+  | "qwen3"
+  | "qwen2"
+  | "llama3"
+  | "gpt2"
+  | "smollm2"
+  | "bge"
+  | "sentencepiece"
+  | "deepseekv2"
+  | "mistral"
+  | "gemma";
+
 export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
   id: string;
@@ -95,6 +115,15 @@ export interface CatalogModel {
   companionForModelId?: string;
   /** Extra catalog model ids to download alongside this model. */
   companionModelIds?: string[];
+  /**
+   * Tokenizer/vocabulary family this GGUF emits. Optional today so existing
+   * non-paired entries do not all need to be backfilled at once, but
+   * **REQUIRED** for any entry that participates in DFlash pairing (target
+   * or drafter): the catalog test guard rejects pairs where target and
+   * drafter `tokenizerFamily` do not match. See
+   * `docs/porting/dflash-drafter-strategy.md`.
+   */
+  tokenizerFamily?: TokenizerFamily;
   /** Runtime-specific acceleration metadata. */
   runtime?: LocalRuntimeAcceleration;
 }
