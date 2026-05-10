@@ -224,6 +224,31 @@ for (const viewport of VIEWPORTS) {
       });
     });
 
+    await page.route(
+      "**/api/cloud/compat/agents/agent-1/launch",
+      async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.fallback();
+          return;
+        }
+        await fulfillJson(route, 200, {
+          success: true,
+          data: {
+            agentId: "agent-1",
+            agentName: "My Agent",
+            appUrl:
+              "https://app.elizacloud.ai/?cloudLaunchSession=launch-1&cloudLaunchBase=https%3A%2F%2Fapi.elizacloud.ai",
+            launchSessionId: "launch-1",
+            issuedAt: "2026-01-01T00:00:02.000Z",
+            connection: {
+              apiBase,
+              token: "agent-token",
+            },
+          },
+        });
+      },
+    );
+
     await openAppPath(page, "/chat");
     await page.getByRole("button", { name: "Get started" }).click();
     await clickIfVisible(
