@@ -1,8 +1,8 @@
 {
-	"appName": "elizaOS",
-	"appId": "ai.elizaos.app",
+	"appName": "Eliza",
+	"appId": "app.eliza",
 	"namespace": "eliza",
 	"urlScheme": "elizaos",
-	"configDirName": "elizaOS",
+	"configDirName": "Eliza",
 	"appDescription": "Open framework for autonomous agents"
 }
