@@ -139,10 +139,12 @@ export function retrieveActions(
 		}
 
 		// Context-match boost: when the messageHandler picked contexts that
-		// intersect this parent's declared `contexts`, give it a small
-		// additive bump. Caps at +0.15 so it never overrides an unambiguous
-		// retrieval signal but reliably breaks ties between similarly-scored
-		// candidates. Always keep the parent retrievable — never filter.
+		// intersect this parent's declared `contexts`, give it a meaningful
+		// additive bump. The boost is large enough to reorder tier-A when a
+		// context-aligned candidate has a comparable raw retrieval score
+		// (e.g. LIFE vs BLOCK both keyword-match "every day" — context says
+		// the user is in tasks/general, so LIFE wins). Capped so a strong
+		// retrieval signal on a context-misaligned action can still surface.
 		const parentContexts = Array.isArray(parent.contexts)
 			? (parent.contexts as readonly unknown[])
 			: [];
@@ -152,7 +154,7 @@ export function retrieveActions(
 				selectedContextSet.has(String(c).toLowerCase()),
 			);
 			if (intersect) {
-				contextBoost = 0.15;
+				contextBoost = 0.3;
 				stageScores.contextMatch = contextBoost;
 			}
 		}

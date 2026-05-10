@@ -951,7 +951,11 @@ export const websiteBlockActionImpl: Action & {
     "Owner-only. Manage local hosts-file website blocking on this Mac. Subactions: block (start a fixed-duration or indefinite block on a set of public hostnames; always drafts first, requires confirmed:true to actually edit the hosts file), unblock (remove the active block), status (check whether a block is active and when it ends), request_permission (request administrator/root approval for hosts-file edits), release (release a managed block rule by id; requires confirmed:true; harsh_no_bypass rules cannot be released this way), list_active (list live OS-level + managed website block rules).",
   descriptionCompressed:
     "site block hosts-file: block(hosts,duration,confirm) unblock status request-permission release(ruleId,confirmed) list_active; macOS draft-then-confirm",
-  contexts: ["screen_time", "browser", "automation", "tasks", "settings"],
+  // Drop "tasks" — WEBSITE_BLOCK is a focus/screen-time tool, not a personal-
+  // task tool. With "tasks" included, it competed with LIFE on every habit
+  // prompt for tier-A slots. Belongs to screen_time / browser / automation /
+  // settings only.
+  contexts: ["screen_time", "browser", "automation", "settings"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
