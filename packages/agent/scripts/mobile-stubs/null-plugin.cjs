@@ -65,8 +65,12 @@ function makeStubProxy() {
     // since some are stubbed via `optionalPluginStubs`.
     "handleMcpRoutes",
     "handleTtsRoutes",
-    "streamManager",
     "validateX402Startup",
+    // streamManager has both function- and method-shaped consumers
+    // (streamManager.list(), streamManager.attach(...) in some paths,
+    // and direct call sites elsewhere). Match the live shape with a
+    // function that doubles as a method bag.
+    "streamManager",
   ];
   const target = {};
   for (const name of PRE_POPULATED_NAMES) {

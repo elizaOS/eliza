@@ -307,6 +307,14 @@ const optionalPluginStubs = {
   // bindings into the mobile bundle, which is wrong on every axis.
   "@elizaos/plugin-whatsapp": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-signal": path.join(stubsDir, "null-plugin.cjs"),
+  // `plugin-streaming` carries the TTS / SSE plumbing for desktop +
+  // server. Mobile never runs the streaming worker pool — the agent
+  // statically imports `streamManager` and `handleTtsRoutes`, so we
+  // stub the package with the same null-plugin proxy. The runtime
+  // log otherwise spams `[eliza-api] Failed to load
+  // @elizaos/plugin-streaming destinations: ResolveMessage: Cannot
+  // find module '@elizaos/plugin-streaming'` on every chat turn.
+  "@elizaos/plugin-streaming": path.join(stubsDir, "null-plugin.cjs"),
 };
 
 const stubAliases = { ...nativeStubs, ...optionalPluginStubs };
