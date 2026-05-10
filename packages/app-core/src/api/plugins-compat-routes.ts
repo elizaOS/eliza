@@ -35,7 +35,7 @@ import {
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
-} from "./auth";
+} from "./auth.ts";
 import {
   type CompatRuntimeState,
   readCompatJsonBody,
