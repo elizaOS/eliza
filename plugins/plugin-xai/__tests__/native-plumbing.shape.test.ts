@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleTextSmall } from "../models/grok";
 
 function createRuntime() {
@@ -17,13 +17,8 @@ function createRuntime() {
 }
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
-  vi.resetModules();
-});
-
-beforeEach(() => {
-  vi.resetModules();
 });
 
 describe("xAI native text plumbing", () => {
@@ -66,7 +61,7 @@ describe("xAI native text plumbing", () => {
           { status: 200, headers: { "Content-Type": "application/json" } },
         ),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
 
     const tools = {
       lookup: { description: "Lookup", inputSchema: { type: "object" } },
@@ -119,7 +114,7 @@ describe("xAI native text plumbing", () => {
           { status: 200, headers: { "Content-Type": "application/json" } },
         ),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
 
     const result = await handleTextSmall(createRuntime(), { prompt: "hi" });
     expect(result).toBe("hello");
