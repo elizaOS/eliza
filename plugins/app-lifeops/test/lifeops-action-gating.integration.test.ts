@@ -3,7 +3,7 @@
  *
  * Invariants the agent relies on:
  *
- *   1. LifeOps umbrella actions (MESSAGE, CALENDAR, etc.) are visible to the
+ *   1. Owner operation umbrella actions (MESSAGE, CALENDAR, OWNER_*, etc.) are visible to the
  *      LLM in any channel — no `gatePluginSessionForHostedApp` wrapper that
  *      hides them when the LifeOps UI isn't foregrounded. Previously the
  *      plugin wrapped every action's validate() to return false unless an
@@ -12,22 +12,17 @@
  *      at all.
  *
  *   2. ENTITY is the canonical entry point for people / contacts / typed
- *      relationships. The legacy `RELATIONSHIP` name is a one-release simile
- *      so cached planner outputs keep resolving. Follow-up cadence belongs
- *      to SCHEDULED_TASK; ENTITY's flat subaction surface is exactly
+ *      relationships. Follow-up cadence belongs to SCHEDULED_TASKS;
+ *      ENTITY's flat action surface is exactly
  *      `add | list | log_interaction | set_identity | set_relationship | merge`.
  *
- *   3. SCHEDULED_TASK is the canonical entry point for runner-managed
+ *   3. SCHEDULED_TASKS is the canonical entry point for runner-managed
  *      reminders / check-ins / follow-ups / approvals.
  *
- *   4. LIFE.policy_* is the only home for owner-policy writes
- *      (`policy_set_reminder`, `policy_configure_escalation`). PROFILE's
- *      flat surface is exactly `save | capture_phone`.
+ *   4. Owner operations use canonical `action` discriminators on the public
+ *      wrappers; legacy source actions remain implementation-only.
  *
- *   5. SUBSCRIPTIONS + PAYMENTS expose only `subaction`; the legacy `mode`
- *      alias is gone.
- *
- *   6. VOICE_CALL exposes a single `dial` verb with a `recipientKind`
+ *   5. VOICE_CALL exposes a single `dial` action with a `recipientKind`
  *      discriminator (`owner` | `external` | `e164`).
  *
  * Uses a real AgentRuntime with PGLite (plugin-sql) — no SQL mocks — so the
@@ -105,26 +100,49 @@ describe("LifeOps plugin action gating", () => {
     expect(result).toBe(true);
   });
 
-  it("exposes the full LifeOps action surface on the plugin", () => {
+  it("exposes the canonical owner-operation action surface on the plugin", () => {
     const actionNames = (appLifeOpsPlugin.actions ?? []).map((a) => a.name);
-    // Spot-check a mix of categories: email, calendar, inbox, scheduling, followups.
+    // Spot-check a mix of categories: email, calendar, owner state, scheduling, followups.
     for (const expected of [
       "MESSAGE",
       "CALENDAR",
-      "LIFE",
+      "OWNER_TODOS",
+      "OWNER_REMINDERS",
+      "OWNER_ALARMS",
+      "OWNER_GOALS",
+      "OWNER_ROUTINES",
+      "OWNER_HEALTH",
+      "OWNER_SCREENTIME",
+      "OWNER_FINANCES",
+      "BLOCK",
+      "CREDENTIALS",
       "ENTITY",
-      "MESSAGE",
-      "BOOK_TRAVEL",
+      "PERSONAL_ASSISTANT",
       "RESOLVE_REQUEST",
-      // SCHEDULED_TASK is the canonical home for runner-managed
+      // SCHEDULED_TASKS is the canonical home for runner-managed
       // reminders / check-ins / follow-ups; ENTITY's surface no longer
       // carries the follow-up verbs.
-      "SCHEDULED_TASK",
+      "SCHEDULED_TASKS",
+      "WORK_THREAD",
     ]) {
       expect(actionNames).toContain(expected);
     }
 
     for (const removed of [
+      "LIFE",
+      "PROFILE",
+      "RELATIONSHIP",
+      "MONEY",
+      "PAYMENTS",
+      "SUBSCRIPTIONS",
+      "BOOK_TRAVEL",
+      "SCHEDULING_NEGOTIATION",
+      "APP_BLOCK",
+      "WEBSITE_BLOCK",
+      "AUTOFILL",
+      "PASSWORD_MANAGER",
+      "SCHEDULED_TASK",
+      "LIFEOPS_THREAD_CONTROL",
       "GMAIL_ACTION",
       "INBOX",
       "CALENDAR_ACTION",
@@ -137,21 +155,18 @@ describe("LifeOps plugin action gating", () => {
       "REGISTER_BROWSER_SESSION",
       "FETCH_BROWSER_ACTIVITY",
       "CHECKIN",
-      // Wave-2 W2-A: RELATIONSHIP umbrella renamed to ENTITY; old name
-      // remains a simile so the planner does not regress.
-      "RELATIONSHIP",
     ]) {
       expect(actionNames).not.toContain(removed);
     }
   });
 
-  it("ENTITY exposes a flat 6-verb canonical surface (no transitional follow-up similes)", () => {
+  it("ENTITY exposes a flat 6-action canonical surface (no transitional follow-up similes)", () => {
     const entity = findAction("ENTITY");
-    const subactionParam = (entity.parameters ?? []).find(
-      (p) => p.name === "subaction",
+    const actionParam = (entity.parameters ?? []).find(
+      (p) => p.name === "action",
     );
-    if (!subactionParam) {
-      throw new Error("ENTITY has no `subaction` parameter");
+    if (!actionParam) {
+      throw new Error("ENTITY has no `action` parameter");
     }
     // Follow-up cadence lives on SCHEDULED_TASK now; the transitional
     // subaction names (`add_follow_up`, `complete_follow_up`,
@@ -175,16 +190,16 @@ describe("LifeOps plugin action gating", () => {
     }
   });
 
-  it("registers the 7 transitional ENTITY follow-up subactions as SCHEDULED_TASK similes", () => {
-    // SCHEDULED_TASK is the canonical home for follow-up cadence; the simile
-    // registration is what lets the planner pick SCHEDULED_TASK when the user
+  it("registers the 7 transitional ENTITY follow-up subactions as SCHEDULED_TASKS similes", () => {
+    // SCHEDULED_TASKS is the canonical home for follow-up cadence; the simile
+    // registration is what lets the planner pick SCHEDULED_TASKS when the user
     // asks to add/list/complete a follow-up.
     const scheduledTask = (appLifeOpsPlugin.actions ?? []).find(
-      (a) => a.name === "SCHEDULED_TASK",
+      (a) => a.name === "SCHEDULED_TASKS",
     );
     if (!scheduledTask) {
       throw new Error(
-        "SCHEDULED_TASK is not registered in appLifeOpsPlugin.actions",
+        "SCHEDULED_TASKS is not registered in appLifeOpsPlugin.actions",
       );
     }
     for (const transitional of [
@@ -200,50 +215,16 @@ describe("LifeOps plugin action gating", () => {
     }
   });
 
-  it("LIFE owns the canonical policy.* subactions; PROFILE no longer carries the policy aliases", () => {
-    // LIFE.policy_set_reminder + LIFE.policy_configure_escalation are the
-    // only home for owner-policy writes. PROFILE's flat surface is
-    // `save | capture_phone`.
-    const life = findAction("LIFE");
-    const subactionParam = (life.parameters ?? []).find(
-      (p) => p.name === "subaction",
-    );
-    if (!subactionParam) throw new Error("LIFE has no `subaction` parameter");
-    const enumValues =
-      (subactionParam.schema as { enum?: readonly string[] } | undefined)?.enum ?? [];
-    expect(enumValues).toContain("policy_set_reminder");
-    expect(enumValues).toContain("policy_configure_escalation");
-    expect(life.similes ?? []).toContain("SET_REMINDER_INTENSITY");
-    expect(life.similes ?? []).toContain("CONFIGURE_ESCALATION");
-
-    const profile = findAction("PROFILE");
-    const profileSubactionParam = (profile.parameters ?? []).find(
-      (p) => p.name === "subaction",
-    );
-    if (!profileSubactionParam) {
-      throw new Error("PROFILE has no `subaction` parameter");
-    }
-    const profileEnum =
-      (profileSubactionParam.schema as { enum?: readonly string[] } | undefined)
-        ?.enum ?? [];
-    expect(profileEnum).toEqual(["save", "capture_phone"]);
-    expect(profile.similes ?? []).not.toContain("SET_REMINDER_INTENSITY");
-    expect(profile.similes ?? []).not.toContain("CONFIGURE_ESCALATION");
-  });
-
-  it("MONEY umbrella replaces SUBSCRIPTIONS + PAYMENTS and preserves them as similes", () => {
-    // Audit B Defer #4: `MONEY` is the single umbrella for payments + subscription
-    // verbs. The legacy action names live on as similes so cached planner outputs
-    // (`"action": "PAYMENTS"`, etc.) still resolve.
-    const money = findAction("MONEY");
+  it("OWNER_FINANCES replaces MONEY/SUBSCRIPTIONS/PAYMENTS and uses action", () => {
+    const money = findAction("OWNER_FINANCES");
     const paramNames = (money.parameters ?? []).map((p) => p.name);
-    expect(paramNames).toContain("subaction");
+    expect(paramNames).toContain("action");
     expect(paramNames).not.toContain("mode");
-    const subactionEnum =
-      (money.parameters ?? []).find((p) => p.name === "subaction")?.schema as
+    const actionEnum =
+      (money.parameters ?? []).find((p) => p.name === "action")?.schema as
         | { enum?: readonly string[] }
         | undefined;
-    expect(subactionEnum?.enum).toEqual(
+    expect(actionEnum?.enum).toEqual(
       expect.arrayContaining([
         "dashboard",
         "list_sources",
@@ -256,11 +237,12 @@ describe("LifeOps plugin action gating", () => {
       ]),
     );
     expect(money.similes ?? []).toEqual(
-      expect.arrayContaining(["PAYMENTS", "SUBSCRIPTIONS"]),
+      expect.arrayContaining(["MONEY", "PAYMENTS", "SUBSCRIPTIONS"]),
     );
 
     // Legacy umbrella names must NOT be registered as standalone actions.
     const actionNames = (appLifeOpsPlugin.actions ?? []).map((a) => a.name);
+    expect(actionNames).not.toContain("MONEY");
     expect(actionNames).not.toContain("PAYMENTS");
     expect(actionNames).not.toContain("SUBSCRIPTIONS");
   });
@@ -275,11 +257,11 @@ describe("LifeOps plugin action gating", () => {
         | { enum?: readonly string[] }
         | undefined;
     expect(targetEnum?.enum).toEqual(["app", "website"]);
-    const subactionEnum =
-      (block.parameters ?? []).find((p) => p.name === "subaction")?.schema as
+    const actionEnum =
+      (block.parameters ?? []).find((p) => p.name === "action")?.schema as
         | { enum?: readonly string[] }
         | undefined;
-    expect(subactionEnum?.enum).toEqual([
+    expect(actionEnum?.enum).toEqual([
       "block",
       "unblock",
       "status",
@@ -298,10 +280,10 @@ describe("LifeOps plugin action gating", () => {
     expect(credentials.similes ?? []).toEqual(
       expect.arrayContaining(["AUTOFILL", "PASSWORD_MANAGER"]),
     );
-    const subactionEnum =
-      (credentials.parameters ?? []).find((p) => p.name === "subaction")
+    const actionEnum =
+      (credentials.parameters ?? []).find((p) => p.name === "action")
         ?.schema as { enum?: readonly string[] } | undefined;
-    expect(subactionEnum?.enum).toEqual([
+    expect(actionEnum?.enum).toEqual([
       "fill",
       "whitelist_add",
       "whitelist_list",
@@ -316,7 +298,7 @@ describe("LifeOps plugin action gating", () => {
     expect(actionNames).not.toContain("PASSWORD_MANAGER");
   });
 
-  it("registers per-subaction virtuals for the BLOCK / MONEY / CREDENTIALS umbrellas", () => {
+  it("registers per-action virtuals for the BLOCK / OWNER_FINANCES / CREDENTIALS umbrellas", () => {
     const actionNames = (appLifeOpsPlugin.actions ?? []).map((a) => a.name);
     // Spot-check one virtual per umbrella to confirm `promoteSubactionsToActions`
     // wired the parents through. Virtuals exist alongside the umbrella so the
@@ -329,10 +311,10 @@ describe("LifeOps plugin action gating", () => {
       "BLOCK_REQUEST_PERMISSION",
       "BLOCK_RELEASE",
       "BLOCK_LIST_ACTIVE",
-      "MONEY",
-      "MONEY_DASHBOARD",
-      "MONEY_RECURRING_CHARGES",
-      "MONEY_SUBSCRIPTION_CANCEL",
+      "OWNER_FINANCES",
+      "OWNER_FINANCES_DASHBOARD",
+      "OWNER_FINANCES_RECURRING_CHARGES",
+      "OWNER_FINANCES_SUBSCRIPTION_CANCEL",
       "CREDENTIALS",
       "CREDENTIALS_FILL",
       "CREDENTIALS_INJECT_PASSWORD",
@@ -341,16 +323,16 @@ describe("LifeOps plugin action gating", () => {
     }
   });
 
-  it("VOICE_CALL exposes a single `dial` verb with a recipientKind discriminator", () => {
+  it("VOICE_CALL exposes a single `dial` action with a recipientKind discriminator", () => {
     const voiceCall = findAction("VOICE_CALL");
-    const subactionParam = (voiceCall.parameters ?? []).find(
-      (p) => p.name === "subaction",
+    const actionParam = (voiceCall.parameters ?? []).find(
+      (p) => p.name === "action",
     );
-    if (!subactionParam) {
-      throw new Error("VOICE_CALL has no `subaction` parameter");
+    if (!actionParam) {
+      throw new Error("VOICE_CALL has no `action` parameter");
     }
     const enumValues =
-      (subactionParam.schema as { enum?: readonly string[] } | undefined)
+      (actionParam.schema as { enum?: readonly string[] } | undefined)
         ?.enum ?? [];
     expect(enumValues).toEqual(["dial"]);
 
