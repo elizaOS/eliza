@@ -23,7 +23,7 @@ Content-Transfer-Encoding: 8bit
 - CMakeLists adds ggml-cpu/qjl/ to the source list and exposes
   ggml-cpu/qjl/{,include} on the private include path.
 ---
- ggml/src/ggml-cpu/CMakeLists.txt          |  22 ++
+ ggml/src/ggml-cpu/CMakeLists.txt          |  36 ++
  ggml/src/ggml-cpu/ggml-cpu.c              |  19 ++
  ggml/src/ggml-cpu/qjl/include/qjl/qjl.h   | 162 +++++++++++++++
  ggml/src/ggml-cpu/qjl/qjl_block.h         |  18 ++
@@ -39,7 +39,7 @@ Content-Transfer-Encoding: 8bit
  ggml/src/ggml-cpu/quants.h                |   9 +
  ggml/src/ggml-quants.h                    |   3 +
  ggml/src/ggml.c                           |  68 ++++++-
- 16 files changed, 1119 insertions(+), 2 deletions(-)
+ 16 files changed, 1133 insertions(+), 2 deletions(-)
  create mode 100644 ggml/src/ggml-cpu/qjl/include/qjl/qjl.h
  create mode 100644 ggml/src/ggml-cpu/qjl/qjl_block.h
  create mode 100644 ggml/src/ggml-cpu/qjl/qjl_dispatch.c
@@ -56,7 +56,7 @@ diff --git a/ggml/src/ggml-cpu/CMakeLists.txt b/ggml/src/ggml-cpu/CMakeLists.txt
 index 3dc948e4..ad4701f2 100644
 --- a/ggml/src/ggml-cpu/CMakeLists.txt
 +++ b/ggml/src/ggml-cpu/CMakeLists.txt
-@@ -52,8 +52,30 @@ function(ggml_add_cpu_backend_variant_impl tag_name)
+@@ -52,8 +52,44 @@ function(ggml_add_cpu_backend_variant_impl tag_name)
          ggml-cpu/vec.cpp
          ggml-cpu/ops.h
          ggml-cpu/ops.cpp
@@ -83,6 +83,20 @@ index 3dc948e4..ad4701f2 100644
 +    # `qjl_block.h` (their internal header) the same way they do in the
 +    # standalone packages/native-plugins/qjl-cpu/ build.
 +    target_include_directories(${GGML_CPU_NAME} PRIVATE ggml-cpu/qjl/include ggml-cpu/qjl)
++
++    # Per-source SIMD flags. The AOSP cross-build sets GGML_NATIVE=OFF for
++    # portability, so the AVX2 TUs would otherwise compile without
++    # `__AVX2__` defined and the kernels would #if-out to nothing — leaving
++    # the cuttlefish x86_64 build with only the scalar `_ref` path. Add
++    # `-mavx2 -mfma` per-source so the AVX2 entry points (`qjl_quantize_row_avx2`,
++    # `qjl_score_qk_avx2`) get emitted regardless of the global GGML_NATIVE
++    # setting. NEON sources don't need this on AArch64 (NEON is on by
++    # default for the AArch64 ABI).
++    set_source_files_properties(
++        ggml-cpu/qjl/qjl_quantize_avx2.c
++        ggml-cpu/qjl/qjl_score_avx2.c
++        PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma"
++    )
 +
      target_compile_features(${GGML_CPU_NAME} PRIVATE c_std_11 cxx_std_17)
      target_include_directories(${GGML_CPU_NAME} PRIVATE . ggml-cpu)
