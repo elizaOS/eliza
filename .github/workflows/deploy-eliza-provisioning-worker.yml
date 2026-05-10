@@ -20,6 +20,7 @@ on:
       - 'cloud/packages/lib/services/docker-sandbox-provider.ts'
       - 'cloud/packages/lib/services/eliza-sandbox.ts'
       - 'cloud/packages/db/repositories/agent-sandboxes.ts'
+      - 'plugins/plugin-sql/**'
   workflow_dispatch:
 
 concurrency:
@@ -70,7 +71,6 @@ jobs:
           host: ${{ env.DEPLOY_HOST }}
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
-          script_stop: true
           command_timeout: 10m
           envs: DEPLOY_BRANCH,SYSTEMD_UNIT
           script: |
@@ -120,6 +120,11 @@ jobs:
             done
             cd /opt/eliza
 
+            # The daemons run under Node/tsx rather than Bun. Node resolves
+            # linked workspace packages through their built `node` exports, so
+            # refresh the plugin-sql dist files after installing dependencies.
+            bun run --cwd plugins/plugin-sql build
+
             # Install/refresh both systemd units (provisioning worker + agent router).
             sudo install -m 0644 \
               cloud/packages/scripts/eliza-provisioning-worker.service \
@@ -141,7 +146,6 @@ jobs:
           host: ${{ env.DEPLOY_HOST }}
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
-          script_stop: true
           command_timeout: 5m
           envs: SYSTEMD_UNIT
           script: |
