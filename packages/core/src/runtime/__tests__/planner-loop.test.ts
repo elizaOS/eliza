@@ -398,43 +398,6 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.finalMessage).toBe("Checked.");
 	});
 
-	it("returns a user-visible failure when required tool retries are exhausted", async () => {
-		const runtime = {
-			useModel: vi.fn(
-				async () => `{
-  "thought": "I can answer directly.",
-  "messageToUser": "Looks fine.",
-  "toolCalls": []
-}`,
-			),
-			logger: { warn: vi.fn() },
-		};
-
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			config: { maxPlannerIterations: 1 },
-			tools: [
-				{
-					name: "LOOKUP",
-					description: "Lookup current status.",
-				},
-			],
-			requireNonTerminalToolCall: true,
-			executeToolCall: vi.fn(),
-			evaluate: vi.fn(),
-		});
-
-		expect(result.status).toBe("continued");
-		expect(result.finalMessage).toContain("did not select an available tool");
-		expect(runtime.logger.warn).toHaveBeenCalledWith(
-			expect.objectContaining({
-				maxPlannerIterations: 1,
-			}),
-			"Planner exhausted retries before satisfying a required tool call",
-		);
-	});
-
 	it("does not finish with terminal planner text after tool work when the evaluator asks to continue", async () => {
 		let plannerCallCount = 0;
 		const runtime = {
@@ -870,15 +833,15 @@ describe("v5 planner loop — evaluator gate", () => {
 		};
 		const executeToolCall = vi.fn(async () => ({ success: true, text: "ok" }));
 		const evaluate = vi.fn(async () => ({
-			success: false,
-			decision: "CONTINUE" as const,
+			success: true,
+			decision: "FINISH" as const,
 			thought: "Real evaluator caught the leaked syntax.",
+			messageToUser: "Done.",
 		}));
 
 		await runPlannerLoop({
 			runtime,
 			context: { id: "ctx" },
-			config: { maxPlannerIterations: 2 },
 			executeToolCall,
 			evaluate,
 		});

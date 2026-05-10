@@ -530,7 +530,6 @@ describe("v5 stress path — long build, compaction, gates, trajectory export", 
 			state,
 			responseId: RESPONSE_ID,
 			plannerLoopConfig: {
-				maxPlannerIterations: 12,
 				maxToolCalls: 12,
 				contextWindowTokens: 5_000,
 				compactionReserveTokens: 1_000,
