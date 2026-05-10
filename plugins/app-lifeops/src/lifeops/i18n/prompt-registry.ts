@@ -15,9 +15,64 @@
  */
 
 import type { ActionExample, IAgentRuntime } from "@elizaos/core";
+import { app_block_es_examples } from "./generated/app-block.es.js";
+import { app_block_fr_examples } from "./generated/app-block.fr.js";
+import { autofill_es_examples } from "./generated/autofill.es.js";
+import { autofill_fr_examples } from "./generated/autofill.fr.js";
+import { block_es_examples } from "./generated/block.es.js";
+import { block_fr_examples } from "./generated/block.fr.js";
+import { book_travel_es_examples } from "./generated/book-travel.es.js";
+import { book_travel_fr_examples } from "./generated/book-travel.fr.js";
+import { calendar_es_examples } from "./generated/calendar.es.js";
+import { calendar_fr_examples } from "./generated/calendar.fr.js";
+import { checkin_es_examples } from "./generated/checkin.es.js";
+import { checkin_fr_examples } from "./generated/checkin.fr.js";
+import { connector_es_examples } from "./generated/connector.es.js";
+import { connector_fr_examples } from "./generated/connector.fr.js";
+import { credentials_es_examples } from "./generated/credentials.es.js";
+import { credentials_fr_examples } from "./generated/credentials.fr.js";
+import { device_intent_es_examples } from "./generated/device-intent.es.js";
+import { device_intent_fr_examples } from "./generated/device-intent.fr.js";
+import { entity_es_examples } from "./generated/entity.es.js";
+import { entity_fr_examples } from "./generated/entity.fr.js";
+import { first_run_es_examples } from "./generated/first-run.es.js";
+import { first_run_fr_examples } from "./generated/first-run.fr.js";
+import { health_es_examples } from "./generated/health.es.js";
+import { health_fr_examples } from "./generated/health.fr.js";
 import { life_es_examples } from "./generated/life.es.js";
+import { life_fr_examples } from "./generated/life.fr.js";
+import { lifeops_es_examples } from "./generated/lifeops-pause.es.js";
+import { lifeops_fr_examples } from "./generated/lifeops-pause.fr.js";
 import { message_handoff_es_examples } from "./generated/message-handoff.es.js";
+import { message_handoff_fr_examples } from "./generated/message-handoff.fr.js";
+import { money_es_examples } from "./generated/money.es.js";
+import { money_fr_examples } from "./generated/money.fr.js";
+import { password_manager_es_examples } from "./generated/password-manager.es.js";
+import { password_manager_fr_examples } from "./generated/password-manager.fr.js";
+import { payments_es_examples } from "./generated/payments.es.js";
+import { payments_fr_examples } from "./generated/payments.fr.js";
+import { profile_es_examples } from "./generated/profile.es.js";
+import { profile_fr_examples } from "./generated/profile.fr.js";
+import { relationship_es_examples } from "./generated/relationship.es.js";
+import { relationship_fr_examples } from "./generated/relationship.fr.js";
+import { remote_desktop_es_examples } from "./generated/remote-desktop.es.js";
+import { remote_desktop_fr_examples } from "./generated/remote-desktop.fr.js";
+import { resolve_request_es_examples } from "./generated/resolve-request.es.js";
+import { resolve_request_fr_examples } from "./generated/resolve-request.fr.js";
+import { schedule_es_examples } from "./generated/schedule.es.js";
+import { schedule_fr_examples } from "./generated/schedule.fr.js";
 import { scheduled_task_es_examples } from "./generated/scheduled-task.es.js";
+import { scheduled_task_fr_examples } from "./generated/scheduled-task.fr.js";
+import { screen_time_es_examples } from "./generated/screen-time.es.js";
+import { screen_time_fr_examples } from "./generated/screen-time.fr.js";
+import { subscriptions_es_examples } from "./generated/subscriptions.es.js";
+import { subscriptions_fr_examples } from "./generated/subscriptions.fr.js";
+import { toggle_feature_es_examples } from "./generated/toggle-feature.es.js";
+import { toggle_feature_fr_examples } from "./generated/toggle-feature.fr.js";
+import { voice_call_es_examples } from "./generated/voice-call.es.js";
+import { voice_call_fr_examples } from "./generated/voice-call.fr.js";
+import { website_block_es_examples } from "./generated/website-block.es.js";
+import { website_block_fr_examples } from "./generated/website-block.fr.js";
 
 export type PromptLocale = "en" | "es" | "fr" | "ja";
 
@@ -205,17 +260,76 @@ const LIFE_BRUSH_TEETH_EXAMPLES: ReadonlyArray<PromptExampleEntry> = [
 /**
  * Generated translation packs from
  * `plugins/app-lifeops/scripts/translate-action-examples.mjs`. Each entry is
- * a Spanish translation of an English ActionExample pair found in the source
- * action file. The registry composite key is `<actionName>.example.<index>`,
- * which matches the index of the source pair in the action's
- * `examples: ActionExample[][]` array.
+ * a Spanish or French translation of an English ActionExample pair found in
+ * the source action file. The registry composite key is
+ * `<actionName>.example.<index>`, which matches the index of the source pair
+ * in the action's `examples: ActionExample[][]` array.
+ *
+ * Coverage: every example-bearing app-lifeops action × {es, fr}. Action files
+ * outside app-lifeops are tracked as future bulk-pass scope in
+ * `docs/audit/translation-harness.md`.
  */
 const GENERATED_TRANSLATION_PACKS: ReadonlyArray<
   ReadonlyArray<PromptExampleEntry>
 > = [
+  app_block_es_examples,
+  app_block_fr_examples,
+  autofill_es_examples,
+  autofill_fr_examples,
+  block_es_examples,
+  block_fr_examples,
+  book_travel_es_examples,
+  book_travel_fr_examples,
+  calendar_es_examples,
+  calendar_fr_examples,
+  checkin_es_examples,
+  checkin_fr_examples,
+  connector_es_examples,
+  connector_fr_examples,
+  credentials_es_examples,
+  credentials_fr_examples,
+  device_intent_es_examples,
+  device_intent_fr_examples,
+  entity_es_examples,
+  entity_fr_examples,
+  first_run_es_examples,
+  first_run_fr_examples,
+  health_es_examples,
+  health_fr_examples,
   life_es_examples,
+  life_fr_examples,
+  lifeops_es_examples,
+  lifeops_fr_examples,
   message_handoff_es_examples,
+  message_handoff_fr_examples,
+  money_es_examples,
+  money_fr_examples,
+  password_manager_es_examples,
+  password_manager_fr_examples,
+  payments_es_examples,
+  payments_fr_examples,
+  profile_es_examples,
+  profile_fr_examples,
+  relationship_es_examples,
+  relationship_fr_examples,
+  remote_desktop_es_examples,
+  remote_desktop_fr_examples,
+  resolve_request_es_examples,
+  resolve_request_fr_examples,
+  schedule_es_examples,
+  schedule_fr_examples,
   scheduled_task_es_examples,
+  scheduled_task_fr_examples,
+  screen_time_es_examples,
+  screen_time_fr_examples,
+  subscriptions_es_examples,
+  subscriptions_fr_examples,
+  toggle_feature_es_examples,
+  toggle_feature_fr_examples,
+  voice_call_es_examples,
+  voice_call_fr_examples,
+  website_block_es_examples,
+  website_block_fr_examples,
 ];
 
 export function registerDefaultPromptPack(

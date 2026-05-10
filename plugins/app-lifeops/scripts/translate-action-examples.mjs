@@ -156,6 +156,11 @@ function extractFromActionFile(filePath, actionNameOverride) {
   }
 
   // Strategy 2: `examples: [...]` property inside an exported Action literal.
+  // Action.examples is `ActionExample[][]` — an array of pair arrays. Parameter
+  // schemas may also expose `examples: ["a", "b"]`, so we explicitly require the
+  // outer array's first element to itself be an array literal (the `[user, agent]`
+  // pair shape) before accepting the match. This avoids picking up a parameter's
+  // example list and missing the real Action examples below it.
   let actionLiteral = null; // the surrounding ObjectLiteralExpression, if any
   if (!examplesNode) {
     sourceFile.forEachDescendant((node) => {
@@ -166,20 +171,30 @@ function extractFromActionFile(filePath, actionNameOverride) {
       if (!nameNode || nameNode.getText() !== "examples") return;
       const init = prop.getInitializer?.();
       if (!init) return;
+      let candidate = null;
       if (init.getKind() === SyntaxKind.ArrayLiteralExpression) {
-        examplesNode = init;
-        actionLiteral = prop.getParentIfKind?.(
-          SyntaxKind.ObjectLiteralExpression,
-        );
+        candidate = init;
       } else if (init.getKind() === SyntaxKind.AsExpression) {
         const inner = init.getExpression?.();
         if (inner && inner.getKind() === SyntaxKind.ArrayLiteralExpression) {
-          examplesNode = inner;
-          actionLiteral = prop.getParentIfKind?.(
-            SyntaxKind.ObjectLiteralExpression,
-          );
+          candidate = inner;
         }
       }
+      if (!candidate) return;
+      // Require ActionExample[][] shape: at least one inner element that is
+      // itself an ArrayLiteralExpression. Empty arrays are accepted (action
+      // with no examples — caller will get pairs=0 cleanly).
+      const elements = candidate.getElements();
+      const looksLikePairArray =
+        elements.length === 0 ||
+        elements.some(
+          (el) => el.getKind() === SyntaxKind.ArrayLiteralExpression,
+        );
+      if (!looksLikePairArray) return;
+      examplesNode = candidate;
+      actionLiteral = prop.getParentIfKind?.(
+        SyntaxKind.ObjectLiteralExpression,
+      );
     });
   }
 
