@@ -1,16 +1,14 @@
 /**
- * W2-D — Canonical AnchorRegistry binding for app-lifeops.
+ * Canonical AnchorRegistry binding for app-lifeops.
  *
  * The `AnchorRegistry` interface itself + the in-memory factory live in
- * `../scheduled-task/consolidation-policy.ts` (W1-A). This module:
+ * `../scheduled-task/consolidation-policy.ts`. This module:
  *   1. Re-exports the canonical type + factory so app-lifeops has a single
- *      `registries/anchor-registry.ts` import surface (no plugin needs to
- *      import from `scheduled-task/`).
+ *      `registries/anchor-registry.ts` import surface.
  *   2. Adds per-runtime registration (mirrors `connectorRegistry`) so
  *      consumers like `plugin-health` can call
- *      `getAnchorRegistry(runtime).register(...)` to contribute their
- *      anchors.
- *   3. Registers the calendar / time-window anchors owned by W2-D
+ *      `getAnchorRegistry(runtime).register(...)`.
+ *   3. Registers the built-in calendar / time-window anchors
  *      (`meeting.ended`, `morning.start`, `lunch.start`, `night.start`).
  *
  * `wake.observed`, `wake.confirmed`, `bedtime.target`, `nap.start` are
@@ -35,9 +33,7 @@ export type {
   AnchorContribution,
 } from "../scheduled-task/types.js";
 
-// ---------------------------------------------------------------------------
-// W2-D-owned anchor contributions (calendar + time windows)
-// ---------------------------------------------------------------------------
+// Built-in anchor contributions (calendar + time windows).
 
 function nullableTimeAnchor(args: {
   anchorKey: string;
@@ -131,10 +127,9 @@ const nightStartAnchor: AnchorContribution = nullableTimeAnchor({
 });
 
 /**
- * `lunch.start` — local 12:00 in the owner's timezone. We deliberately do
- * NOT add a `lunchWindow` to `OwnerFactsView` until first-run (W2-E)
- * collects it; this default approximates what the planner currently
- * assumes when scheduling lunch-time prompts.
+ * `lunch.start` — local 12:00 in the owner's timezone. There is no
+ * `lunchWindow` field on `OwnerFactsView`; this default approximates what
+ * the planner currently assumes when scheduling lunch-time prompts.
  */
 const lunchStartAnchor: AnchorContribution = {
   anchorKey: "lunch.start",
@@ -174,8 +169,8 @@ export const APP_LIFEOPS_ANCHORS: readonly AnchorContribution[] = [
 ];
 
 /**
- * Register the calendar / time-window anchors owned by W2-D. Idempotent
- * via `override: true` so repeated calls (e.g. test setup) don't throw.
+ * Register the built-in calendar / time-window anchors. Idempotent via
+ * `override: true` so repeated calls (e.g. test setup) don't throw.
  */
 export function registerAppLifeOpsAnchors(registry: AnchorRegistry): void {
   for (const anchor of APP_LIFEOPS_ANCHORS) {

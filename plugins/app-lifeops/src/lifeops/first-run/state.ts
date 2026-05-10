@@ -3,20 +3,13 @@
  *
  * Owns the `pending` → `in_progress` → `complete` lifecycle and the
  * Q-by-Q `partialAnswers` accumulator used by the customize path. The
- * canonical owner-fact store lives in `../owner/fact-store.ts`; this
- * module previously hosted a W1-C interim wrapper around
- * `LifeOpsOwnerProfile`, which W2-E removes.
- *
- * Source of truth for the contract:
- *   - `wave1-interfaces.md` §4.1 / §8
- *   - `GAP_ASSESSMENT.md` §3.9 / §5
- *   - `IMPLEMENTATION_PLAN.md` §5.5 (W2-E swap)
+ * canonical owner-fact store lives in `../owner/fact-store.ts`.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { asCacheRuntime } from "../runtime-cache.js";
 
-// --- Public re-exports of the real OwnerFactStore (W2-E) ------------------
+// --- Public re-exports of the canonical OwnerFactStore --------------------
 
 export {
   createOwnerFactStore,

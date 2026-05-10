@@ -1,9 +1,9 @@
 /**
- * First-run replay semantics (per `GAP_ASSESSMENT.md` §8.14).
+ * First-run replay semantics.
  *
  * Replay = re-run the first-run flow without destroying anything:
  *   - Existing `ScheduledTask` records are NOT touched. The runner sees the
- *     same `idempotencyKey` and upserts in place (W1-A guarantee).
+ *     same `idempotencyKey` and upserts in place.
  *   - `OwnerFactStore` facts that the questions touch ARE updated. New
  *     answers append; previously-answered fields show their current value as
  *     the "default" for the user to confirm or change.
@@ -68,12 +68,10 @@ export function partialAnswersFromFacts(
 }
 
 /**
- * Per the contract, replay never wipes existing relationship answers — but
- * replay also has no way of reading back into the question slate which
- * relationships the user previously named. Until the W1-E `RelationshipStore`
- * is wired in, replay treats the relationships question as a fresh round
- * (the user lists them again or skips). When the W1-E store lands, this
- * helper changes to read it.
+ * Replay never wipes existing relationship answers but it also has no way of
+ * reading back into the question slate which relationships the user
+ * previously named. Replay treats the relationships question as a fresh
+ * round (the user lists them again or skips).
  */
 export function relationshipsFallbackForReplay(): RelationshipAnswerEntry[] {
   return [];

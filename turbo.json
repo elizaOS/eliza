@@ -529,6 +529,12 @@
       ],
       "outputs": []
     },
+    "@elizaos/example-telegram#typecheck": {
+      "dependsOn": [
+        "@elizaos/plugin-sql#build"
+      ],
+      "outputs": []
+    },
     "@elizaos/example-farcaster#build": {
       "dependsOn": [
         "@elizaos/core#build",

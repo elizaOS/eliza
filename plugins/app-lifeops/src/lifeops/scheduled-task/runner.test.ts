@@ -1,7 +1,7 @@
 /**
- * W1-A unit tests for the ScheduledTask spine.
+ * Unit tests for the ScheduledTask spine.
  *
- * Covers per IMPL §3.1 verification:
+ * Covers:
  *  - every trigger kind (schema-level)
  *  - every verb (snooze | skip | complete | dismiss | escalate |
  *    acknowledge | edit | reopen)
@@ -14,7 +14,7 @@
  *  - AnchorConsolidationPolicy merge mode
  *  - pipeline.onComplete fires on `completed`; does NOT fire on
  *    `acknowledged`
- *  - the runner does NOT pattern-match `promptInstructions` (§7.1)
+ *  - the runner does NOT pattern-match `promptInstructions`
  */
 
 import { describe, expect, it, vi } from "vitest";

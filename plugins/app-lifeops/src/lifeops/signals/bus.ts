@@ -1,9 +1,9 @@
 /**
- * W2-D — ActivitySignalBus.
+ * ActivitySignalBus.
  *
  * Pub/sub fabric for `LifeOpsBusFamily` events. Producers (calendar
  * watcher, plugin-health, time-window emitter, manual-override gateway)
- * publish typed envelopes; consumers (the W1-A `ScheduledTaskRunner`'s
+ * publish typed envelopes; consumers (the `ScheduledTaskRunner`'s
  * `ActivitySignalBusView`, plugin-health's recap aggregator) subscribe by
  * family and read recent events.
  *

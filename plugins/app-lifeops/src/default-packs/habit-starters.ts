@@ -204,7 +204,7 @@ const vitaminsRecord: ScheduledTaskSeed = {
 const workoutRecord: ScheduledTaskSeed = {
   kind: "reminder",
   promptInstructions:
-    "Send a workout reminder for the afternoon. Direct, not pleading. Include one micro-line if the user has skipped recently (e.g. 'no pressure if today's not it'); otherwise just the reminder.",
+    "Send a workout reminder for the afternoon. Direct, not pleading; one short sentence. Recent reminder outcomes are in context — let them shape tone (e.g. softer after a skip streak) without restating the streak as a fact.",
   contextRequest: {
     includeOwnerFacts: ["preferredName"],
     includeRecentTaskStates: {

@@ -1,9 +1,8 @@
 /**
- * W2-B — Default channel pack.
+ * Default channel pack.
  *
  * Registers the union of `LIFEOPS_REMINDER_CHANNELS ∪ LIFEOPS_CHANNEL_TYPES
- * ∪ LIFEOPS_MESSAGE_CHANNELS` (per `wave1-interfaces.md` §3.2 / GAP §3.2).
- * Per-channel capability descriptors per W1-F's `ChannelContribution` shape.
+ * ∪ LIFEOPS_MESSAGE_CHANNELS` as `ChannelContribution` records.
  *
  * Channels delegate `send` to the matching `ConnectorContribution` so the
  * channel coverage invariant (`ChannelRegistry.list({ supports: { send } })
@@ -268,16 +267,15 @@ function buildChannelContribution(
 }
 
 /**
- * Wave-1 export retained for caller compatibility; the descriptor list is
- * the source of truth.
+ * Empty default for callers that want a pre-built array; the descriptor
+ * list is the source of truth.
  */
 export const DEFAULT_CHANNEL_PACK: readonly ChannelContribution[] = [];
 
 /**
  * The channel kinds shipped by the default pack. Mirrors the union of
  * `LIFEOPS_REMINDER_CHANNELS`, `LIFEOPS_CHANNEL_TYPES`, and
- * `LIFEOPS_MESSAGE_CHANNELS` so the contracts arrays can collapse to
- * literal-only types per the W2-B cleanup.
+ * `LIFEOPS_MESSAGE_CHANNELS`.
  */
 export const DEFAULT_CHANNEL_KINDS: readonly string[] = CHANNEL_DESCRIPTORS.map(
   (descriptor) => descriptor.kind,
@@ -288,7 +286,7 @@ export function registerDefaultChannelPack(
   runtime?: IAgentRuntime,
 ): void {
   if (!runtime) {
-    // Wave-1 callsites passed only the registry; preserve that path.
+    // Some callsites pass only the registry; preserve that path.
     return;
   }
   for (const descriptor of CHANNEL_DESCRIPTORS) {

@@ -3,10 +3,10 @@
  * sent to the browser companion, so unsafe domains are rejected even if the
  * companion is unreachable.
  *
- * The 49 default brand domains live in
- * `src/default-packs/autofill-whitelist-pack.ts` (W2-F). This module re-exports
- * them as `DEFAULT_AUTOFILL_WHITELIST` so callers don't need to know about the
- * pack — adding a default domain is a literal-edit in the pack file, not here.
+ * The default brand domains live in
+ * `src/default-packs/autofill-whitelist-pack.ts`. This module re-exports them
+ * as `DEFAULT_AUTOFILL_WHITELIST` so callers don't need to know about the pack
+ * — adding a default domain is a literal-edit in the pack file.
  */
 
 import { getDefaultAutofillWhitelist } from "../default-packs/autofill-whitelist-pack.js";

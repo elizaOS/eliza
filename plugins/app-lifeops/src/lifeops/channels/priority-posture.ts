@@ -1,7 +1,5 @@
 /**
- * W1-F — Priority → notification posture map.
- *
- * Frozen per `wave1-interfaces.md` §3.3 and `GAP_ASSESSMENT.md` §8.7.
+ * Priority → notification posture map.
  *
  * The three priority levels are distinct user surfaces, not just sort order:
  * - `low`    — in_app card only; no banner, no sound; badge only.
