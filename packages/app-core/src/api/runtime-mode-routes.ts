@@ -9,7 +9,7 @@
  */
 
 import type http from "node:http";
-import { ensureRouteAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth.ts";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson, sendJsonError } from "./response";
 import { getRuntimeModeSnapshot } from "../runtime/mode/runtime-mode";
