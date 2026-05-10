@@ -14,6 +14,7 @@ class PersonaArchetype(Enum):
     SCAMMER = "scammer"
     EMOTIONAL_CRISIS = "emotional_crisis"
     REPEAT_CUSTOMER = "repeat_customer"
+    FRIEND_SUPPORTER = "friend_supporter"
     ANTAGONIST = "antagonist"
 
 

@@ -397,6 +397,10 @@ export function getWorkspacePluginAliases(
         sourceRoot: path.join(pluginRoot, "src"),
       },
       {
+        packageRoot: pluginRoot,
+        sourceRoot: pluginRoot,
+      },
+      {
         packageRoot: path.join(pluginRoot, "typescript"),
         sourceRoot: path.join(pluginRoot, "typescript", "src"),
       },

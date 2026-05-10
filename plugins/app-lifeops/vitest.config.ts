@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -22,6 +23,9 @@ const appCoreTestSetup = path.join(
 const lifeopsTestSetup = path.join(here, "test", "setup.ts");
 const lifeopsTestStubsRoot = path.join(here, "test", "stubs");
 const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
+const corePackageRequire = createRequire(
+  path.join(elizaRoot, "packages", "core", "package.json"),
+);
 const escapedAgentSourceRoot = agentSourceRoot.replace(
   /[.*+?^${}()|[\]\\]/g,
   "\\$&",
@@ -83,8 +87,23 @@ function resolveNodePackageRoot(packageName: string): string {
   return path.join(here, "node_modules", packageName);
 }
 
+function resolveCorePackageEntry(packageName: string): string {
+  return corePackageRequire.resolve(packageName);
+}
+
+function resolveCorePackageRoot(packageName: string): string {
+  return path.dirname(
+    corePackageRequire.resolve(path.join(packageName, "package.json")),
+  );
+}
+
 const reactRoot = resolveNodePackageRoot("react");
 const reactDomRoot = resolveNodePackageRoot("react-dom");
+const aiEntry = resolveCorePackageEntry("ai");
+const fsExtraEntry = resolveCorePackageEntry("fs-extra");
+const handlebarsEntry = resolveCorePackageEntry("handlebars");
+const mammothEntry = resolveCorePackageEntry("mammoth");
+const markdownItRoot = resolveCorePackageRoot("markdown-it");
 const telegramSessionsEntry = path.join(
   elizaRoot,
   "plugins",
@@ -93,6 +112,12 @@ const telegramSessionsEntry = path.join(
   "telegram",
   "sessions",
   "index.js",
+);
+const pluginHealthSrc = path.join(
+  elizaRoot,
+  "plugins",
+  "plugin-health",
+  "src",
 );
 
 const defaultUnitExcludes = [
@@ -128,7 +153,19 @@ export default defineConfig({
   },
   resolve: {
     ...baseConfig.resolve,
+    preserveSymlinks: false,
     alias: [
+      // These packages are imported by @elizaos/core while this suite inlines
+      // core. Resolve them through Bun's real package-store path so their own
+      // nested dependencies remain visible with preserveSymlinks enabled.
+      { find: /^ai$/, replacement: aiEntry },
+      { find: /^fs-extra$/, replacement: fsExtraEntry },
+      { find: /^handlebars$/, replacement: handlebarsEntry },
+      { find: /^mammoth$/, replacement: mammothEntry },
+      {
+        find: /^markdown-it$/,
+        replacement: path.join(markdownItRoot, "index.mjs"),
+      },
       {
         find: new RegExp(`^${escapedAgentSourceRoot}/(.+)\\.js$`),
         replacement: `${agentSourceRoot}/$1.ts`,
@@ -207,6 +244,22 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-google$/,
         replacement: path.join(lifeopsTestStubsRoot, "plugin-google.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-elizacloud$/,
+        replacement: path.join(lifeopsTestStubsRoot, "plugin-elizacloud.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-discord$/,
+        replacement: path.join(lifeopsTestStubsRoot, "plugin-discord.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-health$/,
+        replacement: path.join(pluginHealthSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-health\/(.+)$/,
+        replacement: path.join(pluginHealthSrc, "$1"),
       },
       ...(Array.isArray(baseConfig.resolve?.alias)
         ? baseConfig.resolve.alias
