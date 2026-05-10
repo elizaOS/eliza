@@ -3147,6 +3147,7 @@
       "dependencies": {
         "@elizaos/cloud-routing": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-browser": "workspace:*",
       },
       "devDependencies": {
         "@eslint/js": "^10.0.0",
