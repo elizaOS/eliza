@@ -76,8 +76,12 @@ kernel void kernel_attn_score_qjl1_256(
         device const block_qjl1_256 * packed_k     [[buffer(1)]],   // (n_kv_heads, n_tokens)
         device       float          * scores       [[buffer(2)]],   // (n_heads, n_tokens)
         constant     qjl_score_args & args         [[buffer(3)]],
-        uint                          tid          [[thread_position_in_threadgroup]],
-        uint2                         tg_pos       [[threadgroup_position_in_grid]]) {
+        uint3                         tid3         [[thread_position_in_threadgroup]],
+        uint3                         tg_pos       [[threadgroup_position_in_grid]]) {
+    // Apple Metal requires kernel signature attribute params to share a type
+    // shape (all scalar or all vectors of the same width). Promote both to
+    // uint3; only .x of tid3 and .x/.y of tg_pos carry meaning here.
+    uint tid = tid3.x;
     uint h_q = tg_pos.x;
     uint t   = tg_pos.y;
     if (h_q >= args.n_heads || t >= args.n_tokens) return;
@@ -88,17 +92,31 @@ kernel void kernel_attn_score_qjl1_256(
     device const block_qjl1_256 * blk = packed_k + h_k * args.n_tokens + t;
     device const float          * qs  = q_sketch + h_q * QJL_PROJECTION_DIM;
 
-    // Each of 32 threads owns one byte of qs[] = 8 sign bits.
-    // Reads 8 q_sketch entries per thread.
-    float acc = 0.0f;
+    // Each of 32 threads owns one byte of qs[] = 8 sign bits, and reads 8
+    // consecutive q_sketch fp32 entries. The 8 entries are packed as two
+    // contiguous float4s (32-byte aligned: base = byte_i*8 = 0,8,16,...);
+    // issuing two vectorised loads cuts the load instruction count from 8
+    // to 2 and lets the GPU coalesce the per-thread requests across the
+    // 32-lane SIMD-group into a single transaction per float4.
     uint byte_i = tid;                                  // 0..31
     uint bits   = blk->qs[byte_i];
     uint base   = byte_i * 8;                           // 0..248
-    for (uint k = 0; k < 8; ++k) {
-        float qv = qs[base + k];
-        // bit set => +1, clear => -1 (matches qjl_score_qk_ref).
-        acc += ((bits >> k) & 1u) ? qv : -qv;
-    }
+    device const float4 * qs4 = (device const float4 *)(qs + base);
+    float4 q0 = qs4[0];
+    float4 q1 = qs4[1];
+    // Branchless ±1 sign: ((bit << 1) - 1) gives +1 / -1 in float.
+    float4 s0 = float4(
+        float(int(((bits >> 0) & 1u) << 1) - 1),
+        float(int(((bits >> 1) & 1u) << 1) - 1),
+        float(int(((bits >> 2) & 1u) << 1) - 1),
+        float(int(((bits >> 3) & 1u) << 1) - 1));
+    float4 s1 = float4(
+        float(int(((bits >> 4) & 1u) << 1) - 1),
+        float(int(((bits >> 5) & 1u) << 1) - 1),
+        float(int(((bits >> 6) & 1u) << 1) - 1),
+        float(int(((bits >> 7) & 1u) << 1) - 1));
+    float4 acc4 = fma(q0, s0, fma(q1, s1, float4(0.0f)));
+    float acc = acc4.x + acc4.y + acc4.z + acc4.w;
 
     float sum = simd_sum(acc);
     if (tid == 0) {
@@ -177,14 +195,25 @@ kernel void kernel_mul_mv_qjl1_256_f32(
     device const block_qjl1_256 * blk = k_blocks + row;
 
     // Same pattern as the attention score kernel: 32 threads × 8 bits each.
-    float acc = 0.0f;
+    // Vectorise the 8 contiguous fp32 q[] loads into two float4 reads.
     uint byte_i = tid;
     uint bits   = blk->qs[byte_i];
     uint base   = byte_i * 8;
-    for (uint k = 0; k < 8; ++k) {
-        float qv = q[base + k];
-        acc += ((bits >> k) & 1u) ? qv : -qv;
-    }
+    device const float4 * q4 = (device const float4 *)(q + base);
+    float4 q0 = q4[0];
+    float4 q1 = q4[1];
+    float4 s0 = float4(
+        float(int(((bits >> 0) & 1u) << 1) - 1),
+        float(int(((bits >> 1) & 1u) << 1) - 1),
+        float(int(((bits >> 2) & 1u) << 1) - 1),
+        float(int(((bits >> 3) & 1u) << 1) - 1));
+    float4 s1 = float4(
+        float(int(((bits >> 4) & 1u) << 1) - 1),
+        float(int(((bits >> 5) & 1u) << 1) - 1),
+        float(int(((bits >> 6) & 1u) << 1) - 1),
+        float(int(((bits >> 7) & 1u) << 1) - 1));
+    float4 acc4 = fma(q0, s0, fma(q1, s1, float4(0.0f)));
+    float acc = acc4.x + acc4.y + acc4.z + acc4.w;
 
     float sum = simd_sum(acc);
     if (tid == 0) {

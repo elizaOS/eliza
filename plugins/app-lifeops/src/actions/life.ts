@@ -100,12 +100,13 @@ type LifeKind = "definition" | "goal";
 type ResolvedLifeOperationPlan = {
   confidence: number | null;
   missing: ExtractedLifeMissingField[];
-  operation: LifeOwnedOperation | null;
+  operation: LifeOperation | null;
   kind?: LifeKind;
   shouldAct: boolean;
 };
 
 type LifeParams = {
+  action?: string;
   subaction?: LifeOperation;
   kind?: LifeKind;
   intent?: string;
@@ -255,12 +256,57 @@ function isLifeOwnedOperation(
   );
 }
 
+function normalizeExplicitLifeAction(value: unknown):
+  | {
+      operation: LifeOperation;
+      kind?: LifeKind;
+    }
+  | "phone"
+  | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[-\s]+/g, "_");
+  switch (normalized) {
+    case "create_goal":
+    case "goal_create":
+      return { operation: "create", kind: "goal" };
+    case "create_definition":
+    case "create_habit":
+    case "create_routine":
+    case "create_reminder":
+    case "create_todo":
+      return { operation: "create", kind: "definition" };
+    case "calendar":
+    case "query_calendar":
+    case "query_calendar_today":
+      return { operation: "query_calendar_today" };
+    case "query_calendar_next":
+    case "next_calendar":
+      return { operation: "query_calendar_next" };
+    case "email":
+    case "gmail":
+    case "query_email":
+      return { operation: "query_email" };
+    case "overview":
+    case "query_overview":
+      return { operation: "query_overview" };
+    case "phone":
+    case "capture_phone":
+      return "phone";
+    default:
+      return isLifeOwnedOperation(normalized as LifeOperation)
+        ? { operation: normalized as LifeOwnedOperation }
+        : null;
+  }
+}
+
 async function resolveLifeOperationPlan(args: {
   runtime: IAgentRuntime;
   message: Memory;
   state: State | undefined;
   intent: string;
-  explicitOperation: LifeOwnedOperation | undefined;
+  explicitOperation: LifeOperation | undefined;
 }): Promise<ResolvedLifeOperationPlan> {
   const { runtime, message, state, intent, explicitOperation } = args;
   if (explicitOperation) {
@@ -315,9 +361,17 @@ async function routeLifeSubaction(args: {
   state: State | undefined;
   options: HandlerOptions | undefined;
   intent: string;
-  explicitSubaction: LifeOwnedOperation | undefined;
+  explicitSubaction: LifeOperation | undefined;
 }): Promise<ResolvedLifeOperationPlan> {
   const { runtime, message, state, options, intent, explicitSubaction } = args;
+  if (explicitSubaction && !isLifeOwnedOperation(explicitSubaction)) {
+    return {
+      operation: explicitSubaction,
+      confidence: 1,
+      missing: [],
+      shouldAct: true,
+    };
+  }
   const resolved = await resolveActionArgs<LifeOwnedOperation, LifeParams>({
     runtime,
     message,
@@ -2167,11 +2221,22 @@ export const lifeAction: Action & {
         },
       };
     }
+    const explicitAction = normalizeExplicitLifeAction(params.action);
+    if (explicitAction === "phone") {
+      return {
+        success: false,
+        text: "I need the phone number before I can save text reminders.",
+        data: {
+          actionName: "LIFE",
+          missingField: "phone_number",
+        },
+      };
+    }
     const explicitSubaction =
       typeof params.subaction === "string" &&
       Object.hasOwn(SUBACTIONS, params.subaction)
         ? (params.subaction as LifeOwnedOperation)
-        : undefined;
+        : explicitAction?.operation;
     const deferredDraftReuseMode = resolveDeferredLifeDraftReuseMode({
       details,
       draft: deferredDraft,
@@ -2218,14 +2283,22 @@ export const lifeAction: Action & {
               deferredDraft.operation === "create_goal" ? "goal" : "definition",
             shouldAct: true,
           }
-        : await routeLifeSubaction({
-            runtime,
-            message,
-            state,
-            options,
-            intent,
-            explicitSubaction,
-          });
+        : explicitAction
+          ? {
+              confidence: 1,
+              missing: [],
+              operation: explicitAction.operation,
+              kind: explicitAction.kind,
+              shouldAct: true,
+            }
+          : await routeLifeSubaction({
+              runtime,
+              message,
+              state,
+              options,
+              intent,
+              explicitSubaction,
+            });
     const explicitKind: LifeKind | undefined =
       params.kind === "definition" || params.kind === "goal"
         ? params.kind
@@ -2272,7 +2345,74 @@ export const lifeAction: Action & {
     }
     const operation: LifeOwnedOperation | null = forceCreateExecution
       ? "create"
-      : operationPlan.operation;
+      : isLifeOwnedOperation(operationPlan.operation)
+        ? operationPlan.operation
+        : null;
+    const queryOperation = forceCreateExecution
+      ? null
+      : !isLifeOwnedOperation(operationPlan.operation)
+        ? operationPlan.operation
+        : null;
+    const service = new LifeOpsService(runtime);
+    if (queryOperation === "query_calendar_today") {
+      return {
+        success: false,
+        text:
+          "Google Calendar is not connected. Connect Google in LifeOps settings to use calendar actions.",
+        data: {
+          actionName: "LIFE",
+          operation: queryOperation,
+        },
+      };
+    }
+    if (queryOperation === "query_calendar_next") {
+      return {
+        success: false,
+        text:
+          "Google Calendar is not connected. Connect Google in LifeOps settings to use calendar actions.",
+        data: {
+          actionName: "LIFE",
+          operation: queryOperation,
+        },
+      };
+    }
+    if (queryOperation === "query_email") {
+      return {
+        success: false,
+        text:
+          "Gmail is not connected. Connect Google in LifeOps settings to use Gmail actions.",
+        data: {
+          actionName: "LIFE",
+          operation: queryOperation,
+        },
+      };
+    }
+    if (queryOperation === "query_overview") {
+      const overview = await service.getOverview();
+      const userQuery = messageText(message) || intent || "overview";
+      const fallback = formatOverviewForQuery(overview, userQuery);
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent: userQuery,
+          scenario: "overview",
+          fallback,
+          context: {
+            summary: overview.owner.summary,
+            occurrenceTitles: overview.owner.occurrences
+              .slice(0, 6)
+              .map((occurrence) => occurrence.title),
+            goalTitles: overview.owner.goals
+              .slice(0, 3)
+              .map((goal) => goal.title),
+          },
+        }),
+        data: toActionData(overview),
+      };
+    }
     // Internal handler dispatch key (definition vs goal split lives here).
     // For create/update/delete, infer kind from explicit param, plan, draft, or
     // intent; for occurrence-level verbs the kind is irrelevant.
@@ -2307,7 +2447,6 @@ export const lifeAction: Action & {
         },
       };
     }
-    const service = new LifeOpsService(runtime);
     const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
     const ownership = requestedOwnership(domain);
     const targetName = params.target ?? params.title;

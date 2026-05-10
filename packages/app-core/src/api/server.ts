@@ -47,6 +47,9 @@ import {
   getConfiguredCompatAgentName,
 } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
+import { applyRouteModeGuard } from "../runtime/mode/route-mode-guard";
+import { forwardRemoteCloudMutation } from "../runtime/mode/remote-forwarder";
+import { handleRuntimeModeRoute } from "./runtime-mode-routes";
 
 export {
   __resetCloudBaseUrlCache,
@@ -578,6 +581,24 @@ async function handleCompatRoute(
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
+
+  // ── Mode visibility gate ──────────────────────────────────────────────
+  // AGENTS.md §1: cloud mode hides /api/local-inference/*, local-only mode
+  // hides /api/cloud/*. Hidden = 404 (not 403) so callers cannot probe
+  // mode state.
+  const gate = applyRouteModeGuard(req, res);
+  if (gate.handled) return true;
+
+  // ── Remote-mode forward ───────────────────────────────────────────────
+  // AGENTS.md §1: in remote mode, mutations to cloud settings target the
+  // controlled local instance, not the controller's own config.
+  if (gate.mode === "remote") {
+    if (await forwardRemoteCloudMutation(req, res)) return true;
+  }
+
+  // Runtime mode introspection — UI shells hit this on boot for the
+  // useRuntimeMode() hook.
+  if (await handleRuntimeModeRoute(req, res, state)) return true;
 
   // Eliza Cloud thin-client proxy (compat agents, jobs, OAuth, …). Keep this
   // before the local /api/cloud handler so /api/cloud/v1/* forwards to Cloud.

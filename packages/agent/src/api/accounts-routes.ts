@@ -53,10 +53,14 @@ import {
 } from "../auth/oauth-flow.ts";
 import {
   type AccountCredentialProvider,
+  CODING_PLAN_PROVIDER_BASE_URL,
   DIRECT_ACCOUNT_PROVIDER_ENV,
   type DirectAccountProvider,
   isAccountCredentialProvider,
+  isCodingPlanKeySubscriptionProvider,
+  isOAuthSubscriptionProvider,
   isSubscriptionProvider,
+  isUnavailableSubscriptionProvider,
   type SubscriptionProvider,
 } from "../auth/types.ts";
 import type { ElizaConfig } from "../config/types.eliza.ts";
@@ -107,6 +111,10 @@ export function _resetAccountsRoutesPoolCache(): void {
 const SUPPORTED_PROVIDER_IDS = [
   "anthropic-subscription",
   "openai-codex",
+  "gemini-cli",
+  "zai-coding",
+  "kimi-coding",
+  "deepseek-coding",
   "anthropic-api",
   "openai-api",
   "deepseek-api",
@@ -406,6 +414,66 @@ function directProviderBaseUrl(providerId: DirectAccountProvider): string {
   }
 }
 
+function codingPlanProviderBaseUrl(
+  providerId: Extract<SubscriptionProvider, "zai-coding" | "kimi-coding">,
+): string {
+  if (providerId === "zai-coding") {
+    return (
+      process.env.ZAI_CODING_BASE_URL?.trim() ||
+      process.env.Z_AI_CODING_BASE_URL?.trim() ||
+      CODING_PLAN_PROVIDER_BASE_URL[providerId]
+    );
+  }
+  return (
+    process.env.KIMI_CODING_BASE_URL?.trim() ||
+    CODING_PLAN_PROVIDER_BASE_URL[providerId]
+  );
+}
+
+async function probeCodingPlanKey(
+  providerId: Extract<SubscriptionProvider, "zai-coding" | "kimi-coding">,
+  apiKey: string,
+): Promise<{
+  ok: boolean;
+  status: number;
+  error?: string;
+  latencyMs: number;
+}> {
+  const start = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const baseUrl = codingPlanProviderBaseUrl(providerId).replace(/\/+$/, "");
+    const response = await fetch(`${baseUrl}/models`, {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+    const latencyMs = Date.now() - start;
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      return {
+        ok: false,
+        status: response.status,
+        error: `${providerId} ${response.status}: ${text.slice(0, 200)}`,
+        latencyMs,
+      };
+    }
+    return { ok: true, status: response.status, latencyMs };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      error: err instanceof Error ? err.message : String(err),
+      latencyMs: Date.now() - start,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function probeDirectApiKey(
   providerId: DirectAccountProvider,
   apiKey: string,
@@ -612,6 +680,19 @@ async function handleCreateApiKeyAccount(
     error(res, `Credential storage not supported for ${providerId}`, 400);
     return true;
   }
+  if (
+    isSubscriptionProvider(accountProvider) &&
+    !isCodingPlanKeySubscriptionProvider(accountProvider)
+  ) {
+    const message =
+      accountProvider === "gemini-cli"
+        ? "Gemini subscription auth must stay in Gemini CLI. Run gemini auth login; the app does not import a Gemini subscription token."
+        : accountProvider === "deepseek-coding"
+          ? "DeepSeek does not expose a first-party coding subscription surface that can be linked safely here."
+          : "This subscription provider uses first-party OAuth and cannot be added as an API key.";
+    error(res, message, 400);
+    return true;
+  }
 
   // Compute priority BEFORE we save the credential — once `saveAccount`
   // lands, the pool's auto-assignment in `loadAllAccounts` would slot
@@ -665,6 +746,16 @@ async function handleOAuthRoutes(
   const subscription = asSubscriptionProvider(providerId);
   if (!subscription) {
     error(res, `OAuth not supported for providerId: ${providerId}`, 400);
+    return true;
+  }
+  if (!isOAuthSubscriptionProvider(subscription)) {
+    const message =
+      subscription === "gemini-cli"
+        ? "Gemini subscription auth is handled by Gemini CLI. Run gemini auth login; the app will not import CLI tokens."
+        : subscription === "deepseek-coding"
+          ? "DeepSeek coding subscription auth is unavailable because no first-party coding surface is exposed."
+          : "This coding-plan provider does not support OAuth here. Add a coding-plan credential instead.";
+    error(res, message, 501);
     return true;
   }
 
@@ -920,11 +1011,28 @@ async function handleTestAccount(
   const linked = pool.get(accountId, providerId);
   const codexAccountId =
     linked?.providerId === "openai-codex" ? linked.organizationId : undefined;
-  const probe = direct
-    ? await probeDirectApiKey(direct, accessToken)
-    : subscription === "anthropic-subscription"
-      ? await probeAnthropicUsage(accessToken)
-      : await probeCodexUsage(accessToken, codexAccountId);
+  let probe: Awaited<ReturnType<typeof probeDirectApiKey>>;
+  if (direct) {
+    probe = await probeDirectApiKey(direct, accessToken);
+  } else if (subscription === "anthropic-subscription") {
+    probe = await probeAnthropicUsage(accessToken);
+  } else if (subscription === "openai-codex") {
+    probe = await probeCodexUsage(accessToken, codexAccountId);
+  } else if (
+    subscription &&
+    isCodingPlanKeySubscriptionProvider(subscription)
+  ) {
+    probe = await probeCodingPlanKey(subscription, accessToken);
+  } else {
+    json(res, {
+      ok: false,
+      error:
+        subscription === "gemini-cli"
+          ? "Gemini subscription credentials stay inside Gemini CLI; run gemini auth login and use the Gemini task-agent path."
+          : "This subscription coding plan is not testable through this API.",
+    });
+    return true;
+  }
   if (probe.ok) {
     json(res, { ok: true, latencyMs: probe.latencyMs, status: probe.status });
   } else {
@@ -984,6 +1092,36 @@ async function handleRefreshUsage(
     return true;
   }
 
+  if (subscription && isCodingPlanKeySubscriptionProvider(subscription)) {
+    const probe = await probeCodingPlanKey(subscription, accessToken);
+    const next: LinkedAccountConfig = {
+      ...linked,
+      health: probe.ok ? "ok" : healthForProbeStatus(probe.status),
+      healthDetail: {
+        lastChecked: Date.now(),
+        ...(probe.ok
+          ? {}
+          : { lastError: probe.error ?? `HTTP ${probe.status}` }),
+      },
+      usage: {
+        ...(linked.usage ?? {}),
+        refreshedAt: Date.now(),
+      },
+    };
+    await pool.upsert(next);
+    json(res, { account: next, probe, source: "coding-plan-probe" });
+    return true;
+  }
+
+  if (
+    !subscription ||
+    isUnavailableSubscriptionProvider(subscription) ||
+    !isOAuthSubscriptionProvider(subscription)
+  ) {
+    error(res, `Usage refresh not supported for ${providerId}`, 501);
+    return true;
+  }
+
   // Drive the canonical `pollAnthropicUsage` / `pollCodexUsage` through
   // the pool — same singleton used by the runtime, so health flips and
   // usage snapshots are consistent across UI and inference paths. Falls
@@ -1008,7 +1146,14 @@ async function handleRefreshUsage(
   const probe =
     subscription === "anthropic-subscription"
       ? await probeAnthropicUsage(accessToken)
-      : await probeCodexUsage(accessToken, linked.organizationId);
+      : subscription === "openai-codex"
+        ? await probeCodexUsage(accessToken, linked.organizationId)
+        : {
+            ok: false,
+            status: 0,
+            error: `Usage refresh not supported for ${providerId}`,
+            latencyMs: 0,
+          };
   const next: LinkedAccountConfig = {
     ...linked,
     ...(probe.usage ? { usage: probe.usage } : {}),

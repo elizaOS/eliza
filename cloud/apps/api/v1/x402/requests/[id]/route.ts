@@ -22,7 +22,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
 
   return c.json({
     success: true,
-    paymentRequest: x402PaymentRequestsService.toView(paymentRequest),
+    paymentRequest: x402PaymentRequestsService.toPublicView(paymentRequest),
   });
 });
 

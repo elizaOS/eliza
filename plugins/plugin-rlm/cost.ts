@@ -70,9 +70,7 @@ export const MODEL_PRICING: PricingTable = {
     "gemini-1.5-pro": { input: 1.25, output: 5.0 },
   },
   groq: {
-    "llama-3.1-70b-versatile": { input: 0.59, output: 0.79 },
-    "llama-3.1-8b-instant": { input: 0.05, output: 0.08 },
-    "mixtral-8x7b-32768": { input: 0.24, output: 0.24 },
+    "openai/gpt-oss-120b": { input: 0.5, output: 0.8 },
   },
 };
 

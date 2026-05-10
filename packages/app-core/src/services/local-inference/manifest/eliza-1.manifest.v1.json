@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json",
+  "title": "Eliza-1 bundle manifest",
+  "description": "Canonical manifest for an Eliza-1 on-device fused bundle. Source of truth: packages/inference/AGENTS.md §6. Schema version 1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "tier",
+    "version",
+    "publishedAt",
+    "lineage",
+    "files",
+    "kernels",
+    "evals",
+    "ramBudgetMb",
+    "defaultEligible"
+  ],
+  "properties": {
+    "$schema": { "type": "string", "const": "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json" },
+    "id": { "type": "string", "minLength": 1 },
+    "tier": {
+      "type": "string",
+      "enum": ["lite-0_6b", "mobile-1_7b", "desktop-9b", "pro-27b", "server-h200"]
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[A-Za-z0-9.-]+)?$"
+    },
+    "publishedAt": { "type": "string", "format": "date-time" },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "voice", "drafter"],
+      "properties": {
+        "text":    { "$ref": "#/$defs/lineageEntry" },
+        "voice":   { "$ref": "#/$defs/lineageEntry" },
+        "drafter": { "$ref": "#/$defs/lineageEntry" }
+      }
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "voice", "asr", "vision", "dflash", "cache"],
+      "properties": {
+        "text":   { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fileEntry" } },
+        "voice":  { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fileEntry" } },
+        "asr":    { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } },
+        "vision": { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } },
+        "dflash": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fileEntry" } },
+        "cache":  { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fileEntry" } }
+      }
+    },
+    "kernels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "optional", "verifiedBackends"],
+      "properties": {
+        "required": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/kernelName" }
+        },
+        "optional": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/kernelName" }
+        },
+        "verifiedBackends": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["metal", "vulkan", "cuda", "cpu"],
+          "properties": {
+            "metal":  { "$ref": "#/$defs/backendStatus" },
+            "vulkan": { "$ref": "#/$defs/backendStatus" },
+            "cuda":   { "$ref": "#/$defs/backendStatus" },
+            "cpu":    { "$ref": "#/$defs/backendStatus" }
+          }
+        }
+      }
+    },
+    "evals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["textEval", "voiceRtf", "e2eLoopOk", "thirtyTurnOk"],
+      "properties": {
+        "textEval": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["score", "passed"],
+          "properties": {
+            "score":  { "type": "number", "minimum": 0, "maximum": 1 },
+            "passed": { "type": "boolean" }
+          }
+        },
+        "voiceRtf": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rtf", "passed"],
+          "properties": {
+            "rtf":    { "type": "number", "minimum": 0 },
+            "passed": { "type": "boolean" }
+          }
+        },
+        "e2eLoopOk":    { "type": "boolean" },
+        "thirtyTurnOk": { "type": "boolean" }
+      }
+    },
+    "ramBudgetMb": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "recommended"],
+      "properties": {
+        "min":         { "type": "integer", "minimum": 1 },
+        "recommended": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "defaultEligible": { "type": "boolean" }
+  },
+  "$defs": {
+    "lineageEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base", "license"],
+      "properties": {
+        "base":    { "type": "string", "minLength": 1 },
+        "license": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fileEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path":   { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "ctx":    { "type": "integer", "minimum": 1 }
+      }
+    },
+    "kernelName": {
+      "type": "string",
+      "enum": ["turboquant_q3", "turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"]
+    },
+    "backendStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "atCommit", "report"],
+      "properties": {
+        "status":   { "type": "string", "enum": ["pass", "fail", "skipped"] },
+        "atCommit": { "type": "string", "minLength": 1 },
+        "report":   { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

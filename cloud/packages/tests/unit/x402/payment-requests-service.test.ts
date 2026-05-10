@@ -97,6 +97,32 @@ function installMocks(harness: Harness): void {
     },
   }));
 
+  mock.module("@/db/repositories/apps", () => ({
+    appsRepository: {
+      findById: async () => ({
+        id: APP_ID,
+        created_by_user_id: USER_ID,
+      }),
+    },
+  }));
+
+  mock.module("@/db/repositories/app-earnings", () => ({
+    appEarningsRepository: {
+      addPurchaseEarnings: async () => {},
+      createTransaction: async () => {},
+    },
+  }));
+
+  mock.module("@/db/helpers", () => ({
+    dbWrite: {
+      update: () => ({
+        set: () => ({
+          where: async () => {},
+        }),
+      }),
+    },
+  }));
+
   mock.module("@/lib/services/x402-facilitator", () => ({
     x402FacilitatorService: {
       settle: async () => ({

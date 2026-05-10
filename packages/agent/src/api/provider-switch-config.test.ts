@@ -19,6 +19,24 @@ describe("applySubscriptionProviderConfig", () => {
     expect(config.agents?.defaults?.model?.primary).toBe("codex-cli");
   });
 
+  it("keeps Gemini CLI subscriptions out of runtime model routing", () => {
+    const config: Partial<ElizaConfig> = {};
+
+    applySubscriptionProviderConfig(config, "gemini-subscription");
+
+    expect(config.agents?.defaults?.subscriptionProvider).toBe("gemini-cli");
+    expect(config.agents?.defaults?.model?.primary).toBeUndefined();
+  });
+
+  it("keeps coding-plan endpoint subscriptions out of direct API routing", () => {
+    const config: Partial<ElizaConfig> = {};
+
+    applySubscriptionProviderConfig(config, "zai-coding-subscription");
+
+    expect(config.agents?.defaults?.subscriptionProvider).toBe("zai-coding");
+    expect(config.agents?.defaults?.model?.primary).toBeUndefined();
+  });
+
   it("clears subscription provider settings without touching direct API env", () => {
     process.env.OPENAI_API_KEY = "sk-direct-openai-key";
     const config: Partial<ElizaConfig> = {};

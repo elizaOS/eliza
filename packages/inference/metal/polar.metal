@@ -72,8 +72,9 @@ static inline float polar_qjl_sign(uint i, thread uint & state) {
     return (state & 1u) ? 1.0f : -1.0f;
 }
 
-// In-place 128-element Walsh-Hadamard butterfly. Sequential — meant to be
-// run per-thread on a 128-float threadgroup-shared scratch.
+// In-place 128-element Walsh-Hadamard butterfly. Sequential variant — kept
+// as a reference for single-thread execution; the threadgroup hot path uses
+// polar_hadamard_inplace_tg32 below.
 static inline void polar_hadamard_inplace_tg(threadgroup float * x) {
     // 7 stages: h = 1, 2, 4, 8, 16, 32, 64.
     for (uint h = 1; h < QK_POLAR; h <<= 1) {
@@ -85,6 +86,38 @@ static inline void polar_hadamard_inplace_tg(threadgroup float * x) {
                 x[j + h] = a - b;
             }
         }
+    }
+}
+
+// Threadgroup-cooperative 128-element Walsh-Hadamard butterfly. Each of
+// 32 threads owns 2 of the 64 (a+b, a-b) butterfly pairs per stage. Pair
+// index `p` maps to (j, j+h) with j = (p / h) * (2*h) + (p % h); within
+// a single stage every index 0..127 is touched by exactly one pair, so
+// reads and writes do not race. Only a between-stages barrier is needed.
+//
+// Caller MUST issue a barrier before invoking so the input fill (step 1+2
+// or step 3) is visible to all threads.
+static inline void polar_hadamard_inplace_tg32(threadgroup float * x, uint tid) {
+    for (uint h = 1; h < QK_POLAR; h <<= 1) {
+        // 64 pairs per stage, 2 pairs per thread.
+        uint p0 = tid;          // 0..31
+        uint p1 = tid + 32u;    // 32..63
+        uint twoh = h << 1;
+        uint b0 = (p0 / h) * twoh;
+        uint o0 = p0 - (p0 / h) * h;     // p0 % h, branchless
+        uint b1 = (p1 / h) * twoh;
+        uint o1 = p1 - (p1 / h) * h;
+        uint j0 = b0 + o0;
+        uint j1 = b1 + o1;
+        float a0 = x[j0];
+        float c0 = x[j0 + h];
+        float a1 = x[j1];
+        float c1 = x[j1 + h];
+        x[j0]     = a0 + c0;
+        x[j0 + h] = a0 - c0;
+        x[j1]     = a1 + c1;
+        x[j1 + h] = a1 - c1;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
     }
 }
 
@@ -115,37 +148,41 @@ kernel void kernel_get_rows_q4_polar(
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    // Step 3: optional QJL residual.
-    if (args.use_qjl != 0u && tid == 0) {
-        // qjl[0] bit 0 holds sign(<residual, sign_vector>); the per-element
-        // sign vector itself is regenerated deterministically (xorshift32,
-        // POLAR_QJL_SEED=42) in lockstep with the encoder.
-        uint  bit  = (uint)(blk->qjl[0] & 1u);
-        float sign = bit ? 1.0f : -1.0f;
-        float mag  = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
-        uint  state = 42u;
-        for (uint i = 0; i < QK_POLAR; ++i) {
-            buf[i] += sign * mag * polar_qjl_sign(i, state);
+    // Step 3: optional QJL residual. Sign-vector generation is sequential
+    // (xorshift32 chain) so tid==0 fills a threadgroup-shared buffer; the
+    // per-element add is then parallel across all 32 threads.
+    threadgroup float qjl_signs_tg[QK_POLAR];
+    if (args.use_qjl != 0u) {
+        if (tid == 0) {
+            float mag = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
+            uint  bit  = (uint)(blk->qjl[0] & 1u);
+            float sign = bit ? 1.0f : -1.0f;
+            float scaled = sign * mag;
+            uint  state = 42u;
+            for (uint i = 0; i < QK_POLAR; ++i) {
+                qjl_signs_tg[i] = scaled * polar_qjl_sign(i, state);
+            }
         }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        for (uint i = tid; i < QK_POLAR; i += tg_size) {
+            buf[i] += qjl_signs_tg[i];
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
     }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    // Step 4: inverse Hadamard — sequential 128-element butterfly. Single
-    // thread does the work; alternative threadgroup-cooperative butterfly
-    // adds barriers and shuffle complexity that isn't justified for a
-    // 7-stage 128-element transform on the dequant fallback path.
-    if (tid == 0) {
-        polar_hadamard_inplace_tg(buf);
-        // (1 / QK_POLAR) compensation that turns the butterfly into the
-        // orthonormal inverse.
-        for (uint i = 0; i < QK_POLAR; ++i) buf[i] *= POLAR_INV_QK;
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
+    // Step 4: inverse Hadamard — threadgroup-cooperative 7-stage butterfly
+    // (32 threads × 2 pairs per stage = 64 pairs, fully covers each stage).
+    // The sequential variant ran all 448 ops on tid==0 and was the dominant
+    // cost in this kernel; the cooperative variant collapses that into
+    // 7 parallel stages with a barrier between each.
+    polar_hadamard_inplace_tg32(buf, tid);
 
-    // Step 5: per-block L2 rescale + write out.
-    float l2 = float(blk->d);
+    // (1 / QK_POLAR) compensation + per-block L2 rescale folded into one
+    // parallel multiply — turns the in-place butterfly into the orthonormal
+    // inverse and applies the per-block norm in a single pass.
+    float scale = float(blk->d) * POLAR_INV_QK;
     for (uint i = tid; i < QK_POLAR; i += tg_size) {
-        out[i] = buf[i] * l2;
+        out[i] = buf[i] * scale;
     }
 }
 
@@ -186,35 +223,43 @@ kernel void kernel_mul_mv_q4_polar_f32(
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    // Step 3: optional QJL residual.
-    if (args.use_qjl != 0u && tid == 0) {
-        uint  bit  = (uint)(blk->qjl[0] & 1u);
-        float sign = bit ? 1.0f : -1.0f;
-        float mag  = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
-        uint  state = 42u;
-        for (uint i = 0; i < QK_POLAR; ++i) {
-            buf[i] += sign * mag * polar_qjl_sign(i, state);
+    // Step 3: optional QJL residual. Same parallelization as get_rows: the
+    // sequential xorshift32 sign chain runs on tid==0 into shared scratch,
+    // then all 32 threads do the per-element add in parallel.
+    threadgroup float qjl_signs_tg[QK_POLAR];
+    if (args.use_qjl != 0u) {
+        if (tid == 0) {
+            float mag = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
+            uint  bit  = (uint)(blk->qjl[0] & 1u);
+            float sign = bit ? 1.0f : -1.0f;
+            float scaled = sign * mag;
+            uint  state = 42u;
+            for (uint i = 0; i < QK_POLAR; ++i) {
+                qjl_signs_tg[i] = scaled * polar_qjl_sign(i, state);
+            }
         }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        for (uint i = tid; i < QK_POLAR; i += tg_size) {
+            buf[i] += qjl_signs_tg[i];
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
     }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    // Step 4: inverse Hadamard.
-    if (tid == 0) {
-        polar_hadamard_inplace_tg(buf);
-        for (uint i = 0; i < QK_POLAR; ++i) buf[i] *= POLAR_INV_QK;
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
+    // Step 4: inverse Hadamard — threadgroup-cooperative 32-thread butterfly.
+    // This path was the dominant cost (~5700 µs/dispatch in the bench).
+    polar_hadamard_inplace_tg32(buf, tid);
 
-    // Step 5: per-block L2 rescale and dot product. Fold the rescale into the
-    // partial accumulator by deferring the multiply until after simd_sum.
+    // Step 5: dot product against q[]. Fold the (1/QK_POLAR) Hadamard
+    // compensation and per-block L2 norm into one final scalar applied
+    // after the simd reduction — saves a parallel multiply pass over buf[].
     float acc = 0.0f;
     for (uint i = tid; i < QK_POLAR; i += tg_size) {
-        acc += buf[i] * q[i];
+        acc = fma(buf[i], q[i], acc);
     }
 
     float sum = simd_sum(acc);
     if (tid == 0) {
         float l2 = float(blk->d);
-        y[row] = sum * l2;
+        y[row] = sum * l2 * POLAR_INV_QK;
     }
 }

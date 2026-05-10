@@ -22,6 +22,10 @@ import {
   LIFEOPS_CONTEXT_BROKER_SLUG,
   runLifeOpsContextBroker,
 } from "./skill-lifeops-context-broker.js";
+import {
+  PARENT_AGENT_BROKER_SLUG,
+  runParentAgentBroker,
+} from "./parent-agent-broker.js";
 
 const LOG_PREFIX = "[SkillCallback]";
 /**
@@ -108,7 +112,7 @@ function formatResultForChild(
 
 /**
  * Locate the USE_SKILL action on the runtime. Returns null when the agent
- * skills plugin is not loaded — in that case the bridge stays inert.
+ * skills plugin is not loaded; virtual brokers still route without it.
  */
 function resolveUseSkillAction(runtime: IAgentRuntime): SkillUseAction | null {
   const actions = (runtime as { actions?: Action[] }).actions;
@@ -208,12 +212,6 @@ export function installSkillCallbackBridge(deps: BridgeDeps): () => void {
   }
 
   const useSkillAction = resolveUseSkillAction(runtime);
-  if (!useSkillAction || typeof useSkillAction.handler !== "function") {
-    log.debug?.(
-      `${LOG_PREFIX} USE_SKILL action not registered; bridge inactive`,
-    );
-    return () => undefined;
-  }
 
   const dispatchToParent = async (
     sessionId: string,
@@ -276,6 +274,33 @@ export function installSkillCallbackBridge(deps: BridgeDeps): () => void {
           typeof result.text === "string" && result.text.trim()
             ? result.text
             : "(no output)",
+      });
+      await ptyService.sendToSession(sessionId, reply);
+      return;
+    }
+
+    if (invocation.slug === PARENT_AGENT_BROKER_SLUG) {
+      const result = await runParentAgentBroker({
+        runtime,
+        sessionId,
+        session: ptyService.getSession(sessionId),
+        args: invocation.args,
+      });
+      const reply = formatResultForChild(invocation.slug, {
+        success: result.success !== false,
+        text:
+          typeof result.text === "string" && result.text.trim()
+            ? result.text
+            : "(no output)",
+      });
+      await ptyService.sendToSession(sessionId, reply);
+      return;
+    }
+
+    if (!useSkillAction || typeof useSkillAction.handler !== "function") {
+      const reply = formatResultForChild(invocation.slug, {
+        success: false,
+        text: "The parent does not have the disk USE_SKILL action loaded for this skill. The virtual parent-agent and lifeops-context brokers can still be used when allowed for the task.",
       });
       await ptyService.sendToSession(sessionId, reply);
       return;

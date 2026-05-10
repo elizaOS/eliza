@@ -74,8 +74,8 @@ où obtenir les identifiants, les champs minimum requis et des conseils pour les
 **Minimum requis :** `GROQ_API_KEY`
 **Variables :**
 - `GROQ_API_KEY` — Depuis console.groq.com
-- `GROQ_SMALL_MODEL` — ex. `llama-3.1-8b-instant`
-- `GROQ_LARGE_MODEL` — ex. `llama-3.3-70b-versatile`
+- `GROQ_SMALL_MODEL` — ex. `openai/gpt-oss-120b`
+- `GROQ_LARGE_MODEL` — ex. `openai/gpt-oss-120b`
 - `GROQ_TTS_MODEL` / `GROQ_TTS_VOICE` — ex. `playai-tts` / `Fritz-PlayAI`
 **Conseils :** Groq offre une inférence extrêmement rapide — idéal pour les cas d'utilisation sensibles à la latence. Niveau gratuit disponible. Prend en charge la synthèse vocale via les voix PlayAI.
 
@@ -88,7 +88,7 @@ où obtenir les identifiants, les champs minimum requis et des conseils pour les
 **Minimum requis :** `OPENROUTER_API_KEY`
 **Variables :**
 - `OPENROUTER_API_KEY` — Depuis openrouter.ai/keys
-- `OPENROUTER_SMALL_MODEL` — ex. `openai/gpt-5-mini` ou `meta-llama/llama-3.3-70b`
+- `OPENROUTER_SMALL_MODEL` — ex. `openai/gpt-5-mini` ou `openai/gpt-oss-120b`
 - `OPENROUTER_LARGE_MODEL` — ex. `anthropic/claude-sonnet-4-6`
 - `OPENROUTER_IMAGE_MODEL` — ex. `openai/gpt-4o` (pour les tâches de vision)
 - `OPENROUTER_IMAGE_GENERATION_MODEL` — ex. `openai/dall-e-3`
@@ -126,7 +126,7 @@ où obtenir les identifiants, les champs minimum requis et des conseils pour les
 - `OLLAMA_API_ENDPOINT` — Point de terminaison du plugin. Par défaut : `http://localhost:11434/api`
 - `OLLAMA_SMALL_MODEL` — ex. `llama3.2:3b`
 - `OLLAMA_MEDIUM_MODEL` — ex. `llama3.2`
-- `OLLAMA_LARGE_MODEL` — ex. `llama3.3:70b`
+- `OLLAMA_LARGE_MODEL` — ex. `llama3.2`
 - `OLLAMA_EMBEDDING_MODEL` — ex. `nomic-embed-text`
 **Conseils :** Entièrement gratuit et privé. Nécessite qu'Ollama soit en cours d'exécution sur votre machine ou un serveur. Téléchargez les modèles avec `ollama pull <model>`. Pour les embeddings, utilisez `nomic-embed-text`.
 
@@ -183,7 +183,7 @@ où obtenir les identifiants, les champs minimum requis et des conseils pour les
 **Variables :**
 - `TOGETHER_API_KEY` — Depuis api.together.xyz
 - `TOGETHER_SMALL_MODEL` — ex. `meta-llama/Llama-3.2-3B-Instruct-Turbo`
-- `TOGETHER_LARGE_MODEL` — ex. `meta-llama/Llama-3.3-70B-Instruct-Turbo`
+- `TOGETHER_LARGE_MODEL` — ex. `deepseek-ai/DeepSeek-V3`
 - `TOGETHER_EMBEDDING_MODEL` — ex. `togethercomputer/m2-bert-80M-8k-retrieval`
 - `TOGETHER_IMAGE_MODEL` — ex. `black-forest-labs/FLUX.1-schnell`
 **Conseils :** Together AI héberge une large gamme de modèles open source. Idéal pour accéder à Llama, Mixtral et d'autres modèles ouverts via API.

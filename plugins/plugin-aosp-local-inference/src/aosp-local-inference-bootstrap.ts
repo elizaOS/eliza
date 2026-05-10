@@ -237,16 +237,14 @@ type AospRecommendedModel = {
 
 const AOSP_RECOMMENDED_MODELS: Record<"chat" | "embedding", AospRecommendedModel> = {
   chat: {
-    id: "llama-3.2-1b",
-    hfRepo: "bartowski/Llama-3.2-1B-Instruct-GGUF",
-    ggufFile: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
-    expectedSizeBytes: 807_694_464,
+    id: "eliza-1-mobile-1_7b",
+    hfRepo: "elizalabs/eliza-1-mobile-1_7b",
+    ggufFile: "text/eliza-1-mobile-1_7b-32k.gguf",
   },
   embedding: {
-    id: "bge-small-en-v1.5",
-    hfRepo: "ChristianAzinn/bge-small-en-v1.5-gguf",
-    ggufFile: "bge-small-en-v1.5.Q4_K_M.gguf",
-    expectedSizeBytes: 24_808_576,
+    id: "eliza-1-lite-0_6b",
+    hfRepo: "elizalabs/eliza-1-lite-0_6b",
+    ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
   },
 };
 
@@ -259,6 +257,7 @@ async function downloadRecommendedAospModel(
   const model = AOSP_RECOMMENDED_MODELS[role];
   mkdirSync(modelsDir, { recursive: true });
   const finalPath = path.join(modelsDir, model.ggufFile);
+  mkdirSync(path.dirname(finalPath), { recursive: true });
   if (existsSync(finalPath)) {
     const sz = statSync(finalPath).size;
     if (!model.expectedSizeBytes || sz === model.expectedSizeBytes) {
@@ -336,23 +335,16 @@ function fallbackFindBundledModels(modelsDir: string): {
     if (!name.endsWith(".gguf")) continue;
     const abs = path.join(modelsDir, name);
     const lower = name.toLowerCase();
-    // Embedding match runs first so models like "bge-..." (no "instruct"
-    // marker) don't get mistakenly classified as chat by the broader
-    // "instruct" rule below.
+    // Embedding match runs first so the lite tier is assigned to embeddings
+    // before the broader Eliza-1 chat rule below.
     if (
       !embedding &&
-      (lower.includes("bge") ||
-        lower.includes("embed") ||
-        lower.includes("nomic") ||
-        lower.includes("minilm"))
+      (lower.includes("eliza-1-lite") || lower.includes("embedding"))
     ) {
       embedding = abs;
     } else if (
       !chat &&
-      (lower.includes("llama") ||
-        lower.includes("smollm") ||
-        lower.includes("qwen") ||
-        lower.includes("instruct"))
+      lower.includes("eliza-1")
     ) {
       chat = abs;
     }

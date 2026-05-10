@@ -22,6 +22,7 @@ Treat Eliza Cloud as the default managed backend before inventing separate auth,
 
 - `references/cloud-backend-and-monetization.md` for apps, auth, billing, and earnings
 - `references/apps-and-containers.md` for deployment, domains, and container workflow
+- `references/payments-and-promotion.md` for app charges, x402 requests, promotion assets, advertising, image/video/music/TTS generation, and parent-agent Cloud commands
 
 ## Default Build Flow
 

@@ -42,44 +42,21 @@ const DEFAULT_LOAD_TIMEOUT_MS = 180_000;
 const SERVICE_ENABLED = process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
 const registeredRuntimes = new WeakSet<AgentRuntime>();
 const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
-	"bge-small-en-v1.5": 384,
+	"eliza-1-lite-0_6b": 1024,
+	"eliza-1-mobile-1_7b": 2048,
 };
 
-const DFLASH_LOAD_METADATA: Record<
+const ELIZA_1_LOAD_METADATA: Record<
 	string,
 	{
-		drafterModelId: string;
 		contextSize: number;
-		draftContextSize: number;
-		draftMin: number;
-		draftMax: number;
-		disableThinking: boolean;
 	}
 > = {
-	"qwen3.5-4b-dflash": {
-		drafterModelId: "qwen3.5-4b-dflash-drafter-q4",
-		contextSize: 8192,
-		draftContextSize: 256,
-		draftMin: 1,
-		draftMax: 16,
-		disableThinking: true,
-	},
-	"qwen3.5-9b-dflash": {
-		drafterModelId: "qwen3.5-9b-dflash-drafter-q4",
-		contextSize: 8192,
-		draftContextSize: 256,
-		draftMin: 1,
-		draftMax: 16,
-		disableThinking: true,
-	},
-	"qwen3.6-27b-dflash": {
-		drafterModelId: "qwen3.6-27b-dflash-drafter-q8",
-		contextSize: 8192,
-		draftContextSize: 256,
-		draftMin: 1,
-		draftMax: 16,
-		disableThinking: true,
-	},
+	"eliza-1-lite-0_6b": { contextSize: 32768 },
+	"eliza-1-mobile-1_7b": { contextSize: 32768 },
+	"eliza-1-desktop-9b": { contextSize: 65536 },
+	"eliza-1-pro-27b": { contextSize: 131072 },
+	"eliza-1-server-h200": { contextSize: 262144 },
 };
 
 type GenerateTextHandler = (
@@ -672,17 +649,6 @@ function resolveAssignedRegistryModel(slot: string): {
 	};
 }
 
-function resolveRegistryModelById(id: string): {
-	id: string;
-	path: string;
-} | null {
-	const matched = readRegistryModels().find((model) => model.id === id);
-	if (typeof matched?.path !== "string" || !existsSync(matched.path)) {
-		return null;
-	}
-	return { id, path: matched.path };
-}
-
 function resolveFromManifest(slot: string): string | null {
 	const manifest = readJsonFile<BundledModelManifest>(
 		path.join(modelsDir(), "manifest.json"),
@@ -723,23 +689,8 @@ function buildLoadArgsFromRegistryModel(model: {
 	path: string;
 }): LocalInferenceLoadArgs {
 	const args: LocalInferenceLoadArgs = { modelPath: model.path };
-	const dflash = DFLASH_LOAD_METADATA[model.id];
-	if (dflash) {
-		const drafter = resolveRegistryModelById(dflash.drafterModelId);
-		args.contextSize = dflash.contextSize;
-		args.useGpu = true;
-		args.draftContextSize = dflash.draftContextSize;
-		args.draftMin = dflash.draftMin;
-		args.draftMax = dflash.draftMax;
-		args.speculativeSamples = dflash.draftMax;
-		args.mobileSpeculative = true;
-		args.disableThinking = dflash.disableThinking;
-		if (drafter) args.draftModelPath = drafter.path;
-	}
-	if (model.id === "bonsai-8b-1bit") {
-		args.cacheTypeK = "tbq4_0";
-		args.cacheTypeV = "tbq3_0";
-	}
+	const eliza1 = ELIZA_1_LOAD_METADATA[model.id];
+	if (eliza1) args.contextSize = eliza1.contextSize;
 	return args;
 }
 
@@ -768,6 +719,7 @@ type RecommendedModel = {
 	id: string;
 	hfRepo: string;
 	ggufFile: string;
+	localFile?: string;
 	expectedSizeBytes?: number;
 };
 
@@ -775,37 +727,42 @@ const RECOMMENDED_MODELS: Record<
 	"TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
 	RecommendedModel
 > = {
-	// Llama-3.2-1B-Q4_K_M: ~770 MB, fits in ~1.6 GB total on a 4 GB cvd or
-	// ~600 MB free on an 8 GB phone. Has tool-calling support and good
-	// instruction-following at this size; the safe default for "first chat
-	// works without further setup".
 	TEXT_SMALL: {
-		id: "llama-3.2-1b",
-		hfRepo: "bartowski/Llama-3.2-1B-Instruct-GGUF",
-		ggufFile: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
-		expectedSizeBytes: 807_694_464,
+		id: "eliza-1-lite-0_6b",
+		hfRepo: "elizalabs/eliza-1-lite-0_6b",
+		ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
+		localFile: "eliza-1-lite-0_6b-32k.gguf",
 	},
 	TEXT_LARGE: {
-		id: "llama-3.2-1b",
-		hfRepo: "bartowski/Llama-3.2-1B-Instruct-GGUF",
-		ggufFile: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
-		expectedSizeBytes: 807_694_464,
+		id: "eliza-1-mobile-1_7b",
+		hfRepo: "elizalabs/eliza-1-mobile-1_7b",
+		ggufFile: "text/eliza-1-mobile-1_7b-32k.gguf",
+		localFile: "eliza-1-mobile-1_7b-32k.gguf",
 	},
-	// bge-small-en-v1.5: 384-dim sentence embedding, ~24 MB. Standard
-	// pairing with any chat model when the runtime needs embeddings for
-	// memory recall / RAG.
 	TEXT_EMBEDDING: {
-		id: "bge-small-en-v1.5",
-		hfRepo: "ChristianAzinn/bge-small-en-v1.5-gguf",
-		ggufFile: "bge-small-en-v1.5.Q4_K_M.gguf",
-		expectedSizeBytes: 24_808_576,
+		id: "eliza-1-lite-0_6b",
+		hfRepo: "elizalabs/eliza-1-lite-0_6b",
+		ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
+		localFile: "eliza-1-lite-0_6b-32k.gguf",
 	},
 };
 
 const inflightDownloads = new Map<string, Promise<string>>();
 
 function buildHfResolveUrl(model: RecommendedModel): string {
-	return `https://huggingface.co/${model.hfRepo}/resolve/main/${model.ggufFile}`;
+	const encodedPath = model.ggufFile
+		.split("/")
+		.map((segment) => encodeURIComponent(segment))
+		.join("/");
+	return `https://huggingface.co/${model.hfRepo}/resolve/main/${encodedPath}?download=true`;
+}
+
+function buildRecommendedLoadArgs(
+	slot: "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
+	modelPath: string,
+): LocalInferenceLoadArgs {
+	const model = RECOMMENDED_MODELS[slot];
+	return buildLoadArgsFromRegistryModel({ id: model.id, path: modelPath });
 }
 
 async function downloadRecommendedModelFor(
@@ -814,7 +771,10 @@ async function downloadRecommendedModelFor(
 	const model = RECOMMENDED_MODELS[slot];
 	const dir = modelsDir();
 	mkdirSync(dir, { recursive: true });
-	const finalPath = path.join(dir, model.ggufFile);
+	const finalPath = path.join(
+		dir,
+		model.localFile ?? path.basename(model.ggufFile),
+	);
 	if (existsSync(finalPath)) {
 		const sz = statSync(finalPath).size;
 		if (!model.expectedSizeBytes || sz === model.expectedSizeBytes) {
@@ -829,7 +789,7 @@ async function downloadRecommendedModelFor(
 		} catch {}
 	}
 
-	const dedupKey = `${slot}:${model.id}`;
+	const dedupKey = model.id;
 	const existing = inflightDownloads.get(dedupKey);
 	if (existing) return existing;
 
@@ -884,7 +844,7 @@ async function resolveLoadArgsWithAutoDownload(
 		return null;
 	}
 	const downloaded = await downloadRecommendedModelFor(slot);
-	return { modelPath: downloaded };
+	return buildRecommendedLoadArgs(slot, downloaded);
 }
 
 function resolveEmbeddingDimension(): number {
@@ -896,7 +856,8 @@ function resolveEmbeddingDimension(): number {
 		positiveInteger(assigned?.embeddingDimension) ??
 		positiveInteger(assigned?.embeddingDimensions) ??
 		(assigned?.id ? KNOWN_EMBEDDING_DIMENSIONS[assigned.id] : null) ??
-		384
+		KNOWN_EMBEDDING_DIMENSIONS[RECOMMENDED_MODELS.TEXT_EMBEDDING.id] ??
+		1024
 	);
 }
 
@@ -936,6 +897,9 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 			return new Array(resolveEmbeddingDimension()).fill(0);
 		}
 		let modelPath = resolveLocalModelPath("TEXT_EMBEDDING");
+		let loadArgs: LocalInferenceLoadArgs | null = modelPath
+			? { modelPath }
+			: null;
 		if (!modelPath) {
 			if (process.env.ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD?.trim() === "1") {
 				throw new Error(
@@ -943,8 +907,14 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 				);
 			}
 			modelPath = await downloadRecommendedModelFor("TEXT_EMBEDDING");
+			loadArgs = buildRecommendedLoadArgs("TEXT_EMBEDDING", modelPath);
 		}
-		await mobileDeviceBridge.loadModel({ modelPath });
+		if (!loadArgs) {
+			throw new Error(
+				`[mobile-device-bridge] No local GGUF embedding model resolved for ${modelsDir()}.`,
+			);
+		}
+		await mobileDeviceBridge.loadModel(loadArgs);
 		return mobileDeviceBridge.embed({
 			input: extractEmbeddingText(params),
 		});

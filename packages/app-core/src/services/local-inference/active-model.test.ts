@@ -1,7 +1,4 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   isForkOnlyKvCacheType,
   isStockKvCacheType,
@@ -9,12 +6,6 @@ import {
   validateLocalInferenceLoadArgs,
 } from "./active-model";
 import type { InstalledModel } from "./types";
-
-const originalEnv = { ...process.env };
-
-afterEach(() => {
-  process.env = { ...originalEnv };
-});
 
 function makeInstalledModel(id: string, filePath: string): InstalledModel {
   return {
@@ -28,67 +19,21 @@ function makeInstalledModel(id: string, filePath: string): InstalledModel {
   };
 }
 
-function writeRegistry(root: string, models: InstalledModel[]): void {
-  const localRoot = path.join(root, "local-inference");
-  fs.mkdirSync(localRoot, { recursive: true });
-  fs.writeFileSync(
-    path.join(localRoot, "registry.json"),
-    JSON.stringify({ version: 1, models }, null, 2),
-    "utf8",
-  );
-}
-
 describe("resolveLocalInferenceLoadArgs", () => {
-  it("carries DFlash companion and speculative settings into loader args", async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-load-args-"));
-    process.env.ELIZA_STATE_DIR = root;
-    const target = makeInstalledModel(
-      "qwen3.5-4b-dflash",
-      path.join(root, "local-inference", "models", "qwen.gguf"),
-    );
-    const drafter = makeInstalledModel(
-      "qwen3.5-4b-dflash-drafter-q4",
-      path.join(root, "local-inference", "models", "qwen-drafter.gguf"),
-    );
-    writeRegistry(root, [target, drafter]);
-
-    const args = await resolveLocalInferenceLoadArgs(target);
-
-    // The catalog now declares qwen3.5-4b-dflash.contextLength=131072
-    // (the model's true ceiling); that wins over the dflash launch
-    // default. The other dflash launch fields are unaffected.
-    expect(args).toMatchObject({
-      modelPath: target.path,
-      draftModelPath: drafter.path,
-      contextSize: 131072,
-      draftContextSize: 256,
-      draftMin: 1,
-      draftMax: 16,
-      speculativeSamples: 16,
-      mobileSpeculative: true,
-      disableThinking: true,
-      useGpu: true,
-      flashAttention: true,
-    });
-  });
-
-  it("carries TurboQuant KV cache metadata into loader args", async () => {
-    const target = makeInstalledModel("bonsai-8b-1bit", "/tmp/Bonsai-8B.gguf");
-
-    const args = await resolveLocalInferenceLoadArgs(target);
-
-    expect(args.cacheTypeK).toBe("tbq4_0");
-    expect(args.cacheTypeV).toBe("tbq3_0");
-  });
-
   it("threads catalog contextLength into loader args when no override is given", async () => {
-    const target = makeInstalledModel("eliza-1-9b", "/tmp/eliza-1-9b.gguf");
+    const target = makeInstalledModel(
+      "eliza-1-desktop-9b",
+      "/tmp/eliza-1-desktop-9b.gguf",
+    );
     const args = await resolveLocalInferenceLoadArgs(target);
-    expect(args.contextSize).toBe(131072);
+    expect(args.contextSize).toBe(65536);
   });
 
   it("per-load contextSize override beats catalog contextLength default", async () => {
-    const target = makeInstalledModel("eliza-1-9b", "/tmp/eliza-1-9b.gguf");
+    const target = makeInstalledModel(
+      "eliza-1-desktop-9b",
+      "/tmp/eliza-1-desktop-9b.gguf",
+    );
     const args = await resolveLocalInferenceLoadArgs(target, {
       contextSize: 32768,
     });
@@ -96,7 +41,10 @@ describe("resolveLocalInferenceLoadArgs", () => {
   });
 
   it("per-load gpuLayers/flashAttention/mmap/mlock overrides flow into args", async () => {
-    const target = makeInstalledModel("eliza-1-2b", "/tmp/eliza-1-2b.gguf");
+    const target = makeInstalledModel(
+      "eliza-1-mobile-1_7b",
+      "/tmp/eliza-1-mobile-1_7b.gguf",
+    );
     const args = await resolveLocalInferenceLoadArgs(target, {
       gpuLayers: 16,
       flashAttention: true,
@@ -107,37 +55,6 @@ describe("resolveLocalInferenceLoadArgs", () => {
     expect(args.flashAttention).toBe(true);
     expect(args.mmap).toBe(false);
     expect(args.mlock).toBe(true);
-  });
-
-  it("per-load cacheType override wins over the catalog runtime block", async () => {
-    const target = makeInstalledModel("bonsai-8b-1bit", "/tmp/Bonsai-8B.gguf");
-    const args = await resolveLocalInferenceLoadArgs(target, {
-      cacheTypeK: "f16",
-      cacheTypeV: "q8_0",
-    });
-    expect(args.cacheTypeK).toBe("f16");
-    expect(args.cacheTypeV).toBe("q8_0");
-  });
-
-  it("DFlash launch contextSize is preserved when no override is given", async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-load-args-ctx-"));
-    process.env.ELIZA_STATE_DIR = root;
-    const target = makeInstalledModel(
-      "qwen3.5-4b-dflash",
-      path.join(root, "local-inference", "models", "qwen.gguf"),
-    );
-    const drafter = makeInstalledModel(
-      "qwen3.5-4b-dflash-drafter-q4",
-      path.join(root, "local-inference", "models", "qwen-drafter.gguf"),
-    );
-    writeRegistry(root, [target, drafter]);
-
-    const args = await resolveLocalInferenceLoadArgs(target);
-    // qwen3.5-4b-dflash declares contextLength=131072 on the catalog
-    // entry (the model's true ceiling), but the dflash launch block
-    // declares contextSize=8192. The catalog-level contextLength wins
-    // when set; the dflash block's launch default is the fallback only.
-    expect(args.contextSize).toBe(131072);
   });
 });
 

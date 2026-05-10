@@ -120,7 +120,6 @@ OpenRouter proporciona acceso a modelos de todos los proveedores principales. Us
 
 | ID del modelo | Descripción |
 |---------------|-------------|
-| `meta-llama/llama-3.3-70b-instruct` | Llama 3.3 70B |
 | `meta-llama/llama-3.1-405b-instruct` | Llama 3.1 405B |
 
 <div id="google-via-openrouter">

@@ -158,7 +158,7 @@ export const readAction: Action = {
     if (buffer.includes(0)) {
       return failureToActionResult({
         reason: "io_error",
-        message: `binary file detected at ${resolved}; use BASH+xxd or similar to inspect`,
+        message: `binary file detected at ${resolved}; use SHELL+xxd or similar to inspect`,
       });
     }
 

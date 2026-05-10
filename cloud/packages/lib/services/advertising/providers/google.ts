@@ -14,7 +14,7 @@ import type {
   UpdateCampaignInput,
 } from "../types";
 
-const GOOGLE_ADS_API_VERSION = "v16";
+const GOOGLE_ADS_API_VERSION = process.env.GOOGLE_ADS_API_VERSION || "v24";
 const GOOGLE_ADS_BASE_URL = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}`;
 
 interface GoogleAdsError {
@@ -80,6 +80,17 @@ function mapObjectiveToGoogleAds(objective: string): {
   };
 
   return mapping[objective] || { advertisingChannelType: "SEARCH" };
+}
+
+function splitGoogleCampaignId(
+  accountId: string,
+  externalCampaignId: string,
+): { customerId: string; campaignId: string } {
+  const parts = externalCampaignId.split("/");
+  if (parts.length === 2 && parts[0] && parts[1]) {
+    return { customerId: parts[0], campaignId: parts[1] };
+  }
+  return { customerId: accountId, campaignId: externalCampaignId };
 }
 
 export const googleAdsProvider: AdProvider = {
@@ -433,18 +444,19 @@ export const googleAdsProvider: AdProvider = {
       campaignId: externalCampaignId,
       name: input.name,
     });
+    const { customerId, campaignId } = splitGoogleCampaignId(accountId, externalCampaignId);
 
     // Create ad group first
     const adGroupResponse = await googleAdsRequest<{
       results: Array<{ resourceName: string }>;
-    }>("/adGroups:mutate", credentials.accessToken, accountId, {
+    }>("/adGroups:mutate", credentials.accessToken, customerId, {
       method: "POST",
       body: JSON.stringify({
         operations: [
           {
             create: {
               name: `${input.name} - Ad Group`,
-              campaign: `customers/${accountId}/campaigns/${externalCampaignId}`,
+              campaign: `customers/${customerId}/campaigns/${campaignId}`,
               type: "SEARCH_STANDARD",
               status: "PAUSED",
               cpcBidMicros: "1000000", // $1 default bid
@@ -462,7 +474,7 @@ export const googleAdsProvider: AdProvider = {
     // Create responsive search ad
     const adResponse = await googleAdsRequest<{
       results: Array<{ resourceName: string }>;
-    }>("/adGroupAds:mutate", credentials.accessToken, accountId, {
+    }>("/adGroupAds:mutate", credentials.accessToken, customerId, {
       method: "POST",
       body: JSON.stringify({
         operations: [

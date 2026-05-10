@@ -307,9 +307,8 @@ function applyCatalogDefaults(
 ): void {
   const runtime = catalog?.runtime;
 
-  // KV cache types from the catalog runtime block. Bonsai-style entries
-  // declare these per-side; per-call overrides take precedence and are
-  // merged in afterwards.
+  // KV cache types from the catalog runtime block. Per-call overrides
+  // take precedence and are merged in afterwards.
   if (runtime?.kvCache?.typeK) args.cacheTypeK = runtime.kvCache.typeK;
   if (runtime?.kvCache?.typeV) args.cacheTypeV = runtime.kvCache.typeV;
 
@@ -413,9 +412,7 @@ export async function resolveLocalInferenceLoadArgs(
   if (args.cacheTypeK) args.cacheTypeK = args.cacheTypeK.trim().toLowerCase();
   if (args.cacheTypeV) args.cacheTypeV = args.cacheTypeV.trim().toLowerCase();
 
-  // Validate the final merged args. The catalog declares KV cache types
-  // unconditionally for some entries (Bonsai → tbq4_0/tbq3_0); validation
-  // with `allowFork: true` covers that path. The route layer is the one
+  // Validate the final merged args. The route layer is the one
   // that calls `validateLocalInferenceLoadArgs` with `allowFork: false`
   // against just the overrides — see `local-inference-compat-routes.ts`.
   validateLocalInferenceLoadArgs(args, { allowFork: true });

@@ -3,8 +3,8 @@
  *
  * Phase-2 work: each umbrella's subactions are promoted to virtual top-level
  * Actions named `<UMBRELLA>_<SUBACTION>`. Virtuals delegate to the parent's
- * handler with `subaction: <name>` injected into `options.parameters` before
- * dispatch. The parent stays registered alongside its virtuals.
+ * handler with the parent's discriminator injected into `options.parameters`
+ * before dispatch. The parent stays registered alongside its virtuals.
  */
 
 import {
@@ -73,6 +73,34 @@ function makeStubAction(): Action {
   };
 }
 
+function makeCanonicalActionStub(): Action {
+  return {
+    ...makeStubAction(),
+    parameters: [
+      {
+        name: "action",
+        description: "test discriminator: list | create | delete",
+        required: true,
+        schema: {
+          type: "string" as const,
+          enum: ["list", "create", "delete"],
+        },
+      },
+    ],
+    handler: async (_runtime, _message, _state, options) => {
+      const action =
+        ((options as HandlerOptions | undefined)?.parameters as
+          | Record<string, unknown>
+          | undefined)?.action;
+      return {
+        success: true,
+        text: `dispatched ${String(action)}`,
+        data: { action },
+      };
+    },
+  };
+}
+
 describe("promoteSubactionsToActions", () => {
   it("returns parent + N virtual actions named <PARENT>_<SUB>", () => {
     const stub = makeStubAction();
@@ -95,8 +123,10 @@ describe("promoteSubactionsToActions", () => {
     }
   });
 
-  it("listSubactionsFromParameters reads the canonical subaction enum", () => {
-    expect(listSubactionsFromParameters(makeStubAction().parameters)).toEqual([
+  it("listSubactionsFromParameters reads the canonical action enum", () => {
+    expect(
+      listSubactionsFromParameters(makeCanonicalActionStub().parameters),
+    ).toEqual([
       "list",
       "create",
       "delete",
@@ -137,6 +167,45 @@ describe("promoteSubactionsToActions", () => {
     const passedOptions = handlerSpy.mock.calls[0][3] as HandlerOptions;
     expect(passedOptions.parameters).toMatchObject({
       otherParam: "abc",
+      subaction: "list",
+    });
+  });
+
+  it("virtual handler injects action for canonical action-based umbrellas", async () => {
+    const stub = makeCanonicalActionStub();
+    const handlerSpy = vi.spyOn(stub, "handler");
+    const [, virtualList] = promoteSubactionsToActions(stub);
+    const result = await virtualList?.handler(
+      STATIC_RUNTIME,
+      STATIC_MESSAGE,
+      NOOP_STATE,
+      { parameters: { otherParam: "abc" } },
+      NOOP_CALLBACK,
+    );
+    expect(result?.success).toBe(true);
+    expect(result?.text).toBe("dispatched list");
+    const passedOptions = handlerSpy.mock.calls[0][3] as HandlerOptions;
+    expect(passedOptions.parameters).toMatchObject({
+      otherParam: "abc",
+      action: "list",
+      subaction: "list",
+    });
+  });
+
+  it("does not overwrite nested action params when a legacy discriminator is declared", async () => {
+    const stub = makeStubAction();
+    const handlerSpy = vi.spyOn(stub, "handler");
+    const [, virtualList] = promoteSubactionsToActions(stub);
+    await virtualList?.handler(
+      STATIC_RUNTIME,
+      STATIC_MESSAGE,
+      NOOP_STATE,
+      { parameters: { action: "pause" } },
+      NOOP_CALLBACK,
+    );
+    const passedOptions = handlerSpy.mock.calls[0][3] as HandlerOptions;
+    expect(passedOptions.parameters).toMatchObject({
+      action: "pause",
       subaction: "list",
     });
   });
@@ -185,28 +254,29 @@ describe("promoteSubactionsToActions", () => {
   });
 });
 
-describe("SCHEDULED_TASK promotion + alias normalization", () => {
-  it("promotes the 11 scheduled-task subactions to virtual top-level Actions", () => {
+describe("TASKS promotion + alias normalization", () => {
+  it("promotes the 12 task operations to virtual top-level Actions", () => {
     const promoted = promoteSubactionsToActions(scheduledTaskAction);
     expect(promoted[0]).toBe(scheduledTaskAction);
     const virtuals = promoted.slice(1);
-    expect(virtuals).toHaveLength(11);
+    expect(virtuals).toHaveLength(12);
     expect(virtuals.map((a) => a.name)).toEqual([
-      "SCHEDULED_TASK_LIST",
-      "SCHEDULED_TASK_GET",
-      "SCHEDULED_TASK_CREATE",
-      "SCHEDULED_TASK_UPDATE",
-      "SCHEDULED_TASK_SNOOZE",
-      "SCHEDULED_TASK_SKIP",
-      "SCHEDULED_TASK_COMPLETE",
-      "SCHEDULED_TASK_DISMISS",
-      "SCHEDULED_TASK_CANCEL",
-      "SCHEDULED_TASK_REOPEN",
-      "SCHEDULED_TASK_HISTORY",
+      "TASKS_LIST",
+      "TASKS_GET",
+      "TASKS_CREATE",
+      "TASKS_UPDATE",
+      "TASKS_SNOOZE",
+      "TASKS_SKIP",
+      "TASKS_COMPLETE",
+      "TASKS_ACKNOWLEDGE",
+      "TASKS_DISMISS",
+      "TASKS_CANCEL",
+      "TASKS_REOPEN",
+      "TASKS_HISTORY",
     ]);
   });
 
-  it("parent handler returns a structured failure when no subaction is supplied", async () => {
+  it("parent handler returns a structured failure when no action is supplied", async () => {
     const result = await scheduledTaskAction.handler(
       STATIC_RUNTIME,
       STATIC_MESSAGE,
@@ -224,7 +294,7 @@ describe("SCHEDULED_TASK promotion + alias normalization", () => {
     }
   });
 
-  it("the SCHEDULED_TASK_LIST virtual delegates to the parent handler with subaction=list injected", async () => {
+  it("the TASKS_LIST virtual delegates to the parent handler with action=list injected", async () => {
     const stubParent: typeof scheduledTaskAction = {
       ...scheduledTaskAction,
       validate: async () => true,
@@ -234,14 +304,14 @@ describe("SCHEDULED_TASK promotion + alias normalization", () => {
           success: true,
           text: "stub-ok",
           data: {
-            subaction: (parameters as Record<string, unknown> | undefined)
-              ?.subaction,
+            action: (parameters as Record<string, unknown> | undefined)?.action,
+            subaction: (parameters as Record<string, unknown> | undefined)?.subaction,
           },
         } satisfies ActionResult;
       }),
     };
     const promoted = promoteSubactionsToActions(stubParent);
-    const list = promoted.find((a) => a.name === "SCHEDULED_TASK_LIST");
+    const list = promoted.find((a) => a.name === "TASKS_LIST");
     expect(list).toBeDefined();
     const result = await list?.handler(
       STATIC_RUNTIME,
@@ -251,6 +321,7 @@ describe("SCHEDULED_TASK promotion + alias normalization", () => {
       NOOP_CALLBACK,
     );
     expect(result?.success).toBe(true);
+    expect((result?.data as Record<string, unknown>).action).toBe("list");
     expect((result?.data as Record<string, unknown>).subaction).toBe("list");
     expect(stubParent.handler).toHaveBeenCalledTimes(1);
   });

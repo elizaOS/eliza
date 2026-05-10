@@ -24,6 +24,7 @@ import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import { executeApprovedRequest } from "../src/actions/resolve-request.js";
+import { appLifeOpsPlugin } from "../src/plugin.js";
 import {
   getLifeOpsLiveSetupWarnings,
   getSelectedLiveProviderEnv,
@@ -266,6 +267,7 @@ describeIf(LIVE_SUITE_ENABLED)(
             agentId: "main",
             workspaceDir,
           }),
+          appLifeOpsPlugin as Plugin,
         ],
         conversationLength: 24,
         enableAutonomy: false,

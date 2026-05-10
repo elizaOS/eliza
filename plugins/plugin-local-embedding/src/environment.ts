@@ -1,12 +1,7 @@
 import { logger } from "@elizaos/core";
 import { z } from "zod";
 
-// Default model — nomic-embed-text-v1.5 (768 dim, 8k context). The
-// historical default was bge-small-en-v1.5 (384 dim, 512 context), but
-// 512 tokens is too small for any realistic document-embedding use case
-// (per the on-device porting audit). nomic-embed has the right context/
-// dim trade-off for general retrieval and runs comfortably on CPU.
-const DEFAULT_EMBEDDING_MODEL = "nomic-embed-text-v1.5.Q4_K_M.gguf";
+const DEFAULT_EMBEDDING_MODEL = "text/eliza-1-lite-0_6b-32k.gguf";
 
 /**
  * Configuration schema for the local embedding plugin.

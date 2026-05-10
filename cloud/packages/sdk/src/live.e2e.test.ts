@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CloudApiClient, createElizaCloudClient, ElizaCloudClient } from "./index.js";
+import { DEFAULT_ELIZA_CLOUD_API_BASE_URL, DEFAULT_ELIZA_CLOUD_BASE_URL } from "./types.js";
 
 const trimmed = (value: string | undefined): string | undefined => {
   if (value === undefined) return undefined;
@@ -8,8 +9,9 @@ const trimmed = (value: string | undefined): string | undefined => {
 };
 
 const liveEnabled = process.env.ELIZA_CLOUD_SDK_LIVE === "1";
-const baseUrl = trimmed(process.env.ELIZA_CLOUD_BASE_URL) ?? "https://www.elizacloud.ai";
-const apiBaseUrl = trimmed(process.env.ELIZA_CLOUD_API_BASE_URL) ?? `${baseUrl}/api/v1`;
+const baseUrl = trimmed(process.env.ELIZA_CLOUD_BASE_URL) ?? DEFAULT_ELIZA_CLOUD_BASE_URL;
+const apiBaseUrl =
+  trimmed(process.env.ELIZA_CLOUD_API_BASE_URL) ?? DEFAULT_ELIZA_CLOUD_API_BASE_URL;
 const apiKey =
   trimmed(process.env.ELIZAOS_CLOUD_API_KEY) ?? trimmed(process.env.ELIZA_CLOUD_API_KEY);
 const sessionToken = trimmed(process.env.ELIZA_CLOUD_SESSION_TOKEN);

@@ -720,6 +720,53 @@ export function injectNoCompressTarGz(content) {
 }
 
 /**
+ * Keep packaged Android native libraries extracted on install.
+ *
+ * Normal Capacitor installs run as `untrusted_app`, which cannot execute
+ * bun/musl files copied into app data. ElizaAgentService therefore prefers
+ * the same payload shipped as libeliza_* native libraries; those files must
+ * exist on disk under nativeLibraryDir for ProcessBuilder to execute them.
+ */
+export function injectNativeLibLegacyPackaging(content) {
+  if (/useLegacyPackaging\s*=\s*true/.test(content)) return content;
+  if (/jniLibs\s*\{/.test(content)) {
+    return content.replace(
+      /jniLibs\s*\{/,
+      "jniLibs {\n            useLegacyPackaging = true",
+    );
+  }
+  if (/packaging\s*\{/.test(content)) {
+    return content.replace(
+      /packaging\s*\{/,
+      "packaging {\n        jniLibs {\n            useLegacyPackaging = true\n        }",
+    );
+  }
+
+  const block =
+    `\n    packaging {\n` +
+    `        jniLibs {\n` +
+    `            useLegacyPackaging = true\n` +
+    `        }\n` +
+    `    }\n`;
+  const androidOpen = content.search(/\n\s*android\s*\{/);
+  if (androidOpen < 0) return content;
+  let depth = 0;
+  let i = content.indexOf("{", androidOpen);
+  while (i < content.length) {
+    const ch = content[i];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return content.slice(0, i) + block + content.slice(i);
+      }
+    }
+    i += 1;
+  }
+  return content;
+}
+
+/**
  * Inject an optional app-thinning hook for `assets/agent/`.
  *
  * Local mode on stock Capacitor APKs now depends on the staged bun runtime,
@@ -1810,6 +1857,16 @@ function generatePodfile() {
     return;
   }
 
+  // LlamaCppCapacitor ships an on-device llama.cpp xcframework. It is only
+  // needed when the iOS build includes on-device inference. The default
+  // App Store target is the `cloud` runtime mode, which is a thin HTTP
+  // client and must NOT bundle the llama.cpp binary. Gate the pod on
+  // ELIZA_IOS_INCLUDE_LLAMA / MILADY_IOS_INCLUDE_LLAMA — kept in sync with
+  // `resolveIosBuildTarget()` so the pod, the xcframework path, and the
+  // build destination all agree on a single inclusion decision.
+  const includeLlama =
+    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
+    isTruthyEnv(process.env.MILADY_IOS_INCLUDE_LLAMA);
   const customPods = [
     ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
     ["ElizaosCapacitorAppblocker", "@elizaos/capacitor-appblocker"],
@@ -1822,8 +1879,13 @@ function generatePodfile() {
     ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
     ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
     ["ElizaosCapacitorWebsiteblocker", "@elizaos/capacitor-websiteblocker"],
-    ["LlamaCppCapacitor", "llama-cpp-capacitor"],
+    ...(includeLlama ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]] : []),
   ];
+  if (!includeLlama) {
+    console.log(
+      "[mobile-build] iOS Podfile: omitting LlamaCppCapacitor (ELIZA_IOS_INCLUDE_LLAMA / MILADY_IOS_INCLUDE_LLAMA not set)",
+    );
+  }
 
   const lines = [
     `  pod 'Capacitor', :path => node_package_path('@capacitor/ios')`,
@@ -2063,6 +2125,7 @@ function patchAndroidGradle() {
     );
     patched = injectBuildConfigAospField(patched);
     patched = injectNoCompressTarGz(patched);
+    patched = injectNativeLibLegacyPackaging(patched);
     patched = injectAospAssetThinning(patched);
     patched = injectCopyForkLlamaLibTask(patched);
     if (patched !== current) {

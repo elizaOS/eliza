@@ -873,6 +873,7 @@ async function callPlanner(params: {
 				promptSegments: renderedInput.promptSegments,
 				provider: params.provider,
 				hasTools,
+				conversationId: params.trajectoryId,
 			}),
 			modelInputBudget,
 		),

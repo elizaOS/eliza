@@ -155,7 +155,7 @@ function selectRoute(
   options?: HandlerOptions | Record<string, unknown>
 ): LinearRoute | null {
   const opts = readOptions(options);
-  const requested = normalizeOp(opts.op ?? opts.subaction);
+  const requested = normalizeOp(opts.action ?? opts.subaction ?? opts.op);
   if (requested) {
     const route = ROUTES.find((candidate) => candidate.op === requested);
     if (route) return route;
@@ -207,7 +207,7 @@ export const linearAction: Action = {
   roleGate: { minRole: "USER" },
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description:
         "Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
       required: false,

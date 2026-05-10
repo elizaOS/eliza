@@ -91,7 +91,7 @@ A fully-featured personal assistant with Ollama fallback, voice, and browser too
     defaults: {
       model: {
         primary: "anthropic/claude-sonnet-4-6",
-        fallbacks: ["ollama/llama3.3"],
+        fallbacks: ["ollama/eliza-1-9b"],
       },
       thinkingDefault: "medium",
       userTimezone: "America/New_York",
@@ -401,7 +401,7 @@ Complete privacy — Ollama for local inference, no external API calls.
 
   agents: {
     defaults: {
-      model: { primary: "ollama/llama3.3" },
+      model: { primary: "ollama/eliza-1-9b" },
     },
     list: [
       {
@@ -417,8 +417,8 @@ Complete privacy — Ollama for local inference, no external API calls.
 
   // Local embedding model (no OpenAI calls)
   embedding: {
-    model: "nomic-embed-text-v1.5.Q5_K_M.gguf",
-    dimensions: 768,
+    model: "eliza-1-lite-0_6b-32k.gguf",
+    dimensions: 1024,
     gpuLayers: "auto",
   },
 
@@ -430,11 +430,11 @@ Complete privacy — Ollama for local inference, no external API calls.
 }
 ```
 
-Before running, install Ollama and pull a model:
+Before running, install Ollama and create an Eliza-1 model:
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
-ollama pull llama3.3
+ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m
 ```
 
 **Use this template if you:**
@@ -580,7 +580,7 @@ agents: {
   defaults: {
     model: {
       primary: "anthropic/claude-sonnet-4-6",
-      fallbacks: ["openai/gpt-4o", "groq/llama-3.3-70b-versatile"],
+      fallbacks: ["openai/gpt-4o", "groq/openai/gpt-oss-120b"],
     },
   },
 },

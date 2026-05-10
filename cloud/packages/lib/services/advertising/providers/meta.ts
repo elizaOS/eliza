@@ -13,7 +13,7 @@ import type {
   UpdateCampaignInput,
 } from "../types";
 
-const GRAPH_API_VERSION = "v19.0";
+const GRAPH_API_VERSION = process.env.META_GRAPH_API_VERSION || "v24.0";
 const GRAPH_API_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 
 const RETRY_CONFIG = {
@@ -487,6 +487,15 @@ export const metaAdsProvider: AdProvider = {
           error: "Destination URL is required for creative",
         };
       }
+      const pageId = input.pageId || process.env.META_DEFAULT_PAGE_ID;
+      if (!pageId) {
+        return {
+          success: false,
+          error: "pageId is required for Meta link ad creatives",
+        };
+      }
+      const instagramActorId =
+        input.instagramActorId || process.env.META_DEFAULT_INSTAGRAM_ACTOR_ID;
 
       // Create ad creative
       const linkData: Record<string, unknown> = {
@@ -501,6 +510,8 @@ export const metaAdsProvider: AdProvider = {
       const creativeData: Record<string, unknown> = {
         name: input.name,
         object_story_spec: {
+          page_id: pageId,
+          ...(instagramActorId && { instagram_actor_id: instagramActorId }),
           link_data: linkData,
         },
       };

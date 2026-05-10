@@ -129,9 +129,9 @@ const LIVE_PROVIDER_CHEAP_MODELS = {
   },
   groq: {
     smallKey: "GROQ_SMALL_MODEL",
-    smallModel: "llama-3.1-8b-instant",
+    smallModel: "openai/gpt-oss-120b",
     largeKey: "GROQ_LARGE_MODEL",
-    largeModel: "llama-3.1-8b-instant",
+    largeModel: "openai/gpt-oss-120b",
   },
   openai: {
     smallKey: "OPENAI_SMALL_MODEL",

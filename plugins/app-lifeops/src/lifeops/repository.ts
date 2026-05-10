@@ -2300,6 +2300,14 @@ function parseScheduledTaskRow(
   };
   const subjectKind = toText(row.subject_kind, "");
   const subjectId = toText(row.subject_id, "");
+  const parsedMetadata =
+    parseOptionalJsonRecord<Record<string, unknown>>(row.metadata_json) ?? {};
+  if (
+    typeof row.created_at === "string" &&
+    typeof parsedMetadata.createdAtIso !== "string"
+  ) {
+    parsedMetadata.createdAtIso = row.created_at;
+  }
   return {
     taskId: toText(row.id),
     kind: toText(row.kind) as TaskShape["kind"],
@@ -2336,9 +2344,7 @@ function parseScheduledTaskRow(
     source: toText(row.source, "user_chat") as TaskShape["source"],
     createdBy: toText(row.created_by, ""),
     ownerVisible: toBoolean(row.owner_visible, true),
-    metadata: parseOptionalJsonRecord<Record<string, unknown>>(
-      row.metadata_json,
-    ),
+    metadata: parsedMetadata,
   };
 }
 
@@ -2355,6 +2361,96 @@ function parseScheduledTaskLogRow(
     transition: toText(row.transition) as LogShape["transition"],
     reason: typeof row.reason === "string" ? row.reason : undefined,
     rolledUp: toBoolean(row.rolled_up, false),
+    detail: parseOptionalJsonRecord<Record<string, unknown>>(row.detail_json),
+  };
+}
+
+function parseThreadSourceRefs(
+  value: unknown,
+): import("./work-threads/types.js").ThreadSourceRef[] {
+  return parseJsonArray<import("./work-threads/types.js").ThreadSourceRef>(
+    value,
+  ).filter(
+    (ref) =>
+      ref &&
+      typeof ref === "object" &&
+      typeof ref.connector === "string" &&
+      ref.connector.length > 0,
+  );
+}
+
+function parseWorkThreadRow(
+  row: Record<string, unknown>,
+): import("./work-threads/types.js").WorkThread {
+  const primary =
+    parseOptionalJsonRecord<import("./work-threads/types.js").ThreadSourceRef>(
+      row.primary_source_ref_json,
+    ) ?? { connector: "unknown" };
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    ownerEntityId:
+      typeof row.owner_entity_id === "string" && row.owner_entity_id.length > 0
+        ? row.owner_entity_id
+        : null,
+    status: toText(
+      row.status,
+      "active",
+    ) as import("./work-threads/types.js").WorkThreadStatus,
+    title: toText(row.title),
+    summary: toText(row.summary),
+    currentPlanSummary:
+      typeof row.current_plan_summary === "string"
+        ? row.current_plan_summary
+        : null,
+    primarySourceRef: primary,
+    sourceRefs: parseThreadSourceRefs(row.source_refs_json),
+    participantEntityIds: parseJsonArray<string>(
+      row.participant_entity_ids_json,
+    ).filter((id) => typeof id === "string" && id.length > 0),
+    currentScheduledTaskId:
+      typeof row.current_scheduled_task_id === "string" &&
+      row.current_scheduled_task_id.length > 0
+        ? row.current_scheduled_task_id
+        : null,
+    workflowRunId:
+      typeof row.workflow_run_id === "string" && row.workflow_run_id.length > 0
+        ? row.workflow_run_id
+        : null,
+    approvalId:
+      typeof row.approval_id === "string" && row.approval_id.length > 0
+        ? row.approval_id
+        : null,
+    lastMessageMemoryId:
+      typeof row.last_message_memory_id === "string" &&
+      row.last_message_memory_id.length > 0
+        ? row.last_message_memory_id
+        : null,
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+    lastActivityAt: toText(row.last_activity_at),
+    metadata: parseOptionalJsonRecord<Record<string, unknown>>(
+      row.metadata_json,
+    ),
+  };
+}
+
+function parseWorkThreadEventRow(
+  row: Record<string, unknown>,
+): import("./work-threads/types.js").WorkThreadEvent {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    workThreadId: toText(row.work_thread_id),
+    occurredAt: toText(row.occurred_at),
+    type: toText(
+      row.type,
+      "updated",
+    ) as import("./work-threads/types.js").WorkThreadEventType,
+    reason:
+      typeof row.reason === "string" && row.reason.length > 0
+        ? row.reason
+        : null,
     detail: parseOptionalJsonRecord<Record<string, unknown>>(row.detail_json),
   };
 }
@@ -7941,6 +8037,167 @@ export class LifeOpsRepository {
       );
     }
     return { rolledUp: summary.size, deletedRaw: rows.length };
+  }
+
+  async upsertWorkThread(
+    agentId: string,
+    thread: import("./work-threads/types.js").WorkThread,
+  ): Promise<void> {
+    const now = isoNow();
+    const createdAt = thread.createdAt || now;
+    const updatedAt = thread.updatedAt || now;
+    const lastActivityAt = thread.lastActivityAt || updatedAt;
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_work_threads (
+        id, agent_id, owner_entity_id, status, title, summary,
+        current_plan_summary, primary_source_ref_json, source_refs_json,
+        participant_entity_ids_json, current_scheduled_task_id, workflow_run_id,
+        approval_id, last_message_memory_id, metadata_json, created_at,
+        updated_at, last_activity_at
+      ) VALUES (
+        ${sqlQuote(thread.id)},
+        ${sqlQuote(agentId)},
+        ${sqlText(thread.ownerEntityId ?? null)},
+        ${sqlQuote(thread.status)},
+        ${sqlQuote(thread.title)},
+        ${sqlQuote(thread.summary)},
+        ${sqlText(thread.currentPlanSummary ?? null)},
+        ${sqlJson(thread.primarySourceRef)},
+        ${sqlJson(thread.sourceRefs ?? [])},
+        ${sqlJson(thread.participantEntityIds ?? [])},
+        ${sqlText(thread.currentScheduledTaskId ?? null)},
+        ${sqlText(thread.workflowRunId ?? null)},
+        ${sqlText(thread.approvalId ?? null)},
+        ${sqlText(thread.lastMessageMemoryId ?? null)},
+        ${sqlJson(thread.metadata ?? {})},
+        ${sqlQuote(createdAt)},
+        ${sqlQuote(updatedAt)},
+        ${sqlQuote(lastActivityAt)}
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        owner_entity_id = EXCLUDED.owner_entity_id,
+        status = EXCLUDED.status,
+        title = EXCLUDED.title,
+        summary = EXCLUDED.summary,
+        current_plan_summary = EXCLUDED.current_plan_summary,
+        primary_source_ref_json = EXCLUDED.primary_source_ref_json,
+        source_refs_json = EXCLUDED.source_refs_json,
+        participant_entity_ids_json = EXCLUDED.participant_entity_ids_json,
+        current_scheduled_task_id = EXCLUDED.current_scheduled_task_id,
+        workflow_run_id = EXCLUDED.workflow_run_id,
+        approval_id = EXCLUDED.approval_id,
+        last_message_memory_id = EXCLUDED.last_message_memory_id,
+        metadata_json = EXCLUDED.metadata_json,
+        updated_at = EXCLUDED.updated_at,
+        last_activity_at = EXCLUDED.last_activity_at`,
+    );
+  }
+
+  async getWorkThread(
+    agentId: string,
+    workThreadId: string,
+  ): Promise<import("./work-threads/types.js").WorkThread | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_work_threads
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(workThreadId)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseWorkThreadRow(row) : null;
+  }
+
+  async listWorkThreads(
+    agentId: string,
+    filter: import("./work-threads/types.js").WorkThreadListFilter = {},
+  ): Promise<import("./work-threads/types.js").WorkThread[]> {
+    const clauses: string[] = [`agent_id = ${sqlQuote(agentId)}`];
+    if (filter.statuses && filter.statuses.length > 0) {
+      const statuses = filter.statuses.map((status) => sqlQuote(status)).join(", ");
+      clauses.push(`status IN (${statuses})`);
+    }
+    if (filter.ownerEntityId) {
+      clauses.push(`owner_entity_id = ${sqlQuote(filter.ownerEntityId)}`);
+    }
+    const shouldApplyLimitInSql = !filter.roomId;
+    const requestedLimit =
+      typeof filter.limit === "number" && filter.limit > 0
+        ? Math.floor(filter.limit)
+        : null;
+    const sqlLimit =
+      shouldApplyLimitInSql && requestedLimit
+        ? `LIMIT ${sqlInteger(requestedLimit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_work_threads
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY last_activity_at DESC
+        ${sqlLimit}`,
+    );
+    let threads = rows.map(parseWorkThreadRow);
+    if (filter.roomId) {
+      threads = threads.filter((thread) =>
+        [thread.primarySourceRef, ...thread.sourceRefs].some(
+          (ref) => ref.roomId === filter.roomId,
+        ),
+      );
+    }
+    if (!filter.includeCrossChannel && filter.roomId) {
+      threads = threads.filter((thread) =>
+        [thread.primarySourceRef, ...thread.sourceRefs].some(
+          (ref) => ref.roomId === filter.roomId && ref.canRead !== false,
+        ),
+      );
+    }
+    if (!shouldApplyLimitInSql && requestedLimit) {
+      threads = threads.slice(0, requestedLimit);
+    }
+    return threads;
+  }
+
+  async appendWorkThreadEvent(
+    event: import("./work-threads/types.js").WorkThreadEvent,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_work_thread_events (
+        id, agent_id, work_thread_id, occurred_at, type, reason, detail_json
+      ) VALUES (
+        ${sqlQuote(event.id)},
+        ${sqlQuote(event.agentId)},
+        ${sqlQuote(event.workThreadId)},
+        ${sqlQuote(event.occurredAt)},
+        ${sqlQuote(event.type)},
+        ${sqlText(event.reason ?? null)},
+        ${sqlText(event.detail ? JSON.stringify(event.detail) : null)}
+      )`,
+    );
+  }
+
+  async listWorkThreadEvents(args: {
+    agentId: string;
+    workThreadId: string;
+    limit?: number;
+  }): Promise<import("./work-threads/types.js").WorkThreadEvent[]> {
+    const limit =
+      typeof args.limit === "number" && args.limit > 0
+        ? `LIMIT ${sqlInteger(args.limit)}`
+        : "";
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_work_thread_events
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND work_thread_id = ${sqlQuote(args.workThreadId)}
+        ORDER BY occurred_at DESC
+        ${limit}`,
+    );
+    return rows.map(parseWorkThreadEventRow);
   }
 }
 

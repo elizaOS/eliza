@@ -23,6 +23,7 @@ export interface ConversationGreeting {
   agentName: string;
   generated: boolean;
   persisted?: boolean;
+  localInference?: LocalInferenceChatMetadata;
 }
 
 export interface CreateConversationOptions {
@@ -118,6 +119,52 @@ export interface LocalInferenceChatMetadata {
   };
 }
 
+export type SensitiveRequestStatus =
+  | "pending"
+  | "saved"
+  | "submitted"
+  | "fulfilled"
+  | "expired"
+  | "cancelled"
+  | "failed";
+
+export interface SensitiveRequestDelivery {
+  mode:
+    | "inline_owner_app"
+    | "cloud_authenticated_link"
+    | "tunnel_authenticated_link"
+    | "private_dm"
+    | "public_link"
+    | "dm_or_owner_app_instruction";
+  instruction?: string;
+  privateRouteRequired?: boolean;
+  canCollectValueInCurrentChannel?: boolean;
+}
+
+export interface SensitiveRequestFormField {
+  name: string;
+  label?: string;
+  input?: "secret" | "text";
+  required?: boolean;
+}
+
+export interface SensitiveRequestForm {
+  type: "sensitive_request_form";
+  kind: "secret";
+  mode: SensitiveRequestDelivery["mode"];
+  fields: SensitiveRequestFormField[];
+  submitLabel?: string;
+  statusOnly?: boolean;
+}
+
+export interface ConversationSecretRequest {
+  key: string;
+  reason?: string;
+  status: SensitiveRequestStatus;
+  delivery?: SensitiveRequestDelivery;
+  form?: SensitiveRequestForm;
+}
+
 export interface ConversationMessage {
   id: string;
   role: "user" | "assistant";
@@ -157,6 +204,8 @@ export interface ConversationMessage {
   failureKind?: ChatFailureKind;
   /** Structured local-inference status returned with local model command/error replies. */
   localInference?: LocalInferenceChatMetadata;
+  /** Structured sensitive/private information request metadata. */
+  secretRequest?: ConversationSecretRequest;
 }
 
 export type ConversationChannelType =

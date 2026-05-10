@@ -21,7 +21,7 @@ import {
 type RobloxSubaction = "message" | "execute" | "get_player";
 type RobloxActionParameters = Record<string, string | number | boolean | null>;
 
-const actionName = "ROBLOX_ACTION";
+const actionName = "ROBLOX";
 const ROBLOX_ACTION_TIMEOUT_MS = 15_000;
 const MAX_ROBLOX_TARGET_IDS = 25;
 const MAX_ROBLOX_MESSAGE_LENGTH = 1000;
@@ -414,13 +414,13 @@ export const robloxAction: Action = {
   contextGate: { anyOf: ["media", "automation"] },
   roleGate: { minRole: "USER" },
   similes: ["ROBLOX", "ROBLOX_ROUTER", "ROBLOX_GAME_ACTION"],
-  description: "Route Roblox game integration with subaction message, execute, or get_player.",
-  descriptionCompressed: "Route Roblox game subaction: message, execute, or get_player.",
+  description: "Route Roblox game integration with action message, execute, or get_player.",
+  descriptionCompressed: "Route Roblox action: message, execute, or get_player.",
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "Roblox operation: message, execute, or get_player.",
-      descriptionCompressed: "Roblox subaction.",
+      descriptionCompressed: "Roblox action.",
       required: true,
       schema: { type: "string", enum: ["message", "execute", "get_player"] },
     },

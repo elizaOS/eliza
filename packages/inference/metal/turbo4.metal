@@ -59,14 +59,24 @@ kernel void kernel_turbo4_dot(
 
     float norm = float(blk->norm);
 
+    // Each thread's 4 elements (tid*4 + 0..3) consume two consecutive qs[]
+    // bytes (a low-nibble + high-nibble pair per byte). Load those two bytes
+    // up front and pull the four nibbles out branchlessly via a shift+mask
+    // (`(qb >> ((elem & 1) << 2)) & 0xF`), which avoids the conditional in
+    // the inner loop and keeps the dependency chain on `acc` short.
+    uint elem0  = tid * 4;
+    uint qb_lo  = blk->qs[(elem0 >> 1)];      // covers elem0, elem0+1
+    uint qb_hi  = blk->qs[(elem0 >> 1) + 1];  // covers elem0+2, elem0+3
+    uint q_base = args.q_head * args.head_dim + elem0;
+
     float acc = 0.0f;
     for (uint local = 0; local < 4; ++local) {
-        uint elem = tid * 4 + local;          // 0..127
-        uint qb   = blk->qs[elem >> 1];
-        uint idx  = ((elem & 1) == 0) ? (qb & 0xF) : (qb >> 4);
+        uint qb  = (local < 2) ? qb_lo : qb_hi;
+        uint sh  = ((local & 1) << 2);            // 0 or 4
+        uint idx = (qb >> sh) & 0xFu;
         float k_val = TURBO_CENTROIDS_4BIT[idx] * norm;
-        float q_val = q[args.q_head * args.head_dim + elem];
-        acc += q_val * k_val;
+        float q_val = q[q_base + local];
+        acc = fma(q_val, k_val, acc);
     }
 
     float sum = simd_sum(acc);

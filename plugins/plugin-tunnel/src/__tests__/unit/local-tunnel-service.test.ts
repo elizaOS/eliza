@@ -10,7 +10,7 @@ describe('plugin-tunnel exports', () => {
 
   it('TUNNEL action exposes start/stop/status enum and similes', () => {
     expect(tunnelAction.name).toBe('TUNNEL');
-    const opParam = tunnelAction.parameters?.find((p) => p.name === 'op');
+    const opParam = tunnelAction.parameters?.find((p) => p.name === 'action');
     expect(opParam).toBeDefined();
     expect((opParam?.schema as { enum?: string[] }).enum).toEqual(['start', 'stop', 'status']);
     expect(tunnelAction.similes).toEqual(expect.arrayContaining(['TAILSCALE', 'START_TUNNEL']));

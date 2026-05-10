@@ -57,8 +57,8 @@ const PROVIDERS: ProviderConfig[] = [
     name: "groq",
     envKey: "GROQ_API_KEY",
     baseUrl: "https://api.groq.com/openai/v1",
-    defaultLarge: "llama-3.3-70b-versatile",
-    defaultSmall: "llama-3.1-8b-instant",
+    defaultLarge: "openai/gpt-oss-120b",
+    defaultSmall: "openai/gpt-oss-120b",
   },
   {
     name: "openrouter",

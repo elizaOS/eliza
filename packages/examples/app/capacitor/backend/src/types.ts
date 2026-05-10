@@ -82,8 +82,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     // Groq
     groqApiKey: "",
     groqBaseUrl: "https://api.groq.com/openai/v1",
-    groqSmallModel: "llama-3.1-8b-instant",
-    groqLargeModel: "llama-3.3-70b-versatile",
+    groqSmallModel: "openai/gpt-oss-120b",
+    groqLargeModel: "openai/gpt-oss-120b",
 
     // OpenRouter
     openrouterApiKey: "",
@@ -93,8 +93,8 @@ export const DEFAULT_CONFIG: AppConfig = {
 
     // Ollama
     ollamaApiEndpoint: "http://localhost:11434",
-    ollamaSmallModel: "llama3.2:3b",
-    ollamaLargeModel: "llama3.1:8b",
+    ollamaSmallModel: "eliza-1-2b",
+    ollamaLargeModel: "eliza-1-9b",
   },
 };
 

@@ -148,7 +148,7 @@ export function getDflashRuntimeStatus(): DflashRuntimeStatus {
     const managedBinaryExists = fs.existsSync(managedDflashBinaryPath());
     const reason =
       managedBinaryExists && isMetalDflashRuntime()
-        ? "DFlash Metal binary found but auto-disabled because the local Qwen 3.5 4B ablation is slower than target-only Metal decode; set ELIZA_DFLASH_ENABLED=1 or ELIZA_DFLASH_METAL_AUTO=1 to force it."
+        ? "DFlash Metal binary found but auto-disabled because the current Eliza-1 Metal path is faster target-only; set ELIZA_DFLASH_ENABLED=1 or ELIZA_DFLASH_METAL_AUTO=1 to force it."
         : "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.";
     return {
       enabled: false,
@@ -334,12 +334,7 @@ export class DflashLlamaServer {
 
     // Catalog enforces drafter-target tokenizer parity (see catalog.test.ts
     // "DFlash pairs share a tokenizer family"), so the drafter GGUF can be
-    // handed directly to llama-server with no metadata repair. The previous
-    // `maybeRepairDflashDrafter` Python shim only paved over a single-pair
-    // SmolLM2/Bonsai vocab-mismatch bug; that pair was deleted from the
-    // catalog and the repair path is now dead. See
-    // docs/porting/dflash-drafter-strategy.md for the replacement (Qwen3-0.6B
-    // drafter for the Qwen3-vocab Bonsai target).
+    // handed directly to llama-server with no metadata repair.
     const drafterModelPath = plan.drafterModelPath;
     const port = await resolvePort();
     const host = process.env.ELIZA_DFLASH_HOST?.trim() || DEFAULT_HOST;

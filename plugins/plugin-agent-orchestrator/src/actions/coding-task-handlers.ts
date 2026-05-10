@@ -47,6 +47,10 @@ import {
   withLifeOpsContextBrokerRecommendation,
 } from "../services/skill-lifeops-context-broker.js";
 import {
+  PARENT_AGENT_BROKER_MANIFEST_ENTRY,
+  PARENT_AGENT_BROKER_SLUG,
+} from "../services/parent-agent-broker.js";
+import {
   buildSkillsManifest,
   type SkillsManifestResult,
 } from "../services/skill-manifest.js";
@@ -484,25 +488,37 @@ async function prepareSkillAwareness(
     taskText,
     recommendations,
   );
-  const recommendedSlugs = taskRecommendations.map((rec) => rec.slug);
+  const recommendationsWithParent: RecommendedSkill[] = [
+    {
+      slug: PARENT_AGENT_BROKER_SLUG,
+      name: PARENT_AGENT_BROKER_MANIFEST_ENTRY.name,
+      score: 1,
+      reason:
+        "bridge to parent runtime actions, connectors, Cloud commands, and confirmation flow",
+    },
+    ...taskRecommendations.filter((rec) => rec.slug !== PARENT_AGENT_BROKER_SLUG),
+  ];
+  const recommendedSlugs = recommendationsWithParent.map((rec) => rec.slug);
   const includeLifeOpsBroker = recommendedSlugs.includes(
     LIFEOPS_CONTEXT_BROKER_SLUG,
   );
+  const virtualSkills = [
+    PARENT_AGENT_BROKER_MANIFEST_ENTRY,
+    ...(includeLifeOpsBroker ? [LIFEOPS_CONTEXT_BROKER_MANIFEST_ENTRY] : []),
+  ];
   const manifest = await buildSkillsManifest(runtime, {
     onlyEligible: true,
     recommendedSlugs,
-    virtualSkills: includeLifeOpsBroker
-      ? [LIFEOPS_CONTEXT_BROKER_MANIFEST_ENTRY]
-      : undefined,
+    virtualSkills,
   });
 
-  if (manifest.slugs.length === 0 && taskRecommendations.length === 0) {
+  if (manifest.slugs.length === 0 && recommendationsWithParent.length === 0) {
     return null;
   }
 
   const manifestPath = path.join(workdir, SKILLS_MANIFEST_FILENAME);
   await fs.writeFile(manifestPath, manifest.markdown, "utf8");
-  return { manifestPath, recommendations: taskRecommendations, manifest };
+  return { manifestPath, recommendations: recommendationsWithParent, manifest };
 }
 
 /**
@@ -1141,13 +1157,11 @@ export async function handleMultiAgent(
         },
       });
 
-      // Register this session's recommended-skills allow-list so the skill
-      // callback bridge can reject out-of-scope USE_SKILL directives.
-      if (skillAwareness && skillAwareness.recommendations.length > 0) {
-        sessionSkillAllowList.register(
-          session.id,
-          skillAwareness.recommendations.map((rec) => rec.slug),
-        );
+      // Register every requestable slug from SKILLS.md. The bridge uses this
+      // task-local allow-list for enforcement, so it must match the manifest
+      // rather than only the top recommendations.
+      if (skillAwareness && skillAwareness.manifest.slugs.length > 0) {
+        sessionSkillAllowList.register(session.id, skillAwareness.manifest.slugs);
       }
 
       // Register event handler

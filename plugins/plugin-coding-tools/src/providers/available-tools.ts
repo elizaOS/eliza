@@ -8,17 +8,9 @@ import type {
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
 
 const TOOL_NAMES = [
-  "READ",
-  "WRITE",
-  "EDIT",
-  "BASH",
-  "GREP",
-  "GLOB",
-  "LS",
-  "WEB_FETCH",
-  "ASK_USER_QUESTION",
-  "ENTER_WORKTREE",
-  "EXIT_WORKTREE",
+  "FILE",
+  "SHELL",
+  "WORKTREE",
 ] as const;
 
 /**
@@ -43,7 +35,7 @@ export const availableToolsProvider: Provider = {
     const lines = [
       "# Native coding tools",
       "",
-      "These actions read/write files, run shell commands, and search the workspace. The TODO umbrella action (op-based CRUD over a user-scoped persistent todo list) is provided by @elizaos/plugin-todos when that plugin is enabled.",
+      "These actions read/write files, search the workspace, run shell commands, and manage git worktrees. The TODO umbrella action is provided by @elizaos/plugin-todos when that plugin is enabled.",
       "All file paths must be absolute. Anything is reachable except paths under the configured blocklist (defaults: ~/pvt, ~/Library, ~/.ssh, ~/.aws, ~/.gnupg, ~/.docker, ~/.kube, ~/.netrc, plus per-OS system paths).",
       "",
       ...TOOL_NAMES.map((n) => `- ${n}`),

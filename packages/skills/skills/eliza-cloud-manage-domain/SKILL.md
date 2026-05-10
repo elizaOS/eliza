@@ -50,34 +50,28 @@ const appId = target.appId; // the app the domain is attached to
 
 // 2. read live status for a domain status question
 const status = await cloud.routes.postApiV1AppsByIdDomainsStatus({
-	appId,
-	json: { domain: "myapp.com" },
+  pathParams: { id: appId },
+  json: { domain: "myapp.com" },
 });
 
 // 3. list current dns records (cloudflare-managed zones only)
 const records = await cloud.routes.getApiV1AppsByIdDomainsByDomainDns({
-	appId,
-	domain: "myapp.com",
+  pathParams: { id: appId, domain: "myapp.com" },
 });
 
 // 4. add / edit / delete a record
 const created = await cloud.routes.postApiV1AppsByIdDomainsByDomainDns({
-  appId,
-  domain: "myapp.com",
+  pathParams: { id: appId, domain: "myapp.com" },
   json: { type: "A", name: "www", content: "203.0.113.5", ttl: 1, proxied: true },
 });
 
 const updated = await cloud.routes.patchApiV1AppsByIdDomainsByDomainDnsByRecordId({
-  appId,
-  domain: "myapp.com",
-  recordId: created.record.id,
+  pathParams: { id: appId, domain: "myapp.com", recordId: created.record.id },
   json: { content: "203.0.113.99" },
 });
 
 await cloud.routes.deleteApiV1AppsByIdDomainsByDomainDnsByRecordId({
-  appId,
-  domain: "myapp.com",
-  recordId: created.record.id,
+  pathParams: { id: appId, domain: "myapp.com", recordId: created.record.id },
 });
 ```
 

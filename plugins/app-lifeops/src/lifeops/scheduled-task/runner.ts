@@ -15,6 +15,7 @@
  */
 
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";
+import type { DispatchResult } from "../connectors/contract.js";
 import type {
   AnchorRegistry,
   ConsolidationRegistry,
@@ -127,11 +128,6 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Dispatcher (channel-side egress is owned by the channel registry; we only
-// emit a describe-it record here so the runner is testable in isolation).
-// ---------------------------------------------------------------------------
-
 export interface ScheduledTaskDispatchRecord {
   taskId: string;
   firedAtIso: string;
@@ -140,10 +136,13 @@ export interface ScheduledTaskDispatchRecord {
   promptInstructions: string;
   contextRequest: ScheduledTask["contextRequest"];
   consolidationBatchId?: string;
+  output?: ScheduledTask["output"];
 }
 
 export interface ScheduledTaskDispatcher {
-  dispatch(record: ScheduledTaskDispatchRecord): Promise<void>;
+  dispatch(
+    record: ScheduledTaskDispatchRecord,
+  ): Promise<DispatchResult | void>;
 }
 
 export const NoopScheduledTaskDispatcher: ScheduledTaskDispatcher = {
@@ -199,6 +198,15 @@ function isTerminal(status: ScheduledTask["state"]["status"]): boolean {
     status === "expired" ||
     status === "failed" ||
     status === "dismissed"
+  );
+}
+
+function isRecurringTrigger(trigger: ScheduledTask["trigger"]): boolean {
+  return (
+    trigger.kind === "cron" ||
+    trigger.kind === "interval" ||
+    trigger.kind === "relative_to_anchor" ||
+    trigger.kind === "during_window"
   );
 }
 
@@ -262,7 +270,7 @@ export interface ScheduledTaskRunnerExtras {
    */
   fire(
     taskId: string,
-    args?: { eventPayload?: unknown },
+    args?: { eventPayload?: unknown; allowTerminalRefire?: boolean },
   ): Promise<ScheduledTask>;
   /**
    * Re-evaluate completion for a fired task (e.g. user_replied_within
@@ -767,13 +775,24 @@ export function createScheduledTaskRunner(
 
   async function fire(
     taskId: string,
-    args?: { eventPayload?: unknown },
+    args?: { eventPayload?: unknown; allowTerminalRefire?: boolean },
   ): Promise<ScheduledTask> {
     const task = await deps.store.get(taskId);
     if (!task) throw new Error(`fire: task ${taskId} not found`);
     if (isTerminal(task.state.status)) {
-      // Idempotent — already settled; return unchanged.
-      return task;
+      const canRefire =
+        args?.allowTerminalRefire === true &&
+        task.state.status !== "dismissed" &&
+        isRecurringTrigger(task.trigger);
+      if (!canRefire) {
+        // Idempotent — already settled; return unchanged.
+        return task;
+      }
+      task.state.status = "scheduled";
+      delete task.state.acknowledgedAt;
+      delete task.state.completedAt;
+      task.state.lastDecisionLog = "recurrence refire";
+      clearEscalationCursor(task);
     }
 
     await logger.log(task.taskId, "fire_attempt", {
@@ -838,18 +857,33 @@ export function createScheduledTaskRunner(
     });
     await persist(task);
     await logger.log(task.taskId, "fired");
-    await dispatcher.dispatch({
+    const dispatchResult = await dispatcher.dispatch({
       taskId: task.taskId,
       firedAtIso: fireAtIso,
       channelKey: pickChannelKey(task),
       intensity: pickIntensity(task),
       promptInstructions: task.promptInstructions,
       contextRequest: task.contextRequest,
+      output: task.output,
     });
+    if (dispatchResult) {
+      task.metadata = {
+        ...(task.metadata ?? {}),
+        lastDispatchResult: dispatchResult,
+      };
+      await persist(task);
+    }
     return task;
   }
 
   function pickChannelKey(task: ScheduledTask): string {
+    if (
+      task.output?.destination === "channel" &&
+      typeof task.output.target === "string"
+    ) {
+      const [channelKey] = task.output.target.split(":", 1);
+      if (channelKey) return channelKey;
+    }
     if (task.escalation?.steps && task.escalation.steps.length > 0) {
       return task.escalation.steps[0]?.channelKey ?? "in_app";
     }

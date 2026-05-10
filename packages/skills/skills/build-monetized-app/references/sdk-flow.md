@@ -129,17 +129,13 @@ the sidecar is available and surface the logs to the human.
 ## 4. Set markup
 
 ```ts
-await fetch(`${process.env.ELIZA_CLOUD_BASE_URL}/api/v1/apps/${appId}/monetization`, {
-  method: "PUT",
-  headers: {
-    "x-api-key": process.env.ELIZAOS_CLOUD_API_KEY!,
-    "content-type": "application/json",
-  },
-  body: JSON.stringify({
+await cloud.routes.putApiV1AppsByIdMonetization({
+  pathParams: { id: appId },
+  json: {
     monetizationEnabled: true,
     inferenceMarkupPercentage: 100,
     purchaseSharePercentage: 10,
-  }),
+  },
 });
 ```
 
@@ -182,3 +178,11 @@ Done. The earnings loop is now active. Subsequent user activity on the app credi
 - **A description, website URL, custom domain, or per-app affiliate code** — defaults handle these or the owner sets them post-hoc on the dashboard.
 - **An always-on flag** — the org's `pay_as_you_go_from_earnings` controls billing strategy and is the owner's call.
 - **An end-to-end retry loop** — each step is idempotent on its own; restart from the failed step.
+
+## Worker credential boundary
+
+When this flow runs inside an orchestrated worker, prefer `USE_SKILL parent-agent`
+Cloud commands for account-bound operations instead of passing the parent
+account's raw Cloud API key into the child. The `ELIZAOS_CLOUD_API_KEY`
+examples above are for trusted app-builder/runtime code where Eliza explicitly
+injects the key.

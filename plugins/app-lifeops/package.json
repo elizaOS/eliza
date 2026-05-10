@@ -33,6 +33,7 @@
     "test:app-state": "vitest run --config vitest.config.ts eliza/plugins/app-lifeops/test/lifeops-app-state.test.ts",
     "test:integration": "cd ../../.. && vitest run --config eliza/test/vitest/integration.config.ts eliza/plugins/app-lifeops/test/life-smoke.integration.test.ts",
     "test:scenarios": "cd ../../.. && bun run scenarios:lifeops",
+    "bench:work-threads": "cd ../.. && bun plugins/app-lifeops/scripts/work-thread-benchmark.ts",
     "verify:live-schedule": "bun run ./scripts/verify-live-schedule-data.ts",
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",

@@ -23,6 +23,7 @@ type MemoryType = (typeof MEMORY_TYPES)[number];
 
 interface MemoryParams {
   op?: MemoryOp;
+  subaction?: MemoryOp;
   text?: string;
   kind?: string;
   tags?: string[];
@@ -47,6 +48,11 @@ interface MemoryListItem {
 
 function fail(text: string, error: string): ActionResult {
   return { success: false, text, data: { error } };
+}
+
+function normalizeMemoryOp(params: MemoryParams): MemoryOp | undefined {
+  const candidate = params.op ?? params.subaction;
+  return candidate && MEMORY_OPS.includes(candidate) ? candidate : undefined;
 }
 
 function clampLimit(value: number | undefined, fallback: number): number {
@@ -336,10 +342,10 @@ export const memoryAction: Action = {
   ): Promise<ActionResult> => {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as MemoryParams;
-    const op = params.op;
-    if (!op || !MEMORY_OPS.includes(op)) {
+    const op = normalizeMemoryOp(params);
+    if (!op) {
       return fail(
-        `op is required and must be one of ${MEMORY_OPS.join(", ")}.`,
+        `op/subaction is required and must be one of ${MEMORY_OPS.join(", ")}.`,
         "MEMORY_INVALID",
       );
     }
@@ -368,7 +374,14 @@ export const memoryAction: Action = {
     {
       name: "subaction",
       description: "Operation to perform.",
-      required: true,
+      required: false,
+      schema: { type: "string" as const, enum: [...MEMORY_OPS] },
+    },
+    {
+      name: "op",
+      description:
+        "Legacy alias for subaction. Use create, search, update, or delete.",
+      required: false,
       schema: { type: "string" as const, enum: [...MEMORY_OPS] },
     },
     {

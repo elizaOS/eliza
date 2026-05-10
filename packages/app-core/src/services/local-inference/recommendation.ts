@@ -1,4 +1,8 @@
-import { FIRST_RUN_DEFAULT_MODEL_ID, MODEL_CATALOG } from "./catalog";
+import {
+  DEFAULT_ELIGIBLE_MODEL_IDS,
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  MODEL_CATALOG,
+} from "./catalog";
 import { assessFit } from "./hardware";
 import type {
   CatalogModel,
@@ -27,73 +31,53 @@ export interface RecommendedModelSelection {
 const BYTES_PER_GB = 1024 ** 3;
 
 /**
- * Per-platform slot ladders. Every entry is either a TurboQuant /
- * DFlash-equipped model wired to our fused-kernel runtime, or an
- * `eliza-1` Milady fine-tune placeholder. Ladders bias toward the
- * smallest TBQ/DFlash pair that fits the platform; desktops/servers
- * pick larger DFlash pairs first when memory headroom allows.
+ * Per-platform slot ladders. Every default-recommended entry is an
+ * Eliza-1 tier (the only default-eligible line — see catalog.ts and
+ * `packages/inference/AGENTS.md` §2). Ladders bias toward the smallest
+ * tier that fits the platform; desktops/servers pick larger tiers
+ * first when memory headroom allows.
  */
 const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
   Record<TextGenerationSlot, string[]>
 > = {
   mobile: {
-    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b", "bonsai-8b-1bit-dflash"],
-    TEXT_LARGE: [
-      "qwen3.5-9b-dflash",
-      "qwen3.5-4b-dflash",
-      "bonsai-8b-1bit-dflash",
-      "eliza-1-9b",
-      "eliza-1-2b",
-    ],
+    TEXT_SMALL: ["eliza-1-lite-0_6b", "eliza-1-mobile-1_7b"],
+    TEXT_LARGE: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
   },
   "apple-silicon": {
-    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b"],
+    TEXT_SMALL: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
     TEXT_LARGE: [
-      "qwen3.6-27b-dflash",
-      "qwen3.5-9b-dflash",
-      "qwen3.5-4b-dflash",
-      "eliza-1-27b",
-      "eliza-1-9b",
+      "eliza-1-pro-27b",
+      "eliza-1-desktop-9b",
+      "eliza-1-mobile-1_7b",
     ],
   },
   "linux-gpu": {
-    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b"],
+    TEXT_SMALL: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
     TEXT_LARGE: [
-      "qwen3.6-27b-dflash",
-      "qwen3.5-9b-dflash",
-      "qwen3.5-4b-dflash",
-      "eliza-1-27b",
-      "eliza-1-9b",
+      "eliza-1-server-h200",
+      "eliza-1-pro-27b",
+      "eliza-1-desktop-9b",
+      "eliza-1-mobile-1_7b",
     ],
   },
   "linux-cpu": {
-    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b"],
-    TEXT_LARGE: [
-      "qwen3.5-9b-dflash",
-      "qwen3.5-4b-dflash",
-      "eliza-1-9b",
-      "eliza-1-2b",
-    ],
+    TEXT_SMALL: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
+    TEXT_LARGE: ["eliza-1-desktop-9b", "eliza-1-mobile-1_7b"],
   },
   "desktop-gpu": {
-    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b"],
+    TEXT_SMALL: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
     TEXT_LARGE: [
-      "qwen3.6-27b-dflash",
-      "qwen3.5-9b-dflash",
-      "qwen3.5-4b-dflash",
-      "eliza-1-27b",
-      "eliza-1-9b",
+      "eliza-1-server-h200",
+      "eliza-1-pro-27b",
+      "eliza-1-desktop-9b",
+      "eliza-1-mobile-1_7b",
     ],
   },
   "desktop-cpu": {
-    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b"],
-    TEXT_LARGE: [
-      "qwen3.5-9b-dflash",
-      "qwen3.5-4b-dflash",
-      "eliza-1-9b",
-      "eliza-1-2b",
-    ],
+    TEXT_SMALL: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
+    TEXT_LARGE: ["eliza-1-desktop-9b", "eliza-1-mobile-1_7b"],
   },
 };
 
@@ -239,14 +223,13 @@ function fallbackCandidates(
   hardware: HardwareProbe,
   catalog: CatalogModel[],
 ): CatalogModel[] {
-  const candidates = chatCandidates(catalog).filter((model) =>
-    canFit(hardware, model, catalog),
+  const candidates = chatCandidates(catalog).filter(
+    (model) =>
+      DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id) &&
+      canFit(hardware, model, catalog),
   );
   const preferLongContext = hasLongContextHeadroom(hardware);
   return candidates.sort((left, right) => {
-    const leftDflash = left.runtime?.dflash ? 1 : 0;
-    const rightDflash = right.runtime?.dflash ? 1 : 0;
-    if (leftDflash !== rightDflash) return rightDflash - leftDflash;
     if (preferLongContext) {
       const leftLong = isLongContextModel(left) ? 1 : 0;
       const rightLong = isLongContextModel(right) ? 1 : 0;
@@ -354,33 +337,33 @@ export function selectRecommendedModels(
 
 /**
  * Pick the model the engine should auto-load on first run when no user
- * preference exists. Always resolves to a Milady-shippable
- * (TBQ/DFlash) entry — never a generic upstream GGUF — so the engine
- * cannot land on a model that bypasses our fused-kernel runtime.
+ * preference exists. Always resolves to an Eliza-1 default-eligible
+ * tier — never a non-Eliza catalog entry, never a HF-search result.
  *
  * Resolution order:
- *   1. `FIRST_RUN_DEFAULT_MODEL_ID` (`qwen3.5-4b-dflash`) when present
- *      in the catalog. This is the smallest TBQ/DFlash pair we ship.
- *   2. The first DFlash chat target in the catalog as a defensive
- *      fallback if the default id is somehow missing (catalog lint
- *      should prevent this; see catalog.test.ts).
+ *   1. `FIRST_RUN_DEFAULT_MODEL_ID` when present in the catalog and in
+ *      the default-eligible set.
+ *   2. The first default-eligible chat entry in the catalog as a
+ *      defensive fallback if the default id is somehow missing
+ *      (catalog lint should prevent this; see catalog.test.ts).
  *
- * Returns null only when no DFlash entry exists at all — which means
- * the catalog is misconfigured and the caller should surface a hard
- * error rather than degrade silently.
+ * Returns null only when no default-eligible entry exists at all —
+ * which means the catalog is misconfigured and the caller should
+ * surface a hard error rather than degrade silently.
  */
 export function recommendForFirstRun(
   catalog: CatalogModel[] = MODEL_CATALOG,
 ): CatalogModel | null {
   const byId = catalogById(catalog);
   const preferred = byId.get(FIRST_RUN_DEFAULT_MODEL_ID);
-  if (preferred && preferred.runtime?.dflash) return preferred;
+  if (preferred && DEFAULT_ELIGIBLE_MODEL_IDS.has(preferred.id))
+    return preferred;
   return (
     catalog.find(
       (model) =>
         !model.hiddenFromCatalog &&
         model.runtimeRole !== "dflash-drafter" &&
-        model.runtime?.dflash !== undefined,
+        DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id),
     ) ?? null
   );
 }

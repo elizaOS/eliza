@@ -54,7 +54,7 @@ npm run convert
 | OpenAI | Yes | GPT-4o, gpt-5-mini |
 | Anthropic | Yes | Claude Sonnet, Claude Haiku |
 | Google Gemini | Yes | Gemini 2.0 Flash |
-| Groq | Yes | Llama 3.3 70B, Llama 3.1 8B |
+| Groq | Yes | GPT-OSS 120B |
 | xAI (Grok) | Yes | Grok-3, Grok-3-mini |
 
 ## Usage

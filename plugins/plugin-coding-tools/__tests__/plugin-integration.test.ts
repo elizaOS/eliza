@@ -19,17 +19,9 @@ import codingToolsPlugin, {
 import * as pluginModule from "../src/index.js";
 
 const EXPECTED_ACTIONS = [
-  "READ",
-  "WRITE",
-  "EDIT",
-  "BASH",
-  "GREP",
-  "GLOB",
-  "LS",
-  "WEB_FETCH",
-  "ASK_USER_QUESTION",
-  "ENTER_WORKTREE",
-  "EXIT_WORKTREE",
+  "FILE",
+  "SHELL",
+  "WORKTREE",
 ];
 
 describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
@@ -38,24 +30,38 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     expect(codingToolsPlugin.description).toBeTruthy();
   });
 
-  it("registers READ/WRITE/EDIT as separate top-level actions (FILE umbrella was split)", () => {
+  it("registers the consolidated top-level coding actions", () => {
     const actions = codingToolsPlugin.actions ?? [];
     const names = actions.map((a) => a.name).sort();
     expect(names).toEqual([...EXPECTED_ACTIONS].sort());
   });
 
-  it("does NOT register a FILE umbrella action — it was split into READ/WRITE/EDIT", () => {
+  it("does not register legacy leaf actions as planner-facing actions", () => {
+    const names = new Set((codingToolsPlugin.actions ?? []).map((a) => a.name));
+    for (const legacyName of [
+      "READ",
+      "WRITE",
+      "EDIT",
+      "BASH",
+      "GREP",
+      "GLOB",
+      "LS",
+      "WEB_FETCH",
+      "ASK_USER_QUESTION",
+      "ENTER_WORKTREE",
+      "EXIT_WORKTREE",
+    ]) {
+      expect(names.has(legacyName), legacyName).toBe(false);
+    }
+  });
+
+  it("FILE exposes the former file leaf actions as similes", () => {
     const fileAction = (codingToolsPlugin.actions ?? []).find(
       (action) => action.name === "FILE",
     );
-    expect(fileAction).toBeUndefined();
-  });
-
-  it("READ exposes FILE as a simile so cached planner outputs still resolve", () => {
-    const readAction = (codingToolsPlugin.actions ?? []).find(
-      (action) => action.name === "READ",
+    expect(fileAction?.similes).toEqual(
+      expect.arrayContaining(["READ", "WRITE", "EDIT", "GREP", "GLOB", "LS"]),
     );
-    expect(readAction?.similes).toContain("FILE");
   });
 
   it("each action has the required fields", () => {
@@ -178,28 +184,28 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
     return { roomId: "smoke-room" } as Memory;
   }
 
-  it("READ returns a known file's contents", async () => {
-    const action = findAction("READ");
+  it("FILE action=read returns a known file's contents", async () => {
+    const action = findAction("FILE");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: { file_path: path.join(tmpDir, "needle.txt") },
+      parameters: { action: "read", file_path: path.join(tmpDir, "needle.txt") },
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("NEEDLE");
   });
 
-  it("WRITE creates a new file", async () => {
-    const action = findAction("WRITE");
+  it("FILE action=write creates a new file", async () => {
+    const action = findAction("FILE");
     const target = path.join(tmpDir, "smoke-out.txt");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: { file_path: target, content: "smoke ok" },
+      parameters: { action: "write", file_path: target, content: "smoke ok" },
     });
     expect(result.success).toBe(true);
     const written = await fs.readFile(target, "utf8");
     expect(written).toBe("smoke ok");
   });
 
-  it("BASH echo hello", async () => {
-    const action = findAction("BASH");
+  it("SHELL echo hello", async () => {
+    const action = findAction("SHELL");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
       parameters: { command: "echo smoke-bash-ok", cwd: tmpDir },
     });
@@ -208,19 +214,19 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
     expect(result.text).toContain("[exit 0]");
   });
 
-  it("GLOB lists *.txt files", async () => {
-    const action = findAction("GLOB");
+  it("FILE action=glob lists *.txt files", async () => {
+    const action = findAction("FILE");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: { pattern: "*.txt", path: tmpDir },
+      parameters: { action: "glob", pattern: "*.txt", path: tmpDir },
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("needle.txt");
   });
 
-  it("LS shows fixture entries", async () => {
-    const action = findAction("LS");
+  it("FILE action=ls shows fixture entries", async () => {
+    const action = findAction("FILE");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: { path: tmpDir },
+      parameters: { action: "ls", path: tmpDir },
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("needle.txt");
@@ -242,18 +248,18 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
       if (!sys) return;
       (rg as { rgPath: string }).rgPath = sys;
     }
-    const action = findAction("GREP");
+    const action = findAction("FILE");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: { pattern: "NEEDLE", path: tmpDir },
+      parameters: { action: "grep", pattern: "NEEDLE", path: tmpDir },
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("needle.txt");
   });
 
-  it("ENTER_WORKTREE in a non-git dir fails cleanly", async () => {
-    const action = findAction("ENTER_WORKTREE");
+  it("WORKTREE action=enter in a non-git dir fails cleanly", async () => {
+    const action = findAction("WORKTREE");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: {},
+      parameters: { action: "enter" },
     });
     expect(result.success).toBe(false);
     expect(result.text).toContain("io_error");

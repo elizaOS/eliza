@@ -12,7 +12,6 @@ import type {
   Plugin,
   ServiceClass,
 } from "@elizaos/core";
-import { formRestoreAction } from "./actions/restore";
 import { formEvaluator } from "./evaluators/extractor";
 
 export * from "./types";
@@ -123,7 +122,7 @@ export const formPlugin = {
     },
   ],
 
-  actions: [formRestoreAction],
+  actions: [],
   evaluators: [formEvaluator],
 } as Plugin & { descriptionCompressed?: string };
 

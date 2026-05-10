@@ -7,10 +7,8 @@
  *
  *   1. Explicit `LoadOptions.cacheType{K,V}` from the caller (highest).
  *   2. `ELIZA_LLAMA_CACHE_TYPE_K` / `ELIZA_LLAMA_CACHE_TYPE_V` env vars.
- *   3. Auto-detection: a Bonsai-by-filename match → `{ k: "tbq4_0", v: "tbq3_0" }`
- *      (matches the apothic/Bonsai-8B-1bit-turboquant model card recommendation).
- *   4. Otherwise undefined — the loader leaves cache types at llama.cpp's
- *      fp16 default, which is the safe choice for any non-Bonsai GGUF.
+ *   3. Otherwise undefined — the loader leaves cache types at llama.cpp's
+ *      fp16 default.
  *
  * The resolver is pure: no DOM, no Node APIs. It works in the renderer
  * (Capacitor WebView, where `process.env` is `{}`) and in the bun runtime
@@ -34,11 +32,6 @@ const RECOGNISED_NAMES: ReadonlySet<KvCacheTypeName> = new Set([
   "tbq3_0",
   "tbq4_0",
 ]);
-
-const BONSAI_AUTO: { k: KvCacheTypeName; v: KvCacheTypeName } = {
-  k: "tbq4_0",
-  v: "tbq3_0",
-};
 
 export interface KvCacheOverride {
   k?: KvCacheTypeName;
@@ -84,23 +77,6 @@ export function readEnvKvCacheType(
 }
 
 /**
- * Auto-detect when a model path indicates a Bonsai 1-bit TurboQuant build,
- * which is the only model in the curated catalog that's trained against the
- * fork's TBQ KV-cache codec. Match is intentionally loose (case-insensitive
- * substring) because users may rename downloaded GGUFs.
- *
- * The Hugging Face repo is `apothic/bonsai-8B-1bit-turboquant` and ships
- * `models/gguf/8B/Bonsai-8B.gguf`; downloads pass that filename through
- * verbatim by default, so a "Bonsai" basename match is the right hook.
- *
- * Exported for unit tests.
- */
-export function looksLikeBonsai(modelPath: string): boolean {
-  const base = modelPath.split(/[/\\]/).pop() ?? modelPath;
-  return /bonsai/i.test(base);
-}
-
-/**
  * Resolve the KV-cache type to use for a given model load. See module-level
  * docblock for the precedence chain.
  *
@@ -110,7 +86,7 @@ export function looksLikeBonsai(modelPath: string): boolean {
  * fields; either may be undefined when only the other side was overridden.
  */
 export function resolveKvCacheType(
-  modelPath: string,
+  _modelPath: string,
   override: KvCacheOverride | undefined,
   env: EnvLike,
   warn: WarnSink = defaultWarn,
@@ -119,9 +95,8 @@ export function resolveKvCacheType(
   const explicitV = override?.v;
   const envK = readEnvKvCacheType("ELIZA_LLAMA_CACHE_TYPE_K", env, warn);
   const envV = readEnvKvCacheType("ELIZA_LLAMA_CACHE_TYPE_V", env, warn);
-  const auto = looksLikeBonsai(modelPath) ? BONSAI_AUTO : undefined;
-  const k = explicitK ?? envK ?? auto?.k;
-  const v = explicitV ?? envV ?? auto?.v;
+  const k = explicitK ?? envK;
+  const v = explicitV ?? envV;
   if (k === undefined && v === undefined) return undefined;
   return { k, v };
 }

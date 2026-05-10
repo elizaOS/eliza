@@ -5,11 +5,13 @@ import { readTailscaleAccounts, resolveTailscaleAccount } from "../accounts";
 import { validateTailscaleConfig } from "../environment";
 import type { ITunnelService, TunnelStatus } from "../types";
 
-const CLOUD_BASE_FALLBACK = "https://www.elizacloud.ai/api/v1";
+const CLOUD_BASE_FALLBACK = "https://api.elizacloud.ai/api/v1";
 
 const authKeyResponseSchema = z.object({
   authKey: z.string(),
   tailnet: z.string(),
+  loginServer: z.string().optional(),
+  hostname: z.string().optional(),
   magicDnsName: z.string(),
 });
 
@@ -225,10 +227,18 @@ export class CloudTailscaleService extends Service implements ITunnelService {
   }
 
   private async joinTailnet(payload: AuthKeyResponse): Promise<void> {
-    const result = await this.cliRunner("tailscale", [
-      "up",
-      `--auth-key=${payload.authKey}`,
-    ]);
+    const args = ["up", `--auth-key=${payload.authKey}`];
+    const loginServer =
+      payload.loginServer ??
+      (payload.tailnet.startsWith("http") ? payload.tailnet : null);
+    if (loginServer) {
+      args.push(`--login-server=${loginServer}`);
+    }
+    if (payload.hostname) {
+      args.push(`--hostname=${payload.hostname}`);
+    }
+
+    const result = await this.cliRunner("tailscale", args);
     if (result.code !== 0) {
       throw new Error(
         `tailscale up failed (code ${result.code}): ${result.stderr.trim()}`,

@@ -8,27 +8,32 @@ import {
 } from "../subaction-dispatch";
 
 describe("subaction-dispatch", () => {
-	it("documents subaction as the canonical key with legacy aliases", () => {
-		expect(CANONICAL_SUBACTION_KEY).toBe("subaction");
+	it("documents action as the canonical key with legacy aliases", () => {
+		expect(CANONICAL_SUBACTION_KEY).toBe("action");
 		expect(DEFAULT_SUBACTION_KEYS).toEqual([
+			"action",
 			"subaction",
 			"op",
-			"action",
 			"operation",
+			"verb",
+			"subAction",
+			"__subaction",
 		]);
 	});
 
-	it("prefers subaction over legacy aliases when multiple are present", () => {
+	it("prefers action over legacy aliases when multiple are present", () => {
 		const allowed = ["list", "create"] as const;
 		expect(
 			readSubaction(
-				{ subaction: "list", op: "create", action: "create" },
+				{ action: "list", subaction: "create", op: "create" },
 				{ allowed },
 			),
 		).toBe("list");
+		expect(readSubaction({ subaction: "list" }, { allowed })).toBe("list");
 		expect(readSubaction({ op: "list" }, { allowed })).toBe("list");
 		expect(readSubaction({ action: "create" }, { allowed })).toBe("create");
 		expect(readSubaction({ operation: "create" }, { allowed })).toBe("create");
+		expect(readSubaction({ verb: "create" }, { allowed })).toBe("create");
 	});
 
 	it("normalizes planner-facing op names", () => {

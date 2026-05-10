@@ -27,10 +27,16 @@ import { refreshCodexToken } from "./openai-codex.ts";
 import { accountRefreshMutex } from "./refresh-mutex.ts";
 import {
   type AccountCredentialProvider,
+  isCodingPlanKeySubscriptionProvider,
+  isExternalCliSubscriptionProvider,
+  isOAuthSubscriptionProvider,
   isSubscriptionProvider,
+  isUnavailableSubscriptionProvider,
   type OAuthCredentials,
   type StoredCredentials,
+  SUBSCRIPTION_PROVIDER_IDS,
   SUBSCRIPTION_PROVIDER_MAP,
+  SUBSCRIPTION_PROVIDER_METADATA,
   type SubscriptionProvider,
 } from "./types.ts";
 
@@ -114,6 +120,19 @@ export function deleteCredentials(
 }
 
 /**
+ * Delete every stored credential account for a provider.
+ */
+export function deleteProviderCredentials(
+  provider: AccountCredentialProvider,
+): number {
+  const accounts = listProviderAccounts(provider);
+  for (const account of accounts) {
+    deleteAccount(provider, account.id);
+  }
+  return accounts.length;
+}
+
+/**
  * Check if credentials exist and are not expired.
  */
 export function hasValidCredentials(
@@ -161,6 +180,22 @@ export async function getAccessToken(
     return initial.credentials.access;
   }
 
+  if (isCodingPlanKeySubscriptionProvider(provider)) {
+    return initial.credentials.expires > Date.now()
+      ? initial.credentials.access
+      : null;
+  }
+
+  if (
+    isExternalCliSubscriptionProvider(provider) ||
+    isUnavailableSubscriptionProvider(provider)
+  ) {
+    logger.info(
+      `[auth] ${provider} is not an importable OAuth credential; use its first-party coding client or supported coding endpoint.`,
+    );
+    return null;
+  }
+
   return accountRefreshMutex.acquire(`${provider}:${accountId}`, async () => {
     // Re-read after acquiring the lock — a concurrent caller may have
     // already refreshed the token, in which case we want the new one.
@@ -180,8 +215,13 @@ export async function getAccessToken(
         refreshed = await refreshAnthropicToken(credentials.refresh);
       } else if (provider === "openai-codex") {
         refreshed = await refreshCodexToken(credentials.refresh);
-      } else {
+      } else if (!isOAuthSubscriptionProvider(provider)) {
         logger.error(`[auth] Unknown provider: ${provider}`);
+        return null;
+      } else {
+        logger.error(
+          `[auth] Refresh not implemented for provider: ${provider}`,
+        );
         return null;
       }
     } catch (err) {
@@ -257,6 +297,9 @@ export type SubscriptionCredentialSource =
   | "claude-code-cli"
   | "setup-token"
   | "codex-cli"
+  | "gemini-cli"
+  | "coding-plan-key"
+  | "unavailable"
   | null;
 
 /**
@@ -275,26 +318,65 @@ export interface SubscriptionAccountStatus {
   valid: boolean;
   expiresAt: number | null;
   source: SubscriptionCredentialSource;
+  available?: boolean;
+  availabilityReason?: string;
+  allowedClient?: string;
+  loginHint?: string;
+  billingMode?: "subscription-coding-plan" | "subscription-coding-cli";
+}
+
+function subscriptionStatusMetadata(
+  provider: SubscriptionProvider,
+): Pick<
+  SubscriptionAccountStatus,
+  "available" | "allowedClient" | "loginHint" | "billingMode"
+> & { availabilityReason?: string } {
+  const metadata = SUBSCRIPTION_PROVIDER_METADATA[provider];
+  return {
+    available: metadata.availability !== "unavailable",
+    allowedClient: metadata.allowedClient,
+    loginHint: metadata.setupHint,
+    billingMode: metadata.billingMode,
+    ...(metadata.availabilityReason
+      ? { availabilityReason: metadata.availabilityReason }
+      : {}),
+  };
+}
+
+function hasCommandOnPath(commandName: string): boolean {
+  const command = process.platform === "win32" ? "where" : "command -v";
+  try {
+    execSync(`${command} ${commandName}`, {
+      encoding: "utf8",
+      timeout: 1500,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
-  const providers: SubscriptionProvider[] = [
-    "anthropic-subscription",
-    "openai-codex",
-  ];
   const rows: SubscriptionAccountStatus[] = [];
 
-  for (const provider of providers) {
+  for (const provider of SUBSCRIPTION_PROVIDER_IDS) {
+    const metadata = subscriptionStatusMetadata(provider);
     const accounts = listProviderAccounts(provider);
     for (const account of accounts) {
       rows.push({
+        ...metadata,
         provider,
         accountId: account.id,
         label: account.label,
         configured: true,
         valid: account.credentials.expires > Date.now(),
         expiresAt: account.credentials.expires,
-        source: "app",
+        source:
+          isCodingPlanKeySubscriptionProvider(provider) &&
+          account.source === "api-key"
+            ? "coding-plan-key"
+            : "app",
       });
     }
 
@@ -328,6 +410,7 @@ export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
             ? "Claude Code CLI"
             : "Setup Token";
         rows.push({
+          ...metadata,
           provider,
           accountId,
           label,
@@ -341,6 +424,7 @@ export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
 
     if (provider === "openai-codex" && hasCodexCliSubscriptionAuth()) {
       rows.push({
+        ...metadata,
         provider,
         accountId: "codex-cli",
         label: "Codex CLI",
@@ -348,6 +432,33 @@ export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
         valid: true,
         expiresAt: null,
         source: "codex-cli",
+      });
+    }
+
+    if (provider === "gemini-cli") {
+      const geminiCliDetected = hasCommandOnPath("gemini");
+      rows.push({
+        ...metadata,
+        provider,
+        accountId: "gemini-cli",
+        label: "Gemini CLI",
+        configured: geminiCliDetected,
+        valid: geminiCliDetected,
+        expiresAt: null,
+        source: geminiCliDetected ? "gemini-cli" : null,
+      });
+    }
+
+    if (provider === "deepseek-coding") {
+      rows.push({
+        ...metadata,
+        provider,
+        accountId: "deepseek-coding",
+        label: "DeepSeek Coding Plan",
+        configured: false,
+        valid: false,
+        expiresAt: null,
+        source: "unavailable",
       });
     }
   }
@@ -580,6 +691,26 @@ export async function applySubscriptionCredentials(config?: {
     }
   }
 
+  const geminiAccounts = listProviderAccounts("gemini-cli");
+  if (geminiAccounts.length > 0 || hasCommandOnPath("gemini")) {
+    logger.info(
+      "[auth] Gemini CLI subscription surface detected/configured — available only through Gemini CLI task agents. " +
+        "Not applied to GOOGLE_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY.",
+    );
+  }
+
+  for (const provider of ["zai-coding", "kimi-coding"] as const) {
+    const accounts = listProviderAccounts(provider);
+    if (accounts.length === 0) continue;
+    const labels = accounts.map((a) => `"${a.label}" (${a.id})`).join(", ");
+    const envName =
+      provider === "zai-coding" ? "ZAI_API_KEY" : "MOONSHOT_API_KEY";
+    logger.info(
+      `[auth] ${provider} coding-plan accounts configured: ${labels} — available only for the provider's dedicated coding endpoint. ` +
+        `Not applied to ${envName}.`,
+    );
+  }
+
   // Auto-set model.primary only for subscription providers that have a runtime
   // model-provider plugin. CLI-only subscriptions should not point the runtime
   // at direct API-key plugins.
@@ -590,7 +721,7 @@ export async function applySubscriptionCredentials(config?: {
 
     if (provider) {
       const modelId = SUBSCRIPTION_PROVIDER_MAP[provider];
-      const runtimeApplicable = provider !== "anthropic-subscription";
+      const runtimeApplicable = provider === "openai-codex";
       if (modelId && runtimeApplicable) {
         if (!defaults.model) {
           defaults.model = { primary: modelId };

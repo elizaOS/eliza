@@ -677,8 +677,7 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
  * the first file; it was simply the wrong path/name.
  *
  * If the configured GGUF is **not** on disk but another known embedding file
- * already exists in `MODELS_DIR` (e.g. legacy bge-small after `eliza.json`
- * switched to the 7B E5 preset), we align `LOCAL_EMBEDDING_*` with that file
+ * already exists in `MODELS_DIR`, we align `LOCAL_EMBEDDING_*` with that file
  * so we do not re-download multi‑GB models. Opt out:
  * `ELIZA_EMBEDDING_WARMUP_NO_REUSE=1`.
  */

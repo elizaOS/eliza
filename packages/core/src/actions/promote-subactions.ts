@@ -1,7 +1,7 @@
 /**
- * Helper that promotes the subactions of an umbrella `Action` to virtual
+ * Helper that promotes the actions of an umbrella `Action` to virtual
  * top-level Actions. Each virtual action is named `<UMBRELLA>_<SUBACTION>`
- * and delegates to the parent's handler with `subaction: <name>` injected
+ * and delegates to the parent's handler with the discriminator value injected
  * into the parameters before dispatch.
  *
  * The parent umbrella stays registered alongside its virtuals so the planner
@@ -24,7 +24,10 @@ import type {
 	State,
 	Validator,
 } from "../types";
-import { CANONICAL_SUBACTION_KEY } from "./subaction-dispatch";
+import {
+	CANONICAL_SUBACTION_KEY,
+	LEGACY_SUBACTION_KEYS,
+} from "./subaction-dispatch";
 
 export interface SubactionPromotionOverrides {
 	/** Override the virtual action's description. */
@@ -65,24 +68,41 @@ interface PromotedAction extends Action {
 
 /**
  * Returns the list of subaction string values declared by an umbrella's
- * `subaction` parameter (or one of the legacy aliases). The lookup is purely
+ * `action` parameter (or one of the legacy aliases). The lookup is purely
  * structural: it inspects the JSON Schema enum on the parameter named
- * `subaction` / `op` / `action` / `operation`. Returns an empty array if no
- * enum is found.
+ * `action` / `subaction` / `op` / `operation` / `verb`. Returns an empty array
+ * if no enum is found.
  */
 export function listSubactionsFromParameters(
 	parameters: readonly ActionParameter[] | undefined,
 ): readonly string[] {
 	if (!parameters) return [];
-	const candidate = parameters.find((p) =>
-		[CANONICAL_SUBACTION_KEY, "op", "action", "operation"].includes(p.name),
-	);
+	const candidate = findDiscriminatorParameter(parameters);
 	if (!candidate) return [];
 	const schema = candidate.schema;
 	if (!schema || typeof schema !== "object") return [];
 	const enumValues = (schema as { enum?: unknown }).enum;
 	if (!Array.isArray(enumValues)) return [];
 	return enumValues.filter((v): v is string => typeof v === "string");
+}
+
+function hasEnum(parameter: ActionParameter): boolean {
+	const schema = parameter.schema;
+	return (
+		typeof schema === "object" &&
+		schema !== null &&
+		Array.isArray((schema as { enum?: unknown }).enum)
+	);
+}
+
+function findDiscriminatorParameter(
+	parameters: readonly ActionParameter[] | undefined,
+): ActionParameter | undefined {
+	if (!parameters) return undefined;
+	const keys = [CANONICAL_SUBACTION_KEY, ...LEGACY_SUBACTION_KEYS];
+	return keys
+		.map((key) => parameters.find((p) => p.name === key && hasEnum(p)))
+		.find((parameter): parameter is ActionParameter => Boolean(parameter));
 }
 
 function toUpperSnake(value: string): string {
@@ -94,16 +114,32 @@ function toUpperSnake(value: string): string {
 }
 
 function mergeOptionsWithSubaction(
+	parent: Action,
 	options: HandlerOptions | Record<string, JsonValue | undefined> | undefined,
 	subaction: string,
 ): HandlerOptions {
 	const incoming =
 		(options as HandlerOptions | undefined) ?? ({} as HandlerOptions);
 	const incomingParams = (incoming.parameters ?? {}) as ActionParameters;
+	const discriminatorKey =
+		findDiscriminatorParameter(parent.parameters)?.name ?? CANONICAL_SUBACTION_KEY;
+	const parentDeclaresNestedAction = parent.parameters?.some(
+		(parameter) => parameter.name === CANONICAL_SUBACTION_KEY,
+	);
 	const mergedParams: ActionParameters = {
 		...incomingParams,
-		[CANONICAL_SUBACTION_KEY]: subaction,
+		[discriminatorKey]: subaction,
 	};
+	if (discriminatorKey !== "subaction") {
+		mergedParams.subaction = subaction;
+	}
+	if (
+		discriminatorKey !== CANONICAL_SUBACTION_KEY &&
+		!parentDeclaresNestedAction &&
+		incomingParams[CANONICAL_SUBACTION_KEY] === undefined
+	) {
+		mergedParams[CANONICAL_SUBACTION_KEY] = subaction;
+	}
 	return {
 		...incoming,
 		parameters: mergedParams,
@@ -120,7 +156,7 @@ function buildVirtualHandler(parent: Action, subaction: string): Handler {
 		callback?: HandlerCallback,
 		responses?: Memory[],
 	) => {
-		const merged = mergeOptionsWithSubaction(options, subaction);
+		const merged = mergeOptionsWithSubaction(parent, options, subaction);
 		return parentHandler(runtime, message, state, merged, callback, responses);
 	};
 }
@@ -135,8 +171,8 @@ function buildVirtualValidator(parent: Action): Validator {
  *
  * Returns `[parent, ...virtuals]`. The parent is unchanged and stays at index
  * 0 so callers can safely spread the result into a plugin's `actions: [...]`
- * array. Virtual actions inject `subaction: <value>` into `options.parameters`
- * before delegating to the parent's handler.
+ * array. Virtual actions inject the parent's structural discriminator into
+ * `options.parameters` before delegating to the parent's handler.
  *
  * Calling this function twice on the same parent is idempotent: the second
  * call returns a freshly-built but structurally identical set of virtuals.

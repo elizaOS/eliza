@@ -13,10 +13,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  * and the model file is not committed to the repo.
  *
  * To run locally:
- *   1. Make sure a GGUF embedding model is on disk under MODELS_DIR
- *      (default `~/.eliza/models`). The test auto-detects
- *      `nomic-embed-text-v1.5.{Q4_K_M,Q5_K_M}.gguf` or
- *      `bge-small-en-v1.5.Q4_K_M.gguf`.
+ *   1. Make sure an Eliza-1 GGUF embedding-capable model is on disk under
+ *      MODELS_DIR (default `~/.eliza/models`). The test auto-detects
+ *      `text/eliza-1-lite-0_6b-32k.gguf` or
+ *      `text/eliza-1-mobile-1_7b-32k.gguf`.
  *   2. `LOCAL_EMBEDDING_RUN_E2E=1 LOCAL_EMBEDDING_FORCE_CPU=1 \
  *       bun test plugins/plugin-local-embedding/__tests__/e2e.real-gguf.test.ts`
  *
@@ -41,9 +41,8 @@ interface ModelCandidate {
 }
 
 const MODEL_CANDIDATES: ModelCandidate[] = [
-  { fileName: "nomic-embed-text-v1.5.Q4_K_M.gguf", dimensions: 768, contextSize: 8192 },
-  { fileName: "nomic-embed-text-v1.5.Q5_K_M.gguf", dimensions: 768, contextSize: 8192 },
-  { fileName: "bge-small-en-v1.5.Q4_K_M.gguf", dimensions: 384, contextSize: 512 },
+  { fileName: "text/eliza-1-lite-0_6b-32k.gguf", dimensions: 1024, contextSize: 32768 },
+  { fileName: "text/eliza-1-mobile-1_7b-32k.gguf", dimensions: 2048, contextSize: 32768 },
 ];
 
 function pickAvailableModel(modelsDir: string): ModelCandidate | null {
@@ -180,8 +179,7 @@ describeIfE2e("plugin-local-embedding e2e (real GGUF)", () => {
 
       // ~32k tokens at the conventional 4 chars/token estimate.
       // The plugin uses 92% of contextSize as the chunk window, so this
-      // forces multiple chunks for nomic (8192 ctx → ~7536 tok window)
-      // and many chunks for bge-small (512 ctx → ~470 tok window).
+      // forces multiple chunks for the Eliza-1 embedding path.
       const charCount = 32_000 * 4;
       const longDoc = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(
         Math.ceil(charCount / 57),

@@ -26,6 +26,7 @@ import {
   type CreditBalanceResponse,
   type CreditSummaryResponse,
   DEFAULT_ELIZA_CLOUD_API_BASE_URL,
+  DEFAULT_ELIZA_CLOUD_API_ORIGIN,
   DEFAULT_ELIZA_CLOUD_BASE_URL,
   type ElizaCloudClientOptions,
   type EmbeddingsRequest,
@@ -56,6 +57,10 @@ function trimTrailingSlash(value: string): string {
 function normalizeBaseUrl(value: string | undefined, fallback: string): string {
   const trimmed = value?.trim();
   return trimTrailingSlash(trimmed && trimmed.length > 0 ? trimmed : fallback);
+}
+
+function apiOriginFromApiBaseUrl(value: string): string {
+  return value.replace(/\/api\/v1\/?$/, "");
 }
 
 function encodePathParam(value: string | number): string {
@@ -89,10 +94,18 @@ export class ElizaCloudClient {
 
   constructor(options: ElizaCloudClientOptions = {}) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl, DEFAULT_ELIZA_CLOUD_BASE_URL);
-    this.apiBaseUrl = normalizeBaseUrl(options.apiBaseUrl, DEFAULT_ELIZA_CLOUD_API_BASE_URL);
+    this.apiBaseUrl = normalizeBaseUrl(
+      options.apiBaseUrl,
+      options.baseUrl ? `${this.baseUrl}/api/v1` : DEFAULT_ELIZA_CLOUD_API_BASE_URL,
+    );
+    const apiOrigin = options.apiBaseUrl
+      ? apiOriginFromApiBaseUrl(this.apiBaseUrl)
+      : options.baseUrl
+        ? this.baseUrl
+        : DEFAULT_ELIZA_CLOUD_API_ORIGIN;
     this.http = new ElizaCloudHttpClient({
       ...options,
-      baseUrl: this.baseUrl,
+      baseUrl: apiOrigin,
     });
     this.v1 = new CloudApiClient(this.apiBaseUrl, options.apiKey, {
       bearerToken: options.bearerToken,

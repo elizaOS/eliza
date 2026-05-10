@@ -3,9 +3,7 @@
  * @description elizaOS plugin for GitHub integration.
  *
  * Actions:
- *   - GITHUB_PR_OP (review requires confirmation)
- *   - GITHUB_ISSUE_OP (write ops require confirmation)
- *   - GITHUB_NOTIFICATION_TRIAGE
+ *   - GITHUB (PR, issue, and notification operations)
  *
  * Auth: role-tagged account records with legacy PAT fallback.
  *   - GITHUB_ACCOUNTS   — JSON account records ({accountId, role, token})
@@ -26,6 +24,7 @@ import {
   logger,
   promoteSubactionsToActions,
 } from "@elizaos/core";
+import { githubAction } from "./actions/github.js";
 import { issueOpAction } from "./actions/issue-op.js";
 import { notificationTriageAction } from "./actions/notification-triage.js";
 import { prOpAction } from "./actions/pr-op.js";
@@ -54,6 +53,7 @@ function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
 }
 
 export { issueOpAction } from "./actions/issue-op.js";
+export { githubAction } from "./actions/github.js";
 export {
   notificationTriageAction,
   scoreNotification,
@@ -91,11 +91,7 @@ export const githubPlugin: Plugin = {
   description:
     "GitHub integration for pull requests, issues, and notification triage",
   services: [GitHubService],
-  actions: [
-    ...promoteSubactionsToActions(prOpAction),
-    ...promoteSubactionsToActions(issueOpAction),
-    notificationTriageAction,
-  ],
+  actions: [...promoteSubactionsToActions(githubAction)],
   routes: githubRoutes,
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     registerGitHubSearchCategory(runtime);

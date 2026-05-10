@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # run-motog.sh — Android arm64 runner: cross-compile the v0.4.0-milady
 # llama.cpp fork for arm64-v8a, push the on-device agent bundle plus
-# libllama / DFlash llama-server, stage Bonsai-8B-1bit-DFlash and the
-# Qwen3-0.6B drafter on the device, hit /api/health and a 5-prompt
+# libllama / DFlash llama-server, stage an Eliza-1 GGUF on the device,
+# hit /api/health and a 5-prompt
 # chat round-trip, then tear down the adb forward.
 #
 # Designed to run cold against a Moto G7+ class arm64-v8a phone with
-# at least 4 GB RAM. The kit refuses to load anything other than
-# TBQ/DFlash models — a stock Q4_K_M GGUF gets a clear error.
+# at least 4 GB RAM.
 #
 # Usage:
 #   bash scripts/android-runner/run-motog.sh                  # default end-to-end
@@ -18,8 +17,7 @@
 #
 # Env knobs (all optional):
 #   ANDROID_RUNNER_SERIAL    adb serial (default: first arm64-v8a device)
-#   ANDROID_RUNNER_BONSAI_GGUF   path to Bonsai-8B-1bit GGUF (must contain "bonsai" or "tbq" in name)
-#   ANDROID_RUNNER_DRAFTER_GGUF  path to Qwen3-0.6B drafter GGUF
+#   ANDROID_RUNNER_ELIZA1_GGUF   path to an Eliza-1 GGUF
 #   ANDROID_RUNNER_REPORT_DIR    override report output dir
 #   ANDROID_RUNNER_PACKAGE       override package id (default: ai.milady.milady)
 #   ANDROID_RUNNER_PORT          host-side adb-forward port (default: 31337)
@@ -27,8 +25,7 @@
 # Refusal contract:
 #   - Refuses if no adb device is connected.
 #   - Refuses if the device's ro.product.cpu.abi is not arm64-v8a.
-#   - Refuses if a passed --bonsai or --drafter GGUF doesn't have a
-#     TBQ/DFlash signature in its filename.
+#   - Refuses if a passed Eliza-1 GGUF does not exist.
 #   - Refuses on Linux/macOS host hosts only when adb is missing — the
 #     cross-compile for arm64-v8a uses zig and runs on any x86_64 / arm64
 #     host.
@@ -125,11 +122,10 @@ fi
 
 log "preflight: model=${DEVICE_MODEL} abi=${DEVICE_ABI} api=${DEVICE_API} ram=${DEVICE_RAM_GB}GB"
 
-# Bonsai-8B-1bit needs ~3.5 GB resident at runtime (model + KV + drafter
-# + bun) on the most aggressive TBQ k=tbq4_0/v=tbq3_0 settings. 4 GB is
-# the minimum; 6 GB+ is recommended.
+# Eliza-1 mobile needs a 4 GB class device for a useful smoke run; 6 GB+
+# is recommended.
 if [ -n "${DEVICE_RAM_KB}" ] && [ "${DEVICE_RAM_KB}" -lt $((3500*1024)) ]; then
-  log "WARN: device RAM ${DEVICE_RAM_GB}GB is below the 4GB minimum for Bonsai-8B-1bit-DFlash. Loading will likely OOM. Continuing — set ANDROID_RUNNER_FORCE=1 to suppress this hint."
+  log "WARN: device RAM ${DEVICE_RAM_GB}GB is below the 4GB minimum for Eliza-1 mobile. Loading may OOM. Continuing — set ANDROID_RUNNER_FORCE=1 to suppress this hint."
 fi
 
 # -- 3. Verify the package is installed ---------------------------------------
@@ -229,69 +225,32 @@ fi
 BUNDLE_MD5=$(md5sum "${BUNDLE_DIR}/agent-bundle.js" | awk '{print $1}')
 log "bundle: md5=${BUNDLE_MD5}"
 
-# -- 6. Resolve TBQ/DFlash GGUFs ----------------------------------------------
-# Filename signature check: refuse anything that doesn't carry a TBQ
-# or DFlash marker. The on-device adapter routes by filename for these
-# (`bonsai` triggers k=tbq4_0/v=tbq3_0, `dflash` activates the
-# spec-decode server pair). A stock Q4_K_M file lights up neither path
-# and would silently run as a regular target — explicitly forbidden.
-is_tbq_or_dflash() {
-  case "$(basename "$1" | tr 'A-Z' 'a-z')" in
-    *bonsai*|*tbq*|*turboquant*|*dflash*|*qwen3*0.6b*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-BONSAI_GGUF="${ANDROID_RUNNER_BONSAI_GGUF:-}"
-DRAFTER_GGUF="${ANDROID_RUNNER_DRAFTER_GGUF:-}"
+# -- 6. Resolve Eliza-1 GGUF ---------------------------------------------------
+ELIZA1_GGUF="${ANDROID_RUNNER_ELIZA1_GGUF:-}"
 
 if [ "${SKIP_MODELS}" = "0" ]; then
-  if [ -z "${BONSAI_GGUF}" ]; then
+  if [ -z "${ELIZA1_GGUF}" ]; then
     # Try common cache locations.
     while IFS= read -r found; do
       if [ -n "${found}" ] && [ -f "${found}" ]; then
-        BONSAI_GGUF="${found}"
+        ELIZA1_GGUF="${found}"
         break
       fi
     done < <(
       {
-        find "${HOME}/.cache/eliza/local-inference/models" -maxdepth 4 -type f -iname '*bonsai*.gguf' 2>/dev/null
-        find "${HOME}/.eliza/local-inference/models" -maxdepth 4 -type f -iname '*bonsai*.gguf' 2>/dev/null
-        find "${HOME}/.milady/local-inference/models" -maxdepth 4 -type f -iname '*bonsai*.gguf' 2>/dev/null
+        find "${HOME}/.cache/eliza/local-inference/models" -maxdepth 5 -type f -iname '*eliza-1-mobile*.gguf' 2>/dev/null
+        find "${HOME}/.eliza/local-inference/models" -maxdepth 5 -type f -iname '*eliza-1-mobile*.gguf' 2>/dev/null
+        find "${HOME}/.milady/local-inference/models" -maxdepth 5 -type f -iname '*eliza-1-mobile*.gguf' 2>/dev/null
       } | head -1
     )
   fi
-  if [ -z "${DRAFTER_GGUF}" ]; then
-    while IFS= read -r found; do
-      if [ -n "${found}" ] && [ -f "${found}" ]; then
-        DRAFTER_GGUF="${found}"
-        break
-      fi
-    done < <(
-      {
-        find "${HOME}/.cache/eliza/local-inference/models" -maxdepth 4 -type f -iname '*qwen3-0.6b*.gguf' 2>/dev/null
-        find "${HOME}/.cache/eliza/local-inference/models" -maxdepth 4 -type f -iname '*qwen3_0.6b*.gguf' 2>/dev/null
-        find "${HOME}/.eliza/local-inference/models" -maxdepth 4 -type f -iname '*qwen3-0.6b*.gguf' 2>/dev/null
-        find "${HOME}/.milady/local-inference/models" -maxdepth 4 -type f -iname '*qwen3-0.6b*.gguf' 2>/dev/null
-      } | head -1
-    )
-  fi
-
-  if [ -z "${BONSAI_GGUF}" ] || [ -z "${DRAFTER_GGUF}" ]; then
-    log "WARN: TBQ/DFlash GGUF pair not found (BONSAI=${BONSAI_GGUF:-MISSING} DRAFTER=${DRAFTER_GGUF:-MISSING})."
-    log "      Set ANDROID_RUNNER_BONSAI_GGUF + ANDROID_RUNNER_DRAFTER_GGUF or download via:"
-    log "        huggingface-cli download apothic/bonsai-8B-1bit-turboquant models/gguf/8B/Bonsai-8B.gguf --local-dir ~/.cache/eliza/local-inference/models/bonsai-8b-1bit-dflash"
-    log "        huggingface-cli download bartowski/Qwen_Qwen3-0.6B-GGUF Qwen_Qwen3-0.6B-Q4_K_M.gguf --local-dir ~/.cache/eliza/local-inference/models/bonsai-8b-dflash-drafter"
+  if [ -z "${ELIZA1_GGUF}" ]; then
+    log "WARN: Eliza-1 mobile GGUF not found."
+    log "      Set ANDROID_RUNNER_ELIZA1_GGUF or download via:"
+    log "        huggingface-cli download elizalabs/eliza-1-mobile-1_7b text/eliza-1-mobile-1_7b-32k.gguf --local-dir ~/.cache/eliza/local-inference/models/eliza-1-mobile-1_7b"
     SKIP_MODELS=1
   else
-    if ! is_tbq_or_dflash "${BONSAI_GGUF}"; then
-      fail "refusing to load ${BONSAI_GGUF}: filename does not carry a TBQ/DFlash signature (must contain bonsai/tbq/turboquant/dflash). The kit only supports the v0.4.0-milady fused-kernel path; pass a DFlash drafter GGUF or unset ANDROID_RUNNER_BONSAI_GGUF."
-    fi
-    if ! is_tbq_or_dflash "${DRAFTER_GGUF}"; then
-      fail "refusing to load drafter ${DRAFTER_GGUF}: filename does not carry a TBQ/DFlash/Qwen3-0.6B signature. Drafter must share the target's vocabulary; only Qwen3-0.6B Q4_K_M is supported here."
-    fi
-    log "models: bonsai=${BONSAI_GGUF} ($(du -h "${BONSAI_GGUF}" | awk '{print $1}'))"
-    log "models: drafter=${DRAFTER_GGUF} ($(du -h "${DRAFTER_GGUF}" | awk '{print $1}'))"
+    log "models: eliza1=${ELIZA1_GGUF} ($(du -h "${ELIZA1_GGUF}" | awk '{print $1}'))"
   fi
 fi
 
@@ -301,7 +260,7 @@ adb -s "${SERIAL}" shell am force-stop "${PACKAGE}" 2>/dev/null || true
 adb -s "${SERIAL}" shell pkill -9 -f "files/agent/" 2>/dev/null || true
 sleep 2 || true
 
-# -- 8. Push agent bundle + libllama family + drafter pair --------------------
+# -- 8. Push agent bundle + libllama family + model ---------------------------
 log "device: pushing agent bundle"
 push_to_app_data "${BUNDLE_DIR}/agent-bundle.js" "agent/agent-bundle.js"
 for asset in pglite.wasm initdb.wasm pglite.data plugins-manifest.json; do
@@ -321,10 +280,9 @@ for libfile in libllama.so libllama.so.0 libggml.so libggml.so.0 \
 done
 adb -s "${SERIAL}" shell "run-as ${PACKAGE} chmod 755 files/agent/arm64-v8a/llama-server 2>/dev/null || true"
 
-if [ "${SKIP_MODELS}" = "0" ] && [ -n "${BONSAI_GGUF}" ] && [ -n "${DRAFTER_GGUF}" ]; then
-  log "device: pushing TBQ/DFlash model pair (this may take several minutes over USB)"
-  push_to_app_data "${BONSAI_GGUF}" "agent/models/$(basename "${BONSAI_GGUF}")"
-  push_to_app_data "${DRAFTER_GGUF}" "agent/models/$(basename "${DRAFTER_GGUF}")"
+if [ "${SKIP_MODELS}" = "0" ] && [ -n "${ELIZA1_GGUF}" ]; then
+  log "device: pushing Eliza-1 model (this may take several minutes over USB)"
+  push_to_app_data "${ELIZA1_GGUF}" "agent/models/$(basename "${ELIZA1_GGUF}")"
 fi
 
 # -- 9. Restart the agent service ---------------------------------------------
@@ -386,8 +344,8 @@ if [ "${HEALTH_OK}" = "1" ] && [ "${NO_CHAT}" = "0" ]; then
     p="${PROMPTS[$i]}"
     log "chat: prompt ${pidx}/5: ${p}"
     started=$(date +%s%3N)
-    body="$(jq -nc --arg p "${p}" '{messages:[{role:"user",content:$p}], stream:false, max_tokens:48, model:"bonsai-8b-1bit-dflash"}' 2>/dev/null \
-        || printf '{"messages":[{"role":"user","content":"%s"}],"stream":false,"max_tokens":48,"model":"bonsai-8b-1bit-dflash"}' "${p}")"
+    body="$(jq -nc --arg p "${p}" '{messages:[{role:"user",content:$p}], stream:false, max_tokens:48, model:"eliza-1-mobile-1_7b"}' 2>/dev/null \
+        || printf '{"messages":[{"role":"user","content":"%s"}],"stream":false,"max_tokens":48,"model":"eliza-1-mobile-1_7b"}' "${p}")"
     out=$(curl -sf --max-time 1800 \
         -H 'Content-Type: application/json' \
         -X POST \
@@ -458,7 +416,7 @@ DEVICE_LOG_TAIL=$(adb -s "${SERIAL}" shell "run-as ${PACKAGE} tail -50 files/age
     printf -- '- Detail: `/api/health` did not respond within 600 s.\n\n'
   fi
 
-  printf '## Chat round-trip (5 prompts, TBQ/DFlash only)\n\n'
+  printf '## Chat round-trip (5 prompts, Eliza-1)\n\n'
   printf -- '- Status: %s\n' "${CHAT_STATUS}"
   printf -- '- Detail: %s\n\n' "${CHAT_DETAIL}"
   if [ -n "${CHAT_REPLIES}" ]; then

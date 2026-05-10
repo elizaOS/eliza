@@ -1,9 +1,6 @@
 import { elizaLogger, type Plugin } from '@elizaos/core';
 import { tunnelSlotIsFree } from '@elizaos/plugin-tunnel';
 import { NgrokTestSuite } from './__tests__/NgrokTestSuite';
-import { getTunnelStatusAction } from './actions/get-tunnel-status';
-import { startTunnelAction } from './actions/start-tunnel';
-import { stopTunnelAction } from './actions/stop-tunnel';
 import { NgrokService } from './services/NgrokService';
 
 /**
@@ -17,7 +14,7 @@ import { NgrokService } from './services/NgrokService';
 export const ngrokPlugin: Plugin = {
   name: 'ngrok',
   description: 'Ngrok tunnel backend. Coexists with plugin-tunnel via first-active-wins.',
-  actions: [startTunnelAction, stopTunnelAction, getTunnelStatusAction],
+  actions: [],
   tests: [new NgrokTestSuite()],
   init: async (_config, runtime) => {
     if (!tunnelSlotIsFree(runtime)) {

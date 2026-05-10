@@ -100,7 +100,6 @@ OpenRouter provides access to models from all major providers. Use the full prov
 
 | Model ID | Description |
 |---------|-------------|
-| `meta-llama/llama-3.3-70b-instruct` | Llama 3.3 70B |
 | `meta-llama/llama-3.1-405b-instruct` | Llama 3.1 405B |
 
 ### Google via OpenRouter

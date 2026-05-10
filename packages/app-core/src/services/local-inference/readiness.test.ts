@@ -9,21 +9,11 @@ const activeIdle: ActiveModelState = {
 };
 
 describe("local inference text readiness", () => {
-  it("reports assigned, download, companion, and terminal error state", () => {
-    const installed: InstalledModel[] = [
-      {
-        id: "qwen3.5-4b-dflash",
-        displayName: "Qwen3.5 4B DFlash (Q4_K_M)",
-        path: "/tmp/qwen.gguf",
-        sizeBytes: 1024,
-        installedAt: new Date().toISOString(),
-        lastUsedAt: null,
-        source: "eliza-download",
-      },
-    ];
-    const failedCompanion: DownloadJob = {
+  it("reports assigned download terminal error state", () => {
+    const installed: InstalledModel[] = [];
+    const failedDownload: DownloadJob = {
       jobId: "job-1",
-      modelId: "qwen3.5-4b-dflash-drafter-q4",
+      modelId: "eliza-1-mobile-1_7b",
       state: "failed",
       received: 128,
       total: 512,
@@ -36,19 +26,19 @@ describe("local inference text readiness", () => {
 
     const readiness = buildTextGenerationReadiness({
       assignments: {
-        TEXT_LARGE: "qwen3.5-4b-dflash",
+        TEXT_LARGE: "eliza-1-mobile-1_7b",
       },
       installed,
       active: activeIdle,
-      downloads: [failedCompanion],
+      downloads: [failedDownload],
     });
 
     expect(readiness.slots.TEXT_LARGE.assigned).toBe(true);
-    expect(readiness.slots.TEXT_LARGE.primaryDownloaded).toBe(true);
+    expect(readiness.slots.TEXT_LARGE.primaryDownloaded).toBe(false);
     expect(readiness.slots.TEXT_LARGE.downloaded).toBe(false);
     expect(readiness.slots.TEXT_LARGE.state).toBe("failed");
     expect(readiness.slots.TEXT_LARGE.missingModelIds).toContain(
-      "qwen3.5-4b-dflash-drafter-q4",
+      "eliza-1-mobile-1_7b",
     );
     expect(readiness.slots.TEXT_LARGE.download.percent).toBe(25);
     expect(readiness.slots.TEXT_LARGE.errors).toContain(
@@ -59,9 +49,9 @@ describe("local inference text readiness", () => {
   it("marks a downloaded active assignment ready", () => {
     const installed: InstalledModel[] = [
       {
-        id: "eliza-1-2b",
-        displayName: "Eliza-1 2B (Qwen3.5)",
-        path: "/tmp/llama.gguf",
+        id: "eliza-1-mobile-1_7b",
+        displayName: "Eliza-1 mobile",
+        path: "/tmp/eliza-1-mobile-1_7b.gguf",
         sizeBytes: 2048,
         installedAt: new Date().toISOString(),
         lastUsedAt: null,
@@ -71,11 +61,11 @@ describe("local inference text readiness", () => {
 
     const readiness = buildTextGenerationReadiness({
       assignments: {
-        TEXT_SMALL: "eliza-1-2b",
+        TEXT_SMALL: "eliza-1-mobile-1_7b",
       },
       installed,
       active: {
-        modelId: "eliza-1-2b",
+        modelId: "eliza-1-mobile-1_7b",
         loadedAt: new Date().toISOString(),
         status: "ready",
       },

@@ -1682,6 +1682,67 @@ export const lifeScheduledTaskLog = appLifeopsPgSchema.table(
   ],
 );
 
+// Work-thread coordination index. Threads are not schedulers; they point at
+// ScheduledTask/workflow/approval/pending-prompt state that owns durable work.
+
+export const lifeWorkThreads = appLifeopsPgSchema.table(
+  "life_work_threads",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    ownerEntityId: text("owner_entity_id"),
+    status: text("status").notNull().default("active"),
+    title: text("title").notNull().default(""),
+    summary: text("summary").notNull().default(""),
+    currentPlanSummary: text("current_plan_summary"),
+    primarySourceRefJson: text("primary_source_ref_json").notNull(),
+    sourceRefsJson: text("source_refs_json").notNull().default("[]"),
+    participantEntityIdsJson: text("participant_entity_ids_json")
+      .notNull()
+      .default("[]"),
+    currentScheduledTaskId: text("current_scheduled_task_id"),
+    workflowRunId: text("workflow_run_id"),
+    approvalId: text("approval_id"),
+    lastMessageMemoryId: text("last_message_memory_id"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    lastActivityAt: text("last_activity_at").notNull(),
+  },
+  (t) => [
+    index("idx_life_work_threads_agent_status").on(t.agentId, t.status),
+    index("idx_life_work_threads_agent_owner").on(
+      t.agentId,
+      t.ownerEntityId,
+      t.status,
+    ),
+    index("idx_life_work_threads_agent_activity").on(
+      t.agentId,
+      t.lastActivityAt,
+    ),
+  ],
+);
+
+export const lifeWorkThreadEvents = appLifeopsPgSchema.table(
+  "life_work_thread_events",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    workThreadId: text("work_thread_id").notNull(),
+    occurredAt: text("occurred_at").notNull(),
+    type: text("type").notNull(),
+    reason: text("reason"),
+    detailJson: text("detail_json"),
+  },
+  (t) => [
+    index("idx_life_work_thread_events_thread").on(
+      t.agentId,
+      t.workThreadId,
+      t.occurredAt,
+    ),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // Aggregate export for plugin schema property
 // ---------------------------------------------------------------------------
@@ -1749,6 +1810,8 @@ export const lifeOpsSchema = {
   lifeBlockRules,
   lifeScheduledTasks,
   lifeScheduledTaskLog,
+  lifeWorkThreads,
+  lifeWorkThreadEvents,
   lifeopsFeaturesTable,
 } as const;
 

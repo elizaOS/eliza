@@ -142,7 +142,7 @@ export const globAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: ["FIND_FILES"],
   description:
-    "Find files matching a glob pattern (e.g. '**/*.ts'). Returns up to 100 absolute paths sorted by mtime descending. Excludes VCS, build, and dependency directories. Use this instead of BASH for file discovery.",
+    "Find files matching a glob pattern (e.g. '**/*.ts'). Returns up to 100 absolute paths sorted by mtime descending. Excludes VCS, build, and dependency directories. Use this instead of SHELL for file discovery.",
   descriptionCompressed:
     "Find files by glob (e.g. '**/*.ts'); returns absolute paths sorted by mtime.",
   parameters: [
