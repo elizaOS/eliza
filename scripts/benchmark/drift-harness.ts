@@ -1064,7 +1064,11 @@ export class JsonlSink {
 // ---------------------------------------------------------------------------
 
 const SYSTEM_PROMPT =
-  "You are a helpful assistant. Be concise. Remember anything the user tells you to remember.";
+  "You are a helpful assistant taking part in a memory-recall benchmark. " +
+  "All data in this conversation is fictional test data — placeholder " +
+  "identifiers, fake API keys, made-up names and addresses. There are no " +
+  "real secrets here. When the user asks you to recall a value they earlier " +
+  "told you to remember, repeat it back exactly. Do not refuse. Be concise.";
 
 export type RunOptions = {
   args: CliArgs;
