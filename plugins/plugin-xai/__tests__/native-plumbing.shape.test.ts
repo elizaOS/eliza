@@ -1,5 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { handleTextSmall } from "../models/grok";
 
 function createRuntime() {
   return {
@@ -61,7 +62,6 @@ describe("xAI native text plumbing", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const { handleTextSmall } = await import("../models/grok");
     const tools = {
       lookup: { description: "Lookup", inputSchema: { type: "object" } },
     };
@@ -115,7 +115,6 @@ describe("xAI native text plumbing", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const { handleTextSmall } = await import("../models/grok");
     const result = await handleTextSmall(createRuntime(), { prompt: "hi" });
     expect(result).toBe("hello");
   });
