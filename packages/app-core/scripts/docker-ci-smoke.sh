@@ -299,6 +299,7 @@ for plugin in \
   plugin-pdf \
   plugin-browser \
   plugin-capacitor-bridge \
+  plugin-coding-tools \
   plugin-computeruse \
   plugin-discord \
   plugin-elizacloud \

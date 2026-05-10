@@ -33,6 +33,7 @@ const localPackages = [
   "eliza/plugins/plugin-agent-skills",
   "eliza/plugins/plugin-browser",
   "eliza/plugins/plugin-capacitor-bridge",
+  "eliza/plugins/plugin-coding-tools",
   "eliza/plugins/plugin-computeruse",
   "eliza/plugins/plugin-discord",
   "eliza/plugins/plugin-elizacloud",
