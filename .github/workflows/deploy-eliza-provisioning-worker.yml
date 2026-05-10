@@ -154,11 +154,15 @@ jobs:
             # Info-level logs are filtered unless VERBOSE_LOGGING=true, so we
             # rely on systemd's own signals: process is active AND no fatal
             # error / restart-loop in the journal since deploy.
-            SINCE_TS="$(date -u -d '30 seconds ago' '+%Y-%m-%d %H:%M:%S')"
+            FALLBACK_SINCE_TS="$(date -u '+%Y-%m-%d %H:%M:%S')"
             STABLE_THRESHOLD_SEC=20
             for attempt in $(seq 1 18); do
               if sudo systemctl is-active --quiet "$SYSTEMD_UNIT"; then
-                JOURNAL=$(sudo journalctl -u "$SYSTEMD_UNIT" --since "$SINCE_TS" --no-pager 2>/dev/null || true)
+                ACTIVE_SINCE=$(systemctl show "$SYSTEMD_UNIT" --property=ActiveEnterTimestamp --value)
+                if [ -z "$ACTIVE_SINCE" ] || [ "$ACTIVE_SINCE" = "n/a" ]; then
+                  ACTIVE_SINCE="$FALLBACK_SINCE_TS"
+                fi
+                JOURNAL=$(sudo journalctl -u "$SYSTEMD_UNIT" --since "$ACTIVE_SINCE" --no-pager 2>/dev/null || true)
                 if echo "$JOURNAL" | grep -qE "\[provisioning-worker\] (fatal|unhandled rejection)|node:internal/.*Error:|^[A-Za-z]+Error:"; then
                   echo "::error::Worker logged a fatal error since deploy."
                   echo "$JOURNAL" | tail -n 50
