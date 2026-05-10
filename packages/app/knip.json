@@ -1,0 +1,43 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/**/*.{ts,tsx}",
+    "app.config.ts",
+    "capacitor.config.ts",
+    "vite.config.ts",
+    "vite-dev-origin.ts",
+    "vitest.config.ts",
+    "vitest.e2e.config.ts",
+    "playwright.*.config.ts",
+    "scripts/**/*.{mjs,ts}",
+    "vite/**/*.ts"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "scripts/**/*.{mjs,ts}",
+    "vite/**/*.ts",
+    "*.ts"
+  ],
+  "ignoreDependencies": [
+    "@capacitor/barcode-scanner",
+    "@capacitor/browser",
+    "@capacitor/haptics",
+    "@capacitor/push-notifications",
+    "@clawville/app-clawville",
+    "@elizaos/app-.*",
+    "@elizaos/capacitor-.*",
+    "@elizaos/plugin-.*",
+    "@elizaos/shared",
+    "@elizaos/ui",
+    "@pixiv/three-vrm",
+    "llama-cpp-capacitor",
+    "pathe",
+    "tailwindcss",
+    "three",
+    "ws"
+  ],
+  "ignoreUnresolved": ["tsx"],
+  "ignore": ["dist/**", "ios/**", "android/**"],
+  "vite": false,
+  "vitest": false
+}
