@@ -1,9 +1,5 @@
 import { pathToFileURL } from "node:url";
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import {
-  type CapabilityBroker,
-  getCapabilityBroker,
-} from "../services/capability-broker.ts";
 import { PluginCompiler } from "../services/plugin-compiler.ts";
 import type { VirtualFilesystemService } from "../services/virtual-filesystem.ts";
 
@@ -23,12 +19,6 @@ export interface LoadPluginFromVfsOptions {
   compileFirst?: boolean;
   /** Optional pre-built compiler instance (useful for tests/DI). */
   compiler?: PluginCompiler;
-  /**
-   * Capability broker consulted before dynamic-importing the plugin bundle.
-   * Defaults to the shared `getCapabilityBroker()` singleton; tests inject a
-   * broker pinned to a tmp state-dir.
-   */
-  broker?: CapabilityBroker;
 }
 
 export interface LoadedVfsPlugin {
@@ -57,7 +47,6 @@ export async function loadPluginFromVfs(
     outFile,
     compileFirst = true,
     compiler,
-    broker,
   } = options;
 
   if (typeof runtime.registerPlugin !== "function") {
@@ -75,22 +64,6 @@ export async function loadPluginFromVfs(
       ...(outFile !== undefined ? { outFile } : {}),
     });
     importPath = compileResult.outFile;
-  }
-
-  // Loading executable code into the runtime is privileged. The broker
-  // gates this as shell.exec because the resulting module runs with the
-  // host's full credential set the moment `import()` resolves it.
-  const pluginNameHint = options.projectId ?? importPath;
-  const loadDecision = (broker ?? getCapabilityBroker()).check({
-    kind: "shell",
-    op: "exec",
-    target: `plugin:${pluginNameHint}`,
-    toolName: "load-plugin-from-vfs",
-  });
-  if (loadDecision.allowed !== true) {
-    throw new Error(
-      `[load-plugin-from-vfs] capability denied: ${loadDecision.reason}`,
-    );
   }
 
   const diskPath = vfs.resolveDiskPath(importPath);
