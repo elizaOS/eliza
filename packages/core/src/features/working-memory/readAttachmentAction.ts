@@ -371,7 +371,10 @@ export const readAttachmentAction: Action = {
 		[
 			{
 				name: "{{name1}}",
-				content: { text: "What does the PDF I just sent you say?", source: "chat" },
+				content: {
+					text: "What does the PDF I just sent you say?",
+					source: "chat",
+				},
 			},
 			{
 				name: "{{agentName}}",

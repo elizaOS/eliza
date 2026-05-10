@@ -762,7 +762,10 @@ export const roleAction: Action = {
 		[
 			{
 				name: "{{name1}}",
-				content: { text: "Show me everyone's role in this server.", source: "chat" },
+				content: {
+					text: "Show me everyone's role in this server.",
+					source: "chat",
+				},
 			},
 			{
 				name: "{{agentName}}",
