@@ -38,12 +38,7 @@
     "**/cypress/**",
     "**/*.cy.tsx",
     "**/*.cy.ts",
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "**/*.spec.ts",
-    "**/__tests__/**",
     "**/scripts/**",
-    "**/e2e/**",
     "examples/code/**",
     "examples/avatar/**",
     "examples/vrm/**",
@@ -61,7 +56,6 @@
     "plugins/plugin-sql/**",
     "plugins/plugin-minecraft/**",
     "plugins/plugin-linear/**",
-    "**/testing/**",
     "**/build.ts"
   ]
 }

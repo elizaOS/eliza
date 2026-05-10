@@ -17,5 +17,5 @@
     "types": ["node", "bun"]
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/__tests__/**", "src/**/tests/**", "src/**/e2e/**"]
+  "exclude": []
 }

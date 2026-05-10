@@ -48,9 +48,6 @@
 		"../agent/src/external-modules.d.ts"
 	],
 	"exclude": [
-		"src/**/*.test.ts",
-		"src/**/*.spec.ts",
-		"src/**/__tests__/**",
 		"vitest.config.ts",
 		"node_modules",
 		"dist"

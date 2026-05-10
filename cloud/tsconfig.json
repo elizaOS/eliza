@@ -52,17 +52,16 @@
     "./packages/ui/src/components/**/*.tsx",
     "./packages/lib/**/*.ts",
     "./packages/lib/**/*.tsx",
-    "./packages/db/**/*.ts"
+    "./packages/db/**/*.ts",
+    "./packages/tests/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "ignore",
     "e2e",
     "scripts",
-    "tests",
     "**/*.stories.ts",
     "**/*.stories.tsx",
-    "**/__tests__/**",
     ".next",
     "out",
     "build",

@@ -65,7 +65,6 @@
     "build",
     "dist",
     "./packages/ui/src/components/**/*.stories.tsx",
-    "./packages/ui/src/components/**/*.stories.ts",
-    "./packages/ui/src/components/**/*.test.tsx"
+    "./packages/ui/src/components/**/*.stories.ts"
   ]
 }

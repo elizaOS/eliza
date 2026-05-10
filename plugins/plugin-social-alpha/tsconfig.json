@@ -24,9 +24,6 @@
 		"node_modules",
 		"dist",
 		"**/node_modules/**",
-		"**/*.test.ts",
-		"**/*.spec.ts",
-		"cypress/**/*",
 		"vitest.config.ts"
 	]
 }
