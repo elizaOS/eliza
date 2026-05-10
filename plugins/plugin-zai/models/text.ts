@@ -63,9 +63,9 @@ function resolveTextParams(
     : {};
 
   if (cotBudget > 0) {
-    const existingZai = providerOptions.zai ?? {};
-    (providerOptions as { zai: Record<string, unknown> }).zai = {
-      ...existingZai,
+    const existingAnthropic = providerOptions.anthropic ?? {};
+    (providerOptions as { anthropic: Record<string, unknown> }).anthropic = {
+      ...existingAnthropic,
       thinking: { type: "enabled", budgetTokens: cotBudget },
     };
   }
@@ -97,6 +97,10 @@ async function generateTextWithModel(
 
   const resolved = resolveTextParams(params, modelName, cotBudget);
 
+  const anthropicProviderOptions = resolved.providerOptions.anthropic
+    ? { anthropic: resolved.providerOptions.anthropic }
+    : undefined;
+
   const agentName = resolved.providerOptions.agentName;
   const telemetryConfig = {
     isEnabled: experimentalTelemetry,
@@ -115,9 +119,10 @@ async function generateTextWithModel(
     experimental_telemetry: telemetryConfig,
     maxTokens: resolved.maxTokens,
     topP: resolved.topP,
+    ...(anthropicProviderOptions ? { providerOptions: anthropicProviderOptions } : {}),
   };
 
-  const { text, usage } = await generateText(generateParams as Parameters<typeof generateText>[0]);
+  const { text, usage } = await generateText(generateParams as unknown as Parameters<typeof generateText>[0]);
 
   if (usage) {
     emitModelUsageEvent(runtime, modelType, usage);

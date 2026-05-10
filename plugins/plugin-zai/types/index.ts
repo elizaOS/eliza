@@ -6,10 +6,10 @@ export type ModelSize = "small" | "large";
 
 export interface ProviderOptions {
   readonly agentName?: string;
-  readonly zai?: ZaiProviderOptions;
+  readonly anthropic?: ZaiAnthropicProviderOptions;
 }
 
-export interface ZaiProviderOptions {
+export interface ZaiAnthropicProviderOptions {
   readonly thinking?: {
     readonly type: "enabled";
     readonly budgetTokens: number;
