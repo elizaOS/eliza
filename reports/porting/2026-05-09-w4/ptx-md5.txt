@@ -1,0 +1,12 @@
+84b144f46ff4b1a9aed88ab777b0aaf7  polarquant-sm80.ptx
+2c1444912e0467a094ddfaf60995745d  polarquant-sm86.ptx
+f99cd978b2d5245b187bcfee40795c21  polarquant-sm89.ptx
+595ad9a0bf256a334e1aba615e8ffaac  polarquant-sm90.ptx
+f2010da9939be12e9e4c8f8dcfbe6762  qjl-sm80.ptx
+ee907701ca18881c008bc6a2c61623cb  qjl-sm86.ptx
+d4d68045f433ddcd047f1301bdd554e9  qjl-sm89.ptx
+0c5ceed5a95dce45314eff0233a7775c  qjl-sm90.ptx
+26679f28dc5fd0c5290c635d354df346  turbo-tcq-sm80.ptx
+29ed92def67f00e2cf4df374524dd6f5  turbo-tcq-sm86.ptx
+f1a395f4c16ec69961e53b77c138a483  turbo-tcq-sm89.ptx
+5a512a5e68b1a20793ad9dd8e8b97d88  turbo-tcq-sm90.ptx
