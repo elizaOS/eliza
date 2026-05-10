@@ -542,17 +542,15 @@ export const calendarAction: Action & {
   // the planner sees it. See `12-real-root-cause.md`.
   contexts: ["general", "calendar", "contacts", "tasks", "connectors", "web"],
   roleGate: { minRole: "OWNER" },
-  subActions: [
-    googleCalendarAction,
-    proposeMeetingTimesAction,
-    checkAvailabilityAction,
-    updateMeetingPreferencesAction,
-  ],
-  subPlanner: {
-    name: "calendar_subplanner",
-    description:
-      "Explodes Google Calendar, availability, and preferences sub-actions for multi-step calendar work. Calendly and scheduling negotiation are separate top-level actions.",
-  },
+  // CALENDAR is a flat-subaction umbrella: every verb is selected via the
+  // `subaction` parameter enum below, and the handler routes via `route()`
+  // to the appropriate internal handler. The legacy `subActions` +
+  // `subPlanner` 2-layer dispatch was removed once `promoteSubactionsToActions`
+  // (in `plugin.ts`) gave the planner a discoverable top-level entry per
+  // subaction (e.g. `CALENDAR_FEED`, `CALENDAR_CREATE_EVENT`,
+  // `CALENDAR_PROPOSE_TIMES`). The internal handlers (Google Calendar,
+  // availability, preferences) stay imported as private implementation
+  // targets, not as registered child Actions.
   suppressPostActionContinuation: true,
   validate: async (
     runtime: IAgentRuntime,

@@ -46,11 +46,16 @@
         }
       ],
       "descriptionCompressed": "Broadcast 1-4 structured questions to the user (UI integration pending; non-blocking).",
-      "similes": ["ASK", "CLARIFY"],
+      "similes": [
+        "ASK",
+        "CLARIFY"
+      ],
       "exampleCalls": [
         {
           "user": "Use ASK_USER_QUESTION with the provided parameters.",
-          "actions": ["ASK_USER_QUESTION"],
+          "actions": [
+            "ASK_USER_QUESTION"
+          ],
           "params": {
             "ASK_USER_QUESTION": {
               "questions": "example"
@@ -97,11 +102,17 @@
         }
       ],
       "descriptionCompressed": "Run a shell command synchronously.",
-      "similes": ["SHELL", "EXEC", "RUN_COMMAND"],
+      "similes": [
+        "SHELL",
+        "EXEC",
+        "RUN_COMMAND"
+      ],
       "exampleCalls": [
         {
           "user": "Use BASH with the provided parameters.",
-          "actions": ["BASH"],
+          "actions": [
+            "BASH"
+          ],
           "params": {
             "BASH": {
               "command": "example",
@@ -198,7 +209,12 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": ["close", "list", "new", "switch"]
+            "enum": [
+              "close",
+              "list",
+              "new",
+              "switch"
+            ]
           }
         },
         {
@@ -361,7 +377,9 @@
       "exampleCalls": [
         {
           "user": "Use BROWSER with the provided parameters.",
-          "actions": ["BROWSER"],
+          "actions": [
+            "BROWSER"
+          ],
           "params": {
             "BROWSER": {
               "action": "back",
@@ -411,11 +429,17 @@
         }
       ],
       "descriptionCompressed": "Check owner free/busy for one ISO-8601 time window and list overlapping events.",
-      "similes": ["AM_I_FREE", "AVAILABILITY_CHECK", "FREE_BUSY"],
+      "similes": [
+        "AM_I_FREE",
+        "AVAILABILITY_CHECK",
+        "FREE_BUSY"
+      ],
       "exampleCalls": [
         {
           "user": "Use CHECK_AVAILABILITY with the provided parameters.",
-          "actions": ["CHECK_AVAILABILITY"],
+          "actions": [
+            "CHECK_AVAILABILITY"
+          ],
           "params": {
             "CHECK_AVAILABILITY": {
               "startAt": "example",
@@ -426,8 +450,57 @@
       ]
     },
     {
+      "name": "CHECKIN",
+      "description": "Owner-only. Run a LifeOps morning or night check-in now by assembling the owner's todos, habits, goals, inbox, calendar, and recent signals into a briefing.",
+      "parameters": [
+        {
+          "name": "kind",
+          "description": "morning or night. Infer from the user request when omitted.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timezone",
+          "description": "Optional IANA timezone override.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "run owner LifeOps check-in now: kind morning|night; returns briefing summary",
+      "similes": [
+        "CHECK_IN",
+        "LIFE_CHECK_IN",
+        "MORNING_CHECKIN",
+        "MORNING_CHECK_IN",
+        "NIGHT_CHECKIN",
+        "NIGHT_CHECK_IN",
+        "RUN_CHECKIN",
+        "RUN_MORNING_CHECKIN",
+        "RUN_NIGHT_CHECKIN",
+        "DAILY_BRIEF"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use CHECKIN with the provided parameters.",
+          "actions": [
+            "CHECKIN"
+          ],
+          "params": {
+            "CHECKIN": {
+              "kind": "example",
+              "timezone": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "CLEAR_LINEAR_ACTIVITY",
-      "description": "Clear the Linear activity log",
+      "description": "Clear the cached Linear activity log for the connected Linear account. Use when the user asks to reset, wipe, or refresh their Linear activity history before pulling a fresh view of recent issue and comment events.",
       "parameters": [],
       "descriptionCompressed": "clear Linear activity log",
       "similes": [
@@ -518,7 +591,11 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": ["left", "middle", "right"]
+            "enum": [
+              "left",
+              "middle",
+              "right"
+            ]
           }
         },
         {
@@ -537,7 +614,12 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": ["up", "down", "left", "right"]
+            "enum": [
+              "up",
+              "down",
+              "left",
+              "right"
+            ]
           }
         },
         {
@@ -575,7 +657,9 @@
       "exampleCalls": [
         {
           "user": "Use COMPUTER_USE with the provided parameters.",
-          "actions": ["COMPUTER_USE"],
+          "actions": [
+            "COMPUTER_USE"
+          ],
           "params": {
             "COMPUTER_USE": {
               "action": "screenshot",
@@ -624,7 +708,9 @@
       "exampleCalls": [
         {
           "user": "Use CREATE_LINEAR_COMMENT with the provided parameters.",
-          "actions": ["CREATE_LINEAR_COMMENT"],
+          "actions": [
+            "CREATE_LINEAR_COMMENT"
+          ],
           "params": {
             "CREATE_LINEAR_COMMENT": {
               "issueId": "example",
@@ -636,7 +722,7 @@
     },
     {
       "name": "CREATE_LINEAR_ISSUE",
-      "description": "Create a new issue in Linear",
+      "description": "Create a new Linear issue with title, description, priority, team, assignee, and labels. Use when the user wants to file, log, or track a new ticket, bug, story, or task in Linear from chat.",
       "parameters": [
         {
           "name": "issueData",
@@ -679,7 +765,9 @@
       "exampleCalls": [
         {
           "user": "Use CREATE_LINEAR_ISSUE with the provided parameters.",
-          "actions": ["CREATE_LINEAR_ISSUE"],
+          "actions": [
+            "CREATE_LINEAR_ISSUE"
+          ],
           "params": {
             "CREATE_LINEAR_ISSUE": {
               "issueData": "example"
@@ -690,7 +778,7 @@
     },
     {
       "name": "DELETE_LINEAR_COMMENT",
-      "description": "Delete a Linear comment by id",
+      "description": "Delete a specific Linear comment by its comment id. Use when the user asks to remove, retract, or erase a comment they previously left on a Linear issue.",
       "parameters": [
         {
           "name": "commentId",
@@ -702,11 +790,16 @@
         }
       ],
       "descriptionCompressed": "delete Linear comment id",
-      "similes": ["remove-linear-comment", "erase-linear-comment"],
+      "similes": [
+        "remove-linear-comment",
+        "erase-linear-comment"
+      ],
       "exampleCalls": [
         {
           "user": "Use DELETE_LINEAR_COMMENT with the provided parameters.",
-          "actions": ["DELETE_LINEAR_COMMENT"],
+          "actions": [
+            "DELETE_LINEAR_COMMENT"
+          ],
           "params": {
             "DELETE_LINEAR_COMMENT": {
               "commentId": "example"
@@ -738,7 +831,9 @@
       "exampleCalls": [
         {
           "user": "Use DELETE_LINEAR_ISSUE with the provided parameters.",
-          "actions": ["DELETE_LINEAR_ISSUE"],
+          "actions": [
+            "DELETE_LINEAR_ISSUE"
+          ],
           "params": {
             "DELETE_LINEAR_ISSUE": {
               "issueId": "example"
@@ -752,12 +847,16 @@
       "description": "Single DESKTOP action — dispatches local desktop operations through the computer-use service. ",
       "parameters": [
         {
-          "name": "op",
+          "name": "subaction",
           "description": "Desktop operation group. Reserved future values: screenshot, ocr, detect_elements (currently on COMPUTER_USE).",
           "required": true,
           "schema": {
             "type": "string",
-            "enum": ["screenshot", "ocr", "detect_elements"]
+            "enum": [
+              "screenshot",
+              "ocr",
+              "detect_elements"
+            ]
           }
         },
         {
@@ -967,10 +1066,12 @@
       "exampleCalls": [
         {
           "user": "Use DESKTOP with the provided parameters.",
-          "actions": ["DESKTOP"],
+          "actions": [
+            "DESKTOP"
+          ],
           "params": {
             "DESKTOP": {
-              "op": "screenshot",
+              "subaction": "screenshot",
               "action": "example",
               "path": "example",
               "filepath": "example",
@@ -1035,7 +1136,9 @@
       "exampleCalls": [
         {
           "user": "Use DISCORD_SETUP_CREDENTIALS with the provided parameters.",
-          "actions": ["DISCORD_SETUP_CREDENTIALS"],
+          "actions": [
+            "DISCORD_SETUP_CREDENTIALS"
+          ],
           "params": {
             "DISCORD_SETUP_CREDENTIALS": {
               "service": "example",
@@ -1083,11 +1186,16 @@
         }
       ],
       "descriptionCompressed": "Replace exact-match text in a file (single match by default; pass replace_all for multiple).",
-      "similes": ["EDIT_FILE", "MODIFY_FILE"],
+      "similes": [
+        "EDIT_FILE",
+        "MODIFY_FILE"
+      ],
       "exampleCalls": [
         {
           "user": "Use EDIT with the provided parameters.",
-          "actions": ["EDIT"],
+          "actions": [
+            "EDIT"
+          ],
           "params": {
             "EDIT": {
               "file_path": "example",
@@ -1129,11 +1237,17 @@
         }
       ],
       "descriptionCompressed": "Create and switch into a git worktree for parallel work.",
-      "similes": ["GIT_WORKTREE_ADD", "ADD_WORKTREE", "OPEN_WORKTREE"],
+      "similes": [
+        "GIT_WORKTREE_ADD",
+        "ADD_WORKTREE",
+        "OPEN_WORKTREE"
+      ],
       "exampleCalls": [
         {
           "user": "Use ENTER_WORKTREE with the provided parameters.",
-          "actions": ["ENTER_WORKTREE"],
+          "actions": [
+            "ENTER_WORKTREE"
+          ],
           "params": {
             "ENTER_WORKTREE": {
               "name": "example",
@@ -1158,30 +1272,23 @@
         }
       ],
       "descriptionCompressed": "Exit current worktree, restore previous cwd, optionally git worktree remove --force.",
-      "similes": ["LEAVE_WORKTREE", "POP_WORKTREE", "GIT_WORKTREE_REMOVE"],
+      "similes": [
+        "LEAVE_WORKTREE",
+        "POP_WORKTREE",
+        "GIT_WORKTREE_REMOVE"
+      ],
       "exampleCalls": [
         {
           "user": "Use EXIT_WORKTREE with the provided parameters.",
-          "actions": ["EXIT_WORKTREE"],
+          "actions": [
+            "EXIT_WORKTREE"
+          ],
           "params": {
             "EXIT_WORKTREE": {
               "cleanup": false
             }
           }
         }
-      ]
-    },
-    {
-      "name": "FILE",
-      "description": "File operations: read, write, or edit a file at an absolute path. ",
-      "parameters": [],
-      "descriptionCompressed": "File read/write/edit at absolute path.",
-      "similes": [
-        "READ_FILE",
-        "WRITE_FILE",
-        "EDIT_FILE",
-        "FILE_OPERATION",
-        "FILE_IO"
       ]
     },
     {
@@ -1218,7 +1325,9 @@
       "exampleCalls": [
         {
           "user": "Use FIRST_RUN with the provided parameters.",
-          "actions": ["FIRST_RUN"],
+          "actions": [
+            "FIRST_RUN"
+          ],
           "params": {
             "FIRST_RUN": {
               "path": "example",
@@ -1242,11 +1351,16 @@
         }
       ],
       "descriptionCompressed": "Restore stashed form session.",
-      "similes": ["RESUME_FORM", "CONTINUE_FORM"],
+      "similes": [
+        "RESUME_FORM",
+        "CONTINUE_FORM"
+      ],
       "exampleCalls": [
         {
           "user": "Use FORM_RESTORE with the provided parameters.",
-          "actions": ["FORM_RESTORE"],
+          "actions": [
+            "FORM_RESTORE"
+          ],
           "params": {
             "FORM_RESTORE": {
               "sessionId": "example"
@@ -1286,7 +1400,9 @@
       "exampleCalls": [
         {
           "user": "Use GET_LINEAR_ACTIVITY with the provided parameters.",
-          "actions": ["GET_LINEAR_ACTIVITY"],
+          "actions": [
+            "GET_LINEAR_ACTIVITY"
+          ],
           "params": {
             "GET_LINEAR_ACTIVITY": {
               "filters": "example",
@@ -1328,7 +1444,9 @@
       "exampleCalls": [
         {
           "user": "Use GET_LINEAR_ISSUE with the provided parameters.",
-          "actions": ["GET_LINEAR_ISSUE"],
+          "actions": [
+            "GET_LINEAR_ISSUE"
+          ],
           "params": {
             "GET_LINEAR_ISSUE": {
               "issueId": "example",
@@ -1371,11 +1489,15 @@
         }
       ],
       "descriptionCompressed": "Find files by glob (e.g. '**/*.ts'); returns absolute paths sorted by mtime.",
-      "similes": ["FIND_FILES"],
+      "similes": [
+        "FIND_FILES"
+      ],
       "exampleCalls": [
         {
           "user": "Use GLOB with the provided parameters.",
-          "actions": ["GLOB"],
+          "actions": [
+            "GLOB"
+          ],
           "params": {
             "GLOB": {
               "pattern": "example",
@@ -1427,7 +1549,11 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": ["content", "files_with_matches", "count"]
+            "enum": [
+              "content",
+              "files_with_matches",
+              "count"
+            ]
           }
         },
         {
@@ -1488,11 +1614,17 @@
         }
       ],
       "descriptionCompressed": "Ripgrep wrapper: regex search across files, returns matches/counts/files.",
-      "similes": ["SEARCH_CONTENT", "RIPGREP", "RG"],
+      "similes": [
+        "SEARCH_CONTENT",
+        "RIPGREP",
+        "RG"
+      ],
       "exampleCalls": [
         {
           "user": "Use GREP with the provided parameters.",
-          "actions": ["GREP"],
+          "actions": [
+            "GREP"
+          ],
           "params": {
             "GREP": {
               "pattern": "example",
@@ -1514,15 +1646,22 @@
     },
     {
       "name": "HEALTH",
-      "description": "Query health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura — sleep ",
+      "description": "Read health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura: sleep, steps, heart rate, workouts, calories, distance. Subactions: today, trend, by_metric, status. Read-only — never writes.",
       "parameters": [
         {
           "name": "subaction",
-          "description": "Which health query to run: today, trend, by_metric, status.",
+          "description": "Which health query to run: today (default daily summary), trend (multi-day), by_metric (single metric), status (backend connectivity).",
           "required": false,
           "schema": {
             "type": "string"
-          }
+          },
+          "examples": [
+            "today",
+            "trend",
+            "by_metric",
+            "status"
+          ],
+          "descriptionCompressed": "health query: today | trend | by_metric | status"
         },
         {
           "name": "intent",
@@ -1539,7 +1678,13 @@
           "required": false,
           "schema": {
             "type": "string"
-          }
+          },
+          "examples": [
+            "steps",
+            "sleep_hours",
+            "heart_rate"
+          ],
+          "descriptionCompressed": "by_metric: steps|heart_rate|sleep_hours|calories|distance_meters|active_minutes"
         },
         {
           "name": "date",
@@ -1547,18 +1692,30 @@
           "required": false,
           "schema": {
             "type": "string"
-          }
+          },
+          "examples": [
+            "2026-05-10"
+          ],
+          "descriptionCompressed": "YYYY-MM-DD single-day"
         },
         {
           "name": "days",
           "description": "Window size for trend and by_metric queries.",
           "required": false,
           "schema": {
-            "type": "number"
-          }
+            "type": "number",
+            "minimum": 1,
+            "maximum": 365
+          },
+          "examples": [
+            1,
+            7,
+            30
+          ],
+          "descriptionCompressed": "window days trend|by_metric"
         }
       ],
-      "descriptionCompressed": "health/fitness telemetry HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today | trend(days) | by_metric(steps heart-rate sleep calories distance workouts) | status",
+      "descriptionCompressed": "read health/fitness telemetry; subactions today|trend|by_metric|status; metrics steps|heart-rate|sleep|calories|distance|workouts; read-only",
       "similes": [
         "FITNESS",
         "WELLNESS",
@@ -1573,13 +1730,15 @@
       "exampleCalls": [
         {
           "user": "Use HEALTH with the provided parameters.",
-          "actions": ["HEALTH"],
+          "actions": [
+            "HEALTH"
+          ],
           "params": {
             "HEALTH": {
-              "subaction": "example",
+              "subaction": "today",
               "intent": "example",
-              "metric": "example",
-              "date": "example",
+              "metric": "steps",
+              "date": "2026-05-10",
               "days": 1
             }
           }
@@ -1652,7 +1811,9 @@
       "exampleCalls": [
         {
           "user": "Use LIFEOPS with the provided parameters.",
-          "actions": ["LIFEOPS"],
+          "actions": [
+            "LIFEOPS"
+          ],
           "params": {
             "LIFEOPS": {
               "verb": "example",
@@ -1671,7 +1832,7 @@
       "description": "Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
       "parameters": [
         {
-          "name": "op",
+          "name": "subaction",
           "description": "Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
           "required": false,
           "schema": {
@@ -1707,10 +1868,12 @@
       "exampleCalls": [
         {
           "user": "Use LINEAR with the provided parameters.",
-          "actions": ["LINEAR"],
+          "actions": [
+            "LINEAR"
+          ],
           "params": {
             "LINEAR": {
-              "op": "example"
+              "subaction": "example"
             }
           }
         }
@@ -1721,7 +1884,7 @@
       "description": "Single LP/liquidity management action. op=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences. dex=orca|raydium|meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted.",
       "parameters": [
         {
-          "name": "op",
+          "name": "subaction",
           "description": "Liquidity operation: onboard, list_pools, open, close, reposition, list_positions, get_position, set_preferences.",
           "required": true,
           "schema": {
@@ -1744,7 +1907,10 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": ["solana", "evm"]
+            "enum": [
+              "solana",
+              "evm"
+            ]
           }
         },
         {
@@ -1841,10 +2007,12 @@
       "exampleCalls": [
         {
           "user": "Use LIQUIDITY with the provided parameters.",
-          "actions": ["LIQUIDITY"],
+          "actions": [
+            "LIQUIDITY"
+          ],
           "params": {
             "LIQUIDITY": {
-              "op": "onboard",
+              "subaction": "onboard",
               "chain": "solana",
               "dex": "example",
               "pool": "example",
@@ -1855,6 +2023,48 @@
               "tokenB": "example",
               "chainId": 1,
               "slippageBps": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "LIST_ACTIVE_BLOCKS",
+      "description": "Report the current website blocker state by combining the live OS-level hosts/SelfControl status (active hosts, end time, permission notes) with LifeOps-managed block rules (id, gateType, websites, and gate target: todo id, ISO deadline, or fixed duration). Toggle either source via includeLiveStatus and includeManagedRules. Use only for website/app blocking status; do not use for inbox blockers, message priority, morning/night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
+      "parameters": [
+        {
+          "name": "includeLiveStatus",
+          "description": "Whether to include the current hosts-file/SelfControl live block state.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "includeManagedRules",
+          "description": "Whether to include managed LifeOps block rules and gate metadata.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "descriptionCompressed": "list-website-blocks: live hosts/SelfControl status + managed rules (gateType, target, websites)",
+      "similes": [
+        "LIST_BLOCK_RULES",
+        "SHOW_ACTIVE_BLOCKS",
+        "WEBSITE_BLOCKS_STATUS"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use LIST_ACTIVE_BLOCKS with the provided parameters.",
+          "actions": [
+            "LIST_ACTIVE_BLOCKS"
+          ],
+          "params": {
+            "LIST_ACTIVE_BLOCKS": {
+              "includeLiveStatus": false,
+              "includeManagedRules": false
             }
           }
         }
@@ -1890,7 +2100,9 @@
       "exampleCalls": [
         {
           "user": "Use LIST_LINEAR_COMMENTS with the provided parameters.",
-          "actions": ["LIST_LINEAR_COMMENTS"],
+          "actions": [
+            "LIST_LINEAR_COMMENTS"
+          ],
           "params": {
             "LIST_LINEAR_COMMENTS": {
               "issueId": "example",
@@ -1931,7 +2143,9 @@
       "exampleCalls": [
         {
           "user": "Use LIST_OVERDUE_FOLLOWUPS with the provided parameters.",
-          "actions": ["LIST_OVERDUE_FOLLOWUPS"],
+          "actions": [
+            "LIST_OVERDUE_FOLLOWUPS"
+          ],
           "params": {
             "LIST_OVERDUE_FOLLOWUPS": {
               "thresholdDays": 1,
@@ -1966,11 +2180,16 @@
         }
       ],
       "descriptionCompressed": "List a directory; dirs first, files second; supports ignore globs.",
-      "similes": ["LIST_DIR", "DIR"],
+      "similes": [
+        "LIST_DIR",
+        "DIR"
+      ],
       "exampleCalls": [
         {
           "user": "Use LS with the provided parameters.",
-          "actions": ["LS"],
+          "actions": [
+            "LS"
+          ],
           "params": {
             "LS": {
               "path": "example",
@@ -2019,7 +2238,9 @@
       "exampleCalls": [
         {
           "user": "Use MARK_FOLLOWUP_DONE with the provided parameters.",
-          "actions": ["MARK_FOLLOWUP_DONE"],
+          "actions": [
+            "MARK_FOLLOWUP_DONE"
+          ],
           "params": {
             "MARK_FOLLOWUP_DONE": {
               "contactId": "example",
@@ -2035,7 +2256,7 @@
       "description": "Single MCP entry point. Use op=call_tool to invoke an MCP tool, op=read_resource to read an MCP resource. Cloud runtimes also accept op=search_actions and op=list_connections.",
       "parameters": [
         {
-          "name": "op",
+          "name": "subaction",
           "description": "MCP operation: call_tool | read_resource | search_actions | list_connections",
           "required": false,
           "schema": {
@@ -2140,10 +2361,12 @@
       "exampleCalls": [
         {
           "user": "Use MCP with the provided parameters.",
-          "actions": ["MCP"],
+          "actions": [
+            "MCP"
+          ],
           "params": {
             "MCP": {
-              "op": "call_tool",
+              "subaction": "call_tool",
               "serverName": "example",
               "toolName": "example",
               "arguments": "example",
@@ -2158,8 +2381,8 @@
       ]
     },
     {
-      "name": "MESSAGE.handoff",
-      "description": "Multi-party room handoff control. verb=enter flips the current room into handoff mode (agent stops contributing until the resume condition fires); verb=resume exits handoff; verb=status reports state.",
+      "name": "MESSAGE_HANDOFF",
+      "description": "Hand off a multi-party room to the human owner. Verbs: enter (agent stops contributing until the resume condition fires), resume (agent rejoins), status (report current handoff state).",
       "parameters": [
         {
           "name": "verb",
@@ -2210,8 +2433,9 @@
           }
         }
       ],
-      "descriptionCompressed": "MESSAGE.handoff verb: enter|resume|status; gates agent contributions per resumeOn condition.",
+      "descriptionCompressed": "room handoff: enter|resume|status; gates agent per resumeOn condition",
       "similes": [
+        "MESSAGE.handoff",
         "HANDOFF",
         "HAND_OFF",
         "STEP_BACK",
@@ -2222,10 +2446,12 @@
       ],
       "exampleCalls": [
         {
-          "user": "Use MESSAGE.handoff with the provided parameters.",
-          "actions": ["MESSAGE.handoff"],
+          "user": "Use MESSAGE_HANDOFF with the provided parameters.",
+          "actions": [
+            "MESSAGE_HANDOFF"
+          ],
           "params": {
-            "MESSAGE.handoff": {
+            "MESSAGE_HANDOFF": {
               "verb": "example",
               "reason": "example",
               "resumeKind": "example",
@@ -2242,7 +2468,7 @@
       "description": "Unified music action. Use flat op for everything: library (playlist, play_query, search_youtube, download), playback transport (pause, resume, skip, stop, queue), play_audio, routing, zones. ",
       "parameters": [
         {
-          "name": "op",
+          "name": "subaction",
           "description": "Flat operation: playlist | play_query | search_youtube | download | pause | resume | skip | stop | queue | play_audio | routing | zones (hyphens and legacy aliases accepted).",
           "required": false,
           "schema": {
@@ -2362,10 +2588,11 @@
       "exampleCalls": [
         {
           "user": "Use MUSIC with the provided parameters.",
-          "actions": ["MUSIC"],
+          "actions": [
+            "MUSIC"
+          ],
           "params": {
             "MUSIC": {
-              "op": "playlist",
               "subaction": "example",
               "query": "example",
               "url": "example",
@@ -2392,7 +2619,11 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": ["generate", "custom", "extend"]
+            "enum": [
+              "generate",
+              "custom",
+              "extend"
+            ]
           }
         },
         {
@@ -2433,7 +2664,9 @@
       "exampleCalls": [
         {
           "user": "Use MUSIC_GENERATION with the provided parameters.",
-          "actions": ["MUSIC_GENERATION"],
+          "actions": [
+            "MUSIC_GENERATION"
+          ],
           "params": {
             "MUSIC_GENERATION": {
               "subaction": "generate",
@@ -2447,36 +2680,39 @@
     },
     {
       "name": "MUSIC_LIBRARY",
-      "description": "Consolidated music library action. Use op=playlist with subaction=save, load, delete, or add for playlist management; op=play-query to research and queue complex music requests; op=search-youtube to return YouTube links; op=download to fetch music into the local library. Queue changes, downloads, and playlist mutations require confirmed:true.",
+      "description": "Consolidated music library action. Use subaction=playlist with playlistOp=save, load, delete, or add for playlist management; subaction=play_query to research and queue complex music requests; subaction=search_youtube to return YouTube links; subaction=download to fetch music into the local library. Queue changes, downloads, and playlist mutations require confirmed:true.",
       "parameters": [
         {
-          "name": "op",
-          "description": "Music library operation: playlist, play-query, search-youtube, or download.",
+          "name": "subaction",
+          "description": "Music library operation: playlist, play_query, search_youtube, or download.",
           "required": true,
           "schema": {
             "type": "string",
             "enum": [
               "playlist",
-              "play-query",
               "play_query",
-              "search-youtube",
               "search_youtube",
               "download"
             ]
           }
         },
         {
-          "name": "subaction",
-          "description": "Playlist subaction when op=playlist: save, load, delete, or add.",
+          "name": "playlistOp",
+          "description": "Playlist operation when subaction=playlist: save, load, delete, or add.",
           "required": false,
           "schema": {
             "type": "string",
-            "enum": ["save", "load", "delete", "add"]
+            "enum": [
+              "save",
+              "load",
+              "delete",
+              "add"
+            ]
           }
         },
         {
           "name": "query",
-          "description": "Song, artist, album, or video query for play-query, search-youtube, download, or playlist add.",
+          "description": "Song, artist, album, or video query for play_query, search_youtube, download, or playlist add.",
           "required": false,
           "schema": {
             "type": "string"
@@ -2519,15 +2755,17 @@
           }
         }
       ],
-      "descriptionCompressed": "Music library ops: playlist(subaction save/load/delete/add), play-query, search-youtube, download. Mutations require confirmed:true.",
+      "descriptionCompressed": "Music library subactions: playlist(playlistOp save/load/delete/add), play_query, search_youtube, download. Mutations require confirmed:true.",
       "exampleCalls": [
         {
           "user": "Use MUSIC_LIBRARY with the provided parameters.",
-          "actions": ["MUSIC_LIBRARY"],
+          "actions": [
+            "MUSIC_LIBRARY"
+          ],
           "params": {
             "MUSIC_LIBRARY": {
-              "op": "playlist",
-              "subaction": "save",
+              "subaction": "playlist",
+              "playlistOp": "save",
               "query": "example",
               "playlistName": "example",
               "song": "example",
@@ -2568,11 +2806,17 @@
         }
       ],
       "descriptionCompressed": "publish update bot Nostr profile (kind: 0 metadata)",
-      "similes": ["UPDATE_NOSTR_PROFILE", "SET_NOSTR_PROFILE", "NOSTR_PROFILE"],
+      "similes": [
+        "UPDATE_NOSTR_PROFILE",
+        "SET_NOSTR_PROFILE",
+        "NOSTR_PROFILE"
+      ],
       "exampleCalls": [
         {
           "user": "Use NOSTR_PUBLISH_PROFILE with the provided parameters.",
-          "actions": ["NOSTR_PUBLISH_PROFILE"],
+          "actions": [
+            "NOSTR_PUBLISH_PROFILE"
+          ],
           "params": {
             "NOSTR_PUBLISH_PROFILE": {
               "name": "example",
@@ -2588,12 +2832,15 @@
       "description": "Payment router for the active mysticism reading session. Set op to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
       "parameters": [
         {
-          "name": "op",
+          "name": "subaction",
           "description": "Operation: check or request.",
           "required": true,
           "schema": {
             "type": "string",
-            "enum": ["check", "request"]
+            "enum": [
+              "check",
+              "request"
+            ]
           }
         },
         {
@@ -2634,10 +2881,12 @@
       "exampleCalls": [
         {
           "user": "Use PAYMENT with the provided parameters.",
-          "actions": ["PAYMENT"],
+          "actions": [
+            "PAYMENT"
+          ],
           "params": {
             "PAYMENT": {
-              "op": "check",
+              "subaction": "check",
               "amount": "example",
               "entityId": "example",
               "roomId": "example"
@@ -2660,11 +2909,19 @@
         }
       ],
       "descriptionCompressed": "Place a phone call via Android Telecom. Requires CALL_PHONE permission.",
-      "similes": ["CALL", "DIAL", "RING", "PHONE_CALL", "MAKE_CALL"],
+      "similes": [
+        "CALL",
+        "DIAL",
+        "RING",
+        "PHONE_CALL",
+        "MAKE_CALL"
+      ],
       "exampleCalls": [
         {
           "user": "Use PLACE_CALL with the provided parameters.",
-          "actions": ["PLACE_CALL"],
+          "actions": [
+            "PLACE_CALL"
+          ],
           "params": {
             "PLACE_CALL": {
               "phoneNumber": "example"
@@ -2721,7 +2978,9 @@
       "exampleCalls": [
         {
           "user": "Use PLAY_AUDIO with the provided parameters.",
-          "actions": ["PLAY_AUDIO"],
+          "actions": [
+            "PLAY_AUDIO"
+          ],
           "params": {
             "PLAY_AUDIO": {
               "query": "example",
@@ -2759,7 +3018,9 @@
       "exampleCalls": [
         {
           "user": "Use PLAY_EMOTE with the provided parameters.",
-          "actions": ["PLAY_EMOTE"],
+          "actions": [
+            "PLAY_EMOTE"
+          ],
           "params": {
             "PLAY_EMOTE": {
               "emote": "example"
@@ -2773,12 +3034,18 @@
       "description": "Music playback control. Use op=pause, resume, skip, stop, or queue. ",
       "parameters": [
         {
-          "name": "op",
+          "name": "subaction",
           "description": "Playback operation: pause, resume, skip, stop, or queue.",
           "required": true,
           "schema": {
             "type": "string",
-            "enum": ["pause", "resume", "skip", "stop", "queue"]
+            "enum": [
+              "pause",
+              "resume",
+              "skip",
+              "stop",
+              "queue"
+            ]
           }
         },
         {
@@ -2816,10 +3083,12 @@
       "exampleCalls": [
         {
           "user": "Use PLAYBACK with the provided parameters.",
-          "actions": ["PLAYBACK"],
+          "actions": [
+            "PLAYBACK"
+          ],
           "params": {
             "PLAYBACK": {
-              "op": "pause",
+              "subaction": "pause",
               "query": "example",
               "confirmed": false
             }
@@ -2857,11 +3126,20 @@
         }
       ],
       "descriptionCompressed": "Read a file by absolute path; returns numbered lines (offset/limit supported).",
-      "similes": ["READ_FILE", "CAT", "OPEN_FILE"],
+      "similes": [
+        "READ_FILE",
+        "CAT",
+        "OPEN_FILE",
+        "FILE",
+        "FILE_OPERATION",
+        "FILE_IO"
+      ],
       "exampleCalls": [
         {
           "user": "Use READ with the provided parameters.",
-          "actions": ["READ"],
+          "actions": [
+            "READ"
+          ],
           "params": {
             "READ": {
               "file_path": "example",
@@ -2882,7 +3160,11 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": ["tarot", "astrology", "iching"]
+            "enum": [
+              "tarot",
+              "astrology",
+              "iching"
+            ]
           }
         },
         {
@@ -2891,7 +3173,11 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": ["start", "followup", "deepen"]
+            "enum": [
+              "start",
+              "followup",
+              "deepen"
+            ]
           }
         },
         {
@@ -2939,7 +3225,9 @@
       "exampleCalls": [
         {
           "user": "Use READING with the provided parameters.",
-          "actions": ["READING"],
+          "actions": [
+            "READING"
+          ],
           "params": {
             "READING": {
               "type": "tarot",
@@ -2952,11 +3240,62 @@
       ]
     },
     {
+      "name": "RELEASE_BLOCK",
+      "description": "Release an active website block rule. Requires confirmed:true. ",
+      "parameters": [
+        {
+          "name": "ruleId",
+          "description": "ID of the block rule to release.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "confirmed",
+          "description": "Must be true to release. Prevents accidental unblocking.",
+          "required": true,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "reason",
+          "description": "Optional reason for release, stored on the rule.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Release a website block rule; requires confirmation.",
+      "similes": [
+        "RELEASE_WEBSITE_BLOCK",
+        "END_BLOCK_RULE",
+        "BYPASS_BLOCK_RULE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use RELEASE_BLOCK with the provided parameters.",
+          "actions": [
+            "RELEASE_BLOCK"
+          ],
+          "params": {
+            "RELEASE_BLOCK": {
+              "ruleId": "example",
+              "confirmed": false,
+              "reason": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "RS_2004",
       "description": "Drive the 2004scape game agent. Choose one op (walk_to, chop, mine, fish, burn, cook, fletch, craft, smith, drop, pickup, equip, unequip, use, use_on_item, use_on_object, open, close, deposit, withdraw, buy, sell, attack, cast_spell, set_style, eat, talk, navigate_dialog, interact_object, open_door, pickpocket). For open/close, set target='bank' or target='shop' (or include npc to imply shop). Per-op fields go in params.",
       "parameters": [
         {
-          "name": "op",
+          "name": "subaction",
           "description": "Operation to run.",
           "required": true,
           "schema": {
@@ -2978,10 +3317,12 @@
       "exampleCalls": [
         {
           "user": "Use RS_2004 with the provided parameters.",
-          "actions": ["RS_2004"],
+          "actions": [
+            "RS_2004"
+          ],
           "params": {
             "RS_2004": {
-              "op": "example",
+              "subaction": "example",
               "params": "example"
             }
           }
@@ -2993,7 +3334,7 @@
       "description": "Drive the 'scape (xRSPS) game agent. Pick one op: walk_to (x,z,run?), attack (npcId), chat_public (message), eat (item?), drop (item), set_goal (title,notes?), complete_goal (status?,goalId?,notes?), remember (notes,kind?,weight?). Returns success and a short status message; the autonomous loop already handles its own dispatch — this is the planner-facing surface.",
       "parameters": [
         {
-          "name": "op",
+          "name": "subaction",
           "description": "Operation to run.",
           "required": true,
           "schema": {
@@ -3038,10 +3379,12 @@
       "exampleCalls": [
         {
           "user": "Use SCAPE with the provided parameters.",
-          "actions": ["SCAPE"],
+          "actions": [
+            "SCAPE"
+          ],
           "params": {
             "SCAPE": {
-              "op": "example",
+              "subaction": "example",
               "params": "example"
             }
           }
@@ -3054,31 +3397,50 @@
       "parameters": [
         {
           "name": "subaction",
-          "description": "Optional. summary or inspect.",
+          "description": "Optional. summary (high-level circadian answer; default) or inspect (evidence windows, sleep episodes, meal candidates).",
           "required": false,
           "schema": {
-            "type": "string"
-          }
+            "type": "string",
+            "enum": [
+              "summary",
+              "inspect"
+            ]
+          },
+          "examples": [
+            "summary",
+            "inspect"
+          ],
+          "descriptionCompressed": "schedule op: summary | inspect"
         },
         {
           "name": "timezone",
-          "description": "Optional IANA timezone override.",
+          "description": "Optional IANA timezone override (e.g. America/Los_Angeles).",
           "required": false,
           "schema": {
             "type": "string"
-          }
+          },
+          "examples": [
+            "America/Los_Angeles",
+            "UTC"
+          ],
+          "descriptionCompressed": "IANA tz override"
         }
       ],
       "descriptionCompressed": "passive schedule inference activity+screen-time+health: summary | inspect(sleep meals evidence-windows)",
-      "similes": ["SLEEP_INFERENCE", "MEAL_INFERENCE"],
+      "similes": [
+        "SLEEP_INFERENCE",
+        "MEAL_INFERENCE"
+      ],
       "exampleCalls": [
         {
           "user": "Use SCHEDULE with the provided parameters.",
-          "actions": ["SCHEDULE"],
+          "actions": [
+            "SCHEDULE"
+          ],
           "params": {
             "SCHEDULE": {
-              "subaction": "example",
-              "timezone": "example"
+              "subaction": "summary",
+              "timezone": "America/Los_Angeles"
             }
           }
         }
@@ -3115,7 +3477,9 @@
       "exampleCalls": [
         {
           "user": "Use SEARCH_LINEAR_ISSUES with the provided parameters.",
-          "actions": ["SEARCH_LINEAR_ISSUES"],
+          "actions": [
+            "SEARCH_LINEAR_ISSUES"
+          ],
           "params": {
             "SEARCH_LINEAR_ISSUES": {
               "filters": "example",
@@ -3162,7 +3526,9 @@
       "exampleCalls": [
         {
           "user": "Use SET_FOLLOWUP_THRESHOLD with the provided parameters.",
-          "actions": ["SET_FOLLOWUP_THRESHOLD"],
+          "actions": [
+            "SET_FOLLOWUP_THRESHOLD"
+          ],
           "params": {
             "SET_FOLLOWUP_THRESHOLD": {
               "contactId": "example",
@@ -3178,7 +3544,7 @@
       "description": "Manage a Shopify store. Operations: search (read-only catalog browsing across products, orders, and customers), products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers). Op is inferred from the message text when not explicitly provided.",
       "parameters": [
         {
-          "name": "op",
+          "name": "subaction",
           "description": "Operation to perform. One of: search, products, inventory, orders, customers. Inferred from message text when omitted.",
           "required": false,
           "schema": {
@@ -3199,7 +3565,12 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": ["all", "products", "orders", "customers"]
+            "enum": [
+              "all",
+              "products",
+              "orders",
+              "customers"
+            ]
           }
         },
         {
@@ -3236,10 +3607,12 @@
       "exampleCalls": [
         {
           "user": "Use SHOPIFY with the provided parameters.",
-          "actions": ["SHOPIFY"],
+          "actions": [
+            "SHOPIFY"
+          ],
           "params": {
             "SHOPIFY": {
-              "op": "example",
+              "subaction": "example",
               "query": "example",
               "scope": "all",
               "limit": 1
@@ -3253,7 +3626,7 @@
       "description": "Manage skill catalog. Operations: search (browse available skills), details (info about a specific skill), sync (refresh catalog from registry), toggle (enable/disable installed skill), install (install from registry), uninstall (remove non-bundled skill). For invoking an enabled skill, use USE_SKILL instead.",
       "parameters": [
         {
-          "name": "op",
+          "name": "subaction",
           "description": "Operation to perform. One of: search, details, sync, toggle, install, uninstall. Inferred from message text when omitted.",
           "required": false,
           "schema": {
@@ -3262,13 +3635,28 @@
         }
       ],
       "descriptionCompressed": "Skill catalog: search, details, sync, toggle, install, uninstall.",
+      "similes": [
+        "MANAGE_SKILL",
+        "MANAGE_SKILLS",
+        "SKILL_CATALOG",
+        "SKILLS",
+        "AGENT_SKILL",
+        "AGENT_SKILLS",
+        "INSTALL_SKILL",
+        "UNINSTALL_SKILL",
+        "SEARCH_SKILLS",
+        "SYNC_SKILL_CATALOG",
+        "TOGGLE_SKILL"
+      ],
       "exampleCalls": [
         {
           "user": "Use SKILL with the provided parameters.",
-          "actions": ["SKILL"],
+          "actions": [
+            "SKILL"
+          ],
           "params": {
             "SKILL": {
-              "op": "example"
+              "subaction": "example"
             }
           }
         }
@@ -3278,7 +3666,12 @@
       "name": "START_TUNNEL",
       "description": "Start an ngrok tunnel to expose a local port to the internet. Supports action chaining by providing tunnel metadata that can be used for webhook configuration, API testing, or remote access workflows.",
       "parameters": [],
-      "similes": ["OPEN_TUNNEL", "CREATE_TUNNEL", "NGROK_START", "TUNNEL_UP"]
+      "similes": [
+        "OPEN_TUNNEL",
+        "CREATE_TUNNEL",
+        "NGROK_START",
+        "TUNNEL_UP"
+      ]
     },
     {
       "name": "STOP_TUNNEL",
@@ -3296,7 +3689,7 @@
       "description": "Tailscale tunnel router. Operations: start (open tunnel for a local port), stop (close active tunnel). Status reads come from the tailscaleStatus provider.",
       "parameters": [
         {
-          "name": "op",
+          "name": "subaction",
           "description": "Tunnel operation. One of: start, stop.",
           "required": true,
           "schema": {
@@ -3324,10 +3717,12 @@
       "exampleCalls": [
         {
           "user": "Use TAILSCALE with the provided parameters.",
-          "actions": ["TAILSCALE"],
+          "actions": [
+            "TAILSCALE"
+          ],
           "params": {
             "TAILSCALE": {
-              "op": "example",
+              "subaction": "example",
               "port": 1,
               "accountId": "example"
             }
@@ -3337,10 +3732,10 @@
     },
     {
       "name": "TODO",
-      "description": "Manage the user's todo list. Op-based dispatch — provide an `op` parameter:\n",
+      "description": "Manage the user's todo list. Subactions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
       "parameters": [
         {
-          "name": "op",
+          "name": "subaction",
           "description": "Operation: write, create, update, complete, cancel, delete, list, clear.",
           "required": true,
           "schema": {
@@ -3429,7 +3824,7 @@
           }
         }
       ],
-      "descriptionCompressed": "todo manage list; op: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId).",
+      "descriptionCompressed": "todos: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId)",
       "similes": [
         "TODO_WRITE",
         "WRITE_TODOS",
@@ -3457,10 +3852,12 @@
       "exampleCalls": [
         {
           "user": "Use TODO with the provided parameters.",
-          "actions": ["TODO"],
+          "actions": [
+            "TODO"
+          ],
           "params": {
             "TODO": {
-              "op": "example",
+              "subaction": "example",
               "id": "example",
               "content": "example",
               "activeForm": "example",
@@ -3515,7 +3912,9 @@
       "exampleCalls": [
         {
           "user": "Use TUNNEL with the provided parameters.",
-          "actions": ["TUNNEL"],
+          "actions": [
+            "TUNNEL"
+          ],
           "params": {
             "TUNNEL": {
               "op": "example",
@@ -3547,7 +3946,9 @@
       "exampleCalls": [
         {
           "user": "Use UPDATE_LINEAR_ISSUE with the provided parameters.",
-          "actions": ["UPDATE_LINEAR_ISSUE"],
+          "actions": [
+            "UPDATE_LINEAR_ISSUE"
+          ],
           "params": {
             "UPDATE_LINEAR_ISSUE": {
               "issueId": "example"
@@ -3560,7 +3961,17 @@
       "name": "USE_SKILL",
       "description": "Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
       "parameters": [],
-      "descriptionCompressed": "Invoke an enabled skill by slug."
+      "descriptionCompressed": "Invoke an enabled skill by slug.",
+      "similes": [
+        "INVOKE_SKILL",
+        "RUN_SKILL",
+        "EXECUTE_SKILL",
+        "CALL_SKILL",
+        "USE_AGENT_SKILL",
+        "RUN_AGENT_SKILL",
+        "USE_CAPABILITY",
+        "RUN_CAPABILITY"
+      ]
     },
     {
       "name": "WEB_FETCH",
@@ -3584,11 +3995,17 @@
         }
       ],
       "descriptionCompressed": "Fetch http(s) URL and return body as plain text (HTML stripped, capped).",
-      "similes": ["FETCH_URL", "GET_URL", "DOWNLOAD_PAGE"],
+      "similes": [
+        "FETCH_URL",
+        "GET_URL",
+        "DOWNLOAD_PAGE"
+      ],
       "exampleCalls": [
         {
           "user": "Use WEB_FETCH with the provided parameters.",
-          "actions": ["WEB_FETCH"],
+          "actions": [
+            "WEB_FETCH"
+          ],
           "params": {
             "WEB_FETCH": {
               "url": "example",
@@ -3620,11 +4037,16 @@
         }
       ],
       "descriptionCompressed": "Write a file at an absolute path (creates parents; rejects if existing file was not READ first).",
-      "similes": ["WRITE_FILE", "CREATE_FILE"],
+      "similes": [
+        "WRITE_FILE",
+        "CREATE_FILE"
+      ],
       "exampleCalls": [
         {
           "user": "Use WRITE with the provided parameters.",
-          "actions": ["WRITE"],
+          "actions": [
+            "WRITE"
+          ],
           "params": {
             "WRITE": {
               "file_path": "example",

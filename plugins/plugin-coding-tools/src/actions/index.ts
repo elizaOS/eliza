@@ -1,4 +1,3 @@
-export { fileAction } from "./file.js";
 export { readAction } from "./read.js";
 export { writeAction } from "./write.js";
 export { editAction } from "./edit.js";

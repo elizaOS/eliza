@@ -2,13 +2,15 @@ import type { Plugin } from "@elizaos/core";
 import {
   askUserQuestionAction,
   bashAction,
+  editAction,
   enterWorktreeAction,
   exitWorktreeAction,
-  fileAction,
   globAction,
   grepAction,
   lsAction,
+  readAction,
   webFetchAction,
+  writeAction,
 } from "./actions/index.js";
 import { availableToolsProvider } from "./providers/available-tools.js";
 import {
@@ -21,7 +23,7 @@ import {
 export const codingToolsPlugin: Plugin = {
   name: "coding-tools",
   description:
-    "Native Claude-Code-style coding tools. FILE (read/write/edit subactions), BASH, GREP, GLOB, LS, WEB_FETCH, ASK_USER_QUESTION, ENTER_WORKTREE, EXIT_WORKTREE. The TODO umbrella action (op-based CRUD) is provided by @elizaos/plugin-todos. WEB_SEARCH is provided by core/agent. All file paths must be absolute. Blocks user-private + per-OS system paths by default.",
+    "Native Claude-Code-style coding tools. READ, WRITE, EDIT (separate file ops, each with its own param shape), BASH, GREP, GLOB, LS, WEB_FETCH, ASK_USER_QUESTION, ENTER_WORKTREE, EXIT_WORKTREE. The TODO umbrella action (op-based CRUD) is provided by @elizaos/plugin-todos. WEB_SEARCH is provided by core/agent. All file paths must be absolute. Blocks user-private + per-OS system paths by default.",
   services: [
     FileStateService,
     SandboxService,
@@ -30,7 +32,9 @@ export const codingToolsPlugin: Plugin = {
   ],
   providers: [availableToolsProvider],
   actions: [
-    fileAction,
+    readAction,
+    writeAction,
+    editAction,
     bashAction,
     grepAction,
     globAction,

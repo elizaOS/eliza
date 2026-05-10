@@ -3281,7 +3281,8 @@ export const allActionsSpec = {
 		},
 		{
 			name: "CLEAR_LINEAR_ACTIVITY",
-			description: "Clear the Linear activity log",
+			description:
+				"Clear the cached Linear activity log for the connected Linear account. Use when the user asks to reset, wipe, or refresh their Linear activity history before pulling a fresh view of recent issue and comment events.",
 			parameters: [],
 			descriptionCompressed: "clear Linear activity log",
 			similes: [
@@ -3507,7 +3508,8 @@ export const allActionsSpec = {
 		},
 		{
 			name: "CREATE_LINEAR_ISSUE",
-			description: "Create a new issue in Linear",
+			description:
+				"Create a new Linear issue with title, description, priority, team, assignee, and labels. Use when the user wants to file, log, or track a new ticket, bug, story, or task in Linear from chat.",
 			parameters: [
 				{
 					name: "issueData",
@@ -3558,7 +3560,8 @@ export const allActionsSpec = {
 		},
 		{
 			name: "DELETE_LINEAR_COMMENT",
-			description: "Delete a Linear comment by id",
+			description:
+				"Delete a specific Linear comment by its comment id. Use when the user asks to remove, retract, or erase a comment they previously left on a Linear issue.",
 			parameters: [
 				{
 					name: "commentId",
@@ -3623,7 +3626,7 @@ export const allActionsSpec = {
 				"Single DESKTOP action — dispatches local desktop operations through the computer-use service. ",
 			parameters: [
 				{
-					name: "op",
+					name: "subaction",
 					description:
 						"Desktop operation group. Reserved future values: screenshot, ocr, detect_elements (currently on COMPUTER_USE).",
 					required: true,
@@ -3877,7 +3880,7 @@ export const allActionsSpec = {
 					actions: ["DESKTOP"],
 					params: {
 						DESKTOP: {
-							op: "screenshot",
+							subaction: "screenshot",
 							action: "example",
 							path: "example",
 							filepath: "example",
@@ -4104,20 +4107,6 @@ export const allActionsSpec = {
 						},
 					},
 				},
-			],
-		},
-		{
-			name: "FILE",
-			description:
-				"File operations: read, write, or edit a file at an absolute path. ",
-			parameters: [],
-			descriptionCompressed: "File read/write/edit at absolute path.",
-			similes: [
-				"READ_FILE",
-				"WRITE_FILE",
-				"EDIT_FILE",
-				"FILE_OPERATION",
-				"FILE_IO",
 			],
 		},
 		{
@@ -4505,18 +4494,19 @@ export const allActionsSpec = {
 		{
 			name: "HEALTH",
 			description:
-				"Query health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura — sleep ",
+				"Read health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura: sleep, steps, heart rate, workouts, calories, distance. Subactions: today, trend, by_metric, status. Read-only — never writes.",
 			parameters: [
 				{
 					name: "subaction",
 					description:
-						"Which health query to run: today, trend, by_metric, status.",
+						"Which health query to run: today (default daily summary), trend (multi-day), by_metric (single metric), status (backend connectivity).",
 					required: false,
 					schema: {
 						type: "string",
 					},
+					examples: ["today", "trend", "by_metric", "status"],
 					descriptionCompressed:
-						"Which health query to run: today, trend, by_metric, status.",
+						"health query: today | trend | by_metric | status",
 				},
 				{
 					name: "intent",
@@ -4536,8 +4526,9 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
+					examples: ["steps", "sleep_hours", "heart_rate"],
 					descriptionCompressed:
-						"Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
+						"by_metric: steps|heart_rate|sleep_hours|calories|distance_meters|active_minutes",
 				},
 				{
 					name: "date",
@@ -4546,7 +4537,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "YYYY-MM-DD for single-day queries.",
+					examples: ["2026-05-10"],
+					descriptionCompressed: "YYYY-MM-DD single-day",
 				},
 				{
 					name: "days",
@@ -4554,12 +4546,15 @@ export const allActionsSpec = {
 					required: false,
 					schema: {
 						type: "number",
+						minimum: 1,
+						maximum: 365,
 					},
-					descriptionCompressed: "Window size for trend and by_metric queries.",
+					examples: [1, 7, 30],
+					descriptionCompressed: "window days trend|by_metric",
 				},
 			],
 			descriptionCompressed:
-				"health/fitness telemetry HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today | trend(days) | by_metric(steps heart-rate sleep calories distance workouts) | status",
+				"read health/fitness telemetry; subactions today|trend|by_metric|status; metrics steps|heart-rate|sleep|calories|distance|workouts; read-only",
 			similes: [
 				"FITNESS",
 				"WELLNESS",
@@ -4577,10 +4572,10 @@ export const allActionsSpec = {
 					actions: ["HEALTH"],
 					params: {
 						HEALTH: {
-							subaction: "example",
+							subaction: "today",
 							intent: "example",
-							metric: "example",
-							date: "example",
+							metric: "steps",
+							date: "2026-05-10",
 							days: 1,
 						},
 					},
@@ -4688,7 +4683,7 @@ export const allActionsSpec = {
 				"Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
 			parameters: [
 				{
-					name: "op",
+					name: "subaction",
 					description:
 						"Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
 					required: false,
@@ -4731,7 +4726,7 @@ export const allActionsSpec = {
 					actions: ["LINEAR"],
 					params: {
 						LINEAR: {
-							op: "example",
+							subaction: "example",
 						},
 					},
 				},
@@ -4743,7 +4738,7 @@ export const allActionsSpec = {
 				"Single LP/liquidity management action. op=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences. dex=orca|raydium|meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted.",
 			parameters: [
 				{
-					name: "op",
+					name: "subaction",
 					description:
 						"Liquidity operation: onboard, list_pools, open, close, reposition, list_positions, get_position, set_preferences.",
 					required: true,
@@ -4884,7 +4879,7 @@ export const allActionsSpec = {
 					actions: ["LIQUIDITY"],
 					params: {
 						LIQUIDITY: {
-							op: "onboard",
+							subaction: "onboard",
 							chain: "solana",
 							dex: "example",
 							pool: "example",
@@ -5153,7 +5148,7 @@ export const allActionsSpec = {
 				"Single MCP entry point. Use op=call_tool to invoke an MCP tool, op=read_resource to read an MCP resource. Cloud runtimes also accept op=search_actions and op=list_connections.",
 			parameters: [
 				{
-					name: "op",
+					name: "subaction",
 					description:
 						"MCP operation: call_tool | read_resource | search_actions | list_connections",
 					required: false,
@@ -5287,7 +5282,7 @@ export const allActionsSpec = {
 					actions: ["MCP"],
 					params: {
 						MCP: {
-							op: "call_tool",
+							subaction: "call_tool",
 							serverName: "example",
 							toolName: "example",
 							arguments: "example",
@@ -5302,9 +5297,9 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "MESSAGE.handoff",
+			name: "MESSAGE_HANDOFF",
 			description:
-				"Multi-party room handoff control. verb=enter flips the current room into handoff mode (agent stops contributing until the resume condition fires); verb=resume exits handoff; verb=status reports state.",
+				"Hand off a multi-party room to the human owner. Verbs: enter (agent stops contributing until the resume condition fires), resume (agent rejoins), status (report current handoff state).",
 			parameters: [
 				{
 					name: "verb",
@@ -5368,8 +5363,9 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"MESSAGE.handoff verb: enter|resume|status; gates agent contributions per resumeOn condition.",
+				"room handoff: enter|resume|status; gates agent per resumeOn condition",
 			similes: [
+				"MESSAGE.handoff",
 				"HANDOFF",
 				"HAND_OFF",
 				"STEP_BACK",
@@ -5380,10 +5376,10 @@ export const allActionsSpec = {
 			],
 			exampleCalls: [
 				{
-					user: "Use MESSAGE.handoff with the provided parameters.",
-					actions: ["MESSAGE.handoff"],
+					user: "Use MESSAGE_HANDOFF with the provided parameters.",
+					actions: ["MESSAGE_HANDOFF"],
 					params: {
-						"MESSAGE.handoff": {
+						MESSAGE_HANDOFF: {
 							verb: "example",
 							reason: "example",
 							resumeKind: "example",
@@ -5401,7 +5397,7 @@ export const allActionsSpec = {
 				"Unified music action. Use flat op for everything: library (playlist, play_query, search_youtube, download), playback transport (pause, resume, skip, stop, queue), play_audio, routing, zones. ",
 			parameters: [
 				{
-					name: "op",
+					name: "subaction",
 					description:
 						"Flat operation: playlist | play_query | search_youtube | download | pause | resume | skip | stop | queue | play_audio | routing | zones (hyphens and legacy aliases accepted).",
 					required: false,
@@ -5546,7 +5542,6 @@ export const allActionsSpec = {
 					actions: ["MUSIC"],
 					params: {
 						MUSIC: {
-							op: "playlist",
 							subaction: "example",
 							query: "example",
 							url: "example",
@@ -5635,49 +5630,42 @@ export const allActionsSpec = {
 		{
 			name: "MUSIC_LIBRARY",
 			description:
-				"Consolidated music library action. Use op=playlist with subaction=save, load, delete, or add for playlist management; op=play-query to research and queue complex music requests; op=search-youtube to return YouTube links; op=download to fetch music into the local library. Queue changes, downloads, and playlist mutations require confirmed:true.",
+				"Consolidated music library action. Use subaction=playlist with playlistOp=save, load, delete, or add for playlist management; subaction=play_query to research and queue complex music requests; subaction=search_youtube to return YouTube links; subaction=download to fetch music into the local library. Queue changes, downloads, and playlist mutations require confirmed:true.",
 			parameters: [
-				{
-					name: "op",
-					description:
-						"Music library operation: playlist, play-query, search-youtube, or download.",
-					required: true,
-					schema: {
-						type: "string",
-						enum: [
-							"playlist",
-							"play-query",
-							"play_query",
-							"search-youtube",
-							"search_youtube",
-							"download",
-						],
-					},
-					descriptionCompressed:
-						"Music library operation: playlist, play-query, search-youtube, or download.",
-				},
 				{
 					name: "subaction",
 					description:
-						"Playlist subaction when op=playlist: save, load, delete, or add.",
+						"Music library operation: playlist, play_query, search_youtube, or download.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["playlist", "play_query", "search_youtube", "download"],
+					},
+					descriptionCompressed:
+						"Music library operation: playlist, play_query, search_youtube, or download.",
+				},
+				{
+					name: "playlistOp",
+					description:
+						"Playlist operation when subaction=playlist: save, load, delete, or add.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["save", "load", "delete", "add"],
 					},
 					descriptionCompressed:
-						"Playlist subaction when op=playlist: save, load, delete, or add.",
+						"Playlist operation when subaction=playlist: save, load, delete, or add.",
 				},
 				{
 					name: "query",
 					description:
-						"Song, artist, album, or video query for play-query, search-youtube, download, or playlist add.",
+						"Song, artist, album, or video query for play_query, search_youtube, download, or playlist add.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Song, artist, album, or video query for play-query, search-youtube, download, or playlist add.",
+						"Song, artist, album, or video query for play_query, search_youtube, download, or playlist add.",
 				},
 				{
 					name: "playlistName",
@@ -5724,15 +5712,15 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Music library ops: playlist(subaction save/load/delete/add), play-query, search-youtube, download. Mutations require confirmed:true.",
+				"Music library subactions: playlist(playlistOp save/load/delete/add), play_query, search_youtube, download. Mutations require confirmed:true.",
 			exampleCalls: [
 				{
 					user: "Use MUSIC_LIBRARY with the provided parameters.",
 					actions: ["MUSIC_LIBRARY"],
 					params: {
 						MUSIC_LIBRARY: {
-							op: "playlist",
-							subaction: "save",
+							subaction: "playlist",
+							playlistOp: "save",
 							query: "example",
 							playlistName: "example",
 							song: "example",
@@ -5799,7 +5787,7 @@ export const allActionsSpec = {
 				"Payment router for the active mysticism reading session. Set op to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
 			parameters: [
 				{
-					name: "op",
+					name: "subaction",
 					description: "Operation: check or request.",
 					required: true,
 					schema: {
@@ -5858,7 +5846,7 @@ export const allActionsSpec = {
 					actions: ["PAYMENT"],
 					params: {
 						PAYMENT: {
-							op: "check",
+							subaction: "check",
 							amount: "example",
 							entityId: "example",
 							roomId: "example",
@@ -6015,7 +6003,7 @@ export const allActionsSpec = {
 				"Music playback control. Use op=pause, resume, skip, stop, or queue. ",
 			parameters: [
 				{
-					name: "op",
+					name: "subaction",
 					description:
 						"Playback operation: pause, resume, skip, stop, or queue.",
 					required: true,
@@ -6067,7 +6055,7 @@ export const allActionsSpec = {
 					actions: ["PLAYBACK"],
 					params: {
 						PLAYBACK: {
-							op: "pause",
+							subaction: "pause",
 							query: "example",
 							confirmed: false,
 						},
@@ -6111,7 +6099,14 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Read a file by absolute path; returns numbered lines (offset/limit supported).",
-			similes: ["READ_FILE", "CAT", "OPEN_FILE"],
+			similes: [
+				"READ_FILE",
+				"CAT",
+				"OPEN_FILE",
+				"FILE",
+				"FILE_OPERATION",
+				"FILE_IO",
+			],
 			exampleCalls: [
 				{
 					user: "Use READ with the provided parameters.",
@@ -6272,7 +6267,7 @@ export const allActionsSpec = {
 				"Drive the 2004scape game agent. Choose one op (walk_to, chop, mine, fish, burn, cook, fletch, craft, smith, drop, pickup, equip, unequip, use, use_on_item, use_on_object, open, close, deposit, withdraw, buy, sell, attack, cast_spell, set_style, eat, talk, navigate_dialog, interact_object, open_door, pickpocket). For open/close, set target='bank' or target='shop' (or include npc to imply shop). Per-op fields go in params.",
 			parameters: [
 				{
-					name: "op",
+					name: "subaction",
 					description: "Operation to run.",
 					required: true,
 					schema: {
@@ -6299,7 +6294,7 @@ export const allActionsSpec = {
 					actions: ["RS_2004"],
 					params: {
 						RS_2004: {
-							op: "example",
+							subaction: "example",
 							params: "example",
 						},
 					},
@@ -6312,7 +6307,7 @@ export const allActionsSpec = {
 				"Drive the 'scape (xRSPS) game agent. Pick one op: walk_to (x,z,run?), attack (npcId), chat_public (message), eat (item?), drop (item), set_goal (title,notes?), complete_goal (status?,goalId?,notes?), remember (notes,kind?,weight?). Returns success and a short status message; the autonomous loop already handles its own dispatch — this is the planner-facing surface.",
 			parameters: [
 				{
-					name: "op",
+					name: "subaction",
 					description: "Operation to run.",
 					required: true,
 					schema: {
@@ -6362,7 +6357,7 @@ export const allActionsSpec = {
 					actions: ["SCAPE"],
 					params: {
 						SCAPE: {
-							op: "example",
+							subaction: "example",
 							params: "example",
 						},
 					},
@@ -6376,21 +6371,26 @@ export const allActionsSpec = {
 			parameters: [
 				{
 					name: "subaction",
-					description: "Optional. summary or inspect.",
+					description:
+						"Optional. summary (high-level circadian answer; default) or inspect (evidence windows, sleep episodes, meal candidates).",
 					required: false,
 					schema: {
 						type: "string",
+						enum: ["summary", "inspect"],
 					},
-					descriptionCompressed: "Optional. summary or inspect.",
+					examples: ["summary", "inspect"],
+					descriptionCompressed: "schedule op: summary | inspect",
 				},
 				{
 					name: "timezone",
-					description: "Optional IANA timezone override.",
+					description:
+						"Optional IANA timezone override (e.g. America/Los_Angeles).",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Optional IANA timezone override.",
+					examples: ["America/Los_Angeles", "UTC"],
+					descriptionCompressed: "IANA tz override",
 				},
 			],
 			descriptionCompressed:
@@ -6402,8 +6402,8 @@ export const allActionsSpec = {
 					actions: ["SCHEDULE"],
 					params: {
 						SCHEDULE: {
-							subaction: "example",
-							timezone: "example",
+							subaction: "summary",
+							timezone: "America/Los_Angeles",
 						},
 					},
 				},
@@ -6518,7 +6518,7 @@ export const allActionsSpec = {
 				"Manage a Shopify store. Operations: search (read-only catalog browsing across products, orders, and customers), products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers). Op is inferred from the message text when not explicitly provided.",
 			parameters: [
 				{
-					name: "op",
+					name: "subaction",
 					description:
 						"Operation to perform. One of: search, products, inventory, orders, customers. Inferred from message text when omitted.",
 					required: false,
@@ -6588,7 +6588,7 @@ export const allActionsSpec = {
 					actions: ["SHOPIFY"],
 					params: {
 						SHOPIFY: {
-							op: "example",
+							subaction: "example",
 							query: "example",
 							scope: "all",
 							limit: 1,
@@ -6603,7 +6603,7 @@ export const allActionsSpec = {
 				"Manage skill catalog. Operations: search (browse available skills), details (info about a specific skill), sync (refresh catalog from registry), toggle (enable/disable installed skill), install (install from registry), uninstall (remove non-bundled skill). For invoking an enabled skill, use USE_SKILL instead.",
 			parameters: [
 				{
-					name: "op",
+					name: "subaction",
 					description:
 						"Operation to perform. One of: search, details, sync, toggle, install, uninstall. Inferred from message text when omitted.",
 					required: false,
@@ -6616,13 +6616,26 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Skill catalog: search, details, sync, toggle, install, uninstall.",
+			similes: [
+				"MANAGE_SKILL",
+				"MANAGE_SKILLS",
+				"SKILL_CATALOG",
+				"SKILLS",
+				"AGENT_SKILL",
+				"AGENT_SKILLS",
+				"INSTALL_SKILL",
+				"UNINSTALL_SKILL",
+				"SEARCH_SKILLS",
+				"SYNC_SKILL_CATALOG",
+				"TOGGLE_SKILL",
+			],
 			exampleCalls: [
 				{
 					user: "Use SKILL with the provided parameters.",
 					actions: ["SKILL"],
 					params: {
 						SKILL: {
-							op: "example",
+							subaction: "example",
 						},
 					},
 				},
@@ -6652,7 +6665,7 @@ export const allActionsSpec = {
 				"Tailscale tunnel router. Operations: start (open tunnel for a local port), stop (close active tunnel). Status reads come from the tailscaleStatus provider.",
 			parameters: [
 				{
-					name: "op",
+					name: "subaction",
 					description: "Tunnel operation. One of: start, stop.",
 					required: true,
 					schema: {
@@ -6688,7 +6701,7 @@ export const allActionsSpec = {
 					actions: ["TAILSCALE"],
 					params: {
 						TAILSCALE: {
-							op: "example",
+							subaction: "example",
 							port: 1,
 							accountId: "example",
 						},
@@ -6699,10 +6712,10 @@ export const allActionsSpec = {
 		{
 			name: "TODO",
 			description:
-				"Manage the user's todo list. Op-based dispatch — provide an `op` parameter:\n",
+				"Manage the user's todo list. Subactions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
 			parameters: [
 				{
-					name: "op",
+					name: "subaction",
 					description:
 						"Operation: write, create, update, complete, cancel, delete, list, clear.",
 					required: true,
@@ -6811,7 +6824,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"todo manage list; op: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId).",
+				"todos: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId)",
 			similes: [
 				"TODO_WRITE",
 				"WRITE_TODOS",
@@ -6842,7 +6855,7 @@ export const allActionsSpec = {
 					actions: ["TODO"],
 					params: {
 						TODO: {
-							op: "example",
+							subaction: "example",
 							id: "example",
 							content: "example",
 							activeForm: "example",
@@ -6955,6 +6968,16 @@ export const allActionsSpec = {
 				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
 			parameters: [],
 			descriptionCompressed: "Invoke an enabled skill by slug.",
+			similes: [
+				"INVOKE_SKILL",
+				"RUN_SKILL",
+				"EXECUTE_SKILL",
+				"CALL_SKILL",
+				"USE_AGENT_SKILL",
+				"RUN_AGENT_SKILL",
+				"USE_CAPABILITY",
+				"RUN_CAPABILITY",
+			],
 		},
 		{
 			name: "WEB_FETCH",

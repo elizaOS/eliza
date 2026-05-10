@@ -114,7 +114,7 @@ describe("LifeOps native options.parameters migration", () => {
     expect(runtime.useModel).not.toHaveBeenCalled();
   });
 
-  it("CALENDAR exposes concrete context and child action metadata", () => {
+  it("CALENDAR exposes concrete contexts and is a flat-subaction umbrella (no nested subActions/subPlanner)", () => {
     expect(calendarAction.contexts).toEqual([
       "general",
       "calendar",
@@ -123,15 +123,21 @@ describe("LifeOps native options.parameters migration", () => {
       "connectors",
       "web",
     ]);
-    expect(
-      calendarAction.subActions?.map((action) =>
-        typeof action === "string" ? action : action.name,
-      ),
-    ).toEqual([
-      "GOOGLE_CALENDAR",
-      "PROPOSE_MEETING_TIMES",
-      "CHECK_AVAILABILITY",
-      "UPDATE_MEETING_PREFERENCES",
-    ]);
+    // The legacy 2-layer `subActions` + `subPlanner` dispatch was removed in
+    // favor of a flat subaction enum + `promoteSubactionsToActions` virtuals
+    // (CALENDAR_FEED, CALENDAR_CREATE_EVENT, CALENDAR_PROPOSE_TIMES, etc.).
+    expect(calendarAction.subActions).toBeUndefined();
+    expect(calendarAction.subPlanner).toBeUndefined();
+    const subactionParam = (calendarAction.parameters ?? []).find(
+      (p) => p.name === "subaction",
+    );
+    expect(subactionParam).toBeDefined();
+    const enumVerbs = (subactionParam?.schema as { enum?: readonly string[] })
+      .enum;
+    expect(enumVerbs).toContain("feed");
+    expect(enumVerbs).toContain("create_event");
+    expect(enumVerbs).toContain("propose_times");
+    expect(enumVerbs).toContain("check_availability");
+    expect(enumVerbs).toContain("update_preferences");
   });
 });
