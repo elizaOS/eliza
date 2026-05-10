@@ -59,7 +59,6 @@
     "@elizaos/capacitor-contacts": "workspace:*",
     "@elizaos/capacitor-phone": "workspace:*",
     "@elizaos/capacitor-wifi": "workspace:*",
-    "@elizaos/app-task-coordinator": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-aosp-local-inference": "workspace:*",
