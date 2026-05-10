@@ -27,6 +27,7 @@ import {
 	Service,
 } from "@elizaos/core";
 import {
+	type AppIsolation,
 	type AppPermissionsView,
 	type AppTrust,
 	RECOGNISED_PERMISSION_NAMESPACES,
@@ -39,7 +40,7 @@ export const APP_REGISTRY_SERVICE_TYPE = "app-registry";
 // Re-export the canonical shared types so existing local importers
 // (action handlers, tests) keep working without an import-site rewrite.
 // See `eliza/packages/docs/architecture/app-permissions-manifest.md`.
-export type { AppPermissionsView, AppTrust };
+export type { AppIsolation, AppPermissionsView, AppTrust };
 
 export interface AppRegistryEntry extends ElizaCuratedAppDefinition {
 	directory: string;
@@ -61,6 +62,14 @@ export interface AppRegistryEntry extends ElizaCuratedAppDefinition {
 	 * `"external"` for back-compat.
 	 */
 	trust?: AppTrust;
+	/**
+	 * Execution isolation declared by the app in
+	 * `elizaos.app.isolation`. Persisted so the worker host can decide
+	 * whether to spawn a worker for this app at runtime without
+	 * re-reading the package.json. Absent on pre-Phase-2 entries —
+	 * `readPersisted` defaults those to `"none"` for back-compat.
+	 */
+	isolation?: AppIsolation;
 }
 
 export interface RegisterContext {
@@ -177,7 +186,10 @@ async function readPersisted(file: string): Promise<PersistedShape> {
 		// explicit `trust: "first-party"` at register time.
 		const trust: AppTrust =
 			candidate.trust === "first-party" ? "first-party" : "external";
-		entries.push({ ...candidate, trust });
+		// Default `isolation` for back-compat with pre-Phase-2 entries.
+		const isolation: AppIsolation =
+			candidate.isolation === "worker" ? "worker" : "none";
+		entries.push({ ...candidate, trust, isolation });
 	}
 	return { version: 1, entries };
 }
@@ -317,7 +329,8 @@ export class AppRegistryService extends Service {
 		ctx: RegisterContext = {},
 	): Promise<void> {
 		const trust: AppTrust = ctx.trust ?? entry.trust ?? "external";
-		const persistedEntry: AppRegistryEntry = { ...entry, trust };
+		const isolation: AppIsolation = entry.isolation ?? "none";
+		const persistedEntry: AppRegistryEntry = { ...entry, trust, isolation };
 		registerCuratedApp(persistedEntry);
 
 		const persisted = await readPersisted(this.registryPath);
@@ -339,6 +352,7 @@ export class AppRegistryService extends Service {
 			slug: persistedEntry.slug,
 			displayName: persistedEntry.displayName,
 			trust,
+			isolation,
 			requestedPermissions: persistedEntry.requestedPermissions ?? null,
 			registeredByEntity: ctx.requesterEntityId ?? null,
 			registeredByRoom: ctx.requesterRoomId ?? null,
@@ -525,6 +539,7 @@ function buildViewFromGrants(
 	return {
 		slug: entry.slug,
 		trust: entry.trust ?? "external",
+		isolation: entry.isolation ?? "none",
 		requestedPermissions,
 		recognisedNamespaces: recognised,
 		grantedNamespaces,
