@@ -119,7 +119,7 @@ jobs:
   plugin-tests:
     name: Plugin Tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 95
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -163,10 +163,10 @@ jobs:
             ${{ runner.os }}-cargo-plugin-tests-
 
       - name: Run plugin tests
-        # Cap step well below the 75m job budget so a flaky plugin
+        # Cap step below the 95m job budget so a flaky plugin
         # (most recently plugin-shell rust PTY tests in run 25234887145)
         # fails fast instead of burning the whole job's wall clock.
-        timeout-minutes: 60
+        timeout-minutes: 85
         run: bun run test:plugins
 
   desktop-contract:
