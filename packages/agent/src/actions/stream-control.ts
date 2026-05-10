@@ -1,7 +1,7 @@
 /**
  * STREAM — single polymorphic action consolidating live-stream lifecycle.
  *
- * Ops:
+ * Actions:
  *   go_live     — start the live stream to the active destination
  *   go_offline  — stop the active stream and release capture/RTMP resources
  *
@@ -37,6 +37,8 @@ const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
 const BASE = `http://127.0.0.1:${API_PORT}`;
 
 interface StreamActionParameters {
+  action?: unknown;
+  subaction?: unknown;
   op?: unknown;
 }
 
@@ -122,17 +124,23 @@ export const streamAction: Action = {
   contexts: ["general", "media", "automation", "settings"],
   roleGate: { minRole: "OWNER" },
   description:
-    "Control the live stream lifecycle. Use op='go_live' to start broadcasting " +
+    "Control the live stream lifecycle. Use action='go_live' to start broadcasting " +
     "to the active destination (Twitch, YouTube, custom RTMP). Use " +
-    "op='go_offline' to stop any active stream and release capture/RTMP " +
+    "action='go_offline' to stop any active stream and release capture/RTMP " +
     "resources.",
   descriptionCompressed:
-    "control live stream: op=go_live start broadcast active destination; op=go_offline stop release capture RTMP",
+    "control live stream: action=go_live start broadcast active destination; action=go_offline stop release capture RTMP",
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: `Operation: ${STREAM_OPS.join(", ")}.`,
       required: true,
+      schema: { type: "string" as const, enum: [...STREAM_OPS] },
+    },
+    {
+      name: "op",
+      description: "Legacy alias for action.",
+      required: false,
       schema: { type: "string" as const, enum: [...STREAM_OPS] },
     },
   ],
@@ -147,7 +155,7 @@ export const streamAction: Action = {
     _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = (options ?? {}) as StreamActionParameters;
-    const op = readOp(params.op);
+    const op = readOp(params.action ?? params.subaction ?? params.op);
     if (!op) {
       return {
         success: false,
@@ -173,7 +181,7 @@ export const streamAction: Action = {
         content: {
           text: "Stream is now live.",
           actions: [STREAM_ACTION],
-          actionParameters: { op: "go_live" },
+          actionParameters: { action: "go_live" },
         },
       },
     ],
@@ -187,7 +195,7 @@ export const streamAction: Action = {
         content: {
           text: "Stream stopped. Now offline.",
           actions: [STREAM_ACTION],
-          actionParameters: { op: "go_offline" },
+          actionParameters: { action: "go_offline" },
         },
       },
     ],

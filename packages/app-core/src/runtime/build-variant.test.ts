@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  _resetBuildVariantForTests,
   DEFAULT_BUILD_VARIANT,
   getBuildVariant,
   isDirectBuild,
@@ -8,12 +9,17 @@ import {
 
 const originalEnv = process.env.MILADY_BUILD_VARIANT;
 
+beforeEach(() => {
+  _resetBuildVariantForTests();
+});
+
 afterEach(() => {
   if (originalEnv === undefined) {
     delete process.env.MILADY_BUILD_VARIANT;
   } else {
     process.env.MILADY_BUILD_VARIANT = originalEnv;
   }
+  _resetBuildVariantForTests();
 });
 
 describe("getBuildVariant", () => {

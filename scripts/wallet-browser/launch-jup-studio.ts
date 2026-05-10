@@ -347,57 +347,64 @@ async function launchOnJupStudio(
   await page.waitForTimeout(2000);
   await page.screenshot({ path: path.join(shotDir, "03-preset.png") });
 
-  // 5. fill basics — ids match pump.fun's: name, ticker, description
-  await fillByLabel(page, ["name", "Name your"], meta.name, "name");
+  // 5. fill basics: Name, Symbol, upload icon → crop "Apply".
+  //    The Meme preset only collects name/symbol/image at step 1; description
+  //    is generated automatically from the brief by jup's Magic Gen, and the
+  //    flow goes Basics → Review → Launch (no Enhance step).
   await fillByLabel(
     page,
-    ["ticker", "symbol", "Add a coin ticker"],
+    ["name", "Enter token name", "tokenName"],
+    meta.name,
+    "name",
+  );
+  await fillByLabel(
+    page,
+    ["ticker", "symbol", "Enter ticker", "tokenSymbol"],
     meta.symbol,
     "ticker",
   );
-  await fillByLabel(
-    page,
-    ["description", "Write a short description"],
-    meta.description,
-    "description",
-  );
 
-  // upload icon
   try {
     const fileInputs = page.locator("input[type=file]");
     if ((await fileInputs.count()) > 0) {
       await fileInputs.first().setInputFiles(iconPath);
       log("upload", `icon → ${path.basename(iconPath)}`);
+      await page.waitForTimeout(800);
+      await clickByText(page, ["Apply", "Done", "Save"], "icon crop apply", {
+        timeoutMs: 4000,
+        exact: true,
+      });
+      await page.waitForTimeout(800);
     }
   } catch (e) {
     warn("upload", (e as Error).message);
   }
 
-  if (meta.twitter)
-    await fillByLabel(page, ["twitter", "x.com"], meta.twitter, "twitter");
-  if (meta.telegram)
-    await fillByLabel(page, ["telegram"], meta.telegram, "telegram");
-  if (meta.website)
-    await fillByLabel(page, ["website"], meta.website, "website");
+  await page.screenshot({ path: path.join(shotDir, "04-step1-filled.png") });
 
-  await page.screenshot({ path: path.join(shotDir, "04-filled.png") });
+  // 6. → Review
+  if (
+    !(await clickByText(page, ["Review", "Next", "Continue"], "→ review", {
+      timeoutMs: 6000,
+      exact: true,
+    }))
+  ) {
+    warn("step", "no Review button");
+    await snapshotForms(page, "no-review");
+    return {};
+  }
+  await page.waitForTimeout(2500);
+  await page.screenshot({
+    path: path.join(shotDir, "05-review.png"),
+    fullPage: true,
+  });
 
   if (flags.dryRun) {
     warn("dry-run", "stopping before final launch click");
     return {};
   }
 
-  // 6. progress through Studio's stepper. Snapshot showed "1. Basics", "2. Enhance".
-  for (const t of ["Next", "Continue", "Enhance"]) {
-    await clickByText(page, [t], `step → "${t}"`, {
-      timeoutMs: 3000,
-      exact: true,
-    });
-    await page.waitForTimeout(1500);
-  }
-  await page.screenshot({ path: path.join(shotDir, "05-step2.png") });
-
-  // 7. launch
+  // 7. launch — on the review page
   if (
     !(await clickByText(
       page,

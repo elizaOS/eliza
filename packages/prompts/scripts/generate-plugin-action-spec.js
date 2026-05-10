@@ -33,6 +33,38 @@ const OUTPUT_PATH = path.join(
   "plugins.generated.json",
 );
 
+const RETIRED_IMPLEMENTATION_ONLY_ACTIONS = new Set([
+  "ASK_USER_QUESTION",
+  "CHECKIN",
+  "DISCORD_SETUP_CREDENTIALS",
+  "ENTER_WORKTREE",
+  "EXIT_WORKTREE",
+  "FIRST_RUN",
+  "FORM_RESTORE",
+  "LIFE",
+  "PROFILE",
+  "RELATIONSHIP",
+  "MONEY",
+  "PAYMENTS",
+  "SUBSCRIPTIONS",
+  "SCHEDULE",
+  "BOOK_TRAVEL",
+  "SCHEDULING_NEGOTIATION",
+  "DEVICE_INTENT",
+  "MESSAGE_HANDOFF",
+  "APP_BLOCK",
+  "WEBSITE_BLOCK",
+  "AUTOFILL",
+  "PASSWORD_MANAGER",
+  "GOOGLE_CALENDAR",
+  "LIFEOPS_PAUSE",
+  "NOSTR_PUBLISH_PROFILE",
+  "PAYMENT",
+  "PLACE_CALL",
+  "TOGGLE_FEATURE",
+  "WEB_FETCH",
+]);
+
 function readText(filePath) {
   return fs.readFileSync(filePath, "utf-8");
 }
@@ -1215,6 +1247,7 @@ function main() {
     for (const obj of objects) {
       const name = extractTopLevelStringProp(obj.objectText, "name");
       if (!name) continue;
+      if (RETIRED_IMPLEMENTATION_ONLY_ACTIONS.has(name)) continue;
       if (coreActionNames.has(name)) continue;
       const description = expandDescriptionTemplateLiterals(
         extractTopLevelStringProp(obj.objectText, "description") ?? "",

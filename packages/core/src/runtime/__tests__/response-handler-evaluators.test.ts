@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { Memory } from "../../types/memory";
 import type { State } from "../../types/state";

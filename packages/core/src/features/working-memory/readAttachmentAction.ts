@@ -1,5 +1,6 @@
 import {
 	type Action,
+	type ActionResult,
 	ContentType,
 	type HandlerCallback,
 	type HandlerOptions,
@@ -8,7 +9,13 @@ import {
 	type Memory,
 	ModelType,
 	type State,
+	type UUID,
 } from "../../types/index.ts";
+import { DocumentService } from "../documents/service.ts";
+import {
+	createDocumentNoteFilename,
+	deriveDocumentTitle,
+} from "../documents/utils.ts";
 import {
 	listConversationAttachments,
 	readAttachmentRecords,
@@ -16,9 +23,11 @@ import {
 } from "./attachmentContext.ts";
 import { maybeStoreTaskClipboardItem } from "./taskClipboardPersistence.ts";
 
+const ATTACHMENT_ACTIONS = ["read", "save_as_document"] as const;
 const MAX_ATTACHMENT_ANSWER_CHARS = 32_000;
 const MIN_ATTACHMENT_ANSWER_TOKENS = 1024;
 const MAX_ATTACHMENT_ANSWER_TOKENS = 4096;
+type AttachmentAction = (typeof ATTACHMENT_ACTIONS)[number];
 type AttachmentRecord = Awaited<
 	ReturnType<typeof readAttachmentRecords>
 >[number];
@@ -184,11 +193,143 @@ function readAttachmentId(params: Record<string, unknown>): string | null {
 	return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function readAttachmentActionKind(
+	params: Record<string, unknown>,
+	message: Memory,
+): AttachmentAction {
+	const raw = params.action ?? params.subaction ?? params.op;
+	if (typeof raw === "string") {
+		const normalized = raw.trim().toLowerCase().replace(/[-\s]+/g, "_");
+		if ((ATTACHMENT_ACTIONS as readonly string[]).includes(normalized)) {
+			return normalized as AttachmentAction;
+		}
+	}
+	const text =
+		typeof message.content?.text === "string" ? message.content.text : "";
+	return /\bsave\b[\s\S]{0,60}\b(?:document|doc|note|knowledge)\b/i.test(text)
+		? "save_as_document"
+		: "read";
+}
+
+function readStringParam(
+	params: Record<string, unknown>,
+	key: string,
+): string | undefined {
+	const value = params[key];
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+async function saveAttachmentAsDocument(params: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	records: AttachmentRecord[];
+	content: string;
+	actionParams: Record<string, unknown>;
+	callback?: HandlerCallback;
+}): Promise<ActionResult> {
+	if (!params.content.trim()) {
+		const text = missingReadableContentMessage(params.records);
+		await params.callback?.({
+			text,
+			actions: ["ATTACHMENT_SAVE_AS_DOCUMENT_FAILED"],
+			source: params.message.content.source,
+		});
+		return {
+			success: false,
+			text,
+			data: {
+				actionName: "ATTACHMENT",
+				action: "save_as_document",
+				attachmentIds: params.records.map((record) => record.attachment.id),
+			},
+		};
+	}
+
+	const service = params.runtime.getService<DocumentService>(
+		DocumentService.serviceType,
+	);
+	if (!service) {
+		const text = "Documents service not available.";
+		await params.callback?.({
+			text,
+			actions: ["ATTACHMENT_SAVE_AS_DOCUMENT_FAILED"],
+			source: params.message.content.source,
+		});
+		return {
+			success: false,
+			text,
+			error: "DOCUMENTS_SERVICE_UNAVAILABLE",
+			data: { actionName: "ATTACHMENT", action: "save_as_document" },
+		};
+	}
+
+	const title =
+		readStringParam(params.actionParams, "title") ??
+		(params.records.length === 1
+			? titleForRecord(params.records[0])
+			: deriveDocumentTitle(params.content, "Saved attachments"));
+	const filename = createDocumentNoteFilename(title);
+	const stored = await service.addDocument({
+		agentId: params.runtime.agentId as UUID,
+		worldId: (params.message.worldId ??
+			params.message.roomId ??
+			params.runtime.agentId) as UUID,
+		roomId: (params.message.roomId ?? params.runtime.agentId) as UUID,
+		entityId: (params.message.entityId ?? params.runtime.agentId) as UUID,
+		clientDocumentId: "" as UUID,
+		contentType: "text/plain",
+		originalFilename: filename,
+		content: params.content,
+		scope:
+			params.actionParams.scope === "owner-private" ||
+			params.actionParams.scope === "user-private" ||
+			params.actionParams.scope === "agent-private" ||
+			params.actionParams.scope === "global"
+				? params.actionParams.scope
+				: "owner-private",
+		addedBy: params.message.entityId as UUID,
+		addedByRole: "OWNER",
+		addedFrom: "chat",
+		metadata: {
+			source: "attachment",
+			title,
+			filename,
+			originalFilename: filename,
+			fileExt: "txt",
+			fileType: "text/plain",
+			contentType: "text/plain",
+			fileSize: Buffer.byteLength(params.content, "utf8"),
+			textBacked: true,
+			attachmentIds: params.records.map((record) => record.attachment.id),
+			attachmentTitles: params.records.map(titleForRecord),
+		},
+	});
+	const text = `Saved "${title}" as a document. Document id: ${stored.clientDocumentId}.`;
+	await params.callback?.({
+		text,
+		actions: ["ATTACHMENT_SAVE_AS_DOCUMENT_SUCCESS"],
+		source: params.message.content.source,
+	});
+	return {
+		success: true,
+		text,
+		data: {
+			actionName: "ATTACHMENT",
+			action: "save_as_document",
+			documentId: stored.clientDocumentId,
+			fragmentCount: stored.fragmentCount,
+			attachmentIds: params.records.map((record) => record.attachment.id),
+		},
+	};
+}
+
 export const readAttachmentAction: Action = {
-	name: "READ_ATTACHMENT",
+	name: "ATTACHMENT",
 	contexts: ["files", "media", "messaging", "documents"],
 	roleGate: { minRole: "ADMIN" },
 	similes: [
+		"READ_ATTACHMENT",
+		"SAVE_ATTACHMENT_AS_DOCUMENT",
 		"OPEN_ATTACHMENT",
 		"INSPECT_ATTACHMENT",
 		"READ_URL",
@@ -196,7 +337,7 @@ export const readAttachmentAction: Action = {
 		"READ_WEBPAGE",
 	],
 	description:
-		"Read current or recent attachments and link previews using extracted text, transcripts, page content, or media descriptions. Set addToClipboard=true to keep the result in bounded task clipboard state.",
+		"Attachment operations. Use action=read to read current or recent attachments/link previews using extracted text, transcripts, page content, or media descriptions. Use action=save_as_document to store readable attachment content in the document store.",
 	suppressPostActionContinuation: true,
 	validate: async (runtime, message) => {
 		const params = message.content as Record<string, unknown>;
@@ -217,6 +358,7 @@ export const readAttachmentAction: Action = {
 	) => {
 		try {
 			const params = getActionParams(_options);
+			const action = readAttachmentActionKind(params, message);
 			const messageWithParams: Memory = {
 				...message,
 				content: {
@@ -245,19 +387,30 @@ export const readAttachmentAction: Action = {
 				if (callback) {
 					await callback({
 						text: fallback,
-						actions: ["READ_ATTACHMENT_FAILED"],
+						actions: ["ATTACHMENT_READ_FAILED"],
 						source: message.content.source,
 					});
 				}
 				return {
 					success: false,
 					text: fallback,
-					data: { actionName: "READ_ATTACHMENT" },
+					data: { actionName: "ATTACHMENT", action },
 				};
 			}
 
 			const hasContent = hasReadableContent(records);
 			const storedContent = hasContent ? contentForRecords(records) : "";
+			if (action === "save_as_document") {
+				return saveAttachmentAsDocument({
+					runtime,
+					message: messageWithParams,
+					records,
+					content: storedContent,
+					actionParams: params,
+					callback,
+				});
+			}
+
 			const clipboardResult = await maybeStoreTaskClipboardItem(
 				runtime,
 				messageWithParams,
@@ -312,7 +465,7 @@ export const readAttachmentAction: Action = {
 			if (callback) {
 				await callback({
 					text: visibleText,
-					actions: ["READ_ATTACHMENT_SUCCESS"],
+					actions: ["ATTACHMENT_READ_SUCCESS"],
 					source: messageWithParams.content.source,
 				});
 			}
@@ -321,7 +474,8 @@ export const readAttachmentAction: Action = {
 				success: true,
 				text: visibleText,
 				data: {
-					actionName: "READ_ATTACHMENT",
+					actionName: "ATTACHMENT",
+					action: "read",
 					attachmentId: records[0]?.attachment.id,
 					attachmentIds: records.map((record) => record.attachment.id),
 					attachment: records[0]?.attachment,
@@ -339,7 +493,7 @@ export const readAttachmentAction: Action = {
 			if (callback) {
 				await callback({
 					text: "I couldn't read that attachment right now.",
-					actions: ["READ_ATTACHMENT_FAILED"],
+					actions: ["ATTACHMENT_READ_FAILED"],
 					source: message.content.source,
 				});
 			}
@@ -347,11 +501,17 @@ export const readAttachmentAction: Action = {
 				success: false,
 				text: "Failed to read attachment",
 				error: errorMessage,
-				data: { actionName: "READ_ATTACHMENT" },
+				data: { actionName: "ATTACHMENT" },
 			};
 		}
 	},
 	parameters: [
+		{
+			name: "action",
+			description: "Attachment operation: read or save_as_document.",
+			required: false,
+			schema: { type: "string" as const, enum: [...ATTACHMENT_ACTIONS] },
+		},
 		{
 			name: "attachmentId",
 			description:
@@ -380,9 +540,9 @@ export const readAttachmentAction: Action = {
 				name: "{{agentName}}",
 				content: {
 					text: "Reading the attachment.",
-					actions: ["READ_ATTACHMENT"],
+					actions: ["ATTACHMENT"],
 					thought:
-						"User refers to a recently-attached file; READ_ATTACHMENT auto-selects the latest attachment when no id is given.",
+						"User refers to a recently-attached file; ATTACHMENT action=read auto-selects the latest attachment when no id is given.",
 				},
 			},
 		],
@@ -398,9 +558,9 @@ export const readAttachmentAction: Action = {
 				name: "{{agentName}}",
 				content: {
 					text: "Reading the page.",
-					actions: ["READ_ATTACHMENT"],
+					actions: ["ATTACHMENT"],
 					thought:
-						"Link previews are stored as attachments; READ_ATTACHMENT pulls the extracted text and answers the user's summary request.",
+						"Link previews are stored as attachments; ATTACHMENT action=read pulls the extracted text and answers the user's summary request.",
 				},
 			},
 		],

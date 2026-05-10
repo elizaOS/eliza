@@ -103,6 +103,8 @@ interface CandidateRecord {
 }
 
 interface RoleHandlerParams {
+	action?: string;
+	subaction?: string;
 	op?: string;
 	target?: string;
 	role?: string;
@@ -116,13 +118,18 @@ function readParams(
 ): RoleHandlerParams {
 	const params = asRecord(options?.parameters) ?? {};
 	const messageContent = asRecord(message.content) ?? {};
+	const op =
+		typeof params.action === "string"
+			? params.action
+			: typeof params.subaction === "string"
+				? params.subaction
+				: typeof params.op === "string"
+					? params.op
+					: typeof params.mode === "string"
+						? params.mode
+						: undefined;
 	return {
-		op:
-			typeof params.op === "string"
-				? params.op
-				: typeof params.mode === "string"
-					? params.mode
-					: undefined,
+		op,
 		target:
 			typeof params.target === "string"
 				? params.target
@@ -606,13 +613,22 @@ export const roleAction: Action = {
 		"Accepts structured assignments[] or single target name with recent-room disambiguation.",
 	parameters: [
 		{
-			name: "subaction",
+			name: "action",
 			description: "Operation to perform: assign, revoke, or list.",
 			required: false,
 			schema: {
 				type: "string" as const,
 				enum: [...ROLE_OPS],
 				default: "assign",
+			},
+		},
+		{
+			name: "subaction",
+			description: "Legacy alias for action.",
+			required: false,
+			schema: {
+				type: "string" as const,
+				enum: [...ROLE_OPS],
 			},
 		},
 		{
@@ -755,7 +771,7 @@ export const roleAction: Action = {
 					text: "Updated 1 role(s)",
 					actions: ["ROLE"],
 					thought:
-						"Single-target promote intent maps to ROLE subaction=assign with target='Pat' and role='ADMIN'.",
+						"Single-target promote intent maps to ROLE action=assign with target='Pat' and role='ADMIN'.",
 				},
 			},
 		],
@@ -773,7 +789,7 @@ export const roleAction: Action = {
 					text: "Listing role assignments.",
 					actions: ["ROLE"],
 					thought:
-						"Inventory query maps to ROLE subaction=list which returns all entityId->role pairs for the world.",
+						"Inventory query maps to ROLE action=list which returns all entityId->role pairs for the world.",
 				},
 			},
 		],
@@ -788,7 +804,7 @@ export const roleAction: Action = {
 					text: "Revoked 1 role(s)",
 					actions: ["ROLE"],
 					thought:
-						"Revoke intent maps to ROLE subaction=revoke; defaultRole becomes GUEST so Pat drops to GUEST.",
+						"Revoke intent maps to ROLE action=revoke; defaultRole becomes GUEST so Pat drops to GUEST.",
 				},
 			},
 		],

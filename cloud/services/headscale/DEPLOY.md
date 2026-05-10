@@ -6,7 +6,7 @@ End-to-end checklist to bring the customer-tunnel stack online. Railway owns the
 
 - `headscale.elizacloud.ai` → CNAME/ALIAS → Railway public domain for the headscale service.
 - `tunnel.elizacloud.ai` AND `*.tunnel.elizacloud.ai` → CNAME/ALIAS → Railway public domain for the tunnel-proxy service.
-- Delegate `_acme-challenge.tunnel.elizacloud.ai` to Cloudflare (or whichever DNS provider matches the Caddy `dns` directive in `services/tunnel-proxy/Caddyfile`).
+- Railway terminates public TLS for the tunnel-proxy custom domains; the proxy then uses `tsnet` to reach private tailnet hosts.
 
 ## 2. Headscale Railway service
 
@@ -49,9 +49,10 @@ Required env vars on the proxy service:
 |---|---|
 | `HEADSCALE_PUBLIC_URL` | `https://headscale.elizacloud.ai` |
 | `TUNNEL_PROXY_TS_AUTHKEY` | (from step 3) |
-| `CLOUD_API_URL` | `https://www.elizacloud.ai` |
-| `CLOUD_INTERNAL_TOKEN` | random 64-byte token, also set on the API Worker |
-| `CF_API_TOKEN` | Cloudflare token with `Zone:DNS:Edit` on the elizacloud.ai zone (for ACME wildcard) |
+| `TUNNEL_PROXY_HOST` | `tunnel.elizacloud.ai` |
+| `TUNNEL_TAILNET_DOMAIN` | `tunnel.eliza.local` |
+
+Mount a Railway volume at `/var/lib/tunnel-proxy` so the `tsnet` node identity persists across restarts.
 
 ## 5. API Worker secrets
 

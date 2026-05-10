@@ -85,6 +85,7 @@ export {
 export * from "./providers/index.ts";
 
 import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
+import { readAttachmentAction } from "../working-memory/readAttachmentAction.ts";
 // Import advanced capabilities
 import {
 	advancedActions,
@@ -1279,6 +1280,7 @@ export const basicProviders = [
 export const basicActions = [
 	withCanonicalActionDocs(choiceAction),
 	withCanonicalActionDocs(generateMediaAction),
+	withCanonicalActionDocs(readAttachmentAction),
 	withCanonicalActionDocs(replyAction),
 	withCanonicalActionDocs(ignoreAction),
 	withCanonicalActionDocs(noneAction),
