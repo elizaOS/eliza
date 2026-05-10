@@ -20,6 +20,7 @@ on:
       - 'cloud/packages/lib/services/docker-sandbox-provider.ts'
       - 'cloud/packages/lib/services/eliza-sandbox.ts'
       - 'cloud/packages/db/repositories/agent-sandboxes.ts'
+      - 'packages/billing/**'
       - 'packages/core/**'
       - 'plugins/plugin-sql/**'
   workflow_dispatch:
