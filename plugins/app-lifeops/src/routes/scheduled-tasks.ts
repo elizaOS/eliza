@@ -18,15 +18,23 @@
  *   GET    /api/lifeops/dev/registries                               registry health (loopback)
  */
 
+import { getChannelRegistry } from "../lifeops/channels/registry.js";
+import { getConnectorRegistry } from "../lifeops/connectors/registry.js";
+import {
+  getBlockerRegistry,
+  getEventKindRegistry,
+  getFamilyRegistry,
+} from "../lifeops/registries/index.js";
+import type {
+  ScheduledTask,
+  ScheduledTaskRunnerHandle,
+} from "../lifeops/scheduled-task/index.js";
 import {
   scheduledTaskFilterSchema,
   scheduledTaskInputSchema,
   scheduledTaskSnoozePayloadSchema,
 } from "../lifeops/schema.js";
-import type {
-  ScheduledTask,
-  ScheduledTaskRunnerHandle,
-} from "../lifeops/scheduled-task/index.js";
+import { getSendPolicyRegistry } from "../lifeops/send-policy/registry.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
 /**
@@ -54,9 +62,7 @@ const PATH_PREFIX = "/api/lifeops/scheduled-tasks";
 const DEV_PATH_PREFIX = "/api/lifeops/dev/scheduled-tasks";
 const DEV_REGISTRIES_PATH = "/api/lifeops/dev/registries";
 
-function matchTaskVerb(
-  pathname: string,
-): { id: string; verb: string } | null {
+function matchTaskVerb(pathname: string): { id: string; verb: string } | null {
   const m = /^\/api\/lifeops\/scheduled-tasks\/([^/]+)\/([^/]+)\/?$/.exec(
     pathname,
   );
@@ -78,6 +84,118 @@ function matchDevLog(pathname: string): { id: string } | null {
   );
   if (!m) return null;
   return { id: decodeURIComponent(m[1] ?? "") };
+}
+
+/**
+ * Composite registry-introspection view returned by `GET /api/lifeops/dev/registries`.
+ *
+ * Combines runner-internal registries (gates, completion-checks, ladders, anchors,
+ * consolidation policies) with the runtime-bound registries that govern outbound
+ * dispatch and signal flow (connectors, channels, send-policies, event-kinds, bus
+ * families, blockers). The agent introspects this surface to learn what behaviour
+ * is composable at runtime without source-code edits.
+ */
+export interface DevRegistriesView {
+  gates: string[];
+  completionChecks: string[];
+  ladders: string[];
+  anchors: string[];
+  consolidationPolicies: string[];
+  connectors: Array<{
+    kind: string;
+    label: string;
+    capabilities: readonly string[];
+    modes: readonly string[];
+    requiresApproval: boolean;
+  }>;
+  channels: Array<{
+    kind: string;
+    label: string;
+    capabilities: {
+      send: boolean;
+      read: boolean;
+      reminders: boolean;
+      voice: boolean;
+      attachments: boolean;
+      quietHoursAware: boolean;
+    };
+  }>;
+  sendPolicies: Array<{ kind: string; label: string; priority: number | null }>;
+  eventKinds: Array<{ eventKind: string; label: string; provider: string }>;
+  busFamilies: Array<{
+    family: string;
+    description: string;
+    source: string;
+    namespace: string | null;
+  }>;
+  blockers: Array<{ kind: string; label: string }>;
+}
+
+function composeDevRegistriesView(
+  ctx: LifeOpsRouteContext,
+  runner: ScheduledTaskRunnerHandle,
+): DevRegistriesView {
+  const runnerView = runner.inspectRegistries();
+  const runtime = ctx.state.runtime;
+
+  const connectorRegistry = runtime ? getConnectorRegistry(runtime) : null;
+  const channelRegistry = runtime ? getChannelRegistry(runtime) : null;
+  const sendPolicyRegistry = runtime ? getSendPolicyRegistry(runtime) : null;
+  const eventKindRegistry = runtime ? getEventKindRegistry(runtime) : null;
+  const familyRegistry = runtime ? getFamilyRegistry(runtime) : null;
+  const blockerRegistry = runtime ? getBlockerRegistry(runtime) : null;
+
+  return {
+    gates: runnerView.gates,
+    completionChecks: runnerView.completionChecks,
+    ladders: runnerView.ladders,
+    anchors: runnerView.anchors,
+    consolidationPolicies: runnerView.consolidationPolicies,
+    connectors: connectorRegistry
+      ? connectorRegistry.list().map((c) => ({
+          kind: c.kind,
+          label: c.describe.label,
+          capabilities: c.capabilities,
+          modes: c.modes,
+          requiresApproval: c.requiresApproval === true,
+        }))
+      : [],
+    channels: channelRegistry
+      ? channelRegistry.list().map((c) => ({
+          kind: c.kind,
+          label: c.describe.label,
+          capabilities: { ...c.capabilities },
+        }))
+      : [],
+    sendPolicies: sendPolicyRegistry
+      ? sendPolicyRegistry.list().map((p) => ({
+          kind: p.kind,
+          label: p.describe.label,
+          priority: p.priority ?? null,
+        }))
+      : [],
+    eventKinds: eventKindRegistry
+      ? eventKindRegistry.list().map((e) => ({
+          eventKind: e.eventKind,
+          label: e.describe.label,
+          provider: e.describe.provider,
+        }))
+      : [],
+    busFamilies: familyRegistry
+      ? familyRegistry.list().map((f) => ({
+          family: f.family,
+          description: f.description,
+          source: f.source,
+          namespace: f.namespace ?? null,
+        }))
+      : [],
+    blockers: blockerRegistry
+      ? blockerRegistry.list().map((b) => ({
+          kind: b.kind,
+          label: b.describe.label,
+        }))
+      : [],
+  };
 }
 
 function applyVerbToString(verb: string): string | null {
@@ -108,7 +226,7 @@ export function makeScheduledTasksRouteHandler(
       }
       const runner = await deps.resolveRunner(ctx);
       if (!runner) return true;
-      json(res, runner.inspectRegistries());
+      json(res, composeDevRegistriesView(ctx, runner));
       return true;
     }
     {
@@ -236,7 +354,7 @@ export function makeScheduledTasksRouteHandler(
             (req.headers["content-length"] as string | undefined) ?? "0",
             10,
           );
-          let body: unknown = undefined;
+          let body: unknown;
           if (Number.isFinite(contentLength) && contentLength > 0) {
             const parsed = await readJsonBody<Record<string, unknown>>(
               req,

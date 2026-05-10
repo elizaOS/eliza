@@ -9,8 +9,26 @@
 
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
+import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-
+import type { ChannelContribution } from "../lifeops/channels/contract.js";
+import {
+  createChannelRegistry,
+  registerChannelRegistry,
+} from "../lifeops/channels/registry.js";
+import type { ConnectorContribution } from "../lifeops/connectors/contract.js";
+import {
+  createConnectorRegistry,
+  registerConnectorRegistry,
+} from "../lifeops/connectors/registry.js";
+import {
+  createBlockerRegistry,
+  createEventKindRegistry,
+  createFamilyRegistry,
+  registerBlockerRegistry,
+  registerEventKindRegistry,
+  registerFamilyRegistry,
+} from "../lifeops/registries/index.js";
 import {
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,
@@ -33,6 +51,11 @@ import {
   createScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,
 } from "../lifeops/scheduled-task/index.js";
+import type { SendPolicyContribution } from "../lifeops/send-policy/contract.js";
+import {
+  createSendPolicyRegistry,
+  registerSendPolicyRegistry,
+} from "../lifeops/send-policy/registry.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { makeScheduledTasksRouteHandler } from "./scheduled-tasks.js";
 
@@ -297,6 +320,160 @@ describe("scheduled-tasks REST handler", () => {
         "during_travel",
       ]),
     );
+  });
+
+  it("GET /api/lifeops/dev/registries surfaces every registry kind for runtime composability proof", async () => {
+    const runner = makeRunner();
+    const fakeRuntime = {} as AgentRuntime;
+
+    // Connector registry — minimal acme contribution.
+    const connectorRegistry = createConnectorRegistry();
+    const acmeConnector: ConnectorContribution = {
+      kind: "acme_inbox",
+      capabilities: ["acme.inbox.read", "acme.inbox.send"],
+      modes: ["cloud"],
+      describe: { label: "Acme Inbox" },
+      start: async () => {},
+      disconnect: async () => {},
+      verify: async () => true,
+      status: async () => ({
+        state: "ok",
+        observedAt: new Date().toISOString(),
+      }),
+      requiresApproval: true,
+    };
+    connectorRegistry.register(acmeConnector);
+    registerConnectorRegistry(fakeRuntime, connectorRegistry);
+
+    // Channel registry — a synthetic acme channel.
+    const channelRegistry = createChannelRegistry();
+    const acmeChannel: ChannelContribution = {
+      kind: "acme_channel",
+      describe: { label: "Acme Channel" },
+      capabilities: {
+        send: true,
+        read: false,
+        reminders: true,
+        voice: false,
+        attachments: false,
+        quietHoursAware: true,
+      },
+    };
+    channelRegistry.register(acmeChannel);
+    registerChannelRegistry(fakeRuntime, channelRegistry);
+
+    // Send-policy registry — synthetic policy.
+    const sendPolicyRegistry = createSendPolicyRegistry();
+    const acmePolicy: SendPolicyContribution = {
+      kind: "acme_owner_consent_required",
+      describe: { label: "Acme owner-consent gate" },
+      priority: 50,
+      evaluate: () => ({ kind: "allow" }),
+    };
+    sendPolicyRegistry.register(acmePolicy);
+    registerSendPolicyRegistry(fakeRuntime, sendPolicyRegistry);
+
+    // Event-kind registry.
+    const eventKindRegistry = createEventKindRegistry();
+    eventKindRegistry.register({
+      eventKind: "acme.inbox.message",
+      describe: { label: "Acme inbox new message", provider: "acme" },
+    });
+    registerEventKindRegistry(fakeRuntime, eventKindRegistry);
+
+    // Family registry.
+    const familyRegistry = createFamilyRegistry();
+    familyRegistry.register({
+      family: "acme.inbox.message",
+      description: "Acme bus family",
+      source: "acme",
+      namespace: "acme",
+    });
+    registerFamilyRegistry(fakeRuntime, familyRegistry);
+
+    // Blocker registry — built-ins seeded via the registry directly so we
+    // exercise the public registration path without booting the full plugin.
+    const blockerRegistry = createBlockerRegistry();
+    blockerRegistry.register({
+      kind: "website",
+      describe: { label: "Website blocker" },
+      verifyAvailable: async () => ({
+        available: true,
+        reason: null,
+        permission: "granted",
+      }),
+      start: async () => undefined,
+      stop: async () => {},
+      status: async () => ({
+        active: false,
+        endsAt: null,
+        text: "idle",
+      }),
+    });
+    registerBlockerRegistry(fakeRuntime, blockerRegistry);
+
+    const handler = makeScheduledTasksRouteHandler({
+      resolveRunner: async () => runner,
+    });
+    const { ctx, res } = buildCtx({
+      method: "GET",
+      pathname: "/api/lifeops/dev/registries",
+      runner,
+    });
+    ctx.state.runtime = fakeRuntime;
+
+    await handler(ctx);
+    expect(res.statusCode).toBe(200);
+    const payload = JSON.parse(res.body ?? "{}");
+
+    // Runner-internal registries (existing behaviour).
+    expect(payload.gates).toEqual(expect.arrayContaining(["weekend_skip"]));
+    expect(payload.completionChecks).toBeDefined();
+    expect(payload.ladders).toBeDefined();
+    expect(payload.anchors).toBeDefined();
+    expect(payload.consolidationPolicies).toBeDefined();
+
+    // Connectors.
+    const connectorKinds = (payload.connectors as Array<{ kind: string }>).map(
+      (c) => c.kind,
+    );
+    expect(connectorKinds).toContain("acme_inbox");
+    const acme = (
+      payload.connectors as Array<{
+        kind: string;
+        requiresApproval: boolean;
+        capabilities: string[];
+      }>
+    ).find((c) => c.kind === "acme_inbox");
+    expect(acme?.requiresApproval).toBe(true);
+    expect(acme?.capabilities).toContain("acme.inbox.read");
+
+    // Channels.
+    expect(
+      (payload.channels as Array<{ kind: string }>).map((c) => c.kind),
+    ).toContain("acme_channel");
+
+    // Send policies.
+    expect(
+      (payload.sendPolicies as Array<{ kind: string }>).map((p) => p.kind),
+    ).toContain("acme_owner_consent_required");
+
+    // Event kinds.
+    expect(
+      (payload.eventKinds as Array<{ eventKind: string }>).map(
+        (e) => e.eventKind,
+      ),
+    ).toContain("acme.inbox.message");
+
+    // Bus families.
+    expect(
+      (payload.busFamilies as Array<{ family: string }>).map((f) => f.family),
+    ).toContain("acme.inbox.message");
+
+    // Blockers.
+    expect(
+      (payload.blockers as Array<{ kind: string }>).map((b) => b.kind),
+    ).toContain("website");
   });
 
   it("rejects /api/lifeops/dev/registries when not on loopback", async () => {
