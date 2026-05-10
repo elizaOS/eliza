@@ -496,6 +496,11 @@ const LIFEOPS_OWNER_CONTACTS_LOAD_CONTEXT = {
   envPrefix: "LIFEOPS_OWNER_",
 } as const;
 
+/** Delay between the first and second reminder-delivery attempt when the
+ *  runtime returns a transient send failure. Keeps the dispatcher from
+ *  hammering a flaky connector while still retrying within the same turn. */
+const REMINDER_DELIVERY_RETRY_DELAY_MS = 2_000;
+
 function isDeliveredReminderOutcome(
   outcome: LifeOpsReminderAttemptOutcome,
 ): boolean {
@@ -3981,7 +3986,9 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               `[lifeops] Reminder delivery failed for ${args.channel}, retrying in 2s`,
               { error: lifeOpsErrorMessage(firstError) },
             );
-            await new Promise((r) => setTimeout(r, 2_000));
+            await new Promise((r) =>
+              setTimeout(r, REMINDER_DELIVERY_RETRY_DELAY_MS),
+            );
             try {
               await this.runtime.sendMessageToTarget(
                 runtimeTarget.target,
