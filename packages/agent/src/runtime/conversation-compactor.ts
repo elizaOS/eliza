@@ -276,7 +276,9 @@ async function naiveCompact(
   const callOnce = async (extraInstruction?: string): Promise<string> => {
     const sys =
       NAIVE_SYSTEM_PROMPT +
-      (extraInstruction ? `\n\nAdditional constraint: ${extraInstruction}` : "");
+      (extraInstruction
+        ? `\n\nAdditional constraint: ${extraInstruction}`
+        : "");
     return callModel({
       systemPrompt: sys,
       messages: [

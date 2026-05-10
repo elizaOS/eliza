@@ -75,7 +75,7 @@ function makeRoundTripHybrid(): CompactorModelCall {
     const priorFacts: string[] = [];
     const priorEntities: Record<string, string> = {};
     const ledgerSection = body.match(
-      /Existing ledger[\s\S]*?(?=\n\nNew conversation|\Z)/,
+      /Existing ledger[\s\S]*?(?=\n\nNew conversation|Z)/,
     );
     if (ledgerSection) {
       const lines = ledgerSection[0].split("\n");
@@ -376,7 +376,10 @@ describe("structuredStateCompactor", () => {
       calls += 1;
       if (calls === 1) {
         return JSON.stringify({
-          facts: Array.from({ length: 50 }, (_, i) => `f${i}-${"x".repeat(20)}`),
+          facts: Array.from(
+            { length: 50 },
+            (_, i) => `f${i}-${"x".repeat(20)}`,
+          ),
           decisions: [],
           pending_actions: [],
           entities: {},
@@ -401,10 +404,7 @@ describe("structuredStateCompactor", () => {
 describe("hierarchicalSummaryCompactor", () => {
   it("throws when callModel is missing", async () => {
     await expect(
-      hierarchicalSummaryCompactor.compact(
-        buildTranscript(20),
-        buildOptions(),
-      ),
+      hierarchicalSummaryCompactor.compact(buildTranscript(20), buildOptions()),
     ).rejects.toThrow(/hierarchical-summary requires options.callModel/);
   });
 
@@ -441,7 +441,9 @@ describe("hierarchicalSummaryCompactor", () => {
       buildTranscript(36),
       buildOptions({ callModel, targetTokens: 5 }),
     );
-    expect((out.stats.extra?.rollupLevels as number) ?? 0).toBeGreaterThanOrEqual(1);
+    expect(
+      (out.stats.extra?.rollupLevels as number) ?? 0,
+    ).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -514,14 +516,10 @@ describe("multi-cycle drift", () => {
     });
 
     // Cycle 1: 20 messages, with a planted FACT in message 3.
-    const messages: CompactorMessage[] = [
-      { role: "system", content: "sys" },
-    ];
+    const messages: CompactorMessage[] = [{ role: "system", content: "sys" }];
     for (let i = 0; i < 20; i++) {
       const content =
-        i === 3
-          ? "FACT: the secret code is BANANA-42"
-          : `chitchat ${i}`;
+        i === 3 ? "FACT: the secret code is BANANA-42" : `chitchat ${i}`;
       messages.push({
         role: i % 2 === 0 ? "user" : "assistant",
         content,
