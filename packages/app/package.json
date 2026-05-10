@@ -27,6 +27,7 @@
     "build": "bun scripts/build.mjs",
     "build:ios": "node ../../packages/app-core/scripts/run-mobile-build.mjs ios",
     "build:android": "node ../../packages/app-core/scripts/run-mobile-build.mjs android",
+    "build:android:cloud": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud",
     "build:android:system": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-system",
     "ios": "bun run build:ios && capacitor open ios",
     "android": "bun run build:android && capacitor open android",
