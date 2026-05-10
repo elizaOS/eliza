@@ -262,6 +262,17 @@ else
   log "No local @elizaos/core source package found at $TYPESCRIPT_DIR; using installed package"
 fi
 
+log "Building cloud package artifacts"
+for package_dir in cloud/packages/sdk packages/cloud-routing; do
+  if [[ -f "$package_dir/package.json" ]] && jq -e '.scripts.build' "$package_dir/package.json" >/dev/null; then
+    log "Building $(node -p "require('./$package_dir/package.json').name") workspace artifacts"
+    pushd "$package_dir" >/dev/null
+    "$BUN_BIN" run build
+    popd >/dev/null
+  fi
+done
+node "$APP_CORE_SCRIPTS_DIR/link-docker-local-app-packages.mjs"
+
 log "Building Capacitor plugins"
 "$BUN_BIN" packages/app-core/scripts/build-native-plugins.mjs
 
