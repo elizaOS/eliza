@@ -148,6 +148,11 @@ describe('EmbeddedWorkflowService task workers', () => {
 
       const worker = ctx.workers.get(WORKFLOW_RUN_TASK_WORKER_NAME);
       expect(worker).toBeDefined();
+      const executeCalls: Array<{ workflowId: string; mode: string | undefined }> = [];
+      service.executeWorkflow = (async (workflowId, options) => {
+        executeCalls.push({ workflowId, mode: options.mode });
+        return undefined as unknown as Awaited<ReturnType<typeof service.executeWorkflow>>;
+      }) as typeof service.executeWorkflow;
 
       const fakeTask = {
         id: 'task-x' as Task['id'],
@@ -158,6 +163,7 @@ describe('EmbeddedWorkflowService task workers', () => {
 
       const result = await worker?.execute(ctx.runtime, {}, fakeTask);
       expect(result).toBeUndefined();
+      expect(executeCalls).toEqual([{ workflowId: created.id, mode: 'trigger' }]);
     } finally {
       await ctx.close();
     }

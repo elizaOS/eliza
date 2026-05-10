@@ -546,7 +546,7 @@ Respond ONLY with the rephrased response, nothing else."""
             }
 
         try:
-            if demand.source == "action" and hasattr(self.payment_client, "create_app_charge"):
+            if hasattr(self.payment_client, "create_app_charge"):
                 created_charge = await asyncio.to_thread(
                     self.payment_client.create_app_charge,
                     app_id=demand.app_id,

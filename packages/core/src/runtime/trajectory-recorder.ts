@@ -746,8 +746,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			agentId: input.agentId,
 			roomId: input.roomId,
 			runId: input.runId ?? process.env.MILADY_LIFEOPS_RUN_ID,
-			scenarioId:
-				input.scenarioId ?? process.env.MILADY_LIFEOPS_SCENARIO_ID,
+			scenarioId: input.scenarioId ?? process.env.MILADY_LIFEOPS_SCENARIO_ID,
 			rootMessage: input.rootMessage,
 			startedAt: Date.now(),
 			status: "running",

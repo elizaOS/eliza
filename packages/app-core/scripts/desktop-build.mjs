@@ -12,6 +12,7 @@ import {
   hasElectrobunViewExport,
   isSupportedBunVersion,
 } from "./lib/desktop-preflight.mjs";
+import { appIdentityEnv } from "./lib/read-app-identity.mjs";
 
 const ROOT = process.cwd();
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -705,6 +706,7 @@ function packageDesktopBuild() {
   const packageEnv = {
     ...process.env,
     ELIZA_ELECTROBUN_REPO_ROOT: process.env.ELIZA_ELECTROBUN_REPO_ROOT ?? ROOT,
+    ...appIdentityEnv(APP_DIR),
     ...(stageMacosReleaseApp && process.platform === "darwin"
       ? { ELIZA_ELECTROBUN_NOTARIZE: "0" }
       : {}),
