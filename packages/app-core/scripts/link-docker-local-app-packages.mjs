@@ -307,6 +307,21 @@ for (const packagePath of localPackages) {
       }
     }
   }
+
+  if (pkg.name === "@elizaos/app-core") {
+    for (const rootDep of ["jose"]) {
+      linkRootDependency({
+        packageName: rootDep,
+        target: path.join(packageDir, "node_modules", rootDep),
+      });
+      // Also ensure root-level node_modules has it so ESM resolution always
+      // finds the package regardless of which symlink depth Node traverses.
+      linkRootDependency({
+        packageName: rootDep,
+        target: path.join(repoRoot, "node_modules", rootDep),
+      });
+    }
+  }
 }
 
 console.log(
