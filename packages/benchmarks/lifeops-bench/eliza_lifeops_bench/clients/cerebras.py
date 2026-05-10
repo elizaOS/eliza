@@ -36,15 +36,15 @@ from .base import (
     Usage,
 )
 
-# Pricing: see https://cerebras.ai/pricing
-# These are intentionally conservative placeholders. Cerebras does not publish a
-# single static USD/token table for all models on a stable URL, so the
-# benchmark records token counts and any operator can override these constants
-# for their plan. They are NOT pulled from the wire.
+# Pricing: pay-per-token published by Cerebras for gpt-oss-120b is $0.35/M
+# input and $0.75/M output as of May 2026. Sourced from
+# https://www.cerebras.ai/blog/cerebras-inference-now-available-via-pay-per-token
+# and corroborated by https://pricepertoken.com/pricing-page/model/openai-gpt-oss-120b.
+# Override per-plan via PRICE_OVERRIDE env if needed.
 CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
     "gpt-oss-120b": {
-        "input_per_million_usd": 0.10,
-        "output_per_million_usd": 0.30,
+        "input_per_million_usd": 0.35,
+        "output_per_million_usd": 0.75,
     },
 }
 

@@ -14,7 +14,7 @@ domain module — no new plumbing required.
 
 from __future__ import annotations
 
-from ...types import Scenario
+from ...types import Domain, Scenario
 from .calendar import LIVE_CALENDAR_SCENARIOS
 from .contacts import LIVE_CONTACTS_SCENARIOS
 from .finance import LIVE_FINANCE_SCENARIOS
@@ -41,6 +41,19 @@ ALL_LIVE_SCENARIOS: list[Scenario] = [
 
 LIVE_SCENARIOS_BY_ID: dict[str, Scenario] = {s.id: s for s in ALL_LIVE_SCENARIOS}
 
+LIVE_SCENARIOS_BY_DOMAIN: dict[Domain, list[Scenario]] = {
+    Domain.CALENDAR: LIVE_CALENDAR_SCENARIOS,
+    Domain.MAIL: LIVE_MAIL_SCENARIOS,
+    Domain.MESSAGES: LIVE_MESSAGES_SCENARIOS,
+    Domain.REMINDERS: LIVE_REMINDERS_SCENARIOS,
+    Domain.FINANCE: LIVE_FINANCE_SCENARIOS,
+    Domain.TRAVEL: LIVE_TRAVEL_SCENARIOS,
+    Domain.SLEEP: LIVE_SLEEP_SCENARIOS,
+    Domain.FOCUS: LIVE_FOCUS_SCENARIOS,
+    Domain.HEALTH: LIVE_HEALTH_SCENARIOS,
+    Domain.CONTACTS: LIVE_CONTACTS_SCENARIOS,
+}
+
 __all__ = [
     "ALL_LIVE_SCENARIOS",
     "LIVE_CALENDAR_SCENARIOS",
@@ -51,6 +64,7 @@ __all__ = [
     "LIVE_MAIL_SCENARIOS",
     "LIVE_MESSAGES_SCENARIOS",
     "LIVE_REMINDERS_SCENARIOS",
+    "LIVE_SCENARIOS_BY_DOMAIN",
     "LIVE_SCENARIOS_BY_ID",
     "LIVE_SLEEP_SCENARIOS",
     "LIVE_TRAVEL_SCENARIOS",

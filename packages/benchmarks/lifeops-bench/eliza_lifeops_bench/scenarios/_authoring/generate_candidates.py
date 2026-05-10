@@ -35,6 +35,35 @@ from .validate import validate_batch
 DEFAULT_MANIFEST = package_root() / "manifests" / "actions.manifest.json"
 DEFAULT_SNAPSHOT_DIR = snapshots_dir()
 SPEC_PATH = Path(__file__).parent / "spec.md"
+SPEC_LIVE_PATH = Path(__file__).parent / "spec_live.md"
+
+
+def _load_existing_live_examples(domain: Domain, count: int) -> list[dict[str, Any]]:
+    """Load up to ``count`` hand-authored LIVE scenarios from the target domain."""
+    from .live import LIVE_SCENARIOS_BY_DOMAIN
+
+    existing = LIVE_SCENARIOS_BY_DOMAIN.get(domain, [])[:count]
+    out: list[dict[str, Any]] = []
+    for scenario in existing:
+        out.append(
+            {
+                "id": scenario.id,
+                "name": scenario.name,
+                "domain": scenario.domain.value,
+                "mode": scenario.mode.value,
+                "persona_id": scenario.persona.id,
+                "instruction": scenario.instruction,
+                "ground_truth_actions": [],
+                "required_outputs": [],
+                "first_question_fallback": None,
+                "world_seed": scenario.world_seed,
+                "max_turns": scenario.max_turns,
+                "description": scenario.description,
+                "success_criteria": list(scenario.success_criteria),
+                "world_assertions": list(scenario.world_assertions),
+            }
+        )
+    return out
 
 
 def _load_existing_examples(domain: Domain, count: int) -> list[dict[str, Any]]:
@@ -123,14 +152,41 @@ def _build_prompt(
     snapshot_summary: str,
     persona_summary: str,
     examples: list[dict[str, Any]],
+    mode: str = "static",
 ) -> list[dict[str, Any]]:
-    system = (
-        "You are a careful test-corpus author for an AI life assistant. "
-        "You write scenarios that test the assistant's ability to dispatch "
-        "the right action with the right arguments against a seeded world."
-    )
-    user = "\n\n".join(
-        [
+    if mode == "live":
+        system = (
+            "You are a careful test-corpus author for an AI life assistant. "
+            "You write LIVE scenarios that test the assistant's judgment in "
+            "open-ended, multi-turn conversations. The user side is itself an "
+            "LLM, and scoring is done by an LLM judge using success_criteria "
+            "and world_assertions, NOT by exact action matching."
+        )
+        sections = [
+            "# SPEC",
+            spec,
+            "# AVAILABLE PERSONAS",
+            persona_summary,
+            "# WORLD SNAPSHOT",
+            snapshot_summary,
+            "# EXAMPLES OF GOOD HAND-AUTHORED LIVE SCENARIOS",
+            json.dumps(examples, indent=2),
+            f"# TASK\nReturn a JSON array of {n} new LIVE scenarios for the "
+            f"`{domain.value}` domain. mode MUST be 'live'. ground_truth_actions "
+            "MUST be []. required_outputs MUST be []. first_question_fallback "
+            "MUST be null. Each scenario MUST include success_criteria (2-4 "
+            "items) and world_assertions (1-3 items). JSON only, no prose, no "
+            "fences. Vary personas across the batch; do not duplicate ids of "
+            "the existing examples. Use unique ids prefixed with "
+            f"`live.{domain.value}.`.",
+        ]
+    else:
+        system = (
+            "You are a careful test-corpus author for an AI life assistant. "
+            "You write scenarios that test the assistant's ability to dispatch "
+            "the right action with the right arguments against a seeded world."
+        )
+        sections = [
             "# SPEC",
             spec,
             "# AVAILABLE ACTIONS",
@@ -146,7 +202,7 @@ def _build_prompt(
             "personas across the batch; do not duplicate ids of the existing "
             "examples.",
         ]
-    )
+    user = "\n\n".join(sections)
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
@@ -187,15 +243,19 @@ async def _call_cerebras(
 
 async def _async_main(args: argparse.Namespace) -> int:
     domain = Domain(args.domain)
+    is_live = args.mode == "live"
 
     snapshot_name = "tiny_seed_42" if args.world_seed == 42 else "medium_seed_2026"
     snapshot_path = DEFAULT_SNAPSHOT_DIR / f"{snapshot_name}.json"
 
-    spec = SPEC_PATH.read_text(encoding="utf-8")
+    spec = (SPEC_LIVE_PATH if is_live else SPEC_PATH).read_text(encoding="utf-8")
     manifest_summary = _summarize_action_manifest(DEFAULT_MANIFEST)
     snapshot_summary = _summarize_snapshot(snapshot_path)
     persona_summary = _summarize_personas()
-    examples = _load_existing_examples(domain, args.example_count)
+    if is_live:
+        examples = _load_existing_live_examples(domain, args.example_count)
+    else:
+        examples = _load_existing_examples(domain, args.example_count)
 
     messages = _build_prompt(
         domain,
@@ -205,6 +265,7 @@ async def _async_main(args: argparse.Namespace) -> int:
         snapshot_summary=snapshot_summary,
         persona_summary=persona_summary,
         examples=examples,
+        mode=args.mode,
     )
 
     if args.dry_run:
@@ -266,6 +327,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--domain", required=True, choices=[d.value for d in Domain])
     parser.add_argument("--n", type=int, default=10, help="Candidates to request.")
+    parser.add_argument("--mode", default="static", choices=["static", "live"])
     parser.add_argument("--provider", default="cerebras")
     parser.add_argument("--model", default=None)
     parser.add_argument("--world-seed", type=int, default=2026)

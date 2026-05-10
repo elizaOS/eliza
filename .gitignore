@@ -479,3 +479,4 @@ action-benchmark-report/
 artifacts/
 research/native-tool-calling
 test/mocks/mockoon/.mockoon-pids/
+lifeops_bench_results/
