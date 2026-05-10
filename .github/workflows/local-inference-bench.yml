@@ -29,6 +29,7 @@ on:
       - "scripts/benchmark/**"
       - ".github/workflows/local-inference-bench.yml"
       - "plugins/plugin-local-embedding/**"
+      - "packages/app-core/scripts/build-llama-cpp-dflash.mjs"
   workflow_dispatch:
     inputs:
       run_real_agent:
@@ -38,6 +39,11 @@ on:
         default: false
       run_cuttlefish:
         description: "Run cuttlefish AVD profile (job 3). Coordinates with elizaos-cuttlefish.yml."
+        required: false
+        type: boolean
+        default: false
+      run_windows_cross_build:
+        description: "Run Windows x86_64 cross-build (job 4) on-demand. Always runs on PR + nightly anyway; this just lets you trigger it without rebuilding the whole bench matrix."
         required: false
         type: boolean
         default: false
@@ -313,3 +319,156 @@ jobs:
           path: reports/porting/
           if-no-files-found: warn
           retention-days: 90
+
+  windows-cross-build:
+    # Cross-build the Windows x86_64 DLLs + llama-server.exe from a Linux
+    # host using x86_64-w64-mingw32. This is the same code path
+    # `packages/app-core/scripts/build-llama-cpp-dflash.mjs --target
+    # windows-x64-cpu` runs locally; CI exercises it so a milady-ai/llama.cpp
+    # fork bump (or an Ubuntu mingw-w64 update) doesn't silently break the
+    # Windows distribution shape.
+    #
+    # We build, verify the expected ggml + TBQ + QJL + Polar exports, and
+    # upload the artifact dir for download. Smoke-running llama-server.exe
+    # under wine is opt-in (see ELIZA_DFLASH_RUN_WINE_SMOKE=1) because
+    # ubuntu-24.04 doesn't ship wine-stable by default and we don't want
+    # the harness install to dominate the job runtime; CI just produces
+    # the binaries for downstream consumers.
+    name: Windows x64 cross-build (mingw-w64)
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && (inputs.run_windows_cross_build == true || inputs.run_real_agent == true)) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install x86_64-w64-mingw32 cross-toolchain
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            ninja-build \
+            mingw-w64 \
+            mingw-w64-tools \
+            g++-mingw-w64-x86-64 \
+            binutils-mingw-w64-x86-64
+          x86_64-w64-mingw32-gcc --version | head -1
+          x86_64-w64-mingw32-g++ --version | head -1
+          x86_64-w64-mingw32-objdump --version | head -1
+          x86_64-w64-mingw32-nm --version | head -1
+
+      - name: Cross-build windows-x64-cpu
+        env:
+          # Override the dflash fork to milady-ai/llama.cpp v0.1.0-milady so
+          # CI exercises the symbols downstream consumers actually expect.
+          # Operators that want to test against the spiritbuun upstream can
+          # leave this unset.
+          ELIZA_DFLASH_LLAMA_CPP_REMOTE: "https://github.com/milady-ai/llama.cpp.git"
+        run: |
+          set -euo pipefail
+          node packages/app-core/scripts/build-llama-cpp-dflash.mjs \
+            --target windows-x64-cpu \
+            --ref v0.1.0-milady \
+            --cache-dir "$RUNNER_TEMP/llama-cpp-cross-cache" \
+            --out-dir "$GITHUB_WORKSPACE/build-output/windows-x64-cpu"
+
+      - name: Verify exported symbols
+        run: |
+          set -euo pipefail
+          OUT="$GITHUB_WORKSPACE/build-output/windows-x64-cpu"
+          echo "=== Built artifacts ==="
+          ls -la "$OUT/"
+          echo
+          echo "=== File types ==="
+          file "$OUT"/*.dll "$OUT"/*.exe
+          echo
+          echo "=== Symbol verification (objdump -p exports) ==="
+          missing=0
+          check() {
+            local f="$1"; local sym="$2"
+            if x86_64-w64-mingw32-objdump -p "$OUT/$f" | grep -qE "^\s+\[\s*[0-9]+\] ${sym}$"; then
+              echo "  [OK] $sym in $f"
+            else
+              echo "  [MISSING] $sym in $f"
+              missing=$((missing + 1))
+            fi
+          }
+          # Standard ggml.
+          check ggml-base.dll ggml_init
+          check ggml-base.dll ggml_new_tensor
+          check ggml-base.dll ggml_new_tensor_1d
+          check ggml-base.dll ggml_new_tensor_2d
+          check ggml-base.dll ggml_new_tensor_3d
+          check ggml-base.dll ggml_new_tensor_4d
+          # TBQ (TurboQuant V-cache).
+          check ggml-base.dll quantize_row_tbq3_0_ref
+          check ggml-base.dll quantize_row_tbq4_0_ref
+          check ggml-base.dll dequantize_row_tbq3_0
+          check ggml-base.dll dequantize_row_tbq4_0
+          check ggml-base.dll quantize_tbq3_0
+          check ggml-base.dll quantize_tbq4_0
+          # QJL (1-bit JL-transform K-cache); main entries in ggml-base
+          # because of the Windows DLL boundary patch, kernel funcs in
+          # ggml-cpu (AVX2 path; NEON guarded out for x86_64 cross).
+          check ggml-base.dll quantize_row_qjl1_256_ref
+          check ggml-base.dll dequantize_row_qjl1_256
+          check ggml-base.dll quantize_qjl1_256
+          check ggml-cpu.dll qjl_quantize_row_avx2
+          check ggml-cpu.dll qjl_score_qk_avx2
+          check ggml-cpu.dll ggml_compute_forward_attn_score_qjl
+          # PolarQuant (4-bit weight quant).
+          check ggml-base.dll quantize_row_q4_polar_ref
+          check ggml-base.dll dequantize_row_q4_polar
+          check ggml-base.dll quantize_q4_polar
+          check ggml-cpu.dll ggml_vec_dot_q4_polar_q8_0
+          echo
+          if [ "$missing" -gt 0 ]; then
+            echo "::error ::$missing required symbols missing from Windows cross-build"
+            exit 1
+          fi
+          echo "All required symbols present."
+          # Print export counts for the report.
+          echo
+          echo "=== Export counts ==="
+          for dll in "$OUT"/*.dll; do
+            count=$(x86_64-w64-mingw32-objdump -p "$dll" | grep -cE '^\s+\[\s*[0-9]+\] [a-zA-Z_]')
+            size=$(stat -c %s "$dll")
+            printf "  %-30s %6d exports  %10d bytes\n" "$(basename $dll)" "$count" "$size"
+          done
+
+      - name: Optional wine smoke (--help)
+        if: ${{ env.ELIZA_DFLASH_RUN_WINE_SMOKE == '1' }}
+        env:
+          OUT: ${{ github.workspace }}/build-output/windows-x64-cpu
+        run: |
+          set -euo pipefail
+          # Skip silently if wine isn't installed; CI runners don't ship it
+          # by default and this step is opt-in.
+          if ! command -v wine64 >/dev/null 2>&1; then
+            echo "::warning ::wine64 not installed; skipping smoke run"
+            exit 0
+          fi
+          # llama-server's --help just touches argument parsing; it doesn't
+          # need a model file. We're only proving the EXE loads, the import
+          # table resolves, and stdio works under wine.
+          wine64 "$OUT/llama-server.exe" --help | head -20 || {
+            echo "::error ::wine smoke failed"
+            exit 1
+          }
+
+      - name: Upload windows-x64-cpu artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dflash-windows-x64-cpu-${{ github.run_id }}
+          path: build-output/windows-x64-cpu
+          if-no-files-found: error
+          retention-days: 14

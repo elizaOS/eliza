@@ -1,15 +1,9 @@
 /**
  * Shared owner-policy writers for the LifeOps action surface.
  *
- * Both `LIFE.policy_set_reminder` / `LIFE.policy_configure_escalation`
- * (canonical per W3-C: HARDCODING_AUDIT §6 #8) and the legacy
- * `PROFILE.set_reminder_preference` / `PROFILE.configure_escalation`
- * subactions share these helpers so the OwnerFactStore is the single source
- * of truth for reminder intensity + escalation rules.
- *
- * The `LIFE.policy_*` surface is the canonical entry point; the PROFILE
- * subactions stay registered for one release as similes that delegate here
- * during the planner-cache transition (per IMPL §5.1).
+ * `LIFE.policy_set_reminder` / `LIFE.policy_configure_escalation` use these
+ * helpers so the OwnerFactStore is the single source of truth for reminder
+ * intensity + escalation rules.
  */
 
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
@@ -28,11 +22,10 @@ import { LifeOpsService } from "../../lifeops/service.js";
 import { extractReminderIntensityWithLlm } from "./extract-task-plan.js";
 
 /**
- * Caller-supplied resolver. Both LIFE.policy_* and PROFILE.* handlers
- * already have a `resolveDefinitionFromIntent` in scope (life.ts owns the
- * one canonical impl). We accept it as a parameter to keep this module free
- * of inbound imports from `actions/life.ts` and avoid a circular dep
- * between `actions/life.ts` and `actions/lib/`.
+ * Caller-supplied resolver. Accepted as a parameter so this module stays
+ * free of inbound imports from `actions/life.ts` (which owns the one
+ * canonical impl) and avoids a circular dep between `actions/life.ts` and
+ * `actions/lib/`.
  */
 export type DefinitionResolver = (
   service: LifeOpsService,

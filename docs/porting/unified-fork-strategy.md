@@ -11,17 +11,25 @@
 
 ## A. Executive summary
 
-**Milady currently builds against three different llama.cpp trees and a
-patch directory.** AOSP cross-compiles `Apothic-AI/llama.cpp-1bit-turboquant
-@ b2b5273e8b27` and applies `eliza/packages/app-core/scripts/aosp/llama-cpp-patches/{qjl,polarquant}/*`
-on every build. The host-side DFlash server is built from
+**Status (2026-05-09, post Wave-3-A):** AOSP and host build paths now
+both pin `milady-ai/llama.cpp @ v0.2.0-milady`, which composes TBQ + QJL
++ Q4_POLAR + Metal kernels (v0.1.0-milady) + DFlash speculative-decoding
+CLI surface (this release). The `spiritbuun/buun-llama-cpp` pin is
+retired. Stock desktop still runs `node-llama-cpp@3.18.1` — that's the
+remaining non-unified consumer; see §F for the migration plan.
+
+**Original problem (resolved for the AOSP+host paths, kept for context):**
+Milady previously built against three different llama.cpp trees and a
+patch directory. AOSP cross-compiled `Apothic-AI/llama.cpp-1bit-turboquant
+@ b2b5273e8b27` and applied `eliza/packages/app-core/scripts/aosp/llama-cpp-patches/{qjl,polarquant}/*`
+on every build. The host-side DFlash server was built from
 `spiritbuun/buun-llama-cpp @ master` (min commit `b9d01582b`). Stock desktop
 runs `node-llama-cpp@3.18.1`, which embeds yet a third llama.cpp build
 without TurboQuant/QJL/PolarQuant. The Metal kernel work in
-`packages/inference/metal/` is staged as opt-in patch hooks in
-`scripts/build-llama-cpp-dflash.mjs` because no fork actually owns the
-.metal sources yet. This is unmaintainable: a feature only ships when
-two unrelated forks happen to carry the same patch series.
+`packages/inference/metal/` was staged as opt-in patch hooks in
+`scripts/build-llama-cpp-dflash.mjs` before the unified fork owned the
+.metal sources. That was unmaintainable: a feature only shipped when
+two unrelated forks happened to carry the same patch series.
 
 **The fix is a single Milady-owned fork at `milady-ai/llama.cpp` rebased
 on `ggml-org/llama.cpp` master**, with every Milady technique as a named
@@ -113,7 +121,7 @@ kernel landed correctly. Status legend: `✓` shipped on the unified fork,
 | **TBQ3_TCQ** (trellis-coded) | ☐ ref C only | ▲ Viterbi encoder needs warp-shuffle port | ☐ `vulkan/turbo3_tcq.comp` (decode-only) | ☐ `metal/turbo3_tcq.metal` (decode-only) | ☐ same | ☐ ref C → NEON encoder | ☐ | W1-D | `metal_verify ... turbo3_tcq fixtures/turbo3_tcq.json` |
 | **QJL1_256** (K-side KV) | ☐ vendored patch series `qjl/0001..0004` (`block_qjl1_256` + `GGML_OP_ATTN_SCORE_QJL`); CPU AVX2/NEON exists in `packages/native-plugins/qjl-cpu/` | ☐ port from `packages/training/scripts/quantization/qjl/csrc/` | ☐ port to `.comp` | ☐ `metal/qjl.metal` exists (opt-in via `ELIZA_DFLASH_PATCH_METAL_QJL=1`) | ☐ same | ☐ NEON path validated 100/100 host parity, needs arm64 hardware | ☐ | W1-A (CPU), Agent-D (Metal) | `qjl_bench --parity` (host) + `metal_verify ... qjl fixtures/qjl.json` |
 | **Q4_POLAR** (weight-side) | ☐ vendored patch series `polarquant/0001..0004` (scalar ref); NEON/AVX2 = next-session work | ☐ port from `polarquant/csrc/` (training-side, codes-only) | ☐ port to `.comp` | ☐ `metal/polar.metal` exists (opt-in via `ELIZA_DFLASH_PATCH_METAL_POLAR=1`) | ☐ same | ☐ scalar landed, NEON/AVX2 next session | ☐ | W1-B, Agent-D | `polar_roundtrip` + `polar_dot` + `metal_verify ... polar fixtures/polar.json` + Wikitext-2 PPL Δ ≤ +0.05 |
-| **DFlash spec-decode** | ✓ via `llama-server --spec-type dflash` (spiritbuun) | ✓ same | ✓ same | ✓ same | ✗ no networking sandbox | ✓ cross-compiled `llama-server` shipped per ABI; `aosp-dflash-adapter.ts` wires it. Drafter pair: Bonsai-8B target + Qwen3-0.6B drafter (matched-vocab; see `dflash-drafter-strategy.md`) | n/a | spiritbuun (DFlash); W1-G (drafter pairing) | `aosp-dflash-adapter.ts` health → 5-prompt round-trip with `n_drafted` > 50% |
+| **DFlash spec-decode** | ✓ via `llama-server --spec-type dflash` on the unified fork (`milady-ai/llama.cpp @ v0.2.0-milady`) | ✓ same | ✓ same | ✓ same | ✗ no networking sandbox | ✓ cross-compiled `llama-server` shipped per ABI; `aosp-dflash-adapter.ts` wires it. Drafter pair: Bonsai-8B target + Qwen3-0.6B drafter (matched-vocab; see `dflash-drafter-strategy.md`) | n/a | unified fork (Wave-3 agent A); W1-G (drafter pairing) | `aosp-dflash-adapter.ts` health → 5-prompt round-trip with `llamacpp:n_drafted_total > 0` and `_accepted_total / _total > 0.5` |
 | **Head quantization** (per-attn-head bit budget; recommended new addition — see §E) | ☐ port from KIVI/KVQuant ref (per-channel K, per-token V, mixed-precision scoring per head) | ☐ same | ☐ same | ☐ same | ☐ same | ☐ same | ☐ same | new branch `milady/head-quant` | Wikitext-2 PPL Δ vs flat-bit baseline; per-head sensitivity profile written to GGUF metadata |
 | **KV paging / split-by-layer offload** (recommended new addition — see §E) | ☐ extend slot-save-path + `n_keep` to a per-layer CPU↔disk pager | n/a | n/a | n/a | n/a | ☐ disk-paged KV is the >128k context unlock on phones | n/a | new branch `milady/kv-paging` | 256k context PPL on a 1B model with no OOM and tok/s ≥ baseline + 20% |
 | **BitNet b1.58** (recommended add — see §E) | ☐ port `bitnet.cpp` ternary kernels onto our base; ggml type `TL1`/`TL2` | ☐ CUDA via bitnet.cpp's `bitnet_kernels.cu` | ☐ Vulkan TBD | ☐ MSL TBD | ☐ same | ☐ NEON ternary unpack | ☐ | new branch `milady/bitnet` | bitnet-b1.58-2B-4T inference matches HF reference |
@@ -305,6 +313,22 @@ unified fork. Each step is a single agent session unless noted.
    because the fork carries the kernels directly. Keep the function
    signatures during the transition, just have them log "patch already
    on fork" and return.
+   **DONE 2026-05-09 (Wave-3 agent A).** Bumped `REMOTE` to
+   `milady-ai/llama.cpp`, `REF` to `v0.2.0-milady`, `MIN_COMMIT` to
+   `7c7818aafc7599996268226e2e56099f4f38e972`. Cache directory renamed
+   from `buun-llama-cpp` to `milady-llama-cpp` (forces a fresh pull for
+   anyone with a stale checkout). All five patch hooks reduced to
+   "kernels already present on milady-ai/llama.cpp; no-op." log lines.
+   `compile-libllama.mjs` (AOSP cross-compile) bumped from
+   `v0.1.0-milady` to the same `v0.2.0-milady` tag so both paths land on
+   the same commit. The unified-fork side adds DFlash CLI surface
+   (`--spec-type dflash`, `--draft-min-prob` alias, Prometheus
+   `n_drafted_total` / `n_drafted_accepted_total` counters) directly so
+   the host-side `dflash-server.ts` and AOSP-side `aosp-dflash-adapter.ts`
+   keep working unchanged. Verified: native host build clean, arm64-v8a
+   + x86_64 musl cross-builds clean via `compile-libllama.mjs --src-dir`,
+   local llama-server smoke test passes (chat completion + metrics
+   counters confirmed).
 9. **Fork `node-llama-cpp` to `milady-ai/node-llama-cpp`**, embed our
    unified fork as the bundled C++ source, extend `GgmlType` /
    `resolveGgmlTypeOption` to accept `tbq3_0`, `tbq4_0`, `qjl1_256`,

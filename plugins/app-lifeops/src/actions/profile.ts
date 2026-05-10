@@ -14,20 +14,11 @@ import {
 import { normalizeLifeOpsOwnerProfilePatch } from "../lifeops/owner-profile.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
-  applyOwnerPolicyConfigureEscalation,
-  applyOwnerPolicySetReminder,
-} from "./lib/owner-policy-writes.js";
-import {
   resolveActionArgs,
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
-import { resolveDefinitionFromIntent } from "./life.js";
 
-type ProfileSubaction =
-  | "save"
-  | "capture_phone"
-  | "set_reminder_preference"
-  | "configure_escalation";
+type ProfileSubaction = "save" | "capture_phone";
 
 type ProfileSaveParams = {
   key?: string;
@@ -48,26 +39,10 @@ type ProfileCapturePhoneParams = {
   allowVoice?: boolean;
 };
 
-type ProfileSetReminderPreferenceParams = {
-  intensity?: "minimal" | "normal" | "persistent" | "high_priority_only";
-  target?: string;
-  intent?: string;
-  details?: Record<string, unknown>;
-};
-
-type ProfileConfigureEscalationParams = {
-  target?: string;
-  timeoutMinutes?: number;
-  callAfterMinutes?: number;
-  details?: Record<string, unknown>;
-};
-
 type ProfileParams = {
   subaction?: ProfileSubaction;
 } & ProfileSaveParams &
-  Partial<ProfileCapturePhoneParams> &
-  ProfileSetReminderPreferenceParams &
-  ProfileConfigureEscalationParams;
+  Partial<ProfileCapturePhoneParams>;
 
 // Wave-2 W2-A collapsed PROFILE.save ≡ PROFILE.set into a single
 // canonical `save` subaction. The legacy `set` spelling is normalized
@@ -98,22 +73,6 @@ const SUBACTIONS = {
       "persist owner phone number for SMS/escalation routing",
     required: ["phoneNumber"],
     optional: ["allowSms", "allowVoice"],
-  },
-  set_reminder_preference: {
-    description:
-      "Set reminder intensity (minimal | normal | persistent | high_priority_only); optional per-definition target.",
-    descriptionCompressed:
-      "set reminder intensity: minimal|normal|persistent|high_priority_only",
-    required: ["intensity"],
-    optional: ["target", "intent", "details"],
-  },
-  configure_escalation: {
-    description:
-      "Set escalation rules (timeoutMinutes, callAfterMinutes) for a definition or globally.",
-    descriptionCompressed:
-      "set escalation rules: timeout-minutes call-after-no-response etc",
-    required: [],
-    optional: ["target", "timeoutMinutes", "callAfterMinutes", "details"],
   },
 } as const satisfies SubactionsMap<ProfileSubaction>;
 
@@ -272,48 +231,6 @@ async function handleCapturePhone(
   };
 }
 
-async function handleSetReminderPreference(
-  runtime: IAgentRuntime,
-  params: ProfileParams,
-  message: Memory,
-): Promise<ReturnType<NonNullable<Action["handler"]>>> {
-  // PROFILE.set_reminder_preference is a one-release simile that delegates
-  // to the canonical LIFE.policy_set_reminder writer (W3-C drift D-3).
-  return applyOwnerPolicySetReminder({
-    runtime,
-    message,
-    intent:
-      params.intent?.trim() ||
-      (typeof message.content?.text === "string"
-        ? message.content.text.trim()
-        : ""),
-    resolveDefinition: resolveDefinitionFromIntent,
-    intensity: params.intensity,
-    target: params.target,
-    details: params.details,
-  });
-}
-
-async function handleConfigureEscalation(
-  runtime: IAgentRuntime,
-  params: ProfileParams,
-  message: Memory,
-): Promise<ReturnType<NonNullable<Action["handler"]>>> {
-  // PROFILE.configure_escalation is a one-release simile that delegates
-  // to the canonical LIFE.policy_configure_escalation writer (W3-C drift D-3).
-  return applyOwnerPolicyConfigureEscalation({
-    runtime,
-    message,
-    intent:
-      typeof message.content?.text === "string" ? message.content.text : "",
-    resolveDefinition: resolveDefinitionFromIntent,
-    target: params.target,
-    timeoutMinutes: params.timeoutMinutes,
-    callAfterMinutes: params.callAfterMinutes,
-    details: params.details,
-  });
-}
-
 export const profileAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
@@ -325,8 +242,6 @@ export const profileAction: Action & {
     "SAVE_TRAVEL_PREFERENCES",
     "REMEMBER_PREFERENCES",
     "CAPTURE_PHONE",
-    "CONFIGURE_ESCALATION",
-    "SET_REMINDER_INTENSITY",
   ],
   tags: [
     "always-include",
@@ -337,11 +252,11 @@ export const profileAction: Action & {
     "owner profile",
   ],
   description:
-    "Owner-only. Persist stable owner facts and preferences: name, location, gender, age, relationship status, travel-booking preferences (save subaction); phone number (capture_phone); reminder intensity (set_reminder_preference); escalation rules (configure_escalation). All operations are durable owner-scoped state.",
+    "Owner-only. Persist stable owner facts and preferences: name, location, gender, age, relationship status, travel-booking preferences (save subaction); phone number (capture_phone). Reminder intensity and escalation rules live on LIFE.policy_set_reminder / LIFE.policy_configure_escalation.",
   descriptionCompressed:
-    "persist owner state: save(name,location,age,prefs) + capture_phone(number) + set_reminder_preference(intensity) + configure_escalation(rules)",
+    "persist owner state: save(name,location,age,prefs) + capture_phone(number); reminder/escalation policy lives on LIFE.policy_*",
   routingHint:
-    'durable owner facts, reusable preferences, travel/booking preferences ("remember I prefer aisle seats", "save my hotel preferences") -> PROFILE; never use extraction/memory side effects/REPLY',
+    'durable owner facts, reusable preferences, travel/booking preferences ("remember I prefer aisle seats", "save my hotel preferences") -> PROFILE; reminder intensity / escalation rules -> LIFE.policy_*; never use extraction/memory side effects/REPLY',
   contexts: ["memory", "contacts", "tasks", "settings", "calendar"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -396,10 +311,6 @@ export const profileAction: Action & {
         );
       case "capture_phone":
         return handleCapturePhone(params, runtime);
-      case "set_reminder_preference":
-        return handleSetReminderPreference(runtime, params, message);
-      case "configure_escalation":
-        return handleConfigureEscalation(runtime, params, message);
     }
   },
 
@@ -407,16 +318,11 @@ export const profileAction: Action & {
     {
       name: "subaction",
       description:
-        "Which profile operation to perform: save, capture_phone, set_reminder_preference, or configure_escalation. The legacy `set` alias is canonicalized to `save`.",
+        "Which profile operation to perform: save or capture_phone. The legacy `set` alias is canonicalized to `save`.",
       required: false,
       schema: {
         type: "string" as const,
-        enum: [
-          "save",
-          "capture_phone",
-          "set_reminder_preference",
-          "configure_escalation",
-        ],
+        enum: ["save", "capture_phone"],
       },
     },
     {
@@ -495,45 +401,6 @@ export const profileAction: Action & {
       description: "Allow voice-call contact on the captured number.",
       schema: { type: "boolean" as const },
     },
-    {
-      name: "intensity",
-      description:
-        "Reminder intensity level: minimal, normal, persistent, or high_priority_only.",
-      schema: {
-        type: "string" as const,
-        enum: ["minimal", "normal", "persistent", "high_priority_only"],
-      },
-    },
-    {
-      name: "target",
-      description:
-        "Optional definition name/ID for set_reminder_preference or configure_escalation.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "intent",
-      description:
-        "Free-form intent text for the reminder-preference operation.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "timeoutMinutes",
-      description:
-        "Escalation timeout in minutes (used by configure_escalation).",
-      schema: { type: "number" as const },
-    },
-    {
-      name: "callAfterMinutes",
-      description:
-        "Minutes before escalating to a voice call (used by configure_escalation).",
-      schema: { type: "number" as const },
-    },
-    {
-      name: "details",
-      description:
-        "Structured data when needed: domain (user_lifeops/agent_ops), steps escalation list, etc.",
-      schema: { type: "object" as const },
-    },
   ],
   examples: [
     [
@@ -561,20 +428,6 @@ export const profileAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "Phone number 555-1234 saved. Enabled for: SMS.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "less reminders please",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Global LifeOps reminders are now minimal.",
         },
       },
     ],

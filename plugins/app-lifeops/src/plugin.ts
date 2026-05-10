@@ -73,14 +73,18 @@ import {
   createAnchorRegistry,
   createEventKindRegistry,
   createFamilyRegistry,
+  createWorkflowStepRegistry,
   registerAnchorRegistry,
   registerAppLifeOpsAnchors,
   registerAppLifeOpsBusFamilies,
   registerAppLifeOpsEventKinds,
   registerBuiltinTelemetryFamilies,
   registerDefaultBlockerPack,
+  registerDefaultFeatureFlagPack,
+  registerDefaultWorkflowStepPack,
   registerEventKindRegistry,
   registerFamilyRegistry,
+  registerWorkflowStepRegistry,
 } from "./lifeops/registries/index.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
 // LifeOps runtime (scheduler task worker + registration)
@@ -415,6 +419,15 @@ const rawAppLifeOpsPlugin: Plugin = {
     registerBuiltinTelemetryFamilies(familyRegistry);
     registerAppLifeOpsBusFamilies(familyRegistry);
     registerFamilyRegistry(runtime, familyRegistry);
+
+    const workflowStepRegistry = createWorkflowStepRegistry();
+    registerDefaultWorkflowStepPack(workflowStepRegistry);
+    registerWorkflowStepRegistry(runtime, workflowStepRegistry);
+
+    // FeatureFlagRegistry — open-key registry covering the 10 closed
+    // `LifeOpsFeatureKey` built-ins plus any 3rd-party plugin contributions.
+    // Audit C top-1 finding (`docs/audit/rigidity-hunt-audit.md`).
+    registerDefaultFeatureFlagPack(runtime);
 
     const activitySignalBus = createActivitySignalBus({ familyRegistry });
     registerActivitySignalBus(runtime, activitySignalBus);

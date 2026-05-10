@@ -904,11 +904,26 @@ export async function handleLifeOpsRoutes(
     if (!body) {
       return true;
     }
-    const { isLifeOpsFeatureKey } = await import(
-      "../lifeops/feature-flags.types.js"
+    const { getFeatureFlagRegistry } = await import(
+      "../lifeops/registries/feature-flag-registry.js"
     );
-    if (!isLifeOpsFeatureKey(body.featureKey)) {
-      ctx.error(res, "featureKey must be a known LifeOpsFeatureKey", 400);
+    const featureFlagRegistry = getFeatureFlagRegistry(runtime);
+    if (!featureFlagRegistry) {
+      ctx.error(res, "feature flag registry not initialized", 503);
+      return true;
+    }
+    if (
+      typeof body.featureKey !== "string" ||
+      !featureFlagRegistry.has(body.featureKey)
+    ) {
+      ctx.error(
+        res,
+        `featureKey must be a registered feature flag (one of: ${featureFlagRegistry
+          .list()
+          .map((c) => c.key)
+          .join(", ")})`,
+        400,
+      );
       return true;
     }
     if (typeof body.enabled !== "boolean") {

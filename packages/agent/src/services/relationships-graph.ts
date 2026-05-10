@@ -11,26 +11,31 @@ import type {
 import { resolveOwnerEntityId } from "../runtime/owner-entity.ts";
 import { fetchConfiguredOwnerName } from "./owner-name.ts";
 
-// Re-export graph value/type identities so `@elizaos/agent`'s public
-// barrel can keep its long-standing surface. The graph types moved into
-// `@elizaos/core` (services/relationships-graph-builder); forwarding them
-// through here means consumers of `@elizaos/agent` don't have to reach
-// into core's services subtree directly.
-export type {
-  ClusterMemoriesQuery,
-  ClusterSearchQuery,
-  RelationshipsGraphEdge,
-  RelationshipsGraphQuery,
-  RelationshipsGraphService,
-  RelationshipsGraphSnapshot,
-  RelationshipsGraphStats,
-  RelationshipsPersonDetail,
-  RelationshipsPersonFact,
-  RelationshipsPersonSummary,
-} from "@elizaos/core";
 export {
+  type ClusterMemoriesQuery,
+  type ClusterSearchQuery,
   createNativeRelationshipsGraphService,
   getMemoriesForCluster,
+  type RelationshipsConversationMessage,
+  type RelationshipsConversationSnippet,
+  type RelationshipsFactExtractedInformation,
+  type RelationshipsFactProvenance,
+  type RelationshipsGraphEdge,
+  type RelationshipsGraphQuery,
+  type RelationshipsGraphService,
+  type RelationshipsGraphSnapshot,
+  type RelationshipsGraphStats,
+  type RelationshipsIdentityEdge,
+  type RelationshipsIdentityHandle,
+  type RelationshipsIdentitySummary,
+  type RelationshipsMergeCandidate,
+  type RelationshipsPersonDetail,
+  type RelationshipsPersonFact,
+  type RelationshipsPersonSummary,
+  type RelationshipsProfile,
+  type RelationshipsRelevantMemory,
+  type RelationshipsServiceLike,
+  type RelationshipsUserPersonalityPreference,
   searchMemoriesForCluster,
 } from "@elizaos/core";
 

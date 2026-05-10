@@ -48,7 +48,37 @@
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json",
-    "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts"
+    "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
+    "./services/app-session-gate": {
+      "types": "./src/services/app-session-gate.d.ts",
+      "bun": {
+        "types": "./src/services/app-session-gate.ts",
+        "import": "./src/services/app-session-gate.ts",
+        "default": "./src/services/app-session-gate.ts"
+      },
+      "import": "./dist/services/app-session-gate.js",
+      "default": "./dist/services/app-session-gate.js"
+    },
+    "./security/*": {
+      "types": "./src/security/*.d.ts",
+      "bun": {
+        "types": "./src/security/*.ts",
+        "import": "./src/security/*.ts",
+        "default": "./src/security/*.ts"
+      },
+      "import": "./dist/security/*.js",
+      "default": "./dist/security/*.js"
+    },
+    "./services/*": {
+      "types": "./src/services/*.d.ts",
+      "bun": {
+        "types": "./src/services/*.ts",
+        "import": "./src/services/*.ts",
+        "default": "./src/services/*.ts"
+      },
+      "import": "./dist/services/*.js",
+      "default": "./dist/services/*.js"
+    }
   },
   "publishConfig": {
     "access": "public",
@@ -59,7 +89,6 @@
     "@elizaos/capacitor-contacts": "workspace:*",
     "@elizaos/capacitor-phone": "workspace:*",
     "@elizaos/capacitor-wifi": "workspace:*",
-    "@elizaos/app-task-coordinator": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-aosp-local-inference": "workspace:*",

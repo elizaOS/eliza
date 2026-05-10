@@ -1,7 +1,7 @@
 /**
  * Registries barrel. BlockerRegistry, AnchorRegistry, EventKindRegistry,
- * FamilyRegistry. No cross-imports between siblings — each registry stands
- * alone.
+ * FamilyRegistry, WorkflowStepRegistry, FeatureFlagRegistry. No cross-imports
+ * between siblings — each registry stands alone.
  */
 
 export {
@@ -57,6 +57,36 @@ export {
   registerBuiltinTelemetryFamilies,
   registerFamilyRegistry,
 } from "./family-registry.js";
+export {
+  APP_LIFEOPS_WORKFLOW_STEP_CONTRIBUTIONS,
+  registerDefaultWorkflowStepPack,
+} from "./workflow-step-default-pack.js";
+export {
+  __resetWorkflowStepRegistryForTests,
+  type AnyWorkflowStepContribution,
+  createWorkflowStepRegistry,
+  getWorkflowStepRegistry,
+  registerWorkflowStepRegistry,
+  UnknownWorkflowStepError,
+  type WorkflowStepContribution,
+  type WorkflowStepExecuteArgs,
+  type WorkflowStepExecuteContext,
+  type WorkflowStepRegistry,
+} from "./workflow-step-registry.js";
+export {
+  __resetFeatureFlagRegistryForTests,
+  createFeatureFlagRegistry,
+  type FeatureFlagContribution,
+  type FeatureFlagRegistry,
+  getFeatureFlagRegistry,
+  registerFeatureFlagRegistry,
+  UnknownFeatureFlagError,
+} from "./feature-flag-registry.js";
+export {
+  DEFAULT_FEATURE_FLAG_PACK,
+  LIFEOPS_BUILTIN_FEATURE_KEYS,
+  registerDefaultFeatureFlagPack,
+} from "./feature-flag-default-pack.js";
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { appBlockerContribution } from "./app-blocker-contribution.js";

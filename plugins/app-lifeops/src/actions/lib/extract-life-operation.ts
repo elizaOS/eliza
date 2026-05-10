@@ -13,10 +13,9 @@ export const LIFE_OPERATION_VALUES = [
   "skip",
   "snooze",
   "review",
-  // Owner policy verbs (W3-C: PROFILE.set_reminder_preference and
-  // PROFILE.configure_escalation collapsed onto LIFE.policy.* per
-  // HARDCODING_AUDIT §6 #8). Storage lives on OwnerFactStore; the legacy
-  // PROFILE subactions remain for one release as similes that route here.
+  // Owner policy verbs — write reminder intensity / escalation rules on
+  // OwnerFactStore. PROFILE no longer carries these (its surface is
+  // `save | capture_phone`).
   "policy_set_reminder",
   "policy_configure_escalation",
   "query_calendar_today",

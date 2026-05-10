@@ -43,7 +43,7 @@ test("onboarding starts with setup choices before capability settings", async ({
   await page.goto("/chat", { waitUntil: "domcontentloaded" });
 
   await expect(
-    page.getByRole("heading", { name: "Welcome to Milady" }),
+    page.getByRole("heading", { name: /^Welcome to / }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Get started" })).toBeVisible();
   await expect(

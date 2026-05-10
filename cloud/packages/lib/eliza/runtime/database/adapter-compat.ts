@@ -653,7 +653,7 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
 
   if (hasAdapterMethod(compat, "deleteAllMemories")) {
     const deleteAllMemoriesByRoom: LegacyDeleteAllMemories = async (roomId, tableName) => {
-      await compat.deleteAllMemories(roomId, tableName);
+      await compat.deleteAllMemories([roomId], tableName);
     };
     Object.defineProperty(compat, "deleteAllMemories", {
       configurable: true,

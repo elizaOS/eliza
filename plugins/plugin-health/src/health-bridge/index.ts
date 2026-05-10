@@ -17,5 +17,6 @@
 export * from "./health-bridge.js";
 export * from "./health-connectors.js";
 export * from "./health-oauth.js";
+export * from "./health-provider-registry.js";
 export * from "./health-records.js";
 export * from "./service-normalize-health.js";
