@@ -297,7 +297,7 @@ export function hashStablePrefix(
   for (const segment of segments) {
     if (!segment.stable) break;
     hash.update(segment.content);
-    hash.update("");
+    hash.update("");
     consumed += 1;
   }
   if (consumed === 0) return null;
