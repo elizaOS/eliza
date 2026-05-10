@@ -5,9 +5,28 @@
 > Hexagon DSP, NNAPI/EdgeTPU), iOS/macOS (Metal, Accelerate), and the
 > Linux/CUDA training rig that already runs them.
 >
+> **The unified Milady fork now exists** at
+> [`milady-ai/llama.cpp`](https://github.com/milady-ai/llama.cpp) @
+> `v0.1.0-milady` (commit `edd55d8b`). It composes TBQ3_0 / TBQ4_0 from
+> apothic, QJL1_256 from W1-A, Q4_POLAR (slot bumped from 45 to 47) from
+> W1-B, and the Metal kernel sources from W1-D onto upstream b8198. The
+> AOSP path's `compile-libllama.mjs` is now pinned at this fork —
+> vendored patches under `scripts/aosp/llama-cpp-patches/` are
+> deprecated archival drops. See
+> [`docs/porting/unified-fork-strategy.md`](./unified-fork-strategy.md)
+> for the full migration story and
+> [`reports/porting/2026-05-09-unified/`](../../reports/porting/2026-05-09-unified/)
+> for the post-pin verification snapshot. The companion
+> [`milady-ai/node-llama-cpp`](https://github.com/milady-ai/node-llama-cpp)
+> @ `v3.18.1-milady.1` extends `experimentalKvCacheKey/ValueType` to
+> accept the new lowercase aliases (`"tbq3_0"`, `"tbq4_0"`,
+> `"qjl1_256"`, `"q4_polar"`) so the desktop path stops rejecting them
+> at `createContext()`.
+>
 > The on-device runtime is `bun:ffi` → `libllama.so` → forked llama.cpp
-> (`Apothic-AI/llama.cpp-1bit-turboquant`, main-b8198-b2b5273). Anything
-> shipped to a phone has to land in that fork as either:
+> ([`milady-ai/llama.cpp`](https://github.com/milady-ai/llama.cpp) @
+> `v0.1.0-milady`). Anything shipped to a phone has to land in that
+> fork as either:
 >
 > 1. a new `GGML_TYPE_*` quant block + dequant/dot kernel (per backend), OR
 > 2. a new `llama_*` API surface re-exposed by `eliza_llama_shim.c`, OR
