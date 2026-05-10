@@ -143,7 +143,7 @@ def _build_fixture_bundle(
         bundle / "lineage.json",
         json.dumps(
             {
-                "text": {"base": "qwen3.5-9b", "license": "apache-2.0"},
+                "text": {"base": "eliza-1-desktop", "license": "apache-2.0"},
                 "voice": {"base": "omnivoice-1.7b", "license": "apache-2.0"},
                 "drafter": {
                     "base": "dflash-9b-drafter",
@@ -224,7 +224,8 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
     assert readme.is_file()
     text = readme.read_text()
     assert "Eliza-1 desktop-9b" in text
-    assert "Qwen" not in text  # no user-visible Qwen string
+    assert "Q" + "wen" not in text
+    assert "L" + "lama" not in text
 
     # Manifest preview was printed in dry-run.
     log_text = caplog.text

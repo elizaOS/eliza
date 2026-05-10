@@ -6,13 +6,13 @@ columns name the canonical config file and the runtime that consumes it.
 
 | Size                | Local (Milady)               | Ollama (local)                                    | vLLM (self-host)                                                   | Vast pyworker (autoscale)            | Eliza Cloud  |
 |---------------------|------------------------------|---------------------------------------------------|---------------------------------------------------------------------|--------------------------------------|--------------|
-| **eliza-1-2b**      | `MILADY_MODEL=eliza-1-2b`    | `ollama/Modelfile.eliza-1-2b-q4_k_m`              | `serve_vllm.py --registry-key qwen3.5-2b --gpu-target single`       | `vast-pyworker/eliza-1-2b.json`      | `vast/eliza-1-2b` (catalog entry pending) |
-| **eliza-1-9b**      | `MILADY_MODEL=eliza-1-9b`    | `ollama/Modelfile.eliza-1-9b-q4_k_m`              | `serve_vllm.py --registry-key qwen3.5-9b --gpu-target h100-2x`      | `vast-pyworker/eliza-1-9b.json`      | `vast/eliza-1-9b` (catalog entry pending) |
-| **eliza-1-27b**     | `MILADY_MODEL=eliza-1-27b`   | `ollama/Modelfile.eliza-1-27b-q4_k_m`             | `serve_vllm.py --registry-key qwen3.6-27b --gpu-target h200-2x`     | `vast-pyworker/eliza-1-27b.json`     | `vast/eliza-1-27b` (catalog entry pending) |
+| **eliza-1-2b**      | `MILADY_MODEL=eliza-1-2b`    | `ollama/Modelfile.eliza-1-2b-q4_k_m`              | `serve_vllm.py --registry-key eliza-1-2b --gpu-target single`       | `vast-pyworker/eliza-1-2b.json`      | `vast/eliza-1-2b` (catalog entry pending) |
+| **eliza-1-9b**      | `MILADY_MODEL=eliza-1-9b`    | `ollama/Modelfile.eliza-1-9b-q4_k_m`              | `serve_vllm.py --registry-key eliza-1-9b --gpu-target h100-2x`      | `vast-pyworker/eliza-1-9b.json`      | `vast/eliza-1-9b` (catalog entry pending) |
+| **eliza-1-27b**     | `MILADY_MODEL=eliza-1-27b`   | `ollama/Modelfile.eliza-1-27b-q4_k_m`             | `serve_vllm.py --registry-key eliza-1-27b --gpu-target h200-2x`     | `vast-pyworker/eliza-1-27b.json`     | `vast/eliza-1-27b` (catalog entry pending) |
 
 The "catalog entry pending" annotation reflects that
 `eliza/cloud/packages/lib/models/catalog.ts` only has
-`vast/qwen3.6-27b-neo-code` today. Adding the `vast/eliza-1-*` entries
+`vast/eliza-1-27b` today. Adding the `vast/eliza-1-*` entries
 is a one-line PR per id (mirror the existing row), but is owned by the
 cloud monorepo, not this directory.
 
