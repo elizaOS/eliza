@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.4.5",
+    "@elizaos/plugin-sql": "workspace:*",
     "@neondatabase/serverless": "^1.1.0",
     "drizzle-orm": "^0.45.2"
   },
