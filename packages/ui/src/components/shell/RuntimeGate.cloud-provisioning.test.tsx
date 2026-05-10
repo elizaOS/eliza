@@ -852,7 +852,7 @@ describe("RuntimeGate cloud provisioning startup handoff", () => {
     clientMock.provisionCloudCompatAgent.mockResolvedValue({
       success: false,
       error: "Insufficient credits",
-      requiredBalance: 5,
+      requiredBalance: 0.1,
       currentBalance: 0,
     });
 

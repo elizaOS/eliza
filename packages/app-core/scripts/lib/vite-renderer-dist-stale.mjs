@@ -116,8 +116,12 @@ export function viteRendererBuildNeeded(appDir, repoRoot) {
     return true;
   }
 
-  const pluginsRoot = path.join(appDir, "plugins");
-  if (fs.existsSync(pluginsRoot)) {
+  const pluginRootCandidates = [
+    path.join(repoRoot, "plugins"),
+    path.join(repoRoot, "eliza", "plugins"),
+  ];
+  for (const pluginsRoot of pluginRootCandidates) {
+    if (!fs.existsSync(pluginsRoot)) continue;
     let pluginDirs;
     try {
       pluginDirs = fs.readdirSync(pluginsRoot, { withFileTypes: true });

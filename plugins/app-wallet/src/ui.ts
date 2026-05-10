@@ -1,3 +1,5 @@
+import "./register-routes.ts";
+
 export { InventoryView } from "./InventoryView.tsx";
 export { ChainIcon } from "./inventory/ChainIcon.tsx";
 export {

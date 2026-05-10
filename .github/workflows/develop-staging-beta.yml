@@ -1,0 +1,154 @@
+name: Develop Staging Beta Release
+
+on:
+  workflow_run:
+    workflows: ["Cloud CF Deploy"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Develop commit SHA to release. Defaults to the workflow ref SHA.
+        required: false
+        type: string
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+concurrency:
+  group: develop-staging-beta-${{ github.event.workflow_run.head_sha || inputs.target_sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  gate-and-release:
+    name: Gate Develop and Dispatch Beta
+    runs-on: ubuntu-latest
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'develop' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_repository.full_name == github.repository
+        )
+      }}
+    steps:
+      - name: Resolve target commit
+        id: target
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha || '' }}
+          INPUT_SHA: ${{ inputs.target_sha || '' }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            TARGET_SHA="$WORKFLOW_RUN_SHA"
+          elif [ -n "$INPUT_SHA" ]; then
+            TARGET_SHA="$INPUT_SHA"
+          else
+            TARGET_SHA="${GITHUB_SHA}"
+          fi
+
+          if [ -z "$TARGET_SHA" ]; then
+            echo "::error::Unable to resolve target SHA."
+            exit 1
+          fi
+
+          echo "sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+          echo "Develop staging gate target: $TARGET_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Ensure target is current develop
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          DEVELOP_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/develop" --jq '.object.sha')"
+          echo "develop HEAD: ${DEVELOP_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$TARGET_SHA" != "$DEVELOP_SHA" ]; then
+            echo "Target ${TARGET_SHA} is no longer develop HEAD (${DEVELOP_SHA}); a newer develop run will handle staging beta." >> "$GITHUB_STEP_SUMMARY"
+            echo "superseded=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Wait for all checks on target commit
+        if: env.superseded != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
+          TIMEOUT_SECONDS: ${{ vars.DEVELOP_STAGING_GATE_TIMEOUT_SECONDS || '3600' }}
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + TIMEOUT_SECONDS))
+          ignored_names_json='["Develop Staging Beta Release","NPM Release","Release Orchestrator"]'
+
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100" \
+              > /tmp/workflow-runs.json
+
+            set +e
+            IGNORED_NAMES_JSON="$ignored_names_json" node <<'NODE'
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync("/tmp/workflow-runs.json", "utf8"));
+          const runs = payload.workflow_runs ?? [];
+          const ignoredNames = new Set(JSON.parse(process.env.IGNORED_NAMES_JSON));
+          const currentRunId = Number(process.env.GITHUB_RUN_ID);
+          const successfulConclusions = new Set(["success", "neutral", "skipped"]);
+          const relevant = runs.filter((run) => {
+            if (Number(run.id) === currentRunId) return false;
+            if (ignoredNames.has(run.name)) return false;
+            return run.head_sha === process.env.TARGET_SHA;
+          });
+          const failed = relevant.filter(
+            (run) => run.status === "completed" && !successfulConclusions.has(run.conclusion),
+          );
+          const pending = relevant.filter((run) => run.status !== "completed");
+
+          console.log(`Observed ${relevant.length} workflow run(s) for ${process.env.TARGET_SHA}.`);
+          if (pending.length > 0) {
+            console.log(`Pending: ${pending.map((run) => `${run.name}/${run.status}`).join(", ")}`);
+          }
+          if (failed.length > 0) {
+            console.error(
+              `Failed: ${failed.map((run) => `${run.name}/${run.conclusion}`).join(", ")}`,
+            );
+            process.exit(2);
+          }
+          if (pending.length > 0) process.exit(1);
+          if (relevant.length === 0) {
+            console.log("No completed workflow runs are visible yet.");
+            process.exit(1);
+          }
+          NODE
+            status=$?
+            set -e
+
+            if [ "$status" -eq 0 ]; then
+              echo "All observed workflows are green for ${TARGET_SHA}." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            if [ "$status" -eq 2 ]; then
+              echo "::error::At least one workflow failed for ${TARGET_SHA}; beta release blocked."
+              exit 1
+            fi
+
+            sleep 30
+          done
+
+          echo "::error::Timed out waiting for all workflows to finish for ${TARGET_SHA}."
+          exit 1
+
+      - name: Dispatch beta release
+        if: env.superseded != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTO_BETA_RELEASE_FROM_DEVELOP: ${{ vars.AUTO_BETA_RELEASE_FROM_DEVELOP || 'true' }}
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          if [ "$AUTO_BETA_RELEASE_FROM_DEVELOP" != "true" ]; then
+            echo "AUTO_BETA_RELEASE_FROM_DEVELOP is not true; beta release dispatch skipped." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          gh workflow run release.yaml --ref develop -f release_type=beta
+          echo "Dispatched release.yaml beta workflow for develop after ${TARGET_SHA} passed staging." >> "$GITHUB_STEP_SUMMARY"
