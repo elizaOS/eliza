@@ -93,7 +93,12 @@ type NativePrompt =
   | { messages: ModelMessage[]; prompt?: never };
 type NativeTextParams = Omit<NativeGenerateTextParams, "messages" | "prompt"> &
   Omit<NativeStreamTextParams, "messages" | "prompt"> &
-  NativePrompt;
+  NativePrompt & {
+    // Re-declared explicitly: TypeScript's `Parameters<typeof generateText>`
+    // inference produces an overload-union that drops this field, but the
+    // ai SDK's runtime signature accepts it (see ai@6 `CallSettings & Prompt`).
+    allowSystemInMessages?: boolean;
+  };
 type NativeProviderOptions = NativeTextParams["providerOptions"];
 type NativeTelemetrySettings = NativeTextParams["experimental_telemetry"];
 
