@@ -22,6 +22,8 @@ import { taskTable } from "../../../schema/tasks";
 import { worldTable } from "../../../schema/world";
 import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-helpers";
 
+type CountRow = { count: number };
+
 /**
  * Schema Evolution Test 1: Dropping Columns from Production Schema
  *
@@ -164,8 +166,8 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
     const memoriesBeforeCount = await db.execute(sql`SELECT COUNT(*) as count FROM memories`);
 
     console.log("\n📊 Production data statistics:");
-    console.log(`  - Agents: ${(agentsBeforeCount.rows[0] as CountRow).count}`);
-    console.log(`  - Memories: ${(memoriesBeforeCount.rows[0] as CountRow).count}`);
+    console.log(`  - Agents: ${(agentsBeforeCount.rows[0] as unknown as CountRow).count}`);
+    console.log(`  - Memories: ${(memoriesBeforeCount.rows[0] as unknown as CountRow).count}`);
 
     // Check usernames exist
     const usernameCheck = await db.execute(
@@ -302,8 +304,10 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
     const memoriesAfterCount = await db.execute(sql`SELECT COUNT(*) as count FROM memories`);
 
     console.log("\n✅ Data integrity check:");
-    console.log(`  - Agents preserved: ${(agentsAfterCount.rows[0] as CountRow).count}`);
-    console.log(`  - Memories preserved: ${(memoriesAfterCount.rows[0] as CountRow).count}`);
+    console.log(`  - Agents preserved: ${(agentsAfterCount.rows[0] as unknown as CountRow).count}`);
+    console.log(
+      `  - Memories preserved: ${(memoriesAfterCount.rows[0] as unknown as CountRow).count}`
+    );
     console.log("  - Username data: PERMANENTLY LOST");
   });
 });

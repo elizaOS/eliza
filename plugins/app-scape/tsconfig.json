@@ -9,21 +9,11 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "@elizaos/core": [
-        "../../packages/core/src/index.ts"
-      ],
-      "@elizaos/shared": [
-        "../../packages/shared/src/index.ts"
-      ],
-      "@elizaos/agent": [
-        "../../packages/agent/src/index.ts"
-      ]
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/agent": ["../../packages/agent/src/index.ts"]
     }
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "src/**/*.d.ts"
-  ],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
   "exclude": []
 }

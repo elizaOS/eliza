@@ -240,6 +240,32 @@ function modelsFromLadder(
   });
 }
 
+/**
+ * True when this host has enough memory headroom to serve the long-context
+ * KV cache for a 64k+ window. Threshold mirrors the "16 GB workstation"
+ * line from the porting plan — a 64k context for an 8B model at fp16 KV
+ * occupies ~4 GB; with TurboQuant compression it fits inside 1 GB. Below
+ * 16 GB total we keep the historical short-context preference.
+ *
+ * For GPU hosts we look at total VRAM, since the KV cache lives wherever
+ * the layers do; for CPU-only hosts we look at total RAM.
+ */
+const LONG_CONTEXT_RAM_BUMP_THRESHOLD_GB = 16;
+const LONG_CONTEXT_MIN_LENGTH = 65536;
+
+function hasLongContextHeadroom(hardware: HardwareProbe): boolean {
+  const vramGb = hardware.gpu?.totalVramGb ?? 0;
+  if (vramGb >= LONG_CONTEXT_RAM_BUMP_THRESHOLD_GB) return true;
+  return hardware.totalRamGb >= LONG_CONTEXT_RAM_BUMP_THRESHOLD_GB;
+}
+
+function isLongContextModel(model: CatalogModel): boolean {
+  return (
+    typeof model.contextLength === "number" &&
+    model.contextLength >= LONG_CONTEXT_MIN_LENGTH
+  );
+}
+
 function fallbackCandidates(
   slot: TextGenerationSlot,
   hardware: HardwareProbe,
@@ -248,10 +274,16 @@ function fallbackCandidates(
   const candidates = chatCandidates(catalog).filter((model) =>
     canFit(hardware, model, catalog),
   );
+  const preferLongContext = hasLongContextHeadroom(hardware);
   return candidates.sort((left, right) => {
     const leftDflash = left.runtime?.dflash ? 1 : 0;
     const rightDflash = right.runtime?.dflash ? 1 : 0;
     if (leftDflash !== rightDflash) return rightDflash - leftDflash;
+    if (preferLongContext) {
+      const leftLong = isLongContextModel(left) ? 1 : 0;
+      const rightLong = isLongContextModel(right) ? 1 : 0;
+      if (leftLong !== rightLong) return rightLong - leftLong;
+    }
     const sizeDelta =
       catalogDownloadSizeGb(right, catalog) -
       catalogDownloadSizeGb(left, catalog);

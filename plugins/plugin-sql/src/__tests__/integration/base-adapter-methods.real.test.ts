@@ -25,7 +25,7 @@ describe("Base Adapter Methods Integration Tests", () => {
         id: testEntityId,
         agentId: testAgentId,
         names: ["Test Entity for Memories"],
-        metadata: { type: "test" },
+        metadata: { type: "custom" },
       },
     ]);
   });
@@ -69,7 +69,7 @@ describe("Base Adapter Methods Integration Tests", () => {
           roomId,
           content: { text: "Test memory 1" } as Content,
           createdAt: Date.now() - 1000,
-          metadata: { type: "test" },
+          metadata: { type: "custom" },
         },
         {
           id: uuidv4() as UUID,
@@ -78,7 +78,7 @@ describe("Base Adapter Methods Integration Tests", () => {
           roomId,
           content: { text: "Test memory 2" } as Content,
           createdAt: Date.now() - 500,
-          metadata: { type: "test" },
+          metadata: { type: "custom" },
         },
         {
           id: uuidv4() as UUID,
@@ -87,7 +87,7 @@ describe("Base Adapter Methods Integration Tests", () => {
           roomId: roomId2, // Different room
           content: { text: "Test memory 3" } as Content,
           createdAt: Date.now(),
-          metadata: { type: "test" },
+          metadata: { type: "custom" },
         },
       ];
 
@@ -144,7 +144,7 @@ describe("Base Adapter Methods Integration Tests", () => {
           roomId: roomId1,
           content: { text: "Room 1 memory" } as Content,
           createdAt: Date.now(),
-          metadata: { type: "test" },
+          metadata: { type: "custom" },
         },
         {
           id: uuidv4() as UUID,
@@ -153,7 +153,7 @@ describe("Base Adapter Methods Integration Tests", () => {
           roomId: roomId2,
           content: { text: "Room 2 memory" } as Content,
           createdAt: Date.now(),
-          metadata: { type: "test" },
+          metadata: { type: "custom" },
         },
       ];
 
@@ -231,7 +231,7 @@ describe("Base Adapter Methods Integration Tests", () => {
         roomId: roomId,
         content: { text: "Original content" } as Content,
         createdAt: Date.now(),
-        metadata: { type: "test" },
+        metadata: { type: "custom" },
       };
 
       // Create memory
@@ -241,7 +241,7 @@ describe("Base Adapter Methods Integration Tests", () => {
       await adapter.updateMemory({
         id: memoryId,
         content: { text: "Updated content" } as Content,
-        metadata: { type: "updated" },
+        metadata: { type: "custom" },
       });
 
       // Verify update
@@ -253,7 +253,7 @@ describe("Base Adapter Methods Integration Tests", () => {
       expect(content.text).toBe("Updated content");
       const metadata = retrieved.metadata as Record<string, unknown>;
       if (!metadata) throw new Error("Metadata should exist");
-      expect(metadata.type).toBe("updated");
+      expect(metadata.type).toBe("custom");
     });
 
     it("should handle updateComponent", async () => {
@@ -265,7 +265,7 @@ describe("Base Adapter Methods Integration Tests", () => {
       await adapter.createWorld({
         id: worldId,
         agentId: testAgentId,
-        serverId: uuidv4() as UUID,
+        messageServerId: uuidv4() as UUID,
         name: "Test World",
       });
 
@@ -302,7 +302,7 @@ describe("Base Adapter Methods Integration Tests", () => {
           relationship: "friend",
           trust: 0.5,
         },
-        createdAt: new Date(),
+        createdAt: Date.now(),
       };
 
       // Create component
@@ -341,7 +341,7 @@ describe("Base Adapter Methods Integration Tests", () => {
       await adapter.createWorld({
         id: worldId,
         agentId: testAgentId,
-        serverId: uuidv4() as UUID,
+        messageServerId: uuidv4() as UUID,
         name: "Test World",
       });
 
@@ -375,7 +375,7 @@ describe("Base Adapter Methods Integration Tests", () => {
         agentId: testAgentId,
         roomId,
         data: {},
-        createdAt: new Date(),
+        createdAt: Date.now(),
       };
 
       // Create component
@@ -394,7 +394,7 @@ describe("Base Adapter Methods Integration Tests", () => {
         id: uuidv4() as UUID,
         agentId: testAgentId,
         names: ["Test Entity"],
-        metadata: { type: "test" },
+        metadata: { type: "custom" },
       };
 
       // Create entity
@@ -434,8 +434,8 @@ describe("Base Adapter Methods Integration Tests", () => {
         entityId: testEntityId,
         roomId: roomId,
         content: { text: "Test memory" } as Content,
-        createdAt: new Date(),
-        metadata: { type: "test" },
+        createdAt: Date.now(),
+        metadata: { type: "custom" },
       };
 
       // Create memory
@@ -513,7 +513,7 @@ describe("Base Adapter Methods Integration Tests", () => {
       await adapter.createWorld({
         id: worldId,
         agentId: testAgentId,
-        serverId: uuidv4() as UUID,
+        messageServerId: uuidv4() as UUID,
         name: "Test World",
       });
 
@@ -554,7 +554,7 @@ describe("Base Adapter Methods Integration Tests", () => {
           maxCapacity: 10,
           currentWeight: 25.5,
         },
-        createdAt: new Date(),
+        createdAt: Date.now(),
       };
 
       await adapter.createComponent(component);
@@ -652,7 +652,7 @@ describe("Base Adapter Methods Integration Tests", () => {
           id: entityId,
           agentId: testAgentId,
           names: ["Test Entity for Memory Search"],
-          metadata: { type: "test" },
+          metadata: { type: "custom" },
         },
       ]);
 
@@ -675,8 +675,8 @@ describe("Base Adapter Methods Integration Tests", () => {
           entityId: entityId,
           roomId,
           content: { text: "Meeting scheduled for tomorrow" } as Content,
-          createdAt: new Date(Date.now() - 3600_000), // 1 hour ago
-          metadata: { type: "calendar", priority: "high" },
+          createdAt: Date.now() - 3600_000, // 1 hour ago
+          metadata: { type: "custom", priority: "high" },
         },
         {
           id: uuidv4() as UUID,
@@ -684,8 +684,8 @@ describe("Base Adapter Methods Integration Tests", () => {
           entityId: entityId,
           roomId,
           content: { text: "Remember to buy groceries" } as Content,
-          createdAt: new Date(Date.now() - 1800_000), // 30 min ago
-          metadata: { type: "todo", priority: "low" },
+          createdAt: Date.now() - 1800_000, // 30 min ago
+          metadata: { type: "custom", priority: "low" },
         },
         {
           id: uuidv4() as UUID,
@@ -693,8 +693,8 @@ describe("Base Adapter Methods Integration Tests", () => {
           entityId: entityId,
           roomId,
           content: { text: "Important meeting notes" } as Content,
-          createdAt: new Date(Date.now() - 900_000), // 15 min ago
-          metadata: { type: "notes", priority: "high" },
+          createdAt: Date.now() - 900_000, // 15 min ago
+          metadata: { type: "custom", priority: "high" },
         },
       ];
 
@@ -723,7 +723,7 @@ describe("Base Adapter Methods Integration Tests", () => {
         id: uuidv4() as UUID,
         agentId: testAgentId,
         names: ["Test Entity"],
-        metadata: { type: "test" },
+        metadata: { type: "custom" },
       };
 
       // Create entity
@@ -739,7 +739,7 @@ describe("Base Adapter Methods Integration Tests", () => {
         id: uuidv4() as UUID,
         agentId: testAgentId,
         names: ["Non-existent Entity"],
-        metadata: { type: "test" },
+        metadata: { type: "custom" },
       };
 
       // Update should not throw but also shouldn't create

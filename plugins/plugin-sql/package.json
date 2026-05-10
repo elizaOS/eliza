@@ -26,6 +26,16 @@
       },
       "import": "./src/dist/index.js",
       "default": "./src/dist/index.js"
+    },
+    "./drizzle": {
+      "types": "./src/dist/drizzle/index.d.ts",
+      "import": "./src/dist/drizzle/index.js",
+      "default": "./src/dist/drizzle/index.js"
+    },
+    "./schema": {
+      "types": "./src/dist/schema/index.d.ts",
+      "import": "./src/dist/schema/index.js",
+      "default": "./src/dist/schema/index.js"
     }
   },
   "files": [

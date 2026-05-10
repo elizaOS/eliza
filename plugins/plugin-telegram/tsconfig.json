@@ -26,5 +26,10 @@
     "types": ["node"]
   },
   "include": ["src/**/*.ts"],
-  "exclude": []
+  "exclude": [
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
+  ]
 }

@@ -32,5 +32,12 @@
     "noPropertyAccessFromIndexSignature": false
   },
   "include": ["**/*.ts"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": [
+    "dist",
+    "node_modules",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.e2e.test.ts",
+    "**/*.test.tsx"
+  ]
 }

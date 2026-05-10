@@ -118,6 +118,17 @@ await writeFile(
   join(DIST, "drizzle", "index.js"),
   `export { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';\n`
 );
+// `@elizaos/plugin-sql/schema` is consumed at runtime by the bundled
+// `@elizaos/app-core` (e.g. `auth-store.js` reads `authIdentityTable`,
+// `authSessionTable`, etc. from this subpath). The Bun bundle output only
+// emits a single `node/index.node.js`, but the subpath import has to
+// resolve to a runtime JS file. Emit a small shim that re-exports the
+// schema from the bundled root so the consumer doesn't need to know the
+// internal layout.
+await writeFile(
+  join(DIST, "schema", "index.js"),
+  `export * from '../node/index.node.js';\n`
+);
 await appendFile(
   join(DIST, "index.node.d.ts"),
   `\nexport * from './schema/index.js';\nexport type { DrizzleDatabase } from './types.js';\n`

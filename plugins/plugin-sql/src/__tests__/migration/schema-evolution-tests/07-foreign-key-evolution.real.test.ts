@@ -5,6 +5,11 @@ import { RuntimeMigrator } from "../../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../../runtime-migrator/types";
 import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-helpers";
 
+type CountRow = { count: number };
+type ChildRow = Record<string, unknown>;
+type StatsRow = Record<string, unknown>;
+type DepartmentRow = Record<string, unknown>;
+
 /**
  * Schema Evolution Test 11 & 12: Foreign Key Evolution
  *
@@ -212,7 +217,7 @@ describe("Schema Evolution Test: Foreign Key Evolution", () => {
     const remainingChildren = await db.execute(
       sql`SELECT COUNT(*) as count FROM children WHERE parent_id = ${parent1Id}`
     );
-    expect(Number((remainingChildren.rows[0] as CountRow).count)).toBe(0);
+    expect(Number((remainingChildren.rows[0] as unknown as CountRow).count)).toBe(0);
     console.log("  ✅ CASCADE delete removed children as expected");
 
     // Restore data

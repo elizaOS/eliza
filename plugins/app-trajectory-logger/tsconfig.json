@@ -6,10 +6,7 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "types": [
-      "node",
-      "bun"
-    ],
+    "types": ["node", "bun"],
     "typeRoots": [
       "./node_modules/@types",
       "../../node_modules/@types",
@@ -24,12 +21,8 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "drizzle-orm": [
-        "../plugin-sql/node_modules/drizzle-orm"
-      ],
-      "drizzle-orm/*": [
-        "../plugin-sql/node_modules/drizzle-orm/*"
-      ],
+      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
@@ -47,9 +40,7 @@
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "react": [
-        "../../packages/app-core/node_modules/@types/react/index.d.ts"
-      ],
+      "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
       ],
@@ -59,9 +50,7 @@
       "react-dom": [
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
       ],
-      "lucide-react": [
-        "../app-companion/node_modules/lucide-react"
-      ]
+      "lucide-react": ["../app-companion/node_modules/lucide-react"]
     }
   },
   "include": [
@@ -71,8 +60,5 @@
     "../../packages/agent/src/external-modules.d.ts",
     "../../packages/app-core/src/ambient-modules.d.ts"
   ],
-  "exclude": [
-    "src/**/*.stories.ts",
-    "src/**/*.stories.tsx"
-  ]
+  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
 }

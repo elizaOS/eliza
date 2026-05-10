@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { entityTable } from "../../schema";
+import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 import { expectCreatedEntityIds } from "./entity-create-assertions";
 
@@ -30,7 +31,7 @@ describe("Entity Integration Tests", () => {
   describe("Entity Tests", () => {
     beforeEach(async () => {
       // Clear entities before each test to ensure a clean slate
-      const db = adapter.getDatabase();
+      const db = adapter.getDatabase() as DrizzleDatabase;
       await db.delete(entityTable);
     });
 
@@ -40,7 +41,7 @@ describe("Entity Integration Tests", () => {
         id: entityId,
         agentId: testAgentId,
         names: ["Test Entity"],
-        metadata: { type: "test" },
+        metadata: { type: "custom" },
       };
 
       const result = await adapter.createEntities([entity]);

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { cacheTable } from "../../schema";
+import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 describe("Cache Integration Tests", () => {
@@ -28,7 +29,7 @@ describe("Cache Integration Tests", () => {
   describe("Cache Tests", () => {
     beforeEach(async () => {
       // Clean up cache table before each test
-      await adapter.getDatabase().delete(cacheTable);
+      await (adapter.getDatabase() as DrizzleDatabase).delete(cacheTable);
     });
 
     it("should set and get a simple string value", async () => {
