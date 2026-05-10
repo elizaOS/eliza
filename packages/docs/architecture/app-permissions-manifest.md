@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft.** Phase 1 defines the permissions schema, parser, grant store, and Settings consent surface. Phase 2.1 adds the `elizaos.app.isolation` declaration and registry persistence, but still no runtime enforcement. Later Phase 2 slices add worker-isolation enforcement, then Phase 3 default-tightening.
+**Draft.** Phase 1 defines the permissions schema, parser, grant store, and Settings consent surface. Phase 2 adds worker hosting and gated runtime capabilities for apps that run with `isolation: "worker"`. Phase 3 tightens the loader policy so external apps are forced to `isolation: "worker"` even when their manifest omits isolation or declares `"none"`.
 
 ## Scope
 
@@ -110,8 +110,8 @@ Apps may declare an optional `elizaos.app.isolation` field:
 type AppIsolation = "none" | "worker";
 ```
 
-- Omitted or `"none"` means the app runs in-process. This is the current runtime behaviour.
-- `"worker"` means the app is requesting the Phase 2 worker execution path. Phase 2.1 persists this request and returns it in the permissions API, but does not yet spawn workers or enforce FS/network gates.
+- Omitted or `"none"` means a first-party app runs in-process. External apps cannot opt into this fast path; the loader promotes them to `"worker"` at register time and when reading persisted legacy registry entries.
+- `"worker"` means the app is requesting the worker execution path. The worker host passes the app's declared permissions and current grants into the worker, and the worker's `runtime.fetch` / `runtime.fs` bridge gates network and state-directory access against that data.
 - Unknown values are treated as `"none"` by this Milady version. This keeps older clients forward-compatible with future isolation modes while avoiding accidental enforcement claims for modes they do not understand.
 
 ## Forward compatibility
@@ -137,7 +137,7 @@ This rule means a third-party app that ships `permissions: { fs: {...}, capabili
 `AppRegistryEntry` gains:
 
 - `requestedPermissions?: Record<string, unknown>` — raw declared permissions, absent for apps without a `permissions` block.
-- `isolation?: "none" | "worker"` — requested execution isolation, defaulted to `"none"` when absent.
+- `isolation?: "none" | "worker"` — effective execution isolation after loader policy is applied. Missing isolation defaults to `"none"` only for first-party entries; external entries are promoted to `"worker"` when registered and when legacy entries are read from disk.
 
 Both fields are persisted alongside the existing `slug` / `canonicalName` / `aliases` / `directory` / `displayName` fields. Older entries written before these fields landed parse cleanly; absent `requestedPermissions` means no permissions were declared, and absent `isolation` defaults to `"none"`.
 
@@ -161,7 +161,7 @@ A manifest validation produces one of:
 2. **Valid** — `permissions` declared and every recognised namespace is well-formed. Parser yields `{ raw, fs?, net? }` where `fs` / `net` are present iff the corresponding namespace was declared.
 3. **Invalid** — `permissions` declared but malformed. Parser yields a structured error: `{ ok: false, reason: string, path: string }`. The loader rejects the app and emits a single audit-log line of `kind: "rejected-manifest"`.
 
-`isolation` is parsed independently from `permissions`: `"worker"` is accepted, while absent / `"none"` / unknown values resolve to `"none"`.
+`isolation` is parsed independently from `permissions`: `"worker"` is accepted, while absent / `"none"` / unknown values resolve to `"none"` before loader policy is applied. The registry then forces external apps to `"worker"`.
 
 Specific invalid shapes:
 
@@ -257,7 +257,8 @@ The app registers with `isolation: "worker"` in `app-registry.json`, `app-loads.
 | Phase 1, slice 2 | Granted-permission store on disk; consent surface in Settings → Apps. |
 | Phase 2.1 | `elizaos.app.isolation` parser + registry/audit/API persistence; no worker spawning or enforcement yet. |
 | Phase 2.2 | `AppWorkerHostService` + Bun worker RPC bridge for apps that declare `isolation: "worker"`; no app-code loading or FS/net gating yet. |
-| Phase 2 | Opt-in `isolation: "worker"` execution path; FS gating using declared `fs` globs; outbound network gating using declared `net.outbound`. |
+| Phase 2 | Opt-in `isolation: "worker"` execution path; FS/state-path containment and outbound network gating using declared permissions plus user grants. |
+| Phase 3 | External apps are forced to `isolation: "worker"` at register time and when legacy persisted entries are read. |
 | Phase 3 | Default `isolation: "worker"` for `trust: "external"`; first-party stays in-process. |
 
 ## Cross-references

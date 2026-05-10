@@ -193,9 +193,13 @@ async function readPersisted(file: string): Promise<PersistedShape> {
 		// explicit `trust: "first-party"` at register time.
 		const trust: AppTrust =
 			candidate.trust === "first-party" ? "first-party" : "external";
-		// Default `isolation` for back-compat with pre-Phase-2 entries.
-		const isolation: AppIsolation =
+		// Default `isolation` for back-compat with pre-Phase-2 entries, then
+		// apply the same Phase 3 policy used by register(): persisted external
+		// apps cannot retain or regain the in-process fast path after restart.
+		const declaredIsolation: AppIsolation =
 			candidate.isolation === "worker" ? "worker" : "none";
+		const isolation: AppIsolation =
+			trust === "external" ? "worker" : declaredIsolation;
 		entries.push({ ...candidate, trust, isolation });
 	}
 	return { version: 1, entries };
