@@ -251,6 +251,14 @@ export async function runTrainCli(argv: string[]): Promise<number> {
             datasetId: parsed.dataset,
             generatedAt: stamp,
             lineage: result.result.lineage,
+            // Carry few-shot demonstrations through to the runtime so
+            // OptimizedPromptService.parseOptimizedPromptArtifact picks them
+            // up. bootstrap-fewshot returns these; instruction-search /
+            // prompt-evolution may carry them through if they consume a
+            // fewshot-bootstrapped seed. Always persist when present.
+            ...(result.result.fewShotExamples
+              ? { fewShotExamples: result.result.fewShotExamples }
+              : {}),
           },
           null,
           2,

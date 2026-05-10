@@ -40,6 +40,39 @@ export interface BootstrapFewshotInput {
 const DEMONSTRATION_HEADER = "Demonstrations:";
 
 /**
+ * Trim a demonstration's `input.user` down to the bits that meaningfully
+ * teach the model. The recorded planner inputs include the full provider
+ * block + tool catalog + conversation history (often ~30K chars), but for
+ * ICL we only need the user's current-turn request. Pulls the user message
+ * out of the recorded transcript, falls back to a head/tail truncation if
+ * we can't find one cleanly. Capped at ~600 chars so 5 demos stay well
+ * under the model's context budget.
+ */
+function trimDemonstrationInput(rawInput: string): string {
+  // Look for a `User:` / `User message:` / final speaker line. Recorded
+  // planner inputs typically end with "<TURN-N>\nuser: <message>" or a
+  // similar marker.
+  const userMatch =
+    rawInput.match(/(?:^|\n)user(?:\s+message)?\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i) ??
+    rawInput.match(/(?:^|\n)user_message\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i);
+  const candidate = userMatch?.[1]?.trim();
+  if (candidate && candidate.length > 0 && candidate.length <= 600) {
+    return candidate;
+  }
+  if (candidate && candidate.length > 0) {
+    return candidate.slice(0, 600).trimEnd() + " …";
+  }
+  // Fallback: first 400 chars + "..." + last 200 chars so the model sees
+  // both the framing and the request without the middle bulk.
+  if (rawInput.length <= 600) return rawInput;
+  return (
+    rawInput.slice(0, 400).trimEnd() +
+    "\n…\n" +
+    rawInput.slice(-200).trimStart()
+  );
+}
+
+/**
  * Render a demonstration block exactly the way the runtime wires it back into
  * the system prompt. Public so `OptimizedPromptService` can rebuild the
  * combined prompt at load time.
@@ -50,7 +83,7 @@ export function renderDemonstrations(examples: OptimizationExample[]): string {
   let idx = 1;
   for (const example of examples) {
     lines.push(`Example ${idx}:`);
-    lines.push(`Input:\n${example.input.user}`);
+    lines.push(`Input:\n${trimDemonstrationInput(example.input.user)}`);
     lines.push(`Expected:\n${example.expectedOutput}`);
     lines.push("");
     idx += 1;

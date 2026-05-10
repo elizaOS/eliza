@@ -257,7 +257,10 @@ export const profileAction: Action & {
     "persist owner state: save(name,location,age,prefs) + capture_phone(number); reminder/escalation policy lives on LIFE.policy_*",
   routingHint:
     'durable owner facts, reusable preferences, travel/booking preferences ("remember I prefer aisle seats", "save my hotel preferences") -> PROFILE; reminder intensity / escalation rules -> LIFE.policy_*; never use extraction/memory side effects/REPLY',
-  contexts: ["memory", "contacts", "tasks", "settings", "calendar"],
+  // "general" included so "save my preference" / "remember I like X" prompts
+  // surface PROFILE when the messageHandler picks "general". See
+  // `12-real-root-cause.md`.
+  contexts: ["general", "memory", "contacts", "tasks", "settings", "calendar"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
