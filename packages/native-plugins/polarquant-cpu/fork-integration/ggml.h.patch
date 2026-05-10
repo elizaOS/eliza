@@ -1,0 +1,7 @@
+--- a/ggml/include/ggml.h
++++ b/ggml/include/ggml.h
+@@ -<ggml_type enum, after GGML_TYPE_TBQ4_0 = 44> @@
+         GGML_TYPE_TBQ3_0   = 43,
+         GGML_TYPE_TBQ4_0   = 44,
++        GGML_TYPE_Q4_POLAR = 45,
+         GGML_TYPE_COUNT,

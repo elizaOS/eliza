@@ -28,6 +28,8 @@ import {
   registerHealthBusFamilies,
   registerHealthConnectors,
 } from "./connectors/index.js";
+import { registerCircadianInsightContract } from "./contracts/circadian.js";
+import { createDefaultCircadianInsightContract } from "./contracts/circadian-default.js";
 import {
   HEALTH_DEFAULT_PACKS,
   registerHealthDefaultPacks,
@@ -39,6 +41,8 @@ import {
 export * from "./actions/index.js";
 export * from "./anchors/index.js";
 export * from "./connectors/index.js";
+export * from "./contracts/circadian.js";
+export * from "./contracts/circadian-default.js";
 export * from "./contracts/health.js";
 export * from "./default-packs/index.js";
 export * from "./health-bridge/index.js";
@@ -80,6 +84,13 @@ export const healthPlugin: Plugin = {
     registerHealthAnchors(runtime);
     registerHealthBusFamilies(runtime);
     registerHealthDefaultPacks(runtime);
+    // W3-C drift D-4: register the CircadianInsightContract so consumers
+    // (SCHEDULE, SCHEDULED_TASK, future planner reads) read through a
+    // typed runtime seam instead of reaching into plugin-health internals.
+    registerCircadianInsightContract(
+      runtime,
+      createDefaultCircadianInsightContract(),
+    );
   },
 };
 

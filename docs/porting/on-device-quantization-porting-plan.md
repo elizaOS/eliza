@@ -5,9 +5,28 @@
 > Hexagon DSP, NNAPI/EdgeTPU), iOS/macOS (Metal, Accelerate), and the
 > Linux/CUDA training rig that already runs them.
 >
+> **The unified Milady fork now exists** at
+> [`milady-ai/llama.cpp`](https://github.com/milady-ai/llama.cpp) @
+> `v0.1.0-milady` (commit `edd55d8b`). It composes TBQ3_0 / TBQ4_0 from
+> apothic, QJL1_256 from W1-A, Q4_POLAR (slot bumped from 45 to 47) from
+> W1-B, and the Metal kernel sources from W1-D onto upstream b8198. The
+> AOSP path's `compile-libllama.mjs` is now pinned at this fork —
+> vendored patches under `scripts/aosp/llama-cpp-patches/` are
+> deprecated archival drops. See
+> [`docs/porting/unified-fork-strategy.md`](./unified-fork-strategy.md)
+> for the full migration story and
+> [`reports/porting/2026-05-09-unified/`](../../reports/porting/2026-05-09-unified/)
+> for the post-pin verification snapshot. The companion
+> [`milady-ai/node-llama-cpp`](https://github.com/milady-ai/node-llama-cpp)
+> @ `v3.18.1-milady.1` extends `experimentalKvCacheKey/ValueType` to
+> accept the new lowercase aliases (`"tbq3_0"`, `"tbq4_0"`,
+> `"qjl1_256"`, `"q4_polar"`) so the desktop path stops rejecting them
+> at `createContext()`.
+>
 > The on-device runtime is `bun:ffi` → `libllama.so` → forked llama.cpp
-> (`Apothic-AI/llama.cpp-1bit-turboquant`, main-b8198-b2b5273). Anything
-> shipped to a phone has to land in that fork as either:
+> ([`milady-ai/llama.cpp`](https://github.com/milady-ai/llama.cpp) @
+> `v0.1.0-milady`). Anything shipped to a phone has to land in that
+> fork as either:
 >
 > 1. a new `GGML_TYPE_*` quant block + dequant/dot kernel (per backend), OR
 > 2. a new `llama_*` API surface re-exposed by `eliza_llama_shim.c`, OR
@@ -16,40 +35,85 @@
 > Anything that can't land via one of those routes is not "on device" for
 > the AOSP build, full stop.
 
-## Current state on the AOSP image (last verified 2026-05-09)
+## Current state on the AOSP image (last verified 2026-05-09 by W1-G)
 
 `milady_cf_x86_64_phone-trunk_staging-userdebug` boots, Milady priv-app
 installs at `/system/priv-app/Milady/`, and `ElizaAgentService` spawns
 `bun + libllama.so + agent-bundle.js` correctly. The plugin-sql
-top-level-await race is fixed at the **source** level
-(`worktree-agent-a1402895150138b18` commit `12bfccb481` — lazy memoized
+top-level-await race is fixed at the **source** level on develop
+(commit `12bfccb481`, originally landed on
+`worktree-agent-a1402895150138b18` as `b123b08cb9`): lazy memoized
 plugin loaders called from `startEliza`'s
-`ensureCoreStaticPluginsRegistered()`). Verified by hot-patching the
-on-device May-5 bundle with a literal `await init_eliza()` injection:
-plugin loading went from "3/4 loaded, 1 failed" to "4/4 loaded",
-plugin-sql resolves via `STATIC_ELIZA_PLUGINS` in 1 ms.
+`ensureCoreStaticPluginsRegistered()`.
 
-**End-to-end chat is still gated on rebundling agent-bundle.js with
-the source fix.** The current build environment hits a separate
-`Bun.build (1.3.13)` re-export init-order bug: barrel modules
-(`./providers/index.ts`, `./actions/index.ts`, …) get collapsed to
-empty `init_X = () => {}` stubs while their consumers still reference
-imported symbols, producing `ReferenceError: <symbol> is not defined`
-at runtime. Each rebuild surfaces the next undefined symbol. Workaround
-that worked end-to-end: hot-patch the May-5 pre-built APK bundle
-(extracted at `/tmp/milady-apk/assets/agent/agent-bundle.js`,
-22989335 bytes, md5 `2874a0ef5bee39ff55ffec6205f82a61` after the
-literal `s/init_eliza()/await init_eliza()/` patch) and push that to
-`/data/data/ai.milady.milady/files/agent/agent-bundle.js`. That bundle
-predates the workspace state change that started triggering the Bun
-bug, so its barrels are pre-flattened correctly. Use it until the
-source-side build env is fully green (task #16).
+**AOSP unblock landed 2026-05-09 by W1-G.** Five script fixes plus two
+TLA deferrals let `bun run --cwd packages/agent build:mobile` produce a
+fresh `agent-bundle.js` without the May-5 hot-patch workaround:
+
+  1. `packages/agent/scripts/build-mobile-bundle.mjs` — dedupe target
+     for `@elizaos/plugin-sql` corrected from
+     `plugins/plugin-sql/typescript/index.node.ts` (the file the script
+     was looking for) to `plugins/plugin-sql/src/index.node.ts` (the
+     file that actually exists). Same one-letter fix for the
+     pglite-private-node_modules candidate.
+  2. `llama-cpp-capacitor` stubbed
+     (`packages/agent/scripts/mobile-stubs/llama-cpp-capacitor.cjs`).
+     The bun-side AOSP agent uses `bun:ffi` against `libllama.so`
+     directly via `aosp-llama-adapter.ts`, never the Capacitor JNI
+     binding (that's WebView-side only).
+  3. `zlib-sync` stubbed
+     (`packages/agent/scripts/mobile-stubs/zlib-sync.cjs`). discord.js
+     pulls it in for compressed gateway frames; no AOSP prebuild
+     ships, and discord.js falls back to uncompressed transport when
+     the binding throws.
+  4. `initdb.wasm` made optional in the asset copy step. plugin-sql
+     pins `@electric-sql/pglite ^0.3.3`; the 0.3.x layout embeds the
+     init step into `pglite.wasm` and ships no separate
+     `initdb.wasm`. The script previously hard-required it.
+  5. `packages/core/src/testing/{real-connector,live-provider}.ts` —
+     replaced module-init `await import("dotenv")` with memoized
+     `ensureDotenvLoaded()` helpers called from each test entry point.
+     Bun.build's mobile bundler refuses to `require()` any module
+     transitively reachable from a TLA, so deferring dotenv loading is
+     necessary for the entire `@elizaos/core` testing subtree to bundle.
+
+The previous Bun.build re-export init-order bug that required
+hot-patching `s/init_eliza()/await init_eliza()/` is gone now that
+plugin-sql resolution is lazy: the fresh bundle's `init_eliza`,
+`init_eliza2`, and `init_eliza_plugin` are all sync `__esm(() => {...})`
+emitters with no transitive TLA, so synchronous initialization
+callsites inside other `__esm` bodies (the symptom that triggered the
+hot-patch) are correct by construction.
+
+Reference fresh bundle (md5 `cbea0f4a066536d6fcd9e6b4e6a1e6ef`,
+~31.4 MB on develop @ HEAD as of 2026-05-09) replaces the hot-patched
+May-5 bundle (md5 `2874a0ef5bee39ff55ffec6205f82a61`, 22.9 MB). The
+size growth reflects the Capacitor app workspace plugins
+(`@elizaos/app-{wifi,contacts,phone}`, hosted-app session gating) and
+the DFlash adapter that landed since May.
 
 PGlite db corruption from prior crash-loops is bypassed by wiping
 `/data/user/0/ai.milady.milady/files/.eliza/workspace/.eliza/.elizadb`
 between runs. Improved `PGliteClientManager.formatError` handles
 non-Error throwables (was returning `"[object Object]"`, hiding the
-real error message; commit on `worktree-agent-af5238436024dfb1d`).
+real error message; commit on `worktree-agent-af5238436024dfb1d` —
+already on develop).
+
+DFlash hardening landed in the same session (W1-G):
+
+  - `tokenizerFamily` field on every `CatalogModel`, with the test
+    guard `it("DFlash pairs share a tokenizer family", ...)` enforcing
+    drafter-target vocab parity at edit time.
+  - Acceptance-rate telemetry: llama-server's `--metrics` Prometheus
+    endpoint is scraped after every `generate()` and logged as
+    `[DFlash] acceptance_rate=X.XX (drafted=N, accepted=M, decoded=K)`.
+    `DflashLlamaServer.getMetrics()` is public for diagnostic surfaces.
+  - `runDflashDoctor()` now reports per-pair tokenizer-family parity
+    and (when a server is loaded) the most recent acceptance rate.
+  - `maybeRepairDflashDrafter` and its bundled Python `gguf` shim
+    deleted — every catalog DFlash pair now shares a tokenizerFamily,
+    so the merge-injection workaround is unreachable. See
+    `docs/porting/dflash-drafter-strategy.md`.
 
 ### Symbols verified in shipped libs
 
@@ -61,9 +125,9 @@ real error message; commit on `worktree-agent-af5238436024dfb1d`).
 | `looksLikeQjl(modelPath)` + `qjl1_256` cache type | `aosp-llama-adapter.ts` (worktree-agent-a55644a05aeeed035 commit `f674c14160`) | Set `ELIZA_LLAMA_CACHE_TYPE_K=qjl1_256` to compose with TBQ V. Auto-detect QJL > Bonsai precedence. |
 | `block_qjl1_256` + `GGML_OP_ATTN_SCORE_QJL` | `/tmp/llama-cpp-qjl @ qjl-kcache` (4 commits, NOT in shipped fork yet) | Not pushed to GitHub; vendor commit on Apothic side needed before next AOSP rebuild picks it up. |
 | `block_q4_polar` (`Q4_POLAR=45`) | `/tmp/llama-cpp-polar @ polarquant-q4` (4 commits, NOT in shipped fork yet) | Same — vendor + push to Apothic remote required. |
-| Speculative-decoding API | source landed (`aosp-dflash-adapter.ts`, llama-server cross-compile in `compile-libllama.mjs`); **not built** | Build env blocker (#16). |
+| Speculative-decoding API | source landed (`aosp-dflash-adapter.ts`, llama-server cross-compile in `compile-libllama.mjs`); build env unblocked 2026-05-09 (W1-G); cross-compile artifact still pending CI run | Bundle now builds; `bun run --cwd packages/agent build:mobile` produces a fresh `agent-bundle.js`. llama-server arm64-v8a/musl build is the next step. |
 | Capacitor Android local-agent runtime | source landed (worktree-agent-a58ffa46f33215b6a) | ElizaAgentService gated on AOSP_BUILD; in-WebView local-agent kernel (`local-agent-kernel.ts`) generalized for both iOS and Android; shared TBQ resolver across adapters. |
-| Catalog `tokenizerFamily` field + DFlash pair guard | source landed (worktree-agent-a3b48813556536b5d commit `04a3fdb24d`) | Tests pass. |
+| Catalog `tokenizerFamily` field + DFlash pair guard | source landed on develop (W1-G commit, originally worktree-agent-a3b48813556536b5d `04a3fdb24d`) + acceptance-rate telemetry + dflash-doctor parity check | Backfilled across every catalog entry. `maybeRepairDflashDrafter` deleted (dead — every DFlash pair is now Qwen3↔Qwen3 vocab). |
 | QJL standalone kernel library | `packages/native-plugins/qjl-cpu/` (worktree-agent-a7e72f45ecf16deab) | 1100 LOC, scalar+AVX2+NEON, 100/100 bit-parity vs Python ref. |
 | PolarQuant standalone kernel library | `packages/native-plugins/polarquant-cpu/` (worktree-agent-a57094061cb3d026d) | 1871 LOC (C+Python), scalar kernels + safetensors→GGUF converter. |
 | Benchmark harness | `scripts/benchmark/profile-inference.mjs` (commit `df5624f154`) | 48-combo matrix, stub-validated, ready when the build env unblocks. |
@@ -265,6 +329,32 @@ For Metal/iOS, the (3) gate runs against the iOS Capacitor build via
 - Cross-port comparison table: regenerated nightly into
   `docs/porting/on-device-quantization-porting-plan.md` (this file)
   once the runners are wired up.
+
+## AOSP CI vs cuttlefish manual gate
+
+GitHub-hosted runners cannot host Cuttlefish (KVM-required). CI splits
+into two tiers:
+
+- **Automatic on every PR (`mobile-build-smoke.yml`):** runs
+  `bun run --cwd packages/agent build:mobile` against the workspace,
+  asserts the resulting `agent-bundle.js` exists, and verifies
+  `init_eliza` is emitted as a sync `__esm` initializer (regression
+  guard for the May-5 cross-module TLA bug). Then runs the Android
+  Gradle debug build to confirm the Capacitor APK pipeline still
+  packages the bundle correctly. This catches every regression that
+  previously required manual hot-patching.
+
+- **Manual gate (`elizaos-cuttlefish.yml`, `workflow_dispatch` on a
+  self-hosted KVM runner):** boots `milady_cf_x86_64_phone-trunk_staging-userdebug`,
+  installs the priv-app, and runs `packages/app-core/scripts/aosp/smoke-cuttlefish.mjs`
+  for the full `/api/health` + `/api/messages` round-trip per the
+  commands below. Operator runs this at every release tag and after
+  any merge that touches `packages/agent`, `packages/core`,
+  `packages/app-core`, `plugins/plugin-sql`, or the AOSP scripts.
+
+For real arm64 device verification (`ZL8325M37K` reference in the
+symbols table), the same script runs against an `adb` device path
+without further changes — operator-driven, one-shot.
 
 ## AOSP bundle verification commands
 

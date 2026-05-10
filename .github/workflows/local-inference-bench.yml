@@ -1,0 +1,315 @@
+name: Local Inference Bench
+
+# Nightly benchmark for the on-device chat agent. The harness is host-
+# agnostic — it just talks HTTP to whatever agent is reachable at
+# --target — so we run it in two layers:
+#
+#   1. PR + nightly: stub harness validation. Boots
+#      `scripts/benchmark/stub-agent-server.mjs` on a free port and runs
+#      the matrix against it. Cheap, deterministic, catches harness
+#      regressions before nightly.
+#   2. Nightly only: real agent profile. Boots `bun run dev`, points the
+#      harness at the dev server, writes the report under
+#      `reports/porting/<YYYY-MM-DD>/profile.{json,md}`, uploads the
+#      directory as a workflow artifact, and opens/updates a tracking
+#      issue with the markdown summary.
+#
+# Cuttlefish AVD profiling (job 3) is dispatch-only — it shares
+# infrastructure with `elizaos-cuttlefish.yml`, so we don't duplicate
+# that setup; instead we document the dispatch entrypoint and let the
+# operator chain the two workflows.
+
+on:
+  schedule:
+    # 05:00 UTC — runs after the nightly publish job at 04:00 UTC so
+    # the dev server gets the latest packages.
+    - cron: "0 5 * * *"
+  pull_request:
+    paths:
+      - "scripts/benchmark/**"
+      - ".github/workflows/local-inference-bench.yml"
+      - "plugins/plugin-local-embedding/**"
+  workflow_dispatch:
+    inputs:
+      run_real_agent:
+        description: "Run real-agent profile (nightly path) on-demand."
+        required: false
+        type: boolean
+        default: false
+      run_cuttlefish:
+        description: "Run cuttlefish AVD profile (job 3). Coordinates with elizaos-cuttlefish.yml."
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: local-inference-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  BUN_VERSION: "1.3.13"
+  NODE_VERSION: "24"
+  STUB_PORT: "31338"
+
+jobs:
+  stub-validation:
+    name: Harness regression (stub)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Boot stub agent server
+        run: |
+          set -euo pipefail
+          node scripts/benchmark/stub-agent-server.mjs --port "${STUB_PORT}" &
+          echo $! > /tmp/stub.pid
+          # Wait for the stub to bind (health endpoint becomes 200).
+          for _ in $(seq 1 50); do
+            if curl --silent --fail "http://127.0.0.1:${STUB_PORT}/api/health" >/dev/null; then
+              break
+            fi
+            sleep 0.2
+          done
+          curl --silent --fail "http://127.0.0.1:${STUB_PORT}/api/health"
+
+      - name: Run profile harness against stub (host-cpu config)
+        run: |
+          set -euo pipefail
+          mkdir -p reports/porting/stub
+          node scripts/benchmark/profile-inference.mjs \
+            --target "http://127.0.0.1:${STUB_PORT}" \
+            --config scripts/benchmark/configs/host-cpu.json \
+            --label "stub-validation-$GITHUB_SHA" \
+            --out reports/porting/stub
+
+      - name: Tear down stub
+        if: ${{ always() }}
+        run: |
+          if [ -f /tmp/stub.pid ]; then
+            kill "$(cat /tmp/stub.pid)" || true
+          fi
+
+      - name: Upload stub profile artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-stub-${{ github.run_id }}
+          path: reports/porting/stub
+          if-no-files-found: error
+          retention-days: 14
+
+  nightly-real-agent:
+    name: Nightly real-agent profile
+    needs: stub-validation
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_real_agent == true) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          show-progress: false
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Boot dev agent
+        env:
+          MILADY_API_PORT: "31337"
+          MILADY_PORT: "2138"
+          NODE_ENV: "test"
+          ELIZA_DISABLE_TRAJECTORY_LOGGING: "1"
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-logs
+          # Run the dev server in the background. The orchestrator
+          # already auto-shifts ports if the defaults are busy and writes
+          # a `.milady/desktop-dev-console.log` we can tail if needed.
+          bun run dev > .ci-logs/dev.log 2>&1 &
+          echo $! > /tmp/dev.pid
+          # Health probe — give the agent up to 120s to come up.
+          for _ in $(seq 1 60); do
+            if curl --silent --fail "http://127.0.0.1:31337/api/health" >/dev/null 2>&1; then
+              echo "agent ready"
+              break
+            fi
+            sleep 2
+          done
+          curl --silent --fail "http://127.0.0.1:31337/api/health"
+
+      - name: Run profile harness (host-cpu config)
+        env:
+          MILADY_API_TOKEN: ${{ secrets.MILADY_CI_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          DATE="$(date -u +%Y-%m-%d)"
+          OUT_DIR="reports/porting/${DATE}"
+          mkdir -p "$OUT_DIR"
+          node scripts/benchmark/profile-inference.mjs \
+            --target "http://127.0.0.1:31337" \
+            --config scripts/benchmark/configs/host-cpu.json \
+            --label "ci-${GITHUB_SHA}-${GITHUB_RUN_ID}" \
+            --out "$OUT_DIR"
+          echo "REPORT_DIR=$OUT_DIR" >> "$GITHUB_ENV"
+
+      - name: Tear down dev agent
+        if: ${{ always() }}
+        run: |
+          if [ -f /tmp/dev.pid ]; then
+            kill "$(cat /tmp/dev.pid)" || true
+          fi
+
+      - name: Upload report artifact
+        if: ${{ always() && env.REPORT_DIR != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-nightly-${{ github.run_id }}
+          path: ${{ env.REPORT_DIR }}
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Upload dev server log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-log-nightly-${{ github.run_id }}
+          path: .ci-logs/dev.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Open / update tracking issue
+        if: ${{ env.REPORT_DIR != '' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const reportDir = process.env.REPORT_DIR;
+            const mdPath = path.join(reportDir, "profile.md");
+            if (!fs.existsSync(mdPath)) {
+              core.warning(`profile.md not found at ${mdPath}; skipping issue update`);
+              return;
+            }
+            const md = fs.readFileSync(mdPath, "utf8");
+            const today = new Date().toISOString().slice(0, 10);
+            const title = `Nightly local-inference profile — ${today}`;
+            const artifactUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `Workflow run: ${artifactUrl}`,
+              "",
+              `Report directory: \`${reportDir}\`.`,
+              "",
+              md,
+            ].join("\n");
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: "nightly-local-inference",
+              state: "open",
+              per_page: 5,
+            });
+            if (existing.length === 0) {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ["nightly-local-inference"],
+              });
+              core.info(`Opened tracking issue #${created.data.number}`);
+            } else {
+              const issue = existing[0];
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                title,
+                body,
+              });
+              core.info(`Updated tracking issue #${issue.number}`);
+            }
+
+  cuttlefish-bench:
+    # Manual-only path. Cuttlefish AVD provisioning is owned by
+    # elizaos-cuttlefish.yml; this job runs the bench against the AVD
+    # forward port once the operator has the AVD reachable at
+    # 127.0.0.1:31337. Keeping it here (rather than duplicating AVD
+    # setup) makes the dispatch surface obvious without doubling the CI
+    # cost.
+    name: Cuttlefish AVD profile (manual)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_cuttlefish == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Reminder — boot cuttlefish first
+        run: |
+          echo "::warning ::This job assumes elizaos-cuttlefish.yml has booted the AVD"
+          echo "::warning ::and forwarded 31337 to 127.0.0.1. Run that workflow first."
+          echo "Probing /api/health on 127.0.0.1:31337 ..."
+          curl --silent --fail "http://127.0.0.1:31337/api/health" || {
+            echo "::error ::No agent reachable at 127.0.0.1:31337. Run elizaos-cuttlefish.yml first."
+            exit 1
+          }
+
+      - name: Run profile harness (aosp-arm64 config)
+        run: |
+          set -euo pipefail
+          DATE="$(date -u +%Y-%m-%d)"
+          OUT_DIR="reports/porting/${DATE}-cuttlefish"
+          mkdir -p "$OUT_DIR"
+          node scripts/benchmark/profile-inference.mjs \
+            --target "http://127.0.0.1:31337" \
+            --config scripts/benchmark/configs/aosp-arm64.json \
+            --label "cuttlefish-${GITHUB_RUN_ID}" \
+            --out "$OUT_DIR"
+
+      - name: Upload cuttlefish report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-cuttlefish-${{ github.run_id }}
+          path: reports/porting/
+          if-no-files-found: warn
+          retention-days: 90

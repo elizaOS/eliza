@@ -399,17 +399,27 @@ const LLAMA_POOLING_TYPE_MEAN = 1;
 const GGML_TYPE_F16 = 1;
 const GGML_TYPE_TBQ3_0 = 43;
 const GGML_TYPE_TBQ4_0 = 44;
+// QJL1_256 + Q4_POLAR are landed on milady-ai/llama.cpp @ v0.1.0-milady.
+// Slot 45 is an intentional reserved hole on the fork.
+const GGML_TYPE_QJL1_256 = 46;
+const GGML_TYPE_Q4_POLAR = 47;
 
 /**
  * Map a friendly KV-cache type name to its ggml_type enum value. Keep the
  * table small — only types we actually intend to drive end up here. F16
- * is the upstream default; tbq3_0 / tbq4_0 are the fork additions used by
- * Bonsai. Unknown names throw rather than silently degrade.
+ * is the upstream default; tbq3_0 / tbq4_0 / qjl1_256 / q4_polar are the
+ * fork additions on milady-ai/llama.cpp @ v0.1.0-milady. Unknown names
+ * throw rather than silently degrade.
  *
  * Exported for unit tests so we can assert mapping correctness without
  * reaching into the adapter internals.
  */
-export type KvCacheTypeName = "f16" | "tbq3_0" | "tbq4_0";
+export type KvCacheTypeName =
+  | "f16"
+  | "tbq3_0"
+  | "tbq4_0"
+  | "qjl1_256"
+  | "q4_polar";
 
 export function kvCacheTypeNameToEnum(name: KvCacheTypeName): number {
   switch (name) {
@@ -419,6 +429,10 @@ export function kvCacheTypeNameToEnum(name: KvCacheTypeName): number {
       return GGML_TYPE_TBQ3_0;
     case "tbq4_0":
       return GGML_TYPE_TBQ4_0;
+    case "qjl1_256":
+      return GGML_TYPE_QJL1_256;
+    case "q4_polar":
+      return GGML_TYPE_Q4_POLAR;
     default: {
       // Exhaustive switch — fall here only if a future type is added without
       // updating the map. Throw with the offending name so a future caller
@@ -461,11 +475,17 @@ export function readEnvKvCacheType(
 ): KvCacheTypeName | undefined {
   const raw = env[name]?.trim().toLowerCase();
   if (!raw) return undefined;
-  if (raw === "f16" || raw === "tbq3_0" || raw === "tbq4_0") {
+  if (
+    raw === "f16" ||
+    raw === "tbq3_0" ||
+    raw === "tbq4_0" ||
+    raw === "qjl1_256" ||
+    raw === "q4_polar"
+  ) {
     return raw;
   }
   logger.warn(
-    `[aosp-llama] ${name}=${raw} is not a recognised KV cache type; ignoring (use f16 / tbq3_0 / tbq4_0).`,
+    `[aosp-llama] ${name}=${raw} is not a recognised KV cache type; ignoring (use f16 / tbq3_0 / tbq4_0 / qjl1_256 / q4_polar).`,
   );
   return undefined;
 }

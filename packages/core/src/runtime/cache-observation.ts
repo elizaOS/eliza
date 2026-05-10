@@ -137,32 +137,41 @@ export function normalizeCacheUsage(
 		cacheCreationInputTokens,
 		cachedInputTokens: effectiveCachedInputTokens,
 		cacheHitRate: cacheHitRate({
+			provider: options.provider,
 			inputTokens,
+			cacheReadInputTokens: effectiveCacheReadInputTokens,
+			cacheCreationInputTokens,
 			cachedInputTokens: effectiveCachedInputTokens,
 		}),
 		rawUsage: usageOrResponse,
 	};
 }
 
+function usesAdditiveCacheDenominator(provider?: string): boolean {
+	return provider?.toLowerCase() === "anthropic";
+}
+
 export function cacheHitRate(observation: {
+	provider?: string;
 	inputTokens?: number;
 	cachedInputTokens?: number;
 	cacheReadInputTokens?: number;
 	cacheCreationInputTokens?: number;
 }): number | undefined {
-	// Anthropic semantics: usage.input_tokens excludes cache_read_input_tokens
-	// and cache_creation_input_tokens. The total prompt this call paid for is
-	// input + cache_creation + cache_read, and the hit rate is cache_read /
-	// total. OpenAI's prompt_tokens already INCLUDES cached_tokens, so
-	// passing only inputTokens as the denominator (the previous behaviour)
-	// produced a too-large rate for Anthropic. Compute the union and use it.
-	const inputTokens = observation.inputTokens ?? 0;
+	const inputTokens = observation.inputTokens;
 	const cacheRead =
-		observation.cacheReadInputTokens ?? observation.cachedInputTokens ?? 0;
-	const cacheCreation = observation.cacheCreationInputTokens ?? 0;
-	const denom = inputTokens + cacheRead + cacheCreation;
-	if (denom <= 0) return undefined;
-	return cacheRead / denom;
+		observation.cacheReadInputTokens ?? observation.cachedInputTokens;
+	if (!inputTokens || inputTokens <= 0 || cacheRead === undefined) {
+		return undefined;
+	}
+	if (usesAdditiveCacheDenominator(observation.provider)) {
+		const denom =
+			inputTokens +
+			(observation.cacheReadInputTokens ?? 0) +
+			(observation.cacheCreationInputTokens ?? 0);
+		return denom > 0 ? cacheRead / denom : undefined;
+	}
+	return cacheRead / inputTokens;
 }
 
 export function hasCacheUsage(observation: CacheUsageObservation): boolean {
@@ -198,14 +207,18 @@ export function summarizeCacheUsage(
 		summary.cachedInputTokens += observation.cachedInputTokens ?? 0;
 	}
 
-	const denom =
-		summary.inputTokens +
-		summary.cacheCreationInputTokens +
-		summary.cacheReadInputTokens;
-	const cacheReads =
-		summary.cacheReadInputTokens > 0
-			? summary.cacheReadInputTokens
-			: summary.cachedInputTokens;
+	let denom = 0;
+	let cacheReads = 0;
+	for (const observation of observations) {
+		denom += observation.inputTokens ?? 0;
+		if (usesAdditiveCacheDenominator(observation.provider)) {
+			denom +=
+				(observation.cacheReadInputTokens ?? 0) +
+				(observation.cacheCreationInputTokens ?? 0);
+		}
+		cacheReads +=
+			observation.cacheReadInputTokens ?? observation.cachedInputTokens ?? 0;
+	}
 	summary.cacheHitRate = denom > 0 ? cacheReads / denom : 0;
 	return summary;
 }

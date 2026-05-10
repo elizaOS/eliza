@@ -14,7 +14,7 @@
  * Usage:
  *   node scripts/benchmark/profile-inference.mjs \
  *     [--target http://localhost:31337] \
- *     [--config scripts/benchmark/configs/aosp-default.json] \
+ *     [--config scripts/benchmark/configs/host-cpu.json] \
  *     [--token <api token>] \
  *     [--out reports/porting/<date>] \
  *     [--non-streaming] \
@@ -121,10 +121,27 @@ function parseArgs(argv) {
     out.config = path.resolve(
       path.dirname(new URL(import.meta.url).pathname),
       "configs",
-      "aosp-default.json",
+      pickDefaultConfigName(),
     );
   }
   return out;
+}
+
+/**
+ * Auto-pick a config file when the operator doesn't pass `--config`.
+ * Runs purely against host hints — `process.platform`, `process.arch`,
+ * and the `CUDA_VISIBLE_DEVICES` env var. This mirrors `chooseBackend`
+ * in `plugin-local-embedding`, but kept inline so the harness has zero
+ * runtime dependencies on Eliza source.
+ */
+function pickDefaultConfigName() {
+  const cuda = process.env.CUDA_VISIBLE_DEVICES?.trim();
+  if (cuda && cuda !== "" && cuda !== "-1") return "host-cuda.json";
+  if (process.platform === "darwin") return "host-metal.json";
+  if (process.platform === "linux" || process.platform === "win32") {
+    return "host-cpu.json";
+  }
+  return "host-cpu.json";
 }
 
 function printHelp() {
@@ -134,7 +151,7 @@ function printHelp() {
 Options:
   --target <url>            Agent API base (default http://localhost:31337)
   --config <path>           Profiling matrix JSON
-                            (default scripts/benchmark/configs/aosp-default.json)
+                            (auto-picked by host: configs/host-{cpu,metal,cuda}.json)
   --token <str>             API token; also reads MILADY_API_TOKEN /
                             ELIZA_API_TOKEN from env
   --out <dir>               Output directory

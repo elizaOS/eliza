@@ -94,4 +94,29 @@ describe("local inference catalog", () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  it("DFlash pairs share a tokenizer family", () => {
+    const dflashEntries = MODEL_CATALOG.filter((m) => m.runtime?.dflash);
+    expect(dflashEntries.length).toBeGreaterThan(0);
+    for (const entry of dflashEntries) {
+      const drafterId = entry.runtime!.dflash!.drafterModelId;
+      const drafter = MODEL_CATALOG.find((m) => m.id === drafterId);
+      expect(
+        drafter,
+        `drafter ${drafterId} of ${entry.id} not found in catalog`,
+      ).toBeDefined();
+      expect(
+        entry.tokenizerFamily,
+        `target ${entry.id} missing tokenizerFamily`,
+      ).toBeDefined();
+      expect(
+        drafter!.tokenizerFamily,
+        `drafter ${drafterId} missing tokenizerFamily`,
+      ).toBeDefined();
+      expect(
+        entry.tokenizerFamily,
+        `tokenizer mismatch: target ${entry.id} (${entry.tokenizerFamily}) ≠ drafter ${drafterId} (${drafter!.tokenizerFamily})`,
+      ).toBe(drafter!.tokenizerFamily);
+    }
+  });
 });

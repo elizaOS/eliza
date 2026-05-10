@@ -213,9 +213,11 @@ function isCloudControlPlaneUrl(value: string | undefined): boolean {
     const host = new URL(value).hostname.toLowerCase();
     return (
       host === "api.elizacloud.ai" ||
+      host === "api-staging.elizacloud.ai" ||
       host === "elizacloud.ai" ||
       host === "www.elizacloud.ai" ||
-      host === "dev.elizacloud.ai"
+      host === "dev.elizacloud.ai" ||
+      host === "staging.elizacloud.ai"
     );
   } catch {
     return false;
@@ -529,9 +531,24 @@ export function RuntimeGate() {
   // ── Cleanup poll on unmount ───────────────────────────────────────
   React.useEffect(() => {
     return () => {
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
     };
   }, []);
+
+  // ── Cleanup poll when leaving cloud sub-view ──────────────────────
+  // The provision poll lives inside subView="cloud". Switching back to the
+  // chooser (or to "remote") used to leak the interval — it kept calling
+  // setProvisionStatus / setError / finishAsCloud against a screen the user
+  // had already left, racing with their next choice.
+  React.useEffect(() => {
+    if (subView !== "cloud" && pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, [subView]);
 
   // ── Cloud: auto-advance from login when connected ─────────────────
   React.useEffect(() => {
@@ -1845,8 +1862,10 @@ function GateShell({
     >
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 overflow-hidden"
+        className="pointer-events-none fixed inset-0 overflow-hidden"
       >
+        {/* Splash background. Dark-mode is letterboxed against the wrapper
+            bg below, which provides a complementary brand tone. */}
         <img
           src={resolveAppAssetUrl("splash-bg.png")}
           alt=""
@@ -1882,9 +1901,9 @@ function GateShell({
         />
       </div>
 
-      <div className="relative z-10 flex h-full min-h-0 items-center justify-center px-3 pb-[max(0.75rem,var(--safe-area-bottom,0px))] pt-[calc(var(--safe-area-top,0px)_+_3.75rem)] sm:px-6 md:px-8">
+      <div className="relative z-10 flex h-full min-h-0 items-center justify-center px-3 pb-[calc(max(0.75rem,var(--safe-area-bottom,0px))_+_var(--keyboard-height,0px))] pt-[calc(var(--safe-area-top,0px)_+_3.75rem)] sm:px-6 md:px-8">
         <div
-          className="flex max-h-full min-h-0 w-full max-w-[64rem] flex-col items-center gap-3 overflow-hidden border-2 border-black px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)] backdrop-blur-md sm:gap-4 sm:px-6 sm:py-7 md:px-8 md:py-8"
+          className="flex max-h-full min-h-0 w-full max-w-[64rem] flex-col items-center gap-3 overflow-y-auto border-2 border-black px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)] backdrop-blur-md sm:gap-4 sm:px-6 sm:py-7 md:px-8 md:py-8"
           style={{
             borderRadius: 0,
             clipPath:
@@ -1996,7 +2015,6 @@ function WelcomeChooser({
   t,
 }: WelcomeChooserProps) {
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
-  const { appName } = useBranding();
 
   return (
     <div className="flex w-full flex-col items-center gap-6 text-center sm:gap-7">
@@ -2016,10 +2034,7 @@ function WelcomeChooser({
           }}
           className="text-3xl font-light uppercase tracking-tight text-white sm:text-4xl md:text-5xl"
         >
-          {t("runtimegate.welcomeTitle", {
-            defaultValue: "Welcome to {{appName}}",
-            appName,
-          })}
+          {t("runtimegate.welcomeTitle", { defaultValue: "Welcome to Milady" })}
         </h1>
         <p
           className="max-w-md text-sm leading-relaxed text-white/85 sm:text-base"

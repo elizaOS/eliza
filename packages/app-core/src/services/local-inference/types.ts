@@ -123,12 +123,15 @@ export interface LocalRuntimeAcceleration {
  */
 export type TokenizerFamily =
   | "qwen3"
-  | "qwen2.5"
+  | "qwen2"
   | "llama3"
-  | "smol"
-  | "gemma2"
+  | "gpt2"
+  | "smollm2"
+  | "bge"
+  | "sentencepiece"
+  | "deepseekv2"
   | "mistral"
-  | "deepseek"
+  | "gemma"
   | (string & {});
 
 export interface CatalogModel {

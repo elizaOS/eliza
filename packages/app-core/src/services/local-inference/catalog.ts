@@ -24,7 +24,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     bucket: "small",
     // SmolLM2 native context: 8192 tokens (HuggingFaceTB/SmolLM2-360M-Instruct).
     contextLength: 8192,
-    tokenizerFamily: "smol",
+    tokenizerFamily: "smollm2",
     blurb:
       "Mobile-friendly default. ~270MB on disk, runs on phones and 1GB-RAM hosts.",
   },
@@ -40,7 +40,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "tiny",
     bucket: "small",
     contextLength: 8192,
-    tokenizerFamily: "smol",
+    tokenizerFamily: "smollm2",
     blurb:
       "Smallest genuinely useful chat model. Perfect for CI and smoke tests.",
   },
@@ -211,7 +211,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     bucket: "mid",
     // Gemma 2 9B native context: 8192 tokens (sliding window).
     contextLength: 8192,
-    tokenizerFamily: "gemma2",
+    tokenizerFamily: "gemma",
     blurb: "Google Gemma. Excellent writing quality and safety tuning.",
   },
   {
@@ -229,7 +229,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     // to 131072 via YaRN per upstream config.json. The bartowski GGUFs
     // expose the YaRN-extended ceiling.
     contextLength: 131072,
-    tokenizerFamily: "qwen2.5",
+    tokenizerFamily: "qwen2",
     blurb:
       "Top small coder. Fill-in-the-middle, repo-level context, 128k window.",
   },
@@ -416,7 +416,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     // DeepSeek-Coder-V2-Lite-Instruct: 163840 native context per
     // upstream config (max_position_embeddings=163840).
     contextLength: 163840,
-    tokenizerFamily: "deepseek",
+    tokenizerFamily: "deepseekv2",
     blurb: "MoE coder. Near-32B coding quality with ~2.4B active params.",
   },
   {
@@ -433,7 +433,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     // Qwen2.5-Coder-14B-Instruct: same YaRN-extended ceiling as 7B
     // (max_position_embeddings=32768, extended to 131072 via YaRN).
     contextLength: 131072,
-    tokenizerFamily: "qwen2.5",
+    tokenizerFamily: "qwen2",
     blurb: "Sweet-spot coder for 16GB VRAM. Fluent in most languages.",
   },
   {
@@ -464,7 +464,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "large",
     contextLength: 8192,
-    tokenizerFamily: "gemma2",
+    tokenizerFamily: "gemma",
     blurb: "Largest Gemma 2. Excellent for long-form writing and reasoning.",
   },
   {
@@ -535,7 +535,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     bucket: "xl",
     // QwQ-32B: 32768 native context.
     contextLength: 32768,
-    tokenizerFamily: "qwen2.5",
+    tokenizerFamily: "qwen2",
     blurb:
       "Qwen reasoning model. Chain-of-thought, math, code. o1-class open model.",
   },
@@ -553,7 +553,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     // DeepSeek-R1-Distill-Qwen-32B: based on Qwen2.5-32B, supports
     // 131072 native context (max_position_embeddings=131072).
     contextLength: 131072,
-    tokenizerFamily: "qwen2.5",
+    tokenizerFamily: "qwen2",
     blurb:
       "R1 reasoning distilled into Qwen-32B. 128k context, strong math/code.",
   },

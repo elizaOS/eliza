@@ -80,7 +80,7 @@
         "type": "string",
         "description": "Filename of the embedding model used for vector embeddings; overrides the default if supplied.",
         "required": false,
-        "default": "bge-small-en-v1.5.Q4_K_M.gguf",
+        "default": "nomic-embed-text-v1.5.Q4_K_M.gguf",
         "sensitive": false
       },
       "LOCAL_EMBEDDING_MODEL_REPO": {
@@ -99,6 +99,41 @@
         "type": "number",
         "description": "Optional embedding context size override; when omitted, context size is inferred from model defaults/hints.",
         "required": false,
+        "sensitive": false
+      },
+      "LOCAL_EMBEDDING_BATCH_SIZE": {
+        "type": "number",
+        "description": "Number of inputs processed per batch when callers pass arrays. Defaults to 16.",
+        "required": false,
+        "default": 16,
+        "sensitive": false
+      },
+      "LOCAL_EMBEDDING_CHUNK_OVERLAP": {
+        "type": "number",
+        "description": "Token overlap between sliding-window chunks for inputs that exceed the model's context window. Defaults to 64.",
+        "required": false,
+        "default": 64,
+        "sensitive": false
+      },
+      "LOCAL_EMBEDDING_POOLING": {
+        "type": "string",
+        "description": "Pooling strategy for chunked inputs: 'mean' (default), 'cls', or 'last'.",
+        "required": false,
+        "default": "mean",
+        "sensitive": false
+      },
+      "LOCAL_EMBEDDING_NORMALIZE": {
+        "type": "string",
+        "description": "L2-normalize the output embedding. Set to 'false' or '0' to disable. Defaults to true.",
+        "required": false,
+        "default": "true",
+        "sensitive": false
+      },
+      "LOCAL_EMBEDDING_FORCE_CPU": {
+        "type": "string",
+        "description": "Force CPU backend even when GPU is available. Set to '1' to enable.",
+        "required": false,
+        "default": "false",
         "sensitive": false
       },
       "CUDA_VISIBLE_DEVICES": {

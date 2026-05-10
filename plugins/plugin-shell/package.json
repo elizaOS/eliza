@@ -43,6 +43,7 @@
   "license": "MIT",
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "cross-spawn": "^7.0.6",
     "zod": "^4.4.3"
   },

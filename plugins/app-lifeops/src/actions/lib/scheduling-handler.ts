@@ -464,16 +464,16 @@ export const proposeMeetingTimesAction: Action & {
     "buffer) and returns three available slots by default over the next seven " +
     "days. Also correct for bundled scheduling while traveling or concrete " +
     "reschedule options. " +
-    "STRONG POSITIVE TRIGGERS — route HERE, not to CALENDAR_ACTION or SCHEDULING: " +
+    "STRONG POSITIVE TRIGGERS — route HERE, not to CALENDAR or SCHEDULING_NEGOTIATION: " +
     "'propose three times for a sync with a person', 'suggest a few times for " +
     "a partner', 'offer a colleague three 30-minute slots', 'find us three options " +
     "next week', 'give me slots to send to a teammate'. " +
     "DO NOT use this for small talk, weather, or vague conversation. " +
     "DO NOT use this to check the owner's calendar, create a calendar event, " +
-    "or view upcoming events — that is CALENDAR_ACTION. " +
+    "or view upcoming events — that is CALENDAR. " +
     "DO NOT use this to start a multi-turn scheduling negotiation record — " +
-    "that is SCHEDULING (subaction: start). This action just generates the " +
-    "candidate slots; SCHEDULING tracks the negotiation lifecycle around them.",
+    "that is SCHEDULING_NEGOTIATION (subaction: start). This action just generates " +
+    "the candidate slots; SCHEDULING_NEGOTIATION tracks the negotiation lifecycle around them.",
   descriptionCompressed:
     "Propose available meeting slots from the owner's calendar and meeting preferences; not calendar CRUD or negotiation tracking.",
   contexts: ["calendar", "contacts", "tasks"],
@@ -486,7 +486,7 @@ export const proposeMeetingTimesAction: Action & {
       message,
       state,
       callback,
-      actionName: "OWNER_CALENDAR",
+      actionName: "PROPOSE_MEETING_TIMES",
     });
 
     if (await denyIfNoAccess(runtime, message)) {
@@ -684,7 +684,7 @@ export const checkAvailabilityAction: Action = {
       message,
       state,
       callback,
-      actionName: "OWNER_CALENDAR",
+      actionName: "CHECK_AVAILABILITY",
     });
 
     if (await denyIfNoAccess(runtime, message)) {
@@ -861,7 +861,7 @@ export const updateMeetingPreferencesAction: Action & {
       message,
       state,
       callback,
-      actionName: "OWNER_CALENDAR",
+      actionName: "UPDATE_MEETING_PREFERENCES",
     });
 
     if (await denyIfNoAccess(runtime, message)) {
@@ -1095,7 +1095,7 @@ async function resolveSchedulingPlanWithLlm(args: {
     "Use cancel when stopping an active negotiation.",
     "Use list_active for listing negotiations.",
     "Use list_proposals for listing proposals in one negotiation.",
-    "If the user is making a first-turn calendar request, asking for recurring time, asking to bundle meetings while traveling, or asking for missed-call repair, this action is the wrong tool. Return shouldAct=false so the planner can choose OWNER_CALENDAR or MESSAGE with the appropriate inbox/draft operation instead.",
+    "If the user is making a first-turn calendar request, asking for recurring time, asking to bundle meetings while traveling, or asking for missed-call repair, this action is the wrong tool. Return shouldAct=false so the planner can choose CALENDAR or MESSAGE with the appropriate inbox/draft operation instead.",
     "Set shouldAct=false when the user is vague or only asks for general scheduling help.",
     "",
     'Example: {"subaction":"start","shouldAct":true,"response":null}',
@@ -1167,8 +1167,9 @@ function formatProposalSummary(p: {
 export const schedulingAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "SCHEDULING",
+  name: "SCHEDULING_NEGOTIATION",
   similes: [
+    "SCHEDULING",
     "NEGOTIATE_MEETING",
     "MULTI_TURN_SCHEDULING",
     "MANAGE_SCHEDULING_NEGOTIATION",
@@ -1182,7 +1183,7 @@ export const schedulingAction: Action & {
     "finalize the winning proposal, cancel, or list negotiations/proposals. " +
     "Do not use this for first-turn calendar requests, recurring blocks, " +
     "travel-time bundling, missed-call repair, or fresh candidate-slot " +
-    "searches; those belong to OWNER_CALENDAR or MESSAGE with the appropriate inbox/draft operation.",
+    "searches; those belong to CALENDAR or MESSAGE with the appropriate inbox/draft operation.",
   descriptionCompressed:
     "Multi-turn scheduling negotiation lifecycle: start, propose, respond, finalize, cancel, and list negotiations/proposals.",
   contexts: ["calendar", "contacts", "tasks", "messaging"],
@@ -1201,7 +1202,7 @@ export const schedulingAction: Action & {
       message,
       state,
       callback,
-      actionName: "OWNER_CALENDAR",
+      actionName: "SCHEDULING_NEGOTIATION",
     });
 
     const params =

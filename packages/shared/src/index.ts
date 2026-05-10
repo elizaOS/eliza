@@ -25,6 +25,7 @@ export * from "./config/cloud-only.js";
 export * from "./config/config.js";
 export * from "./config/config-catalog.js";
 export * from "./config/config-paths.js";
+export * from "./config/distribution-profile.js";
 export * from "./config/env-vars.js";
 export * from "./config/plugin-auto-enable.js";
 export * from "./config/plugin-manifest.js";
