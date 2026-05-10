@@ -255,11 +255,11 @@ dónde obtener las credenciales, los campos mínimos requeridos y consejos para 
 ### Zai
 </div>
 
-**Obtener credenciales:** De Homunculus Labs
+**Obtener credenciales:** de z.ai
 **Mínimo requerido:** `ZAI_API_KEY`
 **Variables:**
-- `ZAI_API_KEY` — Tu clave de API de Zai de Homunculus Labs
-**Consejos:** Zai es un proveedor de modelos de Homunculus Labs. Paquete del plugin: `@homunculuslabs/plugin-zai`.
+- `ZAI_API_KEY` — Tu clave de API de z.ai
+**Consejos:** Zai es un proveedor de modelos de z.ai. Paquete del plugin: `@elizaos/plugin-zai`.
 
 <div id="eliza-cloud">
 

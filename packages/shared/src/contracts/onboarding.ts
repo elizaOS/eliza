@@ -308,7 +308,7 @@ export const ONBOARDING_PROVIDER_CATALOG = [
     id: "zai-coding-subscription",
     name: "z.ai Coding Plan",
     envKey: null,
-    pluginName: "@homunculuslabs/plugin-zai",
+    pluginName: "@elizaos/plugin-zai",
     keyPrefix: null,
     description:
       "Stores z.ai Coding Plan credentials for the dedicated coding endpoint only, not the general z.ai API key path.",
@@ -474,7 +474,7 @@ export const ONBOARDING_PROVIDER_CATALOG = [
     id: "zai",
     name: "z.ai",
     envKey: "ZAI_API_KEY",
-    pluginName: "@homunculuslabs/plugin-zai",
+    pluginName: "@elizaos/plugin-zai",
     keyPrefix: null,
     description: "GLM models via z.ai Coding Plan.",
     family: "zai",
