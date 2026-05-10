@@ -53,3 +53,23 @@ When a new journey or default pack surfaces an unhandled case:
   game-through findings the W3-C replay locks down.
 - `coverage-matrix.md` — the matrix W3-C re-anchored on
   `test/journey-domain-coverage.test.ts` for row 28.
+
+## Post-final-fix updates
+
+- **A6 — Closed in code.** `ScheduledTaskRunner` now exposes
+  `getEscalationCursor(taskId): Promise<EscalationCursorView | null>` with
+  the `EscalationCursorView` shape `{ stepIndex, lastFiredAt, channelKey }`.
+  Consumers no longer reach into `metadata.escalationCursor` directly. The
+  accessor resolves `channelKey` through the same `resolveEffectiveLadder`
+  path the runner uses internally, so a cursor reflecting "step N" surfaces
+  the channel that step is configured to dispatch on. Unit coverage in
+  `src/lifeops/scheduled-task/runner.test.ts` (`getEscalationCursor (A6)`).
+- **A9 — Closed in code.** `src/lifeops/scheduled-task/after-task-chain.test.ts`
+  asserts that `trigger.kind: "after_task"` accepts every `TerminalState`
+  outcome (`completed | skipped | dismissed | expired | failed`) and that
+  the child task remains `scheduled` when the parent reaches the recorded
+  terminal state. The runner's in-memory fixture has no scheduler tick, so
+  the test pins the documented invariant (no auto-fire from `after_task` —
+  the scheduler tick is the entry point) rather than asserting runtime
+  auto-fire. If a future evaluator is wired in, this test is the canonical
+  seam to flip.
