@@ -2065,5 +2065,29 @@ function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {
 	const service =
 		candidate.getService?.<OptimizedPromptService>(OPTIMIZED_PROMPT_SERVICE) ??
 		null;
-	return resolveOptimizedPrompt(service, "action_planner", plannerTemplate);
+	const resolved = resolveOptimizedPrompt(
+		service,
+		"action_planner",
+		plannerTemplate,
+	);
+	if (resolved !== plannerTemplate) {
+		runtime.logger?.debug?.(
+			{
+				src: "planner-loop",
+				task: "action_planner",
+				promptLength: resolved.length,
+			},
+			"Loaded optimized planner template (action_planner)",
+		);
+	} else {
+		runtime.logger?.debug?.(
+			{
+				src: "planner-loop",
+				hasService: !!service,
+				task: "action_planner",
+			},
+			"Using baseline planner template (no optimized artifact)",
+		);
+	}
+	return resolved;
 }
