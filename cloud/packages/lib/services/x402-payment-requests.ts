@@ -1,3 +1,12 @@
+import {
+  SOLANA_DEVNET_CAIP2,
+  SOLANA_MAINNET_CAIP2,
+  SOLANA_TESTNET_CAIP2,
+  USDC_DEVNET_ADDRESS,
+  USDC_MAINNET_ADDRESS,
+  USDC_TESTNET_ADDRESS,
+  validateSvmAddress,
+} from "@x402/svm";
 import Decimal from "decimal.js";
 import { isAddress } from "viem";
 import { type CryptoPayment, cryptoPaymentsRepository } from "@/db/repositories/crypto-payments";
@@ -14,6 +23,7 @@ type NetworkConfig = {
   asset: string;
   decimals: number;
   scheme: "exact" | "exact_permit";
+  family: "evm" | "solana";
 };
 
 const NETWORKS: Record<string, NetworkConfig> = {
@@ -22,36 +32,70 @@ const NETWORKS: Record<string, NetworkConfig> = {
     asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     decimals: 6,
     scheme: "exact",
+    family: "evm",
   },
   "base-sepolia": {
     caip2: "eip155:84532",
     asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     decimals: 6,
     scheme: "exact",
+    family: "evm",
   },
   ethereum: {
     caip2: "eip155:1",
     asset: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
     decimals: 6,
     scheme: "exact",
+    family: "evm",
   },
   sepolia: {
     caip2: "eip155:11155111",
     asset: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
     decimals: 6,
     scheme: "exact",
+    family: "evm",
   },
   bsc: {
     caip2: "eip155:56",
     asset: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
     decimals: 18,
     scheme: "exact_permit",
+    family: "evm",
   },
   "bsc-testnet": {
     caip2: "eip155:97",
     asset: "0x64544969ed7EBf5f083679233325356EBe738930",
     decimals: 18,
     scheme: "exact_permit",
+    family: "evm",
+  },
+  solana: {
+    caip2: SOLANA_MAINNET_CAIP2,
+    asset: USDC_MAINNET_ADDRESS,
+    decimals: 6,
+    scheme: "exact",
+    family: "solana",
+  },
+  "solana-mainnet": {
+    caip2: SOLANA_MAINNET_CAIP2,
+    asset: USDC_MAINNET_ADDRESS,
+    decimals: 6,
+    scheme: "exact",
+    family: "solana",
+  },
+  "solana-devnet": {
+    caip2: SOLANA_DEVNET_CAIP2,
+    asset: USDC_DEVNET_ADDRESS,
+    decimals: 6,
+    scheme: "exact",
+    family: "solana",
+  },
+  "solana-testnet": {
+    caip2: SOLANA_TESTNET_CAIP2,
+    asset: USDC_TESTNET_ADDRESS,
+    decimals: 6,
+    scheme: "exact",
+    family: "solana",
   },
 };
 
@@ -170,12 +214,15 @@ function validateCallbackUrl(callbackUrl?: string): string | undefined {
   return url.toString();
 }
 
-async function resolvePaymentRecipient(): Promise<string> {
+async function resolvePaymentRecipient(network: NetworkConfig): Promise<string> {
   const env = getCloudAwareEnv();
-  const configured = env.X402_RECIPIENT_ADDRESS?.trim();
+  const configured =
+    network.family === "solana"
+      ? (env.X402_SOLANA_RECIPIENT_ADDRESS ?? env.SOLANA_PAYOUT_WALLET_ADDRESS)?.trim()
+      : env.X402_RECIPIENT_ADDRESS?.trim();
   if (configured) return configured;
   await x402FacilitatorService.initialize();
-  const signer = x402FacilitatorService.getSignerAddress();
+  const signer = x402FacilitatorService.getSignerAddressForNetwork(network.caip2);
   if (!signer) {
     throw new X402PaymentRequestError(
       "x402 recipient address is not configured",
@@ -247,13 +294,15 @@ function isDecodedPaymentPayload(
 ): value is Parameters<typeof x402FacilitatorService.settle>[0] {
   if (!isRecord(value) || typeof value.x402Version !== "number") return false;
   if (!isRecord(value.accepted) || !isRecord(value.payload)) return false;
+  const hasEvmSignature = typeof value.payload.signature === "string";
+  const hasSvmTransaction = typeof value.payload.transaction === "string";
   return (
     typeof value.accepted.scheme === "string" &&
     typeof value.accepted.network === "string" &&
     typeof value.accepted.asset === "string" &&
     typeof value.accepted.amount === "string" &&
     typeof value.accepted.payTo === "string" &&
-    typeof value.payload.signature === "string"
+    (hasEvmSignature || hasSvmTransaction)
   );
 }
 
@@ -295,10 +344,17 @@ class X402PaymentRequestsService {
     }
 
     const network = normalizeNetwork(input.network);
-    const payTo = await resolvePaymentRecipient();
-    if (!isAddress(payTo)) {
+    const payTo = await resolvePaymentRecipient(network);
+    if (network.family === "evm" && !isAddress(payTo)) {
       throw new X402PaymentRequestError(
         "x402 recipient address must be an EVM address",
+        503,
+        "bad_recipient",
+      );
+    }
+    if (network.family === "solana" && !validateSvmAddress(payTo)) {
+      throw new X402PaymentRequestError(
+        "x402 recipient address must be a Solana address",
         503,
         "bad_recipient",
       );
@@ -311,6 +367,19 @@ class X402PaymentRequestsService {
       if (!facilitatorCaller) {
         throw new X402PaymentRequestError(
           "x402 facilitator signer is not configured",
+          503,
+          "x402_not_configured",
+        );
+      }
+    }
+
+    let solanaFeePayer: string | null = null;
+    if (network.family === "solana") {
+      await x402FacilitatorService.initialize();
+      solanaFeePayer = x402FacilitatorService.getSignerAddressForNetwork(network.caip2);
+      if (!solanaFeePayer) {
+        throw new X402PaymentRequestError(
+          "x402 Solana facilitator signer is not configured",
           503,
           "x402_not_configured",
         );
@@ -354,6 +423,10 @@ class X402PaymentRequestsService {
             feeTo: ZERO_ADDRESS,
             feeAmount: "0",
           },
+        }),
+        ...(solanaFeePayer && {
+          feePayer: solanaFeePayer,
+          memo: id,
         }),
       },
     };
