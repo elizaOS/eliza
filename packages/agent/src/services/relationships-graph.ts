@@ -11,6 +11,29 @@ import type {
 import { resolveOwnerEntityId } from "../runtime/owner-entity.ts";
 import { fetchConfiguredOwnerName } from "./owner-name.ts";
 
+// Re-export graph value/type identities so `@elizaos/agent`'s public
+// barrel can keep its long-standing surface. The graph types moved into
+// `@elizaos/core` (services/relationships-graph-builder); forwarding them
+// through here means consumers of `@elizaos/agent` don't have to reach
+// into core's services subtree directly.
+export type {
+  ClusterMemoriesQuery,
+  ClusterSearchQuery,
+  RelationshipsGraphEdge,
+  RelationshipsGraphQuery,
+  RelationshipsGraphService,
+  RelationshipsGraphSnapshot,
+  RelationshipsGraphStats,
+  RelationshipsPersonDetail,
+  RelationshipsPersonFact,
+  RelationshipsPersonSummary,
+} from "@elizaos/core";
+export {
+  createNativeRelationshipsGraphService,
+  getMemoriesForCluster,
+  searchMemoriesForCluster,
+} from "@elizaos/core";
+
 type RelationshipsFeatureRuntime = IAgentRuntime & {
   enableRelationships?: () => Promise<void>;
   isRelationshipsEnabled?: () => boolean;
