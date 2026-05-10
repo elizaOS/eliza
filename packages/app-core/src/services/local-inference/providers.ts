@@ -85,8 +85,13 @@ const LOCAL_PROVIDER: ProviderDefinition = {
   label: "Local llama.cpp",
   kind: "local",
   description:
-    "On-device inference using node-llama-cpp, with DFlash llama-server acceleration when the managed binary and drafter companion are installed.",
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+    "On-device inference using node-llama-cpp, with DFlash llama-server acceleration when the managed binary and drafter companion are installed. The plugin-local-embedding companion serves the TEXT_EMBEDDING slot from the same node-llama-cpp runtime.",
+  // TEXT_EMBEDDING is served by the plugin-local-embedding plugin, which
+  // registers its own model handler against the runtime. We advertise the
+  // slot here so the providers panel reports it as supported by the local
+  // path; actual handler-presence is reflected in `registeredSlots` via
+  // `getRegisteredSlotsForProvider`.
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
   async getEnableState(): Promise<ProviderEnableState> {
     // Enabled when at least one model file lives under our root and the
     // binding is loadable. We don't force-load node-llama-cpp here — that
@@ -117,7 +122,10 @@ const DEVICE_BRIDGE_PROVIDER: ProviderDefinition = {
   kind: "device-bridge",
   description:
     "Inference on a paired mobile or desktop device over WebSocket. Useful when the agent runs in a container but the model lives on your phone or laptop.",
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  // The bridge can carry an `embed` frame to a paired device that has the
+  // local-embedding plugin loaded; whether the active device actually
+  // serves it is reflected in `registeredSlots`.
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
   async getEnableState(): Promise<ProviderEnableState> {
     const bridgeEnabled =
       process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";

@@ -262,9 +262,35 @@ For Metal/iOS, the (3) gate runs against the iOS Capacitor build via
 - Per-kernel benchmark JSON: `reports/porting/<technique>/<runtime>/<date>.json`.
 - Per-build smoke + chat tok/s: `reports/aosp-sim/<date>/report.json`
   (extends the existing sim runner output).
+- **Nightly host-side end-to-end profile**: produced by
+  [`.github/workflows/local-inference-bench.yml`](../../.github/workflows/local-inference-bench.yml).
+  The workflow runs [`scripts/benchmark/profile-inference.mjs`](../../scripts/benchmark/profile-inference.mjs)
+  against `bun run dev` every night at 05:00 UTC and writes
+  `reports/porting/<YYYY-MM-DD>/profile.{json,md}` to the workflow
+  artifact `profile-nightly-<run_id>`. The same workflow opens (or
+  updates) a tracking issue labelled `nightly-local-inference` whose
+  body is the latest `profile.md`. To find the most recent numbers:
+  - Latest nightly issue:
+    `https://github.com/elizaOS/eliza/issues?q=is%3Aissue+is%3Aopen+label%3Anightly-local-inference`
+  - Latest workflow run:
+    `https://github.com/elizaOS/eliza/actions/workflows/local-inference-bench.yml`
+  - Latest archived artifact (90-day retention): browse the run page
+    above and download `profile-nightly-<run_id>`.
+- **PR-level harness regression check**: the same workflow runs the
+  stub-validation job on every PR that touches `scripts/benchmark/**`
+  or `plugins/plugin-local-embedding/**`. Failures here mean the
+  harness itself broke, not the agent.
+- **Cuttlefish AVD profile** (manual, on-demand): dispatch
+  `local-inference-bench.yml` with `run_cuttlefish=true` after the
+  matching cuttlefish workflow has booted the AVD and forwarded
+  port 31337. The profile lands at
+  `reports/porting/<YYYY-MM-DD>-cuttlefish/profile.{json,md}` in the
+  artifact `profile-cuttlefish-<run_id>`.
 - Cross-port comparison table: regenerated nightly into
   `docs/porting/on-device-quantization-porting-plan.md` (this file)
-  once the runners are wired up.
+  once the runners are wired up. Until automation lands, copy the
+  headline numbers from the nightly `profile.md` into the table at the
+  top of this document by hand.
 
 ## AOSP bundle verification commands
 
