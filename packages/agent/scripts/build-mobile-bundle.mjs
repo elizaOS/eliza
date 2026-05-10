@@ -727,9 +727,39 @@ if (!existsSync(bundlePath)) {
   );
   process.exit(1);
 }
+// Bun.build occasionally renames default-export bindings (e.g. `v4` from
+// uuid → `default10`) but loses the binding when the source module is
+// stubbed by `externalsAsStubs` or has a multi-entry-point exports map.
+// `apply*Override3` collisions come from the same path: a stubbed plugin
+// (e.g. `@elizaos/plugin-whatsapp`) leaves a numbered alias unbound.
+//
+// The bundle still references these identifiers at runtime, so chat
+// completion crashes with "default10 is not defined". Prepend a polyfill
+// header that defines the few known offenders. Each one is either a uuid
+// generator (use the platform crypto) or a no-op for stubbed plugins.
+//
+// The right long-term fix is to make Bun.build emit consistent bindings
+// for stubbed modules; until then, this prefix keeps the agent runnable.
+const bundleSrc = await Bun.file(bundlePath).text();
+const polyfillHeader =
+  "// auto-injected polyfills for Bun.build identifier-resolution gaps\n" +
+  "var default10 = () => globalThis.crypto.randomUUID();\n" +
+  "var applyWhatsAppQrOverride3 = () => {};\n";
+let prefixed;
+if (bundleSrc.startsWith("#!")) {
+  const nlIndex = bundleSrc.indexOf("\n");
+  prefixed =
+    bundleSrc.slice(0, nlIndex + 1) +
+    polyfillHeader +
+    bundleSrc.slice(nlIndex + 1);
+} else {
+  prefixed = polyfillHeader + bundleSrc;
+}
+await Bun.write(bundlePath, prefixed);
+
 const bundleSize = (await stat(bundlePath)).size;
 console.log(
-  `[build-mobile] bundle size: ${(bundleSize / 1024 / 1024).toFixed(2)} MB`,
+  `[build-mobile] bundle size: ${(bundleSize / 1024 / 1024).toFixed(2)} MB (with polyfill prefix)`,
 );
 
 // Copy PGlite assets next to the bundle. The bundle's `import.meta.url` will
