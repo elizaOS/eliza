@@ -46,7 +46,7 @@ export const grepAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: ["SEARCH_CONTENT", "RIPGREP", "RG"],
   description:
-    "Search file contents using ripgrep (a fast regex search). Returns matching files, counts, or line content. Always excludes VCS directories. Use this instead of BASH for content search.",
+    "Search file contents using ripgrep (a fast regex search). Returns matching files, counts, or line content. Always excludes VCS directories. Use this instead of SHELL for content search.",
   descriptionCompressed:
     "Ripgrep wrapper: regex search across files, returns matches/counts/files.",
   parameters: [

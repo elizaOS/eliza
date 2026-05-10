@@ -120,8 +120,7 @@ OpenRouter fournit l'accès aux modèles de tous les principaux fournisseurs. Ut
 
 | ID du modèle | Description |
 |--------------|-------------|
-| `meta-llama/llama-3.3-70b-instruct` | Llama 3.3 70B |
-| `meta-llama/llama-3.1-405b-instruct` | Llama 3.1 405B |
+| `openai/gpt-oss-120b` | GPT-OSS 120B |
 
 <div id="google-via-openrouter">
 
@@ -195,8 +194,7 @@ OpenRouter prend en charge les préférences de routage par coût, latence ou d�
 
 OpenRouter offre un accès gratuit à une sélection de modèles open-source (avec limite de débit) :
 
-- `meta-llama/llama-3.2-3b-instruct:free`
-- `google/gemma-2-9b-it:free`
+- `openai/gpt-oss-120b:free`
 - `mistralai/mistral-7b-instruct:free`
 
 <div id="rate-limits-and-pricing">

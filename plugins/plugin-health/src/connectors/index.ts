@@ -256,6 +256,9 @@ export function registerHealthAnchors(
     return;
   }
   for (const anchorKey of HEALTH_ANCHORS) {
+    if (registry.get(anchorKey)) {
+      continue;
+    }
     registry.register(buildAnchorContribution(anchorKey));
   }
   logger.info(

@@ -9,7 +9,7 @@ Cold-runnable scripts for an Apple Silicon Mac that:
 2. Build the iOS xcframework (`ios-arm64-metal` + `ios-arm64-simulator-metal`),
    stage it as a drop-in for the `llama-cpp-capacitor` plugin's vendored
    `LlamaCpp.xcframework`, and run a Capacitor instrumentation smoke
-   that loads Bonsai-8B with a Qwen3-0.6B drafter and generates ten
+   that loads Eliza-1 mobile and generates ten
    tokens.
 
 Every step writes a self-contained Markdown report under
@@ -66,16 +66,14 @@ report still includes everything that ran. To enable the smoke step
 deterministically:
 
 ```bash
-APPLE_RUNNER_SMOKE_MODEL=/abs/path/to/Llama-3.2-1B-Q4_K_M.gguf ./run-mac.sh
+APPLE_RUNNER_SMOKE_MODEL=/abs/path/to/eliza-1-mobile-1_7b-32k.gguf ./run-mac.sh
 ```
 
 `run-ios.sh` requires explicit GGUF paths because the simulator can't
 auto-discover models inside the host's home directory:
 
 ```bash
-APPLE_RUNNER_BONSAI_GGUF=/abs/path/to/Bonsai-8B-Q4_K_M.gguf \
-APPLE_RUNNER_DRAFTER_GGUF=/abs/path/to/Qwen3-0.6B-Q4_K_M.gguf \
-  ./run-ios.sh
+APPLE_RUNNER_ELIZA1_GGUF=/abs/path/to/eliza-1-mobile-1_7b-32k.gguf ./run-ios.sh
 ```
 
 ## Expected outputs
@@ -270,7 +268,7 @@ check rather than failing. On a real Mac the value populates and the
   fork's `ggml-metal.metal` (not the standalone `metal/turbo4.metal`)
   to confirm the patch produced the expected layout.
 - **Drafter pairing for the iOS smoke** — `run-ios.sh` accepts
-  `APPLE_RUNNER_BONSAI_GGUF` + `APPLE_RUNNER_DRAFTER_GGUF` env vars, but
+  `APPLE_RUNNER_ELIZA1_GGUF` env vars, but
   the actual XCUITest target that consumes them is **not in this
   worktree**. The script falls back to a symbol-presence check on the
   staged `LlamaCpp.framework` binary as a build-only proxy. Wiring a

@@ -63,6 +63,10 @@ app.post("/", async (c) => {
       callToAction: parsed.data.callToAction,
       destinationUrl: parsed.data.destinationUrl,
       media: parsed.data.media,
+      pageId: parsed.data.pageId,
+      instagramActorId: parsed.data.instagramActorId,
+      tiktokIdentityId: parsed.data.tiktokIdentityId,
+      tiktokIdentityType: parsed.data.tiktokIdentityType,
     });
 
     logger.info("[Advertising API] Creative created", {

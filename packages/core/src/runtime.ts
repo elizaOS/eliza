@@ -24,6 +24,7 @@ import {
 } from "./plugins/native-features";
 import { ContextRegistry } from "./runtime/context-registry";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
+import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import {
 	buildCanonicalSystemPrompt,
 	resolveEffectiveSystemPrompt,
@@ -628,6 +629,7 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly actions: Action[] = [];
 	readonly providers: Provider[] = [];
 	readonly evaluators: RegisteredEvaluator[] = [];
+	readonly responseHandlerEvaluators: ResponseHandlerEvaluator[] = [];
 	readonly plugins: Plugin[] = [];
 	/**
 	 * Per-runtime context registry seeded with first-party context definitions
@@ -1562,6 +1564,27 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 				this.registerEvaluator(evaluator);
 				existingEvaluatorNames.add(evaluator.name);
+			}
+		}
+		if (pluginToRegister.responseHandlerEvaluators) {
+			const existingResponseHandlerEvaluatorNames = new Set(
+				this.responseHandlerEvaluators.map((evaluator) => evaluator.name),
+			);
+			for (const evaluator of pluginToRegister.responseHandlerEvaluators) {
+				if (existingResponseHandlerEvaluatorNames.has(evaluator.name)) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							evaluator: evaluator.name,
+							plugin: pluginToRegister.name,
+						},
+						"Skipping duplicate plugin response-handler evaluator",
+					);
+					continue;
+				}
+				this.registerResponseHandlerEvaluator(evaluator);
+				existingResponseHandlerEvaluatorNames.add(evaluator.name);
 			}
 		}
 		if (pluginToRegister.models) {
@@ -2557,6 +2580,48 @@ export class AgentRuntime implements IAgentRuntime {
 		this.logger.debug(
 			{ src: "agent", agentId: this.agentId, evaluator: normalized },
 			"Evaluator unregistered",
+		);
+		return true;
+	}
+
+	registerResponseHandlerEvaluator(evaluator: ResponseHandlerEvaluator) {
+		if (
+			this.responseHandlerEvaluators.find(
+				(item) => item.name === evaluator.name,
+			)
+		) {
+			this.logger.debug(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					evaluator: evaluator.name,
+				},
+				"Response-handler evaluator already registered, skipping",
+			);
+			return;
+		}
+		this.responseHandlerEvaluators.push(evaluator);
+		this.logger.debug(
+			{
+				src: "agent",
+				agentId: this.agentId,
+				evaluator: evaluator.name,
+			},
+			"Response-handler evaluator registered",
+		);
+	}
+
+	unregisterResponseHandlerEvaluator(name: string): boolean {
+		const normalized = typeof name === "string" ? name.trim() : "";
+		if (!normalized) return false;
+		const index = this.responseHandlerEvaluators.findIndex(
+			(evaluator) => evaluator.name === normalized,
+		);
+		if (index === -1) return false;
+		this.responseHandlerEvaluators.splice(index, 1);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, evaluator: normalized },
+			"Response-handler evaluator unregistered",
 		);
 		return true;
 	}

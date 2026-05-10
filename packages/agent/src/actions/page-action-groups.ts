@@ -299,7 +299,7 @@ export const characterActionsGroupAction = createPageActionGroupAction({
           text: "Setting your display name.",
           actions: ["CHARACTER_ACTIONS"],
           thought:
-            "Owner identity update routes through CHARACTER_ACTIONS to the UPDATE_OWNER_NAME / PROFILE child action.",
+            "Owner identity update routes through CHARACTER_ACTIONS to the owner identity child action.",
         },
       },
     ],
@@ -466,10 +466,8 @@ export const phoneActionsGroupAction = createPageActionGroupAction({
   ],
 });
 
-export const lifeOpsActionsGroupAction = createPageActionGroupAction({
-  name: "LIFEOPS_ACTIONS",
-  // Expanded from the legacy "lifeops" alias (see context-registry.ts) so this
-  // action is gated by the actual canonical contexts the LifeOps page covers.
+export const ownerActionsGroupAction = createPageActionGroupAction({
+  name: "OWNER_ACTIONS",
   contexts: [
     "tasks",
     "calendar",
@@ -481,9 +479,9 @@ export const lifeOpsActionsGroupAction = createPageActionGroupAction({
     "automation",
     "messaging",
   ],
-  similes: ["LIFEOPS_TOOLS", "LIFEOPS_PAGE_ACTIONS"],
+  similes: ["OWNER_TOOLS", "OWNER_PAGE_ACTIONS", "PERSONAL_ASSISTANT_ACTIONS"],
   description:
-    "Main-chat parent action for LifeOps page work including goals, reminders, inbox, calendar, browser workflows, health, subscriptions, travel, and approvals.",
+    "Main-chat parent action for owner page work including goals, reminders, inbox, calendar, browser workflows, health, subscriptions, travel, and approvals.",
   examples: [
     [
       {
@@ -494,9 +492,9 @@ export const lifeOpsActionsGroupAction = createPageActionGroupAction({
         name: "{{agentName}}",
         content: {
           text: "Pulling tomorrow's events.",
-          actions: ["LIFEOPS_ACTIONS"],
+          actions: ["OWNER_ACTIONS"],
           thought:
-            "Calendar query is a LifeOps-page concern; LIFEOPS_ACTIONS forwards to the CALENDAR subaction=list child.",
+            "Calendar query is an owner-page concern; OWNER_ACTIONS forwards to the CALENDAR action=feed child.",
         },
       },
     ],
@@ -509,9 +507,9 @@ export const lifeOpsActionsGroupAction = createPageActionGroupAction({
         name: "{{agentName}}",
         content: {
           text: "Triaging messages now.",
-          actions: ["LIFEOPS_ACTIONS"],
+          actions: ["OWNER_ACTIONS"],
           thought:
-            "Inbox triage on the LifeOps page routes through LIFEOPS_ACTIONS to the MESSAGE subaction=triage child.",
+            "Inbox triage on the owner page routes through OWNER_ACTIONS to the MESSAGE action=triage child.",
         },
       },
     ],
@@ -526,5 +524,5 @@ export const pageActionGroupActions: Action[] = [
   connectorActionsGroupAction,
   automationActionsGroupAction,
   phoneActionsGroupAction,
-  lifeOpsActionsGroupAction,
+  ownerActionsGroupAction,
 ];

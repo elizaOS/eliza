@@ -42,7 +42,7 @@ export TOGETHER_API_KEY=your-together-api-key
     "profiles": {
       "default": {
         "provider": "together",
-        "model": "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
+        "model": "mistralai/Mixtral-8x22B-Instruct-v0.1"
       }
     }
   }
@@ -55,11 +55,7 @@ Together hosts 100+ open-source models. Popular choices include:
 
 | Model | Context | Best For |
 |-------|---------|---------|
-| `meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo` | 128k | General-purpose, fast |
-| `meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo` | 128k | Most capable open model |
-| `meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` | 128k | Lightweight, cost-efficient |
 | `mistralai/Mixtral-8x22B-Instruct-v0.1` | 64k | Code and technical tasks |
-| `Qwen/Qwen2.5-72B-Instruct-Turbo` | 128k | Multilingual, strong reasoning |
 | `deepseek-ai/DeepSeek-R1` | 64k | Deep reasoning |
 
 See [together.ai/models](https://www.together.ai/models) for the full model catalog.

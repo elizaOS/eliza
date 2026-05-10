@@ -1,7 +1,7 @@
 {
   "$schema": "../profile-config.schema.json",
   "description": "Host CPU profiling matrix. Runs against the dev server when no GPU is detected. Excludes DFlash drafter pairings (CPU-only inference doesn't benefit from speculative decoding when the drafter shares the same NEON/AVX kernels) and the 1-bit QJL config (kernel not yet on host).",
-  "models": ["qwen3.5-4b-dflash"],
+  "models": ["eliza-1-mobile-1_7b"],
   "kvCacheConfigs": [
     { "name": "baseline-fp16", "k": "f16", "v": "f16" },
     { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" }

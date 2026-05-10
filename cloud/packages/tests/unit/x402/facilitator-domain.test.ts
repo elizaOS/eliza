@@ -3,10 +3,16 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 function installMocks(): void {
   mock.module("@/lib/runtime/cloud-bindings", () => ({
     getCloudAwareEnv: () => ({
-      EVM_PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-      X402_ENABLED_NETWORKS: "base",
+      FACILITATOR_PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      X402_NETWORKS: "base",
       X402_BASE_RPC_URL: "https://base-rpc.example",
     }),
+  }));
+
+  mock.module("@/lib/services/secrets", () => ({
+    secretsService: {
+      get: async () => null,
+    },
   }));
 
   mock.module("@/lib/utils/logger", () => ({

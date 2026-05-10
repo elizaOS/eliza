@@ -13,6 +13,12 @@ import type {
   ServiceTypeName,
 } from "@elizaos/core";
 import { resolveActionContexts, resolveProviderContexts } from "@elizaos/core";
+import {
+  createToolCallCacheFromConfig,
+  wrapActionWithCache,
+  type ToolCacheConfig,
+} from "./tool-call-cache-wrapper.ts";
+import type { ToolCallCache } from "./tool-call-cache/index.ts";
 
 /** elizaOS runtime plugin lifecycle bookkeeping (not exported from @elizaos/core). */
 type ElizaPluginOwnership = {
@@ -608,6 +614,36 @@ function trackRoutesAndPluginRef(
   }
 }
 
+/**
+ * Lazily-built tool-call cache for this runtime. Built once per runtime on
+ * first action registration so we can read the latest config and avoid
+ * paying the disk-tier setup cost when the cache is disabled or unused.
+ */
+function getOrBuildToolCallCache(
+  runtime: AgentRuntime,
+): { cache: ToolCallCache; cfg: ToolCacheConfig | undefined } | null {
+  const r = runtime as AgentRuntime & {
+    __toolCallCache?: ToolCallCache | null;
+    __toolCallCacheCfg?: ToolCacheConfig | undefined;
+    __toolCallCacheBuilt?: boolean;
+  };
+  if (r.__toolCallCacheBuilt) {
+    if (!r.__toolCallCache) return null;
+    return { cache: r.__toolCallCache, cfg: r.__toolCallCacheCfg };
+  }
+  r.__toolCallCacheBuilt = true;
+
+  const character = runtime.character as
+    | { settings?: { tools?: { cache?: ToolCacheConfig } } }
+    | undefined;
+  const cfg: ToolCacheConfig | undefined = character?.settings?.tools?.cache;
+  const cache = createToolCallCacheFromConfig(cfg);
+  r.__toolCallCache = cache;
+  r.__toolCallCacheCfg = cfg;
+  if (!cache) return null;
+  return { cache, cfg };
+}
+
 export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
   const runtimeWithLifecycle = runtime as RuntimeWithPluginLifecycle;
   if (runtimeWithLifecycle.__elizaPluginLifecycleInstalled) {
@@ -674,12 +710,15 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
       return;
     }
     const actionsBefore = runtime.actions.length;
-    originalRegisterAction(
-      applyEffectiveActionContexts(
-        action,
-        getPluginContexts(capture?.ownership.plugin),
-      ),
+    let effective = applyEffectiveActionContexts(
+      action,
+      getPluginContexts(capture?.ownership.plugin),
     );
+    const toolCache = getOrBuildToolCallCache(runtime);
+    if (toolCache) {
+      effective = wrapActionWithCache(effective, toolCache.cache, toolCache.cfg);
+    }
+    originalRegisterAction(effective);
     if (!capture || runtime.actions.length <= actionsBefore) return;
     for (const registeredAction of runtime.actions.slice(actionsBefore)) {
       pushUniqueRef(capture.ownership.actions, registeredAction);

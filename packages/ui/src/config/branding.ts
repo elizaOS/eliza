@@ -20,6 +20,20 @@ export interface CustomProviderOption {
   logoLight?: string;
 }
 
+export interface OnboardingThemeConfig {
+  background?: string;
+  foreground?: string;
+  mutedForeground?: string;
+  controlBackground?: string;
+  controlForeground?: string;
+  buttonBackground?: string;
+  buttonForeground?: string;
+  buttonHighlightBackground?: string;
+  inputBackground?: string;
+  inputForeground?: string;
+  errorForeground?: string;
+}
+
 export interface BrandingConfig {
   /** Product name shown in UI ("Eliza" | "the app") */
   appName: string;
@@ -41,6 +55,8 @@ export interface BrandingConfig {
   packageScope: string;
   /** Custom providers injected by the app into the onboarding flow */
   customProviders?: CustomProviderOption[];
+  /** Optional CSS color tokens for branded onboarding screens. */
+  onboardingTheme?: OnboardingThemeConfig;
   /** When true, the app requires Eliza Cloud — local backend mode is disabled. */
   cloudOnly?: boolean;
 }

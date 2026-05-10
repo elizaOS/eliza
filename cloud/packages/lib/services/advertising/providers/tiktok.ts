@@ -77,6 +77,16 @@ function mapObjectiveToTikTok(objective: string): string {
 
 function mapCtaToTikTok(cta?: string): string {
   const mapping: Record<string, string> = {
+    learn_more: "LEARN_MORE",
+    shop_now: "SHOP_NOW",
+    sign_up: "SIGN_UP",
+    subscribe: "SUBSCRIBE",
+    contact_us: "CONTACT_US",
+    get_offer: "GET_QUOTE",
+    book_now: "BOOK_NOW",
+    download: "DOWNLOAD",
+    watch_more: "WATCH_MORE",
+    apply_now: "APPLY_NOW",
     LEARN_MORE: "LEARN_MORE",
     SHOP_NOW: "SHOP_NOW",
     SIGN_UP: "SIGN_UP",
@@ -89,6 +99,21 @@ function mapCtaToTikTok(cta?: string): string {
   };
 
   return mapping[cta || "LEARN_MORE"] || "LEARN_MORE";
+}
+
+function splitTikTokCampaignId(
+  accountId: string,
+  externalCampaignId: string,
+): { advertiserId: string; campaignId: string } {
+  const parts = externalCampaignId.split("/");
+  if (parts.length === 2 && parts[0] && parts[1]) {
+    return { advertiserId: parts[0], campaignId: parts[1] };
+  }
+  return { advertiserId: accountId, campaignId: externalCampaignId };
+}
+
+function tiktokScheduleTime(date: Date): string {
+  return date.toISOString().replace("T", " ").slice(0, 19);
 }
 
 export const tiktokAdsProvider: AdProvider = {
@@ -325,6 +350,15 @@ export const tiktokAdsProvider: AdProvider = {
       campaignId: externalCampaignId,
       name: input.name,
     });
+    const { advertiserId, campaignId } = splitTikTokCampaignId(accountId, externalCampaignId);
+    const primaryMedia = input.media[0];
+    if (primaryMedia && !primaryMedia.providerAssetId) {
+      return {
+        success: false,
+        error:
+          "TikTok creatives require media.providerAssetId from a prior TikTok asset upload/search",
+      };
+    }
 
     // First, create an ad group
     const adGroupData = await tiktokAdsRequest<{ adgroup_id: string }>(
@@ -333,14 +367,14 @@ export const tiktokAdsProvider: AdProvider = {
       {
         method: "POST",
         body: JSON.stringify({
-          advertiser_id: accountId,
-          campaign_id: externalCampaignId,
+          advertiser_id: advertiserId,
+          campaign_id: campaignId,
           adgroup_name: `${input.name} - Ad Group`,
           promotion_type: "WEBSITE",
           placement_type: "PLACEMENT_TYPE_AUTOMATIC",
           budget_mode: "BUDGET_MODE_INFINITE",
           schedule_type: "SCHEDULE_START_END",
-          schedule_start_time: new Date().toISOString(),
+          schedule_start_time: tiktokScheduleTime(new Date()),
           billing_event: "CPC",
           bid_type: "BID_TYPE_NO_BID",
           operation_status: "DISABLE",
@@ -355,7 +389,7 @@ export const tiktokAdsProvider: AdProvider = {
       {
         method: "POST",
         body: JSON.stringify({
-          advertiser_id: accountId,
+          advertiser_id: advertiserId,
           adgroup_id: adGroupData.adgroup_id,
           creatives: [
             {
@@ -364,12 +398,12 @@ export const tiktokAdsProvider: AdProvider = {
               call_to_action: mapCtaToTikTok(input.callToAction),
               landing_page_url: input.destinationUrl,
               display_name: input.headline || input.name,
-              ...(input.media.length > 0 && input.media[0].type === "image"
-                ? { image_ids: [input.media[0].url] }
+              ...(input.tiktokIdentityId && { identity_id: input.tiktokIdentityId }),
+              ...(input.tiktokIdentityType && { identity_type: input.tiktokIdentityType }),
+              ...(primaryMedia?.type === "image"
+                ? { image_ids: [primaryMedia.providerAssetId] }
                 : {}),
-              ...(input.media.length > 0 && input.media[0].type === "video"
-                ? { video_id: input.media[0].url }
-                : {}),
+              ...(primaryMedia?.type === "video" ? { video_id: primaryMedia.providerAssetId } : {}),
             },
           ],
         }),

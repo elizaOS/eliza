@@ -88,6 +88,7 @@ export async function runEvaluator(
 			segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
 			promptSegments: renderedInput.promptSegments,
 			provider: params.provider,
+			conversationId: params.trajectoryId,
 		}),
 		modelInputBudget,
 	);

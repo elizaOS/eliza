@@ -15,8 +15,12 @@ import {
   type RuntimePickerTarget,
   reloadIntoRuntimePicker,
 } from "../../onboarding/reload-into-runtime-picker";
+import { useRuntimeMode } from "../../hooks/useRuntimeMode";
 import { useApp } from "../../state";
-import { inferAgentRuntimeTarget } from "../../state/agent-runtime-target";
+import {
+  type AgentRuntimeTargetKind,
+  inferAgentRuntimeTarget,
+} from "../../state/agent-runtime-target";
 import { loadPersistedActiveServer } from "../../state/persistence";
 
 type RuntimeAction = {
@@ -28,15 +32,22 @@ type RuntimeAction = {
 
 export function RuntimeSettingsSection() {
   const { t } = useApp();
+  const { state: runtimeModeState } = useRuntimeMode();
 
-  const currentRuntime = useMemo(
-    () =>
-      inferAgentRuntimeTarget({
-        activeServer: loadPersistedActiveServer(),
-        mobileRuntimeMode: readPersistedMobileRuntimeMode(),
-      }),
-    [],
-  );
+  // Prefer the authoritative server snapshot (`GET /api/runtime/mode`).
+  // Fall back to the local heuristic when the snapshot is loading or the
+  // endpoint is unreachable — older builds and offline shells still need
+  // a sensible label.
+  const currentRuntime = useMemo(() => {
+    const fallback = inferAgentRuntimeTarget({
+      activeServer: loadPersistedActiveServer(),
+      mobileRuntimeMode: readPersistedMobileRuntimeMode(),
+    });
+    if (runtimeModeState.phase !== "ready") return fallback;
+    const kind: AgentRuntimeTargetKind =
+      runtimeModeState.snapshot.deploymentRuntime;
+    return { kind, label: fallback.label };
+  }, [runtimeModeState]);
 
   const actions = useMemo<RuntimeAction[]>(
     () => [

@@ -107,6 +107,8 @@ DATABASE_REGION = "na"
 PAYOUT_TESTNET = "false"
 ENABLE_X402_PAYMENTS = "true"
 X402_NETWORK = "base"
+X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
+X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
 X402_BASE_RPC_URL = "https://base-rpc.publicnode.com"
 CACHE_ENABLED = "false"
 CACHE_DISABLE_REASON = "CF Workers cross-request I/O isolation: CacheClient module-level singleton is incompatible until refactored to per-request scope"
@@ -117,6 +119,11 @@ SQL_HEAVY_PAYLOAD_STORAGE = "r2"
 SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
 SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
 LLM_TRAJECTORY_STORAGE = "r2"
+HEADSCALE_PUBLIC_URL = "https://headscale.elizacloud.ai"
+HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
+HEADSCALE_USER = "tunnel"
+TUNNEL_PROXY_HOST = "tunnel.elizacloud.ai"
+TUNNEL_TAILNET_DOMAIN = "tunnel.eliza.local"
 
 # -----------------------------------------------------------------------------
 # Required secrets — set via `wrangler secret put KEY` (or run
@@ -218,6 +225,8 @@ DATABASE_REGION = "na"
 PAYOUT_TESTNET = "true"
 ENABLE_X402_PAYMENTS = "true"
 X402_NETWORK = "base"
+X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
+X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
 X402_BASE_RPC_URL = "https://base-rpc.publicnode.com"
 CACHE_ENABLED = "false"
 CACHE_DISABLE_REASON = "CF Workers cross-request I/O isolation: CacheClient module-level singleton is incompatible until refactored to per-request scope"
@@ -228,6 +237,11 @@ SQL_HEAVY_PAYLOAD_STORAGE = "r2"
 SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
 SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
 LLM_TRAJECTORY_STORAGE = "r2"
+HEADSCALE_PUBLIC_URL = "https://headscale-staging.elizacloud.ai"
+HEADSCALE_API_URL = "https://headscale-staging.elizacloud.ai"
+HEADSCALE_USER = "tunnel"
+TUNNEL_PROXY_HOST = "tunnel-staging.elizacloud.ai"
+TUNNEL_TAILNET_DOMAIN = "tunnel.staging.eliza.local"
 
 # Cloudflare Workers does NOT inherit top-level r2_buckets into environment
 # blocks — they must be re-declared per-env. Same physical resources.
@@ -240,7 +254,7 @@ name = "eliza-cloud-api-prod"
 workers_dev = false
 routes = [
   { pattern = "api.elizacloud.ai/*", zone_name = "elizacloud.ai" },
-  { pattern = "x402.elizaos.ai/*", zone_name = "elizaos.ai" },
+  { pattern = "x402.elizacloud.ai/*", zone_name = "elizacloud.ai" },
 ]
 
 [env.production.define]
@@ -264,6 +278,8 @@ DATABASE_REGION = "na"
 PAYOUT_TESTNET = "false"
 ENABLE_X402_PAYMENTS = "true"
 X402_NETWORK = "base"
+X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
+X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
 X402_BASE_RPC_URL = "https://base-rpc.publicnode.com"
 CACHE_ENABLED = "false"
 CACHE_DISABLE_REASON = "CF Workers cross-request I/O isolation: CacheClient module-level singleton is incompatible until refactored to per-request scope"
@@ -274,6 +290,11 @@ SQL_HEAVY_PAYLOAD_STORAGE = "r2"
 SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
 SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
 LLM_TRAJECTORY_STORAGE = "r2"
+HEADSCALE_PUBLIC_URL = "https://headscale.elizacloud.ai"
+HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
+HEADSCALE_USER = "tunnel"
+TUNNEL_PROXY_HOST = "tunnel.elizacloud.ai"
+TUNNEL_TAILNET_DOMAIN = "tunnel.eliza.local"
 
 [[env.production.r2_buckets]]
 binding = "BLOB"

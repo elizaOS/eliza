@@ -102,7 +102,7 @@ function makeRuntime(formService: unknown, modelResponse?: string) {
 const EMPTY_STATE: State = { values: {}, data: {}, text: "" };
 
 describe("plugin-form registration", () => {
-  it("registers the FORM service, context provider, restore action, and form evaluator", async () => {
+  it("registers the FORM service, context provider, and form evaluator", async () => {
     expect(formPlugin.name).toBe("form");
     expect(formPlugin.services?.map((service) => service.serviceType)).toEqual([
       "FORM",
@@ -110,7 +110,7 @@ describe("plugin-form registration", () => {
     expect(formPlugin.providers?.map((provider) => provider.name)).toContain(
       "FORM_CONTEXT",
     );
-    expect(formPlugin.actions?.map((action) => action.name)).toContain(
+    expect(formPlugin.actions?.map((action) => action.name)).not.toContain(
       "FORM_RESTORE",
     );
     expect(formPlugin.actions?.map((action) => action.name)).not.toContain(

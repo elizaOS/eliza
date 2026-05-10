@@ -95,8 +95,8 @@ export const DEFAULT_DEMO_CONFIG: DemoConfig = {
 
     groqApiKey: "",
     groqBaseUrl: "https://api.groq.com/openai/v1",
-    groqSmallModel: "openai/gpt-oss-20b",
-    groqLargeModel: "llama-3.3-70b-versatile",
+    groqSmallModel: "openai/gpt-oss-120b",
+    groqLargeModel: "openai/gpt-oss-120b",
 
     elevenlabsApiKey: "",
   },

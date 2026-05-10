@@ -64,9 +64,38 @@ It is not a hand-rolled Cloud API fetch path.
 | Device auth and API-key validation | `CloudApiClient` |
 | Cloud containers | `CloudApiClient` supplied by `CloudAuthService` |
 | Managed gateway relay | `CloudApiClient` |
+| Credits, app credits, and hosted checkout | `ElizaCloudClient.createCreditsCheckout(...)`, `getAppCreditsBalance(...)`, `createAppCreditsCheckout(...)` |
+| Agent/app charge requests | `ElizaCloudClient.createAppCharge(...)`, `createAppChargeCheckout(...)` |
+| x402 payment requests and settlement | `ElizaCloudClient.createX402PaymentRequest(...)`, `getX402Supported(...)`, `settleX402PaymentRequest(...)` |
+| Affiliate links and creator payouts | `createAffiliateCode(...)`, `linkAffiliateCode(...)`, `getAppEarnings(...)`, `withdrawAppEarnings(...)`, `createRedemption(...)` |
 
 The only remaining runtime-adjacent `fetch()` usage is in the plugin test block
 for downloading a public audio fixture. It is not an Eliza Cloud API call.
+
+## Payments And Monetization
+
+The plugin exposes one local route family for Cloud money flows:
+`/api/cloud/billing/*`. It forwards to the authenticated Cloud API using the
+same Cloud key as the rest of the plugin, so app UIs and agents do not need to
+handle Cloud credentials directly.
+
+Supported local aliases:
+
+| Local route | Cloud route |
+| --- | --- |
+| `/api/cloud/billing/credits/*` | `/api/v1/credits/*` |
+| `/api/cloud/billing/app-credits/*` | `/api/v1/app-credits/*` |
+| `/api/cloud/billing/x402/*` | `/api/v1/x402/*` |
+| `/api/cloud/billing/apps/{appId}/charges/*` | `/api/v1/apps/{appId}/charges/*` |
+| `/api/cloud/billing/apps/{appId}/earnings/*` | `/api/v1/apps/{appId}/earnings/*` |
+| `/api/cloud/billing/apps/{appId}/monetization` | `/api/v1/apps/{appId}/monetization` |
+| `/api/cloud/billing/affiliates/*` | `/api/v1/affiliates/*` |
+| `/api/cloud/billing/redemptions/*` | `/api/v1/redemptions/*` |
+
+Agent-initiated charges should use app charge requests for Stripe/OxaPay credit
+checkout or x402 payment requests for direct crypto settlement. Both request
+types accept callback channel metadata, so successful or failed payment events
+can be written back into the room where the charge was initiated.
 
 ## Configuration
 

@@ -78,7 +78,7 @@ export const localAiPlugin: Plugin = {
       _params: TextEmbeddingParams | string | null
     ): Promise<number[]> => {
       warnUnsupported(ModelType.TEXT_EMBEDDING);
-      return new Array(384).fill(0);
+      return new Array(1024).fill(0);
     },
     [ModelType.TEXT_TOKENIZER_ENCODE]: async (): Promise<number[]> => {
       warnUnsupported(ModelType.TEXT_TOKENIZER_ENCODE);

@@ -2,7 +2,7 @@
  * Idempotent Vast.ai Serverless endpoint provisioning.
  *
  * Run once per environment to create or update the endpoint that hosts the
- * Qwen3.6 27B NEO-CODE Q6_K GGUF on RTX 5090 via llama.cpp. Vast manages the
+ * Eliza-1 27B Q6_K GGUF on RTX 5090 via llama.cpp. Vast manages the
  * autoscaler, queue, and load balancer; this script only declares the desired
  * endpoint + workergroup config.
  *
@@ -14,7 +14,7 @@
  *                           scripts/vast/upsert-template.ts)
  *
  * Optional env:
- *   VAST_ENDPOINT_NAME    — defaults to "eliza-cloud-qwen3.6-27b-neo-code"
+ *   VAST_ENDPOINT_NAME    — defaults to "eliza-cloud-eliza-1-27b"
  *   VAST_MIN_WORKERS      — defaults to 1
  *   VAST_MAX_WORKERS      — defaults to 8
  *   VAST_TARGET_UTIL      — defaults to 0.9
@@ -126,7 +126,7 @@ async function main(): Promise<void> {
   }
 
   const config: EndpointConfig = {
-    name: readEnv("VAST_ENDPOINT_NAME", "eliza-cloud-qwen3.6-27b-neo-code"),
+    name: readEnv("VAST_ENDPOINT_NAME", "eliza-cloud-eliza-1-27b"),
     template_id: templateId,
     min_workers: readNumber("VAST_MIN_WORKERS", 1),
     max_workers: readNumber("VAST_MAX_WORKERS", 8),

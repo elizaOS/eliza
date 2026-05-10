@@ -1,0 +1,54 @@
+{
+  "backend": "cpu_single_thread_c_reference",
+  "date": "2026-05-10",
+  "warmup": 1,
+  "runs": 3,
+  "workload": { "head_dim": 128, "seq": 4096, "kv_heads": 32, "qjl_kv_heads": 8, "polar_rows": 131072, "turbo_n_kv": 131072 },
+  "kernels": [
+    {
+      "name": "turbo3",
+      "n_outputs": 131072,
+      "bytes_per_dispatch": 7864832,
+      "median_ms": 27.5040,
+      "min_ms": 25.9960,
+      "max_ms": 28.4910,
+      "bandwidth_GBs": 0.2860
+    },
+    {
+      "name": "turbo4",
+      "n_outputs": 131072,
+      "bytes_per_dispatch": 9175552,
+      "median_ms": 13.1620,
+      "min_ms": 13.1600,
+      "max_ms": 13.3090,
+      "bandwidth_GBs": 0.6971
+    },
+    {
+      "name": "turbo3_tcq",
+      "n_outputs": 131072,
+      "bytes_per_dispatch": 7340544,
+      "median_ms": 19.3600,
+      "min_ms": 19.2740,
+      "max_ms": 22.5900,
+      "bandwidth_GBs": 0.3792
+    },
+    {
+      "name": "qjl",
+      "n_outputs": 131072,
+      "bytes_per_dispatch": 1671168,
+      "median_ms": 21.9950,
+      "min_ms": 19.9960,
+      "max_ms": 42.5750,
+      "bandwidth_GBs": 0.0760
+    },
+    {
+      "name": "polar",
+      "n_outputs": 131072,
+      "bytes_per_dispatch": 11272704,
+      "median_ms": 32.3660,
+      "min_ms": 30.9090,
+      "max_ms": 32.8670,
+      "bandwidth_GBs": 0.3483
+    }
+  ]
+}

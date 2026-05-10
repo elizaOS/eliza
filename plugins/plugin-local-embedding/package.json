@@ -63,21 +63,21 @@
         "type": "string",
         "description": "Filename of the small local AI model; overrides the built-in default model if provided.",
         "required": false,
-        "default": "DeepHermes-3-Llama-3-3B-Preview-q4.gguf",
+        "default": "text/eliza-1-mobile-1_7b-32k.gguf",
         "sensitive": false
       },
       "LOCAL_LARGE_MODEL": {
         "type": "string",
         "description": "Filename of the large local AI model; overrides the built-in default model if provided.",
         "required": false,
-        "default": "DeepHermes-3-Llama-3-8B-q4.gguf",
+        "default": "text/eliza-1-desktop-9b-64k.gguf",
         "sensitive": false
       },
       "LOCAL_EMBEDDING_MODEL": {
         "type": "string",
         "description": "Filename of the embedding model used for vector embeddings; overrides the default if supplied.",
         "required": false,
-        "default": "nomic-embed-text-v1.5.Q4_K_M.gguf",
+        "default": "text/eliza-1-lite-0_6b-32k.gguf",
         "sensitive": false
       },
       "LOCAL_EMBEDDING_MODEL_REPO": {

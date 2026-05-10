@@ -68,7 +68,6 @@
     "test:component": "vitest run src/__tests__",
     "test:e2e": "vitest run src/e2e",
     "test:e2e:manual": "bun run test:e2e",
-    "test:cypress": "bunx cypress run --component",
     "test": "bun run test:component && bun run test:e2e",
     "format": "bunx @biomejs/biome format --write ./src",
     "format:check": "bunx @biomejs/biome format ./src",

@@ -28,7 +28,20 @@ export interface SubscriptionStatusProps {
     configured: boolean;
     valid: boolean;
     expiresAt: number | null;
-    source?: "app" | "claude-code-cli" | "setup-token" | "codex-cli" | null;
+    source?:
+      | "app"
+      | "claude-code-cli"
+      | "setup-token"
+      | "codex-cli"
+      | "gemini-cli"
+      | "coding-plan-key"
+      | "unavailable"
+      | null;
+    available?: boolean;
+    availabilityReason?: string;
+    allowedClient?: string;
+    loginHint?: string;
+    billingMode?: "subscription-coding-plan" | "subscription-coding-cli";
   }>;
   anthropicConnected: boolean;
   setAnthropicConnected: (v: boolean) => void;
@@ -567,6 +580,20 @@ export function SubscriptionStatus({
     </div>
   );
 
+  const genericStoredProvider =
+    resolvedSelectedId &&
+    resolvedSelectedId !== "anthropic-subscription" &&
+    resolvedSelectedId !== "openai-subscription"
+      ? getStoredSubscriptionProvider(
+          resolvedSelectedId as SubscriptionProviderSelectionId,
+        )
+      : null;
+  const genericStatus = genericStoredProvider
+    ? subscriptionStatus.find(
+        (status) => status.provider === genericStoredProvider,
+      )
+    : null;
+
   return (
     <div className="border-t border-border/40 pt-4">
       {resolvedSelectedId === "anthropic-subscription" && (
@@ -688,6 +715,40 @@ export function SubscriptionStatus({
           }
         />
       )}
+
+      {genericStoredProvider ? (
+        <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2 text-xs leading-relaxed">
+          <div className="font-semibold">
+            {genericStatus?.available === false
+              ? t("subscriptionstatus.ProviderUnavailable", {
+                  defaultValue: "Provider unavailable",
+                })
+              : genericStatus?.configured && genericStatus.valid
+                ? t("subscriptionstatus.CodingSubscriptionReady", {
+                    defaultValue: "Coding subscription ready",
+                  })
+                : t("subscriptionstatus.CodingSubscriptionSetup", {
+                    defaultValue: "Coding subscription setup",
+                  })}
+          </div>
+          <p className="mt-1 text-muted">
+            {genericStatus?.availabilityReason ||
+              genericStatus?.loginHint ||
+              t("subscriptionstatus.CodingSubscriptionSafeSurface", {
+                defaultValue:
+                  "This provider is limited to its first-party coding surface. Credentials are not copied into general API environment variables.",
+              })}
+          </p>
+          {genericStatus?.allowedClient ? (
+            <p className="mt-1 text-muted">
+              {t("subscriptionstatus.AllowedClient", {
+                defaultValue: `Allowed client: ${genericStatus.allowedClient}`,
+                client: genericStatus.allowedClient,
+              })}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

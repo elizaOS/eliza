@@ -145,6 +145,7 @@ function mapWebsiteBlockerPermissionResult(
     canRequest: permission.canRequest,
     reason: permission.reason,
     lastChecked: Date.now(),
+    platform: currentClientPlatform(),
   };
 }
 
@@ -159,7 +160,17 @@ function mapWebsiteBlockerStatusToPermission(
     canRequest: status.canRequestPermission ?? status.supportsElevationPrompt,
     reason: status.reason,
     lastChecked: Date.now(),
+    platform: currentClientPlatform(),
   };
+}
+
+function currentClientPlatform(): "darwin" | "win32" | "linux" {
+  if (typeof navigator !== "undefined") {
+    const ua = navigator.userAgent.toLowerCase();
+    if (ua.includes("mac")) return "darwin";
+    if (ua.includes("win")) return "win32";
+  }
+  return "linux";
 }
 
 function logSettingsClient(

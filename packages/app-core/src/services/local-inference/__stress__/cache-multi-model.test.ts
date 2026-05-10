@@ -95,14 +95,14 @@ describe("cache multi-model: per-model isolation", () => {
   it("on-disk cache root differs per model hash (no slot directory pollution)", () => {
     // Switching active model also switches the slot directory.
     const hashA = buildModelHash({
-      targetModelPath: "/models/qwen.gguf",
-      drafterModelPath: "/models/qwen-drafter.gguf",
+      targetModelPath: "/models/eliza-1-lite.gguf",
+      drafterModelPath: "/models/eliza-1-lite-drafter.gguf",
       cacheTypeK: "f16",
       cacheTypeV: "f16",
     });
     const hashB = buildModelHash({
-      targetModelPath: "/models/llama.gguf",
-      drafterModelPath: "/models/llama-drafter.gguf",
+      targetModelPath: "/models/eliza-1-mobile.gguf",
+      drafterModelPath: "/models/eliza-1-mobile-drafter.gguf",
       cacheTypeK: "f16",
       cacheTypeV: "f16",
     });

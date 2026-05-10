@@ -500,13 +500,8 @@ run_remote() {
     mkdir -p \$HF_HOME
     uv sync --extra train
     if [ -n \"\${HUGGING_FACE_HUB_TOKEN:-}\" ]; then
-      # huggingface-cli was deprecated in huggingface_hub 1.x; the binary
-      # is now 'hf'. Try the new name first; fall back for old environments.
-      if uv run hf --version >/dev/null 2>&1; then
-        uv run hf auth login --token \"\$HUGGING_FACE_HUB_TOKEN\" --add-to-git-credential
-      else
-        uv run huggingface-cli login --token \"\$HUGGING_FACE_HUB_TOKEN\"
-      fi
+      # hf is the supported HuggingFace CLI in huggingface_hub 1.x.
+      uv run hf auth login --token \"\$HUGGING_FACE_HUB_TOKEN\" --add-to-git-credential
     fi
     uv run --extra train accelerate launch \\
       --num_processes $FSDP_WORLD_SIZE \\
@@ -726,8 +721,7 @@ EOF
       curl -LsSf https://astral.sh/uv/install.sh | sh
       export PATH=\$HOME/.local/bin:\$PATH
     fi
-    # huggingface-cli was deprecated and removed in huggingface_hub 1.x.
-    # The current CLI binary is 'hf'. Install hf_transfer for ~5x download
+    # The current HuggingFace CLI binary is 'hf'. Install hf_transfer for ~5x download
     # parallelism and prefer hf-xet for dataset blob fetches.
     if ! command -v hf >/dev/null 2>&1; then
       python3 -m pip install --user --upgrade 'huggingface_hub[cli,hf_transfer]>=1.0.0' 'hf_xet>=1.0.0'

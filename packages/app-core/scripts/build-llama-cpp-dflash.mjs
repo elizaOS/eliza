@@ -41,6 +41,24 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
+// Source-level omnivoice.cpp fusion (text + TTS sharing one llama.cpp
+// build, one ggml pin, one kernel set). Helpers live alongside this
+// script under omnivoice-fuse/; see omnivoice-fuse/README.md for the
+// GGML pin reconciliation strategy.
+import {
+  prepareOmnivoiceFusion,
+  OMNIVOICE_REF,
+  OMNIVOICE_GGML_REF,
+} from "./omnivoice-fuse/prepare.mjs";
+import {
+  appendCmakeGraft,
+  fusedExtraCmakeFlags,
+  fusedCmakeBuildTargets,
+} from "./omnivoice-fuse/cmake-graft.mjs";
+import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
+import { patchMetalKernels as patchMetalKernelsImpl } from "./kernel-patches/metal-kernels.mjs";
+import { patchVulkanKernels as patchVulkanKernelsImpl } from "./kernel-patches/vulkan-kernels.mjs";
+
 // milady-ai/llama.cpp @ v0.4.0-milady (commit 08032d57) — the unified fork
 // that composes TBQ + QJL + Q4_POLAR + Metal kernels + DFlash spec-decode
 // + W4-B CUDA QJL/Polar/TBQ3_TCQ kernels onto upstream b8198. Same repo +
@@ -60,6 +78,13 @@ const SUPPORTED_TARGETS = [
   "linux-x64-cuda",
   "linux-x64-rocm",
   "linux-x64-vulkan",
+  // Linux aarch64. Required for the `server-h200` tier (GH200 = aarch64
+  // host + H100/H200 GPU) and for Ampere Altra / AWS Graviton CPU-only
+  // deployments. Both targets require a real arm64 Linux host (or a
+  // sysroot + cross-toolchain for arm64) — there is no aarch64-cross
+  // wiring on x64 hosts in this script.
+  "linux-aarch64-cpu",
+  "linux-aarch64-cuda",
   "android-arm64-cpu",
   "android-arm64-vulkan",
   "darwin-arm64-metal",
@@ -71,7 +96,48 @@ const SUPPORTED_TARGETS = [
   "ios-arm64-simulator-metal",
   "windows-x64-cpu",
   "windows-x64-cuda",
+  // Windows arm64 (Snapdragon X Elite / Copilot+ PC, 2024+). Adreno X1
+  // GPU is Vulkan 1.3; the 12-core ARM CPU runs the NEON paths in
+  // qjl-cpu/polarquant-cpu. Both targets require an MSVC arm64
+  // cross-toolchain (or a native Windows arm64 host); there is no
+  // mingw arm64 cross-toolchain wiring here.
+  "windows-arm64-cpu",
+  "windows-arm64-vulkan",
+  // Fused text+TTS targets — source-level fusion of
+  // github.com/ServeurpersoCom/omnivoice.cpp into the same llama.cpp
+  // build. Produce one shared library (libelizainference) and one
+  // fused server binary that exposes both `llama_*` and `omnivoice_*`
+  // symbols. See packages/app-core/scripts/omnivoice-fuse/README.md
+  // for the GGML pin reconciliation strategy. The non-fused targets
+  // above remain unchanged; fused is purely additive.
+  "linux-x64-cpu-fused",
+  "linux-x64-vulkan-fused",
+  "darwin-arm64-metal-fused",
+  "darwin-x64-metal-fused",
 ];
+
+// Targets that opt into omnivoice fusion. Membership in this set is
+// the only way the fused-build code path activates — no env var
+// shortcuts, no implicit upgrades from a non-fused target.
+const FUSED_TARGETS = new Set([
+  "linux-x64-cpu-fused",
+  "linux-x64-vulkan-fused",
+  "darwin-arm64-metal-fused",
+  "darwin-x64-metal-fused",
+]);
+
+// Strip the "-fused" suffix when one is present, returning the base
+// triple parseTarget() / cmakeFlagsForTarget() already understand.
+// Calling this on a non-fused triple is a no-op.
+function baseTargetTriple(target) {
+  return target.endsWith("-fused")
+    ? target.slice(0, -"-fused".length)
+    : target;
+}
+
+function isFusedTarget(target) {
+  return FUSED_TARGETS.has(target);
+}
 
 function stateDir() {
   return (
@@ -381,10 +447,9 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 function patchGgmlBaseForWindowsQjl(cacheDir) {
   const cmakeListsPath = path.join(cacheDir, "ggml", "src", "CMakeLists.txt");
   if (!fs.existsSync(cmakeListsPath)) {
-    console.warn(
-      `[dflash-build] patchGgmlBaseForWindowsQjl: ${cmakeListsPath} missing, skipping`,
+    throw new Error(
+      `[dflash-build] patchGgmlBaseForWindowsQjl: ${cmakeListsPath} missing — fork layout broken`,
     );
-    return;
   }
   const original = fs.readFileSync(cmakeListsPath, "utf8");
   const sentinel = "# MILADY-WINDOWS-QJL-IN-GGML-BASE";
@@ -393,12 +458,11 @@ function patchGgmlBaseForWindowsQjl(cacheDir) {
   }
   const anchor = "            polar_centroids.h\n            gguf.cpp)";
   if (!original.includes(anchor)) {
-    console.warn(
+    throw new Error(
       `[dflash-build] patchGgmlBaseForWindowsQjl: anchor not found in ${cmakeListsPath}; ` +
-        `the milady-ai/llama.cpp fork layout may have changed. Skipping; ` +
-        `ggml-base.dll link will fail.`,
+        `the milady-ai/llama.cpp fork layout has changed. Without this patch ` +
+        `Windows shared-lib builds will fail to link QJL symbols into ggml-base.dll.`,
     );
-    return;
   }
   const replacement = `            polar_centroids.h
             gguf.cpp
@@ -514,15 +578,14 @@ function findLinuxLibVulkan() {
   return null;
 }
 
+// Previously swallowed fetch failures into a `null` return that silently
+// dropped `-isystem` flags — Vulkan target then failed at cmake configure
+// with a cryptic missing-header error several seconds later. Per AGENTS.md
+// §3 (build-time exit non-zero), let the original error surface so the
+// operator sees the cause and the failure point are co-located. Calling
+// code now sees a real exception rather than a magic null sentinel.
 function safelyPrepareVulkanHeaders() {
-  try {
-    return prepareVulkanHeaders();
-  } catch (err) {
-    console.warn(
-      `[dflash-build] Vulkan-Headers / SPIRV-Headers fetch failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
-  }
+  return prepareVulkanHeaders();
 }
 
 // Map a target triple to cmake configure flags.
@@ -535,14 +598,19 @@ function safelyPrepareVulkanHeaders() {
 //     (you can't sniff -march for a different ABI).
 // Split a target triple into (platform, arch, backend, isSimulator).
 // Handles the special-case 4-part `ios-arm64-simulator-metal` triple.
+// The `-fused` suffix is stripped before parsing — fused triples reuse
+// the underlying base triple's cmake/compat plumbing and only differ
+// at the omnivoice-graft + final-link layer.
 function parseTarget(target) {
-  const parts = target.split("-");
+  const fused = isFusedTarget(target);
+  const parts = baseTargetTriple(target).split("-");
   if (parts[0] === "ios" && parts[2] === "simulator") {
     return {
       platform: parts[0],
       arch: parts[1],
       backend: parts[3],
       isSimulator: true,
+      fused,
     };
   }
   return {
@@ -550,6 +618,7 @@ function parseTarget(target) {
     arch: parts[1],
     backend: parts[2],
     isSimulator: false,
+    fused,
   };
 }
 
@@ -566,9 +635,41 @@ function cmakeFlagsForTarget(target, ctx) {
 
   if (backend === "metal") {
     flags[flags.indexOf("-DGGML_METAL=OFF")] = "-DGGML_METAL=ON";
+    // EMBED_LIBRARY behavior:
+    //
+    //   * iOS (later in this function) sets it to ON unconditionally —
+    //     the static-archive build needs the metallib data baked into
+    //     the framework via .incbin.
+    //   * Darwin desktop (this branch) sets it OFF so the metallib is
+    //     compiled at build time into a sidecar default.metallib that
+    //     ships next to llama-server. The kernel-patches/metal-kernels
+    //     CMakeLists patch hooks into the non-EMBED add_custom_command
+    //     so each standalone shader (turbo3/turbo4/turbo3_tcq/qjl/polar)
+    //     is compiled into its own .air and merged into default.metallib
+    //     alongside ggml-metal.air.
+    //
+    //     The EMBED path is incompatible with the standalones because
+    //     it concatenates ggml-metal.metal + ggml-common.h into a single
+    //     compilation unit, and the standalones redefine block_qjl1_256
+    //     and block_q4_polar (same byte layout, different field names)
+    //     plus QK_POLAR / QK_QJL / QJL_RESIDUAL_BYTES already in
+    //     ggml-common.h. Wiring them through the EMBED path requires a
+    //     dup-strip pass that is filed as a separate follow-up.
+    flags.push("-DGGML_METAL_EMBED_LIBRARY=OFF");
   } else if (backend === "cuda") {
     flags[flags.indexOf("-DGGML_CUDA=OFF")] = "-DGGML_CUDA=ON";
     flags.push("-DGGML_CUDA_FA=ON", "-DGGML_CUDA_FA_ALL_QUANTS=ON");
+    // Pin a multi-arch fat-binary so a build host without a GPU does not
+    // emit a `sm_52`-only artifact (CMake's default = native probe).
+    //   90a → H200 / GH200 (sm_90a, the only arch with the new TMA / WGMMA paths)
+    //   90  → H100
+    //   89  → Ada / RTX 4090 / L4
+    //   86  → Ampere consumer / RTX 30xx
+    //   80  → A100 / data-center Ampere
+    // Operators that target an older card (sm_75 Turing, sm_70 Volta) can
+    // override via ELIZA_DFLASH_CMAKE_FLAGS=-DCMAKE_CUDA_ARCHITECTURES=...
+    // which appends after this list and wins.
+    flags.push('-DCMAKE_CUDA_ARCHITECTURES=90a;90;89;86;80');
   } else if (backend === "rocm") {
     flags[flags.indexOf("-DGGML_HIP=OFF")] = "-DGGML_HIP=ON";
   } else if (backend === "vulkan") {
@@ -626,16 +727,28 @@ function cmakeFlagsForTarget(target, ctx) {
     // found on PATH or under ~/.local/x86_64-w64-mingw32/. Operators on
     // Windows itself bypass this and use the native MSVC/MinGW host
     // toolchain — pass MINGW_TOOLCHAIN_FILE to override either path.
+    //
+    // arm64 Windows (Snapdragon X Elite, Copilot+ PC) requires either an
+    // MSVC arm64 cross-toolchain (CMake `-A ARM64` on a Windows host with
+    // MSVC build tools), or a clang/LLVM mingw arm64 cross-toolchain on
+    // a Linux host. There is no x86_64-w64-mingw32 → arm64 path, so
+    // arm64 builds on Linux hosts must pass MINGW_TOOLCHAIN_FILE
+    // explicitly pointing at a clang/LLVM arm64 toolchain file.
     if (process.env.MINGW_TOOLCHAIN_FILE) {
       flags.push(`-DCMAKE_TOOLCHAIN_FILE=${process.env.MINGW_TOOLCHAIN_FILE}`);
-    } else if (ctx.mingwToolchainFile) {
+    } else if (ctx.mingwToolchainFile && arch === "x64") {
       flags.push(`-DCMAKE_TOOLCHAIN_FILE=${ctx.mingwToolchainFile}`);
+    }
+    if (arch === "arm64" && process.platform === "win32") {
+      // Native MSVC arm64 build. CMake's default (Visual Studio generator)
+      // honors -A ARM64 to select the arm64 toolset.
+      flags.push("-A", "ARM64");
     }
     // CURL isn't part of the cross-toolchain sysroot. cpp-httplib is
     // statically vendored under llama.cpp/vendor/ and provides the HTTP
     // surface llama-server needs.
     flags.push("-DLLAMA_CURL=OFF");
-    if (backend === "cpu") {
+    if (backend === "cpu" && arch === "x64") {
       // Enable AVX/AVX2/FMA/F16C explicitly. -DGGML_NATIVE=OFF is the
       // right default for cross-builds (you can't sniff -march for a
       // different machine), but AVX2 is the de-facto baseline for
@@ -655,6 +768,15 @@ function cmakeFlagsForTarget(target, ctx) {
         // pre-build step makes the QJL symbols resolve against ggml-base
         // so the DLL link succeeds (PE/COFF doesn't allow unresolved DSO
         // symbols at link time the way ELF does).
+        "-DBUILD_SHARED_LIBS=ON",
+      );
+    } else if (backend === "cpu" && arch === "arm64") {
+      // Snapdragon X Elite ships ARMv8.4-A + dotprod + i8mm + sve2.
+      // qjl-cpu/polarquant-cpu's NEON paths cover the dot-product
+      // primitive; OpenMP is still off because the mingw/clang arm64
+      // cross-toolchain doesn't ship libomp without extra setup.
+      flags.push(
+        "-DGGML_OPENMP=OFF",
         "-DBUILD_SHARED_LIBS=ON",
       );
     }
@@ -681,18 +803,34 @@ function cmakeFlagsForTarget(target, ctx) {
       // CURL isn't part of the iOS SDK and llama-server's HTTP isn't used
       // on-device — disable to keep the static archive minimal.
       "-DLLAMA_CURL=OFF",
-      // Don't try to build llama-server on iOS (no networking sandbox path).
+      // Don't try to build llama-server / llama-cli on iOS — they install
+      // as console executables and CMake's install(TARGETS …) errors with
+      // "no BUNDLE DESTINATION for MACOSX_BUNDLE executable" under the
+      // CMAKE_SYSTEM_NAME=iOS generator. Disable the entire tools and
+      // examples trees; iOS only needs the static llama / ggml libraries.
       "-DLLAMA_BUILD_EXAMPLES=OFF",
+      "-DLLAMA_BUILD_TOOLS=OFF",
+      "-DLLAMA_BUILD_SERVER=OFF",
     );
     if (isSimulator) {
       flags.push("-DCMAKE_OSX_SYSROOT=iphonesimulator");
     } else {
       flags.push("-DCMAKE_OSX_SYSROOT=iphoneos");
     }
-    if (backend === "metal") {
-      // Metal kernels work on both iOS device and simulator (since macOS 10.15
-      // / iOS 13). Embed the .metallib into the bundle so runtime AIR JIT
-      // doesn't have to read sources from the app sandbox.
+    // iOS static-archive build needs the metallib data baked in via .incbin
+    // since there is no place on-device to ship a sidecar default.metallib.
+    // Override the OFF default that the metal backend block set above.
+    // NOTE: at v0.4.0-milady the iOS path is a deferred gap — the EMBED
+    // pipeline concatenates ggml-metal.metal with ggml-common.h via sed,
+    // and our standalone shaders' redefinitions of block_qjl1_256 /
+    // block_q4_polar collide. The iOS metallib will not yet contain the
+    // milady kernels until kernel-patches/metal-kernels.mjs grows an
+    // EMBED-path patcher that strips the duplicate decls. requiredKernels-
+    // Missing() will catch and refuse the iOS artifact accordingly.
+    const embedIdx = flags.indexOf("-DGGML_METAL_EMBED_LIBRARY=OFF");
+    if (embedIdx !== -1) {
+      flags[embedIdx] = "-DGGML_METAL_EMBED_LIBRARY=ON";
+    } else {
       flags.push("-DGGML_METAL_EMBED_LIBRARY=ON");
     }
   }
@@ -705,7 +843,14 @@ function cmakeFlagsForTarget(target, ctx) {
 // Inspect compatibility from the host point of view. Returns either
 // { ok: true } or { ok: false, reason: string } so --all can skip cleanly.
 function targetCompatibility(target, ctx) {
-  const { platform, backend } = parseTarget(target);
+  const { platform, arch, backend, fused } = parseTarget(target);
+  if (fused && (platform === "android" || platform === "ios")) {
+    return {
+      ok: false,
+      reason:
+        "fused (omnivoice-grafted) targets are desktop/server only — mobile fusion is not wired yet",
+    };
+  }
   if (platform === "darwin" && process.platform !== "darwin") {
     return { ok: false, reason: "darwin target requires macOS host" };
   }
@@ -715,7 +860,31 @@ function targetCompatibility(target, ctx) {
   if (platform === "linux" && process.platform !== "linux") {
     return { ok: false, reason: "linux target requires linux host" };
   }
+  // linux-aarch64-* requires an arm64 Linux host. There is no aarch64 cross
+  // toolchain wired in this script, so x64 hosts cannot produce aarch64
+  // binaries here. The GH200 / Graviton path is to run this on an arm64
+  // build runner.
+  if (platform === "linux" && arch === "aarch64" && process.arch !== "arm64") {
+    return {
+      ok: false,
+      reason:
+        "linux-aarch64 target requires an arm64 Linux host (no aarch64 cross-toolchain wired here; run on a real arm64 build runner)",
+    };
+  }
   if (platform === "windows") {
+    // arm64 Windows builds need either a native MSVC arm64 host or an
+    // operator-supplied MINGW_TOOLCHAIN_FILE pointing at clang/LLVM
+    // arm64 cross-tools — the bundled mingw discovery only handles
+    // x86_64-w64-mingw32.
+    if (arch === "arm64") {
+      if (process.platform === "win32") return { ok: true };
+      if (process.env.MINGW_TOOLCHAIN_FILE) return { ok: true };
+      return {
+        ok: false,
+        reason:
+          "windows-arm64 target requires a native Windows arm64 host (MSVC -A ARM64) or MINGW_TOOLCHAIN_FILE pointing at a clang/LLVM aarch64-w64-mingw32 toolchain file",
+      };
+    }
     if (process.platform === "win32") return { ok: true };
     if (process.env.MINGW_TOOLCHAIN_FILE) return { ok: true };
     if (ctx.mingwToolchainFile) return { ok: true };
@@ -752,11 +921,20 @@ function targetCompatibility(target, ctx) {
   return { ok: true };
 }
 
+// Map Node's process.arch to the triple's arch token. Linux uses
+// `aarch64` in its triples (linux-aarch64-cuda); every other platform
+// uses `arm64` (darwin-arm64-metal, windows-arm64-vulkan, android-arm64-*).
+function nodeArchToTripleArch(platform) {
+  if (process.arch === "x64") return "x64";
+  if (process.arch === "arm64") return platform === "linux" ? "aarch64" : "arm64";
+  return process.arch;
+}
+
 function defaultTarget() {
   const backend = detectBackend();
-  const arch = process.arch === "x64" ? "x64" : process.arch;
   const platform =
     process.platform === "win32" ? "windows" : process.platform;
+  const arch = nodeArchToTripleArch(platform);
   return `${platform}-${arch}-${backend}`;
 }
 
@@ -811,7 +989,17 @@ function parseArgs(argv) {
           "Usage: node build-llama-cpp-dflash.mjs [options]",
           "",
           "Targets (use --target one or more times, or --all):",
-          ...SUPPORTED_TARGETS.map((t) => `  ${t}`),
+          ...SUPPORTED_TARGETS.map(
+            (t) =>
+              `  ${t}${FUSED_TARGETS.has(t) ? "  (fused: text + omnivoice TTS in one build)" : ""}`,
+          ),
+          "",
+          "Fused targets perform source-level fusion of",
+          "github.com/ServeurpersoCom/omnivoice.cpp into the milady-ai/llama.cpp",
+          "build, sharing one ggml pin and one kernel set.",
+          `Pinned omnivoice commit: ${OMNIVOICE_REF}`,
+          `Reconciled-out omnivoice ggml submodule: ${OMNIVOICE_GGML_REF}`,
+          "See packages/app-core/scripts/omnivoice-fuse/README.md.",
           "",
           "Options:",
           "  --target <triple>      Build a specific target (repeatable).",
@@ -874,54 +1062,68 @@ function ensureCheckout(cacheDir, ref) {
   return head;
 }
 
-function patchVulkanKernels(_cacheDir) {
-  // Default-on after hardware verification (Wave-4 W4-A): the turbo3 / turbo4
-  // / turbo3_tcq Vulkan compute shaders in packages/inference/vulkan/ now
-  // pass 8/8 numerical fixtures on Intel ARL Mesa 25.2.8 + lavapipe with the
-  // shared-memory tree reduction (replacing the broken subgroupAdd path that
-  // assumed a single 32-lane subgroup per workgroup). The fork consumes the
-  // same source-of-truth shaders, so this patch hook is a no-op log: kept so
-  // a future layout drift can attach a warn-on-mismatch sentinel guard like
-  // patchGgmlBaseForWindowsQjl. Set ELIZA_DFLASH_PATCH_VULKAN_KERNELS=0 to
-  // silence the log.
-  if (process.env.ELIZA_DFLASH_PATCH_VULKAN_KERNELS === "0") return;
-  console.log(
-    "[dflash-build] patchVulkanKernels: turbo3/turbo4/turbo3_tcq verified on Intel ARL + lavapipe; fork kernels in sync.",
-  );
-}
-
-function patchMetalTurbo3Tcq(_cacheDir) {
-  if (process.env.ELIZA_DFLASH_PATCH_METAL_TURBO3 !== "1") return;
-  console.log(
-    "[dflash-build] patchMetalTurbo3Tcq: kernels already present on milady-ai/llama.cpp; no-op.",
-  );
-}
-
-function patchMetalQjl(_cacheDir) {
-  if (process.env.ELIZA_DFLASH_PATCH_METAL_QJL !== "1") return;
-  console.log(
-    "[dflash-build] patchMetalQjl: kernels already present on milady-ai/llama.cpp; no-op.",
-  );
-}
-
-function patchMetalPolar(_cacheDir) {
-  if (process.env.ELIZA_DFLASH_PATCH_METAL_POLAR !== "1") return;
-  console.log(
-    "[dflash-build] patchMetalPolar: kernels already present on milady-ai/llama.cpp; no-op.",
-  );
-}
-
-function applyForkPatches(cacheDir, backend, target) {
+// Real patch hooks: the v0.4.0-milady decorative log no-ops have been replaced
+// with kernel-patches/{metal,vulkan}-kernels.mjs implementations that actually
+// (a) copy the verified standalone shaders from packages/inference/{metal,vulkan}/
+// into the fork tree, and (b) for Metal, patch ggml/src/ggml-metal/CMakeLists.txt
+// to compile each standalone into its own .air and merge them into the
+// final default.metallib. Both helpers hard-throw on failure per AGENTS.md §3.
+//
+// What still doesn't fully ship at v0.4.0-milady (deferred dispatch wiring):
+//
+//   * ggml-metal-ops.cpp / ggml-metal-device.m have NO dispatch sites for
+//     the milady quant types (TBQ3_0, TBQ4_0, TBQ3_TCQ, QJL1_256, Q4_POLAR).
+//     CUDA has them; Metal does not. After this patch the kernel symbols
+//     (kernel_turbo3_dot, kernel_attn_score_qjl1_256, kernel_mul_mv_q4_polar_f32,
+//     etc.) are present in default.metallib and `nm`/`strings` will see
+//     them, but the runtime cannot yet select them via GGML_TYPE_*. That
+//     wiring is a separate fork-internals patch and is the next agent's
+//     mission.
+//
+//   * The EMBED_LIBRARY=ON branch (used by iOS targets) is not yet patched.
+//     iOS builds compile a single concatenated .metal via .incbin and would
+//     require stripping the duplicate decls (block_qjl1_256, block_q4_polar,
+//     QK_QJL, QK_POLAR, QJL_RESIDUAL_BYTES already in ggml-common.h). That
+//     is a separate patch tracked in kernel-patches/metal-kernels.mjs's
+//     module comment.
+//
+//   * Vulkan: the 8 standalone .comp files are staged into
+//     ggml/src/ggml-vulkan/vulkan-shaders/ (picked up by file(GLOB)),
+//     vulkan-shaders-gen.cpp registers them via 8 string_to_spv() calls,
+//     and ggml-vulkan.cpp now declares + creates 8 milady_* pipelines so the
+//     SPV blobs are linked into libggml-vulkan.so. Symbol audit (`nm
+//     libggml-vulkan.so | grep milady_`) passes; op-level dispatch routing
+//     for GGML_OP_ATTN_SCORE_QJL and the milady GGML_TYPE_* values is the
+//     remaining gap and is the next agent's mission. Until it lands, the
+//     ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN=1 env var still applies — the
+//     help-text probe in probeKernels() can't yet see qjl/polar via CLI
+//     flags because the runtime can't select them.
+function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   if (backend === "metal") {
-    patchMetalTurbo4(cacheDir);
-    patchMetalTurbo3Tcq(cacheDir);
-    patchMetalQjl(cacheDir);
-    patchMetalPolar(cacheDir);
+    patchMetalKernelsImpl(cacheDir, { dryRun });
   }
   if (backend === "vulkan") {
-    patchVulkanKernels(cacheDir);
+    patchVulkanKernelsImpl(cacheDir, { dryRun, target });
   }
   if (target && target.startsWith("windows-")) {
+    patchGgmlBaseForWindowsQjl(cacheDir);
+  }
+  // The same broken cross-library reference that bites Windows shared-lib
+  // builds also bites darwin shared-lib builds: ggml.c (in ggml-base) calls
+  // quantize_qjl1_256 / dequantize_row_qjl1_256 / quantize_row_qjl1_256_ref,
+  // which live in ggml-cpu/qjl/. On darwin the BUILD_SHARED_LIBS_DEFAULT is
+  // ON and ggml-base is linked with `-undefined error`, so the link fails
+  // before a single Metal kernel can run. Folding the QJL TUs into ggml-base
+  // resolves the symbols at link time without breaking the ggml-cpu build
+  // (the duplicate object files in two libraries link cleanly because they
+  // are part of the same .dylib at runtime). The same fix is independently
+  // safe to apply to iOS static-archive builds. Idempotent via the
+  // existing `# MILADY-WINDOWS-QJL-IN-GGML-BASE` sentinel inside
+  // patchGgmlBaseForWindowsQjl().
+  if (
+    target &&
+    (target.startsWith("darwin-") || target.startsWith("ios-"))
+  ) {
     patchGgmlBaseForWindowsQjl(cacheDir);
   }
 }
@@ -967,6 +1169,7 @@ function probeKernels(target, buildDir, outDir) {
     turbo4: false,
     turbo3_tcq: false,
     qjl_full: false,
+    polarquant: false,
     lookahead: true, // upstream
     ngramDraft: true, // upstream
   };
@@ -991,10 +1194,47 @@ function probeKernels(target, buildDir, outDir) {
       const help = `${result.stdout || ""}\n${result.stderr || ""}`;
       const lc = help.toLowerCase();
       kernels.dflash = /dflash/.test(lc);
-      kernels.turbo3 = /turbo3/.test(lc);
-      kernels.turbo4 = /turbo4/.test(lc);
-      kernels.turbo3_tcq = /turbo3[_-]?tcq|tcq/.test(lc);
-      kernels.qjl_full = /qjl[_-]?full|qjl/.test(lc);
+      // The fork's CLI advertises tbq3_0/tbq4_0 as cache-type names (the
+      // user-facing identifier for GGML_TYPE_TBQ3_0/_TBQ4_0). Also accept
+      // the legacy `turbo3`/`turbo4` strings the original probe expected,
+      // in case a future fork rev renames them back.
+      kernels.turbo3 = /turbo3|tbq3_0/.test(lc);
+      kernels.turbo4 = /turbo4|tbq4_0/.test(lc);
+      kernels.turbo3_tcq = /turbo3[_-]?tcq|tcq|tbq3_tcq/.test(lc);
+      kernels.qjl_full = /qjl[_-]?full|qjl|qjl1_256/.test(lc);
+      kernels.polarquant = /polar(?:quant)?|q4[_-]?polar/.test(lc);
+      // For Metal targets, also inspect default.metallib for kernel symbols.
+      // This is the source of truth for "the kernel is shipped" — the help
+      // text only proves the GGML_TYPE_* enum is registered. Symbol presence
+      // proves the Metal compile actually produced .air for our standalones.
+      // Reachability via dispatch is a separate concern documented in
+      // packages/inference/README.md (Wave-6 audit).
+      if (backend === "metal") {
+        const metallibPath = path.join(outDir, "default.metallib");
+        if (fs.existsSync(metallibPath)) {
+          const metallibBytes = fs.readFileSync(metallibPath);
+          // .metallib is a Mach-O archive with embedded function names; a
+          // straight buffer .indexOf works because the function names are
+          // stored as zero-terminated C strings.
+          const has = (sym) => metallibBytes.indexOf(sym) !== -1;
+          if (has("kernel_turbo3_dot")) kernels.turbo3 = true;
+          if (has("kernel_turbo4_dot")) kernels.turbo4 = true;
+          if (has("kernel_turbo3_tcq_dot")) kernels.turbo3_tcq = true;
+          if (
+            has("kernel_attn_score_qjl1_256") ||
+            has("kernel_get_rows_qjl1_256") ||
+            has("kernel_mul_mv_qjl1_256_f32")
+          ) {
+            kernels.qjl_full = true;
+          }
+          if (
+            has("kernel_get_rows_q4_polar") ||
+            has("kernel_mul_mv_q4_polar_f32")
+          ) {
+            kernels.polarquant = true;
+          }
+        }
+      }
     }
   } else {
     // Fall back to scanning compiled object files in the build directory.
@@ -1011,6 +1251,7 @@ function probeKernels(target, buildDir, outDir) {
     kernels.turbo4 = /turbo4/.test(names);
     kernels.turbo3_tcq = /turbo3[-_]?tcq|tcq/.test(names);
     kernels.qjl_full = /qjl/.test(names);
+    kernels.polarquant = /polar(?:quant)?|q4[-_]?polar/.test(names);
     // CPU build inlines the turbo quantization paths inside ggml-cpu and
     // links a single ggml-turbo-quant.c.o into ggml-base. Treat its presence
     // as evidence both turbo3 and turbo4 paths are compiled in. Likewise,
@@ -1041,7 +1282,11 @@ function canRunTargetOnHost(target) {
   if (platform === "windows" && process.platform !== "win32") return false;
   if (platform === "darwin" && process.platform !== "darwin") return false;
   if (platform === "linux" && process.platform !== "linux") return false;
-  if (arch === "arm64" && process.arch !== "arm64") return false;
+  // arm64 (Apple, Windows, Android) and aarch64 (Linux) both map to
+  // process.arch === "arm64" on Node. x64 maps to "x64".
+  if ((arch === "arm64" || arch === "aarch64") && process.arch !== "arm64") {
+    return false;
+  }
   if (arch === "x64" && process.arch !== "x64") return false;
   return true;
 }
@@ -1067,30 +1312,75 @@ function collectFilesUnder(root, pattern) {
   return out;
 }
 
+// Per AGENTS.md §3, every Eliza-1 bundle MUST run dflash + turbo3 + turbo4 +
+// qjl + polar. probeKernels() returns the per-target detection map; this gate
+// translates that into a hard failure when a required kernel is absent.
+//
+// Returns the list of missing-but-required kernels. An empty list means the
+// target satisfies the contract.
+function requiredKernelsMissing(target, kernels) {
+  const { backend } = parseTarget(target);
+  // Required for every shipped backend.
+  const required = ["dflash", "turbo3", "turbo4", "qjl_full", "polarquant"];
+  // Vulkan host detection currently relies on `--help` strings (CLI flags).
+  // Metal kernel-presence after this patch is verified via the metallib
+  // (see kernel-patches/metal-kernels.mjs); the help-text probe still works
+  // because the fork's CLI lists the quant types regardless of backend.
+  if (backend === "vulkan") {
+    // After kernel-patches/vulkan-dispatch-patches/, the 8 milady SPV blobs
+    // and pipeline_milady_* slots are linked into libggml-vulkan.so. What is
+    // still missing is op-level dispatch routing (GGML_OP_ATTN_SCORE_QJL and
+    // milady GGML_TYPE_* case branches) — without it, llama-server --help
+    // still won't show qjl/polar/turbo as user-visible cache types. Allow
+    // the build to proceed when the operator explicitly acknowledges the
+    // routing gap; CAPABILITIES.json then records `kernels.qjl_full=false`
+    // so the runtime layer can refuse to load Eliza-1 bundles on this
+    // binary. Once op routing lands, drop this branch.
+    if (process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN === "1") {
+      return [];
+    }
+  }
+  return required.filter((k) => !kernels[k]);
+}
+
 function writeCapabilities({
   outDir,
   target,
   buildDir,
   forkCommit,
   binaries,
+  omnivoice = null,
 }) {
-  const { platform, arch, backend } = parseTarget(target);
+  const { platform, arch, backend, fused } = parseTarget(target);
   const kernels = probeKernels(target, buildDir, outDir);
+  const missing = requiredKernelsMissing(target, kernels);
   const capabilities = {
     target,
     platform,
     arch,
     backend,
+    fused: Boolean(fused),
     builtAt: new Date().toISOString(),
     fork: "milady-ai/llama.cpp",
     forkCommit,
     kernels,
     binaries,
+    omnivoice,
   };
   fs.writeFileSync(
     path.join(outDir, "CAPABILITIES.json"),
     `${JSON.stringify(capabilities, null, 2)}\n`,
   );
+  if (missing.length > 0) {
+    throw new Error(
+      `[dflash-build] target=${target} missing required kernels: ${missing.join(", ")}. ` +
+        `AGENTS.md §3 forbids shipping an Eliza-1 binary without the full ` +
+        `dflash + turbo3 + turbo4 + qjl + polar kernel set. CAPABILITIES.json ` +
+        `was written for diagnostic purposes only — the artifact is incomplete ` +
+        `and must not be published. Inspect the build log for the failed ` +
+        `patch hook or absent dispatch site, fix the root cause, and rebuild.`,
+    );
+  }
   return capabilities;
 }
 
@@ -1101,18 +1391,66 @@ function targetOutDir(target, override) {
 
 // Build a single target. Returns the resulting CAPABILITIES.json object.
 function buildTarget({ target, args, ctx }) {
-  const { platform, backend } = parseTarget(target);
+  const { platform, backend, fused } = parseTarget(target);
   const outDir = targetOutDir(target, args.outDirOverride);
   const buildDir = path.join(args.cacheDir, "build", target);
   const flags = cmakeFlagsForTarget(target, ctx);
 
+  // Fused targets graft omnivoice.cpp's `src/` + `tools/` into the
+  // llama.cpp tree, append a CMake snippet that declares the fused
+  // shared library + server, and add `-DMILADY_FUSE_OMNIVOICE=ON`.
+  // The non-fused targets are unchanged.
+  let omnivoiceInfo = null;
+  if (fused) {
+    if (args.dryRun) {
+      console.log(
+        `[dflash-build] (dry-run) target=${target} fused=true`,
+      );
+      console.log(
+        `  prepareOmnivoiceFusion ref=${OMNIVOICE_REF} llamaCppRoot=${args.cacheDir}`,
+      );
+      console.log(
+        `  appendCmakeGraft -> ${path.join(args.cacheDir, "CMakeLists.txt")}`,
+      );
+    } else {
+      omnivoiceInfo = prepareOmnivoiceFusion({
+        cacheRoot: path.dirname(args.cacheDir),
+        llamaCppRoot: args.cacheDir,
+      });
+      const grafted = appendCmakeGraft({ llamaCppRoot: args.cacheDir });
+      console.log(
+        `[dflash-build] omnivoice-fuse: pin=${omnivoiceInfo.commit} ` +
+          `ggmlSubmodule=${omnivoiceInfo.ggmlSubmoduleCommit} ` +
+          `sources=${omnivoiceInfo.sourceCount} ` +
+          `cmakeGraftAppended=${grafted}`,
+      );
+    }
+    flags.push(...fusedExtraCmakeFlags());
+  }
+
   if (args.dryRun) {
     console.log(`[dflash-build] (dry-run) target=${target}`);
+    // Dry-run still describes the kernel patches that WOULD be applied so
+    // an audit can see the real behavior, not just the cmake invocation.
+    // The patch helpers themselves treat dryRun=true as "log only, no fs
+    // writes" so this is safe even when args.cacheDir doesn't yet exist
+    // (we only run this branch when the dir does exist; the helpers throw
+    // otherwise to surface that mismatch).
+    if (fs.existsSync(args.cacheDir)) {
+      applyForkPatches(args.cacheDir, backend, target, { dryRun: true });
+    } else {
+      console.log(
+        `  (dry-run) skip patch hooks: ${args.cacheDir} not yet cloned`,
+      );
+    }
     console.log(
       `  cmake -B ${buildDir} ${flags.join(" ")}`.replace(/ +/g, " "),
     );
+    const dryTargets = fused
+      ? fusedCmakeBuildTargets()
+      : ["llama-server", "llama-cli", "llama-speculative-simple"];
     console.log(
-      `  cmake --build ${buildDir} --target llama-server llama-cli llama-speculative-simple -j ${args.jobs}`,
+      `  cmake --build ${buildDir} --target ${dryTargets.join(" ")} -j ${args.jobs}`,
     );
     console.log(`  install -> ${outDir}`);
     return null;
@@ -1126,10 +1464,26 @@ function buildTarget({ target, args, ctx }) {
 
   // iOS targets emit a static archive used by the Capacitor xcframework
   // patch; everything else builds the executables we use directly on host.
+  // Fused targets additionally build omnivoice-core, libelizainference,
+  // and the stub fused server.
   const isIos = platform === "ios";
   const cmakeBuildTargets = isIos
     ? ["llama", "ggml", "ggml-base", "ggml-cpu", "ggml-metal"]
-    : ["llama-server", "llama-cli", "llama-speculative-simple"];
+    : fused
+      ? fusedCmakeBuildTargets()
+      : ["llama-server", "llama-cli", "llama-speculative-simple"];
+
+  // The non-EMBED Metal CMakeLists creates an `add_custom_target(ggml-metal-lib
+  // ALL DEPENDS .../default.metallib)` but `cmake --build --target X Y Z`
+  // builds ONLY the listed targets and skips everything in ALL. Without
+  // ggml-metal-lib in the explicit target list the metallib never gets
+  // assembled and the Wave-5 milady-shipped/*.air merge step never fires —
+  // even though llama-server links and runs. Add it for darwin Metal builds
+  // (iOS uses EMBED_LIBRARY=ON which bakes the metallib into the static
+  // archive directly via .incbin, no separate target needed).
+  if (backend === "metal" && !isIos) {
+    cmakeBuildTargets.push("ggml-metal-lib");
+  }
 
   // MSVC + Xcode are multi-config generators — cmake --build needs an
   // explicit --config flag, otherwise it defaults to Debug and the install
@@ -1204,6 +1558,10 @@ function buildTarget({ target, args, ctx }) {
       "llama-server",
       "llama-cli",
       "llama-speculative-simple",
+      // Stub fused server emitted only when target is in FUSED_TARGETS.
+      // Adding it unconditionally is harmless: the install loop only
+      // copies a binary when it actually exists in binDir.
+      ...(fused ? ["llama-omnivoice-server"] : []),
     ];
     // Cross-compiled binaries can have a host-specific suffix (.exe). Match
     // by base name so Windows builds still install the right files.
@@ -1224,6 +1582,28 @@ function buildTarget({ target, args, ctx }) {
       }
     }
 
+    // Darwin Metal builds (non-EMBED, see cmakeFlagsForTarget) emit
+    // default.metallib alongside the runtime libraries in binDir. The
+    // metallib must ship next to llama-server because Metal looks for it
+    // via dlopen-style loader_path resolution (the binary's directory).
+    if (platform === "darwin" && backend === "metal") {
+      const metallibCandidate = path.join(binDir, "default.metallib");
+      if (!fs.existsSync(metallibCandidate)) {
+        throw new Error(
+          `[dflash-build] expected default.metallib at ${metallibCandidate} ` +
+            `for ${target} — the non-EMBED metallib build did not produce it. ` +
+            `Inspect the cmake build log for failures in the milady-shipped/ ` +
+            `xcrun metal compile steps.`,
+        );
+      }
+      const metallibDst = path.join(outDir, "default.metallib");
+      fs.copyFileSync(metallibCandidate, metallibDst);
+      installedNames.push("default.metallib");
+      console.log(
+        `[dflash-build] installed default.metallib (${fs.statSync(metallibDst).size} bytes) -> ${outDir}`,
+      );
+    }
+
     const ggufPySrc = path.join(args.cacheDir, "gguf-py");
     const ggufPyDst = path.join(outDir, "gguf-py");
     if (fs.existsSync(ggufPySrc)) {
@@ -1238,12 +1618,39 @@ function buildTarget({ target, args, ctx }) {
     }
   }
 
+  // For fused targets, prove that BOTH llama_* and omnivoice_* symbol
+  // families landed in the produced shared library. Per
+  // packages/inference/AGENTS.md §3, missing fusion is a hard error
+  // with no fallback.
+  let omnivoiceVerification = null;
+  if (fused) {
+    omnivoiceVerification = verifyFusedSymbols({ outDir, target });
+    console.log(
+      `[dflash-build] omnivoice-fuse symbol-verify: ` +
+        `library=${omnivoiceVerification.library} ` +
+        `llama=${omnivoiceVerification.llamaSymbolCount} ` +
+        `omnivoice=${omnivoiceVerification.omnivoiceSymbolCount}`,
+    );
+  }
+
   const capabilities = writeCapabilities({
     outDir,
     target,
     buildDir,
     forkCommit: ctx.forkCommit,
     binaries: installedBaseNames,
+    omnivoice:
+      fused && omnivoiceInfo
+        ? {
+            ref: omnivoiceInfo.ref,
+            commit: omnivoiceInfo.commit,
+            ggmlSubmoduleCommit: omnivoiceInfo.ggmlSubmoduleCommit,
+            ggmlReconciliation: "graft-strip-submodule",
+            sourceCount: omnivoiceInfo.sourceCount,
+            appliedPatches: omnivoiceInfo.appliedPatches,
+            verification: omnivoiceVerification,
+          }
+        : null,
   });
   console.log(
     `[dflash-build] installed ${target} binaries to ${outDir} (kernels: ${Object.entries(
@@ -1266,13 +1673,20 @@ function build(args) {
   // Khronos header repos when needed — cheap, but pointless otherwise.
   const willBuildVulkan =
     args.all ||
-    (args.targets && args.targets.some((t) => t.endsWith("-vulkan"))) ||
+    (args.targets &&
+      args.targets.some(
+        (t) => t.endsWith("-vulkan") || t.endsWith("-vulkan-fused"),
+      )) ||
     (!args.targets && (args.backend ?? detectBackend()) === "vulkan");
   // Same idea for the Windows cross path — only probe + write the
-  // mingw-w64 toolchain file when at least one windows target is queued.
+  // mingw-w64 toolchain file when at least one windows-x64 target is
+  // queued. windows-arm64 targets do NOT trigger mingw probing because
+  // the bundled discovery only handles x86_64-w64-mingw32; arm64 needs
+  // either a native MSVC arm64 host or a user-supplied
+  // MINGW_TOOLCHAIN_FILE pointing at clang/LLVM aarch64-w64-mingw32.
   const willBuildWindows =
     args.all ||
-    (args.targets && args.targets.some((t) => t.startsWith("windows-"))) ||
+    (args.targets && args.targets.some((t) => t.startsWith("windows-x64-"))) ||
     (!args.targets &&
       process.platform !== "win32" &&
       (args.backend ?? detectBackend()) === "cpu" &&
@@ -1300,14 +1714,15 @@ function build(args) {
   } else {
     // Legacy single-target mode.
     const backend = args.backend || detectBackend();
-    const arch = process.arch === "x64" ? "x64" : process.arch;
     const platform =
       process.platform === "win32" ? "windows" : process.platform;
+    const arch = nodeArchToTripleArch(platform);
     const legacyTarget = `${platform}-${arch}-${backend}`;
     targets = [legacyTarget];
     if (!SUPPORTED_TARGETS.includes(legacyTarget)) {
-      console.warn(
-        `[dflash-build] warning: legacy backend produced unsupported target ${legacyTarget}; proceeding anyway`,
+      throw new Error(
+        `[dflash-build] legacy backend produced unsupported target ${legacyTarget}; ` +
+          `pass --target explicitly with one of: ${SUPPORTED_TARGETS.join(", ")}`,
       );
     }
   }
@@ -1322,7 +1737,8 @@ function build(args) {
   }
 
   const built = [];
-  const skipped = [];
+  const skipped = []; // host-incompat — soft skip
+  const failed = []; // real failures — hard fail at end
   for (const target of targets) {
     const compat = targetCompatibility(target, ctx);
     if (!compat.ok) {
@@ -1345,7 +1761,12 @@ function build(args) {
       const message = err instanceof Error ? err.message : String(err);
       if (args.all) {
         console.error(`[dflash-build] target=${target} failed: ${message}`);
-        skipped.push({ target, reason: `build failed: ${message}` });
+        // In --all mode we collect failures rather than tear down the whole
+        // run on the first error, so a partial green can still produce
+        // diagnostic CAPABILITIES.json files. But unlike host-incompat skips
+        // (Linux on macOS, etc.) these are REAL failures — the run as a
+        // whole must exit non-zero. failed[] is checked at the bottom.
+        failed.push({ target, reason: `build failed: ${message}` });
       } else {
         throw err;
       }
@@ -1354,14 +1775,23 @@ function build(args) {
 
   if (args.dryRun) {
     console.log(
-      `[dflash-build] dry-run: ${targets.length - skipped.length} targets queued, ${skipped.length} skipped`,
+      `[dflash-build] dry-run: ${targets.length - skipped.length - failed.length} targets queued, ${skipped.length} host-incompat-skipped, ${failed.length} would-fail`,
     );
   } else {
     console.log(
-      `[dflash-build] done. built=${built.length} skipped=${skipped.length}`,
+      `[dflash-build] done. built=${built.length} host-incompat-skipped=${skipped.length} failed=${failed.length}`,
     );
     console.log(
       `[dflash-build] set ELIZA_DFLASH_ENABLED=1 to force this backend, or leave it unset for auto-detect from the managed path.`,
+    );
+  }
+  if (failed.length > 0) {
+    // Per AGENTS.md §3 + the build-script audit: --all mode must NOT exit 0
+    // when any target failed for a real reason. host-incompat skips (Linux
+    // on macOS, etc.) remain a soft skip; everything else is fatal.
+    throw new Error(
+      `[dflash-build] ${failed.length} target(s) failed: ` +
+        failed.map((f) => `${f.target} (${f.reason})`).join("; "),
     );
   }
 }

@@ -21,9 +21,8 @@
  *   library is built against the polarquant-q4 branch.
  *   block_tbq3_0 packs 32 floats into 14 bytes (vs 64 bytes for fp16) —
  *   ~4.6x KV-cache memory reduction. KV cache dominates phone-RAM
- *   pressure at long contexts, so this is the difference between Bonsai
- *   "loads but OOMs after 1k tokens" and "loads and chats". The matching
- *   Bonsai-8B-1bit GGUF on Hugging Face is trained against this fork.
+ *   pressure at long contexts. Eliza-1 runtime metadata or explicit env
+ *   overrides decide when to use these fork-only cache types.
  *
  *   The fork is based on llama.cpp b8198 (much newer than b4500), so it
  *   inherits the post-2024 sampler-chain API
@@ -39,8 +38,7 @@
  *       shim removed the bool setter (the adapter never called it).
  *     - llama_context_params adds type_k / type_v / samplers / kv_unified;
  *       shim now exposes set_type_k / set_type_v for TBQ KV-cache wiring
- *       (driven by `kvCacheType` in the adapter LoadOptions, with
- *       Bonsai-by-filename auto-detection as a default).
+ *       (driven by `kvCacheType` in the adapter LoadOptions or env).
  *
  * Symbols pinned for reference:
  *   libllama.so (dlopen'd first):
@@ -332,7 +330,7 @@ interface RuntimeWithRegisterService {
  * contract (`@elizaos/native-plugins/llama` and the Capacitor side) does NOT
  * surface KV-cache type — that's an AOSP-specific tunable that only the
  * fork-built libllama.so supports. We carry it on this private interface and
- * default-resolve from filename + env in `loadModel`.
+ * default-resolve from explicit options + env in `loadModel`.
  */
 export interface AospLlamaLoadOptions {
   modelPath: string;
@@ -349,9 +347,7 @@ export interface AospLlamaLoadOptions {
   cacheTypeV?: KvCacheTypeName;
   disableThinking?: boolean;
   /**
-   * KV-cache type override. When undefined we auto-pick:
-   *   - Bonsai-by-filename → { k: "tbq4_0", v: "tbq3_0" }
-   *   - everything else    → undefined (let llama.cpp keep its fp16 default)
+   * KV-cache type override. When undefined, llama.cpp keeps its fp16 default.
    * Env overrides:
    *   ELIZA_LLAMA_CACHE_TYPE_K, ELIZA_LLAMA_CACHE_TYPE_V (e.g. "tbq4_0").
    */
@@ -388,9 +384,8 @@ const LLAMA_POOLING_TYPE_MEAN = 1;
 
 /**
  * GGML type ids used for KV-cache configuration. The base set comes from
- * ggml.h; TBQ3_0 / TBQ4_0 are the apothic/llama.cpp-1bit-turboquant fork
- * additions and only valid against the fork-built libllama.so + matching
- * Bonsai-8B-1bit GGUF model.
+ * ggml.h; TBQ3_0 / TBQ4_0 are fork additions and only valid against the
+ * fork-built libllama.so.
  *
  * Verified against
  *   ~/.cache/eliza-android-agent/llama-cpp-main-b8198-b2b5273/ggml/include/ggml.h
@@ -444,23 +439,6 @@ export function kvCacheTypeNameToEnum(name: KvCacheTypeName): number {
 }
 
 /**
- * Auto-detect when a model path indicates a Bonsai 1-bit TurboQuant build,
- * which is the only model in the curated catalog that's trained against
- * the fork's TBQ KV-cache codec. Match is intentionally loose
- * (case-insensitive substring) because users may rename downloaded GGUFs.
- *
- * The Hugging Face repo is `apothic/bonsai-8B-1bit-turboquant` and ships
- * `models/gguf/8B/Bonsai-8B.gguf`; downloads pass that filename through
- * verbatim by default, so a "Bonsai" basename match is the right hook.
- *
- * Exported for unit tests.
- */
-export function looksLikeBonsai(modelPath: string): boolean {
-  const base = modelPath.split(/[/\\]/).pop() ?? modelPath;
-  return /bonsai/i.test(base);
-}
-
-/**
  * Read a `KvCacheTypeName` from an env var, returning undefined when the var
  * is unset, blank, or not a recognised type name. Recognised values are
  * exactly `"f16"`, `"tbq3_0"`, `"tbq4_0"` (case-insensitive). An unrecognised
@@ -494,10 +472,8 @@ export function readEnvKvCacheType(
  * Resolve the KV-cache type to use for a given load. Precedence:
  *   1. Explicit `LoadOptions.kvCacheType.{k,v}` (highest priority).
  *   2. `ELIZA_LLAMA_CACHE_TYPE_K` / `ELIZA_LLAMA_CACHE_TYPE_V` env vars.
- *   3. Auto-detection: Bonsai-by-filename → `{ k: "tbq4_0", v: "tbq3_0" }`
- *      (matches the model card recommendation).
- *   4. Otherwise undefined — the shim leaves the cache at llama.cpp's fp16
- *      default, which is the safe choice for any non-Bonsai GGUF.
+ *   3. Otherwise undefined — the shim leaves the cache at llama.cpp's fp16
+ *      default.
  *
  * Returns `undefined` when no override applies, so the caller can skip the
  * shim setters entirely (smaller diff to upstream behaviour, easier to
@@ -506,7 +482,7 @@ export function readEnvKvCacheType(
  * Exported for unit tests.
  */
 export function resolveKvCacheType(
-  modelPath: string,
+  _modelPath: string,
   override: AospLlamaLoadOptions["kvCacheType"] | undefined,
   env: NodeJS.ProcessEnv = process.env,
 ): { k?: KvCacheTypeName; v?: KvCacheTypeName } | undefined {
@@ -514,14 +490,8 @@ export function resolveKvCacheType(
   const explicitV = override?.v;
   const envK = readEnvKvCacheType("ELIZA_LLAMA_CACHE_TYPE_K", env);
   const envV = readEnvKvCacheType("ELIZA_LLAMA_CACHE_TYPE_V", env);
-  // Auto-detection only kicks in when neither an explicit override nor an
-  // env override is set. Catalog blurb references this contract directly —
-  // change here = update catalog.ts blurb in the same commit.
-  const auto = looksLikeBonsai(modelPath)
-    ? { k: "tbq4_0" as const, v: "tbq3_0" as const }
-    : undefined;
-  const k = explicitK ?? envK ?? auto?.k;
-  const v = explicitV ?? envV ?? auto?.v;
+  const k = explicitK ?? envK;
+  const v = explicitV ?? envV;
   if (k === undefined && v === undefined) return undefined;
   return { k, v };
 }
@@ -847,13 +817,13 @@ class AospLlamaAdapter implements AospLoader {
     // lives in the libllama startup path, not in this adapter, because
     // the type traits are bound to the ggml-base library at process
     // start. ELIZA_LLAMA_CACHE_TYPE_K/_V are unrelated — those drive
-    // the KV cache codec for Bonsai TBQ models, not weight quantization.
+    // the KV cache codec for Eliza-1 fork-tuned models, not weight quantization.
 
     // Resolve runtime tunables. The active-model coordinator only forwards
     // `{ modelPath }` today, so we backfill from env so AOSP doesn't run at
     // upstream defaults that under-use phone CPU cores.
     //
-    // contextSize default: 16384. Llama-3.2-1B (the AOSP default chat
+    // contextSize default: 16384. Eliza-1 mobile (the AOSP default chat
     // model) has a 128k native context window. The planner builds
     // ~12k-token prompts on every chat turn (system + tools + history +
     // user message). 16k fits comfortably with output reserve while
@@ -918,7 +888,7 @@ class AospLlamaAdapter implements AospLoader {
       // Override the canonical defaults for the few fields that actually
       // matter on phones:
       //   - n_ctx: cap the context window (defaults to 0 = "from model"
-      //     which can be huge on Llama-3-8B GGUFs and OOMs the device).
+      //     which can be huge on large Eliza-1 GGUFs and OOMs the device).
       //   - n_threads / n_threads_batch: parallelize generation + batch
       //     decode across the user's CPU cores. n_threads is on
       //     context_params (verified against b4500 llama.h:319-320),
@@ -938,7 +908,7 @@ class AospLlamaAdapter implements AospLoader {
       // event-loop yields, so the service watchdog's HTTP probe doesn't
       // sit on a closed listener queue for the entire prompt prefill.
       // Empirically a 512-token chunk on cuttlefish CPU lands each
-      // llama_decode call in ~6–8 s (Llama-3.2-1B), giving the HTTP
+      // llama_decode call in ~6–8 s (Eliza-1 mobile), giving the HTTP
       // probe (30 s timeout) a realistic chance to wake the listener
       // between chunks. The previous default of 2048 ran each chunk
       // for ~30 s and triggered repeated probe failures.
@@ -967,7 +937,7 @@ class AospLlamaAdapter implements AospLoader {
         ctxParamsPtr,
         LLAMA_POOLING_TYPE_MEAN,
       );
-      // KV-cache type override (TBQ for Bonsai, fp16 default for everything
+      // KV-cache type override (fork-specific overrides when requested, fp16 default for everything
       // else). When kvCacheType.k / .v are set we forward the resolved
       // ggml_type enum to the shim setters; otherwise we leave the cache at
       // llama.cpp's canonical default. Only the apothic fork-built libllama.so
@@ -1212,7 +1182,7 @@ class AospLlamaAdapter implements AospLoader {
         this.hasDecoded = true;
         // Per-chunk token-rate logging. Inform operators of real
         // throughput on whatever hardware is hosting bun. On cuttlefish
-        // CPU + Llama-3.2-1B / Q4_K_M we expect ~30–60 tok/s prefill;
+        // CPU + Eliza-1 mobile / Q4_K_M we expect ~30–60 tok/s prefill;
         // anything below 5 tok/s indicates n_threads not set, KV cache
         // thrashing, or the SIGSYS shim degrading something. Log at
         // info level so it's always visible without bumping LOG_LEVEL.
@@ -1304,7 +1274,7 @@ class AospLlamaAdapter implements AospLoader {
         // close to peak generation rate while keeping the listener
         // wake-up budget tight enough that the watchdog's HTTP probe
         // (30 s timeout) can complete mid-decode without the
-        // BUSY-but-not-DEAD distinction being needed. Llama-3.2-1B on
+        // BUSY-but-not-DEAD distinction being needed. Eliza-1 mobile on
         // cvd CPU lands ~3–8 tok/s, so 4 tokens = ~1 s per yield.
         if ((i & 3) === 3) {
           await new Promise<void>((resolve) => setImmediate(resolve));

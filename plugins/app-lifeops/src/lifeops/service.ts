@@ -95,9 +95,12 @@ export interface LifeOpsService {
     now?: string;
     reminderLimit?: number;
     workflowLimit?: number;
+    scheduledTaskLimit?: number;
   }): Promise<{
     now: string;
     reminderAttempts: LifeOpsReminderAttempt[];
     workflowRuns: LifeOpsWorkflowRun[];
+    scheduledTaskFires: Array<Record<string, unknown>>;
+    scheduledTaskCompletionTimeouts: Array<Record<string, unknown>>;
   }>;
 }

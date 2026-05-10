@@ -1,20 +1,20 @@
 // Headscale ACL policy — customer tunnel + internal agent isolation.
 //
 // CRITICAL: this is the only thing that prevents customer tunnels from
-// reaching the agent fleet. The corresponding test lives in
-// packages/tests/unit/headscale-acl.test.ts (TODO if not present).
+// reaching the agent fleet. Keep this file limited to fields Headscale
+// accepts at startup; policy test fixtures belong outside the live ACL.
 {
   "tagOwners": {
     // Agent containers self-tag with tag:agent during VPN bootstrap.
-    "tag:agent": ["tunnel"],
-    // Customer tunnel sessions self-tag with tag:eliza-tunnel-<orgId>.
-    // Wildcard tag matching is supported by headscale via the prefix.
-    "tag:eliza-tunnel": ["tunnel"]
+    "tag:agent": ["tunnel@"],
+    // Customer tunnel sessions use this shared service tag. Per-session
+    // isolation is enforced by default-deny ACLs and the proxy lookup layer.
+    "tag:eliza-tunnel": ["tunnel@"],
+    // The public reverse proxy is itself a tagged service node.
+    "tag:eliza-proxy": ["tunnel@"]
   },
 
-  "groups": {
-    "group:proxy": ["tunnel"]
-  },
+  "groups": {},
 
   "hosts": {},
 
@@ -23,7 +23,7 @@
     // Reverse proxy can reach any customer tunnel on HTTPS only.
     {
       "action": "accept",
-      "src": ["group:proxy"],
+      "src": ["tag:eliza-proxy"],
       "dst": ["tag:eliza-tunnel:443"]
     },
     // Agents can reach each other on internal ports (existing behavior).
@@ -36,21 +36,9 @@
     {
       "action": "accept",
       "src": ["tag:eliza-tunnel"],
-      "dst": ["group:proxy:*"]
+      "dst": ["tag:eliza-proxy:*"]
     }
     // NO rule grants tag:eliza-tunnel access to tag:agent or vice versa.
     // This isolation is the entire point of tag-based ACLs here.
-  ],
-
-  "tests": [
-    {
-      "src": "tag:eliza-tunnel",
-      "accept": ["group:proxy:443"],
-      "deny": ["tag:agent:80", "tag:agent:443"]
-    },
-    {
-      "src": "tag:agent",
-      "deny": ["tag:eliza-tunnel:80", "tag:eliza-tunnel:443"]
-    }
   ]
 }

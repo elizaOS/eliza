@@ -79,7 +79,7 @@ export const lsAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: ["LIST_DIR", "DIR"],
   description:
-    "List entries in a directory, sorted with directories first then files. Each directory name has a trailing '/'. Pass an `ignore` array of glob patterns to skip entries. Use this instead of BASH for directory listing.",
+    "List entries in a directory, sorted with directories first then files. Each directory name has a trailing '/'. Pass an `ignore` array of glob patterns to skip entries. Use this instead of SHELL for directory listing.",
   descriptionCompressed:
     "List a directory; dirs first, files second; supports ignore globs.",
   parameters: [

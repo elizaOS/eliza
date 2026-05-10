@@ -272,6 +272,82 @@ elizaos_context_bench/
 - [LongBench](https://github.com/THUDM/LongBench) - Long context evaluation
 - [RULER](https://github.com/hsiehjackson/RULER) - Synthetic long-context reasoning
 
+## Drift Mode
+
+A long-running NIAH-style **drift** harness lives alongside the static
+NIAH/multi-hop suites. Instead of stuffing a needle into a one-shot context,
+it drives a real multi-turn conversation, forces compaction on a fixed
+cadence using a chosen strategy, and probes planted facts after every
+compaction and at end-of-run.
+
+The TS driver runs against any OpenAI-compatible endpoint (defaults to
+Cerebras `gpt-oss-120b` for both the agent and the judge). The Python suite
+ingests the JSONL log it emits.
+
+### Run a strategy comparison
+
+```bash
+# Real run (requires CEREBRAS_API_KEY in env)
+bun run scripts/benchmark/drift-harness.ts \
+  --strategy none \
+  --turns 50 \
+  --compact-every 10 \
+  --plant-facts 5 \
+  --output ./benchmark_results/drift/none.jsonl
+
+# Offline plumbing smoke test (no API calls, deterministic fake model)
+bun run scripts/benchmark/drift-harness.ts \
+  --strategy none --turns 3 --compact-every 100 --plant-facts 1 \
+  --output /tmp/drift-smoke.jsonl --dry-run
+```
+
+Strategies: `none`, `prompt-stripping`, `naive-summary`, `structured-state`,
+`hierarchical-summary`, `hybrid-ledger`. The four runtime strategies are
+loaded dynamically from `packages/agent/src/runtime/conversation-compactor.ts`;
+if that module isn't present yet (parallel work), the harness logs
+`[harness] strategy <name> not yet implemented — skipping` and continues.
+
+### Aggregate from Python
+
+```python
+from elizaos_context_bench.drift import DriftBenchmarkSuite
+
+suite = DriftBenchmarkSuite()
+
+# Single log → single-run summary
+summary = suite.aggregate("./benchmark_results/drift/none.jsonl")
+print(summary.overall_accuracy, summary.drift_per_compaction)
+
+# Or orchestrate by shelling out to the TS driver
+result = suite.run_drift_eval(
+    strategies=["none", "prompt-stripping", "naive-summary"],
+    turns=50,
+    compact_every=10,
+    plant_facts=5,
+    output_dir="./benchmark_results/drift",
+)
+for run in result.runs:
+    print(run.strategy, run.overall_accuracy, run.drift_per_compaction)
+```
+
+### Output format
+
+JSONL — one event per line. All scoring is reproducible from the log alone:
+
+```jsonl
+{"event":"turn","turn":1,"role":"user","contentLen":66,"tokens":17,"factId":"fact_1"}
+{"event":"turn","turn":1,"role":"assistant","contentLen":12,"tokens":3}
+{"event":"compact","atTurn":10,"strategy":"naive-summary","originalTokens":1820,"compactedTokens":120,"latencyMs":340}
+{"event":"probe","atTurn":10,"factId":"fact_1","plantedTurn":1,"expected":"810471992241","actual":"I don't recall.","correct":false,"judgeReasoning":"exact-match: expected substring missing","phase":"post-compact"}
+{"event":"summary","strategy":"naive-summary","overallAccuracy":0.4,"totalCompactions":4,"totalTokensSaved":6120,"totalProbes":10,"totalCorrect":4,"seed":1337,"turns":50,"compactEvery":10,"plantFacts":5}
+```
+
+### Optional Python deps
+
+```bash
+pip install -e ".[drift]"
+```
+
 ## License
 
 MIT License - see LICENSE file for details.

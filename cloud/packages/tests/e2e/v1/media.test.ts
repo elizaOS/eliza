@@ -25,6 +25,32 @@ describe("Video Generation API", () => {
   });
 });
 
+describe("Music Generation API", () => {
+  test("POST /api/v1/generate-music requires auth", async () => {
+    const response = await api.post("/api/v1/generate-music", {
+      prompt: "A test music prompt",
+    });
+    expect([401, 403]).toContain(response.status);
+  });
+
+  test("POST /api/v1/generate-music validates input", async () => {
+    const response = await api.post("/api/v1/generate-music", {}, { authenticated: true });
+    expect(response.status).toBe(400);
+  });
+
+  test("POST /api/v1/generate-music rejects unsupported models before provider I/O", async () => {
+    const response = await api.post(
+      "/api/v1/generate-music",
+      {
+        prompt: "A short launch track",
+        model: "unknown/music-model",
+      },
+      { authenticated: true },
+    );
+    expect(response.status).toBe(400);
+  });
+});
+
 describe("Voice API", () => {
   test("GET /api/v1/voice/list requires auth", async () => {
     const response = await api.get("/api/v1/voice/list");

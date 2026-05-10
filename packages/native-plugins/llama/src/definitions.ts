@@ -35,7 +35,7 @@ export interface LoadOptions {
   /** Optional KV cache types for fork builds such as TurboQuant. */
   cacheTypeK?: string;
   cacheTypeV?: string;
-  /** Qwen DFlash drafters are trained for non-thinking outputs. */
+  /** Eliza-1 DFlash drafters are trained for non-thinking outputs. */
   disableThinking?: boolean;
 }
 

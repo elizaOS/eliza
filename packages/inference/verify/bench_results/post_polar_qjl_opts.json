@@ -1,0 +1,74 @@
+{
+  "device": "Apple M4 Max",
+  "date": "2026-05-10",
+  "iterations": 1000,
+  "warmup": 50,
+  "peak_bandwidth_GBs": 546.0,
+  "workload": {
+    "description": "single attention step, 9B-class decode",
+    "head_dim": 128, "seq": 4096, "kv_heads": 32,
+    "q_heads": 32, "qjl_q_heads": 32, "qjl_kv_heads": 8,
+    "polar_rows": 131072, "turbo_n_kv": 131072
+  },
+  "kernels": [
+    {
+      "name": "turbo3",
+      "kernel_function": "kernel_turbo3_dot",
+      "n_outputs": 131072,
+      "bytes_per_dispatch": 7864832,
+      "gpu_us": { "median": 264.6458, "p50": 264.6458, "p99": 1841.4867, "min": 236.0833, "max": 2343.5000 },
+      "cpu_us": { "median": 430.0000, "p99": 2323.2300 },
+      "bandwidth_GBs": 29.7183,
+      "bandwidth_pct_of_peak": 5.4429,
+      "tokens_per_s_single_kernel_decode": 47.23
+    },
+    {
+      "name": "turbo4",
+      "kernel_function": "kernel_turbo4_dot",
+      "n_outputs": 131072,
+      "bytes_per_dispatch": 9175552,
+      "gpu_us": { "median": 264.7292, "p50": 264.7292, "p99": 1796.9212, "min": 236.7083, "max": 2110.3333 },
+      "cpu_us": { "median": 426.0000, "p99": 2043.9000 },
+      "bandwidth_GBs": 34.6601,
+      "bandwidth_pct_of_peak": 6.3480,
+      "tokens_per_s_single_kernel_decode": 47.22
+    },
+    {
+      "name": "turbo3_tcq",
+      "kernel_function": "kernel_turbo3_tcq_dot",
+      "n_outputs": 131072,
+      "bytes_per_dispatch": 7342592,
+      "gpu_us": { "median": 266.5000, "p50": 266.5000, "p99": 1823.0875, "min": 237.8750, "max": 2286.6250 },
+      "cpu_us": { "median": 431.0000, "p99": 2195.0600 },
+      "bandwidth_GBs": 27.5519,
+      "bandwidth_pct_of_peak": 5.0461,
+      "tokens_per_s_single_kernel_decode": 46.90
+    },
+    {
+      "name": "qjl",
+      "kernel_function": "kernel_attn_score_qjl1_256",
+      "n_outputs": 131072,
+      "bytes_per_dispatch": 1671168,
+      "gpu_us": { "median": 260.2500, "p50": 260.2500, "p99": 1802.5575, "min": 238.5833, "max": 2241.7917 },
+      "cpu_us": { "median": 426.0000, "p99": 2223.3600 },
+      "bandwidth_GBs": 6.4214,
+      "bandwidth_pct_of_peak": 1.1761,
+      "tokens_per_s_single_kernel_decode": 48.03
+    },
+    {
+      "name": "polar",
+      "kernel_function": "kernel_mul_mv_q4_polar_f32",
+      "n_outputs": 131072,
+      "bytes_per_dispatch": 11272704,
+      "gpu_us": { "median": 524.1667, "p50": 524.1667, "p99": 2161.6717, "min": 458.0000, "max": 2924.1250 },
+      "cpu_us": { "median": 716.0000, "p99": 2471.0400 },
+      "bandwidth_GBs": 21.5060,
+      "bandwidth_pct_of_peak": 3.9388,
+      "tokens_per_s_single_kernel_decode": 23.85
+    }
+  ],
+  "counter_sample_buffer": {
+    "available": false,
+    "note": "MTLCounterSampleBuffer with stage boundaries on Apple Silicon requires the kernel-level GPU counter set, which is gated behind the developer-mode entitlement and is not exposed to non-privileged processes. metal_bench falls back to MTLCommandBuffer.GPUStartTime/GPUEndTime, which is entitlement-free and gives end-to-end command-buffer GPU time at µs resolution."
+  }
+}

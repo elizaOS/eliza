@@ -1,6 +1,6 @@
 # Eliza Cloud
 
-A comprehensive AI agent development platform built with Next.js 15, featuring multi-model AI generation (text, image, video), full elizaOS runtime integration, enterprise authentication, credit-based billing, and production-ready cloud infrastructure.
+A comprehensive AI agent development platform built with Next.js 15, featuring multi-model AI generation (text, image, video, music, voice), full elizaOS runtime integration, enterprise authentication, credit-based billing, and production-ready cloud infrastructure.
 
 ## 📋 Table of Contents
 
@@ -25,7 +25,7 @@ A comprehensive AI agent development platform built with Next.js 15, featuring m
 
 Eliza Cloud V2 is a full-stack AI-as-a-Service platform that combines:
 
-- **Multi-Modal AI Generation**: Text chat, image creation, and video generation
+- **Multi-Modal AI Generation**: Text chat, image creation, video generation, music generation, and TTS
 - **elizaOS Integration**: Full-featured autonomous agent runtime with memory, rooms, and plugins
 - **SaaS Platform**: User management, API keys, credit-based billing, usage tracking
 - **Container Deployment**: Deploy elizaOS projects via `elizaos deploy` CLI to AWS ECS
@@ -52,6 +52,11 @@ Eliza Cloud V2 is a full-stack AI-as-a-Service platform that combines:
   - Video generation through the configured Fal.ai model catalog
   - Automatic R2 upload
   - Fallback handling with error recovery
+
+- **Music & Voice**:
+  - Music generation through Fal MiniMax, ElevenLabs Music, or a configured Suno-compatible provider
+  - TTS through the configured voice provider with low-latency output formats
+  - Promotion assets can combine image, video, music, voice, and ad copy
 
 ### 🧠 elizaOS Runtime Integration
 
@@ -592,6 +597,10 @@ model catalogs, and pricing behavior.
 
 - **[packages/docs/unit-testing-agent-mocks.md](packages/docs/unit-testing-agent-mocks.md)** — Why partial `AGENT_PRICING` mocks break other Agent modules under Bun, and how the billing cron tests isolate `mock.module("@/db/client")` contention.
 - **[packages/docs/anthropic-cot-budget.md](packages/docs/anthropic-cot-budget.md)** — Per-agent `settings.anthropicThinkingBudgetTokens` (MCP/A2A), env default (`ANTHROPIC_COT_BUDGET`) and cap (`ANTHROPIC_COT_BUDGET_MAX`), and **why** thinking budgets are not request parameters.
+- **[packages/docs/wallet-siwe-api-key-setup.md](packages/docs/wallet-siwe-api-key-setup.md)** — EVM SIWE API-key bootstrap, wallet-auth headers, and live payment safety boundaries.
+- **[packages/docs/domain-registrar-provider-setup.md](packages/docs/domain-registrar-provider-setup.md)** — Cloudflare registrar/DNS setup for domain search, check, buy, status, sync, and DNS CRUD APIs.
+- **[packages/docs/advertising-api-setup.md](packages/docs/advertising-api-setup.md)** — Google, Meta, and TikTok advertising registration, env vars, OAuth/account-picker gaps, creative requirements, and safety rules.
+- **[packages/docs/media-generation-provider-setup.md](packages/docs/media-generation-provider-setup.md)** — Fal, ElevenLabs, Suno-compatible music, low-latency TTS candidates, pricing, and storage setup.
 - **[CHANGELOG.md](CHANGELOG.md)** — Engineering changelog (Keep a Changelog style).
 - **[packages/docs/ROADMAP.md](packages/docs/ROADMAP.md)** — Product direction and rationale; “Done” links to the above where relevant.
 

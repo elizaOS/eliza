@@ -35,6 +35,10 @@ export type LinkedAccountFlagsConfig = Record<string, LinkedAccountFlagConfig>;
 export type LinkedAccountProviderId =
   | "anthropic-subscription"
   | "openai-codex"
+  | "gemini-cli"
+  | "zai-coding"
+  | "kimi-coding"
+  | "deepseek-coding"
   | "anthropic-api"
   | "openai-api"
   | "deepseek-api"
@@ -377,6 +381,10 @@ export function isLinkedAccountProviderId(
   return (
     value === "anthropic-subscription" ||
     value === "openai-codex" ||
+    value === "gemini-cli" ||
+    value === "zai-coding" ||
+    value === "kimi-coding" ||
+    value === "deepseek-coding" ||
     value === "anthropic-api" ||
     value === "openai-api" ||
     value === "deepseek-api" ||

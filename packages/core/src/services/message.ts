@@ -76,6 +76,11 @@ import {
 	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../runtime/planner-loop";
+import {
+	type ResponseHandlerEvaluator,
+	type ResponseHandlerPatch,
+	runResponseHandlerEvaluators,
+} from "../runtime/response-handler-evaluators";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import {
@@ -1993,49 +1998,31 @@ function contextAvailableForRepair(
 	);
 }
 
-function appendStage1PlanHints(
-	messageHandler: MessageHandlerResult,
-	args: {
-		contexts?: readonly AgentContext[];
-		candidateActions?: readonly string[];
-		parentActionHints?: readonly string[];
+function addRepairPlanToPatch(
+	patch: {
+		setContexts?: AgentContext[];
+		addContexts: AgentContext[];
+		addCandidateActions: string[];
+		addParentActionHints: string[];
 	},
+	repair: {
+		contexts: AgentContext[];
+		candidateActions: string[];
+		parentActionHints: string[];
+	},
+	mode: "replace-contexts" | "add-contexts",
 ): void {
-	if (args.contexts?.length) {
-		messageHandler.plan.contexts = mergeAgentContexts(
-			messageHandler.plan.contexts.filter((context) => context !== "simple"),
-			args.contexts,
-		);
+	if (mode === "replace-contexts") {
+		patch.setContexts = mergeAgentContexts([], repair.contexts);
+	} else {
+		patch.addContexts = mergeAgentContexts(patch.addContexts, repair.contexts);
 	}
-	if (args.candidateActions?.length) {
-		messageHandler.plan.candidateActions = [
-			...new Set([
-				...getMessageHandlerCandidateActions(messageHandler),
-				...args.candidateActions,
-			]),
-		];
-	}
-	if (args.parentActionHints?.length) {
-		messageHandler.plan.parentActionHints = [
-			...new Set([
-				...getMessageHandlerParentActionHints(messageHandler),
-				...args.parentActionHints,
-			]),
-		];
-	}
-	messageHandler.plan.requiresTool = true;
-	messageHandler.plan.simple = false;
-	delete messageHandler.plan.reply;
-}
-
-function replaceStage1PlanContexts(
-	messageHandler: MessageHandlerResult,
-	contexts: readonly AgentContext[],
-): void {
-	messageHandler.plan.contexts = mergeAgentContexts([], contexts);
-	messageHandler.plan.requiresTool = true;
-	messageHandler.plan.simple = false;
-	delete messageHandler.plan.reply;
+	patch.addCandidateActions = [
+		...new Set([...patch.addCandidateActions, ...repair.candidateActions]),
+	];
+	patch.addParentActionHints = [
+		...new Set([...patch.addParentActionHints, ...repair.parentActionHints]),
+	];
 }
 
 function getStage1OwnerPreferenceRepairPlan(args: {
@@ -2083,7 +2070,7 @@ function getStage1OwnerPreferenceRepairPlan(args: {
 					"store_preference",
 				]
 			: ["store_preference", "save_owner_profile"],
-		parentActionHints: ["PROFILE"],
+		parentActionHints: ["PROFILE", "DOCUMENT"],
 	};
 }
 
@@ -2381,99 +2368,41 @@ function buildFallbackStage1PlanForKnownToolRequest(args: {
 	};
 }
 
-function repairStage1PlanForKnownToolRequests(args: {
+function buildKnownToolRequestResponseHandlerPatch(args: {
 	message: Memory;
-	messageHandler: MessageHandlerResult;
 	availableContexts: readonly ContextDefinition[];
-}): void {
+}): ResponseHandlerPatch | null {
 	const text = (getUserMessageText(args.message) ?? "").trim();
 	if (!text) {
-		return;
+		return null;
 	}
 
 	const lower = text.toLowerCase();
-	const approvalResolutionRepair = getStage1ApprovalResolutionRepairPlan({
-		message: args.message,
-		availableContexts: args.availableContexts,
-	});
-	if (approvalResolutionRepair) {
-		replaceStage1PlanContexts(
-			args.messageHandler,
-			approvalResolutionRepair.contexts,
-		);
-		appendStage1PlanHints(args.messageHandler, {
-			candidateActions: approvalResolutionRepair.candidateActions,
-			parentActionHints: approvalResolutionRepair.parentActionHints,
-		});
-	}
+	const patch = {
+		setContexts: undefined as AgentContext[] | undefined,
+		addContexts: [] as AgentContext[],
+		addCandidateActions: [] as string[],
+		addParentActionHints: [] as string[],
+	};
 
-	const passwordManagerRepair = getStage1PasswordManagerRepairPlan({
-		message: args.message,
-		availableContexts: args.availableContexts,
-	});
-	if (passwordManagerRepair) {
-		replaceStage1PlanContexts(
-			args.messageHandler,
-			passwordManagerRepair.contexts,
-		);
-		appendStage1PlanHints(args.messageHandler, {
-			candidateActions: passwordManagerRepair.candidateActions,
-			parentActionHints: passwordManagerRepair.parentActionHints,
-		});
-	}
-
-	const checkinRepair = getStage1CheckinRepairPlan({
-		message: args.message,
-		availableContexts: args.availableContexts,
-	});
-	if (checkinRepair) {
-		replaceStage1PlanContexts(args.messageHandler, checkinRepair.contexts);
-		appendStage1PlanHints(args.messageHandler, {
-			candidateActions: checkinRepair.candidateActions,
-			parentActionHints: checkinRepair.parentActionHints,
-		});
-	}
-
-	const calendarSignatureRepair = getStage1CalendarSignatureDeadlineRepairPlan({
-		message: args.message,
-		availableContexts: args.availableContexts,
-	});
-	if (calendarSignatureRepair) {
-		replaceStage1PlanContexts(
-			args.messageHandler,
-			calendarSignatureRepair.contexts,
-		);
-		appendStage1PlanHints(args.messageHandler, {
-			candidateActions: calendarSignatureRepair.candidateActions,
-			parentActionHints: calendarSignatureRepair.parentActionHints,
-		});
-	}
-
-	const calendarTravelRepair = getStage1CalendarTravelRepairPlan({
-		message: args.message,
-		availableContexts: args.availableContexts,
-	});
-	if (calendarTravelRepair) {
-		replaceStage1PlanContexts(
-			args.messageHandler,
-			calendarTravelRepair.contexts,
-		);
-		appendStage1PlanHints(args.messageHandler, {
-			candidateActions: calendarTravelRepair.candidateActions,
-			parentActionHints: calendarTravelRepair.parentActionHints,
-		});
-	}
-
-	const calendlyRepair = getStage1CalendlyRepairPlan({
-		message: args.message,
-		availableContexts: args.availableContexts,
-	});
-	if (calendlyRepair) {
-		replaceStage1PlanContexts(args.messageHandler, calendlyRepair.contexts);
-		appendStage1PlanHints(args.messageHandler, {
-			candidateActions: calendlyRepair.candidateActions,
-			parentActionHints: calendlyRepair.parentActionHints,
-		});
+	const replaceRepairs = [
+		getStage1ApprovalResolutionRepairPlan(args),
+		getStage1PasswordManagerRepairPlan(args),
+		getStage1CheckinRepairPlan(args),
+		getStage1CalendarSignatureDeadlineRepairPlan(args),
+		getStage1CalendarTravelRepairPlan(args),
+		getStage1CalendlyRepairPlan(args),
+	].filter(
+		(
+			repair,
+		): repair is {
+			contexts: AgentContext[];
+			candidateActions: string[];
+			parentActionHints: string[];
+		} => repair !== null,
+	);
+	for (const repair of replaceRepairs) {
+		addRepairPlanToPatch(patch, repair, "replace-contexts");
 	}
 
 	const targetLookupReplyIntent =
@@ -2493,26 +2422,20 @@ function repairStage1PlanForKnownToolRequests(args: {
 		).filter((context) =>
 			contextAvailableForRepair(context, args.availableContexts),
 		);
-		appendStage1PlanHints(args.messageHandler, {
-			contexts,
-			candidateActions: ["draft_reply", "message_draft_reply", "send_email"],
-			parentActionHints: ["MESSAGE"],
-		});
+		addRepairPlanToPatch(
+			patch,
+			{
+				contexts,
+				candidateActions: ["draft_reply", "message_draft_reply", "send_email"],
+				parentActionHints: ["MESSAGE"],
+			},
+			"add-contexts",
+		);
 	}
 
-	const ownerPreferenceRepair = getStage1OwnerPreferenceRepairPlan({
-		message: args.message,
-		availableContexts: args.availableContexts,
-	});
+	const ownerPreferenceRepair = getStage1OwnerPreferenceRepairPlan(args);
 	if (ownerPreferenceRepair) {
-		replaceStage1PlanContexts(
-			args.messageHandler,
-			ownerPreferenceRepair.contexts,
-		);
-		appendStage1PlanHints(args.messageHandler, {
-			candidateActions: ownerPreferenceRepair.candidateActions,
-			parentActionHints: ownerPreferenceRepair.parentActionHints,
-		});
+		addRepairPlanToPatch(patch, ownerPreferenceRepair, "replace-contexts");
 	}
 
 	const desktopScreenshotIntent =
@@ -2526,13 +2449,58 @@ function repairStage1PlanForKnownToolRequests(args: {
 		const contexts = (["browser", "automation"] as AgentContext[]).filter(
 			(context) => contextAvailableForRepair(context, args.availableContexts),
 		);
-		appendStage1PlanHints(args.messageHandler, {
-			contexts,
-			candidateActions: ["take_screenshot", "capture_screen"],
-			parentActionHints: ["COMPUTER_USE"],
-		});
+		addRepairPlanToPatch(
+			patch,
+			{
+				contexts,
+				candidateActions: ["take_screenshot", "capture_screen"],
+				parentActionHints: ["COMPUTER_USE"],
+			},
+			"add-contexts",
+		);
 	}
+
+	if (
+		!patch.setContexts &&
+		patch.addContexts.length === 0 &&
+		patch.addCandidateActions.length === 0 &&
+		patch.addParentActionHints.length === 0
+	) {
+		return null;
+	}
+
+	return {
+		requiresTool: true,
+		simple: false,
+		clearReply: true,
+		...(patch.setContexts ? { setContexts: patch.setContexts } : {}),
+		...(patch.addContexts.length > 0 ? { addContexts: patch.addContexts } : {}),
+		...(patch.addCandidateActions.length > 0
+			? { addCandidateActions: patch.addCandidateActions }
+			: {}),
+		...(patch.addParentActionHints.length > 0
+			? { addParentActionHints: patch.addParentActionHints }
+			: {}),
+		debug: ["known tool request repair"],
+	};
 }
+
+const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
+	[
+		{
+			name: "core.known_tool_request_repair",
+			description:
+				"Deterministically repairs Stage 1 routing for explicit known tool requests.",
+			priority: 20,
+			shouldRun: ({ message }) =>
+				Boolean((getUserMessageText(message) ?? "").trim()),
+			evaluate: ({ message, availableContexts }) =>
+				buildKnownToolRequestResponseHandlerPatch({
+					message,
+					availableContexts,
+				}) ?? undefined,
+		},
+	];
 
 async function generateDirectReplyOnce(args: {
 	runtime: IAgentRuntime;
@@ -2934,6 +2902,7 @@ function stringParam(value: unknown): string | undefined {
 }
 
 type PlannerLifeAliasDefaults = {
+	action?: string;
 	subaction?: string;
 	kind?: "definition" | "goal";
 	definitionKind?: "task" | "habit" | "routine";
@@ -3030,7 +2999,7 @@ function buildNormalizedLifePlannerParams(args: {
 		!Array.isArray(params.details)
 			? (params.details as Record<string, unknown>)
 			: {};
-	const rawSubaction = params.subaction;
+	const rawSubaction = params.action ?? params.subaction;
 	const rawKind = params.kind;
 	const definitionKind =
 		normalizedLifeDefinitionKind(rawKind) ??
@@ -3042,7 +3011,9 @@ function buildNormalizedLifePlannerParams(args: {
 		args.defaults?.kind ??
 		(definitionKind ? "definition" : undefined);
 	const subaction =
-		args.defaults?.subaction ?? normalizedLifeSubaction(rawSubaction);
+		args.defaults?.action ??
+		args.defaults?.subaction ??
+		normalizedLifeSubaction(rawSubaction);
 	const title = firstStringParam(params, [
 		"title",
 		"name",
@@ -3091,7 +3062,7 @@ function buildNormalizedLifePlannerParams(args: {
 	}
 
 	return {
-		...(subaction ? { subaction } : {}),
+		...(subaction ? { action: subaction, subaction } : {}),
 		...(topLevelKind ? { kind: topLevelKind } : {}),
 		...(intent ? { intent } : {}),
 		...(title ? { title } : {}),
@@ -3485,16 +3456,21 @@ function inferPostSearchQuery(message: Memory): string | undefined {
 	);
 }
 
-function normalizeWebsiteBlockPlannerParams(
+function normalizeBlockPlannerParams(
 	toolCall: PlannerToolCall,
 	message: Memory,
+	target: "website" | "app",
 ): Record<string, unknown> {
 	const params =
 		toolCall.params && typeof toolCall.params === "object"
 			? (toolCall.params as Record<string, unknown>)
 			: {};
 	return {
-		subaction: "block",
+		action:
+			stringParam(params.action) ?? stringParam(params.subaction) ?? "block",
+		subaction:
+			stringParam(params.action) ?? stringParam(params.subaction) ?? "block",
+		target,
 		intent: stringParam(params.intent) ?? getUserMessageText(message),
 		...(Array.isArray(params.hostnames) || typeof params.hostnames === "string"
 			? { hostnames: params.hostnames }
@@ -3521,7 +3497,8 @@ function normalizePostPlannerParams(
 		toolCall.params && typeof toolCall.params === "object"
 			? (toolCall.params as Record<string, unknown>)
 			: {};
-	const rawSubaction = stringParam(params.subaction);
+	const rawSubaction =
+		stringParam(params.action) ?? stringParam(params.subaction);
 	const source = stringParam(params.source);
 	const op = /^(?:timeline|feed|read|read_feed|get_timeline|get_feed)$/i.test(
 		rawSubaction ?? "",
@@ -3529,9 +3506,11 @@ function normalizePostPlannerParams(
 		? "read"
 		: /^(?:search|search_twitter|x_search)$/i.test(rawSubaction ?? "")
 			? "search"
-			: (stringParam(params.op) ?? stringParam(params.operation));
+			: (stringParam(params.action) ??
+				stringParam(params.op) ??
+				stringParam(params.operation));
 	return {
-		...(op ? { op } : {}),
+		...(op ? { action: op, subaction: op, op } : {}),
 		...(source
 			? { source: source === "twitter" ? "x" : source }
 			: messageTextMatches(message, /\b(?:x|twitter)\b/)
@@ -3561,6 +3540,7 @@ function normalizeMessagePlannerParams(
 			? (toolCall.params as Record<string, unknown>)
 			: {};
 	const rawOperation =
+		stringParam(params.action) ??
 		stringParam(params.operation) ??
 		stringParam(params.subaction) ??
 		stringParam(params.subAction) ??
@@ -3632,7 +3612,11 @@ function normalizeMessagePlannerParams(
 						: undefined;
 	return {
 		...((inferredOperation ?? operation)
-			? { operation: inferredOperation ?? operation }
+			? {
+					action: inferredOperation ?? operation,
+					operation: inferredOperation ?? operation,
+					subaction: inferredOperation ?? operation,
+				}
 			: {}),
 		...(source
 			? { source: source === "twitter" ? "x" : source }
@@ -3679,6 +3663,7 @@ function normalizeResolveRequestPlannerParams(
 		? "reject"
 		: "approve";
 	return {
+		action: subaction,
 		subaction,
 		...(stringParam(params.requestId) ? { requestId: params.requestId } : {}),
 		...(stringParam(params.reason) ? { reason: params.reason } : {}),
@@ -3712,6 +3697,7 @@ function normalizePasswordManagerPlannerParams(
 		stringParam(params.domain) ??
 		getUserMessageText(message);
 	return {
+		action: subaction,
 		subaction,
 		...(query ? { query, intent: query } : {}),
 		...(stringParam(params.itemId) ? { itemId: params.itemId } : {}),
@@ -3736,7 +3722,10 @@ function normalizeAutofillPlannerParams(
 		stringParam(params.website) ??
 		/\b([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/i.exec(text)?.[1];
 	return {
-		subaction: stringParam(params.subaction) ?? "fill",
+		action:
+			stringParam(params.action) ?? stringParam(params.subaction) ?? "fill",
+		subaction:
+			stringParam(params.action) ?? stringParam(params.subaction) ?? "fill",
 		field: stringParam(params.field) ?? "password",
 		...(domain
 			? {
@@ -3747,18 +3736,49 @@ function normalizeAutofillPlannerParams(
 	};
 }
 
+const OWNER_SURFACE_ACTIONS = new Set(
+	[
+		"OWNER_TODOS",
+		"OWNER_REMINDERS",
+		"OWNER_ALARMS",
+		"OWNER_ROUTINES",
+		"OWNER_GOALS",
+	].map(normalizeActionIdentifier),
+);
+
+function normalizePersonalAssistantPlannerParams(
+	toolCall: PlannerToolCall,
+): Record<string, unknown> {
+	const params =
+		toolCall.params && typeof toolCall.params === "object"
+			? (toolCall.params as Record<string, unknown>)
+			: {};
+	const raw =
+		`${toolCall.name} ${stringParam(params.action) ?? ""}`.toLowerCase();
+	const action = /\bschedul/.test(raw) ? "scheduling" : "book_travel";
+	return { ...params, action };
+}
+
 function normalizeAliasedPlannerToolCall(
 	toolCall: PlannerToolCall,
 	resolvedName: string,
 	message: Memory,
 ): PlannerToolCall {
 	const normalizedResolvedName = normalizeActionIdentifier(resolvedName);
-	if (normalizedResolvedName !== normalizeActionIdentifier("LIFE")) {
-		if (normalizedResolvedName === normalizeActionIdentifier("WEBSITE_BLOCK")) {
+	if (
+		normalizedResolvedName !== normalizeActionIdentifier("LIFE") &&
+		!OWNER_SURFACE_ACTIONS.has(normalizedResolvedName)
+	) {
+		if (normalizedResolvedName === normalizeActionIdentifier("BLOCK")) {
+			const originalName = normalizeActionIdentifier(toolCall.name);
+			const target =
+				originalName.includes("APP") || originalName.includes("PHONE")
+					? "app"
+					: "website";
 			return {
 				...toolCall,
 				name: resolvedName,
-				params: normalizeWebsiteBlockPlannerParams(toolCall, message),
+				params: normalizeBlockPlannerParams(toolCall, message, target),
 			};
 		}
 		if (normalizedResolvedName === normalizeActionIdentifier("POST")) {
@@ -3784,24 +3804,28 @@ function normalizeAliasedPlannerToolCall(
 				params: normalizeResolveRequestPlannerParams(toolCall, message),
 			};
 		}
+		if (normalizedResolvedName === normalizeActionIdentifier("CREDENTIALS")) {
+			const originalName = normalizeActionIdentifier(toolCall.name);
+			const params =
+				originalName.includes("AUTOFILL") ||
+				originalName.includes("LOGIN") ||
+				originalName.includes("FILL")
+					? normalizeAutofillPlannerParams(toolCall, message)
+					: normalizePasswordManagerPlannerParams(toolCall, message);
+			return {
+				...toolCall,
+				name: resolvedName,
+				params,
+			};
+		}
 		if (
-			normalizedResolvedName === normalizeActionIdentifier("PASSWORD_MANAGER")
+			normalizedResolvedName === normalizeActionIdentifier("PERSONAL_ASSISTANT")
 		) {
 			return {
 				...toolCall,
 				name: resolvedName,
-				params: normalizePasswordManagerPlannerParams(toolCall, message),
+				params: normalizePersonalAssistantPlannerParams(toolCall),
 			};
-		}
-		if (normalizedResolvedName === normalizeActionIdentifier("AUTOFILL")) {
-			return {
-				...toolCall,
-				name: resolvedName,
-				params: normalizeAutofillPlannerParams(toolCall, message),
-			};
-		}
-		if (normalizedResolvedName === normalizeActionIdentifier("BOOK_TRAVEL")) {
-			return { ...toolCall, name: resolvedName, params: {} };
 		}
 		if (
 			normalizeActionIdentifier(toolCall.name) ===
@@ -3823,7 +3847,9 @@ function normalizeAliasedPlannerToolCall(
 
 	const defaults =
 		normalizedPlannerAliasDefaults(toolCall.name) ??
-		normalizedLifeSubactionDefaults(toolCall.params?.subaction);
+		normalizedLifeSubactionDefaults(
+			toolCall.params?.action ?? toolCall.params?.subaction,
+		);
 
 	return {
 		...toolCall,
@@ -4290,10 +4316,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			});
 		}
 
-		repairStage1PlanForKnownToolRequests({
+		const responseHandlerEvaluation = await runResponseHandlerEvaluators({
+			runtime: args.runtime,
 			message: args.message,
+			state: args.state,
 			messageHandler,
 			availableContexts,
+			evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 		});
 		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
@@ -4422,6 +4451,16 @@ export async function runV5MessageRuntimeStage1(args: {
 					parentActionHints: getMessageHandlerParentActionHints(messageHandler),
 					...(messageHandler.plan.reply !== undefined
 						? { reply: messageHandler.plan.reply }
+						: {}),
+					...(responseHandlerEvaluation.appliedPatches.length > 0
+						? {
+								responseHandlerPatches:
+									responseHandlerEvaluation.appliedPatches.map((patch) => ({
+										evaluatorName: patch.evaluatorName,
+										changed: patch.changed,
+										debug: patch.debug,
+									})),
+							}
 						: {}),
 					actionSurface: actionSurface.summary,
 				} as JsonValue,
@@ -4976,13 +5015,16 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SCHEDULE_RECURRING_EVENT", "CALENDAR"],
 		["SCHEDULE_RECURRING_MEETING", "CALENDAR"],
 		["SCHEDULE_RECURRING", "CALENDAR"],
-		["BOOK_TRAVEL_ACTION", "VOICE_CALL"],
-		["CAPTURE_TRAVEL_PREFERENCES", "PROFILE"],
-		["CAPTURE_BOOKING_PREFERENCES", "PROFILE"],
-		["CREATE_TRAVEL_PREFERENCES", "PROFILE"],
-		["SET_PREFERENCES", "PROFILE"],
-		["SET_TRAVEL_PREFERENCES", "PROFILE"],
-		["CREATE_FOLLOWUP", "RELATIONSHIP"],
+		["BOOK_TRAVEL_ACTION", "PERSONAL_ASSISTANT"],
+		["BOOK_TRAVEL", "PERSONAL_ASSISTANT"],
+		["SCHEDULING_NEGOTIATION", "PERSONAL_ASSISTANT"],
+		["CAPTURE_TRAVEL_PREFERENCES", "REPLY"],
+		["CAPTURE_BOOKING_PREFERENCES", "REPLY"],
+		["CREATE_TRAVEL_PREFERENCES", "REPLY"],
+		["SET_PREFERENCES", "REPLY"],
+		["SET_TRAVEL_PREFERENCES", "REPLY"],
+		["PROFILE", "REPLY"],
+		["CREATE_FOLLOWUP", "SCHEDULED_TASKS"],
 		["GET_PENDING_ASSETS", "MESSAGE"],
 		["GET_PENDING_ITEMS", "MESSAGE"],
 		["EVENT_ASSET_CHECKLIST", "MESSAGE"],
@@ -5028,59 +5070,59 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SUMMARISE_UNREAD_EMAILS", "MESSAGE"],
 		["UNREAD_EMAIL_SUMMARY", "MESSAGE"],
 		["READ_UNREAD_EMAILS", "MESSAGE"],
-		["ADD_TODO", "LIFE"],
-		["CREATE_TODO", "LIFE"],
-		["TODO_ADD", "LIFE"],
-		["TODO_CREATE", "LIFE"],
-		["TODOS_ADD", "LIFE"],
-		["TODOS_CREATE", "LIFE"],
-		["TASK_ADD", "LIFE"],
-		["TASK_CREATE", "LIFE"],
-		["ADD_TASK", "LIFE"],
-		["CREATE_TASK", "LIFE"],
-		["TASKS_ADD_TODO", "LIFE"],
-		["TASKS_CREATE_TODO", "LIFE"],
-		["TASKS_CREATE_REMINDER", "LIFE"],
-		["LIST_TODOS", "LIFE"],
-		["GET_TODOS", "LIFE"],
-		["TODO_LIST", "LIFE"],
-		["TODO_LIST_TODAY", "LIFE"],
-		["TODOS_LIST", "LIFE"],
-		["TODO_GET", "LIFE"],
-		["TODOS_GET", "LIFE"],
-		["TODOS_REVIEW", "LIFE"],
-		["TASK_LIST", "LIFE"],
-		["TASK_LIST_TODAY", "LIFE"],
-		["TASKS_REVIEW", "LIFE"],
-		["TASKS_LIST_TODAY", "LIFE"],
-		["TASKS_LIST_TODOS", "LIFE"],
-		["LIST_TASKS", "LIFE"],
-		["LIFE_GET_TODOS", "LIFE"],
-		["LIFE_TODO", "LIFE"],
-		["ADD_HABIT", "LIFE"],
-		["CREATE_HABIT", "LIFE"],
-		["LIST_HABITS", "LIFE"],
-		["ADD_GOAL", "LIFE"],
-		["CREATE_GOAL", "LIFE"],
-		["TASKS_SET_GOAL", "LIFE"],
-		["SET_GOAL", "LIFE"],
-		["CREATE_REMINDER", "LIFE"],
-		["SET_REMINDER_RULE", "LIFE"],
-		["CHECK_IN", "CHECKIN"],
-		["LIFE_CHECK_IN", "CHECKIN"],
-		["MORNING_CHECKIN", "CHECKIN"],
-		["MORNING_CHECK_IN", "CHECKIN"],
-		["NIGHT_CHECKIN", "CHECKIN"],
-		["NIGHT_CHECK_IN", "CHECKIN"],
-		["RUN_CHECKIN", "CHECKIN"],
-		["RUN_MORNING_CHECKIN", "CHECKIN"],
-		["RUN_NIGHT_CHECKIN", "CHECKIN"],
-		["AUTOMATION_RUN", "CHECKIN"],
-		["DAILY_BRIEF", "CHECKIN"],
-		["MEMORY_SET", "PROFILE"],
-		["MEMORY_WRITE", "PROFILE"],
-		["REMEMBER_PREFERENCES", "PROFILE"],
-		["CREATE_PREFERENCE_PROFILE", "PROFILE"],
+		["ADD_TODO", "OWNER_TODOS"],
+		["CREATE_TODO", "OWNER_TODOS"],
+		["TODO_ADD", "OWNER_TODOS"],
+		["TODO_CREATE", "OWNER_TODOS"],
+		["TODOS_ADD", "OWNER_TODOS"],
+		["TODOS_CREATE", "OWNER_TODOS"],
+		["TASK_ADD", "OWNER_TODOS"],
+		["TASK_CREATE", "OWNER_TODOS"],
+		["ADD_TASK", "OWNER_TODOS"],
+		["CREATE_TASK", "OWNER_TODOS"],
+		["TASKS_ADD_TODO", "OWNER_TODOS"],
+		["TASKS_CREATE_TODO", "OWNER_TODOS"],
+		["TASKS_CREATE_REMINDER", "OWNER_REMINDERS"],
+		["LIST_TODOS", "OWNER_TODOS"],
+		["GET_TODOS", "OWNER_TODOS"],
+		["TODO_LIST", "OWNER_TODOS"],
+		["TODO_LIST_TODAY", "OWNER_TODOS"],
+		["TODOS_LIST", "OWNER_TODOS"],
+		["TODO_GET", "OWNER_TODOS"],
+		["TODOS_GET", "OWNER_TODOS"],
+		["TODOS_REVIEW", "OWNER_TODOS"],
+		["TASK_LIST", "OWNER_TODOS"],
+		["TASK_LIST_TODAY", "OWNER_TODOS"],
+		["TASKS_REVIEW", "OWNER_TODOS"],
+		["TASKS_LIST_TODAY", "OWNER_TODOS"],
+		["TASKS_LIST_TODOS", "OWNER_TODOS"],
+		["LIST_TASKS", "OWNER_TODOS"],
+		["LIFE_GET_TODOS", "OWNER_TODOS"],
+		["LIFE_TODO", "OWNER_TODOS"],
+		["ADD_HABIT", "OWNER_ROUTINES"],
+		["CREATE_HABIT", "OWNER_ROUTINES"],
+		["LIST_HABITS", "OWNER_ROUTINES"],
+		["ADD_GOAL", "OWNER_GOALS"],
+		["CREATE_GOAL", "OWNER_GOALS"],
+		["TASKS_SET_GOAL", "OWNER_GOALS"],
+		["SET_GOAL", "OWNER_GOALS"],
+		["CREATE_REMINDER", "OWNER_REMINDERS"],
+		["SET_REMINDER_RULE", "OWNER_REMINDERS"],
+		["CHECK_IN", "REPLY"],
+		["LIFE_CHECK_IN", "REPLY"],
+		["MORNING_CHECKIN", "REPLY"],
+		["MORNING_CHECK_IN", "REPLY"],
+		["NIGHT_CHECKIN", "REPLY"],
+		["NIGHT_CHECK_IN", "REPLY"],
+		["RUN_CHECKIN", "REPLY"],
+		["RUN_MORNING_CHECKIN", "REPLY"],
+		["RUN_NIGHT_CHECKIN", "REPLY"],
+		["AUTOMATION_RUN", "REPLY"],
+		["DAILY_BRIEF", "REPLY"],
+		["MEMORY_SET", "REPLY"],
+		["MEMORY_WRITE", "REPLY"],
+		["REMEMBER_PREFERENCES", "REPLY"],
+		["CREATE_PREFERENCE_PROFILE", "REPLY"],
 		["FLAG_CONFLICT", "CALENDAR"],
 		["CHECK_FLIGHT_CONFLICT", "CALENDAR"],
 		["FLIGHT_CONFLICT_REBOOKING", "CALENDAR"],
@@ -5092,14 +5134,16 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["CALENDLY_AVAILABILITY", "CALENDAR"],
 		["CALENDLY_SINGLE_USE_LINK", "CALENDAR"],
 		["CALENDAR_CHECK_AVAILABILITY", "CALENDAR"],
-		["BLOCK_WEBSITE", "WEBSITE_BLOCK"],
-		["WEBSITE_BLOCKER", "WEBSITE_BLOCK"],
-		["AUTOMATION_FOCUS_BLOCK", "WEBSITE_BLOCK"],
-		["FOCUS_BLOCK", "WEBSITE_BLOCK"],
-		["SET_APP_BLOCK", "APP_BLOCK"],
-		["PHONE_SET_APP_BLOCK", "APP_BLOCK"],
-		["PHONE_BLOCK_APPS", "APP_BLOCK"],
-		["BLOCK_APPS", "APP_BLOCK"],
+		["BLOCK_WEBSITE", "BLOCK"],
+		["WEBSITE_BLOCKER", "BLOCK"],
+		["WEBSITE_BLOCK", "BLOCK"],
+		["AUTOMATION_FOCUS_BLOCK", "BLOCK"],
+		["FOCUS_BLOCK", "BLOCK"],
+		["SET_APP_BLOCK", "BLOCK"],
+		["PHONE_SET_APP_BLOCK", "BLOCK"],
+		["PHONE_BLOCK_APPS", "BLOCK"],
+		["APP_BLOCK", "BLOCK"],
+		["BLOCK_APPS", "BLOCK"],
 		["ADMIN_REJECT_APPROVAL", "RESOLVE_REQUEST"],
 		["REJECT_APPROVAL", "RESOLVE_REQUEST"],
 		["DENY_APPROVAL", "RESOLVE_REQUEST"],
@@ -8090,7 +8134,42 @@ export class DefaultMessageService implements IMessageService {
 			setTranslatedUserText,
 		});
 
-		if (hasTextGenerationHandler(runtime)) {
+		const directLifeOpsResult = await (
+			runtime as IAgentRuntime & {
+				lifeOpsDirectMessageHook?: {
+					handleMessageRequest?: (args: {
+						runtime: IAgentRuntime;
+						message: Memory;
+						state: State;
+					}) => Promise<ActionResult | null | undefined>;
+				};
+			}
+		).lifeOpsDirectMessageHook?.handleMessageRequest?.({
+			runtime,
+			message,
+			state,
+		});
+		if (directLifeOpsResult) {
+			const directText =
+				typeof directLifeOpsResult.text === "string" &&
+				directLifeOpsResult.text.trim().length > 0
+					? directLifeOpsResult.text.trim()
+					: directLifeOpsResult.success
+						? "Done."
+						: "I couldn't complete that LifeOps request.";
+			strategyResult = createV5ReplyStrategyResult({
+				runtime,
+				message,
+				state,
+				responseId,
+				text: directText,
+				thought: "LifeOps direct workflow hook handled this request.",
+				mode: "simple",
+			});
+			_usedV5Runtime = true;
+		}
+
+		if (!strategyResult && hasTextGenerationHandler(runtime)) {
 			if (isAutonomous) {
 				runtime.logger.debug(
 					{ src: "service:message", autonomyMode },

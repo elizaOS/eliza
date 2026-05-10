@@ -15,22 +15,23 @@ These demos are intentionally **sandboxed**:
 - **Default command allowlist**: the examples only allow a small set of basic commands (you can expand it).
 - **Kill switch**: create a `STOP` file inside the sandbox directory to stop the loop.
 
-## Model setup (Qwen3-4B GGUF)
+## Model Setup (Eliza-1 GGUF)
 
-Download a small GGUF model file (e.g. Qwen3-4B quantized) and place it in your models directory.
+Download the Eliza-1 mobile GGUF and place it in your models directory.
 
-- Model repo (choose a GGUF file you want): [`Qwen/Qwen3-4B-GGUF`](https://huggingface.co/Qwen/Qwen3-4B-GGUF)
+- Model repo: [`elizalabs/eliza-1-mobile-1_7b`](https://huggingface.co/elizalabs/eliza-1-mobile-1_7b)
+- GGUF file: `text/eliza-1-mobile-1_7b-32k.gguf`
 
 Then set:
 
 ```bash
 export MODELS_DIR="$HOME/.eliza/models"
-export LOCAL_SMALL_MODEL="YOUR_MODEL_FILE.gguf"
+export LOCAL_SMALL_MODEL="eliza-1-mobile-1_7b-32k.gguf"
 ```
 
 Notes:
 
-- The TypeScript `plugin-local-ai` implementation can auto-download its **default** models, but to use **a custom model** (like Qwen3) you should **pre-download** it and set `LOCAL_SMALL_MODEL` to the exact filename.
+- The TypeScript `plugin-local-ai` implementation can auto-download its **default** models. For this example, pre-download the Eliza-1 mobile GGUF and set `LOCAL_SMALL_MODEL` to the exact filename.
 - Python and Rust examples expect the GGUF file to already exist (no auto-download).
 
 ## Shell sandbox setup
@@ -79,4 +80,3 @@ python autonomous.py
 cd examples/autonomous/rust/autonomous
 cargo run --release
 ```
-

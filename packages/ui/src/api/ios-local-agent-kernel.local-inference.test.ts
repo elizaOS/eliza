@@ -203,7 +203,7 @@ describe("iOS local-agent local inference flow", () => {
     vi.clearAllMocks();
   });
 
-  it("answers with local model download status while queueing target and DFlash drafter", async () => {
+  it("answers with local model download status while queueing the recommended target", async () => {
     const downloadModel = vi.fn(async (_url: string, filename: string) => ({
       path: `/models/${filename}`,
     }));
@@ -225,82 +225,119 @@ describe("iOS local-agent local inference flow", () => {
 
     expect(reply.localInference).toMatchObject({
       status: "downloading",
-      modelId: "qwen3.5-4b-dflash",
+      modelId: "eliza-1-mobile-1_7b",
     });
     expect(reply.text.toLowerCase()).toContain("downloading");
 
     await eventually(() => {
       const filenames = downloadModel.mock.calls.map((call) => call[1]);
-      expect(filenames).toContain("qwen3.5-4b-dflash.gguf");
-      expect(filenames).toContain("qwen3.5-4b-dflash-drafter-q4.gguf");
+      expect(filenames).toContain("eliza-1-mobile-1_7b.gguf");
     });
   }, 30_000);
 
-  it("passes DFlash drafter options into the native iOS load call when companion is installed", async () => {
+  it("warns from greeting when the default local model still needs download", async () => {
+    const kernel = await loadKernel();
+
+    const created = (await jsonRequest(kernel, "POST", "/api/conversations", {
+      title: "Greeting test",
+    })) as { conversation: { id: string } };
+
+    const greeting = (await jsonRequest(
+      kernel,
+      "POST",
+      `/api/conversations/${created.conversation.id}/greeting`,
+    )) as {
+      text: string;
+      localInference?: { status?: string; modelId?: string | null };
+    };
+
+    expect(greeting.text).not.toContain("I'm running locally on this device.");
+    expect(greeting.text.toLowerCase()).toContain("downloading");
+    expect(greeting.localInference).toMatchObject({
+      status: "downloading",
+      modelId: "eliza-1-mobile-1_7b",
+    });
+  });
+
+  it("uses a simulator RAM fallback when native hardware omits memory", async () => {
+    const kernel = await loadKernel({
+      hardware: {
+        totalRamGb: undefined,
+        availableRamGb: undefined,
+        isSimulator: true,
+      },
+    });
+
+    const created = (await jsonRequest(kernel, "POST", "/api/conversations", {
+      title: "Simulator memory fallback",
+    })) as { conversation: { id: string } };
+
+    const reply = (await jsonRequest(
+      kernel,
+      "POST",
+      `/api/conversations/${created.conversation.id}/messages`,
+      { text: "download the default local model" },
+    )) as {
+      text: string;
+      localInference?: { status?: string; modelId?: string | null };
+    };
+
+    expect(reply.localInference).toMatchObject({
+      status: "downloading",
+      modelId: "eliza-1-mobile-1_7b",
+    });
+  });
+
+  it("passes mobile load options into the native iOS load call when the recommended model is installed", async () => {
     const load = vi.fn(async (_options: Record<string, unknown>) => undefined);
     const kernel = await loadKernel({
       load,
       availableModels: [
         {
-          name: "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
-          path: "/models/Qwen_Qwen3.5-4B-Q4_K_M.gguf",
-          size: 2_500_000_000,
-        },
-        {
-          name: "Qwen3.5-4B-DFlash-Q4_K_M.gguf",
-          path: "/models/Qwen3.5-4B-DFlash-Q4_K_M.gguf",
-          size: 510_000_000,
+          name: "eliza-1-mobile-1_7b-32k.gguf",
+          path: "/models/eliza-1-mobile-1_7b-32k.gguf",
+          size: 1_200_000_000,
         },
       ],
     });
 
     await jsonRequest(kernel, "POST", "/api/local-inference/active", {
-      modelId: "qwen3.5-4b-dflash",
+      modelId: "eliza-1-mobile-1_7b",
     });
 
     expect(load).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelPath: "/models/Qwen_Qwen3.5-4B-Q4_K_M.gguf",
-        draftModelPath: "/models/Qwen3.5-4B-DFlash-Q4_K_M.gguf",
-        draftContextSize: 256,
-        draftMin: 1,
-        draftMax: 16,
-        mobileSpeculative: true,
-        speculativeSamples: 4,
+        modelPath: "/models/eliza-1-mobile-1_7b-32k.gguf",
+        contextSize: 4096,
         useGpu: true,
       }),
     );
+    expect(load.mock.calls[0]?.[0]).not.toHaveProperty("draftModelPath");
   });
 
-  it("does not pass a drafter to native iOS load when the runtime reports no DFlash support", async () => {
+  it("does not pass a drafter to native iOS load for the current Eliza-1 mobile catalog", async () => {
     const load = vi.fn(async (_options: Record<string, unknown>) => undefined);
     const kernel = await loadKernel({
       load,
       hardware: {
-        dflashSupported: false,
-        dflashReason: "test runtime without DFlash symbols",
+        dflashSupported: true,
       },
       availableModels: [
         {
-          name: "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
-          path: "/models/Qwen_Qwen3.5-4B-Q4_K_M.gguf",
-          size: 2_500_000_000,
-        },
-        {
-          name: "Qwen3.5-4B-DFlash-Q4_K_M.gguf",
-          path: "/models/Qwen3.5-4B-DFlash-Q4_K_M.gguf",
-          size: 510_000_000,
+          name: "eliza-1-mobile-1_7b-32k.gguf",
+          path: "/models/eliza-1-mobile-1_7b-32k.gguf",
+          size: 1_200_000_000,
         },
       ],
     });
 
     await jsonRequest(kernel, "POST", "/api/local-inference/active", {
-      modelId: "qwen3.5-4b-dflash",
+      modelId: "eliza-1-mobile-1_7b",
     });
 
     expect(load).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelPath: "/models/Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+        modelPath: "/models/eliza-1-mobile-1_7b-32k.gguf",
         useGpu: true,
       }),
     );

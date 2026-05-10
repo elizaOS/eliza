@@ -1,11 +1,33 @@
-import { FIRST_RUN_DEFAULT_MODEL_ID, MODEL_CATALOG } from "./catalog";
+import {
+  DEFAULT_ELIGIBLE_MODEL_IDS,
+  type Eliza1TierId,
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  MODEL_CATALOG,
+} from "./catalog";
 import { assessFit } from "./hardware";
+import {
+  type ManifestLoader,
+  type RamBudget,
+  defaultManifestLoader,
+  resolveRamBudget,
+} from "./ram-budget";
 import type {
   CatalogModel,
   HardwareFitLevel,
   HardwareProbe,
+  InstalledModel,
   TextGenerationSlot,
 } from "./types";
+
+// Local tier-id constants derived once from the manifest-driven catalog
+// type so the ladder definitions can't drift from the canonical list.
+// Adding a tier requires extending the manifest module; this file picks
+// it up automatically.
+const TIER_LITE: Eliza1TierId = "eliza-1-lite-0_6b";
+const TIER_MOBILE: Eliza1TierId = "eliza-1-mobile-1_7b";
+const TIER_DESKTOP: Eliza1TierId = "eliza-1-desktop-9b";
+const TIER_PRO: Eliza1TierId = "eliza-1-pro-27b";
+const TIER_SERVER: Eliza1TierId = "eliza-1-server-h200";
 
 export type RecommendationPlatformClass =
   | "mobile"
@@ -27,73 +49,39 @@ export interface RecommendedModelSelection {
 const BYTES_PER_GB = 1024 ** 3;
 
 /**
- * Per-platform slot ladders. Every entry is either a TurboQuant /
- * DFlash-equipped model wired to our fused-kernel runtime, or an
- * `eliza-1` Milady fine-tune placeholder. Ladders bias toward the
- * smallest TBQ/DFlash pair that fits the platform; desktops/servers
- * pick larger DFlash pairs first when memory headroom allows.
+ * Per-platform slot ladders. Every default-recommended entry is an
+ * Eliza-1 tier (the only default-eligible line — see catalog.ts and
+ * `packages/inference/AGENTS.md` §2). Ladders bias toward the smallest
+ * tier that fits the platform; desktops/servers pick larger tiers
+ * first when memory headroom allows.
  */
 const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
-  Record<TextGenerationSlot, string[]>
+  Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
 > = {
   mobile: {
-    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b", "bonsai-8b-1bit-dflash"],
-    TEXT_LARGE: [
-      "qwen3.5-9b-dflash",
-      "qwen3.5-4b-dflash",
-      "bonsai-8b-1bit-dflash",
-      "eliza-1-9b",
-      "eliza-1-2b",
-    ],
+    TEXT_SMALL: [TIER_LITE, TIER_MOBILE],
+    TEXT_LARGE: [TIER_MOBILE, TIER_LITE],
   },
   "apple-silicon": {
-    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b"],
-    TEXT_LARGE: [
-      "qwen3.6-27b-dflash",
-      "qwen3.5-9b-dflash",
-      "qwen3.5-4b-dflash",
-      "eliza-1-27b",
-      "eliza-1-9b",
-    ],
+    TEXT_SMALL: [TIER_MOBILE, TIER_LITE],
+    TEXT_LARGE: [TIER_PRO, TIER_DESKTOP, TIER_MOBILE],
   },
   "linux-gpu": {
-    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b"],
-    TEXT_LARGE: [
-      "qwen3.6-27b-dflash",
-      "qwen3.5-9b-dflash",
-      "qwen3.5-4b-dflash",
-      "eliza-1-27b",
-      "eliza-1-9b",
-    ],
+    TEXT_SMALL: [TIER_MOBILE, TIER_LITE],
+    TEXT_LARGE: [TIER_SERVER, TIER_PRO, TIER_DESKTOP, TIER_MOBILE],
   },
   "linux-cpu": {
-    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b"],
-    TEXT_LARGE: [
-      "qwen3.5-9b-dflash",
-      "qwen3.5-4b-dflash",
-      "eliza-1-9b",
-      "eliza-1-2b",
-    ],
+    TEXT_SMALL: [TIER_MOBILE, TIER_LITE],
+    TEXT_LARGE: [TIER_DESKTOP, TIER_MOBILE],
   },
   "desktop-gpu": {
-    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b"],
-    TEXT_LARGE: [
-      "qwen3.6-27b-dflash",
-      "qwen3.5-9b-dflash",
-      "qwen3.5-4b-dflash",
-      "eliza-1-27b",
-      "eliza-1-9b",
-    ],
+    TEXT_SMALL: [TIER_MOBILE, TIER_LITE],
+    TEXT_LARGE: [TIER_SERVER, TIER_PRO, TIER_DESKTOP, TIER_MOBILE],
   },
   "desktop-cpu": {
-    TEXT_SMALL: ["qwen3.5-4b-dflash", "eliza-1-2b"],
-    TEXT_LARGE: [
-      "qwen3.5-9b-dflash",
-      "qwen3.5-4b-dflash",
-      "eliza-1-9b",
-      "eliza-1-2b",
-    ],
+    TEXT_SMALL: [TIER_MOBILE, TIER_LITE],
+    TEXT_LARGE: [TIER_DESKTOP, TIER_MOBILE],
   },
 };
 
@@ -111,8 +99,16 @@ function chatCandidates(catalog: CatalogModel[]): CatalogModel[] {
 export function classifyRecommendationPlatform(
   hardware: HardwareProbe,
 ): RecommendationPlatformClass {
-  const platform = hardware.platform as string;
-  if (platform === "android" || platform === "ios") return "mobile";
+  // Mobile detection comes from the typed `hardware.mobile.platform`
+  // field (`"ios" | "android" | "web"`). `NodeJS.Platform` doesn't
+  // include those values — the previous `process.platform as string`
+  // cast was hiding that the cast was the only way the comparison
+  // type-checked. Reading the proper typed field is both safer and
+  // accurate when a host advertises mobile via the mobile probe.
+  const mobilePlatform = hardware.mobile?.platform;
+  if (mobilePlatform === "android" || mobilePlatform === "ios") return "mobile";
+
+  const platform = hardware.platform;
   if (hardware.appleSilicon) return "apple-silicon";
   if (platform === "linux" && hardware.gpu) return "linux-gpu";
   if (platform === "linux") return "linux-cpu";
@@ -138,14 +134,23 @@ export function catalogDownloadSizeBytes(
   return Math.round(catalogDownloadSizeGb(model, catalog) * BYTES_PER_GB);
 }
 
+const MB_PER_GB = 1024;
+
 function mobileFit(
   hardware: HardwareProbe,
   model: CatalogModel,
   catalog: CatalogModel[],
+  budget: RamBudget,
 ): HardwareFitLevel {
   const sizeGb = catalogDownloadSizeGb(model, catalog);
-  if (hardware.totalRamGb < model.minRamGb) return "wontfit";
+  const totalRamMb = hardware.totalRamGb * MB_PER_GB;
+  // `minMb` is the won't-fit floor (catalog scalar by default; manifest
+  // override when an installed Eliza-1 bundle declared one).
+  if (totalRamMb < budget.minMb) return "wontfit";
   if (sizeGb > hardware.totalRamGb * 0.8) return "wontfit";
+  // `recommendedMb` is the fits-vs-tight cutoff. Catalog fallback collapses
+  // recommended === min so the new line never tightens prior behavior.
+  if (totalRamMb < budget.recommendedMb) return "tight";
   if (sizeGb > hardware.totalRamGb * 0.65) return "tight";
   return "fits";
 }
@@ -154,27 +159,53 @@ export function assessCatalogModelFit(
   hardware: HardwareProbe,
   model: CatalogModel,
   catalog: CatalogModel[] = MODEL_CATALOG,
+  options: { installed?: InstalledModel; manifestLoader?: ManifestLoader } = {},
 ): HardwareFitLevel {
   if (model.runtime?.dflash) {
     const byId = catalogById(catalog);
     if (!byId.has(model.runtime.dflash.drafterModelId)) return "wontfit";
   }
+  const budget = resolveRamBudget(
+    model,
+    options.installed,
+    options.manifestLoader ?? defaultManifestLoader,
+  );
   if (classifyRecommendationPlatform(hardware) === "mobile") {
-    return mobileFit(hardware, model, catalog);
+    return mobileFit(hardware, model, catalog, budget);
   }
-  return assessFit(
+  // `assessFit` historically takes minRamGb. Use the manifest-derived
+  // floor (minMb) when available; fall back to the catalog scalar
+  // otherwise. The manifest's `recommendedMb` further tightens the
+  // "fits" line via the wrapper below.
+  const baseline = assessFit(
     hardware,
     catalogDownloadSizeGb(model, catalog),
-    model.minRamGb,
+    budget.minMb / MB_PER_GB,
   );
+  if (baseline === "wontfit") return "wontfit";
+  if (budget.source === "manifest") {
+    const effectiveGb = effectiveMemoryGb(hardware);
+    if (effectiveGb * MB_PER_GB < budget.recommendedMb) return "tight";
+  }
+  return baseline;
+}
+
+/** Mirrors the effective-memory math in `assessFit`. */
+function effectiveMemoryGb(probe: HardwareProbe): number {
+  if (probe.appleSilicon) return probe.totalRamGb;
+  if (probe.gpu) {
+    return Math.max(probe.gpu.totalVramGb, probe.totalRamGb * 0.5);
+  }
+  return probe.totalRamGb * 0.5;
 }
 
 function canFit(
   hardware: HardwareProbe,
   model: CatalogModel,
   catalog: CatalogModel[],
+  options: { installed?: InstalledModel; manifestLoader?: ManifestLoader } = {},
 ): boolean {
-  return assessCatalogModelFit(hardware, model, catalog) !== "wontfit";
+  return assessCatalogModelFit(hardware, model, catalog, options) !== "wontfit";
 }
 
 /**
@@ -198,7 +229,7 @@ function kernelRequirementsSatisfied(
 }
 
 function modelsFromLadder(
-  ids: string[],
+  ids: ReadonlyArray<string>,
   catalog: CatalogModel[],
 ): CatalogModel[] {
   const byId = catalogById(catalog);
@@ -238,15 +269,15 @@ function fallbackCandidates(
   slot: TextGenerationSlot,
   hardware: HardwareProbe,
   catalog: CatalogModel[],
+  budgetOptions: BudgetOptions,
 ): CatalogModel[] {
-  const candidates = chatCandidates(catalog).filter((model) =>
-    canFit(hardware, model, catalog),
+  const candidates = chatCandidates(catalog).filter(
+    (model) =>
+      DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id) &&
+      canFit(hardware, model, catalog, budgetOptionsForModel(model, budgetOptions)),
   );
   const preferLongContext = hasLongContextHeadroom(hardware);
   return candidates.sort((left, right) => {
-    const leftDflash = left.runtime?.dflash ? 1 : 0;
-    const rightDflash = right.runtime?.dflash ? 1 : 0;
-    if (leftDflash !== rightDflash) return rightDflash - leftDflash;
     if (preferLongContext) {
       const leftLong = isLongContextModel(left) ? 1 : 0;
       const rightLong = isLongContextModel(right) ? 1 : 0;
@@ -269,6 +300,40 @@ export interface RecommendationOptions {
    * trusts the catalog and the dispatcher's load-time check.
    */
   binaryKernels?: Partial<Record<string, boolean>> | null;
+  /**
+   * Models the user has already installed. When an Eliza-1 tier in this
+   * list has a published `eliza-1.manifest.json` next to its bundle,
+   * the recommender consults `manifest.ramBudgetMb` instead of the
+   * catalog's coarse `minRamGb` scalar. See `./ram-budget.ts`.
+   */
+  installed?: ReadonlyArray<InstalledModel>;
+  /**
+   * Test-only override for the manifest reader. Production callers leave
+   * this unset and the helper reads `eliza-1.manifest.json` from disk.
+   */
+  manifestLoader?: ManifestLoader;
+}
+
+interface BudgetOptions {
+  installed: ReadonlyArray<InstalledModel>;
+  manifestLoader: ManifestLoader;
+}
+
+function budgetOptionsForModel(
+  model: CatalogModel,
+  budget: BudgetOptions,
+): { installed?: InstalledModel; manifestLoader: ManifestLoader } {
+  return {
+    installed: budget.installed.find((m) => m.id === model.id),
+    manifestLoader: budget.manifestLoader,
+  };
+}
+
+function resolveBudgetOptions(options: RecommendationOptions): BudgetOptions {
+  return {
+    installed: options.installed ?? [],
+    manifestLoader: options.manifestLoader ?? defaultManifestLoader,
+  };
 }
 
 export function selectRecommendedModelForSlot(
@@ -280,9 +345,10 @@ export function selectRecommendedModelForSlot(
   const platformClass = classifyRecommendationPlatform(hardware);
   const ladder = modelsFromLadder(SLOT_LADDERS[platformClass][slot], catalog);
   const binaryKernels = options.binaryKernels ?? null;
+  const budget = resolveBudgetOptions(options);
   const eligible = ladder.filter(
     (model) =>
-      canFit(hardware, model, catalog) &&
+      canFit(hardware, model, catalog, budgetOptionsForModel(model, budget)) &&
       kernelRequirementsSatisfied(model, binaryKernels),
   );
 
@@ -298,11 +364,18 @@ export function selectRecommendedModelForSlot(
   const alternatives =
     ranked.length > 0
       ? ranked
-      : fallbackCandidates(slot, hardware, catalog).filter((model) =>
+      : fallbackCandidates(slot, hardware, catalog, budget).filter((model) =>
           kernelRequirementsSatisfied(model, binaryKernels),
         );
   const model = alternatives[0] ?? null;
-  const fit = model ? assessCatalogModelFit(hardware, model, catalog) : null;
+  const fit = model
+    ? assessCatalogModelFit(
+        hardware,
+        model,
+        catalog,
+        budgetOptionsForModel(model, budget),
+      )
+    : null;
   return {
     slot,
     platformClass,
@@ -354,33 +427,33 @@ export function selectRecommendedModels(
 
 /**
  * Pick the model the engine should auto-load on first run when no user
- * preference exists. Always resolves to a Milady-shippable
- * (TBQ/DFlash) entry — never a generic upstream GGUF — so the engine
- * cannot land on a model that bypasses our fused-kernel runtime.
+ * preference exists. Always resolves to an Eliza-1 default-eligible
+ * tier — never a non-Eliza catalog entry, never a HF-search result.
  *
  * Resolution order:
- *   1. `FIRST_RUN_DEFAULT_MODEL_ID` (`qwen3.5-4b-dflash`) when present
- *      in the catalog. This is the smallest TBQ/DFlash pair we ship.
- *   2. The first DFlash chat target in the catalog as a defensive
- *      fallback if the default id is somehow missing (catalog lint
- *      should prevent this; see catalog.test.ts).
+ *   1. `FIRST_RUN_DEFAULT_MODEL_ID` when present in the catalog and in
+ *      the default-eligible set.
+ *   2. The first default-eligible chat entry in the catalog as a
+ *      defensive fallback if the default id is somehow missing
+ *      (catalog lint should prevent this; see catalog.test.ts).
  *
- * Returns null only when no DFlash entry exists at all — which means
- * the catalog is misconfigured and the caller should surface a hard
- * error rather than degrade silently.
+ * Returns null only when no default-eligible entry exists at all —
+ * which means the catalog is misconfigured and the caller should
+ * surface a hard error rather than degrade silently.
  */
 export function recommendForFirstRun(
   catalog: CatalogModel[] = MODEL_CATALOG,
 ): CatalogModel | null {
   const byId = catalogById(catalog);
   const preferred = byId.get(FIRST_RUN_DEFAULT_MODEL_ID);
-  if (preferred && preferred.runtime?.dflash) return preferred;
+  if (preferred && DEFAULT_ELIGIBLE_MODEL_IDS.has(preferred.id))
+    return preferred;
   return (
     catalog.find(
       (model) =>
         !model.hiddenFromCatalog &&
         model.runtimeRole !== "dflash-drafter" &&
-        model.runtime?.dflash !== undefined,
+        DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id),
     ) ?? null
   );
 }
@@ -390,6 +463,7 @@ export function chooseSmallerFallbackModel(
   hardware: HardwareProbe,
   slot: TextGenerationSlot = "TEXT_LARGE",
   catalog: CatalogModel[] = MODEL_CATALOG,
+  options: RecommendationOptions = {},
 ): CatalogModel | null {
   const byId = catalogById(catalog);
   const current = byId.get(currentModelId);
@@ -397,17 +471,20 @@ export function chooseSmallerFallbackModel(
     ? catalogDownloadSizeGb(current, catalog)
     : Number.POSITIVE_INFINITY;
   const platformClass = classifyRecommendationPlatform(hardware);
+  const budget = resolveBudgetOptions(options);
   const ladderFallback = modelsFromLadder(
     SLOT_LADDERS[platformClass][slot],
     catalog,
   )
     .filter((model) => model.id !== currentModelId)
     .filter((model) => catalogDownloadSizeGb(model, catalog) < currentSize)
-    .filter((model) => canFit(hardware, model, catalog))[0];
+    .filter((model) =>
+      canFit(hardware, model, catalog, budgetOptionsForModel(model, budget)),
+    )[0];
   if (ladderFallback) return ladderFallback;
 
   return (
-    fallbackCandidates(slot, hardware, catalog)
+    fallbackCandidates(slot, hardware, catalog, budget)
       .filter((model) => model.id !== currentModelId)
       .filter(
         (model) => catalogDownloadSizeGb(model, catalog) < currentSize,

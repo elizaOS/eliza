@@ -1,6 +1,7 @@
 /**
  * TaskGateRegistry. Built-in kinds: `weekend_skip`, `weekend_only`,
- * `weekday_only`, `late_evening_skip`, `quiet_hours`, `during_travel`.
+ * `weekday_only`, `late_evening_skip`, `quiet_hours`, `during_travel`,
+ * `circadian_state_in`, `no_recent_user_message_in`.
  *
  * The runner uses these gates in `shouldFire.gates`; composition is
  * the responsibility of the runner (`compose: "all" | "any" | "first_deny"`).
@@ -225,6 +226,27 @@ const duringTravelGate: TaskGateContribution = {
   },
 };
 
+const circadianStateInGate: TaskGateContribution = {
+  kind: "circadian_state_in",
+  evaluate(): GateDecision {
+    // The concrete circadian state reader lives outside the runner. Until it
+    // is injected as a typed gate contribution, this built-in preserves the
+    // structural gate key used by plugin-health default packs without
+    // accidentally disabling those tasks as "unknown gate kind".
+    return { kind: "allow" };
+  },
+};
+
+const noRecentUserMessageInGate: TaskGateContribution = {
+  kind: "no_recent_user_message_in",
+  evaluate(): GateDecision {
+    // The planner/message activity lookup is runtime-specific; callers can
+    // override this gate with a richer contribution. The safe default is
+    // allow, because this gate only suppresses redundant nudges.
+    return { kind: "allow" };
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
@@ -268,4 +290,6 @@ export function registerBuiltInGates(reg: TaskGateRegistry): void {
   reg.register(lateEveningSkipGate);
   reg.register(quietHoursGate);
   reg.register(duringTravelGate);
+  reg.register(circadianStateInGate);
+  reg.register(noRecentUserMessageInGate);
 }

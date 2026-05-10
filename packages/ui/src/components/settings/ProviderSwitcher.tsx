@@ -1,3 +1,4 @@
+import type { SubscriptionProviderStatus } from "@elizaos/shared";
 import {
   asRecord,
   buildElizaCloudServiceRoute,
@@ -45,6 +46,7 @@ import {
   getDirectAccountProviderForOnboardingProvider,
   getOnboardingProviderOption,
   isSubscriptionProviderSelectionId,
+  normalizeSubscriptionProviderSelectionId,
   ONBOARDING_PROVIDER_CATALOG,
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   type SubscriptionProviderSelectionId,
@@ -71,6 +73,10 @@ const SUBSCRIPTION_PROVIDER_LABEL_FALLBACKS: Record<
 > = {
   "anthropic-subscription": "Claude Subscription",
   "openai-subscription": "ChatGPT Subscription",
+  "gemini-subscription": "Gemini CLI Subscription",
+  "zai-coding-subscription": "z.ai Coding Plan",
+  "kimi-coding-subscription": "Kimi Code",
+  "deepseek-coding-subscription": "DeepSeek Coding Plan",
 };
 
 interface PluginInfo {
@@ -111,16 +117,32 @@ function getSubscriptionProviderLabel(
   return SUBSCRIPTION_PROVIDER_LABEL_FALLBACKS[provider.id] ?? provider.id;
 }
 
+function getSubscriptionProviderDescription(
+  providerId: SubscriptionProviderSelectionId,
+): string {
+  switch (providerId) {
+    case "anthropic-subscription":
+      return "Claude Code and task-agent access.";
+    case "openai-subscription":
+      return "Codex-backed coding access.";
+    case "gemini-subscription":
+      return "Gemini CLI coding access.";
+    case "zai-coding-subscription":
+      return "z.ai Coding Plan endpoint.";
+    case "kimi-coding-subscription":
+      return "Kimi Code endpoint.";
+    case "deepseek-coding-subscription":
+      return "Unavailable without a first-party coding surface.";
+  }
+}
+
 function readSubscriptionProvider(
   cfg: Record<string, unknown>,
 ): SubscriptionProviderSelectionId | null {
   const agents = asRecord(cfg.agents);
   const defaults = asRecord(agents?.defaults);
   const subscriptionProvider = defaults?.subscriptionProvider;
-  return typeof subscriptionProvider === "string" &&
-    isSubscriptionProviderSelectionId(subscriptionProvider)
-    ? subscriptionProvider
-    : null;
+  return normalizeSubscriptionProviderSelectionId(subscriptionProvider);
 }
 
 function readConfigString(
@@ -299,15 +321,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const [localEmbeddings, setLocalEmbeddings] = useState(false);
 
   const [subscriptionStatus, setSubscriptionStatus] = useState<
-    Array<{
-      provider: string;
-      accountId: string;
-      label: string;
-      configured: boolean;
-      valid: boolean;
-      expiresAt: number | null;
-      source?: "app" | "claude-code-cli" | "setup-token" | "codex-cli" | null;
-    }>
+    SubscriptionProviderStatus[]
   >([]);
   const [anthropicConnected, setAnthropicConnected] = useState(false);
   const [anthropicCliDetected, setAnthropicCliDetected] = useState(false);
@@ -783,13 +797,24 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
   const getSubscriptionPanelStatus = useCallback(
     (providerId: SubscriptionProviderSelectionId) => {
-      const status = subscriptionStatus.find((entry) =>
-        providerId === "openai-subscription"
-          ? entry.provider === "openai-subscription" ||
-            entry.provider === "openai-codex"
-          : entry.provider === providerId,
+      const selection = SUBSCRIPTION_PROVIDER_SELECTIONS.find(
+        (provider) => provider.id === providerId,
       );
+      const status = subscriptionStatus.find(
+        (entry) =>
+          entry.provider === providerId ||
+          (selection ? entry.provider === selection.storedProvider : false),
+      );
+      if (status?.available === false) {
+        return { label: "Unavailable", tone: "warn" as const };
+      }
       if (providerId === "anthropic-subscription" && anthropicCliDetected) {
+        return { label: "CLI detected", tone: "ok" as const };
+      }
+      if (
+        providerId === "gemini-subscription" &&
+        status?.source === "gemini-cli"
+      ) {
         return { label: "CLI detected", tone: "ok" as const };
       }
       if (status?.configured && status.valid) {
@@ -975,11 +1000,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                   id={provider.id}
                   icon={KeyRound}
                   label={getSubscriptionProviderLabel(provider, t)}
-                  description={
-                    provider.id === "anthropic-subscription"
-                      ? "Claude Code and task-agent access."
-                      : "ChatGPT/Codex subscription access."
-                  }
+                  description={getSubscriptionProviderDescription(provider.id)}
                   selected={visibleProviderPanelId === provider.id}
                   current={
                     !cloudCallsDisabled && resolvedSelectedId === provider.id
@@ -1192,7 +1213,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                   ) ?? SUBSCRIPTION_PROVIDER_SELECTIONS[0],
                   t,
                 )}
-                description="Connect subscription-backed access for models and task agents."
+                description="Connect subscription coding access without converting it into a general API key."
               >
                 {cloudCallsDisabled ||
                 resolvedSelectedId !== visibleProviderPanelId ? (

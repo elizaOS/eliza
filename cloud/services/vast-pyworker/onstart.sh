@@ -17,13 +17,13 @@
 #   PYWORKER_REF        — branch / tag / commit (use a pinned commit in prod)
 #   MODEL_REPO          — HuggingFace repo id of the GGUF (default: DavidAU…)
 #   MODEL_FILE          — GGUF file inside the repo (default: Q6_K)
-#   MODEL_ALIAS         — llama-server `--alias` (default: vast/qwen3.6-27b-neo-code)
+#   MODEL_ALIAS         — llama-server `--alias` (default: vast/eliza-1-27b)
 #
 # Optional:
 #   HUGGING_FACE_HUB_TOKEN — for gated/private repos. The DavidAU Q6_K we
 #                           default to is public Apache-2.0, so this is
 #                           usually unnecessary.
-#   LLAMA_CONTEXT       — context window (default: 32768; max for Qwen3.6 is 262144).
+#   LLAMA_CONTEXT       — context window (default: 32768; max for Eliza-1 is 262144).
 #   LLAMA_PARALLEL      — concurrent decode slots (default: 2 on RTX 5090; 4 on 48 GB cards).
 #   LLAMA_NGL           — layers offloaded to GPU (default: 99 = all).
 #   LLAMA_SERVER_PORT   — local server port (default: 8080).
@@ -51,9 +51,9 @@ set -euo pipefail
 
 PYWORKER_REPO="${PYWORKER_REPO:-https://github.com/elizaOS/cloud.git}"
 PYWORKER_REF="${PYWORKER_REF:-develop}"
-MODEL_REPO="${MODEL_REPO:-DavidAU/Qwen3.6-27B-Heretic-Uncensored-FINETUNE-NEO-CODE-Di-IMatrix-MAX-GGUF}"
-MODEL_FILE="${MODEL_FILE:-Qwen3.6-27B-NEO-CODE-HERE-2T-OT-Q6_K.gguf}"
-MODEL_ALIAS="${MODEL_ALIAS:-vast/qwen3.6-27b-neo-code}"
+MODEL_REPO="${MODEL_REPO:-elizaos/eliza-1-27b-fp8}"
+MODEL_FILE="${MODEL_FILE:-text/eliza-1-pro-27b-128k.gguf}"
+MODEL_ALIAS="${MODEL_ALIAS:-vast/eliza-1-27b}"
 LLAMA_CONTEXT="${LLAMA_CONTEXT:-32768}"
 LLAMA_PARALLEL="${LLAMA_PARALLEL:-2}"
 LLAMA_NGL="${LLAMA_NGL:-99}"

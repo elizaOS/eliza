@@ -4,6 +4,170 @@ The eliza-1 training data and pipeline live on HuggingFace so a fresh
 Vast.ai box can bootstrap itself without an rsync hand-off from your local
 machine. This document is the operational runbook.
 
+---
+
+## Eliza-1 bundle publish (orchestrator)
+
+Eliza-1 device-tier bundles ship to `elizalabs/eliza-1-<tier>`. The
+canonical entry point is the publish orchestrator:
+
+```bash
+python -m scripts.publish.orchestrator \
+    --tier desktop-9b \
+    --bundle-dir ./bundles/desktop-9b \
+    --metal-verification ./reports/desktop-9b/metal_verify.json \
+    --dry-run
+```
+
+`scripts/publish_all_eliza1.sh` is a thin wrapper that walks the tier
+matrix and dispatches one orchestrator invocation per tier. There is no
+continue-on-error behavior — any tier that fails any stage aborts the
+whole run.
+
+### Stages
+
+The orchestrator runs six stages in order. Any failure exits non-zero
+with a specific code (see "Exit codes" below):
+
+1. **Layout validation.** Confirms the bundle directory matches
+   `packages/inference/AGENTS.md` §2 (text/, tts/, asr/, vision/,
+   dflash/, cache/, evals/, licenses/) and that every required license
+   blob exists and is non-empty.
+2. **Kernel verification.** Runs `make -C ../../inference/verify
+   reference-test` for the CPU path. For Vulkan and CUDA, the
+   orchestrator consumes recorded reports at
+   `<bundle>/evals/vulkan_verify.json` and
+   `<bundle>/evals/cuda_verify.json`. **Metal is hardware-only**: pass
+   `--metal-verification PATH` pointing at a `metal_verify.json`
+   recorded on a verified Metal host. Without it, a tier that includes
+   Metal in `SUPPORTED_BACKENDS_BY_TIER` fails with
+   `EXIT_KERNEL_VERIFY_FAIL`.
+3. **Eval gates.** Loads `<bundle>/evals/aggregate.json` and applies
+   `apply_gates(results, tier)` from
+   `packages/training/benchmarks/eliza1_gates.py`. Refuses to proceed
+   unless `passed: true`. The gate report is written into the manifest's
+   `evals` block.
+4. **Manifest build.** Calls `build_manifest(...)` from
+   `packages/training/scripts/manifest/eliza1_manifest.py`. The manifest
+   module's validator independently re-checks the §3 / §6 contract
+   (every required kernel declared, every supported backend `pass`,
+   every eval flag `passed`). The orchestrator sets `defaultEligible:
+   true` only when every required gate is green AND every supported
+   backend verified pass; the validator rejects mis-uses of that flag.
+5. **README render.** Renders
+   `scripts/publish/templates/README.md.j2` from the manifest data.
+   No marketing copy. No user-visible Qwen/Llama strings — the upstream
+   lineage is recorded in the manifest's `lineage` block.
+6. **HF push + git tag.** Uploads weights, manifest, README, licenses,
+   and eval blobs to `elizalabs/eliza-1-<tier>` via
+   `huggingface_hub.HfApi.create_commit`, then tags the local training
+   repo with `eliza-1-<tier>-v<version>`. In `--dry-run` neither side
+   effect happens; the would-be commands are logged.
+
+### Assembling a bundle directory
+
+Per `packages/inference/AGENTS.md` §2 the bundle root must look like:
+
+```
+<bundle>/
+  text/      <one or more *.gguf, named eliza-1-<tier>-<ctx>.gguf>
+  tts/       <omnivoice-*.gguf and tokenizer>
+  asr/       <asr.gguf or native package>
+  vision/    <mmproj-<tier>.gguf where applicable>
+  dflash/    <drafter-<tier>.gguf and target-meta.json>
+  cache/     <voice-preset-default.bin>
+  evals/
+    aggregate.json        # input to apply_gates(); shape per eliza1_gates.py docstring
+    vulkan_verify.json    # recorded report (status, atCommit, report)
+    cuda_verify.json      # recorded report (server / desktop / pro tiers)
+  licenses/
+    LICENSE.text
+    LICENSE.voice
+    LICENSE.dflash
+    LICENSE.eliza-1
+  lineage.json   # optional: per-slot {base, license} overrides
+  ram_budget.json # optional: {min, recommended} in MB
+  VERSION        # optional: bundle version (default 1.0.0)
+```
+
+The text variants encode their context length in the filename (e.g.
+`eliza-1-desktop-9b-64k.gguf` → `ctx=65536`). Variants with `ctx > 64k`
+automatically force `turbo3_tcq` into `kernels.optional`.
+
+### Recording Metal verification on a hardware host
+
+```bash
+# On an Apple Silicon Mac with the milady checkout:
+cd packages/inference/verify
+make metal
+./metal_verify > metal_verify.txt
+
+# Then write a JSON record the orchestrator can consume:
+cat > /path/to/desktop-9b/evals/metal_verify.json <<EOF
+{
+  "backend": "metal",
+  "status": "pass",
+  "atCommit": "$(git -C ../../.. rev-parse --short HEAD)",
+  "report": "metal_verify.txt"
+}
+EOF
+```
+
+Pass that file to the orchestrator via `--metal-verification` (or via
+`--metal-verification-<tier>` on the wrapper script). The orchestrator
+verifies `backend == "metal"`, `status == "pass"`, and that `atCommit`
+is set; anything else exits `EXIT_KERNEL_VERIFY_FAIL`.
+
+### Exit codes
+
+| Code | Symbol                       | Meaning                                                                 |
+|-----:|------------------------------|-------------------------------------------------------------------------|
+|   0  | `EXIT_OK`                    | All stages succeeded.                                                   |
+|   2  | `EXIT_USAGE`                 | Argparse rejected the CLI invocation.                                   |
+|  10  | `EXIT_BUNDLE_LAYOUT_FAIL`    | Bundle dir missing or required subdir absent.                           |
+|  11  | `EXIT_MISSING_FILE`          | Required license blob, sidecar, or `evals/aggregate.json` missing.      |
+|  12  | `EXIT_KERNEL_VERIFY_FAIL`    | `make reference-test` failed, or a recorded backend report is fail/missing/mismatched (incl. missing `--metal-verification`). |
+|  13  | `EXIT_EVAL_GATE_FAIL`        | One or more required-for-tier gates in `eliza1_gates.yaml` failed.      |
+|  14  | `EXIT_MANIFEST_INVALID`      | `build_manifest` rejected the assembled manifest.                       |
+|  15  | `EXIT_HF_PUSH_FAIL`          | Missing `HF_TOKEN`, HF API error, or `git tag` failure.                 |
+
+### Recovering from a partial publish
+
+The publish flow writes the manifest + README into the bundle dir
+*before* uploading. If `EXIT_HF_PUSH_FAIL` lands after the HF
+`create_commit` but before `git tag`, the HF repo is consistent and the
+local repo is missing only the tag. To recover:
+
+1. Confirm the upload at `https://huggingface.co/elizalabs/eliza-1-<tier>`
+   — every file from `_build_upload_list` plus `README.md` and
+   `eliza-1.manifest.json` should be present.
+2. Re-tag manually:
+   ```bash
+   git -C packages/training tag -a eliza-1-<tier>-v<version> \
+       -m "Publish eliza-1-<tier>-v<version> (training-commit=$(git -C packages/training rev-parse --short HEAD))"
+   ```
+3. Push the tag if the team workflow requires it.
+
+If the failure was earlier (e.g. layout, eval gate, manifest), no
+remote state changed — fix the bundle dir or the eval blob and re-run.
+The orchestrator is idempotent on its own outputs (manifest + README are
+overwritten in place each run).
+
+### Refusing to bypass
+
+Operators sometimes ask "can we publish anyway with `defaultEligible:
+false`?" The answer is no during normal release. `defaultEligible:
+false` exists for automated downgrades of a *previously-good* bundle
+that has since been flagged broken — the act of *first publishing*
+always requires every gate green and every supported backend verified
+pass. Any flag that proposed otherwise (e.g. `--skip-eval`,
+`--publish-anyway`) would violate `packages/training/AGENTS.md` §6 and
+is intentionally absent.
+
+---
+
+## Legacy publishers (datasets + training pipeline)
+
 ## What's on HF today
 
 | Local path                                   | HF repo                              | Type    | Status  |
@@ -20,7 +184,7 @@ Update the Status column to `published` once each repo lands.
 
 ```bash
 # Either log in interactively (writes ~/.cache/huggingface/token)
-huggingface-cli login
+hf auth login
 
 # Or export the token in the current shell
 export HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxx

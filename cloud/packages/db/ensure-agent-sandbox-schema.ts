@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { applyDatabaseUrlFallback } from "@/db/database-url";
 import { dbWrite } from "@/db/helpers";
-import { WARM_POOL_ORG_ID, WARM_POOL_USER_ID } from "@/db/schemas/agent-sandboxes";
+import { WARM_POOL_ORG_ID } from "@/db/schemas/agent-sandboxes";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 
 const ensurePromises = new Map<string, Promise<void>>();

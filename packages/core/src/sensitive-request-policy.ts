@@ -6,6 +6,13 @@ export type SensitiveRequestKind =
 	| "oauth"
 	| "private_info";
 
+export type SensitiveRequestStatus =
+	| "pending"
+	| "fulfilled"
+	| "failed"
+	| "canceled"
+	| "expired";
+
 export type SensitiveRequestPaymentContext = "verified_payer" | "any_payer";
 
 export type SensitiveRequestActorPolicy =
@@ -70,6 +77,83 @@ export interface SensitiveRequestPolicy {
 	allowCloudLink: boolean;
 }
 
+export interface SensitiveRequestSecretTarget {
+	kind: "secret";
+	key: string;
+	scope?: "organization" | "app" | "agent" | "global" | (string & {});
+	appId?: string;
+	validation?: Record<string, unknown>;
+}
+
+export interface SensitiveRequestPrivateInfoField {
+	name: string;
+	label?: string;
+	required?: boolean;
+	classification?: string;
+}
+
+export interface SensitiveRequestPrivateInfoTarget {
+	kind: "private_info";
+	fields: SensitiveRequestPrivateInfoField[];
+	storage?: {
+		kind: string;
+		key?: string;
+	};
+}
+
+export interface SensitiveRequestPaymentTarget {
+	kind: "payment";
+	[key: string]: unknown;
+}
+
+export interface SensitiveRequestOauthTarget {
+	kind: "oauth";
+	[key: string]: unknown;
+}
+
+export type SensitiveRequestTarget =
+	| SensitiveRequestSecretTarget
+	| SensitiveRequestPrivateInfoTarget
+	| SensitiveRequestPaymentTarget
+	| SensitiveRequestOauthTarget;
+
+export interface SensitiveRequestCallback {
+	kind?: string;
+	url?: string;
+	roomId?: string;
+	channelId?: string;
+	[key: string]: unknown;
+}
+
+export interface SensitiveRequest {
+	id: string;
+	kind: SensitiveRequestKind;
+	status: SensitiveRequestStatus;
+	agentId: string;
+	organizationId?: string | null;
+	ownerEntityId?: string | null;
+	requesterEntityId?: string | null;
+	sourceRoomId?: string | null;
+	sourceChannelType?: string | null;
+	sourcePlatform?: string | null;
+	target: SensitiveRequestTarget;
+	policy: SensitiveRequestPolicy;
+	delivery: SensitiveRequestDeliveryPlan;
+	callback?: SensitiveRequestCallback;
+	expiresAt: string;
+	fulfilledAt?: string | null;
+	canceledAt?: string | null;
+	expiredAt?: string | null;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface SensitiveRequestEvent {
+	kind: string;
+	requestId: string;
+	[key: string]: unknown;
+}
+
 export interface SensitiveRequestDeliveryPlan {
 	kind: SensitiveRequestKind;
 	source: SensitiveRequestSourceContext;
@@ -82,6 +166,27 @@ export interface SensitiveRequestDeliveryPlan {
 	linkBaseUrl?: string;
 	reason: string;
 	instruction: string;
+}
+
+const SENSITIVE_REQUEST_METADATA_KEY_RE =
+	/(^|[_-])(authorization|bearer|credential|jwt|password|private|secret|signature|token)([_-]|$)|api[_-]?key/i;
+
+export function redactSensitiveRequestMetadata(value: unknown): unknown {
+	if (Array.isArray(value)) {
+		return value.map((item) => redactSensitiveRequestMetadata(item));
+	}
+
+	if (!value || typeof value !== "object") {
+		return value;
+	}
+
+	const redacted: Record<string, unknown> = {};
+	for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+		redacted[key] = SENSITIVE_REQUEST_METADATA_KEY_RE.test(key)
+			? "[redacted]"
+			: redactSensitiveRequestMetadata(item);
+	}
+	return redacted;
 }
 
 function isTruthy(value: unknown): boolean {

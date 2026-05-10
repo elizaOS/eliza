@@ -106,18 +106,33 @@ void main() {
     // Byte offset of block (h_k, t) inside packed_k.
     uint blk_off = (h_k * push.n_tokens + t) * QJL_BLOCK_BYTES;
 
-    // Each of 32 threads owns one byte (8 sign bits) of qs[].
+    // Each of 32 threads owns one byte (8 sign bits) of qs[]. Mirrors the
+    // Wave-4-B Metal port (kernel_attn_score_qjl1_256): pack 8 contiguous
+    // q_sketch floats into two vec4s, build branchless ±1 sign vectors via
+    // ((bit << 1) - 1), and chain two fma()s. glslc on Vulkan 1.1 emits
+    // OpVectorTimesScalar/OpFMul/OpExtInst Fma against vec4 — same pattern
+    // as the Metal float4 fma the M4 Max kernel uses.
     uint byte_i = tid;
     uint bits   = read_byte(blk_off + byte_i);
     uint base   = byte_i * 8u;
+    uint q_off  = h_q * QJL_PROJECTION_DIM + base;
 
-    float acc = 0.0;
-    uint q_off = h_q * QJL_PROJECTION_DIM + base;
-    for (uint k = 0u; k < 8u; ++k) {
-        float qv = q_sketch[q_off + k];
-        // bit set => +1, clear => -1 (matches qjl_score_qk_ref).
-        acc += ((bits >> k) & 1u) != 0u ? qv : -qv;
-    }
+    vec4 q0 = vec4(q_sketch[q_off + 0u], q_sketch[q_off + 1u],
+                   q_sketch[q_off + 2u], q_sketch[q_off + 3u]);
+    vec4 q1 = vec4(q_sketch[q_off + 4u], q_sketch[q_off + 5u],
+                   q_sketch[q_off + 6u], q_sketch[q_off + 7u]);
+    vec4 s0 = vec4(
+        float(int(((bits >> 0) & 1u) << 1) - 1),
+        float(int(((bits >> 1) & 1u) << 1) - 1),
+        float(int(((bits >> 2) & 1u) << 1) - 1),
+        float(int(((bits >> 3) & 1u) << 1) - 1));
+    vec4 s1 = vec4(
+        float(int(((bits >> 4) & 1u) << 1) - 1),
+        float(int(((bits >> 5) & 1u) << 1) - 1),
+        float(int(((bits >> 6) & 1u) << 1) - 1),
+        float(int(((bits >> 7) & 1u) << 1) - 1));
+    vec4 acc4 = fma(q0, s0, fma(q1, s1, vec4(0.0)));
+    float acc = acc4.x + acc4.y + acc4.z + acc4.w;
 
     float sum = reduce_sum_32(acc, tid);
     if (tid == 0u) {

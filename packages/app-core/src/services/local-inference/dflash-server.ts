@@ -208,6 +208,7 @@ export interface DflashBinaryCapabilities {
     turbo4: boolean;
     turbo3_tcq: boolean;
     qjl_full: boolean;
+    polarquant: boolean;
     lookahead: boolean;
     ngramDraft: boolean;
   };
@@ -281,8 +282,16 @@ function assertCacheTypeSupportedOnBackend(name: string, value: string): void {
     isMetalDflashRuntime() &&
     METAL_UNSUPPORTED_CACHE_TYPES.has(value.toLowerCase())
   ) {
+    // Wave-3 hardware-verified all 5 Metal kernels 8/8 PASS on Apple M4 Max
+    // via the JIT harness, but the patch coverage audit (2026-05-10) found
+    // the standalones do NOT actually ship in the v0.4.0-milady binary —
+    // build-llama-cpp-dflash.mjs's patchMetal* hooks are decorative-only.
+    // Until the shader-shipping work lands AND the shipped binary itself
+    // is re-verified, the runtime correctly refuses these cache types on
+    // Metal. Once capabilities.kernels.turbo3 etc. flip to true via a real
+    // build, gate this on the capability instead of the static set.
     throw new Error(
-      `${name}=${value} is not production-safe on Metal in the DFlash fork. Turbo4 currently crashes during slot initialization, and TCQ/QJL kernels are only implemented for CUDA/ROCm. Use f16 KV on Metal or run this variant on CUDA/ROCm.`,
+      `${name}=${value} is not yet shipped in the Metal binary. Wave-3 verified the kernels in a JIT harness but the build pipeline doesn't compile them into the shipped artifact. Use f16 KV on Metal until the kernel-shipping work lands.`,
     );
   }
 }
@@ -344,7 +353,7 @@ export function getDflashRuntimeStatus(): DflashRuntimeStatus {
     const managedBinaryExists = fs.existsSync(managedDflashBinaryPath());
     const reason =
       managedBinaryExists && isMetalDflashRuntime()
-        ? "DFlash Metal binary found but auto-disabled because the local Qwen 3.5 4B ablation is slower than target-only Metal decode; set ELIZA_DFLASH_ENABLED=1 or ELIZA_DFLASH_METAL_AUTO=1 to force it."
+        ? "DFlash Metal binary found but auto-disabled because the current Eliza-1 Metal path is faster target-only; set ELIZA_DFLASH_ENABLED=1 or ELIZA_DFLASH_METAL_AUTO=1 to force it."
         : "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.";
     return {
       enabled: false,

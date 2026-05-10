@@ -42,6 +42,16 @@ import {
   resolveDefaultPoolSize,
   SessionPool,
 } from "./session-pool";
+import {
+  EngineVoiceBridge,
+  type EngineVoiceBridgeOptions,
+  VoiceStartupError,
+} from "./voice/engine-bridge";
+import type {
+  RejectedTokenRange,
+  TextToken,
+  VerifierStreamEvent,
+} from "./voice/types";
 
 // Re-exported from backend.ts so consumers can keep importing GenerateArgs
 // from engine.ts without churn. backend.ts owns the canonical shape,
@@ -478,6 +488,14 @@ export class LocalInferenceEngine {
     () => dflashRequired(),
     () => getDflashRuntimeStatus().capabilities?.kernels ?? null,
   );
+  /**
+   * Active voice-streaming bridge (`EngineVoiceBridge`). Only set when an
+   * Eliza-1 bundle has been activated AND `startVoice()` has succeeded —
+   * see `packages/inference/AGENTS.md` §3 + §4. The engine never lazily
+   * stands up a voice session: callers either start it explicitly or get
+   * a hard error.
+   */
+  private voiceBridge: EngineVoiceBridge | null = null;
 
   async available(): Promise<boolean> {
     return this.dispatcher.available();
@@ -496,6 +514,14 @@ export class LocalInferenceEngine {
   }
 
   async unload(): Promise<void> {
+    if (this.voiceBridge) {
+      // Drop voice resources before tearing down text. Disarm is a
+      // no-op when the lifecycle is already in voice-off, so this is
+      // safe even if the caller never called startVoice().
+      await this.voiceBridge.disarm();
+      await this.voiceBridge.settle();
+      this.voiceBridge = null;
+    }
     await this.dispatcher.unload();
   }
 
@@ -730,6 +756,140 @@ export class LocalInferenceEngine {
       console.warn(message);
     }
     return true;
+  }
+
+  /**
+   * Start the voice-streaming pipeline against an already-activated
+   * Eliza-1 bundle. Per AGENTS.md §3, voice is mandatory for Eliza-1
+   * tiers — every required artifact (speaker preset, fused FFI when
+   * `useFfiBackend`, bundle root) is checked up front and missing
+   * pieces surface as `VoiceStartupError`. There is no silent fallback
+   * to text-only, no log-and-continue.
+   *
+   * Idempotent guard: starting twice without `stopVoice()` between
+   * surfaces a hard error so callers do not double-allocate the
+   * scheduler.
+   */
+  startVoice(opts: EngineVoiceBridgeOptions): EngineVoiceBridge {
+    if (this.voiceBridge) {
+      throw new VoiceStartupError(
+        "already-started",
+        "[voice] Voice session is already active. Call stopVoice() before starting a new one.",
+      );
+    }
+    this.voiceBridge = EngineVoiceBridge.start(opts);
+    return this.voiceBridge;
+  }
+
+  /**
+   * Arm the voice lifecycle on the active bridge — lazily loads TTS +
+   * ASR mmap regions, voice caches, and voice scheduler nodes via the
+   * shared resource registry. Throws `VoiceLifecycleError` if any
+   * required artifact is unavailable (RAM pressure, mmap fail, kernel
+   * missing) — see `voice/lifecycle.ts` for the structured codes.
+   *
+   * Required before sustained voice use; `startVoice()` only stands up
+   * the cold scheduler and bridge. Splitting setup from arming lets
+   * the engine keep the voice surface in voice-off (no heavy weights
+   * mapped) until the user actually toggles voice on.
+   */
+  async armVoice(): Promise<void> {
+    const bridge = this.voiceBridge;
+    if (!bridge) {
+      throw new VoiceStartupError(
+        "not-started",
+        "[voice] Cannot arm: no voice session active. Call startVoice() first.",
+      );
+    }
+    await bridge.arm();
+  }
+
+  /**
+   * Disarm the voice lifecycle — drains the ring buffer, settles the
+   * scheduler, and drops TTS/ASR weights from RAM via `evictPages()`
+   * (madvise / VirtualUnlock equivalent — see voice/engine-bridge.ts).
+   * No-op when not armed.
+   */
+  async disarmVoice(): Promise<void> {
+    const bridge = this.voiceBridge;
+    if (!bridge) return;
+    await bridge.disarm();
+  }
+
+  /**
+   * Tear down the active voice bridge. Idempotent; calling when no
+   * voice session is active is a no-op. Disarms the lifecycle first
+   * (drops voice weights via `evictPages`), then settles any in-flight
+   * TTS so audio committed to the ring buffer surfaces to the sink
+   * before the bridge is dropped.
+   */
+  async stopVoice(): Promise<void> {
+    const bridge = this.voiceBridge;
+    if (!bridge) return;
+    this.voiceBridge = null;
+    await bridge.disarm();
+    await bridge.settle();
+  }
+
+  /**
+   * Active voice bridge, or null when voice mode is not running.
+   * Callers (router, UI, agent runtime) read this to decide whether to
+   * forward verifier events. Voice is mandatory for Eliza-1 tiers but
+   * the bridge is still created lazily — `startVoice()` MUST be called
+   * before `voice()` returns non-null.
+   */
+  voice(): EngineVoiceBridge | null {
+    return this.voiceBridge;
+  }
+
+  /**
+   * Forward a verifier-stream event (DFlash drafter ↔ target verifier
+   * output) into the voice scheduler. Accepted tokens flow into the
+   * phrase chunker; rejected ranges trigger the rollback queue. No-op
+   * when voice is not active so callers can fan out events
+   * unconditionally.
+   *
+   * AGENTS.md §4: "When DFlash + target produce an accepted text
+   * token, the phrase chunker MUST hand the chunk to TTS within the
+   * same scheduler tick — no buffering past phrase boundaries."
+   */
+  async pushVerifierEvent(event: VerifierStreamEvent): Promise<void> {
+    const bridge = this.voiceBridge;
+    if (!bridge) return;
+    if (event.kind === "accept") {
+      const now = Date.now();
+      for (const tok of event.tokens) {
+        await bridge.pushAcceptedToken(tok, now);
+      }
+      return;
+    }
+    if (event.tokens.length === 0) return;
+    const range: RejectedTokenRange = {
+      fromIndex: event.tokens[0].index,
+      toIndex: event.tokens[event.tokens.length - 1].index,
+    };
+    await bridge.pushRejectedRange(range);
+  }
+
+  /**
+   * Mic VAD → barge-in. Per AGENTS.md §4, the PCM ring buffer MUST
+   * drain immediately and any in-flight TTS forward pass MUST be
+   * cancelled at the next kernel boundary. The scheduler enforces both
+   * — this is a thin pass-through.
+   */
+  triggerBargeIn(): void {
+    this.voiceBridge?.triggerBargeIn();
+  }
+
+  /**
+   * Test surface: fan an accepted-token list into the bridge in one
+   * call. Production callers should prefer `pushVerifierEvent` so the
+   * accept/reject discriminator stays explicit; this exists so the
+   * voice integration test can drive the scheduler without
+   * reconstructing `VerifierStreamEvent` boilerplate.
+   */
+  async pushAcceptedTokens(tokens: ReadonlyArray<TextToken>): Promise<void> {
+    await this.pushVerifierEvent({ kind: "accept", tokens: [...tokens] });
   }
 
   /**

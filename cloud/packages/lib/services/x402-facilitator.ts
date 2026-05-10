@@ -509,6 +509,7 @@ class X402FacilitatorService {
   private enabledSolanaNetworks: string[] = [];
   private svmScheme: ExactSvmFacilitator | null = null;
   private initialized = false;
+  private initializing: Promise<void> | null = null;
 
   /**
    * Initialize the facilitator service.
@@ -516,12 +517,30 @@ class X402FacilitatorService {
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
+    if (this.initializing) return this.initializing;
+
+    this.initializing = this.initializeOnce().finally(() => {
+      this.initializing = null;
+    });
+    return this.initializing;
+  }
+
+  private async initializeOnce(): Promise<void> {
+    if (this.initialized) return;
+
+    this.account = null;
+    this.networks = {};
+    this.solanaNetworks = {};
+    this.clients.clear();
+    this.enabledNetworks = [];
+    this.enabledSolanaNetworks = [];
+    this.svmScheme = null;
 
     const env = getCloudAwareEnv();
     const enabledStr =
       env.X402_NETWORKS ??
       env.EVM_NETWORKS ??
-      "base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana";
+      "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana";
     const enabledNames = parseEnabledNetworkNames(enabledStr);
 
     const privateKey = await this.loadFacilitatorKey();
@@ -595,7 +614,7 @@ class X402FacilitatorService {
     const kinds: SupportedKind[] = [];
     const signers: Record<string, string[]> = {};
 
-    for (const network of this.enabledNetworks) {
+    for (const network of new Set(this.enabledNetworks)) {
       kinds.push({
         x402Version: 2,
         scheme: isExactPermitNetwork(network) ? "exact_permit" : "exact",
@@ -613,7 +632,7 @@ class X402FacilitatorService {
     }
 
     if (this.svmScheme) {
-      for (const network of this.enabledSolanaNetworks) {
+      for (const network of new Set(this.enabledSolanaNetworks)) {
         kinds.push({
           x402Version: 2,
           scheme: "exact",

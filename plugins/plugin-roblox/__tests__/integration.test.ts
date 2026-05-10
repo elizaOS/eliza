@@ -36,13 +36,13 @@ function createMockMemory(text: string): Memory {
 describe("Roblox plugin metadata", () => {
   it("registers one compact action and one real provider", () => {
     expect(robloxPlugin.name).toBe("roblox");
-    expect(robloxPlugin.actions?.map((action) => action.name)).toEqual(["ROBLOX_ACTION"]);
+    expect(robloxPlugin.actions?.map((action) => action.name)).toEqual(["ROBLOX"]);
     expect(robloxPlugin.providers?.map((provider) => provider.name)).toEqual(["roblox-game-state"]);
     expect(robloxPlugin.services).toHaveLength(1);
   });
 });
 
-describe("ROBLOX_ACTION", () => {
+describe("ROBLOX", () => {
   it("validates only when Roblox settings are present", async () => {
     const configured = createMockRuntime({
       ROBLOX_API_KEY: "key",

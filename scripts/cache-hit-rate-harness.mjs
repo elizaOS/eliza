@@ -193,10 +193,7 @@ function openRouterExplicitCacheControl(provider, model) {
 	if (normalized.startsWith("anthropic/")) {
 		return { type: "ephemeral", ttl: "1h" };
 	}
-	if (
-		normalized.startsWith("qwen/") ||
-		normalized.includes("gemini")
-	) {
+	if (normalized.includes("gemini")) {
 		return { type: "ephemeral" };
 	}
 	return undefined;

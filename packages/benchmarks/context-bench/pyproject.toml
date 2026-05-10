@@ -42,8 +42,12 @@ dev = [
 embeddings = [
     "sentence-transformers>=2.2.0",
 ]
+drift = [
+    "httpx>=0.27.0",
+    "openai>=1.40.0",
+]
 all = [
-    "elizaos-context-bench[dev,embeddings]",
+    "elizaos-context-bench[dev,embeddings,drift]",
 ]
 
 [project.urls]

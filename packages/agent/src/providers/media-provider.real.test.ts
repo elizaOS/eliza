@@ -65,8 +65,8 @@ async function hasOllamaVisionModel(): Promise<boolean> {
       models?: Array<{ name: string }>;
     };
     const models = data.models ?? [];
-    // Check for common vision models (moondream is smaller ~1.8GB, llava is ~4GB)
-    const visionModels = ["moondream", "llava", "bakllava", "llava-llama3"];
+    // Check for common vision models available through local Ollama installs.
+    const visionModels = ["moondream", "llava", "bakllava"];
     return models.some((m) =>
       visionModels.some((v) => m.name === v || m.name.startsWith(`${v}:`)),
     );

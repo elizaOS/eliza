@@ -5,6 +5,7 @@ import { ModelType } from "../types/model";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
+import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 
 function useModelCalls(runtime: IAgentRuntime): unknown[][] {
 	return (runtime.useModel as { mock: { calls: unknown[][] } }).mock.calls;
@@ -435,6 +436,89 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Hello.");
 			expect(result.result.mode).toBe("simple");
+		}
+	});
+
+	it("lets a registered response-handler evaluator force planner routing without another Stage 1 call", async () => {
+		const runtime = makeRuntime([
+			JSON.stringify({
+				action: "RESPOND",
+				simple: true,
+				contexts: [],
+				thought: "Direct answer before patching.",
+				reply: "Inline answer.",
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "PLAN_ACTIONS",
+						arguments: {
+							action: "CHECK_RUNTIME",
+							parameters: {},
+						},
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Evaluator accepted the tool result.",
+				messageToUser: "Checked through the planner.",
+			}),
+		]);
+		const handler = vi.fn(async () => ({ success: true, text: "checked" }));
+		runtime.actions = [
+			{
+				name: "CHECK_RUNTIME",
+				description: "Check current runtime state.",
+				contexts: ["general"],
+				validate: vi.fn(async () => true),
+				handler,
+			},
+		] as IAgentRuntime["actions"];
+		runtime.responseHandlerEvaluators = [
+			{
+				name: "test.force_planner",
+				priority: 5,
+				shouldRun: () => true,
+				evaluate: () => ({
+					requiresTool: true,
+					simple: false,
+					clearReply: true,
+					addContexts: ["general"],
+					addCandidateActions: ["CHECK_RUNTIME"],
+					addParentActionHints: ["CHECK_RUNTIME"],
+				}),
+			} satisfies ResponseHandlerEvaluator,
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(3);
+		expect(useModelCalls(runtime)[0]?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		expect(useModelCalls(runtime)[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
+		expect(useModelCalls(runtime)[2]?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		const plannerParams = useModelCalls(runtime)[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerPrompt = JSON.stringify(plannerParams.messages);
+		expect(plannerPrompt).toContain("CHECK_RUNTIME");
+		expect(plannerPrompt).toContain(
+			"Stage 1 router marked this current turn as requiring a tool",
+		);
+		expect(handler).toHaveBeenCalledTimes(1);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Checked through the planner.",
+			);
 		}
 	});
 

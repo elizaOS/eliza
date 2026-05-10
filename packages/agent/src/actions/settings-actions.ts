@@ -535,17 +535,17 @@ export const settingsAction: Action = {
     "SET_NAME",
   ],
   description:
-    "Owner-only polymorphic settings mutation. Dispatches on `op` to update " +
+    "Owner-only polymorphic settings mutation. Dispatches on `action` to update " +
     "AI provider, toggle a capability, toggle/configure auto-training, set " +
     "the owner display name, or write to the world's settings registry.",
   descriptionCompressed:
-    "owner-only polymorphic settings mutation dispatch on op update AI provider, toggle capability, toggle/configure auto-train, set owner display name, write world settings registry",
+    "owner-only settings mutation dispatch on action update AI provider, toggle capability, toggle/configure auto-train, set owner display name, write world settings registry",
 
   validate: async () => true,
 
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: `Operation discriminator. One of: ${SETTINGS_OPS.join(", ")}.`,
       required: true,
       schema: { type: "string" as const },
@@ -624,7 +624,7 @@ export const settingsAction: Action = {
 
   handler: async (runtime, message, _state, options) => {
     const params = readParams(options as HandlerOptions | undefined);
-    const op = params.op;
+    const op = params.action ?? params.subaction ?? params.op;
 
     switch (op) {
       case "update_ai_provider":
@@ -640,7 +640,7 @@ export const settingsAction: Action = {
       default:
         return fail(
           "SETTINGS_INVALID",
-          `SETTINGS requires \`op\`. One of: ${SETTINGS_OPS.join(", ")}.`,
+          `SETTINGS requires \`action\`. One of: ${SETTINGS_OPS.join(", ")}.`,
           { op: typeof op === "string" ? op : null },
         );
     }

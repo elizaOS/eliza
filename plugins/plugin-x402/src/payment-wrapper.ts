@@ -655,7 +655,7 @@ async function verifyPaymentIdViaFacilitator(
   const facilitatorUrl =
     typeof facilitatorUrlSetting === "string"
       ? facilitatorUrlSetting
-      : "https://x402.elizaos.ai/api/facilitator";
+      : "https://x402.elizacloud.ai/api/facilitator";
 
   if (!facilitatorUrl) {
     logError("⚠️  No facilitator URL configured");

@@ -36,8 +36,8 @@ the priv-app SELinux domain.
 - `arm64-v8a/libeliza-llama-shim.so` — thin C shim that re-exports the
   llama.cpp symbols under `eliza_llama_*` names so the agent can
   bun:ffi-bind them without colliding with any other loaded llama lib.
-- `models/` — bundled GGUF models (currently includes a small Qwen for
-  smoke + the production checkpoint listed in `manifest.json`).
+- `models/` — bundled Eliza-1 GGUF models for smoke and the production
+  checkpoint listed in `manifest.json`.
 - `pglite.wasm`, `pglite.data`, `vector.tar.gz`, `fuzzystrmatch.tar.gz`,
   `fuzzystrmatch.tar` — PGlite v0 + extensions (no compression so
   PGlite's loader can mmap them as-is).

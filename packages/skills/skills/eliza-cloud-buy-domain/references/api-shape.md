@@ -1,7 +1,9 @@
 # Domain Buy API Shape
 
-Use these routes with `ELIZAOS_CLOUD_API_KEY`. The SDK methods are wrappers
-around the same endpoints.
+Use these routes through `USE_SKILL parent-agent` when you are an orchestrated
+worker. Use `ELIZAOS_CLOUD_API_KEY` only in the parent/app runtime where
+credentials are already provisioned. The SDK methods are wrappers around the
+same endpoints.
 
 ## Quote A Domain
 

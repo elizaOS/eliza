@@ -7,16 +7,10 @@ import {
 
 describe("cost-table", () => {
 	describe("MODEL_PRICES_USD_PER_M_TOKENS", () => {
-		it("includes the documented Cerebras gpt-oss family", () => {
+		it("includes the approved Cerebras GPT-OSS default", () => {
 			expect(MODEL_PRICES_USD_PER_M_TOKENS["gpt-oss-120b"]).toEqual({
 				input: 0.5,
 				output: 0.8,
-				cacheRead: 0,
-				cacheWrite: 0,
-			});
-			expect(MODEL_PRICES_USD_PER_M_TOKENS["gpt-oss-20b"]).toEqual({
-				input: 0.1,
-				output: 0.3,
 				cacheRead: 0,
 				cacheWrite: 0,
 			});

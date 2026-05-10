@@ -26,10 +26,6 @@ import { useApp } from "../../state";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { getOverlayApp } from "../apps/overlay-app-registry";
 import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
-import {
-  CompanionInferenceAlertButton as InferenceCloudAlertButton,
-  resolveCompanionInferenceNotice,
-} from "../companion/injected";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { HEADER_BUTTON_STYLE } from "./ShellHeaderControls";
@@ -117,15 +113,12 @@ export function Header({
     activeOverlayApp,
     appRuns,
     browserEnabled,
-    chatLastUsage,
-    conversationMessages,
     elizaCloudAuthRejected,
     elizaCloudConnected,
     elizaCloudCredits,
     elizaCloudCreditsCritical,
     elizaCloudCreditsError,
     elizaCloudCreditsLow,
-    elizaCloudEnabled,
     loadDropStatus,
     plugins,
     setState,
@@ -440,38 +433,6 @@ export function Header({
     setTab("settings");
   }, [setState, setTab]);
 
-  const chatInferenceNotice = useMemo(() => {
-    if (tab !== "chat") return null;
-    return resolveCompanionInferenceNotice({
-      chatLastUsageModel: chatLastUsage?.model,
-      elizaCloudAuthRejected,
-      elizaCloudConnected,
-      elizaCloudCreditsError,
-      elizaCloudEnabled,
-      hasInterruptedAssistant: (conversationMessages ?? []).some(
-        (message) => message.role === "assistant" && message.interrupted,
-      ),
-      t,
-    });
-  }, [
-    chatLastUsage?.model,
-    conversationMessages,
-    elizaCloudAuthRejected,
-    elizaCloudConnected,
-    elizaCloudCreditsError,
-    elizaCloudEnabled,
-    tab,
-    t,
-  ]);
-
-  const handleChatInferenceAlertClick = useCallback(() => {
-    if (!chatInferenceNotice) return;
-    if (chatInferenceNotice.kind === "cloud") {
-      setState("cloudDashboardView", "billing");
-    }
-    setTab("settings");
-  }, [chatInferenceNotice, setState, setTab]);
-
   const settingsButtonLabel = settingsTabGroup
     ? localizeTabGroup(settingsTabGroup).label
     : t("nav.settings", { defaultValue: "Settings" });
@@ -571,12 +532,6 @@ export function Header({
     >
       {pageRightExtras}
       {desktopTaskToggle}
-      {chatInferenceNotice ? (
-        <InferenceCloudAlertButton
-          notice={chatInferenceNotice}
-          onClick={handleChatInferenceAlertClick}
-        />
-      ) : null}
       {showCloudStatus ? (
         <CloudStatusBadge
           connected={elizaCloudConnected}
@@ -627,10 +582,7 @@ export function Header({
             className={
               isMobileViewport
                 ? `grid ${
-                    mobileLeft ||
-                    breadcrumbNode ||
-                    chatInferenceNotice ||
-                    pageRightExtras
+                    mobileLeft || breadcrumbNode || pageRightExtras
                       ? "min-h-[2.75rem]"
                       : "min-h-0"
                   } grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2`
@@ -659,7 +611,7 @@ export function Header({
                 </div>
                 <div
                   className={
-                    breadcrumbNode || chatInferenceNotice
+                    breadcrumbNode
                       ? "flex h-[2.375rem] min-w-0 items-center justify-center gap-2"
                       : "pointer-events-none min-w-0"
                   }
@@ -668,20 +620,10 @@ export function Header({
                       ? "desktop-window-titlebar-drag-zone"
                       : undefined
                   }
-                  data-no-camera-drag={
-                    breadcrumbNode || chatInferenceNotice ? "true" : undefined
-                  }
-                  aria-hidden={
-                    breadcrumbNode || chatInferenceNotice ? undefined : "true"
-                  }
+                  data-no-camera-drag={breadcrumbNode ? "true" : undefined}
+                  aria-hidden={breadcrumbNode ? undefined : "true"}
                 >
                   {breadcrumbNode}
-                  {chatInferenceNotice ? (
-                    <InferenceCloudAlertButton
-                      notice={chatInferenceNotice}
-                      onClick={handleChatInferenceAlertClick}
-                    />
-                  ) : null}
                 </div>
                 <div
                   className="flex min-w-0 items-center justify-end"

@@ -1,8 +1,8 @@
 /**
  * Bundled-models bootstrap for AOSP / on-device installs.
  *
- * The AOSP build pipeline stages a small chat model + a small embedding
- * model into the APK at `assets/agent/models/{file}.gguf` plus a
+ * The AOSP build pipeline stages Eliza-1 models into the APK at
+ * `assets/agent/models/{file}.gguf` plus a
  * `manifest.json` describing each one (id, role, sha256, sizeBytes).
  * `ElizaAgentService.extractAssetsIfNeeded()` copies those files into
  * `$ELIZA_STATE_DIR/local-inference/models/` on first launch.
@@ -27,7 +27,11 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ensureDefaultAssignment } from "./assignments";
+import {
+  ensureDefaultAssignment,
+  readAssignments,
+  writeAssignments,
+} from "./assignments";
 import { elizaModelsDir } from "./paths";
 import { upsertElizaModel } from "./registry";
 import type { InstalledModel } from "./types";
@@ -62,6 +66,20 @@ async function readManifest(): Promise<BundledModelManifest | null> {
   } catch {
     return null;
   }
+}
+
+async function ensureBundledAssignment(
+  modelId: string,
+  role: BundledModelEntry["role"],
+): Promise<void> {
+  if (role !== "embedding") {
+    await ensureDefaultAssignment(modelId);
+    return;
+  }
+
+  const current = await readAssignments();
+  if (current.TEXT_EMBEDDING) return;
+  await writeAssignments({ ...current, TEXT_EMBEDDING: modelId });
 }
 
 /**
@@ -100,16 +118,11 @@ export async function registerBundledModels(): Promise<number> {
       sha256: entry.sha256 ?? undefined,
     };
     await upsertElizaModel(installed);
-    // Auto-assign each bundled model to its appropriate slots if the
-    // user hasn't already assigned them. ensureDefaultAssignment is
-    // idempotent and slot-aware: a chat model fills TEXT_SMALL /
-    // TEXT_LARGE if empty, an embedding model fills TEXT_EMBEDDING if
-    // empty, and existing assignments are never overwritten. This is
-    // why we don't use `autoAssignAtBoot` here — that helper requires
-    // exactly one installed model and short-circuits to null when
-    // >1 model is registered (which is precisely the AOSP case:
-    // chat + embedding always ship together).
-    await ensureDefaultAssignment(entry.id);
+    // Auto-assign each bundled model to its manifest role if the user
+    // hasn't already assigned that slot. This keeps Eliza-1 chat models
+    // eligible for TEXT_EMBEDDING when the bundle explicitly marks them
+    // as the local embedding bootstrap model.
+    await ensureBundledAssignment(entry.id, entry.role);
     registered += 1;
   }
   return registered;

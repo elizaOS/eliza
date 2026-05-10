@@ -1,4 +1,4 @@
-"""Vast.ai PyWorker for Qwen3.6-27B NEO-CODE GGUF on a single RTX 5090.
+"""Vast.ai PyWorker for Eliza-1-27B NEO-CODE GGUF on a single RTX 5090.
 
 Vast.ai Serverless deploys this worker by setting `PYWORKER_REPO` on the
 template; on cold start the host clones the repo, runs `onstart.sh` to fetch
@@ -13,7 +13,7 @@ the endpoint URL via `VastProvider`.
 
 Why llama.cpp instead of vLLM:
 - The default served model is a Q6_K GGUF from
-  `DavidAU/Qwen3.6-27B-Heretic-Uncensored-FINETUNE-NEO-CODE-Di-IMatrix-MAX-GGUF`.
+  `elizaos/eliza-1-27b-fp8`.
 - vLLM's GGUF support is experimental and slow; llama.cpp's server is the
   native, well-tuned path for k-quants on consumer Blackwell.
 - `llama-server` exposes OpenAI-compatible `/v1/chat/completions`,
@@ -33,7 +33,7 @@ from vastai_sdk import (
 # Catalog id (set by onstart.sh via --alias on llama-server). The cloud
 # `VastProvider` forwards this exact id; llama-server echoes it back in
 # the response `model` field.
-MODEL_ALIAS = os.environ.get("MODEL_ALIAS", "vast/qwen3.6-27b-neo-code")
+MODEL_ALIAS = os.environ.get("MODEL_ALIAS", "vast/eliza-1-27b")
 
 # llama-server defaults to port 8080; onstart.sh keeps that.
 LLAMA_SERVER_PORT = int(os.environ.get("LLAMA_SERVER_PORT", "8080"))

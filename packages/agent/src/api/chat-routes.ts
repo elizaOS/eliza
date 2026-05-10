@@ -788,7 +788,7 @@ export function detectLocalInferenceCommandIntent(
       normalized,
     ) &&
     (options.localInferenceContext === true ||
-      /\b(?:download|model|local|inference|gguf|llama|provider|runtime)\b/.test(
+      /\b(?:download|model|local|inference|gguf|eliza-1|provider|runtime)\b/.test(
         normalized,
       ))
   ) {
@@ -798,7 +798,7 @@ export function detectLocalInferenceCommandIntent(
   if (
     /\b(?:download|install|get|fetch|pull)\b/.test(normalized) &&
     (options.localInferenceContext === true ||
-      /\b(?:model|local|inference|gguf|llama|smollm)\b/.test(normalized))
+      /\b(?:model|local|inference|gguf|eliza-1)\b/.test(normalized))
   ) {
     return "download";
   }
