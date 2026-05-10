@@ -183,6 +183,14 @@ export {
   searchMemoriesForCluster,
 } from "./services/relationships-graph.ts";
 export {
+  getLoadedVfsPlugins,
+  type LoadedVfsPlugin,
+  loadPluginFromVfs,
+  type LoadPluginFromVfsOptions,
+  unloadPluginFromVfs,
+  type UnloadPluginFromVfsOptions,
+} from "./runtime/load-plugin-from-vfs.ts";
+export {
   runShell,
   type ShellExecutionMode,
   type ShellRequest,
