@@ -13,6 +13,8 @@ export * from "./app-registry";
 export * from "./app-core-runtime-hooks";
 // Export all core modules
 export * from "./app-route-plugin-registry";
+export * from "./browser-capture-hooks";
+export * from "./browser-workspace-hooks";
 export * from "./boot-env";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
@@ -64,6 +66,7 @@ export * from "./features/advanced-memory";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
 export * from "./features/documents/index";
+export * from "./mobile-device-bridge-hooks";
 export type {
 	DraftRecord,
 	DraftRequest,
