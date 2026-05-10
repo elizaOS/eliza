@@ -271,7 +271,10 @@ for package_dir in cloud/packages/sdk packages/cloud-routing; do
     popd >/dev/null
   fi
 done
-node "$APP_CORE_SCRIPTS_DIR/link-docker-local-app-packages.mjs"
+mkdir -p node_modules/@elizaos
+rm -rf node_modules/@elizaos/cloud-sdk node_modules/@elizaos/cloud-routing
+ln -s ../../cloud/packages/sdk node_modules/@elizaos/cloud-sdk
+ln -s ../../packages/cloud-routing node_modules/@elizaos/cloud-routing
 
 log "Building Capacitor plugins"
 "$BUN_BIN" packages/app-core/scripts/build-native-plugins.mjs
