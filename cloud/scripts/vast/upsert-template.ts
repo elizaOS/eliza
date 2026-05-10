@@ -202,10 +202,7 @@ async function main(): Promise<void> {
       "EXTRA_VLLM_ARGS",
     ]);
   } else {
-    env.MODEL_REPO = readEnv(
-      "MODEL_REPO",
-      "elizaos/eliza-1-27b-fp8",
-    );
+    env.MODEL_REPO = readEnv("MODEL_REPO", "elizaos/eliza-1-27b-fp8");
     env.MODEL_FILE = readEnv("MODEL_FILE", "text/eliza-1-pro-27b-128k.gguf");
     env.MODEL_ALIAS = readEnv("MODEL_ALIAS", "vast/eliza-1-27b");
     env.LLAMA_CONTEXT = readEnv("LLAMA_CONTEXT", "32768");
