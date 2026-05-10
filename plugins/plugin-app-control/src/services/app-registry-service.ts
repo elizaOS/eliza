@@ -23,12 +23,43 @@ import {
 
 export const APP_REGISTRY_SERVICE_TYPE = "app-registry";
 
+/**
+ * Source classification computed by the loader at register time. NOT
+ * declared by the app — encoded by the caller based on where the
+ * directory came from (in-tree first-party dir vs. external load). See
+ * `eliza/packages/docs/architecture/app-permissions-manifest.md`.
+ */
+export type AppTrust = "first-party" | "external";
+
 export interface AppRegistryEntry extends ElizaCuratedAppDefinition {
 	directory: string;
 	displayName: string;
+	/**
+	 * Raw `elizaos.app.permissions` block as declared in the app's
+	 * `package.json`, or absent when the app declared no permissions
+	 * block. Persisted as the open shape (Record<string, unknown>) so
+	 * future Milady versions can read namespaces this version did not
+	 * validate. See parser at `../permissions.ts`.
+	 */
+	requestedPermissions?: Record<string, unknown>;
 }
 
 export interface RegisterContext {
+	requesterEntityId?: string | null;
+	requesterRoomId?: string | null;
+	/**
+	 * How the loader classifies this app's source. Defaults to
+	 * `"external"` for back-compat — first-party callers should pass
+	 * `"first-party"` explicitly.
+	 */
+	trust?: AppTrust;
+}
+
+export interface ManifestRejection {
+	directory: string;
+	packageName: string | null;
+	reason: string;
+	path: string;
 	requesterEntityId?: string | null;
 	requesterRoomId?: string | null;
 }
@@ -93,14 +124,29 @@ async function readPersisted(file: string): Promise<PersistedShape> {
 		return { version: 1, entries: [] };
 	}
 	const entries = (parsed as { entries: unknown[] }).entries.filter(
-		(e): e is AppRegistryEntry =>
-			typeof e === "object" &&
-			e !== null &&
-			typeof (e as AppRegistryEntry).slug === "string" &&
-			typeof (e as AppRegistryEntry).canonicalName === "string" &&
-			typeof (e as AppRegistryEntry).directory === "string" &&
-			typeof (e as AppRegistryEntry).displayName === "string" &&
-			Array.isArray((e as AppRegistryEntry).aliases),
+		(e): e is AppRegistryEntry => {
+			if (typeof e !== "object" || e === null) return false;
+			const candidate = e as AppRegistryEntry;
+			if (
+				typeof candidate.slug !== "string" ||
+				typeof candidate.canonicalName !== "string" ||
+				typeof candidate.directory !== "string" ||
+				typeof candidate.displayName !== "string" ||
+				!Array.isArray(candidate.aliases)
+			) {
+				return false;
+			}
+			if (candidate.requestedPermissions !== undefined) {
+				if (
+					typeof candidate.requestedPermissions !== "object" ||
+					candidate.requestedPermissions === null ||
+					Array.isArray(candidate.requestedPermissions)
+				) {
+					return false;
+				}
+			}
+			return true;
+		},
 	);
 	return { version: 1, entries };
 }
@@ -186,13 +232,29 @@ export class AppRegistryService extends Service {
 		await writePersistedAtomic(this.registryPath, persisted);
 
 		await appendAuditLine(this.auditPath, {
+			kind: "registered",
 			timestamp: new Date().toISOString(),
 			directory: entry.directory,
 			appName: entry.canonicalName,
 			slug: entry.slug,
 			displayName: entry.displayName,
+			trust: ctx.trust ?? "external",
+			requestedPermissions: entry.requestedPermissions ?? null,
 			registeredByEntity: ctx.requesterEntityId ?? null,
 			registeredByRoom: ctx.requesterRoomId ?? null,
+		});
+	}
+
+	async recordManifestRejection(rejection: ManifestRejection): Promise<void> {
+		await appendAuditLine(this.auditPath, {
+			kind: "rejected-manifest",
+			timestamp: new Date().toISOString(),
+			directory: rejection.directory,
+			appName: rejection.packageName,
+			reason: rejection.reason,
+			path: rejection.path,
+			registeredByEntity: rejection.requesterEntityId ?? null,
+			registeredByRoom: rejection.requesterRoomId ?? null,
 		});
 	}
 }
