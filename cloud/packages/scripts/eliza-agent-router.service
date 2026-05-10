@@ -15,8 +15,8 @@ ExecStart=/usr/bin/npx tsx packages/scripts/daemons/agent-router.ts
 Restart=always
 RestartSec=5
 
-MemoryMax=256M
-MemoryHigh=192M
+MemoryMax=512M
+MemoryHigh=384M
 
 StandardOutput=journal
 StandardError=journal

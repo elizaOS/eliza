@@ -16,8 +16,8 @@ ExecStart=/usr/bin/npx tsx packages/scripts/daemons/provisioning-worker.ts
 Restart=always
 RestartSec=5
 
-MemoryMax=512M
-MemoryHigh=384M
+MemoryMax=1024M
+MemoryHigh=768M
 
 StandardOutput=journal
 StandardError=journal
