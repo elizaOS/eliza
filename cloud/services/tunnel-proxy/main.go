@@ -26,7 +26,6 @@ const (
 	defaultStateDir      = "/var/lib/tunnel-proxy"
 	defaultHostname      = "eliza-tunnel-proxy"
 	defaultPort          = "8080"
-	proxyTag             = "tag:eliza-proxy"
 )
 
 var hostLabelPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -53,13 +52,12 @@ func main() {
 	}
 
 	ts := &tsnet.Server{
-		Dir:           cfg.stateDir,
-		Hostname:      cfg.hostname,
-		AuthKey:       cfg.authKey,
-		ControlURL:    cfg.controlURL,
-		AdvertiseTags: []string{proxyTag},
-		Ephemeral:     false,
-		UserLogf:      log.Printf,
+		Dir:        cfg.stateDir,
+		Hostname:   cfg.hostname,
+		AuthKey:    cfg.authKey,
+		ControlURL: cfg.controlURL,
+		Ephemeral:  false,
+		UserLogf:   log.Printf,
 	}
 	defer ts.Close()
 

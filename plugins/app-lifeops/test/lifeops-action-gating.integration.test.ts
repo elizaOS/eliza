@@ -168,8 +168,8 @@ describe("LifeOps plugin action gating", () => {
     if (!actionParam) {
       throw new Error("ENTITY has no `action` parameter");
     }
-    // Follow-up cadence lives on SCHEDULED_TASK now; the transitional
-    // subaction names (`add_follow_up`, `complete_follow_up`,
+    // Follow-up cadence lives on SCHEDULED_TASKS now; the transitional
+    // legacy child names (`add_follow_up`, `complete_follow_up`,
     // `follow_up_list`, `days_since`, `list_overdue_followups`,
     // `mark_followup_done`, `set_followup_threshold`) and the legacy
     // contact aliases (`add_contact`, `list_contacts`) must be gone from
@@ -302,7 +302,7 @@ describe("LifeOps plugin action gating", () => {
     const actionNames = (appLifeOpsPlugin.actions ?? []).map((a) => a.name);
     // Spot-check one virtual per umbrella to confirm `promoteSubactionsToActions`
     // wired the parents through. Virtuals exist alongside the umbrella so the
-    // planner gets a discoverable top-level entry per subaction.
+    // planner gets a discoverable top-level entry per child action.
     for (const expected of [
       "BLOCK",
       "BLOCK_BLOCK",
