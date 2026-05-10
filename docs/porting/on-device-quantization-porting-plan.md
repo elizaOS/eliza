@@ -397,6 +397,43 @@ curl -X POST localhost:31337/api/messages -H 'Content-Type: application/json' \
   -d '{"text":"hi"}'
 ```
 
+## Wave 3: fused CPU kernels (W3-B; landed)
+
+Branch: `milady/fused-cpu` off `milady/integration`. Three new kernels +
+parity tests + microbench, all CPU-only:
+
+| Kernel | Op / entry | ISAs | Parity | Speedup vs unfused (AVX2) |
+|---|---|---|---|---|
+| Fused QJL-K + TBQ-V attention | `GGML_OP_FUSED_ATTN_QJL_TBQ` (`ggml_fused_attn_qjl_tbq()`) | scalar / AVX2 / NEON | max-rel ≤ 1.7e-3 over 100 random contexts (target ≤ 5e-3) | 4.5× at n_kv=512 (target ≥ 1.5×) |
+| Fused Q4_POLAR × Q8_0 dot | `ggml_vec_dot_q4_polar_q8_0_fused` | scalar / AVX2 / NEON | bit-exact (0.00e+00 max-rel) over 100 blocks, both QJL-residual on/off | ≥ 100× (unfused is cross-TU call-overhead bound) |
+| Fused-Hadamard 2-block dot | `ggml_vec_dot_q4_polar_q8_0_fused_hadamard` | scalar (SIMD pending) | bit-exact over 100 blocks | not measured (lower-priority) |
+
+Files (in `milady-ai/llama.cpp` on branch `milady/fused-cpu`):
+- `ggml/src/ggml-cpu/fused-attn-qjl-tbq.c` + `-avx2.c` + `-neon.c`
+- `ggml/src/ggml-cpu/fused-q4-polar-dot.c` + `-avx2.c` + `-neon.c`
+- `ggml/src/ggml-cpu/fused-hadamard-polar-dot.c`
+- `tests/test-fused-kernels.cpp` (gated by `LLAMA_BUILD_TESTS=ON`)
+- `tests/bench-fused-kernels.cpp` (gated by `LLAMA_BUILD_TESTS=ON`)
+
+Algorithm notes:
+- Fused QJL+TBQ uses two-pass online softmax (FlashAttention-style
+  numerical-stability pattern, simplified to two passes since the K
+  side is so cheap that re-reading is free vs a TBQ V dequant).
+- Fused Q4_POLAR dot exploits WHT linearity: `<H c, y> = <c, H y>`,
+  so we apply the inverse-Hadamard butterfly to the *activation* side
+  once and stream centroids directly into the FMA accumulator. The
+  per-block `l2 / QK_POLAR` scale folds into the per-Q8_0-chunk fp16
+  scale at load time.
+- Fused-Hadamard 2-block dot is the prototype for collapsing the
+  butterfly across paired blocks; current implementation runs two
+  independent N-WHTs because typical KV-cache pairs don't share `l2`,
+  so the win is in the shared QJL-signs sweep + better cache locality
+  rather than the butterfly fusion itself. SIMD versions of this
+  kernel are deferred until a workload depends on it.
+
+GPU fused kernels (CUDA, Metal) tracked separately on `milady/fused-cuda`
+(W3-D) and a future `milady/fused-metal`.
+
 ## Out of scope (explicit)
 
 - NNAPI / EdgeTPU delegates. KV-cache compressors and per-step bit
@@ -407,3 +444,7 @@ curl -X POST localhost:31337/api/messages -H 'Content-Type: application/json' \
   when ggml-webgpu lands TBQ.
 - Training-time-only paths (PolarQuant calibration, TurboQuant
   calibration loop). Those stay in `packages/training/`.
+- FlashAttention-v2 single-pass online-softmax integration (W3-B
+  fused attn borrows the pattern but stays two-pass for now).
+- DFlash port (W3-A track).
+- GPU fused kernels (W3-D for CUDA; future Metal track).

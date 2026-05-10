@@ -2,8 +2,19 @@
 /**
  * Build the DFlash-capable llama-server fork used by local inference.
  *
- * Upstream ggml-org/llama.cpp does not yet ship DFlash. This script builds
- * spiritbuun/buun-llama-cpp into:
+ * As of v0.2.0-milady, DFlash speculative decoding lives in the unified
+ * milady-ai/llama.cpp fork (the same repo as the AOSP cross-compile).
+ * Pre-2026-05-09 this script consumed spiritbuun/buun-llama-cpp directly
+ * (which itself was 8,988 commits ahead of upstream b8198 with quant
+ * type IDs that conflicted with apothic's TBQ slots). Wave-3 agent A
+ * surgically ported the DFlash CLI surface (--spec-type dflash,
+ * --draft-min-prob, n_drafted_total/n_drafted_accepted_total Prometheus
+ * counters) onto the unified fork and retired the dual-fork situation.
+ * See docs/porting/unified-fork-strategy.md §H step 8 for the migration
+ * story. Override via ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF if you need
+ * to point at the legacy spiritbuun pin during a rollback.
+ *
+ * The script builds the unified fork into:
  *   $ELIZA_STATE_DIR/local-inference/bin/dflash/<platform>-<arch>-<backend>/
  *
  * Multi-target build matrix (see SUPPORTED_TARGETS below):
@@ -30,11 +41,17 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
+// milady-ai/llama.cpp @ v0.2.0-milady (commit 7c7818aa) — the unified fork
+// that composes TBQ + QJL + Q4_POLAR + Metal kernels + DFlash spec-decode
+// onto upstream b8198. Same repo + commit lineage as compile-libllama.mjs
+// (AOSP cross-compile path) so both build paths land on identical kernels.
 const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
-  "https://github.com/spiritbuun/buun-llama-cpp.git";
-const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "master";
-const MIN_COMMIT = "b9d01582b";
+  "https://github.com/milady-ai/llama.cpp.git";
+const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v0.2.0-milady";
+// Minimum commit on milady/integration that contains the DFlash CLI
+// surface (--spec-type dflash, --draft-min-prob, Prometheus counters).
+const MIN_COMMIT = "7c7818aafc7599996268226e2e56099f4f38e972";
 
 const SUPPORTED_TARGETS = [
   "linux-x64-cpu",
@@ -484,11 +501,14 @@ function defaultTarget() {
 
 function parseArgs(argv) {
   const args = {
+    // Renamed from buun-llama-cpp to milady-llama-cpp on the unified-fork
+    // migration. Old caches stay around harmlessly under the prior name —
+    // the new directory busts the cache so a fresh ref pull is forced.
     cacheDir: path.join(
       os.homedir(),
       ".cache",
       "eliza-dflash",
-      "buun-llama-cpp",
+      "milady-llama-cpp",
     ),
     outDirOverride: null,
     targets: null, // null => single legacy target, otherwise an array
@@ -593,9 +613,24 @@ function ensureCheckout(cacheDir, ref) {
   return head;
 }
 
-function patchMetalTurbo4(cacheDir) {
+// All five patch* hooks below were used to inject Turbo4/QJL/Polar/TCQ
+// Metal+Vulkan kernels into the prior spiritbuun fork at build time.
+// As of v0.2.0-milady (unified milady-ai/llama.cpp fork) those kernels
+// live directly under ggml/src/ggml-metal/milady-kernels/ and the
+// vulkan-shaders/ tree, so the patches are no-ops. Function signatures
+// are kept for one release as a rollback path per
+// docs/porting/unified-fork-strategy.md §H step 8 transition plan; can
+// be deleted in v0.3.0-milady once no consumer pins the legacy fork.
+
+function patchMetalTurbo4(_cacheDir) {
+  console.log(
+    "[dflash-build] patchMetalTurbo4: kernels already present on milady-ai/llama.cpp; no-op.",
+  );
+  return;
+  // legacy body kept below as dead code for documentation; remove in v0.3.0-milady.
+  // eslint-disable-next-line no-unreachable
   const metalPath = path.join(
-    cacheDir,
+    _cacheDir,
     "ggml",
     "src",
     "ggml-metal",
@@ -742,13 +777,13 @@ template [[host_name("kernel_set_rows_turbo4_i32")]] kernel set_rows_turbo4_t ke
 
 // DRAFT: copies repo-local Vulkan compute shaders into the fork's source tree
 // so a custom build can experiment with the turbo3 / turbo4 / turbo3_tcq
-// kernel ports under local-inference/kernels/vulkan/. Default OFF — the user
+// kernel ports under packages/inference/vulkan/. Default OFF — the user
 // must set ELIZA_DFLASH_PATCH_VULKAN_KERNELS=1 to opt in for hardware testing.
-// See local-inference/kernels/README.md.
+// See packages/inference/README.md.
 function patchVulkanKernels(cacheDir) {
   if (process.env.ELIZA_DFLASH_PATCH_VULKAN_KERNELS !== "1") return;
   console.warn(
-    "[dflash-build] WARNING: ELIZA_DFLASH_PATCH_VULKAN_KERNELS=1 injects DRAFT Vulkan shaders that are KNOWN-BROKEN on Mesa llvmpipe (0/8 numerical match). Run kernels/verify/vulkan_verify against the resulting build before trusting it. See local-inference/kernels/README.md.",
+    "[dflash-build] WARNING: ELIZA_DFLASH_PATCH_VULKAN_KERNELS=1 injects DRAFT Vulkan shaders that are KNOWN-BROKEN on Mesa llvmpipe (0/8 numerical match). Run kernels/verify/vulkan_verify against the resulting build before trusting it. See packages/inference/README.md.",
   );
   const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..");
   const srcDir = path.join(repoRoot, "local-inference", "kernels", "vulkan");
@@ -1011,7 +1046,7 @@ function writeCapabilities({
     arch,
     backend,
     builtAt: new Date().toISOString(),
-    fork: "spiritbuun/buun-llama-cpp",
+    fork: "milady-ai/llama.cpp",
     forkCommit,
     kernels,
     binaries,

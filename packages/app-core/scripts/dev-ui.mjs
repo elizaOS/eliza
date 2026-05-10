@@ -433,8 +433,14 @@ function formatRelativeImportPath(relativePath) {
 
 function resolveStealthImportPath(devCwd, candidatePaths) {
   for (const candidatePath of candidatePaths) {
-    if (existsSync(path.join(devCwd, candidatePath))) {
-      return formatRelativeImportPath(candidatePath);
+    const absPath = path.join(devCwd, candidatePath);
+    if (existsSync(absPath)) {
+      // Return the absolute path so the value stays valid regardless of
+      // which cwd the API child gets spawned in. The API child is anchored
+      // at the eliza/ submodule (see apiSpawnCwd below), so a path computed
+      // relative to the outer milady cwd would resolve to a non-existent
+      // `eliza/eliza/...` from the child's perspective.
+      return absPath;
     }
   }
   return null;
