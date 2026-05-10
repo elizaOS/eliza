@@ -12,6 +12,7 @@ import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
 import { extractPageAction } from "../actions/extract-page.ts";
 import { logsAction } from "../actions/logs.ts";
+import { analyzeImageAction } from "../actions/media.ts";
 import { memoryAction } from "../actions/memories.ts";
 import { pageActionGroupActions } from "../actions/page-action-groups.ts";
 import { pluginAction } from "../actions/plugin.ts";
@@ -216,6 +217,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       ...promoteSubactionsToActions(databaseAction),
       queryTrajectoriesAction,
       ...promoteSubactionsToActions(memoryAction),
+      analyzeImageAction,
       // SCHEDULE_FOLLOW_UP is now the `followup` op on contactAction.
       // ARCHIVE_CODING_TASK / REOPEN_CODING_TASK live as ops on the TASKS
       // parent in @elizaos/plugin-agent-orchestrator (also surfaced via the

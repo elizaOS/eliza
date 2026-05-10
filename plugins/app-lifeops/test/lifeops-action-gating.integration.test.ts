@@ -231,12 +231,113 @@ describe("LifeOps plugin action gating", () => {
     expect(profile.similes ?? []).not.toContain("CONFIGURE_ESCALATION");
   });
 
-  it("SUBSCRIPTIONS + PAYMENTS expose only canonical `subaction` (mode alias dropped)", () => {
-    for (const name of ["SUBSCRIPTIONS", "PAYMENTS"]) {
-      const action = findAction(name);
-      const paramNames = (action.parameters ?? []).map((p) => p.name);
-      expect(paramNames).toContain("subaction");
-      expect(paramNames).not.toContain("mode");
+  it("MONEY umbrella replaces SUBSCRIPTIONS + PAYMENTS and preserves them as similes", () => {
+    // Audit B Defer #4: `MONEY` is the single umbrella for payments + subscription
+    // verbs. The legacy action names live on as similes so cached planner outputs
+    // (`"action": "PAYMENTS"`, etc.) still resolve.
+    const money = findAction("MONEY");
+    const paramNames = (money.parameters ?? []).map((p) => p.name);
+    expect(paramNames).toContain("subaction");
+    expect(paramNames).not.toContain("mode");
+    const subactionEnum =
+      (money.parameters ?? []).find((p) => p.name === "subaction")?.schema as
+        | { enum?: readonly string[] }
+        | undefined;
+    expect(subactionEnum?.enum).toEqual(
+      expect.arrayContaining([
+        "dashboard",
+        "list_sources",
+        "import_csv",
+        "spending_summary",
+        "recurring_charges",
+        "subscription_audit",
+        "subscription_cancel",
+        "subscription_status",
+      ]),
+    );
+    expect(money.similes ?? []).toEqual(
+      expect.arrayContaining(["PAYMENTS", "SUBSCRIPTIONS"]),
+    );
+
+    // Legacy umbrella names must NOT be registered as standalone actions.
+    const actionNames = (appLifeOpsPlugin.actions ?? []).map((a) => a.name);
+    expect(actionNames).not.toContain("PAYMENTS");
+    expect(actionNames).not.toContain("SUBSCRIPTIONS");
+  });
+
+  it("BLOCK umbrella replaces APP_BLOCK + WEBSITE_BLOCK and preserves them as similes (Audit B D-1)", () => {
+    const block = findAction("BLOCK");
+    expect(block.similes ?? []).toEqual(
+      expect.arrayContaining(["APP_BLOCK", "WEBSITE_BLOCK"]),
+    );
+    const targetEnum =
+      (block.parameters ?? []).find((p) => p.name === "target")?.schema as
+        | { enum?: readonly string[] }
+        | undefined;
+    expect(targetEnum?.enum).toEqual(["app", "website"]);
+    const subactionEnum =
+      (block.parameters ?? []).find((p) => p.name === "subaction")?.schema as
+        | { enum?: readonly string[] }
+        | undefined;
+    expect(subactionEnum?.enum).toEqual([
+      "block",
+      "unblock",
+      "status",
+      "request_permission",
+      "release",
+      "list_active",
+    ]);
+
+    const actionNames = (appLifeOpsPlugin.actions ?? []).map((a) => a.name);
+    expect(actionNames).not.toContain("APP_BLOCK");
+    expect(actionNames).not.toContain("WEBSITE_BLOCK");
+  });
+
+  it("CREDENTIALS umbrella replaces AUTOFILL + PASSWORD_MANAGER and preserves them as similes (Audit B D-5)", () => {
+    const credentials = findAction("CREDENTIALS");
+    expect(credentials.similes ?? []).toEqual(
+      expect.arrayContaining(["AUTOFILL", "PASSWORD_MANAGER"]),
+    );
+    const subactionEnum =
+      (credentials.parameters ?? []).find((p) => p.name === "subaction")
+        ?.schema as { enum?: readonly string[] } | undefined;
+    expect(subactionEnum?.enum).toEqual([
+      "fill",
+      "whitelist_add",
+      "whitelist_list",
+      "search",
+      "list",
+      "inject_username",
+      "inject_password",
+    ]);
+
+    const actionNames = (appLifeOpsPlugin.actions ?? []).map((a) => a.name);
+    expect(actionNames).not.toContain("AUTOFILL");
+    expect(actionNames).not.toContain("PASSWORD_MANAGER");
+  });
+
+  it("registers per-subaction virtuals for the BLOCK / MONEY / CREDENTIALS umbrellas", () => {
+    const actionNames = (appLifeOpsPlugin.actions ?? []).map((a) => a.name);
+    // Spot-check one virtual per umbrella to confirm `promoteSubactionsToActions`
+    // wired the parents through. Virtuals exist alongside the umbrella so the
+    // planner gets a discoverable top-level entry per subaction.
+    for (const expected of [
+      "BLOCK",
+      "BLOCK_BLOCK",
+      "BLOCK_UNBLOCK",
+      "BLOCK_STATUS",
+      "BLOCK_REQUEST_PERMISSION",
+      "BLOCK_RELEASE",
+      "BLOCK_LIST_ACTIVE",
+      "MONEY",
+      "MONEY_DASHBOARD",
+      "MONEY_RECURRING_CHARGES",
+      "MONEY_SUBSCRIPTION_CANCEL",
+      "CREDENTIALS",
+      "CREDENTIALS_FILL",
+      "CREDENTIALS_INJECT_PASSWORD",
+    ]) {
+      expect(actionNames).toContain(expected);
     }
   });
 

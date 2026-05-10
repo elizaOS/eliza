@@ -164,6 +164,80 @@ def test_send_email_appends_to_existing_thread() -> None:
     assert world.email_threads["t1"].message_ids == ["m1", "m2"]
 
 
+# ------------------------------------------- new helpers (Wave 2H umbrella)
+
+def test_snooze_reminder_pushes_due_at() -> None:
+    world = LifeWorld(seed=1, now_iso=NOW_ISO)
+    world.add(EntityKind.REMINDER_LIST, ReminderList(id="rl1", name="Inbox"))
+    world.create_reminder(
+        reminder_id="rm1",
+        list_id="rl1",
+        title="ping",
+        due_at="2026-05-10T09:00:00Z",
+    )
+    snoozed = world.snooze_reminder("rm1", new_due_at="2026-05-12T09:00:00Z")
+    assert snoozed.due_at == "2026-05-12T09:00:00Z"
+
+
+def test_cancel_subscription_flips_status() -> None:
+    world = LifeWorld(seed=1, now_iso=NOW_ISO)
+    world.add(
+        EntityKind.SUBSCRIPTION,
+        Subscription(
+            id="sub1",
+            name="Test",
+            monthly_cents=999,
+            billing_day=1,
+            next_charge_at=NOW_ISO,
+        ),
+    )
+    cancelled = world.cancel_subscription("sub1")
+    assert cancelled.status == "cancelled"
+
+
+def test_log_health_metric_persists() -> None:
+    world = LifeWorld(seed=1, now_iso=NOW_ISO)
+    metric = world.log_health_metric(
+        metric_id="hm1",
+        metric_type="weight_kg",
+        value=72.4,
+    )
+    assert metric.value == 72.4
+    assert world.health_metrics["hm1"].metric_type == "weight_kg"
+
+
+def test_ensure_synthetic_conversation_idempotent() -> None:
+    world = LifeWorld(seed=1, now_iso=NOW_ISO)
+    a = world.ensure_synthetic_conversation(
+        conversation_id="cv_auto_x",
+        channel="imessage",
+        participants=["+1000", "+2000"],
+        title="X",
+    )
+    b = world.ensure_synthetic_conversation(
+        conversation_id="cv_auto_x",
+        channel="signal",  # ignored on second call
+        participants=["+9999"],
+        title="Y",
+    )
+    assert a.id == b.id == "cv_auto_x"
+    assert b.channel == "imessage"  # original wins
+
+
+def test_create_draft_email_lands_in_drafts_folder() -> None:
+    world = LifeWorld(seed=1, now_iso=NOW_ISO)
+    msg = world.create_draft_email(
+        message_id="email_draft_1",
+        thread_id="thread_x",
+        from_email="me@x.test",
+        to_emails=["boss@x.test"],
+        subject="Re: report",
+        body_plain="Sending today.",
+    )
+    assert msg.folder == "drafts"
+    assert world.emails["email_draft_1"].body_plain == "Sending today."
+
+
 # --------------------------------------------------------- scale population
 
 

@@ -29,7 +29,12 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { paymentsAction } from "../src/actions/payments.ts";
+// Audit B Defer #4 folded `PAYMENTS` into the `MONEY` umbrella; the
+// underlying implementation is exported as `paymentsActionImpl` so this
+// integration test continues to exercise the LifeOpsService payments mixin
+// dispatch directly. The legacy `paymentsAction` symbol is now an alias for
+// the umbrella (`moneyAction`).
+import { paymentsActionImpl as paymentsAction } from "../src/actions/payments.ts";
 import type {
   LifeOpsPaymentSource,
   LifeOpsPaymentTransaction,

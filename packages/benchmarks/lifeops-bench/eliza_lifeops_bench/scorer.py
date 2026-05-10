@@ -186,6 +186,17 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
     if scenario.mode is ScenarioMode.STATIC:
         predicted_actions = [a for turn in result.turns for a in turn.agent_actions]
         action_component = compare_actions(predicted_actions, scenario.ground_truth_actions)
+        # Triviality guard: when the scenario specifies ground-truth actions
+        # but the agent's actions don't overlap them at all (action_component
+        # == 0), drop the state-match AND substring credit. Otherwise
+        # read-only scenarios where the gt actions are no-ops would give
+        # every agent — including WrongAgent and a do-nothing refusal —
+        # the 0.5 state-match plus the 0.1 empty-substring "bonus" for
+        # free. The substring component defaults to 1.0 when
+        # `required_outputs` is empty, so the guard has to cover both.
+        if scenario.ground_truth_actions and action_component == 0.0:
+            state_component = 0.0
+            substring_component = 0.0
         return (
             0.5 * state_component
             + 0.4 * action_component

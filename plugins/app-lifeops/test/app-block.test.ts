@@ -79,7 +79,14 @@ vi.mock("../src/app-blocker/engine.js", () => ({
   },
 }));
 
-const { appBlockAction } = await import("../src/actions/app-block.js");
+// Audit B Defer #1 folded `APP_BLOCK` into the `BLOCK` umbrella; the
+// underlying implementation is exported as `appBlockActionImpl` so this
+// integration test continues to exercise the app-blocker engine dispatch
+// directly. The legacy `appBlockAction` symbol is now an alias for the
+// umbrella (`blockAction`).
+const { appBlockActionImpl: appBlockAction } = await import(
+  "../src/actions/app-block.js"
+);
 const { createMinimalRuntimeStub } = await import("./first-run-helpers.js");
 
 function ownerMessage(agentId: UUID, text: string): Memory {

@@ -149,15 +149,20 @@ export const scheduleAction: Action = {
   parameters: [
     {
       name: "subaction",
-      description: "Optional. summary or inspect.",
+      description:
+        "Optional. summary (high-level circadian answer; default) or inspect (evidence windows, sleep episodes, meal candidates).",
+      descriptionCompressed: "schedule op: summary | inspect",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, enum: ["summary", "inspect"] },
+      examples: ["summary", "inspect"],
     },
     {
       name: "timezone",
-      description: "Optional IANA timezone override.",
+      description: "Optional IANA timezone override (e.g. America/Los_Angeles).",
+      descriptionCompressed: "IANA tz override",
       required: false,
       schema: { type: "string" as const },
+      examples: ["America/Los_Angeles", "UTC"],
     },
   ],
   examples: [

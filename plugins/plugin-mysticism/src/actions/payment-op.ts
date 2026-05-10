@@ -61,7 +61,7 @@ export const paymentOpAction: Action = {
 
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: "Operation: check or request.",
       required: true,
       schema: { type: "string" as const, enum: ["check", "request"] },

@@ -20,7 +20,38 @@ export const fileAction: Action = {
     description: "Select READ, WRITE, or EDIT based on the file operation the user is requesting.",
   },
   parameters: [],
-  examples: [],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Read /tmp/notes.md.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Reading the file.",
+          actions: ["FILE"],
+          thought:
+            "Read intent on an absolute path dispatches via FILE to the READ sub-action.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Write 'hello world' to /tmp/test.txt.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Wrote /tmp/test.txt.",
+          actions: ["FILE"],
+          thought:
+            "Whole-file write dispatches via FILE to WRITE with content set.",
+        },
+      },
+    ],
+  ],
   validate: async () => true,
   handler: async (): Promise<ActionResult> => ({
     success: true,

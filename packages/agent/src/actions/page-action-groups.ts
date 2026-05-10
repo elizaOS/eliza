@@ -1,5 +1,6 @@
 import type {
   Action,
+  ActionExample,
   ActionParameters,
   ActionResult,
   AgentContext,
@@ -16,6 +17,7 @@ type PageActionGroupConfig = {
   contexts: AgentContext[];
   description: string;
   similes?: string[];
+  examples?: ActionExample[][];
 };
 
 type PageActionGroup = Action & {
@@ -180,7 +182,7 @@ function createPageActionGroupAction(
       );
     },
     parameters: ACTION_GROUP_PARAMETER_SCHEMA,
-    examples: [],
+    examples: config.examples ?? [],
   };
 }
 
@@ -190,6 +192,38 @@ export const browserActionsGroupAction = createPageActionGroupAction({
   similes: ["BROWSER_TOOLS", "BROWSER_PAGE_ACTIONS"],
   description:
     "Main-chat parent action for browser page work including browser sessions, page extraction, app browser workspace control, and browser bridge setup/status.",
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Open example.com in the browser." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Routing to BROWSER for navigation.",
+          actions: ["BROWSER_ACTIONS"],
+          thought:
+            "Owner asked for a browser navigation; BROWSER_ACTIONS forwards to the BROWSER child action.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Pull the article text from the page I'm on." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Extracting the page contents now.",
+          actions: ["BROWSER_ACTIONS"],
+          thought:
+            "Page-text request maps to EXTRACT_PAGE; BROWSER_ACTIONS dispatches to it under the browser context.",
+        },
+      },
+    ],
+  ],
 });
 
 export const walletActionsGroupAction = createPageActionGroupAction({
@@ -198,6 +232,38 @@ export const walletActionsGroupAction = createPageActionGroupAction({
   similes: ["WALLET_TOOLS", "WALLET_PAGE_ACTIONS"],
   description:
     "Main-chat parent action for wallet page work including balances, receive addresses, swaps, transfers, wallet signing, and trading actions.",
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Show my wallet balance." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Pulling wallet balances.",
+          actions: ["WALLET_ACTIONS"],
+          thought:
+            "Balance request belongs to the wallet page; WALLET_ACTIONS forwards to the CHECK_BALANCE child action.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Send 0.1 ETH to my savings address." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Preparing the transfer.",
+          actions: ["WALLET_ACTIONS"],
+          thought:
+            "Transfer intent under the wallet page routes through WALLET_ACTIONS to the EVM_TRANSFER child action.",
+        },
+      },
+    ],
+  ],
 });
 
 export const characterActionsGroupAction = createPageActionGroupAction({
@@ -206,6 +272,38 @@ export const characterActionsGroupAction = createPageActionGroupAction({
   similes: ["CHARACTER_TOOLS", "CHARACTER_PAGE_ACTIONS"],
   description:
     "Main-chat parent action for character page work including character edits, owner identity, and profile-related actions.",
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Update my character bio to mention I work in design." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Updating the character bio.",
+          actions: ["CHARACTER_ACTIONS"],
+          thought:
+            "Character bio edit belongs to the character page; CHARACTER_ACTIONS forwards to the MODIFY_CHARACTER child action.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Set my owner display name to Pat." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Setting your display name.",
+          actions: ["CHARACTER_ACTIONS"],
+          thought:
+            "Owner identity update routes through CHARACTER_ACTIONS to the UPDATE_OWNER_NAME / PROFILE child action.",
+        },
+      },
+    ],
+  ],
 });
 
 export const settingsActionsGroupAction = createPageActionGroupAction({
@@ -214,6 +312,38 @@ export const settingsActionsGroupAction = createPageActionGroupAction({
   similes: ["SETTINGS_TOOLS", "SETTINGS_PAGE_ACTIONS"],
   description:
     "Main-chat parent action for settings page work including identity, AI provider, capability, and training settings.",
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Switch the LLM provider to Anthropic." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Switching the AI provider.",
+          actions: ["SETTINGS_ACTIONS"],
+          thought:
+            "AI provider change is a settings-page concern; SETTINGS_ACTIONS forwards to the UPDATE_AI_PROVIDER child action.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Turn on autonomy mode in settings." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Enabling autonomy mode.",
+          actions: ["SETTINGS_ACTIONS"],
+          thought:
+            "Capability toggle is a settings-page concern; SETTINGS_ACTIONS forwards to the TOGGLE_FEATURE / SETTINGS child action.",
+        },
+      },
+    ],
+  ],
 });
 
 export const connectorActionsGroupAction = createPageActionGroupAction({
@@ -222,6 +352,38 @@ export const connectorActionsGroupAction = createPageActionGroupAction({
   similes: ["CONNECTOR_TOOLS", "CONNECTOR_PAGE_ACTIONS"],
   description:
     "Main-chat parent action for connector page work including listing, enabling, disabling, configuring, and disconnecting connectors.",
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Show me which connectors are enabled." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Listing your connectors.",
+          actions: ["CONNECTOR_ACTIONS"],
+          thought:
+            "Connector inventory belongs to the connectors page; CONNECTOR_ACTIONS forwards to the LIST_CONNECTORS child action.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Disconnect the Slack integration." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Disconnecting Slack.",
+          actions: ["CONNECTOR_ACTIONS"],
+          thought:
+            "Disconnect intent on the connectors page routes through CONNECTOR_ACTIONS to the CONNECTOR subaction=disconnect child.",
+        },
+      },
+    ],
+  ],
 });
 
 export const automationActionsGroupAction = createPageActionGroupAction({
@@ -230,6 +392,38 @@ export const automationActionsGroupAction = createPageActionGroupAction({
   similes: ["AUTOMATION_TOOLS", "AUTOMATION_PAGE_ACTIONS"],
   description:
     "Main-chat parent action for automation page work including triggers, workflows, cron jobs, and task management.",
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Schedule a daily standup reminder at 9am on weekdays." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Setting up the recurring reminder.",
+          actions: ["AUTOMATION_ACTIONS"],
+          thought:
+            "Cron-style schedule belongs to the automation page; AUTOMATION_ACTIONS forwards to the SCHEDULED_TASK subaction=create child.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "List the workflows I have running." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Pulling your workflows.",
+          actions: ["AUTOMATION_ACTIONS"],
+          thought:
+            "Workflow inventory routes through AUTOMATION_ACTIONS to the WORKFLOW / TRIGGER child action.",
+        },
+      },
+    ],
+  ],
 });
 
 export const phoneActionsGroupAction = createPageActionGroupAction({
@@ -238,6 +432,38 @@ export const phoneActionsGroupAction = createPageActionGroupAction({
   similes: ["PHONE_TOOLS", "PHONE_PAGE_ACTIONS"],
   description:
     "Main-chat parent action for phone page work including calls, SMS/message review, contacts, and phone-related LifeOps actions.",
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Call Pat back." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Placing the call.",
+          actions: ["PHONE_ACTIONS"],
+          thought:
+            "Outgoing call belongs to the phone page; PHONE_ACTIONS forwards to the VOICE_CALL child action.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Look up the number for Pat in my contacts." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Searching your contacts.",
+          actions: ["PHONE_ACTIONS"],
+          thought:
+            "Contact lookup on the phone page routes through PHONE_ACTIONS to the CONTACT subaction=search child.",
+        },
+      },
+    ],
+  ],
 });
 
 export const lifeOpsActionsGroupAction = createPageActionGroupAction({
@@ -258,6 +484,38 @@ export const lifeOpsActionsGroupAction = createPageActionGroupAction({
   similes: ["LIFEOPS_TOOLS", "LIFEOPS_PAGE_ACTIONS"],
   description:
     "Main-chat parent action for LifeOps page work including goals, reminders, inbox, calendar, browser workflows, health, subscriptions, travel, and approvals.",
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "What's on my calendar tomorrow?" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Pulling tomorrow's events.",
+          actions: ["LIFEOPS_ACTIONS"],
+          thought:
+            "Calendar query is a LifeOps-page concern; LIFEOPS_ACTIONS forwards to the CALENDAR subaction=list child.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Triage my inbox." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Triaging messages now.",
+          actions: ["LIFEOPS_ACTIONS"],
+          thought:
+            "Inbox triage on the LifeOps page routes through LIFEOPS_ACTIONS to the MESSAGE subaction=triage child.",
+        },
+      },
+    ],
+  ],
 });
 
 export const pageActionGroupActions: Action[] = [

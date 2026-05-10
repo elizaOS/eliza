@@ -274,20 +274,25 @@ export const toggleFeatureAction: Action = {
     {
       name: "featureKey",
       description:
-        "LifeOps feature key. Must be a key that has been registered in the FeatureFlagRegistry " +
-        "(see GET /api/lifeops/dev/registries → featureFlags for the live list).",
+        "LifeOps feature key. Must be a key registered in the FeatureFlagRegistry " +
+        "(see GET /api/lifeops/dev/registries → featureFlags for the live list). Common keys include travel.book_flight, browser.automation, push.notifications, escalation.enabled.",
+      descriptionCompressed:
+        "feature key (registry-driven) e.g. travel.book_flight|browser.automation|push.notifications",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, enum: [...ALL_FEATURE_KEYS] },
+      examples: ["travel.book_flight", "browser.automation"],
     },
     {
       name: "enabled",
       description: "True to enable, false to disable.",
+      descriptionCompressed: "true=enable false=disable",
       required: false,
       schema: { type: "boolean" as const },
     },
     {
       name: "reason",
       description: "Optional short reason captured for the audit log.",
+      descriptionCompressed: "audit reason short",
       required: false,
       schema: { type: "string" as const },
     },

@@ -1,14 +1,14 @@
 # LifeOps Action Manifest — Summary
 
-Generated: 2026-05-10T08:08:51.000Z
+Generated: 2026-05-10T09:25:39.200Z
 Filter: include=[app-contacts, app-lifeops, app-phone, plugin-bluebubbles, plugin-imessage, plugin-todos] exclude=[none] tags=[any]
-Total actions: 72
+Total actions: 91
 
 ## Plugin breakdown
 
 | Plugin | Actions |
 | --- | ---: |
-| @elizaos/app-lifeops | 70 |
+| @elizaos/app-lifeops | 89 |
 | @elizaos/app-phone | 1 |
 | @elizaos/plugin-todos | 1 |
 
@@ -16,8 +16,13 @@ Total actions: 72
 
 | Action | Plugin | Description | Params | Examples? |
 | --- | --- | --- | ---: | :---: |
-| `APP_BLOCK` | @elizaos/app-lifeops | phone app block native iOS-Family-Controls Android-Usage-Access: block(apps,dur… | 5 | yes |
-| `AUTOFILL` | @elizaos/app-lifeops | browser autofill: fill(field,domain) whitelist-add(domain,confirm) whitelist-li… | 5 | yes |
+| `BLOCK` | @elizaos/app-lifeops | block app\|website (phone-Family-Controls\|hosts-file/SelfControl): block unblock… | 12 | yes |
+| `BLOCK_BLOCK` | @elizaos/app-lifeops | block app\|website (phone-Family-Controls\|hosts-file/SelfControl): block unblock… | 12 | no |
+| `BLOCK_LIST_ACTIVE` | @elizaos/app-lifeops | block app\|website (phone-Family-Controls\|hosts-file/SelfControl): block unblock… | 12 | no |
+| `BLOCK_RELEASE` | @elizaos/app-lifeops | block app\|website (phone-Family-Controls\|hosts-file/SelfControl): block unblock… | 12 | no |
+| `BLOCK_REQUEST_PERMISSION` | @elizaos/app-lifeops | block app\|website (phone-Family-Controls\|hosts-file/SelfControl): block unblock… | 12 | no |
+| `BLOCK_STATUS` | @elizaos/app-lifeops | block app\|website (phone-Family-Controls\|hosts-file/SelfControl): block unblock… | 12 | no |
+| `BLOCK_UNBLOCK` | @elizaos/app-lifeops | block app\|website (phone-Family-Controls\|hosts-file/SelfControl): block unblock… | 12 | no |
 | `BOOK_TRAVEL` | @elizaos/app-lifeops | approval-gated real travel booking flights/hotels missing-detail collection dra… | 7 | yes |
 | `CALENDAR` | @elizaos/app-lifeops | calendar+availability+prefs: feed next-event search create update delete trip-w… | 19 | yes |
 | `CALENDAR_BULK_RESCHEDULE` | @elizaos/app-lifeops | calendar+availability+prefs: feed next-event search create update delete trip-w… | 19 | no |
@@ -38,7 +43,15 @@ Total actions: 72
 | `CONNECTOR_LIST` | @elizaos/app-lifeops | connector lifecycle+verify-probes (registry-driven): connect disconnect verify … | 12 | no |
 | `CONNECTOR_STATUS` | @elizaos/app-lifeops | connector lifecycle+verify-probes (registry-driven): connect disconnect verify … | 12 | no |
 | `CONNECTOR_VERIFY` | @elizaos/app-lifeops | connector lifecycle+verify-probes (registry-driven): connect disconnect verify … | 12 | no |
-| `DEVICE_INTENT` | @elizaos/app-lifeops | broadcast device intent/reminder: target all\|mobile\|desktop\|specific title body… | 6 | no |
+| `CREDENTIALS` | @elizaos/app-lifeops | credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitel… | 9 | yes |
+| `CREDENTIALS_FILL` | @elizaos/app-lifeops | credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitel… | 9 | no |
+| `CREDENTIALS_INJECT_PASSWORD` | @elizaos/app-lifeops | credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitel… | 9 | no |
+| `CREDENTIALS_INJECT_USERNAME` | @elizaos/app-lifeops | credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitel… | 9 | no |
+| `CREDENTIALS_LIST` | @elizaos/app-lifeops | credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitel… | 9 | no |
+| `CREDENTIALS_SEARCH` | @elizaos/app-lifeops | credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitel… | 9 | no |
+| `CREDENTIALS_WHITELIST_ADD` | @elizaos/app-lifeops | credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitel… | 9 | no |
+| `CREDENTIALS_WHITELIST_LIST` | @elizaos/app-lifeops | credentials owner-only: fill(field,domain) whitelist_add(domain,confirm) whitel… | 9 | no |
+| `DEVICE_INTENT` | @elizaos/app-lifeops | broadcast device intent/reminder: target all\|mobile\|desktop\|specific title body… | 6 | yes |
 | `ENTITY` | @elizaos/app-lifeops | ENTITY = people/relationships. subactions add list log_interaction set_identity… | 19 | yes |
 | `FIRST_RUN` | @elizaos/app-lifeops | owner first-run: defaults\|customize\|replay; defaults asks wake time once | 2 | yes |
 | `HEALTH` | @elizaos/app-lifeops | health/fitness telemetry HealthKit/GoogleFit/Strava/Fitbit/Withings/Oura: today… | 5 | yes |
@@ -54,8 +67,19 @@ Total actions: 72
 | `LIFE_UPDATE` | @elizaos/app-lifeops | life:subaction=create\|update\|delete(kind=definition\|goal) + complete\|skip\|snooz… | 7 | no |
 | `LIFEOPS` | @elizaos/app-lifeops | owner LIFEOPS verb: pause\|resume\|wipe; wipe requires confirmed:true | 6 | yes |
 | `MESSAGE` | @elizaos/app-lifeops | primary message action ops send read_channel read_with_contact search list_chan… | 62 | yes |
-| `PASSWORD_MANAGER` | @elizaos/app-lifeops | password manager 1Password\|ProtonPass: search list inject_username inject_passw… | 7 | yes |
-| `PAYMENTS` | @elizaos/app-lifeops | payments+spending: dashboard list-sources add-source remove-source import-csv l… | 17 | yes |
+| `MESSAGE_HANDOFF` | @elizaos/app-lifeops | MESSAGE_HANDOFF verb: enter\|resume\|status; gates agent contributions per resume… | 6 | yes |
+| `MONEY` | @elizaos/app-lifeops | money: payments(dashboard list-sources add-source remove-source import-csv list… | 24 | yes |
+| `MONEY_ADD_SOURCE` | @elizaos/app-lifeops | money: payments(dashboard list-sources add-source remove-source import-csv list… | 24 | no |
+| `MONEY_DASHBOARD` | @elizaos/app-lifeops | money: payments(dashboard list-sources add-source remove-source import-csv list… | 24 | no |
+| `MONEY_IMPORT_CSV` | @elizaos/app-lifeops | money: payments(dashboard list-sources add-source remove-source import-csv list… | 24 | no |
+| `MONEY_LIST_SOURCES` | @elizaos/app-lifeops | money: payments(dashboard list-sources add-source remove-source import-csv list… | 24 | no |
+| `MONEY_LIST_TRANSACTIONS` | @elizaos/app-lifeops | money: payments(dashboard list-sources add-source remove-source import-csv list… | 24 | no |
+| `MONEY_RECURRING_CHARGES` | @elizaos/app-lifeops | money: payments(dashboard list-sources add-source remove-source import-csv list… | 24 | no |
+| `MONEY_REMOVE_SOURCE` | @elizaos/app-lifeops | money: payments(dashboard list-sources add-source remove-source import-csv list… | 24 | no |
+| `MONEY_SPENDING_SUMMARY` | @elizaos/app-lifeops | money: payments(dashboard list-sources add-source remove-source import-csv list… | 24 | no |
+| `MONEY_SUBSCRIPTION_AUDIT` | @elizaos/app-lifeops | money: payments(dashboard list-sources add-source remove-source import-csv list… | 24 | no |
+| `MONEY_SUBSCRIPTION_CANCEL` | @elizaos/app-lifeops | money: payments(dashboard list-sources add-source remove-source import-csv list… | 24 | no |
+| `MONEY_SUBSCRIPTION_STATUS` | @elizaos/app-lifeops | money: payments(dashboard list-sources add-source remove-source import-csv list… | 24 | no |
 | `PLACE_CALL` | @elizaos/app-phone | Place a phone call via Android Telecom. Requires CALL_PHONE permission. | 1 | no |
 | `PROFILE` | @elizaos/app-lifeops | persist owner state: save(name,location,age,prefs) + capture_phone(number); rem… | 14 | yes |
 | `PROFILE_CAPTURE_PHONE` | @elizaos/app-lifeops | persist owner state: save(name,location,age,prefs) + capture_phone(number); rem… | 14 | no |
@@ -79,12 +103,7 @@ Total actions: 72
 | `SCHEDULED_TASK_UPDATE` | @elizaos/app-lifeops | scheduled-task umbrella: list get create update snooze skip complete dismiss ca… | 21 | no |
 | `SCHEDULING_NEGOTIATION` | @elizaos/app-lifeops | Multi-turn scheduling negotiation lifecycle: start, propose, respond, finalize,… | 10 | yes |
 | `SCREEN_TIME` | @elizaos/app-lifeops | screen-time+activity+browser focus mins: summary today weekly weekly-avg-by-app… | 11 | yes |
-| `SUBSCRIPTIONS` | @elizaos/app-lifeops | paid sub audit+cancel via browser: audit \| cancel(serviceSlug confirmed) \| stat… | 8 | yes |
-| `SUBSCRIPTIONS_AUDIT` | @elizaos/app-lifeops | paid sub audit+cancel via browser: audit \| cancel(serviceSlug confirmed) \| stat… | 8 | no |
-| `SUBSCRIPTIONS_CANCEL` | @elizaos/app-lifeops | paid sub audit+cancel via browser: audit \| cancel(serviceSlug confirmed) \| stat… | 8 | no |
-| `SUBSCRIPTIONS_STATUS` | @elizaos/app-lifeops | paid sub audit+cancel via browser: audit \| cancel(serviceSlug confirmed) \| stat… | 8 | no |
-| `TODO` | @elizaos/plugin-todos | todo manage list; op: write\|create\|update\|complete\|cancel\|delete\|list\|clear; us… | 9 | no |
+| `TODO` | @elizaos/plugin-todos | todo manage list; op: write\|create\|update\|complete\|cancel\|delete\|list\|clear; us… | 9 | yes |
 | `TOGGLE_FEATURE` | @elizaos/app-lifeops | toggle LifeOps feature flight-booking push-notifs browser-automation escalation… | 3 | yes |
 | `VOICE_CALL` | @elizaos/app-lifeops | Twilio voice dial: recipientKind=owner\|external\|e164; draft-confirm; approval-q… | 7 | yes |
 | `VOICE_CALL_DIAL` | @elizaos/app-lifeops | Twilio voice dial: recipientKind=owner\|external\|e164; draft-confirm; approval-q… | 7 | no |
-| `WEBSITE_BLOCK` | @elizaos/app-lifeops | site block hosts-file: block(hosts,duration,confirm) unblock status request-per… | 9 | yes |

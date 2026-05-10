@@ -219,4 +219,39 @@ export const lsAction: Action = {
       truncated,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "List the files in /tmp.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Listing /tmp.",
+          actions: ["LS"],
+          thought:
+            "Directory listing maps to LS with path='/tmp'.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Show me what's in src/lib, just the .ts files.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Listing src/lib (TypeScript files only).",
+          actions: ["LS"],
+          thought:
+            "LS with path='src/lib' and ignore patterns to filter for *.ts entries.",
+        },
+      },
+    ],
+  ],
 };

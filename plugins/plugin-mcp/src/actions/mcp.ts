@@ -398,7 +398,7 @@ export const mcpAction: Action = {
   descriptionCompressed: "MCP call_tool read_resource search_actions list_connections",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: "MCP operation: call_tool | read_resource | search_actions | list_connections",
       required: false,
       schema: {

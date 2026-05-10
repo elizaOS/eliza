@@ -17,6 +17,8 @@
 
 import { createKeyPairSignerFromBytes } from "@solana/kit";
 import {
+  createRpcClient,
+  type FacilitatorRpcConfig,
   SOLANA_DEVNET_CAIP2,
   SOLANA_MAINNET_CAIP2,
   SOLANA_TESTNET_CAIP2,
@@ -118,6 +120,7 @@ export interface VerifyResult {
   isValid: boolean;
   payer?: string;
   invalidReason?: string;
+  invalidMessage?: string;
 }
 
 /** Settlement result */
@@ -241,6 +244,59 @@ function buildSolanaNetworkRegistry(): Record<string, SolanaNetworkConfig> {
       usdcAddress: USDC_TESTNET_ADDRESS,
     },
   };
+}
+
+function getFirstConfiguredEnvValue(env: NodeJS.ProcessEnv, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = env[key]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function buildSolanaFacilitatorRpcConfig(): FacilitatorRpcConfig | undefined {
+  const env = getCloudAwareEnv();
+  type SvmNetwork = Parameters<typeof createRpcClient>[0];
+  const rpcByNetwork: Record<string, ReturnType<typeof createRpcClient>> = {};
+
+  const configuredRpcUrls: Array<[SvmNetwork, string | undefined]> = [
+    [
+      SOLANA_MAINNET_CAIP2,
+      getFirstConfiguredEnvValue(env, [
+        "X402_SOLANA_MAINNET_RPC_URL",
+        "SOLANA_MAINNET_RPC_URL",
+        "X402_SOLANA_RPC_URL",
+        "SOLANA_RPC_URL",
+        "NEXT_PUBLIC_SOLANA_RPC_URL",
+      ]),
+    ],
+    [
+      SOLANA_DEVNET_CAIP2,
+      getFirstConfiguredEnvValue(env, [
+        "X402_SOLANA_DEVNET_RPC_URL",
+        "SOLANA_DEVNET_RPC_URL",
+        "SOLANA_DEVNET_URL",
+      ]),
+    ],
+    [
+      SOLANA_TESTNET_CAIP2,
+      getFirstConfiguredEnvValue(env, [
+        "X402_SOLANA_TESTNET_RPC_URL",
+        "SOLANA_TESTNET_RPC_URL",
+        "SOLANA_TESTNET_URL",
+      ]),
+    ],
+  ];
+
+  for (const [network, rpcUrl] of configuredRpcUrls) {
+    if (rpcUrl) {
+      rpcByNetwork[network] = createRpcClient(network, rpcUrl);
+    }
+  }
+
+  return Object.keys(rpcByNetwork).length > 0 ? rpcByNetwork : undefined;
 }
 
 // EIP-712 Types for Signature Recovery
@@ -879,10 +935,19 @@ class X402FacilitatorService {
         paymentPayload as Parameters<ExactSvmFacilitator["verify"]>[0],
         paymentRequirements as Parameters<ExactSvmFacilitator["verify"]>[1],
       );
+      if (!result.isValid && result.invalidMessage) {
+        logger.warn("[x402-facilitator] Solana verification failed", {
+          invalidReason: result.invalidReason,
+          invalidMessage: result.invalidMessage,
+          payer: result.payer,
+          network: accepted.network,
+        });
+      }
       return {
         isValid: result.isValid,
         payer: result.payer || undefined,
         invalidReason: result.invalidReason ?? result.invalidMessage,
+        invalidMessage: result.invalidMessage,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1227,7 +1292,7 @@ class X402FacilitatorService {
     try {
       const secretKeyBytes = decodeSolanaPrivateKey(solanaKey);
       const keypair = await createKeyPairSignerFromBytes(secretKeyBytes);
-      const signer = toFacilitatorSvmSigner(keypair);
+      const signer = toFacilitatorSvmSigner(keypair, buildSolanaFacilitatorRpcConfig());
       this.svmScheme = new ExactSvmFacilitator(signer);
 
       for (const [caip2, config] of Object.entries(this.solanaNetworks)) {

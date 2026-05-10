@@ -668,7 +668,7 @@ export async function handlePlayMusicQuery(
       source: message.content.source,
     });
     return confirmationRequired(preview, {
-      op: "play-query",
+      op: "play_query",
       query: messageText,
     });
   }

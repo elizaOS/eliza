@@ -214,4 +214,42 @@ export const editAction: Action = {
       firstLine,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "In src/server.ts replace 'port = 3000' with 'port = process.env.PORT ?? 3000'.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Edited src/server.ts (1 replacement).",
+          actions: ["EDIT"],
+          thought:
+            "Single in-place text replacement maps to EDIT with path, oldText, and newText.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Replace every TODO comment in lib/handler.ts with FIXME.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Edited lib/handler.ts (4 replacements).",
+          actions: ["EDIT"],
+          thought:
+            "Multi-occurrence replacement maps to EDIT with replaceAll=true plus the matching oldText / newText.",
+        },
+      },
+    ],
+  ],
 };

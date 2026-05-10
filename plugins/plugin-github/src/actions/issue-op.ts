@@ -316,7 +316,7 @@ export const issueOpAction: Action = {
     "GitHub issue ops: create, assign, close, reopen, comment, label.",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description:
         "Issue operation: create, assign, close, reopen, comment, or label.",
       required: true,

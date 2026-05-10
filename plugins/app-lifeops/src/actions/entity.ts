@@ -801,26 +801,40 @@ export const entityAction: Action & {
     {
       name: "subaction",
       description:
-        "Which ENTITY operation to run: add, list, log_interaction, set_identity, set_relationship, merge. Follow-up cadence belongs to SCHEDULED_TASK.",
-      schema: { type: "string" as const },
+        "Which ENTITY operation to run: add (new contact), list (read rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). Follow-up cadence belongs to SCHEDULED_TASK.",
+      descriptionCompressed:
+        "ENTITY op: add | list | log_interaction | set_identity | set_relationship | merge",
+      schema: {
+        type: "string" as const,
+        enum: [...ENTITY_SUBACTIONS],
+      },
+      examples: ["add", "list", "set_identity"],
     },
     {
       name: "intent",
       description:
         "Free-form user intent used to infer subaction when not set.",
+      descriptionCompressed: "free-form intent infer subaction",
       schema: { type: "string" as const },
     },
     {
       name: "name",
       description:
         "Contact display name. When relationshipId is omitted, the handler resolves an existing contact by this name.",
+      descriptionCompressed: "contact display name",
       schema: { type: "string" as const },
     },
     {
       name: "channel",
       description:
         "Primary channel for the contact (email, telegram, discord, signal, sms, twilio_voice, imessage, whatsapp).",
-      schema: { type: "string" as const },
+      descriptionCompressed:
+        "primary channel: email|telegram|discord|signal|sms|twilio_voice|imessage|whatsapp",
+      schema: {
+        type: "string" as const,
+        enum: [...LIFEOPS_MESSAGE_CHANNELS],
+      },
+      examples: ["email", "telegram", "imessage"],
     },
     {
       name: "handle",
@@ -867,7 +881,9 @@ export const entityAction: Action & {
       name: "platform",
       description:
         "Identity platform for set_identity (e.g. telegram, slack, email, twitter). Combine with handle.",
+      descriptionCompressed: "set_identity platform e.g. telegram|slack|email|twitter|phone",
       schema: { type: "string" as const },
+      examples: ["telegram", "email", "phone", "slack"],
     },
     {
       name: "displayName",
@@ -889,8 +905,11 @@ export const entityAction: Action & {
     {
       name: "relationshipType",
       description:
-        "Edge type label for set_relationship (e.g. manages, colleague_of, works_at).",
+        "Edge type label for set_relationship (e.g. manages, colleague_of, works_at, partner_of, family_of).",
+      descriptionCompressed:
+        "set_relationship edge type label e.g. manages|colleague_of|works_at|partner_of",
       schema: { type: "string" as const },
+      examples: ["manages", "colleague_of", "works_at", "partner_of"],
     },
     {
       name: "sourceEntityIds",

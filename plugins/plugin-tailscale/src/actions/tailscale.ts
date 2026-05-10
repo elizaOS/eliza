@@ -264,7 +264,7 @@ export const tailscaleAction: Action = {
   descriptionCompressed: "Tailscale: start tunnel, stop tunnel.",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: "Tunnel operation. One of: start, stop.",
       required: true,
       schema: { type: "string", enum: [...ALL_OPS] },

@@ -273,6 +273,40 @@ class LifeWorld:
             EntityKind.REMINDER, reminder_id, completed_at=self.now_iso
         )
 
+    def snooze_reminder(self, reminder_id: str, *, new_due_at: str) -> Reminder:
+        """Push a reminder's due time. Used for the LIFE_SNOOZE umbrella subaction."""
+        return self.update(EntityKind.REMINDER, reminder_id, due_at=new_due_at)
+
+    # ----------------------------------------------------- Subscription helpers
+
+    def cancel_subscription(self, subscription_id: str) -> Subscription:
+        """Mark a subscription as cancelled. Used by SUBSCRIPTIONS_CANCEL."""
+        return self.update(
+            EntityKind.SUBSCRIPTION, subscription_id, status="cancelled"
+        )
+
+    # ------------------------------------------------------- Health helpers
+
+    def log_health_metric(
+        self,
+        *,
+        metric_id: str,
+        metric_type: str,
+        value: float,
+        recorded_at: str | None = None,
+        source: str = "manual",
+    ) -> HealthMetric:
+        """Add a health metric reading. Used by LIFE_CREATE kind=health_metric."""
+        metric = HealthMetric(
+            id=metric_id,
+            metric_type=metric_type,  # type: ignore[arg-type]
+            value=value,
+            recorded_at=recorded_at or self.now_iso,
+            source=source,  # type: ignore[arg-type]
+        )
+        self.add(EntityKind.HEALTH_METRIC, metric)
+        return metric
+
     # ------------------------------------------------------------ Chat helpers
 
     def send_message(
@@ -306,6 +340,64 @@ class LifeWorld:
             conversation_id,
             last_activity_at=self.now_iso,
         )
+        return msg
+
+    def ensure_synthetic_conversation(
+        self,
+        *,
+        conversation_id: str,
+        channel: str,
+        participants: list[str],
+        title: str | None = None,
+        is_group: bool = False,
+    ) -> Conversation:
+        """Get-or-create a conversation deterministically.
+
+        Used by the MESSAGE umbrella `send` subaction when the scenario
+        targets a contact by name (no pre-existing conversation id).
+        Scenarios that pass an explicit `roomId` skip this path.
+        """
+        existing = self.conversations.get(conversation_id)
+        if existing is not None:
+            return existing
+        conv = Conversation(
+            id=conversation_id,
+            channel=channel,  # type: ignore[arg-type]
+            participants=list(participants),
+            title=title,
+            last_activity_at=self.now_iso,
+            is_group=is_group,
+        )
+        self.add(EntityKind.CONVERSATION, conv)
+        return conv
+
+    # ----------------------------------------------------------- Mail draft
+
+    def create_draft_email(
+        self,
+        *,
+        message_id: str,
+        thread_id: str,
+        from_email: str,
+        to_emails: list[str],
+        subject: str,
+        body_plain: str,
+    ) -> EmailMessage:
+        """Create a draft email reply. Used by MESSAGE.draft_reply (gmail)."""
+        msg = EmailMessage(
+            id=message_id,
+            thread_id=thread_id,
+            folder="drafts",
+            from_email=from_email,
+            to_emails=list(to_emails),
+            cc_emails=[],
+            subject=subject,
+            body_plain=body_plain,
+            sent_at=self.now_iso,
+            received_at=None,
+            is_read=True,
+        )
+        self.add(EntityKind.EMAIL, msg)
         return msg
 
     # ------------------------------------------------------------ Note helpers

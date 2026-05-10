@@ -329,19 +329,27 @@ export const remoteDesktopAction: Action & {
     {
       name: "subaction",
       description: "One of: start, status, end, list, revoke.",
+      descriptionCompressed: "remote-desktop op: start|status|end|list|revoke",
       required: false,
-      schema: { type: "string" as const },
+      schema: {
+        type: "string" as const,
+        enum: ["start", "status", "end", "list", "revoke"],
+      },
+      examples: ["start", "list", "revoke"],
     },
     {
       name: "sessionId",
       description:
         "Session id — required for status, end, and revoke subactions.",
+      descriptionCompressed: "session id (status|end|revoke)",
       required: false,
       schema: { type: "string" as const },
+      examples: ["rs_abc123"],
     },
     {
       name: "confirmed",
       description: "Must be true for start (security sensitive).",
+      descriptionCompressed: "true required for start (security)",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -349,13 +357,17 @@ export const remoteDesktopAction: Action & {
       name: "pairingCode",
       description:
         "6-digit one-time pairing code for start. Required unless ELIZA_REMOTE_LOCAL_MODE=1.",
+      descriptionCompressed:
+        "6-digit pairing code (start; skipped in local mode)",
       required: false,
-      schema: { type: "string" as const },
+      schema: { type: "string" as const, pattern: "^[0-9]{6}$" },
+      examples: ["482193"],
     },
     {
       name: "requesterIdentity",
       description:
         "Identifier for who is asking (entity id, friend name, device id). Logged for audit on start.",
+      descriptionCompressed: "audit: requester id (start)",
       required: false,
       schema: { type: "string" as const },
     },
@@ -363,6 +375,7 @@ export const remoteDesktopAction: Action & {
       name: "intent",
       description:
         "Freeform owner intent / reason for the session. Logged for audit.",
+      descriptionCompressed: "audit: owner reason",
       required: false,
       schema: { type: "string" as const },
     },

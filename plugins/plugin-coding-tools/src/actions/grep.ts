@@ -287,4 +287,39 @@ export const grepAction: Action = {
       });
     }
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Search the codebase for 'TODO' comments.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Searching for TODO matches.",
+          actions: ["GREP"],
+          thought:
+            "Plain text search across files maps to GREP with pattern='TODO'.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Find references to fooBar in src/ only.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Searching src/ for fooBar.",
+          actions: ["GREP"],
+          thought:
+            "Scoped search; GREP with pattern='fooBar' and path='src/' restricts the ripgrep run.",
+        },
+      },
+    ],
+  ],
 };

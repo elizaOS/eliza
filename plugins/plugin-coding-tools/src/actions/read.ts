@@ -198,4 +198,39 @@ export const readAction: Action = {
       truncated,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Read /tmp/notes.md.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Reading /tmp/notes.md.",
+          actions: ["READ"],
+          thought:
+            "Whole-file read on an absolute path maps to READ with path='/tmp/notes.md'.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Show me lines 100-200 of src/server.ts.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Reading src/server.ts (lines 100-200).",
+          actions: ["READ"],
+          thought:
+            "Range read maps to READ with offset=100 and limit=100 to fetch the requested window.",
+        },
+      },
+    ],
+  ],
 };

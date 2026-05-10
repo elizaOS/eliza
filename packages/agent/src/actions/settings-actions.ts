@@ -545,7 +545,7 @@ export const settingsAction: Action = {
 
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: `Operation discriminator. One of: ${SETTINGS_OPS.join(", ")}.`,
       required: true,
       schema: { type: "string" as const },

@@ -296,7 +296,7 @@ export const scapeAction: Action = {
   examples: [],
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: "Operation to run.",
       descriptionCompressed: "Op.",
       required: true,

@@ -265,4 +265,36 @@ export const globAction: Action = {
       truncated,
     });
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Find all TypeScript test files in the repo.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Listing matches for **/*.test.ts.",
+          actions: ["GLOB"],
+          thought:
+            "Pattern-based file lookup maps to GLOB with pattern='**/*.test.ts'.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Find every package.json under packages/.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Listing matches for packages/**/package.json.",
+          actions: ["GLOB"],
+          thought:
+            "Scoped glob with explicit prefix; GLOB takes pattern and the session cwd handles the root.",
+        },
+      },
+    ],
+  ],
 };

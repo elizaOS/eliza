@@ -923,7 +923,18 @@ async function handleListActive(
 
 // ── Action ──
 
-export const websiteBlockAction: Action & {
+/**
+ * Internal implementation of the legacy `WEBSITE_BLOCK` action surface.
+ *
+ * Audit B Defer #1 folded `WEBSITE_BLOCK` and `APP_BLOCK` into the single
+ * `BLOCK` umbrella (`./block.ts`). The umbrella delegates to this impl when
+ * `target=website`, so the runtime logic + handlers + parameter shape stay
+ * unchanged. The legacy export name (`websiteBlockAction`) is re-exported
+ * below as an alias for `blockAction` so cached planner outputs and downstream
+ * importers keep resolving — but no `WEBSITE_BLOCK`-named action is registered
+ * in the plugin anymore; the umbrella simile carries the legacy name forward.
+ */
+export const websiteBlockActionImpl: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
@@ -1123,3 +1134,8 @@ export const websiteBlockAction: Action & {
     }
   },
 };
+
+// Legacy export — the `WEBSITE_BLOCK` name lives on as a simile of the new
+// BLOCK umbrella. Importers that destructured `websiteBlockAction` get the
+// umbrella back so they continue to dispatch through the unified entry.
+export { blockAction as websiteBlockAction } from "./block.js";

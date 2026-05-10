@@ -485,7 +485,7 @@ export const runtimeAction: Action = {
   },
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: `Runtime operation: ${RUNTIME_OPS.join(" | ")}.`,
       required: true,
       schema: {

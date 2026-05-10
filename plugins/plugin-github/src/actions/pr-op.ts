@@ -226,7 +226,7 @@ export const prOpAction: Action = {
     "GitHub PR ops: list pull requests, submit review with confirmation.",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description: "PR operation: list or review.",
       required: true,
       schema: { type: "string", enum: [...SUPPORTED_OPS] },

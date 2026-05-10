@@ -606,7 +606,7 @@ export const roleAction: Action = {
 		"Accepts structured assignments[] or single target name with recent-room disambiguation.",
 	parameters: [
 		{
-			name: "op",
+			name: "subaction",
 			description: "Operation to perform: assign, revoke, or list.",
 			required: false,
 			schema: {
@@ -733,6 +733,66 @@ export const roleAction: Action = {
 			callback,
 		});
 	},
+	similes: [
+		"UPDATE_ROLE",
+		"ASSIGN_ROLE",
+		"SET_ROLE",
+		"REVOKE_ROLE",
+		"LIST_ROLES",
+		"PROMOTE_USER",
+		"DEMOTE_USER",
+		"MANAGE_PERMISSIONS",
+	],
+	examples: [
+		[
+			{
+				name: "{{name1}}",
+				content: { text: "Make Pat an admin in this world.", source: "chat" },
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: "Updated 1 role(s)",
+					actions: ["ROLE"],
+					thought:
+						"Single-target promote intent maps to ROLE subaction=assign with target='Pat' and role='ADMIN'.",
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Show me everyone's role in this server.",
+					source: "chat",
+				},
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: "Listing role assignments.",
+					actions: ["ROLE"],
+					thought:
+						"Inventory query maps to ROLE subaction=list which returns all entityId->role pairs for the world.",
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: { text: "Revoke admin from Pat.", source: "chat" },
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: "Revoked 1 role(s)",
+					actions: ["ROLE"],
+					thought:
+						"Revoke intent maps to ROLE subaction=revoke; defaultRole becomes GUEST so Pat drops to GUEST.",
+				},
+			},
+		],
+	],
 };
 
 // Backwards-compatible export name for the existing barrel re-export.

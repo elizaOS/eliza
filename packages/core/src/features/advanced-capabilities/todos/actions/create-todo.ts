@@ -140,7 +140,44 @@ export const createTodoAction: Action = {
 			schema: { type: "number" as const },
 		},
 	],
-	examples: [],
+	examples: [
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Create a todo for buying groceries this weekend.",
+					source: "chat",
+				},
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: 'Created todo "Buy groceries".',
+					actions: ["CREATE_TODO"],
+					thought:
+						"Plain todo creation with a title; no due date specified, so dueAt is omitted.",
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Add a todo: finish the design doc by Friday.",
+					source: "chat",
+				},
+			},
+			{
+				name: "{{agentName}}",
+				content: {
+					text: 'Created todo "Finish design doc" with a Friday due date.',
+					actions: ["CREATE_TODO"],
+					thought:
+						"Title plus a deadline maps to CREATE_TODO with title and dueAt computed from 'Friday'.",
+				},
+			},
+		],
+	],
 };
 
 export default createTodoAction;

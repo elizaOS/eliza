@@ -29,7 +29,6 @@ import { createTodoAction } from "./todos/actions/create-todo.ts";
 import { deleteTodoAction } from "./todos/actions/delete-todo.ts";
 import { editTodoAction } from "./todos/actions/edit-todo.ts";
 import { listTodosAction } from "./todos/actions/list-todos.ts";
-import { todoAction } from "./todos/actions/todo.ts";
 import { todosProvider } from "./todos/providers/todos.ts";
 
 // Re-export action, provider, and post-message-action modules
@@ -98,9 +97,9 @@ export const advancedActions = [
 	withCanonicalActionDocs(searchExperiencesAction),
 	...promoteSubactionsToActions(messageAction),
 	...promoteSubactionsToActions(postAction),
-	// Todo actions — TODO is the umbrella; the leaf actions stay registered
-	// for direct dispatch.
-	...promoteSubactionsToActions(todoAction),
+	// Todo leaf actions — the TODO umbrella is provided by @elizaos/plugin-todos;
+	// these leaves stay here for advanced-capabilities consumers that want
+	// direct-dispatch actions without depending on the plugin.
 	createTodoAction,
 	completeTodoAction,
 	listTodosAction,

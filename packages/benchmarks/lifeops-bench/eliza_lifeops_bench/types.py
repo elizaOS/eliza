@@ -6,6 +6,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal
 
+DisruptionKind = Literal[
+    "new_message",
+    "calendar_change",
+    "reminder_due",
+    "rule_change",
+]
+
 
 class Domain(Enum):
     """Life-assistant task domain."""
@@ -78,6 +85,29 @@ class FirstQuestionFallback:
 
 
 @dataclass(frozen=True)
+class Disruption:
+    """A scripted mid-run world mutation injected by the LIVE runner.
+
+    Disruptions model REALM-Bench-style perturbations: an urgent email
+    arrives mid-conversation, a meeting gets cancelled, a new reminder
+    fires. Applied AFTER the agent's turn at ``at_turn`` finishes (i.e.
+    the disruption is visible to the agent starting on the next turn).
+
+    ``payload`` shape depends on ``kind``:
+      - ``new_message``     — ``{message_id, thread_id, from_email, subject, body}``
+      - ``calendar_change`` — ``{event_id, action: "cancel"|"move", start?, end?}``
+      - ``reminder_due``    — ``{reminder_id, list_id, title, due_at}``
+      - ``rule_change``     — natural-language note threaded into the
+        next simulated user turn (no world mutation)
+    """
+
+    at_turn: int
+    kind: DisruptionKind
+    payload: dict[str, Any]
+    note_for_user: str = ""
+
+
+@dataclass(frozen=True)
 class Scenario:
     """A single benchmark scenario."""
 
@@ -94,6 +124,9 @@ class Scenario:
     max_turns: int = 50
     description: str = ""
     now_iso: str = "2026-05-10T12:00:00Z"
+    success_criteria: list[str] = field(default_factory=list)
+    world_assertions: list[str] = field(default_factory=list)
+    disruptions: list[Disruption] = field(default_factory=list)
 
 
 @dataclass
@@ -131,7 +164,13 @@ class ScenarioResult:
 
 @dataclass
 class BenchmarkResult:
-    """Aggregated results for a full benchmark run."""
+    """Aggregated results for a full benchmark run.
+
+    ``total_cost_usd`` is the sum of agent + evaluator spend so existing
+    consumers see the same headline number. ``agent_cost_usd`` and
+    ``eval_cost_usd`` split that total so operators can answer "how much
+    of this run was the executor vs. the judge / simulated user?".
+    """
 
     scenarios: list[ScenarioResult]
     pass_at_1: float
@@ -143,3 +182,5 @@ class BenchmarkResult:
     judge_model_name: str
     timestamp: str
     seeds: int
+    agent_cost_usd: float = 0.0
+    eval_cost_usd: float = 0.0

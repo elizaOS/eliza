@@ -459,7 +459,7 @@ export const todoAction: Action = {
     "todo manage list; op: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId).",
   parameters: [
     {
-      name: "op",
+      name: "subaction",
       description:
         "Operation: write, create, update, complete, cancel, delete, list, clear.",
       required: true,
@@ -568,4 +568,51 @@ export const todoAction: Action = {
         return opClear(args);
     }
   },
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Add 'review PR feedback' to my todo list.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Adding the todo.",
+          actions: ["TODO"],
+          thought:
+            "Single-todo creation maps to TODO subaction=create with content set.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Show my todos that are still pending.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Listing your pending todos.",
+          actions: ["TODO"],
+          thought:
+            "List query maps to TODO subaction=list with includeCompleted=false.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Cancel todo abc-123.", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Cancelling that todo.",
+          actions: ["TODO"],
+          thought:
+            "Cancel intent on a specific id maps to TODO subaction=cancel with id=abc-123.",
+        },
+      },
+    ],
+  ],
 };
