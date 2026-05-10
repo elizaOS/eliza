@@ -16,6 +16,32 @@ and translating 113 example-bearing actions by hand is not viable.
 - **Input.** A `*.ts` action file. The harness statically extracts the
   action's `name` literal and its `examples: ActionExample[][]` array via
   `ts-morph` AST walk — no module evaluation.
+- **Extractor strategies (applied in order on the `examples:` initializer).**
+  1. **Inline array literal.** `examples: [[user, agent], ...]`. Fast
+     path — no resolution needed.
+  2. **`as ActionExample[][]` cast.** Same shape wrapped in an
+     `AsExpression` (or parenthesized variant); unwrapped and
+     re-classified.
+  3. **Identifier reference.** `examples: SOMETHING_EXAMPLES` — resolved
+     via `getDefinitionNodes()`. Cross-file resolution works through
+     `import { ... } from "./Y"` re-exports; ts-morph's project lazily
+     adds the imported source files. The same path resolves
+     `name: ACTION_NAME` Identifier-typed action names.
+  4. **Spread + concatenation.** `examples: [...A, ...someAction.examples
+     ?? [], inlinePair]` — each child is resolved independently via the
+     same strategies and the resulting pair-array nodes are concatenated.
+     `??` short-circuits: the resolver recurses on the left-hand side
+     first, then the right side as fallback.
+  5. **Property access.** `someAction.examples` (and `(someAction as
+     Partial<Action>).examples`) — resolves the base to its declaration,
+     walks to the named property's initializer, then recurses.
+- **Action-name resolution.** `name: "FOO"` (string literal) and
+  `name: ACTION_NAME` (Identifier resolving to a `const ACTION_NAME = "FOO"`)
+  are both supported. The Identifier path uses the same cross-file resolver
+  as the example extractor.
+- **Fail-loud guarantee.** Every step throws a diagnostic with a
+  `<path>:<line>:<col>` source location when it can't reduce to a concrete
+  array literal. No silent fallback (CLAUDE.md no-fallback-shim rule).
 - **Translation.** Cerebras `gpt-oss-120b` with a strict JSON-only prompt
   that forbids translating speaker placeholders (`{{name1}}`,
   `{{agentName}}`) and action tokens (`LIFE`, `MESSAGE_HANDOFF`,
@@ -251,6 +277,31 @@ External-plugin coverage (each row × {`es`, `fr`, `ja`}):
 | `cu-desktop.<locale>.ts` | `plugin-computeruse/actions/desktop.ts` | `DESKTOP` |
 | `cu-use-computer.<locale>.ts` | `plugin-computeruse/actions/use-computer.ts` | `COMPUTER_USE` |
 
+## Identifier resolution + spread concatenation (now in scope)
+
+The harness's AST extractor now follows Identifier references and spread
+elements end-to-end. Before this change, an action whose `examples:` field
+referenced an external constant (`examples: musicExamples`) or composed
+several sub-action example arrays via spread (`examples: [...playlistOpExamples,
+...searchYouTubeExamples, ...(playbackOp.examples ?? [])]`) would fail
+extraction with `Could not locate an 'examples' array literal`. With
+identifier-resolved + spread-resolved AST extraction:
+
+- `plugin-music/actions/music.ts` (`MUSIC`) is now extractable directly
+  from source: 32 example pairs concatenated across 5 sub-actions.
+- `plugin-music/actions/musicLibrary.ts` (`MUSIC_LIBRARY`): 16 example
+  pairs concatenated across 4 sub-actions, all imported from sibling
+  `*.ts` files.
+- Action names declared as `name: ACTION_NAME` (Identifier-referencing a
+  string const) are resolved automatically — previously these required
+  `--action-name=NAME` to be passed manually.
+
+The two music actions above had been pre-translated by the bulk-pass
+operator using `--action-name=` overrides on a hand-tweaked harness; the
+extractor enhancement makes those workarounds unnecessary so future re-runs
+(e.g. when source actions change or new locales are added) work without
+manual intervention.
+
 ## Still pending — future bulk passes
 
 Out of scope for this round (does not violate the conservative budget cap):
@@ -271,13 +322,13 @@ Out of scope for this round (does not violate the conservative budget cap):
   collided on the registry's `<actionName>.example.<index>` composite
   key. If the SKILL family is ever split into per-op action names, the
   retired files can be regenerated.
-- Identifier-resolved `action: ACTION_NAME` references. The harness's
-  literal-only AST extractor silently drops `action: ACTION_NAME`
-  (constant identifier) values, which is why some generated entries lack
-  a structured `action` field even when the source had one. Resolving
-  identifiers via ts-morph type checker is a follow-up enhancement
-  (Agent 45's work); the inline action-token tests guard against
-  translation regressions in the meantime.
+- Inline `action: ACTION_NAME` references INSIDE example content. The
+  extractor still drops these from the structured `action` field on each
+  pair (the action-name resolver only walks the action's `name:` and
+  `examples:` properties, not nested literal content). The inline
+  action-token tests guard against translation regressions; resolving
+  these would require deeper per-pair AST descent and was not needed for
+  the current bulk pass.
 
 ## Test coverage
 
@@ -287,6 +338,13 @@ Out of scope for this round (does not violate the conservative budget cap):
   `{{user1}}/{{agent}}`), action-token shape (`UPPER_SNAKE` plus optional
   `.verb` suffix), placeholder preservation in body text, and non-empty
   translated text.
+- `test/translation-harness-extractor.test.ts` (5 assertions): exercises
+  the AST extractor strategies directly via fixtures under
+  `test/fixtures/translate-action-examples/`. Covers the inline-array
+  regression, identifier-resolved external refs (`examples: SOMETHING`),
+  spread concatenation (`[...A, ...B.examples ?? [], inlinePair]`),
+  monotonic index ordering across spreads, and the fail-loud diagnostic
+  path (unresolvable initializer → non-zero exit + source location).
 - `test/journey-domain-coverage.test.ts` (40 assertions) continues to
   pass — pack expansion does not break the journey-domain mapping.
 
