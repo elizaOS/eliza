@@ -11,6 +11,7 @@ import {
   type AppSessionActionResult,
   createGeneratedAppHeroSvg,
   hasAppInterface,
+  PostLoadFromDirectoryRequestSchema,
   PutAppPermissionsRequestSchema,
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
@@ -1363,17 +1364,24 @@ export async function handleAppsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/apps/load-from-directory") {
-    const body = await readJsonBody<{ directory?: string }>(req, res);
-    if (!body) return true;
-    const directory = body.directory?.trim() ?? "";
-    if (!directory) {
-      error(res, "directory is required");
+    // Body validation goes through PostLoadFromDirectoryRequestSchema
+    // (zod, see @elizaos/shared/contracts/apps-loading-routes.ts).
+    // The schema handles the required check, the absolute-path check,
+    // and rejects extra unknown fields via .strict().
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null || rawBody === undefined) return true;
+    const parsed = PostLoadFromDirectoryRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const path = issue?.path?.join(".") ?? "<root>";
+      error(
+        res,
+        `Invalid request body at ${path}: ${issue?.message ?? "validation failed"}`,
+        400,
+      );
       return true;
     }
-    if (!path.isAbsolute(directory)) {
-      error(res, "directory must be an absolute path", 400);
-      return true;
-    }
+    const directory = parsed.data.directory;
 
     const runtimeWithServices = runtime as {
       getService?: (type: string) => {
