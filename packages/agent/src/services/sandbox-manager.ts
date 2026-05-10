@@ -93,11 +93,6 @@ export interface SandboxRunOptions {
   env?: Record<string, string>;
   timeoutMs?: number;
   stdin?: string;
-  /**
-   * Override sandbox image. Currently informational; the manager runs commands
-   * in the long-lived container provisioned at start(), not a per-call image.
-   */
-  image?: string;
 }
 
 /**
