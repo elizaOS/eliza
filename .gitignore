@@ -37,6 +37,14 @@ plugins/**/auto-enable.d.ts.map
 **/vitest.config.d.ts
 **/vitest.config.d.ts.map
 
+# Stray declaration emit next to TS in plugin-discord (canonical declarations live under dist/)
+plugins/plugin-discord/**/*.d.ts
+plugins/plugin-discord/**/*.d.ts.map
+
+# Accidental JS/sourcemap emit next to TS in @elizaos/core (build output is dist/)
+packages/core/src/**/*.js
+packages/core/src/**/*.js.map
+
 *.gguf
 *.onnx
 *.wav

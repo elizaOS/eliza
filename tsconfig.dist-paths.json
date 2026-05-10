@@ -802,10 +802,10 @@
         "./plugins/app-wifi/dist/*"
       ],
       "@elizaos/plugin-xai": [
-        "./plugins/plugin-xai/dist/index.d.ts"
+        "./plugins/plugin-xai/index.ts"
       ],
       "@elizaos/plugin-xai/*": [
-        "./plugins/plugin-xai/dist/*"
+        "./plugins/plugin-xai/*"
       ],
       "@elizaos/plugin-cli": [
         "./plugins/plugin-cli/dist/index.d.ts"

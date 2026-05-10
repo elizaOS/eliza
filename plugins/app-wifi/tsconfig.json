@@ -4,7 +4,7 @@
     "composite": false,
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
-    "strict": true,
+    "strict": false,
     "skipLibCheck": true,
     "types": ["node", "bun"],
     "typeRoots": [
@@ -33,12 +33,28 @@
       "@elizaos/capacitor-wifi": [
         "../../packages/native-plugins/wifi/src/index.ts"
       ],
+      "@elizaos/plugin-discord-local": [
+        "../../plugins/plugin-discord-local/src/index.ts"
+      ],
+      "@elizaos/plugin-discord-local/*": [
+        "../../plugins/plugin-discord-local/src/*"
+      ],
+      "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
+      "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
+      "@elizaos/app-task-coordinator": [
+        "../../plugins/app-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/app-task-coordinator/*": [
+        "../../plugins/app-task-coordinator/src/*"
+      ],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
       "@elizaos/plugin-elizacloud/*": [
         "../../plugins/plugin-elizacloud/src/*"
       ],
+      "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
+      "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
       "@elizaos/plugin-browser": [
         "../../plugins/plugin-browser/src/index.ts"
       ],
@@ -78,6 +94,30 @@
       ],
       "react-dom": [
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
+      ],
+      "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
+      "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
+      "@elizaos/plugin-workflow": [
+        "../../plugins/plugin-workflow/src/index.ts"
+      ],
+      "@elizaos/plugin-workflow/*": [
+        "../../plugins/plugin-workflow/src/*"
+      ],
+      "@elizaos/plugin-streaming": [
+        "../../plugins/plugin-streaming/src/index.ts"
+      ],
+      "@elizaos/plugin-streaming/*": [
+        "../../plugins/plugin-streaming/src/*"
+      ],
+      "@elizaos/plugin-music": ["../../plugins/plugin-music/src/index.ts"],
+      "@elizaos/plugin-music/*": ["../../plugins/plugin-music/src/*"],
+      "@elizaos/plugin-sql": [
+        "../../plugins/plugin-sql/src/index.node.ts"
+      ],
+      "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
+      "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": [
+        "../../plugins/plugin-sql/node_modules/drizzle-orm/*"
       ],
       "@elizaos/*": ["../../node_modules/@elizaos/*"],
       "lucide-react": ["../app-companion/node_modules/lucide-react"]

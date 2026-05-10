@@ -4,6 +4,8 @@
 	"compilerOptions": {
 		"outDir": "./dist",
 		"rootDir": "../../",
+		"sourceMap": false,
+		"inlineSourceMap": false,
 		"typeRoots": [
 			"../../node_modules/@types",
 			"../../node_modules/.bun/node_modules/@types",

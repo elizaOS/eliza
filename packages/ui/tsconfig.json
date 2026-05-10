@@ -77,6 +77,8 @@
       "@elizaos/skills/*": ["../skills/src/*"],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
+      "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
+      "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
       "@elizaos/ui": ["./src/index.ts"],
       "@elizaos/ui/*": ["./src/*"],
       "@elizaos/*": ["../../node_modules/@elizaos/*"]

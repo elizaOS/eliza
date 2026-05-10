@@ -128,7 +128,7 @@ interface IMessageServiceLike {
 
 function resolveService(runtime: IAgentRuntime): IMessageServiceLike | null {
   const raw = runtime.getService(IMESSAGE_SERVICE_NAME);
-  return (raw as IMessageServiceLike | null | undefined) ?? null;
+  return (raw as unknown as IMessageServiceLike | null | undefined) ?? null;
 }
 
 /**
