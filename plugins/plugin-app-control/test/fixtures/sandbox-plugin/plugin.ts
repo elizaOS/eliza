@@ -25,6 +25,16 @@ interface FixturePlugin {
 	actions: FixtureAction[];
 }
 
+interface SandboxRuntime {
+	slug: string;
+	statePath: string | null;
+	fetch: (url: string, init?: RequestInit) => Promise<Response>;
+	fs: {
+		readFile: (path: string) => Promise<string>;
+		writeFile: (path: string, content: string) => Promise<void>;
+	};
+}
+
 const sandboxPlugin: FixturePlugin = {
 	name: "sandbox-fixture",
 	actions: [
@@ -41,11 +51,48 @@ const sandboxPlugin: FixturePlugin = {
 		},
 		{
 			name: "RUNTIME_PROBE",
-			handler: async (runtime: { getMemories: (...args: unknown[]) => unknown }) => {
-				// Phase 2.3 stub throws on every property access. This
-				// proves the worker correctly forwards the failure as a
-				// structured RPC error rather than crashing the worker.
+			handler: async (runtime: {
+				getMemories: (...args: unknown[]) => unknown;
+			}) => {
+				// Stub throws on every un-gated property access. Proves
+				// the worker forwards the failure as a structured RPC
+				// error rather than crashing the worker.
 				return await runtime.getMemories({});
+			},
+		},
+		{
+			name: "NET_FETCH",
+			handler: async (
+				runtime: SandboxRuntime,
+				message: { content: { url: string } },
+			) => {
+				const response = await runtime.fetch(message.content.url);
+				return { status: response.status };
+			},
+		},
+		{
+			name: "FS_WRITE_THEN_READ",
+			handler: async (
+				runtime: SandboxRuntime,
+				message: { content: { relPath: string; payload: string } },
+			) => {
+				if (!runtime.statePath) {
+					throw new Error("statePath not assigned");
+				}
+				const target = `${runtime.statePath}/${message.content.relPath}`;
+				await runtime.fs.writeFile(target, message.content.payload);
+				return { read: await runtime.fs.readFile(target) };
+			},
+		},
+		{
+			name: "FS_ESCAPE_ATTEMPT",
+			handler: async (
+				runtime: SandboxRuntime,
+				message: { content: { absolutePath: string } },
+			) => {
+				return {
+					read: await runtime.fs.readFile(message.content.absolutePath),
+				};
 			},
 		},
 	],
