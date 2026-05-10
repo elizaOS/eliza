@@ -3,6 +3,31 @@ import {
 	getActionSearchKeywordSources,
 	getActionSearchKeywordTerms,
 } from "../i18n/action-search-keywords";
+import type { ActionExample } from "../types/components";
+
+/**
+ * Localized `[user, agent]` pair returned by a
+ * {@link LocalizedActionExampleResolver}. The shape mirrors a single entry of
+ * an action's `examples: ActionExample[][]` array — `[user, agent]`.
+ */
+export type LocalizedActionExamplePair = readonly [
+	ActionExample,
+	ActionExample,
+];
+
+/**
+ * Callback the catalog uses to swap English `ActionExample` pairs for a
+ * localized version when a translation is registered (typically by a
+ * `MultilingualPromptRegistry`). Returning `null` keeps the English original.
+ *
+ * The resolver is index-based so callers (the planner, app-lifeops) can map
+ * the pair back to its source row in `action.examples` without re-parsing the
+ * registry's composite key shape (`<actionName>.example.<index>`).
+ */
+export type LocalizedActionExampleResolver = (params: {
+	actionName: string;
+	exampleIndex: number;
+}) => LocalizedActionExamplePair | null;
 
 export type RuntimeActionLike = {
 	name: string;
@@ -79,6 +104,15 @@ export type ActionCatalog = {
 
 export type BuildActionCatalogOptions = {
 	includeReferencedChildrenAsParents?: boolean;
+	/**
+	 * Optional locale-aware example swapper. When provided, every
+	 * `ActionExample[][]` row on a source action is run through this resolver
+	 * by `(actionName, exampleIndex)` and replaced with the returned localized
+	 * pair if one exists. Rows the resolver does not recognize fall through
+	 * to the English original. The resolver is invoked once per pair at
+	 * catalog-build time, never at planner-render time.
+	 */
+	localizedExamples?: LocalizedActionExampleResolver;
 };
 
 const EMPTY_TEXT_FIELDS = new Set(["undefined", "null", "[object Object]"]);
@@ -132,6 +166,7 @@ export function buildActionCatalog(
 	}
 
 	const childEntriesByParent = new Map<string, ActionCatalogChild[]>();
+	const localizedExamples = options.localizedExamples;
 
 	for (const action of actionByName.values()) {
 		const parentNormalizedName = normalizeActionName(action.name);
@@ -145,6 +180,7 @@ export function buildActionCatalog(
 				subAction,
 				actionByName,
 				warnings,
+				localizedExamples,
 			});
 
 			if (!resolved) {
@@ -189,7 +225,7 @@ export function buildActionCatalog(
 			continue;
 		}
 
-		const parent = materializeParent(action, explicitChildren);
+		const parent = materializeParent(action, explicitChildren, localizedExamples);
 		parents.push(parent);
 		children.push(...explicitChildren);
 	}
@@ -263,9 +299,16 @@ function resolveSubAction(params: {
 	subAction: string | RuntimeActionLike;
 	actionByName: Map<string, RuntimeActionLike>;
 	warnings: ActionCatalogWarning[];
+	localizedExamples?: LocalizedActionExampleResolver;
 }): ActionCatalogChild | undefined {
-	const { parent, parentNormalizedName, subAction, actionByName, warnings } =
-		params;
+	const {
+		parent,
+		parentNormalizedName,
+		subAction,
+		actionByName,
+		warnings,
+		localizedExamples,
+	} = params;
 
 	if (typeof subAction === "string") {
 		const normalizedSubActionName = normalizeActionName(subAction);
@@ -280,7 +323,7 @@ function resolveSubAction(params: {
 			return undefined;
 		}
 
-		return materializeChild(source, parent);
+		return materializeChild(source, parent, localizedExamples);
 	}
 
 	if (!isRuntimeActionLike(subAction)) {
@@ -302,7 +345,7 @@ function resolveSubAction(params: {
 	}
 
 	return {
-		...materializeEntry(subAction),
+		...materializeEntry(subAction, [], localizedExamples),
 		kind: "child",
 		parentName: parent.name,
 		parentNormalizedName,
@@ -312,8 +355,9 @@ function resolveSubAction(params: {
 function materializeParent(
 	action: RuntimeActionLike,
 	children: ActionCatalogChild[],
+	localizedExamples?: LocalizedActionExampleResolver,
 ): ActionCatalogParent {
-	const entry = materializeEntry(action, children);
+	const entry = materializeEntry(action, children, localizedExamples);
 
 	return {
 		...entry,
@@ -327,9 +371,10 @@ function materializeParent(
 function materializeChild(
 	action: RuntimeActionLike,
 	parent: RuntimeActionLike,
+	localizedExamples?: LocalizedActionExampleResolver,
 ): ActionCatalogChild {
 	return {
-		...materializeEntry(action),
+		...materializeEntry(action, [], localizedExamples),
 		kind: "child",
 		parentName: parent.name,
 		parentNormalizedName: normalizeActionName(parent.name),
@@ -339,6 +384,7 @@ function materializeChild(
 function materializeEntry(
 	action: RuntimeActionLike,
 	children: ActionCatalogEntry[] = [],
+	localizedExamples?: LocalizedActionExampleResolver,
 ): ActionCatalogEntry {
 	const normalizedName = normalizeActionName(action.name);
 	const description = String(action.description ?? "").trim();
@@ -352,6 +398,10 @@ function materializeEntry(
 		...childKeywordSources,
 	]);
 	const keywordKeys = keywordSources.map((source) => source.key);
+	const localizedExamplesValue = applyLocalizedExamples(
+		action,
+		localizedExamples,
+	);
 
 	return {
 		name: action.name,
@@ -365,7 +415,7 @@ function materializeEntry(
 		),
 		similes: normalizeStringArray(action.similes),
 		tags: normalizeStringArray(action.tags),
-		examples: action.examples,
+		examples: localizedExamplesValue,
 		parameters: action.parameters,
 		contexts: action.contexts,
 		cacheStable: action.cacheStable,
@@ -377,6 +427,71 @@ function materializeEntry(
 		searchText: actionEntrySearchText(action, children),
 		source: action,
 	};
+}
+
+/**
+ * Apply a {@link LocalizedActionExampleResolver} to an action's `examples`
+ * field if (a) a resolver is provided, and (b) the field is the standard
+ * `ActionExample[][]` shape (every row is a 2-tuple of objects with
+ * `name` + `content`). Any other shape is passed through verbatim — actions
+ * that store their examples as JSON literals or non-pair structures keep
+ * their original payload.
+ *
+ * The resolver receives `(actionName, exampleIndex)`. Returning `null` keeps
+ * the English original for that index; partial coverage is supported.
+ */
+function applyLocalizedExamples(
+	action: RuntimeActionLike,
+	resolver: LocalizedActionExampleResolver | undefined,
+): unknown {
+	if (!resolver) {
+		return action.examples;
+	}
+	if (!isActionExamplePairArray(action.examples)) {
+		return action.examples;
+	}
+
+	let mutated = false;
+	const next: ActionExample[][] = action.examples.map((pair, exampleIndex) => {
+		const localized = resolver({
+			actionName: action.name,
+			exampleIndex,
+		});
+		if (!localized) {
+			return pair;
+		}
+		mutated = true;
+		return [localized[0], localized[1]];
+	});
+
+	return mutated ? next : action.examples;
+}
+
+function isActionExamplePairArray(value: unknown): value is ActionExample[][] {
+	if (!Array.isArray(value)) {
+		return false;
+	}
+	for (const pair of value) {
+		if (!Array.isArray(pair) || pair.length !== 2) {
+			return false;
+		}
+		if (!isActionExample(pair[0]) || !isActionExample(pair[1])) {
+			return false;
+		}
+	}
+	return true;
+}
+
+function isActionExample(value: unknown): value is ActionExample {
+	if (typeof value !== "object" || value === null) {
+		return false;
+	}
+	const candidate = value as { name?: unknown; content?: unknown };
+	return (
+		typeof candidate.name === "string" &&
+		typeof candidate.content === "object" &&
+		candidate.content !== null
+	);
 }
 
 function isRuntimeActionLike(action: unknown): action is RuntimeActionLike {
