@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   dflashEnabled,
   getDflashRuntimeStatus,
+  parseDflashMetrics,
   resolveDflashBinary,
 } from "./dflash-server";
 
@@ -74,5 +75,58 @@ describe("DFlash runtime discovery", () => {
 
     process.env.ELIZA_DFLASH_ENABLED = "1";
     expect(resolveDflashBinary()).toBe(path.join(binDir, "llama-server"));
+  });
+});
+
+describe("parseDflashMetrics", () => {
+  it("parses Prometheus counters with label sets and _total suffix", () => {
+    const text = `# HELP llamacpp:n_decode_total Number of tokens decoded by the model.
+# TYPE llamacpp:n_decode_total counter
+llamacpp:n_decode_total 128
+# HELP llamacpp:n_drafted_total Number of tokens drafted.
+# TYPE llamacpp:n_drafted_total counter
+llamacpp:n_drafted_total 200
+# HELP llamacpp:n_drafted_accepted_total Number of drafted tokens accepted.
+# TYPE llamacpp:n_drafted_accepted_total counter
+llamacpp:n_drafted_accepted_total{slot_id="0"} 130
+`;
+    const snapshot = parseDflashMetrics(text);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot!.decoded).toBe(128);
+    expect(snapshot!.drafted).toBe(200);
+    expect(snapshot!.accepted).toBe(130);
+    expect(snapshot!.acceptanceRate).toBeCloseTo(0.65, 5);
+  });
+
+  it("falls back to non-_total counter names emitted by older fork builds", () => {
+    const text = `llamacpp:n_decode 64
+llamacpp:n_drafted 100
+llamacpp:n_drafted_accepted 75
+`;
+    const snapshot = parseDflashMetrics(text);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot!.decoded).toBe(64);
+    expect(snapshot!.drafted).toBe(100);
+    expect(snapshot!.accepted).toBe(75);
+    expect(snapshot!.acceptanceRate).toBeCloseTo(0.75, 5);
+  });
+
+  it("returns null when the response has no speculative counters", () => {
+    const text = `# HELP some_other_metric Random gauge.
+# TYPE some_other_metric gauge
+some_other_metric 1.0
+`;
+    expect(parseDflashMetrics(text)).toBeNull();
+  });
+
+  it("reports NaN acceptance when drafter has not produced any tokens", () => {
+    const text = `llamacpp:n_decode_total 16
+llamacpp:n_drafted_total 0
+llamacpp:n_drafted_accepted_total 0
+`;
+    const snapshot = parseDflashMetrics(text);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot!.drafted).toBe(0);
+    expect(Number.isNaN(snapshot!.acceptanceRate)).toBe(true);
   });
 });

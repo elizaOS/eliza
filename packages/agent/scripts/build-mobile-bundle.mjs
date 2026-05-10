@@ -117,7 +117,6 @@ function findPgliteDist() {
       repoRoot,
       "plugins",
       "plugin-sql",
-      "typescript",
       "node_modules",
       "@electric-sql",
       "pglite",
@@ -197,6 +196,17 @@ const nativeStubs = {
   "@node-llama-cpp/mac-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
   "@node-llama-cpp/mac-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
   "@node-llama-cpp/win-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
+  // llama-cpp-capacitor is the WebView-side JNI binding for the Capacitor
+  // mobile build. The bun-side AOSP agent uses bun:ffi against libllama.so
+  // directly via aosp-llama-adapter.ts, never this package — but Bun.build
+  // still has to resolve the dynamic import in
+  // packages/native-plugins/llama/src/capacitor-llama-adapter.ts.
+  "llama-cpp-capacitor": path.join(stubsDir, "llama-cpp-capacitor.cjs"),
+  // zlib-sync is a discord.js optional native binding for compressed
+  // gateway frames. No AOSP prebuild ships, and discord.js falls back to
+  // uncompressed transport when the binding is missing. Stub keeps the
+  // bundle building.
+  "zlib-sync": path.join(stubsDir, "zlib-sync.cjs"),
   "onnxruntime-node": path.join(stubsDir, "onnxruntime-node.cjs"),
   "@huggingface/transformers": path.join(
     stubsDir,
@@ -330,7 +340,7 @@ const dedupeTargets = {
     repoRoot,
     "plugins",
     "plugin-sql",
-    "typescript",
+    "src",
     "index.node.ts",
   ),
 };
@@ -647,8 +657,11 @@ console.log(
 
 // Copy PGlite assets next to the bundle. The bundle's `import.meta.url` will
 // resolve to its location at runtime, and `new URL("./pglite.wasm", ...)`
-// lands here.
-for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
+// lands here. `initdb.wasm` only ships with pglite 0.4.x; older 0.3.x
+// (which plugin-sql still pins via `^0.3.3`) embeds the init step into
+// `pglite.wasm` directly. Treat it as optional so the build works against
+// either version.
+for (const asset of ["pglite.wasm", "pglite.data"]) {
   const src = path.join(pgliteDist, asset);
   if (!existsSync(src)) {
     console.error(`[build-mobile] FATAL: missing ${asset} in ${pgliteDist}`);
@@ -658,6 +671,18 @@ for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
   const sz = (await stat(src)).size;
   console.log(
     `[build-mobile] copied ${asset} (${(sz / 1024 / 1024).toFixed(2)} MB)`,
+  );
+}
+const optionalInitDb = path.join(pgliteDist, "initdb.wasm");
+if (existsSync(optionalInitDb)) {
+  await copyFile(optionalInitDb, path.join(outDir, "initdb.wasm"));
+  const sz = (await stat(optionalInitDb)).size;
+  console.log(
+    `[build-mobile] copied initdb.wasm (${(sz / 1024 / 1024).toFixed(2)} MB)`,
+  );
+} else {
+  console.log(
+    "[build-mobile] initdb.wasm absent (pglite 0.3.x layout); skipping",
   );
 }
 

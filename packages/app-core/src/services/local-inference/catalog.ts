@@ -22,9 +22,13 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 1,
     category: "tiny",
     bucket: "small",
+<<<<<<< HEAD
     // SmolLM2 native context: 8192 tokens (HuggingFaceTB/SmolLM2-360M-Instruct).
     contextLength: 8192,
     tokenizerFamily: "smol",
+=======
+    tokenizerFamily: "smollm2",
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     blurb:
       "Mobile-friendly default. ~270MB on disk, runs on phones and 1GB-RAM hosts.",
   },
@@ -39,8 +43,12 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 3,
     category: "tiny",
     bucket: "small",
+<<<<<<< HEAD
     contextLength: 8192,
     tokenizerFamily: "smol",
+=======
+    tokenizerFamily: "smollm2",
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     blurb:
       "Smallest genuinely useful chat model. Perfect for CI and smoke tests.",
   },
@@ -55,8 +63,11 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 2,
     category: "tiny",
     bucket: "small",
+<<<<<<< HEAD
     // Llama-3.2-1B-Instruct native context: 131072 tokens.
     contextLength: 131072,
+=======
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     tokenizerFamily: "llama3",
     blurb: "Ultra-light Llama for edge devices and integration tests.",
   },
@@ -71,7 +82,10 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 4,
     category: "chat",
     bucket: "small",
+<<<<<<< HEAD
     contextLength: 131072,
+=======
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     tokenizerFamily: "llama3",
     blurb: "Fast general chat for 8GB laptops; coherent summaries and Q&A.",
   },
@@ -86,8 +100,11 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 5,
     category: "chat",
     bucket: "small",
+<<<<<<< HEAD
     // Qwen3.5 family native context: 131072 tokens.
     contextLength: 131072,
+=======
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     tokenizerFamily: "qwen3",
     companionModelIds: ["qwen3.5-4b-dflash-drafter-q4"],
     runtime: {
@@ -141,8 +158,11 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 10,
     category: "chat",
     bucket: "mid",
+<<<<<<< HEAD
     // Llama-3.1-8B-Instruct native context: 131072 tokens.
     contextLength: 131072,
+=======
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     tokenizerFamily: "llama3",
     blurb: "Battle-tested general chat; the default 8GB-VRAM daily driver.",
   },
@@ -157,7 +177,10 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 12,
     category: "chat",
     bucket: "mid",
+<<<<<<< HEAD
     contextLength: 131072,
+=======
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     tokenizerFamily: "qwen3",
     companionModelIds: ["qwen3.5-9b-dflash-drafter-q4"],
     runtime: {
@@ -209,9 +232,13 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 12,
     category: "chat",
     bucket: "mid",
+<<<<<<< HEAD
     // Gemma 2 9B native context: 8192 tokens (sliding window).
     contextLength: 8192,
     tokenizerFamily: "gemma2",
+=======
+    tokenizerFamily: "gemma",
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     blurb: "Google Gemma. Excellent writing quality and safety tuning.",
   },
   {
@@ -225,11 +252,15 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 10,
     category: "code",
     bucket: "mid",
+<<<<<<< HEAD
     // Qwen2.5-Coder-7B-Instruct: max_position_embeddings=32768, extended
     // to 131072 via YaRN per upstream config.json. The bartowski GGUFs
     // expose the YaRN-extended ceiling.
     contextLength: 131072,
     tokenizerFamily: "qwen2.5",
+=======
+    tokenizerFamily: "qwen2",
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     blurb:
       "Top small coder. Fill-in-the-middle, repo-level context, 128k window.",
   },
@@ -244,8 +275,11 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 10,
     category: "tools",
     bucket: "mid",
+<<<<<<< HEAD
     // Built on Llama-3.1-8B base; inherits 131072 native context.
     contextLength: 131072,
+=======
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     tokenizerFamily: "llama3",
     blurb: "Nous Hermes 3. Function calling, JSON mode, agentic tool use.",
   },
@@ -260,11 +294,14 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 8,
     category: "chat",
     bucket: "mid",
+<<<<<<< HEAD
     // Bonsai-8B is a Qwen3-8B 1-bit quant — inherits Qwen3's native
     // 131072 context window. The TurboQuant KV cache compression
     // (k=tbq4_0, v=tbq3_0) keeps the long-context KV memory budget
     // tractable on phone CPUs at this ceiling.
     contextLength: 131072,
+=======
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     tokenizerFamily: "qwen3",
     runtime: {
       kvCache: {
@@ -306,10 +343,13 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 8,
     category: "chat",
     bucket: "mid",
+<<<<<<< HEAD
     // Same Qwen3-8B base as bonsai-8b-1bit; 131072 native context.
     // DFlash launch defaults the runtime context to 4096 (see runtime
     // block) for cuttlefish RAM budget; the model itself supports more.
     contextLength: 131072,
+=======
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     tokenizerFamily: "qwen3",
     companionModelIds: ["bonsai-8b-dflash-drafter"],
     runtime: {
@@ -384,11 +424,14 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 36,
     category: "code",
     bucket: "large",
+<<<<<<< HEAD
     // Qwen3-Coder-30B-A3B-Instruct: 262144 native context (256k), per
     // upstream config.json. The MoE expert offload below routes the
     // hot path to GPU and keeps experts on CPU so this ceiling is
     // reachable on 24 GB VRAM workstations.
     contextLength: 262144,
+=======
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     tokenizerFamily: "qwen3",
     runtime: {
       optimizations: {
@@ -413,10 +456,14 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 20,
     category: "code",
     bucket: "large",
+<<<<<<< HEAD
     // DeepSeek-Coder-V2-Lite-Instruct: 163840 native context per
     // upstream config (max_position_embeddings=163840).
     contextLength: 163840,
     tokenizerFamily: "deepseek",
+=======
+    tokenizerFamily: "deepseekv2",
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     blurb: "MoE coder. Near-32B coding quality with ~2.4B active params.",
   },
   {
@@ -430,10 +477,14 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 18,
     category: "code",
     bucket: "large",
+<<<<<<< HEAD
     // Qwen2.5-Coder-14B-Instruct: same YaRN-extended ceiling as 7B
     // (max_position_embeddings=32768, extended to 131072 via YaRN).
     contextLength: 131072,
     tokenizerFamily: "qwen2.5",
+=======
+    tokenizerFamily: "qwen2",
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     blurb: "Sweet-spot coder for 16GB VRAM. Fluent in most languages.",
   },
   {
@@ -447,8 +498,11 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 28,
     category: "chat",
     bucket: "large",
+<<<<<<< HEAD
     // Mistral-Small-24B-Instruct-2501: 32768 native context.
     contextLength: 32768,
+=======
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     tokenizerFamily: "mistral",
     blurb: "Mistral's 2025 flagship small. Strong reasoning, creative writing.",
   },
@@ -463,8 +517,12 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 32,
     category: "chat",
     bucket: "large",
+<<<<<<< HEAD
     contextLength: 8192,
     tokenizerFamily: "gemma2",
+=======
+    tokenizerFamily: "gemma",
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     blurb: "Largest Gemma 2. Excellent for long-form writing and reasoning.",
   },
   {
@@ -478,8 +536,11 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 32,
     category: "chat",
     bucket: "large",
+<<<<<<< HEAD
     // Qwen3.6 family native context: 131072 tokens.
     contextLength: 131072,
+=======
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     tokenizerFamily: "qwen3",
     companionModelIds: ["qwen3.6-27b-dflash-drafter-q8"],
     runtime: {
@@ -533,9 +594,13 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 38,
     category: "reasoning",
     bucket: "xl",
+<<<<<<< HEAD
     // QwQ-32B: 32768 native context.
     contextLength: 32768,
     tokenizerFamily: "qwen2.5",
+=======
+    tokenizerFamily: "qwen2",
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     blurb:
       "Qwen reasoning model. Chain-of-thought, math, code. o1-class open model.",
   },
@@ -550,10 +615,15 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 38,
     category: "reasoning",
     bucket: "xl",
+<<<<<<< HEAD
     // DeepSeek-R1-Distill-Qwen-32B: based on Qwen2.5-32B, supports
     // 131072 native context (max_position_embeddings=131072).
     contextLength: 131072,
     tokenizerFamily: "qwen2.5",
+=======
+    // R1 distill is a fine-tune of Qwen2.5-32B → inherits the Qwen2 tokenizer.
+    tokenizerFamily: "qwen2",
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     blurb:
       "R1 reasoning distilled into Qwen-32B. 128k context, strong math/code.",
   },
@@ -572,8 +642,11 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 4,
     category: "chat",
     bucket: "small",
+<<<<<<< HEAD
     // Inherits Qwen3.5 base context: 131072.
     contextLength: 131072,
+=======
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     tokenizerFamily: "qwen3",
     blurb:
       "Milady's smallest fine-tune. 16GB-VRAM-friendly daily driver tuned for the elizaOS prompt and structured chat output.",
@@ -589,7 +662,10 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 12,
     category: "chat",
     bucket: "mid",
+<<<<<<< HEAD
     contextLength: 131072,
+=======
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     tokenizerFamily: "qwen3",
     blurb:
       "Workstation-class Milady tune with 128k context, agentic tool calling, and structured output.",
@@ -605,11 +681,14 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 32,
     category: "chat",
     bucket: "large",
+<<<<<<< HEAD
     // Qwen3.6 base supports 131072 natively. The 256k figure in the
     // blurb refers to the upstream Qwen3.6-VL extended-context build,
     // not the GGUF here — set the conservative 131072 so the loader
     // doesn't try to allocate a window the file doesn't actually back.
     contextLength: 131072,
+=======
+>>>>>>> origin/worktree-agent-a6a22d16caf1de4c0
     tokenizerFamily: "qwen3",
     blurb:
       "Cloud-tier Milady tune. Best agentic + tool-calling quality in the eliza-1 series; 128k context, 256k native window.",
