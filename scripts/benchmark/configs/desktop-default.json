@@ -1,0 +1,40 @@
+{
+  "$schema": "../profile-config.schema.json",
+  "description": "Desktop profiling matrix for the in-process node-llama-cpp path on Linux/macOS/Windows. Stock-build-only KV cache types (f16, q8_0, bf16) — fork-only types (tbq3_0/tbq4_0/qjl1_256) are rejected by the API validator on this path because the underlying libllama.so cannot honour them. Use scripts/benchmark/configs/aosp-default.json for the AOSP fork matrix.",
+  "models": ["llama-3.2-1b", "qwen2.5-coder-7b"],
+  "kvCacheConfigs": [
+    {
+      "name": "baseline-fp16-128k",
+      "k": "f16",
+      "v": "f16",
+      "contextSize": 131072
+    },
+    {
+      "name": "q8-kv-128k",
+      "k": "q8_0",
+      "v": "q8_0",
+      "contextSize": 131072
+    },
+    {
+      "name": "baseline-fp16-32k",
+      "k": "f16",
+      "v": "f16",
+      "contextSize": 32768
+    }
+  ],
+  "dflashConfigs": [{ "name": "no-dflash", "drafter": null }],
+  "prompts": [
+    {
+      "id": "short-q",
+      "text": "What is the capital of France?",
+      "maxTokens": 50
+    },
+    {
+      "id": "long-gen",
+      "text": "Write a 200-word story about a small robot who wants to learn to paint.",
+      "maxTokens": 250
+    }
+  ],
+  "iterations": 3,
+  "warmupIterations": 1
+}
