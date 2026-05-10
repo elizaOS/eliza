@@ -7,7 +7,7 @@
 export {
   __registryPathForTests,
   hashFile,
-  verifyInstalledModel,
   type VerifyResult,
   type VerifyState,
+  verifyInstalledModel,
 } from "@elizaos/shared";
