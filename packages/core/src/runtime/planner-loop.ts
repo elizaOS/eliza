@@ -1,3 +1,6 @@
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
 import {
@@ -2055,36 +2058,76 @@ function getNonEmptyString(value: unknown): string | undefined {
  * `services/message.ts`. Cast structurally so we don't widen `PlannerRuntime`
  * just to read one optional service.
  */
+// In-process cache for the on-disk optimized planner artifact. Resolved
+// once per process so we don't re-read the JSON file on every planner
+// invocation. Set to `null` for "no artifact" and to the prompt body when
+// found. The flag avoids re-attempting reads when the file is missing.
+let cachedDiskOptimizedPlannerPrompt: string | null = null;
+let cachedDiskOptimizedPlannerLoaded = false;
+
+function loadOptimizedPlannerFromDisk(): string | null {
+	const stateDir =
+		process.env.ELIZA_STATE_DIR?.trim() ||
+		process.env.MILADY_STATE_DIR?.trim() ||
+		join(homedir(), ".eliza");
+	const dir = join(stateDir, "optimized-prompts", "action_planner");
+	if (!existsSync(dir)) return null;
+	const entries = readdirSync(dir)
+		.filter((f) => f.endsWith(".json"))
+		.map((f) => ({
+			path: join(dir, f),
+			mtime: statSync(join(dir, f)).mtimeMs,
+		}))
+		.sort((a, b) => b.mtime - a.mtime);
+	for (const entry of entries) {
+		try {
+			const raw = readFileSync(entry.path, "utf-8");
+			const parsed = JSON.parse(raw) as {
+				task?: string;
+				prompt?: string;
+			};
+			if (
+				parsed.task === "action_planner" &&
+				typeof parsed.prompt === "string"
+			) {
+				return parsed.prompt;
+			}
+		} catch {
+			continue;
+		}
+	}
+	return null;
+}
+
 function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {
+	// Production path: consult the registered service first. When it has
+	// an artifact for `action_planner`, return that.
 	const candidate = runtime as PlannerRuntime & {
 		getService?: <T>(name: string) => T | null | undefined;
 	};
 	const service =
 		candidate.getService?.<OptimizedPromptService>(OPTIMIZED_PROMPT_SERVICE) ??
 		null;
-	const resolved = resolveOptimizedPrompt(
-		service,
-		"action_planner",
-		plannerTemplate,
-	);
-	if (resolved !== plannerTemplate) {
-		runtime.logger?.debug?.(
-			{
-				src: "planner-loop",
-				task: "action_planner",
-				promptLength: resolved.length,
-			},
-			"Loaded optimized planner template (action_planner)",
+	if (service) {
+		const fromService = resolveOptimizedPrompt(
+			service,
+			"action_planner",
+			plannerTemplate,
 		);
-	} else {
-		runtime.logger?.debug?.(
-			{
-				src: "planner-loop",
-				hasService: !!service,
-				task: "action_planner",
-			},
-			"Using baseline planner template (no optimized artifact)",
-		);
+		if (fromService !== plannerTemplate) return fromService;
 	}
-	return resolved;
+
+	// Fallback: read the on-disk store directly. Handles the test runtime
+	// path (where the service may not have started before the first
+	// planner call), the lazy-start race in production, and any other
+	// path that hasn't gotten the service registered yet.
+	if (!cachedDiskOptimizedPlannerLoaded) {
+		try {
+			cachedDiskOptimizedPlannerPrompt = loadOptimizedPlannerFromDisk();
+		} catch {
+			cachedDiskOptimizedPlannerPrompt = null;
+		}
+		cachedDiskOptimizedPlannerLoaded = true;
+	}
+	return cachedDiskOptimizedPlannerPrompt ?? plannerTemplate;
 }
