@@ -16,11 +16,13 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
+import ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
@@ -1106,10 +1108,18 @@ public class ElizaAgentService extends Service {
         Thread t = new Thread(() -> {
             byte[] buf = new byte[4096];
             try (FileOutputStream logOut = new FileOutputStream(logFile, true)) {
-                StringBuilder lineBuf = new StringBuilder();
+                // Buffer raw bytes until '\n' so multi-byte UTF-8 sequences
+                // are decoded intact — newline (0x0A) never appears as a
+                // continuation byte in UTF-8, so splitting on it can't slice
+                // a codepoint. A char-level StringBuilder with `(char)(byte
+                // & 0xFF)` would mojibake non-ASCII output (emoji, CJK).
+                ByteArrayOutputStream lineBuf = new ByteArrayOutputStream(256);
                 int n;
-                while ((n = stream.read(buf)) >= 0) {
-                    if (Thread.currentThread().isInterrupted()) break;
+                // Interrupt check goes before read(): once read() has
+                // returned bytes we're committed to writing them, otherwise
+                // a graceful-shutdown interrupt during a successful read
+                // would silently drop the very tail this PR exists to save.
+                while (!Thread.currentThread().isInterrupted() && (n = stream.read(buf)) >= 0) {
                     // Mirror raw bytes to the log immediately so a mid-write
                     // panic in the agent doesn't lose its last diagnostic.
                     // BufferedReader.readLine() dropped partial lines on
@@ -1120,18 +1130,24 @@ public class ElizaAgentService extends Service {
                     // emit them tagged. The post-loop drain below handles the
                     // unterminated tail when the stream closes mid-line.
                     for (int i = 0; i < n; i += 1) {
-                        char c = (char) (buf[i] & 0xFF);
-                        if (c == '\n') {
-                            String line = lineBuf.toString();
-                            lineBuf.setLength(0);
-                            if (!line.isEmpty()) Log.i(TAG, line);
-                        } else if (c != '\r') {
-                            lineBuf.append(c);
+                        byte b = buf[i];
+                        if (b == (byte) '\n') {
+                            if (lineBuf.size() > 0) {
+                                String line = lineBuf.toString(StandardCharsets.UTF_8.name());
+                                lineBuf.reset();
+                                // Strip a trailing '\r' from CRLF without
+                                // a separate scan over `line`.
+                                if (line.endsWith("\r")) line = line.substring(0, line.length() - 1);
+                                if (!line.isEmpty()) Log.i(TAG, line);
+                            }
+                        } else {
+                            lineBuf.write(b);
                         }
                     }
                 }
-                if (lineBuf.length() > 0) {
-                    Log.w(TAG, lineBuf + " <eof — no trailing newline>");
+                if (lineBuf.size() > 0) {
+                    String tail = lineBuf.toString(StandardCharsets.UTF_8.name());
+                    Log.w(TAG, tail + " <eof — no trailing newline>");
                 }
             } catch (IOException error) {
                 if (!shuttingDown) {
