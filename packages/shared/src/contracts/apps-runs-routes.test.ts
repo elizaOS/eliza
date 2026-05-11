@@ -42,6 +42,12 @@ describe("PostRunMessageRequestSchema", () => {
     ).toThrow();
   });
 
+  it("rejects whitespace-only message alias", () => {
+    expect(() =>
+      PostRunMessageRequestSchema.parse({ message: "   " }),
+    ).toThrow();
+  });
+
   it("rejects extra fields (strict)", () => {
     expect(() =>
       PostRunMessageRequestSchema.parse({ content: "x", role: "user" }),
