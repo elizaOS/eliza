@@ -207,8 +207,9 @@ export function resolveStep(
 	if (!handlers || handlers.length === 0) {
 		return undefined;
 	}
-	const match = step.providerFilter
-		? handlers.find((h) => step.providerFilter!(h.provider))
+	const providerFilter = step.providerFilter;
+	const match = providerFilter
+		? handlers.find((h) => providerFilter(h.provider))
 		: handlers[0];
 	if (!match) {
 		return undefined;
