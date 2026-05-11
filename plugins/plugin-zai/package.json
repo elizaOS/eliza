@@ -49,7 +49,7 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.9",
+    "@ai-sdk/openai-compatible": "^1.0.0",
     "@elizaos/core": "2.0.0-beta.1",
     "ai": "^6.0.23"
   },
@@ -81,29 +81,29 @@
     "pluginParameters": {
       "ZAI_API_KEY": {
         "type": "string",
-        "description": "API key used to authenticate requests to z.ai's Anthropic-compatible API",
+        "description": "API key used to authenticate requests to z.ai's general OpenAI-compatible API",
         "required": true,
         "sensitive": true
       },
       "ZAI_BASE_URL": {
         "type": "string",
-        "description": "Base URL for z.ai's Anthropic-compatible API. It should end with /v1.",
+        "description": "Base URL for z.ai's general OpenAI-compatible API. Coding Plan and Anthropic-compatible coding-tool endpoints are intentionally rejected here.",
         "required": false,
-        "default": "https://api.z.ai/api/anthropic/v1",
+        "default": "https://api.z.ai/api/paas/v4",
         "sensitive": false
       },
       "ZAI_SMALL_MODEL": {
         "type": "string",
         "description": "Override the default z.ai small model identifier",
         "required": false,
-        "default": "claude-sonnet-4-20250514",
+        "default": "glm-4.5-air",
         "sensitive": false
       },
       "ZAI_LARGE_MODEL": {
         "type": "string",
         "description": "Override the default z.ai large model identifier",
         "required": false,
-        "default": "claude-sonnet-4-20250514",
+        "default": "glm-5.1",
         "sensitive": false
       },
       "ZAI_EXPERIMENTAL_TELEMETRY": {
@@ -121,19 +121,25 @@
       },
       "ZAI_COT_BUDGET": {
         "type": "string",
-        "description": "Shared chain-of-thought budget in tokens for reasoning mode.",
+        "description": "Deprecated compatibility setting. A positive value enables z.ai thinking mode, but z.ai's OpenAI-compatible API does not accept Anthropic budget_tokens.",
         "required": false,
         "sensitive": false
       },
       "ZAI_COT_BUDGET_SMALL": {
         "type": "string",
-        "description": "Small-model chain-of-thought budget in tokens for reasoning mode.",
+        "description": "Deprecated compatibility setting. A positive value enables z.ai thinking mode for small-model calls.",
         "required": false,
         "sensitive": false
       },
       "ZAI_COT_BUDGET_LARGE": {
         "type": "string",
-        "description": "Large-model chain-of-thought budget in tokens for reasoning mode.",
+        "description": "Deprecated compatibility setting. A positive value enables z.ai thinking mode for large-model calls.",
+        "required": false,
+        "sensitive": false
+      },
+      "ZAI_THINKING_TYPE": {
+        "type": "string",
+        "description": "Optional z.ai thinking mode override: enabled or disabled. When unset, z.ai uses its service default.",
         "required": false,
         "sensitive": false
       }

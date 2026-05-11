@@ -50,7 +50,8 @@ export ZAI_API_KEY=your-zai-api-key
 ## Features
 
 - Text generation via z.ai models
-- Anthropic-compatible z.ai endpoint support
+- OpenAI-compatible z.ai general API support
+- Keeps z.ai Coding Plan subscription endpoints separate from the direct API plugin
 
 ## Related
 

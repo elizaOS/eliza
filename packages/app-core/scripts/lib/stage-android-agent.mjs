@@ -9,9 +9,7 @@
  *
  * Layout produced under `packages/app/android/app/src/main/assets/agent/`:
  *
- *   agent-bundle.js                 (ABI-independent entry point; placeholder
- *                                    until Phase D replaces it with the real
- *                                    @elizaos/agent bundle)
+ *   agent-bundle.js                 (ABI-independent @elizaos/agent bundle)
  *   launch.sh                       (ABI-independent device-side launcher,
  *                                    a parameterised double-fork daemoniser)
  *   x86_64/bun                      (cuttlefish + x86_64 emulator)
@@ -31,10 +29,9 @@
  *   - bun 1.3.13                     proven on the Phase 0 spike
  *   - Alpine v3.21                   ships gcc 14.2 → libstdc++.so.6.0.33
  *
- * The ABI-independent `launch.sh` and `agent-bundle.js` placeholder are
- * derived from `scripts/spike-android-agent/launch-on-device.sh` and
- * `scripts/spike-android-agent/server.js` respectively. Phase D replaces
- * `agent-bundle.js` with the real bundled runtime.
+ * The ABI-independent `launch.sh` is derived from
+ * `scripts/spike-android-agent/launch-on-device.sh`; `agent-bundle.js` is
+ * produced by `bun run --cwd packages/agent build:mobile`.
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -183,8 +180,7 @@ async function downloadFile(url, targetPath) {
 }
 
 async function ensureBunBinary({ cacheDir, bunArch, log }) {
-  const channelTag =
-    BUN_CHANNEL === "canary" ? "canary" : `bun-${BUN_VERSION}`;
+  const channelTag = BUN_CHANNEL === "canary" ? "canary" : `bun-${BUN_VERSION}`;
   const cacheKey = BUN_CHANNEL === "canary" ? "canary" : BUN_VERSION;
   const archCache = path.join(cacheDir, `bun-${bunArch}-${cacheKey}`);
   const bunPath = path.join(archCache, "bun");
@@ -413,9 +409,9 @@ export function stageSeccompShimForAbi({
  *
  * Required:
  *   androidDir  Absolute path to packages/app/android/.
- *   spikeDir    Absolute path to scripts/spike-android-agent/ (source of
- *               the placeholder agent-bundle.js until Phase D wires up the
- *               real @elizaos/agent bundle).
+ *   spikeDir    Absolute path to scripts/spike-android-agent/. Kept for
+ *               legacy workspace-root resolution; it is not used as a
+ *               bundle fallback.
  *
  * Optional:
  *   cacheDir    Defaults to ~/.cache/eliza-android-agent/<bun-version>/.
@@ -587,9 +583,8 @@ export async function stageAndroidAgentRuntime({
     );
   }
 
-  // ABI-independent assets: agent-bundle.js + PGlite payload, falling back
-  // to the spike's tiny stub if Phase D hasn't been built yet. Phase D
-  // produces a 33 MB real bundle in packages/agent/dist-mobile/ via
+  // ABI-independent assets: agent-bundle.js + PGlite payload. The real
+  // bundle is produced in packages/agent/dist-mobile/ via
   // `bun run --cwd packages/agent build:mobile`. PGlite at runtime
   // resolves vector.tar.gz and fuzzystrmatch.tar.gz with `new URL("../X",
   // import.meta.url)`, so those two files must land ONE DIR ABOVE the
@@ -642,29 +637,20 @@ export async function stageAndroidAgentRuntime({
     distMobileDir = elizaPackagesAgentDistMobile;
     distBundle = path.join(distMobileDir, "agent-bundle.js");
   }
-  const spikeServerJs = path.join(spikeDir, "server.js");
-
-  let bundleSrc;
-  if (fs.existsSync(distBundle)) {
-    bundleSrc = distBundle;
-    tlog(
-      `Using Phase D agent bundle (${(fs.statSync(distBundle).size / (1024 * 1024)).toFixed(1)} MB)`,
-    );
-  } else if (fs.existsSync(spikeServerJs)) {
-    bundleSrc = spikeServerJs;
-    tlog(
-      "Using spike placeholder agent-bundle.js — run `bun run --cwd " +
-        "packages/agent build:mobile` to ship the real agent.",
-    );
-  } else {
+  if (!fs.existsSync(distBundle)) {
     throw new Error(
-      `No agent bundle source found. Tried: ${distBundle}, ${spikeServerJs}.`,
+      `No mobile agent bundle found at ${distBundle}. Run ` +
+        "`bun run --cwd packages/agent build:mobile` before staging Android assets.",
     );
   }
+  const bundleSrc = distBundle;
+  tlog(
+    `Using mobile agent bundle (${(fs.statSync(distBundle).size / (1024 * 1024)).toFixed(1)} MB)`,
+  );
   const bundleTarget = path.join(assetsAgentDir, "agent-bundle.js");
   if (copyIfDifferent(bundleSrc, bundleTarget)) stagedCount += 1;
 
-  // PGlite runtime artifacts. Only present when Phase D's build has run.
+  // PGlite runtime artifacts. Only present when the mobile bundle build has run.
   // Skip silently when missing so the spike-bundle path still works.
   const pgliteAssets = [
     "pglite.wasm",

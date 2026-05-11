@@ -66,7 +66,7 @@ const env = getProcessEnv();
 
 export const zaiPlugin: Plugin = {
   name: "zai",
-  description: "z.ai plugin (Anthropic-compatible; supports text generation)",
+  description: "z.ai plugin (OpenAI-compatible direct API; supports text generation)",
   config: {
     ZAI_API_KEY: env.ZAI_API_KEY ?? env.Z_AI_API_KEY ?? null,
     Z_AI_API_KEY: env.Z_AI_API_KEY ?? null,
@@ -78,6 +78,7 @@ export const zaiPlugin: Plugin = {
     ZAI_COT_BUDGET: env.ZAI_COT_BUDGET ?? null,
     ZAI_COT_BUDGET_SMALL: env.ZAI_COT_BUDGET_SMALL ?? null,
     ZAI_COT_BUDGET_LARGE: env.ZAI_COT_BUDGET_LARGE ?? null,
+    ZAI_THINKING_TYPE: env.ZAI_THINKING_TYPE ?? null,
   },
 
   async init(config, runtime) {

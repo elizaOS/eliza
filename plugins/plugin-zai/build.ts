@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const externalDeps = ["@elizaos/core", "@ai-sdk/anthropic", "ai"] as const;
+const externalDeps = ["@elizaos/core", "@ai-sdk/openai-compatible", "ai"] as const;
 
 async function build(): Promise<void> {
   const totalStart = Date.now();

@@ -6,14 +6,6 @@ export type ModelSize = "small" | "large";
 
 export interface ProviderOptions {
   readonly agentName?: string;
-  readonly anthropic?: ZaiAnthropicProviderOptions;
-}
-
-export interface ZaiAnthropicProviderOptions {
-  readonly thinking?: {
-    readonly type: "enabled";
-    readonly budgetTokens: number;
-  };
 }
 
 export function assertValidApiKey(apiKey: string | undefined): asserts apiKey is ValidatedApiKey {

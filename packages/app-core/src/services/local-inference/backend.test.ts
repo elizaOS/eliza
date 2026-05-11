@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   BackendDispatcher,
   decideBackend,
+  gpuLayersForKvOffload,
   type LocalInferenceBackend,
   readBackendOverride,
 } from "./backend";
@@ -51,6 +52,15 @@ describe("readBackendOverride", () => {
     expect(readBackendOverride()).toBe("node-llama-cpp");
     process.env.ELIZA_LOCAL_BACKEND = "llama-server";
     expect(readBackendOverride()).toBe("llama-server");
+  });
+});
+
+describe("gpuLayersForKvOffload", () => {
+  it("maps KV placement requests onto backend gpuLayers settings", () => {
+    expect(gpuLayersForKvOffload("cpu")).toBe(0);
+    expect(gpuLayersForKvOffload("gpu")).toBe("max");
+    expect(gpuLayersForKvOffload("split")).toBe("auto");
+    expect(gpuLayersForKvOffload({ gpuLayers: 12 })).toBe(12);
   });
 });
 

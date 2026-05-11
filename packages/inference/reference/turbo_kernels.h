@@ -6,7 +6,7 @@
  *
  * The block layouts follow ggml-common.h exactly:
  *   block_turbo3_0    : 14 bytes (norm fp16, qs[8], signs[4]),     QK=32
- *   block_turbo4_0    : 66 bytes (norm fp16, qs[64]),               QK=128
+ *   block_turbo4_0    : 18 bytes (norm fp16, qs[16]),               QK=32
  *   block_turbo3_tcq  : 52 bytes (norm fp16, qs[49], pad),          QK=128
  */
 
@@ -22,7 +22,8 @@ extern "C" {
 
 #define ELIZA_QK_TURBO3      32
 #define ELIZA_QK_TURBO3_GROUP 128
-#define ELIZA_QK_TURBO4     128
+#define ELIZA_QK_TURBO4      32
+#define ELIZA_QK_TURBO4_GROUP 128
 #define ELIZA_QK_TURBO3_TCQ 128
 
 typedef struct {
@@ -33,8 +34,8 @@ typedef struct {
 
 typedef struct {
     uint16_t norm;            /* fp16 */
-    uint8_t  qs[64];          /* QK_TURBO4/2: 4-bit indices, 2 per byte (low nibble first) */
-} eliza_block_turbo4_0;       /* 66 bytes */
+    uint8_t  qs[16];          /* QK_TURBO4/2: first 16 low nibbles, last 16 high nibbles */
+} eliza_block_turbo4_0;       /* 18 bytes */
 
 typedef struct {
     uint16_t norm;            /* fp16 */
@@ -68,8 +69,8 @@ void eliza_turbo_rotate_forward(float x[128]);
 void eliza_quantize_turbo3_group(const float src[128], eliza_block_turbo3_0 dst[4]);
 void eliza_dequantize_turbo3_group(const eliza_block_turbo3_0 src[4], float dst[128]);
 
-void eliza_quantize_turbo4_block(const float src[128], eliza_block_turbo4_0 * dst);
-void eliza_dequantize_turbo4_block(const eliza_block_turbo4_0 * src, float dst[128]);
+void eliza_quantize_turbo4_block(const float src[128], eliza_block_turbo4_0 dst[4]);
+void eliza_dequantize_turbo4_block(const eliza_block_turbo4_0 src[4], float dst[128]);
 
 /* turbo3_tcq: full Viterbi encoder is O(128 * 512). Provided here for fixture
  * generation — slow, but correct relative to the CUDA Viterbi pass. */
@@ -79,7 +80,7 @@ void eliza_dequantize_turbo3_tcq_block(const eliza_block_turbo3_tcq * src, float
 /* Q · K dequantized dot product helpers (used by verification harness). Q is
  * fp32 length 128; the K block is one quantized 128-element group. */
 float eliza_dot_q_turbo3(const float q[128], const eliza_block_turbo3_0 k[4]);
-float eliza_dot_q_turbo4(const float q[128], const eliza_block_turbo4_0 * k);
+float eliza_dot_q_turbo4(const float q[128], const eliza_block_turbo4_0 k[4]);
 float eliza_dot_q_turbo3_tcq(const float q[128], const eliza_block_turbo3_tcq * k);
 
 #ifdef __cplusplus

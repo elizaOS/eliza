@@ -1,4 +1,1 @@
-export {
-  createAnthropicClient,
-  createAnthropicClientWithTopPSupport,
-} from "./anthropic";
+export { createZaiClient, type ZaiFetch, type ZaiProvider } from "./openai-compatible";

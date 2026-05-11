@@ -8,10 +8,12 @@
  * real iPhone/iPad. If no physical iOS device is attached, this script exits
  * non-zero with an explicit diagnostic.
  *
- * The smoke creates a temporary SwiftPM XCTest package instead of editing the
- * checked-in Capacitor Xcode project. The package links the same
- * LlamaCpp.xcframework slot used by llama-cpp-capacitor, force-loads its
- * static archive, then runs these checks on the physical device:
+ * The smoke creates a temporary hosted iOS XCTest project instead of editing
+ * the checked-in Capacitor Xcode project. Physical iOS devices cannot run
+ * SwiftPM tool-hosted tests, so the generated project contains a tiny host app
+ * plus a unit-test bundle. The host app links the same LlamaCpp.xcframework
+ * slot used by llama-cpp-capacitor, force-loads its static archive, then runs
+ * these checks on the physical device:
  *
  *   - Metal is available through MTLCreateSystemDefaultDevice().
  *   - LlamaCpp bridge symbols resolve.
@@ -42,6 +44,13 @@ const LLAMA_SYMBOLS = [
   "llama_release_context",
   "llama_completion",
   "llama_stop_completion",
+  "llama_get_formatted_chat",
+  "llama_toggle_native_log",
+  "llama_embedding",
+  "llama_embedding_register_context",
+  "llama_embedding_unregister_context",
+  "llama_get_model_info",
+  "llama_get_context_ptr",
   "llama_get_last_error",
   "llama_free_string",
 ];
@@ -160,7 +169,7 @@ Options:
   --result-bundle-path <path> Override xcodebuild result bundle path.
   --xcodebuild-arg <arg>      Append one raw xcodebuild argument. Repeatable.
   --report <path>             Write a JSON report after success/failure.
-  --keep-temp                 Keep the generated SwiftPM test package.
+  --keep-temp                 Keep the generated temporary XCTest project.
   -h, --help                  Print this message.
 
 Typical device run:
@@ -212,6 +221,32 @@ function defaultXcframeworkCandidates() {
 function firstExisting(paths) {
   for (const p of paths) {
     if (p && fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+function detectDefaultDevelopmentTeam() {
+  const candidates = [
+    path.join(APP_DIR, "ios", "App", "App.xcodeproj", "project.pbxproj"),
+    path.join(
+      REPO_ROOT,
+      "packages",
+      "app-core",
+      "platforms",
+      "ios",
+      "App",
+      "App.xcodeproj",
+      "project.pbxproj",
+    ),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const text = fs.readFileSync(candidate, "utf8");
+      const match = text.match(/DEVELOPMENT_TEAM\s*=\s*([A-Z0-9]+);/);
+      if (match?.[1]) return match[1];
+    } catch {
+      // Keep looking; a missing app checkout should not block smoke setup.
+    }
   }
   return null;
 }
@@ -503,6 +538,19 @@ function classifyXcodebuildFailure(result) {
   if (/The device .* is not available|Unable to find a destination|Ineligible destinations/i.test(text)) {
     return "device-destination-unavailable";
   }
+  if (/duplicate symbol|duplicate symbols/i.test(text)) {
+    return "duplicate-static-linkage";
+  }
+  if (/framework 'Accelerate' not found|Undefined symbol: _(?:cblas_|vDSP_)/i.test(text)) {
+    return "missing-system-framework-linkage";
+  }
+  const missingVoiceAbi = /_eliza_inference_(?:abi_version|create|destroy|mmap_acquire|mmap_evict|tts_synthesize|asr_transcribe|free_string)\b/i.test(text);
+  const missingCapacitorBridge = /_llama_(?:init_context|release_context|completion|stop_completion|get_formatted_chat|toggle_native_log|embedding|embedding_register_context|embedding_unregister_context|get_model_info|get_context_ptr|get_last_error|free_string)\b/i.test(text);
+  if (missingVoiceAbi && missingCapacitorBridge) {
+    return "missing-capacitor-bridge-and-voice-abi-symbols";
+  }
+  if (missingVoiceAbi) return "missing-voice-abi-symbols";
+  if (missingCapacitorBridge) return "missing-capacitor-bridge-symbols";
   if (/symbol\(s\) not found|Undefined symbols|Missing required Eliza-1 iOS runtime symbols/i.test(text)) {
     return "runtime-symbol-resolution";
   }
@@ -539,86 +587,106 @@ function swiftArray(values) {
   return `[${values.map((value) => jsString(value)).join(", ")}]`;
 }
 
-function writeSmokePackage({
+function yamlList(values, indent = 10) {
+  const pad = " ".repeat(indent);
+  return values.map((value) => `${pad}- ${jsString(value)}`).join("\n");
+}
+
+function hostRuntimeLinkerFlags({ frameworkBinary, symbols }) {
+  const flags = [
+    "$(inherited)",
+    "-framework",
+    "Accelerate",
+    "-framework",
+    "Foundation",
+    "-framework",
+    "Metal",
+    "-framework",
+    "MetalKit",
+  ];
+  for (const symbol of symbols) {
+    flags.push("-u", `_${symbol}`);
+  }
+  flags.push(frameworkBinary);
+  return flags;
+}
+
+function writeSmokeProject({
   tempDir,
   xcframework,
   frameworkBinary,
   skipVoiceAbi,
+  developmentTeam,
 }) {
   const vendorDir = path.join(tempDir, "Vendor");
-  const supportDir = path.join(
-    tempDir,
-    "Sources",
-    "ElizaIosRuntimeSmokeSupport",
-  );
+  const hostDir = path.join(tempDir, "Sources", "HostApp");
   const testDir = path.join(tempDir, "Tests", "ElizaIosRuntimeSmokeTests");
   fs.mkdirSync(vendorDir, { recursive: true });
-  fs.mkdirSync(supportDir, { recursive: true });
+  fs.mkdirSync(hostDir, { recursive: true });
   fs.mkdirSync(testDir, { recursive: true });
   fs.symlinkSync(xcframework, path.join(vendorDir, "LlamaCpp.xcframework"), "dir");
 
-  const forceLoadFlags = [
-    "-Xlinker",
-    "-force_load",
-    "-Xlinker",
-    frameworkBinary,
-  ];
   fs.writeFileSync(
-    path.join(tempDir, "Package.swift"),
-    `// swift-tools-version: 5.9
-import PackageDescription
+    path.join(hostDir, "AppDelegate.swift"),
+    `import UIKit
 
-let package = Package(
-  name: "ElizaIosRuntimeSmoke",
-  platforms: [.iOS(.v14)],
-  products: [
-    .library(name: "ElizaIosRuntimeSmokeSupport", targets: ["ElizaIosRuntimeSmokeSupport"])
-  ],
-  targets: [
-    .binaryTarget(name: "LlamaCpp", path: "Vendor/LlamaCpp.xcframework"),
-    .target(
-      name: "ElizaIosRuntimeSmokeSupport",
-      dependencies: ["LlamaCpp"],
-      linkerSettings: [
-        .unsafeFlags(${swiftArray(forceLoadFlags)}, .when(platforms: [.iOS]))
-      ]
-    ),
-    .testTarget(
-      name: "ElizaIosRuntimeSmokeTests",
-      dependencies: ["ElizaIosRuntimeSmokeSupport"]
-    )
-  ]
-)
-`,
-  );
-
-  fs.writeFileSync(
-    path.join(supportDir, "SmokeSupport.swift"),
-    `public enum ElizaIosRuntimeSmokeSupport {
-  public static let linked = true
+@main
+final class AppDelegate: UIResponder, UIApplicationDelegate {
+  func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+    true
+  }
 }
 `,
   );
 
+  fs.writeFileSync(
+    path.join(hostDir, "Info.plist"),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+  <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+  <key>CFBundleName</key><string>ElizaIosRuntimeSmokeHost</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>UIApplicationSceneManifest</key>
+  <dict>
+    <key>UIApplicationSupportsMultipleScenes</key><false/>
+  </dict>
+</dict>
+</plist>
+`,
+  );
+
   const voiceSymbols = skipVoiceAbi ? [] : VOICE_ABI_SYMBOLS;
+  const requiredRuntimeSymbols = [...LLAMA_SYMBOLS, ...KERNEL_SYMBOLS, ...voiceSymbols];
+  const hostOtherLdFlags = hostRuntimeLinkerFlags({
+    frameworkBinary,
+    symbols: requiredRuntimeSymbols,
+  });
+  const testOtherLdFlags = [
+    "$(inherited)",
+    "-framework",
+    "Foundation",
+    "-framework",
+    "Metal",
+  ];
   fs.writeFileSync(
     path.join(testDir, "ElizaIosRuntimeSmokeTests.swift"),
-    `import XCTest
+`import XCTest
 import Metal
 import Darwin
-import ElizaIosRuntimeSmokeSupport
 
 final class ElizaIosRuntimeSmokeTests: XCTestCase {
-  private let llamaSymbols = ${swiftArray(LLAMA_SYMBOLS)}
-  private let kernelSymbols = ${swiftArray(KERNEL_SYMBOLS)}
-  private let voiceSymbols = ${swiftArray(voiceSymbols)}
+  private let llamaSymbols: [String] = ${swiftArray(LLAMA_SYMBOLS)}
+  private let kernelSymbols: [String] = ${swiftArray(KERNEL_SYMBOLS)}
+  private let voiceSymbols: [String] = ${swiftArray(voiceSymbols)}
 
   func testMetalDeviceIsAvailableOnPhysicalIos() throws {
     XCTAssertNil(ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"], "This smoke must run on physical iOS hardware, not a simulator.")
     let device = MTLCreateSystemDefaultDevice()
     XCTAssertNotNil(device, "MTLCreateSystemDefaultDevice returned nil; Metal is unavailable on this device/runtime.")
     XCTAssertFalse(device!.name.isEmpty, "Metal device name is empty.")
-    XCTAssertTrue(ElizaIosRuntimeSmokeSupport.linked)
   }
 
   func testLlamaKernelAndVoiceSymbolsResolve() throws {
@@ -636,6 +704,59 @@ final class ElizaIosRuntimeSmokeTests: XCTestCase {
 }
 `,
   );
+
+  fs.writeFileSync(
+    path.join(tempDir, "project.yml"),
+    `name: ElizaIosRuntimeSmoke
+options:
+  bundleIdPrefix: ai.elizalabs
+settings:
+  base:
+    CODE_SIGN_STYLE: Automatic
+    IPHONEOS_DEPLOYMENT_TARGET: "14.0"
+    ${developmentTeam ? `DEVELOPMENT_TEAM: ${developmentTeam}` : ""}
+targets:
+  ElizaIosRuntimeSmokeHost:
+    type: application
+    platform: iOS
+    deploymentTarget: "14.0"
+    sources:
+      - Sources/HostApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.elizalabs.ElizaIosRuntimeSmokeHost
+        INFOPLIST_FILE: Sources/HostApp/Info.plist
+        OTHER_LDFLAGS:
+${yamlList(hostOtherLdFlags)}
+  ElizaIosRuntimeSmokeTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "14.0"
+    sources:
+      - Tests/ElizaIosRuntimeSmokeTests
+    dependencies:
+      - target: ElizaIosRuntimeSmokeHost
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.elizalabs.ElizaIosRuntimeSmokeTests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ElizaIosRuntimeSmokeHost.app/ElizaIosRuntimeSmokeHost"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        OTHER_LDFLAGS:
+${yamlList(testOtherLdFlags)}
+schemes:
+  ElizaIosRuntimeSmoke:
+    build:
+      targets:
+        ElizaIosRuntimeSmokeHost: all
+        ElizaIosRuntimeSmokeTests: [test]
+    test:
+      targets:
+        - ElizaIosRuntimeSmokeTests
+`,
+  );
+
+  runInherit("xcodegen", ["generate"], { cwd: tempDir });
 }
 
 function writeReport(reportPath, report) {
@@ -653,6 +774,8 @@ function buildXcodeArgs({
 }) {
   const xcodeArgs = [
     "test",
+    "-project",
+    path.join(tempDir, "ElizaIosRuntimeSmoke.xcodeproj"),
     "-scheme",
     "ElizaIosRuntimeSmoke",
     "-destination",
@@ -705,6 +828,10 @@ async function main() {
     ensureTool("xcodebuild");
     ensureTool("xctrace");
     ensureTool("plutil");
+    ensureTool("xcodegen");
+    if (!args.developmentTeam) {
+      args.developmentTeam = detectDefaultDevelopmentTeam();
+    }
 
     const toolchain = {
       xcodebuild: commandMetadata("xcodebuild", ["-version"], { timeout: 30_000 }),
@@ -725,11 +852,12 @@ async function main() {
     const resultBundlePath =
       args.resultBundlePath ??
       path.join(tempDir, "ElizaIosRuntimeSmoke.xcresult");
-    writeSmokePackage({
+    writeSmokeProject({
       tempDir,
       xcframework,
       frameworkBinary,
       skipVoiceAbi: args.skipVoiceAbi,
+      developmentTeam: args.developmentTeam,
     });
 
     report = {
@@ -742,6 +870,7 @@ async function main() {
       xcframework,
       xcframeworkDeviceSlice,
       frameworkBinary,
+      developmentTeam: args.developmentTeam,
       tempPackage: tempDir,
       derivedDataPath,
       resultBundlePath,

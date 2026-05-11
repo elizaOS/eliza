@@ -2,16 +2,15 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type { ModelName, ModelSize, ValidatedApiKey } from "../types";
 import { assertValidApiKey, createModelName } from "../types";
 
-// z.ai exposes an Anthropic-compatible API. These Claude-style model
-// aliases are intentionally identical because z.ai currently maps both
-// elizaOS text tiers to the same default GLM-backed model server-side.
-const DEFAULT_SMALL_MODEL = "claude-sonnet-4-20250514";
-const DEFAULT_LARGE_MODEL = "claude-sonnet-4-20250514";
+const DEFAULT_SMALL_MODEL = "glm-4.5-air";
+const DEFAULT_LARGE_MODEL = "glm-5.1";
 
-// IMPORTANT: Anthropic SDK expects a base URL that ends with /v1
-// (e.g. https://api.anthropic.com/v1). z.ai's compatible endpoint is:
-// https://api.z.ai/api/anthropic/v1
-const DEFAULT_BASE_URL = "https://api.z.ai/api/anthropic/v1";
+const DEFAULT_BASE_URL = "https://api.z.ai/api/paas/v4";
+
+export interface ZaiThinkingConfig {
+  readonly type: "enabled" | "disabled";
+  readonly clear_thinking?: boolean;
+}
 
 export function isBrowser(): boolean {
   return (
@@ -65,13 +64,12 @@ export function getBaseURL(runtime: IAgentRuntime): string {
   if (isBrowser()) {
     const browserURL = getRawSetting(runtime, "ZAI_BROWSER_BASE_URL");
     if (browserURL) {
-      return browserURL;
+      return normalizeBaseURL(browserURL);
     }
   }
 
   const raw = getRawSetting(runtime, "ZAI_BASE_URL") ?? DEFAULT_BASE_URL;
-  // normalize to /v1 (some callers may pass https://api.z.ai/api/anthropic)
-  return /\/v1\/?$/.test(raw) ? raw : `${raw.replace(/\/+$/, "")}/v1`;
+  return normalizeDirectApiBaseURL(raw);
 }
 
 export function getSmallModel(runtime: IAgentRuntime): ModelName {
@@ -92,27 +90,56 @@ export function getExperimentalTelemetry(runtime: IAgentRuntime): boolean {
   return setting.toLowerCase() === "true";
 }
 
+function parsePositiveInt(value: string | undefined): number {
+  if (value === undefined) {
+    return 0;
+  }
+  const parsed = parseInt(value, 10);
+  return !Number.isNaN(parsed) && parsed > 0 ? parsed : 0;
+}
+
 export function getCoTBudget(runtime: IAgentRuntime, modelSize: ModelSize): number {
   const specificKey = modelSize === "small" ? "ZAI_COT_BUDGET_SMALL" : "ZAI_COT_BUDGET_LARGE";
 
-  const specificValue = getRawSetting(runtime, specificKey);
-  if (specificValue !== undefined) {
-    const parsed = parseInt(specificValue, 10);
-    if (!Number.isNaN(parsed) && parsed > 0) {
-      return parsed;
-    }
+  const specific = parsePositiveInt(getRawSetting(runtime, specificKey));
+  if (specific > 0) {
+    return specific;
+  }
+  if (getRawSetting(runtime, specificKey) !== undefined) {
     return 0;
   }
 
-  const sharedValue = getRawSetting(runtime, "ZAI_COT_BUDGET");
-  if (sharedValue !== undefined) {
-    const parsed = parseInt(sharedValue, 10);
-    if (!Number.isNaN(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
+  return parsePositiveInt(getRawSetting(runtime, "ZAI_COT_BUDGET"));
+}
 
-  return 0;
+export function getThinkingConfig(
+  runtime: IAgentRuntime,
+  modelSize: ModelSize
+): ZaiThinkingConfig | null {
+  const explicit = getRawSetting(runtime, "ZAI_THINKING_TYPE")?.trim().toLowerCase();
+  if (explicit === "enabled" || explicit === "disabled") {
+    return { type: explicit };
+  }
+  if (getCoTBudget(runtime, modelSize) > 0) {
+    return { type: "enabled" };
+  }
+  return null;
+}
+
+function normalizeBaseURL(raw: string): string {
+  return raw.trim().replace(/\/+$/, "");
+}
+
+function normalizeDirectApiBaseURL(raw: string): string {
+  const normalized = normalizeBaseURL(raw);
+  const lower = normalized.toLowerCase();
+  if (lower.includes("/api/coding/") || lower.includes("/api/anthropic")) {
+    throw new Error(
+      "ZAI_BASE_URL must target z.ai's general API endpoint (https://api.z.ai/api/paas/v4). " +
+        "Coding Plan and Anthropic-compatible endpoints are reserved for supported coding tools."
+    );
+  }
+  return normalized;
 }
 
 export function validateConfiguration(runtime: IAgentRuntime): void {

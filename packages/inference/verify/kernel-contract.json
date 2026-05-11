@@ -118,7 +118,7 @@
         "fixtureGate": true
       },
       "runtimeStatus": {
-        "metal": "symbol-shipped",
+        "metal": "runtime-ready",
         "vulkan": "symbol-shipped",
         "cuda": "needs-hardware",
         "cpu": "reference-only"
@@ -149,7 +149,7 @@
         "fixtureGate": true
       },
       "runtimeStatus": {
-        "metal": "symbol-shipped",
+        "metal": "blocked",
         "vulkan": "symbol-shipped",
         "cuda": "needs-hardware",
         "cpu": "reference-only"
@@ -181,7 +181,7 @@
         "fixtureGate": true
       },
       "runtimeStatus": {
-        "metal": "symbol-shipped",
+        "metal": "runtime-ready",
         "vulkan": "symbol-shipped",
         "cuda": "needs-hardware",
         "cpu": "reference-only"
@@ -247,7 +247,7 @@
         "fixtureGate": true
       },
       "runtimeStatus": {
-        "metal": "symbol-shipped",
+        "metal": "runtime-ready",
         "vulkan": "symbol-shipped",
         "cuda": "needs-hardware",
         "cpu": "reference-only"
@@ -318,9 +318,9 @@
     },
     "darwin-arm64-metal": {
       "kernelVerification": "standalone-verified",
-      "runtimeDispatch": "partial-qjl-only",
+      "runtimeDispatch": "blocked",
       "deviceRun": "verified",
-      "nextGate": "Finish Metal TurboQuant and PolarQuant graph dispatch, then rerun dispatch-smoke."
+      "nextGate": "Resolve the Turbo4 fork-layout mismatch, then rerun dispatch-smoke without the known-blocker allowance."
     },
     "darwin-x64-metal": {
       "kernelVerification": "needs-hardware",
@@ -390,9 +390,9 @@
     },
     "darwin-arm64-metal-fused": {
       "kernelVerification": "standalone-verified",
-      "runtimeDispatch": "partial-qjl-only",
+      "runtimeDispatch": "blocked",
       "deviceRun": "needs-hardware",
-      "nextGate": "Run fused Metal smoke after Turbo/Polar dispatch lands."
+      "nextGate": "Resolve the Turbo4 fork-layout mismatch, then run fused Metal smoke after full kernel dispatch lands."
     },
     "darwin-x64-metal-fused": {
       "kernelVerification": "needs-hardware",

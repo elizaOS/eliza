@@ -12,6 +12,7 @@ export interface PluginConfig {
   readonly ZAI_COT_BUDGET?: string;
   readonly ZAI_COT_BUDGET_SMALL?: string;
   readonly ZAI_COT_BUDGET_LARGE?: string;
+  readonly ZAI_THINKING_TYPE?: string;
 }
 
 function disableAiSdkWarningsForZai(): void {
