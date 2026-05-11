@@ -2,11 +2,9 @@ import type { DispatchSensitiveRequest, SensitiveRequest } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { instructDmOnlySensitiveRequestAdapter } from "./instruct-dm-only-adapter";
 
-type TestSensitiveRequest = SensitiveRequest & DispatchSensitiveRequest;
-
 function buildRequest(
   overrides: Partial<SensitiveRequest> = {},
-): TestSensitiveRequest {
+): DispatchSensitiveRequest {
   const now = new Date("2026-05-10T00:00:00.000Z").toISOString();
   const expires = new Date("2026-05-10T00:15:00.000Z").toISOString();
   return {
@@ -51,7 +49,7 @@ function buildRequest(
     createdAt: now,
     updatedAt: now,
     ...overrides,
-  } as TestSensitiveRequest;
+  } as unknown as DispatchSensitiveRequest;
 }
 
 describe("instructDmOnlySensitiveRequestAdapter", () => {
