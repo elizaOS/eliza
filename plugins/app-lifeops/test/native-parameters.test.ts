@@ -119,7 +119,7 @@ describe("LifeOps native options.parameters migration", () => {
     expect(runtime.useModel).not.toHaveBeenCalled();
   });
 
-  it("CALENDAR exposes concrete contexts and is a flat-subaction umbrella (no nested subActions/subPlanner)", () => {
+  it("CALENDAR exposes concrete contexts and is a flat action-valued umbrella (no nested subActions/subPlanner)", () => {
     expect(calendarAction.contexts).toEqual([
       "general",
       "calendar",
@@ -129,10 +129,17 @@ describe("LifeOps native options.parameters migration", () => {
       "web",
     ]);
     // The legacy 2-layer `subActions` + `subPlanner` dispatch was removed in
-    // favor of a flat subaction enum + `promoteSubactionsToActions` virtuals
+    // favor of a flat action enum + `promoteSubactionsToActions` virtuals
     // (CALENDAR_FEED, CALENDAR_CREATE_EVENT, CALENDAR_PROPOSE_TIMES, etc.).
     expect(calendarAction.subActions).toBeUndefined();
     expect(calendarAction.subPlanner).toBeUndefined();
+    expect(
+      (calendarAction.parameters ?? []).find((p) => p.name === "subaction"),
+    ).toBeUndefined();
+    const actionParam = (calendarAction.parameters ?? []).find(
+      (p) => p.name === "action",
+    );
+    expect(actionParam).toBeDefined();
     const enumVerbs = listSubactionsFromParameters(calendarAction.parameters);
     expect(enumVerbs).toContain("feed");
     expect(enumVerbs).toContain("create_event");

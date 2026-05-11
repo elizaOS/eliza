@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { BargeInController } from "./barge-in";
 import {
-  CharacterPhonemeStub,
   _resetStubWarnLatchForTests,
+  CharacterPhonemeStub,
 } from "./phoneme-tokenizer";
-import { PhraseCache, canonicalizePhraseText } from "./phrase-cache";
-import { PhraseChunker, chunkTokens } from "./phrase-chunker";
+import { canonicalizePhraseText, PhraseCache } from "./phrase-cache";
+import { chunkTokens, PhraseChunker } from "./phrase-chunker";
 import { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 import { RollbackQueue } from "./rollback-queue";
 import { VoiceScheduler } from "./scheduler";
@@ -17,8 +17,8 @@ import type {
   TextToken,
 } from "./types";
 import {
-  VoicePresetFormatError,
   readVoicePresetFile,
+  VoicePresetFormatError,
   writeVoicePresetFile,
 } from "./voice-preset-format";
 
@@ -266,10 +266,7 @@ describe("VoiceScheduler end-to-end", () => {
     for (const t of tokens) await sched.accept(t);
     await sched.waitIdle();
 
-    expect(phraseEvents.map((p) => p.text)).toEqual([
-      "Hello world.",
-      " Bye.",
-    ]);
+    expect(phraseEvents.map((p) => p.text)).toEqual(["Hello world.", " Bye."]);
     expect(audioEvents).toHaveLength(2);
     expect(backend.calls).toBe(2);
     expect(sink.totalWritten()).toBeGreaterThan(0);
@@ -508,11 +505,7 @@ describe("PhraseChunker IPA mode", () => {
     // Cumulative phoneme count after each: 5, 8, 10.
     // With phonemesPerChunk=4: token 0 alone => 5 ≥ 4 => chunk #0 (token 0).
     // Then token 1 (3) + token 2 (2) = 5 ≥ 4 after token 2 => chunk #1.
-    const tokens: TextToken[] = [
-      tok(0, "abcde"),
-      tok(1, "fgh"),
-      tok(2, "ij"),
-    ];
+    const tokens: TextToken[] = [tok(0, "abcde"), tok(1, "fgh"), tok(2, "ij")];
     const phrases = chunkTokens(
       tokens,
       {

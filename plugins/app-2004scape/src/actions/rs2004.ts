@@ -501,26 +501,33 @@ const SIMILES = [
 export const rs2004Action: Action = {
   name: "RS_2004",
   description:
-    "Drive the 2004scape game agent. Choose one op (walk_to, chop, mine, fish, burn, cook, fletch, craft, smith, drop, pickup, equip, unequip, use, use_on_item, use_on_object, open, close, deposit, withdraw, buy, sell, attack, cast_spell, set_style, eat, talk, navigate_dialog, interact_object, open_door, pickpocket). For open/close, set target='bank' or target='shop' (or include npc to imply shop). Per-op fields go in params.",
+    "Drive the 2004scape game agent. Choose one action (walk_to, chop, mine, fish, burn, cook, fletch, craft, smith, drop, pickup, equip, unequip, use, use_on_item, use_on_object, open, close, deposit, withdraw, buy, sell, attack, cast_spell, set_style, eat, talk, navigate_dialog, interact_object, open_door, pickpocket). For open/close, set target='bank' or target='shop' (or include npc to imply shop). Per-action fields go in params.",
   descriptionCompressed:
-    "rs_2004 ops (walk_to, skills, inventory, bank, shop, combat, interact)",
+    "rs_2004 actions (walk_to, skills, inventory, bank, shop, combat, interact)",
   contexts: ["game", "automation", "world", "state"],
   roleGate: { minRole: "ADMIN" },
   similes: SIMILES,
   examples: [],
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "Operation to run.",
-      descriptionCompressed: "Op.",
+      descriptionCompressed: "Action.",
       required: true,
       schema: { type: "string", enum: [...RS_2004_OPS] },
+    },
+    {
+      name: "subaction",
+      description: "Legacy alias for action.",
+      descriptionCompressed: "Legacy op alias.",
+      required: false,
+      schema: { type: "string" },
     },
     {
       name: "params",
       description:
         "Optional JSON object containing the fields required by the chosen op.",
-      descriptionCompressed: "Op fields.",
+      descriptionCompressed: "Action fields.",
       required: false,
       schema: { type: "object" },
     },
@@ -547,10 +554,14 @@ export const rs2004Action: Action = {
       ...paramsFromOptions(options),
     };
     const op = normalizeOp(
-      params.op ?? params.subaction ?? params.actionType ?? params.type,
+      params.action ??
+        params.op ??
+        params.subaction ??
+        params.actionType ??
+        params.type,
     );
     if (!op) {
-      const text = `RS_2004 requires a valid op: one of ${RS_2004_OPS.join("|")}.`;
+      const text = `RS_2004 requires a valid action: one of ${RS_2004_OPS.join("|")}.`;
       callback?.({ text, action: "RS_2004" });
       return errorResult(text);
     }

@@ -2385,3 +2385,177 @@ index 61e2672..cb687cb 100644
    }
  
    export interface NativeCompletionParams {
+
+--- a/ios/Sources/LlamaCppPlugin/LlamaCpp.swift
++++ b/ios/Sources/LlamaCppPlugin/LlamaCpp.swift
+@@ -1,5 +1,6 @@
+ import Foundation
+ import Capacitor
++import CryptoKit
+ import Darwin
+ 
+ // MARK: - Native Library Integration
+@@ -1025,7 +1026,47 @@
+         ]
+         completion(.success(true))
+     }
++
++    func hashFile(path: String, completion: @escaping (LlamaResult<[String: Any]>) -> Void) {
++        let fileManager = FileManager.default
++        guard fileManager.fileExists(atPath: path) else {
++            completion(.failure(.operationFailed("File does not exist: \(path)")))
++            return
++        }
++        guard let handle = FileHandle(forReadingAtPath: path) else {
++            completion(.failure(.operationFailed("Could not open file for hashing: \(path)")))
++            return
++        }
+ 
++        DispatchQueue.global(qos: .utility).async {
++            var hasher = SHA256()
++            var size: UInt64 = 0
++            do {
++                while true {
++                    let data = try handle.read(upToCount: 1_048_576) ?? Data()
++                    if data.isEmpty {
++                        break
++                    }
++                    size += UInt64(data.count)
++                    hasher.update(data: data)
++                }
++                try handle.close()
++                let digest = hasher.finalize().map { String(format: "%02x", $0) }.joined()
++                DispatchQueue.main.async {
++                    completion(.success([
++                        "sha256": digest,
++                        "sizeBytes": NSNumber(value: size)
++                    ]))
++                }
++            } catch {
++                try? handle.close()
++                DispatchQueue.main.async {
++                    completion(.failure(.operationFailed("Hash failed: \(error.localizedDescription)")))
++                }
++            }
++        }
++    }
++
+     public func urlSession(
+         _ session: URLSession,
+         downloadTask: URLSessionDownloadTask,
+--- a/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift
++++ b/ios/Sources/LlamaCppPlugin/LlamaCppPlugin.swift
+@@ -68,6 +68,7 @@
+         
+         // Model download and management
+         CAPPluginMethod(name: "downloadModel", returnType: CAPPluginReturnPromise),
++        CAPPluginMethod(name: "hashFile", returnType: CAPPluginReturnPromise),
+         CAPPluginMethod(name: "getDownloadProgress", returnType: CAPPluginReturnPromise),
+         CAPPluginMethod(name: "cancelDownload", returnType: CAPPluginReturnPromise),
+         CAPPluginMethod(name: "getAvailableModels", returnType: CAPPluginReturnPromise),
+@@ -671,6 +672,19 @@
+             switch result {
+             case .success(let progress):
+                 call.resolve(progress)
++            case .failure(let error):
++                call.reject(error.localizedDescription)
++            }
++        }
++    }
++
++    @objc func hashFile(_ call: CAPPluginCall) {
++        let path = call.getString("path") ?? ""
++
++        implementation.hashFile(path: path) { result in
++            switch result {
++            case .success(let fileHash):
++                call.resolve(fileHash)
+             case .failure(let error):
+                 call.reject(error.localizedDescription)
+             }
+--- a/dist/esm/index.js
++++ b/dist/esm/index.js
+@@ -546,6 +546,9 @@
+ export async function downloadModel(url, filename) {
+     return LlamaCpp.downloadModel({ url, filename });
+ }
++export async function hashFile(path) {
++    return LlamaCpp.hashFile({ path });
++}
+ export async function getDownloadProgress(url) {
+     return LlamaCpp.getDownloadProgress({ url });
+ }
+@@ -569,4 +572,4 @@
+ };
+ // Re-export the plugin for direct access
+ export { LlamaCpp };
+-//# sourceMappingURL=index.js.map
+\ No newline at end of file
++//# sourceMappingURL=index.js.map
+--- a/dist/plugin.cjs.js
++++ b/dist/plugin.cjs.js
+@@ -548,6 +548,9 @@
+ // Model download and management functions
+ async function downloadModel(url, filename) {
+     return LlamaCpp.downloadModel({ url, filename });
++}
++async function hashFile(path) {
++    return LlamaCpp.hashFile({ path });
+ }
+ async function getDownloadProgress(url) {
+     return LlamaCpp.getDownloadProgress({ url });
+@@ -582,6 +585,7 @@
+ exports.downloadModel = downloadModel;
+ exports.getAvailableModels = getAvailableModels;
+ exports.getDownloadProgress = getDownloadProgress;
++exports.hashFile = hashFile;
+ exports.initLlama = initLlama;
+ exports.loadLlamaModelInfo = loadLlamaModelInfo;
+ exports.releaseAllLlama = releaseAllLlama;
+--- a/dist/plugin.js
++++ b/dist/plugin.js
+@@ -546,6 +546,9 @@
+     // Model download and management functions
+     async function downloadModel(url, filename) {
+         return LlamaCpp.downloadModel({ url, filename });
++    }
++    async function hashFile(path) {
++        return LlamaCpp.hashFile({ path });
+     }
+     async function getDownloadProgress(url) {
+         return LlamaCpp.getDownloadProgress({ url });
+@@ -580,6 +583,7 @@
+     exports.downloadModel = downloadModel;
+     exports.getAvailableModels = getAvailableModels;
+     exports.getDownloadProgress = getDownloadProgress;
++    exports.hashFile = hashFile;
+     exports.initLlama = initLlama;
+     exports.loadLlamaModelInfo = loadLlamaModelInfo;
+     exports.releaseAllLlama = releaseAllLlama;
+--- a/dist/esm/index.d.ts
++++ b/dist/esm/index.d.ts
+@@ -174,6 +174,10 @@
+ export declare function initLlama({ model, is_model_asset: isModelAsset, pooling_type: poolingType, lora, lora_list: loraList, ...rest }: ContextParams, onProgress?: (progress: number) => void): Promise<LlamaContext>;
+ export declare function releaseAllLlama(): Promise<void>;
+ export declare function downloadModel(url: string, filename: string): Promise<string>;
++export declare function hashFile(path: string): Promise<{
++    sha256: string;
++    sizeBytes: number;
++}>;
+ export declare function getDownloadProgress(url: string): Promise<{
+     progress: number;
+     completed: boolean;
+--- a/types/llama-cpp-capacitor.d.ts
++++ b/types/llama-cpp-capacitor.d.ts
+@@ -427,6 +427,11 @@
+     onProgress?: (progress: number) => void
+   ): Promise<LlamaContext>;
+   export function releaseAllLlama(): Promise<void>;
++  export function downloadModel(url: string, filename: string): Promise<string | { path?: string }>;
++  export function hashFile(path: string): Promise<{ sha256: string; sizeBytes: number }>;
++  export function getDownloadProgress(url: string): Promise<Record<string, unknown>>;
++  export function cancelDownload(url: string): Promise<boolean | { cancelled: boolean }>;
++  export function getAvailableModels(): Promise<Array<{ name?: string; path?: string; size?: number }> | { models?: Array<{ name?: string; path?: string; size?: number }> }>;
+ 
+   // Constants
+   export const BuildInfo: {

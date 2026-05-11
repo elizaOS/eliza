@@ -25,13 +25,13 @@ import {
 
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
-// biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
 const __bundle_safety_FEATURES_SECRETS_SERVICES_INDEX__ = [
 	_bs_1_PLUGIN_ACTIVATOR_SERVICE_TYPE,
 	_bs_2_PluginActivatorService,
 	_bs_3_SECRETS_SERVICE_TYPE,
 	_bs_4_SecretsService,
 ];
-// biome-ignore lint/suspicious/noExplicitAny: bundle-safety sink.
-(globalThis as any).__bundle_safety_FEATURES_SECRETS_SERVICES_INDEX__ =
+(
+	globalThis as Record<string, unknown>
+).__bundle_safety_FEATURES_SECRETS_SERVICES_INDEX__ =
 	__bundle_safety_FEATURES_SECRETS_SERVICES_INDEX__;

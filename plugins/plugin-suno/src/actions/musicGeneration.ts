@@ -11,6 +11,7 @@ import { SunoProvider } from '../providers/suno';
 type MusicGenerationSubaction = 'generate' | 'custom' | 'extend';
 
 type MusicGenerationParams = {
+    action?: MusicGenerationSubaction | string;
     subaction?: MusicGenerationSubaction | string;
     operation?: MusicGenerationSubaction | string;
     prompt?: string;
@@ -56,7 +57,7 @@ function normalizeSubaction(value: unknown): MusicGenerationSubaction | null {
 }
 
 function inferSubaction(message: Memory, params: MusicGenerationParams): MusicGenerationSubaction {
-    const explicit = normalizeSubaction(params.subaction ?? params.operation);
+    const explicit = normalizeSubaction(params.action ?? params.subaction ?? params.operation);
     if (explicit) return explicit;
     const text = (message.content?.text ?? '').toLowerCase();
     if (params.audio_id || /\b(extend|lengthen|longer|add \d+.*seconds?)\b/.test(text)) {
@@ -102,8 +103,8 @@ export const musicGeneration: Action = {
     contextGate: { anyOf: ['media'] },
     roleGate: { minRole: 'USER' },
     description:
-        'Generate music through Suno. Use subaction generate for a simple prompt, custom for style/BPM/key/reference parameters, or extend for an existing audio_id and duration.',
-    descriptionCompressed: 'Suno music generation router subaction: generate, custom, extend.',
+        'Generate music through Suno. Use action generate for a simple prompt, custom for style/BPM/key/reference parameters, or extend for an existing audio_id and duration.',
+    descriptionCompressed: 'Suno music generation router action: generate, custom, extend.',
     similes: [
         'GENERATE_MUSIC',
         'CREATE_MUSIC',
@@ -114,10 +115,16 @@ export const musicGeneration: Action = {
     ],
     parameters: [
         {
-            name: 'subaction',
+            name: 'action',
             description: 'Suno operation: generate, custom, or extend.',
             required: false,
             schema: { type: 'string', enum: ['generate', 'custom', 'extend'] },
+        },
+        {
+            name: 'subaction',
+            description: 'Legacy alias for action.',
+            required: false,
+            schema: { type: 'string' },
         },
         {
             name: 'prompt',
@@ -217,7 +224,7 @@ export const musicGeneration: Action = {
                     subaction === 'extend'
                         ? `Successfully extended audio ${params.audio_id}`
                         : `Successfully submitted ${subaction} music generation`,
-                data: { subaction, response: cappedResponse },
+                data: { action: subaction, subaction, response: cappedResponse },
             };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);

@@ -37,7 +37,6 @@ import { sleep, withTimeout } from "../helpers/test-utils";
 const USER_PREFS_TABLE = "user_personality_preferences";
 
 import {
-  configureLocalEmbeddingPlugin,
   ensureAgentWorkspace,
   extractPlugin,
   type PluginModuleShape,
@@ -418,9 +417,6 @@ describe("Agent Runtime E2E", () => {
     });
 
     const sqlPlugin = await loadPlugin("@elizaos/plugin-sql");
-    const localEmbeddingPlugin = await loadPlugin(
-      "@elizaos/plugin-local-embedding",
-    );
 
     const plugins: Plugin[] = [];
     for (const n of corePluginNames) {
@@ -449,14 +445,6 @@ describe("Agent Runtime E2E", () => {
         if (instance.adapter && !(await instance.adapter.isReady())) {
           await instance.adapter.init();
         }
-      }
-      if (localEmbeddingPlugin) {
-        configureLocalEmbeddingPlugin(localEmbeddingPlugin);
-        await instance.registerPlugin(localEmbeddingPlugin);
-      } else {
-        logger.warn(
-          "[e2e] @elizaos/plugin-local-embedding failed to load; runtime may use remote embeddings",
-        );
       }
 
       await instance.initialize();

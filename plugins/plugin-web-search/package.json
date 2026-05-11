@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos-plugins/plugin-web-search",
+  "name": "@elizaos/plugin-web-search",
   "version": "2.0.0-beta.1",
   "type": "module",
   "main": "dist/index.js",

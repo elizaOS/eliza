@@ -131,16 +131,26 @@ function applyProviderSettings(
 ): void {
 	switch (providerName) {
 		case "openai": {
+			const openAiKey = process.env.OPENAI_API_KEY?.trim() ?? "";
+			const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim() ?? "";
+			const explicitBase = process.env.OPENAI_BASE_URL?.trim();
+			const explicitMiladyProvider = process.env.MILADY_PROVIDER?.trim();
+			const isCerebras =
+				explicitMiladyProvider?.toLowerCase() === "cerebras" ||
+				/^csk-/i.test(openAiKey || cerebrasKey) ||
+				/(^|\.)cerebras\.ai(\/|$)/i.test(explicitBase ?? "");
+
 			runtime.setSetting(
 				"OPENAI_API_KEY",
-				process.env.OPENAI_API_KEY ?? "",
+				openAiKey || (isCerebras ? cerebrasKey : ""),
 				true,
 			);
-			const apiKey = (process.env.OPENAI_API_KEY ?? "").trim();
-			const explicitBase = process.env.OPENAI_BASE_URL?.trim();
+			if (cerebrasKey) {
+				runtime.setSetting("CEREBRAS_API_KEY", cerebrasKey, true);
+			}
 			if (explicitBase) {
 				runtime.setSetting("OPENAI_BASE_URL", explicitBase, true);
-			} else if (/^csk-/i.test(apiKey)) {
+			} else if (isCerebras) {
 				// Cerebras keys are OpenAI-compatible but must not hit api.openai.com.
 				runtime.setSetting(
 					"OPENAI_BASE_URL",
@@ -149,9 +159,38 @@ function applyProviderSettings(
 				);
 				runtime.setSetting("MILADY_PROVIDER", "cerebras", true);
 			}
-			const explicitMiladyProvider = process.env.MILADY_PROVIDER?.trim();
 			if (explicitMiladyProvider) {
 				runtime.setSetting("MILADY_PROVIDER", explicitMiladyProvider, true);
+			} else if (isCerebras) {
+				runtime.setSetting("MILADY_PROVIDER", "cerebras", true);
+			}
+			if (isCerebras) {
+				const cerebrasModel =
+					process.env.OPENAI_LARGE_MODEL?.trim() ||
+					process.env.OPENAI_SMALL_MODEL?.trim() ||
+					process.env.LARGE_MODEL?.trim() ||
+					process.env.SMALL_MODEL?.trim() ||
+					"gpt-oss-120b";
+				runtime.setSetting(
+					"OPENAI_SMALL_MODEL",
+					process.env.OPENAI_SMALL_MODEL?.trim() || cerebrasModel,
+				);
+				runtime.setSetting(
+					"OPENAI_LARGE_MODEL",
+					process.env.OPENAI_LARGE_MODEL?.trim() || cerebrasModel,
+				);
+				runtime.setSetting(
+					"SMALL_MODEL",
+					process.env.SMALL_MODEL?.trim() ||
+						process.env.OPENAI_SMALL_MODEL?.trim() ||
+						cerebrasModel,
+				);
+				runtime.setSetting(
+					"LARGE_MODEL",
+					process.env.LARGE_MODEL?.trim() ||
+						process.env.OPENAI_LARGE_MODEL?.trim() ||
+						cerebrasModel,
+				);
 			}
 			break;
 		}
@@ -198,7 +237,7 @@ export default async function globalSetup(): Promise<void> {
 	if (!detection.hasProvider || !detection.primaryProvider) {
 		console.error(
 			"\n[e2e] No inference provider available. Skipping E2E tests.\n" +
-				"Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or start Ollama.\n",
+				"Set CEREBRAS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, or start Ollama.\n",
 		);
 		process.env.__E2E_SKIP__ = "1";
 		return;

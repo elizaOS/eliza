@@ -11,56 +11,56 @@
     {
       "name": "turbo3",
       "per_N": [
-        { "N": 1, "total_us_med": 270.8750, "total_us_p99": 805.4458, "per_disp_us": 270.8750, "throughput_disps_per_s": 3691.74, "bargein_worst_us": 270.8750, "bargein_avg_us": 135.4375 },
-        { "N": 4, "total_us_med": 1041.8542, "total_us_p99": 1614.2987, "per_disp_us": 260.4635, "throughput_disps_per_s": 3839.31, "bargein_worst_us": 1041.8542, "bargein_avg_us": 520.9271 },
-        { "N": 16, "total_us_med": 3697.0000, "total_us_p99": 3933.7288, "per_disp_us": 231.0625, "throughput_disps_per_s": 4327.83, "bargein_worst_us": 3697.0000, "bargein_avg_us": 1848.5000 },
-        { "N": 64, "total_us_med": 14553.3125, "total_us_p99": 15177.8138, "per_disp_us": 227.3955, "throughput_disps_per_s": 4397.62, "bargein_worst_us": 14553.3125, "bargein_avg_us": 7276.6563 },
-        { "N": 128, "total_us_med": 29520.5625, "total_us_p99": 30274.3496, "per_disp_us": 230.6294, "throughput_disps_per_s": 4335.96, "bargein_worst_us": 29520.5625, "bargein_avg_us": 14760.2813 },
-        { "N": 256, "total_us_med": 65014.6667, "total_us_p99": 66633.9046, "per_disp_us": 253.9635, "throughput_disps_per_s": 3937.57, "bargein_worst_us": 65014.6667, "bargein_avg_us": 32507.3333 }
+        { "N": 1, "total_us_med": 277.1250, "total_us_p99": 1420.8363, "per_disp_us": 277.1250, "throughput_disps_per_s": 3608.48, "bargein_worst_us": 277.1250, "bargein_avg_us": 138.5625 },
+        { "N": 4, "total_us_med": 854.0208, "total_us_p99": 1949.4258, "per_disp_us": 213.5052, "throughput_disps_per_s": 4683.73, "bargein_worst_us": 854.0208, "bargein_avg_us": 427.0104 },
+        { "N": 16, "total_us_med": 3424.0625, "total_us_p99": 4379.1525, "per_disp_us": 214.0039, "throughput_disps_per_s": 4672.81, "bargein_worst_us": 3424.0625, "bargein_avg_us": 1712.0312 },
+        { "N": 64, "total_us_med": 15350.2708, "total_us_p99": 15497.5063, "per_disp_us": 239.8480, "throughput_disps_per_s": 4169.31, "bargein_worst_us": 15350.2708, "bargein_avg_us": 7675.1354 },
+        { "N": 128, "total_us_med": 30667.9375, "total_us_p99": 30859.6413, "per_disp_us": 239.5933, "throughput_disps_per_s": 4173.74, "bargein_worst_us": 30667.9375, "bargein_avg_us": 15333.9688 },
+        { "N": 256, "total_us_med": 60736.5208, "total_us_p99": 61447.6446, "per_disp_us": 237.2520, "throughput_disps_per_s": 4214.93, "bargein_worst_us": 60736.5208, "bargein_avg_us": 30368.2604 }
       ]
     },
     {
       "name": "turbo4",
       "per_N": [
-        { "N": 1, "total_us_med": 253.3125, "total_us_p99": 705.0746, "per_disp_us": 253.3125, "throughput_disps_per_s": 3947.69, "bargein_worst_us": 253.3125, "bargein_avg_us": 126.6563 },
-        { "N": 4, "total_us_med": 1012.8542, "total_us_p99": 1493.1775, "per_disp_us": 253.2135, "throughput_disps_per_s": 3949.24, "bargein_worst_us": 1012.8542, "bargein_avg_us": 506.4271 },
-        { "N": 16, "total_us_med": 4097.9583, "total_us_p99": 4443.4975, "per_disp_us": 256.1224, "throughput_disps_per_s": 3904.38, "bargein_worst_us": 4097.9583, "bargein_avg_us": 2048.9792 },
-        { "N": 64, "total_us_med": 16184.4375, "total_us_p99": 16879.9667, "per_disp_us": 252.8818, "throughput_disps_per_s": 3954.42, "bargein_worst_us": 16184.4375, "bargein_avg_us": 8092.2188 },
-        { "N": 128, "total_us_med": 32799.8750, "total_us_p99": 34027.0096, "per_disp_us": 256.2490, "throughput_disps_per_s": 3902.45, "bargein_worst_us": 32799.8750, "bargein_avg_us": 16399.9375 },
-        { "N": 256, "total_us_med": 64447.6042, "total_us_p99": 65544.4300, "per_disp_us": 251.7485, "throughput_disps_per_s": 3972.22, "bargein_worst_us": 64447.6042, "bargein_avg_us": 32223.8021 }
+        { "N": 1, "total_us_med": 214.4167, "total_us_p99": 997.9379, "per_disp_us": 214.4167, "throughput_disps_per_s": 4663.82, "bargein_worst_us": 214.4167, "bargein_avg_us": 107.2083 },
+        { "N": 4, "total_us_med": 854.9167, "total_us_p99": 1792.8629, "per_disp_us": 213.7292, "throughput_disps_per_s": 4678.82, "bargein_worst_us": 854.9167, "bargein_avg_us": 427.4583 },
+        { "N": 16, "total_us_med": 3971.0833, "total_us_p99": 4554.7575, "per_disp_us": 248.1927, "throughput_disps_per_s": 4029.13, "bargein_worst_us": 3971.0833, "bargein_avg_us": 1985.5417 },
+        { "N": 64, "total_us_med": 15785.3125, "total_us_p99": 15952.2404, "per_disp_us": 246.6455, "throughput_disps_per_s": 4054.40, "bargein_worst_us": 15785.3125, "bargein_avg_us": 7892.6562 },
+        { "N": 128, "total_us_med": 31539.5417, "total_us_p99": 31720.6225, "per_disp_us": 246.4027, "throughput_disps_per_s": 4058.40, "bargein_worst_us": 31539.5417, "bargein_avg_us": 15769.7708 },
+        { "N": 256, "total_us_med": 62820.6667, "total_us_p99": 63365.4962, "per_disp_us": 245.3932, "throughput_disps_per_s": 4075.09, "bargein_worst_us": 62820.6667, "bargein_avg_us": 31410.3333 }
       ]
     },
     {
       "name": "turbo3_tcq",
       "per_N": [
-        { "N": 1, "total_us_med": 236.3125, "total_us_p99": 464.6050, "per_disp_us": 236.3125, "throughput_disps_per_s": 4231.68, "bargein_worst_us": 236.3125, "bargein_avg_us": 118.1562 },
-        { "N": 4, "total_us_med": 945.4583, "total_us_p99": 1439.0771, "per_disp_us": 236.3646, "throughput_disps_per_s": 4230.75, "bargein_worst_us": 945.4583, "bargein_avg_us": 472.7292 },
-        { "N": 16, "total_us_med": 3868.6042, "total_us_p99": 4419.2667, "per_disp_us": 241.7878, "throughput_disps_per_s": 4135.86, "bargein_worst_us": 3868.6042, "bargein_avg_us": 1934.3021 },
-        { "N": 64, "total_us_med": 16028.1458, "total_us_p99": 16605.2046, "per_disp_us": 250.4398, "throughput_disps_per_s": 3992.98, "bargein_worst_us": 16028.1458, "bargein_avg_us": 8014.0729 },
-        { "N": 128, "total_us_med": 33040.3958, "total_us_p99": 33533.2346, "per_disp_us": 258.1281, "throughput_disps_per_s": 3874.05, "bargein_worst_us": 33040.3958, "bargein_avg_us": 16520.1979 },
-        { "N": 256, "total_us_med": 66857.7917, "total_us_p99": 67992.3712, "per_disp_us": 261.1632, "throughput_disps_per_s": 3829.02, "bargein_worst_us": 66857.7917, "bargein_avg_us": 33428.8958 }
+        { "N": 1, "total_us_med": 209.1667, "total_us_p99": 810.6366, "per_disp_us": 209.1667, "throughput_disps_per_s": 4780.88, "bargein_worst_us": 209.1667, "bargein_avg_us": 104.5833 },
+        { "N": 4, "total_us_med": 849.4583, "total_us_p99": 1842.1058, "per_disp_us": 212.3646, "throughput_disps_per_s": 4708.88, "bargein_worst_us": 849.4583, "bargein_avg_us": 424.7292 },
+        { "N": 16, "total_us_med": 3562.3542, "total_us_p99": 4516.8063, "per_disp_us": 222.6471, "throughput_disps_per_s": 4491.41, "bargein_worst_us": 3562.3542, "bargein_avg_us": 1781.1771 },
+        { "N": 64, "total_us_med": 15749.2917, "total_us_p99": 15873.5792, "per_disp_us": 246.0827, "throughput_disps_per_s": 4063.67, "bargein_worst_us": 15749.2917, "bargein_avg_us": 7874.6458 },
+        { "N": 128, "total_us_med": 31303.3958, "total_us_p99": 31797.5221, "per_disp_us": 244.5578, "throughput_disps_per_s": 4089.01, "bargein_worst_us": 31303.3958, "bargein_avg_us": 15651.6979 },
+        { "N": 256, "total_us_med": 63150.0417, "total_us_p99": 64045.3850, "per_disp_us": 246.6799, "throughput_disps_per_s": 4053.84, "bargein_worst_us": 63150.0417, "bargein_avg_us": 31575.0208 }
       ]
     },
     {
       "name": "qjl",
       "per_N": [
-        { "N": 1, "total_us_med": 255.6875, "total_us_p99": 538.2400, "per_disp_us": 255.6875, "throughput_disps_per_s": 3911.02, "bargein_worst_us": 255.6875, "bargein_avg_us": 127.8437 },
-        { "N": 4, "total_us_med": 995.9583, "total_us_p99": 1495.9996, "per_disp_us": 248.9896, "throughput_disps_per_s": 4016.23, "bargein_worst_us": 995.9583, "bargein_avg_us": 497.9792 },
-        { "N": 16, "total_us_med": 3974.6667, "total_us_p99": 4629.4775, "per_disp_us": 248.4167, "throughput_disps_per_s": 4025.49, "bargein_worst_us": 3974.6667, "bargein_avg_us": 1987.3333 },
-        { "N": 64, "total_us_med": 16261.8958, "total_us_p99": 16911.3038, "per_disp_us": 254.0921, "throughput_disps_per_s": 3935.58, "bargein_worst_us": 16261.8958, "bargein_avg_us": 8130.9479 },
-        { "N": 128, "total_us_med": 31523.0625, "total_us_p99": 32182.3637, "per_disp_us": 246.2739, "throughput_disps_per_s": 4060.52, "bargein_worst_us": 31523.0625, "bargein_avg_us": 15761.5313 },
-        { "N": 256, "total_us_med": 62995.2917, "total_us_p99": 65753.7600, "per_disp_us": 246.0754, "throughput_disps_per_s": 4063.80, "bargein_worst_us": 62995.2917, "bargein_avg_us": 31497.6458 }
+        { "N": 1, "total_us_med": 227.3750, "total_us_p99": 913.1404, "per_disp_us": 227.3750, "throughput_disps_per_s": 4398.02, "bargein_worst_us": 227.3750, "bargein_avg_us": 113.6875 },
+        { "N": 4, "total_us_med": 874.4792, "total_us_p99": 1921.8167, "per_disp_us": 218.6198, "throughput_disps_per_s": 4574.15, "bargein_worst_us": 874.4792, "bargein_avg_us": 437.2396 },
+        { "N": 16, "total_us_med": 4054.0417, "total_us_p99": 4555.5808, "per_disp_us": 253.3776, "throughput_disps_per_s": 3946.68, "bargein_worst_us": 4054.0417, "bargein_avg_us": 2027.0208 },
+        { "N": 64, "total_us_med": 16106.9583, "total_us_p99": 16273.6500, "per_disp_us": 251.6712, "throughput_disps_per_s": 3973.44, "bargein_worst_us": 16106.9583, "bargein_avg_us": 8053.4792 },
+        { "N": 128, "total_us_med": 32933.0000, "total_us_p99": 33248.9400, "per_disp_us": 257.2891, "throughput_disps_per_s": 3886.68, "bargein_worst_us": 32933.0000, "bargein_avg_us": 16466.5000 },
+        { "N": 256, "total_us_med": 67870.0417, "total_us_p99": 68766.3938, "per_disp_us": 265.1174, "throughput_disps_per_s": 3771.91, "bargein_worst_us": 67870.0417, "bargein_avg_us": 33935.0208 }
       ]
     },
     {
       "name": "polar",
       "per_N": [
-        { "N": 1, "total_us_med": 458.4375, "total_us_p99": 786.2742, "per_disp_us": 458.4375, "throughput_disps_per_s": 2181.32, "bargein_worst_us": 458.4375, "bargein_avg_us": 229.2187 },
-        { "N": 4, "total_us_med": 1977.0208, "total_us_p99": 2462.1937, "per_disp_us": 494.2552, "throughput_disps_per_s": 2023.25, "bargein_worst_us": 1977.0208, "bargein_avg_us": 988.5104 },
-        { "N": 16, "total_us_med": 9303.2292, "total_us_p99": 10722.0542, "per_disp_us": 581.4518, "throughput_disps_per_s": 1719.83, "bargein_worst_us": 9303.2292, "bargein_avg_us": 4651.6146 },
-        { "N": 64, "total_us_med": 56494.4375, "total_us_p99": 76729.4225, "per_disp_us": 882.7256, "throughput_disps_per_s": 1132.85, "bargein_worst_us": 56494.4375, "bargein_avg_us": 28247.2187 },
-        { "N": 128, "total_us_med": 137950.6042, "total_us_p99": 157154.8284, "per_disp_us": 1077.7391, "throughput_disps_per_s": 927.87, "bargein_worst_us": 137950.6042, "bargein_avg_us": 68975.3021 },
-        { "N": 256, "total_us_med": 278492.1042, "total_us_p99": 312133.0512, "per_disp_us": 1087.8598, "throughput_disps_per_s": 919.24, "bargein_worst_us": 278492.1042, "bargein_avg_us": 139246.0521 }
+        { "N": 1, "total_us_med": 478.1042, "total_us_p99": 1504.0621, "per_disp_us": 478.1042, "throughput_disps_per_s": 2091.59, "bargein_worst_us": 478.1042, "bargein_avg_us": 239.0521 },
+        { "N": 4, "total_us_med": 2135.2500, "total_us_p99": 3177.8667, "per_disp_us": 533.8125, "throughput_disps_per_s": 1873.32, "bargein_worst_us": 2135.2500, "bargein_avg_us": 1067.6250 },
+        { "N": 16, "total_us_med": 11880.8750, "total_us_p99": 13741.0533, "per_disp_us": 742.5547, "throughput_disps_per_s": 1346.70, "bargein_worst_us": 11880.8750, "bargein_avg_us": 5940.4375 },
+        { "N": 64, "total_us_med": 58835.3958, "total_us_p99": 61441.6288, "per_disp_us": 919.3031, "throughput_disps_per_s": 1087.78, "bargein_worst_us": 58835.3958, "bargein_avg_us": 29417.6979 },
+        { "N": 128, "total_us_med": 109804.4583, "total_us_p99": 113921.7658, "per_disp_us": 857.8473, "throughput_disps_per_s": 1165.71, "bargein_worst_us": 109804.4583, "bargein_avg_us": 54902.2292 },
+        { "N": 256, "total_us_med": 186234.3333, "total_us_p99": 193557.5042, "per_disp_us": 727.4779, "throughput_disps_per_s": 1374.61, "bargein_worst_us": 186234.3333, "bargein_avg_us": 93117.1667 }
       ]
     }
   ]

@@ -367,13 +367,12 @@ export function createElectrobunConfig(): ElectrobunConfig {
 				// - "direct" (default): inline hardened-runtime entitlements with
 				//   no sandbox — current behavior for direct downloads.
 				//
-				// TODO(store-signing): Electrobun's config exposes a single mac
-				// entitlements field; the App Sandbox child-process entitlements
-				// (entitlements/mas-child.entitlements, with cs.inherit) need to
-				// be applied during codesign of helper binaries. Wire this through
-				// the platform signing/notarization step once the MAS signing
-				// identity ("3rd Party Mac Developer Application: <Team>") is
-				// configured via env (e.g. MILADY_MAS_SIGNING_IDENTITY).
+				// Child-process entitlements (mas-child.entitlements with
+				// com.apple.security.inherit) are applied after this packaging
+				// step by codesign-mas.mjs, which walks the bundle bottom-up.
+				// See scripts/codesign-mas.mjs. Set MILADY_MAS_SIGNING_IDENTITY
+				// in the build env (and optionally MILADY_MAS_INSTALLER_IDENTITY
+				// for productbuild).
 				entitlements:
 					buildVariant === "store"
 						? parseEntitlementsPlist(

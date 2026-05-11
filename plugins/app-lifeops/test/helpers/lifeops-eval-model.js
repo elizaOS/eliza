@@ -32,18 +32,49 @@ function resolveTrainingModel() {
 function resolveProvider(role) {
     return (readEnv(role === "eval" ? "EVAL_MODEL_PROVIDER" : "TRAIN_MODEL_PROVIDER", role === "eval" ? "EVAL_PROVIDER" : "TRAINING_PROVIDER") ?? "cerebras");
 }
+function resolveAnthropicApiKey(role) {
+    const apiKey = readEnv("ANTHROPIC_API_KEY");
+    if (!apiKey) {
+        throw new Error(`[${role}-model] ANTHROPIC_API_KEY is not set; required when ${role === "eval" ? "EVAL_MODEL_PROVIDER" : "TRAIN_MODEL_PROVIDER"}=anthropic.`);
+    }
+    return apiKey;
+}
+function resolveAnthropicModel(role) {
+    // ANTHROPIC_LARGE_MODEL wins when provider=anthropic, even if a generic
+    // *_MODEL var is also set. Otherwise the operator's "use Cerebras model
+    // X" alias bleeds into the Anthropic call and 404s.
+    const explicitAnthropic = readEnv("ANTHROPIC_LARGE_MODEL");
+    if (explicitAnthropic)
+        return explicitAnthropic;
+    if (role === "eval") {
+        return (readEnv("EVAL_ANTHROPIC_MODEL", "EVAL_MODEL_NAME") ??
+            "claude-haiku-4-5-20251001");
+    }
+    return (readEnv("TRAIN_ANTHROPIC_MODEL", "TRAIN_MODEL_NAME") ??
+        "claude-haiku-4-5-20251001");
+}
 function resolveConfig(role) {
     const provider = resolveProvider(role);
-    if (provider !== "cerebras") {
-        throw new Error(`[${role}-model] only the "cerebras" provider is wired today; got "${provider}". ` +
-            `Set ${role === "eval" ? "EVAL_MODEL_PROVIDER" : "TRAIN_MODEL_PROVIDER"}=cerebras.`);
+    if (provider === "cerebras") {
+        return {
+            apiKey: resolveCerebrasApiKey(role),
+            baseUrl: resolveBaseUrl(),
+            model: role === "eval" ? resolveEvalModel() : resolveTrainingModel(),
+            role,
+            providerName: "cerebras",
+        };
     }
-    return {
-        apiKey: resolveCerebrasApiKey(role),
-        baseUrl: resolveBaseUrl(),
-        model: role === "eval" ? resolveEvalModel() : resolveTrainingModel(),
-        role,
-    };
+    if (provider === "anthropic") {
+        return {
+            apiKey: resolveAnthropicApiKey(role),
+            baseUrl: "https://api.anthropic.com/v1",
+            model: resolveAnthropicModel(role),
+            role,
+            providerName: "anthropic",
+        };
+    }
+    throw new Error(`[${role}-model] unknown provider "${provider}"; supported: cerebras, anthropic. ` +
+        `Set ${role === "eval" ? "EVAL_MODEL_PROVIDER" : "TRAIN_MODEL_PROVIDER"}=cerebras|anthropic.`);
 }
 async function callCerebras(config, req) {
     const messages = [];
@@ -89,13 +120,59 @@ async function callCerebras(config, req) {
         raw: data,
     };
 }
+async function callAnthropic(config, req) {
+    const body = {
+        model: config.model,
+        max_tokens: req.maxTokens ?? 1024,
+        temperature: req.temperature ?? 0,
+        messages: [{ role: "user", content: req.prompt }],
+    };
+    if (req.systemPrompt && req.systemPrompt.length > 0) {
+        body.system = req.systemPrompt;
+    }
+    const response = await fetch(`${config.baseUrl}/messages`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "x-api-key": config.apiKey,
+            "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+        const errBody = await response.text();
+        throw new Error(`[${config.role}-model] anthropic error ${response.status}: ${errBody.slice(0, 300)}`);
+    }
+    const data = (await response.json());
+    const text = (data.content ?? [])
+        .filter((c) => c.type === "text" || (!c.type && typeof c.text === "string"))
+        .map((c) => c.text ?? "")
+        .join("");
+    return {
+        text,
+        usage: data.usage
+            ? {
+                promptTokens: data.usage.input_tokens,
+                completionTokens: data.usage.output_tokens,
+                totalTokens: (data.usage.input_tokens ?? 0) + (data.usage.output_tokens ?? 0),
+                cachedTokens: data.usage.cache_read_input_tokens,
+            }
+            : undefined,
+        raw: data,
+    };
+}
+function dispatch(config, req) {
+    return config.providerName === "anthropic"
+        ? callAnthropic(config, req)
+        : callCerebras(config, req);
+}
 export function getEvalModelClient() {
     const config = resolveConfig("eval");
-    return (req) => callCerebras(config, req);
+    return (req) => dispatch(config, req);
 }
 export function getTrainingModelClient() {
     const config = resolveConfig("training");
-    return (req) => callCerebras(config, req);
+    return (req) => dispatch(config, req);
 }
 export async function judgeWithCerebras(prompt, options) {
     const client = getEvalModelClient();

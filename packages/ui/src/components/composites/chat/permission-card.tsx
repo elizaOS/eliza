@@ -6,7 +6,7 @@ import {
   type PermissionState,
 } from "@elizaos/shared";
 import type * as React from "react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { cn } from "../../../lib/utils";
 import { Button } from "../../ui/button";
@@ -60,6 +60,7 @@ export interface PermissionCardLabels {
   openSettings?: string;
   notNow?: string;
   comingSoon?: string;
+  unavailable?: string;
   granted?: string;
   granting?: string;
 }
@@ -85,14 +86,15 @@ export interface PermissionCardProps {
   /** Called once the registry reports `granted`. The agent uses this to
    *  retry the original action. */
   onGranted?: (state: PermissionState) => void;
+  /** Opens OS settings for denied permissions that cannot be requested again. */
+  onOpenSettings?: (permission: PermissionId) => void | Promise<void>;
   labels?: PermissionCardLabels;
   className?: string;
 }
 
 function defaultStateFor(id: PermissionId): PermissionState {
   const platform =
-    typeof navigator !== "undefined" &&
-    /Win/i.test(navigator.platform ?? "")
+    typeof navigator !== "undefined" && /Win/i.test(navigator.platform ?? "")
       ? "win32"
       : typeof navigator !== "undefined" &&
           /Linux/i.test(navigator.platform ?? "")
@@ -127,6 +129,7 @@ export function PermissionCard({
   onDismiss,
   onFallback,
   onGranted,
+  onOpenSettings,
   labels = {},
   className,
 }: PermissionCardProps): React.ReactElement | null {
@@ -154,8 +157,12 @@ export function PermissionCard({
   }, [registry, permission, reason, feature, onGranted]);
 
   const handleOpenSettings = useCallback(() => {
+    if (onOpenSettings) {
+      void onOpenSettings(permission);
+      return;
+    }
     void openPermissionSettings(permission);
-  }, [permission]);
+  }, [onOpenSettings, permission]);
 
   const handleDismiss = useCallback(() => {
     setDismissed(true);
@@ -166,6 +173,25 @@ export function PermissionCard({
     onFallback?.({ type: "use_fallback", feature, permission });
     setDismissed(true);
   }, [onFallback, feature, permission]);
+
+  useEffect(() => {
+    if (!registry) return;
+    let cancelled = false;
+    void registry
+      .check(permission)
+      .then((next) => {
+        if (!cancelled) setState(next);
+      })
+      .catch(() => {});
+    const unsubscribe = registry.subscribe((states) => {
+      const next = states.find((s) => s.id === permission);
+      if (next) setState(next);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [registry, permission]);
 
   if (dismissed) return null;
 
@@ -188,10 +214,17 @@ export function PermissionCard({
     state.status === "restricted" &&
     state.restrictedReason === "entitlement_required";
 
-  const isDeniedNoRequest =
-    state.status === "denied" && state.canRequest === false;
+  const isRestrictedUnavailable =
+    state.status === "restricted" && !isRestrictedEntitlement;
+
+  const canOpenSettingsInstead =
+    state.canRequest === false &&
+    (state.status === "denied" || state.status === "not-determined");
 
   const title = getPermissionLabel(permission);
+  const resolvedFallbackLabel =
+    fallbackLabel ??
+    (permission === "reminders" ? "Use internal reminder" : "Use fallback");
 
   return (
     <section
@@ -223,7 +256,16 @@ export function PermissionCard({
           >
             {labels.comingSoon ?? "Coming soon — requires app entitlement"}
           </Button>
-        ) : isDeniedNoRequest ? (
+        ) : isRestrictedUnavailable || state.status === "not-applicable" ? (
+          <Button
+            variant="default"
+            size="sm"
+            disabled
+            data-testid="permission-card-primary"
+          >
+            {labels.unavailable ?? "Unavailable on this platform"}
+          </Button>
+        ) : canOpenSettingsInstead ? (
           <Button
             variant="default"
             size="sm"
@@ -245,14 +287,14 @@ export function PermissionCard({
               : (labels.grantAccess ?? "Grant access")}
           </Button>
         )}
-        {fallbackOffered && fallbackLabel ? (
+        {fallbackOffered ? (
           <Button
             variant="outline"
             size="sm"
             onClick={handleFallback}
             data-testid="permission-card-fallback"
           >
-            {fallbackLabel}
+            {resolvedFallbackLabel}
           </Button>
         ) : null}
         <button
@@ -268,13 +310,88 @@ export function PermissionCard({
   );
 }
 
+export interface PermissionClientLike {
+  getPermission(id: PermissionId): Promise<PermissionState>;
+  requestPermission(id: PermissionId): Promise<PermissionState>;
+}
+
+export function createClientPermissionsRegistry(
+  clientLike: PermissionClientLike,
+): IPermissionsRegistry {
+  const states = new Map<PermissionId, PermissionState>();
+  const subscribers = new Set<(state: PermissionState[]) => void>();
+
+  const notify = () => {
+    const snapshot = Array.from(states.values());
+    for (const subscriber of subscribers) {
+      subscriber(snapshot);
+    }
+  };
+
+  const commit = (state: PermissionState) => {
+    states.set(state.id, state);
+    notify();
+    return state;
+  };
+
+  return {
+    get(id) {
+      return states.get(id) ?? defaultStateFor(id);
+    },
+    async check(id) {
+      return commit(await clientLike.getPermission(id));
+    },
+    async request(id, opts) {
+      const next = await clientLike.requestPermission(id);
+      return commit({
+        ...next,
+        lastBlockedFeature: next.lastBlockedFeature ?? {
+          app: opts.feature.app,
+          action: opts.feature.action,
+          at: Date.now(),
+        },
+      });
+    },
+    recordBlock(id, feature) {
+      const current = states.get(id) ?? defaultStateFor(id);
+      commit({
+        ...current,
+        lastBlockedFeature: {
+          app: feature.app,
+          action: feature.action,
+          at: Date.now(),
+        },
+      });
+    },
+    list() {
+      return Array.from(states.values());
+    },
+    pending() {
+      return Array.from(states.values()).filter(
+        (state) =>
+          state.status === "not-determined" ||
+          Boolean(state.lastBlockedFeature),
+      );
+    },
+    subscribe(cb) {
+      subscribers.add(cb);
+      return () => {
+        subscribers.delete(cb);
+      };
+    },
+    registerProber() {
+      // UI adapter delegates probing to the backend/native bridge.
+    },
+  };
+}
+
 /**
  * Render-helper invoked by the chat transcript's `renderMessageContent` hook
  * when the message text contains a parsed permission_request block. The host
  * passes the parsed payload, the registry, and message-level callbacks.
  */
 export interface PermissionCardPayload {
-  permission: string;
+  permission: PermissionId;
   reason: string;
   feature: string;
   fallbackOffered?: boolean;

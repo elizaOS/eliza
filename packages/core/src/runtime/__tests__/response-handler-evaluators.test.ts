@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { IAgentRuntime } from "../../types/runtime";
-import type { Memory } from "../../types/memory";
-import type { State } from "../../types/state";
 import type { MessageHandlerResult } from "../../types/components";
+import type { Memory } from "../../types/memory";
+import type { IAgentRuntime } from "../../types/runtime";
+import type { State } from "../../types/state";
 import {
-	runResponseHandlerEvaluators,
 	type ResponseHandlerEvaluator,
+	runResponseHandlerEvaluators,
 } from "../response-handler-evaluators";
 
 function runtimeWith(evaluators: ResponseHandlerEvaluator[]): IAgentRuntime {

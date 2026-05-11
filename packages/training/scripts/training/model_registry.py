@@ -72,13 +72,13 @@ class ModelEntry:
 
     eliza_repo_id: str = ""
     """HuggingFace repo id under which the fine-tuned model is published,
-    e.g. ``elizaos/eliza-1-2b``. Quants live in sibling repos with suffixes
+    e.g. ``elizalabs/eliza-1-2b``. Quants live in sibling repos with suffixes
     (``-gguf``, ``-fp8``, ``-polarquant``)."""
 
     abliteration_repo_id: str = ""
     """HuggingFace repo id for the post-abliteration ("uncensored") release,
-    e.g. ``elizaos/eliza-1-2b-uncensored``. Empty means: do not publish an
-    abliterated variant for this entry. Lives under the same ``elizaos`` org
+    e.g. ``elizalabs/eliza-1-2b-uncensored``. Empty means: do not publish an
+    abliterated variant for this entry. Lives under the same ``elizalabs`` org
     as the safety-tuned line, distinguished by the ``-uncensored`` suffix —
     see ``scripts/training/abliterate.py``."""
 
@@ -131,6 +131,16 @@ class ModelEntry:
         # 16 GB local GPU rule of thumb: PolarQuant + TurboQuant keeps every
         # tier up to (and including) 27B inside 32 GB at 144k context.
         return self.infer_mem_gb_quantized <= 32.0
+
+    @property
+    def public_name(self) -> str:
+        """User-facing model name.
+
+        Published entries use the Eliza-1 release name. Smoke/internal
+        entries keep their registry short name because they are not exposed
+        as installable models.
+        """
+        return self.eliza_short_name or self.short_name
 
 
 def _compute_inference_mem(
@@ -223,8 +233,8 @@ REGISTRY: dict[str, ModelEntry] = {
     ),
     "qwen3.5-2b": _entry(
         hf_id="Qwen/Qwen3.5-2B", short_name="qwen3.5-2b",
-        eliza_short_name="eliza-1-2b", eliza_repo_id="elizaos/eliza-1-2b",
-        abliteration_repo_id="elizaos/eliza-1-2b-uncensored",
+        eliza_short_name="eliza-1-2b", eliza_repo_id="elizalabs/eliza-1-2b",
+        abliteration_repo_id="elizalabs/eliza-1-2b-uncensored",
         params_billion=2.27, tier=Tier.LOCAL,
         seq_len=8192, optimizer="apollo_mini", optimizer_rank=256,
         micro_batch=1, grad_accum=16, train_mem_gb_budget=15.5,
@@ -242,8 +252,8 @@ REGISTRY: dict[str, ModelEntry] = {
     ),
     "qwen3.5-9b": _entry(
         hf_id="Qwen/Qwen3.5-9B", short_name="qwen3.5-9b",
-        eliza_short_name="eliza-1-9b", eliza_repo_id="elizaos/eliza-1-9b",
-        abliteration_repo_id="elizaos/eliza-1-9b-uncensored",
+        eliza_short_name="eliza-1-9b", eliza_repo_id="elizalabs/eliza-1-9b",
+        abliteration_repo_id="elizalabs/eliza-1-9b-uncensored",
         params_billion=9.0, tier=Tier.WORKSTATION,
         seq_len=16384, optimizer="apollo", optimizer_rank=512,
         micro_batch=2, grad_accum=8, train_mem_gb_budget=80.0,
@@ -257,8 +267,8 @@ REGISTRY: dict[str, ModelEntry] = {
     ),
     "qwen3.6-27b": _entry(
         hf_id="Qwen/Qwen3.6-27B", short_name="qwen3.6-27b",
-        eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1-27b",
-        abliteration_repo_id="elizaos/eliza-1-27b-uncensored",
+        eliza_short_name="eliza-1-27b", eliza_repo_id="elizalabs/eliza-1-27b",
+        abliteration_repo_id="elizalabs/eliza-1-27b-uncensored",
         params_billion=27.0, tier=Tier.CLOUD,
         seq_len=147456, optimizer="apollo_mini", optimizer_rank=512,
         micro_batch=1, grad_accum=8, train_mem_gb_budget=190.0,
@@ -285,7 +295,12 @@ def get(name: str) -> ModelEntry:
     if key in REGISTRY:
         return REGISTRY[key]
     for entry in REGISTRY.values():
-        if entry.hf_id == name or entry.short_name == name:
+        if (
+            entry.hf_id == name
+            or entry.short_name == name
+            or entry.eliza_short_name == name
+            or entry.eliza_short_name.lower() == key
+        ):
             return entry
     raise KeyError(f"unknown model {name!r}; known: {sorted(REGISTRY)}")
 
@@ -300,7 +315,7 @@ def summary_table() -> str:
     rows = [cols]
     for e in REGISTRY.values():
         rows.append((
-            e.short_name,
+            e.public_name,
             f"{e.params_billion:.1f}",
             e.tier.value,
             f"{e.seq_len}",

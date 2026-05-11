@@ -117,10 +117,9 @@ async function seedMessage(input: SeedMessageInput): Promise<{
 
 beforeAll(async () => {
   setIsolatedEnv();
-  // withLLM registers the local embedding plugin so TEXT_EMBEDDING is
-  // available even without an LLM API key. We don't need a provider for
-  // the action path in this test — direct `query` param bypasses
-  // TEXT_SMALL planning, and a third case validates the no-LLM fallback.
+  // withLLM guarantees a TEXT_EMBEDDING model in the real-runtime helper.
+  // We don't need text generation for the action path in this test because
+  // the direct `query` param bypasses TEXT_SMALL planning.
   const result = await createRealTestRuntime({
     plugins: [appLifeOpsPlugin],
     withLLM: true,

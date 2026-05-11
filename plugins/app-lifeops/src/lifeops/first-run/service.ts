@@ -453,7 +453,9 @@ export class FirstRunService {
    */
   async runReplayPath(input: ReplayPathInput): Promise<FirstRunRunResult> {
     let record = await this.stateStore.read();
-    record = await this.stateStore.begin("replay");
+    if (record.status !== "in_progress" || record.path !== "replay") {
+      record = await this.stateStore.begin("replay");
+    }
     const currentTypedFacts = await this.factStore.read();
     const partial = partialAnswersFromFacts(currentTypedFacts);
     const merged = mergeCustomizeAnswers(

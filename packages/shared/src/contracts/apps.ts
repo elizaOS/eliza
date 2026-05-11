@@ -392,7 +392,7 @@ export const ELIZA_CURATED_APP_DEFINITIONS: readonly ElizaCuratedAppDefinition[]
     },
     {
       slug: "clawville",
-      canonicalName: "@clawville/app-clawville",
+      canonicalName: "@elizaos/app-clawville",
       aliases: [],
     },
     {

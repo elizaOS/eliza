@@ -104,6 +104,7 @@ async def test_compactor_invokes_bridge_with_correct_strategy(
     assert captured["strategy"] == "hybrid-ledger"
     assert captured["transcript"]["turns"][1]["content"] == "my name is Alice"
     assert captured["options"]["summarizationModel"] == "gpt-oss-120b"
+    assert captured["options"]["preserveTailMessages"] == 0
     assert captured["options"]["targetTokens"] == 500
     assert artifact.summary_text == "Alice is the user"
     assert "user is named Alice" in artifact.structured_state.immutable_facts

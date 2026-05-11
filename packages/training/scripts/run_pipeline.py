@@ -8,23 +8,23 @@ Single command does:
   5. Quantized benchmark                          → benchmarks/<run>/{polarquant,turboquant}/
 
 Usage:
-    # Smoke test on Qwen3.5-2B (smallest eliza-1 size, trains on 16 GB)
+    # Smoke test on the smallest Eliza-1 size, trains on 16 GB.
     uv run --extra train python scripts/run_pipeline.py \
-        --registry-key qwen3.5-2b \
+        --registry-key eliza-1-2b \
         --max-samples 1000 --epochs 1 --skip-base-bench
 
-    # Production run on Qwen3.5-2B (eliza-1-2b)
+    # Production run on eliza-1-2b.
     uv run --extra train python scripts/run_pipeline.py \
-        --registry-key qwen3.5-2b \
+        --registry-key eliza-1-2b \
         --epochs 3
 
     # Train from runtime trajectory export(s)
     uv run --extra train python scripts/run_pipeline.py \
-        --registry-key qwen3.5-2b \
+        --registry-key eliza-1-2b \
         --trajectory-export ../trajectories/export.jsonl \
         --epochs 1
 
-    # Cloud-tier run on Qwen3.6-27B (eliza-1-27b) — needs 2× H200 SXM,
+    # Cloud-tier run on eliza-1-27b — needs 2× H200 SXM,
     # use scripts/train_nebius.sh which wraps run_pipeline.py with FSDP.
 """
 
@@ -59,8 +59,8 @@ def run(cmd: list[str], *, env: dict | None = None) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--registry-key", required=True,
-                    help="One of: qwen3.5-2b (eliza-1-2b), qwen3.5-9b "
-                         "(eliza-1-9b), qwen3.6-27b (eliza-1-27b).")
+                    help="One of: eliza-1-2b, eliza-1-9b, eliza-1-27b. "
+                         "Internal upstream keys are accepted as aliases.")
     ap.add_argument("--run-name", default=None,
                     help="Default: <registry-key>-apollo-<unix-ts>.")
     ap.add_argument("--epochs", type=float, default=3.0)
@@ -112,17 +112,17 @@ def main() -> int:
     entry = registry_get(args.registry_key)
     if not entry.can_train_locally and not args.skip_finetune:
         raise SystemExit(
-            f"{entry.short_name} (tier={entry.tier.value}) cannot train locally. "
+            f"{entry.public_name} (tier={entry.tier.value}) cannot train locally. "
             f"Use train_nebius.sh or pass --skip-finetune."
         )
 
-    run_name = args.run_name or f"{entry.short_name}-apollo-{int(time.time())}"
+    run_name = args.run_name or f"{entry.public_name}-apollo-{int(time.time())}"
     ckpt_dir = ROOT / "checkpoints" / run_name
     bench_dir = ROOT / "benchmarks" / run_name
     bench_dir.mkdir(parents=True, exist_ok=True)
 
     summary = {
-        "registry_key": entry.short_name,
+        "registry_key": entry.public_name,
         "model": entry.hf_id,
         "run_name": run_name,
         "started": time.time(),
@@ -182,7 +182,7 @@ def main() -> int:
         cmd = [
             "uv", "run", "--extra", "train", "python",
             "scripts/train_local.py",
-            "--registry-key", entry.short_name,
+            "--registry-key", entry.public_name,
             "--epochs", str(args.epochs),
             "--lr", str(args.lr),
             "--run-name", run_name,
@@ -218,7 +218,7 @@ def main() -> int:
         for q in quantizers:
             if q not in entry.quantization_after:
                 log.warning("registry says %s is not in quant list for %s; running anyway",
-                            q, entry.short_name)
+                            q, entry.public_name)
             apply_script = ROOT / "scripts" / "quantization" / f"{q}_apply.py"
             if not apply_script.exists():
                 log.error("missing quantizer script %s", apply_script)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-// Post-consolidation: LIST_AGENTS is `TASKS { op: "list_agents" }`.
+// Post-consolidation: LIST_AGENTS is `TASKS { action: "list_agents" }`.
 import { listAgentsAction } from "../../src/actions/tasks.js";
 import {
   callback,
@@ -9,9 +9,9 @@ import {
   state,
 } from "../../src/test-utils/action-test-utils.js";
 
-const listOptions = { parameters: { op: "list_agents" } };
+const listOptions = { parameters: { action: "list_agents" } };
 
-describe("TASKS:list_agents (legacy LIST_AGENTS)", () => {
+describe("TASKS:list_agents", () => {
   it("lists sessions with exact public fields", async () => {
     const result = await listAgentsAction.handler(
       runtimeWith(serviceMock()),

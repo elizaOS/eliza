@@ -13,12 +13,12 @@ import type {
   ServiceTypeName,
 } from "@elizaos/core";
 import { resolveActionContexts, resolveProviderContexts } from "@elizaos/core";
+import type { ToolCallCache } from "./tool-call-cache/index.ts";
 import {
   createToolCallCacheFromConfig,
-  wrapActionWithCache,
   type ToolCacheConfig,
+  wrapActionWithCache,
 } from "./tool-call-cache-wrapper.ts";
-import type { ToolCallCache } from "./tool-call-cache/index.ts";
 
 /** elizaOS runtime plugin lifecycle bookkeeping (not exported from @elizaos/core). */
 type ElizaPluginOwnership = {

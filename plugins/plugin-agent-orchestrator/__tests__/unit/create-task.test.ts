@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-// Post-consolidation: CREATE_AGENT_TASK is `TASKS { op: "create" }` (default op).
+// Post-consolidation: CREATE_AGENT_TASK is `TASKS { action: "create" }` (default action).
 import { createTaskAction } from "../../src/actions/tasks.js";
 import {
   callback,
@@ -9,7 +9,7 @@ import {
   state,
 } from "../../src/test-utils/action-test-utils.js";
 
-describe("TASKS:create (legacy CREATE_AGENT_TASK)", () => {
+describe("TASKS:create", () => {
   it("validates explicit payload and declines LifeOps", async () => {
     expect(
       await createTaskAction.validate(
@@ -34,7 +34,7 @@ describe("TASKS:create (legacy CREATE_AGENT_TASK)", () => {
       state,
       {
         parameters: {
-          op: "create",
+          action: "create",
           task: "fix bug",
           agentType: "codex",
           workdir: "/tmp/nyx",
@@ -71,7 +71,7 @@ describe("TASKS:create (legacy CREATE_AGENT_TASK)", () => {
           runtimeWith(undefined),
           memory(),
           state,
-          { parameters: { op: "create" } },
+          { parameters: { action: "create" } },
           callback(),
         )
       )?.error,
@@ -85,7 +85,7 @@ describe("TASKS:create (legacy CREATE_AGENT_TASK)", () => {
       runtimeWith(auth),
       memory({ task: "x" }),
       state,
-      { parameters: { op: "create" } },
+      { parameters: { action: "create" } },
       callback(),
     );
     expect(authResult?.success).toBe(false);
@@ -106,7 +106,7 @@ describe("TASKS:create (legacy CREATE_AGENT_TASK)", () => {
           runtimeWith(fail),
           memory({ task: "x" }),
           state,
-          { parameters: { op: "create" } },
+          { parameters: { action: "create" } },
           callback(),
         )
       )?.success,
