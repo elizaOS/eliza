@@ -8,6 +8,7 @@ import type {
   AcceptedToken,
   AudioChunk,
   AudioSink,
+  BargeInSignal,
   OmniVoiceBackend,
   Phrase,
   RejectedTokenRange,
@@ -20,7 +21,17 @@ export interface SchedulerEvents {
   onPhrase?(phrase: Phrase): void;
   onRollback?(phraseId: number, range: RejectedTokenRange): void;
   onAudio?(chunk: AudioChunk): void;
+  /**
+   * Barge-in hard-stop: ring buffer drained, chunker reset, in-flight TTS
+   * cancelled. The engine layer's `voiceStreamingArgs` separately threads
+   * the `BargeInCancelToken.signal` (`bargeIn.onSignal` → `hard-stop`)
+   * into `dispatcher.generate` so the LLM/drafter abort too.
+   */
   onCancel?(): void;
+  /** Provisional barge-in: a VAD voice hit while the agent is speaking paused TTS playback. */
+  onTtsPause?(): void;
+  /** Blip resolved the provisional barge-in — TTS playback resumed. */
+  onTtsResume?(): void;
 }
 
 export interface SchedulerDeps {
@@ -55,6 +66,8 @@ export class VoiceScheduler {
   private readonly maxInFlight: number;
   private kernelTicks = 0;
   private nextStandalonePhraseId = -1;
+  /** True while a provisional barge-in (`pause-tts`) has paused playback. */
+  private paused = false;
 
   constructor(
     config: SchedulerConfig,
@@ -79,9 +92,15 @@ export class VoiceScheduler {
       1,
       config.maxInFlightPhrases ?? DEFAULT_MAX_IN_FLIGHT_PHRASES,
     );
+    // Legacy hard-stop hook (`bargeIn.onMicActive()` / `attach.onCancel`).
     this.bargeIn.attach({
       onCancel: () => this.handleBargeIn(),
     });
+    // New signal stream: pause/resume on a provisional barge-in, hard-stop
+    // when ASR confirms words. (`onMicActive()` also emits `hard-stop`, so
+    // `handleBargeIn` fires from both the legacy `attach` and here — it's
+    // idempotent.)
+    this.bargeIn.onSignal((signal) => this.onBargeInSignal(signal));
   }
 
   async accept(token: TextToken, acceptedAt = Date.now()): Promise<void> {
@@ -224,6 +243,27 @@ export class VoiceScheduler {
     return this.kernelTicks;
   }
 
+  /** True while a provisional barge-in has paused TTS playback. */
+  get ttsPaused(): boolean {
+    return this.paused;
+  }
+
+  /**
+   * Drop not-yet-spoken TTS without signalling a barge-in: drain the ring
+   * buffer, reset the chunker, cancel in-flight synthesis. Used by the turn
+   * controller when a speculative response is invalidated (speech resumed) —
+   * the speculative TTS was streamed off a stale partial transcript, so it
+   * must go, but this is not a user barge-in (`onCancel` is NOT fired).
+   */
+  cancelPendingTts(): void {
+    this.paused = false;
+    this.ringBuffer.drain();
+    this.chunker.reset();
+    for (const inflight of this.inFlight.values()) {
+      inflight.cancelSignal.cancelled = true;
+    }
+  }
+
   private async dispatchPhrase(phrase: Phrase): Promise<void> {
     this.rollback.track(phrase);
     this.events.onPhrase?.(phrase);
@@ -281,12 +321,49 @@ export class VoiceScheduler {
   private commitAudio(chunk: AudioChunk): void {
     this.rollback.markRingBuffered(chunk.phraseId);
     this.ringBuffer.write(chunk.pcm);
-    this.ringBuffer.flushToSink();
+    // When TTS is paused by a provisional barge-in, keep the synthesized
+    // PCM in the ring buffer but DON'T hand it to the sink yet — `resume-tts`
+    // flushes it; `hard-stop` drains it. (We still mark it "played" for the
+    // rollback queue: once it's committed past the chunker it can't be
+    // un-synthesized — only un-spoken.)
+    if (!this.paused) {
+      this.ringBuffer.flushToSink();
+    }
     this.rollback.markPlayed(chunk.phraseId);
     this.events.onAudio?.(chunk);
   }
 
+  private onBargeInSignal(signal: BargeInSignal): void {
+    switch (signal.type) {
+      case "pause-tts": {
+        if (!this.paused) {
+          this.paused = true;
+          this.events.onTtsPause?.();
+        }
+        break;
+      }
+      case "resume-tts": {
+        if (this.paused) {
+          this.paused = false;
+          // Hand whatever was buffered during the pause to the sink now.
+          if (this.ringBuffer.size() > 0) this.ringBuffer.flushToSink();
+          this.events.onTtsResume?.();
+        }
+        break;
+      }
+      case "hard-stop":
+        // Handled by the legacy `attach.onCancel` hook registered in the
+        // constructor — `BargeInController.hardStop()` fires both the
+        // `attach` listeners and `onSignal(hard-stop)`, so doing the
+        // ring-buffer drain again here would double-fire `onCancel`. The
+        // engine layer subscribes to `onSignal(hard-stop)` separately to
+        // thread `signal.token.signal` into `dispatcher.generate`.
+        break;
+    }
+  }
+
   private handleBargeIn(): void {
+    this.paused = false;
     this.ringBuffer.drain();
     this.chunker.reset();
     for (const inflight of this.inFlight.values()) {

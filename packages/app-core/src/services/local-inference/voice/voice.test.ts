@@ -15,6 +15,7 @@ import type {
   Phrase,
   SpeakerPreset,
   TextToken,
+  VadEvent,
 } from "./types";
 import {
   readVoicePresetFile,
@@ -114,6 +115,36 @@ describe("PhraseChunker", () => {
     expect(tail).not.toBeNull();
     expect(tail?.text).toBe("Hi there");
     expect(tail?.terminator).toBe("max-cap");
+  });
+
+  it("flushes at a comma (clause boundary), not just sentence-final marks", () => {
+    const tokens: TextToken[] = [
+      tok(0, "Sure"),
+      tok(1, ","),
+      tok(2, " let"),
+      tok(3, " me"),
+      tok(4, " check"),
+      tok(5, "."),
+    ];
+    const phrases = chunkTokens(tokens, { maxTokensPerPhrase: 100 });
+    expect(phrases).toHaveLength(2);
+    expect(phrases[0].text).toBe("Sure,");
+    expect(phrases[0].terminator).toBe("punctuation");
+    expect(phrases[0].toIndex).toBe(1);
+    expect(phrases[1].text).toBe(" let me check.");
+  });
+
+  it("defaults maxTokensPerPhrase to 30 words when not supplied", () => {
+    const tokens: TextToken[] = Array.from({ length: 65 }, (_, i) =>
+      tok(i, `w${i} `),
+    );
+    // No commas / sentence-final marks → only the 30-word cap fires.
+    const phrases = chunkTokens(tokens, {});
+    expect(phrases).toHaveLength(3); // 30 + 30 + 5
+    expect(phrases[0].toIndex - phrases[0].fromIndex + 1).toBe(30);
+    expect(phrases[1].toIndex - phrases[1].fromIndex + 1).toBe(30);
+    expect(phrases[2].toIndex - phrases[2].fromIndex + 1).toBe(5);
+    expect(phrases.every((p) => p.terminator === "max-cap")).toBe(true);
   });
 });
 
@@ -461,6 +492,137 @@ describe("VoiceScheduler end-to-end", () => {
 
     expect(backend.calls).toBe(1);
     expect(Array.from(second.pcm)).toEqual(Array.from(first.pcm));
+  });
+
+  it("pauses TTS on a provisional barge-in, resumes on a blip (no audio lost)", async () => {
+    const backend = new StubBackend();
+    const sink = new InMemoryAudioSink();
+    const paused: number[] = [];
+    const resumed: number[] = [];
+    const sched = new VoiceScheduler(
+      {
+        chunkerConfig: { maxTokensPerPhrase: 10 },
+        preset: makePreset(),
+        ringBufferCapacity: 4096,
+        sampleRate: 24000,
+      },
+      { backend, sink },
+      {
+        onTtsPause: () => paused.push(1),
+        onTtsResume: () => resumed.push(1),
+      },
+    );
+    // Fake VAD source the barge-in controller binds to.
+    const listeners = new Set<(e: VadEvent) => void>();
+    sched.bargeIn.bindVad({
+      onVadEvent: (l) => {
+        listeners.add(l);
+        return () => listeners.delete(l);
+      },
+    });
+    sched.bargeIn.setAgentSpeaking(true);
+    const emit = (e: VadEvent) => {
+      for (const l of listeners) l(e);
+    };
+
+    // Agent speaking → a VAD voice hit pauses playback.
+    emit({
+      type: "speech-active",
+      timestampMs: 1,
+      probability: 0.9,
+      speechDurationMs: 100,
+    });
+    expect(sched.ttsPaused).toBe(true);
+    expect(paused).toHaveLength(1);
+
+    // A phrase synthesized while paused stays buffered (not flushed to sink).
+    await sched.accept(tok(0, "Hold"));
+    await sched.accept(tok(1, " on"));
+    await sched.accept(tok(2, "."));
+    await sched.waitIdle();
+    expect(sink.totalWritten()).toBe(0);
+    expect(sched.ringBuffer.size()).toBeGreaterThan(0);
+
+    // Blip → not real speech → resume; the buffered PCM flushes to the sink.
+    emit({ type: "blip", timestampMs: 2, durationMs: 30, peakRms: 0.2 });
+    expect(sched.ttsPaused).toBe(false);
+    expect(resumed).toHaveLength(1);
+    expect(sink.totalWritten()).toBeGreaterThan(0);
+  });
+
+  it("hard-stop barge-in drains the ring buffer and cancels in-flight TTS", async () => {
+    const backend = new StubBackend();
+    backend.delay = 25;
+    const sink = new InMemoryAudioSink();
+    let cancels = 0;
+    const sched = new VoiceScheduler(
+      {
+        chunkerConfig: { maxTokensPerPhrase: 10 },
+        preset: makePreset(),
+        ringBufferCapacity: 4096,
+        sampleRate: 24000,
+      },
+      { backend, sink },
+      { onCancel: () => cancels++ },
+    );
+    const listeners = new Set<(e: VadEvent) => void>();
+    sched.bargeIn.bindVad({
+      onVadEvent: (l) => {
+        listeners.add(l);
+        return () => listeners.delete(l);
+      },
+    });
+    sched.bargeIn.setAgentSpeaking(true);
+    const emit = (e: VadEvent) => {
+      for (const l of listeners) l(e);
+    };
+
+    await sched.accept(tok(0, "Just"));
+    await sched.accept(tok(1, " a"));
+    await sched.accept(tok(2, "."));
+    // Provisional pause then ASR-confirmed words → hard-stop.
+    emit({
+      type: "speech-active",
+      timestampMs: 1,
+      probability: 0.9,
+      speechDurationMs: 100,
+    });
+    sched.bargeIn.onWordsDetected({
+      wordCount: 2,
+      partialText: "no wait",
+      timestampMs: 2,
+    });
+
+    await sched.waitIdle();
+    expect(cancels).toBe(1);
+    expect(sched.ttsPaused).toBe(false);
+    expect(sched.ringBuffer.size()).toBe(0);
+    expect(sink.totalWritten()).toBe(0);
+  });
+
+  it("cancelPendingTts drops not-yet-spoken audio without signalling a barge-in", async () => {
+    const backend = new StubBackend();
+    backend.delay = 20;
+    const sink = new InMemoryAudioSink();
+    let cancels = 0;
+    const sched = new VoiceScheduler(
+      {
+        chunkerConfig: { maxTokensPerPhrase: 10 },
+        preset: makePreset(),
+        ringBufferCapacity: 4096,
+        sampleRate: 24000,
+      },
+      { backend, sink },
+      { onCancel: () => cancels++ },
+    );
+    await sched.accept(tok(0, "Speculative"));
+    await sched.accept(tok(1, "."));
+    sched.cancelPendingTts();
+    await sched.waitIdle();
+    expect(sched.ringBuffer.size()).toBe(0);
+    expect(sink.totalWritten()).toBe(0);
+    // No barge-in signalled.
+    expect(cancels).toBe(0);
   });
 });
 
