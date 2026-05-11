@@ -341,6 +341,36 @@ def _write_licenses(bundle_dir: Path, *, tier: str, force: bool) -> list[str]:
     return written
 
 
+_GGUF_DRAFTER_TARGET_CHECKPOINT_KEY: Final[str] = (
+    "dflash-draft.target_checkpoint_sha256"
+)
+
+
+def _read_drafter_target_checkpoint_sha256(drafter_path: Path) -> str | None:
+    """Read the target text-checkpoint sha256 the drafter was distilled
+    against, recorded as a GGUF metadata string by ``distill_dflash_drafter.py``.
+
+    Returns ``None`` for local stand-in drafters (source-converted GGUFs
+    have no such key). The publish path treats a missing key as a hard
+    error; this staging helper only records what it finds.
+    """
+    try:
+        from gguf import GGUFReader  # type: ignore
+    except ImportError:
+        return None
+    try:
+        reader = GGUFReader(str(drafter_path), "r")
+    except Exception:
+        return None
+    field = reader.fields.get(_GGUF_DRAFTER_TARGET_CHECKPOINT_KEY)
+    if field is None:
+        return None
+    try:
+        return str(field.parts[field.data[0]].tobytes().decode("utf-8"))
+    except Exception:
+        return None
+
+
 def _write_target_meta(
     *,
     bundle_dir: Path,
@@ -352,10 +382,22 @@ def _write_target_meta(
     if not text_files:
         raise ValueError("_write_target_meta requires at least one text file")
     primary_text = text_files[0]
+    required_kernels = list(REQUIRED_KERNELS_BY_TIER.get(tier, ()))
+    drafter_target_sha = _read_drafter_target_checkpoint_sha256(
+        Path(drafter_file.destination)
+    )
+    # Drafter↔target alignment (training AGENTS.md §2): the drafter MUST
+    # have been distilled against the exact text checkpoint it ships with.
+    # Local stand-in drafters have no recorded hash, so this is False here;
+    # the real publish gate refuses to ship a drafter where this is not True.
+    drafter_matches_target = (
+        drafter_target_sha is not None
+        and drafter_target_sha == primary_text.sha256
+    )
     _json_write(
         bundle_dir / "dflash" / "target-meta.json",
         {
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "tier": tier,
             "status": "local-standin",
             "publishEligible": False,
@@ -383,9 +425,27 @@ def _write_target_meta(
                 "sha256": drafter_file.sha256,
                 "provenance": drafter_file.provenance,
                 "finalElizaWeights": False,
+                # sha256 of the text checkpoint this drafter was distilled
+                # against, copied from the drafter GGUF's
+                # `dflash-draft.target_checkpoint_sha256` metadata key.
+                "targetCheckpointSha256": drafter_target_sha,
+                "matchesTargetCheckpoint": drafter_matches_target,
             },
+            # Speculative-decode acceptance windows: [draftMin, draftMax]
+            # tokens proposed per step plus the measured acceptance rate.
+            # Null until a real bundle is published with measured numbers
+            # (eval harness → `evals/voice-rtf.json` + this block).
             "acceptanceWindow": None,
             "acceptanceRate": None,
+            # Kernel capabilities the runtime must satisfy to load this
+            # bundle's DFlash path. Mirrors `eliza-1.manifest.json`
+            # `kernels.required` so the dflash binary's CAPABILITIES.json
+            # can be checked against the bundle without re-reading the
+            # full manifest.
+            "kernelCaps": {
+                "required": required_kernels,
+                "optional": [],
+            },
             "publishBlockingReasons": list(reasons),
         },
     )

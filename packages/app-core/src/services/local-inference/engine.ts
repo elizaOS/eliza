@@ -34,6 +34,7 @@ import {
   dflashLlamaServer,
   dflashRequired,
   getDflashRuntimeStatus,
+  logDflashDevDisabledWarning,
 } from "./dflash-server";
 import type { LocalUsageBlock } from "./llama-server-metrics";
 import { listInstalledModels } from "./registry";
@@ -926,6 +927,11 @@ export class LocalInferenceEngine {
     args: T;
     finish: (finalText: string) => Promise<void>;
   } {
+    // AGENTS.md §4: when the developer kill-switch disables DFlash, every
+    // generation turn must log a loud warning. No-op when the flag is unset.
+    // Called before the voice early-return so text-only turns warn too.
+    logDflashDevDisabledWarning();
+
     const bridge = this.voiceBridge;
     const voiceOn = bridge?.lifecycle.current().kind === "voice-on";
     if (!voiceOn || !bridge) {
