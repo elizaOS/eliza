@@ -21,6 +21,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* The fused-attention reference reuses the fork-exact TBQ3 V-cache block +
+ * decode from the turbo reference (block_tbq3_0 / eliza_tbq3_decode_block_uncond). */
+#include "../reference/turbo_kernels.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -121,6 +125,57 @@ void eliza_polar_mul_mv(const eliza_block_q4_polar * k_blocks,
                         const float * q,
                         int n_rows, int use_qjl,
                         float * y);
+
+/* ---------- Fused attention: GGML_OP_FUSED_ATTN_QJL_TBQ + Polar V variant ----------
+ *
+ * Single-source-of-truth C reference for the fused-attention shape the Metal /
+ * Vulkan / CUDA agents must mirror. Bit-exact to fused_attn_qjl_tbq_ref in the
+ * milady-llama-cpp fork (ggml/src/ggml-cpu/fused-attn-qjl-tbq.c) for the TBQ
+ * variant; the Polar variant swaps the V-cache decode for block_q4_polar and
+ * is spec'd identically in reports/porting/2026-05-11/fused-attn-op-contract.md.
+ *
+ * Geometry (per head): head_dim = ELIZA_QJL_HEAD_DIM (128), proj_dim =
+ * ELIZA_QJL_PROJECTION_DIM (256). GQA: hk = hq / (n_heads / n_kv_heads).
+ *
+ * Online (never-materialize-the-full-score-vector) softmax — the reference
+ * walks K twice (pass 1: scores + running max; pass 1b/1c: exp + running
+ * sum) and V once (pass 2: weighted V-mix into the output accumulator). GPU
+ * ports SHOULD use the one-pass FlashAttention rescaling form; both are
+ * numerically equivalent within tolerance and produce the same DTO.
+ *
+ * Q is the *pre-projected QJL query sketch*: proj_dim fp32 per head, already
+ * Π·q. Set q_is_pre_projected accordingly in the manifest (always 1 today —
+ * the surrounding graph computes the sketch once per Q). */
+
+#define ELIZA_FUSED_HEAD_DIM   ELIZA_QJL_HEAD_DIM        /* 128 */
+#define ELIZA_FUSED_PROJ_DIM   ELIZA_QJL_PROJECTION_DIM  /* 256 */
+#define ELIZA_FUSED_TBQ_BLOCK  32
+#define ELIZA_FUSED_TBQ_PER_TOKEN (ELIZA_FUSED_HEAD_DIM / ELIZA_FUSED_TBQ_BLOCK)  /* 4 */
+
+/* TBQ3-V fused attention. Inputs:
+ *   q_sketch    [proj_dim, n_heads]                fp32, Π·q per head
+ *   packed_k    [head_dim, n_tokens, n_kv_heads]   block_qjl1_256 (34 B/token)
+ *   packed_v    [head_dim, n_tokens, n_kv_heads]   block_tbq3_0 ×4/token (56 B/token)
+ *   n_heads, n_kv_heads, n_tokens, sm_scale (pre-softmax temperature, e.g. 1/sqrt(head_dim))
+ * Output:
+ *   out         [head_dim, n_heads]                fp32
+ */
+void eliza_fused_attn_qjl_tbq3(const float * q_sketch,
+                               const eliza_block_qjl1_256 * packed_k,
+                               const eliza_block_tbq3_0 * packed_v,
+                               int n_heads, int n_kv_heads, int n_tokens,
+                               float sm_scale,
+                               float * out);
+
+/* Polar-V fused attention. Same K side; V is block_q4_polar (82 B/token, one
+ * block per 128-element head row). use_qjl selects whether the Polar V-cache
+ * carries its optional 1-bit residual. */
+void eliza_fused_attn_qjl_polar(const float * q_sketch,
+                                const eliza_block_qjl1_256 * packed_k,
+                                const eliza_block_q4_polar * packed_v,
+                                int n_heads, int n_kv_heads, int n_tokens,
+                                float sm_scale, int use_qjl,
+                                float * out);
 
 #ifdef __cplusplus
 }
