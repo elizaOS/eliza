@@ -564,7 +564,10 @@ export async function prewarmResponseHandler(
   try {
     const prefix = await renderMessageHandlerStablePrefix(runtime, roomId);
     if (!prefix) return false;
-    return await localInferenceEngine.prewarmConversation(String(roomId), prefix);
+    return await localInferenceEngine.prewarmConversation(
+      String(roomId),
+      prefix,
+    );
   } catch (err) {
     logger.debug(
       "[local-inference] prewarmResponseHandler failed (best-effort):",
@@ -588,7 +591,8 @@ export async function prewarmSystemPrefix(
   if (!localInferenceEngine.hasLoadedModel()) return false;
   if (localInferenceEngine.activeBackendId() !== "llama-server") return false;
   try {
-    const fixedRoomId = (runtime.agentId ?? SYSTEM_PREFIX_CONVERSATION_ID) as UUID;
+    const fixedRoomId = (runtime.agentId ??
+      SYSTEM_PREFIX_CONVERSATION_ID) as UUID;
     const prefix = await renderMessageHandlerStablePrefix(runtime, fixedRoomId);
     if (!prefix) return false;
     return await localInferenceEngine.prewarmConversation(

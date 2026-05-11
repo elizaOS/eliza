@@ -1198,7 +1198,8 @@ function resolveKeepAliveIntervalMs(): number {
   const raw = process.env.ELIZA_LOCAL_KEEPALIVE_INTERVAL_MS?.trim();
   if (!raw) return DEFAULT_KEEPALIVE_INTERVAL_MS;
   const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 30_000) return DEFAULT_KEEPALIVE_INTERVAL_MS;
+  if (!Number.isFinite(parsed) || parsed < 30_000)
+    return DEFAULT_KEEPALIVE_INTERVAL_MS;
   return parsed;
 }
 
@@ -1297,7 +1298,11 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       (b) => /omnivoice/i.test(b) || /libelizainference/i.test(b),
     );
     if (!fused) return null;
-    return { baseUrl: this.baseUrl, speechPath: "/v1/audio/speech", fused: true };
+    return {
+      baseUrl: this.baseUrl,
+      speechPath: "/v1/audio/speech",
+      fused: true,
+    };
   }
 
   /**
@@ -1662,7 +1667,8 @@ export class DflashLlamaServer implements LocalInferenceBackend {
   private startKeepAliveTimer(): void {
     if (this.keepAliveTimer) return;
     const intervalMs = resolveKeepAliveIntervalMs();
-    const staleThresholdMs = DEFAULT_CACHE_TTLS.short * KEEPALIVE_STALE_FRACTION;
+    const staleThresholdMs =
+      DEFAULT_CACHE_TTLS.short * KEEPALIVE_STALE_FRACTION;
     const timer = setInterval(() => {
       const now = Date.now();
       for (const [slotId, entry] of [...this.lastPrewarmBySlot]) {
