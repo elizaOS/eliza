@@ -11,12 +11,34 @@
 //   layers map but are not the same enum.
 // - The schema URL `https://elizalabs.ai/schemas/eliza-1.manifest.v1.json` is
 //   exported as a JSON Schema sibling file in this directory.
+// - Shared-vocabulary invariant: every text-bearing GGUF in an Eliza-1 bundle
+//   — the text/vision model, the DFlash drafter, the Qwen3-ASR text decoder,
+//   and (on 1.7B+) the Qwen3-Embedding model — is Qwen-lineage and shares the
+//   same Qwen2 BPE vocabulary (151 936 tokens) and the same merges table. This
+//   is what makes (a) DFlash speculative decoding correct (spec decoding only
+//   works if token ids match), (b) zero re-tokenization between ASR output and
+//   text input (inference/AGENTS.md §1), and (c) the drafter GGUFs ship without
+//   their own `tokenizer.ggml.merges` (repaired at load time from the text GGUF
+//   by `resolveDflashDrafter` in `../dflash-server.ts`). The shared *vocabulary*
+//   is not the same thing as a shared *token-embedding tensor*: each component
+//   carries its own `token_embd.weight` (different fine-tunes, often different
+//   hidden sizes), so the vocab matrix is duplicated per GGUF and cannot be
+//   deduplicated without a fused-architecture container — out of scope per
+//   inference/AGENTS.md §2. See
+//   `packages/inference/reports/porting/2026-05-11/qwen-backbone-unification.md`.
 
 import { z } from "zod";
 
 export const ELIZA_1_MANIFEST_SCHEMA_VERSION = "1" as const;
 export const ELIZA_1_MANIFEST_SCHEMA_URL =
   "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json" as const;
+
+// The shared Qwen2 BPE vocabulary every text-bearing component in an Eliza-1
+// bundle uses. Exported so runtime code can assert it (a GGUF whose
+// `tokenizer.ggml.tokens` length differs from this is not an Eliza-1 component
+// and the merges-repair / zero-re-tokenization assumptions do not hold).
+export const ELIZA_1_TOKENIZER_FAMILY = "eliza1" as const;
+export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 151_936 as const;
 
 // Tiers — see packages/inference/AGENTS.md §2 (Tier matrix).
 export const ELIZA_1_TIERS = ["0_6b", "1_7b", "9b", "27b", "27b-256k"] as const;
