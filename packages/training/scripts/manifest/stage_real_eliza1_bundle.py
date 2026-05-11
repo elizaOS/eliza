@@ -460,6 +460,12 @@ def _collect_files(bundle_dir: Path, *, tier: str) -> dict[str, list[FileEntry]]
     return files
 
 
+_LINEAGE_SLOT_DIR: Final[Mapping[str, str]] = {
+    "voice": "tts", "asr": "asr", "vad": "vad", "wakeword": "wakeword",
+    "vision": "vision", "embedding": "embedding",
+}
+
+
 def _write_lineage(*, bundle_dir: Path, tier: str, text_repo: str, text_rev: str, text_note: str,
                    drafter_target_sha: str | None, drafter_stamp_only: bool,
                    has_embedding: bool, has_vision: bool) -> dict[str, LineageEntry]:
@@ -467,6 +473,13 @@ def _write_lineage(*, bundle_dir: Path, tier: str, text_repo: str, text_rev: str
     data: dict[str, Any] = {}
     if path.is_file():
         data = json.loads(path.read_text())
+    # Drop optional-component lineage entries whose files aren't actually in
+    # the bundle (the asset stager always writes a wakeword lineage entry even
+    # when --skip-wakeword is set; the manifest validator rejects that).
+    for slot, subdir in _LINEAGE_SLOT_DIR.items():
+        d = bundle_dir / subdir
+        if slot in data and (not d.is_dir() or not any(p.is_file() for p in d.iterdir())):
+            data.pop(slot, None)
     text_base = f"{text_repo}@{text_rev}"
     text_license = "apache-2.0"
     data["text"] = {
@@ -612,11 +625,18 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
     contexts = CONTEXTS_BY_TIER[tier]
 
     # 1. Stage real voice/ASR/VAD assets from HF (writes lineage.json, licenses, cache preset).
+    # Always copy (not hardlink): the HF hub cache stores files as relative
+    # symlinks into blobs/, and os.link() of a symlink links the symlink
+    # itself, producing a broken relative symlink outside the cache dir.
     if not args.skip_assets:
         assets_args = argparse.Namespace(
-            tier=tier, bundle_dir=bundle_dir, dry_run=False, link_mode=args.link_mode,
+            tier=tier, bundle_dir=bundle_dir, dry_run=False, link_mode="copy",
             asr_repo=None, asr_file=None, asr_mmproj_file=None, upload_repo=None,
             upload_prefix="", public=False,
+            # openWakeWord is opt-in / hide-not-disable; skipping it keeps the
+            # bundle smaller and the voice pipeline still works (VAD-gated /
+            # push-to-talk). E3/E5 can add it later if a tier needs it.
+            skip_wakeword=getattr(args, "skip_wakeword", True),
         )
         assets_mod.stage_assets(assets_args)
 
@@ -634,7 +654,7 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
             dest.parent.mkdir(parents=True, exist_ok=True)
             if dest.exists():
                 dest.unlink()
-            _link_or_copy(cached, dest)
+            shutil.copy2(cached, dest)
         except Exception as exc:  # pragma: no cover - network path
             raise SystemExit(f"failed to stage embedding GGUF for {tier}: {exc}") from exc
 
@@ -776,6 +796,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                     help="Record that the drafter is stamped, not re-distilled.")
     ap.add_argument("--skip-assets", action="store_true",
                     help="Skip the HF asset stage (voice/ASR/VAD already present in --bundle-dir).")
+    ap.add_argument("--skip-wakeword", action="store_true", default=True,
+                    help="Skip staging the optional openWakeWord graphs (default: skipped).")
+    ap.add_argument("--with-wakeword", dest="skip_wakeword", action="store_false",
+                    help="Stage the optional openWakeWord graphs into the bundle.")
     ap.add_argument("--link-mode", choices=("copy", "hardlink"), default="copy")
     ap.add_argument("--version", default="1.0.0-staged.1")
     ap.add_argument("--generated-at", default=None)
