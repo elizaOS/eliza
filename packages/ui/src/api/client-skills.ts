@@ -3,7 +3,11 @@
  * custom actions, WhatsApp, agent events.
  */
 
-import type { AppPermissionsView, CustomActionDef } from "@elizaos/shared";
+import type {
+  AppPermissionsView,
+  CustomActionDef,
+  PutAppPermissionsRequest,
+} from "@elizaos/shared";
 import { packageNameToAppRouteSlug } from "@elizaos/shared";
 import { ElizaClient } from "./client-base";
 import type {
@@ -938,9 +942,16 @@ ElizaClient.prototype.setAppPermissions = async function (
   slug,
   namespaces,
 ) {
+  // Body shape derived from the zod schema so a server-side rename
+  // surfaces as a TS error here at compile time. See
+  // packages/shared/src/contracts/app-permissions-routes.ts for the
+  // schema this type comes from.
+  const body: PutAppPermissionsRequest = {
+    namespaces: Array.from(namespaces),
+  };
   return this.fetch(`/api/apps/permissions/${encodeURIComponent(slug)}`, {
     method: "PUT",
-    body: JSON.stringify({ namespaces }),
+    body: JSON.stringify(body),
   });
 };
 
