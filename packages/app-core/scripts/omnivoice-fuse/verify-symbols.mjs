@@ -2,7 +2,7 @@
  * Post-build symbol verification for fused targets.
  *
  * Asserts that the produced fused shared library (libelizainference)
- * exports BOTH `llama_*` and `omnivoice_*` symbols. If either family
+ * exports `llama_*`, `ov_*`, and `eliza_inference_*` symbols. If any family
  * is missing, the link step silently produced a half-fused artifact —
  * a hard error per packages/inference/AGENTS.md §3 ("missing fusion =
  * hard error", no fallback).
@@ -80,7 +80,7 @@ function dumpSymbols({ tool, file }) {
  * Verify a fused target's outputs. Hard-throws on any failure.
  *
  *   - The shared library MUST exist.
- *   - The library's exports MUST contain both /llama_/ and /omnivoice_/
+ *   - The library's exports MUST contain /llama_/ and /ov_/
  *     symbol families.
  *   - The library MUST export every `eliza_inference_*` ABI v1 symbol
  *     declared in `ffi.h`; otherwise the JS/Bun bridge can dlopen a
@@ -114,8 +114,7 @@ export function verifyFusedSymbols({ outDir, target }) {
   const symbols = dumpSymbols({ tool, file: lib });
 
   const llamaCount = (symbols.match(/\bllama_[A-Za-z_0-9]+/g) || []).length;
-  const omnivoiceCount = (symbols.match(/\bomnivoice_[A-Za-z_0-9]+/g) || [])
-    .length;
+  const omnivoiceCount = (symbols.match(/\bov_[A-Za-z_0-9]+/g) || []).length;
 
   if (llamaCount === 0) {
     throw new Error(
@@ -124,7 +123,7 @@ export function verifyFusedSymbols({ outDir, target }) {
   }
   if (omnivoiceCount === 0) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} has no omnivoice_* exports — TTS is missing from the fused artifact`,
+      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} has no ov_* exports — TTS is missing from the fused artifact`,
     );
   }
   const missingAbiSymbols = REQUIRED_ELIZA_INFERENCE_SYMBOLS.filter(
@@ -148,9 +147,8 @@ export function verifyFusedSymbols({ outDir, target }) {
     serverReport = {
       llamaSymbolCount: (serverSyms.match(/\bllama_[A-Za-z_0-9]+/g) || [])
         .length,
-      omnivoiceSymbolCount: (
-        serverSyms.match(/\bomnivoice_[A-Za-z_0-9]+/g) || []
-      ).length,
+      omnivoiceSymbolCount: (serverSyms.match(/\bov_[A-Za-z_0-9]+/g) || [])
+        .length,
       path: server,
     };
   }

@@ -69,10 +69,13 @@ export {
 /**
  * Voice on/off invariants (binding for every consumer of this module):
  *
- * 1. Voice is OFF by default — text + drafter only. TTS, ASR, the
- *    speaker preset cache, the phrase cache, the chunker, the
- *    rollback queue, the barge-in controller, and the ring buffer
- *    are NOT in RAM until `VoiceLifecycle.arm()` is called.
+ * 1. Voice is OFF by default — text + drafter only. Before
+ *    `EngineVoiceBridge.start()` there are no voice resources in RAM.
+ *    After `start()` but before `VoiceLifecycle.arm()`, only the tiny
+ *    default speaker preset, phrase seed metadata, and scheduler
+ *    scaffolding are live. TTS/ASR weight regions are NOT mapped or
+ *    re-paged until `VoiceLifecycle.arm()` calls the fused ABI's
+ *    `mmap_acquire`.
  *
  * 2. Shared resources between text and voice (one instance each per
  *    engine, refcounted by `SharedResourceRegistry`):

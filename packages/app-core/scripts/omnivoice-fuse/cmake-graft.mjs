@@ -64,6 +64,7 @@ if(MILADY_FUSE_OMNIVOICE)
     endif()
 
     add_library(omnivoice-core STATIC \${MILADY_OMNIVOICE_SOURCES})
+    target_compile_definitions(omnivoice-core PUBLIC OMNIVOICE_STATIC)
     target_include_directories(omnivoice-core PUBLIC
         \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/src
         \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}
@@ -91,6 +92,7 @@ if(MILADY_FUSE_OMNIVOICE)
     # Used by Electrobun + Capacitor bridges that dlopen one artifact.
     add_library(elizainference SHARED
         \${MILADY_OMNIVOICE_SOURCES})
+    target_compile_definitions(elizainference PRIVATE OMNIVOICE_BUILD)
     target_include_directories(elizainference PUBLIC
         \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/src
         \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}
@@ -153,9 +155,17 @@ export function appendCmakeGraft({ llamaCppRoot }) {
   }
   const original = fs.readFileSync(cmakePath, "utf8");
   if (original.includes(SENTINEL)) {
-    const upgraded = original.replace(
+    let upgraded = original.replace(
       "if(MILADY_FUSE_OMNIVOICE)\n    # Audio tokenizer",
       "if(MILADY_FUSE_OMNIVOICE)\n    find_package(Threads REQUIRED)\n\n    # Audio tokenizer",
+    );
+    upgraded = upgraded.replace(
+      "add_library(omnivoice-core STATIC ${MILADY_OMNIVOICE_SOURCES})\n    target_include_directories(omnivoice-core PUBLIC",
+      "add_library(omnivoice-core STATIC ${MILADY_OMNIVOICE_SOURCES})\n    target_compile_definitions(omnivoice-core PUBLIC OMNIVOICE_STATIC)\n    target_include_directories(omnivoice-core PUBLIC",
+    );
+    upgraded = upgraded.replace(
+      "add_library(elizainference SHARED\n        ${MILADY_OMNIVOICE_SOURCES})\n    target_include_directories(elizainference PUBLIC",
+      "add_library(elizainference SHARED\n        ${MILADY_OMNIVOICE_SOURCES})\n    target_compile_definitions(elizainference PRIVATE OMNIVOICE_BUILD)\n    target_include_directories(elizainference PUBLIC",
     );
     if (upgraded !== original) {
       fs.writeFileSync(cmakePath, upgraded, "utf8");
