@@ -1552,16 +1552,13 @@ export function BrowserWorkspaceView(): JSX.Element {
     if (workspace.mode !== "desktop") return;
     for (const [tabId, element] of electrobunWebviewRefs.current.entries()) {
       if (!element) continue;
-      const inactive = tabId !== selectedTabId;
+      // Hide + engage passthrough whenever the tab is inactive OR an
+      // in-app consent dialog is open over the surface, so the dialog (a
+      // React sibling) renders above the native OOPIF and stays clickable.
+      const occluded = browserWorkspaceConfirmOpen || tabId !== selectedTabId;
       try {
-<<<<<<< HEAD
-        element.toggleHidden(
-          browserWorkspaceConfirmOpen || tabId !== selectedTabId,
-        );
-=======
-        element.toggleHidden(inactive);
-        element.togglePassthrough(inactive);
->>>>>>> pr-7589
+        element.toggleHidden(occluded);
+        element.togglePassthrough(occluded);
         element.syncDimensions(true);
       } catch {
         // best-effort
