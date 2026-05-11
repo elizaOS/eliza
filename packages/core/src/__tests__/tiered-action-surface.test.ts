@@ -542,7 +542,7 @@ describe("v5 tiered action surface", () => {
 
 		const prompt = plannerUserContent(runtime);
 		expect(prompt).toMatch(/selected_contexts:[^\n]*tasks/);
-		expect(prompt).toContain('"parentActionHints":["SCHEDULED_TASKS"]');
+		expect(prompt).toContain('"parentActionHints":["CHECKIN"]');
 		const actions = availableActionsSection(runtime);
 		expect(actions).toContain("CHECKIN");
 	});

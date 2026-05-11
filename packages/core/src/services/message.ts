@@ -589,27 +589,6 @@ function resolvePlannerActionNameFromLookup(
 			);
 			return [resolvedAlias.name];
 		}
-
-		const legacyParentActionName =
-			PLANNER_ACTION_LEGACY_PARENT_ALIASES.get(aliasedActionName);
-		if (legacyParentActionName) {
-			const resolvedLegacyParent = resolveRuntimeAction(
-				lookup,
-				legacyParentActionName,
-			);
-			if (resolvedLegacyParent) {
-				runtime.logger.info(
-					{
-						src: "service:message",
-						actionName,
-						aliasedActionName: resolvedLegacyParent.name,
-						canonicalAliasedActionName: aliasedActionName,
-					},
-					"Repaired planner action alias through legacy parent",
-				);
-				return [resolvedLegacyParent.name];
-			}
-		}
 	}
 
 	return [];
@@ -5179,18 +5158,6 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["REQUEST_UPLOAD", "COMPUTER_USE"],
 		["UPLOAD_PORTAL", "COMPUTER_USE"],
 		["DESKTOP", "COMPUTER_USE"],
-	].map(([from, to]) => [
-		normalizeActionIdentifier(from),
-		normalizeActionIdentifier(to),
-	]),
-);
-
-const PLANNER_ACTION_LEGACY_PARENT_ALIASES = new Map(
-	[
-		["OWNER_TODOS", "LIFE"],
-		["OWNER_GOALS", "LIFE"],
-		["OWNER_REMINDERS", "LIFE"],
-		["OWNER_ROUTINES", "LIFE"],
 	].map(([from, to]) => [
 		normalizeActionIdentifier(from),
 		normalizeActionIdentifier(to),
