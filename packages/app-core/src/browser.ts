@@ -1,4 +1,11 @@
 export * from "@elizaos/ui";
+// Re-exports from the dist/index.js wildcard below collide with these
+// two names — pick the dist side explicitly (milady main.tsx imports
+// the registry types, not the UI surface variants).
+export {
+  type ConfigField,
+  getPlugins,
+} from "../dist/index.js";
 
 export type CompatRuntimeState = {
   current: unknown;
