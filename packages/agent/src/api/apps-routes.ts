@@ -11,11 +11,15 @@ import {
   type AppSessionActionResult,
   createGeneratedAppHeroSvg,
   hasAppInterface,
+  PostCreateAppRequestSchema,
   PostInstallAppRequestSchema,
   PostLaunchAppRequestSchema,
   PostLoadFromDirectoryRequestSchema,
+  PostOverlayPresenceRequestSchema,
   PostRelaunchAppRequestSchema,
   PostReplaceFavoritesRequestSchema,
+  PostRunControlRequestSchema,
+  PostRunMessageRequestSchema,
   PostStopAppRequestSchema,
   PutAppPermissionsRequestSchema,
   PutFavoriteAppRequestSchema,
@@ -491,27 +495,6 @@ function parseCapturedBody(body: string): Record<string, unknown> | null {
   }
 }
 
-function readSteeringContent(
-  body: Record<string, unknown> | null,
-): string | null {
-  const content =
-    typeof body?.content === "string"
-      ? body.content
-      : typeof body?.message === "string"
-        ? body.message
-        : null;
-  const trimmed = content?.trim() ?? "";
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function readSteeringAction(
-  body: Record<string, unknown> | null,
-): "pause" | "resume" | null {
-  const action = typeof body?.action === "string" ? body.action.trim() : "";
-  if (action === "pause" || action === "resume") return action;
-  return null;
-}
-
 function isAppRunSummary(value: unknown): value is AppRunSummary {
   return (
     typeof value === "object" &&
@@ -816,7 +799,7 @@ export async function handleAppsRoutes(
 
     if (method === "PUT") {
       const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-      if (rawBody === null || rawBody === undefined) return true;
+      if (rawBody === null) return true;
       const parsed = PutFavoriteAppRequestSchema.safeParse(rawBody);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
@@ -845,7 +828,7 @@ export async function handleAppsRoutes(
       return true;
     }
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawBody === null || rawBody === undefined) return true;
+    if (rawBody === null) return true;
     const parsed = PostReplaceFavoritesRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -871,11 +854,20 @@ export async function handleAppsRoutes(
 
   // Dashboard heartbeat for overlay apps (companion, etc.) — no AppManager run.
   if (method === "POST" && pathname === "/api/apps/overlay-presence") {
-    const body = await readJsonBody<{ appName?: string | null }>(req, res);
-    if (!body) return true;
-    const raw = body.appName;
-    const appName =
-      typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null) return true;
+    const parsed = PostOverlayPresenceRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const issuePath = issue?.path?.join(".") ?? "<root>";
+      error(
+        res,
+        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        400,
+      );
+      return true;
+    }
+    const { appName } = parsed.data;
     setOverlayAppPresence(appName);
     json(res, { ok: true, appName });
     return true;
@@ -946,29 +938,18 @@ export async function handleAppsRoutes(
         return true;
       }
 
-      const body =
+      const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+      if (rawBody === null) return true;
+      const parsed =
         subroute === "message"
-          ? await readJsonBody<{ content?: string }>(req, res)
-          : await readJsonBody<{ action?: "pause" | "resume" }>(req, res);
-      if (!body) return true;
-
-      const normalizedBody =
-        subroute === "message"
-          ? {
-              content: readSteeringContent(body),
-            }
-          : {
-              action: readSteeringAction(body),
-            };
-      if (
-        (subroute === "message" && !normalizedBody.content) ||
-        (subroute === "control" && !normalizedBody.action)
-      ) {
+          ? PostRunMessageRequestSchema.safeParse(rawBody)
+          : PostRunControlRequestSchema.safeParse(rawBody);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        const issuePath = issue?.path?.join(".") ?? "<root>";
         error(
           res,
-          subroute === "message"
-            ? "content is required"
-            : "action must be pause or resume",
+          `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
           400,
         );
         return true;
@@ -978,7 +959,7 @@ export async function handleAppsRoutes(
         ctx,
         run,
         subroute,
-        normalizedBody as Record<string, unknown>,
+        parsed.data as Record<string, unknown>,
       );
       if (!result) {
         error(res, "Run steering failed", 500);
@@ -1024,7 +1005,7 @@ export async function handleAppsRoutes(
   if (method === "POST" && pathname === "/api/apps/launch") {
     try {
       const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-      if (rawBody === null || rawBody === undefined) return true;
+      if (rawBody === null) return true;
       const parsed = PostLaunchAppRequestSchema.safeParse(rawBody);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
@@ -1053,7 +1034,7 @@ export async function handleAppsRoutes(
   if (method === "POST" && pathname === "/api/apps/install") {
     try {
       const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-      if (rawBody === null || rawBody === undefined) return true;
+      if (rawBody === null) return true;
       const parsed = PostInstallAppRequestSchema.safeParse(rawBody);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
@@ -1117,7 +1098,7 @@ export async function handleAppsRoutes(
 
   if (method === "POST" && pathname === "/api/apps/stop") {
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawBody === null || rawBody === undefined) return true;
+    if (rawBody === null) return true;
     const parsed = PostStopAppRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -1227,7 +1208,7 @@ export async function handleAppsRoutes(
 
   if (method === "POST" && pathname === "/api/apps/relaunch") {
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawBody === null || rawBody === undefined) return true;
+    if (rawBody === null) return true;
     const parsed = PostRelaunchAppRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -1363,7 +1344,7 @@ export async function handleAppsRoutes(
     // the zod schema in @elizaos/shared so the wire shape is the
     // single source of truth (see contracts/app-permissions-routes.ts).
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawBody === null || rawBody === undefined) return true;
+    if (rawBody === null) return true;
     const parsed = PutAppPermissionsRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -1395,7 +1376,7 @@ export async function handleAppsRoutes(
     // The schema handles the required check, the absolute-path check,
     // and rejects extra unknown fields via .strict().
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawBody === null || rawBody === undefined) return true;
+    if (rawBody === null) return true;
     const parsed = PostLoadFromDirectoryRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -1530,16 +1511,20 @@ export async function handleAppsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/apps/create") {
-    const body = await readJsonBody<{ intent?: string; editTarget?: string }>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    const intent = body.intent?.trim() ?? "";
-    if (!intent) {
-      error(res, "intent is required");
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null) return true;
+    const parsed = PostCreateAppRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const issuePath = issue?.path?.join(".") ?? "<root>";
+      error(
+        res,
+        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        400,
+      );
       return true;
     }
+    const { intent, editTarget } = parsed.data;
 
     const runtimeWithActions = runtime as {
       actions?: Array<{
@@ -1583,11 +1568,11 @@ export async function handleAppsRoutes(
           parameters: {
             mode: "create",
             intent,
-            ...(body.editTarget ? { editTarget: body.editTarget } : {}),
+            ...(editTarget ? { editTarget } : {}),
           },
           mode: "create",
           intent,
-          ...(body.editTarget ? { editTarget: body.editTarget } : {}),
+          ...(editTarget ? { editTarget } : {}),
         },
         callback,
       )) as { success?: boolean; text?: string; data?: unknown } | undefined;
