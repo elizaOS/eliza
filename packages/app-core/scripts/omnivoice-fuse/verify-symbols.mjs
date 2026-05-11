@@ -30,6 +30,7 @@ export const REQUIRED_OMNIVOICE_SYMBOLS = Object.freeze([
   "ov_tts_default_params",
   "ov_init",
   "ov_free",
+  "ov_log_set",
   "ov_synthesize",
   "ov_duration_sec_to_tokens",
 ]);
