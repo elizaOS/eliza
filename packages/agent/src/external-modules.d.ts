@@ -335,11 +335,11 @@ declare module "@elizaos/plugin-openai";
 declare module "@elizaos/plugin-shell";
 declare module "@elizaos/plugin-x402" {
   import type {
+    IAgentRuntime,
     PaymentEnabledRoute,
     Route,
     RouteRequest,
     RouteResponse,
-    IAgentRuntime,
   } from "@elizaos/core";
 
   export interface X402StartupValidationResult {

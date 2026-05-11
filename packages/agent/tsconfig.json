@@ -40,6 +40,9 @@
       "@elizaos/capacitor-contacts": [
         "../native-plugins/contacts/src/index.ts"
       ],
+      "@elizaos/capacitor-llama": [
+        "../native-plugins/llama/src/index.ts"
+      ],
       "@elizaos/capacitor-phone": [
         "../native-plugins/phone/src/index.ts"
       ],
@@ -161,7 +164,8 @@
       "@elizaos/plugin-discord-local/*": [
         "../../plugins/plugin-discord-local/src/*"
       ],
-      "@elizaos/*": ["../../node_modules/@elizaos/*"]
+      "@elizaos/*": ["../../node_modules/@elizaos/*"],
+      "puppeteer-core": ["./node_modules/puppeteer-core"]
     }
   },
   "include": [

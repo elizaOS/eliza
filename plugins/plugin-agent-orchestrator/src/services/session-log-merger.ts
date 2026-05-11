@@ -28,8 +28,8 @@
  */
 
 import {
-  type IAgentRuntime,
   annotateActiveTrajectoryStep,
+  type IAgentRuntime,
   resolveTrajectoryLogger,
 } from "@elizaos/core";
 import type {
@@ -81,8 +81,11 @@ function buildChildTrajectoryId(parentStepId: string): string {
 }
 
 function isLlmStep(step: NormalizedTrajectoryStep): boolean {
-  return step.kind === "reasoning" || step.kind === "text" ||
-    step.kind === "tool_call";
+  return (
+    step.kind === "reasoning" ||
+    step.kind === "text" ||
+    step.kind === "tool_call"
+  );
 }
 
 function buildLlmDetails(
@@ -118,9 +121,7 @@ function buildLlmDetails(
   };
 }
 
-function buildToolResultScript(
-  step: NormalizedTrajectoryStep,
-): string {
+function buildToolResultScript(step: NormalizedTrajectoryStep): string {
   // The trajectory step `script` field is the natural place to land tool
   // result payloads — it's already used elsewhere for action exec output.
   // Cap is enforced inside the storage layer; we hand the full string
@@ -173,7 +174,7 @@ export async function mergeSessionLogIntoTrajectory(
   }
 
   const childTrajectoryId = buildChildTrajectoryId(parentStepId);
-  await trajectoryLogger.startTrajectory(childTrajectoryId, {
+  const startOptions = {
     agentId: runtime.agentId,
     source: "claude-code-session",
     metadata: {
@@ -186,7 +187,8 @@ export async function mergeSessionLogIntoTrajectory(
       totalUsage: capture.totalUsage,
       models: capture.models,
     },
-  });
+  };
+  await trajectoryLogger.startTrajectory(childTrajectoryId, startOptions);
 
   let stepsWritten = 0;
   for (const step of capture.steps) {
@@ -196,8 +198,8 @@ export async function mergeSessionLogIntoTrajectory(
       // the well-known fields and trust the schema-derived consumer.
       trajectoryLogger.logLlmCall({
         stepId: step.stepId,
-        ...(details as never),
-      });
+        ...details,
+      } as Parameters<NonNullable<typeof trajectoryLogger.logLlmCall>>[0]);
       stepsWritten += 1;
       continue;
     }
@@ -212,7 +214,6 @@ export async function mergeSessionLogIntoTrajectory(
         script: buildToolResultScript(step),
       });
       stepsWritten += 1;
-      continue;
     }
   }
 
