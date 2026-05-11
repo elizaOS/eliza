@@ -1428,7 +1428,8 @@ export function RuntimeGate() {
           subtitle={
             cloudStage === "login"
               ? t("runtimegate.cloudHeaderLoginSubtitle", {
-                  defaultValue: "We'll handle the heavy lifting for you.",
+                  defaultValue:
+                    "We'll provision a hosted agent and keep it running. Free trial; pay for what you use.",
                 })
               : undefined
           }
@@ -1445,14 +1446,6 @@ export function RuntimeGate() {
 
         {cloudStage === "login" && (
           <div className="mt-4 flex w-full max-w-[28rem] flex-col gap-4 text-left">
-            <p
-              className="text-3xs uppercase tracking-[0.22em] text-[#ffe600]/80"
-              style={{ fontFamily: MONO_FONT }}
-            >
-              {t("runtimegate.cloudLoginEyebrow", {
-                defaultValue: "Sign in to Eliza Cloud",
-              })}
-            </p>
             <Button
               type="button"
               variant="default"
@@ -2056,7 +2049,7 @@ function WelcomeChooser({
       <div className="flex w-full max-w-xl flex-col items-center gap-3">
         <p
           style={{ fontFamily: MONO_FONT }}
-          className="text-3xs uppercase tracking-[0.22em] text-[#ffe600]/80"
+          className="text-3xs tracking-[0.22em] text-[#ffe600]/80"
         >
           {t("runtimegate.welcomeEyebrow", {
             defaultValue: "elizaOS — immersion agent runtime",
@@ -2079,7 +2072,8 @@ function WelcomeChooser({
           }}
         >
           {t("runtimegate.welcomeSubtitle", {
-            defaultValue: "Your personal AI. Ready in seconds, hosted by us.",
+            defaultValue:
+              "Your personal AI, hosted on Eliza Cloud — ready in seconds.",
           })}
         </p>
       </div>

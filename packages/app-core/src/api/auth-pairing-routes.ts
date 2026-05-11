@@ -24,7 +24,7 @@ import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
-import { isCloudProvisioned } from "./server-onboarding-compat";
+import { isCloudProvisioned } from "./server-onboarding-helpers";
 
 // ---------------------------------------------------------------------------
 // Pairing state & helpers

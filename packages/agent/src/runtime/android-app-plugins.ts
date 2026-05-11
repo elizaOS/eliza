@@ -14,7 +14,6 @@ import {
 } from "@elizaos/app-contacts";
 import {
   phoneCallLogProvider,
-  placeCallAction,
   appPhonePlugin as rawPhonePlugin,
 } from "@elizaos/app-phone";
 import {
@@ -54,7 +53,6 @@ const appContactsPluginModule = {
 const appPhonePluginModule = {
   default: appPhonePlugin,
   appPhonePlugin,
-  placeCallAction,
   phoneCallLogProvider,
 };
 

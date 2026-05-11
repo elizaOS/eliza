@@ -1504,14 +1504,16 @@ export async function resolvePlugins(
         )) as PluginModuleShape;
 
     // Pre-flight: ensure native dependencies are available for special plugins.
+    // For plugin-browser, the stagehand-server binary is only needed by the
+    // `stagehand` backend; the workspace (Electrobun) and bridge (Chrome/Safari
+    // extension) backends do not require it. So a missing server is a warning,
+    // not a fatal load error — the plugin still registers BROWSER + its routes
+    // for the backends that work without stagehand.
     if (pluginName === "@elizaos/plugin-browser") {
       if (!ensureBrowserServerLink()) {
-        failedPlugins.push({
-          name: pluginName,
-          error: "browser server binary not found",
-        });
-        // ensureBrowserServerLink() already logged one debug line with setup hints.
-        return null;
+        logger.warn(
+          "[eliza] plugin-browser: stagehand-server binary not found — loading anyway; the workspace and bridge backends do not need it, but the `stagehand` backend will be unavailable. To enable stagehand, build/link plugins/plugin-browser/stagehand-server.",
+        );
       }
     }
 

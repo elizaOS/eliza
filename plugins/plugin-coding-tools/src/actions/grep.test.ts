@@ -13,7 +13,7 @@ import {
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
 } from "../types.js";
-import { grepAction } from "./grep.js";
+import { grepHandler } from "./grep.js";
 
 function locateSystemRg(): string | undefined {
   const candidates = [
@@ -117,7 +117,7 @@ describe("GREP", () => {
     }
     const { runtime, message } = bundle;
 
-    const result = await grepAction.handler?.(runtime, message, state, {
+    const result = await grepHandler(runtime, message, state, {
       parameters: { pattern: "NEEDLE" },
     });
 
@@ -138,7 +138,7 @@ describe("GREP", () => {
     }
     const { runtime, message } = bundle;
 
-    const sensitive = await grepAction.handler?.(runtime, message, state, {
+    const sensitive = await grepHandler(runtime, message, state, {
       parameters: { pattern: "needle", output_mode: "files_with_matches" },
     });
     expect(sensitive.success).toBe(true);
@@ -146,7 +146,7 @@ describe("GREP", () => {
       sensitive.data as Record<string, unknown> | undefined
     )?.matches_count as number;
 
-    const insensitive = await grepAction.handler?.(runtime, message, state, {
+    const insensitive = await grepHandler(runtime, message, state, {
       parameters: {
         pattern: "needle",
         output_mode: "files_with_matches",
@@ -169,7 +169,7 @@ describe("GREP", () => {
     }
     const { runtime, message } = bundle;
 
-    const result = await grepAction.handler?.(runtime, message, state, {
+    const result = await grepHandler(runtime, message, state, {
       parameters: { pattern: "NEEDLE", path: blockedPath },
     });
     expect(result.success).toBe(false);
@@ -184,7 +184,7 @@ describe("GREP", () => {
     }
     const { runtime, message } = bundle;
 
-    const result = await grepAction.handler?.(runtime, message, state, {
+    const result = await grepHandler(runtime, message, state, {
       parameters: { pattern: "ZZZ_DEFINITELY_NO_MATCH_ZZZ" },
     });
     expect(result.success).toBe(true);
@@ -201,7 +201,7 @@ describe("GREP", () => {
       return;
     }
     const { runtime } = bundle;
-    const result = await grepAction.handler?.(runtime, {} as Memory, state, {
+    const result = await grepHandler(runtime, {} as Memory, state, {
       parameters: { pattern: "NEEDLE" },
     });
     expect(result.success).toBe(false);

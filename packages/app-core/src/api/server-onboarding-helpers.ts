@@ -361,7 +361,7 @@ export function deriveCompatOnboardingReplayBody(
  * on cloud-provisioned shape. It does NOT authorise anything: callers must
  * still pass through `ensureCompatApiAuthorized` (bearer token) or — once
  * the dashboard mints sessions — `ensureAuthSessionOrBootstrap`. The
- * audited bypasses at `auth-pairing-compat-routes.ts:124,140` and the
+ * audited bypasses at `auth-pairing-routes.ts:124,140` and the
  * onboarding-skip used to read this; both have been removed.
  *
  * See `docs/security/remote-auth-hardening-plan.md` §3.4.

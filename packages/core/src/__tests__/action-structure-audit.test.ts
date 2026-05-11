@@ -4,6 +4,7 @@ import { allActionDocs } from "../generated/action-docs.ts";
 const RETIRED_GENERATED_ACTION_NAMES = [
 	"ASK_USER_QUESTION",
 	"CHECKIN",
+	"DESKTOP",
 	"DISCORD_SETUP_CREDENTIALS",
 	"ENTER_WORKTREE",
 	"EXIT_WORKTREE",
@@ -41,6 +42,11 @@ const RETIRED_GENERATED_ACTION_NAMES = [
 	"GLOB",
 	"LS",
 	"WEB_FETCH",
+	"CREATE_TODO",
+	"COMPLETE_TODO",
+	"LIST_TODOS",
+	"EDIT_TODO",
+	"DELETE_TODO",
 ] as const;
 
 const LEGACY_DISCRIMINATORS = new Set([

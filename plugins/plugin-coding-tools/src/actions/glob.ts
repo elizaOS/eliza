@@ -2,7 +2,6 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import {
-  type Action,
   type ActionResult,
   logger as coreLogger,
   type HandlerCallback,
@@ -19,7 +18,6 @@ import {
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import {
-  CODING_TOOLS_CONTEXTS,
   CODING_TOOLS_LOG_PREFIX,
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
@@ -135,166 +133,107 @@ async function nodeGlob(
   return out;
 }
 
-export const globAction: Action = {
-  name: "GLOB",
-  contexts: [...CODING_TOOLS_CONTEXTS],
-  contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
-  roleGate: { minRole: "ADMIN" },
-  similes: ["FIND_FILES"],
-  description:
-    "Find files matching a glob pattern (e.g. '**/*.ts'). Returns up to 100 absolute paths sorted by mtime descending. Excludes VCS, build, and dependency directories. Use this instead of SHELL for file discovery.",
-  descriptionCompressed:
-    "Find files by glob (e.g. '**/*.ts'); returns absolute paths sorted by mtime.",
-  parameters: [
-    {
-      name: "pattern",
-      description: "Glob pattern relative to the search root (e.g. '**/*.ts').",
-      required: true,
-      schema: { type: "string" },
-    },
-    {
-      name: "path",
-      description:
-        "Absolute path of the directory to search. Defaults to the session cwd.",
-      required: false,
-      schema: { type: "string" },
-    },
-  ],
-  validate: async () => true,
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-    options?: unknown,
-    callback?: HandlerCallback,
-  ): Promise<ActionResult> => {
-    const conversationId =
-      message.roomId !== undefined && message.roomId !== null
-        ? String(message.roomId)
-        : undefined;
-    if (!conversationId) {
-      return failureToActionResult({
-        reason: "missing_param",
-        message: "no roomId",
-      });
-    }
+export async function globHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state: State | undefined,
+  options: unknown,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const conversationId =
+    message.roomId !== undefined && message.roomId !== null
+      ? String(message.roomId)
+      : undefined;
+  if (!conversationId) {
+    return failureToActionResult({
+      reason: "missing_param",
+      message: "no roomId",
+    });
+  }
 
-    const pattern = readStringParam(options, "pattern");
-    if (!pattern || pattern.length === 0) {
-      return failureToActionResult({
-        reason: "missing_param",
-        message: "pattern is required",
-      });
-    }
+  const pattern = readStringParam(options, "pattern");
+  if (!pattern || pattern.length === 0) {
+    return failureToActionResult({
+      reason: "missing_param",
+      message: "pattern is required",
+    });
+  }
 
-    const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
-      typeof SandboxService
-    > | null;
-    const session = runtime.getService(SESSION_CWD_SERVICE) as InstanceType<
-      typeof SessionCwdService
-    > | null;
-    if (!sandbox || !session) {
-      return failureToActionResult({
-        reason: "internal",
-        message: "coding-tools services unavailable",
-      });
-    }
+  const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
+    typeof SandboxService
+  > | null;
+  const session = runtime.getService(SESSION_CWD_SERVICE) as InstanceType<
+    typeof SessionCwdService
+  > | null;
+  if (!sandbox || !session) {
+    return failureToActionResult({
+      reason: "internal",
+      message: "coding-tools services unavailable",
+    });
+  }
 
-    const requestedPath = readStringParam(options, "path");
-    const targetPath = requestedPath ?? session.getCwd(conversationId);
+  const requestedPath = readStringParam(options, "path");
+  const targetPath = requestedPath ?? session.getCwd(conversationId);
 
-    const validation = await sandbox.validatePath(conversationId, targetPath);
-    if (validation.ok === false) {
-      const reason =
-        validation.reason === "blocked" ? "path_blocked" : "invalid_param";
-      return failureToActionResult({ reason, message: validation.message });
-    }
-    const root = validation.resolved;
+  const validation = await sandbox.validatePath(conversationId, targetPath);
+  if (validation.ok === false) {
+    const reason =
+      validation.reason === "blocked" ? "path_blocked" : "invalid_param";
+    return failureToActionResult({ reason, message: validation.message });
+  }
+  const root = validation.resolved;
 
-    let candidates: string[];
-    const builtinGlob = getNodeFsGlob();
-    if (builtinGlob) {
-      try {
-        candidates = await nodeGlob(builtinGlob, root, pattern);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        coreLogger.warn(
-          `${CODING_TOOLS_LOG_PREFIX} GLOB node:fs.glob failed (${msg}); falling back to walker`,
-        );
-        candidates = await walkFallback(root, pattern);
-      }
-    } else {
+  let candidates: string[];
+  const builtinGlob = getNodeFsGlob();
+  if (builtinGlob) {
+    try {
+      candidates = await nodeGlob(builtinGlob, root, pattern);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      coreLogger.warn(
+        `${CODING_TOOLS_LOG_PREFIX} GLOB node:fs.glob failed (${msg}); falling back to walker`,
+      );
       candidates = await walkFallback(root, pattern);
     }
+  } else {
+    candidates = await walkFallback(root, pattern);
+  }
 
-    const stats = await Promise.all(
-      candidates.map(async (filePath) => {
-        try {
-          const stat = await fs.stat(filePath);
-          if (!stat.isFile()) return undefined;
-          return { filePath, mtimeMs: stat.mtimeMs };
-        } catch {
-          return undefined;
-        }
-      }),
-    );
+  const stats = await Promise.all(
+    candidates.map(async (filePath) => {
+      try {
+        const stat = await fs.stat(filePath);
+        if (!stat.isFile()) return undefined;
+        return { filePath, mtimeMs: stat.mtimeMs };
+      } catch {
+        return undefined;
+      }
+    }),
+  );
 
-    const filtered = stats.filter(
-      (entry): entry is { filePath: string; mtimeMs: number } =>
-        entry !== undefined,
-    );
-    filtered.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const filtered = stats.filter(
+    (entry): entry is { filePath: string; mtimeMs: number } =>
+      entry !== undefined,
+  );
+  filtered.sort((a, b) => b.mtimeMs - a.mtimeMs);
 
-    const truncated = filtered.length > RESULT_LIMIT;
-    const limited = filtered
-      .slice(0, RESULT_LIMIT)
-      .map((entry) => entry.filePath);
+  const truncated = filtered.length > RESULT_LIMIT;
+  const limited = filtered
+    .slice(0, RESULT_LIMIT)
+    .map((entry) => entry.filePath);
 
-    const header = `${limited.length} files (truncated=${truncated})`;
-    const text =
-      limited.length === 0 ? header : `${header}\n${limited.join("\n")}`;
+  const header = `${limited.length} files (truncated=${truncated})`;
+  const text =
+    limited.length === 0 ? header : `${header}\n${limited.join("\n")}`;
 
-    coreLogger.debug(
-      `${CODING_TOOLS_LOG_PREFIX} GLOB pattern=${JSON.stringify(pattern)} root=${root} found=${limited.length} truncated=${truncated}`,
-    );
+  coreLogger.debug(
+    `${CODING_TOOLS_LOG_PREFIX} GLOB pattern=${JSON.stringify(pattern)} root=${root} found=${limited.length} truncated=${truncated}`,
+  );
 
-    if (callback) await callback({ text });
+  if (callback) await callback({ text });
 
-    return successActionResult(text, {
-      files: limited,
-      truncated,
-    });
-  },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Find all TypeScript test files in the repo.", source: "chat" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Listing matches for **/*.test.ts.",
-          actions: ["GLOB"],
-          thought:
-            "Pattern-based file lookup maps to GLOB with pattern='**/*.test.ts'.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Find every package.json under packages/.", source: "chat" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Listing matches for packages/**/package.json.",
-          actions: ["GLOB"],
-          thought:
-            "Scoped glob with explicit prefix; GLOB takes pattern and the session cwd handles the root.",
-        },
-      },
-    ],
-  ],
-};
+  return successActionResult(text, {
+    files: limited,
+    truncated,
+  });
+}

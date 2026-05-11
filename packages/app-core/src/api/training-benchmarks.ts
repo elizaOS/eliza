@@ -36,12 +36,45 @@
  *   a coordinated change.
  */
 
+import { createRequire } from "node:module";
 import fs from "node:fs";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { ensureRouteAuthorized } from "./auth.ts";
+
+// node:sqlite is a Node.js v22.5+ built-in and is not yet available in every
+// Bun release (Bun 1.3.10 ships without it; 1.3.13 inside the Electrobun
+// bundle has it). The training-benchmarks route is one optional consumer; if
+// the route is never called, we should not fail module init just because the
+// runtime lacks the builtin. So resolve lazily and gate the route on
+// availability — calls when sqlite is missing return 503 instead of crashing
+// the entire API on first import.
+type DatabaseSyncCtor = new (
+  filename: string,
+  options?: { readOnly?: boolean },
+) => {
+  prepare(sql: string): {
+    all(...params: unknown[]): Record<string, unknown>[];
+    get(...params: unknown[]): Record<string, unknown> | undefined;
+    run(...params: unknown[]): { changes: number; lastInsertRowid: number };
+  };
+  close(): void;
+};
+const requireFromHere = createRequire(import.meta.url);
+let DatabaseSyncCached: DatabaseSyncCtor | null | undefined;
+function loadDatabaseSync(): DatabaseSyncCtor | null {
+  if (DatabaseSyncCached !== undefined) return DatabaseSyncCached;
+  try {
+    const mod = requireFromHere("node:sqlite") as {
+      DatabaseSync?: DatabaseSyncCtor;
+    };
+    DatabaseSyncCached = mod?.DatabaseSync ?? null;
+  } catch {
+    DatabaseSyncCached = null;
+  }
+  return DatabaseSyncCached;
+}
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson, sendJsonError } from "./response";
 
@@ -158,6 +191,17 @@ export function openBenchmarkResultsReader(
     };
   }
 
+  const DatabaseSync = loadDatabaseSync();
+  if (!DatabaseSync) {
+    // Runtime lacks node:sqlite (e.g. older Bun). Surface "not ready"
+    // instead of throwing — callers treat this as no benchmark data.
+    return {
+      ready: false,
+      getHistory: () => [],
+      getLatest: () => null,
+      close: () => {},
+    };
+  }
   const db = new DatabaseSync(dbPath, { readOnly: true });
   const historyStmt = db.prepare(
     `SELECT id, model_id, benchmark, score, ts, dataset_version, code_commit

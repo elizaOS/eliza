@@ -104,6 +104,13 @@ interface StoredWorkflowRow {
 
 interface ExecuteOptions {
   mode?: WorkflowExecuteMode;
+  /**
+   * Optional payload to seed the start node's first item. Used by the
+   * dispatch service to forward event-bridge data (e.g. `{eventKind,
+   * eventPayload}`) into trigger-mode workflows so `respondToEvent` and
+   * other nodes can read upstream context. Ignored when empty.
+   */
+  triggerData?: Record<string, unknown>;
 }
 
 interface IncomingConnection {
@@ -1778,7 +1785,7 @@ export class EmbeddedWorkflowService extends Service {
 
   async executeWorkflow(id: string, options: ExecuteOptions = {}): Promise<WorkflowExecution> {
     const entry = await this.getStoredWorkflow(id);
-    return this.runWorkflow(entry.workflow, options.mode ?? 'manual');
+    return this.runWorkflow(entry.workflow, options.mode ?? 'manual', options.triggerData);
   }
 
   async executeWebhook(
@@ -2107,7 +2114,8 @@ export class EmbeddedWorkflowService extends Service {
 
   private async runWorkflow(
     workflowData: WorkflowDefinition,
-    mode: WorkflowExecuteMode
+    mode: WorkflowExecuteMode,
+    triggerData?: Record<string, unknown>
   ): Promise<WorkflowExecution> {
     const executionId = randomUUID();
     const startedAt = new Date();
@@ -2149,7 +2157,9 @@ export class EmbeddedWorkflowService extends Service {
 
           const inputData =
             isStartNode && incomingConnections.length === 0
-              ? [[]]
+              ? triggerData && Object.keys(triggerData).length > 0
+                ? [[{ json: triggerData }]]
+                : [[]]
               : this.collectInputData(node.name, incoming, nodeOutputs);
           const hasInputItems = inputData.some((items) => items.length > 0);
           const started = Date.now();

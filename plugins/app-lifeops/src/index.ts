@@ -1,26 +1,28 @@
 export { detectHealthBackend } from "@elizaos/plugin-health";
-export { appBlockAction } from "./actions/app-block.js";
-export { autofillAction } from "./actions/autofill.js";
-export { bookTravelAction } from "./actions/book-travel.js";
+export { blockAction } from "./actions/block.js";
+// Legacy alias — external consumers (e.g. packages/agent fallback resolver) still
+// look up `websiteBlockAction` by name. The BLOCK umbrella absorbed the legacy
+// `WEBSITE_BLOCK` surface as a simile, so the alias points at the umbrella.
+export { blockAction as websiteBlockAction } from "./actions/block.js";
 export { calendarAction } from "./actions/calendar.js";
 export { connectorAction } from "./actions/connector.js";
-export { deviceIntentAction } from "./actions/device-intent.js";
-export { healthAction } from "./actions/health.js";
+export { credentialsAction } from "./actions/credentials.js";
 export { calendlyAction } from "./actions/lib/calendly-handler.js";
-export { lifeAction } from "./actions/life.js";
-export { passwordManagerAction } from "./actions/password-manager.js";
-export { paymentsAction } from "./actions/payments.js";
-export { profileAction } from "./actions/profile.js";
-export { entityAction, relationshipAction } from "./actions/entity.js";
+export { entityAction } from "./actions/entity.js";
+export {
+  ownerAlarmsAction,
+  ownerFinancesAction,
+  ownerGoalsAction,
+  ownerHealthAction,
+  ownerRemindersAction,
+  ownerRoutinesAction,
+  ownerScreenTimeAction,
+  ownerTodosAction,
+  personalAssistantAction,
+} from "./actions/owner-surfaces.js";
 export { remoteDesktopAction } from "./actions/remote-desktop.js";
 export { resolveRequestAction } from "./actions/resolve-request.js";
-export { scheduleAction } from "./actions/schedule.js";
-export { schedulingNegotiationAction } from "./actions/scheduling-negotiation.js";
-export { screenTimeAction } from "./actions/screen-time.js";
-export { subscriptionsAction } from "./actions/subscriptions.js";
-export { toggleFeatureAction } from "./actions/toggle-feature.js";
 export { voiceCallAction } from "./actions/voice-call.js";
-export { websiteBlockAction } from "./actions/website-block.js";
 export * from "./api/client-lifeops.js";
 export { getAppBlockerStatus } from "./app-blocker/engine.js";
 export * from "./client.js";
