@@ -16,8 +16,8 @@ Customer tunnel provisioning is gated by the Cloud API route
 `POST /api/v1/apis/tunnels/tailscale/auth-key`. The route requires an Eliza
 Cloud user or API key with an active organization, debits org credits once per
 successful provisioning, mints a short-lived non-reusable key tagged
-`tag:eliza-tunnel`, and returns a generated `eliza-<org>-<random>` hostname for
-the tunnel proxy.
+`tag:eliza-tunnel`, and returns a signed generated
+`eliza-<org>-<random>-<signature>` hostname for the tunnel proxy.
 
 ## Deploy on Railway
 
