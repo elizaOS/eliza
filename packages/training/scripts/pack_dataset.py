@@ -1,5 +1,12 @@
 """Pack normalized + synthesized records into final {train,val,test}.jsonl.
 
+Operates on the DEPRECATED flat `ElizaRecord` intermediate (see
+`scripts/lib/eliza_record.py` and `scripts/normalize.py`), NOT the canonical
+Eliza-1 corpus record. The canonical corpus record is `eliza_native_v1`; see
+`packages/training/docs/dataset/CANONICAL_RECORD.md`. This path is kept only so
+the existing bulk corpus keeps building — new corpus data should be authored as
+`eliza_native_v1` rows.
+
 Streaming + reservoir-sampled. We never load all records into RAM —
 instead we walk each `data/normalized/<slug>.jsonl` once with two passes:
 
