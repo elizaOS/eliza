@@ -18,6 +18,7 @@ export * from "./inbox.js";
 export * from "./lifeops.js";
 export * from "./misc-routes.js";
 export * from "./onboarding.js";
+export * from "./onboarding-routes.js";
 export * from "./permissions.js";
 export * from "./permissions-routes.js";
 export * from "./plugin-routes.js";
