@@ -1,3 +1,4 @@
+export * from "./agent-routes.js";
 export * from "./app-permissions.js";
 export * from "./app-permissions-routes.js";
 export * from "./apps.js";

@@ -6,6 +6,11 @@
 
 import type http from "node:http";
 import type { ReadJsonBodyOptions } from "@elizaos/core";
+import {
+  PostRegistryRegisterRequestSchema,
+  PostRegistrySyncRequestSchema,
+  PostRegistryUpdateUriRequestSchema,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 
 // ---------------------------------------------------------------------------
@@ -318,12 +323,18 @@ export async function handleAgentStatusRoutes(
       );
       return true;
     }
-    const body = await readJsonBody<{
-      name?: string;
-      endpoint?: string;
-      tokenURI?: string;
-    }>(req, res);
-    if (!body) return true;
+    const rawReg = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawReg === null) return true;
+    const parsedReg = PostRegistryRegisterRequestSchema.safeParse(rawReg);
+    if (!parsedReg.success) {
+      error(
+        res,
+        parsedReg.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedReg.data;
 
     const agentName = body.name || state.agentName || "Eliza";
     const endpoint = body.endpoint || "";
@@ -344,12 +355,20 @@ export async function handleAgentStatusRoutes(
       error(res, "Registry service not configured.", 503);
       return true;
     }
-    const body = await readJsonBody<{ tokenURI?: string }>(req, res);
-    if (!body?.tokenURI) {
-      error(res, "tokenURI is required");
+    const rawUri = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawUri === null) return true;
+    const parsedUri = PostRegistryUpdateUriRequestSchema.safeParse(rawUri);
+    if (!parsedUri.success) {
+      error(
+        res,
+        parsedUri.error.issues[0]?.message ?? "tokenURI is required",
+        400,
+      );
       return true;
     }
-    const txHash = await registryService.updateTokenURI(body.tokenURI);
+    const txHash = await registryService.updateTokenURI(
+      parsedUri.data.tokenURI,
+    );
     json(res, { ok: true, txHash });
     return true;
   }
@@ -359,12 +378,18 @@ export async function handleAgentStatusRoutes(
       error(res, "Registry service not configured.", 503);
       return true;
     }
-    const body = await readJsonBody<{
-      name?: string;
-      endpoint?: string;
-      tokenURI?: string;
-    }>(req, res);
-    if (!body) return true;
+    const rawSync = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawSync === null) return true;
+    const parsedSync = PostRegistrySyncRequestSchema.safeParse(rawSync);
+    if (!parsedSync.success) {
+      error(
+        res,
+        parsedSync.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedSync.data;
 
     const agentName = body.name || state.agentName || "Eliza";
     const endpoint = body.endpoint || "";
