@@ -231,6 +231,24 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
     }
   }
 
+  // DFlash bench. The `dflash` eval is shape-checked by the Zod schema; here
+  // we only enforce internal consistency — if `passed: true` is claimed, the
+  // bench must have actually produced numbers (a null acceptanceRate/speedup
+  // with `passed: true` would be a lie). The gate threshold itself stays
+  // *provisional* in `eliza1_gates.yaml` until a trained drafter exists, so a
+  // `passed: false` dflash eval does NOT block `defaultEligible`.
+  if (m.evals.dflash) {
+    if (
+      m.evals.dflash.passed &&
+      (m.evals.dflash.acceptanceRate === null ||
+        m.evals.dflash.speedup === null)
+    ) {
+      errors.push(
+        "evals.dflash: passed=true but acceptanceRate/speedup is null — a needs-hardware bench cannot pass",
+      );
+    }
+  }
+
   // The strongest claim: defaultEligible. If anything above failed, this
   // flag must be false. (Contract errors are already accumulated; we add
   // an explicit message so callers can identify the violation cleanly.)
