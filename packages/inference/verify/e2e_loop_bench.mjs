@@ -64,6 +64,8 @@ function parseArgs(argv) {
       .filter(Boolean),
     turns: Number.parseInt(process.env.ELIZA_E2E_TURNS || "1", 10),
     nPredict: Number.parseInt(process.env.ELIZA_E2E_N_PREDICT || "40", 10),
+    enduranceNPredict: Number.parseInt(process.env.ELIZA_E2E_ENDURANCE_N_PREDICT || "12", 10),
+    ttsAllPhrases: process.env.ELIZA_E2E_TTS_ALL_PHRASES === "1",
     threads: Number.parseInt(
       process.env.ELIZA_E2E_THREADS || String(Math.min(os.cpus().length, 12)),
       10,
@@ -99,6 +101,8 @@ function parseArgs(argv) {
         .filter(Boolean);
     else if (a === "--turns") args.turns = Number.parseInt(next(), 10);
     else if (a === "--n-predict") args.nPredict = Number.parseInt(next(), 10);
+    else if (a === "--endurance-n-predict") args.enduranceNPredict = Number.parseInt(next(), 10);
+    else if (a === "--tts-all-phrases") args.ttsAllPhrases = true;
     else if (a === "--threads") args.threads = Number.parseInt(next(), 10);
     else if (a === "--ctx") args.ctx = Number.parseInt(next(), 10);
     else if (a === "--ngl") args.ngl = next();
@@ -671,7 +675,7 @@ async function synthPhrasePcm(port, text, turnTimeoutS) {
 // --------------------------------------------------------------------------
 
 async function runTurn(opts, turnIdx) {
-  const { port, ffiCtx, ffi, s, wav, refText, nPredict, turnTimeoutS, logFn } = opts;
+  const { port, ffiCtx, ffi, s, wav, refText, nPredict, turnTimeoutS, logFn, ttsAllPhrases } = opts;
   const turnT0 = performance.now();
 
   // 1) ASR: feed the WAV's mono PCM (resampled to 16 kHz) to the FFI.
@@ -724,7 +728,14 @@ async function runTurn(opts, turnIdx) {
   // 3) Phrase chunker + 4) TTS per phrase. First-audio = ASR-done → first PCM
   //    sample of the first phrase (the streaming-handoff latency the runtime
   //    optimizes); also report it relative to the first text token.
-  const phrases = chunkPhrases(gen.content || prompt);
+  const allPhrases = chunkPhrases(gen.content || prompt);
+  // In endurance mode the contract is "the loop completes without crash /
+  // leak" — synthesizing every phrase of every one of 30 turns at a >1×-RTF
+  // CPU TTS would take ~45 min for no extra signal. So unless --tts-all-phrases
+  // is requested, an endurance turn synthesizes only the first phrase (still
+  // exercises the full TTS forward pass + the streaming handoff). A 1-turn
+  // run always synthesizes everything.
+  const phrases = ttsAllPhrases ? allPhrases : allPhrases.slice(0, 1);
   const ttsRuns = [];
   let firstPhrasePcm = null;
   const ttsLoopT0 = performance.now();
@@ -766,6 +777,7 @@ async function runTurn(opts, turnIdx) {
     },
     tts: {
       phrases: phrases.length,
+      totalPhrases: allPhrases.length,
       audioSec: round2(totalAudioSec),
       wallMs: round1(ttsTotalWallMs),
       rtf: ttsRtf == null ? null : round4(ttsRtf),
@@ -1014,10 +1026,19 @@ async function main() {
     let bargeIn = null;
     const rssSamples = [];
     const totalTurns = Math.max(1, args.turns);
+    const isEndurance = totalTurns >= 8;
     for (let t = 0; t < totalTurns; t += 1) {
       const mic = micWavs[t % micWavs.length];
+      // Turn 1 always runs "full" (all phrases, full nPredict) so the e2e
+      // metrics are complete; later turns in an endurance run are lighter.
+      const fullTurn = t === 0 || !isEndurance;
       const turnReport = await runTurn(
-        { port, ffiCtx, ffi, s, wav: mic, refText: mic.refText, nPredict: args.nPredict, turnTimeoutS: args.turnTimeoutS, logFn },
+        {
+          port, ffiCtx, ffi, s, wav: mic, refText: mic.refText,
+          nPredict: fullTurn ? args.nPredict : args.enduranceNPredict,
+          turnTimeoutS: args.turnTimeoutS, logFn,
+          ttsAllPhrases: args.ttsAllPhrases ? true : fullTurn,
+        },
         t + 1,
       );
       turnReports.push(turnReport);

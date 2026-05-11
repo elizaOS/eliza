@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "tool": "asr_bench.ts",
-  "generatedAt": "2026-05-11T17:18:43.559Z",
+  "generatedAt": "2026-05-11T17:27:06.625Z",
   "dylib": "/home/shaw/.eliza/local-inference/bin/dflash/linux-x64-cpu-fused/libelizainference.so",
   "bundle": "/home/shaw/.eliza/local-inference/models/eliza-1-0_6b.bundle",
   "abiVersion": "2",
@@ -10,16 +10,17 @@
     "source": "tts",
     "wavDir": null,
     "count": 8,
-    "normalization": "lowercase + strip-punctuation + collapse-ws (Whisper-style)"
+    "normalization": "lowercase + strip-punctuation + collapse-ws (Whisper-style)",
+    "caveat": "Audio synthesized via the bundle's own TTS GGUF. On a stand-in bundle (off-the-shelf, not fine-tuned Qwen3-TTS/Qwen3-ASR weights) the synthesized speech is low-quality, so the WER reflects TTS quality, not ASR accuracy — it is NOT a valid ASR-WER measurement on a stand-in bundle. RTF (audio-sec / wall-sec) is content-independent and IS meaningful. Pass --wav-dir with real recorded WAV+.txt pairs for a real WER number."
   },
   "aggregate": {
-    "wer": 1.024390243902439,
-    "rtf": 0.5476568548602284,
+    "wer": 1,
+    "rtf": 0.7635103928721363,
     "utterances": 8,
     "refWords": 41,
-    "errors": 42,
+    "errors": 41,
     "audioSeconds": 16.009999999999998,
-    "wallSeconds": 29.23363390400003
+    "wallSeconds": 20.96893526199998
   },
   "gate": {
     "metric": "asr_wer",
@@ -31,106 +32,106 @@
     {
       "id": "tts-00",
       "reference": "hello world",
-      "hypothesis": "y.",
+      "hypothesis": "it?",
       "normalizedRef": "hello world",
-      "normalizedHyp": "y",
+      "normalizedHyp": "it",
       "refWords": 2,
       "errors": 2,
       "wer": 1,
       "audioSeconds": 1.6,
-      "transcribeMs": 3267.0617210000055,
-      "rtf": 0.4897366920604918
+      "transcribeMs": 3375.9167610000004,
+      "rtf": 0.4739453349335706
     },
     {
       "id": "tts-01",
       "reference": "the quick brown fox jumps over the lazy dog",
-      "hypothesis": "",
+      "hypothesis": "******** **y **y **yes **** **o **** **** **** **** ****。 **** ** **意。 **** **** **** **** ****。 ****** **** **** **** **** **.",
       "normalizedRef": "the quick brown fox jumps over the lazy dog",
-      "normalizedHyp": "",
+      "normalizedHyp": "y y yes o",
       "refWords": 9,
       "errors": 9,
       "wer": 1,
       "audioSeconds": 2.76,
-      "transcribeMs": 3056.2072520000074,
-      "rtf": 0.9030801161124896
+      "transcribeMs": 3492.6812470000004,
+      "rtf": 0.7902238437506058
     },
     {
       "id": "tts-02",
       "reference": "turn on the kitchen lights",
-      "hypothesis": "–+ + + + + + + + +– x + + + + + +– +–– –+ – + + +  +– +.",
+      "hypothesis": "",
       "normalizedRef": "turn on the kitchen lights",
-      "normalizedHyp": "x",
+      "normalizedHyp": "",
       "refWords": 5,
       "errors": 5,
       "wer": 1,
       "audioSeconds": 2.04,
-      "transcribeMs": 4011.1051799999987,
-      "rtf": 0.5085880096517441
+      "transcribeMs": 2156.509793999998,
+      "rtf": 0.94597298174849
     },
     {
       "id": "tts-03",
       "reference": "what time is it in tokyo",
-      "hypothesis": "我记得",
+      "hypothesis": "[7.",
       "normalizedRef": "what time is it in tokyo",
-      "normalizedHyp": "",
+      "normalizedHyp": "7",
       "refWords": 6,
       "errors": 6,
       "wer": 1,
       "audioSeconds": 1.96,
-      "transcribeMs": 2713.181712000005,
-      "rtf": 0.7223990900908727
+      "transcribeMs": 2105.080652000004,
+      "rtf": 0.9310807156665635
     },
     {
       "id": "tts-04",
       "reference": "play some music",
-      "hypothesis": "t, no, no, t.",
+      "hypothesis": "#",
       "normalizedRef": "play some music",
-      "normalizedHyp": "t no no t",
+      "normalizedHyp": "",
       "refWords": 3,
-      "errors": 4,
-      "wer": 1.3333333333333333,
+      "errors": 3,
+      "wer": 1,
       "audioSeconds": 1.42,
-      "transcribeMs": 2998.406573,
-      "rtf": 0.4735848743085049
+      "transcribeMs": 2928.4484419999935,
+      "rtf": 0.48489841229036845
     },
     {
       "id": "tts-05",
       "reference": "set a reminder for tomorrow morning",
-      "hypothesis": "个",
+      "hypothesis": "color color color color color.",
       "normalizedRef": "set a reminder for tomorrow morning",
-      "normalizedHyp": "",
+      "normalizedHyp": "color color color color color",
       "refWords": 6,
       "errors": 6,
       "wer": 1,
       "audioSeconds": 2.36,
-      "transcribeMs": 2798.426673000009,
-      "rtf": 0.843331012661482
+      "transcribeMs": 2256.6251309999934,
+      "rtf": 1.0458095000272363
     },
     {
       "id": "tts-06",
       "reference": "open the front door",
-      "hypothesis": "——,——,——,——,——,——,————, �,——,——,——, �——,——, �——,——,——,。,——,。,。,。,。,。,。,。,。,。,。,。,。,。,。,。, �, �, �, �, [ �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �。",
+      "hypothesis": "![ ！",
       "normalizedRef": "open the front door",
       "normalizedHyp": "",
       "refWords": 4,
       "errors": 4,
       "wer": 1,
       "audioSeconds": 1.83,
-      "transcribeMs": 6763.207735000004,
-      "rtf": 0.27058166356914354
+      "transcribeMs": 2353.9193759999907,
+      "rtf": 0.7774267966261931
     },
     {
       "id": "tts-07",
       "reference": "thanks that is all for now",
-      "hypothesis": "and",
+      "hypothesis": "嗯?",
       "normalizedRef": "thanks that is all for now",
-      "normalizedHyp": "and",
+      "normalizedHyp": "",
       "refWords": 6,
       "errors": 6,
       "wer": 1,
       "audioSeconds": 2.04,
-      "transcribeMs": 3626.0370580000017,
-      "rtf": 0.5625976699546459
+      "transcribeMs": 2299.753859000004,
+      "rtf": 0.8870514520571554
     }
   ]
 }
