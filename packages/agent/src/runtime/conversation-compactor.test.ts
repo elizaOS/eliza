@@ -31,12 +31,14 @@ function fakeStructured(state: {
   facts?: string[];
   decisions?: string[];
   pending_actions?: string[];
+  forbidden_behaviors?: string[];
   entities?: Record<string, string>;
 }): CompactorModelCall {
   const payload = JSON.stringify({
     facts: state.facts ?? [],
     decisions: state.decisions ?? [],
     pending_actions: state.pending_actions ?? [],
+    forbidden_behaviors: state.forbidden_behaviors ?? [],
     entities: state.entities ?? {},
   });
   return async () => payload;
@@ -47,6 +49,7 @@ function fakeHybrid(payload: {
     facts?: string[];
     decisions?: string[];
     pending_actions?: string[];
+    forbidden_behaviors?: string[];
     entities?: Record<string, string>;
   };
   ledger?: Array<{ index: number; note: string }>;
@@ -56,6 +59,7 @@ function fakeHybrid(payload: {
       facts: payload.state?.facts ?? [],
       decisions: payload.state?.decisions ?? [],
       pending_actions: payload.state?.pending_actions ?? [],
+      forbidden_behaviors: payload.state?.forbidden_behaviors ?? [],
       entities: payload.state?.entities ?? {},
     },
     ledger: payload.ledger ?? [],
@@ -123,6 +127,7 @@ function makeRoundTripHybrid(): CompactorModelCall {
         facts: allFacts,
         decisions: [],
         pending_actions: [],
+        forbidden_behaviors: [],
         entities: allEntities,
       },
       ledger: allLedger,
@@ -271,6 +276,21 @@ describe("findSafeCompactionBoundary", () => {
     const boundary = findSafeCompactionBoundary(msgs, 3);
     expect(boundary).toBeLessThanOrEqual(2);
   });
+
+  it("does not pull unrelated older assistant across an intervening user for orphaned tool results", () => {
+    const msgs: CompactorMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "assistant", content: "old unrelated assistant" },
+      { role: "user", content: "intervening user turn" },
+      { role: "tool", content: "orphan result", toolCallId: "missing" },
+      { role: "assistant", content: "done" },
+      { role: "user", content: "next" },
+    ];
+    // tail=3 -> boundary=3, so the orphaned tool result is in the tail.
+    // The nearest previous non-tool turn is a user, so boundary should not
+    // walk past it to preserve an unrelated assistant.
+    expect(findSafeCompactionBoundary(msgs, 3)).toBe(3);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -399,6 +419,181 @@ describe("structuredStateCompactor", () => {
     expect(calls).toBeGreaterThanOrEqual(2);
     expect(out.stats.extra?.recursed).toBe(true);
   });
+
+  it("deterministically preserves typed tool results as durable facts", async () => {
+    const transcript: CompactorTranscript = {
+      messages: [
+        { role: "system", content: "sys" },
+        { role: "user", content: "please look up turn 5" },
+        {
+          role: "assistant",
+          content: "Calling lookup_stock for turn 5.",
+          toolCalls: [
+            {
+              id: "tool_5_call",
+              name: "lookup_stock",
+              arguments: { turn: 5 },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: "[tool_result:lookup_stock] 3BC34F-663",
+          toolCallId: "tool_5_call",
+          toolName: "lookup_stock",
+        },
+        { role: "assistant", content: "noted" },
+        { role: "user", content: "continue" },
+      ],
+    };
+    const out = await structuredStateCompactor.compact(
+      transcript,
+      buildOptions({ callModel: fakeStructured({}), preserveTailMessages: 2 }),
+    );
+    expect(out.replacementMessages[0].content).toContain(
+      "Tool result at turn 5 from lookup_stock: 3BC34F-663",
+    );
+  });
+});
+
+describe("CompactBench deterministic state fragments", () => {
+  function compactBenchTranscript(userContent: string): CompactorTranscript {
+    return {
+      messages: [
+        { role: "system", content: "sys" },
+        { role: "user", content: userContent },
+        { role: "assistant", content: "acknowledged" },
+        { role: "user", content: "continue" },
+      ],
+    };
+  }
+
+  it("structured-state preserves buried forbidden behavior and primary entity even when the model omits them", async () => {
+    const out = await structuredStateCompactor.compact(
+      compactBenchTranscript(
+        "Let's plan the launch checklist with Ramon Ramirez.\n" +
+          "Critical: never schedule Friday deploy. That is a hard rule.",
+      ),
+      buildOptions({
+        callModel: fakeStructured({}),
+        preserveTailMessages: 1,
+      }),
+    );
+    const content = out.replacementMessages[0].content;
+    expect(content).toContain("Forbidden behaviors:");
+    expect(content).toContain("schedule Friday deploy");
+    expect(content).toContain("primary_subject: Ramon Ramirez");
+    expect(content).toContain("Ramon Ramirez: primary_subject");
+    expect(
+      (out.stats.extra?.state as { forbidden_behaviors?: string[] })
+        .forbidden_behaviors,
+    ).toContain("schedule Friday deploy");
+  });
+
+  it("hybrid-ledger preserves buried forbidden behavior and primary entity even when the model omits them", async () => {
+    const out = await hybridLedgerCompactor.compact(
+      compactBenchTranscript(
+        "Starting the onboarding runbook with Priya Shah.\n" +
+          "Only one: never skip identity verification. Hard line.",
+      ),
+      buildOptions({
+        callModel: fakeHybrid({}),
+        preserveTailMessages: 1,
+      }),
+    );
+    const content = out.replacementMessages[0].content;
+    expect(content).toContain("skip identity verification");
+    expect(content).toContain("primary_subject: Priya Shah");
+    expect(content).toContain("Priya Shah: primary_subject");
+  });
+
+  it("captures latest decision overrides and marks the superseded option forbidden", async () => {
+    const out = await structuredStateCompactor.compact(
+      compactBenchTranscript(
+        "For Mira's deployment plan, let's ship Friday.\n" +
+          "Actually, wait - scratch that. Instead, let's wait for audit signoff. Ignore the earlier instruction.",
+      ),
+      buildOptions({
+        callModel: fakeStructured({}),
+        preserveTailMessages: 1,
+      }),
+    );
+    const content = out.replacementMessages[0].content;
+    expect(content).toContain("latest decision: wait for audit signoff");
+    expect(content).toContain("ship Friday");
+    expect(content).toContain("Mira: primary_subject");
+  });
+
+  it("captures entity assignment pairs in both facts and entity map", async () => {
+    const out = await hybridLedgerCompactor.compact(
+      compactBenchTranscript(
+        "On the vendor review, Ava Chen will compile invoices, and Bo Li will reconcile credits.",
+      ),
+      buildOptions({
+        callModel: fakeHybrid({}),
+        preserveTailMessages: 1,
+      }),
+    );
+    const content = out.replacementMessages[0].content;
+    expect(content).toContain("Ava Chen owns: compile invoices");
+    expect(content).toContain("Bo Li owns: reconcile credits");
+    expect(content).toContain("Ava Chen: owner_of: compile invoices");
+    expect(content).toContain("Bo Li: owner_of: reconcile credits");
+  });
+
+  it("hybrid-ledger carries CompactBench previous-artifact sections across cycles", async () => {
+    const transcript: CompactorTranscript = {
+      messages: [
+        { role: "system", content: "sys" },
+        { role: "user", content: "continue the project" },
+      ],
+      metadata: {
+        priorLedger:
+          "# immutable_facts\n" +
+          "- primary_subject: Ramon Ramirez\n\n" +
+          "# locked_decisions\n" +
+          "- use audit gate\n\n" +
+          "# forbidden_behaviors\n" +
+          "- skip identity verification\n\n" +
+          "# entity_map\n" +
+          "- Ramon Ramirez: primary_subject",
+      },
+    };
+    const out = await hybridLedgerCompactor.compact(
+      transcript,
+      buildOptions({
+        callModel: fakeHybrid({}),
+        preserveTailMessages: 0,
+      }),
+    );
+    const content = out.replacementMessages[0].content;
+    expect(content).toContain("primary_subject: Ramon Ramirez");
+    expect(content).toContain("use audit gate");
+    expect(content).toContain("skip identity verification");
+    expect(content).toContain("Ramon Ramirez: primary_subject");
+  });
+
+  it("extracts common durable user facts without relying on the model", async () => {
+    const out = await hybridLedgerCompactor.compact(
+      compactBenchTranscript(
+        "Ship to: 6701 Cedar St, Bend. That's the new office.\n" +
+          "The contract effective date is 2024-04-10. Make a note.\n" +
+          "My sister's birthday is 03/05. Don't let me forget.\n" +
+          'The book my friend recommended is called "The Silver Compass". Hold onto that.\n' +
+          "My flight is DL1237 on Tuesday - please remember.",
+      ),
+      buildOptions({
+        callModel: fakeHybrid({}),
+        preserveTailMessages: 1,
+      }),
+    );
+    const content = out.replacementMessages[0].content;
+    expect(content).toContain("office shipping address: 6701 Cedar St, Bend");
+    expect(content).toContain("contract effective date: 2024-04-10");
+    expect(content).toContain("My sister's birthday: 03/05");
+    expect(content).toContain("recommended book: The Silver Compass");
+    expect(content).toContain("flight number: DL1237");
+  });
 });
 
 describe("hierarchicalSummaryCompactor", () => {
@@ -472,6 +667,41 @@ describe("hybridLedgerCompactor", () => {
     expect(out.replacementMessages[0].content).toContain("user said hi");
     expect(out.replacementMessages[0].content).toContain("user: shaw");
     expect(out.stats.extra?.ledgerEntries).toBe(2);
+  });
+
+  it("deterministically preserves typed tool results even when model omits them", async () => {
+    const transcript: CompactorTranscript = {
+      messages: [
+        { role: "system", content: "sys" },
+        { role: "user", content: "please look up turn 5" },
+        {
+          role: "assistant",
+          content: "Calling lookup_stock for turn 5.",
+          toolCalls: [
+            {
+              id: "tool_5_call",
+              name: "lookup_stock",
+              arguments: { turn: 5 },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: "[tool_result:lookup_stock] 3BC34F-663",
+          toolCallId: "tool_5_call",
+          toolName: "lookup_stock",
+        },
+        { role: "assistant", content: "noted" },
+        { role: "user", content: "continue" },
+      ],
+    };
+    const out = await hybridLedgerCompactor.compact(
+      transcript,
+      buildOptions({ callModel: fakeHybrid({}), preserveTailMessages: 2 }),
+    );
+    expect(out.replacementMessages[0].content).toContain(
+      "Tool result at turn 5 from lookup_stock: 3BC34F-663",
+    );
   });
 });
 

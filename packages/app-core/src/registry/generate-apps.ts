@@ -279,7 +279,7 @@ const CURATED_APPS: CuratedDef[] = [
   },
   {
     id: "clawville",
-    npmName: "@clawville/app-clawville",
+    npmName: "@elizaos/app-clawville",
     displayName: "ClawVille",
     description:
       "Sea-themed agent world with skill-learning buildings, NPC chat, and Solana wallet identity.",

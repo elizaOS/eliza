@@ -52,7 +52,9 @@ function rejectStringConcat(sql: string): void {
   // contain template-literal-style markers commonly used for unsafe interp.
   if (sql.includes("${")) {
     throw new Error(
-      "[capacitor-sqlite] sql must be parameterized — use `values`, not `${...}` interpolation",
+      "[capacitor-sqlite] sql must be parameterized — use `values`, not `" +
+        "$" +
+        "{...}` interpolation",
     );
   }
   // Cheap plausibility check: count placeholders so callers see a clear

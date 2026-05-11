@@ -35,7 +35,7 @@ const FIXTURES: GameFixture[] = [
     chatContent: "Reinforce mid after the next wave",
   },
   {
-    appName: "@clawville/app-clawville",
+    appName: "@elizaos/app-clawville",
     displayName: "ClawVille",
     slug: "clawville",
     viewerPath: "/api/apps/clawville/viewer",

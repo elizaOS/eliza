@@ -140,7 +140,10 @@ export function findRouteModeRule(
   method: string,
 ): RouteModeRule | null {
   for (const rule of ROUTE_MODE_MATRIX) {
-    if (matchesPath(rule.path, pathname) && matchesMethod(rule.method, method)) {
+    if (
+      matchesPath(rule.path, pathname) &&
+      matchesMethod(rule.method, method)
+    ) {
       return rule;
     }
   }

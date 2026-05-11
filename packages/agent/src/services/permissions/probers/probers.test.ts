@@ -1,7 +1,12 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import type { Prober } from "../contracts.ts";
-import { IS_DARWIN, platformUnsupportedState } from "./_bridge.ts";
+import {
+  IS_DARWIN,
+  mapAVAuthStatus,
+  platformUnsupportedState,
+} from "./_bridge.ts";
 import { ALL_PROBERS, PROBERS_BY_ID } from "./index.ts";
 
 const EXPECTED_IDS = [
@@ -64,6 +69,38 @@ describe("permission probers", () => {
     expect(state.status).toBe("not-applicable");
     expect(state.restrictedReason).toBe("platform_unsupported");
     expect(state.canRequest).toBe(false);
+  });
+
+  it("maps the native dylib camera/microphone status contract", () => {
+    expect(mapAVAuthStatus(0)).toBe("not-determined");
+    expect(mapAVAuthStatus(1)).toBe("denied");
+    expect(mapAVAuthStatus(2)).toBe("granted");
+    expect(mapAVAuthStatus(3)).toBe("restricted");
+  });
+
+  it("keeps AppleScript-backed check() paths read-only", () => {
+    const files = [
+      "automation.ts",
+      "calendar.ts",
+      "contacts.ts",
+      "notes.ts",
+      "reminders.ts",
+    ];
+    for (const file of files) {
+      const source = readFileSync(new URL(file, import.meta.url), "utf8");
+      const checkStart = source.indexOf("async check()");
+      const requestStart = source.indexOf("async request", checkStart);
+      expect(checkStart, `${file} has check()`).toBeGreaterThanOrEqual(0);
+      expect(requestStart, `${file} has request()`).toBeGreaterThan(checkStart);
+      const checkBody = source.slice(checkStart, requestStart);
+      expect(
+        checkBody,
+        `${file} check() must not prompt via osascript`,
+      ).not.toContain("runOsascript");
+      expect(source, `${file} should use TCC reads`).toContain(
+        "queryAppleEventsTccStatus",
+      );
+    }
   });
 
   it("non-darwin: macOS-only probers short-circuit to not-applicable", async () => {

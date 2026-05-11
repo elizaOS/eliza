@@ -23,12 +23,22 @@ function makeRegistry(
 ): IPermissionsRegistry {
   return {
     get: vi.fn(() => initial),
+    check: vi.fn(async () => initial),
     request: vi.fn(async () => initial),
     recordBlock: vi.fn(),
+    list: vi.fn(() => [initial]),
     pending: vi.fn(() => []),
     subscribe: vi.fn(() => () => {}),
+    registerProber: vi.fn(),
     ...overrides,
   };
+}
+
+function state(
+  overrides: Omit<PermissionState, "platform"> &
+    Partial<Pick<PermissionState, "platform">>,
+): PermissionState {
+  return { platform: "darwin", ...overrides };
 }
 
 const baseProps = {
@@ -47,6 +57,7 @@ describe("PermissionCard", () => {
           status: "not-determined",
           lastChecked: 0,
           canRequest: true,
+          platform: "darwin",
         }}
       />,
     );
@@ -59,19 +70,19 @@ describe("PermissionCard", () => {
   });
 
   it("calls registry.request and reports granted on success", async () => {
-    const grantedState: PermissionState = {
+    const grantedState: PermissionState = state({
       id: "reminders",
       status: "granted",
       lastChecked: 1,
       canRequest: false,
-    };
+    });
     const registry = makeRegistry(
-      {
+      state({
         id: "reminders",
         status: "not-determined",
         lastChecked: 0,
         canRequest: true,
-      },
+      }),
       { request: vi.fn(async () => grantedState) },
     );
     const onGranted = vi.fn();
@@ -105,6 +116,7 @@ describe("PermissionCard", () => {
           status: "denied",
           lastChecked: 0,
           canRequest: false,
+          platform: "darwin",
         }}
       />,
     );
@@ -112,6 +124,30 @@ describe("PermissionCard", () => {
       (screen.getByTestId("permission-card-primary") as HTMLButtonElement)
         .textContent,
     ).toContain("Open System Settings");
+  });
+
+  it("opens settings when not-determined cannot be requested directly", () => {
+    const onOpenSettings = vi.fn();
+    render(
+      <PermissionCard
+        {...baseProps}
+        permission="screentime"
+        initialState={{
+          id: "screentime",
+          status: "not-determined",
+          lastChecked: 0,
+          canRequest: false,
+          platform: "darwin",
+        }}
+        onOpenSettings={onOpenSettings}
+      />,
+    );
+    const button = screen.getByTestId(
+      "permission-card-primary",
+    ) as HTMLButtonElement;
+    expect(button.textContent).toContain("Open System Settings");
+    fireEvent.click(button);
+    expect(onOpenSettings).toHaveBeenCalledWith("screentime");
   });
 
   it("renders disabled 'Coming soon' when restricted by entitlement", () => {
@@ -125,6 +161,7 @@ describe("PermissionCard", () => {
           restrictedReason: "entitlement_required",
           lastChecked: 0,
           canRequest: false,
+          platform: "darwin",
         }}
       />,
     );
@@ -133,6 +170,28 @@ describe("PermissionCard", () => {
     ) as HTMLButtonElement;
     expect(btn.disabled).toBe(true);
     expect(btn.textContent).toContain("Coming soon");
+  });
+
+  it("renders unavailable for platform-unsupported restricted permissions", () => {
+    render(
+      <PermissionCard
+        {...baseProps}
+        permission="health"
+        initialState={{
+          id: "health",
+          status: "restricted",
+          restrictedReason: "platform_unsupported",
+          lastChecked: 0,
+          canRequest: false,
+          platform: "darwin",
+        }}
+      />,
+    );
+    const btn = screen.getByTestId(
+      "permission-card-primary",
+    ) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent).toContain("Unavailable on this platform");
   });
 
   it("auto-collapses to 'Access granted' when initial state is granted", () => {
@@ -144,6 +203,7 @@ describe("PermissionCard", () => {
           status: "granted",
           lastChecked: 0,
           canRequest: false,
+          platform: "darwin",
         }}
       />,
     );
@@ -161,6 +221,7 @@ describe("PermissionCard", () => {
           status: "not-determined",
           lastChecked: 0,
           canRequest: true,
+          platform: "darwin",
         }}
         onDismiss={onDismiss}
       />,
@@ -182,6 +243,7 @@ describe("PermissionCard", () => {
           status: "not-determined",
           lastChecked: 0,
           canRequest: true,
+          platform: "darwin",
         }}
         onFallback={onFallback}
       />,
@@ -225,6 +287,7 @@ describe("PermissionCard", () => {
           status: "not-determined",
           lastChecked: 0,
           canRequest: true,
+          platform: "darwin",
         }}
       />,
     );

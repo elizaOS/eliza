@@ -5,9 +5,8 @@ import type {
   HardwareProbe,
   InstalledModel,
 } from "../../api/client-local-inference";
-import { MODEL_CATALOG } from "../../services/local-inference/catalog";
 import { selectRecommendedModels } from "../../services/local-inference/recommendation";
-import { findInstalled } from "./hub-utils";
+import { displayModelName, findInstalled } from "./hub-utils";
 
 interface FirstRunOfferProps {
   catalog: CatalogModel[];
@@ -57,7 +56,7 @@ export function FirstRunOffer({
           Recommended
         </span>
         <span className="truncate text-sm font-medium">
-          {recommended.displayName}
+          {displayModelName(recommended)}
         </span>
         <span className="text-muted text-xs">
           {recommended.params} · {recommended.sizeGb.toFixed(1)} GB
@@ -70,7 +69,7 @@ export function FirstRunOffer({
           onClick={() => onDownload(recommended.id)}
           disabled={busy}
         >
-          Download {recommended.params}
+          Download {displayModelName(recommended)}
         </Button>
         <Button
           size="sm"
@@ -90,7 +89,7 @@ function pickRecommended(
   installed: InstalledModel[],
   hardware: HardwareProbe,
 ): CatalogModel | null {
-  const recommended = selectRecommendedModels(hardware, MODEL_CATALOG);
+  const recommended = selectRecommendedModels(hardware, catalog);
   for (const candidate of [
     recommended.TEXT_LARGE.model,
     recommended.TEXT_SMALL.model,
@@ -98,5 +97,10 @@ function pickRecommended(
     if (!candidate || findInstalled(candidate, installed)) continue;
     return catalog.find((model) => model.id === candidate.id) ?? candidate;
   }
-  return null;
+  return (
+    catalog.find(
+      (model) =>
+        model.id.startsWith("eliza-1-") && !findInstalled(model, installed),
+    ) ?? null
+  );
 }

@@ -12,6 +12,9 @@
  *
  * INTEGRATION TODO: ship a CoreLocation FFI for proper
  * authorizationStatus() / requestWhenInUseAuthorization() support.
+ *
+ * On win32/linux, concrete browser geolocation state is supplied by the
+ * renderer fallback through navigator.permissions/geolocation.
  */
 
 import type { PermissionState, Prober } from "../contracts.js";
@@ -30,7 +33,7 @@ export const locationProber: Prober = {
 
   async check(): Promise<PermissionState> {
     if (!IS_DARWIN) {
-      // Renderer falls back to navigator.permissions on win32/linux.
+      // Renderer fallback handles navigator.permissions/geolocation.
       return buildState(ID, "not-determined", { canRequest: true });
     }
     // CoreLocation on macOS uses a system-level daemon; the per-user

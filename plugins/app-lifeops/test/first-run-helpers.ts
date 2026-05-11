@@ -10,7 +10,7 @@
  * production code as soon as the call hits it.
  */
 
-import type { IAgentRuntime, UUID } from "@elizaos/core";
+import type { Agent, Character, IAgentRuntime, Task, UUID } from "@elizaos/core";
 
 export interface MinimalRuntimeStub extends Partial<IAgentRuntime> {
   agentId: UUID;
@@ -18,7 +18,12 @@ export interface MinimalRuntimeStub extends Partial<IAgentRuntime> {
   setCache: <T>(key: string, value: T) => Promise<boolean>;
   deleteCache: (key: string) => Promise<boolean>;
   getTasks: (filter?: unknown) => Promise<unknown[]>;
+  createTask: (task: Task) => Promise<UUID>;
   updateTask: (taskId: string, patch: unknown) => Promise<void>;
+  getAgent: (agentId: UUID) => Promise<Agent | null>;
+  createAgent: (agent: Partial<Agent>) => Promise<boolean>;
+  getService: (serviceType: string) => unknown | null;
+  character: Character;
   logger?: IAgentRuntime["logger"];
 }
 
@@ -28,6 +33,8 @@ export function createMinimalRuntimeStub(
   overrides: Partial<MinimalRuntimeStub> = {},
 ): IAgentRuntime {
   const cache = new Map<string, unknown>();
+  const agentId = ("test-agent-" + Math.random().toString(36).slice(2, 8)) as UUID;
+  let agentRecord: Agent | null = null;
   const tasks: Array<{
     id: string;
     name: string;
@@ -43,7 +50,12 @@ export function createMinimalRuntimeStub(
   ];
 
   const stub: MinimalRuntimeStub = {
-    agentId: ("test-agent-" + Math.random().toString(36).slice(2, 8)) as UUID,
+    agentId,
+    character: {
+      id: agentId,
+      name: "FirstRunTestAgent",
+      bio: "Minimal first-run test agent.",
+    },
     async getCache<T>(key: string): Promise<T | null | undefined> {
       const value = cache.get(key);
       if (value === undefined) return null;
@@ -59,6 +71,20 @@ export function createMinimalRuntimeStub(
     async getTasks(): Promise<unknown[]> {
       return tasks;
     },
+    async createTask(task: Task): Promise<UUID> {
+      const id =
+        task.id ??
+        (("task-" + Math.random().toString(36).slice(2, 10)) as UUID);
+      tasks.push({
+        id,
+        name: task.name,
+        metadata:
+          task.metadata && typeof task.metadata === "object"
+            ? { ...(task.metadata as Record<string, unknown>) }
+            : {},
+      });
+      return id;
+    },
     async updateTask(
       taskId: string,
       patch: { metadata?: Record<string, unknown> },
@@ -68,6 +94,23 @@ export function createMinimalRuntimeStub(
       if (patch.metadata) {
         task.metadata = { ...task.metadata, ...patch.metadata };
       }
+    },
+    async getAgent(requestedAgentId: UUID): Promise<Agent | null> {
+      if (requestedAgentId !== agentId) return null;
+      return agentRecord;
+    },
+    async createAgent(agent: Partial<Agent>): Promise<boolean> {
+      agentRecord = {
+        ...stub.character,
+        ...agent,
+        id: (agent.id ?? agentId) as UUID,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } as Agent;
+      return true;
+    },
+    getService(): unknown | null {
+      return null;
     },
     ...overrides,
   };

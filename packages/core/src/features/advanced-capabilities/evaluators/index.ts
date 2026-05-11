@@ -33,7 +33,6 @@ import {
 
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
-// biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
 const __bundle_safety_FEATURES_ADVANCED_CAPABILITIES_EVALUATORS_INDEX__ = [
 	_bs_1_factMemoryEvaluator,
 	_bs_2_identityEvaluator,
@@ -45,8 +44,7 @@ const __bundle_safety_FEATURES_ADVANCED_CAPABILITIES_EVALUATORS_INDEX__ = [
 	_bs_8_skillProposalEvaluator,
 	_bs_9_skillRefinementEvaluator,
 ];
-// biome-ignore lint/suspicious/noExplicitAny: bundle-safety sink.
 (
-	globalThis as any
+	globalThis as Record<string, unknown>
 ).__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_EVALUATORS_INDEX__ =
 	__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_EVALUATORS_INDEX__;

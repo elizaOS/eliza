@@ -4,7 +4,7 @@ import type {
   DownloadJob,
 } from "../../api/client-local-inference";
 import { DownloadProgress } from "./DownloadProgress";
-import { findCatalogModel } from "./hub-utils";
+import { displayModelName, findCatalogModel } from "./hub-utils";
 
 interface DownloadQueueProps {
   downloads: DownloadJob[];
@@ -26,8 +26,8 @@ export function DownloadQueue({
   if (downloads.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-        No downloads in progress. Start one from the Curated or HuggingFace
-        search tab.
+        No downloads in progress. Start one from Eliza-1 or open Custom HF
+        search explicitly.
       </div>
     );
   }
@@ -36,7 +36,7 @@ export function DownloadQueue({
     <ul className="flex flex-col gap-3">
       {downloads.map((job) => {
         const entry = findCatalogModel(job.modelId, catalog);
-        const label = entry?.displayName ?? job.modelId;
+        const label = entry ? displayModelName(entry) : job.modelId;
         const isActive = job.state === "downloading" || job.state === "queued";
         return (
           <li

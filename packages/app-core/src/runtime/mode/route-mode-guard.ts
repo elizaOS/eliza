@@ -12,8 +12,8 @@
 
 import type http from "node:http";
 import { sendJsonError } from "../../api/response";
-import { getRuntimeModeSnapshot, type RuntimeMode } from "./runtime-mode";
 import { findRouteModeRule } from "./route-mode-matrix";
+import { getRuntimeModeSnapshot, type RuntimeMode } from "./runtime-mode";
 
 export interface ModeGateOutcome {
   /** True when the dispatcher should stop — guard wrote a 404. */

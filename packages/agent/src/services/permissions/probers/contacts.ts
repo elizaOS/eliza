@@ -1,12 +1,13 @@
 /**
  * Contacts prober.
  *
- * Native APIs (macOS):
- *   - check:   CNContactStore.authorizationStatus(for: .contacts)
- *   - request: CNContactStore.requestAccess(for: .contacts)
+ * Contacts integrations currently use Contacts.app through AppleScript.
+ * The effective permission is therefore Apple Events from this runtime to
+ * Contacts.app. check() reads that TCC row; request() runs the benign
+ * AppleScript probe that can surface the OS prompt.
  *
- * Uses TCC.db reads (kTCCServiceAddressBook) for check, AppleScript
- * shellout to Contacts.app for request.
+ * INTEGRATION TODO: switch this to CNContactStore authorization checks if
+ * the Contacts implementation moves away from AppleScript.
  */
 
 import type { PermissionState, Prober } from "../contracts.js";
@@ -14,12 +15,12 @@ import {
   buildState,
   IS_DARWIN,
   platformUnsupportedState,
-  queryTccStatus,
-  resolveBundleId,
+  queryAppleEventsTccStatus,
   runOsascript,
 } from "./_bridge.js";
 
 const ID = "contacts" as const;
+const CONTACTS_BUNDLE_ID = "com.apple.AddressBook";
 
 export const contactsProber: Prober = {
   id: ID,
@@ -27,10 +28,7 @@ export const contactsProber: Prober = {
   async check(): Promise<PermissionState> {
     if (!IS_DARWIN) return platformUnsupportedState(ID);
 
-    const tcc = await queryTccStatus(
-      "kTCCServiceAddressBook",
-      resolveBundleId(),
-    );
+    const tcc = await queryAppleEventsTccStatus(CONTACTS_BUNDLE_ID);
     if (tcc === "granted")
       return buildState(ID, "granted", { canRequest: false });
     if (tcc === "denied")

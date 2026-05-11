@@ -26,6 +26,53 @@ type ViewportProbe = {
   routes: readonly RouteProbe[];
 };
 
+type PermissionId =
+  | "screen-recording"
+  | "accessibility"
+  | "reminders"
+  | "calendar"
+  | "health"
+  | "screentime"
+  | "contacts"
+  | "notes"
+  | "microphone"
+  | "camera"
+  | "location"
+  | "shell"
+  | "website-blocking"
+  | "notifications"
+  | "full-disk"
+  | "automation";
+
+type PermissionStateFixture = {
+  id: PermissionId;
+  status: "not-applicable";
+  lastChecked: number;
+  canRequest: boolean;
+  platform: "linux";
+};
+
+type AllPermissionsStateFixture = Record<PermissionId, PermissionStateFixture>;
+
+const PERMISSION_IDS: readonly PermissionId[] = [
+  "screen-recording",
+  "accessibility",
+  "reminders",
+  "calendar",
+  "health",
+  "screentime",
+  "contacts",
+  "notes",
+  "microphone",
+  "camera",
+  "location",
+  "shell",
+  "website-blocking",
+  "notifications",
+  "full-disk",
+  "automation",
+];
+
 const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "chat",
@@ -168,50 +215,18 @@ const SETTING_SECTIONS_TO_CLICK = [/^Capabilities\b/, /^Permissions\b/];
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const ONE_PIXEL_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
-const EMPTY_PERMISSIONS = {
-  accessibility: {
-    id: "accessibility",
-    status: "not-applicable",
-    lastChecked: 0,
-    canRequest: false,
-  },
-  "screen-recording": {
-    id: "screen-recording",
-    status: "not-applicable",
-    lastChecked: 0,
-    canRequest: false,
-  },
-  microphone: {
-    id: "microphone",
-    status: "not-applicable",
-    lastChecked: 0,
-    canRequest: false,
-  },
-  camera: {
-    id: "camera",
-    status: "not-applicable",
-    lastChecked: 0,
-    canRequest: false,
-  },
-  shell: {
-    id: "shell",
-    status: "not-applicable",
-    lastChecked: 0,
-    canRequest: false,
-  },
-  "website-blocking": {
-    id: "website-blocking",
-    status: "not-applicable",
-    lastChecked: 0,
-    canRequest: false,
-  },
-  location: {
-    id: "location",
-    status: "not-applicable",
-    lastChecked: 0,
-    canRequest: false,
-  },
-};
+const EMPTY_PERMISSIONS = Object.fromEntries(
+  PERMISSION_IDS.map((id: PermissionId) => [
+    id,
+    {
+      id,
+      status: "not-applicable",
+      lastChecked: 0,
+      canRequest: false,
+      platform: "linux",
+    },
+  ]),
+) as AllPermissionsStateFixture;
 const EMPTY_LIFEOPS_OVERVIEW_SUMMARY = {
   activeOccurrenceCount: 0,
   overdueOccurrenceCount: 0,

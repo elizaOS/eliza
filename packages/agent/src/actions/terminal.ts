@@ -20,7 +20,13 @@ import type {
   Media,
   Memory,
 } from "@elizaos/core";
-import { ContentType, logger, stringToUuid } from "@elizaos/core";
+import {
+  buildStoreVariantBlockedMessage,
+  ContentType,
+  isLocalCodeExecutionAllowed,
+  logger,
+  stringToUuid,
+} from "@elizaos/core";
 import { hasOwnerAccess } from "../security/access.ts";
 
 /** API port for posting terminal requests. */
@@ -281,9 +287,21 @@ export const terminalAction: Action = {
   descriptionCompressed:
     "run single explicit shell command user provide directly use user give specific command like run ls - la execute npm install use build project, create website, multi-step work use START_CODING_TASK instead command output captur document attachment native planner follow-up after run, decide whether reply, stay silent, continue w/ another action, save attachment via clipboard plugin",
 
-  validate: async () => true,
+  validate: async () => isLocalCodeExecutionAllowed(),
 
   handler: async (runtime, message, _state, options) => {
+    if (!isLocalCodeExecutionAllowed()) {
+      return {
+        success: false,
+        text: buildStoreVariantBlockedMessage("Terminal commands"),
+        data: {
+          actionName: TERMINAL_ACTION_NAME,
+          suppressPostActionContinuation: true,
+          terminal: { storeBuildBlocked: true },
+        },
+      };
+    }
+
     if (!(await hasOwnerAccess(runtime, message))) {
       return {
         success: false,

@@ -38,9 +38,7 @@ describe("shouldForwardToRemoteTarget", () => {
   });
 
   test("does not forward unrelated paths", () => {
-    expect(shouldForwardToRemoteTarget("/api/agent/reset", "POST")).toBe(
-      false,
-    );
+    expect(shouldForwardToRemoteTarget("/api/agent/reset", "POST")).toBe(false);
   });
 });
 

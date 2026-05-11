@@ -10,6 +10,7 @@ import { logger } from "../logger";
 
 /** Default Ollama endpoint */
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
+const CEREBRAS_OPENAI_BASE_URL = "https://api.cerebras.ai/v1";
 
 /**
  * Schema for Ollama /api/tags response
@@ -60,7 +61,7 @@ interface CloudProviderConfig {
 const CLOUD_PROVIDERS: CloudProviderConfig[] = [
 	{
 		name: "openai",
-		envVars: ["OPENAI_API_KEY"],
+		envVars: ["OPENAI_API_KEY", "CEREBRAS_API_KEY"],
 		endpoint: "https://api.openai.com/v1",
 	},
 	{
@@ -86,13 +87,19 @@ const CLOUD_PROVIDERS: CloudProviderConfig[] = [
 function checkCloudProvider(
 	config: CloudProviderConfig,
 ): InferenceProviderInfo {
-	const hasKey = config.envVars.some((envVar) => Boolean(process.env[envVar]));
+	const matchedEnvVar = config.envVars.find((envVar) =>
+		Boolean(process.env[envVar]?.trim()),
+	);
 
-	if (hasKey) {
+	if (matchedEnvVar) {
+		const endpoint =
+			config.name === "openai" && matchedEnvVar === "CEREBRAS_API_KEY"
+				? process.env.OPENAI_BASE_URL?.trim() || CEREBRAS_OPENAI_BASE_URL
+				: config.endpoint;
 		return {
 			name: config.name,
 			available: true,
-			endpoint: config.endpoint,
+			endpoint,
 		};
 	}
 
@@ -174,7 +181,7 @@ function buildSummary(
 			"   Integration tests require a working inference provider.\n\n" +
 			"   Options:\n" +
 			"   1. Start Ollama locally: ollama serve\n" +
-			"   2. Set OPENAI_API_KEY environment variable\n" +
+			"   2. Set OPENAI_API_KEY or CEREBRAS_API_KEY environment variable\n" +
 			"   3. Set ANTHROPIC_API_KEY environment variable\n" +
 			"   4. Set GROQ_API_KEY environment variable\n" +
 			"   5. Set GOOGLE_API_KEY environment variable"
@@ -256,6 +263,7 @@ export async function requireInferenceProvider(): Promise<InferenceProviderInfo>
 				"     $ ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m  # for TEXT_LARGE\n\n" +
 				"  2. Set a cloud API key:\n" +
 				"     $ export OPENAI_API_KEY=sk-...\n" +
+				"     $ export CEREBRAS_API_KEY=csk-...\n" +
 				"     $ export ANTHROPIC_API_KEY=sk-...\n" +
 				"     $ export GOOGLE_API_KEY=...\n",
 		);

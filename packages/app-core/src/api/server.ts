@@ -36,6 +36,8 @@ import {
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
+import { forwardRemoteCloudMutation } from "../runtime/mode/remote-forwarder";
+import { applyRouteModeGuard } from "../runtime/mode/route-mode-guard";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
@@ -47,8 +49,6 @@ import {
   getConfiguredCompatAgentName,
 } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
-import { applyRouteModeGuard } from "../runtime/mode/route-mode-guard";
-import { forwardRemoteCloudMutation } from "../runtime/mode/remote-forwarder";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
 
 export {

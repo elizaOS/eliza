@@ -297,6 +297,12 @@ int main(int argc, char ** argv) {
         std::fprintf(stderr, "unknown kernel '%s' in fixture\n", fx.kernel.c_str());
         return 1;
     }
+    if (fx.expected_scores.size() != kb.n_outputs) {
+        std::fprintf(stderr,
+                     "fixture expected_scores length mismatch: got %zu, need %u\n",
+                     fx.expected_scores.size(), kb.n_outputs);
+        return 2;
+    }
 
     // --- Vulkan instance ---
     VkApplicationInfo ai{};
@@ -330,7 +336,23 @@ int main(int argc, char ** argv) {
     if (pd_count == 0) { std::fprintf(stderr, "no Vulkan devices\n"); return 1; }
     std::vector<VkPhysicalDevice> pds(pd_count);
     VK_CHECK(vkEnumeratePhysicalDevices(instance, &pd_count, pds.data()));
-    VkPhysicalDevice pd = pds[0];
+    VkPhysicalDevice pd = VK_NULL_HANDLE;
+    uint32_t qfam = (uint32_t)-1;
+    for (VkPhysicalDevice cand : pds) {
+        uint32_t cand_qfam_count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(cand, &cand_qfam_count, nullptr);
+        std::vector<VkQueueFamilyProperties> cand_qfams(cand_qfam_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(cand, &cand_qfam_count, cand_qfams.data());
+        for (uint32_t i = 0; i < cand_qfam_count; i++) {
+            if (cand_qfams[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
+                pd = cand;
+                qfam = i;
+                break;
+            }
+        }
+        if (pd != VK_NULL_HANDLE) break;
+    }
+    if (pd == VK_NULL_HANDLE) { std::fprintf(stderr, "no compute-capable Vulkan device\n"); return 1; }
     {
         VkPhysicalDeviceProperties props;
         vkGetPhysicalDeviceProperties(pd, &props);
@@ -339,16 +361,6 @@ int main(int argc, char ** argv) {
                     VK_VERSION_MINOR(props.apiVersion),
                     VK_VERSION_PATCH(props.apiVersion));
     }
-
-    uint32_t qfam_count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(pd, &qfam_count, nullptr);
-    std::vector<VkQueueFamilyProperties> qfams(qfam_count);
-    vkGetPhysicalDeviceQueueFamilyProperties(pd, &qfam_count, qfams.data());
-    uint32_t qfam = (uint32_t)-1;
-    for (uint32_t i = 0; i < qfam_count; i++) {
-        if (qfams[i].queueFlags & VK_QUEUE_COMPUTE_BIT) { qfam = i; break; }
-    }
-    if (qfam == (uint32_t)-1) { std::fprintf(stderr, "no compute queue\n"); return 1; }
 
     float prio = 1.0f;
     VkDeviceQueueCreateInfo qci{};
@@ -552,7 +564,6 @@ int main(int argc, char ** argv) {
     const float * out = (const float *)out_buf.mapped;
     int failures = 0;
     int compare_n = (int)kb.n_outputs;
-    if ((int)fx.expected_scores.size() < compare_n) compare_n = (int)fx.expected_scores.size();
     float max_diff = 0.0f;
     for (int i = 0; i < compare_n; i++) {
         float diff = std::fabs(out[i] - fx.expected_scores[i]);

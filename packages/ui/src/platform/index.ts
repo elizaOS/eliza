@@ -11,6 +11,7 @@ export type * from "./types";
 
 // ── Platform init ───────────────────────────────────────────────────────
 
+export * from "./android-runtime";
 export {
   applyLaunchConnection,
   applyLaunchConnectionFromUrl,
@@ -34,7 +35,6 @@ export {
   type ShareTargetPayload,
   setupPlatformStyles,
 } from "./init";
-export * from "./android-runtime";
 export * from "./ios-runtime";
 export * from "./onboarding-reset";
 export type {

@@ -227,8 +227,7 @@ static int gen_polar(const char * outdir) {
     float q[ELIZA_QK_POLAR];
     for (int i = 0; i < ELIZA_QK_POLAR; i++) q[i] = rand_normal();
 
-    /* POLAR_N_ROWS quantized blocks (use_qjl = 0 to keep the fixture compact;
-     * the with-QJL path is exercised by the round-trip self-test). */
+    /* POLAR_N_ROWS quantized blocks (use_qjl = 0 baseline fixture). */
     eliza_block_q4_polar blocks[POLAR_N_ROWS];
     for (int r = 0; r < POLAR_N_ROWS; r++) {
         float src[ELIZA_QK_POLAR];
@@ -251,6 +250,40 @@ static int gen_polar(const char * outdir) {
     fprintf(f, "}\n");
     fclose(f);
     printf("[gen_fixture] wrote %s (%d rows)\n", path, POLAR_N_ROWS);
+    return 0;
+}
+
+static int gen_polar_qjl(const char * outdir) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/polar_qjl.json", outdir);
+    FILE * f = fopen(path, "w");
+    if (!f) { perror(path); return 1; }
+
+    float q[ELIZA_QK_POLAR];
+    for (int i = 0; i < ELIZA_QK_POLAR; i++) q[i] = rand_normal();
+
+    eliza_block_q4_polar blocks[POLAR_N_ROWS];
+    for (int r = 0; r < POLAR_N_ROWS; r++) {
+        float src[ELIZA_QK_POLAR];
+        for (int i = 0; i < ELIZA_QK_POLAR; i++) src[i] = rand_normal();
+        eliza_polar_quantize_row(src, &blocks[r], ELIZA_QK_POLAR, /*use_qjl=*/1);
+    }
+
+    float scores[POLAR_N_ROWS];
+    eliza_polar_mul_mv(blocks, q, POLAR_N_ROWS, /*use_qjl=*/1, scores);
+
+    fprintf(f, "{\n");
+    fprintf(f, "  \"kernel\": \"polar\",\n");
+    fprintf(f, "  \"head_dim\": %d,\n", ELIZA_QK_POLAR);
+    fprintf(f, "  \"n_rows\": %d,\n", POLAR_N_ROWS);
+    fprintf(f, "  \"block_bytes\": 82,\n");
+    fprintf(f, "  \"use_qjl\": 1,\n");
+    fprintf(f, "  \"q\": "); write_floats_json(f, q, ELIZA_QK_POLAR); fprintf(f, ",\n");
+    fprintf(f, "  \"k_blocks\": "); write_bytes_json(f, (uint8_t *)blocks, sizeof(blocks)); fprintf(f, ",\n");
+    fprintf(f, "  \"expected_scores\": "); write_floats_json(f, scores, POLAR_N_ROWS); fprintf(f, "\n");
+    fprintf(f, "}\n");
+    fclose(f);
+    printf("[gen_fixture] wrote %s (%d rows, use_qjl=1)\n", path, POLAR_N_ROWS);
     return 0;
 }
 
@@ -319,8 +352,23 @@ static int self_test(void) {
         return 1;
     }
 
-    printf("[self-test] turbo3=%.6f turbo4=%.6f turbo3_tcq=%.6f qjl=%.6f polar=%.6f (all finite)\n",
-           (double)s3, (double)s4, (double)stcq, (double)sqjl, (double)spolar);
+    eliza_block_q4_polar pblk_qjl;
+    eliza_polar_quantize_row(x, &pblk_qjl, ELIZA_QK_POLAR, /*use_qjl=*/1);
+    float spolar_qjl;
+    eliza_polar_mul_mv(&pblk_qjl, q, 1, /*use_qjl=*/1, &spolar_qjl);
+    if (!isfinite(spolar_qjl)) { fprintf(stderr, "polar+qjl self-test: non-finite score %g\n", (double)spolar_qjl); return 1; }
+    float pdec_qjl[ELIZA_QK_POLAR];
+    eliza_polar_dequantize_row(&pblk_qjl, pdec_qjl, ELIZA_QK_POLAR, /*use_qjl=*/1);
+    double spolar_qjl_manual = 0.0;
+    for (int i = 0; i < ELIZA_QK_POLAR; i++) spolar_qjl_manual += (double)pdec_qjl[i] * (double)q[i];
+    if (fabs((double)spolar_qjl - spolar_qjl_manual) > 1e-3) {
+        fprintf(stderr, "polar+qjl parity: mul_mv=%g vs dequant·q=%g (diff=%g)\n",
+                (double)spolar_qjl, spolar_qjl_manual, fabs((double)spolar_qjl - spolar_qjl_manual));
+        return 1;
+    }
+
+    printf("[self-test] turbo3=%.6f turbo4=%.6f turbo3_tcq=%.6f qjl=%.6f polar=%.6f polar_qjl=%.6f (all finite)\n",
+           (double)s3, (double)s4, (double)stcq, (double)sqjl, (double)spolar, (double)spolar_qjl);
     return 0;
 }
 
@@ -334,6 +382,7 @@ int main(int argc, char ** argv) {
     if (gen_turbo3_tcq(outdir)) return 1;
     if (gen_qjl(outdir))        return 1;
     if (gen_polar(outdir))      return 1;
+    if (gen_polar_qjl(outdir))  return 1;
     printf("[gen_fixture] OK — fixtures written to %s/\n", outdir);
     return 0;
 }

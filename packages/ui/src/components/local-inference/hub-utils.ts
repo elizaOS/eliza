@@ -15,6 +15,26 @@ import { assessCatalogModelFit } from "../../services/local-inference/recommenda
 
 export type FitLevel = "fits" | "tight" | "wontfit";
 
+const ELIZA_1_DISPLAY_NAMES: Record<string, string> = {
+  "eliza-1-0_6b": "eliza-1-0_6b",
+  "eliza-1-1_7b": "eliza-1-1_7b",
+  "eliza-1-9b": "eliza-1-9b",
+  "eliza-1-27b": "eliza-1-27b",
+  "eliza-1-27b-256k": "eliza-1-27b",
+};
+
+export function displayModelName(model: {
+  id: string;
+  displayName?: string;
+}): string {
+  if (model.id.endsWith("-drafter")) {
+    const base = model.id.slice(0, -"-drafter".length);
+    const label = ELIZA_1_DISPLAY_NAMES[base];
+    if (label) return `${label} drafter`;
+  }
+  return ELIZA_1_DISPLAY_NAMES[model.id] ?? model.displayName ?? model.id;
+}
+
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "—";
   const gb = bytes / 1024 ** 3;

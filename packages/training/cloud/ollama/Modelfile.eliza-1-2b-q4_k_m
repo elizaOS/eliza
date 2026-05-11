@@ -16,7 +16,7 @@
 # Availability: requires `scripts/publish_all_eliza1.sh --filter-size 2b
 # --filter-quant gguf-q4_k_m` to have completed against a trained eliza-1
 # checkpoint. The HF repo does not exist before that runs.
-FROM hf.co/elizaos/eliza-1-2b-gguf-q4_k_m
+FROM hf.co/elizalabs/eliza-1-2b-gguf-q4_k_m
 
 # Match the runtime's default Eliza system prompt. The character/preset
 # layer (`packages/agent/src/runtime/eliza.ts` line ~2503) overrides this

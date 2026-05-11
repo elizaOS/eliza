@@ -24,6 +24,173 @@ type DesktopEventData =
   | NotificationEvent
   | undefined;
 
+type ElectrobunRequestHandler = (params?: unknown) => Promise<unknown>;
+type ElectrobunRendererRpc = {
+  request?: Record<string, ElectrobunRequestHandler>;
+};
+
+interface DesktopBridgeWindow extends Window {
+  __ELIZA_ELECTROBUN_RPC__?: ElectrobunRendererRpc;
+}
+
+const BROWSER_PERMISSION_IDS = new Set<DesktopPermissionId>([
+  "camera",
+  "microphone",
+  "location",
+  "notifications",
+]);
+
+function getDesktopRpc(): ElectrobunRendererRpc | undefined {
+  const g = globalThis as typeof globalThis & {
+    window?: DesktopBridgeWindow;
+    __ELIZA_ELECTROBUN_RPC__?: ElectrobunRendererRpc;
+  };
+  if (typeof window !== "undefined") {
+    return (window as DesktopBridgeWindow).__ELIZA_ELECTROBUN_RPC__;
+  }
+  return g.window?.__ELIZA_ELECTROBUN_RPC__ ?? g.__ELIZA_ELECTROBUN_RPC__;
+}
+
+function currentPlatform(): DesktopPermissionState["platform"] {
+  const proc = (globalThis as { process?: { platform?: string } }).process;
+  const p = proc?.platform;
+  if (p === "darwin" || p === "win32" || p === "linux") return p;
+  if (typeof navigator !== "undefined") {
+    const platform = navigator.platform.toLowerCase();
+    if (platform.includes("mac")) return "darwin";
+    if (platform.includes("win")) return "win32";
+  }
+  return "linux";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}
+
+function isDesktopPermissionState(
+  value: unknown,
+  id: DesktopPermissionId,
+): value is DesktopPermissionState {
+  return (
+    isRecord(value) &&
+    value.id === id &&
+    typeof value.status === "string" &&
+    typeof value.canRequest === "boolean" &&
+    typeof value.lastChecked === "number"
+  );
+}
+
+function stateFromStatus(
+  id: DesktopPermissionId,
+  status: DesktopPermissionState["status"],
+  options: Partial<Omit<DesktopPermissionState, "id" | "status">> = {},
+): DesktopPermissionState {
+  const state: DesktopPermissionState = {
+    id,
+    status,
+    lastChecked: options.lastChecked ?? Date.now(),
+    canRequest: options.canRequest ?? status === "not-determined",
+    platform: options.platform ?? currentPlatform(),
+  };
+  if (options.lastRequested !== undefined) {
+    state.lastRequested = options.lastRequested;
+  }
+  if (options.restrictedReason !== undefined) {
+    state.restrictedReason = options.restrictedReason;
+  }
+  return state;
+}
+
+function mapBrowserPermissionState(
+  state: PermissionStatus["state"] | NotificationPermission | undefined,
+): DesktopPermissionState["status"] | null {
+  if (state === "granted") return "granted";
+  if (state === "denied") return "denied";
+  if (state === "prompt" || state === "default") return "not-determined";
+  return null;
+}
+
+async function queryBrowserPermission(
+  id: DesktopPermissionId,
+): Promise<DesktopPermissionState | null> {
+  if (!BROWSER_PERMISSION_IDS.has(id) || typeof navigator === "undefined") {
+    return null;
+  }
+
+  if (id === "notifications" && typeof Notification !== "undefined") {
+    const status = mapBrowserPermissionState(Notification.permission);
+    return status ? stateFromStatus(id, status) : null;
+  }
+
+  if (!navigator.permissions?.query) {
+    return null;
+  }
+
+  const permissionName =
+    id === "location" ? "geolocation" : (id as PermissionName);
+  try {
+    const result = await navigator.permissions.query({
+      name: permissionName as PermissionName,
+    });
+    const status = mapBrowserPermissionState(result.state);
+    return status ? stateFromStatus(id, status) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function requestBrowserPermission(
+  id: DesktopPermissionId,
+): Promise<DesktopPermissionState | null> {
+  if (!BROWSER_PERMISSION_IDS.has(id) || typeof navigator === "undefined") {
+    return null;
+  }
+
+  if (id === "camera" || id === "microphone") {
+    try {
+      const stream = await navigator.mediaDevices?.getUserMedia?.({
+        video: id === "camera",
+        audio: id === "microphone",
+      });
+      for (const track of stream?.getTracks?.() ?? []) {
+        track.stop();
+      }
+    } catch {
+      // Query below returns denied when the browser recorded a denial.
+    }
+    const checked = await queryBrowserPermission(id);
+    return checked ? { ...checked, lastRequested: Date.now() } : null;
+  }
+
+  if (id === "location" && navigator.geolocation) {
+    const requestedStatus = await new Promise<
+      DesktopPermissionState["status"] | null
+    >((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        () => resolve("granted"),
+        (err) => resolve(err.code === err.PERMISSION_DENIED ? "denied" : null),
+        { maximumAge: 0, timeout: 10_000 },
+      );
+    });
+    const checked = await queryBrowserPermission(id);
+    if (checked) return { ...checked, lastRequested: Date.now() };
+    return requestedStatus
+      ? stateFromStatus(id, requestedStatus, { lastRequested: Date.now() })
+      : null;
+  }
+
+  if (id === "notifications" && typeof Notification !== "undefined") {
+    const status = mapBrowserPermissionState(
+      await Notification.requestPermission(),
+    );
+    return status
+      ? stateFromStatus(id, status, { lastRequested: Date.now() })
+      : null;
+  }
+
+  return queryBrowserPermission(id);
+}
+
 export class DesktopWeb extends WebPlugin {
   private pluginListeners: Array<{
     eventName: string;
@@ -317,29 +484,26 @@ export class DesktopWeb extends WebPlugin {
       });
   }
 
-  // System Permissions — web-platform stubs.
-  // The browser has no concept of these macOS-style permissions; report
-  // not-applicable so callers fall back to web APIs (navigator.permissions,
-  // getUserMedia, etc.) where appropriate.
   async checkPermission(options: {
     id: DesktopPermissionId;
   }): Promise<DesktopPermissionState> {
-    // The Capacitor web shim runs in the renderer where `process` may
-    // not exist. Node types are not in this package's tsconfig, so we
-    // detect it via `globalThis` to keep this self-contained.
-    const proc = (globalThis as { process?: { platform?: string } }).process;
-    const platform = ((): DesktopPermissionState["platform"] => {
-      const p = proc?.platform;
-      if (p === "darwin" || p === "win32" || p === "linux") return p;
-      return "linux";
-    })();
+    const rpc = getDesktopRpc();
+    const request = rpc?.request?.permissionsCheck;
+    if (request) {
+      const bridged = await request.call(rpc.request, { id: options.id });
+      if (isDesktopPermissionState(bridged, options.id)) return bridged;
+    }
+
+    const browserState = await queryBrowserPermission(options.id);
+    if (browserState) return browserState;
+
     return {
       id: options.id,
       status: "not-applicable",
       restrictedReason: "platform_unsupported",
       lastChecked: Date.now(),
       canRequest: false,
-      platform,
+      platform: currentPlatform(),
     };
   }
 
@@ -347,6 +511,24 @@ export class DesktopWeb extends WebPlugin {
     id: DesktopPermissionId;
     reason: string;
   }): Promise<DesktopPermissionState> {
-    return this.checkPermission({ id: options.id });
+    const rpc = getDesktopRpc();
+    const request = rpc?.request?.permissionsRequest;
+    if (request) {
+      const bridged = await request.call(rpc.request, { id: options.id });
+      if (isDesktopPermissionState(bridged, options.id)) {
+        if (
+          bridged.status === "not-determined" &&
+          BROWSER_PERMISSION_IDS.has(options.id)
+        ) {
+          return (await requestBrowserPermission(options.id)) ?? bridged;
+        }
+        return bridged;
+      }
+    }
+
+    return (
+      (await requestBrowserPermission(options.id)) ??
+      this.checkPermission({ id: options.id })
+    );
   }
 }

@@ -6,7 +6,7 @@
 //   2. Contract validation (this file) — cross-field rules from
 //                                        packages/inference/AGENTS.md §3 + §6:
 //        - required-kernel set per tier is satisfied,
-//        - long-context bundles (ctx > 64k) include `turbo3_tcq`,
+//        - long-context bundles (ctx > 64k) require `turbo3_tcq`,
 //        - every backend the tier supports has `verifiedBackends.<b>.status === "pass"`,
 //        - every eval has `passed: true` (and `e2eLoopOk` / `thirtyTurnOk`).
 //
@@ -73,7 +73,7 @@ export function validateManifest(input: unknown): ValidationResult {
  */
 export function parseManifestOrThrow(input: unknown): Eliza1Manifest {
   const result = validateManifest(input);
-  if (!result.ok) {
+  if (result.ok === false) {
     throw new Error(
       `Invalid Eliza-1 manifest:\n  - ${result.errors.join("\n  - ")}`,
     );
@@ -105,8 +105,10 @@ export function canSetAsDefault(
   const supported = new Set<Eliza1Backend>(
     SUPPORTED_BACKENDS_BY_TIER[manifest.tier],
   );
-  const overlapping = device.availableBackends.filter((b) =>
-    supported.has(b) && manifest.kernels.verifiedBackends[b].status === "pass",
+  const overlapping = device.availableBackends.filter(
+    (b) =>
+      supported.has(b) &&
+      manifest.kernels.verifiedBackends[b].status === "pass",
   );
   return overlapping.length > 0;
 }
@@ -129,18 +131,15 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
     }
   }
 
-  // Long-context tiers MUST declare turbo3_tcq once any text variant has
+  // Long-context tiers MUST require turbo3_tcq once any text variant has
   // ctx > 64k. AGENTS.md §3 Required for desktop/pro/server (#6).
   const hasLongContextVariant = m.files.text.some(
     (f) => typeof f.ctx === "number" && f.ctx > 65536,
   );
   if (hasLongContextVariant) {
-    const declared =
-      declaredRequired.has("turbo3_tcq") ||
-      m.kernels.optional.includes("turbo3_tcq");
-    if (!declared) {
+    if (!declaredRequired.has("turbo3_tcq")) {
       errors.push(
-        "kernels: text variant with ctx > 64k requires turbo3_tcq in required or optional set",
+        "kernels.required: text variant with ctx > 64k requires turbo3_tcq",
       );
     }
   }
@@ -161,6 +160,63 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
   if (!m.evals.voiceRtf.passed) errors.push("evals.voiceRtf.passed: false");
   if (!m.evals.e2eLoopOk) errors.push("evals.e2eLoopOk: false");
   if (!m.evals.thirtyTurnOk) errors.push("evals.thirtyTurnOk: false");
+
+  // Optional component slots must be internally consistent: a shipped
+  // component needs auditable lineage, and lineage may not point at a
+  // component absent from the bundle. Components that affect runtime quality
+  // also require their own publish gate to pass.
+  for (const slot of [
+    "asr",
+    "embedding",
+    "vision",
+    "vad",
+    "wakeword",
+  ] as const) {
+    const files = m.files[slot] ?? [];
+    const lineage = m.lineage[slot];
+    if (files.length > 0 && !lineage) {
+      errors.push(`lineage.${slot}: required when files.${slot} is non-empty`);
+    }
+    if (lineage && files.length === 0) {
+      errors.push(`files.${slot}: required when lineage.${slot} is present`);
+    }
+  }
+
+  if ((m.files.asr ?? []).length > 0) {
+    if (!m.evals.asrWer) {
+      errors.push("evals.asrWer: required when files.asr is non-empty");
+    } else if (!m.evals.asrWer.passed) {
+      errors.push("evals.asrWer.passed: false");
+    }
+  }
+  if ((m.files.embedding ?? []).length > 0) {
+    if (!m.evals.embedMteb) {
+      errors.push(
+        "evals.embedMteb: required when files.embedding is non-empty",
+      );
+    } else if (!m.evals.embedMteb.passed) {
+      errors.push("evals.embedMteb.passed: false");
+    }
+  }
+  if ((m.files.vad ?? []).length > 0) {
+    if (!m.evals.vadLatencyMs) {
+      errors.push("evals.vadLatencyMs: required when files.vad is non-empty");
+    } else if (!m.evals.vadLatencyMs.passed) {
+      errors.push("evals.vadLatencyMs.passed: false");
+    }
+  }
+  const expressiveVoice =
+    m.voice?.capabilities.includes("emotion-tags") ||
+    m.voice?.capabilities.includes("singing");
+  if (expressiveVoice) {
+    if (!m.evals.expressive) {
+      errors.push(
+        "evals.expressive: required when voice capabilities include emotion-tags or singing",
+      );
+    } else if (!m.evals.expressive.passed) {
+      errors.push("evals.expressive.passed: false");
+    }
+  }
 
   // The strongest claim: defaultEligible. If anything above failed, this
   // flag must be false. (Contract errors are already accumulated; we add

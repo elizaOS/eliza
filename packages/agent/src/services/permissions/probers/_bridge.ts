@@ -138,7 +138,65 @@ export async function queryTccStatus(
       [
         "sqlite3",
         tccDb,
-        `SELECT auth_value FROM access WHERE service='${service}' AND client='${bundleIdentifier}'`,
+        `SELECT auth_value FROM access WHERE service=${sqliteStringLiteral(service)} AND client=${sqliteStringLiteral(bundleIdentifier)}`,
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    if (exitCode !== 0 || stderr.includes("authorization denied")) return null;
+
+    const value = stdout.trim();
+    if (value === "2") return "granted";
+    if (value === "0") return "denied";
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function sqliteStringLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+/**
+ * Read TCC.db for Apple Events permission from this runtime to a target app.
+ *
+ * AppleScript-driven integrations such as Reminders.app, Contacts.app,
+ * Notes.app, Calendar.app, and System Events are not represented by the
+ * target app's domain TCC service. They live under kTCCServiceAppleEvents
+ * keyed by both sender bundle id (`client`) and target bundle id
+ * (`indirect_object_identifier`). This check is read-only and must be used
+ * instead of probing with osascript in `check()` paths.
+ */
+export async function queryAppleEventsTccStatus(
+  targetBundleIdentifier: string,
+  bundleIdentifier = resolveBundleId(),
+): Promise<"granted" | "denied" | null> {
+  if (!IS_DARWIN) return null;
+  try {
+    const tccDb = path.join(
+      os.homedir(),
+      "Library/Application Support/com.apple.TCC/TCC.db",
+    );
+    if (!existsSync(tccDb)) return null;
+
+    const proc = Bun.spawn(
+      [
+        "sqlite3",
+        tccDb,
+        [
+          "SELECT auth_value FROM access",
+          "WHERE service='kTCCServiceAppleEvents'",
+          `AND client=${sqliteStringLiteral(bundleIdentifier)}`,
+          `AND indirect_object_identifier=${sqliteStringLiteral(targetBundleIdentifier)}`,
+          "ORDER BY last_modified DESC LIMIT 1",
+        ].join(" "),
       ],
       { stdout: "pipe", stderr: "pipe" },
     );

@@ -3,6 +3,7 @@ import type {
   ActiveModelState,
   InstalledModel,
 } from "../../api/client-local-inference";
+import { displayModelName } from "./hub-utils";
 
 interface ActiveModelBarProps {
   active: ActiveModelState;
@@ -20,7 +21,7 @@ export function ActiveModelBar({
   if (!active.modelId) return null;
 
   const current = installed.find((m) => m.id === active.modelId);
-  const label = current?.displayName ?? active.modelId;
+  const label = current ? displayModelName(current) : active.modelId;
   const status =
     active.status === "loading"
       ? "loading"

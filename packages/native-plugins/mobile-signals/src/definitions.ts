@@ -50,6 +50,12 @@ export interface MobileSignalsOpenSettingsOptions {
   target?: MobileSignalsSettingsTarget;
 }
 
+export type MobileSignalsPermissionTarget = "all" | "health" | "screenTime";
+
+export interface MobileSignalsRequestPermissionsOptions {
+  target?: MobileSignalsPermissionTarget;
+}
+
 export interface MobileSignalsOpenSettingsResult {
   opened: boolean;
   target: MobileSignalsSettingsTarget;
@@ -186,7 +192,9 @@ export interface MobileSignalsCancelBackgroundRefreshResult {
 
 export interface MobileSignalsPlugin {
   checkPermissions(): Promise<MobileSignalsPermissionStatus>;
-  requestPermissions(): Promise<MobileSignalsPermissionStatus>;
+  requestPermissions(
+    options?: MobileSignalsRequestPermissionsOptions,
+  ): Promise<MobileSignalsPermissionStatus>;
   openSettings(
     options?: MobileSignalsOpenSettingsOptions,
   ): Promise<MobileSignalsOpenSettingsResult>;
