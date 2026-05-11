@@ -219,3 +219,213 @@ This matrix is intentionally targeted. It is meant to catch wiring, platform, pe
 ## Changed paths
 
 - `launchdocs/16-all-app-pages-qa.md`
+
+## AI QA Pass 2026-05-11 (static analysis)
+
+Workstream 1 of the AI QA master plan. Live screenshot/vision pass is blocked by the in-flight secrets refactor (`packages/core/src/features/index.ts` -> `manage-secret.ts`), so this pass reads each page component's source instead. Findings are tagged `[P0]` blocker / `[P1]` ship-stopper / `[P2]` should-fix / `[P3]` nice-to-have, capped at ~5 per route.
+
+### Chat (`/chat`)
+
+Component: `packages/ui/src/components/pages/ChatView.tsx` (1258 LOC). Inbox-chat subroute also lives here.
+
+- [P2] `packages/ui/src/components/pages/ChatView.tsx:1230-1236` — `InboxChatPanel`'s `ChatComposer` wires five empty arrow handlers (`onAttachImage={() => {}}`, `onStop={() => {}}`, `onStopSpeaking={() => {}}`, `onToggleAgentVoice={() => {}}`, plus `hideAttachButton` only suppressing the attach button but not the other no-ops). The Stop / Stop Speaking / Toggle Voice buttons still render but do nothing. Fix: pass `undefined` and gate the corresponding buttons in `ChatComposer` so they hide rather than no-op.
+- [P3] `packages/ui/src/components/pages/ChatView.tsx:866-868` — empty `catch {}` in `loadInboxMessages` silently swallows transient errors with no log, no surfacing, and no test. Fix: at minimum log to the structured logger; consider showing a banner after N consecutive failures so the user knows the inbox is stale.
+- [P3] `packages/ui/src/components/pages/ChatView.tsx:1126` — `border border-border/35` plus inline `shadow-[0_10px_18px_-16px_rgba(15,23,42,0.45)]` literal in inbox avatar. Same rgba shadow recipe exists ~30x across the codebase. Fix: extract to a `shadow-card-sm` token in tailwind config.
+- [P3] `packages/ui/src/components/pages/ChatView.tsx:619-622` — composer pad-bottom is `calc(var(--safe-area-bottom, 0px) + var(--eliza-mobile-nav-offset, 0px) + 0.375rem)` — correctly uses safe-area; this is a positive. Listed only to confirm the pattern.
+- [P3] `packages/ui/src/components/pages/ChatView.tsx:556-557, 590-591` — `style={{ zIndex: 1 }}` inline literal repeated three times for share-ingest notice, dropped files row, voice latency row. Fix: pull to a class (`z-1` or `z-status-strip`) for consistency and so the magic value is named.
+
+### Connectors (`/connectors`)
+
+Component: `packages/ui/src/components/pages/ConnectorsPageView.tsx` (21 LOC) — a thin wrapper over `PluginsView` in `social` mode.
+
+- [P3] `packages/ui/src/components/pages/PluginsView.tsx:162, 183` — `if (result?.loading) return testingLabel;` swallows the result object's `error` and `success` states when `loading` is true — fine for normal flow but if a stale `loading: true` is left in the store, the test pill is permanently stuck. Fix: assert `loading` clears on every fetch path or add a 60s safety timeout.
+- No other findings for the route shell. (Audited `packages/ui/src/components/pages/ConnectorsPageView.tsx:1-21`.)
+
+### Apps Catalog (`/apps`)
+
+Components: `packages/ui/src/components/pages/AppsPageView.tsx` (89 LOC) and `packages/ui/src/components/pages/AppsView.tsx` (1194 LOC).
+
+- [P1] `packages/ui/src/components/pages/AppsPageView.tsx:70-77` — hardcoded `#10b981` (Tailwind emerald-500) and matching rgba literals injected via inline `style` for the apps page's accent — design tokens should be section-scoped CSS vars, not raw hex. If the user runs a custom theme, the apps page will ignore it. Fix: define `--section-accent-apps` plus derived `--s-accent-glow` / `--s-accent-subtle` etc. in the theme stylesheet and reference them by name only, no fallback literals.
+- [P2] `packages/ui/src/components/pages/AppsView.tsx:426-445` — `loadApps` catches any error and writes a translated error to local state, but the recovery affordance is implicit (page sits empty with a banner). Fix: show a "Retry" button in the error banner so the user can recover without navigating away.
+- [P3] `packages/ui/src/components/pages/AppsView.tsx:464-466` — 5s polling interval (`setInterval(refresh, 5_000)`) runs even when the tab isn't visible. Fix: gate on `useDocumentVisibility()` to avoid waking the API loop in the background.
+- [P3] `packages/ui/src/components/pages/AppsView.tsx:429, 459` — uses `console.warn` from the runtime client. Server-side rules require structured logger; client-side this is acceptable but consider `Logger` for consistency once a client logger exists.
+
+### Automations (`/automations`)
+
+Component: `packages/ui/src/components/pages/AutomationsFeed.tsx` (674 LOC).
+
+- [P2] `packages/ui/src/components/pages/AutomationsFeed.tsx:405-407` — `onRunNow` catches `client.activateWorkflowDefinition` errors with `/* error surfaced on next refresh */` and silently swallows them. If the workflow can't activate (auth/quota/server), the user gets no feedback. Fix: set a banner state on catch with the error message instead of relying on the refresh side-effect.
+- [P3] `packages/ui/src/components/pages/AutomationsFeed.tsx:437` — `hidden w-[360px] shrink-0 ... lg:block` — magic 360px chat pane width hardcoded. Fix: name it as a CSS var (`--automations-chat-width`) or tailwind extension to make it responsive-tunable.
+- [P3] `packages/ui/src/components/pages/AutomationsFeed.tsx:284, 666` — `device-layout` + `max-w-5xl` / `max-w-7xl` shows three slightly different layout shells with subtly different max-widths in the same file. Fix: pick one shell and reuse.
+- [P3] `packages/ui/src/components/pages/AutomationsFeed.tsx:331-345` — filter chips render `border-accent bg-accent/10` for active and `border-border/40` for inactive — good tokens. No fix needed; called out as a positive baseline.
+
+### Browser Workspace (`/browser`)
+
+Component: `packages/ui/src/components/pages/BrowserWorkspaceView.tsx` (2694 LOC — largest single page).
+
+- [P1] `packages/ui/src/components/pages/BrowserWorkspaceView.tsx:1910-1942` — three install-bridge buttons (`InstallBrowserBridge`, `OpenBrowserBridgeFolder`, `OpenChromeExtensions`) share one `disabled={busyAction !== null}` state but have no aria-busy and no tooltip when disabled. A user clicking "Open Chrome extensions" while another action is in flight gets a silently disabled button with no explanation. Fix: add `aria-busy` and a `title` that explains "Another action is running" when disabled.
+- [P2] `packages/ui/src/components/pages/BrowserWorkspaceView.tsx:2222-2289` — address bar disables on `selectedTabIsInternal` for "internal" tabs but the placeholder copy "Internal tab URL is managed by the app" is in the default fallback only — once translated, the explanation context can be lost. Fix: surface the explanation as a tooltip on the disabled state too.
+- [P3] `packages/ui/src/components/pages/BrowserWorkspaceView.tsx:2354, 2412-2515` — repeated `disabled={busyAction !== null}` on at least six different `Button` elements. Single source of truth would be a `BusyButton` wrapper that handles aria-busy + disabled + spinner together; current pattern is repetitive.
+- [P3] File length (2694 LOC) is itself a finding — single largest page in the audit. Fix: extract `BrowserBridgeSection`, `BrowserTabsSidebar`, and `BrowserAddressBar` into sibling files.
+
+### Character Editor (`/character`)
+
+Component: `packages/ui/src/components/character/CharacterEditor.tsx` (1488 LOC).
+
+- [P1] `packages/ui/src/components/character/CharacterEditor.tsx:95-110, 113` — inline style objects with hardcoded fallback rgb `rgba(var(--accent-rgb, 240, 185, 11), 0.5)` etc. The fallback locks the default accent color to a specific golden hue (240,185,11). If `--accent-rgb` is unset the editor pretends to use the theme but actually paints in gold. Fix: drop the literal fallback in `rgba(var(...))` and let the css var system handle the cascade, or initialize `--accent-rgb` at the document root before this component mounts.
+- [P2] `packages/ui/src/components/character/CharacterEditor.tsx:43-73` — inline SVG icon helpers (`DownloadIcon`, `UploadIcon`, etc.) defined with a comment "avoids adding lucide-react as a dependency", but lucide-react IS already imported across `LifeOpsPageView`, `Header`, etc. Fix: replace inline SVGs with `lucide-react` icons for consistency.
+- [P3] `packages/ui/src/components/character/CharacterEditor.tsx:544` — `console.warn` for voice config load failure; client logger discussion same as Apps Catalog.
+- [P3] Component is 1488 LOC — second largest page in the audit. Fix: panels (`CharacterIdentityPanel`, `CharacterStylePanel`, `CharacterExamplesPanel`) are already extracted; the remaining helper logic (handlers, draft management) could move to `useCharacterEditorState`.
+
+### Character Knowledge (`/character/documents`)
+
+Component: `packages/ui/src/components/pages/DocumentsView.tsx` (loaded via `CharacterEditor`'s documents page).
+
+- [P2] `packages/ui/src/components/pages/DocumentsView.tsx:347, 661` — `console.error` for `[DocumentsView] Failed to load data` and `Failed to refresh after upload`. Acceptable on client, but neither surfaces a user-visible error banner; the page can silently fail to refresh after upload. Fix: set an `error` state on the catch path and render the existing error banner.
+- [P2] `packages/ui/src/components/pages/DocumentsView.tsx:247` — `disabled={deleting || !doc.canDelete}` on delete control has no tooltip explaining why a doc isn't deletable. A user sees a grayed button with no reason. Fix: add `title={doc.canDelete ? "Delete" : "This document is protected"}`.
+- [P3] `packages/ui/src/components/pages/DocumentsView.tsx:989-1000` — input uses `placeholder:text-muted/50` which on the design tokens resolves to extremely-low-contrast placeholder text. Fix: bump to `text-muted/60` or rely on the design system input component.
+
+### Wallet / Inventory (`/wallet`)
+
+Component: `plugins/app-wallet/src/InventoryView.tsx` (2419 LOC — largest page in the entire audit, exceeds BrowserWorkspaceView).
+
+- [P1] `plugins/app-wallet/src/InventoryView.tsx:1` — file is 2419 LOC, with many embedded sub-components (`WalletRailAddress`, `WalletRailRpcButton`, `WalletRailAccount`, etc.). The monolith makes the page hard to test, hard to lazy-load, and hard to reason about. Fix: extract each `WalletRail*` and `Inventory*` sub-component into its own file under `plugins/app-wallet/src/inventory/`.
+- [P2] `plugins/app-wallet/src/InventoryView.tsx:1318-1324` — `handleCopy` shows "Copied" for 1200ms via `setTimeout` but there's no cleanup on unmount; if the user clicks then navigates away inside 1.2s the unmounted-component state warning fires. Fix: cancel the timeout in a `useEffect` cleanup or use `useRef` with a `cancelled` flag.
+- [P3] `plugins/app-wallet/src/InventoryView.tsx:1395-1406` — `WalletRailRpcButton` has `aria-label="Open RPC settings"` but no `aria-pressed` for the toggle-like indicator (green/yellow/red dot). Fix: convey RPC readiness via `aria-describedby` to a hidden status element.
+- [P3] `plugins/app-wallet/src/InventoryView.tsx:1349-1352` — `cn("truncate font-mono text-xs", address ? "text-txt" : "text-muted")` — same pattern repeated for several status-toned spans. Could be a `WalletStatusText` component.
+
+### Settings (`/settings`)
+
+Component: `packages/ui/src/components/pages/SettingsView.tsx` (1234 LOC). Top-level shell only — sub-sections are covered by Workstream 6.
+
+- [P2] `packages/ui/src/components/pages/SettingsView.tsx:531, 539` — export modal buttons use `min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)_+_2px)]` with a magic radius offset of `+ 2px`. Pattern is reused throughout settings dialogs. Fix: define `--radius-lg-plus` once or use a shared `<DialogButton>` wrapper.
+- [P3] `packages/ui/src/components/pages/SettingsView.tsx:69-73, 84-103` — sidebar width localStorage keys + min/max/default constants live in this file. Fine for now but consider extracting to `settings-sidebar-prefs.ts` to share with the detached settings window code path.
+- [P3] `packages/ui/src/components/pages/SettingsView.tsx:493` — `placeholder={t("settingsview.EnterExportPasswor")}` — the translation key is truncated (`EnterExportPasswor` instead of `EnterExportPassword`). Same defect appears for a few other i18n keys in this file. Fix: rename to full word; coordinate with i18n catalogs.
+- [P3] No P0/P1 findings; settings shell layout itself is solid (uses `PageLayout` + `SidebarPanel` modern shell).
+
+### App: lifeops (`/apps/lifeops`)
+
+Component: `plugins/app-lifeops/src/components/LifeOpsPageView.tsx` (985 LOC).
+
+- [P3] `plugins/app-lifeops/src/components/LifeOpsPageView.tsx:407-420` — `resolveLifeOpsChatPlaceholder` returns three different copy strings hand-rolled in English ("Ask about this reminder" / "Ask about this event" / "Ask about this message") rather than going through `t()`. Other strings in the file ARE translated. Fix: route through `t("lifeops.chat.placeholder.reminder", ...)` etc.
+- [P3] `plugins/app-lifeops/src/components/LifeOpsPageView.tsx:78` — `LIFEOPS_COMPACT_LAYOUT_MEDIA_QUERY = "(max-width: 1023px)"` is a hardcoded breakpoint that doesn't match the tailwind `lg` breakpoint at `1024px`. Close enough to look like a bug. Fix: align with `tw.theme.screens.lg` so the JS-driven layout matches the CSS breakpoints exactly.
+- No P0/P1 findings. Page uses `AppWorkspaceChrome` + `PagePanel` modern shell, surfaces a clear `EnablePrompt` empty state, and gates on Cloud presence.
+
+### App: tasks (`/apps/tasks`)
+
+Component: `packages/ui/src/components/pages/TasksPageView.tsx` (27 LOC) — but in current routing, `/apps/tasks` actually resolves to the automations shell (see existing P3 in this doc above).
+
+- [P1] Existing finding (above in this doc): `/apps/tasks` and `TasksPageView` are wired through different routes. `TAB_PATHS` maps `tasks` to `/apps/tasks` and `ViewRouter` has a `tasks` branch rendering `TasksPageView`, but `tabFromPath('/apps/tasks')` resolves through `APPS_SUB_TABS` to `automations`. This means `TasksPageView` is dead code in the standard nav, AND the path-from-URL is automation-shaped — a P1 bug because the existing doc has flagged this and it's still unresolved. Fix: either delete `TasksPageView` and the `tasks` ViewRouter branch, or repoint `/apps/tasks` to render TasksPageView.
+- [P3] `packages/ui/src/components/pages/TasksPageView.tsx:14-19` — `t("taskseventspanel.TasksViewDescription")` uses a different i18n namespace (`taskseventspanel.`) than every other page on this route (which use `taskseventspanel.Tasks` or similar). Confusing if/when this branch becomes live. Fix: align i18n keys.
+
+### App: plugins (`/apps/plugins`)
+
+Component: `packages/ui/src/components/pages/PluginsPageView.tsx` -> `PluginsView.tsx` -> `PluginCard.tsx`.
+
+- [P2] `packages/ui/src/components/pages/PluginCard.tsx:240-241` — hardcoded literals `border-destructive bg-[rgba(153,27,27,0.04)] text-destructive` and `border-warn bg-[rgba(234,179,8,0.06)] text-warn`. Mixes design tokens (`text-destructive`, `text-warn`) with literal rgba bg colors. Fix: define `bg-destructive-tint-04` and `bg-warn-tint-06` tokens, or use `bg-destructive/4` (tailwind opacity) instead of raw rgba.
+- [P3] `packages/ui/src/components/pages/PluginCard.tsx:426, 430` — HTML entities (`&#9881;` for gear, `&#9654;` for play) used instead of `lucide-react` icons that the rest of the codebase uses. Fix: replace with `<Settings />` / `<Play />` from lucide-react.
+- [P3] `packages/ui/src/components/pages/PluginCard.tsx:436` — same `bg-[rgba(153,27,27,0.04)]` literal repeated. See P2 above.
+
+### App: skills (`/apps/skills`)
+
+Component: `packages/ui/src/components/pages/SkillsView.tsx` (uses `AppPageSidebar` modern shell).
+
+- [P3] `packages/ui/src/components/pages/SkillsView.tsx:188-198` — primary "Create" button uses `text-xs-tight font-bold tracking-[0.12em]` — fine — but the rest of the file mixes `text-xs-tight font-semibold` in similar contexts. Inconsistent weight. Fix: pick one and apply consistently.
+- [P3] `packages/ui/src/components/pages/SkillsView.tsx:401, 423` — placeholder copy `t("skillsview.eGMyAwesomeSkil")` and `t("skillsview.BriefDescriptionOf")` — the keys are truncated mid-word again (same i18n defect class as `SettingsView.tsx:493`). Fix: full-word keys.
+- No P0/P1/P2 findings. Sidebar/main pattern, search, filter tabs, and empty states all present.
+
+### App: fine-tuning (`/apps/fine-tuning`)
+
+Component: `plugins/app-training/src/ui/FineTuningView.tsx` (697 LOC).
+
+- [P3] `plugins/app-training/src/ui/FineTuningView.tsx:89-91` — `useState("http://localhost:11434")` — hardcoded default for the Ollama URL. If a user has Ollama on a different port (e.g. running multiple instances) they need to manually clear and re-type. Fix: read from `MILADY_OLLAMA_URL` or expose the default as a config var.
+- [P3] `plugins/app-training/src/ui/FineTuningView.tsx:73-74` — `setBuildLimit("250")` / `setBuildMinCalls("1")` are stringified default numbers. Acceptable for `<Input type="text">` but visually mixes number/string semantics. Fix: keep as numbers and stringify only at render.
+- No P0/P1/P2 findings. View uses `ContentLayout`, has loading/error/empty states, structured panels.
+
+### App: trajectories (`/apps/trajectories`)
+
+Component: `packages/ui/src/components/pages/TrajectoriesView.tsx`.
+
+- [P2] `packages/ui/src/components/pages/TrajectoriesView.tsx:113-115` — `await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)))` — bare exponential-backoff sleep inside a try-catch retry loop, with no abort signal. If the user navigates away during retry, the timer keeps running. Fix: pass an AbortSignal + clear the timer on cancel.
+- [P3] `packages/ui/src/components/pages/TrajectoriesView.tsx:159-160` — `anchor.download = ... trajectories-${...split("T")[0]}.${format}` — filename includes only the date, not the time. Two exports in the same day will silently overwrite each other on download. Fix: include `HH-MM` suffix.
+- [P3] `packages/ui/src/components/pages/TrajectoriesView.tsx:178-194` — selection-side-effect `useLayoutEffect` does a lot of conditional state mutation across `loading`, `trajectories`, `selectedTrajectoryId`. Hard to reason about. Fix: hoist to a `useTrajectorySelection` hook.
+
+### App: relationships (`/apps/relationships`)
+
+Component: `packages/ui/src/components/pages/RelationshipsView.tsx` (10 LOC stub) -> `packages/ui/src/components/pages/relationships/RelationshipsWorkspaceView.tsx` and `packages/ui/src/components/pages/RelationshipsGraphPanel.tsx`.
+
+- [P2] `packages/ui/src/components/pages/RelationshipsGraphPanel.tsx:61-63` — color palette is hardcoded as `rgba(34, 197, 94, 0.64)` etc. for positive/neutral/negative. These should be `--tone-positive`, `--tone-neutral`, `--tone-negative` design tokens — the graph is unthemeable today. Fix: pull to CSS variables; this will also make dark-mode contrast tunable.
+- [P3] `packages/ui/src/components/pages/RelationshipsGraphPanel.tsx:609-621, 671` — multiple `text-[rgba(99,102,241,0.86)]` / `text-[rgba(34,197,94,0.9)]` literals on `lucide-react` icons. Same as the palette finding — should be `text-tone-positive` etc.
+- [P3] `packages/ui/src/components/pages/RelationshipsGraphPanel.tsx:1063-1073, 1145-1190` — SVG gradients use hardcoded `rgba(255,240,199,0.96)`, `rgba(199,210,255,0.98)` stops. These can't switch for dark mode and will look washed-out on a dark canvas. Fix: derive from `--accent`, `--tone-positive` etc.
+
+### App: memories (`/apps/memories`)
+
+Component: `packages/ui/src/components/pages/MemoryViewerView.tsx`.
+
+- [P3] `packages/ui/src/components/pages/MemoryViewerView.tsx:355-356` — same low-contrast `placeholder:text-muted/50` pattern as DocumentsView. Fix: see Documents P3.
+- [P3] `packages/ui/src/components/pages/MemoryViewerView.tsx:217-237` — loading/error/empty states present and idiomatic. No issue, called out as positive baseline.
+- No P0/P1/P2 findings.
+
+### App: runtime (`/apps/runtime`)
+
+Component: `packages/ui/src/components/pages/RuntimeView.tsx` (uses `AppPageSidebar` modern shell).
+
+- [P1] `packages/ui/src/components/pages/RuntimeView.tsx:502, 519, 536, 549-550, 562, 686` — at least six places where an 800+ character inline `className` string is duplicated verbatim. Each combines `bg-[linear-gradient(...)]`, `shadow-[inset_0_1px_0_rgba(255,255,255,0.14),...]`, hover/focus/disabled variants. Total > 5KB of duplicated className per render. Fix: extract to a single `RUNTIME_INPUT_CLASS` and `RUNTIME_BUTTON_CLASS` constant, or use `cva()` / `clsx()` with named variants. This file alone has the worst Tailwind duplication in the codebase.
+- [P2] `packages/ui/src/components/pages/RuntimeView.tsx:497-501` — `Math.max(1, Math.min(24, Number(event.target.value) || 1))` — number-coercion logic repeated three times for depth/array-cap/object-cap inputs. Fix: extract `clampInputNumber(min, max)` helper.
+- [P3] `packages/ui/src/components/pages/RuntimeView.tsx:506, 523` — `{/* biome-ignore lint/a11y/noLabelWithoutControl: programmatic control association is preserved */}` — three suppressions. Verify the association is actually preserved (htmlFor + id) or restructure to use `<Label htmlFor>` from `@elizaos/ui`.
+
+### App: database (`/apps/database`)
+
+Component: `packages/ui/src/components/pages/DatabaseView.tsx`.
+
+- [P1] `packages/ui/src/components/pages/DatabaseView.tsx:282, 410, 866, 893` — same multi-hundred-character duplicated `className` strings as RuntimeView. The `linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))` recipe repeats verbatim 4+ times. Fix: same as RuntimeView P1 — extract to a constant or `cva`.
+- [P2] `packages/ui/src/components/pages/DatabaseView.tsx:622` — error banner uses inline `shadow-[0_0_15px_rgba(231,76,60,0.15)]` literal — that's a hardcoded danger-red shadow, not a token. Fix: use `shadow-danger-glow` token.
+- [P2] `packages/ui/src/components/pages/DatabaseView.tsx:630` — close-button copy is the literal `×` character. On screen readers this announces as "multiplication sign x". Fix: wrap in `<span aria-hidden="true">×</span>` and add an explicit `aria-label` (already on the Button but verify — current is `aria-label`-less `Button variant="ghost"`).
+- [P3] `packages/ui/src/components/pages/DatabaseView.tsx:254` — `bg-ok shadow-[0_0_8px_rgba(34,197,94,0.5)]` — same green shadow-glow pattern; should be a token.
+
+### App: logs (`/apps/logs`)
+
+Component: `packages/ui/src/components/pages/LogsView.tsx`.
+
+- [P2] `packages/ui/src/components/pages/LogsView.tsx:268-278` — log-level color logic uses a ternary chain `entry.level === "error" ? "text-danger" : entry.level === "warn" ? "text-warning" : ...`. Note: `text-warning` is used here, but elsewhere the file uses `text-warn`. Inconsistent token name. Fix: pick one (`text-warn` is the project standard) and update.
+- [P2] `packages/ui/src/components/pages/LogsView.tsx:294-311` — log tag color palette is hardcoded as an inline `Record<string, string>` object literal inside `.map()`. Allocates a new object every render and every iteration. Fix: hoist to a `LOG_TAG_TONES` constant outside the component.
+- [P3] `packages/ui/src/components/pages/LogsView.tsx:313` — `style={{ fontFamily: "var(--font-body, sans-serif)" }}` inline style. If `--font-body` is set globally, this is redundant; if it's not, the fallback is `sans-serif` which inherits the OS default and won't match design. Fix: rely on `font-body` tailwind class.
+- [P3] `packages/ui/src/components/pages/LogsView.tsx:215` — `border-danger/35 bg-danger/8` — `bg-danger/8` is `8%` opacity, which is a non-standard tailwind opacity step. Verify the tailwind config exposes `/8` or this silently no-ops. Fix: use `/5` or `/10`.
+
+### App: companion (`/apps/companion`)
+
+Component: `plugins/app-companion/src/components/companion/CompanionShell.tsx` (62 LOC) -> `CompanionView.tsx`.
+
+- [P2] `plugins/app-companion/src/components/companion/CompanionShell.tsx:57` — `h-[100vh]` plus `supports-[height:100dvh]:h-[100dvh]` fallback. On iOS Safari < 15.4, `100dvh` isn't supported, so the chat composer can be hidden behind the URL bar. Fix: add an explicit safe-area inset; already correctly handled by the `100dvh` part, just verify on the iOS target.
+- [P3] `plugins/app-companion/src/components/companion/CompanionShell.tsx:33-46` — VRM prefetch on mount only — if a user adds a custom VRM mid-session, the new asset isn't preloaded. Fix: re-trigger prefetch when `getVrmCount()` changes.
+- [P3] `plugins/app-companion/src/components/companion/CompanionShell.tsx:24` — comment "swallowed by VrmEngine" — verify that's actually true (P3 because no evidence of swallow).
+
+### App: shopify (`/apps/shopify`)
+
+Component: `plugins/app-shopify/src/ShopifyAppView.tsx` (442 LOC).
+
+- [P1] `plugins/app-shopify/src/ShopifyAppView.tsx:174` — `className="fixed inset-0 z-50 ..."` — full-screen overlay with `fixed inset-0` does NOT include `pt-safe` / `pb-safe` / `env(safe-area-inset-*)`. On iPhone with a notch the header is partially under the notch; on iPhone with home-bar gesture, the back button is partially under the indicator. Fix: add `pt-safe pb-safe` or equivalent CSS env-inset.
+- [P2] `plugins/app-shopify/src/ShopifyAppView.tsx:223-230` — `ShopifySetupCard` shows env var names (`SHOPIFY_STORE_DOMAIN`, `SHOPIFY_ACCESS_TOKEN`) directly as the setup instructions. This is power-user friendly but a non-dev user gets no actionable next step. Fix: provide a "Configure in Settings" link / button next to the env block, or auto-detect and prefill via the Secrets manager.
+- [P3] `plugins/app-shopify/src/ShopifyAppView.tsx:30-89` — `ShopifySetupCard` is a sibling component in the same file with no `data-testid`. Tests can find the shell but not the empty state. Fix: add `data-testid="shopify-setup-card"`.
+
+### App: vincent (`/apps/vincent`)
+
+Component: `plugins/app-vincent/src/VincentAppView.tsx` (158 LOC).
+
+- [P1] `plugins/app-vincent/src/VincentAppView.tsx:40` — `className="fixed inset-0 z-50 flex flex-col bg-bg h-[100vh] overflow-hidden supports-[height:100dvh]:h-[100dvh]"` — same safe-area defect as ShopifyAppView. Fix: same.
+- [P2] `plugins/app-vincent/src/VincentAppView.tsx:122-137` — empty state ("Connect your Vincent account to get started") shows static text but no actual connect button below the prompt. The connect button lives in `VincentConnectionCard` ABOVE the prompt, which is non-obvious — user reads "to get started" and then has to scroll up. Fix: re-order so the message is above the connect card, or add a "Scroll to connect ↑" hint.
+- [P3] `plugins/app-vincent/src/VincentAppView.tsx:123` — `bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))]` — same recipe as RuntimeView/DatabaseView. Hoist.
+
+---
+
+### Summary
+
+- **P0:** 0
+- **P1:** 8 — Apps Catalog hex literal (`AppsPageView.tsx:70-77`); Browser Workspace disabled-button aria gaps (`BrowserWorkspaceView.tsx:1910-1942`); Character editor accent-rgb fallback (`CharacterEditor.tsx:95-110`); Wallet inventory 2419-LOC monolith (`InventoryView.tsx:1`); `/apps/tasks` route misalignment (existing P3 promoted, see `TasksPageView.tsx` + `navigation/index.ts:410`); RuntimeView duplicated 800+char className strings (`RuntimeView.tsx:502+`); DatabaseView same (`DatabaseView.tsx:282+`); Shopify and Vincent missing safe-area inset (`ShopifyAppView.tsx:174` + `VincentAppView.tsx:40`).
+- **P2:** ~13 — error swallows in chat inbox/automations/documents, hardcoded relationship palette (`RelationshipsGraphPanel.tsx:61-63`), hardcoded plugin-card rgba (`PluginCard.tsx:240-241`), trajectory retry timer leak, log inconsistent tone names (`LogsView.tsx:268`), Shopify env-only setup, Vincent empty-state ordering, etc.
+- **P3:** ~25 — i18n key truncations, inline icon/SVG inconsistency, magic widths, redundant `console.warn`s, polling without visibility gating.
+
+**Top-3 most concerning findings:**
+1. `packages/ui/src/components/pages/RuntimeView.tsx:502, 519, 536, 549-550, 562, 686` — six+ repetitions of identical 800-character Tailwind className strings. Same pattern repeats in DatabaseView. This is the worst tailwind duplication in the audit and a strong signal the design-token + variant strategy isn't being applied. Fix would eliminate ~5KB of duplicated string per render in just RuntimeView, plus enable theme-color refactors elsewhere.
+2. `plugins/app-shopify/src/ShopifyAppView.tsx:174` and `plugins/app-vincent/src/VincentAppView.tsx:40` — full-screen overlay apps using `fixed inset-0` without safe-area insets. Both apps will visibly clip their headers and back buttons on iPhones with notches or home indicators. Mobile-first feature regressing.
+3. `plugins/app-wallet/src/InventoryView.tsx` — 2419 LOC single file. Beyond a P1 maintainability finding, this file's size strongly correlates with how often it ships regressions; extracting `WalletRail*` and `Inventory*` subtrees would unblock per-section testing.

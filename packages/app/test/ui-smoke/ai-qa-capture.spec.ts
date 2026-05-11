@@ -46,7 +46,8 @@ type CaptureRecord = {
 };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(HERE, "../../../../..");
+// HERE = packages/app/test/ui-smoke → up 4 levels = repo root
+const REPO_ROOT = resolve(HERE, "../../../..");
 const RUN_ID = process.env.AI_QA_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, "-");
 const REPORT_DIR = resolve(REPO_ROOT, "reports", "ai-qa", RUN_ID);
 
