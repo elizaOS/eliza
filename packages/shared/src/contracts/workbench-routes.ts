@@ -54,3 +54,52 @@ export type PutWorkbenchTodoRequest = z.infer<
   typeof PutWorkbenchTodoRequestSchema
 >;
 export type WorkbenchTodoPriority = z.infer<typeof WorkbenchTodoPrioritySchema>;
+
+export const PostWorkbenchVfsProjectRequestSchema = z
+  .object({
+    projectId: z.string().regex(/\S/, "projectId is required"),
+  })
+  .strict()
+  .transform((value) => ({
+    projectId: value.projectId.trim(),
+  }));
+
+export const PutWorkbenchVfsFileRequestSchema = z
+  .object({
+    path: z.string().regex(/\S/, "path is required"),
+    content: z.string(),
+    encoding: z.enum(["utf-8", "base64"]).optional(),
+  })
+  .strict()
+  .transform((value) => ({
+    ...value,
+    path: value.path.trim(),
+  }));
+
+export const PostWorkbenchVfsSnapshotRequestSchema = z
+  .object({
+    note: z.string().optional(),
+  })
+  .strict();
+
+export const PostWorkbenchVfsRollbackRequestSchema = z
+  .object({
+    snapshotId: z.string().regex(/\S/, "snapshotId is required"),
+  })
+  .strict()
+  .transform((value) => ({
+    snapshotId: value.snapshotId.trim(),
+  }));
+
+export type PostWorkbenchVfsProjectRequest = z.infer<
+  typeof PostWorkbenchVfsProjectRequestSchema
+>;
+export type PutWorkbenchVfsFileRequest = z.infer<
+  typeof PutWorkbenchVfsFileRequestSchema
+>;
+export type PostWorkbenchVfsSnapshotRequest = z.infer<
+  typeof PostWorkbenchVfsSnapshotRequestSchema
+>;
+export type PostWorkbenchVfsRollbackRequest = z.infer<
+  typeof PostWorkbenchVfsRollbackRequestSchema
+>;

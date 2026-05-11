@@ -610,13 +610,14 @@ export async function compileMobileSafeApplet(
 
   for (const filePath of appFiles) {
     const source = new TextDecoder().decode(await options.files.readFile(filePath));
-    assertMobileSafeAppletSource(source, filePath);
+    const compiledSource =
+      manifest.moduleFormat === "typescript" || filePath.endsWith(".ts")
+        ? stripMobileSafeTypeScript(source)
+        : source;
+    assertMobileSafeAppletSource(compiledSource, filePath);
     modules.push({
       path: filePath,
-      source:
-        manifest.moduleFormat === "typescript" || filePath.endsWith(".ts")
-          ? stripMobileSafeTypeScript(source)
-          : source,
+      source: compiledSource,
     });
   }
 
@@ -1389,11 +1390,13 @@ function transformMobileSafeAppletModule(source: string): string {
   let output = source
     .replace(
       /\bexport\s+default\s+async\s+function\s+([A-Za-z_$][\w$]*)?\s*\(/g,
-      "exports.default = async function $1(",
+      (_match, name: string | undefined) =>
+        `exports.default = async function${name ? ` ${name}` : ""}(`,
     )
     .replace(
       /\bexport\s+default\s+function\s+([A-Za-z_$][\w$]*)?\s*\(/g,
-      "exports.default = function $1(",
+      (_match, name: string | undefined) =>
+        `exports.default = function${name ? ` ${name}` : ""}(`,
     )
     .replace(/\bexport\s+default\s+/g, "exports.default = ")
     .replace(
