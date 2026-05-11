@@ -14,6 +14,7 @@ export * from "./feature-result.js";
 export * from "./health.js";
 export * from "./inbox.js";
 export * from "./lifeops.js";
+export * from "./misc-routes.js";
 export * from "./onboarding.js";
 export * from "./permissions.js";
 export * from "./plugin-routes.js";
