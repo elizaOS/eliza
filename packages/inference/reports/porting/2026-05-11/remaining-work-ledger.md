@@ -23,7 +23,7 @@ with the status below.
 | Area | Status | Evidence |
 | --- | --- | --- |
 | Metal standalone shaders | `turbo3`, `turbo4`, `turbo3_tcq`, `qjl`, `polar` all pass 8/8 on Apple M4 Max. | `make -C packages/inference/verify metal-verify metal-verify-multiblock` |
-| Metal built-fork graph dispatch | `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_ATTN_SCORE_TBQ` for `turbo3`, `turbo4`, and `turbo3_tcq`, and `GGML_OP_ATTN_SCORE_POLAR` are runtime-ready. | `make -C packages/inference/verify dispatch-smoke` now covers the full Metal graph-dispatch set; Turbo4 routes through `kernel_turbo4_dot_multi` against the fork's four-record TBQ4 layout with max diff `1.907e-06`. `dispatch-smoke-implemented` remains the additive subset gate for already implemented routes. |
+| Metal built-fork graph dispatch | `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_ATTN_SCORE_TBQ` for `turbo3`, `turbo4`, and `turbo3_tcq`, and `GGML_OP_ATTN_SCORE_POLAR` are runtime-ready. | `make -C packages/inference/verify dispatch-smoke` now covers the full Metal graph-dispatch set; Turbo4 routes through `kernel_turbo4_dot_multi` against the fork's four-record TBQ4 layout with max diff `4.768e-07`. `dispatch-smoke-implemented` is now an alias of the full dispatch smoke. |
 | Metal artifact gate | `darwin-arm64-metal` now passes the build-script capability gate. | `build-llama-cpp-dflash.mjs` reads `verify/metal-runtime-dispatch-evidence.json` and reports each Metal runtime capability true only when the matching shipped symbol and runtime-ready evidence are both present. A fresh `darwin-arm64-metal` build wrote `CAPABILITIES.json` with `dflash`, `turbo3`, `turbo4`, `turbo3_tcq`, `qjl_full`, and `polarquant` true. |
 | Vulkan standalone shaders | All five pass on Apple M4 Max through MoltenVK; turbo* also passed earlier on Intel ARL + lavapipe. | `make -C packages/inference/verify vulkan-verify`. |
 | Android Vulkan standalone runner | Tooling is installed and the runner is fail-closed for real-device validation. | Homebrew `android-platform-tools` + `android-commandlinetools` installed; SDK at `~/Library/Android/sdk`; `android_vulkan_smoke.sh` now resolves NDKs under `ANDROID_HOME` / `ANDROID_SDK_ROOT`, statically links libc++, and refuses emulators/software Vulkan unless `ELIZA_ALLOW_ANDROID_EMULATOR_VULKAN=1` / `ELIZA_ALLOW_SOFTWARE_VULKAN=1` are set. Diagnostic emulator run passed all six fixtures on `llvmpipe`; this does **not** count as Adreno/Mali validation. |
@@ -52,19 +52,7 @@ with the status below.
    - `run-physical-device-smoke.mjs` passes on a connected iPhone/iPad without
      skipping the voice ABI check.
 
-2. **Metal PolarQuant graph dispatch**
-
-   `GGML_OP_ATTN_SCORE_POLAR` now reaches `kernel_mul_mv_q4_polar_f32`
-   through real Metal graph execution. The smoke covers both `use_qjl=0` and
-   `use_qjl=1`.
-
-   Acceptance:
-   - Built fork smoke covers `use_qjl=0` and `use_qjl=1`. Covered by
-     `dispatch-smoke-implemented`.
-   - `CAPABILITIES.json.kernels.polarquant=true` when the shipped Metal symbol
-     and runtime evidence are present.
-
-3. **Vulkan graph dispatch**
+2. **Vulkan graph dispatch**
 
    The Vulkan shaders and fixtures are verified, but the fork runtime has no
    op-level dispatch path for QJL, Polar, or TurboQuant. The Vulkan backend
@@ -86,7 +74,7 @@ with the status below.
      pointing at a built-fork/app graph-dispatch report. Standalone fixture
      success alone exits non-zero and remains evidence only.
 
-4. **Fused voice runtime**
+3. **Fused voice runtime**
 
    The product goal is not two independent model processes. The next runtime
    milestone is one fused binary/shared library with one GGML pin and one
@@ -104,7 +92,7 @@ with the status below.
      `llama-omnivoice-server` route is replaced by one process serving both
      text/DFlash and `/v1/audio/speech`.
 
-5. **Real release artifacts**
+4. **Real release artifacts**
 
    The repo has schema/publish machinery, not real Eliza-1 release bundles.
    Publishing is blocked until each tier has text, drafter, voice, ASR,
