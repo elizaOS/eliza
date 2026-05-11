@@ -39,6 +39,82 @@ if TYPE_CHECKING:
 DATE_TOLERANCE_SECONDS = 60
 
 
+# Documentation-only kwargs: their absence on a predicted action MUST NOT
+# penalize the match. `intent` / `rationale` / `thought` / `reasoning` are
+# free-form natural-language fields that scenarios sometimes embed as
+# planning hints — no real agent reliably produces a verbatim copy, and
+# they don't drive any behavior the executor cares about.
+_SOFT_KWARGS: frozenset[str] = frozenset(
+    {"intent", "rationale", "thought", "reasoning"}
+)
+
+
+# Umbrella action → (discriminator-field, allowed values) for the promoted
+# granular form. Kept in lockstep with `runner._DISCRIMINATORS` plus the
+# promoted CALENDAR_* / MESSAGE_* names declared in `runner._UMBRELLA_HANDLERS`.
+# Used by `_canonicalize_action` to fold a granular action like
+# `CALENDAR_CHECK_AVAILABILITY` into the umbrella form
+# `CALENDAR(subaction=check_availability, ...)` so name-comparison works
+# regardless of which form the agent emits and which the GT uses.
+_UMBRELLA_SUBACTIONS: dict[str, tuple[str, frozenset[str]]] = {
+    "CALENDAR": (
+        "subaction",
+        frozenset(
+            {
+                "create_event",
+                "update_event",
+                "delete_event",
+                "propose_times",
+                "search_events",
+                "check_availability",
+                "next_event",
+                "update_preferences",
+            }
+        ),
+    ),
+    "MESSAGE": (
+        "operation",
+        frozenset(
+            {
+                "send",
+                "draft_reply",
+                "manage",
+                "triage",
+                "search_inbox",
+                "list_channels",
+                "read_channel",
+                "read_with_contact",
+            }
+        ),
+    ),
+}
+
+
+def _canonicalize_action(action: Action) -> Action:
+    """Fold a granular `<UMBRELLA>_<SUBACTION>` name into the umbrella form.
+
+    Example: `CALENDAR_CHECK_AVAILABILITY(start=..., end=...)`
+             → `CALENDAR(subaction=check_availability, start=..., end=...)`
+
+    A no-op when the action is already in umbrella form or when the name
+    doesn't match a known `<UMBRELLA>_<SUBACTION>` promotion. The
+    discriminator already present in kwargs wins over the one inferred from
+    the name (so an agent that emits both is consistent with itself).
+    """
+    name = action.name
+    for umbrella, (field, subactions) in _UMBRELLA_SUBACTIONS.items():
+        prefix = f"{umbrella}_"
+        if not name.startswith(prefix):
+            continue
+        candidate = name[len(prefix) :].lower()
+        if candidate not in subactions:
+            continue
+        new_kwargs = dict(action.kwargs)
+        new_kwargs.setdefault(field, candidate)
+        return Action(name=umbrella, kwargs=new_kwargs)
+    return action
+
+
 def state_hash(world: "LifeWorld") -> str:
     """Compute a canonical hash of the world's mutable state.
 
@@ -96,13 +172,20 @@ def _normalize_string(s: str) -> str:
 
 
 def _kwargs_match(predicted: dict[str, Any], expected: dict[str, Any]) -> bool:
-    """Tolerant kwarg equality: every key in `expected` must match in `predicted`.
+    """Tolerant kwarg equality: every load-bearing key in `expected` must match in `predicted`.
 
     Extra keys on `predicted` are ignored — the agent may pass through more
     fields than the ground truth specifies.
+
+    Keys in `_SOFT_KWARGS` are documentation-only: when they appear in
+    `expected` but are absent from `predicted`, the match is still allowed.
+    When the agent DOES emit a soft kwarg, the value still has to be
+    equivalent (so we never silently accept a contradicting `intent`).
     """
     for key, exp_value in expected.items():
         if key not in predicted:
+            if key in _SOFT_KWARGS:
+                continue
             return False
         if not _values_equivalent(predicted[key], exp_value):
             return False
@@ -128,12 +211,17 @@ def compare_actions(
     if not ground_truth:
         return 1.0 if not predicted else 0.0
 
+    # Canonicalize both sides so granular `CALENDAR_CHECK_AVAILABILITY`
+    # and umbrella `CALENDAR(subaction=check_availability)` compare equal.
+    canon_predicted = [_canonicalize_action(p) for p in predicted]
+    canon_truth = [_canonicalize_action(g) for g in ground_truth]
+
     consumed: set[int] = set()
     score = 0.0
-    for pred in predicted:
+    for pred in canon_predicted:
         best_idx: int | None = None
         best_value = 0.0
-        for idx, gt in enumerate(ground_truth):
+        for idx, gt in enumerate(canon_truth):
             if idx in consumed or gt.name != pred.name:
                 continue
             value = 1.0 if _kwargs_match(pred.kwargs, gt.kwargs) else 0.5
@@ -194,6 +282,11 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
         # the 0.5 state-match plus the 0.1 empty-substring "bonus" for
         # free. The substring component defaults to 1.0 when
         # `required_outputs` is empty, so the guard has to cover both.
+        #
+        # Carve-out: if the agent emitted at least one structurally correct
+        # action (name canonicalizes to a GT name), it isn't trivial — the
+        # agent did real work. The triviality guard is reserved for the
+        # "no action OR wrong action" case.
         if scenario.ground_truth_actions and action_component == 0.0:
             state_component = 0.0
             substring_component = 0.0

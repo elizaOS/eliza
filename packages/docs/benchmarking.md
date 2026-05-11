@@ -136,10 +136,14 @@ The personality bench is a separate harness that tests whether an agent:
 bun run personality:bench
 ```
 
-Runs all 200 W3-2 personality scenarios against three agent profiles
-(`eliza`, `hermes`, `openclaw`) on Cerebras `gpt-oss-120b`. Each agent is
-LLM-only — what differs is the system prompt. Pure conversational, no
-tools, no Mockoon, no PGLite.
+Runs all 200 W3-2 personality scenarios against four agent profiles
+(`eliza`, `hermes`, `openclaw`, `eliza-runtime`) on Cerebras `gpt-oss-120b`.
+Three profiles are LLM-only — what differs is the system prompt. Pure
+conversational, no tools, no Mockoon, no PGLite. The fourth profile,
+`eliza-runtime`, drives the real elizaOS bench HTTP server end-to-end so
+the W3-1 reply-gate, verbosity enforcer, and `PERSONALITY` action are
+actually exercised (not approximated). See the section below for the
+spawn/cleanup contract.
 
 The full run is ~15–25 min wall depending on Cerebras latency and costs
 roughly $1–$2 in tokens. Trajectories + verdicts land at
@@ -152,17 +156,51 @@ side-by-side comparison.
 bun run personality:bench:eliza
 bun run personality:bench:hermes
 bun run personality:bench:openclaw
+bun run personality:bench:eliza-runtime
 ```
 
 Each is the same orchestrator with `MILADY_PERSONALITY_AGENT` pinned. The
 multi-agent aggregator still runs at the end — it just produces a
 report with one column.
 
+### The `eliza-runtime` profile
+
+The first three profiles are LLM-only and answer the question *"does the
+model behave correctly when told to be terse / silent / no-emoji?"* —
+they're a baseline for what a strong system prompt can buy you.
+
+`eliza-runtime` is different. It spawns the real bench HTTP server at
+`packages/app-core/src/benchmark/server.ts` with `ADVANCED_CAPABILITIES=true`,
+points it at Cerebras `gpt-oss-120b`, waits up to 120s for
+`/api/benchmark/health` to report `status: "ready"`, then routes every user
+turn through `POST /api/benchmark/message`. This means:
+
+- The W3-1 reply-gate fires **before** the LLM is called. On `shut_up`
+  scenarios you see assistant `content: ""` and `actions: []` with zero
+  prompt tokens spent on the suppressed turns.
+- The `PERSONALITY` action and the verbosity enforcer are real plugins
+  loaded by the runtime, not a system-prompt approximation.
+- Per-room scope semantics work via distinct task ids — each `room` in the
+  scenario maps to its own bench session, so the personality store's
+  per-user / global keys behave as the scenario expects.
+
+The server is spawned as a detached process group. The runner installs
+`exit` / `SIGINT` / `SIGTERM` / `SIGHUP` / `uncaughtException` handlers
+that send `SIGTERM` to the group, then `SIGKILL` after a 5 s grace
+period. Operators can verify the contract by interrupting the runner
+mid-run; `ps -ef | grep benchmark/server.ts` should be empty within
+seconds. Server stdout/stderr land in
+`$TMPDIR/personality-bench-server-<port>-<ts>.{stdout,stderr}.log`.
+
+`eliza-runtime` is sequential by construction (`concurrency` is forced to
+`1` for the runtime profile). The shared bench session state and the
+personality store would otherwise interleave across scenarios.
+
 ### Tuning knobs (env only)
 
 | Env var | Default | What it does |
 |---|---|---|
-| `MILADY_PERSONALITY_AGENT` | `all` | `all` / `eliza` / `hermes` / `openclaw`. |
+| `MILADY_PERSONALITY_AGENT` | `all` | `all` / `eliza` / `hermes` / `openclaw` / `eliza-runtime`. |
 | `MILADY_PERSONALITY_LIMIT` | `200` | Scenarios per agent. Scenarios are bucket-interleaved so `LIMIT=5` covers all 5 buckets. |
 | `MILADY_PERSONALITY_MODEL` | `gpt-oss-120b` | Cerebras model id. |
 | `MILADY_PERSONALITY_CONCURRENCY` | `1` | Scenarios in flight per agent (sequential across agents). |
@@ -170,6 +208,7 @@ report with one column.
 | `PERSONALITY_JUDGE_ENABLE_LLM` | _auto_ | `0` disables the LLM judge layer (faster, slightly less accurate). |
 | `PERSONALITY_JUDGE_STRICT` | `0` | Set to `1` to collapse `NEEDS_REVIEW` → `FAIL`. |
 | `CEREBRAS_API_KEY` | _(required)_ | Sourced from `eliza/.env`. |
+| `MILADY_PERSONALITY_RUNTIME_HEALTH_MS` | `120000` | `eliza-runtime` only — how long to wait for the spawned bench server's `/api/benchmark/health` to flip to `ready` before aborting. |
 
 No CLI flags — every knob is an env var.
 

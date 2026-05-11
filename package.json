@@ -131,6 +131,7 @@
     "personality:bench:eliza": "MILADY_PERSONALITY_AGENT=eliza bun --bun scripts/personality-bench-run.mjs",
     "personality:bench:hermes": "MILADY_PERSONALITY_AGENT=hermes bun --bun scripts/personality-bench-run.mjs",
     "personality:bench:openclaw": "MILADY_PERSONALITY_AGENT=openclaw bun --bun scripts/personality-bench-run.mjs",
+    "personality:bench:eliza-runtime": "MILADY_PERSONALITY_AGENT=eliza-runtime bun --bun scripts/personality-bench-run.mjs",
     "personality:judge": "bun --bun packages/benchmarks/personality-bench/src/runner.ts",
     "personality:bench:calibrate": "bun --filter @elizaos/personality-bench calibrate",
     "lifeops:optimize": "node scripts/lifeops-optimize-planner.mjs",
