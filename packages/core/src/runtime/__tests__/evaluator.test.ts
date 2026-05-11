@@ -195,4 +195,110 @@ describe("v5 evaluator skeleton", () => {
 		expect(result.decision).toBe("FINISH");
 		expect(result.success).toBe(true);
 	});
+
+	it("strips internal task-agent session-ids and auto-generated labels from messageToUser", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "success": true,
+  "decision": "FINISH",
+  "thought": "Both agents spawned.",
+  "messageToUser": "Both agents spawned in parallel (count-py-files-projects-1 and count-ts-files-iqlabs-1). I'll reply with both numbers when they finish."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.messageToUser).not.toContain("count-py-files-projects-1");
+		expect(result.messageToUser).not.toContain("count-ts-files-iqlabs-1");
+		expect(result.messageToUser).toContain("Both agents spawned in parallel.");
+		expect(result.messageToUser).toContain("when they finish");
+	});
+
+	it("strips bare PTY session ids and (session: pty-...) parentheticals", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "success": true,
+  "decision": "FINISH",
+  "thought": "Spawned.",
+  "messageToUser": "on it — task agent is running (session: pty-1778500471501-4cf0e3a6). it'll write /tmp/x.py and verify."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.messageToUser).not.toMatch(/pty-\d+-[A-Za-z0-9]+/);
+		expect(result.messageToUser).not.toMatch(/\(session/);
+		expect(result.messageToUser).toContain("/tmp/x.py");
+	});
+
+	it("leaves messageToUser unchanged when no mechanics are mentioned", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "success": true,
+  "decision": "FINISH",
+  "thought": "Got it.",
+  "messageToUser": "190G free on / (387G total, 198G used, 52% used)."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.messageToUser).toBe(
+			"190G free on / (387G total, 198G used, 52% used).",
+		);
+	});
 });
