@@ -540,10 +540,16 @@ def _weighted_score(items: list[ItemAnalysis], *, attr: str) -> float:
 def _weighted_score_excluding_invalid(
     items: list[ItemAnalysis], *, attr: str
 ) -> float | None:
-    valid_items = [item for item in items if not item.invalid_expected_conflict]
+    valid_items = [item for item in items if getattr(item, attr) is not None]
     if not valid_items:
         return None
-    return _weighted_score(valid_items, attr=attr)
+    total_weight = sum(item.weight for item in valid_items)
+    if total_weight <= 0:
+        return None
+    return (
+        sum(item.weight * float(getattr(item, attr)) for item in valid_items)
+        / total_weight
+    )
 
 
 def _mean(values: list[float]) -> float:
@@ -553,6 +559,10 @@ def _mean(values: list[float]) -> float:
 def _mean_optional(values: list[float | None]) -> float | None:
     present = [value for value in values if value is not None]
     return _mean(present) if present else None
+
+
+def _score_delta_optional(left: float | None, right: float) -> float | None:
+    return None if left is None else left - right
 
 
 def _suite_version(templates: list[Any]) -> str:

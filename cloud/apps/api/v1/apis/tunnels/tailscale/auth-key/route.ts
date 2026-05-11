@@ -51,6 +51,7 @@ app.post("/", async (c) => {
     const headscaleUser = readEnv(c.env.HEADSCALE_USER) ?? "tunnel";
     const tunnelProxyHost = readEnv(c.env.TUNNEL_PROXY_HOST);
     const tailnetDomain = readEnv(c.env.TUNNEL_TAILNET_DOMAIN) ?? "tunnel.eliza.local";
+    const hostnameSigningSecret = readEnv(c.env.TUNNEL_HOSTNAME_SIGNING_SECRET);
     const tunnelAuthKeyCostUsd = readUsdAmount(
       c.env.TUNNEL_AUTH_KEY_COST_USD,
       DEFAULT_TUNNEL_AUTH_KEY_COST_USD,
@@ -68,7 +69,7 @@ app.post("/", async (c) => {
 
     const expirySeconds = parsed.data.expirySeconds ?? DEFAULT_EXPIRY_SECONDS;
     const expiration = new Date(Date.now() + expirySeconds * 1000).toISOString();
-    const hostname = makeTunnelHostname(user.organization_id);
+    const hostname = await makeTunnelHostname(user.organization_id, hostnameSigningSecret);
     const publicHost = tunnelProxyHost
       ? `${hostname}.${tunnelProxyHost}`
       : `${hostname}.${tailnetDomain}`;
@@ -151,14 +152,19 @@ function readEnv(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed.replace(/\/+$/, "") : null;
 }
 
-function makeTunnelHostname(organizationId: string): string {
+async function makeTunnelHostname(
+  organizationId: string,
+  signingSecret: string | null,
+): Promise<string> {
   const orgPart =
     organizationId
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "")
       .slice(0, 12) || "org";
   const randomPart = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
-  return `eliza-${orgPart}-${randomPart}`;
+  const unsignedHostname = `eliza-${orgPart}-${randomPart}`;
+  if (!signingSecret) return unsignedHostname;
+  return `${unsignedHostname}-${await tunnelHostnameSignature(unsignedHostname, signingSecret)}`;
 }
 
 function readUsdAmount(value: unknown, fallback: number): number {
@@ -208,6 +214,22 @@ async function refundTunnelCharge(
       error: refundError instanceof Error ? refundError.message : String(refundError),
     });
   }
+}
+
+async function tunnelHostnameSignature(hostname: string, secret: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(hostname));
+  return bytesToHex(new Uint8Array(signature)).slice(0, 16);
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export default app;
