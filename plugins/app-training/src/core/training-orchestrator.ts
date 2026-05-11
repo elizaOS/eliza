@@ -30,6 +30,10 @@ import {
   type FilterableTrajectory,
 } from "./privacy-filter.js";
 import {
+  gatedPersistNativeResult,
+  type PromotionServiceLike,
+} from "./promotion-persist.js";
+import {
   ALL_TRAINING_TASKS,
   loadTrainingConfig,
   resolveTaskPolicy,
@@ -258,36 +262,29 @@ async function defaultDispatcher(
         runtime: { useModel: useModelHandler },
       });
       const notes = [...result.notes];
-      let artifactPath: string | undefined;
-      if (result.invoked) {
-        const writePath = await persistOptimizedPromptArtifact(input.runtime, {
-          task: input.task,
-          optimizer: result.optimizer,
-          baseline: baselinePrompt,
-          prompt: result.result.optimizedPrompt,
-          score: result.score,
-          baselineScore: result.baselineScore,
-          datasetId: input.datasetPath,
-          datasetSize: result.datasetSize,
-          generatedAt: new Date().toISOString(),
-          lineage: result.result.lineage,
-          fewShotExamples: result.result.fewShotExamples,
-        });
-        artifactPath = writePath ?? undefined;
-        if (writePath) notes.push(`artifact written to ${writePath}`);
-        else
-          notes.push(
-            "OptimizedPromptService unavailable; artifact not persisted",
-          );
+      if (!result.invoked) {
+        return { invoked: false, notes };
       }
-      return {
-        invoked: result.invoked,
-        artifactPath,
-        notes,
-      };
+
+      const service = getOptimizedPromptService(input.runtime);
+      if (!service) {
+        notes.push("OptimizedPromptService unavailable; artifact not persisted");
+        return { invoked: true, notes };
+      }
+
+      return await gatedPersistNativeResult({
+        task: input.task,
+        datasetPath: input.datasetPath,
+        runId: input.runId,
+        baselinePrompt,
+        result,
+        service,
+        notesPrefix: notes,
+      });
     }
   }
 }
+
 
 type UseModelLike = (input: {
   prompt: string;
@@ -323,47 +320,14 @@ function extractUseModel(runtime: RuntimeLike): UseModelLike | null {
   };
 }
 
-interface OptimizedPromptArtifactInput {
-  task: TrajectoryTrainingTask;
-  optimizer: "instruction-search" | "prompt-evolution" | "bootstrap-fewshot";
-  baseline: string;
-  prompt: string;
-  score: number;
-  baselineScore: number;
-  datasetId: string;
-  datasetSize: number;
-  generatedAt: string;
-  lineage: Array<{
-    round: number;
-    variant: number;
-    score: number;
-    notes?: string;
-  }>;
-  fewShotExamples?: Array<{
-    id?: string;
-    input: { user: string; system?: string };
-    expectedOutput: string;
-    reward?: number;
-    metadata?: Record<string, unknown>;
-  }>;
-}
-
-interface OptimizedPromptServiceLike {
-  setPrompt: (
-    task: TrajectoryTrainingTask,
-    artifact: OptimizedPromptArtifactInput,
-  ) => Promise<string>;
-}
-
-async function persistOptimizedPromptArtifact(
+function getOptimizedPromptService(
   runtime: RuntimeLike,
-  artifact: OptimizedPromptArtifactInput,
-): Promise<string | null> {
+): PromotionServiceLike | null {
   const service = runtime.getService(
     "optimized_prompt",
-  ) as OptimizedPromptServiceLike | null;
+  ) as PromotionServiceLike | null;
   if (!service || typeof service.setPrompt !== "function") return null;
-  return await service.setPrompt(artifact.task, artifact);
+  return service;
 }
 
 /**
