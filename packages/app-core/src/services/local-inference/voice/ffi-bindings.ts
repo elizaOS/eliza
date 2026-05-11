@@ -33,7 +33,7 @@ import { VoiceLifecycleError } from "./lifecycle";
  * Bump in lockstep with `ELIZA_INFERENCE_ABI_VERSION` in
  * `scripts/omnivoice-fuse/ffi.h` whenever the C surface changes shape.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 1 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 2 as const;
 
 /** Status codes mirrored from `ffi.h`. Negative = failure. */
 export const ELIZA_OK = 0;
@@ -109,6 +109,38 @@ export interface ElizaInferenceFfi {
     sampleRateHz: number;
     maxTextBytes?: number;
   }): string;
+
+  /* ---- Streaming ASR (ABI v2) ----------------------------------- */
+
+  /**
+   * True when this build has a working streaming ASR decoder (false for
+   * the stub / an ASR-disabled build). Callers pick the streaming path
+   * vs the whisper.cpp interim adapter off this flag — they do not have
+   * to open a session and catch `ELIZA_ERR_NOT_IMPLEMENTED`.
+   */
+  asrStreamSupported(): boolean;
+  /** Open a streaming ASR session. The handle is closed via `asrStreamClose`. */
+  asrStreamOpen(args: {
+    ctx: ElizaInferenceContextHandle;
+    sampleRateHz: number;
+  }): bigint;
+  /** Feed one PCM frame at the session's sample rate. */
+  asrStreamFeed(args: { stream: bigint; pcm: Float32Array }): void;
+  /** Read the current running partial transcript (and token ids when available). */
+  asrStreamPartial(args: {
+    stream: bigint;
+    maxTextBytes?: number;
+    maxTokens?: number;
+  }): { partial: string; tokens?: number[] };
+  /** Force-finalize: drain buffered audio, run a final decode, return the final transcript. */
+  asrStreamFinish(args: {
+    stream: bigint;
+    maxTextBytes?: number;
+    maxTokens?: number;
+  }): { partial: string; tokens?: number[] };
+  /** Close + free a streaming ASR session. Idempotent on already-closed handles. */
+  asrStreamClose(stream: bigint): void;
+
   /** Best-effort dispose for the binding itself (closes the dlopen handle). */
   close(): void;
 }
@@ -188,6 +220,35 @@ interface BunFfiSymbols {
     maxTextBytes: bigint | number,
     outErr: unknown,
   ) => number;
+  eliza_inference_asr_stream_supported: () => number;
+  eliza_inference_asr_stream_open: (
+    ctx: bigint,
+    sampleRateHz: number,
+    outErr: unknown,
+  ) => unknown;
+  eliza_inference_asr_stream_feed: (
+    stream: bigint,
+    pcm: unknown,
+    nSamples: bigint | number,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_asr_stream_partial: (
+    stream: bigint,
+    outText: unknown,
+    maxTextBytes: bigint | number,
+    outTokens: unknown,
+    ioNTokens: unknown,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_asr_stream_finish: (
+    stream: bigint,
+    outText: unknown,
+    maxTextBytes: bigint | number,
+    outTokens: unknown,
+    ioNTokens: unknown,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_asr_stream_close: (stream: bigint) => void;
   eliza_inference_free_string: (str: bigint | number) => void;
 }
 
@@ -272,6 +333,26 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
         args: [T.ptr, T.ptr, T.usize, T.i32, T.ptr, T.usize, T.ptr],
         returns: T.i32,
       },
+      // Streaming ASR (ABI v2).
+      eliza_inference_asr_stream_supported: { args: [], returns: T.i32 },
+      eliza_inference_asr_stream_open: {
+        args: [T.ptr, T.i32, T.ptr],
+        returns: T.ptr,
+      },
+      eliza_inference_asr_stream_feed: {
+        // stream handle is a raw C pointer → pass as usize.
+        args: [T.usize, T.ptr, T.usize, T.ptr],
+        returns: T.i32,
+      },
+      eliza_inference_asr_stream_partial: {
+        args: [T.usize, T.ptr, T.usize, T.ptr, T.ptr, T.ptr],
+        returns: T.i32,
+      },
+      eliza_inference_asr_stream_finish: {
+        args: [T.usize, T.ptr, T.usize, T.ptr, T.ptr, T.ptr],
+        returns: T.i32,
+      },
+      eliza_inference_asr_stream_close: { args: [T.usize], returns: T.void },
       // Bun 1.3.x accepts raw pointer values passed back into C as
       // `usize`, while `ptr` is for JS-owned ArrayBuffer pointers.
       eliza_inference_free_string: { args: [T.usize], returns: T.void },
@@ -454,10 +535,125 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
       );
     },
 
+    /* ---- Streaming ASR (ABI v2) -------------------------------- */
+
+    asrStreamSupported(): boolean {
+      return lib.symbols.eliza_inference_asr_stream_supported() === 1;
+    },
+
+    asrStreamOpen({ ctx, sampleRateHz }) {
+      const err = makeOutErr();
+      const handle = lib.symbols.eliza_inference_asr_stream_open(
+        ctx,
+        sampleRateHz,
+        err.ptr,
+      );
+      if (isNullPointer(handle)) {
+        const message =
+          takeError(err.buf) ??
+          "[ffi-bindings] eliza_inference_asr_stream_open returned NULL with no diagnostic";
+        throw new VoiceLifecycleError("kernel-missing", message);
+      }
+      return handle as bigint;
+    },
+
+    asrStreamFeed({ stream, pcm }) {
+      const err = makeOutErr();
+      const rc = lib.symbols.eliza_inference_asr_stream_feed(
+        stream,
+        ffi.ptr(pcm),
+        BigInt(pcm.length),
+        err.ptr,
+      );
+      if (rc < 0) {
+        const message =
+          takeError(err.buf) ??
+          `[ffi-bindings] eliza_inference_asr_stream_feed rc=${rc}`;
+        throw new VoiceLifecycleError(failureCode(rc), message);
+      }
+    },
+
+    asrStreamPartial(args) {
+      return readAsrStreamResult(
+        "partial",
+        lib.symbols.eliza_inference_asr_stream_partial,
+        args,
+      );
+    },
+
+    asrStreamFinish(args) {
+      return readAsrStreamResult(
+        "finish",
+        lib.symbols.eliza_inference_asr_stream_finish,
+        args,
+      );
+    },
+
+    asrStreamClose(stream) {
+      lib.symbols.eliza_inference_asr_stream_close(stream);
+    },
+
     close(): void {
       lib.close();
     },
   };
+
+  /**
+   * Shared body for `asr_stream_partial` / `asr_stream_finish` — both
+   * have the same 6-arg shape (`stream, out_text, max_text_bytes,
+   * out_tokens, io_n_tokens, out_error`). Token ids are read only when
+   * the caller asks for them (`maxTokens > 0`); otherwise the
+   * out_tokens / io_n_tokens pointers are NULL.
+   */
+  function readAsrStreamResult(
+    label: string,
+    fn: (
+      stream: bigint,
+      outText: unknown,
+      maxTextBytes: bigint | number,
+      outTokens: unknown,
+      ioNTokens: unknown,
+      outErr: unknown,
+    ) => number,
+    args: { stream: bigint; maxTextBytes?: number; maxTokens?: number },
+  ): { partial: string; tokens?: number[] } {
+    const err = makeOutErr();
+    const textCap = args.maxTextBytes ?? 4096;
+    const outText = new Uint8Array(textCap);
+    const wantTokens = (args.maxTokens ?? 0) > 0;
+    const tokenCap = wantTokens ? (args.maxTokens as number) : 0;
+    const outTokens = wantTokens ? new Int32Array(tokenCap) : null;
+    const ioNTokens = wantTokens
+      ? new BigUint64Array([BigInt(tokenCap)])
+      : null;
+    const rc = fn(
+      args.stream,
+      ffi.ptr(outText),
+      BigInt(textCap),
+      outTokens ? ffi.ptr(outTokens) : null,
+      ioNTokens ? ffi.ptr(ioNTokens) : null,
+      err.ptr,
+    );
+    if (rc < 0) {
+      const message =
+        takeError(err.buf) ??
+        `[ffi-bindings] eliza_inference_asr_stream_${label} rc=${rc}`;
+      throw new VoiceLifecycleError(failureCode(rc), message);
+    }
+    const nul = outText.indexOf(0, 0);
+    const len = nul >= 0 ? nul : rc;
+    const partial = Buffer.from(
+      outText.buffer,
+      outText.byteOffset,
+      len,
+    ).toString("utf8");
+    if (wantTokens && outTokens && ioNTokens) {
+      const n = Number(ioNTokens[0] ?? 0n);
+      const tokens = Array.from(outTokens.subarray(0, Math.min(n, tokenCap)));
+      return { partial, tokens };
+    }
+    return { partial };
+  }
 }
 
 function formatFfiError(err: unknown): string {

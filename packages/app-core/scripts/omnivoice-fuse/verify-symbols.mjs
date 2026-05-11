@@ -134,7 +134,7 @@ function hasDarwinReexportedLlama(lib) {
  *   - The shared library MUST exist.
  *   - The library's exports MUST contain /llama_/ and /ov_/
  *     symbol families.
- *   - The library MUST export every `eliza_inference_*` ABI v1 symbol
+ *   - The library MUST export every `eliza_inference_*` ABI v2 symbol
  *     declared in `ffi.h`; otherwise the JS/Bun bridge can dlopen a
  *     half-fused artifact and only fail later at voice activation.
  *
@@ -148,6 +148,13 @@ export const REQUIRED_ELIZA_INFERENCE_SYMBOLS = Object.freeze([
   "eliza_inference_mmap_evict",
   "eliza_inference_tts_synthesize",
   "eliza_inference_asr_transcribe",
+  // ABI v2 — streaming ASR session API.
+  "eliza_inference_asr_stream_supported",
+  "eliza_inference_asr_stream_open",
+  "eliza_inference_asr_stream_feed",
+  "eliza_inference_asr_stream_partial",
+  "eliza_inference_asr_stream_finish",
+  "eliza_inference_asr_stream_close",
   "eliza_inference_free_string",
 ]);
 
@@ -242,7 +249,7 @@ function verifyFusedSymbolsInner({ outDir, target }) {
   );
   if (missingAbiSymbols.length > 0) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} is missing ABI v1 symbol(s): ${missingAbiSymbols.join(", ")}. Rebuild the fused target against packages/app-core/scripts/omnivoice-fuse/ffi.h.`,
+      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} is missing ABI v2 symbol(s): ${missingAbiSymbols.join(", ")}. Rebuild the fused target against packages/app-core/scripts/omnivoice-fuse/ffi.h.`,
     );
   }
 

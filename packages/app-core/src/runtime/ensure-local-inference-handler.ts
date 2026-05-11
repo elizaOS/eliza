@@ -649,18 +649,23 @@ export async function ensureLocalInferenceHandler(
       provider,
       LOCAL_INFERENCE_PRIORITY,
     );
-    const transcriptionEnabled =
-      process.env.ELIZA_LOCAL_TRANSCRIPTION?.trim() === "1";
-    if (transcriptionEnabled) {
-      runtimeWithRegistration.registerModel(
-        ModelType.TRANSCRIPTION,
-        makeTranscriptionHandler(),
-        provider,
-        LOCAL_INFERENCE_PRIORITY,
-      );
-    }
+    // TRANSCRIPTION is registered default-on at the local-inference floor
+    // priority (0). It is the last-resort handler: any cloud / other-plugin
+    // TRANSCRIPTION handler registers above 0 and wins. When the handler
+    // does run, it drives the streaming ASR adapter chain (fused
+    // Qwen3-ASR via libelizainference → whisper.cpp interim →
+    // AsrUnavailableError) via the engine's armed voice bridge — see
+    // makeTranscriptionHandler / EngineVoiceBridge.createStreamingTranscriber.
+    // (The old ELIZA_LOCAL_TRANSCRIPTION env gate is removed — voice is a
+    // first-class Eliza-1 surface, not opt-in.)
+    runtimeWithRegistration.registerModel(
+      ModelType.TRANSCRIPTION,
+      makeTranscriptionHandler(),
+      provider,
+      LOCAL_INFERENCE_PRIORITY,
+    );
     logger.info(
-      `[local-inference] Registered ${provider} voice handlers for TEXT_TO_SPEECH${transcriptionEnabled ? " / TRANSCRIPTION" : ""} at priority ${LOCAL_INFERENCE_PRIORITY}`,
+      `[local-inference] Registered ${provider} voice handlers for TEXT_TO_SPEECH / TRANSCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}`,
     );
   } catch (err) {
     logger.warn(
