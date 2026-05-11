@@ -1,9 +1,17 @@
-"""Normalize every downloaded dataset into the canonical ElizaRecord schema.
+"""Normalize every downloaded dataset into the DEPRECATED flat ElizaRecord
+intermediate.
+
+This emits the legacy flat `ElizaRecord` shape (see
+`scripts/lib/eliza_record.py`), NOT the canonical Eliza-1 corpus record. The
+canonical corpus record is `eliza_native_v1`; see
+`packages/training/docs/dataset/CANONICAL_RECORD.md`. This path is kept only so
+the existing bulk corpus keeps loading — new corpus data should be authored as
+`eliza_native_v1` rows.
 
 Reads `datasets.yaml`, walks `data/raw/<slug>/`, dispatches to the named
 adapter in `lib/adapters.REGISTRY`, and writes
 `data/normalized/<slug>.jsonl` (+ `<slug>.errors.jsonl` for dropped rows).
-New outputs default to JSON expectedResponse payloads for native v5 tool
+New outputs default to JSON expectedResponse payloads for native tool
 calling. Pass `--expected-response-format legacy-toon` only when rebuilding
 legacy compatibility corpora.
 

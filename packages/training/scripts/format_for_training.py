@@ -1,19 +1,27 @@
-"""Render Eliza-1 training rows for Qwen chat-template training.
+"""Render Eliza-1 ChatML training examples for Qwen chat-template training.
 
-The primary input is `eliza_native_v1`: one row per Vercel AI SDK model
-boundary with the exact request sent to the provider and the exact normalized
-response received from the provider. The renderer appends the response as the
-supervised assistant turn and passes native tools through to the tokenizer chat
-template when the tokenizer supports tool rendering.
+Two-layer model (see `packages/training/docs/dataset/CANONICAL_RECORD.md`):
 
-Compatibility inputs are accepted so local and Vast runs can consume the
-existing root `train.jsonl` / `val.jsonl` / `test.jsonl` handoff:
+1. Canonical corpus record = `eliza_native_v1` — one row per Vercel AI SDK
+   model boundary, carrying the exact request sent to the provider and the
+   exact normalized response received. This is the durable, versioned,
+   privacy-filtered artifact.
+2. Rendered training example = ChatML `{messages, tools}` row — an *ephemeral*
+   derivation produced here at train time and fed straight into
+   `tokenizer.apply_chat_template`. Never persisted as a primary artifact.
 
-* trainable `eliza.eliza1_trajectory_record.v1` message rows,
-* already-rendered chat-message rows with a final assistant turn,
-* legacy flat `ElizaRecord` rows emitted by `pack_dataset.py`.
+`format_record` turns layer-1 into layer-2: it appends the recorded response as
+the supervised assistant turn and passes native tool specs through to the
+tokenizer's tool-rendering template.
 
-Auxiliary repair/eval rows are intentionally rejected.
+Legacy/compat inputs are still accepted so existing handoff files keep loading,
+but no new dataset should target them:
+
+* trainable `eliza.eliza1_trajectory_record.v1` / pre-rendered ChatML message
+  rows with a final assistant turn (the derived layer-2 shape, persisted),
+* the DEPRECATED flat `ElizaRecord` rows emitted by `pack_dataset.py`.
+
+Auxiliary repair/eval rows are intentionally rejected by every path.
 """
 
 from __future__ import annotations
@@ -403,13 +411,20 @@ def _format_legacy_flat_record(record: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def format_record(record: dict[str, Any]) -> dict[str, Any] | None:
-    """Return a row ready for tokenizer.apply_chat_template, or None."""
+    """Return a row ready for tokenizer.apply_chat_template, or None.
+
+    Dispatch order is significant: only the first shape is canonical, the rest
+    are legacy/derived fallbacks kept so existing handoff files keep loading.
+    """
 
     if _is_auxiliary_record(record):
         return None
 
     return (
+        # CANONICAL: eliza_native_v1 corpus record (the model-boundary row).
         _format_native_record(record)
+        # DERIVED: pre-rendered ChatML / eliza1_trajectory_record.v1 SFT rows.
         or _format_messages_record(record)
+        # DEPRECATED: flat ElizaRecord intermediate from normalize.py/pack_dataset.py.
         or _format_legacy_flat_record(record)
     )
