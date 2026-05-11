@@ -16,7 +16,7 @@
  *      (`exportTrajectoryTaskDatasets`). When `task` is supplied, only that
  *      bucket is forwarded to the backend.
  *   4. Dispatch the chosen task's dataset to the configured backend
- *      (`tinker` | `native`).
+ *      (`native`).
  *   5. Persist a run record at `<state>/training/runs/<runId>.json`.
  */
 
@@ -226,18 +226,6 @@ async function defaultDispatcher(
   input: BackendDispatchInput,
 ): Promise<BackendDispatchResult> {
   switch (input.backend) {
-    case "tinker": {
-      const { runTinkerBackend } = await import("../backends/tinker.js");
-      const result = await runTinkerBackend({
-        datasetPath: input.datasetPath,
-        task: input.task,
-      });
-      return {
-        invoked: result.invoked,
-        artifactPath: result.jobId,
-        notes: result.notes,
-      };
-    }
     case "native": {
       const { runNativeBackend } = await import("../backends/native.js");
       const useModelHandler = extractUseModel(input.runtime);
