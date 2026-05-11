@@ -21,9 +21,9 @@ schema is intentionally tiny:
       "org": "elizalabs",
       "entries": [
         {
-          "id": "eliza-1-mobile-1_7b",
-          "hfRepo": "elizalabs/eliza-1-mobile-1_7b",
-          "ggufFile": "text/eliza-1-mobile-1_7b-q4_k_m.gguf",
+          "id": "eliza-1-1_7b",
+          "hfRepo": "elizalabs/eliza-1-1_7b",
+          "ggufFile": "text/eliza-1-1_7b-q4_k_m.gguf",
           "sha256": "<64-hex>",
           "sizeBytes": 0,
           "manifest": { ... full manifest.json contents ... }
@@ -186,7 +186,7 @@ def collect_entries(
             continue
         gguf_file, sha, size = gguf_info
         # Catalog id == bare repo name (after the org/), e.g.
-        # `elizalabs/eliza-1-mobile-1_7b` -> `eliza-1-mobile-1_7b`.
+        # `elizalabs/eliza-1-1_7b` -> `eliza-1-1_7b`.
         catalog_id = repo_name
         entries.append(CatalogEntry(
             id=catalog_id,

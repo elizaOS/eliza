@@ -182,7 +182,7 @@ Deferred (separate from dead-import wiring):
 | Target                  | Purpose                                                                          | Host requirement                                                                                       |
 | ----------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `linux-aarch64-cpu`     | Ampere Altra / AWS Graviton CPU-only deployments                                 | Real arm64 Linux host (no aarch64-cross-toolchain wired here)                                          |
-| `linux-aarch64-cuda`    | GH200 / `server-h200` tier (aarch64 host + H100/H200 GPU)                        | arm64 Linux host with `nvcc`. Emits the same multi-arch `CMAKE_CUDA_ARCHITECTURES=90a;90;89;86;80` pin |
+| `linux-aarch64-cuda`    | GH200 / `27b-256k` tier (aarch64 host + H100/H200 GPU)                        | arm64 Linux host with `nvcc`. Emits the same multi-arch `CMAKE_CUDA_ARCHITECTURES=90a;90;89;86;80` pin |
 | `windows-arm64-cpu`     | Snapdragon X Elite / Copilot+ PC CPU (12-core ARM, NEON via qjl-cpu/polarquant-cpu) | Native Windows arm64 host (MSVC `-A ARM64`) **or** `MINGW_TOOLCHAIN_FILE` pointing at a clang/LLVM aarch64-w64-mingw32 toolchain file |
 | `windows-arm64-vulkan`  | Adreno X1 GPU on Snapdragon X (Vulkan 1.3)                                       | Same as above plus glslc on PATH                                                                       |
 

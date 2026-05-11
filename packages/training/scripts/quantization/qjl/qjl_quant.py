@@ -98,7 +98,12 @@ def quantize_row(
     if proj_dim % 8 != 0:
         raise ValueError(f"proj_dim must be byte-aligned; got {proj_dim}")
 
-    sketch = key @ pi  # (proj_dim,)
+    # Match the C reference loop order:
+    #   sketch[j] = sum_i key[i] * pi[i * proj_dim + j]
+    # Avoid BLAS-backed float32 matmul here; on macOS Accelerate can emit
+    # spurious overflow warnings for finite inputs, and the explicit reduction
+    # is the byte-parity path the block-packing tests exercise.
+    sketch = np.sum(key[:, None] * pi, axis=0, dtype=np.float32)  # (proj_dim,)
     bits = (sketch > 0).astype(np.uint8)
 
     packed = np.zeros(proj_dim // 8, dtype=np.uint8)

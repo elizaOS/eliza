@@ -34,7 +34,7 @@ Two binaries under `verify/`:
   cold-state bias toward the first one).
 
 Workload sized to one realistic attention step at the **9B-class /
-desktop-9b** tier:
+9b** tier:
 
 - `head_dim = 128`, `n_kv_heads = 32` (`qjl_kv_heads = 8` for the QJL GQA path)
 - `seq = 4096` tokens
@@ -178,11 +178,11 @@ likely on-hardware failure modes" #2).
 
 ## 7. Calibrated suggestions for `eliza1_gates.yaml`
 
-Today the gates for `desktop-9b` are largely `provisional: true`. Based
+Today the gates for `9b` are largely `provisional: true`. Based
 on M4 Max measurements:
 
 - **`voice_rtf <= 0.4` → defensible.** A single OmniVoice TTS forward at
-  the desktop-9b tier should fit comfortably under 0.4× real-time on
+  the 9b tier should fit comfortably under 0.4× real-time on
   M4 Max given that even the slow polar kernel does 200M+ blocks/s.
   Recommend **keeping the 0.4 threshold but flipping `provisional: false`
   conditional on the first end-to-end TTS RTF measurement

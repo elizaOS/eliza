@@ -173,6 +173,12 @@ describeIf(LIVE_SUITE_ENABLED)(
       const dmWorldId = crypto.randomUUID() as UUID;
 
       const character = buildCharacterFromConfig({});
+      character.system = [
+        character.system,
+        "When building owner briefs, use only registered actions. For email, Gmail, inbox, and unread-message context, use MESSAGE with action=list_inbox or action=triage; do not invent provider-specific email action names.",
+      ]
+        .filter((part): part is string => Boolean(part))
+        .join("\n");
       character.settings = {
         ...character.settings,
         ELIZA_ADMIN_ENTITY_ID: ownerId,
@@ -290,7 +296,7 @@ describeIf(LIVE_SUITE_ENABLED)(
         text: [
           "Build my executive-assistant morning brief.",
           "Use these headings exactly and in this order: Actions First, Today's Schedule, Unread By Channel, Pending Drafts, Overdue Follow-Ups, Documents And Forms.",
-          "Use my connected email and calendar plus the pending work and recent cross-channel context you already have.",
+          "Use my connected email and calendar plus the pending work and recent cross-channel context you already have; for inbox review, use the registered MESSAGE action with action=list_inbox or action=triage.",
           "Name the concrete items under each section.",
           "Do not ask follow-up questions and do not give me only a generic heading.",
         ].join(" "),

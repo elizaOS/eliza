@@ -481,7 +481,7 @@ def test_qjl_block_layout_packing_matches_c_ref():
     c_norm_bf16 = c_block.norm_bf16
 
     # --- Python path mirroring the recipe's bit-packing convention ---
-    sketch = key @ prj                                   # (proj_dim,)
+    sketch = np.sum(key[:, None] * prj, axis=0, dtype=np.float32)  # (proj_dim,)
     bits = (sketch > 0).astype(np.uint8)                 # (proj_dim,)
     # LSB-first packing within each byte, matches qjl_quantize_row_ref.
     py_qs = bytearray(proj_dim // 8)

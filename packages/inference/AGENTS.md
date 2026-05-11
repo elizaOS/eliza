@@ -53,7 +53,7 @@ Backbones (do not change without explicit human approval):
   only. Hidden in cloud mode per three-mode hide-not-disable.
 - **Embedding:** Qwen3-Embedding-0.6B (Apache-2.0, 1024-dim with
   Matryoshka, 32k ctx) for non-lite tiers as a separate `embedding/`
-  artifact. On `lite-0_6b` the embedding model IS the text backbone
+  artifact. On `0_6b` the embedding model IS the text backbone
   with `--pooling last` — no duplicate weights.
 - **Drafter:** DFlash. Always present in the bundle. Always wired in.
   Speculative decoding is mandatory, not optional (see §3).
@@ -95,11 +95,11 @@ hosted under the `elizalabs` HuggingFace org under `eliza-1-<tier>`.
 
 | Tier            | Tagline                       | Text  | Voice          | Vision | Context  | DFlash | Quant default                   |
 | --------------- | ----------------------------- | ----- | -------------- | ------ | -------- | ------ | ------------------------------- |
-| `lite-0_6b`     | low-RAM phones, CPU fallback  | 0.6B  | OmniVoice 0.6B | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
-| `mobile-1_7b`   | modern phones                 | 1.7B  | OmniVoice 0.6B | no     | 32k–64k  | yes    | TurboQuant Q3/Q4 + QJL K-cache  |
-| `desktop-9b`    | laptops, 24GB phones, 48GB Mac| ~9B   | OmniVoice 1.7B | mmproj | 64k–128k | yes    | TurboQuant Q4 + QJL + Polar     |
-| `pro-27b`       | 96GB+ Mac, high-VRAM desktop  | 27B   | OmniVoice 1.7B | mmproj | 128k–256k| yes    | TurboQuant Q4 + QJL + Polar     |
-| `server-h200`   | server / workstation          | 27B   | OmniVoice 1.7B | mmproj | up to max| yes    | CUDA TurboQuant + QJL + Polar   |
+| `0_6b`     | low-RAM phones, CPU fallback  | 0.6B  | OmniVoice 0.6B | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
+| `1_7b`   | modern phones                 | 1.7B  | OmniVoice 0.6B | no     | 32k–64k  | yes    | TurboQuant Q3/Q4 + QJL K-cache  |
+| `9b`    | laptops, 24GB phones, 48GB Mac| ~9B   | OmniVoice 1.7B | mmproj | 64k–128k | yes    | TurboQuant Q4 + QJL + Polar     |
+| `27b`       | 96GB+ Mac, high-VRAM desktop  | 27B   | OmniVoice 1.7B | mmproj | 128k–256k| yes    | TurboQuant Q4 + QJL + Polar     |
+| `27b-256k`   | server / workstation          | 27B   | OmniVoice 1.7B | mmproj | up to max| yes    | CUDA TurboQuant + QJL + Polar   |
 
 Context-length variants (32k / 64k / 128k / 256k) are *not* separate
 tiers — they are dimensions inside a tier. A tier's manifest lists which
@@ -317,8 +317,8 @@ catalogs drift from it — generate them.
 ```json
 {
   "$schema": "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json",
-  "id": "eliza-1-desktop-9b",
-  "tier": "desktop-9b",
+  "id": "eliza-1-9b",
+  "tier": "9b",
   "version": "1.0.0",
   "publishedAt": "2026-MM-DDTHH:MM:SSZ",
   "lineage": {
@@ -327,11 +327,11 @@ catalogs drift from it — generate them.
     "drafter": { "base": "dflash-9b-drafter", "license": "..." }
   },
   "files": {
-    "text":    [{ "path": "text/eliza-1-desktop-9b-64k.gguf", "ctx": 65536, "sha256": "..." }],
+    "text":    [{ "path": "text/eliza-1-9b-64k.gguf", "ctx": 65536, "sha256": "..." }],
     "voice":   [{ "path": "tts/omnivoice-1.7b.gguf",          "sha256": "..." }],
     "asr":     [{ "path": "asr/...",                          "sha256": "..." }],
-    "vision":  [{ "path": "vision/mmproj-desktop-9b.gguf",    "sha256": "..." }],
-    "dflash":  [{ "path": "dflash/drafter-desktop-9b.gguf",   "sha256": "..." }],
+    "vision":  [{ "path": "vision/mmproj-9b.gguf",    "sha256": "..." }],
+    "dflash":  [{ "path": "dflash/drafter-9b.gguf",   "sha256": "..." }],
     "cache":   [{ "path": "cache/voice-preset-default.bin",   "sha256": "..." }]
   },
   "kernels": {
