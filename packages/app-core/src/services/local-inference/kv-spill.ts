@@ -181,9 +181,7 @@ export class KvSpillUnsupportedError extends Error {
         `${details.worstCaseRestoreMs.toFixed(1)}ms vs a ${
           details.latencyBudgetMs
         }ms budget (${details.restoreClass}, ${(
-          details.spillBytes /
-          1024 /
-          1024
+          details.spillBytes / 1024 / 1024
         ).toFixed(0)} MiB would spill). Use a smaller context variant or a ` +
         `device with more RAM / faster storage.`,
     );
@@ -220,7 +218,9 @@ export interface KvSpillInput {
 export const RESIDENT_KV_BUDGET_FRACTION = 0.25;
 
 export function residentKvBudgetFromRamBudget(budget: RamBudget): number {
-  return Math.floor(budget.recommendedMb * 1024 * 1024 * RESIDENT_KV_BUDGET_FRACTION);
+  return Math.floor(
+    budget.recommendedMb * 1024 * 1024 * RESIDENT_KV_BUDGET_FRACTION,
+  );
 }
 
 function pagesForTokens(tokens: number): number {
@@ -288,7 +288,10 @@ export function planKvSpill(input: KvSpillInput): KvSpillPlan {
     });
   }
 
-  const residentPages = Math.max(1, Math.floor(residentKvBudgetBytes / pageBytes));
+  const residentPages = Math.max(
+    1,
+    Math.floor(residentKvBudgetBytes / pageBytes),
+  );
   const spillPages = totalPages - residentPages;
   const residentBytes = residentPages * pageBytes;
   const spillBytes = spillPages * pageBytes;
