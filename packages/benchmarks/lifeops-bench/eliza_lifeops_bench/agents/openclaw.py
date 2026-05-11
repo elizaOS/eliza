@@ -54,9 +54,15 @@ from ..clients.cerebras import CerebrasClient
 from ..types import MessageTurn
 
 # Same regex the vendored runner uses (runner.py:128). Single source of
-# truth for parsing OpenClaw tool_call blocks.
+# truth for parsing well-formed OpenClaw tool_call blocks. A separate
+# brace-balanced fallback below recovers blocks where the model omitted
+# the closing ``</tool_call>`` (the gpt-oss-120b OpenClaw configuration
+# emits this pattern on roughly 1-in-8 turns).
 _TOOL_CALL_RE: Final[re.Pattern[str]] = re.compile(
     r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL
+)
+_TOOL_CALL_OPENER_RE: Final[re.Pattern[str]] = re.compile(
+    r"<tool_call>\s*(\{)", re.DOTALL
 )
 
 
@@ -188,6 +194,79 @@ def message_turns_to_openclaw(history: list[MessageTurn]) -> list[dict[str, Any]
     return out
 
 
+def _brace_balanced_json_slice(text: str, start: int) -> tuple[str, int] | None:
+    """Extract the top-level JSON object starting at ``text[start] == '{'``.
+
+    Walks forward respecting string boundaries and ``\\`` escapes inside
+    strings. Returns ``(json_slice, end_index)`` (``end_index`` is the
+    index *after* the closing ``}``) once depth returns to zero, or
+    ``None`` if the object never closes.
+    """
+    if start >= len(text) or text[start] != "{":
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1], i + 1
+    return None
+
+
+def _tool_call_block_to_openai_shape(
+    raw_json: str, index: int
+) -> dict[str, Any]:
+    """Validate a JSON-encoded tool_call body and translate it into the
+    OpenAI-nested shape the runner consumes.
+
+    Raises ``ValueError`` on malformed JSON, missing ``tool`` key, or
+    non-object ``args`` — the bench treats malformed tool output as a real
+    failure (see AGENTS.md: do not hide uncertainty).
+    """
+    try:
+        block = json.loads(raw_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"OpenClaw <tool_call> block {index} is not valid JSON: "
+            f"{exc.msg}; raw={raw_json!r}"
+        ) from exc
+    name = block.get("tool")
+    if not isinstance(name, str) or not name:
+        raise ValueError(
+            f"OpenClaw <tool_call> block {index} missing string 'tool' "
+            f"key; raw={block!r}"
+        )
+    args = block.get("args", {})
+    if not isinstance(args, dict):
+        raise ValueError(
+            f"OpenClaw <tool_call> block {index} 'args' must be a JSON "
+            f"object; got {type(args).__name__}"
+        )
+    return {
+        "id": f"call_openclaw_{index}",
+        "type": "function",
+        "function": {
+            "name": name,
+            "arguments": json.dumps(args, sort_keys=True),
+        },
+    }
+
+
 def parse_openclaw_tool_calls(text: str) -> tuple[str, list[dict[str, Any]]]:
     """Parse OpenClaw ``<tool_call>`` blocks out of an assistant response.
 
@@ -195,44 +274,56 @@ def parse_openclaw_tool_calls(text: str) -> tuple[str, list[dict[str, Any]]]:
     the OpenAI-nested shape the runner consumes
     (``{id, type: "function", function: {name, arguments}}``).
 
+    Two passes:
+
+    1. Well-formed blocks bounded by ``<tool_call>...</tool_call>``.
+    2. If pass 1 found nothing and the text contains an opener, run a
+       brace-balanced fallback over each ``<tool_call>{`` occurrence to
+       recover unclosed blocks. The model occasionally emits an opening
+       tag and a JSON body followed by trailing prose, never closing the
+       tag — without this fallback the whole tool_call is silently
+       dropped and the scenario scores zero.
+
     Malformed JSON inside a ``<tool_call>`` block raises ``ValueError``
     rather than being silently dropped — the bench treats malformed tool
     output as a real failure (see AGENTS.md: do not hide uncertainty).
+    Pass 2 is exempted: an opener whose body fails to brace-balance is
+    treated as "no tool call here" rather than a hard failure, because
+    the alternative is to surface every truncated stream as an exception.
     """
     tool_calls: list[dict[str, Any]] = []
     matches = list(_TOOL_CALL_RE.finditer(text))
     for index, match in enumerate(matches):
-        try:
-            block = json.loads(match.group(1))
-        except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"OpenClaw <tool_call> block {index} is not valid JSON: "
-                f"{exc.msg}; raw={match.group(1)!r}"
-            ) from exc
-        name = block.get("tool")
-        if not isinstance(name, str) or not name:
-            raise ValueError(
-                f"OpenClaw <tool_call> block {index} missing string 'tool' "
-                f"key; raw={block!r}"
-            )
-        args = block.get("args", {})
-        if not isinstance(args, dict):
-            raise ValueError(
-                f"OpenClaw <tool_call> block {index} 'args' must be a JSON "
-                f"object; got {type(args).__name__}"
-            )
-        tool_calls.append(
-            {
-                "id": f"call_openclaw_{index}",
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "arguments": json.dumps(args, sort_keys=True),
-                },
-            }
-        )
+        tool_calls.append(_tool_call_block_to_openai_shape(match.group(1), index))
 
-    prose = _TOOL_CALL_RE.sub("", text).strip()
+    if tool_calls:
+        prose = _TOOL_CALL_RE.sub("", text).strip()
+        return prose, tool_calls
+
+    # Pass 2: brace-balanced fallback for unclosed openers.
+    # Track recovered span ends so we can strip them from prose too.
+    recovered_spans: list[tuple[int, int]] = []
+    for match in _TOOL_CALL_OPENER_RE.finditer(text):
+        json_start = match.start(1)
+        sliced = _brace_balanced_json_slice(text, json_start)
+        if sliced is None:
+            continue
+        raw_json, end = sliced
+        tool_calls.append(
+            _tool_call_block_to_openai_shape(raw_json, len(tool_calls))
+        )
+        recovered_spans.append((match.start(), end))
+
+    if recovered_spans:
+        parts: list[str] = []
+        cursor = 0
+        for span_start, span_end in recovered_spans:
+            parts.append(text[cursor:span_start])
+            cursor = span_end
+        parts.append(text[cursor:])
+        prose = "".join(parts).strip()
+    else:
+        prose = text.strip()
     return prose, tool_calls
 
 
