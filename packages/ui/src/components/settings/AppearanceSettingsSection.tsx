@@ -1,4 +1,4 @@
-import { BUILTIN_THEMES, type ResolvedContentPack } from "@elizaos/shared";
+import type { ResolvedContentPack } from "@elizaos/shared";
 import { Button, Input } from "@elizaos/ui";
 import { Check, FolderOpen, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -44,8 +44,6 @@ export function AppearanceSettingsSection() {
     customWorldUrl,
     onboardingName,
     onboardingStyle,
-    themeId,
-    setThemeId,
     setUiLanguage,
     uiTheme,
     uiLanguage,
@@ -318,48 +316,6 @@ export function AppearanceSettingsSection() {
             label={t("settings.appearance.dark", { defaultValue: "Dark" })}
             onClick={() => setUiTheme("dark")}
           />
-        </div>
-      </section>
-
-      <section className="space-y-2">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
-          {t("settings.appearance.theme", { defaultValue: "Theme" })}
-        </h3>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          {BUILTIN_THEMES.map((theme) => {
-            const isActive = themeId === theme.id;
-            const colors = isDark ? theme.dark : theme.light;
-            const swatches: Array<[string, string]> = [
-              ["bg", colors.bg ?? "transparent"],
-              ["card", colors.card ?? "transparent"],
-              ["accent", colors.accent ?? "transparent"],
-              ["text", colors.text ?? "transparent"],
-            ];
-            return (
-              <button
-                key={theme.id}
-                type="button"
-                onClick={() => setThemeId(theme.id)}
-                className={selectableTileClass(isActive)}
-              >
-                <div className="flex items-center gap-1">
-                  {swatches.map(([slot, bg]) => (
-                    <span
-                      key={slot}
-                      className="h-4 w-4 rounded-full border border-border/40"
-                      style={{ background: bg }}
-                    />
-                  ))}
-                </div>
-                <span className="text-xs font-medium text-txt">
-                  {theme.name}
-                </span>
-                {isActive && (
-                  <Check className="absolute right-1.5 top-1.5 h-3 w-3 text-accent" />
-                )}
-              </button>
-            );
-          })}
         </div>
       </section>
 

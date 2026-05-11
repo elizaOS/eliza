@@ -19,6 +19,7 @@ import { PhoneCompanionApp } from "@elizaos/app-phone";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
+import { ELIZA_DEFAULT_THEME } from "@elizaos/shared";
 import type { BrandingConfig } from "@elizaos/ui";
 import {
   AGENT_READY_EVENT,
@@ -170,6 +171,7 @@ function getInjectedAppApiBase(): string | undefined {
 
 const APP_BRANDING: Partial<BrandingConfig> = {
   ...APP_BRANDING_BASE,
+  theme: ELIZA_DEFAULT_THEME,
   // The hosted web bundle stays cloud-only in production. Desktop shells and
   // other hosts inject an explicit API base before React boots, and that host
   // backend should control onboarding capabilities instead.
