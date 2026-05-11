@@ -172,23 +172,21 @@ vulkan-verify-fallbacks: vulkan_verify vulkan-spirv reference-test
 	@echo "[kernels/verify] vulkan polar_get_rows use_qjl=1 (informational on ANV)..."
 	-./vulkan_verify ../vulkan/polar_get_rows.spv fixtures/polar_qjl.json
 
-# Fused-attention (QJL-K + TBQ-V / Polar-V) Vulkan gate. The C reference
-# (eliza_fused_attn_qjl_tbq3 / eliza_fused_attn_qjl_polar) and the JSON
-# fixtures fixtures/fused_attn_qjl_tbq.json + fixtures/fused_attn_qjl_polar.json
-# are landed and round-tripped by `make reference-test` (gen_fixture --self-test),
-# but there is NO Vulkan shader for the fused op yet (vulkan/fused_attn*.comp does
-# not exist) and vulkan_verify cannot parse the `cases`-array fixture schema, so
-# this target intentionally fails: the fused capability stays needs-runtime-smoke
-# for Vulkan until a fused compute shader + harness path lands.
+# Fused-attention (QJL-K + TBQ-V / Polar-V) Vulkan gate. vulkan/fused_attn_qjl_tbq.comp
+# and vulkan/fused_attn_qjl_polar.comp port GGML_OP_FUSED_ATTN_QJL_TBQ + the Polar
+# V-mix variant: one-pass FlashAttention-style online softmax per head, the score
+# vector never materialized, a driver-portable 32-thread shared-memory reduction
+# (no subgroup assumptions). vulkan_verify's run_fused_attn() parses the
+# `cases`-array fixture schema (n_kv ∈ {64, 512, 256, 128} standing in for the
+# 4k/32k/128k/256k regimes, GQA fanouts 1/2/4) and diffs against the C reference
+# (eliza_fused_attn_qjl_tbq3 / eliza_fused_attn_qjl_polar). 1e-3 absolute tolerance.
 # Backend-neutral contract: reports/porting/2026-05-11/fused-attn-op-contract.md
 # Metal-specific design: reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md
-vulkan-verify-fused: reference-test
-	@echo "[kernels/verify] fused-attn fixtures sanity-checked via gen_fixture --self-test:"
-	@echo "  fixtures/fused_attn_qjl_tbq.json fixtures/fused_attn_qjl_polar.json fixtures/polar_preht.json"
-	@echo "[vulkan-verify-fused] No Vulkan fused-attention shader (vulkan/fused_attn*.comp) or"
-	@echo "  vulkan_verify cases-array parser yet — fused capability is needs-runtime-smoke for Vulkan."
-	@echo "  See reports/porting/2026-05-11/fused-attn-op-contract.md §4 for the buffer/push layout to port."
-	@false
+vulkan-verify-fused: vulkan_verify vulkan-spirv reference-test
+	@echo "[kernels/verify] vulkan fused-attn QJL-K + TBQ3-V..."
+	./vulkan_verify ../vulkan/fused_attn_qjl_tbq.spv   fixtures/fused_attn_qjl_tbq.json
+	@echo "[kernels/verify] vulkan fused-attn QJL-K + Q4_POLAR-V (use_qjl=1)..."
+	./vulkan_verify ../vulkan/fused_attn_qjl_polar.spv fixtures/fused_attn_qjl_polar.json
 
 # Native Linux end-to-end smoke for the Vulkan backend. This first runs the
 # standalone fixture verifier, then builds the patched fork target and runs the
@@ -346,7 +344,9 @@ VULKAN_SHADERS = \
     ../vulkan/turbo3_multi.spv \
     ../vulkan/turbo4_multi.spv \
     ../vulkan/turbo3_tcq_multi.spv \
-    ../vulkan/qjl_multi.spv
+    ../vulkan/qjl_multi.spv \
+    ../vulkan/fused_attn_qjl_tbq.spv \
+    ../vulkan/fused_attn_qjl_polar.spv
 
 vulkan-spirv: $(VULKAN_SHADERS)
 

@@ -276,6 +276,287 @@ struct KernelBindings {
     std::vector<uint8_t> push_bytes;
 };
 
+// --- Fused-attention fixture (the `cases`-array schema). One workgroup per
+//     (q_head, q_pos); the fixtures have n_q_pos == 1 (q_pos == 0). ---
+struct FusedAttnPush {
+    uint32_t n_heads;
+    uint32_t n_kv_heads;
+    uint32_t n_tokens;
+    uint32_t q_pos;
+    uint32_t sm_scale_bits;   // float bit pattern of sm_scale
+    uint32_t v_use_qjl_or_kv_tile;  // tbq: kv_tile(=0); polar: v_use_qjl
+    uint32_t kv_tile;         // polar only (tbq's 6th field is kv_tile already)
+};
+
+struct FusedAttnCase {
+    int n_heads = 0, n_kv_heads = 0, n_kv = 0;
+    std::vector<float>   q_sketch;       // n_heads * 256
+    std::vector<uint8_t> k_blocks;       // n_kv_heads * n_kv * 34
+    std::vector<uint8_t> v_blocks;       // tbq: *4*14 ; polar: *82
+    std::vector<float>   expected_out;   // n_heads * 128
+};
+
+// Extract the byte range [openIdx, matchingCloseIdx] of the first balanced
+// `[` ... `]` array starting at-or-after `from`.
+static bool find_balanced(const std::string & s, size_t from, char open, char close,
+                          size_t & out_open, size_t & out_close) {
+    size_t i = s.find(open, from);
+    if (i == std::string::npos) return false;
+    int depth = 0;
+    for (size_t j = i; j < s.size(); ++j) {
+        if (s[j] == open) ++depth;
+        else if (s[j] == close) { --depth; if (depth == 0) { out_open = i; out_close = j; return true; } }
+    }
+    return false;
+}
+
+// Split a JSON array body (the chars between [ and ]) into the substrings of its
+// top-level `{ ... }` objects.
+static std::vector<std::string> split_object_array(const std::string & body) {
+    std::vector<std::string> out;
+    size_t pos = 0;
+    while (true) {
+        size_t o, c;
+        if (!find_balanced(body, pos, '{', '}', o, c)) break;
+        out.push_back(body.substr(o, c - o + 1));
+        pos = c + 1;
+    }
+    return out;
+}
+
+static std::vector<FusedAttnCase> load_fused_cases(const std::string & s) {
+    size_t kpos = 0;
+    if (!find_key(s, "cases", kpos)) {
+        std::fprintf(stderr, "fused-attn fixture missing 'cases' array\n"); std::exit(1);
+    }
+    size_t arr_open, arr_close;
+    if (!find_balanced(s, kpos, '[', ']', arr_open, arr_close)) {
+        std::fprintf(stderr, "fused-attn fixture: malformed 'cases' array\n"); std::exit(1);
+    }
+    const std::string body = s.substr(arr_open + 1, arr_close - arr_open - 1);
+    std::vector<FusedAttnCase> out;
+    for (const std::string & obj : split_object_array(body)) {
+        FusedAttnCase c;
+        c.n_heads      = get_int(obj, "n_heads");
+        c.n_kv_heads   = get_int(obj, "n_kv_heads");
+        c.n_kv         = get_int(obj, "n_kv");
+        c.q_sketch     = get_floats(obj, "q_sketch");
+        c.k_blocks     = get_bytes(obj, "k_blocks");
+        c.v_blocks     = get_bytes(obj, "v_blocks");
+        c.expected_out = get_floats(obj, "expected_out");
+        out.push_back(std::move(c));
+    }
+    if (out.empty()) {
+        std::fprintf(stderr, "fused-attn fixture: 'cases' array is empty\n"); std::exit(1);
+    }
+    return out;
+}
+
+// --- Self-contained Vulkan run for the fused-attention shaders. Re-creates the
+//     pipeline once and per-case buffers/descriptors (the cases are small and
+//     few). Returns 0 iff every case passes within `tol`. The two shaders share
+//     the same 4-SSBO bind set (q_sketch, packed_k, packed_v, out) and a 6/7-uint
+//     push constant; the 6th uint is kv_tile for the TBQ variant and v_use_qjl
+//     for the Polar variant (whose 7th uint is its kv_tile). ---
+static int run_fused_attn(const char * spv_path, const char * fx_path, float tol) {
+    const std::string s = slurp(fx_path);
+    std::string kernel;
+    { size_t p = 0; if (!find_key(s, "kernel", p)) { std::fprintf(stderr, "fixture missing 'kernel'\n"); return 2; }
+      kernel = parse_string_at(s, p); }
+    const bool is_polar = kernel == "fused_attn_qjl_polar";
+    if (!is_polar && kernel != "fused_attn_qjl_tbq") {
+        std::fprintf(stderr, "run_fused_attn: unexpected kernel '%s'\n", kernel.c_str()); return 2;
+    }
+    float sm_scale_v = 0.0f;
+    { size_t p = 0; if (find_key(s, "sm_scale", p)) sm_scale_v = std::strtof(s.c_str() + p, nullptr); }
+    const uint32_t use_qjl = is_polar ? (uint32_t)get_int(s, "use_qjl", 0) : 0u;
+    const int v_block_bytes = get_int(s, "v_block_bytes", is_polar ? 82 : 14);
+    const int v_blocks_per_token = get_int(s, "v_blocks_per_token", is_polar ? 1 : 4);
+    const uint32_t v_token_bytes = (uint32_t)(v_block_bytes * v_blocks_per_token);
+    const std::vector<FusedAttnCase> cases = load_fused_cases(s);
+
+    std::printf("[vulkan_verify] kernel=%s spv=%s (fused-attention, %zu case(s))\n",
+                kernel.c_str(), spv_path, cases.size());
+
+    const auto spv = load_spirv(spv_path);
+
+    // --- Vulkan instance + device (once for the whole run). ---
+    VkApplicationInfo ai{}; ai.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    ai.pApplicationName = "eliza-fused-attn-verify"; ai.apiVersion = VK_API_VERSION_1_2;
+    VkInstanceCreateInfo ici{}; ici.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    ici.pApplicationInfo = &ai;
+    const char * inst_exts[] = { "VK_KHR_portability_enumeration" };
+    ici.enabledExtensionCount = 1; ici.ppEnabledExtensionNames = inst_exts; ici.flags = 0x00000001;
+    VkInstance instance;
+    if (vkCreateInstance(&ici, nullptr, &instance) != VK_SUCCESS) {
+        ici.enabledExtensionCount = 0; ici.ppEnabledExtensionNames = nullptr; ici.flags = 0;
+        VK_CHECK(vkCreateInstance(&ici, nullptr, &instance));
+    }
+    uint32_t pd_count = 0;
+    VK_CHECK(vkEnumeratePhysicalDevices(instance, &pd_count, nullptr));
+    if (pd_count == 0) { std::fprintf(stderr, "no Vulkan devices\n"); return 1; }
+    std::vector<VkPhysicalDevice> pds(pd_count);
+    VK_CHECK(vkEnumeratePhysicalDevices(instance, &pd_count, pds.data()));
+    VkPhysicalDevice pd = VK_NULL_HANDLE; uint32_t qfam = (uint32_t)-1;
+    for (VkPhysicalDevice cand : pds) {
+        uint32_t qc = 0; vkGetPhysicalDeviceQueueFamilyProperties(cand, &qc, nullptr);
+        std::vector<VkQueueFamilyProperties> qf(qc);
+        vkGetPhysicalDeviceQueueFamilyProperties(cand, &qc, qf.data());
+        for (uint32_t i = 0; i < qc; i++) if (qf[i].queueFlags & VK_QUEUE_COMPUTE_BIT) { pd = cand; qfam = i; break; }
+        if (pd != VK_NULL_HANDLE) break;
+    }
+    if (pd == VK_NULL_HANDLE) { std::fprintf(stderr, "no compute-capable Vulkan device\n"); return 1; }
+    { VkPhysicalDeviceProperties props; vkGetPhysicalDeviceProperties(pd, &props);
+      std::printf("[vulkan_verify] device=%s api=%u.%u.%u\n", props.deviceName,
+                  VK_VERSION_MAJOR(props.apiVersion), VK_VERSION_MINOR(props.apiVersion), VK_VERSION_PATCH(props.apiVersion));
+      if (!software_vulkan_allowed() && looks_like_software_vulkan_device(props.deviceName)) {
+          std::fprintf(stderr, "[vulkan_verify] refusing software Vulkan device '%s'. Set ELIZA_ALLOW_SOFTWARE_VULKAN=1 for diagnostics only.\n", props.deviceName);
+          return 2;
+      }
+    }
+    float prio = 1.0f;
+    VkDeviceQueueCreateInfo qci{}; qci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    qci.queueFamilyIndex = qfam; qci.queueCount = 1; qci.pQueuePriorities = &prio;
+    VkDeviceCreateInfo dci{}; dci.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    dci.queueCreateInfoCount = 1; dci.pQueueCreateInfos = &qci;
+    uint32_t dec = 0; vkEnumerateDeviceExtensionProperties(pd, nullptr, &dec, nullptr);
+    std::vector<VkExtensionProperties> de(dec); vkEnumerateDeviceExtensionProperties(pd, nullptr, &dec, de.data());
+    std::vector<const char *> ede;
+    for (auto & e : de) if (std::strcmp(e.extensionName, "VK_KHR_portability_subset") == 0) ede.push_back("VK_KHR_portability_subset");
+    dci.enabledExtensionCount = (uint32_t)ede.size(); dci.ppEnabledExtensionNames = ede.empty() ? nullptr : ede.data();
+    VkDevice device; VK_CHECK(vkCreateDevice(pd, &dci, nullptr, &device));
+    VkQueue queue; vkGetDeviceQueue(device, qfam, 0, &queue);
+
+    auto find_mem = [&](uint32_t type_bits, VkMemoryPropertyFlags want) {
+        VkPhysicalDeviceMemoryProperties mp; vkGetPhysicalDeviceMemoryProperties(pd, &mp);
+        for (uint32_t i = 0; i < mp.memoryTypeCount; i++)
+            if ((type_bits & (1u << i)) && (mp.memoryTypes[i].propertyFlags & want) == want) return i;
+        std::fprintf(stderr, "no compatible memory type\n"); std::exit(1);
+    };
+    struct Buf { VkBuffer buf; VkDeviceMemory mem; void * mapped; VkDeviceSize size; };
+    auto alloc_buf = [&](VkDeviceSize bytes) {
+        Buf b{}; b.size = bytes == 0 ? 4 : bytes;
+        VkBufferCreateInfo bi{}; bi.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bi.size = b.size; bi.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT; bi.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VK_CHECK(vkCreateBuffer(device, &bi, nullptr, &b.buf));
+        VkMemoryRequirements mr; vkGetBufferMemoryRequirements(device, b.buf, &mr);
+        VkMemoryAllocateInfo mi{}; mi.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO; mi.allocationSize = mr.size;
+        mi.memoryTypeIndex = find_mem(mr.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        VK_CHECK(vkAllocateMemory(device, &mi, nullptr, &b.mem));
+        VK_CHECK(vkBindBufferMemory(device, b.buf, b.mem, 0));
+        VK_CHECK(vkMapMemory(device, b.mem, 0, b.size, 0, &b.mapped));
+        return b;
+    };
+    auto free_buf = [&](Buf & b) { vkUnmapMemory(device, b.mem); vkDestroyBuffer(device, b.buf, nullptr); vkFreeMemory(device, b.mem, nullptr); };
+
+    VkDescriptorSetLayoutBinding dslb[4];
+    for (uint32_t i = 0; i < 4; i++) { dslb[i] = {}; dslb[i].binding = i; dslb[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; dslb[i].descriptorCount = 1; dslb[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT; }
+    VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO; dslci.bindingCount = 4; dslci.pBindings = dslb;
+    VkDescriptorSetLayout dsl; VK_CHECK(vkCreateDescriptorSetLayout(device, &dslci, nullptr, &dsl));
+    const uint32_t push_size = is_polar ? (uint32_t)(7 * sizeof(uint32_t)) : (uint32_t)(6 * sizeof(uint32_t));
+    VkPushConstantRange pcr{}; pcr.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT; pcr.offset = 0; pcr.size = push_size;
+    VkPipelineLayoutCreateInfo plci{}; plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    plci.setLayoutCount = 1; plci.pSetLayouts = &dsl; plci.pushConstantRangeCount = 1; plci.pPushConstantRanges = &pcr;
+    VkPipelineLayout pll; VK_CHECK(vkCreatePipelineLayout(device, &plci, nullptr, &pll));
+    VkShaderModuleCreateInfo smci{}; smci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO; smci.codeSize = spv.size(); smci.pCode = (const uint32_t *)spv.data();
+    VkShaderModule sm; VK_CHECK(vkCreateShaderModule(device, &smci, nullptr, &sm));
+    VkComputePipelineCreateInfo cpci{}; cpci.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    cpci.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO; cpci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    cpci.stage.module = sm; cpci.stage.pName = "main"; cpci.layout = pll;
+    VkPipeline pipeline; VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipeline));
+    VkCommandPoolCreateInfo cpinf{}; cpinf.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO; cpinf.queueFamilyIndex = qfam;
+    cpinf.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    VkCommandPool cmdpool; VK_CHECK(vkCreateCommandPool(device, &cpinf, nullptr, &cmdpool));
+
+    int total_fail = 0, total_n = 0;
+    float global_max_diff = 0.0f;
+    for (size_t ci = 0; ci < cases.size(); ++ci) {
+        const FusedAttnCase & c = cases[ci];
+        const uint32_t n_heads = (uint32_t)c.n_heads, n_kv_heads = (uint32_t)c.n_kv_heads, n_kv = (uint32_t)c.n_kv;
+        if ((uint32_t)c.q_sketch.size() != n_heads * 256u) { std::fprintf(stderr, "case %zu: q_sketch size mismatch\n", ci); return 2; }
+        if ((uint32_t)c.k_blocks.size() != n_kv_heads * n_kv * 34u) { std::fprintf(stderr, "case %zu: k_blocks size mismatch\n", ci); return 2; }
+        if ((uint32_t)c.v_blocks.size() != n_kv_heads * n_kv * v_token_bytes) { std::fprintf(stderr, "case %zu: v_blocks size mismatch (have %zu, want %u)\n", ci, c.v_blocks.size(), n_kv_heads * n_kv * v_token_bytes); return 2; }
+        if ((uint32_t)c.expected_out.size() != n_heads * 128u) { std::fprintf(stderr, "case %zu: expected_out size mismatch\n", ci); return 2; }
+
+        auto padded = [](const std::vector<uint8_t> & v) { std::vector<uint8_t> o(v.size() + 16, 0); std::memcpy(o.data(), v.data(), v.size()); return o; };
+        const std::vector<uint8_t> kpad = padded(c.k_blocks);
+        const std::vector<uint8_t> vpad = padded(c.v_blocks);
+
+        Buf q_buf  = alloc_buf((VkDeviceSize)c.q_sketch.size() * sizeof(float));
+        Buf k_buf  = alloc_buf((VkDeviceSize)kpad.size());
+        Buf v_buf  = alloc_buf((VkDeviceSize)vpad.size());
+        Buf o_buf  = alloc_buf((VkDeviceSize)c.expected_out.size() * sizeof(float));
+        std::memcpy(q_buf.mapped, c.q_sketch.data(), c.q_sketch.size() * sizeof(float));
+        std::memcpy(k_buf.mapped, kpad.data(), kpad.size());
+        std::memcpy(v_buf.mapped, vpad.data(), vpad.size());
+        std::memset(o_buf.mapped, 0, o_buf.size);
+
+        VkDescriptorPoolSize dps{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4 };
+        VkDescriptorPoolCreateInfo dpci{}; dpci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO; dpci.maxSets = 1; dpci.poolSizeCount = 1; dpci.pPoolSizes = &dps;
+        VkDescriptorPool dp; VK_CHECK(vkCreateDescriptorPool(device, &dpci, nullptr, &dp));
+        VkDescriptorSetAllocateInfo dsai{}; dsai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO; dsai.descriptorPool = dp; dsai.descriptorSetCount = 1; dsai.pSetLayouts = &dsl;
+        VkDescriptorSet ds; VK_CHECK(vkAllocateDescriptorSets(device, &dsai, &ds));
+        VkBuffer bufs[4] = { q_buf.buf, k_buf.buf, v_buf.buf, o_buf.buf };
+        VkDescriptorBufferInfo bi4[4]; VkWriteDescriptorSet wds[4];
+        for (uint32_t i = 0; i < 4; i++) {
+            bi4[i] = { bufs[i], 0, VK_WHOLE_SIZE };
+            wds[i] = {}; wds[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; wds[i].dstSet = ds; wds[i].dstBinding = i;
+            wds[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; wds[i].descriptorCount = 1; wds[i].pBufferInfo = &bi4[i];
+        }
+        vkUpdateDescriptorSets(device, 4, wds, 0, nullptr);
+
+        uint32_t pc[7] = { n_heads, n_kv_heads, n_kv, 0u, 0u, 0u, 0u };
+        std::memcpy(&pc[4], &sm_scale_v, sizeof(uint32_t));
+        if (is_polar) { pc[5] = use_qjl; pc[6] = 0u; /* kv_tile */ }
+        else          { pc[5] = 0u;      /* kv_tile */ }
+
+        VkCommandBufferAllocateInfo cbai{}; cbai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO; cbai.commandPool = cmdpool; cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; cbai.commandBufferCount = 1;
+        VkCommandBuffer cb; VK_CHECK(vkAllocateCommandBuffers(device, &cbai, &cb));
+        VkCommandBufferBeginInfo cbi{}; cbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO; cbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        VK_CHECK(vkBeginCommandBuffer(cb, &cbi));
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, pll, 0, 1, &ds, 0, nullptr);
+        vkCmdPushConstants(cb, pll, VK_SHADER_STAGE_COMPUTE_BIT, 0, push_size, pc);
+        vkCmdDispatch(cb, n_heads, 1, 1);
+        VK_CHECK(vkEndCommandBuffer(cb));
+        VkSubmitInfo si{}; si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO; si.commandBufferCount = 1; si.pCommandBuffers = &cb;
+        VK_CHECK(vkQueueSubmit(queue, 1, &si, VK_NULL_HANDLE));
+        VK_CHECK(vkQueueWaitIdle(queue));
+
+        const float * out = (const float *)o_buf.mapped;
+        int fail = 0; float max_diff = 0.0f;
+        const int n = (int)c.expected_out.size();
+        for (int i = 0; i < n; i++) {
+            float diff = std::fabs(out[i] - c.expected_out[i]);
+            if (diff > max_diff) max_diff = diff;
+            if (diff >= tol) {
+                fail++;
+                if (fail <= 8) std::printf("    case %zu i=%d expected=%+.6f got=%+.6f diff=%.3e FAIL\n", ci, i, (double)c.expected_out[i], (double)out[i], (double)diff);
+            }
+        }
+        std::printf("  case %zu (n_heads=%u n_kv_heads=%u n_kv=%u): %s — %d/%d passed (max_diff=%.3e)\n",
+                    ci, n_heads, n_kv_heads, n_kv, fail == 0 ? "PASS" : "FAIL", n - fail, n, (double)max_diff);
+        if (max_diff > global_max_diff) global_max_diff = max_diff;
+        total_fail += fail; total_n += n;
+
+        vkFreeCommandBuffers(device, cmdpool, 1, &cb);
+        vkDestroyDescriptorPool(device, dp, nullptr);
+        free_buf(q_buf); free_buf(k_buf); free_buf(v_buf); free_buf(o_buf);
+    }
+
+    vkDestroyCommandPool(device, cmdpool, nullptr);
+    vkDestroyPipeline(device, pipeline, nullptr);
+    vkDestroyShaderModule(device, sm, nullptr);
+    vkDestroyPipelineLayout(device, pll, nullptr);
+    vkDestroyDescriptorSetLayout(device, dsl, nullptr);
+    vkDestroyDevice(device, nullptr);
+    vkDestroyInstance(instance, nullptr);
+
+    std::printf("[vulkan_verify] %s — %d/%d outputs passed across %zu case(s) (tol=%.0e, max_diff=%.3e)\n",
+                total_fail == 0 ? "PASS" : "FAIL", total_n - total_fail, total_n, cases.size(), (double)tol, (double)global_max_diff);
+    return total_fail == 0 ? 0 : 1;
+}
+
 } // namespace
 
 int main(int argc, char ** argv) {
@@ -303,6 +584,20 @@ int main(int argc, char ** argv) {
             tol = std::strtof(argv[i], nullptr);
         }
     }
+    // Peek at the fixture's `kernel` field: the fused-attention shaders use the
+    // `cases`-array schema, which the flat-fixture path below cannot parse, so
+    // route them through the dedicated runner.
+    {
+        std::string head = slurp(fx_path);
+        size_t kp = 0;
+        if (find_key(head, "kernel", kp)) {
+            std::string kn = parse_string_at(head, kp);
+            if (kn == "fused_attn_qjl_tbq" || kn == "fused_attn_qjl_polar") {
+                return run_fused_attn(spv_path, fx_path, tol);
+            }
+        }
+    }
+
     const bool kernel_uses_preht  = std::strstr(spv_path, "preht") != nullptr;
     const bool kernel_is_multi    = std::strstr(spv_path, "_multi") != nullptr;
     const bool kernel_is_qjl_getr = std::strstr(spv_path, "qjl_get_rows") != nullptr;
