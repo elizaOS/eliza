@@ -374,19 +374,49 @@ describe("local inference downloader status", () => {
   it("aborts before any weight byte when no verified backend overlaps the device", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
     process.env.ELIZA_STATE_DIR = root;
-    const model = findCatalogModel("eliza-1-0_6b");
+    // The 27b-1m tier ships verified only on CUDA (GH200-class). On a
+    // cpu-only device there is no usable required-kernel backend, so the
+    // download must abort before any weight byte.
+    const model = findCatalogModel("eliza-1-27b-1m");
     if (!model) throw new Error("missing test catalog model");
 
-    const manifest = eliza1Manifest({
-      shaFor: () => sha256("x"),
-      // Bundle only verified Metal/CUDA — a cpu-only Linux box must reject it.
-      verifiedBackends: {
-        metal: { status: "pass", atCommit: "t", report: "metal" },
-        vulkan: { status: "needs-hardware", atCommit: "t", report: "vk" },
-        cuda: { status: "pass", atCommit: "t", report: "cuda" },
-        rocm: { status: "needs-hardware", atCommit: "t", report: "rocm" },
-        cpu: { status: "needs-hardware", atCommit: "t", report: "cpu" },
+    const manifest = JSON.stringify({
+      id: "eliza-1-27b-1m",
+      tier: "27b-1m",
+      version: "1.0.0",
+      publishedAt: "2026-05-11T00:00:00.000Z",
+      lineage: {
+        text: { base: "eliza-1-text", license: "test" },
+        voice: { base: "eliza-1-voice", license: "test" },
+        drafter: { base: "eliza-1-drafter", license: "test" },
       },
+      defaultEligible: false,
+      files: {
+        text: [{ path: "text/eliza-1-27b-1m.gguf", sha256: sha256("x"), ctx: 1_048_576 }],
+        voice: [{ path: "tts/voice.gguf", sha256: sha256("v") }],
+        asr: [],
+        vision: [],
+        dflash: [{ path: "dflash/drafter-27b-1m.gguf", sha256: sha256("d") }],
+        cache: [{ path: "cache/voice-preset-default.bin", sha256: sha256("c") }],
+      },
+      kernels: {
+        required: ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+        optional: [],
+        verifiedBackends: {
+          metal: { status: "skipped", atCommit: "t", report: "n/a" },
+          vulkan: { status: "skipped", atCommit: "t", report: "n/a" },
+          cuda: { status: "pass", atCommit: "t", report: "cuda" },
+          rocm: { status: "skipped", atCommit: "t", report: "n/a" },
+          cpu: { status: "skipped", atCommit: "t", report: "n/a" },
+        },
+      },
+      evals: {
+        textEval: { score: 1, passed: true },
+        voiceRtf: { rtf: 0.5, passed: true },
+        e2eLoopOk: true,
+        thirtyTurnOk: true,
+      },
+      ramBudgetMb: { min: 8_000, recommended: 12_000 },
     });
     const fetchSpy = installManifestOnlyFetch(manifest);
 

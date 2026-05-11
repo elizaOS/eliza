@@ -297,18 +297,27 @@ def _stage_recipe_sidecars(bundle_dir: Path, recipes_dir: Path, *, force: bool) 
             sha256=sha256_file(dest), sizeBytes=dest.stat().st_size, method="copy",
             provenance=f"recipe-output:{sub}",
         ))
-    # PolarQuant codes artifact (the INT4-kernel payload). Not required by the
-    # manifest schema, but it is a real recipe output, so ship it alongside.
+    # PolarQuant codes artifact (the INT4-kernel payload) is a real recipe
+    # output but NOT a manifest-required file and can be multi-GB; the
+    # polarquant_config.json sidecar records its provenance. Record its
+    # sha256 in the bundle's quantization/polarquant_artifacts.json metadata
+    # so a downstream INT4 pipeline can fetch it, without shipping the bytes.
     polar_art = recipes_dir / "polar" / POLAR_ARTIFACTS_NAME
     if polar_art.is_file():
-        dest = bundle_dir / "quantization" / POLAR_ARTIFACTS_NAME
-        if not dest.exists() or force:
-            if dest.exists():
-                dest.unlink()
-            shutil.copy2(polar_art, dest)
+        meta_dest = bundle_dir / "quantization" / "polarquant_artifacts.json"
+        _json_write(meta_dest, {
+            "schemaVersion": 1,
+            "artifact": POLAR_ARTIFACTS_NAME,
+            "sha256": sha256_file(polar_art),
+            "sizeBytes": polar_art.stat().st_size,
+            "note": ("PolarQuant int8-codes + fp16-norms safetensors produced by "
+                     "polarquant_apply.py; not shipped in the bundle (size); the "
+                     "downstream INT4 inference path materializes it from the "
+                     "training rig or a separate artifact repo."),
+        })
         out.append(StagedFile(
-            role="quantization:polar-artifacts", source=str(polar_art), destination=str(dest),
-            sha256=sha256_file(dest), sizeBytes=dest.stat().st_size, method="copy",
+            role="quantization:polar-artifacts-meta", source=str(polar_art), destination=str(meta_dest),
+            sha256=sha256_file(meta_dest), sizeBytes=meta_dest.stat().st_size, method="metadata-only",
             provenance="recipe-output:polar",
         ))
     return out
