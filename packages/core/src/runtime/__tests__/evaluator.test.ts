@@ -195,4 +195,126 @@ describe("v5 evaluator skeleton", () => {
 		expect(result.decision).toBe("FINISH");
 		expect(result.success).toBe(true);
 	});
+
+	it("downgrades FINISH to CONTINUE when messageToUser promises unexecuted work after a failed tool", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "success": false,
+  "decision": "FINISH",
+  "thought": "SHELL returned empty. I need to spawn a task agent. Let me inform the channel.",
+  "messageToUser": "On it — kicking off a build task now. Will install Android SDK if needed and report back."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "t1", name: "SHELL", params: { command: "ls" } },
+						result: { success: false, text: "" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser).toBeUndefined();
+		expect(result.success).toBe(false);
+	});
+
+	it("leaves FINISH alone when messageToUser is grounded in a successful tool result", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "success": true,
+  "decision": "FINISH",
+  "thought": "Build succeeded.",
+  "messageToUser": "On it — wait, actually it's done. APK at /tmp/out.apk."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "t1", name: "BUILD", params: {} },
+						result: { success: true, text: "Built." },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		// Grounded FINISH: even forward-looking words pass through because the
+		// most recent tool result was successful (the work was actually done).
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toContain("APK at /tmp/out.apk");
+	});
+
+	it("leaves non-promise messageToUser alone after a failed tool", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "success": false,
+  "decision": "FINISH",
+  "thought": "Tool failed; user needs to retry.",
+  "messageToUser": "The command failed with exit 2. Try again with the right path."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "t1", name: "SHELL", params: { command: "ls" } },
+						result: { success: false, text: "exit 2" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		// Diagnostic messageToUser (no future-tense promise) stays as FINISH so
+		// the user gets the explanation instead of an empty replan.
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toContain("exit 2");
+	});
 });

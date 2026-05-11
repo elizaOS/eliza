@@ -15,6 +15,7 @@ rules:
 - choose NEXT_RECOMMENDED only when one queued tool is still grounded; otherwise choose CONTINUE
 - you cannot call tools; never emit tool arguments, URL-open JSON, document JSON, or any JSON object except the single evaluator result
 - if the response would need any unexecuted tool/action side effect to be true, choose CONTINUE; do not imagine the missing result
+- never pair decision=FINISH with a forward-looking promise messageToUser (e.g. "on it", "kicking off", "i'll start", "spinning up", "about to", "will install/build/deploy", "will report back"); if you are promising work that has not happened yet, the work is not done, so choose CONTINUE
 - messageToUser is optional progress, diagnosis, question, or final output
 - messageToUser is shown directly to the user; never include internal thoughts, tool names, function syntax, JSON/tool-call attempts, or analysis
 - when decision is FINISH after tool use, include messageToUser with the concise user-facing answer or status grounded in the completed tool results

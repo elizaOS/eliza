@@ -105,8 +105,11 @@ export async function runEvaluator(
 		params.provider,
 	);
 	const endedAt = Date.now();
-	const output = repairMissingEvaluatorSuccess(
-		parseEvaluatorOutput(raw),
+	const output = repairForwardLookingFinish(
+		repairMissingEvaluatorSuccess(
+			parseEvaluatorOutput(raw),
+			params.trajectory,
+		),
 		params.trajectory,
 	);
 	const streamingContext = getStreamingContext();
@@ -338,6 +341,59 @@ function repairMissingEvaluatorSuccess(
 	return {
 		...output,
 		success: true,
+	};
+}
+
+const FORWARD_LOOKING_PROMISE_PATTERNS: RegExp[] = [
+	/^\s*(?:on it|got it|sure|okay|kk)[,!.\s-]/i,
+	/\b(?:i'?ll|i\s+will|i'?m\s+(?:going to|about to|gonna))\s+(?:install|build|deploy|create|spawn|kick(?:ing)?\s+off|start|launch|run|do|handle|fix|update|generate|set\s+up|put|drop|grab|pull|push|send|write|make|add)/i,
+	/\b(?:kick(?:ing)?\s+off|spinning\s+up|spawning|starting(?:\s+it)?(?:\s+now)?|launching|firing\s+off)\s+(?:a\s+|the\s+|task|agent|build|job|process|now)/i,
+	/\bwill\s+(?:install|build|deploy|create|spawn|kick\s+off|start|launch|run|generate|fix|update|report\s+back)\b/i,
+	/\babout\s+to\s+(?:install|build|deploy|create|spawn|kick|start|launch|run|generate|fix)/i,
+	/\bwill\s+report\s+back\b/i,
+];
+
+function isForwardLookingPromise(text: string): boolean {
+	return FORWARD_LOOKING_PROMISE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+/**
+ * Repair the failure mode where the evaluator picks `FINISH` but the
+ * `messageToUser` is a forward-looking promise about work that hasn't been
+ * executed yet (e.g. "On it — kicking off a build task now"). The prompt
+ * already says "if the response would need any unexecuted tool/action side
+ * effect to be true, choose CONTINUE; do not imagine the missing result",
+ * but LLMs ignore that rule often enough that we enforce it server-side.
+ *
+ * Trigger conditions (ALL must hold):
+ *   - decision === "FINISH"
+ *   - messageToUser is a non-empty string
+ *   - the trajectory's most-recent tool result was NOT a successful execution
+ *     (so the LLM is promising something that hasn't happened yet)
+ *   - messageToUser matches a forward-looking promise pattern
+ *
+ * When triggered, downgrade decision to "CONTINUE" and drop the hallucinated
+ * messageToUser so the planner gets another turn to actually emit the
+ * follow-up action.
+ */
+function repairForwardLookingFinish(
+	output: EvaluatorOutput,
+	trajectory: PlannerTrajectory,
+): EvaluatorOutput {
+	if (output.decision !== "FINISH") return output;
+	if (typeof output.messageToUser !== "string") return output;
+	const trimmed = output.messageToUser.trim();
+	if (!trimmed) return output;
+	const latestStep = [...trajectory.steps]
+		.reverse()
+		.find((step) => step.toolCall && step.result);
+	if (latestStep?.result?.success === true) return output;
+	if (!isForwardLookingPromise(trimmed)) return output;
+	return {
+		...output,
+		decision: "CONTINUE",
+		messageToUser: undefined,
+		success: false,
 	};
 }
 
