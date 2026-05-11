@@ -37,11 +37,11 @@ app.post("/", async (c) => {
     }
 
     const domain = cookieDomainForHost(c.req.header("host"));
-    const opts = domain ? { path: "/", domain } : { path: "/" };
-    deleteCookie(c, "steward-token", opts);
-    deleteCookie(c, "steward-refresh-token", opts);
-    deleteCookie(c, "steward-authed", opts);
-    deleteCookie(c, "eliza-anon-session", opts);
+    const stewardOpts = domain ? { path: "/", domain } : { path: "/" };
+    deleteCookie(c, "steward-token", stewardOpts);
+    deleteCookie(c, "steward-refresh-token", stewardOpts);
+    deleteCookie(c, "steward-authed", stewardOpts);
+    deleteCookie(c, "eliza-anon-session", { path: "/" });
 
     return c.json({ success: true, message: "Logged out successfully" });
   } catch (error) {
