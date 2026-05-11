@@ -10,12 +10,18 @@ import {
   type AppRunSummary,
   type AppSessionActionResult,
   createGeneratedAppHeroSvg,
+  type FavoritesResponse,
   hasAppInterface,
+  type InstallProgressEvent,
   PostCreateAppRequestSchema,
+  type PostCreateAppResponse,
   PostInstallAppRequestSchema,
+  type PostInstallAppResponse,
   PostLaunchAppRequestSchema,
   PostLoadFromDirectoryRequestSchema,
   PostOverlayPresenceRequestSchema,
+  type PostOverlayPresenceResponse,
+  type PostRefreshAppsResponse,
   PostRelaunchAppRequestSchema,
   PostReplaceFavoritesRequestSchema,
   PostRunControlRequestSchema,
@@ -793,7 +799,8 @@ export async function handleAppsRoutes(
     }
 
     if (method === "GET") {
-      json(res, { favoriteApps: store.read() });
+      const response: FavoritesResponse = { favoriteApps: store.read() };
+      json(res, response);
       return true;
     }
 
@@ -816,7 +823,8 @@ export async function handleAppsRoutes(
       const filtered = current.filter((entry) => entry !== appName);
       const next = isFavorite ? [...filtered, appName] : filtered;
       const persisted = store.write(sanitizeFavoriteAppNames(next));
-      json(res, { favoriteApps: persisted });
+      const response: FavoritesResponse = { favoriteApps: persisted };
+      json(res, response);
       return true;
     }
   }
@@ -842,7 +850,8 @@ export async function handleAppsRoutes(
     }
     const sanitized = sanitizeFavoriteAppNames(parsed.data.favoriteAppNames);
     const persisted = store.write(sanitized);
-    json(res, { favoriteApps: persisted });
+    const response: FavoritesResponse = { favoriteApps: persisted };
+    json(res, response);
     return true;
   }
 
@@ -869,7 +878,8 @@ export async function handleAppsRoutes(
     }
     const { appName } = parsed.data;
     setOverlayAppPresence(appName);
-    json(res, { ok: true, appName });
+    const response: PostOverlayPresenceResponse = { ok: true, appName };
+    json(res, response);
     return true;
   }
 
@@ -1075,21 +1085,23 @@ export async function handleAppsRoutes(
         result = await installPluginDirect(name, recordProgress, version);
       }
       if (!result.success) {
-        json(
-          res,
-          { success: false, error: result.error, progress: progressEvents },
-          422,
-        );
+        const failure: PostInstallAppResponse = {
+          success: false,
+          ...(result.error ? { error: result.error } : {}),
+          progress: progressEvents as InstallProgressEvent[],
+        };
+        json(res, failure, 422);
         return true;
       }
-      json(res, {
+      const success: PostInstallAppResponse = {
         success: true,
         pluginName: result.pluginName ?? name,
         version: result.version,
         installPath: result.installPath,
         requiresRestart: result.requiresRestart,
-        progress: progressEvents,
-      });
+        progress: progressEvents as InstallProgressEvent[],
+      };
+      json(res, success);
     } catch (e) {
       error(res, e instanceof Error ? e.message : "Failed to install app", 500);
     }
@@ -1187,7 +1199,8 @@ export async function handleAppsRoutes(
       const count = Array.from(registry.values()).filter(
         isNonAppRegistryPlugin,
       ).length;
-      json(res, { ok: true, count });
+      const response: PostRefreshAppsResponse = { ok: true, count };
+      json(res, response);
     } catch (err) {
       error(
         res,
@@ -1576,12 +1589,13 @@ export async function handleAppsRoutes(
         },
         callback,
       )) as { success?: boolean; text?: string; data?: unknown } | undefined;
-      json(res, {
+      const response: PostCreateAppResponse = {
         success: result?.success !== false,
         text: result?.text ?? lines.join("\n"),
         messages: lines,
         data: result?.data ?? null,
-      });
+      };
+      json(res, response);
     } catch (err) {
       error(
         res,
