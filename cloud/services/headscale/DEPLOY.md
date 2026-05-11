@@ -51,6 +51,7 @@ Required env vars on the proxy service:
 | `TUNNEL_PROXY_TS_AUTHKEY` | (from step 3) |
 | `TUNNEL_PROXY_HOST` | `tunnel.elizacloud.ai` |
 | `TUNNEL_TAILNET_DOMAIN` | `tunnel.eliza.local` |
+| `TUNNEL_HOSTNAME_SIGNING_SECRET` | shared HMAC secret also set as a Worker secret |
 
 Mount a Railway volume at `/var/lib/tunnel-proxy` so the `tsnet` node identity persists across restarts.
 
@@ -62,6 +63,7 @@ On the cloud-api Worker (Cloudflare):
 wrangler secret put HEADSCALE_API_KEY          # from step 2
 wrangler secret put CLOUD_INTERNAL_TOKEN       # same value as the proxy
 wrangler secret put HEADSCALE_INTERNAL_TOKEN   # same value as CLOUD_INTERNAL_TOKEN
+wrangler secret put TUNNEL_HOSTNAME_SIGNING_SECRET
 ```
 
 `HEADSCALE_PUBLIC_URL`, `HEADSCALE_API_URL`, `HEADSCALE_USER`, `TUNNEL_PROXY_HOST`, `TUNNEL_TAILNET_DOMAIN`, and `TUNNEL_AUTH_KEY_COST_USD` are non-secret Worker vars in `apps/api/wrangler.toml`. The tunnel cost is a small on-demand org-credit debit per successful auth-key provisioning, not a subscription.

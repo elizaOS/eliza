@@ -99,7 +99,10 @@ def test_rescore_quality_score_handles_partial_set_match_conflict() -> None:
     event = {
         "event": "case_analysis",
         "ground_truth": {
-            "locked_decisions": ["keep the audit log for 30 days"],
+            "locked_decisions": [
+                "keep the audit log for 30 days",
+                "assume the server timezone is UTC",
+            ],
             "forbidden_behaviors": ["assume the server timezone is UTC"],
         },
         "cycles": [
@@ -127,9 +130,10 @@ def test_rescore_quality_score_handles_partial_set_match_conflict() -> None:
     rescored = _rescore_case_event(event)
 
     item = rescored["cycles"][0]["items"][0]
-    assert item["invalid_expected_conflict"] is False
-    assert item["quality_score"] == 0.5
-    assert rescored["benchmark_quality_case_score"] == 0.5
+    assert item["invalid_expected_conflict"] is True
+    assert item["adjusted_score"] == 0.5
+    assert item["quality_score"] == 1.0
+    assert rescored["benchmark_quality_case_score"] == 1.0
 
 
 def test_rescore_summary_all_invalid_quality_is_none(tmp_path) -> None:
