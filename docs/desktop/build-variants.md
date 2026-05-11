@@ -22,6 +22,11 @@ Use this for Mac App Store, Microsoft Store, and Flathub builds.
 Store builds can still connect to Cloud or a remote agent. Cloud hosting is its
 own runtime target; it is not replaced by the local desktop sandbox.
 
+Runtime enforcement lives in the plugin collector: store builds remove
+`@elizaos/plugin-shell`, `@elizaos/plugin-coding-tools`,
+`agent-orchestrator`, and `@elizaos/plugin-agent-orchestrator` from the local
+load set even if config or environment variables request them.
+
 For the full mobile/desktop capability matrix and policy review, see
 [`docs/mobile-agentic-ide-platform-plan.md`](../mobile-agentic-ide-platform-plan.md).
 
@@ -45,6 +50,18 @@ local agent backend in-app; Cloud hosting provides the sandboxed agent runtime.
 The AOSP native Android build is a privileged system build and runs on-device.
 It does not expose a sandbox choice because the system image is already the
 target environment for local shell and terminal access.
+
+Google Play Android uses the `android-cloud` build target. That target strips
+the on-device agent service, privileged default-role activities, system-only
+permissions, staged `assets/agent` runtime, and disguised native runtime
+libraries before building the APK.
+
+## Verification
+
+- `packages/agent/src/runtime/plugin-collector-aosp.test.ts` verifies the store
+  variant plugin gate and the AOSP terminal plugin exception.
+- `packages/app-core/src/runtime/platform-policy-docs.test.ts` verifies this
+  document keeps naming the policy knobs and Android cloud stripping behavior.
 
 ## Human Release Requirements
 

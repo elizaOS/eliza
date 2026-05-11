@@ -224,6 +224,22 @@ export class VirtualFilesystemService {
     return snapshot;
   }
 
+  async listSnapshots(): Promise<VirtualFilesystemSnapshot[]> {
+    await this.initialize();
+    const entries = await fsp.readdir(this.snapshotsRoot, {
+      withFileTypes: true,
+    });
+    const snapshots: VirtualFilesystemSnapshot[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const snapshot = await this.readSnapshot(entry.name);
+      if (snapshot) snapshots.push(snapshot);
+    }
+    return snapshots.sort(
+      (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
+    );
+  }
+
   async diffSnapshots(
     beforeSnapshotId: string,
     afterSnapshotId: string,

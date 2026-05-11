@@ -307,6 +307,13 @@ export function detectMobileSafeRuntimeFeatures(
       "WebAssembly is not exposed by this host runtime";
   }
 
+  if (typeof globals.Function === "function") {
+    availableProviders.push("safe-js-applet");
+  } else {
+    unavailableProviders["safe-js-applet"] =
+      "This host runtime does not expose JavaScript evaluation for applet fallback";
+  }
+
   return {
     platform,
     supportsWebAssembly,
@@ -1255,6 +1262,282 @@ function toMobileSafeSnapshot(
     filesBytes: snapshot.filesBytes,
     fileCount: snapshot.fileCount,
   };
+}
+
+function parseMobileSafeAppletManifest(raw: string): MobileSafeAppletManifest {
+  const parsed = JSON.parse(raw) as MobileSafeAppletManifest;
+  return normalizeMobileSafeAppletManifest(parsed);
+}
+
+function normalizeMobileSafeAppletManifest(
+  manifest: MobileSafeAppletManifest,
+): MobileSafeAppletManifest {
+  if (!manifest || typeof manifest !== "object") {
+    throw new Error("Mobile-safe applet manifest is required");
+  }
+  if (
+    typeof manifest.id !== "string" ||
+    !/^[A-Za-z0-9_.:-]{1,96}$/.test(manifest.id)
+  ) {
+    throw new Error("Mobile-safe applet manifest id is invalid");
+  }
+  if (typeof manifest.version !== "string" || manifest.version.length === 0) {
+    throw new Error("Mobile-safe applet manifest version is required");
+  }
+  if (
+    typeof manifest.entrypoint !== "string" ||
+    manifest.entrypoint.length === 0
+  ) {
+    throw new Error("Mobile-safe applet manifest entrypoint is required");
+  }
+  if (manifest.runtime && manifest.runtime !== "mobile-safe-js") {
+    throw new Error("Only mobile-safe-js applet manifests are supported");
+  }
+  if (
+    manifest.moduleFormat &&
+    manifest.moduleFormat !== "javascript" &&
+    manifest.moduleFormat !== "typescript"
+  ) {
+    throw new Error("Unsupported mobile-safe applet module format");
+  }
+  for (const permission of manifest.permissions ?? []) {
+    if (permission === "shell.exec") {
+      throw new Error("Mobile-safe applets cannot request shell.exec");
+    }
+  }
+  return {
+    ...manifest,
+    runtime: manifest.runtime ?? "mobile-safe-js",
+    moduleFormat: manifest.moduleFormat ?? "javascript",
+    entrypoint: normalizeMobileSafePath(manifest.entrypoint),
+    files: manifest.files?.map(normalizeMobileSafePath),
+    permissions: [...(manifest.permissions ?? [])],
+    env: { ...(manifest.env ?? {}) },
+    ...(manifest.compiled
+      ? {
+          compiled: {
+            bundlePath: normalizeMobileSafePath(manifest.compiled.bundlePath),
+            compiledAt: manifest.compiled.compiledAt,
+            sourceHash: manifest.compiled.sourceHash,
+            files: manifest.compiled.files.map(normalizeMobileSafePath),
+          },
+        }
+      : {}),
+  };
+}
+
+function normalizeMobileSafeAppletFiles(
+  manifest: MobileSafeAppletManifest,
+  appRoot: string,
+): string[] {
+  const entrypoint = resolveMobileSafeAppletPath(appRoot, manifest.entrypoint);
+  const paths = new Set<string>([entrypoint]);
+  for (const filePath of manifest.files ?? []) {
+    paths.add(resolveMobileSafeAppletPath(appRoot, filePath));
+  }
+  return [...paths].sort((left, right) => {
+    if (left === entrypoint) return -1;
+    if (right === entrypoint) return 1;
+    return left.localeCompare(right);
+  });
+}
+
+function resolveMobileSafeAppletPath(appRoot: string, path: string): string {
+  const normalized = normalizeMobileSafePath(path);
+  if (normalized === appRoot || normalized.startsWith(`${appRoot}/`)) {
+    return normalized;
+  }
+  return normalizeMobileSafePath(`${appRoot}/${normalized.slice(1)}`);
+}
+
+function createMobileSafeAppletBundle(
+  manifest: MobileSafeAppletManifest,
+  modules: Array<{ path: string; source: string }>,
+): string {
+  const entrypoint = manifest.compiled?.files[0] ?? manifest.entrypoint;
+  const module = modules.find((candidate) => candidate.path === entrypoint);
+  if (!module) {
+    throw new Error(`Applet entrypoint not found in bundle: ${entrypoint}`);
+  }
+  const transformedSource = transformMobileSafeAppletModule(module.source);
+  return [
+    "async function __mobileSafeApplet(input, api) {",
+    `  const manifest = ${JSON.stringify(manifest)};`,
+    "  const exports = {};",
+    "  const module = { exports };",
+    "  const console = api.console;",
+    "  const crypto = api.crypto;",
+    "  const env = api.env;",
+    "  const fs = api.fs;",
+    "  const applet = { manifest, input, api };",
+    transformedSource
+      .split("\n")
+      .map((line) => `  ${line}`)
+      .join("\n"),
+    "  const resolvedExports = module.exports === exports ? exports : module.exports;",
+    "  const main = resolvedExports.default ?? resolvedExports.main ?? resolvedExports.run;",
+    "  if (typeof main === 'function') return await main(input, api);",
+    "  if (main !== undefined) return main;",
+    "  return resolvedExports;",
+    "}",
+    "",
+  ].join("\n");
+}
+
+function transformMobileSafeAppletModule(source: string): string {
+  const exportedBindings: string[] = [];
+  let output = source
+    .replace(
+      /\bexport\s+default\s+async\s+function\s+([A-Za-z_$][\w$]*)?\s*\(/g,
+      "exports.default = async function $1(",
+    )
+    .replace(
+      /\bexport\s+default\s+function\s+([A-Za-z_$][\w$]*)?\s*\(/g,
+      "exports.default = function $1(",
+    )
+    .replace(/\bexport\s+default\s+/g, "exports.default = ")
+    .replace(
+      /\bexport\s+async\s+function\s+([A-Za-z_$][\w$]*)\s*\(/g,
+      "exports.$1 = async function $1(",
+    )
+    .replace(
+      /\bexport\s+function\s+([A-Za-z_$][\w$]*)\s*\(/g,
+      "exports.$1 = function $1(",
+    );
+
+  output = output.replace(
+    /\bexport\s+(const|let|var)\s+([A-Za-z_$][\w$]*)/g,
+    (_match, declaration: string, name: string) => {
+      exportedBindings.push(name);
+      return `${declaration} ${name}`;
+    },
+  );
+
+  if (exportedBindings.length > 0) {
+    output += `\n${exportedBindings
+      .map((name) => `exports.${name} = ${name};`)
+      .join("\n")}`;
+  }
+  return output;
+}
+
+function assertMobileSafeAppletSource(source: string, label: string): void {
+  const deniedPatterns: Array<[RegExp, string]> = [
+    [/\bimport\s*\(/, "dynamic import"],
+    [/^\s*import\s+/m, "static import"],
+    [/\bexport\s+[^;\n]+from\s+["']/, "re-export"],
+    [/\brequire\s*\(/, "CommonJS require"],
+    [/\beval\s*\(/, "eval"],
+    [/\bFunction\s*\(/, "Function constructor"],
+    [/\bWebAssembly\b/, "WebAssembly"],
+    [/\bprocess\b/, "process global"],
+    [/\bBun\b/, "Bun global"],
+    [/\bDeno\b/, "Deno global"],
+    [/\bchild_process\b/, "child_process"],
+    [/\bnode:/, "node: builtin import"],
+    [/\bshell\b/i, "shell access"],
+    [/\bconstructor\b/, "constructor escape"],
+    [/\b__proto__\b/, "__proto__ escape"],
+  ];
+  for (const [pattern, reason] of deniedPatterns) {
+    if (pattern.test(source)) {
+      throw new Error(`Mobile-safe applet ${label} uses denied ${reason}`);
+    }
+  }
+}
+
+function stripMobileSafeTypeScript(source: string): string {
+  return source
+    .replace(/^\s*import\s+type\s+[^;]+;\s*$/gm, "")
+    .replace(/^\s*export\s+type\s+[^;]+;\s*$/gm, "")
+    .replace(/^\s*type\s+[A-Za-z_$][\w$]*\s*=\s*[^;]+;\s*$/gm, "")
+    .replace(/^\s*interface\s+[A-Za-z_$][\w$]*\s*\{[^}]*\}\s*$/gm, "")
+    .replace(
+      /:\s*(?:\{[^{}]*\}|[A-Za-z_$][\w$]*(?:<[^;=(){}]+>)?(?:\[\])?)(?=\s*[,)=;{])/g,
+      "",
+    )
+    .replace(/\s+as\s+const\b/g, "");
+}
+
+async function createSafeAppletApi(options: {
+  files?: MobileSafeVirtualFileSystem;
+  broker?: MobileSafeCapabilityBroker;
+  env?: Record<string, string>;
+  logs: string[];
+  now?: () => number;
+}): Promise<Record<string, unknown>> {
+  const textEncoder = new TextEncoder();
+  const textDecoder = new TextDecoder();
+  return deepFreeze({
+    env: Object.freeze({ ...(options.env ?? {}) }),
+    now: options.now?.() ?? Date.now(),
+    console: Object.freeze({
+      log: (...values: unknown[]) => {
+        options.logs.push(values.map(String).join(" "));
+      },
+      warn: (...values: unknown[]) => {
+        options.logs.push(values.map(String).join(" "));
+      },
+      error: (...values: unknown[]) => {
+        options.logs.push(values.map(String).join(" "));
+      },
+    }),
+    crypto: Object.freeze({
+      randomUUID: () => cryptoRequestId(),
+    }),
+    fs: Object.freeze({
+      readText: async (path: string) => {
+        if (!options.files) throw new Error("Applet VFS is unavailable");
+        return textDecoder.decode(await options.files.readFile(path));
+      },
+      writeText: async (path: string, content: string) => {
+        if (!options.files) throw new Error("Applet VFS is unavailable");
+        await options.files.writeFile(path, textEncoder.encode(content));
+      },
+      list: async (path: string) => {
+        if (!options.files) throw new Error("Applet VFS is unavailable");
+        return options.files.list(path);
+      },
+      stat: async (path: string) => {
+        if (!options.files) throw new Error("Applet VFS is unavailable");
+        return options.files.stat(path);
+      },
+    }),
+    broker: options.broker
+      ? Object.freeze({
+          call: async (request: MobileSafeRuntimeCapabilityRequest) => {
+            if (request.capability === "shell.exec") {
+              return unsupportedCapability(
+                request,
+                "Applet broker calls cannot request shell.exec",
+              );
+            }
+            return options.broker?.call(request);
+          },
+        })
+      : undefined,
+  });
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object") {
+    Object.freeze(value);
+    for (const child of Object.values(value)) {
+      if (child && typeof child === "object" && !Object.isFrozen(child)) {
+        deepFreeze(child);
+      }
+    }
+  }
+  return value;
+}
+
+function mobileSafeStableHash(input: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
