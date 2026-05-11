@@ -108,15 +108,25 @@ describe("PostInboxMessageRequestSchema", () => {
     ).toThrow();
   });
 
-  it("rejects whitespace-only replyToMessageId", () => {
-    expect(() =>
-      PostInboxMessageRequestSchema.parse({
-        roomId: "r",
-        source: "x",
-        text: "y",
-        replyToMessageId: "   ",
-      }),
-    ).toThrow();
+  it("treats whitespace-only replyToMessageId as absent", () => {
+    const parsed = PostInboxMessageRequestSchema.parse({
+      roomId: "r",
+      source: "x",
+      text: "y",
+      replyToMessageId: "   ",
+    });
+    expect(parsed).toEqual({ roomId: "r", source: "x", text: "y" });
+    expect(parsed).not.toHaveProperty("replyToMessageId");
+  });
+
+  it("treats empty replyToMessageId as absent", () => {
+    const parsed = PostInboxMessageRequestSchema.parse({
+      roomId: "r",
+      source: "x",
+      text: "y",
+      replyToMessageId: "",
+    });
+    expect(parsed).not.toHaveProperty("replyToMessageId");
   });
 
   it("rejects extra fields (strict)", () => {
