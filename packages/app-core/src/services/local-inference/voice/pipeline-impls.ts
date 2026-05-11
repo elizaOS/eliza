@@ -41,15 +41,12 @@
  * lives here so the contract module does not drag those in.
  */
 
-import type {
-  DflashGenerateArgs,
-  DflashLlamaServer,
-} from "../dflash-server";
+import type { DflashGenerateArgs, DflashLlamaServer } from "../dflash-server";
+import { VoiceStartupError } from "./errors";
 import type {
   ElizaInferenceContextHandle,
   ElizaInferenceFfi,
 } from "./ffi-bindings";
-import { VoiceStartupError } from "./errors";
 import type {
   AsrTokenStreamer,
   DraftProposer,
