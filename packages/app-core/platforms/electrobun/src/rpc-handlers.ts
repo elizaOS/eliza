@@ -171,10 +171,11 @@ export function wireBrowserWorkspaceCaller(
  * Adding/removing a schema method without a corresponding handler change
  * is now a compile error.
  *
- * Schema `response: undefined` means “no payload”, which we model as
- * `undefined` at the handler boundary.
+ * Schema `response: undefined` means "no payload", which we model as
+ * `void` at the handler boundary so Promise<void> native calls are accepted.
  */
-type RpcMethodReturn<R> = [R] extends [undefined] ? undefined : R;
+// biome-ignore lint/suspicious/noConfusingVoidType: no-payload async RPC handlers naturally return Promise<void>.
+type RpcMethodReturn<R> = [R] extends [undefined] ? void : R;
 
 type BunRpcHandlers = {
 	[K in keyof ElizaDesktopRPCSchema["bun"]["requests"]]: (

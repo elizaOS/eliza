@@ -221,12 +221,15 @@ describe("local inference recommendations", () => {
     });
 
     const recommended = selectRecommendedModels(probe);
-    expect(
-      DEFAULT_ELIGIBLE_MODEL_IDS.has(recommended.TEXT_SMALL.model?.id),
-    ).toBe(true);
-    expect(
-      DEFAULT_ELIGIBLE_MODEL_IDS.has(recommended.TEXT_LARGE.model?.id),
-    ).toBe(true);
+    const smallId = recommended.TEXT_SMALL.model?.id;
+    const largeId = recommended.TEXT_LARGE.model?.id;
+
+    if (!smallId || !largeId) {
+      throw new Error("expected recommended TEXT_SMALL and TEXT_LARGE models");
+    }
+
+    expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(smallId)).toBe(true);
+    expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(largeId)).toBe(true);
   });
 
   it("prefers long-context entries within the ladder on hosts with >= 16 GB RAM/VRAM", () => {

@@ -13,9 +13,9 @@ canonical entry point is the publish orchestrator:
 
 ```bash
 python -m scripts.publish.orchestrator \
-    --tier desktop-9b \
-    --bundle-dir ./bundles/desktop-9b \
-    --metal-verification ./reports/desktop-9b/metal_verify.json \
+    --tier 9b \
+    --bundle-dir ./bundles/9b \
+    --metal-verification ./reports/9b/metal_verify.json \
     --dry-run
 ```
 
@@ -94,7 +94,7 @@ Per `packages/inference/AGENTS.md` §2 the bundle root must look like:
 ```
 
 The text variants encode their context length in the filename (e.g.
-`eliza-1-desktop-9b-64k.gguf` → `ctx=65536`). Variants with `ctx > 64k`
+`eliza-1-9b-64k.gguf` → `ctx=65536`). Variants with `ctx > 64k`
 automatically force `turbo3_tcq` into `kernels.required`; desktop/pro/server
 tiers require it even for the 64k default.
 
@@ -107,7 +107,7 @@ make metal
 ./metal_verify > metal_verify.txt
 
 # Then write a JSON record the orchestrator can consume:
-cat > /path/to/desktop-9b/evals/metal_verify.json <<EOF
+cat > /path/to/9b/evals/metal_verify.json <<EOF
 {
   "backend": "metal",
   "status": "pass",
@@ -271,7 +271,7 @@ from your local machine:
 ```bash
 # Option A: use the existing provision-and-train flow with HF bootstrap.
 bash scripts/train_vast.sh provision-and-train \
-    --registry-key eliza-1-desktop-9b --epochs 1 --bootstrap hf
+    --registry-key eliza-1-9b --epochs 1 --bootstrap hf
 
 # Option B: take it step by step.
 bash scripts/train_vast.sh provision
@@ -370,8 +370,8 @@ public for public repos.
 | Drafter for that target  | hidden companion file in the same `elizalabs/eliza-1-<tier>` repo |
 | Pairing manifest (siblings) | `manifest.json` inside each repo (target points at drafter) |
 
-`<tier>` follows the catalog ids: `lite-0_6b`, `mobile-1_7b`,
-`desktop-9b`, `pro-27b`, and `server-h200`. The target the user installs
+`<tier>` follows the catalog ids: `0_6b`, `1_7b`,
+`9b`, `27b`, and `27b-256k`. The target the user installs
 is visible; the drafter is hidden from the catalog and only downloaded
 as a companion (matching the `runtimeRole: "dflash-drafter"` pattern in
 `catalog.ts`).
@@ -393,16 +393,16 @@ file expects. Schema:
 {
   "version": 1,
   "kind": "eliza-1-optimized",
-  "modelId": "eliza-1-mobile-1_7b",
+  "modelId": "eliza-1-1_7b",
   "base": {
-    "name": "eliza-1-mobile-1_7b",
+    "name": "eliza-1-1_7b",
     "displayName": "Eliza-1 Mobile 1.7B",
     "params": "1.7B",
     "tokenizerFamily": "eliza1",
     "contextLength": 32768
   },
   "gguf": {
-    "file": "text/eliza-1-mobile-1_7b-q4_k_m.gguf",
+    "file": "text/eliza-1-1_7b-q4_k_m.gguf",
     "sha256": "<64-hex>",
     "sizeBytes": 0,
     "quant": "Q4_POLAR + QJL1_256 K + TBQ V"
@@ -416,8 +416,8 @@ file expects. Schema:
     "requiresFork": "milady-ai/llama.cpp@v0.1.0-milady"
   },
   "drafter": {
-    "repo": "elizalabs/eliza-1-mobile-1_7b",
-    "file": "text/eliza-1-mobile-1_7b-drafter.gguf",
+    "repo": "elizalabs/eliza-1-1_7b",
+    "file": "text/eliza-1-1_7b-drafter.gguf",
     "params": "0.6B",
     "tokenizerFamily": "eliza1"
   },
@@ -440,8 +440,8 @@ catalog sync script can walk either side and reconstruct pairings.
 # Dry-run — refuses to push anything, prints the manifest and what
 # would upload. No HF_TOKEN required.
 uv run python scripts/publish_milady_model.py \
-    --model-dir /path/to/eliza-1-mobile-1_7b \
-    --repo-id elizalabs/eliza-1-mobile-1_7b \
+    --model-dir /path/to/eliza-1-1_7b \
+    --repo-id elizalabs/eliza-1-1_7b \
     --dry-run
 
 # Real push. The script refuses to ship a stock-format GGUF (one
@@ -450,8 +450,8 @@ uv run python scripts/publish_milady_model.py \
 # + size; subsequent runs skip re-upload when the sha matches the
 # existing remote LFS pointer.
 HF_TOKEN=hf_xxx uv run python scripts/publish_milady_model.py \
-    --model-dir /path/to/eliza-1-mobile-1_7b \
-    --repo-id elizalabs/eliza-1-mobile-1_7b
+    --model-dir /path/to/eliza-1-1_7b \
+    --repo-id elizalabs/eliza-1-1_7b
 ```
 
 After a publish run, refresh the local-inference catalog so the phone
@@ -474,7 +474,7 @@ class the iOS / Android runtimes use, points its state directory at a
 temp dir, and reports time + bytes/sec. Run it from the repo root:
 
 ```bash
-node scripts/verify-phone-download.mjs --model-id eliza-1-mobile-1_7b
+node scripts/verify-phone-download.mjs --model-id eliza-1-1_7b
 ```
 
 This is the gate W5-Catalog uses to decide whether to land a catalog

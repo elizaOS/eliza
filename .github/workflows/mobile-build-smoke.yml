@@ -8,6 +8,7 @@ on:
       - "packages/app/**"
       - "packages/app-core/**"
       - "packages/core/**"
+      - "packages/native-plugins/**"
       - "packages/shared/**"
       - "plugins/plugin-sql/**"
       - ".github/workflows/mobile-build-smoke.yml"

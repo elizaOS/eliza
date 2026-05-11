@@ -146,7 +146,7 @@ The lowest-duplication design is lazy regional loading from one bundle:
 | Linux x64 CUDA | Run `make cuda` / `cuda_verify` on RTX/A100/H100/H200; pin arch flags where needed. |
 | Linux x64 Vulkan | Run native Vulkan graph smoke on Intel/AMD/NVIDIA, not only MoltenVK. |
 | Linux x64 ROCm | Build and run on MI300/MI250/RDNA; HIP parity is unproven. |
-| Linux aarch64 CUDA | Run on GH200-class host for the `server-h200` tier. |
+| Linux aarch64 CUDA | Run on GH200-class host for the `27b-256k` tier. |
 | Windows x64 CPU/CUDA/Vulkan | Native Windows smoke and AVX2/driver validation required. |
 | Windows arm64 | Snapdragon X build + CPU/Vulkan smoke required. |
 
