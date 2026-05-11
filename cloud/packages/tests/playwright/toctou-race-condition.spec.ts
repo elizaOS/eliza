@@ -1,4 +1,5 @@
 import { type APIRequestContext, expect, test } from "@playwright/test";
+import { resolveE2EChatModel } from "../e2e/helpers/chat-model";
 import { ensureLocalTestAuth } from "../infrastructure/local-test-auth";
 
 /**
@@ -19,6 +20,7 @@ const PLAYWRIGHT_API_PORT = process.env.PLAYWRIGHT_API_PORT || "8787";
 const PLAYWRIGHT_API_URL =
   process.env.PLAYWRIGHT_API_URL ?? `http://localhost:${PLAYWRIGHT_API_PORT}`;
 const CLOUD_URL = process.env.CLOUD_URL ?? PLAYWRIGHT_API_URL;
+const CHAT_TEST_MODEL = resolveE2EChatModel("gpt-5-mini");
 let apiKey = "";
 
 function authHeaders() {
@@ -86,7 +88,7 @@ test.describe("TOCTOU Race Condition - Credit Deduction", () => {
         request.post(`${CLOUD_URL}/api/v1/chat/completions`, {
           headers: authHeaders(),
           data: {
-            model: "gpt-5-mini",
+            model: CHAT_TEST_MODEL,
             messages: [{ role: "user", content: `Test ${i}: Say "ok"` }],
             max_tokens: 5,
             stream: false, // Non-streaming for simpler test
@@ -102,14 +104,21 @@ test.describe("TOCTOU Race Condition - Credit Deduction", () => {
     const insufficientCredits = responses.filter((r) => r.status() === 402).length;
     const rateLimited = responses.filter((r) => r.status() === 429).length;
     const serviceUnavailable = responses.filter((r) => r.status() === 503).length;
-    const otherErrors = responses.filter((r) => ![200, 402, 429, 503].includes(r.status())).length;
+    const unexpectedResponses = responses.filter((r) => ![200, 402, 429, 503].includes(r.status()));
+    const unexpectedDetails = await Promise.all(
+      unexpectedResponses.map(async (response) => ({
+        status: response.status(),
+        body: await response.text().catch(() => "<unavailable>"),
+      })),
+    );
+    const otherErrors = unexpectedResponses.length;
 
     console.log(`Successes: ${successes}`);
     console.log(`Insufficient credits (402): ${insufficientCredits}`);
     console.log(`Rate limited (429): ${rateLimited}`);
     console.log(`Service unavailable (503): ${serviceUnavailable}`);
     console.log(`Other errors: ${otherErrors}`);
-    expect(otherErrors).toBe(0);
+    expect(otherErrors, JSON.stringify(unexpectedDetails, null, 2)).toBe(0);
 
     // 6. Get final balance
     await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait for deductions
@@ -163,7 +172,7 @@ test.describe("TOCTOU Race Condition - Credit Deduction", () => {
       request.post(`${CLOUD_URL}/api/v1/chat/completions`, {
         headers: authHeaders(),
         data: {
-          model: "gpt-5-mini",
+          model: CHAT_TEST_MODEL,
           messages: [{ role: "user", content: `Stream test ${i}: count to 3` }],
           max_tokens: 20,
           stream: true,

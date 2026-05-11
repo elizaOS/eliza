@@ -8,22 +8,10 @@
 
 import { getPromptPreset, type PromptPreset } from "@/lib/eliza/prompt-presets";
 import { OPENROUTER_DEFAULT_TEXT_MODEL } from "@/lib/models";
-import { logger } from "@/lib/utils/logger";
 
-const isProduction = process.env.NODE_ENV === "production";
-
-function requireEnv(name: string, fallback?: string): string {
+function requireEnv(name: string): string {
   const value = process.env[name];
   if (value) return value;
-
-  // In production, never use fallbacks - always require explicit env vars
-  if (isProduction) {
-    throw new Error(`Required env var ${name} is not set in production`);
-  }
-
-  // In development/test, can use fallbacks
-  logger.warn(`Missing env var ${name}, using fallback`);
-  if (fallback !== undefined) return fallback;
   throw new Error(`Required env var ${name} is not set`);
 }
 
@@ -35,6 +23,7 @@ function requireEnv(name: string, fallback?: string): string {
  * after import will therefore see the updated values.
  */
 function optionalRuntimeEnv(name: string, fallback = ""): string {
+  const isProduction = process.env.NODE_ENV === "production";
   return process.env[name] || (!isProduction ? fallback : "");
 }
 
@@ -130,7 +119,7 @@ export const elizaAppConfig = {
 export function validateElizaAppConfig() {
   // JWT is required for the core app to function
   if (!process.env.ELIZA_APP_JWT_SECRET) {
-    throw new Error("Required env var ELIZA_APP_JWT_SECRET is not set in production");
+    throw new Error("Required env var ELIZA_APP_JWT_SECRET is not set");
   }
 
   // Validate channel-specific required vars if they're enabled
