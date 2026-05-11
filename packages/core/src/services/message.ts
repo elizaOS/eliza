@@ -15,6 +15,11 @@ import {
 	formatTaskCompletionStatus,
 	type TaskCompletionAssessment,
 } from "../features/advanced-capabilities/evaluators/task-completion";
+import {
+	decideReplyGate,
+	enforceVerbosity,
+	getPersonalityStore,
+} from "../features/advanced-capabilities/personality";
 import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
 import { logger } from "../logger";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
@@ -7421,11 +7426,50 @@ export function stripReplyWhenActionOwnsTurn(
 }
 
 export function wrapSingleTurnVisibleCallback(
-	_runtime: Pick<IAgentRuntime, "agentId" | "logger">,
-	_message: Pick<Memory, "id" | "roomId">,
+	runtime: Pick<IAgentRuntime, "agentId" | "logger"> & {
+		getService?: IAgentRuntime["getService"];
+	},
+	message: Pick<Memory, "id" | "roomId" | "entityId">,
 	callback?: HandlerCallback,
 ): HandlerCallback | undefined {
-	return callback;
+	if (!callback) return callback;
+	const fullRuntime = runtime as IAgentRuntime;
+	if (typeof fullRuntime.getService !== "function") return callback;
+	// Resolve verbosity once per turn — cheap because PersonalityStore is
+	// in-memory. Returning the original callback when no override is set
+	// keeps the hot path zero-cost.
+	const store = getPersonalityStore(fullRuntime);
+	if (!store) return callback;
+	const userSlot =
+		message.entityId && message.entityId !== fullRuntime.agentId
+			? store.getSlot(message.entityId)
+			: null;
+	const globalSlot = store.getSlot("global");
+	const verbosity = userSlot?.verbosity ?? globalSlot?.verbosity ?? null;
+	if (verbosity !== "terse") {
+		return callback;
+	}
+
+	const wrapped: HandlerCallback = async (response, actionName) => {
+		if (typeof response?.text === "string" && response.text.length > 0) {
+			const result = enforceVerbosity(response.text, "terse");
+			if (result.truncated) {
+				fullRuntime.logger.debug(
+					{
+						src: "service:message",
+						messageId: message.id,
+						roomId: message.roomId,
+						originalTokens: result.originalTokens,
+						finalTokens: result.finalTokens,
+					},
+					"Personality verbosity=terse — truncated response",
+				);
+				response = { ...response, text: result.text };
+			}
+		}
+		return callback(response, actionName);
+	};
+	return wrapped;
 }
 
 function getLatestVisibleReplyText(
@@ -8316,6 +8360,48 @@ export class DefaultMessageService implements IMessageService {
 				state: { values: {}, data: {}, text: "" } as State,
 				mode: "none",
 			};
+		}
+
+		// PERSONALITY reply-gate enforcement. Short-circuits BEFORE the planner /
+		// model call so a user who said "shut up" or "only when mentioned" does
+		// NOT cost tokens this turn. Agent's own messages and autonomous turns
+		// are not subject to the gate (already filtered above).
+		const personalityStore = getPersonalityStore(runtime);
+		if (personalityStore && message.entityId !== runtime.agentId) {
+			const userSlot = personalityStore.getSlot(message.entityId);
+			const globalSlot = personalityStore.getSlot("global");
+			const gateDecision = decideReplyGate({
+				userSlot,
+				globalSlot,
+				messageText: message.content?.text,
+				explicitlyAddressesAgent,
+			});
+			if (!gateDecision.allow) {
+				runtime.logger.debug(
+					{
+						src: "service:message",
+						roomId: message.roomId,
+						reason: gateDecision.reason,
+						gateMode: gateDecision.gateMode,
+						gateScope: gateDecision.scope,
+					},
+					"Reply suppressed by personality reply_gate",
+				);
+				await this.emitRunEnded(
+					runtime,
+					runId,
+					message,
+					startTime,
+					"personality_gate",
+				);
+				return {
+					didRespond: false,
+					responseContent: null,
+					responseMessages: [],
+					state: { values: {}, data: {}, text: "" } as State,
+					mode: "none",
+				};
+			}
 		}
 
 		// Room context for shouldRespond (fetch before compose so providers see
