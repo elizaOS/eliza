@@ -1483,6 +1483,18 @@ wheels = [
 ]
 
 [[package]]
+name = "hypothesis"
+version = "6.152.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sortedcontainers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bf/a5/7c66caf83d51b0b8bba1aca94e34c3ae4ff36d58dfd6432d9b29bcf5ce2f/hypothesis-6.152.5.tar.gz", hash = "sha256:d6e7a3b163ee7f951a2652cfa26ea4c5ff5e94afcdfcaccf1ed72f0435276ff4", size = 466966, upload-time = "2026-05-10T20:31:37.644Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9b/22/fc48568d69a219825eb0111c2e92ab261c0a6a6a6f01bd82c1dd465c636e/hypothesis-6.152.5-py3-none-any.whl", hash = "sha256:9d6fc81a7321dc34ec6a986c0bc5d669746d1cc694bc12a39280cec9c549f7c4", size = 532706, upload-time = "2026-05-10T20:31:34.014Z" },
+]
+
+[[package]]
 name = "idna"
 version = "3.13"
 source = { registry = "https://pypi.org/simple" }
@@ -1871,6 +1883,7 @@ dependencies = [
     { name = "datasets" },
     { name = "httpx" },
     { name = "huggingface-hub" },
+    { name = "hypothesis" },
     { name = "pandas" },
     { name = "pyarrow" },
     { name = "pyyaml" },
@@ -1920,6 +1933,7 @@ requires-dist = [
     { name = "fused-turboquant", marker = "extra == 'train'", specifier = ">=0.1.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "huggingface-hub", specifier = ">=0.27.0" },
+    { name = "hypothesis", specifier = ">=6.100.0" },
     { name = "liger-kernel", marker = "extra == 'train'", specifier = ">=0.5.0" },
     { name = "openai", marker = "extra == 'serve'", specifier = ">=1.50.0" },
     { name = "pandas", specifier = ">=2.2.0" },
@@ -4248,6 +4262,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/87/a6771e1546d97e7e041b6ae58d80074f81b7d5121207425c964ddf5cfdbd/sniffio-1.3.1.tar.gz", hash = "sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc", size = 20372, upload-time = "2024-02-25T23:20:04.057Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e9/44/75a9c9421471a6c4805dbf2356f7c181a29c1879239abab1ea2cc8f38b40/sniffio-1.3.1-py3-none-any.whl", hash = "sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2", size = 10235, upload-time = "2024-02-25T23:20:01.196Z" },
+]
+
+[[package]]
+name = "sortedcontainers"
+version = "2.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e8/c4/ba2f8066cceb6f23394729afe52f3bf7adec04bf9ed2c820b39e19299111/sortedcontainers-2.4.0.tar.gz", hash = "sha256:25caa5a06cc30b6b83d11423433f65d1f9d76c4c6a0c90e3379eaa43b9bfdb88", size = 30594, upload-time = "2021-05-16T22:03:42.897Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/32/46/9cb0e58b2deb7f82b84065f37f3bffeb12413f947f9388e4cac22c4621ce/sortedcontainers-2.4.0-py2.py3-none-any.whl", hash = "sha256:a163dcaede0f1c021485e957a39245190e74249897e2ae4b2aa38595db237ee0", size = 29575, upload-time = "2021-05-16T22:03:41.177Z" },
 ]
 
 [[package]]
