@@ -182,11 +182,11 @@ kernel landed correctly. Status legend: `✓` shipped on the unified fork,
 
 ## F. node-llama-cpp gap — RESOLVED (path (a) landed)
 
-**Status: shipped.** `milady-ai/node-llama-cpp` exists and is consumable
+**Status: shipped.** `elizaOS/node-llama-cpp` exists and is consumable
 as a bun-installable github URL drop-in. Milady's three pins
 (`/package.json`, `eliza/packages/app-core/package.json`,
 `eliza/plugins/plugin-local-embedding/package.json`) all reference
-`github:milady-ai/node-llama-cpp#v3.18.1-milady.3`. The fork's
+`github:elizaOS/node-llama-cpp#v3.18.1-milady.3`. The fork's
 `src/gguf/types/GgufTensorInfoTypes.ts` extends `GgmlType` with
 TBQ3_0 (43), TBQ4_0 (44), QJL1_256 (46), Q4_POLAR (47) and
 `resolveGgmlTypeOption()` accepts the lowercase aliases (`tbq3_0`,
@@ -327,7 +327,7 @@ unified fork. Each step is a single agent session unless noted.
    + x86_64 musl cross-builds clean via `compile-libllama.mjs --src-dir`,
    local llama-server smoke test passes (chat completion + metrics
    counters confirmed).
-9. **Fork `node-llama-cpp` to `milady-ai/node-llama-cpp`**, embed our
+9. **Fork `node-llama-cpp` to `elizaOS/node-llama-cpp`**, embed our
    unified fork as the bundled C++ source, extend `GgmlType` /
    `resolveGgmlTypeOption` to accept `tbq3_0`, `tbq4_0`, `qjl1_256`,
    `q4_polar`. Pin desktop builds at the milady-binding version. (~1

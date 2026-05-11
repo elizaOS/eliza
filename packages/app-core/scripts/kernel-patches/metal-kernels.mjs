@@ -1457,7 +1457,7 @@ export function patchMetalDispatch(cacheDir, { dryRun = false } = {}) {
     const detail =
       `${message} Found an older unsafe MILADY-DISPATCH-V1 patch in:\n` +
       `  ${patchedFiles.join("\n  ")}\n` +
-      "Use a clean milady-llama-cpp checkout/cache before producing artifacts.";
+      "Use a clean eliza-llama-cpp checkout/cache before producing artifacts.";
     if (!dryRun) {
       throw new Error(detail);
     }

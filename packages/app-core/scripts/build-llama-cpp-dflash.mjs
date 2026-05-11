@@ -1111,14 +1111,13 @@ function defaultTarget() {
 
 function parseArgs(argv) {
   const args = {
-    // Renamed from buun-llama-cpp to milady-llama-cpp on the unified-fork
-    // migration. Old caches stay around harmlessly under the prior name —
-    // the new directory busts the cache so a fresh ref pull is forced.
+    // Cache dir for the elizaOS/llama.cpp fork checkout. Renaming the
+    // directory busts any stale prior-name cache so a fresh ref pull is forced.
     cacheDir: path.join(
       os.homedir(),
       ".cache",
       "eliza-dflash",
-      "milady-llama-cpp",
+      "eliza-llama-cpp",
     ),
     outDirOverride: null,
     targets: null, // null => single legacy target, otherwise an array
