@@ -101,19 +101,61 @@ def build_lifeops_bench_agent_fn(
         )
         if model_name:
             setattr(turn, "model_name", model_name)
-        usage_meta = resp.params.get("_meta") if isinstance(resp.params, dict) else None
-        usage = usage_meta.get("usage") if isinstance(usage_meta, dict) else None
+        # OpenClaw exposes usage either at params['usage'] (OpenAI-compat mode)
+        # or under params['_meta']['usage'] (CLI mode). Prefer the direct slot
+        # and fall back to the meta blob so both transports surface cache.
+        usage = resp.params.get("usage") if isinstance(resp.params, dict) else None
+        if not isinstance(usage, dict):
+            usage_meta = resp.params.get("_meta") if isinstance(resp.params, dict) else None
+            usage = usage_meta.get("usage") if isinstance(usage_meta, dict) else None
         if isinstance(usage, dict):
-            for attr, key in (
-                ("input_tokens", "prompt_tokens"),
-                ("output_tokens", "completion_tokens"),
-            ):
-                value = usage.get(key)
-                if isinstance(value, (int, float)):
-                    setattr(turn, attr, int(value))
+            _attach_usage_cache_fields(turn, usage)
         return turn
 
     return _agent_fn
+
+
+def _attach_usage_cache_fields(turn: Any, usage: dict[str, Any]) -> None:
+    """Parse OpenAI / Cerebras / Anthropic-shaped usage onto the MessageTurn.
+
+    Mirrors the helper in ``hermes_adapter.lifeops_bench``. The two adapters
+    intentionally keep their own copies rather than sharing a util so neither
+    package gains a cross-dependency. Cache fields stay ``None`` when the
+    provider does not report them — per AGENTS.md Cmd #8, no silent ``0``
+    fallback for missing data.
+    """
+    prompt = usage.get("prompt_tokens")
+    completion = usage.get("completion_tokens")
+    if not isinstance(prompt, (int, float)):
+        prompt = usage.get("input_tokens")
+    if not isinstance(completion, (int, float)):
+        completion = usage.get("output_tokens")
+    if isinstance(prompt, (int, float)):
+        setattr(turn, "input_tokens", int(prompt))
+    if isinstance(completion, (int, float)):
+        setattr(turn, "output_tokens", int(completion))
+
+    prompt_details = usage.get("prompt_tokens_details") or {}
+    cache_read_raw = (
+        prompt_details.get("cached_tokens")
+        if isinstance(prompt_details, dict)
+        else None
+    )
+    if cache_read_raw is None:
+        cache_read_raw = usage.get("cache_read_input_tokens")
+    cache_creation_raw = usage.get("cache_creation_input_tokens")
+
+    cache_read_value: int | None = (
+        int(cache_read_raw) if isinstance(cache_read_raw, (int, float)) else None
+    )
+    cache_creation_value: int | None = (
+        int(cache_creation_raw)
+        if isinstance(cache_creation_raw, (int, float))
+        else None
+    )
+    setattr(turn, "cache_read_input_tokens", cache_read_value)
+    setattr(turn, "cache_creation_input_tokens", cache_creation_value)
+    setattr(turn, "cache_supported", True)
 
 
 def _last_user_text(conversation_history: list[Any]) -> str:

@@ -18,7 +18,13 @@
       "import": "./dist/index.mjs",
       "default": "./dist/index.mjs"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
   },
   "files": [
     "dist",

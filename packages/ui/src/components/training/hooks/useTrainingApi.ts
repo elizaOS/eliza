@@ -363,7 +363,10 @@ export function useJobLogs(jobId: string, tail: number = 200) {
  * provisioned instance yet (the panel shows a placeholder) and an
  * `error` message when the request itself fails.
  */
-export function useTrainingBudget(jobId: string, pollIntervalMs: number = 15000) {
+export function useTrainingBudget(
+  jobId: string,
+  pollIntervalMs: number = 15000,
+) {
   const [state, setState] = useState<ApiState<TrainingBudget | null>>({
     data: null,
     loading: true,
@@ -384,8 +387,7 @@ export function useTrainingBudget(jobId: string, pollIntervalMs: number = 15000)
       setState({
         data: null,
         loading: false,
-        error:
-          err instanceof Error ? err.message : "Failed to fetch budget",
+        error: err instanceof Error ? err.message : "Failed to fetch budget",
       });
     }
   }, [jobId]);
