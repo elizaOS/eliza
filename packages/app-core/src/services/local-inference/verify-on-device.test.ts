@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const engineMock = {
@@ -29,16 +30,13 @@ vi.mock("./manifest", () => ({
 // node:fs/promises real. Bun's `vi.mock` module mocks are process-global and
 // not auto-restored between test files, so a bare `{ default: { readFile } }`
 // here would strip mkdtemp/rm/mkdir from every later suite in the same run.
-vi.mock("node:fs/promises", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs/promises")>();
-  const actualDefault =
-    (actual as { default?: typeof import("node:fs/promises") }).default ??
-    actual;
-  return {
-    ...actual,
-    default: { ...actualDefault, readFile: vi.fn(async () => "{}") },
-  };
-});
+const realFsPromises = createRequire(import.meta.url)(
+  "node:fs/promises",
+) as typeof import("node:fs/promises");
+vi.mock("node:fs/promises", () => ({
+  ...realFsPromises,
+  default: { ...realFsPromises, readFile: vi.fn(async () => "{}") },
+}));
 
 const ARGS = {
   modelId: "eliza-1-0_6b",
