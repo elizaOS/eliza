@@ -6,10 +6,11 @@
 #
 #   1. convert_hf_to_gguf.py  — HF safetensors → single file f16 GGUF
 #   2. llama-quantize         — f16 GGUF → Q4_K_M (4 bit K quant)
+#   3. llama-cli              — load-smoke a produced GGUF (generate a few tokens)
 #
 # This script clones https://github.com/ggml-org/llama.cpp into
 # packages/training/vendor/llama.cpp (pinned to a tag), builds the
-# llama-quantize binary (CPU only build is sufficient), and installs the
+# llama-quantize + llama-cli binaries (CPU only build is sufficient), and installs the
 # Python deps convert_hf_to_gguf.py needs (the `gguf` package + transformers
 # friends from requirements.txt). It is idempotent: an existing checkout is
 # reused, an existing build is reused, and pip install is a no-op when the
@@ -71,12 +72,14 @@ else
   fi
 fi
 
-# --- build llama-quantize (idempotent) ------------------------------------
+# --- build llama-quantize + llama-cli (idempotent) ------------------------
+# llama-quantize: f16 GGUF → Q4_K_M. llama-cli: load-smoke a produced GGUF
+# (run_pipeline / CI use it to sanity-check that the quantized weights load
+# and generate before publishing).
 BUILD_DIR="$VENDOR_DIR/build"
 QUANT_BIN="$BUILD_DIR/bin/llama-quantize"
-if [[ -x "$QUANT_BIN" ]]; then
-  log "llama-quantize already built: $QUANT_BIN"
-else
+CLI_BIN="$BUILD_DIR/bin/llama-cli"
+if [[ ! -d "$BUILD_DIR" ]]; then
   log "configuring cmake build (CPU only) in $BUILD_DIR"
   # GGML_NATIVE=OFF keeps the binary portable across the build host's exact
   # microarch; we don't need SIMD specialization for a one shot quantize.
@@ -85,10 +88,17 @@ else
     -DLLAMA_CURL=OFF \
     -DGGML_NATIVE=OFF \
     -DBUILD_SHARED_LIBS=OFF
-  log "building target llama-quantize (-j$BUILD_JOBS)"
-  cmake --build "$BUILD_DIR" --target llama-quantize -j"$BUILD_JOBS"
-  [[ -x "$QUANT_BIN" ]] || die "build finished but $QUANT_BIN is missing"
 fi
+for tgt in llama-quantize llama-cli; do
+  bin="$BUILD_DIR/bin/$tgt"
+  if [[ -x "$bin" ]]; then
+    log "$tgt already built: $bin"
+  else
+    log "building target $tgt (-j$BUILD_JOBS)"
+    cmake --build "$BUILD_DIR" --target "$tgt" -j"$BUILD_JOBS"
+    [[ -x "$bin" ]] || die "build finished but $bin is missing"
+  fi
+done
 
 # --- python deps for convert_hf_to_gguf.py --------------------------------
 CONVERT_SCRIPT="$VENDOR_DIR/convert_hf_to_gguf.py"
@@ -136,6 +146,7 @@ log "  checkout:        $VENDOR_DIR"
 log "  ref:             $(git -C "$VENDOR_DIR" describe --tags --always 2>/dev/null || echo '?')"
 log "  convert script:  $CONVERT_SCRIPT"
 log "  llama-quantize:  $QUANT_BIN"
+log "  llama-cli:       $CLI_BIN"
 log ""
 log "The gguf-q4_k_m_apply.py wrapper auto-discovers these (no env var needed)."
 log "To point a script at a different checkout: export LLAMA_CPP_DIR=$VENDOR_DIR"
