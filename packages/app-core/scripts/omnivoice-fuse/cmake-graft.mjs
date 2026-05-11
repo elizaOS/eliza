@@ -65,6 +65,7 @@ if(MILADY_FUSE_OMNIVOICE)
 
     add_library(omnivoice-core STATIC \${MILADY_OMNIVOICE_SOURCES})
     target_compile_definitions(omnivoice-core PUBLIC OMNIVOICE_STATIC)
+    target_compile_features(omnivoice-core PUBLIC cxx_std_17)
     target_include_directories(omnivoice-core PUBLIC
         \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/src
         \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}
@@ -93,6 +94,7 @@ if(MILADY_FUSE_OMNIVOICE)
     add_library(elizainference SHARED
         \${MILADY_OMNIVOICE_SOURCES})
     target_compile_definitions(elizainference PRIVATE OMNIVOICE_BUILD)
+    target_compile_features(elizainference PUBLIC cxx_std_17)
     target_include_directories(elizainference PUBLIC
         \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/src
         \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}
@@ -132,6 +134,7 @@ if(MILADY_FUSE_OMNIVOICE)
             \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/src
             \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}
             \${CMAKE_CURRENT_BINARY_DIR})
+        target_compile_features(llama-omnivoice-server PRIVATE cxx_std_17)
         target_link_libraries(llama-omnivoice-server PRIVATE
             omnivoice-core llama)
     endif()
@@ -161,11 +164,23 @@ export function appendCmakeGraft({ llamaCppRoot }) {
     );
     upgraded = upgraded.replace(
       "add_library(omnivoice-core STATIC ${MILADY_OMNIVOICE_SOURCES})\n    target_include_directories(omnivoice-core PUBLIC",
+      "add_library(omnivoice-core STATIC ${MILADY_OMNIVOICE_SOURCES})\n    target_compile_definitions(omnivoice-core PUBLIC OMNIVOICE_STATIC)\n    target_compile_features(omnivoice-core PUBLIC cxx_std_17)\n    target_include_directories(omnivoice-core PUBLIC",
+    );
+    upgraded = upgraded.replace(
       "add_library(omnivoice-core STATIC ${MILADY_OMNIVOICE_SOURCES})\n    target_compile_definitions(omnivoice-core PUBLIC OMNIVOICE_STATIC)\n    target_include_directories(omnivoice-core PUBLIC",
+      "add_library(omnivoice-core STATIC ${MILADY_OMNIVOICE_SOURCES})\n    target_compile_definitions(omnivoice-core PUBLIC OMNIVOICE_STATIC)\n    target_compile_features(omnivoice-core PUBLIC cxx_std_17)\n    target_include_directories(omnivoice-core PUBLIC",
     );
     upgraded = upgraded.replace(
       "add_library(elizainference SHARED\n        ${MILADY_OMNIVOICE_SOURCES})\n    target_include_directories(elizainference PUBLIC",
+      "add_library(elizainference SHARED\n        ${MILADY_OMNIVOICE_SOURCES})\n    target_compile_definitions(elizainference PRIVATE OMNIVOICE_BUILD)\n    target_compile_features(elizainference PUBLIC cxx_std_17)\n    target_include_directories(elizainference PUBLIC",
+    );
+    upgraded = upgraded.replace(
       "add_library(elizainference SHARED\n        ${MILADY_OMNIVOICE_SOURCES})\n    target_compile_definitions(elizainference PRIVATE OMNIVOICE_BUILD)\n    target_include_directories(elizainference PUBLIC",
+      "add_library(elizainference SHARED\n        ${MILADY_OMNIVOICE_SOURCES})\n    target_compile_definitions(elizainference PRIVATE OMNIVOICE_BUILD)\n    target_compile_features(elizainference PUBLIC cxx_std_17)\n    target_include_directories(elizainference PUBLIC",
+    );
+    upgraded = upgraded.replace(
+      "            ${CMAKE_CURRENT_BINARY_DIR})\n        target_link_libraries(llama-omnivoice-server PRIVATE",
+      "            ${CMAKE_CURRENT_BINARY_DIR})\n        target_compile_features(llama-omnivoice-server PRIVATE cxx_std_17)\n        target_link_libraries(llama-omnivoice-server PRIVATE",
     );
     if (upgraded !== original) {
       fs.writeFileSync(cmakePath, upgraded, "utf8");
