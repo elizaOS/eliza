@@ -4,6 +4,16 @@ import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import {
+  PostMarketplaceInstallRequestSchema,
+  PostMarketplaceUninstallRequestSchema,
+  PostSkillAcknowledgeRequestSchema,
+  PostSkillCatalogInstallRequestSchema,
+  PostSkillCatalogUninstallRequestSchema,
+  PostSkillCreateRequestSchema,
+  PutMarketplaceConfigRequestSchema,
+  PutSkillSourceRequestSchema,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   installMarketplaceSkill,
@@ -259,7 +269,6 @@ export async function handleSkillsRoutes(
     json,
     error,
     readJsonBody,
-    readBody,
     discoverSkills,
     saveElizaConfig,
   } = ctx;
@@ -440,15 +449,18 @@ export async function handleSkillsRoutes(
 
   // ── POST /api/skills/catalog/install ───────────────────────────────────
   if (method === "POST" && pathname === "/api/skills/catalog/install") {
-    const body = await readJsonBody<{ slug: string; version?: string }>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    if (!body.slug) {
-      error(res, "Missing required field: slug", 400);
+    const raw = await readJsonBody<Record<string, unknown>>(req, res);
+    if (raw === null) return true;
+    const parsed = PostSkillCatalogInstallRequestSchema.safeParse(raw);
+    if (!parsed.success) {
+      error(
+        res,
+        parsed.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
+    const body = parsed.data;
 
     if (!state.runtime) {
       error(res, "Agent runtime not available — start the agent first", 503);
@@ -525,12 +537,18 @@ export async function handleSkillsRoutes(
 
   // ── POST /api/skills/catalog/uninstall ─────────────────────────────────
   if (method === "POST" && pathname === "/api/skills/catalog/uninstall") {
-    const body = await readJsonBody<{ slug: string }>(req, res);
-    if (!body) return true;
-    if (!body.slug) {
-      error(res, "Missing required field: slug", 400);
+    const raw = await readJsonBody<Record<string, unknown>>(req, res);
+    if (raw === null) return true;
+    const parsed = PostSkillCatalogUninstallRequestSchema.safeParse(raw);
+    if (!parsed.success) {
+      error(
+        res,
+        parsed.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
+    const body = parsed.data;
 
     if (!state.runtime) {
       error(res, "Agent runtime not available — start the agent first", 503);
@@ -649,8 +667,18 @@ export async function handleSkillsRoutes(
       error,
     );
     if (!skillId) return true;
-    const body = await readJsonBody<{ enable?: boolean }>(req, res);
-    if (!body) return true;
+    const rawAck = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawAck === null) return true;
+    const parsedAck = PostSkillAcknowledgeRequestSchema.safeParse(rawAck);
+    if (!parsedAck.success) {
+      error(
+        res,
+        parsedAck.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedAck.data;
 
     const workspaceDir =
       state.config.agents?.defaults?.workspace ??
@@ -720,18 +748,20 @@ export async function handleSkillsRoutes(
 
   // ── POST /api/skills/create ───────────────────────────────────────────
   if (method === "POST" && pathname === "/api/skills/create") {
-    const body = await readJsonBody<{ name: string; description?: string }>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    const rawName = body.name?.trim();
-    if (!rawName) {
-      error(res, "Skill name is required", 400);
+    const rawCreate = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawCreate === null) return true;
+    const parsedCreate = PostSkillCreateRequestSchema.safeParse(rawCreate);
+    if (!parsedCreate.success) {
+      error(
+        res,
+        parsedCreate.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
+    const body = parsedCreate.data;
 
-    const slug = rawName
+    const slug = body.name
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, "-")
       .replace(/-+/g, "-")
@@ -755,8 +785,7 @@ export async function handleSkillsRoutes(
       return true;
     }
 
-    const description =
-      body.description?.trim() || "Describe what this skill does.";
+    const description = body.description ?? "Describe what this skill does.";
     const escapedDescription = description
       .replace(/\\/g, "\\\\")
       .replace(/"/g, '\\"');
@@ -1052,18 +1081,15 @@ export async function handleSkillsRoutes(
       error,
     );
     if (!skillId) return true;
-    const body = await readBody(req);
-    if (!body) return true;
-
-    let parsed: { content?: string };
-    try {
-      parsed = JSON.parse(body);
-    } catch {
-      error(res, "Invalid JSON body", 400);
-      return true;
-    }
-    if (typeof parsed.content !== "string") {
-      error(res, "Missing 'content' field", 400);
+    const rawSource = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawSource === null) return true;
+    const parsedSource = PutSkillSourceRequestSchema.safeParse(rawSource);
+    if (!parsedSource.success) {
+      error(
+        res,
+        parsedSource.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
 
@@ -1123,7 +1149,7 @@ export async function handleSkillsRoutes(
     }
 
     try {
-      fs.writeFileSync(skillMdPath, parsed.content, "utf-8");
+      fs.writeFileSync(skillMdPath, parsedSource.data.content, "utf-8");
       // Re-discover skills to pick up unknown name/description changes
       state.skills = await discoverSkills(
         workspaceDir,
@@ -1268,25 +1294,23 @@ export async function handleSkillsRoutes(
 
   // ── POST /api/skills/marketplace/install ──────────────────────────────
   if (method === "POST" && pathname === "/api/skills/marketplace/install") {
-    const body = await readJsonBody<{
-      slug?: string;
-      githubUrl?: string;
-      repository?: string;
-      path?: string;
-      name?: string;
-      description?: string;
-      source?: "clawhub" | "skillsmp" | "manual";
-    }>(req, res);
-    if (!body) return true;
-
-    const slug = body.slug?.trim() || "";
-    const githubUrl = body.githubUrl?.trim() || "";
-    const repository = body.repository?.trim() || "";
-
-    if (!slug && !githubUrl && !repository) {
-      error(res, "Install requires a slug, githubUrl, or repository", 400);
+    const rawMpInstall = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawMpInstall === null) return true;
+    const parsedMpInstall =
+      PostMarketplaceInstallRequestSchema.safeParse(rawMpInstall);
+    if (!parsedMpInstall.success) {
+      error(
+        res,
+        parsedMpInstall.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
+    const body = parsedMpInstall.data;
+
+    const slug = body.slug ?? "";
+    const githubUrl = body.githubUrl ?? "";
+    const repository = body.repository ?? "";
 
     try {
       const workspaceDir =
@@ -1333,7 +1357,7 @@ export async function handleSkillsRoutes(
             ok: true,
             skill: {
               id: slug,
-              name: body.name?.trim() || slug,
+              name: body.name ?? slug,
               source: "clawhub",
               installedAt: new Date().toISOString(),
             },
@@ -1373,7 +1397,7 @@ export async function handleSkillsRoutes(
           source:
             body.source === "manual" || body.source === "skillsmp"
               ? body.source
-              : "clawhub",
+              : ("clawhub" as const),
         });
 
         state.skills = await discoverSkills(
@@ -1396,15 +1420,23 @@ export async function handleSkillsRoutes(
 
   // ── POST /api/skills/marketplace/uninstall ────────────────────────────
   if (method === "POST" && pathname === "/api/skills/marketplace/uninstall") {
-    const body = await readJsonBody<{ id?: string }>(req, res);
-    if (!body) return true;
-
-    if (!body.id?.trim()) {
-      error(res, "Request body must include 'id' (skill id to uninstall)", 400);
+    const rawMpUninstall = await readJsonBody<Record<string, unknown>>(
+      req,
+      res,
+    );
+    if (rawMpUninstall === null) return true;
+    const parsedMpUninstall =
+      PostMarketplaceUninstallRequestSchema.safeParse(rawMpUninstall);
+    if (!parsedMpUninstall.success) {
+      error(
+        res,
+        parsedMpUninstall.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
 
-    const uninstallId = validateSkillId(body.id.trim(), res, error);
+    const uninstallId = validateSkillId(parsedMpUninstall.data.id, res, error);
     if (!uninstallId) return true;
 
     try {
@@ -1438,13 +1470,18 @@ export async function handleSkillsRoutes(
 
   // ── PUT /api/skills/marketplace/config ─────────────────────────────────
   if (method === "PUT" && pathname === "/api/skills/marketplace/config") {
-    const body = await readJsonBody<{ apiKey?: string }>(req, res);
-    if (!body) return true;
-    const apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
-    if (!apiKey) {
-      error(res, "Request body must include 'apiKey'", 400);
+    const rawMpCfg = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawMpCfg === null) return true;
+    const parsedMpCfg = PutMarketplaceConfigRequestSchema.safeParse(rawMpCfg);
+    if (!parsedMpCfg.success) {
+      error(
+        res,
+        parsedMpCfg.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
+    const apiKey = parsedMpCfg.data.apiKey;
     process.env.SKILLSMP_API_KEY = apiKey;
     if (!state.config.env) state.config.env = {};
     (state.config.env as Record<string, string>).SKILLSMP_API_KEY = apiKey;
