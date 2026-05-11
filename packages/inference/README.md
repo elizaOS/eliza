@@ -1,11 +1,11 @@
 # TurboQuant / QJL / PolarQuant KV cache kernels (Vulkan + Metal)
 
-> **STATUS — All five Metal shaders hardware-verified 8/8 PASS on Apple M4 Max (Wave-3, 2026-05-10; perf pass 2026-05-10 dropped polar GPU median from 5726 µs → 458 µs via threadgroup-cooperative Hadamard butterfly, see `SHADER_REVIEW_2026-05-10.md`). Vulkan turbo* hardware-verified on Intel ARL + lavapipe (8/8 PASS each). Vulkan QJL score (`qjl.comp`) + Polar matvec (`polar.comp`) are hardware-verified 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C harness extension; max diff 7.6e-6 / 5.7e-6). The Vulkan fallback entrypoints (`qjl_get_rows.comp`, `qjl_mul_mv.comp`, `polar_get_rows.comp`) are staged and `spirv-val` clean but do not yet have fixture/hardware smoke coverage.**
+> **STATUS — All five Metal shaders hardware-verified 8/8 PASS on Apple M4 Max (rerun 2026-05-11 after TBQ4 layout alignment; perf pass 2026-05-10 dropped polar GPU median from 5726 µs → 458 µs via threadgroup-cooperative Hadamard butterfly, see `SHADER_REVIEW_2026-05-10.md`). Vulkan turbo* hardware-verified on Intel ARL + lavapipe (8/8 PASS each) and rerun on Apple M4 Max via MoltenVK after the current TBQ4 four-record layout update. Vulkan QJL score (`qjl.comp`) + Polar matvec (`polar.comp`) are hardware-verified 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C harness extension; max diff 7.6e-6 / 5.7e-6). The Vulkan fallback entrypoints (`qjl_get_rows.comp`, `qjl_mul_mv.comp`, `polar_get_rows.comp`) are staged and `spirv-val` clean but do not yet have fixture/hardware smoke coverage.**
 >
 > | Family       | Files                                                            | Source-level checked against fork? | Compiles with target SDK? | Validated on hardware? |
 > | ------------ | ---------------------------------------------------------------- | ---------------------------------- | ------------------------- | ---------------------- |
-> | TurboQuant — Vulkan | `vulkan/turbo3.comp`, `vulkan/turbo4.comp`, `vulkan/turbo3_tcq.comp` | YES (byte layout + decode math match in-tree `dequantize_turbo3_*` and the in-tree `tbq4_0.metal` `block_turbo4_0` layout) | YES (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — 8/8 PASS on Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe |
-> | TurboQuant — Metal  | `metal/turbo3.metal`, `metal/turbo4.metal`, `metal/turbo3_tcq.metal` | YES (matches in-tree `dequantize_turbo3_0_t4` + the in-tree `tbq4_0.metal` `block_turbo4_0` layout) | YES (`clang++ -framework Metal` runtime JIT path; Metal Toolchain not required for `metal_verify`) | YES — 8/8 PASS on Apple M4 Max (Darwin 25.2.0, runtime `MTLDevice.newLibraryWithSource`); max diff 6.7e-06 |
+> | TurboQuant — Vulkan | `vulkan/turbo3.comp`, `vulkan/turbo4.comp`, `vulkan/turbo3_tcq.comp` | YES (byte layout + decode math match current fork `block_tbq*` layouts; TBQ4 is four 18-byte records per 128-row) | YES (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — 8/8 PASS on Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe; rerun via MoltenVK on Apple M4 Max after TBQ4 update |
+> | TurboQuant — Metal  | `metal/turbo3.metal`, `metal/turbo4.metal`, `metal/turbo3_tcq.metal` | YES (matches current fork `block_tbq*` layouts; TBQ4 is four 18-byte records per 128-row) | YES (`clang++ -framework Metal` runtime JIT path; Metal Toolchain not required for `metal_verify`) | YES — 8/8 PASS on Apple M4 Max (Darwin 25.2.0, runtime `MTLDevice.newLibraryWithSource`); max diff 6.7e-06 |
 > | QJL          | `metal/qjl.metal`, `vulkan/qjl.comp` plus staged fallback `vulkan/qjl{_get_rows,_mul_mv}.comp` | YES (against `qjl_score_qk_ref` in `packages/native-plugins/qjl-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max after Wave-3 fix to `kernel_attn_score_qjl1_256` (uniform `uint3` attribute params; original mixed `uint`+`uint2` failed Metal compile). Vulkan score: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C); fallback get-rows/matvec: COMPILE/STAGED ONLY |
 > | PolarQuant   | `metal/polar.metal`, `vulkan/polar.comp` plus staged fallback `vulkan/polar_get_rows.comp` | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref` in `packages/native-plugins/polarquant-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max. Vulkan matvec: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C, after threadgroup-cooperative Hadamard mirror); fallback get-rows: COMPILE/STAGED ONLY |
 > | CUDA (all 5) | `verify/cuda_verify.cu` linking `~/.cache/eliza-dflash/milady-llama-cpp/build-cuda/.../libggml-cuda.so` (qjl, polar, turbo3_tcq exported symbols; turbo3/turbo4 via thin `__global__` wrapper around the shipped device-side `tbq_decode_block_cuda`) plus `verify/runtime_graph_smoke.sh` for `llama-cli --cache-type-k` graph dispatch | YES (against `ggml-cuda/{turboquant,turbo-tcq,qjl,polarquant}.cu(h)` in fork v0.4.0-milady; `make cuda-preprocess-check` asserts every API symbol + every `block_*` layout is present in the in-fork headers) | NEEDS-HARDWARE — `make cuda` requires `nvcc` (gated on Linux + CUDA Toolkit; macOS not supported); preprocessor-only API surface check passes on M4 Max | NEEDS-HARDWARE — see `verify/HARDWARE_VERIFICATION.md` and `verify/CUDA_VERIFICATION.md`; `cuda_runner.sh` now requires NVIDIA hardware, fixture parity, and a real GGUF graph-smoke model before a pass can be recorded |
@@ -18,12 +18,11 @@
 > the new W3-E QJL/Polar shaders use; the result is 8/8 PASS on both ICDs.
 > See `reports/porting/2026-05-09-w4/vulkan-turbo-fix.md`.
 >
-> The Metal ports here mirror the **same** decode math as the fork's
-> existing, shipping `dequantize_turbo3_0_t4` and the fork's in-tree
-> `tbq4_0.metal` (`block_turbo4_0` = `half norm; uint8_t qs[64]`) — so the
-> byte layout and centroid lookup have been triple-checked at the source
-> level and `metal_verify` reports 8/8 PASS for all five Metal shaders on
-> Apple M4 Max.
+> The Metal ports here mirror the **same** decode math as the fork's current
+> shipped TurboQuant layouts. `block_tbq4_0` is `half norm; uint8_t qs[16]`,
+> and four records form one 128-wide attention row, so the standalone,
+> Vulkan, and built-fork graph-dispatch paths now use the same 72-byte TBQ4
+> row size.
 >
 > Patch-hook status (post 2026-05-10 audit):
 >
@@ -136,7 +135,7 @@ CUDA originals: `https://github.com/spiritbuun/buun-llama-cpp.git` at commit
 - `ggml/src/ggml-cuda/turbo-quant-cuda.cuh` — quantize/dequantize, codebooks, FWHT, Viterbi
 - `ggml/src/ggml-cuda/fattn-vec.cuh` — flash-attention vec path that consumes them
 - `ggml/src/ggml-common.h` — `block_turbo3_0`, `block_turbo4_0`, `block_turbo3_tcq` layouts
-- `ggml/src/ggml-cpu/ops.cpp` and `ggml/src/ggml-turbo-quant.c` — CPU reference (lossy stubs)
+- `ggml/src/ggml-cpu/ops.cpp` and `ggml/src/ggml-turbo-quant.c` — CPU reference helpers for lossy quantization
 - `ggml/src/ggml-metal/ggml-metal.metal` and `turbo-wht.h` — existing Metal shader ground truth (the `dequantize_turbo3_0_t4` helper there is the bit-for-bit reference our standalone `turbo3.metal` mirrors)
 
 ### QJL (1-bit JL transform K-cache compression)
@@ -177,17 +176,17 @@ bits in `qs[]`, high bit in `signs[]`. Per-group norm is corrected by
 norm. At dot-product time, the host has already pre-rotated `Q` with the
 same FWHT, so the shader only needs `Q · centroids[idx] * norm`.
 
-### `turbo4` — 4-bit PolarQuant (16 centroids)
+### `turbo4` — 4-bit TurboQuant (16 centroids)
 
-Same FWHT pipeline as turbo3, but quantizes to 16 Lloyd–Max centroids
-`{-0.241556, ..., +0.241556}` packed 2 indices per byte. Norm correction is
-identical. The current `block_turbo4_0` layout is `norm + qs[64]` — it does
-NOT include QJL residual signs; that older path was removed upstream. The
-milady-ai/llama.cpp fork ships this layout directly in
-`ggml/src/ggml-metal/milady-kernels/tbq4_0.metal`, so the on-disk struct
-and centroid lookup are bit-identical to this standalone (the historical
-`patchMetalTurbo4` runtime rewrite is now a no-op). The kernel *body* has
-diverged into perf-only differences (the standalone hoists per-block byte
+Current TBQ4 uses four independent 32-element preconditioned records per
+128-wide attention row. Each record is `half norm; uint8_t qs[16]` (18 bytes);
+the full GGML row size for `head_dim=128` is 72 bytes. A fixed sign vector plus
+32-point Hadamard preconditions each record before quantization to centroids
+`{-2.7321365, -2.0685055, ..., +2.7321365}`. The packing stores elements
+0..15 in low nibbles and 16..31 in high nibbles. The standalone Metal,
+Vulkan, reference fixture generator, and built-fork Metal graph-dispatch
+smoke all use this layout now. The kernel *body* has diverged into perf-only
+differences (the standalone hoists per-block byte
 loads and uses `fma`); see `PATCH_AUDIT_2026-05-10.md` for the diff.
 
 ### `turbo3_tcq` — 3-bit Trellis-Coded Quantization (k=3, L=9, 512 states)
