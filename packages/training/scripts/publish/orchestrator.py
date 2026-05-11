@@ -18,18 +18,23 @@ Stages, in order, with hard exits on failure:
    the orchestrator detects Metal as NEEDS-HARDWARE and either consumes
    a previously-recorded ``metal_verify.json`` from a verified host
    (``--metal-verification PATH``) or refuses to publish.
-3. **Eval gates.** Load ``evals/aggregate.json`` from the bundle dir,
+3. **Release evidence.** Validate ``evidence/release.json`` and
+   ``checksums/SHA256SUMS``. The evidence sidecar must declare final
+   weights, hashes, eval outputs, licenses, runtime-dispatch reports,
+   platform evidence, HF destination, and size-first repo IDs. The
+   checksum manifest must cover the actual bytes that will be uploaded.
+4. **Eval gates.** Load ``evals/aggregate.json`` from the bundle dir,
    run ``apply_gates(results, tier)``, refuse to proceed unless
    ``passed: true``.
-4. **Manifest build.** Assemble inputs into ``build_manifest`` from the
+5. **Manifest build.** Assemble inputs into ``build_manifest`` from the
    manifest module. ``defaultEligible`` is True iff every required gate
    is green and every supported backend verified pass; the manifest
    validator enforces the same rule. The voice section is emitted as
    frozen and includes ``tts``, emotion tags, and singing capabilities.
-5. **README render.** Render ``templates/README.md.j2`` with the
+6. **README render.** Render ``templates/README.md.j2`` with the
    manifest as the data context. Same data, no marketing buzzwords, no
    user-visible upstream model-family strings.
-6. **HF push.** Upload weights, manifest, README, licenses, eval blobs
+7. **HF push.** Upload weights, manifest, README, licenses, eval blobs
    to ``elizalabs/eliza-1-<tier>`` via ``huggingface_hub``. Tag the
    local training repo with ``eliza-1-<tier>-v<version>`` + the
    training commit hash.
@@ -1471,20 +1476,23 @@ def run(ctx: PublishContext) -> int:
     try:
         validate_destination_repo(ctx)
 
-        log.info("[stage 1/6] validate bundle layout (%s)", ctx.bundle_dir)
+        log.info("[stage 1/7] validate bundle layout (%s)", ctx.bundle_dir)
         layout = validate_bundle_layout(ctx)
 
-        log.info("[stage 2/6] kernel verification for tier %s", ctx.tier)
+        log.info("[stage 2/7] validate release evidence")
+        validate_release_evidence(ctx, layout)
+
+        log.info("[stage 3/7] kernel verification for tier %s", ctx.tier)
         backends = run_kernel_verification(ctx)
         for b in SUPPORTED_BACKENDS_BY_TIER[ctx.tier]:
             log.info("  %s: %s (%s)", b, backends[b].status, backends[b].report)
 
-        log.info("[stage 3/6] eval gates")
+        log.info("[stage 4/7] eval gates")
         gate_report, eval_blob = run_eval_gates(ctx)
         log.info("  passed=%s, %d gates evaluated",
                  gate_report.passed, len(gate_report.gates))
 
-        log.info("[stage 4/6] build + validate manifest")
+        log.info("[stage 5/7] build + validate manifest")
         version = _read_version(ctx)
         manifest = assemble_manifest(
             ctx,
@@ -1501,7 +1509,7 @@ def run(ctx: PublishContext) -> int:
         log.info("  defaultEligible=%s, version=%s",
                  manifest["defaultEligible"], version)
 
-        log.info("[stage 5/6] render README")
+        log.info("[stage 6/7] render README")
         readme_text = render_readme(ctx, manifest)
         readme_path = ctx.bundle_dir / "README.md"
         readme_path.write_text(readme_text)
@@ -1510,7 +1518,7 @@ def run(ctx: PublishContext) -> int:
             log.info("\n--- manifest preview ---\n%s",
                      json.dumps(manifest, indent=2))
 
-        log.info("[stage 6/6] push to %s%s", ctx.repo_id,
+        log.info("[stage 7/7] push to %s%s", ctx.repo_id,
                  " (dry-run)" if ctx.dry_run else "")
         upload_pairs = _build_upload_list(ctx, layout)
         push_to_hf(ctx, manifest_path, readme_path, upload_pairs)

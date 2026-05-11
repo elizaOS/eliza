@@ -12,6 +12,7 @@ Coverage map (matches the brief):
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import logging
@@ -31,6 +32,7 @@ from scripts.publish.orchestrator import (  # noqa: E402
     EXIT_KERNEL_VERIFY_FAIL,
     EXIT_MISSING_FILE,
     EXIT_OK,
+    EXIT_RELEASE_EVIDENCE_FAIL,
     EXIT_USAGE,
     PublishContext,
     run,
@@ -49,6 +51,12 @@ def _write(p: Path, content: str | bytes) -> Path:
     else:
         p.write_bytes(content)
     return p
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    h.update(path.read_bytes())
+    return h.hexdigest()
 
 
 def _passing_eval_blob(tier: str = "9b") -> dict[str, Any]:
@@ -160,6 +168,29 @@ def _build_fixture_bundle(
             }
         ),
     )
+    for backend in ("metal", "vulkan", "cuda", "cpu"):
+        _write(
+            bundle / "evals" / f"{backend}_dispatch.json",
+            json.dumps(
+                {
+                    "backend": backend,
+                    "status": "pass",
+                    "runtimeReady": True,
+                    "report": f"{backend}_dispatch.txt",
+                }
+            ),
+        )
+        _write(
+            bundle / "evals" / f"{backend}_platform.json",
+            json.dumps(
+                {
+                    "backend": backend,
+                    "status": "pass",
+                    "platform": f"fixture-{backend}",
+                    "report": f"{backend}_platform.txt",
+                }
+            ),
+        )
 
     # Optional sidecars.
     _write(
@@ -180,8 +211,85 @@ def _build_fixture_bundle(
         json.dumps({"min": 7000, "recommended": 9500}),
     )
     _write(bundle / "VERSION", "1.0.0\n")
+    _write_release_evidence(bundle, tier)
+    _write_checksums(bundle)
 
     return bundle
+
+
+def _write_release_evidence(bundle: Path, tier: str = "9b") -> None:
+    def rels(subdir: str) -> list[str]:
+        base = bundle / subdir
+        return sorted(str(p.relative_to(bundle)) for p in base.iterdir() if p.is_file())
+
+    _write(
+        bundle / "evidence" / "release.json",
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "tier": tier,
+                "repoId": f"elizalabs/eliza-1-{tier}",
+                "releaseState": "upload-candidate",
+                "final": {
+                    "weights": True,
+                    "hashes": True,
+                    "evals": True,
+                    "licenses": True,
+                    "kernelDispatchReports": True,
+                    "platformEvidence": True,
+                    "sizeFirstRepoIds": True,
+                },
+                "weights": [
+                    *rels("text"),
+                    *rels("tts"),
+                    *rels("asr"),
+                    *rels("vision"),
+                    *rels("dflash"),
+                ],
+                "checksumManifest": "checksums/SHA256SUMS",
+                "evalReports": ["evals/aggregate.json"],
+                "licenseFiles": [
+                    "licenses/LICENSE.text",
+                    "licenses/LICENSE.voice",
+                    "licenses/LICENSE.dflash",
+                    "licenses/LICENSE.eliza-1",
+                ],
+                "kernelDispatchReports": {
+                    "metal": "evals/metal_dispatch.json",
+                    "vulkan": "evals/vulkan_dispatch.json",
+                    "cuda": "evals/cuda_dispatch.json",
+                    "cpu": "evals/cpu_dispatch.json",
+                },
+                "platformEvidence": {
+                    "metal": "evals/metal_platform.json",
+                    "vulkan": "evals/vulkan_platform.json",
+                    "cuda": "evals/cuda_platform.json",
+                    "cpu": "evals/cpu_platform.json",
+                },
+                "hf": {
+                    "repoId": f"elizalabs/eliza-1-{tier}",
+                    "status": "pending-upload",
+                },
+            },
+            indent=2,
+        ),
+    )
+
+
+def _write_checksums(bundle: Path) -> None:
+    entries: list[str] = []
+    for p in sorted(bundle.rglob("*")):
+        if not p.is_file():
+            continue
+        rel = str(p.relative_to(bundle))
+        if rel in {
+            "checksums/SHA256SUMS",
+            "README.md",
+            "eliza-1.manifest.json",
+        }:
+            continue
+        entries.append(f"{_sha256(p)}  {rel}")
+    _write(bundle / "checksums" / "SHA256SUMS", "\n".join(entries) + "\n")
 
 
 def _metal_report(tmp_path: Path, status: str = "pass") -> Path:
@@ -250,7 +358,7 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
     readme = bundle / "README.md"
     assert readme.is_file()
     text = readme.read_text()
-    assert "Eliza-1 9b" in text
+    assert "# eliza-1-9b" in text
     assert "Q" + "wen" not in text
     assert "L" + "lama" not in text
 

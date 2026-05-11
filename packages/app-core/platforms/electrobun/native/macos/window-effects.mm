@@ -3,6 +3,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <Availability.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <UserNotifications/UserNotifications.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -610,6 +611,82 @@ extern "C" void requestMicrophonePermission(void) {
 	                         completionHandler:^(BOOL granted) {
 		(void)granted;
 	}];
+}
+
+static int elizaNotificationAuthorizationStatusToInt(
+	UNAuthorizationStatus status) {
+	switch (status) {
+		case UNAuthorizationStatusAuthorized:
+		case UNAuthorizationStatusProvisional:
+			return 2;
+		case UNAuthorizationStatusDenied:
+			return 1;
+		case UNAuthorizationStatusNotDetermined:
+			return 0;
+	}
+	return 3;
+}
+
+/**
+ * Check notification authorization without prompting.
+ * Returns: 0=not-determined, 1=denied, 2=granted, 3=restricted
+ */
+extern "C" int checkNotificationPermission(void) {
+	if (@available(macOS 10.14, *)) {
+		__block int result = 0;
+		dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+		[[UNUserNotificationCenter currentNotificationCenter]
+			getNotificationSettingsWithCompletionHandler:
+				^(UNNotificationSettings *settings) {
+					result = elizaNotificationAuthorizationStatusToInt(
+						[settings authorizationStatus]);
+					dispatch_semaphore_signal(semaphore);
+				}];
+		dispatch_semaphore_wait(
+			semaphore,
+			dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)));
+		return result;
+	}
+	return 2;
+}
+
+/**
+ * Request notification authorization, then return the resulting status.
+ */
+extern "C" int requestNotificationPermission(void) {
+	if (@available(macOS 10.14, *)) {
+		__block int result = 0;
+		dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+		UNAuthorizationOptions options =
+			UNAuthorizationOptionAlert | UNAuthorizationOptionSound |
+			UNAuthorizationOptionBadge;
+		[[UNUserNotificationCenter currentNotificationCenter]
+			requestAuthorizationWithOptions:options
+						  completionHandler:^(BOOL granted, NSError *error) {
+			if (error != nil) {
+				result = 1;
+				dispatch_semaphore_signal(semaphore);
+				return;
+			}
+			if (!granted) {
+				result = 1;
+				dispatch_semaphore_signal(semaphore);
+				return;
+			}
+			[[UNUserNotificationCenter currentNotificationCenter]
+				getNotificationSettingsWithCompletionHandler:
+					^(UNNotificationSettings *settings) {
+						result = elizaNotificationAuthorizationStatusToInt(
+							[settings authorizationStatus]);
+						dispatch_semaphore_signal(semaphore);
+					}];
+		}];
+		dispatch_semaphore_wait(
+			semaphore,
+			dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10 * NSEC_PER_SEC)));
+		return result;
+	}
+	return 2;
 }
 
 extern "C" void freeNativeCString(char *value) {
