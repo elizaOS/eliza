@@ -119,8 +119,33 @@ export class TurnControllerRegistry {
 		return true;
 	}
 
+	/**
+	 * Abort every active turn. Used by lifecycle handlers (APP_PAUSE on
+	 * mobile, container shutdown) that need to release all in-flight
+	 * inference at once. Returns the room ids that were actually aborted —
+	 * already-aborted turns are skipped.
+	 */
+	abortAllTurns(reason: string): string[] {
+		const aborted: string[] = [];
+		for (const roomId of Array.from(this.active.keys())) {
+			if (this.abortTurn(roomId, reason)) {
+				aborted.push(roomId);
+			}
+		}
+		return aborted;
+	}
+
 	hasActiveTurn(roomId: string): boolean {
 		return this.active.has(roomId);
+	}
+
+	/**
+	 * Snapshot of the currently-active turn room ids. Useful for diagnostic
+	 * endpoints that want to surface "what's running" without holding a
+	 * reference to the registry's internal map.
+	 */
+	activeRoomIds(): string[] {
+		return Array.from(this.active.keys());
 	}
 
 	/**
@@ -162,3 +187,35 @@ export type TurnEvent =
 			reason: string;
 			durationMs: number;
 	  };
+
+/**
+ * Minimum runtime surface needed to abort in-flight inference. We keep this
+ * structural so non-`AgentRuntime` test doubles can satisfy the contract
+ * without dragging in the full interface.
+ */
+export interface AbortableInflightRuntime {
+	turnControllers: Pick<
+		TurnControllerRegistry,
+		"abortAllTurns" | "activeRoomIds"
+	>;
+}
+
+/**
+ * Abort every in-flight inference turn on `runtime`. Used by lifecycle
+ * handlers — Wave 3C's `APP_PAUSE_EVENT` listener calls this so the OS
+ * pause budget doesn't kill the process while a slow phone-CPU decode is
+ * still spinning.
+ *
+ * Returns the list of room ids that were aborted. Already-aborted or
+ * idle turns are skipped, so an empty array means "nothing was running".
+ *
+ * `reason` is passed through to the `TurnAbortedError` raised inside each
+ * in-flight `useModel` / handler path; pick a stable string (e.g. `"app-pause"`,
+ * `"container-shutdown"`) so telemetry can group them.
+ */
+export function abortInflightInference(
+	runtime: AbortableInflightRuntime,
+	reason = "abort-inflight-inference",
+): string[] {
+	return runtime.turnControllers.abortAllTurns(reason);
+}
