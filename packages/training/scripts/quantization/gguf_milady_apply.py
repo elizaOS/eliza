@@ -203,6 +203,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to the elizaOS/llama.cpp v0.4.0-milady checkout.",
     )
     ap.add_argument(
+        "--polarquant-sidecar",
+        type=Path,
+        default=None,
+        help="Path to polarquant_config.json. Defaults to "
+             "<checkpoint>/polarquant_config.json (pass this when --checkpoint "
+             "is a later optimization stage that doesn't carry the polar config).",
+    )
+    ap.add_argument(
         "--qjl-sidecar",
         type=Path,
         default=None,
@@ -217,8 +225,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--outtype",
         default="q4_polar",
-        choices=["q4_polar", "f16", "bf16", "f32", "auto"],
-        help="GGUF tensor type. Default q4_polar (Milady-only).",
+        choices=["q4_polar", "q8_0", "f16", "bf16", "f32", "auto"],
+        help="GGUF tensor type. Default q4_polar (Milady-only); falls back to "
+             "q8_0 automatically when the fork's converter can't emit it yet.",
     )
     ap.add_argument(
         "--dry-run",
@@ -230,7 +239,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.checkpoint.exists() or not args.checkpoint.is_dir():
         raise SystemExit(f"--checkpoint must be a directory: {args.checkpoint}")
 
-    polar_sidecar_path = args.checkpoint / "polarquant_config.json"
+    polar_sidecar_path = args.polarquant_sidecar or (args.checkpoint / "polarquant_config.json")
     qjl_sidecar_path = args.qjl_sidecar or (args.checkpoint / "qjl_config.json")
     tbq_sidecar_path = args.turboquant_sidecar or (
         args.checkpoint / "turboquant.json"
