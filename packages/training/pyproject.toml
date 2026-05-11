@@ -62,6 +62,16 @@ train = [
   # vocab=248k makes this dominant) so we can push local training seq_len
   # from ~2k to ~8k on the same 16 GB budget.
   "liger-kernel>=0.5.0",
+  # GGUF Q4_K_M quantization (scripts/quantization/gguf-q4_k_m_apply.py).
+  # The wrapper prefers a vendored stock llama.cpp checkout under
+  # packages/training/vendor/llama.cpp (run scripts/vendor_llama_cpp.sh),
+  # but the llama-cpp-python wheel also ships a usable `gguf` python module
+  # so the HF→f16 GGUF convert step works without the vendored checkout.
+  # The Q4_K_M *quantize* step still needs the `llama-quantize` binary the
+  # vendor script builds. NOTE: the custom GGML types Q4_POLAR/QJL1_256/
+  # TurboQuant are NOT in this wheel — those need the elizaOS/llama.cpp
+  # fork via $LLAMA_CPP_DIR.
+  "llama-cpp-python>=0.3.0",
   # pytest is consumed by the pre-flight gate (scripts/preflight.sh) and
   # by the CPU-only unit tests it sweeps.
   "pytest>=8.0.0",
