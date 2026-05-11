@@ -26,9 +26,11 @@ import {
   type IAgentRuntime,
   logger,
   ModelType,
+  renderMessageHandlerStablePrefix,
   type TextEmbeddingParams,
   type TextToSpeechParams,
   type TranscriptionParams,
+  type UUID,
 } from "@elizaos/core";
 import {
   type LocalInferenceLoader,
@@ -532,6 +534,76 @@ async function tryRegisterCapacitorLoader(
   return false;
 }
 
+/**
+ * Synthetic conversation id used to keep the Stage-1 stable prefix
+ * (system prompt + tool/action schema block + stable provider blocks)
+ * resident on a deterministic slot before any real conversation lands.
+ * `deriveSlotId("conv:__system_prefix__", parallel)` is stable, so this
+ * always warms the same slot; per-room conversations get their own slot
+ * via `conv:<roomId>` and inherit the radix-shared prefix tokens.
+ */
+const SYSTEM_PREFIX_CONVERSATION_ID = "__system_prefix__";
+
+/**
+ * Render the Stage-1 stable prefix for `roomId` and KV-prefill the
+ * local-inference slot that conversation pins to. Wire this from the
+ * voice turn controller (W9) on `speech-start` / voice-session-open so
+ * the response-handler prompt is hot before STT finishes — items I1/C1.
+ *
+ * Best-effort end to end: returns false (no throw) when there's no
+ * loaded local model, the active backend can't pre-warm (node-llama-cpp
+ * pins by cache key already), or rendering/pre-warm fails. A miss just
+ * means the real request cold-prefills.
+ */
+export async function prewarmResponseHandler(
+  runtime: IAgentRuntime,
+  roomId: UUID,
+): Promise<boolean> {
+  if (!localInferenceEngine.hasLoadedModel()) return false;
+  if (localInferenceEngine.activeBackendId() !== "llama-server") return false;
+  try {
+    const prefix = await renderMessageHandlerStablePrefix(runtime, roomId);
+    if (!prefix) return false;
+    return await localInferenceEngine.prewarmConversation(String(roomId), prefix);
+  } catch (err) {
+    logger.debug(
+      "[local-inference] prewarmResponseHandler failed (best-effort):",
+      err instanceof Error ? err.message : String(err),
+    );
+    return false;
+  }
+}
+
+/**
+ * Warm the Stage-1 stable prefix onto the deterministic
+ * `conv:__system_prefix__` slot at model-load / boot time, before any
+ * user message — item I3 (warm-on-load). The room id is irrelevant for
+ * the stable prefix (it carries no per-room state), so a fixed synthetic
+ * id is fine. No-op when no local model is loaded or the backend can't
+ * pre-warm. Best-effort: failures are logged at debug and swallowed.
+ */
+export async function prewarmSystemPrefix(
+  runtime: IAgentRuntime,
+): Promise<boolean> {
+  if (!localInferenceEngine.hasLoadedModel()) return false;
+  if (localInferenceEngine.activeBackendId() !== "llama-server") return false;
+  try {
+    const fixedRoomId = (runtime.agentId ?? SYSTEM_PREFIX_CONVERSATION_ID) as UUID;
+    const prefix = await renderMessageHandlerStablePrefix(runtime, fixedRoomId);
+    if (!prefix) return false;
+    return await localInferenceEngine.prewarmConversation(
+      SYSTEM_PREFIX_CONVERSATION_ID,
+      prefix,
+    );
+  } catch (err) {
+    logger.debug(
+      "[local-inference] prewarmSystemPrefix failed (best-effort):",
+      err instanceof Error ? err.message : String(err),
+    );
+    return false;
+  }
+}
+
 export async function ensureLocalInferenceHandler(
   runtime: AgentRuntime,
 ): Promise<void> {
@@ -725,4 +797,12 @@ export async function ensureLocalInferenceHandler(
   logger.info(
     "[local-inference] Installed top-priority router for cross-provider routing",
   );
+
+  // Warm-on-load (item I3): if a local model is already resident, KV-prefill
+  // the Stage-1 stable prefix onto the deterministic system-prefix slot so
+  // the system prompt + tool schema is hot before the first user turn.
+  // Fire-and-forget — pre-warm is best-effort and must never block boot.
+  void prewarmSystemPrefix(runtime).catch(() => {
+    // Logged inside prewarmSystemPrefix at debug; nothing more to do here.
+  });
 }

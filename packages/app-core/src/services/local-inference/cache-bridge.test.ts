@@ -15,8 +15,10 @@ import {
   extractPromptCacheKey,
   hashStablePrefix,
   llamaCacheRoot,
+  parseSlotCacheTtlClass,
   readCacheStats,
   resolveLocalCacheKey,
+  slotCacheFileName,
   slotSavePath,
   ttlMsForKey,
 } from "./cache-bridge";
@@ -191,6 +193,64 @@ describe("cache-bridge eviction by mtime + TTL", () => {
     await fs.utimes(sub, old, old);
     const deleted = await evictExpired(dir);
     expect(deleted).toBe(0);
+  });
+
+  it("honors the per-file TTL class encoded in the filename", async () => {
+    const shortFile = path.join(dir, slotCacheFileName("conv-a", "short"));
+    const longFile = path.join(dir, slotCacheFileName("conv-b", "long"));
+    const legacyFile = path.join(dir, "conv-c.bin");
+    await fs.writeFile(shortFile, "s");
+    await fs.writeFile(longFile, "l");
+    await fs.writeFile(legacyFile, "x");
+    const now = Date.now();
+    // Age every file to "older than short, younger than long".
+    const aged = new Date(now - DEFAULT_CACHE_TTLS.short - 60_000);
+    await fs.utimes(shortFile, aged, aged);
+    await fs.utimes(longFile, aged, aged);
+    await fs.utimes(legacyFile, aged, aged);
+
+    const deleted = await evictExpired(dir, DEFAULT_CACHE_TTLS, now);
+    // Only the short-TTL file is past its horizon; the long-TTL and
+    // legacy (treated as long) files survive.
+    expect(deleted).toBe(1);
+    await expect(fs.access(shortFile)).rejects.toThrow();
+    await expect(fs.access(longFile)).resolves.toBeUndefined();
+    await expect(fs.access(legacyFile)).resolves.toBeUndefined();
+  });
+
+  it("deletes long-TTL files once past the long horizon", async () => {
+    const longFile = path.join(dir, slotCacheFileName("conv-b", "long"));
+    const legacyFile = path.join(dir, "conv-c.bin");
+    await fs.writeFile(longFile, "l");
+    await fs.writeFile(legacyFile, "x");
+    const now = Date.now();
+    const aged = new Date(now - DEFAULT_CACHE_TTLS.long - 60_000);
+    await fs.utimes(longFile, aged, aged);
+    await fs.utimes(legacyFile, aged, aged);
+    const deleted = await evictExpired(dir, DEFAULT_CACHE_TTLS, now);
+    expect(deleted).toBe(2);
+  });
+});
+
+describe("cache-bridge slot cache filenames", () => {
+  it("round-trips the TTL class through the filename", () => {
+    expect(slotCacheFileName("room-1", "long")).toBe("room-1.long.bin");
+    expect(slotCacheFileName("room-1", "short")).toBe("room-1.short.bin");
+    expect(parseSlotCacheTtlClass("room-1.long.bin")).toBe("long");
+    expect(parseSlotCacheTtlClass("room-1.short.bin")).toBe("short");
+    expect(parseSlotCacheTtlClass("room-1.extended.bin")).toBe("extended");
+  });
+
+  it("returns undefined for legacy / unencoded filenames", () => {
+    expect(parseSlotCacheTtlClass("room-1.bin")).toBeUndefined();
+    expect(parseSlotCacheTtlClass("room-1")).toBeUndefined();
+    expect(parseSlotCacheTtlClass("room.with.dots.bin")).toBeUndefined();
+  });
+
+  it("handles conversation ids that themselves contain dots", () => {
+    const name = slotCacheFileName("a.b.c-room", "long");
+    expect(name).toBe("a.b.c-room.long.bin");
+    expect(parseSlotCacheTtlClass(name)).toBe("long");
   });
 });
 
