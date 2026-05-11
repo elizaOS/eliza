@@ -29,13 +29,24 @@ import {
   slotSavePath,
 } from "./cache-bridge";
 import { findCatalogModel } from "./catalog";
+import { probeHardware } from "./hardware";
+import {
+  estimateQuantizedKvBytesPerToken,
+  KV_SPILL_MIN_CONTEXT,
+  type KvSpillPlan,
+  KvSpillUnsupportedError,
+  planKvSpill,
+  residentKvBudgetFromRamBudget,
+  restoreClassForHardware,
+} from "./kv-spill";
 import {
   diffSnapshots,
   fetchMetricsSnapshot,
   type LocalUsageBlock,
 } from "./llama-server-metrics";
 import { localInferenceRoot } from "./paths";
-import type { LocalRuntimeOptimizations } from "./types";
+import { resolveRamBudget } from "./ram-budget";
+import type { CatalogModel, InstalledModel, LocalRuntimeOptimizations } from "./types";
 import type { VerifierStreamEvent } from "./voice/types";
 
 export interface DflashServerPlan {
@@ -49,6 +60,18 @@ export interface DflashServerPlan {
   draftGpuLayers: number | "auto";
   kvOffload?: DflashKvOffloadMode;
   disableThinking: boolean;
+  /**
+   * KV-cache spill plan for context > 64k (packages/inference/AGENTS.md §3
+   * item 7). Resolved in `load()` from the catalog + a hardware probe + the
+   * bundle's RAM budget. `null`/absent when the context is short enough that
+   * the whole cache fits resident. When `mode === "spill"` the server is
+   * launched with `--no-kv-offload` so the cold pages live in host RAM, plus
+   * a `--cache-ram` hint sized to the resident pages. A
+   * `KvSpillUnsupportedError` thrown by `planKvSpill` propagates out of
+   * `load()` so the engine surfaces a structured 4xx — there is no
+   * silent-slow fallback.
+   */
+  kvSpillPlan?: KvSpillPlan | null;
 }
 
 export type DflashKvOffloadMode = "cpu" | "gpu" | "split";
@@ -185,6 +208,40 @@ function readBool(name: string): boolean {
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
+/**
+ * Developer-only escape hatch from the always-on speculative-decoding
+ * contract (`packages/inference/AGENTS.md` §4: "DFlash is always on… If
+ * the user disables speculative decoding for debugging, that is a
+ * developer-only flag (`MILADY_DFLASH_DISABLE=1`), it is not a user
+ * setting, and it MUST log a loud warning every turn.").
+ *
+ * This is NOT a product setting — there is no UI surface and no
+ * `MILADY_LOCAL_*` mapping. It exists so a developer can bisect a
+ * suspected DFlash regression. When set, `dflashEnabled()` returns false
+ * (the dispatcher then routes to node-llama-cpp) and every generation
+ * turn that runs while it is set logs `logDflashDevDisabledWarning()`.
+ */
+export function dflashDevDisabled(): boolean {
+  return readBool("MILADY_DFLASH_DISABLE");
+}
+
+/**
+ * Emit the loud, every-turn warning required by AGENTS.md §4 when the
+ * developer kill-switch is active. Callers invoke this once per
+ * generation turn (text or voice). No-op when the flag is unset, so the
+ * call site can be unconditional.
+ */
+export function logDflashDevDisabledWarning(): void {
+  if (!dflashDevDisabled()) return;
+  console.warn(
+    "[local-inference] ⚠️  MILADY_DFLASH_DISABLE=1 — speculative decoding is OFF. " +
+      "This is a developer-only debug flag, NOT a product setting. Eliza-1's " +
+      "always-on DFlash contract is violated for this turn; voice latency and " +
+      "throughput are degraded. Unset MILADY_DFLASH_DISABLE to restore the " +
+      "shipped path.",
+  );
+}
+
 function managedDflashBinaryPath(): string {
   return path.join(
     localInferenceRoot(),
@@ -313,6 +370,9 @@ function assertCacheTypeSupportedOnBackend(name: string, value: string): void {
 }
 
 export function dflashEnabled(): boolean {
+  // Developer kill-switch wins over everything, including ELIZA_DFLASH_ENABLED.
+  // See dflashDevDisabled() — this is a debug-only hatch, never a product path.
+  if (dflashDevDisabled()) return false;
   if (readBool("ELIZA_DFLASH_DISABLED")) return false;
   if (readBool("ELIZA_DFLASH_ENABLED")) return true;
   if (!fs.existsSync(managedDflashBinaryPath())) return false;
@@ -367,8 +427,9 @@ export function getDflashRuntimeStatus(): DflashRuntimeStatus {
   const capabilities = readDflashBinaryCapabilities();
   if (!dflashEnabled()) {
     const managedBinaryExists = fs.existsSync(managedDflashBinaryPath());
-    const reason =
-      managedBinaryExists && isMetalDflashRuntime()
+    const reason = dflashDevDisabled()
+      ? "DFlash is disabled by the developer-only MILADY_DFLASH_DISABLE flag. This is NOT a product setting — unset it to restore the always-on speculative-decoding contract."
+      : managedBinaryExists && isMetalDflashRuntime()
         ? "DFlash Metal binary found but auto-disabled because the current Eliza-1 Metal path is faster target-only; set ELIZA_DFLASH_ENABLED=1 or ELIZA_DFLASH_METAL_AUTO=1 to force it."
         : "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.";
     return {
