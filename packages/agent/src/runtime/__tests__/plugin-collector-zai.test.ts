@@ -1,9 +1,9 @@
+import { afterEach, describe, expect, it } from "vitest";
 import type { ElizaConfig } from "../../config/config";
 import {
   collectPluginNames,
   resolvePluginPackageAlias,
 } from "../plugin-collector";
-import { afterEach, describe, expect, it } from "vitest";
 
 const originalEnv = { ...process.env };
 
@@ -17,7 +17,9 @@ function minimalConfig(): ElizaConfig {
 
 describe("z.ai plugin collection", () => {
   it("normalizes legacy external z.ai package references", () => {
-    expect(resolvePluginPackageAlias("@homunculuslabs/plugin-zai")).toBe("@elizaos/plugin-zai");
+    expect(resolvePluginPackageAlias("@homunculuslabs/plugin-zai")).toBe(
+      "@elizaos/plugin-zai",
+    );
   });
 
   it("loads the first-party z.ai plugin from canonical ZAI_API_KEY", () => {

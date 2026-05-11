@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 import {
@@ -5,6 +6,7 @@ import {
   getAutonomousSourceRoot,
   getElizaCoreEntry,
   getSharedSourceRoot,
+  getUiSourceRoot,
 } from "../eliza-package-paths";
 import { repoRoot } from "./repo-root";
 import {
@@ -14,6 +16,7 @@ import {
   getOptionalInstalledPackageAliases,
   getOptionalPluginSdkAliases,
   getSharedSourceAliases,
+  getUiSourceAliases,
   getWorkspaceAppAliases,
   type ModuleAlias,
 } from "./workspace-aliases";
@@ -23,6 +26,15 @@ const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
+const workspaceUiSourceRoot = path.join(
+  elizaWorkspaceRoot,
+  "packages",
+  "ui",
+  "src",
+);
+const uiSourceRoot = existsSync(path.join(workspaceUiSourceRoot, "index.ts"))
+  ? workspaceUiSourceRoot
+  : getUiSourceRoot(repoRoot);
 const integrationResolveAlias: ModuleAlias[] = [
   ...getOptionalPluginSdkAliases(repoRoot),
   ...(elizaCoreEntry
@@ -35,6 +47,7 @@ const integrationResolveAlias: ModuleAlias[] = [
     : []),
   ...getAgentSourceAliases(autonomousSourceRoot),
   ...getAppCoreSourceAliases(appCoreSourceRoot),
+  ...getUiSourceAliases(uiSourceRoot),
   ...getWorkspaceAppAliases(repoRoot, [
     "app-companion",
     "app-lifeops",
