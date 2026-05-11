@@ -23,15 +23,18 @@ import {
 import type { ElizaConfig } from "../config/types.ts";
 
 import type { TrajectoryLlmCall } from "../types/trajectory.ts";
-import {
-  applyConversationCompaction,
-  selectStrategyFromEnv,
-  type StrategyName,
-} from "./conversation-compactor-runtime.ts";
 import type {
   CompactorMessage,
   CompactorModelCall,
 } from "./conversation-compactor.types.ts";
+import {
+  type ApplyConversationCompactionResult,
+  type ApplyConversationMessageCompactionResult,
+  applyConversationCompaction,
+  applyConversationMessageCompaction,
+  type StrategyName,
+  selectStrategyFromEnv,
+} from "./conversation-compactor-runtime.ts";
 import {
   compactActionsForIntent,
   compactCodingExamplesForIntent,
@@ -119,6 +122,21 @@ type RuntimeWithTrajectoryService = AgentRuntime & {
 
 type RuntimeWithEmitEvent = AgentRuntime & {
   emitEvent: (event: unknown, params?: unknown) => Promise<void> | void;
+};
+
+type PromptOptimizationTelemetry = {
+  mode: string;
+  actionCompactionEnabled: boolean;
+  originalPromptChars: number;
+  finalPromptChars: number;
+  originalPromptTokens: number;
+  finalPromptTokens: number;
+  budgetTokens?: number;
+  outputReserveTokens?: number;
+  transformations: string[];
+  conversationCompaction?:
+    | Omit<ApplyConversationCompactionResult, "prompt">
+    | Omit<ApplyConversationMessageCompactionResult, "messages">;
 };
 
 export interface CapturedModelUsage {
@@ -415,6 +433,26 @@ function ensureTrajectoryLoggerTracking(
         }
       }
 
+      const patchProviderMetadata = (patch as Record<string, unknown>)
+        .providerMetadata;
+      if (
+        patchProviderMetadata &&
+        typeof patchProviderMetadata === "object" &&
+        !Array.isArray(patchProviderMetadata)
+      ) {
+        const currentProviderMetadata =
+          latestCall.providerMetadata &&
+          typeof latestCall.providerMetadata === "object" &&
+          !Array.isArray(latestCall.providerMetadata)
+            ? (latestCall.providerMetadata as Record<string, unknown>)
+            : {};
+        latestCall.providerMetadata = {
+          ...currentProviderMetadata,
+          ...(patchProviderMetadata as Record<string, unknown>),
+        };
+        updated = true;
+      }
+
       const enriched = enrichTrajectoryLlmCall(
         latestCall as Record<string, unknown>,
       );
@@ -484,6 +522,188 @@ function stringifyTrajectoryResponse(response: unknown): string {
 export function estimateTokenCount(text: string): number {
   if (!text) return 0;
   return Math.ceil(text.length / 4);
+}
+
+type ModelPayloadMessage = {
+  role?: unknown;
+  content?: unknown;
+  toolCalls?: unknown;
+  tool_calls?: unknown;
+  toolCallId?: unknown;
+  tool_call_id?: unknown;
+  toolName?: unknown;
+  name?: unknown;
+};
+
+function messageContentToText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (!part || typeof part !== "object") return "";
+        const record = part as Record<string, unknown>;
+        if (typeof record.text === "string") return record.text;
+        if (typeof record.content === "string") return record.content;
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (content == null) return "";
+  return String(content);
+}
+
+function normalizeToolCalls(value: unknown): CompactorMessage["toolCalls"] {
+  if (!Array.isArray(value)) return undefined;
+  const out: NonNullable<CompactorMessage["toolCalls"]> = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const fn =
+      record.function && typeof record.function === "object"
+        ? (record.function as Record<string, unknown>)
+        : null;
+    const id = typeof record.id === "string" ? record.id : "";
+    const name =
+      typeof record.name === "string"
+        ? record.name
+        : typeof fn?.name === "string"
+          ? fn.name
+          : "";
+    if (!id || !name) continue;
+    const argsRaw =
+      record.arguments ??
+      record.args ??
+      (fn ? (fn.arguments ?? fn.args) : undefined);
+    let parsedArgs: Record<string, unknown> = {};
+    if (argsRaw && typeof argsRaw === "object" && !Array.isArray(argsRaw)) {
+      parsedArgs = argsRaw as Record<string, unknown>;
+    } else if (typeof argsRaw === "string" && argsRaw.trim().length > 0) {
+      try {
+        const parsed = JSON.parse(argsRaw) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          parsedArgs = parsed as Record<string, unknown>;
+        }
+      } catch {
+        parsedArgs = { raw: argsRaw };
+      }
+    }
+    out.push({ id, name, arguments: parsedArgs });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function normalizePayloadMessages(value: unknown): CompactorMessage[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: CompactorMessage[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return null;
+    }
+    const record = item as ModelPayloadMessage;
+    const role = typeof record.role === "string" ? record.role : "";
+    if (
+      role !== "system" &&
+      role !== "user" &&
+      role !== "assistant" &&
+      role !== "tool"
+    ) {
+      return null;
+    }
+    const content = messageContentToText(record.content);
+    const toolCalls = normalizeToolCalls(record.toolCalls ?? record.tool_calls);
+    const toolCallId =
+      typeof record.toolCallId === "string"
+        ? record.toolCallId
+        : typeof record.tool_call_id === "string"
+          ? record.tool_call_id
+          : undefined;
+    const toolName =
+      typeof record.toolName === "string"
+        ? record.toolName
+        : typeof record.name === "string"
+          ? record.name
+          : undefined;
+    out.push({
+      role,
+      content,
+      ...(toolCalls ? { toolCalls } : {}),
+      ...(toolCallId ? { toolCallId } : {}),
+      ...(toolName ? { toolName } : {}),
+    });
+  }
+  return out;
+}
+
+function renderMessagesForTelemetry(messages: CompactorMessage[]): string {
+  return messages
+    .map((message) => {
+      const toolCalls = message.toolCalls?.length
+        ? `\n${message.toolCalls
+            .map(
+              (call) =>
+                `  toolCall id=${call.id} name=${call.name} args=${JSON.stringify(call.arguments)}`,
+            )
+            .join("\n")}`
+        : "";
+      const toolMeta =
+        message.role === "tool"
+          ? ` toolCallId=${message.toolCallId ?? ""} toolName=${message.toolName ?? ""}`
+          : "";
+      return `[${message.role}${toolMeta}] ${message.content}${toolCalls}`;
+    })
+    .join("\n");
+}
+
+function compactorMessagesToPayloadMessages(
+  messages: CompactorMessage[],
+): Array<Record<string, unknown>> {
+  return messages.map((message) => {
+    const record: Record<string, unknown> = {
+      role: message.role,
+      content: message.content,
+    };
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      record.tool_calls = message.toolCalls.map((call) => ({
+        id: call.id,
+        type: "function",
+        function: {
+          name: call.name,
+          arguments: JSON.stringify(call.arguments ?? {}),
+        },
+      }));
+    }
+    if (message.role === "tool") {
+      if (message.toolCallId) record.tool_call_id = message.toolCallId;
+      if (message.toolName) record.name = message.toolName;
+    }
+    return record;
+  });
+}
+
+function providerOptionsWithPromptOptimization(
+  payloadRecord: Record<string, unknown>,
+  telemetry: PromptOptimizationTelemetry,
+): Record<string, unknown> {
+  const providerOptions = (
+    payloadRecord.providerOptions &&
+    typeof payloadRecord.providerOptions === "object" &&
+    !Array.isArray(payloadRecord.providerOptions)
+      ? (payloadRecord.providerOptions as Record<string, unknown>)
+      : {}
+  ) as Record<string, unknown>;
+  const eliza = (
+    providerOptions.eliza &&
+    typeof providerOptions.eliza === "object" &&
+    !Array.isArray(providerOptions.eliza)
+      ? (providerOptions.eliza as Record<string, unknown>)
+      : {}
+  ) as Record<string, unknown>;
+  eliza.promptOptimization = telemetry;
+  providerOptions.eliza = eliza;
+  payloadRecord.providerOptions = providerOptions;
+  return providerOptions;
 }
 
 function isModelUsedEvent(event: unknown): boolean {
@@ -783,7 +1003,7 @@ function buildRuntimeCompactorModelCall(
  * Async pre-step that runs a conversation-compactor strategy when
  * `ELIZA_CONVERSATION_COMPACTOR` is set and the prompt is over budget.
  * No-ops when the env var is unset, the prompt is under budget, or the
- * compactor cannot reduce the prompt below the budget.
+ * compactor cannot reduce the prompt.
  *
  * Logs `[eliza] conversation-compaction strategy=X originalTokens=N
  * compactedTokens=M latencyMs=L` on a successful compaction.
@@ -793,6 +1013,7 @@ export async function maybeApplyConversationCompaction(
   prompt: string,
   budgetTokens: number,
   callModel: CompactorModelCall,
+  onResult?: (result: ApplyConversationCompactionResult) => void,
 ): Promise<string> {
   let strategy: StrategyName | null;
   try {
@@ -814,12 +1035,49 @@ export async function maybeApplyConversationCompaction(
     callModel,
     runtime,
   });
+  onResult?.(result);
   if (!result.didCompact) return prompt;
 
   runtime.logger?.info?.(
     `[eliza] conversation-compaction strategy=${strategy} originalTokens=${result.originalTokens} compactedTokens=${result.compactedTokens} latencyMs=${result.latencyMs}`,
   );
   return result.prompt;
+}
+
+export async function maybeApplyConversationMessageCompaction(
+  runtime: AgentRuntime,
+  messages: CompactorMessage[],
+  budgetTokens: number,
+  callModel: CompactorModelCall,
+  onResult?: (result: ApplyConversationMessageCompactionResult) => void,
+): Promise<CompactorMessage[]> {
+  let strategy: StrategyName | null;
+  try {
+    strategy = resolveConversationCompactionStrategy();
+  } catch (error) {
+    runtime.logger?.warn?.(String((error as Error).message));
+    return messages;
+  }
+  if (!strategy) return messages;
+
+  const rendered = renderMessagesForTelemetry(messages);
+  const currentTokens = estimateTokenCount(rendered);
+  if (currentTokens <= budgetTokens) return messages;
+
+  const result = await applyConversationMessageCompaction({
+    messages,
+    strategy,
+    currentTokens,
+    targetTokens: budgetTokens,
+    callModel,
+  });
+  onResult?.(result);
+  if (!result.didCompact) return messages;
+
+  runtime.logger?.info?.(
+    `[eliza] conversation-message-compaction strategy=${strategy} originalTokens=${result.originalTokens} compactedTokens=${result.compactedTokens} latencyMs=${result.latencyMs}`,
+  );
+  return result.messages;
 }
 
 export function fitPromptToTokenBudget(
@@ -969,53 +1227,102 @@ export function installPromptOptimizations(
           : typeof promptRecord.input === "string"
             ? "input"
             : null;
-    if (!promptKey) {
+    const originalMessages = promptKey
+      ? null
+      : normalizePayloadMessages(promptRecord.messages);
+    if (!promptKey && !originalMessages) {
       const { result } = await withModelUsageCapture(runtime, () =>
         originalUseModel(...args),
       );
       return result;
     }
 
-    const originalPrompt = String(promptRecord[promptKey] ?? "");
+    const originalPrompt = promptKey
+      ? String(promptRecord[promptKey] ?? "")
+      : renderMessagesForTelemetry(originalMessages ?? []);
+    const promptOptimizationTelemetry: PromptOptimizationTelemetry = {
+      mode: ELIZA_PROMPT_OPT_MODE,
+      actionCompactionEnabled: ELIZA_ACTION_COMPACTION,
+      originalPromptChars: originalPrompt.length,
+      finalPromptChars: originalPrompt.length,
+      originalPromptTokens: estimateTokenCount(originalPrompt),
+      finalPromptTokens: estimateTokenCount(originalPrompt),
+      transformations: [],
+    };
 
     // --- Prompt capture (dev debugging) ---
     if (ELIZA_CAPTURE_PROMPTS) {
       const captureDir = path.resolve(".tmp", "prompt-captures");
       const seq = String(++promptCaptureSeq).padStart(4, "0");
       const filename = `${seq}-${modelType}.txt`;
+      const capturePath = path.join(captureDir, filename);
       await mkdir(captureDir, { recursive: true }).catch(() => {});
       await writeFile(
-        path.join(captureDir, filename),
-        `--- model: ${modelType} | key: ${promptKey} | chars: ${originalPrompt.length} ---\n\n${originalPrompt}`,
+        capturePath,
+        `--- model: ${modelType} | key: ${promptKey ?? "messages"} | chars: ${originalPrompt.length} ---\n\n${originalPrompt}`,
       ).catch(() => {});
+      promptOptimizationTelemetry.transformations.push(
+        `capture:original:${capturePath}`,
+      );
     }
 
     let rewrittenArgs = args;
     let nextPrompt = originalPrompt;
+    let nextMessages = originalMessages;
     let outputReserveTokens: number | undefined;
+    const payloadHasProviderTools =
+      (Array.isArray(promptRecord.tools) && promptRecord.tools.length > 0) ||
+      promptRecord.toolChoice !== undefined ||
+      promptRecord.tool_choice !== undefined;
 
     // Skip intent compaction while trajectory capture is active; hard model
     // budgets still apply because providers cannot accept overflow prompts.
-    if (isTextLarge && !shouldPreserveFullPromptForTrajectoryCapture()) {
+    if (
+      promptKey &&
+      isTextLarge &&
+      !shouldPreserveFullPromptForTrajectoryCapture()
+    ) {
       // --- Context-aware action compaction (when enabled) ---
       // Strips param detail from actions not relevant to the user's intent.
       // All action names remain visible — only param detail is stripped.
       let workingPrompt = ELIZA_ACTION_COMPACTION
         ? compactActionsForIntent(originalPrompt)
         : originalPrompt;
+      if (workingPrompt !== originalPrompt) {
+        promptOptimizationTelemetry.transformations.push(
+          `action-compaction:${originalPrompt.length}->${workingPrompt.length}`,
+        );
+      }
 
       // Strip coding agent examples when no coding intent is detected.
       // These are ~4k chars of provider-injected examples that are only
       // useful when the user is asking about code/repos/agents.
       if (ELIZA_ACTION_COMPACTION) {
+        const beforeCoding = workingPrompt;
         workingPrompt = compactCodingExamplesForIntent(workingPrompt);
+        if (workingPrompt !== beforeCoding) {
+          promptOptimizationTelemetry.transformations.push(
+            `coding-example-compaction:${beforeCoding.length}->${workingPrompt.length}`,
+          );
+        }
+        const beforeHistory = workingPrompt;
         workingPrompt = compactConversationHistory(workingPrompt);
+        if (workingPrompt !== beforeHistory) {
+          promptOptimizationTelemetry.transformations.push(
+            `conversation-history-presentation-compaction:${beforeHistory.length}->${workingPrompt.length}`,
+          );
+        }
       }
 
       // --- Full prompt compaction (compact mode only) ---
       nextPrompt = workingPrompt;
       if (ELIZA_PROMPT_OPT_MODE === "compact") {
         nextPrompt = compactModelPrompt(workingPrompt);
+        if (nextPrompt !== workingPrompt) {
+          promptOptimizationTelemetry.transformations.push(
+            `model-prompt-compaction:${workingPrompt.length}->${nextPrompt.length}`,
+          );
+        }
         if (ELIZA_PROMPT_TRACE && nextPrompt.length !== originalPrompt.length) {
           runtime.logger?.info(
             `[eliza] Compact prompt rewrite: ${originalPrompt.length} -> ${nextPrompt.length} chars`,
@@ -1031,67 +1338,145 @@ export function installPromptOptimizations(
     if (shouldApplyPromptBudget(modelType)) {
       const budget = resolvePromptBudget(runtime, modelType, {
         ...promptRecord,
-        [promptKey]: nextPrompt,
+        ...(promptKey ? { [promptKey]: nextPrompt } : {}),
+        ...(nextMessages
+          ? { messages: compactorMessagesToPayloadMessages(nextMessages) }
+          : {}),
       });
       outputReserveTokens = budget.outputReserveTokens;
+      promptOptimizationTelemetry.budgetTokens = budget.promptBudgetTokens;
+      promptOptimizationTelemetry.outputReserveTokens =
+        budget.outputReserveTokens;
 
-      // Conversation-level compaction (opt-in via env). Runs before the
-      // truncation-based fitter so summarization gets first crack at
-      // shrinking the conversation history. If it can't get the prompt
-      // under budget, the existing tail-truncation pipeline still kicks in.
-      try {
-        nextPrompt = await maybeApplyConversationCompaction(
-          runtime,
-          nextPrompt,
-          budget.promptBudgetTokens,
-          buildRuntimeCompactorModelCall(runtime, originalUseModel),
-        );
-      } catch (error) {
-        runtime.logger?.warn?.(
-          `[eliza] conversation-compaction failed: ${String(
-            (error as Error).message,
-          )}`,
-        );
-      }
-
-      const budgetedPrompt = fitPromptToTokenBudget(
-        nextPrompt,
-        budget.promptBudgetTokens,
-      );
-      if (budgetedPrompt.prompt !== nextPrompt) {
-        nextPrompt = budgetedPrompt.prompt;
-        if (ELIZA_PROMPT_TRACE) {
-          runtime.logger?.info(
-            `[eliza] Budget prompt rewrite (${budget.metadata.source}:${budget.metadata.modelId}): ${budgetedPrompt.originalPromptTokens} -> ${budgetedPrompt.promptTokens} tokens`,
+      if (promptKey) {
+        // Conversation-level compaction (opt-in via env). Runs before the
+        // truncation-based fitter so summarization gets first crack at
+        // shrinking the conversation history. If it can't get the prompt
+        // under budget, the existing tail-truncation pipeline still kicks in.
+        try {
+          const beforeConversationCompaction = nextPrompt;
+          nextPrompt = await maybeApplyConversationCompaction(
+            runtime,
+            nextPrompt,
+            budget.promptBudgetTokens,
+            buildRuntimeCompactorModelCall(runtime, originalUseModel),
+            (result) => {
+              const { prompt: _prompt, ...rest } = result;
+              promptOptimizationTelemetry.conversationCompaction = rest;
+            },
+          );
+          if (nextPrompt !== beforeConversationCompaction) {
+            promptOptimizationTelemetry.transformations.push(
+              `conversation-compaction:${beforeConversationCompaction.length}->${nextPrompt.length}`,
+            );
+          }
+        } catch (error) {
+          runtime.logger?.warn?.(
+            `[eliza] conversation-compaction failed: ${String(
+              (error as Error).message,
+            )}`,
           );
         }
+
+        const budgetedPrompt = fitPromptToTokenBudget(
+          nextPrompt,
+          budget.promptBudgetTokens,
+        );
+        if (budgetedPrompt.prompt !== nextPrompt) {
+          promptOptimizationTelemetry.transformations.push(
+            `budget-fit:${nextPrompt.length}->${budgetedPrompt.prompt.length}`,
+          );
+          nextPrompt = budgetedPrompt.prompt;
+          if (ELIZA_PROMPT_TRACE) {
+            runtime.logger?.info(
+              `[eliza] Budget prompt rewrite (${budget.metadata.source}:${budget.metadata.modelId}): ${budgetedPrompt.originalPromptTokens} -> ${budgetedPrompt.promptTokens} tokens`,
+            );
+          }
+        }
+      } else if (nextMessages && !payloadHasProviderTools) {
+        try {
+          const beforeRendered = renderMessagesForTelemetry(nextMessages);
+          nextMessages = await maybeApplyConversationMessageCompaction(
+            runtime,
+            nextMessages,
+            budget.promptBudgetTokens,
+            buildRuntimeCompactorModelCall(runtime, originalUseModel),
+            (result) => {
+              const { messages: _messages, ...rest } = result;
+              promptOptimizationTelemetry.conversationCompaction = rest;
+            },
+          );
+          const afterRendered = renderMessagesForTelemetry(nextMessages);
+          if (afterRendered !== beforeRendered) {
+            promptOptimizationTelemetry.transformations.push(
+              `conversation-message-compaction:${beforeRendered.length}->${afterRendered.length}`,
+            );
+          }
+        } catch (error) {
+          runtime.logger?.warn?.(
+            `[eliza] conversation-message-compaction failed: ${String(
+              (error as Error).message,
+            )}`,
+          );
+        }
+      } else if (nextMessages && payloadHasProviderTools) {
+        promptOptimizationTelemetry.transformations.push(
+          "conversation-message-compaction-skipped:provider-tools-present",
+        );
       }
+    }
+
+    const finalPromptForTelemetry = promptKey
+      ? nextPrompt
+      : renderMessagesForTelemetry(nextMessages ?? []);
+    promptOptimizationTelemetry.finalPromptChars =
+      finalPromptForTelemetry.length;
+    promptOptimizationTelemetry.finalPromptTokens = estimateTokenCount(
+      finalPromptForTelemetry,
+    );
+
+    if (ELIZA_CAPTURE_PROMPTS && finalPromptForTelemetry !== originalPrompt) {
+      const captureDir = path.resolve(".tmp", "prompt-captures");
+      const seq = String(promptCaptureSeq).padStart(4, "0");
+      const filename = `${seq}-${modelType}-rewritten.txt`;
+      const capturePath = path.join(captureDir, filename);
+      await writeFile(
+        capturePath,
+        `--- model: ${modelType} | key: ${promptKey ?? "messages"} | chars: ${finalPromptForTelemetry.length} | rewritten ---\n\n${finalPromptForTelemetry}`,
+      ).catch(() => {});
+      promptOptimizationTelemetry.transformations.push(
+        `capture:rewritten:${capturePath}`,
+      );
     }
 
     const shouldSetMaxOutputTokens =
       outputReserveTokens !== undefined &&
       toOptionalNumber(promptRecord.maxOutputTokens) !== undefined;
-    const shouldRewritePayload =
-      nextPrompt !== originalPrompt ||
-      (outputReserveTokens !== undefined &&
-        toOptionalNumber(promptRecord.maxTokens) !== outputReserveTokens) ||
-      shouldSetMaxOutputTokens;
-    if (shouldRewritePayload) {
-      const rewrittenPayload = {
-        ...(payload as Record<string, unknown>),
-        [promptKey]: nextPrompt,
-        ...(outputReserveTokens !== undefined
-          ? shouldSetMaxOutputTokens
-            ? { maxOutputTokens: outputReserveTokens }
-            : { maxTokens: outputReserveTokens }
-          : {}),
-      };
-      rewrittenArgs = [
-        args[0],
-        rewrittenPayload as Parameters<typeof originalUseModel>[1],
-        ...args.slice(2),
-      ] as Parameters<typeof originalUseModel>;
-    }
+    const messagesChanged =
+      nextMessages !== null &&
+      renderMessagesForTelemetry(nextMessages) !== originalPrompt;
+    const mergedProviderOptions = providerOptionsWithPromptOptimization(
+      promptRecord,
+      promptOptimizationTelemetry,
+    );
+    const rewrittenPayload = {
+      ...(payload as Record<string, unknown>),
+      ...(promptKey ? { [promptKey]: nextPrompt } : {}),
+      ...(!promptKey && nextMessages && messagesChanged
+        ? { messages: compactorMessagesToPayloadMessages(nextMessages) }
+        : {}),
+      providerOptions: mergedProviderOptions,
+      ...(outputReserveTokens !== undefined
+        ? shouldSetMaxOutputTokens
+          ? { maxOutputTokens: outputReserveTokens }
+          : { maxTokens: outputReserveTokens }
+        : {}),
+    };
+    rewrittenArgs = [
+      args[0],
+      rewrittenPayload as Parameters<typeof originalUseModel>[1],
+      ...args.slice(2),
+    ] as Parameters<typeof originalUseModel>;
 
     const { result, usage: capturedUsage } = await withModelUsageCapture(
       runtime,
@@ -1105,9 +1490,15 @@ export function installPromptOptimizations(
         : typeof runtime.character?.system === "string"
           ? runtime.character.system
           : "";
+    const payloadMessages = normalizePayloadMessages(payloadRecord.messages);
+    const userPromptForTrajectory = promptKey
+      ? String(payloadRecord[promptKey] ?? "")
+      : payloadMessages
+        ? renderMessagesForTelemetry(payloadMessages)
+        : "";
     const promptTokens =
       capturedUsage?.promptTokens ??
-      estimateTokenCount(systemPrompt + String(payloadRecord[promptKey] ?? ""));
+      estimateTokenCount(systemPrompt + userPromptForTrajectory);
     const completionTokens =
       capturedUsage?.completionTokens ?? estimateTokenCount(responseText);
     const fallbackCall = {
@@ -1119,7 +1510,7 @@ export function installPromptOptimizations(
         args[2],
       ),
       systemPrompt,
-      userPrompt: String(payloadRecord[promptKey] ?? ""),
+      userPrompt: userPromptForTrajectory,
       response: responseText,
       temperature:
         typeof payloadRecord.temperature === "number"
@@ -1136,6 +1527,14 @@ export function installPromptOptimizations(
       promptTokens,
       completionTokens,
       tokenUsageEstimated: !capturedUsage,
+      providerMetadata: {
+        ...(payloadRecord.providerMetadata &&
+        typeof payloadRecord.providerMetadata === "object" &&
+        !Array.isArray(payloadRecord.providerMetadata)
+          ? (payloadRecord.providerMetadata as Record<string, unknown>)
+          : {}),
+        promptOptimization: promptOptimizationTelemetry,
+      },
     };
 
     if (

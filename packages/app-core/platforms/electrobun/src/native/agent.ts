@@ -34,6 +34,7 @@ import {
 	resolveDisableAutoApiToken,
 	setApiToken,
 } from "@elizaos/shared";
+import { Utils } from "electrobun/bun";
 import { resolveDesktopRuntimeMode } from "../api-base";
 import { getBrandConfig } from "../brand-config";
 import { DEFAULT_API_PORT } from "../constants";
@@ -80,9 +81,14 @@ export interface BugReportBundleResult {
 import type {
 	ExistingElizaInstallInfo,
 	ExistingElizaInstallSource,
+	StateDirMigrationResult,
 } from "../rpc-schema";
 
-export type { ExistingElizaInstallInfo, ExistingElizaInstallSource };
+export type {
+	ExistingElizaInstallInfo,
+	ExistingElizaInstallSource,
+	StateDirMigrationResult,
+};
 
 // Subprocess type from Bun.spawn
 type BunSubprocess = ReturnType<typeof Bun.spawn>;
@@ -152,6 +158,52 @@ function normalizeEnvPath(value: string | undefined): string | null {
 	return trimmed ? resolvePortablePath(trimmed) : null;
 }
 
+function isStoreBuildVariant(env: NodeJS.ProcessEnv = process.env): boolean {
+	const raw =
+		env.MILADY_BUILD_VARIANT?.trim() || env.ELIZA_BUILD_VARIANT?.trim();
+	return raw?.toLowerCase() === "store";
+}
+
+function resolveStateNamespace(env: NodeJS.ProcessEnv = process.env): string {
+	return env.ELIZA_NAMESPACE?.trim() || getBrandConfig().namespace || "eliza";
+}
+
+function resolveExplicitStateDir(env: NodeJS.ProcessEnv): string | null {
+	return (
+		normalizeEnvPath(env.MILADY_STATE_DIR) ??
+		normalizeEnvPath(env.ELIZA_STATE_DIR)
+	);
+}
+
+function resolveStoreUserDataStateDir(): string {
+	const userData = Utils.paths.userData || resolveConfigDir();
+	return path.join(userData, "state");
+}
+
+export function resolveDesktopChildStateDir(opts?: {
+	env?: NodeJS.ProcessEnv;
+	homedir?: string;
+}): string {
+	const env = opts?.env ?? process.env;
+	const explicit = resolveExplicitStateDir(env);
+	if (explicit) return explicit;
+	if (isStoreBuildVariant(env)) return resolveStoreUserDataStateDir();
+	return joinPortable(
+		opts?.homedir ?? os.homedir(),
+		`.${resolveStateNamespace(env)}`,
+	);
+}
+
+function applyDesktopChildStateEnv(childEnv: Record<string, string>): void {
+	if (!isStoreBuildVariant(childEnv as NodeJS.ProcessEnv)) return;
+	const stateDir = resolveDesktopChildStateDir({
+		env: childEnv as NodeJS.ProcessEnv,
+	});
+	fs.mkdirSync(stateDir, { recursive: true });
+	childEnv.MILADY_STATE_DIR = stateDir;
+	childEnv.ELIZA_STATE_DIR = stateDir;
+}
+
 function listStateEntries(stateDir: string): string[] {
 	try {
 		return fs
@@ -175,12 +227,13 @@ function buildExistingElizaInstallCandidates(opts?: {
 	const env = opts?.env ?? process.env;
 	const homedir = opts?.homedir ?? os.homedir();
 	const configPathFromEnv =
-		normalizeEnvPath(env.ELIZA_CONFIG_PATH) ??
+		normalizeEnvPath(env.MILADY_CONFIG_PATH) ??
 		normalizeEnvPath(env.ELIZA_CONFIG_PATH);
-	const stateDirFromEnv =
-		normalizeEnvPath(env.ELIZA_STATE_DIR) ??
-		normalizeEnvPath(env.ELIZA_STATE_DIR);
-	const defaultStateDir = joinPortable(homedir, ".eliza");
+	const stateDirFromEnv = resolveExplicitStateDir(env);
+	const defaultStateDir = joinPortable(
+		homedir,
+		`.${resolveStateNamespace(env)}`,
+	);
 
 	const candidates = [
 		configPathFromEnv
@@ -243,9 +296,15 @@ export function inspectExistingElizaInstall(opts?: {
 
 	const fallback = candidates[0] ?? {
 		source: "default-state-dir" as const,
-		stateDir: joinPortable(opts?.homedir ?? os.homedir(), ".eliza"),
+		stateDir: joinPortable(
+			opts?.homedir ?? os.homedir(),
+			`.${resolveStateNamespace(opts?.env ?? process.env)}`,
+		),
 		configPath: joinPortable(
-			joinPortable(opts?.homedir ?? os.homedir(), ".eliza"),
+			joinPortable(
+				opts?.homedir ?? os.homedir(),
+				`.${resolveStateNamespace(opts?.env ?? process.env)}`,
+			),
 			ELIZA_CONFIG_FILENAME,
 		),
 	};
@@ -259,6 +318,69 @@ export function inspectExistingElizaInstall(opts?: {
 		hasStateEntries: false,
 		source: fallback.source,
 	};
+}
+
+export function migrateDesktopStateDirFromPath(
+	fromPath: string,
+	opts?: { env?: NodeJS.ProcessEnv },
+): StateDirMigrationResult {
+	const source = resolvePortablePath(fromPath);
+	const target = resolveDesktopChildStateDir({ env: opts?.env ?? process.env });
+
+	if (source === target) {
+		return {
+			ok: true,
+			migrated: false,
+			fromPath: source,
+			toPath: target,
+			skippedReason: "same-path",
+		};
+	}
+
+	try {
+		const stat = fs.statSync(source);
+		if (!stat.isDirectory()) {
+			return {
+				ok: true,
+				migrated: false,
+				fromPath: source,
+				toPath: target,
+				skippedReason: "source-not-directory",
+			};
+		}
+	} catch {
+		return {
+			ok: true,
+			migrated: false,
+			fromPath: source,
+			toPath: target,
+			skippedReason: "source-missing",
+		};
+	}
+
+	try {
+		fs.mkdirSync(target, { recursive: true });
+		fs.cpSync(source, target, {
+			recursive: true,
+			force: false,
+			errorOnExist: false,
+			dereference: false,
+		});
+		return {
+			ok: true,
+			migrated: true,
+			fromPath: source,
+			toPath: target,
+		};
+	} catch (err) {
+		return {
+			ok: false,
+			migrated: false,
+			fromPath: source,
+			toPath: target,
+			error: err instanceof Error ? err.message : String(err),
+		};
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1243,6 +1365,7 @@ export class AgentManager {
 				childEnv.ELIZA_NAMESPACE?.trim() || getBrandConfig().namespace;
 			childEnv.ELIZA_NAMESPACE =
 				childEnv.ELIZA_NAMESPACE?.trim() || childEnv.ELIZA_NAMESPACE;
+			applyDesktopChildStateEnv(childEnv);
 			delete childEnv.ELIZA_PORT;
 			delete childEnv.NODE_PATH;
 
@@ -1572,6 +1695,10 @@ export class AgentManager {
 
 	inspectExistingInstall(): ExistingElizaInstallInfo {
 		return inspectExistingElizaInstall();
+	}
+
+	migrateStateDir(params: { fromPath: string }): StateDirMigrationResult {
+		return migrateDesktopStateDirFromPath(params.fromPath);
 	}
 
 	getPort(): number | null {

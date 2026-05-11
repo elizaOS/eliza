@@ -2,7 +2,7 @@
 
 End-to-end pipeline that takes a directory containing already-quantized
 weights + sidecars and ships an Eliza-1 bundle to
-``elizaos/eliza-1-<tier>``. This is the single entry point referenced
+``elizalabs/eliza-1-<tier>``. This is the single entry point referenced
 by ``packages/training/AGENTS.md`` §6.
 
 Stages, in order, with hard exits on failure:
@@ -10,7 +10,8 @@ Stages, in order, with hard exits on failure:
 1. **Layout validation.** Walk the bundle directory and verify it
    conforms to ``packages/inference/AGENTS.md`` §2 (text/, tts/, asr/,
    vision/, dflash/, cache/, evals/, licenses/). Missing required files
-   or sidecars are publish-blocking.
+   or sidecars are publish-blocking. The frozen voice artifacts and
+   ``cache/voice-preset-default.bin`` must be present.
 2. **Kernel verification.** Run the
    ``packages/inference/verify`` harness for the tier's supported
    backends. CPU + Vulkan are runnable in CI; Metal is hardware-only —
@@ -23,12 +24,13 @@ Stages, in order, with hard exits on failure:
 4. **Manifest build.** Assemble inputs into ``build_manifest`` from the
    manifest module. ``defaultEligible`` is True iff every required gate
    is green and every supported backend verified pass; the manifest
-   validator enforces the same rule.
+   validator enforces the same rule. The voice section is emitted as
+   frozen and includes ``tts``, emotion tags, and singing capabilities.
 5. **README render.** Render ``templates/README.md.j2`` with the
    manifest as the data context. Same data, no marketing buzzwords, no
    user-visible upstream model-family strings.
 6. **HF push.** Upload weights, manifest, README, licenses, eval blobs
-   to ``elizaos/eliza-1-<tier>`` via ``huggingface_hub``. Tag the
+   to ``elizalabs/eliza-1-<tier>`` via ``huggingface_hub``. Tag the
    local training repo with ``eliza-1-<tier>-v<version>`` + the
    training commit hash.
 
@@ -64,8 +66,10 @@ from benchmarks.eliza1_gates import (  # noqa: E402  - sys.path mutated above
 )
 from scripts.manifest.eliza1_manifest import (  # noqa: E402
     ELIZA_1_BACKENDS,
+    ELIZA_1_VOICE_MANIFEST_VERSION,
     REQUIRED_KERNELS_BY_TIER,
     SUPPORTED_BACKENDS_BY_TIER,
+    VOICE_PRESET_CACHE_PATH,
     Eliza1ManifestError,
     FileEntry,
     KernelVerification,
@@ -86,6 +90,8 @@ EXIT_KERNEL_VERIFY_FAIL = 12
 EXIT_EVAL_GATE_FAIL = 13
 EXIT_MANIFEST_INVALID = 14
 EXIT_HF_PUSH_FAIL = 15
+
+ELIZA_1_HF_ORG = "elizalabs"
 
 # ---------------------------------------------------------------------------
 # Constants — bundle layout per inference/AGENTS.md §2
@@ -109,31 +115,52 @@ REQUIRED_LICENSE_FILES: tuple[str, ...] = (
     "LICENSE.eliza-1",
 )
 
+# Quantization recipe sidecars required by training/AGENTS.md §3. The
+# publish manifest builder consumes these as proof that the bundle flowed
+# through the matching recipes and that recipe/kernel layout pins are present.
+REQUIRED_QUANTIZATION_SIDECARS: Mapping[str, tuple[str, ...]] = {
+    "turboquant": ("turboquant.json", "fused_turboquant.json"),
+    "qjl": ("qjl_config.json",),
+    "polarquant": ("polarquant_config.json",),
+}
+REQUIRED_KERNEL_MANIFEST_KEYS: tuple[str, ...] = (
+    "kernel_target",
+    "block_layout_version",
+    "codebook_hash",
+    "per_block_tolerance",
+)
+
 # Tier matrix — tagline + lineage taken from inference/AGENTS.md §2.
 TIER_TAGLINES: Mapping[str, str] = {
-    "lite-0_6b": "low-RAM phones, CPU fallback",
-    "mobile-1_7b": "modern phones",
-    "desktop-9b": "laptops, 24GB phones, 48GB Mac",
-    "pro-27b": "96GB+ Mac, high-VRAM desktop",
-    "server-h200": "server / workstation",
+    "0_6b": "low-RAM phones, CPU fallback",
+    "1_7b": "modern phones",
+    "9b": "laptops, 24GB phones, 48GB Mac",
+    "27b": "96GB+ Mac, high-VRAM desktop",
+    "27b-256k": "server / workstation",
 }
 
 VOICE_BACKBONE_BY_TIER: Mapping[str, str] = {
-    "lite-0_6b": "omnivoice-0.6b",
-    "mobile-1_7b": "omnivoice-0.6b",
-    "desktop-9b": "omnivoice-1.7b",
-    "pro-27b": "omnivoice-1.7b",
-    "server-h200": "omnivoice-1.7b",
+    "0_6b": "omnivoice-0.6b",
+    "1_7b": "omnivoice-0.6b",
+    "9b": "omnivoice-1.7b",
+    "27b": "omnivoice-1.7b",
+    "27b-256k": "omnivoice-1.7b",
 }
+DEFAULT_VOICE_CAPABILITIES: tuple[str, ...] = ("tts", "emotion-tags", "singing")
+EXPRESSIVE_GATE_NAMES: tuple[str, ...] = (
+    "expressive_tag_faithfulness",
+    "expressive_mos",
+    "expressive_tag_leakage",
+)
 
 # Default RAM budgets (MB). Tightened pre-publish from real measurements
 # on reference hardware; the bundle's sidecar can override.
 DEFAULT_RAM_BUDGET_MB: Mapping[str, tuple[int, int]] = {
-    "lite-0_6b": (1500, 1800),
-    "mobile-1_7b": (3500, 4500),
-    "desktop-9b": (7000, 9500),
-    "pro-27b": (24000, 32000),
-    "server-h200": (48000, 64000),
+    "0_6b": (1500, 1800),
+    "1_7b": (3500, 4500),
+    "9b": (7000, 9500),
+    "27b": (24000, 32000),
+    "27b-256k": (48000, 64000),
 }
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -195,6 +222,55 @@ def _read_sidecar(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text())
 
 
+def _find_sidecar(bundle: Path, names: Sequence[str]) -> Path | None:
+    for name in names:
+        for base in (bundle, bundle / "text", bundle / "dflash", bundle / "evals"):
+            candidate = base / name
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def _validate_quantization_sidecars(bundle: Path) -> list[Path]:
+    found: list[Path] = []
+    for method, names in REQUIRED_QUANTIZATION_SIDECARS.items():
+        sidecar = _find_sidecar(bundle, names)
+        if sidecar is None:
+            raise OrchestratorError(
+                "bundle layout: missing quantization sidecar for "
+                f"{method}; expected one of {', '.join(names)} in bundle root, "
+                "text/, dflash/, or evals/",
+                EXIT_MISSING_FILE,
+            )
+        data = _read_sidecar(sidecar)
+        kernel_manifest = data.get("kernel_manifest")
+        if not isinstance(kernel_manifest, dict):
+            raise OrchestratorError(
+                f"quantization sidecar {sidecar} missing kernel_manifest object",
+                EXIT_BUNDLE_LAYOUT_FAIL,
+            )
+        missing_keys = [
+            key
+            for key in REQUIRED_KERNEL_MANIFEST_KEYS
+            if key not in kernel_manifest
+        ]
+        if missing_keys:
+            raise OrchestratorError(
+                f"quantization sidecar {sidecar} has incomplete "
+                f"kernel_manifest; missing {missing_keys}",
+                EXIT_BUNDLE_LAYOUT_FAIL,
+            )
+        targets = kernel_manifest.get("kernel_target")
+        if not isinstance(targets, list) or not targets:
+            raise OrchestratorError(
+                f"quantization sidecar {sidecar} kernel_manifest.kernel_target "
+                "must be a non-empty array",
+                EXIT_BUNDLE_LAYOUT_FAIL,
+            )
+        found.append(sidecar)
+    return found
+
+
 def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
     """Enforce the §2 layout. Populates ``ctx.layout_files`` and returns it.
 
@@ -230,10 +306,34 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             "bundle layout: tts/ must contain at least one .gguf",
             EXIT_BUNDLE_LAYOUT_FAIL,
         )
+    voice_size = VOICE_BACKBONE_BY_TIER[ctx.tier].removeprefix("omnivoice-")
+    required_tts = {
+        f"omnivoice-{voice_size}.gguf",
+        f"omnivoice-tokenizer-{voice_size}.gguf",
+    }
+    tts_names = {p.name for p in out["tts"]}
+    missing_tts = sorted(required_tts - tts_names)
+    if missing_tts:
+        raise OrchestratorError(
+            "bundle layout: missing frozen voice artifact(s) in tts/: "
+            f"{missing_tts}",
+            EXIT_MISSING_FILE,
+        )
     if not out["dflash"]:
         raise OrchestratorError(
             "bundle layout: dflash/ must contain at least one .gguf",
             EXIT_BUNDLE_LAYOUT_FAIL,
+        )
+    voice_cache = bundle / VOICE_PRESET_CACHE_PATH
+    if not voice_cache.is_file():
+        raise OrchestratorError(
+            f"bundle layout: missing frozen voice cache {VOICE_PRESET_CACHE_PATH}",
+            EXIT_MISSING_FILE,
+        )
+    if voice_cache.stat().st_size == 0:
+        raise OrchestratorError(
+            f"bundle layout: empty frozen voice cache {VOICE_PRESET_CACHE_PATH}",
+            EXIT_MISSING_FILE,
         )
     if not out["cache"]:
         raise OrchestratorError(
@@ -273,7 +373,19 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             EXIT_MISSING_FILE,
         )
 
+    out["quantization_sidecars"] = _validate_quantization_sidecars(bundle)
+
     return out
+
+
+def validate_destination_repo(ctx: PublishContext) -> None:
+    expected = f"{ELIZA_1_HF_ORG}/eliza-1-{ctx.tier}"
+    if ctx.repo_id != expected:
+        raise OrchestratorError(
+            f"Eliza-1 bundle publishes must target {expected}; got {ctx.repo_id!r}. "
+            "Use a non-release publisher for experiments or custom checkpoints.",
+            EXIT_USAGE,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -514,7 +626,9 @@ def _collect_files_for_manifest(
 
 
 def _build_lineage(
-    tier: str, sidecar: Mapping[str, Any] | None
+    tier: str,
+    sidecar: Mapping[str, Any] | None,
+    files: Mapping[str, Sequence[FileEntry]],
 ) -> dict[str, LineageEntry]:
     """Read lineage from ``bundle/lineage.json`` if present, else defaults.
 
@@ -530,15 +644,42 @@ def _build_lineage(
             base=f"dflash-{tier}-drafter", license="apache-2.0"
         ),
     }
-    if not sidecar:
-        return defaults
     out = dict(defaults)
-    for slot in ("text", "voice", "drafter"):
+
+    optional_defaults: dict[str, LineageEntry] = {
+        "asr": LineageEntry(base="eliza-1-asr-family", license="apache-2.0"),
+        "vision": LineageEntry(base="eliza-1-vision-family", license="apache-2.0"),
+        "embedding": LineageEntry(
+            base="eliza-1-embedding-family", license="apache-2.0"
+        ),
+        "vad": LineageEntry(base="eliza-1-vad-family", license="apache-2.0"),
+        "wakeword": LineageEntry(
+            base="eliza-1-wakeword-family", license="apache-2.0"
+        ),
+    }
+    for slot, default in optional_defaults.items():
+        if files.get(slot):
+            out[slot] = default
+
+    if not sidecar:
+        return out
+
+    for slot in (
+        "text",
+        "voice",
+        "drafter",
+        "asr",
+        "vision",
+        "embedding",
+        "vad",
+        "wakeword",
+    ):
         spec = sidecar.get(slot)
         if isinstance(spec, dict):
+            default = out.get(slot)
             out[slot] = LineageEntry(
-                base=str(spec.get("base", defaults[slot].base)),
-                license=str(spec.get("license", defaults[slot].license)),
+                base=str(spec.get("base", default.base if default else "")),
+                license=str(spec.get("license", default.license if default else "")),
             )
     return out
 
@@ -549,15 +690,15 @@ def _required_kernels_for(tier: str, layout: Mapping[str, Sequence[Path]]) -> tu
     """Compute the ``kernels.required`` and ``kernels.optional`` lists.
 
     Required kernels come from REQUIRED_KERNELS_BY_TIER. ``turbo3_tcq``
-    is added as optional whenever any text variant has ctx > 64k.
+    is promoted to required whenever any text variant has ctx > 64k.
     """
     req = list(REQUIRED_KERNELS_BY_TIER[tier])
     opt: list[str] = []
     for p in layout.get("text", []):
         ctx = parse_text_ctx_from_filename(p)
         if ctx is not None and ctx > 65536:
-            if "turbo3_tcq" not in req and "turbo3_tcq" not in opt:
-                opt.append("turbo3_tcq")
+            if "turbo3_tcq" not in req:
+                req.append("turbo3_tcq")
     return req, opt
 
 
@@ -591,7 +732,7 @@ def assemble_manifest(
     lineage_sidecar: dict[str, Any] | None = None
     if lineage_path.is_file():
         lineage_sidecar = json.loads(lineage_path.read_text())
-    lineage = _build_lineage(ctx.tier, lineage_sidecar)
+    lineage = _build_lineage(ctx.tier, lineage_sidecar, files_map)
 
     ram_path = ctx.bundle_dir / "ram_budget.json"
     if ram_path.is_file():
@@ -604,11 +745,20 @@ def assemble_manifest(
     results = eval_blob["results"]
     text_eval_score = float(results["text_eval"])
     voice_rtf = float(results["voice_rtf"])
+    has_asr = bool(files_map.get("asr"))
+    asr_wer = float(results["asr_wer"]) if has_asr else None
+    expressive_tag_faithfulness = float(results["expressive_tag_faithfulness"])
+    expressive_mos = float(results["expressive_mos"])
+    expressive_tag_leakage = float(results["expressive_tag_leakage"])
 
     # All evals' ``passed`` flags come from the gate report — it's the
     # only source of truth and matches the manifest validator's rules.
     text_eval_passed = _gate_passed(gate_report, "text_eval")
     voice_rtf_passed = _gate_passed(gate_report, "voice_rtf")
+    expressive_passed = all(
+        _gate_passed(gate_report, gate_name)
+        for gate_name in EXPRESSIVE_GATE_NAMES
+    )
     # ``e2e_loop_ok`` and ``thirty_turn_ok`` are independent boolean
     # contract gates per AGENTS.md §6 (manifest fields ``evals.e2eLoopOk``
     # and ``evals.thirtyTurnOk``). Read each from the eval blob directly
@@ -633,6 +783,7 @@ def assemble_manifest(
         and all_backends_pass
         and text_eval_passed
         and voice_rtf_passed
+        and expressive_passed
         and e2e_loop_ok
         and thirty_turn_ok
     )
@@ -656,6 +807,17 @@ def assemble_manifest(
             ram_budget_min_mb=ram_min,
             ram_budget_recommended_mb=ram_rec,
             default_eligible=default_eligible,
+            asr_wer=asr_wer,
+            asr_wer_passed=_gate_passed(gate_report, "asr_wer") if has_asr else None,
+            expressive_tag_faithfulness=expressive_tag_faithfulness,
+            expressive_mos=expressive_mos,
+            expressive_tag_leakage=expressive_tag_leakage,
+            expressive_passed=expressive_passed,
+            voice_capabilities=DEFAULT_VOICE_CAPABILITIES,
+            voice_version=ELIZA_1_VOICE_MANIFEST_VERSION,
+            voice_frozen=True,
+            voice_cache_speaker_preset=VOICE_PRESET_CACHE_PATH,
+            voice_cache_phrase_seed=VOICE_PRESET_CACHE_PATH,
         )
     except Eliza1ManifestError as exc:
         raise OrchestratorError(
@@ -798,6 +960,8 @@ def render_readme(ctx: PublishContext, manifest: Mapping[str, Any]) -> str:
         for kind in ("text", "voice", "asr", "vision", "dflash", "cache")
         if manifest["files"].get(kind)
     ]
+    voice = manifest.get("voice") or {}
+    voice_cache = voice.get("cache") if isinstance(voice.get("cache"), dict) else {}
 
     return template.render(
         manifest=manifest,
@@ -810,6 +974,8 @@ def render_readme(ctx: PublishContext, manifest: Mapping[str, Any]) -> str:
         kernels_required_str=", ".join(manifest["kernels"]["required"]),
         kernels_optional_str=", ".join(manifest["kernels"]["optional"]) or "(none)",
         file_groups=file_groups,
+        voice_capabilities_str=", ".join(voice.get("capabilities", [])),
+        voice_cache=voice_cache,
     )
 
 
@@ -845,6 +1011,13 @@ def _build_upload_list(
     for p in sorted(evals_dir.iterdir()):
         if p.is_file():
             pairs.append((p, f"evals/{p.name}"))
+
+    existing_targets = {target for _, target in pairs}
+    for p in layout.get("quantization_sidecars", []):
+        target = str(p.relative_to(ctx.bundle_dir))
+        if target not in existing_targets:
+            pairs.append((p, target))
+            existing_targets.add(target)
 
     return pairs
 
@@ -971,6 +1144,8 @@ def run(ctx: PublishContext) -> int:
     """Run every stage. Returns an exit code; never raises."""
 
     try:
+        validate_destination_repo(ctx)
+
         log.info("[stage 1/6] validate bundle layout (%s)", ctx.bundle_dir)
         layout = validate_bundle_layout(ctx)
 
@@ -1055,7 +1230,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
     ap.add_argument(
         "--repo-id",
         default=None,
-        help="Override HF repo id (default: elizaos/eliza-1-<tier>).",
+        help=(
+            "HF repo id. Must equal elizalabs/eliza-1-<tier>; accepted only "
+            "so wrappers can pass the resolved destination explicitly."
+        ),
     )
     ap.add_argument(
         "--public",
@@ -1084,7 +1262,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
     )
     args = ap.parse_args(argv)
 
-    repo_id = args.repo_id or f"elizaos/eliza-1-{args.tier}"
+    repo_id = args.repo_id or f"{ELIZA_1_HF_ORG}/eliza-1-{args.tier}"
     template_path = (
         Path(__file__).resolve().parent / "templates" / "README.md.j2"
     )

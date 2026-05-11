@@ -44,7 +44,7 @@ function defaultStateFor(id: PermissionId): PermissionState {
 
 function resolveStateDir(): string {
   const explicit = process.env.MILADY_STATE_DIR ?? process.env.ELIZA_STATE_DIR;
-  if (explicit && explicit.trim()) return explicit;
+  if (explicit?.trim()) return explicit;
   return path.join(os.homedir(), ".milady");
 }
 

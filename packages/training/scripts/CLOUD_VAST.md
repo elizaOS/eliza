@@ -195,7 +195,7 @@ mapping.
 
 ## Bootstrap from HuggingFace (no local rsync)
 
-Once `elizaos/eliza-1-pipeline` and `elizaos/eliza-1-training` are
+Once `elizalabs/eliza-1-pipeline` and `elizalabs/eliza-1-training` are
 published to the Hub (see `HF_PUBLISHING.md`), a fresh Vast box can
 bootstrap itself end-to-end without rsync from your local machine. This
 matters when the local box is offline, lives behind a flaky home upload,
@@ -225,8 +225,8 @@ bash scripts/train_vast.sh run                     # full SFT
 
 ```bash
 bash scripts/train_vast.sh bootstrap-from-hf \
-    --pipeline-repo elizaos/eliza-1-pipeline \
-    --data-repo elizaos/eliza-1-training
+    --pipeline-repo elizalabs/eliza-1-pipeline \
+    --data-repo elizalabs/eliza-1-training
 ```
 
 The remote auto-installs `uv` and `huggingface_hub[cli]` if missing. Your

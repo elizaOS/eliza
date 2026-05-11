@@ -216,6 +216,12 @@ int main(int argc, const char * argv[]) {
     int n_outputs = is_qjl   ? (fx.n_heads * fx.n_tokens)
                   : is_polar ? fx.n_rows
                   :            fx.n_kv;
+    if ((int)fx.expected_scores.size() != n_outputs) {
+        std::fprintf(stderr,
+                     "[metal_verify] fixture expected_scores length mismatch: got %zu, need %d\n",
+                     fx.expected_scores.size(), n_outputs);
+        return 2;
+    }
     std::printf("[metal_verify] kernel=%s outputs=%d\n", fx.kernel.c_str(), n_outputs);
 
     @autoreleasepool {
@@ -357,7 +363,7 @@ int main(int argc, const char * argv[]) {
         const float * out = (const float *)[scores_buf contents];
         int failures = 0;
         for (int i = 0; i < n_outputs; i++) {
-            float exp_v = (i < (int)fx.expected_scores.size()) ? fx.expected_scores[i] : 0.0f;
+            float exp_v = fx.expected_scores[i];
             float diff = std::fabs(out[i] - exp_v);
             const char * tag = (diff < tol) ? "PASS" : "FAIL";
             std::printf("  i=%d expected=%+.6f got=%+.6f diff=%.3e %s\n",

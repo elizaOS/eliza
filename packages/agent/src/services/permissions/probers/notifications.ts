@@ -15,6 +15,9 @@
  *
  * INTEGRATION TODO: FFI to UNUserNotificationCenter, gated on whether the
  * runtime is launched from a signed app bundle.
+ *
+ * On win32/linux, concrete notification state is supplied by the renderer
+ * fallback through Notification.permission.
  */
 
 import type { PermissionState, Prober } from "../contracts.js";
@@ -27,7 +30,7 @@ export const notificationsProber: Prober = {
 
   async check(): Promise<PermissionState> {
     if (!IS_DARWIN) {
-      // Renderer falls back to Notification.permission.
+      // Renderer fallback handles Notification.permission.
       return buildState(ID, "not-determined", { canRequest: true });
     }
     // No read-only path without UNUserNotificationCenter. Defer.

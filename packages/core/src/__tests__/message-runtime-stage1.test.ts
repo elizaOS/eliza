@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import { runV5MessageRuntimeStage1 } from "../services/message";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
-import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 
 function useModelCalls(runtime: IAgentRuntime): unknown[][] {
 	return (runtime.useModel as { mock: { calls: unknown[][] } }).mock.calls;

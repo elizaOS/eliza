@@ -20,12 +20,12 @@ import { sessionSummaries as _bs_3_sessionSummaries } from "./session-summaries"
 
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
-// biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
 const __bundle_safety_FEATURES_ADVANCED_MEMORY_SCHEMAS_INDEX__ = [
 	_bs_1_longTermMemories,
 	_bs_2_memoryAccessLogs,
 	_bs_3_sessionSummaries,
 ];
-// biome-ignore lint/suspicious/noExplicitAny: bundle-safety sink.
-(globalThis as any).__bundle_safety_FEATURES_ADVANCED_MEMORY_SCHEMAS_INDEX__ =
+(
+	globalThis as Record<string, unknown>
+).__bundle_safety_FEATURES_ADVANCED_MEMORY_SCHEMAS_INDEX__ =
 	__bundle_safety_FEATURES_ADVANCED_MEMORY_SCHEMAS_INDEX__;

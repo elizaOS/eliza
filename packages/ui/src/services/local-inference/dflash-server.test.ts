@@ -92,10 +92,10 @@ llamacpp:n_drafted_accepted_total{slot_id="0"} 130
 `;
     const snapshot = parseDflashMetrics(text);
     expect(snapshot).not.toBeNull();
-    expect(snapshot!.decoded).toBe(128);
-    expect(snapshot!.drafted).toBe(200);
-    expect(snapshot!.accepted).toBe(130);
-    expect(snapshot!.acceptanceRate).toBeCloseTo(0.65, 5);
+    expect(snapshot?.decoded).toBe(128);
+    expect(snapshot?.drafted).toBe(200);
+    expect(snapshot?.accepted).toBe(130);
+    expect(snapshot?.acceptanceRate).toBeCloseTo(0.65, 5);
   });
 
   it("falls back to non-_total counter names emitted by older fork builds", () => {
@@ -105,10 +105,10 @@ llamacpp:n_drafted_accepted 75
 `;
     const snapshot = parseDflashMetrics(text);
     expect(snapshot).not.toBeNull();
-    expect(snapshot!.decoded).toBe(64);
-    expect(snapshot!.drafted).toBe(100);
-    expect(snapshot!.accepted).toBe(75);
-    expect(snapshot!.acceptanceRate).toBeCloseTo(0.75, 5);
+    expect(snapshot?.decoded).toBe(64);
+    expect(snapshot?.drafted).toBe(100);
+    expect(snapshot?.accepted).toBe(75);
+    expect(snapshot?.acceptanceRate).toBeCloseTo(0.75, 5);
   });
 
   it("returns null when the response has no speculative counters", () => {
@@ -126,7 +126,7 @@ llamacpp:n_drafted_accepted_total 0
 `;
     const snapshot = parseDflashMetrics(text);
     expect(snapshot).not.toBeNull();
-    expect(snapshot!.drafted).toBe(0);
-    expect(Number.isNaN(snapshot!.acceptanceRate)).toBe(true);
+    expect(snapshot?.drafted).toBe(0);
+    expect(Number.isNaN(snapshot?.acceptanceRate)).toBe(true);
   });
 });

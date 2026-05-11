@@ -45,16 +45,46 @@ type PermissionStatus =
   | "restricted"
   | "not-applicable";
 type PermissionId =
-  | "accessibility"
   | "screen-recording"
+  | "accessibility"
+  | "reminders"
+  | "calendar"
+  | "health"
+  | "screentime"
+  | "contacts"
+  | "notes"
   | "microphone"
   | "camera"
-  | "shell";
+  | "location"
+  | "shell"
+  | "website-blocking"
+  | "notifications"
+  | "full-disk"
+  | "automation";
+const PERMISSION_IDS: readonly PermissionId[] = [
+  "screen-recording",
+  "accessibility",
+  "reminders",
+  "calendar",
+  "health",
+  "screentime",
+  "contacts",
+  "notes",
+  "microphone",
+  "camera",
+  "location",
+  "shell",
+  "website-blocking",
+  "notifications",
+  "full-disk",
+  "automation",
+];
 type PermissionStateRecord = {
   id: PermissionId;
   status: PermissionStatus;
   lastChecked: number;
   canRequest: boolean;
+  platform: "linux";
 };
 type PermissionsStateRecord = Record<PermissionId, PermissionStateRecord>;
 
@@ -206,38 +236,18 @@ function nowIso(): string {
 
 function createDefaultPermissionsState(): PermissionsStateRecord {
   const now = Date.now();
-  return {
-    accessibility: {
-      id: "accessibility",
-      status: "granted",
-      lastChecked: now,
-      canRequest: false,
-    },
-    "screen-recording": {
-      id: "screen-recording",
-      status: "granted",
-      lastChecked: now,
-      canRequest: false,
-    },
-    microphone: {
-      id: "microphone",
-      status: "granted",
-      lastChecked: now,
-      canRequest: false,
-    },
-    camera: {
-      id: "camera",
-      status: "granted",
-      lastChecked: now,
-      canRequest: false,
-    },
-    shell: {
-      id: "shell",
-      status: "granted",
-      lastChecked: now,
-      canRequest: false,
-    },
-  };
+  return Object.fromEntries(
+    PERMISSION_IDS.map((id) => [
+      id,
+      {
+        id,
+        status: "granted" as PermissionStatus,
+        lastChecked: now,
+        canRequest: false,
+        platform: "linux",
+      },
+    ]),
+  ) as PermissionsStateRecord;
 }
 
 function mergePermissionsState(

@@ -34,7 +34,7 @@ import {
   buildPageScopedRoutingMetadata,
   PAGE_SCOPE_VERSION,
   type PageScope,
-} from "../../src/components/pages/page-scoped-conversations.js";
+} from "../../../ui/src/components/pages/page-scoped-conversations.js";
 import { ConversationHarness } from "../helpers/conversation-harness.js";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 import {

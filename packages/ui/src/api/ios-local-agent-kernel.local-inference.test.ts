@@ -9,6 +9,9 @@ type DownloadModelFn = (
   _url: string,
   filename: string,
 ) => Promise<{ path: string }>;
+type HashFileFn = (
+  path: string,
+) => Promise<{ sha256: string; sizeBytes: number }>;
 type GetDownloadProgressFn = (_url: string) => Promise<{
   downloaded: number;
   total: number;
@@ -28,16 +31,46 @@ type MockOptions = {
   hardware?: Record<string, unknown>;
   availableModels?: Array<{ name?: string; path?: string; size?: number }>;
   downloadModel?: DownloadModelFn;
+  hashFile?: HashFileFn;
   getDownloadProgress?: GetDownloadProgressFn;
   load?: LoadFn;
   generate?: GenerateFn;
 };
+
+function eliza1MobileManifest(): Record<string, unknown> {
+  return {
+    id: "eliza-1-1_7b",
+    version: "1.0.0",
+    defaultEligible: true,
+    files: {
+      text: [
+        {
+          path: "text/eliza-1-1_7b-32k.gguf",
+          sha256: "0".repeat(64),
+          ctx: 32768,
+        },
+      ],
+      voice: [],
+      asr: [],
+      vision: [],
+      dflash: [
+        {
+          path: "dflash/drafter-1_7b.gguf",
+          sha256: "0".repeat(64),
+          ctx: 32768,
+        },
+      ],
+      cache: [],
+    },
+  };
+}
 
 const mockState = vi.hoisted(
   (): {
     hardware: Record<string, unknown>;
     availableModels: Array<{ name?: string; path?: string; size?: number }>;
     downloadModel: DownloadModelFn;
+    hashFile: HashFileFn;
     getDownloadProgress: GetDownloadProgressFn;
     load: LoadFn;
     generate: GenerateFn;
@@ -46,6 +79,10 @@ const mockState = vi.hoisted(
     availableModels: [],
     downloadModel: vi.fn(async (_url: string, filename: string) => ({
       path: `/models/${filename}`,
+    })),
+    hashFile: vi.fn(async () => ({
+      sha256: "0".repeat(64),
+      sizeBytes: 1024,
     })),
     getDownloadProgress: vi.fn(async (_url: string) => ({
       downloaded: 0,
@@ -92,6 +129,7 @@ vi.mock("@elizaos/capacitor-llama", () => ({
 vi.mock("llama-cpp-capacitor", () => ({
   downloadModel: (url: string, filename: string) =>
     mockState.downloadModel(url, filename),
+  hashFile: (path: string) => mockState.hashFile(path),
   getDownloadProgress: (url: string) => mockState.getDownloadProgress(url),
   cancelDownload: vi.fn(async () => true),
   getAvailableModels: vi.fn(async () => mockState.availableModels),
@@ -127,6 +165,12 @@ async function loadKernel(options: MockOptions = {}): Promise<KernelModule> {
     vi.fn(async (_url: string, filename: string) => ({
       path: `/models/${filename}`,
     }));
+  mockState.hashFile =
+    options.hashFile ??
+    vi.fn(async () => ({
+      sha256: "0".repeat(64),
+      sizeBytes: 1024,
+    }));
   mockState.getDownloadProgress =
     options.getDownloadProgress ??
     vi.fn(async (_url: string) => ({
@@ -151,6 +195,14 @@ async function loadKernel(options: MockOptions = {}): Promise<KernelModule> {
   const localStorage = stubLocalStorage();
   vi.stubGlobal("window", { localStorage });
   vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json(eliza1MobileManifest(), {
+        status: 200,
+      }),
+    ),
+  );
 
   await handleIosLocalAgentRequest(
     new Request("http://127.0.0.1:31337/api/agent/reset", {
@@ -177,11 +229,13 @@ async function jsonRequest(
   return response.json();
 }
 
-async function eventually(assertion: () => void): Promise<void> {
+async function eventually(
+  assertion: () => void | Promise<void>,
+): Promise<void> {
   let lastError: unknown;
   for (let i = 0; i < 20; i += 1) {
     try {
-      assertion();
+      await assertion();
       return;
     } catch (error) {
       lastError = error;
@@ -225,13 +279,20 @@ describe("iOS local-agent local inference flow", () => {
 
     expect(reply.localInference).toMatchObject({
       status: "downloading",
-      modelId: "eliza-1-mobile-1_7b",
+      modelId: "eliza-1-1_7b",
     });
     expect(reply.text.toLowerCase()).toContain("downloading");
 
     await eventually(() => {
       const filenames = downloadModel.mock.calls.map((call) => call[1]);
-      expect(filenames).toContain("eliza-1-mobile-1_7b.gguf");
+      expect(filenames).toContain("eliza-1-1_7b.manifest.json");
+      expect(filenames).toContain("eliza-1-1_7b-32k.gguf");
+      expect(mockState.hashFile).toHaveBeenCalledWith(
+        "/models/eliza-1-1_7b.manifest.json",
+      );
+      expect(mockState.hashFile).toHaveBeenCalledWith(
+        "/models/eliza-1-1_7b-32k.gguf",
+      );
     });
   }, 30_000);
 
@@ -255,7 +316,35 @@ describe("iOS local-agent local inference flow", () => {
     expect(greeting.text.toLowerCase()).toContain("downloading");
     expect(greeting.localInference).toMatchObject({
       status: "downloading",
-      modelId: "eliza-1-mobile-1_7b",
+      modelId: "eliza-1-1_7b",
+    });
+  });
+
+  it("fails an Eliza-1 bundle download when a native SHA256 check mismatches", async () => {
+    const kernel = await loadKernel({
+      hashFile: vi.fn(async (path: string) => ({
+        sha256: path.endsWith(".manifest.json")
+          ? "0".repeat(64)
+          : "f".repeat(64),
+        sizeBytes: 1024,
+      })),
+    });
+
+    await jsonRequest(kernel, "POST", "/api/local-inference/downloads", {
+      modelId: "eliza-1-1_7b",
+    });
+
+    await eventually(async () => {
+      const response = await kernel.handleIosLocalAgentRequest(
+        new Request(
+          "http://127.0.0.1:31337/api/local-inference/downloads/eliza-1-1_7b",
+        ),
+      );
+      const payload = (await response.json()) as {
+        job?: { state?: string; error?: string };
+      };
+      expect(payload.job?.state).toBe("failed");
+      expect(payload.job?.error).toContain("SHA256 mismatch");
     });
   });
 
@@ -284,7 +373,7 @@ describe("iOS local-agent local inference flow", () => {
 
     expect(reply.localInference).toMatchObject({
       status: "downloading",
-      modelId: "eliza-1-mobile-1_7b",
+      modelId: "eliza-1-1_7b",
     });
   });
 
@@ -294,21 +383,22 @@ describe("iOS local-agent local inference flow", () => {
       load,
       availableModels: [
         {
-          name: "eliza-1-mobile-1_7b-32k.gguf",
-          path: "/models/eliza-1-mobile-1_7b-32k.gguf",
+          name: "eliza-1-1_7b-32k.gguf",
+          path: "/models/eliza-1-1_7b-32k.gguf",
           size: 1_200_000_000,
         },
       ],
     });
 
     await jsonRequest(kernel, "POST", "/api/local-inference/active", {
-      modelId: "eliza-1-mobile-1_7b",
+      modelId: "eliza-1-1_7b",
     });
 
     expect(load).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelPath: "/models/eliza-1-mobile-1_7b-32k.gguf",
-        contextSize: 4096,
+        modelPath: "/models/eliza-1-1_7b-32k.gguf",
+        contextSize: 6144,
+        maxThreads: 6,
         useGpu: true,
       }),
     );
@@ -324,20 +414,20 @@ describe("iOS local-agent local inference flow", () => {
       },
       availableModels: [
         {
-          name: "eliza-1-mobile-1_7b-32k.gguf",
-          path: "/models/eliza-1-mobile-1_7b-32k.gguf",
+          name: "eliza-1-1_7b-32k.gguf",
+          path: "/models/eliza-1-1_7b-32k.gguf",
           size: 1_200_000_000,
         },
       ],
     });
 
     await jsonRequest(kernel, "POST", "/api/local-inference/active", {
-      modelId: "eliza-1-mobile-1_7b",
+      modelId: "eliza-1-1_7b",
     });
 
     expect(load).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelPath: "/models/eliza-1-mobile-1_7b-32k.gguf",
+        modelPath: "/models/eliza-1-1_7b-32k.gguf",
         useGpu: true,
       }),
     );

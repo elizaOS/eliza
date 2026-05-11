@@ -13,6 +13,7 @@ import { DownloadProgress } from "./DownloadProgress";
 import {
   bucketLabel,
   computeFit,
+  displayModelName,
   type FitLevel,
   findDownload,
   findInstalled,
@@ -155,7 +156,7 @@ function ModelListRow({
               </span>
             ) : null}
             <div className="min-w-0 flex-1 truncate font-semibold text-sm text-txt">
-              {model.displayName}
+              {displayModelName(model)}
             </div>
             <span
               className={`inline-flex h-5 w-5 shrink-0 items-center justify-center ${FIT_STYLES[fit]}`}

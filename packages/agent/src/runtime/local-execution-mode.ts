@@ -11,9 +11,9 @@
 export {
   isCloudExecutionMode,
   type LocalExecutionMode,
-  resolveLocalExecutionMode,
-  resolveRuntimeExecutionMode,
   type RuntimeExecutionMode,
   type RuntimeExecutionModeSource,
+  resolveLocalExecutionMode,
+  resolveRuntimeExecutionMode,
   shouldUseSandboxExecution,
 } from "@elizaos/shared";

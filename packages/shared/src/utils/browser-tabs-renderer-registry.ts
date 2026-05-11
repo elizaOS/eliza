@@ -533,17 +533,121 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
         });
       });
 
+    // Shared wallet-picker icon. Inline so wallet discovery never depends on
+    // network availability.
+    const ELIZA_WALLET_ICON =
+      "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHJ4PSI2IiBmaWxsPSIjNmY1Y2ZmIi8+PHRleHQgeD0iNTAlIiB5PSI2OCUiIGZvbnQtZmFtaWx5PSItYXBwbGUtc3lzdGVtLEJsaW5rTWFjU3lzdGVtRm9udCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5NPC90ZXh0Pjwvc3ZnPg==";
+
     // ── EIP-1193 ──
+    const DEFAULT_EVM_RPCS = {
+      "1": "https://eth.llamarpc.com",
+      "56": "https://bsc-dataseed.bnbchain.org",
+      "8453": "https://mainnet.base.org",
+      "10": "https://mainnet.optimism.io",
+      "42161": "https://arb1.arbitrum.io/rpc",
+      "137": "https://polygon-rpc.com",
+    };
+    let evmChainId = 1;
+    const parseChainId = (value) => {
+      if (typeof value === "number" && Number.isFinite(value)) return value;
+      if (typeof value !== "string") return null;
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      const parsed = trimmed.startsWith("0x") ? Number.parseInt(trimmed.slice(2), 16) : Number(trimmed);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    };
+    const formatChainId = (value) => "0x" + value.toString(16);
+    const rpc = (method, params) => {
+      const rpcUrl = DEFAULT_EVM_RPCS[String(evmChainId)];
+      if (!rpcUrl) {
+        return Promise.reject(new Error("No public RPC configured for chain " + evmChainId + "."));
+      }
+      return fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: Date.now(),
+          method: method,
+          params: params || [],
+        }),
+      })
+        .then((r) => r.json())
+        .then((payload) => {
+          if (payload && payload.error) {
+            throw new Error(payload.error.message || "RPC request failed.");
+          }
+          return payload ? payload.result : null;
+        });
+    };
     const eventListeners = { accountsChanged: new Set(), chainChanged: new Set(), connect: new Set(), disconnect: new Set() };
     const ethereum = {
-      isMetaMask: false,
+      isMetaMask: true,
       isEliza: true,
+      isElizaWallet: true,
+      selectedAddress: null,
+      chainId: formatChainId(evmChainId),
       _events: eventListeners,
       request: (args) => {
         if (!args || typeof args.method !== "string") {
           return Promise.reject(new Error("EIP-1193 request requires {method, params}"));
         }
-        return callHost("evm", args.method, args.params);
+        const method = args.method;
+        const params = args.params;
+        if (method === "eth_chainId") {
+          return Promise.resolve(formatChainId(evmChainId));
+        }
+        if (method === "net_version") {
+          return Promise.resolve(String(evmChainId));
+        }
+        if (method === "wallet_addEthereumChain") {
+          const arr = Array.isArray(params) ? params : [params];
+          const next = arr[0] && typeof arr[0] === "object" ? parseChainId(arr[0].chainId) : null;
+          if (next) {
+            evmChainId = next;
+            ethereum.chainId = formatChainId(evmChainId);
+          }
+          return Promise.resolve(null);
+        }
+        if (method === "wallet_switchEthereumChain") {
+          const arr = Array.isArray(params) ? params : [params];
+          const next = arr[0] && typeof arr[0] === "object" ? parseChainId(arr[0].chainId) : null;
+          return callHost("evm", method, params).then((result) => {
+            if (next) {
+              evmChainId = next;
+              ethereum.chainId = formatChainId(evmChainId);
+              for (const listener of Array.from(eventListeners.chainChanged)) {
+                try { listener(ethereum.chainId); } catch (_e) {}
+              }
+            }
+            return result;
+          });
+        }
+        if (method === "eth_requestAccounts") {
+          return callHost("evm", method, params).then((accounts) => {
+            ethereum.selectedAddress = Array.isArray(accounts) ? (accounts[0] || null) : null;
+            for (const listener of Array.from(eventListeners.accountsChanged)) {
+              try { listener(accounts); } catch (_e) {}
+            }
+            if (ethereum.selectedAddress) {
+              for (const listener of Array.from(eventListeners.connect)) {
+                try { listener({ chainId: ethereum.chainId }); } catch (_e) {}
+              }
+            }
+            return accounts;
+          });
+        }
+        if (
+          method === "eth_accounts" ||
+          method === "personal_sign" ||
+          method === "eth_sign" ||
+          method === "eth_sendTransaction" ||
+          method === "eth_signTypedData" ||
+          method === "eth_signTypedData_v4"
+        ) {
+          return callHost("evm", method, params);
+        }
+        return rpc(method, params);
       },
       enable: function () {
         return this.request({ method: "eth_requestAccounts" });
@@ -593,21 +697,47 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
       try { window.ethereum = ethereum; } catch (_e) {}
     }
 
-    // ── Solana (Phantom-shaped) ──
+    // ── Solana (Phantom-shaped + Wallet Standard) ──
     const solanaListeners = { connect: new Set(), disconnect: new Set(), accountChanged: new Set() };
+    const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    const base58Decode = (value) => {
+      const bytes = [0];
+      for (let i = 0; i < value.length; i += 1) {
+        const c = B58.indexOf(value[i]);
+        if (c < 0) throw new Error("invalid base58");
+        let carry = c;
+        for (let j = 0; j < bytes.length; j += 1) {
+          carry += bytes[j] * 58;
+          bytes[j] = carry & 0xff;
+          carry >>= 8;
+        }
+        while (carry) {
+          bytes.push(carry & 0xff);
+          carry >>= 8;
+        }
+      }
+      for (let k = 0; k < value.length && value[k] === "1"; k += 1) bytes.push(0);
+      return new Uint8Array(bytes.reverse());
+    };
+    const base64ToBytes = (base64) => {
+      const bin = atob(base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+      return bytes;
+    };
+    const bytesToBase64 = (bytes) => {
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+      return btoa(binary);
+    };
     const makePublicKey = (base58) => {
       if (!base58) return null;
+      const bytes = base58Decode(base58);
       const obj = {
         toBase58: () => base58,
         toString: () => base58,
-        toBytes: () => {
-          // Best-effort: many launchpads only need toBase58/toString. If
-          // they do call toBytes the result will be wrong, but the lazy
-          // approach avoids bundling a base58 decoder into every tab.
-          // The host-side signing path receives base58 directly, so
-          // round-trip transactions don't depend on this method.
-          throw new Error("solana.publicKey.toBytes is not supported by the Eliza tab shim");
-        },
+        toBytes: () => new Uint8Array(bytes),
+        toBuffer: () => new Uint8Array(bytes),
         equals: (other) => other && typeof other.toBase58 === "function" && other.toBase58() === base58,
       };
       return obj;
@@ -638,15 +768,12 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
       },
       signMessage: async function (message, _encoding) {
         const bytes = message instanceof Uint8Array ? message : new TextEncoder().encode(String(message));
-        const messageBase64 = btoa(String.fromCharCode.apply(null, Array.from(bytes)));
+        const messageBase64 = bytesToBase64(bytes);
         const result = await callHost("solana", "signMessage", { messageBase64: messageBase64 });
         if (!result || typeof result.signatureBase64 !== "string") {
           throw new Error("Solana signMessage returned no signature.");
         }
-        const sig = atob(result.signatureBase64);
-        const arr = new Uint8Array(sig.length);
-        for (let i = 0; i < sig.length; i += 1) arr[i] = sig.charCodeAt(i);
-        return { signature: arr, publicKey: this.publicKey };
+        return { signature: base64ToBytes(result.signatureBase64), publicKey: this.publicKey };
       },
       signTransaction: async function (transaction) {
         const transactionBase64 = await serializeTransactionForHost(transaction);
@@ -703,23 +830,163 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
         } else {
           throw new Error("Unsupported transaction shape for Eliza wallet bridge");
         }
-        let binary = "";
-        for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
-        return btoa(binary);
+        return bytesToBase64(bytes);
       } catch (err) {
         throw err instanceof Error ? err : new Error(String(err));
       }
     }
 
-    // Best-effort: hand the signed bytes back as the same shape the caller
-    // gave us. Most callers immediately send the result to a Connection
-    // which accepts a serialized buffer — passing a Uint8Array is safe.
-    function deserializeTransactionFromHost(base64, _original) {
-      const bin = atob(base64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
-      return bytes;
+    // Best-effort: hand the signed bytes back as the same transaction class
+    // the caller gave us. Wallet adapters expect Phantom's signTransaction to
+    // return a Transaction/VersionedTransaction, not only serialized bytes.
+    function deserializeTransactionFromHost(base64, original) {
+      const bytes = base64ToBytes(base64);
+      const ctor = original && original.constructor;
+      try {
+        if (ctor && typeof ctor.deserialize === "function") {
+          return ctor.deserialize(bytes);
+        }
+      } catch (_err) {}
+      try {
+        if (ctor && typeof ctor.from === "function") {
+          return ctor.from(bytes);
+        }
+      } catch (_err) {}
+      return {
+        serialize: () => bytes,
+        __signedBytes: bytes,
+      };
     }
+
+    function makeWalletStandardAccount(publicKeyString) {
+      const publicKey = base58Decode(publicKeyString);
+      return {
+        address: publicKeyString,
+        publicKey: publicKey,
+        chains: ["solana:mainnet", "solana:devnet", "solana:testnet"],
+        features: [
+          "standard:connect",
+          "standard:disconnect",
+          "standard:events",
+          "solana:signMessage",
+          "solana:signTransaction",
+          "solana:signAndSendTransaction",
+        ],
+        label: "Eliza Wallet",
+      };
+    }
+
+    function registerWalletStandard() {
+      let account = null;
+      const ensureAccount = async () => {
+        if (!solana.publicKey || !solana.isConnected) {
+          await solana.connect();
+        }
+        const address = solana.publicKey && solana.publicKey.toBase58();
+        if (!address) throw new Error("Solana wallet did not connect.");
+        account = makeWalletStandardAccount(address);
+        return account;
+      };
+      const wallet = {
+        version: "1.0.0",
+        name: "Eliza Wallet",
+        icon: ELIZA_WALLET_ICON,
+        chains: ["solana:mainnet", "solana:devnet", "solana:testnet"],
+        get accounts() {
+          return account ? [account] : [];
+        },
+        features: {
+          "standard:connect": {
+            version: "1.0.0",
+            connect: async () => ({ accounts: [await ensureAccount()] }),
+          },
+          "standard:disconnect": {
+            version: "1.0.0",
+            disconnect: async () => {
+              await solana.disconnect();
+              account = null;
+            },
+          },
+          "standard:events": {
+            version: "1.0.0",
+            on: (event, listener) => {
+              if (event === "change") {
+                solanaListeners.accountChanged.add(listener);
+                return () => solanaListeners.accountChanged.delete(listener);
+              }
+              return () => {};
+            },
+          },
+          "solana:signMessage": {
+            version: "1.0.0",
+            signMessage: async (input) => {
+              await ensureAccount();
+              const inputs = Array.isArray(input) ? input : [input];
+              return Promise.all(inputs.map(async (entry) => {
+                const result = await callHost("solana", "signMessage", {
+                  messageBase64: bytesToBase64(entry.message),
+                });
+                return {
+                  signedMessage: entry.message,
+                  signature: base64ToBytes(result.signatureBase64),
+                  signatureType: "ed25519",
+                };
+              }));
+            },
+          },
+          "solana:signTransaction": {
+            version: "1.0.0",
+            supportedTransactionVersions: ["legacy", 0],
+            signTransaction: async (input) => {
+              await ensureAccount();
+              const inputs = Array.isArray(input) ? input : [input];
+              return Promise.all(inputs.map(async (entry) => {
+                const result = await callHost("solana", "signTransaction", {
+                  transactionBase64: bytesToBase64(entry.transaction),
+                });
+                return { signedTransaction: base64ToBytes(result.signedTransactionBase64) };
+              }));
+            },
+          },
+          "solana:signAndSendTransaction": {
+            version: "1.0.0",
+            supportedTransactionVersions: ["legacy", 0],
+            signAndSendTransaction: async (input) => {
+              await ensureAccount();
+              const inputs = Array.isArray(input) ? input : [input];
+              return Promise.all(inputs.map(async (entry) => {
+                const result = await callHost("solana", "signAndSendTransaction", {
+                  transactionBase64: bytesToBase64(entry.transaction),
+                });
+                return { signature: base58Decode(result.signature) };
+              }));
+            },
+          },
+        },
+      };
+      const register = (api) => {
+        try {
+          api.register(wallet);
+        } catch (_err) {}
+      };
+      const fireRegister = () => {
+        try {
+          window.dispatchEvent(new CustomEvent("wallet-standard:register-wallet", { detail: register }));
+        } catch (_err) {}
+      };
+      try {
+        window.addEventListener("wallet-standard:app-ready", (event) => {
+          if (event && event.detail) register(event.detail);
+        });
+      } catch (_err) {}
+      fireRegister();
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", fireRegister, { once: true });
+      }
+      window.addEventListener("load", fireRegister);
+    }
+
+    registerWalletStandard();
 
     try {
       Object.defineProperty(window, "solana", {
@@ -742,11 +1009,6 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
     //     because dApps key wallet selection on it. Changing this would
     //     make every dApp forget the user's previous choice.
     //   rdns — reverse-DNS namespace for the wallet brand.
-    //   icon — data URI; the SVG below is a 24x24 monochrome "M" mark in
-    //     the brand purple (#6f5cff). Inline so we don't depend on
-    //     network availability for wallet-picker rendering.
-    const ELIZA_WALLET_ICON =
-      "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHJ4PSI2IiBmaWxsPSIjNmY1Y2ZmIi8+PHRleHQgeD0iNTAlIiB5PSI2OCUiIGZvbnQtZmFtaWx5PSItYXBwbGUtc3lzdGVtLEJsaW5rTWFjU3lzdGVtRm9udCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5NPC90ZXh0Pjwvc3ZnPg==";
     const announceEthereum = () => {
       try {
         const detail = Object.freeze({

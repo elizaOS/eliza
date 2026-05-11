@@ -9,14 +9,20 @@
 
 import { Button } from "@elizaos/ui";
 import { Cloud, Laptop, type LucideIcon, RadioTower } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
+import {
+  inspectExistingElizaInstall,
+  migrateDesktopStateDir,
+  pickDesktopWorkspaceFolder,
+} from "../../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { isStoreBuild } from "../../build-variant";
+import { useRuntimeMode } from "../../hooks/useRuntimeMode";
 import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
 import {
   type RuntimePickerTarget,
   reloadIntoRuntimePicker,
 } from "../../onboarding/reload-into-runtime-picker";
-import { useRuntimeMode } from "../../hooks/useRuntimeMode";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { useApp } from "../../state";
 import {
@@ -34,15 +40,14 @@ type RuntimeAction = {
   disabledReason?: string;
 };
 
-// Placeholder anchor for the eventual sandbox/local-build explainer page.
-// Wired here as a string constant per the foundation task — the docs page
-// itself is out of scope for this change.
 const STORE_LOCAL_DISABLED_DOCS_URL =
-  "https://docs.milady.ai/desktop/build-variants";
+  "https://github.com/milady-ai/milady/blob/develop/docs/desktop/build-variants.md";
 
 export function RuntimeSettingsSection() {
   const { t } = useApp();
   const { state: runtimeModeState } = useRuntimeMode();
+  const [migrationMessage, setMigrationMessage] = useState<string | null>(null);
+  const [migrationBusy, setMigrationBusy] = useState(false);
 
   // Prefer the authoritative server snapshot (`GET /api/runtime/mode`).
   // Fall back to the local heuristic when the snapshot is loading or the
@@ -118,6 +123,68 @@ export function RuntimeSettingsSection() {
     reloadIntoRuntimePicker(target);
   }, []);
 
+  const handleImportDirectState = useCallback(async () => {
+    setMigrationBusy(true);
+    setMigrationMessage(null);
+    try {
+      const existing = await inspectExistingElizaInstall();
+      const picked = await pickDesktopWorkspaceFolder({
+        defaultPath: existing?.stateDir,
+        promptTitle: t("settings.runtime.importDirectStatePickerTitle", {
+          defaultValue: "Choose direct-build data folder",
+        }),
+      });
+      if (!picked || picked.canceled || !picked.path) {
+        setMigrationMessage(
+          t("settings.runtime.importDirectStateCanceled", {
+            defaultValue: "Import canceled.",
+          }),
+        );
+        return;
+      }
+      const result = await migrateDesktopStateDir(picked.path);
+      if (!result) {
+        setMigrationMessage(
+          t("settings.runtime.importDirectStateUnavailable", {
+            defaultValue: "Import is unavailable in this runtime.",
+          }),
+        );
+        return;
+      }
+      if (!result.ok) {
+        setMigrationMessage(
+          t("settings.runtime.importDirectStateFailed", {
+            defaultValue: "Import failed: {{error}}",
+            error: result.error ?? "unknown error",
+          }),
+        );
+        return;
+      }
+      if (!result.migrated) {
+        setMigrationMessage(
+          t("settings.runtime.importDirectStateSkipped", {
+            defaultValue: "Nothing was imported from that folder.",
+          }),
+        );
+        return;
+      }
+      setMigrationMessage(
+        t("settings.runtime.importDirectStateDone", {
+          defaultValue: "Imported direct-build data into this sandboxed build.",
+        }),
+      );
+    } catch (error) {
+      setMigrationMessage(
+        t("settings.runtime.importDirectStateFailed", {
+          defaultValue: "Import failed: {{error}}",
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    } finally {
+      setMigrationBusy(false);
+    }
+  }, [t]);
+
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-5">
       <div className="flex flex-col gap-1">
@@ -169,22 +236,45 @@ export function RuntimeSettingsSection() {
         })}
       </div>
       {storeBuild ? (
-        <p className="text-xs text-foreground/60">
-          {t("settings.runtime.localDisabledStoreNote", {
-            defaultValue:
-              "This is the store-distributed build, which runs in a sandbox. ",
-          })}
-          <a
-            href={STORE_LOCAL_DISABLED_DOCS_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="underline"
-          >
-            {t("settings.runtime.localDisabledStoreLink", {
-              defaultValue: "Why?",
+        <div className="space-y-2 text-xs text-foreground/60">
+          <p>
+            {t("settings.runtime.localDisabledStoreNote", {
+              defaultValue:
+                "This is the store-distributed build, which runs in a sandbox. ",
             })}
-          </a>
-        </p>
+            <a
+              href={STORE_LOCAL_DISABLED_DOCS_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              {t("settings.runtime.localDisabledStoreLink", {
+                defaultValue: "Why?",
+              })}
+            </a>
+          </p>
+          {isElectrobunRuntime() ? (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void handleImportDirectState()}
+                disabled={migrationBusy}
+                className="w-fit"
+              >
+                {migrationBusy
+                  ? t("settings.runtime.importingDirectState", {
+                      defaultValue: "Importing...",
+                    })
+                  : t("settings.runtime.importDirectState", {
+                      defaultValue: "Import direct-build data",
+                    })}
+              </Button>
+              {migrationMessage ? <span>{migrationMessage}</span> : null}
+            </div>
+          ) : null}
+        </div>
       ) : null}
       <p className="text-xs text-foreground/60">
         {t("settings.runtime.switchNote", {

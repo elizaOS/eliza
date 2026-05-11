@@ -42,6 +42,11 @@ describe("plugin manager umbrella action", () => {
 			"core_status",
 			"create",
 		]);
+		expect(
+			pluginAction.parameters?.some(
+				(parameter) => parameter.name === "subaction",
+			),
+		).toBe(false);
 	});
 
 	it("does not re-export standalone core plugin management actions", () => {

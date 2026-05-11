@@ -21,19 +21,13 @@ function makeInstalledModel(id: string, filePath: string): InstalledModel {
 
 describe("resolveLocalInferenceLoadArgs", () => {
   it("threads catalog contextLength into loader args when no override is given", async () => {
-    const target = makeInstalledModel(
-      "eliza-1-desktop-9b",
-      "/tmp/eliza-1-desktop-9b.gguf",
-    );
+    const target = makeInstalledModel("eliza-1-9b", "/tmp/eliza-1-9b.gguf");
     const args = await resolveLocalInferenceLoadArgs(target);
     expect(args.contextSize).toBe(65536);
   });
 
   it("per-load contextSize override beats catalog contextLength default", async () => {
-    const target = makeInstalledModel(
-      "eliza-1-desktop-9b",
-      "/tmp/eliza-1-desktop-9b.gguf",
-    );
+    const target = makeInstalledModel("eliza-1-9b", "/tmp/eliza-1-9b.gguf");
     const args = await resolveLocalInferenceLoadArgs(target, {
       contextSize: 32768,
     });
@@ -41,10 +35,7 @@ describe("resolveLocalInferenceLoadArgs", () => {
   });
 
   it("per-load gpuLayers/flashAttention/mmap/mlock overrides flow into args", async () => {
-    const target = makeInstalledModel(
-      "eliza-1-mobile-1_7b",
-      "/tmp/eliza-1-mobile-1_7b.gguf",
-    );
+    const target = makeInstalledModel("eliza-1-1_7b", "/tmp/eliza-1-1_7b.gguf");
     const args = await resolveLocalInferenceLoadArgs(target, {
       gpuLayers: 16,
       flashAttention: true,

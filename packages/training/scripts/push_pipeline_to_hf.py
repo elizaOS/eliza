@@ -5,8 +5,8 @@ repo (see /home/shaw/milady/.gitignore). HuggingFace is the canonical
 artifact store for everything in this tree:
 
   - corpora + dataset splits → ``elizaos/eliza-toon-v1-sft``  (push_to_hf.py)
-  - trained checkpoints      → ``elizaos/eliza-1-{2b,9b,27b}`` (push_model_to_hf.py)
-  - this pipeline (scripts + configs + reports) → ``elizaos/eliza-training-pipeline``
+  - trained checkpoints      → ``elizalabs/eliza-1-{2b,9b,27b}`` (push_model_to_hf.py)
+  - this pipeline (scripts + configs + reports) → ``elizalabs/eliza-1-pipeline``
     (THIS script)
 
 That keeps the milady repo small, prevents accidental commits of
@@ -52,7 +52,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-DEFAULT_REPO_ID = "elizaos/eliza-training-pipeline"
+DEFAULT_REPO_ID = "elizalabs/eliza-1-pipeline"
 
 # Things we explicitly do NOT publish. Matched as fnmatch patterns against
 # both file paths and directory paths (relative to training/).
@@ -137,9 +137,9 @@ def build_pipeline_card() -> str:
         "# eliza-training-pipeline\n"
         "\n"
         "End-to-end training pipeline for the elizaOS **eliza-1** model series:\n"
-        "[`elizaos/eliza-1-2b`](https://huggingface.co/elizaos/eliza-1-2b),\n"
-        "[`elizaos/eliza-1-9b`](https://huggingface.co/elizaos/eliza-1-9b),\n"
-        "[`elizaos/eliza-1-27b`](https://huggingface.co/elizaos/eliza-1-27b).\n"
+        "[`elizalabs/eliza-1-2b`](https://huggingface.co/elizalabs/eliza-1-2b),\n"
+        "[`elizalabs/eliza-1-9b`](https://huggingface.co/elizalabs/eliza-1-9b),\n"
+        "[`elizalabs/eliza-1-27b`](https://huggingface.co/elizalabs/eliza-1-27b).\n"
         "\n"
         "Trained on [`elizaos/eliza-toon-v1-sft`](https://huggingface.co/datasets/elizaos/eliza-toon-v1-sft).\n"
         "\n"
@@ -177,7 +177,7 @@ def build_pipeline_card() -> str:
         "                                              │\n"
         "                                              ▼\n"
         "                                push_model_to_hf.py\n"
-        "                                  → elizaos/eliza-1-{2b,9b,27b}\n"
+        "                                  → elizalabs/eliza-1-{2b,9b,27b}\n"
         "```\n"
         "\n"
         "See `RL_STRATEGY.md` for the post-SFT plan (DPO + GRPO via verl).\n"
@@ -185,7 +185,7 @@ def build_pipeline_card() -> str:
         "## Reproducing\n"
         "\n"
         "```bash\n"
-        "hf download elizaos/eliza-training-pipeline --repo-type model --local-dir ./training\n"
+        "hf download elizalabs/eliza-1-pipeline --repo-type model --local-dir ./training\n"
         "cd training\n"
         "uv sync --extra train\n"
         "hf download elizaos/eliza-toon-v1-sft --repo-type dataset --local-dir data/final\n"

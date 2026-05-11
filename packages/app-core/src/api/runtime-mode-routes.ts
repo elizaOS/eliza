@@ -9,10 +9,10 @@
  */
 
 import type http from "node:http";
+import { getRuntimeModeSnapshot } from "../runtime/mode/runtime-mode";
 import { ensureRouteAuthorized } from "./auth.ts";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson, sendJsonError } from "./response";
-import { getRuntimeModeSnapshot } from "../runtime/mode/runtime-mode";
 
 export async function handleRuntimeModeRoute(
   req: http.IncomingMessage,

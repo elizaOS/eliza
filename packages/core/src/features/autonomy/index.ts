@@ -40,7 +40,6 @@ import {
 
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
-// biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
 const __bundle_safety_FEATURES_AUTONOMY_INDEX__ = [
 	_bs_1_sendToAdminAction,
 	_bs_2_adminChatProvider,
@@ -51,6 +50,7 @@ const __bundle_safety_FEATURES_AUTONOMY_INDEX__ = [
 	_bs_7_AUTONOMY_TASK_TAGS,
 	_bs_8_AutonomyService,
 ];
-// biome-ignore lint/suspicious/noExplicitAny: bundle-safety sink.
-(globalThis as any).__bundle_safety_FEATURES_AUTONOMY_INDEX__ =
+(
+	globalThis as Record<string, unknown>
+).__bundle_safety_FEATURES_AUTONOMY_INDEX__ =
 	__bundle_safety_FEATURES_AUTONOMY_INDEX__;

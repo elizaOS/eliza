@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-// Post-consolidation: CANCEL_TASK is `TASKS { op: "cancel" }`.
+// Post-consolidation: CANCEL_TASK is `TASKS { action: "cancel" }`.
 import { cancelTaskAction } from "../../src/actions/tasks.js";
 import {
   callback,
@@ -9,9 +9,9 @@ import {
   state,
 } from "../../src/test-utils/action-test-utils.js";
 
-const cancelOptions = { parameters: { op: "cancel" } };
+const cancelOptions = { parameters: { action: "cancel" } };
 
-describe("TASKS:cancel (legacy CANCEL_TASK)", () => {
+describe("TASKS:cancel", () => {
   it("cancels a session by id", async () => {
     const svc = serviceMock();
     expect(

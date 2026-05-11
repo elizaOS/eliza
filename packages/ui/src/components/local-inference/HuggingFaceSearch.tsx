@@ -23,9 +23,9 @@ interface HuggingFaceSearchProps {
 }
 
 /**
- * Secondary tab of the Model Hub: free-form HuggingFace search for any
- * GGUF-tagged repo. Results are shaped like CatalogModel so they render
- * with the same ModelCard the curated view uses.
+ * Secondary tab of the Model Hub: explicit custom Hugging Face search for
+ * any GGUF-tagged repo. Results are shaped like CatalogModel so they
+ * render with the same ModelCard the Eliza-1 view uses.
  *
  * Debounced so a user typing a query doesn't hammer the HF API.
  */
@@ -99,7 +99,7 @@ export function HuggingFaceSearch({
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search HuggingFace (e.g. phi-3, mixtral, llama 3.3)"
+          placeholder="Search custom Hugging Face GGUF repos"
           className="flex-1 rounded-md border border-border bg-bg/50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
         {query.trim().length > 0 && (
@@ -118,7 +118,7 @@ export function HuggingFaceSearch({
 
       {loading && (
         <div className="text-sm text-muted-foreground">
-          Searching HuggingFace…
+          Searching Hugging Face...
         </div>
       )}
       {error && (
@@ -156,9 +156,8 @@ export function HuggingFaceSearch({
       )}
 
       <p className="text-xs text-muted-foreground">
-        Results are live HuggingFace repos tagged <code>gguf</code>, sorted by
-        downloads. Eliza picks the best quant (preferring Q4_K_M) when a repo
-        has several.
+        Custom Hugging Face results are explicit opt-in only. They are never
+        recommended, auto-selected, or used as the default local model.
       </p>
     </div>
   );

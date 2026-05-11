@@ -17,8 +17,6 @@ const PAYMENT_AMOUNT_MAX_CHARS = 32;
 
 interface PaymentOpParams {
   action?: unknown;
-  subaction?: unknown;
-  op?: unknown;
   amount?: unknown;
   entityId?: unknown;
   roomId?: unknown;
@@ -107,10 +105,7 @@ export const paymentOpAction: Action = {
       return { success: false, text: "Mysticism service not available." };
     }
 
-    const opRaw =
-      readParam(options, "action") ??
-      readParam(options, "subaction") ??
-      readParam(options, "op");
+    const opRaw = readParam(options, "action");
     if (!isPaymentOp(opRaw)) {
       return {
         success: false,

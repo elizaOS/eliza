@@ -28,11 +28,33 @@ Backbones (do not change without explicit human approval):
   do not name these as "Qwen" in any user-facing string. Internally,
   manifests record the upstream lineage and license; the UI shows
   "Eliza-1 <tier>".
-- **Voice (TTS + ASR):** OmniVoice (Qwen3-TTS lineage). The repo at
+- **Voice (TTS):** OmniVoice (Qwen3-TTS lineage). The repo at
   `https://github.com/ServeurpersoCom/omnivoice.cpp` is the C++ source
-  we fuse with llama.cpp. The omnivoice-singing variant is **research
-  only** until legal review clears its dataset licenses; do not promote
-  it to default.
+  we fuse with llama.cpp. The omnivoice-singing variant adds an
+  emotion + singing tag vocabulary (`[singing]`, `[happy]`, `[sad]`,
+  `[whisper]`, `[angry]`, `[nervous]`, `[calm]`, `[excited]`, and
+  preserved non-verbals `[laughter]`, `[sigh]`). Per Wave-6 user
+  direction (2026-05-10), the prior "research-only until legal review"
+  gate is **lifted for non-commercial use**: Eliza-1 is non-commercial
+  open source under CC-compatible terms. omnivoice-singing CAN ship as
+  part of default bundles. If the project ever pivots to commercial
+  licensing, CC-BY-NC-SA training-data lineage (GTSinger, RAVDESS,
+  Expresso) must be re-evaluated and likely re-trained on
+  commercially-licensed corpora — until then, ship it.
+- **ASR:** Qwen3-ASR (`ggml-org/Qwen3-ASR-0.6B-GGUF` for
+  lite/mobile/desktop tiers, `ggml-org/Qwen3-ASR-1.7B-GGUF` for
+  pro/server). Tokenizer fused with the Qwen3.5/3.6 text backbone
+  (zero re-tokenization between ASR output and text input). whisper.cpp
+  is **not** the default — it vendors its own ggml, violating the
+  one-llama.cpp-build / one-GGML-pin contract in §4.
+- **VAD:** Silero VAD (MIT, ~2 MB ONNX). Ships in every voice-enabled
+  bundle. Drives barge-in cancellation; gates ASR to skip silent frames.
+- **Wake word:** openWakeWord (Apache-2.0, ~3 MB). Opt-in, local-mode
+  only. Hidden in cloud mode per three-mode hide-not-disable.
+- **Embedding:** Qwen3-Embedding-0.6B (Apache-2.0, 1024-dim with
+  Matryoshka, 32k ctx) for non-lite tiers as a separate `embedding/`
+  artifact. On `lite-0_6b` the embedding model IS the text backbone
+  with `--pooling last` — no duplicate weights.
 - **Drafter:** DFlash. Always present in the bundle. Always wired in.
   Speculative decoding is mandatory, not optional (see §3).
 
@@ -90,7 +112,7 @@ A bundle on HuggingFace is a single repo with this layout. The manifest
 is the source of truth; never derive contents from filenames.
 
 ```
-elizaos/eliza-1-<tier>/
+elizalabs/eliza-1-<tier>/
   eliza-1.manifest.json          # canonical schema, see §6
   text/
     eliza-1-<tier>-<ctx>.gguf    # text + vision (mmproj inlined where supported)
@@ -167,8 +189,8 @@ the recommended-models endpoint.
 
 ### Required for `desktop`/`pro`/`server` tiers
 
-6. **TCQ trellis-coded quantization** option for the longest-context
-   variant. `turbo3_tcq.comp` / `turbo3_tcq.metal`.
+6. **TCQ trellis-coded quantization** for desktop/pro/server and any
+   long-context text variant. `turbo3_tcq.comp` / `turbo3_tcq.metal`.
 7. **CPU-offloaded KV cache** for context > 64k where device RAM is
    insufficient. The runtime MUST implement spill, not just refuse the
    request.
@@ -185,13 +207,11 @@ from the build:
   a structured error to the UI. It MUST NOT silently fall back to
   unoptimized inference. It MUST NOT log-and-continue.
 
-The default-on Vulkan turbo* patch
-(`ELIZA_DFLASH_PATCH_VULKAN_KERNELS=1`) is part of the contract. The
-Metal turbo3/QJL/Polar patches are currently opt-in pending hardware
-verification (see `packages/inference/README.md` for the matrix). When
-those flip default-on, this file's "Required for ALL tiers" list
-becomes machine-enforced — until then, treat any builder/runtime that
-disables a default-on patch as broken.
+The Metal and Vulkan kernel patchers run unconditionally for matching
+build targets. Build outputs can record shipped shader symbols
+separately from runtime-ready graph dispatch, but only runtime-ready
+capabilities may satisfy this contract. Treat any builder/runtime that
+disables a required patch as broken.
 
 ---
 
@@ -315,8 +335,8 @@ catalogs drift from it — generate them.
     "cache":   [{ "path": "cache/voice-preset-default.bin",   "sha256": "..." }]
   },
   "kernels": {
-    "required": ["turboquant_q4", "qjl", "polarquant", "dflash"],
-    "optional": ["turbo3_tcq"],
+    "required": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+    "optional": [],
     "verifiedBackends": {
       "metal":  { "status": "pass", "atCommit": "...", "report": "..." },
       "vulkan": { "status": "pass", "atCommit": "...", "report": "..." },
@@ -341,7 +361,7 @@ catalogs drift from it — generate them.
   required kernel is verified on every supported backend for that tier
   AND every eval has `passed: true`. The recommendation engine MUST
   refuse to surface a bundle with `defaultEligible: false` as a default.
-- HF-search results from outside `elizaos/eliza-1-*` MUST never set
+- HF-search results from outside `elizalabs/eliza-1-*` MUST never set
   `defaultEligible: true`. They are user-installed customs only.
 - The runtime MUST validate the manifest against `kernels.required`
   before activating the bundle. A capability mismatch is a hard error.

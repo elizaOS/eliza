@@ -1,21 +1,14 @@
 /**
  * Reminders prober.
  *
- * Native APIs (macOS):
- *   - check:   EKEventStore.authorizationStatus(for: .reminder)
- *   - request: EKEventStore.requestFullAccessToReminders (macOS 14+) or
- *              .requestAccess(to: .reminder) (older)
- *
- * We don't have an FFI binding for EventKit yet, so we use TCC.db reads
- * for the check path (service: kTCCServiceReminders) and an osascript
- * shellout to trigger the prompt for the request path. The osascript
- * targets Reminders.app — since macOS 14 split this into "reminders" and
- * "calendar" TCC services, we read kTCCServiceReminders explicitly.
+ * LifeOps currently talks to Reminders.app through AppleScript, so the
+ * effective permission is Apple Events from this runtime to Reminders.app.
+ * We read that TCC row for check() and reserve osascript for request(),
+ * where a prompt is expected.
  *
  * INTEGRATION TODO: ship a small Swift FFI that calls
- * `EKEventStore.authorizationStatus(for: .reminder)` directly. The osascript
- * approach can race with TCC.db caching. See `accessibility.ts` for the
- * pattern.
+ * `EKEventStore.authorizationStatus(for: .reminder)` directly if/when the
+ * implementation moves from AppleScript to EventKit.
  */
 
 import type { PermissionState, Prober } from "../contracts.js";
@@ -23,12 +16,12 @@ import {
   buildState,
   IS_DARWIN,
   platformUnsupportedState,
-  queryTccStatus,
-  resolveBundleId,
+  queryAppleEventsTccStatus,
   runOsascript,
 } from "./_bridge.js";
 
 const ID = "reminders" as const;
+const REMINDERS_BUNDLE_ID = "com.apple.reminders";
 
 export const remindersProber: Prober = {
   id: ID,
@@ -36,7 +29,7 @@ export const remindersProber: Prober = {
   async check(): Promise<PermissionState> {
     if (!IS_DARWIN) return platformUnsupportedState(ID);
 
-    const tcc = await queryTccStatus("kTCCServiceReminders", resolveBundleId());
+    const tcc = await queryAppleEventsTccStatus(REMINDERS_BUNDLE_ID);
     if (tcc === "granted")
       return buildState(ID, "granted", { canRequest: false });
     if (tcc === "denied")

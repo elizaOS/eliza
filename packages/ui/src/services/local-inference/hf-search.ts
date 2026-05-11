@@ -170,7 +170,7 @@ export async function searchHuggingFaceGguf(
     headers: { accept: "application/json" },
   });
   if (!searchRes.ok) {
-    throw new Error(`HuggingFace search failed: HTTP ${searchRes.status}`);
+    throw new Error(`Hugging Face search failed: HTTP ${searchRes.status}`);
   }
   const rawList = (await searchRes.json()) as HfSearchResultRaw[];
   const candidates = rawList

@@ -85,7 +85,6 @@ export {
 export * from "./providers/index.ts";
 
 import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
-import { readAttachmentAction } from "../working-memory/readAttachmentAction.ts";
 // Import advanced capabilities
 import {
 	advancedActions,
@@ -100,6 +99,7 @@ import {
 	secretsCapability,
 	trustCapability,
 } from "../index.ts";
+import { readAttachmentAction } from "../working-memory/readAttachmentAction.ts";
 // Import for local use.
 //
 // Direct leaf imports — see comment in

@@ -4,22 +4,22 @@ This creates an HF *model* repo (HF has no separate "pipeline" repo type)
 that bundles the training scripts so a fresh Vast.ai box can:
 
     git clone <nothing — straight HF download>
-    hf download elizaos/eliza-1-pipeline --local-dir /workspace/training
+    hf download elizalabs/eliza-1-pipeline --local-dir /workspace/training
     cd /workspace/training && uv sync --extra train
     bash scripts/train_vast.sh ...
 
 Companion to ``publish_dataset_to_hf.py`` (data) and
 ``push_model_to_hf.py`` (trained checkpoints). Distinct from the legacy
 ``push_pipeline_to_hf.py`` which targets the older
-``elizaos/eliza-training-pipeline`` repo and includes a wider tree.
+``elizalabs/eliza-1-pipeline`` repo and includes a wider tree.
 
 Usage::
 
     uv run python scripts/publish_pipeline_to_hf.py \\
-        --repo-id elizaos/eliza-1-pipeline --dry-run
+        --repo-id elizalabs/eliza-1-pipeline --dry-run
 
     HF_TOKEN=hf_xxx uv run python scripts/publish_pipeline_to_hf.py \\
-        --repo-id elizaos/eliza-1-pipeline
+        --repo-id elizalabs/eliza-1-pipeline
 """
 
 from __future__ import annotations
@@ -151,10 +151,10 @@ def build_pipeline_card(repo_id: str) -> str:
         "\n"
         "Companion repos:\n"
         "\n"
-        "- `elizaos/eliza-1-training` — SFT data (train/val/test).\n"
-        "- `elizaos/eliza-1-scambench` — adversarial scam set.\n"
-        "- `elizaos/eliza-1-synthesized` — small Claude-teacher synthesis sets.\n"
-        "- `elizaos/eliza-1-{2b,9b,27b}` — published checkpoints.\n"
+        "- `elizalabs/eliza-1-training` — SFT data (train/val/test).\n"
+        "- `elizalabs/eliza-1-scambench` — adversarial scam set.\n"
+        "- `elizalabs/eliza-1-synthesized` — small Claude-teacher synthesis sets.\n"
+        "- `elizalabs/eliza-1-{2b,9b,27b}` — published checkpoints.\n"
         "\n"
         "## Vast.ai bootstrap\n"
         "\n"
@@ -164,7 +164,7 @@ def build_pipeline_card(repo_id: str) -> str:
         "\n"
         "```bash\n"
         f"hf download {repo_id} --local-dir /workspace/training\n"
-        "hf download elizaos/eliza-1-training --repo-type dataset \\\n"
+        "hf download elizalabs/eliza-1-training --repo-type dataset \\\n"
         "    --local-dir /workspace/training/data/final\n"
         "cd /workspace/training\n"
         "uv sync --extra train\n"
@@ -325,7 +325,7 @@ def main() -> int:
     ap.add_argument(
         "--repo-id",
         required=True,
-        help="Destination HF model repo id (e.g. elizaos/eliza-1-pipeline).",
+        help="Destination HF model repo id (e.g. elizalabs/eliza-1-pipeline).",
     )
     ap.add_argument(
         "--private",

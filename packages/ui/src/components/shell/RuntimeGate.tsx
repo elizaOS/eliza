@@ -31,7 +31,6 @@ import {
   type GatewayDiscoveryEndpoint,
   gatewayEndpointToApiBase,
 } from "../../bridge/gateway-discovery";
-import { useBranding } from "../../config/branding";
 import { normalizeLanguage } from "../../i18n";
 import type { UiLanguage } from "../../i18n/messages";
 import { autoDownloadRecommendedLocalModelInBackground } from "../../onboarding/auto-download-recommended";

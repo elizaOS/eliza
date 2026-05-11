@@ -6,9 +6,9 @@ import {
 } from "./catalog";
 import { assessFit } from "./hardware";
 import {
+  defaultManifestLoader,
   type ManifestLoader,
   type RamBudget,
-  defaultManifestLoader,
   resolveRamBudget,
 } from "./ram-budget";
 import type {
@@ -23,11 +23,11 @@ import type {
 // type so the ladder definitions can't drift from the canonical list.
 // Adding a tier requires extending the manifest module; this file picks
 // it up automatically.
-const TIER_LITE: Eliza1TierId = "eliza-1-lite-0_6b";
-const TIER_MOBILE: Eliza1TierId = "eliza-1-mobile-1_7b";
-const TIER_DESKTOP: Eliza1TierId = "eliza-1-desktop-9b";
-const TIER_PRO: Eliza1TierId = "eliza-1-pro-27b";
-const TIER_SERVER: Eliza1TierId = "eliza-1-server-h200";
+const TIER_0_6B: Eliza1TierId = "eliza-1-0_6b";
+const TIER_1_7B: Eliza1TierId = "eliza-1-1_7b";
+const TIER_9B: Eliza1TierId = "eliza-1-9b";
+const TIER_27B: Eliza1TierId = "eliza-1-27b";
+const TIER_27B_256K: Eliza1TierId = "eliza-1-27b-256k";
 
 export type RecommendationPlatformClass =
   | "mobile"
@@ -60,28 +60,28 @@ const SLOT_LADDERS: Record<
   Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
 > = {
   mobile: {
-    TEXT_SMALL: [TIER_LITE, TIER_MOBILE],
-    TEXT_LARGE: [TIER_MOBILE, TIER_LITE],
+    TEXT_SMALL: [TIER_0_6B, TIER_1_7B],
+    TEXT_LARGE: [TIER_1_7B, TIER_0_6B],
   },
   "apple-silicon": {
-    TEXT_SMALL: [TIER_MOBILE, TIER_LITE],
-    TEXT_LARGE: [TIER_PRO, TIER_DESKTOP, TIER_MOBILE],
+    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_1_7B],
   },
   "linux-gpu": {
-    TEXT_SMALL: [TIER_MOBILE, TIER_LITE],
-    TEXT_LARGE: [TIER_SERVER, TIER_PRO, TIER_DESKTOP, TIER_MOBILE],
+    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_1_7B],
   },
   "linux-cpu": {
-    TEXT_SMALL: [TIER_MOBILE, TIER_LITE],
-    TEXT_LARGE: [TIER_DESKTOP, TIER_MOBILE],
+    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_9B, TIER_1_7B],
   },
   "desktop-gpu": {
-    TEXT_SMALL: [TIER_MOBILE, TIER_LITE],
-    TEXT_LARGE: [TIER_SERVER, TIER_PRO, TIER_DESKTOP, TIER_MOBILE],
+    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_1_7B],
   },
   "desktop-cpu": {
-    TEXT_SMALL: [TIER_MOBILE, TIER_LITE],
-    TEXT_LARGE: [TIER_DESKTOP, TIER_MOBILE],
+    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_9B, TIER_1_7B],
   },
 };
 
@@ -274,7 +274,12 @@ function fallbackCandidates(
   const candidates = chatCandidates(catalog).filter(
     (model) =>
       DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id) &&
-      canFit(hardware, model, catalog, budgetOptionsForModel(model, budgetOptions)),
+      canFit(
+        hardware,
+        model,
+        catalog,
+        budgetOptionsForModel(model, budgetOptions),
+      ),
   );
   const preferLongContext = hasLongContextHeadroom(hardware);
   return candidates.sort((left, right) => {
@@ -357,7 +362,9 @@ export function selectRecommendedModelForSlot(
   // ladder order still wins when long-context availability is the same
   // for every entry (or when the host doesn't have the headroom).
   const ranked =
-    eligible.length > 0 && hasLongContextHeadroom(hardware)
+    slot === "TEXT_LARGE" &&
+    eligible.length > 0 &&
+    hasLongContextHeadroom(hardware)
       ? rankLadderByLongContext(eligible)
       : eligible;
 

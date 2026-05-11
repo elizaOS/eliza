@@ -94,7 +94,9 @@ function selectRoute(
   options?: HandlerOptions | Record<string, unknown>,
 ): ShopifyRoute | null {
   const opts = readOptions(options);
-  const requested = normalizeOp(opts.op ?? opts.entity ?? opts.subaction);
+  const requested = normalizeOp(
+    opts.action ?? opts.op ?? opts.entity ?? opts.subaction,
+  );
   if (requested) {
     const route = ROUTES.find((candidate) => candidate.op === requested);
     if (route) return route;
@@ -107,7 +109,7 @@ function selectRoute(
 export const shopifyAction: Action = {
   name: "SHOPIFY",
   description:
-    "Manage a Shopify store. Operations: search (read-only catalog browsing across products, orders, and customers), products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers). Op is inferred from the message text when not explicitly provided.",
+    "Manage a Shopify store. Actions: search (read-only catalog browsing across products, orders, and customers), products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers). Action is inferred from the message text when not explicitly provided.",
   descriptionCompressed:
     "Shopify: search, products, inventory, orders, customers.",
   similes: [
@@ -138,22 +140,28 @@ export const shopifyAction: Action = {
   roleGate: { minRole: "USER" },
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description:
         "Operation to perform. One of: search, products, inventory, orders, customers. Inferred from message text when omitted.",
       required: false,
       schema: { type: "string", enum: [...ALL_OPS] },
     },
     {
+      name: "subaction",
+      description: "Legacy alias for action.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
       name: "query",
-      description: "Search term for op=search.",
+      description: "Search term for action=search.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "scope",
       description:
-        "Search scope for op=search: all, products, orders, or customers.",
+        "Search scope for action=search: all, products, orders, or customers.",
       required: false,
       schema: {
         type: "string",
@@ -199,6 +207,7 @@ export const shopifyAction: Action = {
       data: {
         ...(typeof result.data === "object" && result.data ? result.data : {}),
         actionName: "SHOPIFY",
+        action: route.op,
         op: route.op,
       },
     };

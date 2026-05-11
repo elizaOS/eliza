@@ -475,6 +475,12 @@ function assertApprovalPayload(
       requireStringField(record, "script", label);
       requireFiniteNumberField(record, "maxDurationSeconds", label);
       break;
+    case "sign_document":
+      requireStringField(record, "documentId", label);
+      requireStringField(record, "documentName", label);
+      requireStringField(record, "signatureUrl", label);
+      requireStringField(record, "deadline", label);
+      break;
     case "execute_workflow":
       requireStringField(record, "workflowId", label);
       requirePrimitiveRecordField(record, "input", label);
