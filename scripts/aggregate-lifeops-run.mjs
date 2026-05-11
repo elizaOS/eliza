@@ -37,6 +37,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  HARNESSES,
+  MODEL_TIERS,
   REPORT_SCHEMA_VERSION,
   ReportSchema,
 } from "@elizaos-benchmarks/lib";
@@ -62,8 +64,8 @@ const trajectoryDir = path.resolve(
 );
 const runIdFilter = arg("--run-id", process.env.MILADY_LIFEOPS_RUN_ID);
 
-const HARNESS_VALID = new Set(["hermes", "openclaw", "eliza"]);
-const MODEL_TIER_VALID = new Set(["small", "mid", "large", "frontier"]);
+const HARNESS_VALID = new Set(HARNESSES);
+const MODEL_TIER_VALID = new Set(MODEL_TIERS);
 
 const harness = arg(
   "--harness",
@@ -71,7 +73,7 @@ const harness = arg(
 );
 if (!HARNESS_VALID.has(harness)) {
   console.error(
-    `[aggregate-lifeops-run] --harness must be one of hermes|openclaw|eliza (got ${harness})`,
+    `[aggregate-lifeops-run] --harness must be one of ${HARNESSES.join("|")} (got ${harness})`,
   );
   process.exit(2);
 }
@@ -82,7 +84,7 @@ const modelTierCli = arg(
 );
 if (!MODEL_TIER_VALID.has(modelTierCli)) {
   console.error(
-    `[aggregate-lifeops-run] --model-tier must be one of small|mid|large|frontier (got ${modelTierCli})`,
+    `[aggregate-lifeops-run] --model-tier must be one of ${MODEL_TIERS.join("|")} (got ${modelTierCli})`,
   );
   process.exit(2);
 }
@@ -265,7 +267,10 @@ for (const { t } of trajectories) {
     const cacheRead = safeNum(usage.cacheReadInputTokens);
     const cacheCreate = safeNum(usage.cacheCreationInputTokens);
     const totalInput = inputTokens + cacheRead + cacheCreate;
-    const cacheHitPct = pct(cacheRead, totalInput);
+    // Per-step `cache_hit_pct` is null when the step recorded no input
+    // tokens (e.g. tool / evaluation phases). Aggregating zeros there would
+    // wrongly drag the mean toward "no cache" instead of "not applicable".
+    const cacheHitPct = totalInput > 0 ? pct(cacheRead, totalInput) : null;
 
     bucket.promptTokens += inputTokens;
     bucket.completionTokens += outputTokens;

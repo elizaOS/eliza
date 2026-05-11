@@ -52,7 +52,7 @@ export type PromptBenchmarkResult = {
   cacheReadInputTokens?: number;
   cacheCreationInputTokens?: number;
   totalInputTokens?: number;
-  cacheHitPct?: number;
+  cacheHitPct?: number | null;
   // USD cost across every llmCall on this case, computed via
   // `computeCallCostUsd` against the canonical price table at
   // `packages/core/src/features/trajectories/pricing.ts`. Mirrors the Python
@@ -245,7 +245,7 @@ async function captureTrajectoryForCase(args: {
   cacheReadInputTokens?: number;
   cacheCreationInputTokens?: number;
   totalInputTokens?: number;
-  cacheHitPct?: number;
+  cacheHitPct?: number | null;
   costUsd?: number;
 }> {
   const service = resolveTrajectoryService(args.runtime);
@@ -333,7 +333,8 @@ async function captureTrajectoryForCase(args: {
     );
   }
   const totalInput = promptTokens + cacheRead + cacheCreate;
-  const cacheHitPct = totalInput > 0 ? +((cacheRead / totalInput) * 100).toFixed(2) : 0;
+  const cacheHitPct =
+    totalInput > 0 ? +((cacheRead / totalInput) * 100).toFixed(2) : null;
 
   return {
     trajectoryId: bestDetail?.trajectoryId,
