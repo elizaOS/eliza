@@ -765,6 +765,41 @@ def _write_lineage(
     return _read_lineage(bundle_dir)
 
 
+def _load_source_models(path: Path | None) -> dict[str, dict[str, Any]] | None:
+    """Load a `{slot: {repo, file?, convertedVia?, note?}}` JSON file.
+
+    Used by `--release-state base-v1` to record where each upstream
+    component comes from (the "base, not fine-tuned" provenance). Unknown
+    slots / non-string repos are passed straight through to the manifest
+    validator, which rejects them with a precise message.
+    """
+    if path is None:
+        return None
+    data = json.loads(path.read_text())
+    if not isinstance(data, dict):
+        raise ValueError(f"--source-models must be a JSON object: {path}")
+    return {str(k): dict(v) for k, v in data.items() if isinstance(v, dict)}
+
+
+def _provenance_for(
+    *, release_state: str | None, source_models: Mapping[str, Any] | None
+) -> dict[str, Any] | None:
+    """Build the manifest `provenance` block for a non-default release shape.
+
+    `base-v1`  → finetuned=false (the upstream base model, GGUF + fully
+                 optimized, NOT fine-tuned).
+    `finetuned-v2` → finetuned=true.
+    Anything else (incl. the default `local-standin` staging) → None.
+    """
+    if release_state not in {"base-v1", "finetuned-v2"}:
+        return None
+    return {
+        "releaseState": release_state,
+        "finetuned": release_state == "finetuned-v2",
+        "sourceModels": dict(source_models) if source_models else {},
+    }
+
+
 def _manifest_for_local_bundle(
     *,
     bundle_dir: Path,
@@ -775,6 +810,7 @@ def _manifest_for_local_bundle(
     files: Mapping[str, Sequence[FileEntry]],
     backends: Mapping[str, KernelVerification],
     voice_rtf: float,
+    provenance: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     ram_min, ram_rec = DEFAULT_RAM_BUDGET_MB[tier]
     return build_manifest(
@@ -812,6 +848,7 @@ def _manifest_for_local_bundle(
             kernel_manifest_fragment(method)
             for method in ("turboquant", "fused-turboquant", "qjl", "polarquant")
         ],
+        provenance=provenance,
         require_publish_ready=False,
     )
 
@@ -895,6 +932,7 @@ def _write_release_evidence(
     generated_at: str,
     staged: Sequence[StagedFile],
     reasons: Sequence[str],
+    provenance: Mapping[str, Any] | None = None,
 ) -> None:
     def rels(subdir: str) -> list[str]:
         root = bundle_dir / subdir
@@ -912,56 +950,88 @@ def _write_release_evidence(
     ]
     if tier in VISION_TIERS:
         license_files.append("licenses/LICENSE.vision")
-    _json_write(
-        bundle_dir / "evidence" / "release.json",
-        {
-            "schemaVersion": 1,
-            "generatedAt": generated_at,
-            "tier": tier,
-            "repoId": f"elizaos/eliza-1-{tier}",
-            "releaseState": "local-standin",
-            "publishEligible": False,
-            "defaultEligible": False,
-            "final": {
-                "weights": False,
-                "hashes": True,
-                "evals": False,
-                "licenses": False,
-                "kernelDispatchReports": False,
-                "platformEvidence": False,
-                "sizeFirstRepoIds": False,
-            },
-            "weights": [
-                *rels("text"),
-                *rels("tts"),
-                *rels("asr"),
-                *rels("vad"),
-                *rels("vision"),
-                *rels("dflash"),
-            ],
-            "standIns": [asdict(item) for item in staged],
-            "checksumManifest": str(CHECKSUM_PATH),
-            "evalReports": rels("evals"),
-            "quantizationSidecars": sorted(
-                str(p.relative_to(bundle_dir))
-                for p in (bundle_dir / "quantization").glob("*.json")
-                if p.is_file()
-            ),
-            "licenseFiles": license_files,
-            "kernelDispatchReports": {
-                backend: f"evals/{backend}_dispatch.json"
-                for backend in SUPPORTED_BACKENDS_BY_TIER[tier]
-            },
-            "platformEvidence": {
-                "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json"
-            },
-            "hf": {
-                "repoId": f"elizaos/eliza-1-{tier}",
-                "status": "blocked-local-standin",
-            },
-            "publishBlockingReasons": list(reasons),
+
+    # When a non-default release shape (base-v1 / finetuned-v2) is requested,
+    # record it in the evidence — but this staging helper still produces a
+    # NON-PUBLISHABLE bundle (stand-in bytes, no eval/kernel evidence), so
+    # `publishEligible` and all the `final.*` (except `hashes`) stay false and
+    # the `publishBlockingReasons` are kept. A real `base-v1` publish requires
+    # the runbook in RELEASE_V1.md (real fork-built GGUFs, real quant sidecars,
+    # real evals, real platform evidence) — only then do the `final.*` flags
+    # flip true and `evidence/release.json` becomes `publishEligible: true`.
+    release_state = "local-standin"
+    source_models: dict[str, Any] = {}
+    finetuned: bool | None = None
+    if isinstance(provenance, Mapping) and provenance.get("releaseState") in {
+        "base-v1",
+        "finetuned-v2",
+    }:
+        release_state = str(provenance.get("releaseState"))
+        source_models = dict(provenance.get("sourceModels") or {})
+        finetuned = bool(provenance.get("finetuned"))
+
+    evidence: dict[str, Any] = {
+        "schemaVersion": 1,
+        "generatedAt": generated_at,
+        "tier": tier,
+        "repoId": f"elizaos/eliza-1-{tier}",
+        "releaseState": release_state,
+        "publishEligible": False,
+        "defaultEligible": False,
+        "final": {
+            "weights": False,
+            "hashes": True,
+            "evals": False,
+            "licenses": False,
+            "kernelDispatchReports": False,
+            "platformEvidence": False,
+            "sizeFirstRepoIds": False,
         },
-    )
+        "weights": [
+            *rels("text"),
+            *rels("tts"),
+            *rels("asr"),
+            *rels("vad"),
+            *rels("vision"),
+            *rels("dflash"),
+        ],
+        "standIns": [asdict(item) for item in staged],
+        "checksumManifest": str(CHECKSUM_PATH),
+        "evalReports": rels("evals"),
+        "quantizationSidecars": sorted(
+            str(p.relative_to(bundle_dir))
+            for p in (bundle_dir / "quantization").glob("*.json")
+            if p.is_file()
+        ),
+        "licenseFiles": license_files,
+        "kernelDispatchReports": {
+            backend: f"evals/{backend}_dispatch.json"
+            for backend in SUPPORTED_BACKENDS_BY_TIER[tier]
+        },
+        "platformEvidence": {
+            "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json"
+        },
+        "hf": {
+            "repoId": f"elizaos/eliza-1-{tier}",
+            "status": "blocked-local-standin",
+        },
+        "publishBlockingReasons": list(reasons),
+    }
+    if release_state in {"base-v1", "finetuned-v2"}:
+        evidence["finetuned"] = finetuned
+        evidence["sourceModels"] = source_models
+        # Even with the requested release state, this is a STAGING bundle,
+        # not a built/verified release. Be explicit so nobody mistakes it
+        # for a publish candidate.
+        evidence["hf"]["status"] = "blocked-staging-bundle-needs-built-bytes"
+        evidence["publishBlockingReasons"] = [
+            f"release shape `{release_state}` requested, but this is a local "
+            "staging bundle: bytes are stand-ins, not fork-built GGUFs / real "
+            "quant sidecars; eval and platform evidence are missing. Run the "
+            "RELEASE_V1.md runbook to produce a publishable bundle.",
+            *reasons,
+        ]
+    _json_write(bundle_dir / "evidence" / "release.json", evidence)
 
 
 def _write_bundle_completion_evidence(
@@ -1096,6 +1166,13 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
     smoke = _load_smoke_report(smoke_report_path)
     voice_rtf = _voice_rtf_from_smoke(smoke)
     reasons = _publish_blocking_reasons(tier=tier, smoke=smoke)
+    # Optional non-default release shape. `base-v1` = the upstream BASE
+    # models, GGUF + fully optimized, NOT fine-tuned (records provenance).
+    release_state = getattr(args, "release_state", None)
+    source_models = _load_source_models(getattr(args, "source_models", None))
+    provenance = _provenance_for(
+        release_state=release_state, source_models=source_models
+    )
 
     drafter_dest = bundle_dir / "dflash" / f"drafter-{tier}.gguf"
     text_staged = [
@@ -1195,6 +1272,7 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
         files=files,
         backends=backends,
         voice_rtf=voice_rtf,
+        provenance=provenance,
     )
     manifest_path = write_manifest(
         manifest,
@@ -1214,6 +1292,7 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
         generated_at=generated_at,
         staged=staged,
         reasons=reasons,
+        provenance=provenance,
     )
     _write_bundle_completion_evidence(
         bundle_dir=bundle_dir,
@@ -1278,6 +1357,31 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     ap.add_argument("--version", default="0.0.0-local.1")
     ap.add_argument("--generated-at", default=None)
+    ap.add_argument(
+        "--release-state",
+        default=None,
+        choices=("base-v1", "finetuned-v2"),
+        help=(
+            "Record a non-default release shape in the manifest's `provenance` "
+            "block and `evidence/release.json`. `base-v1` = the upstream BASE "
+            "models, GGUF + fully optimized, NOT fine-tuned (the v1 product). "
+            "Requires --source-models so per-component provenance can be "
+            "recorded. NOTE: this staging helper still produces a "
+            "NON-PUBLISHABLE bundle (stand-in bytes, no eval/kernel evidence) "
+            "— see RELEASE_V1.md for the real publish path."
+        ),
+    )
+    ap.add_argument(
+        "--source-models",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a JSON `{slot: {repo, file?, convertedVia?, note?}}` map "
+            "of upstream component sources. Used with --release-state. The "
+            "manifest validator requires coverage for every shipped component "
+            "on a base-v1 manifest."
+        ),
+    )
     ap.add_argument("--local-smoke-report", type=Path, default=None)
     ap.add_argument("--force", action="store_true")
     return ap.parse_args(argv)

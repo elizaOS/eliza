@@ -469,3 +469,87 @@ def test_parse_text_ctx_from_filename_finds_suffix_token():
 def test_parse_text_ctx_from_filename_returns_none_when_no_suffix():
     assert parse_text_ctx_from_filename(Path("text/eliza-1-1_7b.gguf")) is None
     assert parse_text_ctx_from_filename(Path("dflash/drafter-9b.gguf")) is None
+
+
+# ---------------------------------------------------------------------------
+# base-v1 provenance block (the upstream base models, GGUF + fully optimized,
+# NOT fine-tuned).
+# ---------------------------------------------------------------------------
+
+
+def _base_v1_provenance() -> dict:
+    return {
+        "releaseState": "base-v1",
+        "finetuned": False,
+        "sourceModels": {
+            "text": {
+                "repo": "unsloth/Qwen3.5-9B-GGUF",
+                "file": "Qwen3.5-9B-Q4_K_M.gguf",
+                "convertedVia": "<fork>/convert_hf_to_gguf.py",
+            },
+            "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
+            "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
+            "vad": {"repo": "onnx-community/silero-vad"},
+            "vision": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "mmproj-F16.gguf"},
+            "drafter": {"repo": "elizaos/eliza-1-9b"},
+        },
+    }
+
+
+def test_base_v1_manifest_validates_and_is_default_eligible():
+    kwargs = base_kwargs("9b")
+    kwargs["provenance"] = _base_v1_provenance()
+    # base-v1 evals are runnable on base weights: text perplexity vs the
+    # upstream GGUF passes, RTF / WER / VAD / dflash / e2e / 30-turn pass.
+    manifest = build_manifest(**kwargs)
+    assert manifest["defaultEligible"] is True
+    assert manifest["provenance"]["releaseState"] == "base-v1"
+    assert manifest["provenance"]["finetuned"] is False
+    assert manifest["provenance"]["sourceModels"]["text"]["repo"].endswith(
+        "Qwen3.5-9B-GGUF"
+    )
+    assert validate_manifest(manifest) == ()
+
+
+def test_base_v1_provenance_requires_finetuned_false():
+    kwargs = base_kwargs("9b")
+    prov = _base_v1_provenance()
+    prov["finetuned"] = True  # contradicts base-v1
+    kwargs["provenance"] = prov
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("finetuned" in e for e in exc.value.errors)
+
+
+def test_base_v1_provenance_requires_coverage_for_shipped_components():
+    kwargs = base_kwargs("9b")
+    prov = _base_v1_provenance()
+    del prov["sourceModels"]["asr"]  # but files.asr is non-empty
+    del prov["sourceModels"]["vision"]
+    kwargs["provenance"] = prov
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("provenance.sourceModels.asr" in e for e in exc.value.errors)
+    assert any("provenance.sourceModels.vision" in e for e in exc.value.errors)
+
+
+def test_provenance_rejects_unknown_release_state():
+    manifest = build_manifest(**base_kwargs("9b"))
+    manifest["provenance"] = {
+        "releaseState": "not-a-state",
+        "finetuned": False,
+        "sourceModels": {},
+    }
+    errors = validate_manifest(manifest)
+    assert any("releaseState" in e for e in errors)
+
+
+def test_provenance_rejects_unknown_component_slot():
+    manifest = build_manifest(**base_kwargs("9b"))
+    manifest["provenance"] = {
+        "releaseState": "base-v1",
+        "finetuned": False,
+        "sourceModels": {"text": {"repo": "x"}, "bogus": {"repo": "x"}},
+    }
+    errors = validate_manifest(manifest)
+    assert any("unknown component slot" in e for e in errors)
