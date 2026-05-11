@@ -13,6 +13,8 @@ import {
 } from "@elizaos/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
+import { useBranding } from "../../config/branding";
+import { isElizaCloudRuntimeLocked } from "../../onboarding/mobile-runtime-mode";
 import {
   getOnboardingProviderOption,
   isSubscriptionProviderSelectionId,
@@ -45,6 +47,11 @@ function readSubscriptionProvider(
 
 export interface ProviderSelection {
   cloudCallsDisabled: boolean;
+  /**
+   * True when the host app requires cloud (branding.cloudOnly or
+   * mobile runtime is locked to cloud). Local-only switching is blocked.
+   */
+  cloudRuntimeLocked: boolean;
   routingModeSaving: boolean;
   localEmbeddings: boolean;
   resolvedSelectedId: string | null;
@@ -67,6 +74,9 @@ export function useProviderSelection(
   notifySelectionFailure: (prefix: string, err: unknown) => void,
 ): ProviderSelection {
   const app = useApp();
+  const branding = useBranding();
+  const cloudRuntimeLocked =
+    branding.cloudOnly === true || isElizaCloudRuntimeLocked();
   const [cloudCallsDisabled, setCloudCallsDisabled] = useState(false);
   const [routingModeSaving, setRoutingModeSaving] = useState(false);
   const [localEmbeddings, setLocalEmbeddings] = useState(false);
@@ -231,6 +241,14 @@ export function useProviderSelection(
   ]);
 
   const handleSelectLocalOnly = useCallback(async () => {
+    if (cloudRuntimeLocked) {
+      app.setActionNotice?.(
+        "Eliza Cloud is required while this app is running in cloud mode.",
+        "error",
+        6000,
+      );
+      return;
+    }
     const previousSelectedId = resolvedSelectedId;
     const previousManualSelection = hasManualSelection.current;
     const previousCloudCallsDisabled = cloudCallsDisabled;
@@ -252,6 +270,7 @@ export function useProviderSelection(
   }, [
     app,
     cloudCallsDisabled,
+    cloudRuntimeLocked,
     notifySelectionFailure,
     resolvedSelectedId,
     restoreSelection,
@@ -275,24 +294,39 @@ export function useProviderSelection(
 
   const isCloudSelected =
     resolvedSelectedId === "__cloud__" || resolvedSelectedId === null;
-  const activeProviderPanelId: ProviderPanelId = cloudCallsDisabled
+  // When the runtime is locked to cloud, ignore local persistence in the
+  // routing config — the user can't be on local even if config says so.
+  const effectiveCloudCallsDisabled = cloudRuntimeLocked
+    ? false
+    : cloudCallsDisabled;
+  const activeProviderPanelId: ProviderPanelId = effectiveCloudCallsDisabled
     ? "__local__"
     : (resolvedSelectedId ?? "__cloud__");
   const visibleProviderPanelId: ProviderPanelId =
     selectedProviderPanelId ?? activeProviderPanelId;
 
   useEffect(() => {
+    if (cloudRuntimeLocked && selectedProviderPanelId === "__local__") {
+      hasManualPanelSelection.current = false;
+      setSelectedProviderPanelId("__cloud__");
+      return;
+    }
     if (hasManualPanelSelection.current) return;
     setSelectedProviderPanelId(activeProviderPanelId);
-  }, [activeProviderPanelId]);
+  }, [activeProviderPanelId, cloudRuntimeLocked, selectedProviderPanelId]);
 
-  const handleProviderPanelSelect = useCallback((panelId: string) => {
-    hasManualPanelSelection.current = true;
-    setSelectedProviderPanelId(panelId);
-  }, []);
+  const handleProviderPanelSelect = useCallback(
+    (panelId: string) => {
+      if (cloudRuntimeLocked && panelId === "__local__") return;
+      hasManualPanelSelection.current = true;
+      setSelectedProviderPanelId(panelId);
+    },
+    [cloudRuntimeLocked],
+  );
 
   return {
-    cloudCallsDisabled,
+    cloudCallsDisabled: effectiveCloudCallsDisabled,
+    cloudRuntimeLocked,
     routingModeSaving,
     localEmbeddings,
     resolvedSelectedId,
