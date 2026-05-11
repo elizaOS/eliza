@@ -367,7 +367,7 @@ int main() {
         { "GGML_OP_ATTN_SCORE_TBQ/turbo4", [](float * e) {
             return run_tbq_smoke<eliza_block_turbo4_0>(
                 "TurboQuant4", GGML_TYPE_TBQ4_0,
-                quantize_turbo4_adapter, dot_turbo4_adapter, 1, e);
+                quantize_turbo4_adapter, dot_turbo4_adapter, 4, e);
         }},
         { "GGML_OP_ATTN_SCORE_TBQ/turbo3_tcq", [](float * e) {
             return run_tbq_smoke<eliza_block_turbo3_tcq>(
@@ -383,27 +383,15 @@ int main() {
     };
 
     int failures = 0;
-    bool turbo4_failed = false;
     for (const Case & c : cases) {
         float max_err = 0.0f;
         if (!c.run(&max_err)) {
             std::fprintf(stderr, "[dispatch_smoke] FAIL %s\n", c.label);
-            if (std::strstr(c.label, "turbo4") != nullptr) {
-                turbo4_failed = true;
-            }
             ++failures;
             continue;
         }
         std::printf("[dispatch_smoke] PASS %s: %d scores, max diff %.3e\n",
                     c.label, N_HEADS * N_TOKENS, max_err);
-    }
-
-    const bool allow_known_turbo4_block =
-        std::getenv("ELIZA_DISPATCH_SMOKE_ALLOW_TURBO4_LAYOUT_BLOCK") != nullptr;
-    if (failures == 1 && turbo4_failed && allow_known_turbo4_block) {
-        std::printf(
-            "[dispatch_smoke] PASS implemented Metal dispatch routes; known Turbo4 fork-layout blocker remains fail-closed\n");
-        return 0;
     }
 
     if (failures != 0) {

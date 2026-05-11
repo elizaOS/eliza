@@ -149,7 +149,7 @@
         "fixtureGate": true
       },
       "runtimeStatus": {
-        "metal": "blocked",
+        "metal": "runtime-ready",
         "vulkan": "symbol-shipped",
         "cuda": "needs-hardware",
         "cpu": "reference-only"
@@ -318,9 +318,9 @@
     },
     "darwin-arm64-metal": {
       "kernelVerification": "standalone-verified",
-      "runtimeDispatch": "blocked",
+      "runtimeDispatch": "verified",
       "deviceRun": "verified",
-      "nextGate": "Resolve the Turbo4 fork-layout mismatch, then rerun dispatch-smoke without the known-blocker allowance."
+      "nextGate": "Run fused Metal smoke against a full Eliza-1 bundle after graph-dispatch smoke."
     },
     "darwin-x64-metal": {
       "kernelVerification": "needs-hardware",
@@ -330,15 +330,15 @@
     },
     "ios-arm64-metal": {
       "kernelVerification": "symbol-shipped",
-      "runtimeDispatch": "blocked",
+      "runtimeDispatch": "symbol-shipped",
       "deviceRun": "needs-hardware",
-      "nextGate": "After graph dispatch, run physical-device XCTest/Capacitor smoke."
+      "nextGate": "Run physical-device XCTest/Capacitor smoke against the embedded metallib and GGML_OP_ATTN_SCORE_TBQ Turbo4 route."
     },
     "ios-arm64-simulator-metal": {
       "kernelVerification": "symbol-shipped",
-      "runtimeDispatch": "blocked",
+      "runtimeDispatch": "symbol-shipped",
       "deviceRun": "needs-hardware",
-      "nextGate": "After graph dispatch, run simulator smoke against the embedded metallib."
+      "nextGate": "Run simulator smoke against the embedded metallib and GGML_OP_ATTN_SCORE_TBQ Turbo4 route."
     },
     "windows-x64-cpu": {
       "kernelVerification": "compile-only",
@@ -390,9 +390,9 @@
     },
     "darwin-arm64-metal-fused": {
       "kernelVerification": "standalone-verified",
-      "runtimeDispatch": "blocked",
+      "runtimeDispatch": "needs-runtime-smoke",
       "deviceRun": "needs-hardware",
-      "nextGate": "Resolve the Turbo4 fork-layout mismatch, then run fused Metal smoke after full kernel dispatch lands."
+      "nextGate": "Run fused Metal smoke after full kernel dispatch lands."
     },
     "darwin-x64-metal-fused": {
       "kernelVerification": "needs-hardware",

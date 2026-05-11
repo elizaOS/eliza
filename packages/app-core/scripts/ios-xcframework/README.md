@@ -90,13 +90,17 @@ node packages/app-core/scripts/ios-xcframework/build-xcframework.mjs \
   --verify
 ```
 
-`build-xcframework.mjs --verify` runs **two** independent checks:
+`build-xcframework.mjs --verify` runs **three** independent checks:
 
 1. **AGENTS.md §3 kernel-symbol audit** — `nm -g` over every `.a` in
    each slice, asserting the QJL, PolarQuant, DFlash, Turbo3, Turbo4
    symbol patterns are present. Missing symbols hard-fail with a
    diagnostic that names the missing kernel + slice + expected archive.
-2. **xcframework structural audit** — parses the produced `Info.plist`'s
+2. **Runtime-symbol audit** — the slice must also export the Capacitor
+   bridge symbols (`llama_init_context`, `llama_completion`, etc.) and
+   the real `eliza_inference_*` voice ABI symbols. A kernel-only
+   framework is not a releaseable Eliza-1 mobile runtime.
+3. **xcframework structural audit** — parses the produced `Info.plist`'s
    `AvailableLibraries` array via `plutil`. Empty or malformed = error.
 
 ## How to verify Eliza-1 kernels are in the produced binary
@@ -215,8 +219,8 @@ ELIZA_IOS_DEVELOPMENT_TEAM=<Apple Team ID> \
     --report packages/inference/reports/porting/2026-05-11/ios_device_smoke.json
 ```
 
-The smoke refuses simulators. It creates a temporary SwiftPM XCTest
-package, links the same `LlamaCpp.xcframework` slot consumed by
+The smoke refuses simulators. It creates a temporary hosted XCTest
+project, links the same `LlamaCpp.xcframework` slot consumed by
 `llama-cpp-capacitor`, runs on a connected physical iPhone/iPad, and
 checks:
 

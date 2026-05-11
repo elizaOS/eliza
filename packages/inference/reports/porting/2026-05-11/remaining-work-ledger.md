@@ -23,8 +23,8 @@ with the status below.
 | Area | Status | Evidence |
 | --- | --- | --- |
 | Metal standalone shaders | `turbo3`, `turbo4`, `turbo3_tcq`, `qjl`, `polar` all pass 8/8 on Apple M4 Max. | `make -C packages/inference/verify metal-verify metal-verify-multiblock` |
-| Metal built-fork graph dispatch | `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_ATTN_SCORE_TBQ` for `turbo3` + `turbo3_tcq`, and `GGML_OP_ATTN_SCORE_POLAR` are runtime-ready. `turbo4` is fail-closed on a fork layout mismatch. | `make -C packages/inference/verify dispatch-smoke-implemented` passes QJL, turbo3, turbo3_tcq, and PolarQuant `use_qjl=0/1`; max diffs are `2.384e-07`, `4.768e-07`, `4.768e-07`, and `1.907e-06`. `make -C packages/inference/verify dispatch-smoke` remains the full gate and fails on Turbo4 with `ggml_row_size=72` vs shader layout `66`. |
-| Metal artifact gate | Desktop/iOS artifacts still fail the publish gate. | `darwin-arm64-metal` now compiles the graph-dispatch fork patch and produces `default.metallib`, but `build-llama-cpp-dflash.mjs` still hardcodes Metal `turbo3=false`, `turbo4=false`, `turbo3_tcq=false`, and `polarquant=false` in its honesty gate. The remaining runtime blocker is Turbo4; after it is resolved, the build-script capability gate must be updated to read the expanded evidence file. |
+| Metal built-fork graph dispatch | `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_ATTN_SCORE_TBQ` for `turbo3`, `turbo4`, and `turbo3_tcq`, and `GGML_OP_ATTN_SCORE_POLAR` are runtime-ready. | `make -C packages/inference/verify dispatch-smoke` now covers the full Metal graph-dispatch set; Turbo4 routes through `kernel_turbo4_dot_multi` against the fork's four-record TBQ4 layout with max diff `1.907e-06`. `dispatch-smoke-implemented` remains the additive subset gate for already implemented routes. |
+| Metal artifact gate | `darwin-arm64-metal` now passes the build-script capability gate. | `build-llama-cpp-dflash.mjs` reads `verify/metal-runtime-dispatch-evidence.json` and reports each Metal runtime capability true only when the matching shipped symbol and runtime-ready evidence are both present. A fresh `darwin-arm64-metal` build wrote `CAPABILITIES.json` with `dflash`, `turbo3`, `turbo4`, `turbo3_tcq`, `qjl_full`, and `polarquant` true. |
 | Vulkan standalone shaders | All five pass on Apple M4 Max through MoltenVK; turbo* also passed earlier on Intel ARL + lavapipe. | `make -C packages/inference/verify vulkan-verify`. |
 | Android Vulkan standalone runner | Tooling is installed and the runner is fail-closed for real-device validation. | Homebrew `android-platform-tools` + `android-commandlinetools` installed; SDK at `~/Library/Android/sdk`; `android_vulkan_smoke.sh` now resolves NDKs under `ANDROID_HOME` / `ANDROID_SDK_ROOT`, statically links libc++, and refuses emulators/software Vulkan unless `ELIZA_ALLOW_ANDROID_EMULATOR_VULKAN=1` / `ELIZA_ALLOW_SOFTWARE_VULKAN=1` are set. Diagnostic emulator run passed all six fixtures on `llvmpipe`; this does **not** count as Adreno/Mali validation. |
 | Vulkan built-fork graph dispatch | Not runtime-ready. | SPIR-V blobs can be staged and CAPABILITIES records `shippedKernels` diagnostics, but `ggml-vulkan.cpp` has no milady-native op dispatch. `vulkan_dispatch_smoke.cpp` now fails before compute unless ggml-vulkan advertises `GGML_OP_ATTN_SCORE_QJL` support, then numerically checks the packed-QJL output. |
@@ -32,33 +32,25 @@ with the status below.
 | CUDA/GH200 hardware runners | Runnable, fail-closed entrypoints now exist for Linux x64 NVIDIA and GH200-like Linux aarch64. | `verify/cuda_runner.sh --report <path>` requires `nvcc` + `nvidia-smi` + `make cuda-verify` + `ELIZA_DFLASH_SMOKE_MODEL` graph smoke; `verify/gh200_runner.sh --report <path>` additionally requires arm64 Linux + Hopper/compute-capability-9.x. Skip modes exit non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | ROCm hardware runner | Runnable, fail-closed entrypoint now exists for AMD HIP hosts; fixture parity still needs a HIP harness. | `verify/rocm_runner.sh --report <path>` requires `hipcc` + `rocminfo` `gfx*` agent + model-backed graph smoke. Skip mode exits non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | Windows hardware runner | Runnable, fail-closed PowerShell entrypoint now exists for native Windows CUDA/Vulkan/CPU smoke. | `verify/windows_runner.ps1 -Report <path>` requires native Windows backend hardware/toolchain and a GGUF model; cross-built exe execution is not counted. Skip mode exits non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
-| iOS | Static archives and embedded metallib build for physical-device and simulator slices; a physical-device XCTest smoke entrypoint exists, but no on-device PASS has been recorded. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target ios-arm64-metal` and `--target ios-arm64-simulator-metal` compile `libllama.a`, `libggml*.a`, headers, and `default.metallib`, then fail the same graph-capability publish gate. `packages/app-core/scripts/ios-xcframework/run-physical-device-smoke.mjs` still needs a connected physical iPhone/iPad. |
-| Voice fusion | macOS production fused `libelizainference.dylib` now builds, symbol-verifies, and ABI-smokes; real TTS with real OmniVoice GGUF weights and merged HTTP routes remain open. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal-fused --jobs 10` links `omnivoice-core`, `libelizainference.dylib`, `llama-omnivoice-server`, and `default.metallib`; `make -C packages/app-core/scripts/omnivoice-fuse verify` proves the stub ABI; Bun FFI smoke against the real dylib proves metadata-only `create`, lazy TTS `mmap_acquire`, structured GGUF-load failure, and `destroy`. |
+| iOS | Static archives and embedded metallib build for physical-device and simulator slices; physical-device smoke now reaches a connected iPhone and fails on missing runtime ABI symbols. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target ios-arm64-metal` and `--target ios-arm64-simulator-metal` compile `libllama.a`, `libggml*.a`, headers, and `default.metallib`. `build-xcframework.mjs --verify` now passes the kernel-symbol audit but fails the runtime-symbol audit for missing Capacitor bridge symbols plus `eliza_inference_*`. `run-physical-device-smoke.mjs` was run on Shaw's iPhone (`00008130-001955E91EF8001C`, iOS 26.3.1) and records `missing-capacitor-bridge-and-voice-abi-symbols` in `ios-physical-device-smoke.json`. |
+| Voice fusion | macOS production fused `libelizainference.dylib` now builds, symbol-verifies, and ABI-smokes; real TTS with real OmniVoice GGUF weights and merged HTTP routes remain open. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal-fused --jobs 10` links `omnivoice-core`, `libelizainference.dylib`, `llama-omnivoice-server`, and `default.metallib`; `make -C packages/app-core/scripts/omnivoice-fuse verify` proves ABI compatibility; Bun FFI smoke against the real dylib proves metadata-only `create`, lazy TTS `mmap_acquire`, structured GGUF-load failure, and `destroy`. |
 | Eliza-1 bundles | Schema/catalog/publish gates and release-evidence gates exist; real release bundles do not. | `packages/training/scripts/publish/orchestrator.py` now requires `evidence/release.json`, `checksums/SHA256SUMS`, per-backend runtime dispatch reports, and target-keyed platform evidence before any dry-run/upload path can pass. Runtime-dispatch reports must prove model hash, kernel set, graph route, logs, commit, and device; platform reports cannot skip iOS voice ABI. No checked-in weight-derived manifests or HF upload evidence exist yet. |
 
 ## P0 Blockers
 
-1. **Metal TurboQuant graph dispatch**
+1. **iOS runtime ABI packaging**
 
-   `turbo3` and `turbo3_tcq` now have a dedicated graph op
-   (`GGML_OP_ATTN_SCORE_TBQ`) that consumes pre-rotated query rows and packed
-   K-cache rows directly. `turbo4` is still blocked because the fork's
-   `GGML_TYPE_TBQ4_0` row layout is four 32-wide blocks per 128-row
-   (`ggml_row_size=72`), while `kernel_turbo4_dot(_multi)` consumes one
-   128-wide 66-byte block. Do not revive the old generic
-   `MILADY-DISPATCH-V1` route.
+   Metal graph dispatch is now runtime-ready for QJL, Turbo3, Turbo4,
+   Turbo3-TCQ, and PolarQuant on Apple Silicon. The remaining iOS publish
+   blocker is that the produced `LlamaCpp.xcframework` slice does not export
+   the Capacitor bridge symbols or the `eliza_inference_*` voice ABI symbols
+   required by the physical-device smoke.
 
    Acceptance:
-   - Built fork exposes dispatch functions for all three TurboQuant variants.
-     Covered for turbo3/turbo3_tcq; Turbo4 needs either a Metal shader for the
-     fork's 4x32 `block_tbq4_0` layout or a new runtime packing/type hook that
-     exactly matches the shipped 66-byte shader layout.
-   - Smoke test drives actual Metal backend graph execution. Covered by
-     `dispatch-smoke-implemented`; the full `dispatch-smoke` target remains
-     intentionally failing until Turbo4 is fixed.
-   - `CAPABILITIES.json.kernels.{turbo3,turbo4,turbo3_tcq}=true`. Still
-     blocked by Turbo4 and by the build-script honesty gate that currently
-     forces Metal Turbo/Polar capability bits false.
+   - `build-xcframework.mjs --verify` passes both kernel-symbol and
+     runtime-symbol audits for the iOS arm64 and simulator slices.
+   - `run-physical-device-smoke.mjs` passes on a connected iPhone/iPad without
+     skipping the voice ABI check.
 
 2. **Metal PolarQuant graph dispatch**
 
@@ -69,9 +61,8 @@ with the status below.
    Acceptance:
    - Built fork smoke covers `use_qjl=0` and `use_qjl=1`. Covered by
      `dispatch-smoke-implemented`.
-   - `CAPABILITIES.json.kernels.polarquant=true`. Still blocked by the
-     build-script honesty gate until the full Metal kernel set, including
-     Turbo4, is runtime-ready.
+   - `CAPABILITIES.json.kernels.polarquant=true` when the shipped Metal symbol
+     and runtime evidence are present.
 
 3. **Vulkan graph dispatch**
 
@@ -104,12 +95,12 @@ with the status below.
 
    Acceptance:
    - `libelizainference` exports ABI v1 symbols and passes FFI smoke tests
-     under Bun/Electrobun. Stub ABI smoke and real macOS dylib ABI smoke are
-     covered; real TTS synthesis against actual OmniVoice GGUF weights is
-     still required before this item is product-ready.
+     under Bun/Electrobun. ABI compatibility smoke and real macOS dylib ABI
+     smoke are covered; real TTS synthesis against actual OmniVoice GGUF
+     weights is still required before this item is product-ready.
    - Voice mode starts without IPC to a second model process.
    - Voice-off mode does not mmap or page TTS/ASR/voice-preset regions.
-   - The fused HTTP server is not product-ready until the placeholder
+   - The fused HTTP server is not product-ready until the compatibility
      `llama-omnivoice-server` route is replaced by one process serving both
      text/DFlash and `/v1/audio/speech`.
 
@@ -168,9 +159,9 @@ The lowest-duplication design is lazy regional loading from one bundle:
 
 | Platform class | Next required action |
 | --- | --- |
-| Apple Silicon Mac | Fix the Turbo4 fork-layout mismatch, then rerun full `dispatch-smoke`, `metal-verify`, and a real Eliza-1 bundle smoke. |
+| Apple Silicon Mac | Run fused Metal smoke against a full Eliza-1 bundle after graph-dispatch smoke. |
 | Intel/AMD Mac | Build `darwin-x64-metal` and run the standalone + built-fork smoke suite on real hardware. |
-| iPhone/iPad | Run `ios-xcframework/run-physical-device-smoke.mjs` on a connected physical iPhone/iPad, then run a real Eliza-1 bundle smoke that measures first audio latency and peak RSS. |
+| iPhone/iPad | Wire the Capacitor bridge archive and real OmniVoice-backed `eliza_inference_*` ABI into both iOS slices, rerun `build-xcframework.mjs --verify`, rerun `run-physical-device-smoke.mjs` on the connected device, then run a real Eliza-1 bundle smoke that measures first audio latency and peak RSS. |
 | Android Adreno | Cross-build `android-arm64-vulkan`, run Vulkan fixtures via `adb`, attach graph-dispatch evidence for `GGML_OP_ATTN_SCORE_QJL`, collect thermal/RSS. |
 | Android Mali | Same as Adreno; do not transfer Adreno results to Mali without a run. |
 | Linux x64 CUDA | Run `make cuda` / `cuda_verify` on RTX/A100/H100/H200; pin arch flags where needed. |

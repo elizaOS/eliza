@@ -489,8 +489,7 @@ dispatch-smoke: dispatch_smoke
 	  ./dispatch_smoke
 
 dispatch-smoke-implemented: dispatch_smoke
-	@echo "[dispatch-smoke] running implemented routes against $(ELIZA_DFLASH_METAL_BIN_DIR) (Turbo4 layout blocker allowed)"
-	ELIZA_DISPATCH_SMOKE_ALLOW_TURBO4_LAYOUT_BLOCK=1 \
+	@echo "[dispatch-smoke] running implemented routes against $(ELIZA_DFLASH_METAL_BIN_DIR)"
 	GGML_METAL_PATH_RESOURCES=$(ELIZA_DFLASH_METAL_BIN_DIR) \
 	  DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
 	  ./dispatch_smoke

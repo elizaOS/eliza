@@ -29,11 +29,9 @@
 //     fork and numerically verifies graph execution selects the shipped Metal
 //     kernels.
 //
-//   * Turbo4 remains fail-closed: the fork's GGML_TYPE_TBQ4_0 layout is four
-//     32-wide blocks per 128-row (72 bytes), while the shipped Metal shader
-//     consumes one 128-wide 66-byte block. Do not flip the Turbo4 runtime bit
-//     until the fork grows a matching shader or a matching runtime packing
-//     type.
+//   * Turbo4 is wired through the same dedicated attention-score graph op.
+//     The shipped shader consumes the fork's real GGML_TYPE_TBQ4_0 layout:
+//     four 32-wide block_tbq4_0 records per 128-row (72 bytes).
 
 import fs from "node:fs";
 import path from "node:path";
@@ -71,10 +69,10 @@ export const METAL_RUNTIME_DISPATCH_GATES = {
     smokeTarget: "dispatch-smoke",
   },
   turbo4: {
-    status: "blocked-layout-mismatch",
-    runtimeReady: false,
-    blocker:
-      "fork GGML_TYPE_TBQ4_0 is four 32-wide blocks per 128-row (72 bytes), while shipped kernel_turbo4_dot(_multi) consumes one 128-wide 66-byte block",
+    status: "runtime-ready",
+    runtimeReady: true,
+    graphOp: "GGML_OP_ATTN_SCORE_TBQ",
+    smokeTarget: "dispatch-smoke",
   },
   turbo3_tcq: {
     status: "runtime-ready",
@@ -137,11 +135,15 @@ function assertStandalonesPresent() {
 // so the patch is self-contained and the original (un-wired) milady-kernels/
 // drafts remain visible for diff-archaeology if a future agent wants them.
 function copyStandalonesIntoFork(cacheDir, { dryRun }) {
-  const targetDir = path.join(cacheDir, "ggml", "src", "ggml-metal", "milady-shipped");
+  const targetDir = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-metal",
+    "milady-shipped",
+  );
   if (dryRun) {
-    console.log(
-      `[metal-kernels] (dry-run) mkdir -p ${targetDir}`,
-    );
+    console.log(`[metal-kernels] (dry-run) mkdir -p ${targetDir}`);
   } else {
     fs.mkdirSync(targetDir, { recursive: true });
   }
@@ -210,7 +212,7 @@ function patchMetalCMakeLists(cacheDir, { dryRun }) {
       embedStart === -1
         ? -1
         : patched.indexOf(
-            "\n\n    target_sources(ggml-metal PRIVATE \"${METALLIB_EMBED_ASM}\")",
+            '\n\n    target_sources(ggml-metal PRIVATE "${METALLIB_EMBED_ASM}")',
             embedStart,
           );
     if (embedStart === -1 || embedEnd === -1) {
@@ -264,9 +266,7 @@ ${embedAirLines}
         VERBATIM
     )`;
     patched =
-      patched.slice(0, embedStart) +
-      embedReplacement +
-      patched.slice(embedEnd);
+      patched.slice(0, embedStart) + embedReplacement + patched.slice(embedEnd);
     changed = true;
   }
 
@@ -377,7 +377,9 @@ function patchEmbeddedMetallibLoader(cacheDir, { dryRun }) {
 #else`;
   const patched = original.replace(anchor, replacement);
   if (patched === original) {
-    throw new Error("[metal-kernels] embedded loader replace produced no change");
+    throw new Error(
+      "[metal-kernels] embedded loader replace produced no change",
+    );
   }
   if (!dryRun) fs.writeFileSync(deviceMPath, patched, "utf8");
   return { changed: !dryRun, path: deviceMPath };
@@ -386,7 +388,13 @@ function patchEmbeddedMetallibLoader(cacheDir, { dryRun }) {
 const SENTINEL_DISPATCH = "// MILADY-DISPATCH-V1";
 
 function patchMetalQjlAttnHeader(cacheDir, { dryRun }) {
-  const headerPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-device.h");
+  const headerPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-metal",
+    "ggml-metal-device.h",
+  );
   const original = fs.readFileSync(headerPath, "utf8");
   if (original.includes(SENTINEL_QJL_ATTN)) {
     return { changed: false, path: headerPath };
@@ -416,14 +424,21 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_scor
 }
 
 function patchMetalQjlAttnDeviceCpp(cacheDir, { dryRun }) {
-  const cppPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-device.cpp");
+  const cppPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-metal",
+    "ggml-metal-device.cpp",
+  );
   const original = fs.readFileSync(cppPath, "utf8");
   if (original.includes(SENTINEL_QJL_ATTN)) {
     const upgraded = original.replace(
       'const char * name = "kernel_attn_score_qjl1_256";',
       'const char * name = "kernel_attn_score_qjl1_256_multi";',
     );
-    if (upgraded !== original && !dryRun) fs.writeFileSync(cppPath, upgraded, "utf8");
+    if (upgraded !== original && !dryRun)
+      fs.writeFileSync(cppPath, upgraded, "utf8");
     return { changed: upgraded !== original && !dryRun, path: cppPath };
   }
   const anchor = `ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_bin(ggml_metal_library_t lib, const ggml_tensor * op, int32_t n_fuse) {`;
@@ -459,7 +474,13 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_qjl(g
 }
 
 function patchMetalQjlAttnOpsHeader(cacheDir, { dryRun }) {
-  const headerPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-ops.h");
+  const headerPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-metal",
+    "ggml-metal-ops.h",
+  );
   const original = fs.readFileSync(headerPath, "utf8");
   if (original.includes(SENTINEL_QJL_ATTN)) {
     return { changed: false, path: headerPath };
@@ -479,7 +500,13 @@ int ggml_metal_op_attn_score_qjl  (ggml_metal_op_t ctx, int idx);`;
 }
 
 function patchMetalQjlAttnOpsCpp(cacheDir, { dryRun }) {
-  const opsPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-ops.cpp");
+  const opsPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-metal",
+    "ggml-metal-ops.cpp",
+  );
   const original = fs.readFileSync(opsPath, "utf8");
   if (original.includes(SENTINEL_QJL_ATTN)) {
     let upgraded = original.replace(
@@ -520,7 +547,8 @@ function patchMetalQjlAttnOpsCpp(cacheDir, { dryRun }) {
     GGML_ASSERT(ggml_is_contiguous_rows(pk));
     GGML_ASSERT(ggml_is_contiguous_rows(op));`,
     );
-    if (upgraded !== original && !dryRun) fs.writeFileSync(opsPath, upgraded, "utf8");
+    if (upgraded !== original && !dryRun)
+      fs.writeFileSync(opsPath, upgraded, "utf8");
     return { changed: upgraded !== original && !dryRun, path: opsPath };
   }
 
@@ -637,7 +665,13 @@ int ggml_metal_op_attn_score_qjl(ggml_metal_op_t ctx, int idx) {
 }
 
 function patchMetalQjlAttnSupportsOp(cacheDir, { dryRun }) {
-  const deviceMPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-device.m");
+  const deviceMPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-metal",
+    "ggml-metal-device.m",
+  );
   const original = fs.readFileSync(deviceMPath, "utf8");
   if (original.includes(SENTINEL_QJL_ATTN)) {
     const upgraded = original.replace(
@@ -649,7 +683,8 @@ function patchMetalQjlAttnSupportsOp(cacheDir, { dryRun }) {
                 ggml_is_contiguous_rows(op->src[0]) &&
                 ggml_is_contiguous_rows(op->src[1]);`,
     );
-    if (upgraded !== original && !dryRun) fs.writeFileSync(deviceMPath, upgraded, "utf8");
+    if (upgraded !== original && !dryRun)
+      fs.writeFileSync(deviceMPath, upgraded, "utf8");
     return { changed: upgraded !== original && !dryRun, path: deviceMPath };
   }
   const anchor = `        case GGML_OP_FLASH_ATTN_EXT:
@@ -698,9 +733,13 @@ function readTcqCodebookLiteral() {
     "turbo_kernels.c",
   );
   const source = fs.readFileSync(referencePath, "utf8");
-  const match = source.match(/const float ELIZA_TURBO3_TCQ_CODEBOOK\[512\]\s*=\s*\{([\s\S]*?)\};/);
+  const match = source.match(
+    /const float ELIZA_TURBO3_TCQ_CODEBOOK\[512\]\s*=\s*\{([\s\S]*?)\};/,
+  );
   if (!match) {
-    throw new Error(`[metal-tbq-polar-attn] could not extract TCQ codebook from ${referencePath}`);
+    throw new Error(
+      `[metal-tbq-polar-attn] could not extract TCQ codebook from ${referencePath}`,
+    );
   }
   return match[1].trim();
 }
@@ -716,7 +755,9 @@ function patchGgmlTbqPolarAttnOps(cacheDir, { dryRun }) {
     const enumAnchor = `        GGML_OP_ATTN_SCORE_QJL, // QJL 1-bit packed-K attention score (CPU-only)
         GGML_OP_FUSED_ATTN_QJL_TBQ, // fused QJL-K + TBQ-V attention (CPU-only)`;
     if (!header.includes(enumAnchor)) {
-      throw new Error(`[metal-tbq-polar-attn] ggml.h op enum anchor not found at ${headerPath}`);
+      throw new Error(
+        `[metal-tbq-polar-attn] ggml.h op enum anchor not found at ${headerPath}`,
+      );
     }
     header = header.replace(
       enumAnchor,
@@ -731,7 +772,9 @@ function patchGgmlTbqPolarAttnOps(cacheDir, { dryRun }) {
             struct ggml_tensor  * packed_k,
             int                   n_kv_heads);`;
     if (!header.includes(declAnchor)) {
-      throw new Error(`[metal-tbq-polar-attn] ggml.h QJL declaration anchor not found at ${headerPath}`);
+      throw new Error(
+        `[metal-tbq-polar-attn] ggml.h QJL declaration anchor not found at ${headerPath}`,
+      );
     }
     header = header.replace(
       declAnchor,
@@ -763,7 +806,8 @@ function patchGgmlTbqPolarAttnOps(cacheDir, { dryRun }) {
     changed = true;
   }
 
-  if (header !== headerOriginal && !dryRun) fs.writeFileSync(headerPath, header, "utf8");
+  if (header !== headerOriginal && !dryRun)
+    fs.writeFileSync(headerPath, header, "utf8");
 
   const cOriginal = fs.readFileSync(cPath, "utf8");
   let c = cOriginal;
@@ -801,7 +845,9 @@ function patchGgmlTbqPolarAttnOps(cacheDir, { dryRun }) {
     const implAnchor = `// ggml_fused_attn_qjl_tbq
 //`;
     if (!c.includes(implAnchor)) {
-      throw new Error(`[metal-tbq-polar-attn] ggml.c implementation anchor not found at ${cPath}`);
+      throw new Error(
+        `[metal-tbq-polar-attn] ggml.c implementation anchor not found at ${cPath}`,
+      );
     }
     const impl = `// ${SENTINEL_TBQ_POLAR_ATTN}
 // ggml_attn_score_tbq
@@ -880,7 +926,9 @@ struct ggml_tensor * ggml_attn_score_polar(
 `;
     c = c.replace(implAnchor, impl + implAnchor);
     if (!c.includes("ATTN_SCORE_TBQ") || !c.includes("attn_score_polar")) {
-      throw new Error(`[metal-tbq-polar-attn] ggml.c patch did not add expected op names at ${cPath}`);
+      throw new Error(
+        `[metal-tbq-polar-attn] ggml.c patch did not add expected op names at ${cPath}`,
+      );
     }
     changed = true;
   }
@@ -890,7 +938,13 @@ struct ggml_tensor * ggml_attn_score_polar(
 }
 
 function patchMetalTbqPolarDeviceHeader(cacheDir, { dryRun }) {
-  const headerPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-device.h");
+  const headerPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-metal",
+    "ggml-metal-device.h",
+  );
   const original = fs.readFileSync(headerPath, "utf8");
   if (original.includes(SENTINEL_TBQ_POLAR_ATTN)) {
     return { changed: false, path: headerPath };
@@ -899,7 +953,9 @@ function patchMetalTbqPolarDeviceHeader(cacheDir, { dryRun }) {
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_qjl(
         ggml_metal_library_t lib);`;
   if (!original.includes(anchor)) {
-    throw new Error(`[metal-tbq-polar-attn] device.h QJL pipeline anchor not found at ${headerPath}`);
+    throw new Error(
+      `[metal-tbq-polar-attn] device.h QJL pipeline anchor not found at ${headerPath}`,
+    );
   }
   const patched = original.replace(
     anchor,
@@ -918,14 +974,22 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_scor
 }
 
 function patchMetalTbqPolarDeviceCpp(cacheDir, { dryRun }) {
-  const cppPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-device.cpp");
+  const cppPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-metal",
+    "ggml-metal-device.cpp",
+  );
   const original = fs.readFileSync(cppPath, "utf8");
   if (original.includes(SENTINEL_TBQ_POLAR_ATTN)) {
     return { changed: false, path: cppPath };
   }
   const anchor = `ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_bin(ggml_metal_library_t lib, const ggml_tensor * op, int32_t n_fuse) {`;
   if (!original.includes(anchor)) {
-    throw new Error(`[metal-tbq-polar-attn] device.cpp pipeline anchor not found at ${cppPath}`);
+    throw new Error(
+      `[metal-tbq-polar-attn] device.cpp pipeline anchor not found at ${cppPath}`,
+    );
   }
   const helper = `${SENTINEL_TBQ_POLAR_ATTN}
 static const char * milady_metal_tbq_kernel_name(ggml_type type) {
@@ -978,7 +1042,13 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_polar
 }
 
 function patchMetalTbqPolarOpsHeader(cacheDir, { dryRun }) {
-  const headerPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-ops.h");
+  const headerPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-metal",
+    "ggml-metal-ops.h",
+  );
   const original = fs.readFileSync(headerPath, "utf8");
   if (original.includes(SENTINEL_TBQ_POLAR_ATTN)) {
     return { changed: false, path: headerPath };
@@ -986,7 +1056,9 @@ function patchMetalTbqPolarOpsHeader(cacheDir, { dryRun }) {
   const anchor = `${SENTINEL_QJL_ATTN}
 int ggml_metal_op_attn_score_qjl  (ggml_metal_op_t ctx, int idx);`;
   if (!original.includes(anchor)) {
-    throw new Error(`[metal-tbq-polar-attn] ops.h QJL declaration anchor not found at ${headerPath}`);
+    throw new Error(
+      `[metal-tbq-polar-attn] ops.h QJL declaration anchor not found at ${headerPath}`,
+    );
   }
   const patched = original.replace(
     anchor,
@@ -1000,15 +1072,29 @@ int ggml_metal_op_attn_score_polar(ggml_metal_op_t ctx, int idx);`,
 }
 
 function patchMetalTbqPolarOpsCpp(cacheDir, { dryRun }) {
-  const opsPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-ops.cpp");
+  const opsPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-metal",
+    "ggml-metal-ops.cpp",
+  );
   const original = fs.readFileSync(opsPath, "utf8");
   if (original.includes(SENTINEL_TBQ_POLAR_ATTN)) {
-    return { changed: false, path: opsPath };
+    const patched = original.replace(
+      "case GGML_TYPE_TBQ4_0:   return 1u;",
+      "case GGML_TYPE_TBQ4_0:   return 4u;",
+    );
+    if (patched !== original && !dryRun)
+      fs.writeFileSync(opsPath, patched, "utf8");
+    return { changed: patched !== original && !dryRun, path: opsPath };
   }
   const tcqCodebook = readTcqCodebookLiteral();
   const funcAnchor = `static int ggml_metal_op_encode_impl(ggml_metal_op_t ctx, int idx) {`;
   if (!original.includes(funcAnchor)) {
-    throw new Error(`[metal-tbq-polar-attn] ops.cpp encode anchor not found at ${opsPath}`);
+    throw new Error(
+      `[metal-tbq-polar-attn] ops.cpp encode anchor not found at ${opsPath}`,
+    );
   }
   const opFuncs = `${SENTINEL_TBQ_POLAR_ATTN}
 struct milady_tbq_score_args {
@@ -1033,7 +1119,7 @@ ${tcqCodebook}
 static inline uint32_t milady_tbq_blocks_per_row(ggml_type type) {
     switch (type) {
         case GGML_TYPE_TBQ3_0:   return 4u;
-        case GGML_TYPE_TBQ4_0:   return 1u;
+        case GGML_TYPE_TBQ4_0:   return 4u;
         case GGML_TYPE_TBQ3_TCQ: return 1u;
         default: GGML_ABORT("unsupported TurboQuant attention score type");
     }
@@ -1200,7 +1286,9 @@ int ggml_metal_op_attn_score_polar(ggml_metal_op_t ctx, int idx) {
                 n_fuse = ggml_metal_op_attn_score_qjl(ctx, idx);
             } break;`;
   if (!patched.includes(switchAnchor)) {
-    throw new Error(`[metal-tbq-polar-attn] ops.cpp QJL switch anchor not found at ${opsPath}`);
+    throw new Error(
+      `[metal-tbq-polar-attn] ops.cpp QJL switch anchor not found at ${opsPath}`,
+    );
   }
   patched = patched.replace(
     switchAnchor,
@@ -1219,15 +1307,32 @@ int ggml_metal_op_attn_score_polar(ggml_metal_op_t ctx, int idx) {
 }
 
 function patchMetalTbqPolarSupportsOp(cacheDir, { dryRun }) {
-  const deviceMPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-device.m");
+  const deviceMPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-metal",
+    "ggml-metal-device.m",
+  );
   const original = fs.readFileSync(deviceMPath, "utf8");
   if (original.includes(SENTINEL_TBQ_POLAR_ATTN)) {
-    return { changed: false, path: deviceMPath };
+    const patched = original.replace(
+      `(op->src[1]->type == GGML_TYPE_TBQ3_0 ||
+                 op->src[1]->type == GGML_TYPE_TBQ3_TCQ) &&`,
+      `(op->src[1]->type == GGML_TYPE_TBQ3_0 ||
+                 op->src[1]->type == GGML_TYPE_TBQ4_0 ||
+                 op->src[1]->type == GGML_TYPE_TBQ3_TCQ) &&`,
+    );
+    if (patched !== original && !dryRun)
+      fs.writeFileSync(deviceMPath, patched, "utf8");
+    return { changed: patched !== original && !dryRun, path: deviceMPath };
   }
   const anchor = `        case GGML_OP_ATTN_SCORE_QJL:
             // ${SENTINEL_QJL_ATTN}`;
   if (!original.includes(anchor)) {
-    throw new Error(`[metal-tbq-polar-attn] supports_op QJL anchor not found at ${deviceMPath}`);
+    throw new Error(
+      `[metal-tbq-polar-attn] supports_op QJL anchor not found at ${deviceMPath}`,
+    );
   }
   const insert = `        case GGML_OP_ATTN_SCORE_TBQ:
             // ${SENTINEL_TBQ_POLAR_ATTN}
@@ -1237,6 +1342,7 @@ function patchMetalTbqPolarSupportsOp(cacheDir, { dryRun }) {
                 op->src[1] != NULL &&
                 op->src[0]->type == GGML_TYPE_F32 &&
                 (op->src[1]->type == GGML_TYPE_TBQ3_0 ||
+                 op->src[1]->type == GGML_TYPE_TBQ4_0 ||
                  op->src[1]->type == GGML_TYPE_TBQ3_TCQ) &&
                 op->src[0]->ne[0] == 128 &&
                 op->src[1]->ne[0] == 128 &&
@@ -1312,10 +1418,18 @@ export function patchMetalDispatch(cacheDir, { dryRun = false } = {}) {
   console.log(
     `[metal-dispatch] ${dryRun ? "(dry-run) " : ""}runtime-ready gates: ` +
       Object.entries(METAL_RUNTIME_DISPATCH_GATES)
-        .map(([key, gate]) => `${key}=${gate.runtimeReady ? "runtime-ready" : gate.status}`)
+        .map(
+          ([key, gate]) =>
+            `${key}=${gate.runtimeReady ? "runtime-ready" : gate.status}`,
+        )
         .join(", "),
   );
-  return { status: "attn-score-qjl-tbq-polar", unsafePatchPresent: patchedFiles, qjlAttn, tbqPolarAttn };
+  return {
+    status: "attn-score-qjl-tbq-polar",
+    unsafePatchPresent: patchedFiles,
+    qjlAttn,
+    tbqPolarAttn,
+  };
 }
 
 // Public entry point used by build-llama-cpp-dflash.mjs.

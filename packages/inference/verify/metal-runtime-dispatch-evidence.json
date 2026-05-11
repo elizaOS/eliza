@@ -22,14 +22,19 @@
     },
     "turbo4": {
       "runtimeCapabilityKey": "turbo4",
-      "status": "blocked-layout-mismatch",
-      "runtimeReady": false,
+      "status": "runtime-ready",
+      "runtimeReady": true,
       "shippedSymbols": [
         "kernel_turbo4_dot",
         "kernel_turbo4_dot_multi"
       ],
-      "requiredSmoke": "A built-fork GGML graph op or fused attention op dispatches kernel_turbo4_dot(_multi) and numerically matches the fixture/reference.",
-      "blocker": "GGML_TYPE_TBQ4_0 in the fork stores a 128-row as four 32-wide block_tbq4_0 records (ggml_row_size=72), while kernel_turbo4_dot(_multi) consumes one 128-wide block_turbo4_0 record (66 bytes). The missing fork hook is either a Metal TBQ4 shader for the fork's 4x32 layout or a new GGML runtime type/packing path that exactly matches the shipped 66-byte shader layout."
+      "graphOp": "GGML_OP_ATTN_SCORE_TBQ",
+      "smokeTarget": "dispatch-smoke",
+      "smokeCommand": "make -C packages/inference/verify dispatch-smoke",
+      "smokeScores": 32,
+      "maxDiff": 4.768e-7,
+      "evidenceDate": "2026-05-11",
+      "notes": "kernel_turbo4_dot(_multi) consumes the fork GGML_TYPE_TBQ4_0 layout: four 32-wide block_tbq4_0 records per 128-row (ggml_row_size=72). dispatch_smoke drives GGML_OP_ATTN_SCORE_TBQ through kernel_turbo4_dot_multi and numerically checks the reference dot."
     },
     "turbo3_tcq": {
       "runtimeCapabilityKey": "turbo3_tcq",

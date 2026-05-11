@@ -25,13 +25,12 @@
  * and the staging step is idempotent — already-staged files with the
  * matching size are left in place.
  *
- * Pinned versions (mirrors scripts/spike-android-agent/bootstrap.sh):
- *   - bun 1.3.13                     proven on the Phase 0 spike
+ * Pinned versions:
+ *   - bun 1.3.13                     validated by Android agent bring-up
  *   - Alpine v3.21                   ships gcc 14.2 → libstdc++.so.6.0.33
  *
- * The ABI-independent `launch.sh` is derived from
- * `scripts/spike-android-agent/launch-on-device.sh`; `agent-bundle.js` is
- * produced by `bun run --cwd packages/agent build:mobile`.
+ * The ABI-independent `launch.sh` is the packaged production launcher;
+ * `agent-bundle.js` is produced by `bun run --cwd packages/agent build:mobile`.
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -100,11 +99,10 @@ function jniRealLoaderName(ldName) {
 }
 
 /**
- * Adapted from scripts/spike-android-agent/launch-on-device.sh. The script
- * ships *inside* the APK and is copied (with executable bit set) into the
- * app data dir by ElizaAgentService at first launch. It accepts the device
- * path, ABI-specific musl loader, and listen port as env vars so a single
- * shell file can drive both ABIs at runtime.
+ * The script ships *inside* the APK and is copied (with executable bit set)
+ * into the app data dir by ElizaAgentService at first launch. It accepts the
+ * device path, ABI-specific musl loader, and listen port as env vars so a
+ * single shell file can drive both ABIs at runtime.
  */
 const LAUNCH_SCRIPT = `#!/system/bin/sh
 # launch.sh — device-side launcher for the on-device Eliza agent.
@@ -409,8 +407,8 @@ export function stageSeccompShimForAbi({
  *
  * Required:
  *   androidDir  Absolute path to packages/app/android/.
- *   spikeDir    Absolute path to scripts/spike-android-agent/. Kept for
- *               legacy workspace-root resolution; it is not used as a
+ *   spikeDir    Absolute path to the Android-agent script directory. Kept
+ *               for legacy workspace-root resolution; it is not used as a
  *               bundle fallback.
  *
  * Optional:
@@ -524,8 +522,8 @@ export async function stageAndroidAgentRuntime({
     //
     // Idempotent: if the wrapper is already in place we just refresh
     // the .real loader and the shim file (handled by copyIfDifferent's
-    // size+mtime check). If shim artifacts are missing we leave the
-    // legacy loader in place so the Capacitor APK build still works.
+    // size+mtime check). If shim artifacts are missing we leave the packaged
+    // musl loader in place so the Capacitor APK build still works.
     const shimChanges = stageSeccompShimForAbi({
       androidAbi,
       ldName,
@@ -650,8 +648,8 @@ export async function stageAndroidAgentRuntime({
   const bundleTarget = path.join(assetsAgentDir, "agent-bundle.js");
   if (copyIfDifferent(bundleSrc, bundleTarget)) stagedCount += 1;
 
-  // PGlite runtime artifacts. Only present when the mobile bundle build has run.
-  // Skip silently when missing so the spike-bundle path still works.
+  // PGlite runtime artifacts. They are optional because minimal mobile bundles
+  // can run without embedded database extensions.
   const pgliteAssets = [
     "pglite.wasm",
     "initdb.wasm",
