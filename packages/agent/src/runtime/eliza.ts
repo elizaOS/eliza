@@ -2773,7 +2773,20 @@ export async function startEliza(
   // eliza.json + config.env + sensitive process.env keys into the OS-keychain
   // vault, then resolve any vault://KEY sentinels in `config.env` so the
   // legacy hydration loop below sees real values.
-  {
+  //
+  // Skipped on mobile. `hydrateWalletKeysFromNodePlatformSecureStore` and
+  // `runVaultBootstrap` both reach for the OS keychain through
+  // `defaultMasterKey().load()` (packages/vault/src/master-key.ts:217)
+  // and open a second PGlite worker at `<stateDir>/.vault-pglite/`. Neither
+  // is meaningful on Android: there is no D-Bus session for the libsecret
+  // backend (vault falls back to an ELIZA_VAULT_PASSPHRASE-derived key,
+  // which `ElizaAgentService` already sets per-install from ANDROID_ID),
+  // the spawned bun process has no sensitive secrets to migrate (those
+  // arrive through the service env — per-boot bearer token, llama config),
+  // and the second PGlite worker just doubles disk + RAM pressure on a
+  // 4 GB device. Mirrors the `if (!isMobilePlatform()) { ... }` guard at
+  // line ~2888 around the `applyCloudConfigToEnv` block.
+  if (!isMobilePlatform()) {
     try {
       const { hydrateWalletKeysFromNodePlatformSecureStore } =
         await importAppCoreRuntime();
