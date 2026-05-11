@@ -60,7 +60,9 @@ export function parseMessageHandlerOutput(
 	// Flat envelope keeps its hint/control fields at the top level; legacy
 	// callers nest them under `plan`. Read from `plan` when present, else root.
 	const legacyPlan =
-		parsed.plan && typeof parsed.plan === "object" && !Array.isArray(parsed.plan)
+		parsed.plan &&
+		typeof parsed.plan === "object" &&
+		!Array.isArray(parsed.plan)
 			? (parsed.plan as Record<string, unknown>)
 			: undefined;
 	const fields = legacyPlan ?? parsed;
