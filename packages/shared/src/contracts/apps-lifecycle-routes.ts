@@ -1,15 +1,17 @@
 /**
  * Zod schemas for the apps-lifecycle HTTP routes
- * (launch / install / stop). Third migration in the typed-routes
- * initiative — same template as
- * `./app-permissions-routes.ts` and `./apps-loading-routes.ts`:
- * schema in shared, safeParse on server, infer types on client.
+ * (launch / install / stop / relaunch / create / overlay-presence).
+ * Same template as the rest: schema in shared, safeParse on server,
+ * infer types on client.
  *
  * Routes covered:
- *   POST /api/apps/launch    body: { name }            → AppLaunchResult
- *   POST /api/apps/install   body: { name, version? }  → varies
- *   POST /api/apps/stop      body: { name?, runId? }   → AppStopResult
- *                             (at least one of name/runId required)
+ *   POST /api/apps/launch            body: { name }                  → AppLaunchResult
+ *   POST /api/apps/install           body: { name, version? }        → varies
+ *   POST /api/apps/stop              body: { name?, runId? }         → AppStopResult
+ *                                     (at least one of name/runId required)
+ *   POST /api/apps/relaunch          body: { name, runId?, verify? } → AppLaunchResult
+ *   POST /api/apps/create            body: { intent, editTarget? }   → APP-action result
+ *   POST /api/apps/overlay-presence  body: { appName?: string|null } → { ok, appName }
  *
  * Response shapes for these routes are not modelled here — they
  * delegate to handler-internal types (AppLaunchResult, AppStopResult,
@@ -109,9 +111,58 @@ export const PostRelaunchAppRequestSchema = z
       .strict(),
   );
 
+/**
+ * /create maps onto the unified APP action — the `intent` is the
+ * natural-language prompt the orchestrator hands to the spawned coding
+ * sub-agent, and `editTarget` (when present) names an existing app to
+ * edit instead of scaffolding a new one. The handler used to require a
+ * non-empty trimmed intent by hand; the schema now does that, plus
+ * trims `editTarget` so empty strings round-trip back to "missing".
+ */
+export const PostCreateAppRequestSchema = z
+  .object({
+    intent: z.string().min(1, "intent is required"),
+    editTarget: z.string().min(1).optional(),
+  })
+  .strict()
+  .transform((value) => ({
+    intent: value.intent.trim(),
+    ...(value.editTarget ? { editTarget: value.editTarget.trim() } : {}),
+  }))
+  .pipe(
+    z
+      .object({
+        intent: z.string().min(1, "intent is required"),
+        editTarget: z.string().min(1).optional(),
+      })
+      .strict(),
+  );
+
+/**
+ * /overlay-presence is the UI's "which app is currently visible" ping.
+ * The route accepts a string, an explicit `null`, or omission — all of
+ * the latter two clear presence. Empty/whitespace strings collapse to
+ * null too, matching the handler's prior `trim().length > 0 ? trim : null`
+ * normalisation.
+ */
+export const PostOverlayPresenceRequestSchema = z
+  .object({
+    appName: z.union([z.string(), z.null()]).optional(),
+  })
+  .strict()
+  .transform((value): { appName: string | null } => {
+    const raw = value.appName;
+    const trimmed = typeof raw === "string" ? raw.trim() : "";
+    return { appName: trimmed.length > 0 ? trimmed : null };
+  });
+
 export type PostLaunchAppRequest = z.infer<typeof PostLaunchAppRequestSchema>;
 export type PostInstallAppRequest = z.infer<typeof PostInstallAppRequestSchema>;
 export type PostStopAppRequest = z.infer<typeof PostStopAppRequestSchema>;
 export type PostRelaunchAppRequest = z.infer<
   typeof PostRelaunchAppRequestSchema
+>;
+export type PostCreateAppRequest = z.infer<typeof PostCreateAppRequestSchema>;
+export type PostOverlayPresenceRequest = z.infer<
+  typeof PostOverlayPresenceRequestSchema
 >;
