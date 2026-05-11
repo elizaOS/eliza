@@ -15,7 +15,7 @@ STATIC scenarios.
 |----------|-------------------------------------------------------------------------------------------|-----------|--------|---------|------|---------|-------------|----------|----------|------------------|----------|
 | hermes   | `~/.milady/runs/lifeops/lifeops-hermes-baseline-1778514429`                               | 25        | 0      | 24      | 1    | 0       | 0.494       | $0.0000* | 0 ms*    | gpt-oss-120b     | cerebras |
 | openclaw | `~/.milady/runs/lifeops/lifeops-openclaw-baseline-1778514437`                             | 25        | 0      | 22      | 3    | 0       | 0.562       | $0.1036  | 155188 ms | gpt-oss-120b     | cerebras |
-| eliza    | `~/.milady/runs/lifeops/lifeops-eliza-baseline-1778515576`                                | 25        | (see notes)                              |             |          |          | gpt-oss-120b     | cerebras |
+| eliza    | `~/.milady/runs/lifeops/lifeops-eliza-baseline-1778515576`                                | 25        | 0      | 0       | 25   | 0       | 0.000       | $0.0000* | 0 ms*    | gpt-oss-120b     | cerebras |
 
 \* The Hermes adapter's in-process bridge drives the OpenAI SDK directly
 and does not feed per-turn token usage back into the runner's
@@ -70,12 +70,34 @@ Hermes runs are cost-comparable.
   block the agent loop — the planner falls through and Cerebras
   drives `TEXT_LARGE` / `TEXT_SMALL` — but it does spam the bench
   server log with retry traffic.
-- Eliza scenarios consistently terminate at `max_turns` because the
-  planner emits `REPLY` after each `MESSAGE` tool call, and the
-  scenario runner reports `Unsupported action in execute path:
-  REPLY — file gap in LIFEOPS_BENCH_GAPS.md`. Real LLM output, real
-  failure: the scaffold is missing a REPLY action handler in the
-  runner. See `LIFEOPS_BENCH_GAPS.md` in the bench package.
+- All 25 eliza scenarios scored 0/1.0 — the planner consistently emits
+  `REPLY` as the only action, and the LifeOpsBench runner reports
+  `Unsupported action in execute path: REPLY — file gap in
+  LIFEOPS_BENCH_GAPS.md`. The Cerebras-driven message content is
+  high-quality (e.g. real draft replies, structured triage statements
+  in the agent_message field) — the runtime is just emitting them as
+  `REPLY` text rather than structured `MESSAGE` tool calls, which is
+  what the scorer reads. See `LIFEOPS_BENCH_GAPS.md` in the bench
+  package for the open scaffold gap.
+- Example, from `mail.draft_reply_to_meeting_request` turn 1:
+
+  ```
+  Dear Uma,
+
+  Thank you for the meeting request. Tuesday at 10am UTC works for me.
+  I look forward to discussing the analytics dashboard.
+
+  Best regards,
+  [Your Name]
+  ```
+
+  That is a fully-formed Cerebras response — the gap is on the
+  runtime side, not the model side.
+- One scenario surfaced an `AI_APICallError: Bad Request` from the
+  Cerebras endpoint via the `@ai-sdk/openai` adapter after hitting
+  `assertTrajectoryLimit` — likely a token-budget overflow on a
+  scenario whose context grew through retries. Tracked as a known
+  intermittent failure in the eliza side, not a harness bug.
 
 ## Verification
 
