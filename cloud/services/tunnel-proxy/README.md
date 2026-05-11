@@ -7,8 +7,12 @@ Railway terminates public TLS for `*.tunnel.elizacloud.ai`, then this proxy maps
 the public host to the matching Headscale MagicDNS host:
 
 ```text
-<session>.tunnel.elizacloud.ai -> https://<session>.tunnel.eliza.local
+eliza-<org>-<random>.tunnel.elizacloud.ai -> https://eliza-<org>-<random>.tunnel.eliza.local
 ```
+
+Only generated hostnames matching `eliza-<orgpart>-<randomhex>` are proxied.
+Root traffic and arbitrary wildcard labels return 404, while `/health` and
+`/ready` remain public for Railway and DNS smoke checks.
 
 Required Railway environment variables:
 

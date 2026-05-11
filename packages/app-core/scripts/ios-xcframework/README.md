@@ -205,18 +205,36 @@ flips from PARTIALLY-RESOLVED to RESOLVED in
 ### Real iPhone hardware verification
 
 `metal_verify` in `packages/inference/verify/` runs on macOS via
-`MTLDevice.newLibraryWithSource`, not on iOS. There is no on-device
-iOS harness today. Once the EMBED-path is patched and the symbols
-land, the next step is either:
+`MTLDevice.newLibraryWithSource`, not on iOS. The physical-device smoke
+entrypoint is now:
 
-- Embed `metal_verify`'s logic in an XCTest target inside an iOS
-  test app and run via `xcodebuild test -destination "platform=iOS,id=…"`, or
-- Cross-compile the harness as a standalone iOS app and ship JSON
-  fixtures + binary via `ideviceinstaller`.
+```sh
+ELIZA_IOS_DEVELOPMENT_TEAM=<Apple Team ID> \
+  node packages/app-core/scripts/ios-xcframework/run-physical-device-smoke.mjs \
+    --build-if-missing \
+    --report packages/inference/reports/porting/2026-05-11/ios_device_smoke.json
+```
 
-Both routes are documented in
-`packages/inference/DEVICE_SUPPORT_GAP_2026-05-10.md` §4 ("iOS device
-runner").
+The smoke refuses simulators. It creates a temporary SwiftPM XCTest
+package, links the same `LlamaCpp.xcframework` slot consumed by
+`llama-cpp-capacitor`, runs on a connected physical iPhone/iPad, and
+checks:
+
+1. `MTLCreateSystemDefaultDevice()` returns a real Metal device.
+2. The LlamaCpp bridge symbols resolve from the linked framework.
+3. QJL, PolarQuant, and DFlash runtime symbols resolve.
+4. The `libelizainference` voice ABI v1 symbols resolve. Use
+   `--skip-voice-abi` only for diagnosis; a release smoke must not skip it.
+
+If no physical device is attached, unlocked, trusted, and in Developer
+Mode, the script exits non-zero and prints the offline device list
+reported by `xcrun xctrace list devices`.
+
+This still does **not** claim text/voice numerical generation because no
+Eliza-1 weights are bundled into the XCTest package. The next gate after
+this smoke passes is a real bundle smoke that downloads or stages final
+Eliza-1 artifacts, loads the selected tier, and measures first-token /
+first-audio latency plus peak RSS.
 
 ### Why no fallback to the npm-bundled framework
 

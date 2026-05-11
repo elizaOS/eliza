@@ -64,7 +64,7 @@ wrangler secret put CLOUD_INTERNAL_TOKEN       # same value as the proxy
 wrangler secret put HEADSCALE_INTERNAL_TOKEN   # same value as CLOUD_INTERNAL_TOKEN
 ```
 
-`HEADSCALE_PUBLIC_URL`, `HEADSCALE_API_URL`, `HEADSCALE_USER`, `TUNNEL_PROXY_HOST`, and `TUNNEL_TAILNET_DOMAIN` are non-secret Worker vars in `apps/api/wrangler.toml`.
+`HEADSCALE_PUBLIC_URL`, `HEADSCALE_API_URL`, `HEADSCALE_USER`, `TUNNEL_PROXY_HOST`, `TUNNEL_TAILNET_DOMAIN`, and `TUNNEL_AUTH_KEY_COST_USD` are non-secret Worker vars in `apps/api/wrangler.toml`. The tunnel cost is a small on-demand org-credit debit per successful auth-key provisioning, not a subscription.
 
 ## 6. Worker deploy
 
@@ -77,7 +77,7 @@ bun run deploy:api -- --env production
 
 ## 7. Smoke test
 
-From a machine with the tailscale CLI installed and `@elizaos/plugin-elizacloud` enabled with `ELIZAOS_CLOUD_API_KEY` set:
+From a machine with the tailscale CLI installed and `@elizaos/plugin-tailscale` enabled with `ELIZAOS_CLOUD_API_KEY` set:
 
 ```
 # In an agent prompt:
@@ -87,7 +87,7 @@ From a machine with the tailscale CLI installed and `@elizaos/plugin-elizacloud`
 You should see:
 - The agent host appear under `headscale nodes list`
 - A 200 response from `https://<sessionId>.tunnel.elizacloud.ai`
-- A debit row in `credit_transactions` after ~1 minute (the per-minute cron tick)
+- An immediate debit row in `credit_transactions` with `metadata.type = "tunnel"` and `metadata.billing_model = "on_demand"`
 
 ## 8. Verify ACL isolation
 

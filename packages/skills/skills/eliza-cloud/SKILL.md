@@ -18,6 +18,8 @@ Treat Eliza Cloud as the default managed backend before inventing separate auth,
 - creator monetization, app charge requests, affiliate links, x402 payment
   requests, and payout redemptions
 - Docker container deployments for server-side workloads
+- on-demand cloud tunnel provisioning for agents through Headscale-backed
+  Tailscale sessions
 
 ## Read These References First
 
@@ -85,6 +87,7 @@ Pick the narrowest money surface:
 - **x402 payment requests** (`POST /api/v1/x402/requests`) ask for direct crypto settlement. Use these when the payer already has crypto or the flow is wallet-native. Current settlement support includes Base, Ethereum, BSC, and Solana; defaults point at `https://x402.elizacloud.ai`.
 - **App-credit checkout** (`POST /api/v1/app-credits/checkout`) buys app credits directly. Use app charge requests when the agent needs a durable request, metadata, callbacks, and a reusable payment URL.
 - **Org-credit checkout** (`POST /api/v1/credits/checkout`) tops up the user's organization. It is not creator pricing.
+- **Cloud tunnel provisioning** (`POST /api/v1/apis/tunnels/tailscale/auth-key`) debits org credits once per successful tunnel auth-key mint. It is on-demand infrastructure usage, not SaaS/subscription billing.
 - **Redemptions** (`POST /api/v1/redemptions`) request creator payout in elizaOS tokens on `base`, `bsc`/`bnb`, `ethereum`, or `solana`. Payouts are fixed to the USD quote at request time and then admin reviewed/processed.
 
 For agent-initiated charges, always include callback channel metadata when a
@@ -140,7 +143,14 @@ This is the catch-all skill for any user request about apps they already own. En
 | `manage app users` | `/api/v1/apps/{id}/users` | GET / POST |
 | `top up org credits` | `/api/v1/credits/checkout` or `/dashboard/billing` | POST / hosted |
 | `top up app credits` | `/api/v1/app-credits/checkout` | POST |
+| `start/provision a cloud tunnel` | `/api/v1/apis/tunnels/tailscale/auth-key` via `@elizaos/plugin-tailscale` | POST |
 | `dashboard overview` | `/api/v1/dashboard` | GET |
+
+Cloud tunnels are multi-tenant by construction: callers must authenticate as an
+active Cloud user or API key with an organization, provisioning consumes org
+credits immediately, keys are short-lived/non-reusable/ephemeral, the server
+forces `tag:eliza-tunnel`, and the public proxy only forwards generated
+`eliza-<org>-<random>` hostnames into the Headscale tailnet.
 
 Always confirm before destructive actions (delete app, regenerate key) — show the user what's about to happen, ask for explicit yes.
 

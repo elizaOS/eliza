@@ -45,7 +45,7 @@ Status legend (do not soften):
 | 1 | Apple Silicon Mac, M4 Max                     | 9b, 27b    | metal    | `darwin-arm64-metal`                      | **VERIFIED**            | [`README.md` lines 7–10, 308–312](README.md); [`bench_M4Max_2026-05-10.md`](bench_M4Max_2026-05-10.md). 5/5 shaders 8/8 PASS via `MTLDevice.newLibraryWithSource` (Wave-3, Darwin 25.2.0).                                                                                     |
 | 2 | Apple Silicon Mac, M1 / M2 / M3               | 9b, 27b    | metal    | `darwin-arm64-metal`                      | **VERIFIED-ADJACENT**   | Same Apple GPU family, Metal 3 / Family-Apple7+, same 32-thread SIMD-group assumption ([`README.md` line 51, 209–212](README.md)). Untested on M1/M2/M3; should retest before flipping `defaultEligible: true` on the desktop manifest for these chips.                        |
 | 3 | Intel/AMD Mac (x64 + AMD/Intel GPU)           | 9b             | metal    | `darwin-x64-metal`                        | **TARGET-ONLY**         | Triple parses ([`build-llama-cpp-dflash.mjs:90`](../app-core/scripts/build-llama-cpp-dflash.mjs)) and `cmakeFlagsForTarget` honors it, but no Intel-Mac hardware in lab. AMD Radeon Pro / Intel Iris Metal driver behavior on `simd_sum` over 32-lane TG is **not** verified.  |
-| 4 | iOS arm64 (iPhone 14+)                        | 0_6b, 1_7b | metal    | `ios-arm64-metal`                         | **PARTIALLY-RESOLVED** | `run-mobile-build.mjs ensureIosLlamaCppVendoredFramework()` delegates to `build-llama-cpp-dflash.mjs --target ios-arm64-metal`, then `ios-xcframework/build-xcframework.mjs --verify` fills `LlamaCpp.xcframework`. The Metal EMBED path is now patched to ship the same standalone metallib symbols as desktop. **Still missing:** physical-device XCTest/Capacitor runtime smoke and runtime-ready capability bits for Turbo/Polar graph dispatch. |
+| 4 | iOS arm64 (iPhone 14+)                        | 0_6b, 1_7b | metal    | `ios-arm64-metal`                         | **PARTIALLY-RESOLVED** | `run-mobile-build.mjs ensureIosLlamaCppVendoredFramework()` delegates to `build-llama-cpp-dflash.mjs --target ios-arm64-metal`, then `ios-xcframework/build-xcframework.mjs --verify` fills `LlamaCpp.xcframework`. The Metal EMBED path is now patched to ship the same standalone metallib symbols as desktop. A physical-device XCTest entrypoint now exists at `packages/app-core/scripts/ios-xcframework/run-physical-device-smoke.mjs` and hard-fails when no real iPhone/iPad is attached. **Still missing:** an actual on-device PASS and runtime-ready capability bits for Turbo/Polar graph dispatch. |
 | 5 | iOS arm64 simulator (Apple Silicon Mac)       | 0_6b, 1_7b | metal    | `ios-arm64-simulator-metal`               | **PARTIALLY-RESOLVED** | Same packaging path as row 4 for the simulator slice. Symbol shipping is not enough for publish eligibility; the remaining blocker is the same graph-dispatch/device-smoke gap. |
 | 6 | Android arm64 (Adreno 6xx+ / Mali-G7x+)       | 0_6b, 1_7b | vulkan   | `android-arm64-vulkan`                    | **TARGET-ONLY**         | Build target exists, NDK toolchain wired ([`build-llama-cpp-dflash.mjs:670–689`](../app-core/scripts/build-llama-cpp-dflash.mjs)). Vulkan turbo* shaders verified on Mesa lavapipe + Intel ARL only. **No on-device Adreno/Mali run.** Android API floor `android-28` (line 680). |
 | 7 | Android arm64 (CPU fallback)                  | 0_6b              | cpu      | `android-arm64-cpu`                       | **TARGET-ONLY**         | Build target exists; runtime CPU NEON paths from `qjl-cpu` / `polarquant-cpu` referenced in `patchGgmlBaseForWindowsQjl`. No on-device Snapdragon/Tensor run logged.                                                                                                            |
@@ -82,10 +82,10 @@ in this document's status vocabulary:
    `ios-xcframework/build-xcframework.mjs`, invoked from
    `run-mobile-build.mjs ensureIosLlamaCppVendoredFramework()`. The
    stock npm-bundled framework is archived out of `FRAMEWORK_SEARCH_PATHS`.
-   The EMBED metallib branch is patched now. **Residual:** run the
-   xcframework through a physical-device XCTest/Capacitor smoke and keep
-   publish blocked until the same runtime-ready graph capability bits as
-   desktop are true.
+   The EMBED metallib branch is patched now. **Residual:** run
+   `ios-xcframework/run-physical-device-smoke.mjs` on physical hardware
+   and keep publish blocked until the same runtime-ready graph capability
+   bits as desktop are true.
    Owner: device-lab (real-iPhone XCTest harness) + kernel team (remaining graph dispatch).
    Effort: S (XCTest harness) + M (dispatch parity).
 
@@ -213,11 +213,12 @@ dispatch and real device runs.
   differs from Adreno on `subgroupAdd`; the W4-A shared-mem tree
   reduction sidesteps that, but it still needs a real run to confirm.
 
-- **iOS device runner** — once blocker #1 is fixed and the milady
-  xcframework is actually consumed, `metal_verify` won't run on
-  on-device iOS (no shell). Need either a tiny iOS app target that
-  embeds the harness as XCTest, or a test-target build that runs
-  `metal_verify` logic via XCUITest. Same shaders, same fixtures.
+- **iOS device runner** — `ios-xcframework/run-physical-device-smoke.mjs`
+  now builds a temporary SwiftPM XCTest package and runs it via
+  `xcodebuild test -destination "platform=iOS,id=…"`. It validates
+  physical-device Metal availability plus LlamaCpp, QJL, Polar, DFlash,
+  and `libelizainference` ABI symbols. It still needs a real attached
+  iPhone/iPad run before row 4 can move beyond PARTIALLY-RESOLVED.
 
 - **`linux-aarch64-cuda` (GH200) target + verify** — add the triple to
   `SUPPORTED_TARGETS`, add `-DCMAKE_SYSTEM_PROCESSOR=aarch64

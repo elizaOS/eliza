@@ -28,7 +28,7 @@ with the status below.
 | Vulkan standalone shaders | All five pass on Apple M4 Max through MoltenVK; turbo* also passed earlier on Intel ARL + lavapipe. | `make -C packages/inference/verify vulkan-verify`. |
 | Vulkan built-fork graph dispatch | Not runtime-ready. | SPIR-V blobs can be staged, but `ggml-vulkan.cpp` has no milady-native op dispatch. |
 | CUDA | API/preprocessor surface exists; no hardware run on this machine. | `nvcc` unavailable on macOS. |
-| iOS | Static archives and embedded metallib can be built; no physical-device runtime run. | `ios-arm64-simulator-metal` diagnostics show shipped symbols, but graph capability bits still block publish. |
+| iOS | Static archives and embedded metallib can be built; a physical-device XCTest smoke entrypoint now exists, but no on-device PASS has been recorded. | `packages/app-core/scripts/ios-xcframework/run-physical-device-smoke.mjs` fails clearly when no connected physical iPhone/iPad is present; graph capability bits still block publish. |
 | Voice fusion | JS lifecycle/FFI scaffold exists; production fused `libelizainference` is not complete. | `voice/ffi-bindings.ts` expects ABI v1; real omnivoice-backed library still needs build/runtime verification. |
 | Eliza-1 bundles | Schema/catalog/publish gates exist; real release bundles do not. | No checked-in weight-derived manifests, hashes, evals, or HF upload evidence. |
 
@@ -142,7 +142,7 @@ The lowest-duplication design is lazy regional loading from one bundle:
 | --- | --- |
 | Apple Silicon Mac | Finish Metal Turbo/Polar graph dispatch, then rerun `dispatch-smoke`, `metal-verify`, and a real Eliza-1 bundle smoke. |
 | Intel/AMD Mac | Build `darwin-x64-metal` and run the standalone + built-fork smoke suite on real hardware. |
-| iPhone/iPad | Build xcframework, run XCTest/Capacitor smoke on physical iPhone/iPad, measure first audio latency and peak RSS. |
+| iPhone/iPad | Run `ios-xcframework/run-physical-device-smoke.mjs` on a connected physical iPhone/iPad, then run a real Eliza-1 bundle smoke that measures first audio latency and peak RSS. |
 | Android Adreno | Cross-build `android-arm64-vulkan`, run Vulkan verify + runtime smoke via `adb`, collect thermal/RSS. |
 | Android Mali | Same as Adreno; do not transfer Adreno results to Mali without a run. |
 | Linux x64 CUDA | Run `make cuda` / `cuda_verify` on RTX/A100/H100/H200; pin arch flags where needed. |
