@@ -110,13 +110,22 @@ else
   if [[ ${#PIP_CMD[@]} -eq 0 ]]; then
     log "WARNING: no pip/uv found — install the 'gguf' package yourself for convert_hf_to_gguf.py"
   else
-    REQ_FILE="$VENDOR_DIR/requirements.txt"
-    if [[ -f "$REQ_FILE" ]]; then
+    # Recent llama.cpp moved per-tool requirements under requirements/.
+    # convert_hf_to_gguf.py imports `gguf` AND `mistral_common` at module
+    # load, so both must be present or the convert step dies on import.
+    REQ_FILE=""
+    for cand in \
+      "$VENDOR_DIR/requirements/requirements-convert_hf_to_gguf.txt" \
+      "$VENDOR_DIR/requirements.txt" \
+      "$VENDOR_DIR/requirements-convert_hf_to_gguf.txt"; do
+      [[ -f "$cand" ]] && { REQ_FILE="$cand"; break; }
+    done
+    if [[ -n "$REQ_FILE" ]]; then
       log "installing convert deps: ${PIP_CMD[*]} -r $REQ_FILE"
-      "${PIP_CMD[@]}" -r "$REQ_FILE" || log "WARNING: requirements.txt install failed; convert script may not import"
+      "${PIP_CMD[@]}" -r "$REQ_FILE" || log "WARNING: requirements install failed; convert script may not import"
     else
-      log "no requirements.txt; installing 'gguf' package directly"
-      "${PIP_CMD[@]}" gguf || log "WARNING: 'gguf' install failed"
+      log "no requirements file found; installing 'gguf' + 'mistral_common' directly"
+      "${PIP_CMD[@]}" gguf "mistral_common>=1.8.3" || log "WARNING: gguf/mistral_common install failed"
     fi
   fi
 fi

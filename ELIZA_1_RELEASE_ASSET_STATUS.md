@@ -161,6 +161,38 @@ route yet.
   `elizaos/eliza-1-assets`, but no publishable per-tier
   `elizaos/eliza-1-*` release repos with final evidence.
 
+## Publish Pipeline / Downloader State (2026-05-11, this checkout)
+
+- `packages/training/scripts/publish_all_eliza1.sh` now prints the per-tier
+  publish summary and propagates the orchestrator's structured exit code on
+  the first failing tier (so callers can tell `EXIT_RELEASE_EVIDENCE_FAIL`
+  = `16` from `EXIT_BUNDLE_LAYOUT_FAIL` = `10`, etc.). The
+  abort-on-first-failure behavior from §6 is unchanged.
+- Dry-run was executed against a hand-built `releaseState=upload-candidate`
+  stand-in bundle for the `0_6b` tier (`final.weights=false`): the
+  orchestrator rejects it at stage 2 (`exit 16`, `EXIT_RELEASE_EVIDENCE_FAIL`)
+  — exactly as the contract requires. **No tier would publish; all are
+  blocked by non-final release evidence.** This checkout's state dir contains
+  no staged Eliza-1 bundle; producing one requires the asset/source staging
+  scripts (`stage_eliza1_bundle_assets.py`, `stage_eliza1_source_weights.py`,
+  `stage_local_eliza1_bundle.py`) which need HF network access and real
+  text/DFlash weights.
+- No `HF_TOKEN` / `HUGGINGFACE_TOKEN` / `HUGGINGFACE_HUB_TOKEN` is present
+  in this environment and `huggingface-cli` is not installed. **No upload
+  was performed.** `defaultEligible` and `publishEligible` stay `false` for
+  every tier.
+- §7 device-side downloader contract hardened (see
+  `packages/app-core/src/services/local-inference/downloader.ts`): the
+  manifest is read first, then RAM budget and verified-backend availability
+  are checked against the device **before any weight byte is fetched**
+  (abort → structured `BundleIncompatibleError` → `failed` download event);
+  schema version is enforced by `parseManifestOrThrow`; per-file sha256 +
+  resume already existed; a new injectable `verifyOnDevice` hook (load →
+  1-token text → 1-phrase voice → barge-in cancel) gates readiness and
+  default-slot fill, recorded via `InstalledModel.bundleVerifiedAt`. Tests
+  added in `downloader.test.ts`. Wiring the hook from the engine in
+  `service.ts` is the remaining gap.
+
 ## Next Release Actions
 
 1. Train/fine-tune the Eliza-1 text checkpoints for each tier.

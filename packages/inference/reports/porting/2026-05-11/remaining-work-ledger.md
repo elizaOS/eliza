@@ -42,7 +42,7 @@ command and remaining blocker — see
 | ROCm hardware runner | Runnable, fail-closed entrypoint now exists for AMD HIP hosts; fixture parity still needs a HIP harness. | `verify/rocm_runner.sh --report <path>` requires `hipcc` + `rocminfo` `gfx*` agent + model-backed graph smoke. Skip mode exits non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | Windows hardware runner | Runnable, fail-closed PowerShell entrypoint now exists for native Windows CUDA/Vulkan/CPU smoke. | `verify/windows_runner.ps1 -Report <path>` requires native Windows backend hardware/toolchain and a GGUF model; cross-built exe execution is not counted. Skip mode exits non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | iOS | Static archives, embedded metallib, Capacitor bridge symbols, and `eliza_inference_*` ABI v1 symbols package into a verified XCFramework for physical-device and simulator slices. Physical-device XCTest is now PASS; weight-backed Capacitor bundle smoke remains open. | `build-xcframework.mjs --verify` passes kernel-symbol, runtime-symbol, and structure audits. `packages/inference/verify/hardware-results/ios-device-smoke-2026-05-11.json` is `status: passed` on iPhone 15 Pro UDID `00008130-001955E91EF8001C`, with 3/3 XCTest cases passing and `--skip-voice-abi=false`. The old failure was a stale shim archive carrying an earlier TTS ABI shape; `build-xcframework.mjs` now refreshes the runtime shim before packaging. |
-| Voice fusion | macOS production fused `libelizainference.dylib` now builds, symbol-verifies, lazy-loads real GGUF TTS and ASR assets, and completes real TTS + ASR synthesis/transcription in one fused process. The merged HTTP route remains open. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal-fused --jobs 10` links `omnivoice-core`, `libelizainference.dylib`, `llama-omnivoice-server`, `libmtmd`, and `default.metallib`; `verify-symbols.mjs` reports `omnivoice=10 abi=8`; Bun FFI smoke against `/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle` loads real OmniVoice Q4_K_M base/tokenizer GGUFs for TTS and Qwen3-ASR GGUF + qwen3a mmproj for ASR. TTS writes 31,680 samples for `hello`; ASR now normalizes punctuation, stops on sentence completion, and transcribes `/tmp/eliza-asr-hello.wav` to `Hello world.` in the latest smoke. Evidence: `reports/local-e2e/2026-05-11/fused-voice-ffi-smoke.json` and `reports/local-e2e/2026-05-11/asr-ffi-smoke-latest.json`. |
+| Voice fusion | macOS production fused `libelizainference.dylib` now builds, symbol-verifies, lazy-loads real GGUF TTS and ASR assets, and completes real TTS + ASR synthesis/transcription in one fused process. **The merged HTTP route is now real:** the `*-fused` `llama-server` serves `POST /v1/audio/speech` (+ `/audio/speech`) in the same process as `/completion` + `/v1/chat/completions` + the DFlash spec loop, and `dflash-server.ts` prefers spawning that fused binary over the stock + `llama-omnivoice-server` two-process path. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal-fused --jobs 10` links `omnivoice-core`, `libelizainference.dylib`, `llama-omnivoice-server`, `libmtmd`, and `default.metallib`; `verify-symbols.mjs` reports `omnivoice=10 abi=8`; Bun FFI smoke against `/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle` loads real OmniVoice Q4_K_M base/tokenizer GGUFs for TTS and Qwen3-ASR GGUF + qwen3a mmproj for ASR. TTS writes 31,680 samples for `hello`; ASR now normalizes punctuation, stops on sentence completion, and transcribes `/tmp/eliza-asr-hello.wav` to `Hello world.` in the latest smoke. Evidence: `reports/local-e2e/2026-05-11/fused-voice-ffi-smoke.json` and `reports/local-e2e/2026-05-11/asr-ffi-smoke-latest.json`. Merged-route: `linux-x64-cpu-fused` built on Intel x64, `OMNIVOICE_FUSE_VERIFY.json` `ok:true abi:18 omnivoice:10 llamaReexported:true`; the fused `llama-server` serves `/completion` (1-token) AND `/v1/audio/speech` from the same PID against the SmolLM stand-in (503 "not configured" — no `tts/` in the stand-in bundle); covered by `dflash-server-fused.integration.test.ts` + `dflash-server.test.ts` "fused-vs-two-process spawn selection". |
 | Text-to-voice streaming handoff | JS runtime now streams accepted text deltas from llama-server into the active voice scheduler, supports explicit phrase prewarm, opportunistically reuses repeated generated phrase audio, and exposes the verifier-event callback shape needed by native DFlash. Native accept/reject event streaming is still open. | `dflash-server.generateWithUsage` switches to OpenAI-compatible SSE when `onTextChunk` or `onVerifierEvent` is supplied and synthesizes accept events from deltas until the native server emits exact verifier ranges. `LocalInferenceEngine.generate()` and `generateInConversation()` forward verifier events/chunks into `EngineVoiceBridge` while generation is still in flight and settle the scheduler at turn end without duplicate text delivery. `PhraseCache` is now an LRU-bounded cache (`128` entries, `8s` PCM cap per entry by default), `VoiceScheduler.prewarmPhrases()` caches common phrase audio, and live successful phrase/direct-TTS synthesis is cached only after it survives cancellation/rollback. Default voice chunks are capped at 8 tokens and `ELIZA_VOICE_MAX_IN_FLIGHT_PHRASES` bounds memory on small devices. The DFlash llama-server path also separates `kvOffload=cpu` from layer offload and exposes cache/batch tuning knobs for small-device profiles. Evidence: local-inference focused tests now pass 86/86 for backend/DFlash/voice streaming, and the iOS transport bridge test/typecheck pass after preserving `fetch.preconnect` through the local-agent fetch bridge. |
 | Eliza-1 bundles | Local release-shaped bundles are complete for all five tiers, but they are explicitly non-publishable stand-ins. No final release bundle is publishable yet. | `stage_eliza1_bundle_assets.py --link-mode hardlink` and `stage_eliza1_source_weights.py` staged non-text assets plus source text/DFlash/vision candidates under `/Users/shawwalters/.eliza/local-inference/models/eliza-1-*.bundle`. `stage_local_eliza1_bundle.py --all-contexts --force` then hardlinked source/candidate bytes into local `text/`, `dflash/`, and `vision/` release-shaped paths, generated `quantization/{turboquant,fused_turboquant,qjl_config,polarquant_config}.json`, `eliza-1.manifest.json`, `checksums/SHA256SUMS`, and `evidence/release.json` for every tier. Full checksum validation is green for all five bundles. Every release evidence file remains `releaseState=local-standin`, `publishEligible=false`, and `final.weights=false`; final Eliza-1 trained weights, passing eval/platform evidence, release-reviewed licenses, and `elizaos` upload evidence remain required before publish. |
 
@@ -86,7 +86,7 @@ command and remaining blocker — see
      pointing at a built-fork/app graph-dispatch report. **Still open** —
      standalone fixture success alone exits non-zero and remains evidence only.
 
-3. **Fused voice runtime**
+3. **Fused voice runtime — merged HTTP route DONE; native verifier events + weight-backed TTS smoke remain**
 
    The product goal is not two independent model processes. The next runtime
    milestone is one fused binary/shared library with one GGML pin and one
@@ -94,20 +94,62 @@ command and remaining blocker — see
    bundle, but they must share the runtime lifecycle and memory budget.
 
    Acceptance:
-   - `libelizainference` exports ABI v1 symbols and passes FFI smoke tests
+   - `libelizainference` exports ABI v2 symbols and passes FFI smoke tests
      under Bun/Electrobun. ABI compatibility smoke, real macOS dylib ABI
      smoke, real GGUF-backed TTS synthesis, and real GGUF-backed ASR
      transcription are covered. **Done on macOS Metal for the local 1.7B
-     bundle.**
-   - Voice mode starts without IPC to a second model process.
+     bundle.** ABI v2 (streaming ASR + streaming TTS + native DFlash
+     verifier callback) symbols are present in `prepare.mjs`'s adapter
+     (batch TTS/ASR implemented; the streaming/verifier entries are honest
+     stubs reporting `*_supported() == 0` until W7's fused decoder lands).
+   - Voice mode starts without IPC to a second model process. **Done at the
+     spawn layer:** `dflash-server.ts` `resolveFusedDflashBinary()` /
+     `candidateBinaryPaths()` prefer the `*-fused` `llama-server` whenever a
+     fused build is installed for the active backend; `start()` passes
+     `--omnivoice-model` / `--omnivoice-codec` from the bundle's `tts/` dir;
+     no second `llama-omnivoice-server` process is launched. The legacy
+     `llama-omnivoice-server` CLI binary stays only for the symbol verifier
+     / scripted callers.
    - Voice-off mode does not mmap or page TTS/ASR/voice-preset regions.
-   - The fused HTTP server is not product-ready until the compatibility
-     `llama-omnivoice-server` route is replaced by one process serving both
-     text/DFlash and `/v1/audio/speech`.
+   - **DONE — the fused `llama-server` now serves `/v1/audio/speech` (+
+     `/audio/speech`) in-process**, alongside `/completion` +
+     `/v1/chat/completions` + the DFlash speculative loop. The route is
+     added to `tools/server/server.cpp` by
+     `packages/app-core/scripts/kernel-patches/server-omnivoice-route.mjs`
+     (guarded `#ifdef MILADY_FUSE_OMNIVOICE`, backed by `omnivoice-core`'s
+     `ov_init` / `ov_synthesize`, OpenAI Audio-Speech request shape, 24 kHz
+     WAV or raw f32-LE PCM response); `omnivoice-fuse/cmake-graft.mjs` links
+     `omnivoice-core` into `llama-server` for fused targets.
+     `DflashLlamaServer.audioSpeechRoute()` reports `fused: true` when the
+     running binary is the fused build, and `synthesizeSpeech()` POSTs to
+     the route (`response_format: "pcm"` → no JS-side WAV decode).
+     Evidence: `linux-x64-cpu-fused` built on Intel x64
+     (`OMNIVOICE_FUSE_VERIFY.json` `ok: true`, `abi: 18`, `omnivoice: 10`,
+     `llamaReexported: true` — ELF `DT_NEEDED libllama.so` accepted as the
+     macOS-`-reexport_library` equivalent); the build's exit-1 is solely the
+     pre-existing §3 CPU-backend kernel-completeness gate (turbo3_tcq /
+     qjl_full / polarquant aren't CPU-buildable — same as the non-fused
+     `linux-x64-cpu` target), and `CAPABILITIES.json` is written with
+     `publishable: false`. Spawning that `llama-server` against the local
+     SmolLM stand-in serves `POST /completion` (1-token gen) AND
+     `POST /v1/audio/speech` from the same PID (returns the structured 503
+     "not configured" body when no OmniVoice GGUF is wired — proving the
+     route is live in-process; a stock `llama-server` returns 404). Covered
+     by `dflash-server-fused.integration.test.ts` (spawns the fused binary,
+     hits both endpoints, asserts same PID, asserts cancel/barge-in cleanup)
+     and `dflash-server.test.ts`'s "fused-vs-two-process spawn selection"
+     unit tests. **Remaining:** a weight-backed `/v1/audio/speech` smoke
+     against a real Eliza-1 bundle's `tts/omnivoice-*.gguf` (the local
+     stand-in bundle has no `tts/`); fused `darwin-arm64-metal-fused` and
+     `linux-x64-vulkan-fused` builds + the same smoke on those backends;
+     iOS/macOS fused-server packaging; routing the engine/voice TTS path to
+     prefer `synthesizeSpeech()` over the FFI `ttsSynthesize` path when
+     `audioSpeechRoute()` is non-null.
    - JS runtime streaming from llama-server deltas into the voice scheduler is
      now covered. The native fused runtime still needs first-class DFlash
      accept/reject events so speculative branches can be cancelled before
-     phrase audio reaches the sink.
+     phrase audio reaches the sink (the ABI v2 `eliza_inference_set_verifier_callback`
+     symbol is present but stubbed — W7).
 
 4. **Real release artifacts**
 
@@ -209,6 +251,39 @@ The lowest-duplication design is lazy regional loading from one bundle:
   verification.
 - Upload only to `elizaos/eliza-1-*` repos. Any red gate forces
   `defaultEligible=false`.
+
+### Done in this pass (publish pipeline + downloader contract)
+
+- `publish_all_eliza1.sh` now prints the per-tier publish summary and
+  propagates the orchestrator's structured exit code on the first failure
+  (e.g. `16` for `EXIT_RELEASE_EVIDENCE_FAIL`) instead of dying before the
+  summary under `set -e`. The no-continue-on-error behaviour from §6 is
+  unchanged — the matrix walk still aborts at the first failing tier.
+- Dry-run verified against a hand-built `releaseState=upload-candidate`
+  stand-in bundle (`final.weights=false`): the orchestrator rejects it at
+  stage 2 with exit `16` — every tier is still publish-blocked by non-final
+  release evidence. No real or stand-in bundle exists in this checkout's
+  state dir (the staging step is `stage_local_eliza1_bundle.py` /
+  `stage_eliza1_bundle_assets.py`, which need HF network and real text/DFlash
+  weights — not produced here).
+- §7 device-side downloader contract hardened: `runBundleJob` now reads the
+  manifest first, then — **before any weight byte is fetched** — checks the
+  RAM budget (`ramBudgetMb.min` vs device RAM) and that at least one of the
+  tier's supported backends with a `pass` verify report is available on this
+  device, aborting with a structured `BundleIncompatibleError` (`failed`
+  download event → UI) if not. Schema-version is already enforced by
+  `parseManifestOrThrow` (Zod literal on `$schema`). After materialize +
+  per-file sha256 verify, an injectable `verifyOnDevice` hook (load → 1-token
+  text gen → 1-phrase voice gen → barge-in cancel) runs before the bundle is
+  treated as ready; a new `InstalledModel.bundleVerifiedAt` records it, and a
+  bundle that has not passed the verify pass does not auto-fill an empty
+  default slot when the hook is wired. Tests in
+  `packages/app-core/src/services/local-inference/downloader.test.ts`.
+- Still open: wire `verifyOnDevice` from the engine in `service.ts` (today
+  the downloader runs without the hook, preserving first-light slot fill);
+  surface `BundleIncompatibleError` distinctly in the UI; have the
+  recommendation engine consult `manifest.kernels.verifiedBackends` against
+  the device (`canSetAsDefault` exists but is not yet called).
 
 ## Known Non-Goals For This Wave
 

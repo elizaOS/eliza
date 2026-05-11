@@ -235,3 +235,25 @@ are complete enough for runtime-layout smoke: every tier has required local
 `checksums/SHA256SUMS` has been revalidated. They are not recordable release
 artifacts because `evidence/release.json` is intentionally
 `releaseState=local-standin` and `publishEligible=false`.
+
+Note (this checkout / Linux x64, 2026-05-11): no staged Eliza-1 bundle exists
+in this checkout's state dir and no HF write token is present, so no upload
+was attempted. A publish dry-run against a hand-built
+`releaseState=upload-candidate` stand-in bundle exits `16`
+(`EXIT_RELEASE_EVIDENCE_FAIL`) at stage 2 — the orchestrator correctly
+refuses it. The publish-pipeline machinery is covered by
+`pytest packages/training/scripts/{test_hf_publish.py,publish/test_orchestrator.py,manifest/test_eliza1_*.py,manifest/test_stage_local_eliza1_bundle.py}`
+(97 passed, 1 skipped).
+
+### Device-side downloader contract (§7)
+
+The §7 device-side download contract is exercised by
+`bun test packages/app-core/src/services/local-inference/downloader.test.ts`:
+manifest-first read, schema-version rejection (via `parseManifestOrThrow`),
+RAM-budget abort before any weight byte, no-overlapping-verified-backend
+abort before any weight byte, per-file sha256 + resume, and the
+`verifyOnDevice` hook gating readiness / default-slot fill. Remaining:
+the engine has not yet wired the real `verifyOnDevice` smoke (load →
+1-token text → 1-phrase voice → barge-in cancel) into `service.ts`, and the
+recommendation engine does not yet call `canSetAsDefault` against the
+device's available backends.

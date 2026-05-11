@@ -146,12 +146,12 @@ describe("FfiAsrTokenStreamer", () => {
 describe("MissingAsrTranscriber", () => {
   it("throws VoiceStartupError instead of falling back (AGENTS.md §3)", async () => {
     const t = new MissingAsrTranscriber("no asr region");
-    const drain = (async () => {
+    const drain = async () => {
       for await (const _ of t.transcribeStream()) {
         // unreachable
       }
-    })();
-    await expect(drain).rejects.toBeInstanceOf(VoiceStartupError);
+    };
+    await expect(drain()).rejects.toThrow(VoiceStartupError);
   });
 });
 
