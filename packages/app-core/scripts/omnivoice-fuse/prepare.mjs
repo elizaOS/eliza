@@ -809,6 +809,65 @@ void eliza_inference_asr_stream_close(EliAsrStream * stream) {
     (void) stream;
 }
 
+/* ---- Streaming TTS + DFlash verifier callback (ABI v2) ------------- *
+ *
+ * The batch \`eliza_inference_tts_synthesize\` above is the implemented TTS
+ * path. The chunk-streaming entry, hard-cancel, and the native DFlash
+ * verifier-event callback are W7 fused-runtime work — until then
+ * \`eliza_inference_tts_stream_supported()\` returns 0 so EngineVoiceBridge
+ * uses the batch path / synthesizes verifier events from llama-server SSE
+ * deltas, exactly as it does today. We do NOT fake these (AGENTS.md §3);
+ * they exist so the ABI surface ffi-bindings.ts expects is complete.
+ */
+
+int eliza_inference_tts_stream_supported(void) {
+    return 0;
+}
+
+int eliza_inference_tts_synthesize_stream(
+    EliInferenceContext * ctx,
+    const char * text,
+    size_t text_len,
+    const char * speaker_preset_id,
+    eliza_tts_chunk_cb on_chunk,
+    void * user_data,
+    char ** out_error) {
+    (void) ctx;
+    (void) text;
+    (void) text_len;
+    (void) speaker_preset_id;
+    (void) on_chunk;
+    (void) user_data;
+    eliza_set_error(out_error,
+        "[libelizainference] streaming TTS is not implemented in this build "
+        "(eliza_inference_tts_stream_supported() == 0); use the batch synthesize path");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+int eliza_inference_cancel_tts(
+    EliInferenceContext * ctx,
+    char ** out_error) {
+    (void) ctx;
+    (void) out_error;
+    // Cancelling nothing is not an error; there is no in-flight streaming
+    // forward pass in this build (streaming TTS is not implemented).
+    return ELIZA_OK;
+}
+
+int eliza_inference_set_verifier_callback(
+    EliInferenceContext * ctx,
+    eliza_verifier_cb cb,
+    void * user_data,
+    char ** out_error) {
+    (void) ctx;
+    (void) cb;
+    (void) user_data;
+    eliza_set_error(out_error,
+        "[libelizainference] native DFlash verifier callback is not implemented in this build; "
+        "the JS scheduler synthesizes verifier events from llama-server streaming deltas");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
 void eliza_inference_free_string(char * str) {
     std::free(str);
 }
