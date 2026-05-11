@@ -24,6 +24,12 @@
         "default": "./dist/node/index.js"
       },
       "default": "./dist/node/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
     }
   },
   "files": [
