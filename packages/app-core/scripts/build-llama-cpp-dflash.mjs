@@ -56,6 +56,7 @@ import {
 } from "./kernel-patches/cpu-simd-kernels.mjs";
 import { patchCpuThreadParallelism as patchCpuThreadParallelismImpl } from "./kernel-patches/cpu-thread-parallelism.mjs";
 import { patchMetalKernels as patchMetalKernelsImpl } from "./kernel-patches/metal-kernels.mjs";
+import { patchServerOmnivoiceRoute as patchServerOmnivoiceRouteImpl } from "./kernel-patches/server-omnivoice-route.mjs";
 import { patchServerStructuredOutput as patchServerStructuredOutputImpl } from "./kernel-patches/server-structured-output.mjs";
 import { patchVulkanKernels as patchVulkanKernelsImpl } from "./kernel-patches/vulkan-kernels.mjs";
 import {
@@ -1333,6 +1334,17 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
     } else {
       patchServerStructuredOutputImpl(cacheDir, { dryRun });
     }
+  }
+  // Fused omnivoice TTS: mount `POST /v1/audio/speech` onto the same
+  // `llama-server` that serves `/completion` + `/v1/chat/completions` + the
+  // DFlash speculative loop (packages/inference/AGENTS.md §4 — one process,
+  // not two over IPC; remaining-work-ledger P0 #3 merged-route item). The
+  // route handler is guarded by `#ifdef MILADY_FUSE_OMNIVOICE` so non-fused
+  // builds are byte-for-byte unchanged; the cmake-graft separately links
+  // `omnivoice-core` into `llama-server` and sets that define for fused
+  // targets. Idempotent via the route patch's own sentinel.
+  if (isFusedTarget(target) && (!target || !target.startsWith("ios-"))) {
+    patchServerOmnivoiceRouteImpl(cacheDir, { dryRun });
   }
   // ggml.c (in ggml-base) calls quantize_qjl1_256 /
   // dequantize_row_qjl1_256 / quantize_row_qjl1_256_ref, which live in

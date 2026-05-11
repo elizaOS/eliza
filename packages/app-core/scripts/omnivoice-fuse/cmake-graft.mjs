@@ -133,14 +133,34 @@ if(MILADY_FUSE_OMNIVOICE)
         OUTPUT_NAME elizainference
         POSITION_INDEPENDENT_CODE ON)
 
-    # Stub fused server. The intent is to merge llama.cpp's
-    # examples/server/server.cpp HTTP routes with omnivoice's TTS
-    # entry points so one process serves both /v1/chat/completions
-    # and /v1/audio/speech. That route-mount is owned by the runtime
-    # team — file: packages/app-core/src/services/local-inference/
-    # README.md "TODO: omnivoice-fused server route mount". For now
-    # we link a placeholder that exists ONLY so the symbol verifier
-    # can confirm both symbol families are co-resident.
+    # The fused HTTP server IS \`llama-server\`. The kernel-patch
+    # \`server-omnivoice-route.mjs\` adds a \`POST /v1/audio/speech\` route to
+    # tools/server/server.cpp, guarded by \`#ifdef MILADY_FUSE_OMNIVOICE\`,
+    # backed by omnivoice-core's \`ov_synthesize\`. So the same process that
+    # serves \`/completion\` + \`/v1/chat/completions\` + the DFlash spec loop
+    # also serves TTS — one process, one llama.cpp build, one GGML pin
+    # (packages/inference/AGENTS.md §4). We link omnivoice-core into the
+    # \`llama-server\` target and put the route define + omnivoice headers on
+    # it. The non-fused build is untouched (this whole block is inside
+    # \`if(MILADY_FUSE_OMNIVOICE)\`).
+    if(TARGET llama-server)
+        target_link_libraries(llama-server PRIVATE omnivoice-core)
+        target_include_directories(llama-server PRIVATE
+            \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/src
+            \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR})
+        # Match the rest of the fused build's ggml_tensor layout (the
+        # foreach above bumps GGML_MAX_NAME on every other target);
+        # omnivoice-core was compiled the same way, so the static link is
+        # ABI-consistent.
+        target_compile_definitions(llama-server PRIVATE
+            MILADY_FUSE_OMNIVOICE GGML_MAX_NAME=128)
+    endif()
+
+    # Legacy \`llama-omnivoice-server\` placeholder kept ONLY so the symbol
+    # verifier can still confirm both symbol families are co-resident in an
+    # executable, and so an operator who scripted the old binary name still
+    # gets a working OmniVoice CLI. The real merged HTTP route lives in
+    # \`llama-server\` above; spawn that, not this.
     if(EXISTS \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/tools/omnivoice-tts.cpp)
         add_executable(llama-omnivoice-server
             \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/tools/omnivoice-tts.cpp)
