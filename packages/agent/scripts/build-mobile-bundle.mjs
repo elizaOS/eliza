@@ -54,10 +54,26 @@ const agentRoot = path.resolve(here, "..");
 // the source of every "could not locate @electric-sql/pglite/dist" or
 // "agent-bundle.js not found" error in CI.)
 const repoRoot = path.resolve(agentRoot, "..", "..");
-const outDir = path.join(agentRoot, "dist-mobile");
+
+// Target selection. `--target=android` (default) preserves existing behavior;
+// `--target=ios` swaps in iOS-specific stubs and sets ELIZA_PLATFORM=ios at
+// bundle time. See native/ios-bun-port/ for the iOS Bun port project.
+const targetArg = (process.argv.find((a) => a.startsWith("--target=")) ?? "")
+  .split("=")[1];
+const TARGET = targetArg || process.env.ELIZA_MOBILE_TARGET || "android";
+if (TARGET !== "android" && TARGET !== "ios") {
+  console.error(`[build-mobile] FATAL: unknown --target=${TARGET}; expected 'android' or 'ios'`);
+  process.exit(1);
+}
+
+const outDir = path.join(
+  agentRoot,
+  TARGET === "ios" ? "dist-mobile-ios" : "dist-mobile",
+);
 const stubsDir = path.join(here, "mobile-stubs");
 const entry = path.join(agentRoot, "src", "bin.ts");
 
+console.log("[build-mobile] target:", TARGET);
 console.log("[build-mobile] agent root:", agentRoot);
 console.log("[build-mobile] output dir:", outDir);
 
@@ -280,6 +296,21 @@ const nativeStubs = {
   "react/jsx-runtime": path.join(stubsDir, "react-jsx-runtime.cjs"),
   "react/jsx-dev-runtime": path.join(stubsDir, "react-jsx-runtime.cjs"),
 };
+
+// iOS-specific overrides. The iOS Bun port (see native/ios-bun-port/) forbids
+// `child_process` / `Bun.spawn` (kernel sandbox), restricts `bun:ffi` to
+// statically-linked symbols, and routes `os.homedir()` through env vars set by
+// ElizaBunRuntime.swift. These stubs surface the platform constraints as JS
+// runtime errors rather than module-load crashes.
+if (TARGET === "ios") {
+  nativeStubs["node:child_process"] = path.join(stubsDir, "ios-child-process.cjs");
+  nativeStubs["child_process"] = path.join(stubsDir, "ios-child-process.cjs");
+  nativeStubs["node:os"] = path.join(stubsDir, "ios-os.cjs");
+  // Note: `bun:ffi` is provided natively by the iOS Bun runtime; the
+  // ios-ffi.cjs stub only loads in dev/desktop fallbacks where this bundle
+  // is being run outside the iOS port. We do NOT remap `bun:ffi` here so
+  // the native implementation wins on iOS device builds.
+}
 
 // Optional @elizaos plugins that the agent runtime statically references but
 // transitively pull in old/incompatible `@elizaos/core` versions. Stubbing
@@ -696,7 +727,7 @@ const buildResult = await Bun.build({
   // to keep stack traces readable. Re-enable selectively if APK size matters.
   minify: false,
   define: {
-    "process.env.ELIZA_PLATFORM": JSON.stringify("android"),
+    "process.env.ELIZA_PLATFORM": JSON.stringify(TARGET),
     // Disable the `isDirectRun` self-invocation guard in the agent's
     // `runtime/eliza.ts`. After bundling, `import.meta.url` and
     // `process.argv[1]` both resolve to the same bundle path, so the guard

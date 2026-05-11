@@ -1,4 +1,4 @@
-"""Tests for the Cerebras-direct adapter (Wave 2E sibling).
+"""Tests for the Cerebras-direct adapter.
 
 Mocked end-to-end via :class:`httpx.MockTransport` — Cerebras's endpoint
 speaks native OpenAI tool-calling, so the wire format and response shape

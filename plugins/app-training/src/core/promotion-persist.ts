@@ -31,7 +31,10 @@ import type { TrajectoryTrainingTask } from "./trajectory-task-datasets.js";
 export type PromotionOptimizerName =
   | "instruction-search"
   | "prompt-evolution"
-  | "bootstrap-fewshot";
+  | "bootstrap-fewshot"
+  | "dspy-bootstrap-fewshot"
+  | "dspy-copro"
+  | "dspy-mipro";
 
 export interface PromotionFewShotExample {
   id?: string;

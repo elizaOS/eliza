@@ -96,7 +96,10 @@ export interface OptimizerResult {
 export type OptimizerName =
   | "instruction-search"
   | "prompt-evolution"
-  | "bootstrap-fewshot";
+  | "bootstrap-fewshot"
+  | "dspy-bootstrap-fewshot"
+  | "dspy-copro"
+  | "dspy-mipro";
 
 /**
  * Persisted artifact written by the native backend and consumed by

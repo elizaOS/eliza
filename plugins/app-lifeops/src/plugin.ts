@@ -14,11 +14,15 @@ import {
   type State,
 } from "@elizaos/core";
 import { blockAction } from "./actions/block.js";
+import { briefAction } from "./actions/brief.js";
 import { calendarAction } from "./actions/calendar.js";
+import { conflictDetectAction } from "./actions/conflict-detect.js";
 import { connectorAction } from "./actions/connector.js";
 import { credentialsAction } from "./actions/credentials.js";
 import { docAction } from "./actions/document.js";
 import { entityAction } from "./actions/entity.js";
+import { inboxUnifiedAction } from "./actions/inbox-unified.js";
+import { prioritizeAction } from "./actions/prioritize.js";
 import {
   ownerAlarmsAction,
   ownerFinancesAction,
@@ -639,6 +643,10 @@ const rawAppLifeOpsPlugin: Plugin = {
     ...promoteSubactionsToActions(personalAssistantAction),
     entityAction,
     ...promoteSubactionsToActions(docAction),
+    ...promoteSubactionsToActions(briefAction),
+    ...promoteSubactionsToActions(prioritizeAction),
+    ...promoteSubactionsToActions(conflictDetectAction),
+    ...promoteSubactionsToActions(inboxUnifiedAction),
     ...promoteSubactionsToActions(voiceCallAction),
     remoteDesktopAction,
     workThreadAction,

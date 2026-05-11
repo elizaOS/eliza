@@ -2746,6 +2746,76 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "BRIEF",
+			description:
+				"Compose the owner's morning, evening, or weekly briefing by pulling calendar feed, inbox triage, life-domain due items, and money recurring charges into a single LifeOpsBriefing. Subactions: compose_morning, compose_evening, compose_weekly.",
+			parameters: [
+				{
+					name: "subaction",
+					description:
+						"Which brief to compose: compose_morning | compose_evening | compose_weekly.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["compose_morning", "compose_evening", "compose_weekly"],
+					},
+					descriptionCompressed:
+						"Which brief to compose: compose_morning | compose_evening | compose_weekly.",
+				},
+				{
+					name: "period",
+					description:
+						"Time window the brief covers: today | tomorrow | this_week. Defaults to the subaction's natural period.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["today", "tomorrow", "this_week"],
+					},
+					descriptionCompressed:
+						"Time window the brief covers: today | tomorrow | this_week. Defaults to the subaction's natural period.",
+				},
+				{
+					name: "include",
+					description:
+						"Per-domain include flags; each defaults to true. Shape: { calendar?, inbox?, life?, money? }.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"Per-domain include flags. each defaults to true. Shape: { calendar?, inbox?, life?, money? }.",
+				},
+				{
+					name: "format",
+					description:
+						"narrative renders the LLM compose pass; json returns only the structured LifeOpsBriefing. Defaults to narrative.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["narrative", "json"],
+					},
+					descriptionCompressed:
+						"narrative renders the LLM compose pass. json returns only the structured LifeOpsBriefing. Defaults to narrative.",
+				},
+			],
+			descriptionCompressed:
+				"briefing: compose_morning|compose_evening|compose_weekly; LifeOpsBriefing shape; LLM narrative pass",
+			exampleCalls: [
+				{
+					user: "Use BRIEF with the provided parameters.",
+					actions: ["BRIEF"],
+					params: {
+						BRIEF: {
+							subaction: "compose_morning",
+							period: "today",
+							include: "example",
+							format: "narrative",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "BROWSER",
 			description:
 				"Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified. Use `action: \"autofill_login\"` with `domain` (and optional `username`, `submit`) to vault-gated autofill into an open workspace tab.",
@@ -3697,6 +3767,62 @@ export const allActionsSpec = {
 							clicks: 1,
 							scrollDirection: "up",
 							scrollAmount: 3,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "CONFLICT_DETECT",
+			description:
+				"Proactively scan the owner's calendar for overlapping events, or evaluate a proposed event window against the owner's feed. Subactions: scan_today, scan_week, scan_event_proposal.",
+			parameters: [
+				{
+					name: "subaction",
+					description:
+						"Which scan to run: scan_today | scan_week | scan_event_proposal.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["scan_today", "scan_week", "scan_event_proposal"],
+					},
+					descriptionCompressed:
+						"Which scan to run: scan_today | scan_week | scan_event_proposal.",
+				},
+				{
+					name: "range",
+					description:
+						"Either 'today' | 'week' or an explicit { start, end } ISO window. Defaults to subaction's natural range.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"Either 'today' | 'week' or an explicit { start, end } ISO window. Defaults to subaction's natural range.",
+				},
+				{
+					name: "proposal",
+					description:
+						"scan_event_proposal only: { startISO, endISO, attendees? } describing the candidate event.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed:
+						"scan_event_proposal only: { startISO, endISO, attendees? } describing the candidate event.",
+				},
+			],
+			descriptionCompressed:
+				"calendar conflicts: scan_today|scan_week|scan_event_proposal; severity warning|hard based on attendee overlap",
+			exampleCalls: [
+				{
+					user: "Use CONFLICT_DETECT with the provided parameters.",
+					actions: ["CONFLICT_DETECT"],
+					params: {
+						CONFLICT_DETECT: {
+							subaction: "scan_today",
+							range: "example",
+							proposal: "example",
 						},
 					},
 				},
@@ -5056,6 +5182,82 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "INBOX_UNIFIED",
+			description:
+				"Cross-platform unified inbox: fan out to Gmail, Slack, Discord, Telegram, Signal, iMessage, and WhatsApp and merge into a single recency-ordered feed. Subactions: list, search, summarize.",
+			parameters: [
+				{
+					name: "subaction",
+					description: "Which operation: list | search | summarize.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["list", "search", "summarize"],
+					},
+					descriptionCompressed: "Which operation: list | search | summarize.",
+				},
+				{
+					name: "platforms",
+					description:
+						"Optional array of platforms to limit fan-out: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default: all.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed:
+						"Optional array of platforms to limit fan-out: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default: all.",
+				},
+				{
+					name: "since",
+					description: "ISO-8601 lower bound on receivedAt.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "ISO-8601 lower bound on receivedAt.",
+				},
+				{
+					name: "limit",
+					description: "Per-platform limit; default 50.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Per-platform limit. default 50.",
+				},
+				{
+					name: "query",
+					description: "Required for search; free-form search string.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Required for search. free-form search string.",
+				},
+			],
+			descriptionCompressed:
+				"unified inbox: list|search|summarize across gmail|slack|discord|telegram|signal|imessage|whatsapp; dedupe by id+thread topic",
+			exampleCalls: [
+				{
+					user: "Use INBOX_UNIFIED with the provided parameters.",
+					actions: ["INBOX_UNIFIED"],
+					params: {
+						INBOX_UNIFIED: {
+							subaction: "list",
+							platforms: "example",
+							since: "example",
+							limit: 1,
+							query: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "LINEAR",
 			description:
 				"Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
@@ -6294,6 +6496,74 @@ export const allActionsSpec = {
 					params: {
 						PLAY_EMOTE: {
 							emote: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "PRIORITIZE",
+			description:
+				"Rank the owner's open todos, message threads, or pending decisions by urgency × importance via an LLM compose pass. Subactions: rank_todos, rank_threads, rank_decisions.",
+			parameters: [
+				{
+					name: "subaction",
+					description:
+						"Which ranking to compute: rank_todos | rank_threads | rank_decisions.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["rank_todos", "rank_threads", "rank_decisions"],
+					},
+					descriptionCompressed:
+						"Which ranking to compute: rank_todos | rank_threads | rank_decisions.",
+				},
+				{
+					name: "subject",
+					description:
+						"Alternative selector: todos | threads | decisions. Maps onto the matching subaction.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["todos", "threads", "decisions"],
+					},
+					descriptionCompressed:
+						"Alternative selector: todos | threads | decisions. Maps onto the matching subaction.",
+				},
+				{
+					name: "topN",
+					description: "How many items to return at the top. Defaults to 5.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"How many items to return at the top. Defaults to 5.",
+				},
+				{
+					name: "criteria",
+					description:
+						"Free-form additional weighting criteria the owner wants applied.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Free-form additional weighting criteria the owner wants applied.",
+				},
+			],
+			descriptionCompressed:
+				"prioritize: rank_todos|rank_threads|rank_decisions; topN ranking by urgency × importance",
+			exampleCalls: [
+				{
+					user: "Use PRIORITIZE with the provided parameters.",
+					actions: ["PRIORITIZE"],
+					params: {
+						PRIORITIZE: {
+							subaction: "rank_todos",
+							subject: "todos",
+							topN: 1,
+							criteria: "example",
 						},
 					},
 				},

@@ -69,24 +69,38 @@ import type {
  * tokenizer is shared with the text backbone (AGENTS.md §1 — zero
  * re-tokenization), so the pipeline only needs *contiguous* token
  * indices, not the model's exact subword boundaries; whitespace-aware
- * word chunking is the closest stable approximation until the fork
- * exposes raw ASR token ids. Empty input yields no tokens.
+ * word chunking is the closest stable approximation when only surface
+ * text is available. Empty input yields no tokens.
+ *
+ * `tokenIds`, when supplied, are the text-model vocabulary ids the fused
+ * ASR decoder emitted for `transcript`. When the lengths line up they are
+ * attached as `TextToken.id` so a downstream in-process handoff can skip
+ * re-tokenization; otherwise (mismatch — the surface split disagrees with
+ * the decoder's subword boundaries) the ids are dropped and only the
+ * word-chunk approximation is returned.
  */
 export function splitTranscriptToTokens(
   transcript: string,
   startIndex = 0,
+  tokenIds?: ReadonlyArray<number>,
 ): TextToken[] {
   const trimmed = transcript.trim();
   if (trimmed.length === 0) return [];
   // Keep leading whitespace attached to each chunk after the first so a
   // join() round-trips to the original spacing (matches how the chunker
   // reconstructs phrase text from token.text concatenation).
-  const parts = trimmed.split(/(?<=\S)(?=\s)/);
+  const parts = trimmed.split(/(?<=\S)(?=\s)/).filter((p) => p.length > 0);
   const tokens: TextToken[] = [];
+  // Pass through real token ids only when the producer's id count matches
+  // the surface-chunk count — anything else means the two disagree on
+  // boundaries and a positional join would mislabel ids.
+  const ids =
+    tokenIds && tokenIds.length === parts.length ? tokenIds : undefined;
   let i = startIndex;
-  for (const part of parts) {
-    if (part.length === 0) continue;
-    tokens.push({ index: i++, text: part });
+  for (let p = 0; p < parts.length; p++) {
+    const token: TextToken = { index: i++, text: parts[p] };
+    if (ids) token.id = ids[p];
+    tokens.push(token);
   }
   return tokens;
 }
@@ -127,7 +141,16 @@ export class StreamingTranscriberTokenStreamer implements AsrTokenStreamer {
       this.transcriber.feed(frame);
       const final = await this.transcriber.flush();
       if (cancel.cancelled) return;
-      for (const token of splitTranscriptToTokens(final.partial)) {
+      // The fused Qwen3-ASR decoder shares the text vocab (AGENTS.md §1),
+      // so when it reports token ids alongside the transcript they are
+      // forwarded as `TextToken.id` — the whisper.cpp interim adapter
+      // omits them (different tokenizer) and the word-chunk fallback is
+      // used.
+      for (const token of splitTranscriptToTokens(
+        final.partial,
+        0,
+        final.tokens,
+      )) {
         if (cancel.cancelled) return;
         yield token;
         await Promise.resolve();

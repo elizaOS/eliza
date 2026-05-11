@@ -134,7 +134,7 @@ def resolve_repo_id(
     except KeyError as exc:
         raise SystemExit(
             f"--registry-key {registry_key!r} is not in the registry; "
-            "either pass --repo-id explicitly (e.g. for milady-ai/* repos) "
+            "either pass --repo-id explicitly (e.g. for elizaos/* repos) "
             f"or pick one of: {_published_registry_names()}"
         ) from exc
     if variant == "abliterated":
@@ -857,7 +857,7 @@ def main() -> int:
         "--milady-manifest", type=Path, default=None,
         help="Path to a milady_manifest.json from optimize_for_milady.py. "
              "Triggers manifest-driven model card rendering and supersedes "
-             "the per-quant template. Use for milady-ai/* repo publishes.",
+             "the per-quant template. Use for elizaos/* repo publishes.",
     )
     ap.add_argument(
         "--release-state", default=None,
