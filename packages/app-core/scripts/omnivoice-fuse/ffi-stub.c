@@ -17,10 +17,20 @@
  * What returns ELIZA_ERR_NOT_IMPLEMENTED:
  *   - mmap_acquire / mmap_evict — the real implementation requires the
  *     fused build's mmap of the weight files.
- *   - tts_synthesize — needs OmniVoice.
+ *   - tts_synthesize / tts_synthesize_stream — need OmniVoice.
  *   - asr_transcribe — needs the ASR backend.
  *   - asr_stream_open / _feed / _partial / _finish (ABI v2) — need the
  *     streaming ASR decoder; `_close` is a safe no-op.
+ *
+ * What returns ELIZA_OK without doing anything (these are the "no
+ * fused build, nothing to do" entries — there is no in-flight forward
+ * pass to cancel, no speculative loop to wire a callback into):
+ *   - cancel_tts — OK (cancelling nothing is not an error).
+ *   - set_verifier_callback — OK no-op (no native speculative loop).
+ *
+ * What returns 0 (capability probes — "this build does not implement
+ * the streaming path"):
+ *   - tts_stream_supported, asr_stream_supported.
  *
  * Per `packages/inference/AGENTS.md` §3 + §9: the stub does NOT
  * fabricate fake outputs, does NOT log, does NOT pretend success.
@@ -186,6 +196,72 @@ int eliza_inference_tts_synthesize(
     set_error(out_error,
         "[libelizainference-stub] tts_synthesize: not implemented in stub — fused build required");
     return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+int eliza_inference_tts_stream_supported(void) {
+    return 0; /* stub has no streaming TTS decoder */
+}
+
+int eliza_inference_tts_synthesize_stream(
+    EliInferenceContext * ctx,
+    const char * text,
+    size_t text_len,
+    const char * speaker_preset_id,
+    eliza_tts_chunk_cb on_chunk,
+    void * user_data,
+    char ** out_error)
+{
+    (void)speaker_preset_id;
+    (void)on_chunk;
+    (void)user_data;
+    if (!ctx) {
+        set_error(out_error,
+            "[libelizainference-stub] tts_synthesize_stream: ctx is NULL");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (!text || text_len == 0) {
+        set_error(out_error,
+            "[libelizainference-stub] tts_synthesize_stream: text is required");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (!on_chunk) {
+        set_error(out_error,
+            "[libelizainference-stub] tts_synthesize_stream: on_chunk is required");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    set_error(out_error,
+        "[libelizainference-stub] tts_synthesize_stream: not implemented in stub — fused build required");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+int eliza_inference_cancel_tts(
+    EliInferenceContext * ctx,
+    char ** out_error)
+{
+    if (!ctx) {
+        set_error(out_error,
+            "[libelizainference-stub] cancel_tts: ctx is NULL");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    /* No in-flight forward pass in the stub — cancelling nothing is OK. */
+    return ELIZA_OK;
+}
+
+int eliza_inference_set_verifier_callback(
+    EliInferenceContext * ctx,
+    eliza_verifier_cb cb,
+    void * user_data,
+    char ** out_error)
+{
+    (void)cb;
+    (void)user_data;
+    if (!ctx) {
+        set_error(out_error,
+            "[libelizainference-stub] set_verifier_callback: ctx is NULL");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    /* No native speculative loop in the stub — registering is a no-op. */
+    return ELIZA_OK;
 }
 
 int eliza_inference_asr_transcribe(
