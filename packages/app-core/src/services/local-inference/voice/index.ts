@@ -114,6 +114,14 @@ export {
   type WhisperDecoder,
   whisperDir,
 } from "./transcriber";
+export {
+  type VoiceGenerateRequest,
+  VoiceTurnController,
+  type VoiceTurnControllerConfig,
+  type VoiceTurnControllerDeps,
+  type VoiceTurnControllerEvents,
+  type VoiceTurnOutcome,
+} from "./turn-controller";
 export * from "./types";
 export {
   createSileroVadDetector,
