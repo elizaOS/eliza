@@ -22,7 +22,28 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
 
+from ._retry import (
+    MAX_ATTEMPTS,
+    RetryExhaustedError,
+    backoff_seconds,
+    is_retryable_status,
+    parse_retry_after,
+)
+
 logger = logging.getLogger(__name__)
+
+
+def _retry_after_from_openai_exception(exc: object) -> float | None:
+    """Pull a ``Retry-After`` header from an openai-SDK exception, if present."""
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+    try:
+        raw = headers.get("retry-after") or headers.get("Retry-After")
+    except AttributeError:
+        return None
+    return parse_retry_after(raw if isinstance(raw, str) else None)
 
 
 DEFAULT_REPO_PATH = Path.home() / ".eliza" / "agents" / "hermes-agent-src"
@@ -264,6 +285,12 @@ class HermesClient:
         # Lazy import — only attempted when explicitly requested.
         try:
             from openai import OpenAI  # noqa: WPS433 — lazy by design
+            from openai import (  # noqa: WPS433
+                APIConnectionError,
+                APIStatusError,
+                APITimeoutError,
+                RateLimitError,
+            )
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError(
                 "in_process mode requires `openai` installed in the parent "
@@ -271,7 +298,11 @@ class HermesClient:
             ) from exc
 
         payload = self.build_send_message_payload(text, context)
-        oai = OpenAI(api_key=payload["api_key"] or None, base_url=str(payload["base_url"]))
+        oai = OpenAI(
+            api_key=payload["api_key"] or None,
+            base_url=str(payload["base_url"]),
+            max_retries=0,  # we own the retry loop below
+        )
         ctx = payload.get("context")
         raw_messages = ctx.get("messages") if isinstance(ctx, Mapping) else None
         sys_prompt = payload.get("system_prompt") if isinstance(payload.get("system_prompt"), str) else None
@@ -284,7 +315,51 @@ class HermesClient:
         tools = payload.get("tools")
         if isinstance(tools, list) and tools:
             kwargs["tools"] = tools
-        completion = oai.chat.completions.create(**kwargs)
+
+        # Retry loop: 429 + 5xx + network errors, exponential backoff,
+        # ``Retry-After`` honored when present. Other 4xx surface immediately.
+        last_status: int | None = None
+        last_error_str = "no attempt completed"
+        for attempt in range(MAX_ATTEMPTS):
+            try:
+                completion = oai.chat.completions.create(**kwargs)
+                break
+            except RateLimitError as exc:
+                last_status = 429
+                last_error_str = str(exc)
+                delay = _retry_after_from_openai_exception(exc) or backoff_seconds(attempt)
+            except APIStatusError as exc:
+                status = getattr(exc, "status_code", None)
+                last_status = int(status) if isinstance(status, int) else None
+                last_error_str = str(exc)
+                if last_status is None or not is_retryable_status(last_status):
+                    raise
+                delay = _retry_after_from_openai_exception(exc) or backoff_seconds(attempt)
+            except (APIConnectionError, APITimeoutError) as exc:
+                last_status = None
+                last_error_str = f"{type(exc).__name__}: {exc}"
+                delay = backoff_seconds(attempt)
+            if attempt == MAX_ATTEMPTS - 1:
+                raise RetryExhaustedError(
+                    attempts=MAX_ATTEMPTS,
+                    last_status=last_status,
+                    last_error=last_error_str,
+                )
+            logger.warning(
+                "hermes-adapter retrying chat.completions (attempt %d/%d, status=%s) after %.2fs: %s",
+                attempt + 1,
+                MAX_ATTEMPTS,
+                "net" if last_status is None else last_status,
+                delay,
+                last_error_str[:200],
+            )
+            time.sleep(delay)
+        else:  # pragma: no cover — defensive; the break/raise paths cover it
+            raise RetryExhaustedError(
+                attempts=MAX_ATTEMPTS,
+                last_status=last_status,
+                last_error=last_error_str,
+            )
         msg = completion.choices[0].message
         tool_calls = getattr(msg, "tool_calls", None) or []
         parsed_tool_calls = [
@@ -481,6 +556,46 @@ _SEND_MESSAGE_SCRIPT = r"""
 import asyncio
 import json
 import sys
+import time
+from email.utils import parsedate_to_datetime
+
+
+_RETRY_BACKOFF = (1.0, 2.0, 4.0, 8.0, 16.0)
+_MAX_ATTEMPTS = 5
+_MAX_RETRY_AFTER = 60.0
+
+
+def _parse_retry_after(value):
+    if not value:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        seconds = float(raw)
+    except ValueError:
+        try:
+            target = parsedate_to_datetime(raw)
+        except (TypeError, ValueError):
+            return None
+        if target is None:
+            return None
+        seconds = target.timestamp() - time.time()
+    if seconds <= 0:
+        return 0.0
+    return min(seconds, _MAX_RETRY_AFTER)
+
+
+def _retry_after_from_exc(exc):
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+    try:
+        raw = headers.get("retry-after") or headers.get("Retry-After")
+    except AttributeError:
+        return None
+    return _parse_retry_after(raw)
 
 
 def _main() -> int:
@@ -498,6 +613,12 @@ def _main() -> int:
 
     try:
         from openai import OpenAI
+        from openai import (
+            APIConnectionError,
+            APIStatusError,
+            APITimeoutError,
+            RateLimitError,
+        )
     except ImportError as exc:
         print(
             json.dumps(
@@ -511,7 +632,7 @@ def _main() -> int:
         )
         return 0
 
-    client = OpenAI(api_key=api_key or None, base_url=base_url or None)
+    client = OpenAI(api_key=api_key or None, base_url=base_url or None, max_retries=0)
     messages = []
     context = payload.get("context")
     raw_messages = context.get("messages") if isinstance(context, dict) else None
@@ -576,7 +697,54 @@ def _main() -> int:
     if isinstance(tools, list) and tools:
         kwargs["tools"] = tools
 
-    completion = client.chat.completions.create(**kwargs)
+    completion = None
+    last_status = None
+    last_err_str = "no attempt completed"
+    for attempt in range(_MAX_ATTEMPTS):
+        try:
+            completion = client.chat.completions.create(**kwargs)
+            break
+        except RateLimitError as exc:
+            last_status = 429
+            last_err_str = str(exc)
+            delay = _retry_after_from_exc(exc) or _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
+        except APIStatusError as exc:
+            status = getattr(exc, "status_code", None)
+            last_status = int(status) if isinstance(status, int) else None
+            last_err_str = str(exc)
+            if last_status is None or not (last_status == 429 or last_status >= 500):
+                raise
+            delay = _retry_after_from_exc(exc) or _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
+        except (APIConnectionError, APITimeoutError) as exc:
+            last_status = None
+            last_err_str = "{}: {}".format(type(exc).__name__, exc)
+            delay = _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
+        if attempt == _MAX_ATTEMPTS - 1:
+            sys.stderr.write(
+                "hermes-adapter retry exhausted after {} attempts (last_status={}): {}\n".format(
+                    _MAX_ATTEMPTS,
+                    "net" if last_status is None else last_status,
+                    last_err_str[:300],
+                )
+            )
+            raise RuntimeError(
+                "hermes-adapter retry exhausted after {} attempts (last_status={})".format(
+                    _MAX_ATTEMPTS,
+                    "net" if last_status is None else last_status,
+                )
+            )
+        sys.stderr.write(
+            "hermes-adapter retry attempt {}/{} status={} delay={:.2f}s: {}\n".format(
+                attempt + 1,
+                _MAX_ATTEMPTS,
+                "net" if last_status is None else last_status,
+                delay,
+                last_err_str[:200],
+            )
+        )
+        time.sleep(delay)
+    if completion is None:  # defensive — loop must have raised
+        raise RuntimeError("hermes-adapter completion is None after retry loop")
     msg = completion.choices[0].message
 
     tool_calls = []
