@@ -446,6 +446,16 @@ class ToolEnvWrapperOpenAI(EnvWrapper):
                         })
                         if verbose:
                             print(f"Tool not found: {tool_name}")
+            else:
+                for tool_call_request in tool_list:
+                    tool_result.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_request["tool_call_id"],
+                        "content": (
+                            "[Tool execution skipped: maximum tool uses reached. "
+                            "Use the information already gathered to finish the task.]"
+                        ),
+                    })
             
             # Process results based on whether claim_done was called
             reward = 0

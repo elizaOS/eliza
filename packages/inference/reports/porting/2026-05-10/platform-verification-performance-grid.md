@@ -92,7 +92,10 @@ yet runtime-ready graph capabilities for the full Eliza-1 contract.
 
 - iOS device runtime validation still needs a physical iPhone/iPad after graph-dispatch routing is complete.
 - iOS simulator remains blocked by the runtime capability gate; it does not need external credentials, but the artifact is intentionally refused until shipped symbols are graph-reachable and numerically verified.
-- Vulkan fork verification was skipped on this Mac because no `*-vulkan` build staged the fork Vulkan shaders in the cache.
+- Vulkan fork verification was not proven on this Mac. The tightened native
+  Linux runner now writes an evidence log, refuses stale/symbol-only artifacts,
+  dumps `CAPABILITIES.json`, and must run `vulkan-dispatch-smoke` on native
+  Linux hardware before any Vulkan runtime-ready claim.
 - CUDA, ROCm, Windows, Android, Linux aarch64, and server-H200/GH200 targets were not run on this Apple Silicon host; they still need matching physical hardware/toolchains.
 
 ## Artifacts written

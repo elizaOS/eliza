@@ -649,14 +649,18 @@ export async function ensureLocalInferenceHandler(
       provider,
       LOCAL_INFERENCE_PRIORITY,
     );
-    runtimeWithRegistration.registerModel(
-      ModelType.TRANSCRIPTION,
-      makeTranscriptionHandler(),
-      provider,
-      LOCAL_INFERENCE_PRIORITY,
-    );
+    const transcriptionEnabled =
+      process.env.ELIZA_LOCAL_TRANSCRIPTION?.trim() === "1";
+    if (transcriptionEnabled) {
+      runtimeWithRegistration.registerModel(
+        ModelType.TRANSCRIPTION,
+        makeTranscriptionHandler(),
+        provider,
+        LOCAL_INFERENCE_PRIORITY,
+      );
+    }
     logger.info(
-      `[local-inference] Registered ${provider} voice handlers for TEXT_TO_SPEECH / TRANSCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}`,
+      `[local-inference] Registered ${provider} voice handlers for TEXT_TO_SPEECH${transcriptionEnabled ? " / TRANSCRIPTION" : ""} at priority ${LOCAL_INFERENCE_PRIORITY}`,
     );
   } catch (err) {
     logger.warn(

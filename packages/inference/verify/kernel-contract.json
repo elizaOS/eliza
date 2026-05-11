@@ -22,12 +22,46 @@
     "verify/HARDWARE_VERIFICATION.md",
     "verify/CUDA_VERIFICATION.md"
   ],
+  "hardwareEvidence": {
+    "schemaVersion": 1,
+    "requiredForRuntimeReady": true,
+    "requiredFields": [
+      "schemaVersion",
+      "runner",
+      "status",
+      "passRecordable",
+      "exitCode",
+      "host",
+      "target",
+      "requirements",
+      "evidence"
+    ],
+    "passCriteria": {
+      "status": "pass",
+      "passRecordable": true,
+      "graphSmoke": "required",
+      "exitCode": 0
+    },
+    "failClosedHosts": [
+      "Darwin CUDA/ROCm/GH200",
+      "non-Windows Windows runner",
+      "Linux CUDA without nvcc/nvidia-smi/NVIDIA GPU",
+      "Linux ROCm without hipcc/rocminfo/gfx GPU agent",
+      "GH200 without aarch64 Linux plus Hopper/compute-capability-9.x GPU"
+    ],
+    "reportOptions": {
+      "cuda": "verify/cuda_runner.sh --report <path>",
+      "gh200": "verify/gh200_runner.sh --report <path>",
+      "rocm": "verify/rocm_runner.sh --report <path>",
+      "windows": "verify/windows_runner.ps1 -Report <path>"
+    }
+  },
   "runtimeSmoke": {
     "vulkanBuiltForkGraph": {
       "makeTarget": "vulkan-dispatch-smoke",
       "source": "verify/vulkan_dispatch_smoke.cpp",
       "status": "blocked",
-      "description": "Links against libggml-vulkan and runs GGML_OP_ATTN_SCORE_QJL through real graph execution. Must pass before any Vulkan CAPABILITIES kernel bit flips runtime-ready."
+      "description": "Links against libggml-vulkan, requires ggml_backend_supports_op for GGML_OP_ATTN_SCORE_QJL with GGML_TYPE_QJL1_256, then runs real graph execution and numeric reference comparison. Must pass before any Vulkan CAPABILITIES kernel bit flips runtime-ready."
     },
     "linuxNativeVulkan": {
       "makeTarget": "vulkan-native-smoke",
@@ -41,12 +75,12 @@
         "verify/fixtures/polar.json",
         "verify/fixtures/polar_qjl.json"
       ],
-      "description": "Rejects non-Linux/MoltenVK, runs standalone Vulkan fixtures, builds linux-x64-vulkan, then runs the built-fork graph gate."
+      "description": "Rejects non-Linux/MoltenVK and software ICDs by default, writes hardware-results evidence, runs standalone Vulkan fixtures, builds linux-x64-vulkan, dumps CAPABILITIES diagnostics, then runs the built-fork graph gate. Build failure or symbol-only staging exits non-zero."
     },
     "androidVulkan": {
       "makeTarget": "android-vulkan-smoke",
       "script": "verify/android_vulkan_smoke.sh",
-      "status": "needs-hardware",
+      "status": "blocked",
       "fixtures": [
         "verify/fixtures/turbo3.json",
         "verify/fixtures/turbo4.json",
@@ -55,7 +89,7 @@
         "verify/fixtures/polar.json",
         "verify/fixtures/polar_qjl.json"
       ],
-      "description": "Cross-compiles vulkan_verify with the Android NDK, pushes verifier/SPIR-V/fixtures through adb, and runs on physical Adreno/Mali hardware."
+      "description": "Cross-compiles vulkan_verify with the Android NDK, pushes verifier/SPIR-V/fixtures through adb, records physical-device evidence, and runs on Adreno/Mali hardware. Standalone fixture success exits non-zero unless ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE proves Android Vulkan graph dispatch."
     }
   },
   "kernels": [

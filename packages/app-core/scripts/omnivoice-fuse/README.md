@@ -171,7 +171,9 @@ fallback" path.
 - `verify-symbols.mjs` — post-build symbol probe. Runs `nm` (or
                        `objdump -T` on PE) against the produced
                        binary/library and asserts both `llama_*` and
-                       `omnivoice_*` exports are present.
+                       concrete OmniVoice `ov_*` exports are present.
+                       Writes `OMNIVOICE_FUSE_VERIFY.json` beside the
+                       artifact on both pass and fail.
 - `patches/`         — directory for `.patch` files keyed to specific
                        omnivoice or ggml commit drifts. Each patch is
                        applied with `git apply --check` first; a failed
@@ -254,6 +256,11 @@ make -C packages/app-core/scripts/omnivoice-fuse
 # Symbol verification:
 nm -gU libelizainference_stub.dylib | grep eliza_inference_
 
+# Fail-closed real-library smoke. This intentionally renames the stub
+# as libelizainference and verifies the real fused-symbol checker
+# rejects it with an OMNIVOICE_FUSE_VERIFY.json failure report:
+make -C packages/app-core/scripts/omnivoice-fuse verify-stub-rejected
+
 # JS-side coverage (requires Bun on PATH for the integration scenarios):
 cd packages/app-core
 bunx vitest run src/services/local-inference/voice/ffi-bindings.test.ts
@@ -264,3 +271,21 @@ dylib via `bun:ffi` and exercises `create`/`destroy`/`mmapEvict`/
 `ttsSynthesize`/ABI-mismatch scenarios. The vitest worker itself runs
 on Node 22 (no `bun:ffi`), so the pure-unit cases assert that the
 loader throws structurally on the no-Bun path.
+
+## Verifying a real fused artifact
+
+After `build-llama-cpp-dflash.mjs --target <fused-target>` installs
+`libelizainference`, the build runs the same verifier as this CLI:
+
+```sh
+node packages/app-core/scripts/omnivoice-fuse/verify-symbols.mjs \
+  --out-dir <installed-bin-dir> \
+  --target darwin-arm64-metal-fused
+```
+
+The verifier rejects stub-only artifacts, missing `llama_*` exports
+unless Darwin re-exports `libllama.dylib`, missing ABI v1
+`eliza_inference_*` entries, and missing concrete OmniVoice entries
+such as `ov_init`, `ov_synthesize`, and `ov_audio_free`. A failed probe
+exits non-zero and leaves `OMNIVOICE_FUSE_VERIFY.json` in the output
+directory for build reports.

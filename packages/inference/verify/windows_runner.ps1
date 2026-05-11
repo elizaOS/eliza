@@ -27,12 +27,82 @@ param(
 
   [string] $ReportDir = "",
 
+  [string] $Report = $env:ELIZA_DFLASH_HARDWARE_REPORT,
+
   [string[]] $CacheTypes = @()
 )
 
 $ErrorActionPreference = "Stop"
 
+$script:StartedAt = (Get-Date).ToUniversalTime()
+$script:Target = $Target
+$script:FailureReason = $null
+$script:GpuInfo = $null
+$script:ToolchainInfo = $null
+$script:GraphSmokeStatus = "required"
+$script:ResolvedModel = $Model
+$script:Runs = @()
+
+function Get-FileSha256([string] $Path) {
+  if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path $Path)) {
+    return $null
+  }
+  return (Get-FileHash -Algorithm SHA256 -Path $Path).Hash.ToLowerInvariant()
+}
+
+function Write-EvidenceReport([int] $ExitCode) {
+  if ([string]::IsNullOrWhiteSpace($Report)) {
+    return
+  }
+  $status = if ($ExitCode -eq 0) { "pass" } else { "fail" }
+  $passRecordable = ($ExitCode -eq 0 -and $script:GraphSmokeStatus -eq "required")
+  $parent = Split-Path -Parent $Report
+  if (-not [string]::IsNullOrWhiteSpace($parent)) {
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+  }
+  $payload = [ordered]@{
+    schemaVersion = 1
+    runner = "windows_runner.ps1"
+    status = $status
+    passRecordable = $passRecordable
+    exitCode = $ExitCode
+    failureReason = $script:FailureReason
+    startedAt = $script:StartedAt.ToString("s") + "Z"
+    finishedAt = (Get-Date).ToUniversalTime().ToString("s") + "Z"
+    host = [ordered]@{
+      os = if ($IsWindows) { "Windows" } else { [System.Runtime.InteropServices.RuntimeInformation]::OSDescription }
+      arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+    }
+    target = $script:Target
+    backend = $Backend
+    requirements = [ordered]@{
+      os = "Native Windows"
+      toolchain = switch ($Backend) {
+        "cuda" { @("nvidia-smi", "nvcc") }
+        "vulkan" { @("vulkaninfo") }
+        default { @() }
+      }
+      hardware = switch ($Backend) {
+        "cuda" { "NVIDIA GPU reported by nvidia-smi" }
+        "vulkan" { "Vulkan device reported by vulkaninfo" }
+        default { "Native Windows CPU execution" }
+      }
+      graphSmoke = $script:GraphSmokeStatus
+    }
+    evidence = [ordered]@{
+      gpuInfo = $script:GpuInfo
+      toolchainInfo = $script:ToolchainInfo
+      model = $script:ResolvedModel
+      modelSha256 = Get-FileSha256 $script:ResolvedModel
+      cacheRuns = $script:Runs
+    }
+  }
+  $payload | ConvertTo-Json -Depth 8 | Set-Content -Path $Report -Encoding UTF8
+}
+
 function Fail([string] $Message) {
+  $script:FailureReason = $Message
+  Write-EvidenceReport 1
   Write-Error "[windows_runner] $Message"
   exit 1
 }
@@ -78,20 +148,24 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
     $Target = "windows-x64-$Backend"
   }
 }
+$script:Target = $Target
 
 switch ($Backend) {
   "cuda" {
     Require-Command "nvidia-smi"
     Require-Command "nvcc"
-    & nvidia-smi --query-gpu=name,driver_version,compute_cap --format=csv,noheader
+    $script:GpuInfo = (& nvidia-smi --query-gpu=name,driver_version,compute_cap --format=csv,noheader 2>&1 | Out-String).Trim()
+    Write-Host $script:GpuInfo
     if ($LASTEXITCODE -ne 0) { Fail "nvidia-smi did not report an NVIDIA GPU" }
-    & nvcc --version
+    $script:ToolchainInfo = (& nvcc --version 2>&1 | Out-String).Trim()
+    Write-Host $script:ToolchainInfo
   }
   "vulkan" {
     if (-not (Get-Command "vulkaninfo" -ErrorAction SilentlyContinue)) {
       Fail "vulkaninfo not found; install Vulkan SDK/runtime before Windows Vulkan verification"
     }
-    & vulkaninfo --summary
+    $script:GpuInfo = (& vulkaninfo --summary 2>&1 | Out-String).Trim()
+    Write-Host $script:GpuInfo
     if ($LASTEXITCODE -ne 0) { Fail "vulkaninfo failed to enumerate a Vulkan device" }
   }
   "cpu" {
@@ -120,13 +194,14 @@ if (-not (Test-Path $cli)) {
 $env:PATH = "$BinDir;$env:PATH"
 
 if ($env:WINDOWS_SKIP_GRAPH_SMOKE -eq "1") {
-  Write-Host "[windows_runner] WINDOWS_SKIP_GRAPH_SMOKE=1 - build/hardware preflight only; graph dispatch NOT verified."
-  exit 0
+  $script:GraphSmokeStatus = "skipped"
+  Fail "WINDOWS_SKIP_GRAPH_SMOKE=1 - build/hardware preflight only; graph dispatch NOT verified, so no hardware pass can be recorded."
 }
 
 if ([string]::IsNullOrWhiteSpace($Model) -or -not (Test-Path $Model)) {
   Fail "ELIZA_DFLASH_SMOKE_MODEL / -Model must point at a GGUF model for graph dispatch verification"
 }
+$script:ResolvedModel = $Model
 
 if ([string]::IsNullOrWhiteSpace($ReportDir)) {
   $ReportDir = Join-Path $PSScriptRoot "hardware-results"
@@ -192,8 +267,16 @@ foreach ($run in $runs) {
   if ($logText -notmatch $backendPattern) {
     Fail "backend pattern '$backendPattern' not observed for cache=$($run.Cache); see $log"
   }
+  $script:Runs += [ordered]@{
+    family = $run.Family
+    cache = $run.Cache
+    log = $log
+    backendPattern = $backendPattern
+    status = "pass"
+  }
   Add-Content -Path $summary -Value "PASS $($run.Family) cache=$($run.Cache) log=$log"
 }
 
 Add-Content -Path $summary -Value "finished_at=$((Get-Date).ToUniversalTime().ToString("s"))Z"
+Write-EvidenceReport 0
 Write-Host "[windows_runner] PASS target=$Target report=$summary"

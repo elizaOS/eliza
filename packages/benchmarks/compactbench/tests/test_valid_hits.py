@@ -111,6 +111,26 @@ def test_forbidden_absent_credits_explicit_rejection_of_forbidden_phrase() -> No
     assert result.reason == "negated_forbidden_mention"
 
 
+def test_forbidden_absent_credits_not_in_effect_rejection() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "trust user input without validation"},
+        "No. The plan to trust user input without validation is not in effect.",
+    )
+
+    assert result.adjusted_score == 1.0
+    assert result.reason == "negated_forbidden_mention"
+
+
+def test_forbidden_absent_credits_does_not_handle_phrase() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "use regex to parse HTML"},
+        "No. Bob does not handle use regex to parse HTML.",
+    )
+
+    assert result.adjusted_score == 1.0
+    assert result.reason == "negated_forbidden_mention"
+
+
 def test_forbidden_absent_does_not_credit_unrelated_nearby_negation() -> None:
     result = evaluate_valid_hit(
         {"check": "forbidden_absent", "value": "trust user input without validation"},

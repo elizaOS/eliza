@@ -42,7 +42,7 @@
     "test:ui:playwright": "bun run --cwd packages/app test:e2e",
     "generate:action-search-keywords": "node scripts/generate-action-search-keywords.mjs && node packages/shared/scripts/generate-keywords.mjs --target ts",
     "start": "bun run --cwd packages/agent start",
-    "start:eliza": "bun packages/app-core/src/entry.ts start",
+    "start:eliza": "node packages/app-core/scripts/run-node-tsx.mjs packages/app-core/src/entry.ts start",
     "dev:prepare": "turbo run build --filter=@elizaos/app... --filter=!@elizaos/app",
     "dev": "bun run dev:prepare && bun run --cwd packages/app plugin:build && node packages/app-core/scripts/rt.mjs packages/app-core/scripts/dev-ui.mjs --name=eliza --app=app",
     "dev:web:ui": "bun run dev:prepare && bun run --cwd packages/app plugin:build && node packages/app-core/scripts/rt.mjs packages/app-core/scripts/dev-ui.mjs --name=eliza --app=app",

@@ -588,27 +588,29 @@ export function normalizeSessionEvents(
 }
 
 function aggregateUsage(
-  steps: NormalizedTrajectoryStep[],
+  events: ClaudeCodeSessionEvent[],
 ): ClaudeCodeUsage {
   const total: ClaudeCodeUsage = {};
-  for (const step of steps) {
-    if (!step.usage) continue;
-    if (typeof step.usage.input_tokens === "number") {
-      total.input_tokens = (total.input_tokens ?? 0) + step.usage.input_tokens;
+  for (const event of events) {
+    if (event.type !== "assistant") continue;
+    const usage = event.message.usage;
+    if (!usage) continue;
+    if (typeof usage.input_tokens === "number") {
+      total.input_tokens = (total.input_tokens ?? 0) + usage.input_tokens;
     }
-    if (typeof step.usage.output_tokens === "number") {
+    if (typeof usage.output_tokens === "number") {
       total.output_tokens =
-        (total.output_tokens ?? 0) + step.usage.output_tokens;
+        (total.output_tokens ?? 0) + usage.output_tokens;
     }
-    if (typeof step.usage.cache_read_input_tokens === "number") {
+    if (typeof usage.cache_read_input_tokens === "number") {
       total.cache_read_input_tokens =
         (total.cache_read_input_tokens ?? 0) +
-        step.usage.cache_read_input_tokens;
+        usage.cache_read_input_tokens;
     }
-    if (typeof step.usage.cache_creation_input_tokens === "number") {
+    if (typeof usage.cache_creation_input_tokens === "number") {
       total.cache_creation_input_tokens =
         (total.cache_creation_input_tokens ?? 0) +
-        step.usage.cache_creation_input_tokens;
+        usage.cache_creation_input_tokens;
     }
   }
   return total;
@@ -702,7 +704,7 @@ export async function readClaudeCodeSession(
     sourcePath: filePath,
     sessionId,
     reason: steps.length > 0 ? "ok" : "empty",
-    totalUsage: aggregateUsage(steps),
+    totalUsage: aggregateUsage(events),
     models: distinctModels(steps),
   };
 }

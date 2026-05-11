@@ -214,11 +214,19 @@ describe("LocalInferenceEngine voice surface", () => {
   it("(b) refuses to start when the FFI library is missing", () => {
     writePresetBundle(bundleRoot);
     const engine = new LocalInferenceEngine();
+    const previousManagedLookup = process.env.ELIZA_INFERENCE_MANAGED_LOOKUP;
+    process.env.ELIZA_INFERENCE_MANAGED_LOOKUP = "0";
     let thrown: unknown;
     try {
       engine.startVoice({ bundleRoot, useFfiBackend: true });
     } catch (err) {
       thrown = err;
+    } finally {
+      if (previousManagedLookup === undefined) {
+        delete process.env.ELIZA_INFERENCE_MANAGED_LOOKUP;
+      } else {
+        process.env.ELIZA_INFERENCE_MANAGED_LOOKUP = previousManagedLookup;
+      }
     }
     expect(thrown).toBeInstanceOf(VoiceStartupError);
     if (thrown instanceof VoiceStartupError) {
@@ -477,6 +485,35 @@ describe("LocalInferenceEngine voice surface", () => {
       "evict:tts",
       "evict:asr",
     ]);
+    expect(bridge.lifecycle.current().kind).toBe("voice-off");
+  });
+
+  it("(e) default loaders arm TTS-only bundles without requiring ASR files", async () => {
+    writePresetBundle(bundleRoot);
+    mkdirSync(path.join(bundleRoot, "tts"), { recursive: true });
+    writeFileSync(path.join(bundleRoot, "tts", "omnivoice-test.gguf"), "tts");
+
+    const calls: string[] = [];
+    const engine = new LocalInferenceEngine();
+    const bridge = engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: new CountingBackend(),
+      lifecycleLoaders: defaultLifecycleLoaders(bundleRoot, fakeFfi(calls), 1n),
+    });
+
+    expect(bridge.asrAvailable).toBe(false);
+
+    await engine.armVoice();
+    expect(bridge.lifecycle.current().kind).toBe("voice-on");
+    expect(calls).toEqual(["acquire:tts"]);
+
+    await expect(
+      engine.transcribePcm({ pcm: new Float32Array([0]), sampleRate: 24000 }),
+    ).rejects.toMatchObject({ code: "missing-fused-build" });
+
+    await engine.stopVoice();
+    expect(calls).toEqual(["acquire:tts", "evict:tts"]);
     expect(bridge.lifecycle.current().kind).toBe("voice-off");
   });
 

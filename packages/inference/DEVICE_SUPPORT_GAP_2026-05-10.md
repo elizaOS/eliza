@@ -8,6 +8,8 @@
 > became runtime-ready, the build gate was tightened so `turbo3_tcq` is
 > required alongside `turbo3`, `turbo4`, QJL, Polar, and DFlash, and the
 > Vulkan follow-up now has explicit native Linux / Android smoke entrypoints.
+> Do not use the target rows below as current publish criteria; they predate
+> the target-keyed release evidence gate and some are intentionally stale.
 
 Scope: every (tier × backend × OS × arch) combination implied by
 [`AGENTS.md`](AGENTS.md) §2/§3 and the build matrix in
@@ -69,7 +71,7 @@ in this document's status vocabulary:
 |---------|-------------|-------------|-------------|------------------------------|------------------------------|
 | Metal (M4 Max) | VERIFIED | VERIFIED | VERIFIED | VERIFIED | VERIFIED |
 | Vulkan (Intel ARL + lavapipe) | VERIFIED | VERIFIED | VERIFIED | NOT RUN on that ICD | NOT RUN on that ICD |
-| Vulkan (Apple M4 Max via MoltenVK) | VERIFIED | VERIFIED | VERIFIED | VERIFIED | VERIFIED |
+| Vulkan (Apple M4 Max via MoltenVK) | VERIFIED | VERIFIED | VERIFIED for `qjl.comp` score only; fallback `qjl_get_rows`/`qjl_mul_mv` compile-only | VERIFIED for `polar.comp` matvec only; fallback `polar_get_rows` compile-only |
 | CUDA / ROCm / Metal-Intel-Mac | TARGET-ONLY | TARGET-ONLY | TARGET-ONLY | TARGET-ONLY | TARGET-ONLY |
 
 ---

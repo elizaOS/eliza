@@ -254,7 +254,7 @@ def run_command(
         raise typer.Exit(1)
 
     # Set up PYTHONPATH
-    mcp_convert_path = PROJECT_ROOT / "mcp-convert"
+    mcp_convert_path = PROJECT_ROOT / "mcp_convert"
     pythonpath = os.environ.get("PYTHONPATH", "")
     new_paths = [str(PROJECT_ROOT), str(mcp_convert_path)]
     for path in new_paths:

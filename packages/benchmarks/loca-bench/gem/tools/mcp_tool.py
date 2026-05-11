@@ -15,6 +15,7 @@
 """MCP Tool implementation for connecting to any MCP server."""
 
 import asyncio
+import inspect
 import io
 import json
 import logging
@@ -62,13 +63,15 @@ def _patch_stdio_transport_for_quiet_mode() -> None:
         def _patched_to_transport(self) -> StdioTransport:
             quiet = os.environ.get('LOCA_QUIET', '').lower() in ('1', 'true', 'yes')
             log_file = Path('/dev/null') if quiet else None
-            return StdioTransport(
-                command=self.command,
-                args=self.args,
-                env=self.env,
-                cwd=self.cwd,
-                log_file=log_file,
-            )
+            kwargs = {
+                "command": self.command,
+                "args": self.args,
+                "env": self.env,
+                "cwd": self.cwd,
+            }
+            if "log_file" in inspect.signature(StdioTransport).parameters:
+                kwargs["log_file"] = log_file
+            return StdioTransport(**kwargs)
 
         StdioMCPServer.to_transport = _patched_to_transport
     except ImportError:

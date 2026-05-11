@@ -164,7 +164,13 @@ export class VoiceLifecycle {
       );
     } catch (err) {
       // Roll back partial acquisitions before surfacing the error so the
-      // registry doesn't leak refs on a failed arm.
+      // registry doesn't leak refs on a failed arm. Evict heavy mmap
+      // regions before release; release() only drops the refcount and may
+      // intentionally keep file descriptors alive for future re-page.
+      await Promise.allSettled([
+        tts?.evictPages() ?? Promise.resolve(),
+        asr?.evictPages() ?? Promise.resolve(),
+      ]);
       const rollback: Array<RefCountedResource | null> = [
         voiceSchedulerNodes,
         voiceCaches,

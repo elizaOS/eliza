@@ -10,63 +10,63 @@
   "kernels": [
     {
       "name": "turbo3",
-      "single_block": { "gpu_med_us": 402.3958, "gpu_p99_us": 1031.0084 },
+      "single_block": { "gpu_med_us": 224.9167, "gpu_p99_us": 351.3808 },
       "multi_block": [
-        { "N": 1, "gpu_med_us": 391.3542, "gpu_p99_us": 1025.8263, "cpu_med_us": 511.0000, "speedup_vs_single": 1.0282 },
-        { "N": 2, "gpu_med_us": 168.5625, "gpu_p99_us": 614.2413, "cpu_med_us": 287.0000, "speedup_vs_single": 2.3872 },
-        { "N": 4, "gpu_med_us": 108.1875, "gpu_p99_us": 480.7871, "cpu_med_us": 211.5000, "speedup_vs_single": 3.7194 },
-        { "N": 8, "gpu_med_us": 108.6250, "gpu_p99_us": 467.2225, "cpu_med_us": 219.0000, "speedup_vs_single": 3.7044 },
-        { "N": 16, "gpu_med_us": 200.5625, "gpu_p99_us": 923.3263, "cpu_med_us": 306.0000, "speedup_vs_single": 2.0063 },
-        { "N": 32, "gpu_med_us": 213.7500, "gpu_p99_us": 668.5538, "cpu_med_us": 324.0000, "speedup_vs_single": 1.8826 }
+        { "N": 1, "gpu_med_us": 328.7292, "gpu_p99_us": 567.4258, "cpu_med_us": 450.5000, "speedup_vs_single": 0.6842 },
+        { "N": 2, "gpu_med_us": 352.5000, "gpu_p99_us": 655.2504, "cpu_med_us": 465.0000, "speedup_vs_single": 0.6381 },
+        { "N": 4, "gpu_med_us": 199.3750, "gpu_p99_us": 479.8787, "cpu_med_us": 309.0000, "speedup_vs_single": 1.1281 },
+        { "N": 8, "gpu_med_us": 198.0000, "gpu_p99_us": 465.3887, "cpu_med_us": 306.0000, "speedup_vs_single": 1.1359 },
+        { "N": 16, "gpu_med_us": 200.7500, "gpu_p99_us": 772.8908, "cpu_med_us": 305.0000, "speedup_vs_single": 1.1204 },
+        { "N": 32, "gpu_med_us": 213.7292, "gpu_p99_us": 435.6117, "cpu_med_us": 321.0000, "speedup_vs_single": 1.0523 }
       ],
-      "optimal_N": 4,
-      "best_gpu_med_us": 108.1875,
-      "speedup_vs_single": 3.7194
+      "optimal_N": 8,
+      "best_gpu_med_us": 198.0000,
+      "speedup_vs_single": 1.1359
     },
     {
       "name": "turbo4",
-      "single_block": { "gpu_med_us": 331.0417, "gpu_p99_us": 836.2408 },
+      "single_block": { "gpu_med_us": 259.6042, "gpu_p99_us": 393.6325 },
       "multi_block": [
-        { "N": 1, "gpu_med_us": 248.7291, "gpu_p99_us": 655.9788, "cpu_med_us": 352.0000, "speedup_vs_single": 1.3309 },
-        { "N": 2, "gpu_med_us": 118.4583, "gpu_p99_us": 492.7558, "cpu_med_us": 219.0000, "speedup_vs_single": 2.7946 },
-        { "N": 4, "gpu_med_us": 64.5833, "gpu_p99_us": 175.4642, "cpu_med_us": 162.0000, "speedup_vs_single": 5.1258 },
-        { "N": 8, "gpu_med_us": 62.6250, "gpu_p99_us": 177.6513, "cpu_med_us": 151.5000, "speedup_vs_single": 5.2861 },
-        { "N": 16, "gpu_med_us": 72.2083, "gpu_p99_us": 171.1171, "cpu_med_us": 165.0000, "speedup_vs_single": 4.5845 },
-        { "N": 32, "gpu_med_us": 88.5625, "gpu_p99_us": 249.8338, "cpu_med_us": 185.5000, "speedup_vs_single": 3.7379 }
+        { "N": 1, "gpu_med_us": 326.3750, "gpu_p99_us": 569.2633, "cpu_med_us": 443.0000, "speedup_vs_single": 0.7954 },
+        { "N": 2, "gpu_med_us": 206.7083, "gpu_p99_us": 632.7254, "cpu_med_us": 318.0000, "speedup_vs_single": 1.2559 },
+        { "N": 4, "gpu_med_us": 194.7500, "gpu_p99_us": 472.2879, "cpu_med_us": 299.0000, "speedup_vs_single": 1.3330 },
+        { "N": 8, "gpu_med_us": 193.0000, "gpu_p99_us": 458.6325, "cpu_med_us": 296.0000, "speedup_vs_single": 1.3451 },
+        { "N": 16, "gpu_med_us": 195.7500, "gpu_p99_us": 1572.9304, "cpu_med_us": 313.0000, "speedup_vs_single": 1.3262 },
+        { "N": 32, "gpu_med_us": 205.7083, "gpu_p99_us": 701.4525, "cpu_med_us": 314.5000, "speedup_vs_single": 1.2620 }
       ],
       "optimal_N": 8,
-      "best_gpu_med_us": 62.6250,
-      "speedup_vs_single": 5.2861
+      "best_gpu_med_us": 193.0000,
+      "speedup_vs_single": 1.3451
     },
     {
       "name": "turbo3_tcq",
-      "single_block": { "gpu_med_us": 400.0000, "gpu_p99_us": 1012.3346 },
+      "single_block": { "gpu_med_us": 346.5625, "gpu_p99_us": 1375.0333 },
       "multi_block": [
-        { "N": 1, "gpu_med_us": 324.9167, "gpu_p99_us": 846.7217, "cpu_med_us": 427.0000, "speedup_vs_single": 1.2311 },
-        { "N": 2, "gpu_med_us": 147.3125, "gpu_p99_us": 486.7592, "cpu_med_us": 263.5000, "speedup_vs_single": 2.7153 },
-        { "N": 4, "gpu_med_us": 134.0625, "gpu_p99_us": 428.1146, "cpu_med_us": 243.0000, "speedup_vs_single": 2.9837 },
-        { "N": 8, "gpu_med_us": 134.7708, "gpu_p99_us": 508.4192, "cpu_med_us": 265.5000, "speedup_vs_single": 2.9680 },
-        { "N": 16, "gpu_med_us": 117.2500, "gpu_p99_us": 361.0675, "cpu_med_us": 230.0000, "speedup_vs_single": 3.4115 },
-        { "N": 32, "gpu_med_us": 120.3958, "gpu_p99_us": 250.8538, "cpu_med_us": 228.0000, "speedup_vs_single": 3.3224 }
+        { "N": 1, "gpu_med_us": 346.2500, "gpu_p99_us": 751.0684, "cpu_med_us": 451.0000, "speedup_vs_single": 1.0009 },
+        { "N": 2, "gpu_med_us": 192.8958, "gpu_p99_us": 573.2138, "cpu_med_us": 290.0000, "speedup_vs_single": 1.7966 },
+        { "N": 4, "gpu_med_us": 172.9792, "gpu_p99_us": 955.5579, "cpu_med_us": 288.5000, "speedup_vs_single": 2.0035 },
+        { "N": 8, "gpu_med_us": 315.3750, "gpu_p99_us": 927.2221, "cpu_med_us": 432.5000, "speedup_vs_single": 1.0989 },
+        { "N": 16, "gpu_med_us": 251.8542, "gpu_p99_us": 825.9788, "cpu_med_us": 399.5000, "speedup_vs_single": 1.3760 },
+        { "N": 32, "gpu_med_us": 185.9792, "gpu_p99_us": 784.8550, "cpu_med_us": 289.0000, "speedup_vs_single": 1.8634 }
       ],
-      "optimal_N": 16,
-      "best_gpu_med_us": 117.2500,
-      "speedup_vs_single": 3.4115
+      "optimal_N": 4,
+      "best_gpu_med_us": 172.9792,
+      "speedup_vs_single": 2.0035
     },
     {
       "name": "qjl",
-      "single_block": { "gpu_med_us": 284.8125, "gpu_p99_us": 673.6958 },
+      "single_block": { "gpu_med_us": 350.2083, "gpu_p99_us": 771.7425 },
       "multi_block": [
-        { "N": 1, "gpu_med_us": 284.8750, "gpu_p99_us": 727.8646, "cpu_med_us": 398.0000, "speedup_vs_single": 0.9998 },
-        { "N": 2, "gpu_med_us": 173.0208, "gpu_p99_us": 580.4292, "cpu_med_us": 277.0000, "speedup_vs_single": 1.6461 },
-        { "N": 4, "gpu_med_us": 112.7083, "gpu_p99_us": 601.5484, "cpu_med_us": 217.5000, "speedup_vs_single": 2.5270 },
-        { "N": 8, "gpu_med_us": 106.5208, "gpu_p99_us": 600.7367, "cpu_med_us": 239.0000, "speedup_vs_single": 2.6738 },
-        { "N": 16, "gpu_med_us": 186.6875, "gpu_p99_us": 967.6563, "cpu_med_us": 296.0000, "speedup_vs_single": 1.5256 },
-        { "N": 32, "gpu_med_us": 70.0417, "gpu_p99_us": 138.0088, "cpu_med_us": 164.0000, "speedup_vs_single": 4.0663 }
+        { "N": 1, "gpu_med_us": 330.8750, "gpu_p99_us": 618.7500, "cpu_med_us": 439.0000, "speedup_vs_single": 1.0584 },
+        { "N": 2, "gpu_med_us": 174.0208, "gpu_p99_us": 468.5396, "cpu_med_us": 277.5000, "speedup_vs_single": 2.0125 },
+        { "N": 4, "gpu_med_us": 113.1875, "gpu_p99_us": 456.2137, "cpu_med_us": 216.0000, "speedup_vs_single": 3.0941 },
+        { "N": 8, "gpu_med_us": 191.5208, "gpu_p99_us": 799.6154, "cpu_med_us": 299.0000, "speedup_vs_single": 1.8286 },
+        { "N": 16, "gpu_med_us": 186.5833, "gpu_p99_us": 694.5012, "cpu_med_us": 293.5000, "speedup_vs_single": 1.8770 },
+        { "N": 32, "gpu_med_us": 70.0000, "gpu_p99_us": 185.0113, "cpu_med_us": 178.0000, "speedup_vs_single": 5.0030 }
       ],
       "optimal_N": 32,
-      "best_gpu_med_us": 70.0417,
-      "speedup_vs_single": 4.0663
+      "best_gpu_med_us": 70.0000,
+      "speedup_vs_single": 5.0030
     }
   ]
 }

@@ -120,16 +120,17 @@ vulkan-verify: vulkan_verify vulkan-spirv reference-test
 
 # Native Linux end-to-end smoke for the Vulkan backend. This first runs the
 # standalone fixture verifier, then builds the patched fork target and runs the
-# graph-dispatch smoke below. It intentionally rejects software ICDs unless
-# ELIZA_ALLOW_SOFTWARE_VULKAN=1 is set, because lavapipe/MoltenVK are not a
-# native Linux desktop driver signoff.
+# graph-dispatch smoke below. It writes hardware-results evidence, rejects
+# software ICDs unless ELIZA_ALLOW_SOFTWARE_VULKAN=1 is set, and refuses stale
+# or symbol-only artifacts.
 vulkan-native-smoke:
 	./linux_vulkan_smoke.sh
 
 # Android on-device standalone Vulkan smoke. Cross-compiles vulkan_verify with
 # the NDK, pushes the verifier + SPIR-V + fixtures via adb, and runs all six
-# fixture checks on the physical device. This is not a graph-dispatch pass; it
-# proves the same SPIR-V works on Adreno/Mali-class drivers.
+# fixture checks on the physical device. Standalone fixture success is only
+# evidence; the script exits non-zero until Android graph-dispatch evidence is
+# supplied through ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE.
 android-vulkan-smoke:
 	./android_vulkan_smoke.sh
 
@@ -505,6 +506,7 @@ dispatch_smoke: dispatch_smoke.mm
 
 vulkan-dispatch-smoke: vulkan_dispatch_smoke
 	@echo "[vulkan-dispatch-smoke] running against $(ELIZA_DFLASH_VULKAN_BIN_DIR)"
+	@echo "[vulkan-dispatch-smoke] requires ggml-vulkan to advertise and execute GGML_OP_ATTN_SCORE_QJL; symbol-only staging cannot pass"
 	LD_LIBRARY_PATH=$(ELIZA_DFLASH_VULKAN_BIN_DIR):$$LD_LIBRARY_PATH \
 	DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_VULKAN_BIN_DIR):$$DYLD_LIBRARY_PATH \
 	  ./vulkan_dispatch_smoke

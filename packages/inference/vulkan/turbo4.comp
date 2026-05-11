@@ -111,18 +111,18 @@ void main() {
     uint norm16 = read_u16(blk_off + 0u);
     float norm = fp16_to_fp32(norm16);
 
-    // Each thread handles 4 elements (4 * 32 = 128).
+    // Each thread handles 4 consecutive elements, packed as exactly two
+    // 4-bit-code bytes. Hoist those byte loads out of the local loop.
     float acc = 0.0;
-    for (uint local = 0u; local < 4u; local += 1u) {
-        uint elem = tid * 4u + local;       // 0..127
-        // qs[elem / 2]; low nibble for even, high nibble for odd.
+    uint elem0 = tid * 4u;
+    uint q_base = push.q_head * push.head_dim + elem0;
+    for (uint pair = 0u; pair < 2u; pair += 1u) {
+        uint elem = elem0 + pair * 2u;
         uint qs_byte = read_byte(blk_off + 2u + (elem >> 1));
-        uint idx = ((elem & 1u) == 0u)
-                   ? (qs_byte & 0xFu)
-                   : (qs_byte >> 4);
-        float k_val = TURBO_CENTROIDS_4BIT[idx] * norm;
-        float q_val = q[push.q_head * push.head_dim + elem];
-        acc += q_val * k_val;
+        uint idx0 = qs_byte & 0xFu;
+        uint idx1 = qs_byte >> 4;
+        acc = fma(q[q_base + pair * 2u],      TURBO_CENTROIDS_4BIT[idx0] * norm, acc);
+        acc = fma(q[q_base + pair * 2u + 1u],  TURBO_CENTROIDS_4BIT[idx1] * norm, acc);
     }
 
     float sum = reduce_sum_32(acc, tid);

@@ -138,7 +138,7 @@ describe("local inference downloader status", () => {
         ],
         cache: [
           {
-            path: "cache/default-voice-preset.bin",
+            path: "cache/voice-preset-default.bin",
             sha256: sha256(cache),
           },
         ],
@@ -183,7 +183,7 @@ describe("local inference downloader status", () => {
         ["text/eliza-1-0_6b-32k.gguf", text],
         ["tts/voice.gguf", voice],
         ["dflash/drafter-0_6b.gguf", drafter],
-        ["cache/default-voice-preset.bin", cache],
+        ["cache/voice-preset-default.bin", cache],
       ]),
     );
 
@@ -219,5 +219,34 @@ describe("local inference downloader status", () => {
     expect(companion.companionFor).toBe(model.id);
     expect(companion.path.endsWith("dflash/drafter-0_6b.gguf")).toBe(true);
     expect(companion.bundleRoot).toBe(bundleRoot);
+  });
+
+  it("restarts single-file partial downloads when a server ignores Range", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+    process.env.ELIZA_STATE_DIR = root;
+    const model = findCatalogModel("eliza-1-0_6b-drafter");
+    expect(model).toBeDefined();
+    if (!model) throw new Error("missing test catalog model");
+
+    const body = "complete drafter";
+    installFetchFixture(new Map([["dflash/drafter-0_6b.gguf", body]]));
+
+    const downloadsDir = path.join(root, "local-inference", "downloads");
+    fs.mkdirSync(downloadsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(downloadsDir, "eliza-1-0_6b-drafter.part"),
+      "stale partial",
+    );
+
+    const downloader = new Downloader();
+    const completed = waitForTerminal(downloader, model.id);
+    await downloader.start(model.id);
+    await completed;
+
+    const installed = await listInstalledModels();
+    const entry = installed.find((m) => m.id === model.id);
+    expect(entry).toBeDefined();
+    if (!entry) throw new Error("missing installed drafter");
+    expect(fs.readFileSync(entry.path, "utf8")).toBe(body);
   });
 });

@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setupEnv, type TestEnv } from "./_test-helpers.js";
-import { readAction } from "./read.js";
+import { readFileHandler } from "./read.js";
 
 describe("READ", () => {
   let env: TestEnv;
@@ -19,7 +19,7 @@ describe("READ", () => {
     const file = path.join(env.tmpDir, "hello.txt");
     await fs.writeFile(file, "line one\nline two\nline three", "utf8");
 
-    const result = await readAction.handler?.(
+    const result = await readFileHandler(
       env.runtime,
       env.message,
       undefined,
@@ -42,7 +42,7 @@ describe("READ", () => {
     const file = path.join(env.tmpDir, "lines.txt");
     await fs.writeFile(file, "alpha\nbeta", "utf8");
 
-    const result = await readAction.handler?.(
+    const result = await readFileHandler(
       env.runtime,
       env.message,
       undefined,
@@ -61,7 +61,7 @@ describe("READ", () => {
     const lines = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`);
     await fs.writeFile(file, lines.join("\n"), "utf8");
 
-    const result = await readAction.handler?.(
+    const result = await readFileHandler(
       env.runtime,
       env.message,
       undefined,
@@ -83,7 +83,7 @@ describe("READ", () => {
     const file = path.join(env.tmpDir, "track.txt");
     await fs.writeFile(file, "hello", "utf8");
 
-    const result = await readAction.handler?.(
+    const result = await readFileHandler(
       env.runtime,
       env.message,
       undefined,
@@ -101,7 +101,7 @@ describe("READ", () => {
   });
 
   it("rejects relative paths", async () => {
-    const result = await readAction.handler?.(
+    const result = await readFileHandler(
       env.runtime,
       env.message,
       undefined,
@@ -117,7 +117,7 @@ describe("READ", () => {
   it("rejects paths under the blocklist", async () => {
     const file = path.join(env.blockedPath, "secret.txt");
     await fs.writeFile(file, "data");
-    const result = await readAction.handler?.(
+    const result = await readFileHandler(
       env.runtime,
       env.message,
       undefined,
@@ -136,7 +136,7 @@ describe("READ", () => {
     try {
       const file = path.join(env2.tmpDir, "big.txt");
       await fs.writeFile(file, "x".repeat(64), "utf8");
-      const result = await readAction.handler?.(
+      const result = await readFileHandler(
         env2.runtime,
         env2.message,
         undefined,
@@ -156,7 +156,7 @@ describe("READ", () => {
     const file = path.join(env.tmpDir, "binary.bin");
     await fs.writeFile(file, Buffer.from([0x68, 0x69, 0x00, 0x21]));
 
-    const result = await readAction.handler?.(
+    const result = await readFileHandler(
       env.runtime,
       env.message,
       undefined,
@@ -170,7 +170,7 @@ describe("READ", () => {
   });
 
   it("fails when roomId is missing", async () => {
-    const result = await readAction.handler?.(
+    const result = await readFileHandler(
       env.runtime,
       {} as typeof env.message,
       undefined,

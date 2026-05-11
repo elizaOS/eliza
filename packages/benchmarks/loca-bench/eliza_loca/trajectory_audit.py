@@ -165,7 +165,7 @@ def _audit_trajectory(
         token_totals["total_tokens"] += int(usage.get("total_tokens", 0) or 0)
 
     events = trajectory.get("events", {})
-    for key in ("reset", "summary", "trim", "thinking_reset"):
+    for key in ("reset", "summary", "summary_skip", "trim", "thinking_reset"):
         value = events.get(key, [])
         context_events[key] += len(value) if isinstance(value, list) else 0
 

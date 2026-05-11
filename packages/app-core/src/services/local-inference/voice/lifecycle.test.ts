@@ -225,7 +225,9 @@ describe("VoiceLifecycle", () => {
       expect(["ram-pressure", "mmap-fail"]).toContain(thrown.code);
     }
     expect(lc.current().kind).toBe("voice-error");
-    // Partial acquisition rolled back — registry is empty.
+    // Partial acquisition rolled back — mapped pages are evicted first
+    // and registry refs are released.
+    expect(tts.evictCalls).toBe(1);
     expect(reg.size()).toBe(0);
   });
 
