@@ -28,6 +28,7 @@ export interface Bindings {
   // ---- AI providers ----
   OPENROUTER_API_KEY?: string;
   OPENAI_API_KEY?: string;
+  OPENAI_BASE_URL?: string;
   ANTHROPIC_API_KEY?: string;
   AI_GATEWAY_API_KEY?: string;
   AIGATEWAY_API_KEY?: string;

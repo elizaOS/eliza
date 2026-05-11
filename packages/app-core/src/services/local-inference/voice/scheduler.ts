@@ -93,6 +93,10 @@ export class VoiceScheduler {
   }
 
   async reject(range: RejectedTokenRange): Promise<void> {
+    // Drop draft tokens still sitting in the chunker's buffer (not yet
+    // packed into a phrase) so the verifier's correction is not glued
+    // onto stale text.
+    this.chunker.dropPendingFrom(range.fromIndex);
     const events = this.rollback.onRejected(range);
     for (const ev of events) {
       const inflight = this.inFlight.get(ev.phraseId);
@@ -152,10 +156,64 @@ export class VoiceScheduler {
       if (cancelSignal.cancelled) {
         throw new Error("[voice-scheduler] synthesis cancelled by barge-in");
       }
+      this.phraseCache.put({
+        text,
+        pcm: chunk.pcm,
+        sampleRate: chunk.sampleRate,
+      });
       return chunk;
     } finally {
       detach();
     }
+  }
+
+  async prewarmPhrases(
+    texts: ReadonlyArray<string>,
+    opts: { concurrency?: number } = {},
+  ): Promise<{ warmed: number; cached: number }> {
+    const concurrency = Math.max(1, Math.floor(opts.concurrency ?? 1));
+    let warmed = 0;
+    let cached = 0;
+    let cursor = 0;
+
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const index = cursor++;
+        if (index >= texts.length) return;
+        const text = texts[index]?.trim();
+        if (!text) continue;
+        if (this.phraseCache.has(text)) {
+          cached++;
+          continue;
+        }
+        const phrase: Phrase = {
+          id: this.nextStandalonePhraseId--,
+          text,
+          fromIndex: 0,
+          toIndex: 0,
+          terminator: "max-cap",
+        };
+        const chunk = await this.backend.synthesize({
+          phrase,
+          preset: this.preset,
+          cancelSignal: { cancelled: false },
+          onKernelTick: () => this.tickKernel(),
+        });
+        this.phraseCache.put({
+          text,
+          pcm: chunk.pcm,
+          sampleRate: chunk.sampleRate,
+        });
+        warmed++;
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, texts.length) }, () =>
+        worker(),
+      ),
+    );
+    return { warmed, cached };
   }
 
   tickKernel(): void {
@@ -206,6 +264,11 @@ export class VoiceScheduler {
         if (!this.rollback.snapshot().some((e) => e.phrase.id === phrase.id)) {
           return;
         }
+        this.phraseCache.put({
+          text: phrase.text,
+          pcm: chunk.pcm,
+          sampleRate: chunk.sampleRate,
+        });
         this.commitAudio(chunk);
       } finally {
         this.inFlight.delete(phrase.id);

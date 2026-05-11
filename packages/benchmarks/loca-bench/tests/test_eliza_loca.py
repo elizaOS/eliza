@@ -10,6 +10,7 @@ from eliza_loca.run_cerebras import build_command, build_env, main, parse_args
 from eliza_loca.trajectory_audit import audit_output_dir
 from eliza_loca.long_context import (
     CONTEXT_TIERS,
+    _select_tail_preserving_tool_pairs,
     audit_long_context_trajectory,
     build_long_context_trajectory,
     compact_with_summary_tail,
@@ -644,6 +645,30 @@ def test_long_context_tier_builds_128k_fixture_with_realistic_records() -> None:
     }
     assert any(record["should_preserve"] is False for record in records)
     assert any("LOCA_TOOL_OBSERVATION" in record["value"] for record in records)
+
+
+def test_long_context_tail_preserves_assistant_tool_call_with_result() -> None:
+    history = [
+        {"role": "user", "content": "start"},
+        {
+            "role": "assistant",
+            "content": "calling probe",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "probe", "arguments": "{}"},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_1", "content": "important result"},
+    ]
+
+    tail = _select_tail_preserving_tool_pairs(history, tail_messages=1)
+
+    assert [message["role"] for message in tail] == ["assistant", "tool"]
+    assert tail[0]["tool_calls"][0]["id"] == "call_1"
+    assert tail[1]["tool_call_id"] == "call_1"
 
 
 def test_long_context_lossy_summary_mode_is_caught() -> None:

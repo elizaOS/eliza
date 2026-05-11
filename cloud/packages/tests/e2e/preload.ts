@@ -25,6 +25,7 @@ if (!process.env.SECRETS_MASTER_KEY) {
 
 process.env.CRON_SECRET ??= "test-cron-secret";
 process.env.INTERNAL_SECRET ??= "test-internal-secret";
+process.env.ELIZA_APP_JWT_SECRET ??= "test-eliza-app-jwt-secret";
 process.env.AGENT_TEST_BOOTSTRAP_ADMIN ??= "true";
 process.env.PLAYWRIGHT_TEST_AUTH ??= "true";
 process.env.PLAYWRIGHT_TEST_AUTH_SECRET ??= "playwright-local-auth-secret";

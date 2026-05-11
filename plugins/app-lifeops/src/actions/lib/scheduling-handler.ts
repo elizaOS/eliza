@@ -23,6 +23,7 @@ import type {
   Action,
   ActionExample,
   ActionResult,
+  HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
@@ -561,7 +562,7 @@ export const proposeMeetingTimesAction: Action & {
       if (error instanceof LifeOpsServiceError) {
         const fallback =
           error.status === 403
-            ? "I can't propose times yet — Google Calendar isn't connected. Connect your calendar and try again."
+            ? "I can't propose times yet because calendar access is not available. Grant Apple Calendar access or connect Google Calendar and try again."
             : `I couldn't read your calendar (${error.message}).`;
         return respond({
           success: false,
@@ -736,7 +737,7 @@ export const checkAvailabilityAction: Action = {
       if (error instanceof LifeOpsServiceError) {
         const fallback =
           error.status === 403
-            ? "I can't check availability — Google Calendar isn't connected."
+            ? "I can't check availability because calendar access is not available. Grant Apple Calendar access or connect Google Calendar."
             : `I couldn't read your calendar (${error.message}).`;
         return respond({
           success: false,
@@ -1187,41 +1188,16 @@ function formatProposalSummary(p: {
   return `Proposal ${p.id}: ${p.startAt} → ${p.endAt} by ${p.proposedBy} (status=${p.status})`;
 }
 
-export const schedulingAction: Action & {
-  suppressPostActionContinuation?: boolean;
-} = {
-  name: "SCHEDULING_NEGOTIATION",
-  similes: [
-    "SCHEDULING",
-    "NEGOTIATE_MEETING",
-    "MULTI_TURN_SCHEDULING",
-    "MANAGE_SCHEDULING_NEGOTIATION",
-    "RESPOND_TO_MEETING_PROPOSAL",
-    "FINALIZE_SCHEDULING_NEGOTIATION",
-  ],
-  tags: [
-    "domain:calendar",
-    "capability:read",
-    "capability:write",
-    "capability:update",
-    "surface:internal",
-  ],
-  description:
-    "Track a multi-turn meeting negotiation. Subactions: start (open a negotiation), propose (submit a concrete time), respond (accept/decline a proposal), finalize (commit the winner), cancel, list. " +
-    "Use only when an existing proposal workflow is in flight — first-turn calendar requests, recurring blocks, travel-time bundling, and fresh candidate-slot searches belong to CALENDAR or MESSAGE.",
-  descriptionCompressed:
-    "multi-turn meeting negotiation: start|propose|respond|finalize|cancel|list; only for existing proposal workflows",
-  contexts: ["calendar", "contacts", "tasks", "messaging"],
-  roleGate: { minRole: "OWNER" },
-  suppressPostActionContinuation: true,
-  validate: async () => true,
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state,
-    options,
-    callback,
-  ): Promise<ActionResult> => {
+// Internal SCHEDULING_NEGOTIATION lifecycle handler. The surface is delegated
+// to from the registered PERSONAL_ASSISTANT umbrella in owner-surfaces.ts;
+// scheduling negotiations no longer publish a planner-visible Action.
+export async function runSchedulingNegotiationHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: unknown,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
     const respond = makeSchedulingRespond({
       runtime,
       message,
@@ -1488,172 +1464,4 @@ export const schedulingAction: Action & {
       }
       throw error;
     }
-  },
-  parameters: [
-    {
-      name: "subaction",
-      description:
-        "Which step of the negotiation to run: start (open new negotiation), propose (submit candidate slot), respond (accept/decline a proposal), finalize (confirm the winning slot), cancel (close negotiation), list_active (show open negotiations), list_proposals (show proposals on one negotiation).",
-      descriptionCompressed:
-        "scheduling op: start | propose | respond | finalize | cancel | list_active | list_proposals",
-      schema: {
-        type: "string" as const,
-        enum: [...SCHEDULING_SUBACTIONS],
-      },
-      examples: ["start", "propose", "respond", "finalize"],
-    },
-    {
-      name: "intent",
-      description:
-        "Free-text description of what the scheduling turn is trying to do.",
-      descriptionCompressed: "free-text intent",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "negotiationId",
-      description:
-        "Target negotiation ID for propose, finalize, cancel, or list_proposals.",
-      descriptionCompressed:
-        "negotiation id (propose|finalize|cancel|list_proposals)",
-      schema: { type: "string" as const },
-      examples: ["neg_2026_05_10_abc123"],
-    },
-    {
-      name: "proposalId",
-      description: "Target proposal ID for respond or finalize.",
-      descriptionCompressed: "proposal id (respond|finalize)",
-      schema: { type: "string" as const },
-      examples: ["prop_xyz789"],
-    },
-    {
-      name: "subject",
-      description: "Subject of the meeting (used when starting a negotiation).",
-      descriptionCompressed: "meeting subject (start)",
-      schema: { type: "string" as const },
-      examples: ["Q3 review with Alice"],
-    },
-    {
-      name: "startAt",
-      description: "ISO-8601 proposed start time (UTC).",
-      descriptionCompressed: "ISO-8601 start UTC (propose)",
-      schema: { type: "string" as const },
-      examples: ["2026-05-12T14:00:00Z"],
-    },
-    {
-      name: "endAt",
-      description: "ISO-8601 proposed end time (UTC).",
-      descriptionCompressed: "ISO-8601 end UTC (propose)",
-      schema: { type: "string" as const },
-      examples: ["2026-05-12T15:00:00Z"],
-    },
-    {
-      name: "durationMinutes",
-      description:
-        "Meeting duration in minutes (defaults to 30 when starting).",
-      descriptionCompressed: "duration mins default 30 (start)",
-      schema: { type: "number" as const, minimum: 5, maximum: 1440 },
-      examples: [30, 60, 90],
-    },
-    {
-      name: "response",
-      description: "Proposal response: accepted, declined, or expired.",
-      descriptionCompressed: "respond: accepted|declined|expired",
-      schema: {
-        type: "string" as const,
-        enum: [...SCHEDULING_RESPONSES],
-      },
-      examples: ["accepted", "declined"],
-    },
-    {
-      name: "confirmed",
-      description: "Set true alongside a proposalId to finalize.",
-      descriptionCompressed: "true to finalize alongside proposalId",
-      schema: { type: "boolean" as const },
-    },
-    {
-      name: "proposedBy",
-      description:
-        "Who is the source of the proposal: agent (Eliza emitted it), owner (user-emitted), counterparty (recorded from the other party).",
-      descriptionCompressed:
-        "proposedBy: agent | owner | counterparty (defaults agent)",
-      schema: {
-        type: "string" as const,
-        enum: [...SCHEDULING_PROPOSED_BY],
-      },
-      examples: ["agent", "counterparty"],
-    },
-    {
-      name: "relationshipId",
-      description:
-        "Optional relationship/contact id the negotiation is with (used by start).",
-      descriptionCompressed: "contact id (start)",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "timezone",
-      description: "IANA timezone (e.g. America/Los_Angeles) used by start.",
-      descriptionCompressed: "IANA tz (start)",
-      schema: { type: "string" as const },
-      examples: ["America/Los_Angeles", "UTC"],
-    },
-    {
-      name: "reason",
-      description:
-        "Optional reason note (cancel) or free-text annotation captured for audit.",
-      descriptionCompressed: "reason (cancel/audit)",
-      schema: { type: "string" as const },
-    },
-  ],
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Start a scheduling negotiation with Alice about the quarterly review",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'Started negotiation — "quarterly review with Alice" (30 min, state=initiated).',
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Propose Tuesday 2-3pm for negotiation abc-123" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Recorded proposal: 2026-04-21T14:00:00Z → 2026-04-21T15:00:00Z (status=pending).",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Alice accepted proposal xyz-789" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Proposal xyz-789 is now accepted.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Finalize negotiation abc-123 with proposal xyz-789" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'Confirmed negotiation — "quarterly review with Alice" (state=confirmed).',
-        },
-      },
-    ],
-  ],
-};
+}

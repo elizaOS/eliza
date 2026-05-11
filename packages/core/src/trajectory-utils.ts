@@ -4,6 +4,7 @@ import {
 	type JsonValue,
 	type Trajectory,
 } from "./features/trajectories/types";
+import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
@@ -375,6 +376,14 @@ export type TrajectoryAnnotateParams = {
 	childSteps?: string[];
 	appendChildSteps?: string[];
 	usedSkills?: string[];
+	/**
+	 * Per-skill invocation records to append to the step. Closes M13
+	 * (W1-T5). Each record carries the (skillSlug, args, result,
+	 * durationMs, parentStepId) shape produced by `captureSkillInvocationIO`.
+	 * Implementations must append (not replace) so multiple skill invocations
+	 * inside the same step accumulate.
+	 */
+	appendSkillInvocations?: TrajectorySkillInvocationRecord[];
 };
 
 type TrajectoryLoggerLike = {

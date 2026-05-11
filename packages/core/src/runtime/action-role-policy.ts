@@ -64,6 +64,26 @@ export function readActionRolePolicy(): Record<string, RoleGateRole> {
 	return cachedActionRolePolicy;
 }
 
+type PolicyAddressableAction = {
+	name: string;
+	similes?: readonly string[];
+};
+
+export function resolveActionRolePolicyRole(
+	action: string | PolicyAddressableAction,
+): RoleGateRole | undefined {
+	const policy = readActionRolePolicy();
+	if (typeof action === "string") return policy[action];
+	const direct = policy[action.name];
+	if (direct) return direct;
+	for (const simile of action.similes ?? []) {
+		if (typeof simile !== "string") continue;
+		const role = policy[simile];
+		if (role) return role;
+	}
+	return undefined;
+}
+
 /**
  * Returns the policy-mandated minimum role for `actionName` if it is
  * present in `ACTION_ROLE_POLICY` and the caller satisfies that role.
@@ -71,10 +91,10 @@ export function readActionRolePolicy(): Record<string, RoleGateRole> {
  * or when the caller does not satisfy the policy role.
  */
 export function isActionAllowedByRolePolicy(
-	actionName: string,
+	action: string | PolicyAddressableAction,
 	userRoles: readonly RoleGateRole[] | undefined,
 ): boolean {
-	const policyRole = readActionRolePolicy()[actionName];
+	const policyRole = resolveActionRolePolicyRole(action);
 	if (!policyRole) {
 		return false;
 	}

@@ -1,9 +1,5 @@
 {
-<<<<<<< HEAD
-  "generatedAtIso": "2026-05-10T13:50:14.751Z",
-=======
-  "generatedAtIso": "2026-05-11T10:42:33.617Z",
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
+  "generatedAtIso": "2026-05-11T14:02:11.807Z",
   "provider": "cerebras",
   "model": "gpt-oss-120b",
   "domainsGraded": 28,
@@ -22,7 +18,7 @@
         "promptTokens": 1984,
         "completionTokens": 55,
         "totalTokens": 2039,
-        "cachedTokens": 1920
+        "cachedTokens": 0
       },
       "tasksObserved": 4,
       "logEntriesObserved": 4
@@ -36,7 +32,7 @@
         "promptTokens": 2502,
         "completionTokens": 45,
         "totalTokens": 2547,
-        "cachedTokens": 2432
+        "cachedTokens": 1024
       },
       "tasksObserved": 8,
       "logEntriesObserved": 8
@@ -50,7 +46,7 @@
         "promptTokens": 1881,
         "completionTokens": 67,
         "totalTokens": 1948,
-        "cachedTokens": 1792
+        "cachedTokens": 0
       },
       "tasksObserved": 2,
       "logEntriesObserved": 5
@@ -62,14 +58,9 @@
       "rationale": "All terminal statuses and pipeline relationships match the described multi-step flow",
       "usage": {
         "promptTokens": 2064,
-<<<<<<< HEAD
-        "completionTokens": 129,
-        "totalTokens": 2193,
-=======
         "completionTokens": 210,
         "totalTokens": 2274,
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
-        "cachedTokens": 2048
+        "cachedTokens": 1024
       },
       "tasksObserved": 3,
       "logEntriesObserved": 6
@@ -81,14 +72,9 @@
       "rationale": "The task reached completed status with appropriate reason and no required firedAt, respecting early completion rules.",
       "usage": {
         "promptTokens": 1460,
-<<<<<<< HEAD
-        "completionTokens": 121,
-        "totalTokens": 1581,
-=======
         "completionTokens": 127,
         "totalTokens": 1587,
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
-        "cachedTokens": 1408
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 2
@@ -100,15 +86,9 @@
       "rationale": "The watcher was correctly scheduled with the quiet_hours gate and remains in the scheduled state as expected.",
       "usage": {
         "promptTokens": 1431,
-<<<<<<< HEAD
-        "completionTokens": 65,
-        "totalTokens": 1496,
-        "cachedTokens": 0
-=======
         "completionTokens": 64,
         "totalTokens": 1495,
-        "cachedTokens": 1408
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -120,14 +100,9 @@
       "rationale": "The high-priority reminder correctly resulted in a single scheduled task without premature firing, adhering to the escalation ladder semantics.",
       "usage": {
         "promptTokens": 1386,
-<<<<<<< HEAD
-        "completionTokens": 105,
-        "totalTokens": 1491,
-=======
         "completionTokens": 104,
         "totalTokens": 1490,
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
-        "cachedTokens": 1280
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -141,7 +116,7 @@
         "promptTokens": 1836,
         "completionTokens": 70,
         "totalTokens": 1906,
-        "cachedTokens": 1792
+        "cachedTokens": 1024
       },
       "tasksObserved": 2,
       "logEntriesObserved": 3
@@ -155,7 +130,7 @@
         "promptTokens": 1470,
         "completionTokens": 68,
         "totalTokens": 1538,
-        "cachedTokens": 1408
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 2
@@ -169,7 +144,7 @@
         "promptTokens": 1748,
         "completionTokens": 78,
         "totalTokens": 1826,
-        "cachedTokens": 1664
+        "cachedTokens": 1024
       },
       "tasksObserved": 2,
       "logEntriesObserved": 3
@@ -181,14 +156,9 @@
       "rationale": "The watcher completed as expected after the subject update, with correct status and timestamps.",
       "usage": {
         "promptTokens": 1699,
-<<<<<<< HEAD
-        "completionTokens": 100,
-        "totalTokens": 1799,
-=======
         "completionTokens": 93,
         "totalTokens": 1792,
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
-        "cachedTokens": 1664
+        "cachedTokens": 0
       },
       "tasksObserved": 1,
       "logEntriesObserved": 4
@@ -200,15 +170,9 @@
       "rationale": "The reminder failed and correctly spawned a scheduled followup child as defined by the onFail pipeline.",
       "usage": {
         "promptTokens": 1752,
-<<<<<<< HEAD
-        "completionTokens": 88,
-        "totalTokens": 1840,
-        "cachedTokens": 1664
-=======
         "completionTokens": 70,
         "totalTokens": 1822,
-        "cachedTokens": 0
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
+        "cachedTokens": 1024
       },
       "tasksObserved": 2,
       "logEntriesObserved": 3
@@ -222,7 +186,7 @@
         "promptTokens": 1572,
         "completionTokens": 89,
         "totalTokens": 1661,
-        "cachedTokens": 1536
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 3
@@ -234,15 +198,9 @@
       "rationale": "The custom watcher task is correctly scheduled with the specified properties and no erroneous state transitions.",
       "usage": {
         "promptTokens": 1388,
-<<<<<<< HEAD
-        "completionTokens": 74,
-        "totalTokens": 1462,
-        "cachedTokens": 1280
-=======
         "completionTokens": 71,
         "totalTokens": 1459,
         "cachedTokens": 1024
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -310,13 +268,8 @@
       "rationale": "The task is correctly scheduled with the required output configuration and no violations of the spine rules.",
       "usage": {
         "promptTokens": 1369,
-<<<<<<< HEAD
-        "completionTokens": 84,
-        "totalTokens": 1453,
-=======
         "completionTokens": 85,
         "totalTokens": 1454,
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
         "cachedTokens": 1024
       },
       "tasksObserved": 1,
@@ -329,15 +282,9 @@
       "rationale": "The task is correctly scheduled with high priority, proper metadata, and no premature firing, matching the expected end state.",
       "usage": {
         "promptTokens": 1403,
-<<<<<<< HEAD
-        "completionTokens": 78,
-        "totalTokens": 1481,
-        "cachedTokens": 1280
-=======
         "completionTokens": 94,
         "totalTokens": 1497,
         "cachedTokens": 1024
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -349,15 +296,9 @@
       "rationale": "The watcher was correctly scheduled with the appropriate completion check and no premature firing or completion logged.",
       "usage": {
         "promptTokens": 1427,
-<<<<<<< HEAD
-        "completionTokens": 82,
-        "totalTokens": 1509,
-        "cachedTokens": 1408
-=======
         "completionTokens": 78,
         "totalTokens": 1505,
         "cachedTokens": 1024
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -383,15 +324,9 @@
       "rationale": "The task is correctly scheduled with high priority and appropriate metadata, and no further actions are required in this scenario.",
       "usage": {
         "promptTokens": 1395,
-<<<<<<< HEAD
-        "completionTokens": 84,
-        "totalTokens": 1479,
-        "cachedTokens": 1280
-=======
         "completionTokens": 76,
         "totalTokens": 1471,
         "cachedTokens": 1024
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -403,15 +338,9 @@
       "rationale": "The task is correctly scheduled with ownerVisible false and appropriate metadata, and no firing is required for a shadow task.",
       "usage": {
         "promptTokens": 1386,
-<<<<<<< HEAD
-        "completionTokens": 80,
-        "totalTokens": 1466,
-        "cachedTokens": 1280
-=======
         "completionTokens": 82,
         "totalTokens": 1468,
         "cachedTokens": 1024
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -423,13 +352,8 @@
       "rationale": "The task includes source=plugin and ownerVisible=false, remains scheduled, and the log correctly records the scheduling transition.",
       "usage": {
         "promptTokens": 1347,
-<<<<<<< HEAD
-        "completionTokens": 83,
-        "totalTokens": 1430,
-=======
         "completionTokens": 88,
         "totalTokens": 1435,
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
         "cachedTokens": 1024
       },
       "tasksObserved": 1,
@@ -442,15 +366,9 @@
       "rationale": "The watcher completed and correctly spawned a scheduled output child as defined by the onComplete pipeline.",
       "usage": {
         "promptTokens": 1724,
-<<<<<<< HEAD
-        "completionTokens": 67,
-        "totalTokens": 1791,
-        "cachedTokens": 1664
-=======
         "completionTokens": 81,
         "totalTokens": 1805,
         "cachedTokens": 1024
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
       },
       "tasksObserved": 2,
       "logEntriesObserved": 3
@@ -462,15 +380,9 @@
       "rationale": "The reminder was scheduled with the correct locale metadata and remains in the expected scheduled state.",
       "usage": {
         "promptTokens": 1380,
-<<<<<<< HEAD
-        "completionTokens": 72,
-        "totalTokens": 1452,
-        "cachedTokens": 1280
-=======
         "completionTokens": 76,
         "totalTokens": 1456,
         "cachedTokens": 1024
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -482,15 +394,9 @@
       "rationale": "The task reached the expected dismissed status with appropriate log entries and metadata, satisfying all required semantics.",
       "usage": {
         "promptTokens": 1445,
-<<<<<<< HEAD
-        "completionTokens": 82,
-        "totalTokens": 1527,
-        "cachedTokens": 1408
-=======
         "completionTokens": 78,
         "totalTokens": 1523,
         "cachedTokens": 1024
->>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
       },
       "tasksObserved": 1,
       "logEntriesObserved": 2

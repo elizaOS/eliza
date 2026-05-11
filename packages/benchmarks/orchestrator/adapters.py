@@ -1080,8 +1080,11 @@ def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
             "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor",
         )
     )
+    compactbench_root = Path(adapter.cwd)
+    venv_python = compactbench_root / ".venv" / "bin" / "python"
+    python_executable = str(venv_python) if venv_python.exists() else sys.executable
     args = [
-        sys.executable,
+        python_executable,
         "run_cerebras.py",
         "--method",
         method,
@@ -1176,6 +1179,8 @@ def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
         args.append("--context-summary")
     if ctx.request.extra_config.get("context_awareness") is True:
         args.append("--context-awareness")
+    if ctx.request.extra_config.get("dry_run") is True:
+        args.append("--dry-run")
     return args
 
 

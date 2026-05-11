@@ -10,8 +10,9 @@ cost/latency telemetry attached.
 
 from __future__ import annotations
 
-from ..clients.hermes import HermesClient
-from ._openai_compat import OpenAICompatAgent
+from typing import Any, Awaitable, Callable
+
+from ..types import MessageTurn
 
 
 def build_hermes_agent(
@@ -22,7 +23,7 @@ def build_hermes_agent(
     temperature: float = 0.0,
     reasoning_effort: str = "low",
     max_tokens: int | None = None,
-) -> OpenAICompatAgent:
+) -> Callable[[list[MessageTurn], list[dict[str, Any]]], Awaitable[MessageTurn]]:
     """Build a Hermes-template agent callable for the bench runner.
 
     Returns an :class:`OpenAICompatAgent` whose ``__call__(history, tools)``
@@ -31,17 +32,25 @@ def build_hermes_agent(
     returned ``MessageTurn`` so the runner's existing ``getattr`` accounting
     works without any runner changes.
 
-    The :class:`HermesClient` is constructed lazily on the first
-    completion. Construction reads ``HERMES_BASE_URL`` / ``HERMES_API_KEY``
-    / ``HERMES_MODEL`` from the environment unless explicit args override.
+    LifeOps uses the source-loaded ``hermes-adapter`` harness so the
+    benchmark path matches the other Hermes smoke adapters. The legacy
+    OpenAI-compatible client still exists under ``clients/hermes.py`` for
+    direct endpoint experiments, but it requires ``HERMES_BASE_URL`` and
+    bypasses the source harness setup.
     """
+    del base_url, api_key, temperature, reasoning_effort, max_tokens
+    try:
+        from hermes_adapter.lifeops_bench import build_lifeops_bench_agent_fn
+    except ImportError as exc:  # pragma: no cover - import-only branch
+        raise SystemExit(
+            "build_hermes_agent requires the hermes-adapter package "
+            "(packages/benchmarks/hermes-adapter). Install it in the active env."
+        ) from exc
 
-    def factory() -> HermesClient:
-        return HermesClient(model=model, base_url=base_url, api_key=api_key)
-
-    return OpenAICompatAgent(
-        factory,
-        temperature=temperature,
-        reasoning_effort=reasoning_effort,
-        max_tokens=max_tokens,
+    return build_lifeops_bench_agent_fn(
+        model_name=model,
+        system_prompt=(
+            "You are running LifeOpsBench. Use the supplied tools exactly "
+            "when they are needed, and keep responses concise."
+        ),
     )

@@ -29,13 +29,25 @@ import {
   slotSavePath,
 } from "./cache-bridge";
 import { findCatalogModel } from "./catalog";
+import { probeHardware } from "./hardware";
+import {
+  estimateQuantizedKvBytesPerToken,
+  KV_SPILL_MIN_CONTEXT,
+  type KvSpillPlan,
+  KvSpillUnsupportedError,
+  planKvSpill,
+  residentKvBudgetFromRamBudget,
+  restoreClassForHardware,
+} from "./kv-spill";
 import {
   diffSnapshots,
   fetchMetricsSnapshot,
   type LocalUsageBlock,
 } from "./llama-server-metrics";
 import { localInferenceRoot } from "./paths";
-import type { LocalRuntimeOptimizations } from "./types";
+import { resolveRamBudget } from "./ram-budget";
+import type { CatalogModel, InstalledModel, LocalRuntimeOptimizations } from "./types";
+import type { VerifierStreamEvent } from "./voice/types";
 
 export interface DflashServerPlan {
   targetModelPath: string;
@@ -46,8 +58,23 @@ export interface DflashServerPlan {
   draftMax: number;
   gpuLayers: number | "auto";
   draftGpuLayers: number | "auto";
+  kvOffload?: DflashKvOffloadMode;
   disableThinking: boolean;
+  /**
+   * KV-cache spill plan for context > 64k (packages/inference/AGENTS.md §3
+   * item 7). Resolved in `load()` from the catalog + a hardware probe + the
+   * bundle's RAM budget. `null`/absent when the context is short enough that
+   * the whole cache fits resident. When `mode === "spill"` the server is
+   * launched with `--no-kv-offload` so the cold pages live in host RAM, plus
+   * a `--cache-ram` hint sized to the resident pages. A
+   * `KvSpillUnsupportedError` thrown by `planKvSpill` propagates out of
+   * `load()` so the engine surfaces a structured 4xx — there is no
+   * silent-slow fallback.
+   */
+  kvSpillPlan?: KvSpillPlan | null;
 }
+
+export type DflashKvOffloadMode = "cpu" | "gpu" | "split";
 
 export interface DflashGenerateArgs {
   prompt: string;
@@ -68,6 +95,17 @@ export interface DflashGenerateArgs {
    * disables slot pinning ("any free slot").
    */
   slotId?: number;
+  /** Per-request abort signal forwarded to llama-server's HTTP request. */
+  signal?: AbortSignal;
+  /** Incremental accepted text chunks from streaming chat completions. */
+  onTextChunk?: (chunk: string) => void | Promise<void>;
+  /**
+   * Speculative verifier event stream. Today this backend synthesizes
+   * accept events from OpenAI streaming deltas; native DFlash builds can
+   * replace that with exact accept/reject token ranges without changing
+   * callers.
+   */
+  onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
 }
 
 /**
@@ -168,6 +206,40 @@ export function parseDflashMetrics(body: string): DflashMetricsSnapshot | null {
 function readBool(name: string): boolean {
   const raw = process.env[name]?.trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes";
+}
+
+/**
+ * Developer-only escape hatch from the always-on speculative-decoding
+ * contract (`packages/inference/AGENTS.md` §4: "DFlash is always on… If
+ * the user disables speculative decoding for debugging, that is a
+ * developer-only flag (`MILADY_DFLASH_DISABLE=1`), it is not a user
+ * setting, and it MUST log a loud warning every turn.").
+ *
+ * This is NOT a product setting — there is no UI surface and no
+ * `MILADY_LOCAL_*` mapping. It exists so a developer can bisect a
+ * suspected DFlash regression. When set, `dflashEnabled()` returns false
+ * (the dispatcher then routes to node-llama-cpp) and every generation
+ * turn that runs while it is set logs `logDflashDevDisabledWarning()`.
+ */
+export function dflashDevDisabled(): boolean {
+  return readBool("MILADY_DFLASH_DISABLE");
+}
+
+/**
+ * Emit the loud, every-turn warning required by AGENTS.md §4 when the
+ * developer kill-switch is active. Callers invoke this once per
+ * generation turn (text or voice). No-op when the flag is unset, so the
+ * call site can be unconditional.
+ */
+export function logDflashDevDisabledWarning(): void {
+  if (!dflashDevDisabled()) return;
+  console.warn(
+    "[local-inference] ⚠️  MILADY_DFLASH_DISABLE=1 — speculative decoding is OFF. " +
+      "This is a developer-only debug flag, NOT a product setting. Eliza-1's " +
+      "always-on DFlash contract is violated for this turn; voice latency and " +
+      "throughput are degraded. Unset MILADY_DFLASH_DISABLE to restore the " +
+      "shipped path.",
+  );
 }
 
 function managedDflashBinaryPath(): string {
@@ -298,6 +370,9 @@ function assertCacheTypeSupportedOnBackend(name: string, value: string): void {
 }
 
 export function dflashEnabled(): boolean {
+  // Developer kill-switch wins over everything, including ELIZA_DFLASH_ENABLED.
+  // See dflashDevDisabled() — this is a debug-only hatch, never a product path.
+  if (dflashDevDisabled()) return false;
   if (readBool("ELIZA_DFLASH_DISABLED")) return false;
   if (readBool("ELIZA_DFLASH_ENABLED")) return true;
   if (!fs.existsSync(managedDflashBinaryPath())) return false;
@@ -352,8 +427,9 @@ export function getDflashRuntimeStatus(): DflashRuntimeStatus {
   const capabilities = readDflashBinaryCapabilities();
   if (!dflashEnabled()) {
     const managedBinaryExists = fs.existsSync(managedDflashBinaryPath());
-    const reason =
-      managedBinaryExists && isMetalDflashRuntime()
+    const reason = dflashDevDisabled()
+      ? "DFlash is disabled by the developer-only MILADY_DFLASH_DISABLE flag. This is NOT a product setting — unset it to restore the always-on speculative-decoding contract."
+      : managedBinaryExists && isMetalDflashRuntime()
         ? "DFlash Metal binary found but auto-disabled because the current Eliza-1 Metal path is faster target-only; set ELIZA_DFLASH_ENABLED=1 or ELIZA_DFLASH_METAL_AUTO=1 to force it."
         : "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.";
     return {
@@ -394,12 +470,42 @@ function resolveDflashGpuLayers(
   if (typeof overrides?.gpuLayers === "number") return overrides.gpuLayers;
   if (overrides?.gpuLayers === "auto") return "auto";
   if (overrides?.gpuLayers === "max") return "auto";
-  if (overrides?.kvOffload !== undefined) {
+  if (
+    overrides?.kvOffload !== undefined &&
+    typeof overrides.kvOffload === "object"
+  ) {
     const mapped = gpuLayersForKvOffload(overrides.kvOffload);
     return mapped === "max" ? "auto" : mapped;
   }
   if (overrides?.useGpu === false) return 0;
   return fallback;
+}
+
+function normalizeDflashKvOffloadMode(
+  value: string | undefined,
+): DflashKvOffloadMode | null {
+  const mode = value?.trim().toLowerCase();
+  if (mode === "cpu" || mode === "gpu" || mode === "split") return mode;
+  return null;
+}
+
+export function resolveDflashKvOffload(
+  overrides: BackendPlan["overrides"] | null | undefined,
+): DflashKvOffloadMode | null {
+  if (typeof overrides?.kvOffload === "string") {
+    return normalizeDflashKvOffloadMode(overrides.kvOffload);
+  }
+  return normalizeDflashKvOffloadMode(process.env.ELIZA_LOCAL_KV_OFFLOAD);
+}
+
+export function appendKvOffloadFlags(
+  args: string[],
+  mode: DflashKvOffloadMode | null,
+): string[] {
+  if (mode === "cpu") {
+    args.push("--no-kv-offload");
+  }
+  return args;
 }
 
 function findPython(): string | null {
@@ -536,8 +642,12 @@ async function fetchJson(
   url: string,
   init: RequestInit,
   timeoutMs = 60_000,
+  externalSignal?: AbortSignal,
 ): Promise<unknown> {
   const controller = new AbortController();
+  const abort = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abort();
+  externalSignal?.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, { ...init, signal: controller.signal });
@@ -550,6 +660,101 @@ async function fetchJson(
     return await res.json();
   } finally {
     clearTimeout(timer);
+    externalSignal?.removeEventListener("abort", abort);
+  }
+}
+
+export function extractStreamingChatDelta(json: unknown): string {
+  if (!json || typeof json !== "object") return "";
+  const record = json as Record<string, unknown>;
+  const choices = Array.isArray(record.choices) ? record.choices : [];
+  let out = "";
+  for (const choice of choices) {
+    if (!choice || typeof choice !== "object") continue;
+    const c = choice as Record<string, unknown>;
+    const delta = c.delta;
+    if (delta && typeof delta === "object") {
+      const content = (delta as Record<string, unknown>).content;
+      if (typeof content === "string") out += content;
+      continue;
+    }
+    const text = c.text;
+    if (typeof text === "string") out += text;
+  }
+  return out;
+}
+
+async function fetchStreamingChatCompletion(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  callbacks: {
+    onTextChunk?: (chunk: string) => void | Promise<void>;
+    onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
+  },
+  externalSignal?: AbortSignal,
+): Promise<string> {
+  const controller = new AbortController();
+  const abort = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abort();
+  externalSignal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(
+        `HTTP ${res.status} from ${url}${body ? `: ${body}` : ""}`,
+      );
+    }
+    if (!res.body) {
+      throw new Error(`[dflash] Streaming response from ${url} had no body`);
+    }
+
+    const decoder = new TextDecoder();
+    const reader = res.body.getReader();
+    let buffer = "";
+    let text = "";
+    let nextIndex = 0;
+    const consumeEvent = async (raw: string): Promise<void> => {
+      const dataLines = raw
+        .split(/\r?\n/)
+        .map((line) => line.trimEnd())
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice("data:".length).trimStart());
+      if (dataLines.length === 0) return;
+      const data = dataLines.join("\n").trim();
+      if (!data || data === "[DONE]") return;
+      const chunk = extractStreamingChatDelta(JSON.parse(data));
+      if (!chunk) return;
+      text += chunk;
+      if (callbacks.onVerifierEvent) {
+        await callbacks.onVerifierEvent({
+          kind: "accept",
+          tokens: [{ index: nextIndex++, text: chunk }],
+        });
+      }
+      await callbacks.onTextChunk?.(chunk);
+    };
+
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let sep = buffer.search(/\r?\n\r?\n/);
+      while (sep !== -1) {
+        const raw = buffer.slice(0, sep);
+        buffer = buffer.slice(buffer[sep] === "\r" ? sep + 4 : sep + 2);
+        await consumeEvent(raw);
+        sep = buffer.search(/\r?\n\r?\n/);
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) await consumeEvent(buffer);
+    return text;
+  } finally {
+    clearTimeout(timer);
+    externalSignal?.removeEventListener("abort", abort);
   }
 }
 
@@ -601,6 +806,15 @@ function resolveParallel(catalogParallel?: number): number {
  *                                    else conservative defaults)
  *   ELIZA_LOCAL_PARALLEL=N         → --parallel N (handled by resolveParallel
  *                                    at the call site, not here)
+ *   ELIZA_LOCAL_CACHE_REUSE=N      → --cache-reuse N
+ *   ELIZA_LOCAL_CACHE_RAM_MB=N     → --cache-ram N
+ *   ELIZA_LOCAL_BATCH_SIZE=N       → --batch-size N
+ *   ELIZA_LOCAL_UBATCH_SIZE=N      → --ubatch-size N
+ *   ELIZA_LOCAL_CONT_BATCHING=0|1  → --cont-batching / --no-cont-batching
+ *   ELIZA_LOCAL_KV_UNIFIED=0|1     → --kv-unified / --no-kv-unified
+ *   ELIZA_LOCAL_OP_OFFLOAD=0|1     → --op-offload / --no-op-offload
+ *   ELIZA_LOCAL_KV_OFFLOAD=cpu     → --no-kv-offload (handled by
+ *                                    appendKvOffloadFlags at start)
  *   ELIZA_LOCAL_MOE_OFFLOAD=cpu    → -ot ".*=CPU"
  *   ELIZA_LOCAL_MLOCK=1            → --mlock
  *   ELIZA_LOCAL_NO_MMAP=1          → --no-mmap
@@ -618,6 +832,38 @@ function readBoolFlag(name: string): boolean | undefined {
     return false;
   }
   return undefined;
+}
+
+function readPositiveIntEnv(name: string): number | undefined {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function appendPositiveIntFlag(
+  args: string[],
+  flag: string,
+  value: number | undefined,
+): void {
+  if (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value > 0
+  ) {
+    args.push(flag, String(value));
+  }
+}
+
+function appendBooleanFlag(
+  args: string[],
+  enabledFlag: string,
+  disabledFlag: string,
+  value: boolean | undefined,
+): void {
+  if (value === true) args.push(enabledFlag);
+  if (value === false) args.push(disabledFlag);
 }
 
 export function appendOptimizationFlags(
@@ -651,6 +897,45 @@ export function appendOptimizationFlags(
     args.push("--draft-max", String(ngramEffective.max));
     args.push("--draft-min-prob", String(ngramEffective.minProb));
   }
+
+  appendPositiveIntFlag(
+    args,
+    "--cache-reuse",
+    readPositiveIntEnv("ELIZA_LOCAL_CACHE_REUSE") ?? optimizations?.cacheReuse,
+  );
+  appendPositiveIntFlag(
+    args,
+    "--cache-ram",
+    readPositiveIntEnv("ELIZA_LOCAL_CACHE_RAM_MB") ?? optimizations?.cacheRamMb,
+  );
+  appendPositiveIntFlag(
+    args,
+    "--batch-size",
+    readPositiveIntEnv("ELIZA_LOCAL_BATCH_SIZE") ?? optimizations?.batchSize,
+  );
+  appendPositiveIntFlag(
+    args,
+    "--ubatch-size",
+    readPositiveIntEnv("ELIZA_LOCAL_UBATCH_SIZE") ?? optimizations?.ubatchSize,
+  );
+  appendBooleanFlag(
+    args,
+    "--cont-batching",
+    "--no-cont-batching",
+    readBoolFlag("ELIZA_LOCAL_CONT_BATCHING") ?? optimizations?.contBatching,
+  );
+  appendBooleanFlag(
+    args,
+    "--kv-unified",
+    "--no-kv-unified",
+    readBoolFlag("ELIZA_LOCAL_KV_UNIFIED") ?? optimizations?.kvUnified,
+  );
+  appendBooleanFlag(
+    args,
+    "--op-offload",
+    "--no-op-offload",
+    readBoolFlag("ELIZA_LOCAL_OP_OFFLOAD") ?? optimizations?.opOffload,
+  );
 
   // -ot ".*=CPU" — MoE expert offload to CPU.
   const moeEnv = process.env.ELIZA_LOCAL_MOE_OFFLOAD?.trim().toLowerCase();
@@ -832,6 +1117,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         ? overrides.contextSize
         : dflash.contextSize;
     const gpuLayers = resolveDflashGpuLayers(overrides, dflash.gpuLayers);
+    const kvOffload = resolveDflashKvOffload(overrides);
 
     await this.start(
       {
@@ -843,6 +1129,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         draftMax: dflash.draftMax,
         gpuLayers,
         draftGpuLayers: dflash.draftGpuLayers,
+        kvOffload: kvOffload ?? undefined,
         disableThinking: dflash.disableThinking,
       },
       optimizations,
@@ -882,12 +1169,13 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const cacheTypeK = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim();
     const cacheTypeV = process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim();
     const parallel = resolveParallel(optimizations?.parallel);
+    const kvOffload = plan.kvOffload ?? resolveDflashKvOffload(null);
     const modelHash = buildModelHash({
       targetModelPath: plan.targetModelPath,
       drafterModelPath,
       cacheTypeK: cacheTypeK ?? null,
       cacheTypeV: cacheTypeV ?? null,
-      extra: `ctx=${plan.contextSize};parallel=${parallel}`,
+      extra: `ctx=${plan.contextSize};parallel=${parallel};kv=${kvOffload ?? "default"}`,
     });
     const slotDir = slotSavePath(modelHash);
     // llama-server's slot API treats `filename` as a basename relative to
@@ -963,6 +1251,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       args.push("--cache-type-v", cacheTypeV);
     }
 
+    appendKvOffloadFlags(args, kvOffload);
     appendOptimizationFlags(args, optimizations ?? null);
 
     const extra = process.env.ELIZA_DFLASH_LLAMA_ARGS?.trim();
@@ -1265,7 +1554,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       temperature: args.temperature ?? 0.7,
       top_p: args.topP ?? 0.9,
       stop: args.stopSequences,
-      stream: false,
+      stream: Boolean(args.onTextChunk || dflashArgs.onVerifierEvent),
       // `cache_prompt: true` is always safe — the worst case is the
       // server matches no prefix tokens and the request behaves like a
       // cold call. Pinning by `slot_id` only happens when the runtime
@@ -1274,14 +1563,38 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       slot_id: slotId,
     };
     const before = await fetchMetricsSnapshot(baseUrl);
-    const json = (await fetchJson(`${baseUrl}/v1/chat/completions`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    })) as Record<string, unknown>;
+    let json: Record<string, unknown> | null = null;
+    let text: string;
+    if (args.onTextChunk || dflashArgs.onVerifierEvent) {
+      text = await fetchStreamingChatCompletion(
+        `${baseUrl}/v1/chat/completions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+        60_000,
+        {
+          onTextChunk: args.onTextChunk,
+          onVerifierEvent: dflashArgs.onVerifierEvent,
+        },
+        args.signal,
+      );
+    } else {
+      json = (await fetchJson(
+        `${baseUrl}/v1/chat/completions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+        60_000,
+        args.signal,
+      )) as Record<string, unknown>;
+      text = extractCompletionText(json);
+    }
     const after = await fetchMetricsSnapshot(baseUrl);
-    const text = extractCompletionText(json);
-    const responseUsage = extractResponseUsage(json);
+    const responseUsage = json ? extractResponseUsage(json) : undefined;
     const usage = diffSnapshots(before, after, responseUsage);
     return { text, usage, slotId };
   }

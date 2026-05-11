@@ -92,7 +92,15 @@ describe("validateManifest — valid input", () => {
     m.lineage.wakeword = { base: "eliza-1-wakeword", license: "apache-2.0" };
     m.files.embedding = [{ path: "embedding/eliza-1-embed.gguf", sha256: SHA }];
     m.files.wakeword = [{ path: "wakeword/eliza-1.onnx", sha256: SHA }];
-    m.voice = { capabilities: ["tts", "emotion-tags"] };
+    m.voice = {
+      version: "1",
+      frozen: true,
+      cache: {
+        speakerPreset: "cache/voice-preset-default.bin",
+        phraseCacheSeed: "cache/voice-preset-default.bin",
+      },
+      capabilities: ["tts", "emotion-tags"],
+    };
     m.evals.embedMteb = { score: 0.62, passed: true };
     m.evals.expressive = {
       tagFaithfulness: 0.9,
@@ -224,7 +232,15 @@ describe("validateManifest — contract rejections", () => {
 
   it("rejects expressive voice capabilities without expressive eval", () => {
     const m = baseManifest();
-    m.voice = { capabilities: ["tts", "singing"] };
+    m.voice = {
+      version: "1",
+      frozen: true,
+      cache: {
+        speakerPreset: "cache/voice-preset-default.bin",
+        phraseCacheSeed: "cache/voice-preset-default.bin",
+      },
+      capabilities: ["tts", "singing"],
+    };
     const result = validateManifest(m);
     expect(result.ok).toBe(false);
     if (!result.ok) {

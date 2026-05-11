@@ -1,0 +1,81 @@
+{
+  "agent": "hermes",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133925Z_b17ad294/webshop__webshop/run_webshop_20260511T133925Z_2_8bb8e852/output"
+  ],
+  "benchmark_directory": "webshop",
+  "benchmark_id": "webshop",
+  "cache_metrics": {
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 0,
+    "cache_hit_ratio": 0.0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "average_duration_ms": 11437.175035476685,
+    "average_reward": 0,
+    "average_steps": 2.0,
+    "average_turns": 2.0,
+    "cache_metrics": {
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 0,
+      "cache_hit_ratio": 0.0
+    },
+    "performance_metrics": {
+      "duration_seconds": 11.802386167022632,
+      "mean_latency_ms": 11437.175035476685,
+      "p95_latency_ms": 11437.175035476685,
+      "throughput_per_second": 0.16945725819311475
+    },
+    "return_code": 0,
+    "success_rate": 0.0,
+    "token_metrics": {
+      "llm_call_count": 2,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "avg_prompt_tokens": 0.0,
+      "avg_completion_tokens": 0.0
+    },
+    "total_tasks": 1,
+    "total_trials": 1,
+    "trajectory_summary": {
+      "files": 2,
+      "turns": 2,
+      "prompt_chars": 18,
+      "repeated_prefixes": []
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 11.802386167022632,
+    "mean_latency_ms": 11437.175035476685,
+    "p95_latency_ms": 11437.175035476685,
+    "throughput_per_second": 0.16945725819311475
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133925Z_b17ad294/webshop__webshop/run_webshop_20260511T133925Z_2_8bb8e852/output/webshop-results.json",
+  "run_group_id": "rg_20260511T133925Z_b17ad294",
+  "run_id": "run_webshop_20260511T133925Z_2_8bb8e852",
+  "score": 0.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "llm_call_count": 2,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "avg_prompt_tokens": 0.0,
+    "avg_completion_tokens": 0.0
+  },
+  "trajectory_summary": {
+    "files": 2,
+    "turns": 2,
+    "prompt_chars": 18,
+    "repeated_prefixes": []
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-11T14:03:03.426669+00:00"
+}

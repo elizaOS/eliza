@@ -1,7 +1,7 @@
 # MILADY-VK-DISPATCH-PATCH-V1
 #
 # Patch target : ggml/src/ggml-vulkan/ggml-vulkan.cpp
-# Goal         : declare + create 8 pipelines for the milady standalones so
+# Goal         : declare + create 9 pipelines for the milady standalones so
 #                that their SPIR-V blobs are referenced at link time and the
 #                resulting libggml-vulkan.so contains the new pipeline names.
 #
@@ -12,7 +12,7 @@
 # OUT OF SCOPE for this patch (deliberate, mirrors metal-kernels.mjs §41):
 #   * Wiring op-level dispatch (ggml_vk_get_dequantize_mul_mat_vec / GGML_OP_*
 #     case branches) for GGML_TYPE_TBQ3_0 / TBQ4_0 / QJL1_256 / Q4_POLAR /
-#     TBQ3_TCQ. The 8 standalones use bespoke push-constant layouts and bind
+#     TBQ3_TCQ. The standalones use bespoke push-constant layouts and bind
 #     sets that are NOT compatible with the existing vk_op_binary_push_constants
 #     / vk_mat_vec_push_constants paths. A separate follow-up patch is
 #     required to introduce a milady-native dispatch entrypoint for
@@ -23,7 +23,7 @@
 #     end-to-end attention dispatch does not.
 
 # -----------------------------------------------------------------------------
-# Hunk 1 — extend vk_device_struct with 8 pipeline slots.
+# Hunk 1 — extend vk_device_struct with 9 pipeline slots.
 # Anchor: just before the closing brace of vk_device_struct. The closing brace
 # is the first `};` after the `pipeline_topk_moe` member at the end of the
 # struct. We anchor on a stable mid-struct line and insert a block.
@@ -33,7 +33,7 @@ ANCHOR    vk_pipeline pipeline_get_rows_f32[GGML_TYPE_COUNT];
 SENTINEL  MILADY-VK-DISPATCH-PATCH-V1
 ---INJECT-BEGIN---
     // MILADY-VK-DISPATCH-PATCH-V1 BEGIN — milady turbo / qjl / polar pipelines
-    // Pre-allocated pipeline slots for the 8 milady standalone shaders. These
+    // Pre-allocated pipeline slots for the 9 milady standalone shaders. These
     // fields keep the pipelines reachable from the device struct so the
     // shader symbols are referenced at link time. Op-level dispatch wiring is
     // deferred (see kernel-patches/vulkan-dispatch-patches/02-ggml-vulkan-pipelines.patch
@@ -45,6 +45,7 @@ SENTINEL  MILADY-VK-DISPATCH-PATCH-V1
     vk_pipeline pipeline_milady_qjl_get_rows;
     vk_pipeline pipeline_milady_qjl_mul_mv;
     vk_pipeline pipeline_milady_polar;
+    vk_pipeline pipeline_milady_polar_preht;
     vk_pipeline pipeline_milady_polar_get_rows;
     // MILADY-VK-DISPATCH-PATCH-V1 END
 
@@ -72,6 +73,7 @@ SENTINEL  MILADY-VK-DISPATCH-PATCH-V1
     //   qjl_get_rows       : 3 storage buffers (k_packed, prj, out)             + 2*u32 push
     //   qjl_mul_mv         : 3 storage buffers (k_blocks, q_sketch, y)          + 2*u32 push
     //   polar              : 3 storage buffers (k_blocks, q, y)                 + 6*u32 push
+    //   polar_preht        : 3 storage buffers (k_blocks, H*q, y)               + 6*u32 push
     //   polar_get_rows     : 2 storage buffers (k_block, out)                   + 2*u32 push
     ggml_vk_create_pipeline(device, device->pipeline_milady_turbo3,         "milady_turbo3",         milady_turbo3_len,         milady_turbo3_data,         "main", 3, 5 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
     ggml_vk_create_pipeline(device, device->pipeline_milady_turbo4,         "milady_turbo4",         milady_turbo4_len,         milady_turbo4_data,         "main", 3, 5 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
@@ -80,6 +82,7 @@ SENTINEL  MILADY-VK-DISPATCH-PATCH-V1
     ggml_vk_create_pipeline(device, device->pipeline_milady_qjl_get_rows,   "milady_qjl_get_rows",   milady_qjl_get_rows_len,   milady_qjl_get_rows_data,   "main", 3, 2 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
     ggml_vk_create_pipeline(device, device->pipeline_milady_qjl_mul_mv,     "milady_qjl_mul_mv",     milady_qjl_mul_mv_len,     milady_qjl_mul_mv_data,     "main", 3, 2 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
     ggml_vk_create_pipeline(device, device->pipeline_milady_polar,          "milady_polar",          milady_polar_len,          milady_polar_data,          "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_polar_preht,    "milady_polar_preht",    milady_polar_preht_len,    milady_polar_preht_data,    "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
     ggml_vk_create_pipeline(device, device->pipeline_milady_polar_get_rows, "milady_polar_get_rows", milady_polar_get_rows_len, milady_polar_get_rows_data, "main", 2, 2 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
     // MILADY-VK-DISPATCH-PATCH-V1 END
 

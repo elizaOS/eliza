@@ -23,12 +23,32 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_OUTPUT_DIR = Path("artifacts") / "trajectory-collection"
 MANIFEST_NAME = "collection-manifest.json"
+MANIFEST_SCHEMA = "eliza.trajectory_collection_manifest.v1"
+MANIFEST_VERSION = 1
+DEFAULT_LIFEOPS_MAX_COST_USD = 10.0
+NATIVE_EXPORT_FILENAME = "app-trajectories.eliza-native.jsonl"
+OWNED_FILES = (
+    "packages/training/scripts/collect_trajectories.py",
+    "packages/training/scripts/test_collect_trajectories.py",
+    "docs/dataset/TRAJECTORY_COLLECTION_RUNBOOK.md",
+)
 LIVE_PROVIDER_KEYS = (
     "GROQ_API_KEY",
+    "CEREBRAS_API_KEY",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
     "GOOGLE_GENERATIVE_AI_API_KEY",
     "OPENROUTER_API_KEY",
+)
+OPUS_MODEL_ENV_KEYS = (
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_LARGE_MODEL",
+    "EVAL_ANTHROPIC_MODEL",
+    "EVAL_MODEL",
+    "EVAL_MODEL_NAME",
+    "JUDGE_MODEL",
+    "TRAIN_ANTHROPIC_MODEL",
+    "TRAIN_MODEL_NAME",
 )
 SUITE_CHOICES = {
     "live-scenarios",
@@ -94,17 +114,40 @@ class CollectionPlan:
     suites: list[str]
     commands: list[CommandPlan]
     provider_labels: dict[str, ProviderLabel]
+    git: dict[str, Any]
+    worktree: dict[str, Any]
     validation_errors: list[str] = field(default_factory=list)
     started_at: str | None = None
     completed_at: str | None = None
 
     def to_manifest(self) -> dict[str, Any]:
+        expected_outputs = _expected_outputs(self.commands)
+        downstream_inputs = _downstream_inputs(
+            run_id=self.run_id,
+            run_dir=self.run_dir,
+            manifest_path=self.manifest_path,
+            expected_outputs=expected_outputs,
+        )
+        cost_caps = _cost_caps(self.max_cost_usd, self.suites)
         return {
-            "schemaVersion": 1,
+            "schema": MANIFEST_SCHEMA,
+            "version": MANIFEST_VERSION,
+            "schemaVersion": MANIFEST_VERSION,
             "kind": "trajectory_collection_manifest",
+            "generated_at": self.started_at,
             "createdAt": self.started_at,
+            "completed_at": self.completed_at,
             "completedAt": self.completed_at,
             "repoRoot": str(REPO_ROOT),
+            "run_id": self.run_id,
+            "provider_label": self.provider,
+            "provider_model": self.model,
+            "suites": self.suites,
+            "cost_caps": cost_caps,
+            "expected_outputs": expected_outputs,
+            "downstream_inputs": downstream_inputs,
+            "git": self.git,
+            "worktree": self.worktree,
             "run": {
                 "id": self.run_id,
                 "dir": str(self.run_dir),
@@ -112,16 +155,16 @@ class CollectionPlan:
                 "suites": self.suites,
             },
             "costCaps": {
-                "maxCostUsd": self.max_cost_usd,
-                "lifeopsBenchEnforced": "lifeops-bench" in self.suites,
-                "scenarioRunnerEnforced": False,
-                "notes": [
-                    "LifeOpsBench receives --max-cost-usd.",
-                    (
-                        "Scenario runner wrappers do not expose a native cost cap; "
-                        "the cap is recorded for operator accounting."
-                    ),
+                "maxCostUsd": cost_caps["max_cost_usd"],
+                "effectiveMaxCostUsdBySuite": cost_caps[
+                    "effective_max_cost_usd_by_suite"
                 ],
+                "lifeopsBenchEffectiveMaxCostUsd": cost_caps[
+                    "effective_max_cost_usd_by_suite"
+                ]["lifeops-bench"],
+                "lifeopsBenchEnforced": cost_caps["enforced_by_suite"]["lifeops-bench"],
+                "scenarioRunnerEnforced": cost_caps["enforced_by_suite"]["scenario-runner"],
+                "notes": cost_caps["notes"],
             },
             "provider": {
                 "activeLabel": self.provider,
@@ -139,6 +182,182 @@ class CollectionPlan:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _expected_outputs(commands: list[CommandPlan]) -> list[dict[str, Any]]:
+    outputs: list[dict[str, Any]] = []
+    for command in commands:
+        for output in command.expected_outputs:
+            data = asdict(output)
+            data["suite"] = command.suite
+            data["command_label"] = command.label
+            outputs.append(data)
+    return outputs
+
+
+def _unique_output_paths(
+    expected_outputs: list[dict[str, Any]],
+    kinds: set[str],
+) -> list[str]:
+    seen: set[str] = set()
+    paths: list[str] = []
+    for output in expected_outputs:
+        path = output.get("path")
+        if output.get("kind") in kinds and isinstance(path, str) and path not in seen:
+            seen.add(path)
+            paths.append(path)
+    return paths
+
+
+def _downstream_inputs(
+    *,
+    run_id: str,
+    run_dir: Path,
+    manifest_path: Path,
+    expected_outputs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    raw_trajectory_paths = _unique_output_paths(
+        expected_outputs,
+        {"raw_trajectories_dir"},
+    )
+    ready_prepare_input_paths = _unique_output_paths(
+        expected_outputs,
+        {"lifeops_bench_results_dir"},
+    )
+    native_export_path = run_dir / "exports" / NATIVE_EXPORT_FILENAME
+    pending_native_exports = [str(native_export_path)] if raw_trajectory_paths else []
+    prepare_input_paths = [*pending_native_exports, *ready_prepare_input_paths]
+    prepare_script = REPO_ROOT / "packages/training/scripts/prepare_eliza1_trajectory_dataset.py"
+    prepare_output_dir = REPO_ROOT / "packages/training/data/trajectory-runs" / run_id
+    command = [sys.executable, str(prepare_script)]
+    for path in prepare_input_paths:
+        command.extend(["--input", path])
+    command.extend(["--output-dir", str(prepare_output_dir), "--strict-privacy"])
+    return {
+        "app_trajectory_export": {
+            "schema": "eliza.app_trajectory_export_reference.v1",
+            "method": "POST",
+            "endpoint": "/api/trajectories/export",
+            "ui": {
+                "tab": "Trajectories",
+                "menu_item": "JSONL Native Training",
+            },
+            "request_body": {
+                "format": "jsonl",
+                "includePrompts": True,
+                "jsonShape": "eliza_native_v1",
+            },
+            "suggested_output_path": str(native_export_path),
+            "source_raw_trajectory_paths": raw_trajectory_paths,
+            "notes": [
+                (
+                    "Raw recorder JSON under source_raw_trajectory_paths is for "
+                    "audit/aggregation. Export or convert it to eliza_native_v1 "
+                    "before using it as training input."
+                ),
+                (
+                    "The app endpoint and Trajectories UI can export "
+                    "eliza_native_v1 JSONL from runtime trajectory storage."
+                ),
+            ],
+        },
+        "prepare_eliza1_trajectory_dataset": {
+            "schema": "eliza.prepare_eliza1_trajectory_dataset.inputs.v1",
+            "script": str(prepare_script),
+            "collection_manifest": str(manifest_path),
+            "collection_run_dir": str(run_dir),
+            "input_paths": prepare_input_paths,
+            "ready_input_paths": ready_prepare_input_paths,
+            "pending_input_paths": pending_native_exports,
+            "source_raw_trajectory_paths": raw_trajectory_paths,
+            "output_dir": str(prepare_output_dir),
+            "command": command,
+            "requires_privacy_review": True,
+            "notes": [
+                (
+                    "ready_input_paths can be consumed directly after privacy review. "
+                    "pending_input_paths must be produced first, usually from the "
+                    "app trajectory export reference above."
+                ),
+                (
+                    "The prepare script accepts files or directories and recursively "
+                    "reads JSON, JSONL, and NDJSON inputs."
+                ),
+            ],
+        }
+    }
+
+
+def _cost_caps(max_cost_usd: float | None, suites: list[str]) -> dict[str, Any]:
+    effective_by_suite = {
+        "live-scenarios": None,
+        "scenario-benchmark": None,
+        "scenario-runner": None,
+        "lifeops-bench": (
+            max_cost_usd
+            if max_cost_usd is not None
+            else (DEFAULT_LIFEOPS_MAX_COST_USD if "lifeops-bench" in suites else None)
+        ),
+    }
+    enforced_by_suite = {
+        "live-scenarios": False,
+        "scenario-benchmark": False,
+        "scenario-runner": False,
+        "lifeops-bench": "lifeops-bench" in suites,
+    }
+    return {
+        "max_cost_usd": max_cost_usd,
+        "effective_max_cost_usd_by_suite": effective_by_suite,
+        "enforced_by_suite": enforced_by_suite,
+        "recorded_only_for_suites": [
+            suite for suite in suites if not enforced_by_suite.get(suite, False)
+        ],
+        "notes": [
+            "LifeOpsBench receives --max-cost-usd.",
+            (
+                "Scenario runner wrappers do not expose a native cost cap; "
+                "the cap is recorded for operator accounting."
+            ),
+        ],
+    }
+
+
+def _git_output(*args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.rstrip("\n")
+
+
+def _git_metadata() -> dict[str, Any]:
+    status_short = _git_output("status", "--short")
+    return {
+        "commit": _git_output("rev-parse", "HEAD"),
+        "branch": _git_output("branch", "--show-current")
+        or _git_output("rev-parse", "--abbrev-ref", "HEAD"),
+        "dirty": bool(status_short),
+    }
+
+
+def _worktree_metadata(run_dir: Path, manifest_path: Path) -> dict[str, Any]:
+    owned_status = _git_output("status", "--short", "--", *OWNED_FILES)
+    return {
+        "repo_root": str(REPO_ROOT),
+        "run_dir": str(run_dir),
+        "manifest_path": str(manifest_path),
+        "owned_files": [str(REPO_ROOT / path) for path in OWNED_FILES],
+        "owned_files_status": owned_status.splitlines() if owned_status else [],
+    }
 
 
 def _default_run_id() -> str:
@@ -450,6 +669,11 @@ def _lifeops_bench_plan(
     output_dir = run_dir / "lifeops-bench"
     evaluator_model = args.model or "configured-by-collector"
     judge_model = args.judge_model or "disabled-static-judge"
+    max_cost_usd = (
+        args.max_cost_usd
+        if args.max_cost_usd is not None
+        else DEFAULT_LIFEOPS_MAX_COST_USD
+    )
     argv = [
         sys.executable,
         "-m",
@@ -467,7 +691,7 @@ def _lifeops_bench_plan(
         "--seeds",
         str(args.lifeops_seeds),
         "--max-cost-usd",
-        f"{args.max_cost_usd:g}" if args.max_cost_usd is not None else "10",
+        f"{max_cost_usd:g}",
         "--output-dir",
         str(output_dir),
     ]
@@ -519,6 +743,14 @@ def _aggregate_plan(
         provider_label=args.provider,
         supports_cost_cap=False,
     )
+
+
+def _opus_env_keys(env: dict[str, str]) -> list[str]:
+    return [
+        key
+        for key in OPUS_MODEL_ENV_KEYS
+        if "opus" in str(env.get(key, "")).lower()
+    ]
 
 
 def build_plan(args: argparse.Namespace) -> CollectionPlan:
@@ -590,6 +822,8 @@ def build_plan(args: argparse.Namespace) -> CollectionPlan:
         validation_errors.append("at least one suite is required")
     if unknown_suites:
         validation_errors.append(f"unknown suite(s): {', '.join(unknown_suites)}")
+    if args.max_cost_usd is not None and args.max_cost_usd <= 0:
+        validation_errors.append("--max-cost-usd must be greater than 0")
     if not provider.runnable and not args.dry_run:
         validation_errors.append(
             f"provider label {provider.label!r} is a config placeholder and cannot be executed"
@@ -602,6 +836,19 @@ def build_plan(args: argparse.Namespace) -> CollectionPlan:
     judge_model = (args.judge_model or "").lower()
     if not args.dry_run and ("opus" in active_model or "opus" in judge_model):
         validation_errors.append("refusing to execute Opus; use dry-run for Opus labels only")
+    if (
+        not args.dry_run
+        and "opus" not in active_model
+        and "opus" not in judge_model
+    ):
+        effective_env = dict(os.environ)
+        effective_env.update(common_env)
+        blocked_env_keys = _opus_env_keys(effective_env)
+        if blocked_env_keys:
+            validation_errors.append(
+                "refusing to execute Opus from environment: "
+                + ", ".join(blocked_env_keys)
+            )
     if (
         not args.dry_run
         and "lifeops-bench" in suites
@@ -623,6 +870,8 @@ def build_plan(args: argparse.Namespace) -> CollectionPlan:
         suites=suites,
         commands=commands,
         provider_labels=labels,
+        git=_git_metadata(),
+        worktree=_worktree_metadata(run_dir, manifest_path),
         validation_errors=validation_errors,
         started_at=_now_iso(),
     )
@@ -752,7 +1001,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Write the manifest without running commands.",
+        help="Write the manifest without running commands. This is also the default.",
+    )
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Actually run planned commands. Required for non-dry collection.",
     )
     parser.add_argument(
         "--max-cost-usd",
@@ -834,6 +1088,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.dry_run and args.execute:
+        parser.error("--dry-run and --execute are mutually exclusive")
+    args.dry_run = not args.execute
     plan = build_plan(args)
     return execute_plan(plan, continue_on_error=args.continue_on_error)
 

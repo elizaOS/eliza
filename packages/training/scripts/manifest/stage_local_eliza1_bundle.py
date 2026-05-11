@@ -60,6 +60,7 @@ except ImportError:  # pragma: no cover - direct script execution path
     from eliza1_platform_plan import CONTEXTS_BY_TIER, text_artifact_name
 
 from benchmarks.eliza1_gates import apply_gates
+from scripts.quantization._kernel_manifest import kernel_manifest_fragment
 
 LOCAL_MODEL_ROOT: Final[Path] = (
     Path.home() / ".eliza" / "local-inference" / "models"
@@ -79,6 +80,7 @@ DEFAULT_DRAFTER_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.repaired.gguf",
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.gguf",
 )
+VISION_TIERS: Final[set[str]] = {"9b", "27b", "27b-256k"}
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
     "0_6b": (1500, 1800),
@@ -107,6 +109,7 @@ REQUIRED_RELEASE_DIRS: Final[tuple[str, ...]] = (
     "licenses",
     "evidence",
     "source",
+    "quantization",
 )
 
 
@@ -143,6 +146,37 @@ def _first_existing(candidates: Sequence[Path], label: str) -> Path:
             return path
     rendered = "\n  - ".join(str(p) for p in candidates)
     raise FileNotFoundError(f"no local {label} stand-in found:\n  - {rendered}")
+
+
+def _bundle_source_candidates(bundle_dir: Path, subdir: str) -> tuple[Path, ...]:
+    source_dir = bundle_dir / "source" / subdir
+    if not source_dir.is_dir():
+        return ()
+    return tuple(sorted(p for p in source_dir.glob("*.gguf") if p.is_file()))
+
+
+def _is_under(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _choose_source(
+    *,
+    explicit: Path | None,
+    bundle_dir: Path,
+    source_subdir: str,
+    fallback_candidates: Sequence[Path],
+    label: str,
+) -> Path:
+    if explicit is not None:
+        return explicit
+    bundled = _bundle_source_candidates(bundle_dir, source_subdir)
+    if bundled:
+        return bundled[0]
+    return _first_existing(fallback_candidates, label)
 
 
 def _json_write(path: Path, data: Mapping[str, Any]) -> None:
@@ -247,11 +281,12 @@ def _source_result(smoke: Mapping[str, Any] | None) -> str:
 
 def _publish_blocking_reasons(
     *,
+    tier: str,
     smoke: Mapping[str, Any] | None,
 ) -> list[str]:
     reasons = [
-        "text artifact is a local stand-in, not final Eliza-1 1_7b text weights",
-        "DFlash drafter is a local stand-in, not a drafter trained and verified against final Eliza-1 1_7b text weights",
+        f"text artifact is a local stand-in, not final Eliza-1 {tier} text weights",
+        f"DFlash drafter is a local stand-in, not a drafter trained and verified against final Eliza-1 {tier} text weights",
         "required text quality, ASR WER, VAD latency, expressive voice, DFlash acceptance, first-token, first-audio, barge-in, 30-turn, mobile RSS, and thermal evals are missing or failed",
         "required Metal, Vulkan, and CPU backend verification is not pass for the staged bytes",
         "text and DFlash license blobs are local provenance notes, not release-reviewed license attestations",
@@ -267,7 +302,7 @@ def _publish_blocking_reasons(
     return reasons
 
 
-def _write_licenses(bundle_dir: Path, *, force: bool) -> list[str]:
+def _write_licenses(bundle_dir: Path, *, tier: str, force: bool) -> list[str]:
     license_texts = {
         "LICENSE.text": (
             "Eliza-1 local text stand-in provenance note.\n\n"
@@ -288,6 +323,13 @@ def _write_licenses(bundle_dir: Path, *, force: bool) -> list[str]:
             "before any upload candidate is created.\n"
         ),
     }
+    if tier in VISION_TIERS:
+        license_texts["LICENSE.vision"] = (
+            "Eliza-1 local vision stand-in provenance note.\n\n"
+            "This bundle may use a source-only mmproj GGUF for runtime "
+            "layout testing. It is not a final Eliza-1 vision artifact and "
+            "is not release-reviewed for publishing.\n"
+        )
     written: list[str] = []
     for name, text in license_texts.items():
         path = bundle_dir / "licenses" / name
@@ -299,29 +341,83 @@ def _write_licenses(bundle_dir: Path, *, force: bool) -> list[str]:
     return written
 
 
+_GGUF_DRAFTER_TARGET_CHECKPOINT_KEY: Final[str] = (
+    "dflash-draft.target_checkpoint_sha256"
+)
+
+
+def _read_drafter_target_checkpoint_sha256(drafter_path: Path) -> str | None:
+    """Read the target text-checkpoint sha256 the drafter was distilled
+    against, recorded as a GGUF metadata string by ``distill_dflash_drafter.py``.
+
+    Returns ``None`` for local stand-in drafters (source-converted GGUFs
+    have no such key). The publish path treats a missing key as a hard
+    error; this staging helper only records what it finds.
+    """
+    try:
+        from gguf import GGUFReader  # type: ignore
+    except ImportError:
+        return None
+    try:
+        reader = GGUFReader(str(drafter_path), "r")
+    except Exception:
+        return None
+    field = reader.fields.get(_GGUF_DRAFTER_TARGET_CHECKPOINT_KEY)
+    if field is None:
+        return None
+    try:
+        return str(field.parts[field.data[0]].tobytes().decode("utf-8"))
+    except Exception:
+        return None
+
+
 def _write_target_meta(
     *,
     bundle_dir: Path,
     tier: str,
-    text_file: StagedFile,
+    text_files: Sequence[StagedFile],
     drafter_file: StagedFile,
     reasons: Sequence[str],
 ) -> None:
+    if not text_files:
+        raise ValueError("_write_target_meta requires at least one text file")
+    primary_text = text_files[0]
+    required_kernels = list(REQUIRED_KERNELS_BY_TIER.get(tier, ()))
+    drafter_target_sha = _read_drafter_target_checkpoint_sha256(
+        Path(drafter_file.destination)
+    )
+    # Drafter↔target alignment (training AGENTS.md §2): the drafter MUST
+    # have been distilled against the exact text checkpoint it ships with.
+    # Local stand-in drafters have no recorded hash, so this is False here;
+    # the real publish gate refuses to ship a drafter where this is not True.
+    drafter_matches_target = (
+        drafter_target_sha is not None
+        and drafter_target_sha == primary_text.sha256
+    )
     _json_write(
         bundle_dir / "dflash" / "target-meta.json",
         {
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "tier": tier,
             "status": "local-standin",
             "publishEligible": False,
             "targetText": {
                 "path": str(
-                    Path(text_file.destination).relative_to(bundle_dir)
+                    Path(primary_text.destination).relative_to(bundle_dir)
                 ),
-                "sha256": text_file.sha256,
-                "provenance": text_file.provenance,
+                "sha256": primary_text.sha256,
+                "provenance": primary_text.provenance,
                 "finalElizaWeights": False,
             },
+            "targetTextVariants": [
+                {
+                    "path": str(Path(item.destination).relative_to(bundle_dir)),
+                    "sha256": item.sha256,
+                    "provenance": item.provenance,
+                    "finalElizaWeights": False,
+                }
+                for item in text_files
+            ],
             "drafter": {
                 "path": str(
                     Path(drafter_file.destination).relative_to(bundle_dir)
@@ -329,9 +425,27 @@ def _write_target_meta(
                 "sha256": drafter_file.sha256,
                 "provenance": drafter_file.provenance,
                 "finalElizaWeights": False,
+                # sha256 of the text checkpoint this drafter was distilled
+                # against, copied from the drafter GGUF's
+                # `dflash-draft.target_checkpoint_sha256` metadata key.
+                "targetCheckpointSha256": drafter_target_sha,
+                "matchesTargetCheckpoint": drafter_matches_target,
             },
+            # Speculative-decode acceptance windows: [draftMin, draftMax]
+            # tokens proposed per step plus the measured acceptance rate.
+            # Null until a real bundle is published with measured numbers
+            # (eval harness → `evals/voice-rtf.json` + this block).
             "acceptanceWindow": None,
             "acceptanceRate": None,
+            # Kernel capabilities the runtime must satisfy to load this
+            # bundle's DFlash path. Mirrors `eliza-1.manifest.json`
+            # `kernels.required` so the dflash binary's CAPABILITIES.json
+            # can be checked against the bundle without re-reading the
+            # full manifest.
+            "kernelCaps": {
+                "required": required_kernels,
+                "optional": [],
+            },
             "publishBlockingReasons": list(reasons),
         },
     )
@@ -442,7 +556,11 @@ def _write_backend_reports(
     for backend in ELIZA_1_BACKENDS:
         if backend in supported:
             status = "fail"
-            report = f"evals/{backend}_verify.json"
+            report = (
+                "evals/cpu_reference.json"
+                if backend == "cpu"
+                else f"evals/{backend}_verify.json"
+            )
             reason = (
                 f"{backend} verification was not recorded as 8/8 PASS for "
                 "the staged local stand-in bytes"
@@ -526,6 +644,44 @@ def _write_platform_evidence(
     )
 
 
+def _write_quantization_sidecars(
+    *,
+    bundle_dir: Path,
+    tier: str,
+    generated_at: str,
+    reasons: Sequence[str],
+) -> list[str]:
+    specs = (
+        ("turboquant.json", "turboquant"),
+        ("fused_turboquant.json", "fused-turboquant"),
+        ("qjl_config.json", "qjl"),
+        ("polarquant_config.json", "polarquant"),
+    )
+    written: list[str] = []
+    for filename, method in specs:
+        rel = Path("quantization") / filename
+        _json_write(
+            bundle_dir / rel,
+            {
+                "schemaVersion": 1,
+                "tier": tier,
+                "method": method,
+                "status": "local-standin",
+                "publishEligible": False,
+                "generatedAt": generated_at,
+                "kernel_manifest": kernel_manifest_fragment(method),
+                "runtimeContract": {
+                    "required": True,
+                    "skipPolicy": "hard-error",
+                    "finalElizaWeights": False,
+                },
+                "publishBlockingReasons": list(reasons),
+            },
+        )
+        written.append(str(rel))
+    return written
+
+
 def _collect_files(bundle_dir: Path) -> dict[str, list[FileEntry]]:
     def entries(subdir: str, *, text: bool = False) -> list[FileEntry]:
         root = bundle_dir / subdir
@@ -573,6 +729,7 @@ def _write_lineage(
     bundle_dir: Path,
     text_file: StagedFile,
     drafter_file: StagedFile,
+    vision_file: StagedFile | None = None,
 ) -> dict[str, LineageEntry]:
     existing = {
         slot: asdict(entry)
@@ -596,6 +753,14 @@ def _write_lineage(
             },
         }
     )
+    if vision_file is not None:
+        existing["vision"] = {
+            "base": (
+                f"local-standin:{vision_file.source}"
+                f"@sha256:{vision_file.sha256}"
+            ),
+            "license": "local stand-in; release license not attested",
+        }
     _json_write(bundle_dir / "lineage.json", existing)
     return _read_lineage(bundle_dir)
 
@@ -733,18 +898,23 @@ def _write_release_evidence(
             return []
         return sorted(str(p.relative_to(bundle_dir)) for p in root.iterdir() if p.is_file())
 
-    license_files = sorted(
-        str(p.relative_to(bundle_dir))
-        for p in (bundle_dir / "licenses").iterdir()
-        if p.is_file()
-    )
+    license_files = [
+        "licenses/LICENSE.text",
+        "licenses/LICENSE.voice",
+        "licenses/LICENSE.dflash",
+        "licenses/LICENSE.eliza-1",
+        "licenses/LICENSE.asr",
+        "licenses/LICENSE.vad",
+    ]
+    if tier in VISION_TIERS:
+        license_files.append("licenses/LICENSE.vision")
     _json_write(
         bundle_dir / "evidence" / "release.json",
         {
             "schemaVersion": 1,
             "generatedAt": generated_at,
             "tier": tier,
-            "repoId": f"elizalabs/eliza-1-{tier}",
+            "repoId": f"elizaos/eliza-1-{tier}",
             "releaseState": "local-standin",
             "publishEligible": False,
             "defaultEligible": False,
@@ -767,13 +937,12 @@ def _write_release_evidence(
             ],
             "standIns": [asdict(item) for item in staged],
             "checksumManifest": str(CHECKSUM_PATH),
-            "evalReports": [
-                "evals/aggregate.json",
-                "evals/text-eval.json",
-                "evals/voice-rtf.json",
-                "evals/e2e-loop.json",
-                "evals/local_staging_validation.json",
-            ],
+            "evalReports": rels("evals"),
+            "quantizationSidecars": sorted(
+                str(p.relative_to(bundle_dir))
+                for p in (bundle_dir / "quantization").glob("*.json")
+                if p.is_file()
+            ),
             "licenseFiles": license_files,
             "kernelDispatchReports": {
                 backend: f"evals/{backend}_dispatch.json"
@@ -783,7 +952,7 @@ def _write_release_evidence(
                 "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json"
             },
             "hf": {
-                "repoId": f"elizalabs/eliza-1-{tier}",
+                "repoId": f"elizaos/eliza-1-{tier}",
                 "status": "blocked-local-standin",
             },
             "publishBlockingReasons": list(reasons),
@@ -895,15 +1064,25 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
     _ensure_release_dirs(bundle_dir)
     generated_at = args.generated_at or _now_iso()
     git_sha = _git_short_sha()
-    ctx = args.context or CONTEXTS_BY_TIER[tier][-1]
-
-    text_source = args.text_source or _first_existing(
-        DEFAULT_TEXT_STANDIN_CANDIDATES,
-        "text",
+    contexts = (
+        CONTEXTS_BY_TIER[tier]
+        if getattr(args, "all_contexts", False)
+        else (args.context or CONTEXTS_BY_TIER[tier][-1],)
     )
-    drafter_source = args.drafter_source or _first_existing(
-        DEFAULT_DRAFTER_STANDIN_CANDIDATES,
-        "DFlash drafter",
+
+    text_source = _choose_source(
+        explicit=args.text_source,
+        bundle_dir=bundle_dir,
+        source_subdir="text",
+        fallback_candidates=DEFAULT_TEXT_STANDIN_CANDIDATES,
+        label="text",
+    )
+    drafter_source = _choose_source(
+        explicit=args.drafter_source,
+        bundle_dir=bundle_dir,
+        source_subdir="dflash",
+        fallback_candidates=DEFAULT_DRAFTER_STANDIN_CANDIDATES,
+        label="DFlash drafter",
     )
     smoke_report_path = (
         args.local_smoke_report
@@ -912,38 +1091,62 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
     )
     smoke = _load_smoke_report(smoke_report_path)
     voice_rtf = _voice_rtf_from_smoke(smoke)
-    reasons = _publish_blocking_reasons(smoke=smoke)
+    reasons = _publish_blocking_reasons(tier=tier, smoke=smoke)
 
-    text_dest = bundle_dir / text_artifact_name(tier, ctx)
     drafter_dest = bundle_dir / "dflash" / f"drafter-{tier}.gguf"
-    staged = [
+    text_staged = [
         _stage_file(
-            role="text",
+            role=f"text:{ctx}",
             source=text_source,
-            destination=text_dest,
-            provenance="local-standin",
+            destination=bundle_dir / text_artifact_name(tier, ctx),
+            provenance=(
+                "local-source-candidate"
+                if _is_under(text_source, bundle_dir / "source")
+                else "local-standin"
+            ),
             force=args.force,
-        ),
+        )
+        for ctx in contexts
+    ]
+    staged = [
+        *text_staged,
         _stage_file(
             role="dflash",
             source=drafter_source,
             destination=drafter_dest,
-            provenance="local-standin",
+            provenance=(
+                "local-source-candidate"
+                if _is_under(drafter_source, bundle_dir / "source")
+                else "local-standin"
+            ),
             force=args.force,
         ),
     ]
+    vision_candidates = _bundle_source_candidates(bundle_dir, "vision")
+    if tier in VISION_TIERS and vision_candidates:
+        staged.append(
+            _stage_file(
+                role="vision",
+                source=vision_candidates[0],
+                destination=bundle_dir / "vision" / f"mmproj-{tier}.gguf",
+                provenance="local-source-candidate",
+                force=args.force,
+            )
+        )
 
-    _write_licenses(bundle_dir, force=args.force)
+    _write_licenses(bundle_dir, tier=tier, force=args.force)
+    vision_staged = next((item for item in staged if item.role == "vision"), None)
     lineage = _write_lineage(
         bundle_dir=bundle_dir,
-        text_file=staged[0],
-        drafter_file=staged[1],
+        text_file=text_staged[0],
+        drafter_file=staged[len(text_staged)],
+        vision_file=vision_staged,
     )
     _write_target_meta(
         bundle_dir=bundle_dir,
         tier=tier,
-        text_file=staged[0],
-        drafter_file=staged[1],
+        text_files=text_staged,
+        drafter_file=staged[len(text_staged)],
         reasons=reasons,
     )
     gate_report = _write_eval_files(
@@ -969,6 +1172,12 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
         git_sha=git_sha,
         smoke_report_path=smoke_report_path,
         smoke=smoke,
+        reasons=reasons,
+    )
+    quantization_sidecars = _write_quantization_sidecars(
+        bundle_dir=bundle_dir,
+        tier=tier,
+        generated_at=generated_at,
         reasons=reasons,
     )
 
@@ -1036,6 +1245,7 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
         "publishEligible": False,
         "defaultEligible": False,
         "staged": [asdict(item) for item in staged],
+        "quantizationSidecars": quantization_sidecars,
         "manifestValidation": {
             "localNonPublishableOk": not manifest_local_errors,
             "localNonPublishableErrors": list(manifest_local_errors),
@@ -1057,6 +1267,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--text-source", type=Path, default=None)
     ap.add_argument("--drafter-source", type=Path, default=None)
     ap.add_argument("--context", choices=tuple({c for v in CONTEXTS_BY_TIER.values() for c in v}), default=None)
+    ap.add_argument(
+        "--all-contexts",
+        action="store_true",
+        help="Stage every required context variant for the tier using the selected source candidate.",
+    )
     ap.add_argument("--version", default="0.0.0-local.1")
     ap.add_argument("--generated-at", default=None)
     ap.add_argument("--local-smoke-report", type=Path, default=None)

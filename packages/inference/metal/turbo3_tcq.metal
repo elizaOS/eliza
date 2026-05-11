@@ -61,13 +61,14 @@ kernel void kernel_turbo3_tcq_dot(
         | (uint(blk->qs[byte_idx0 + 1]) << 8)
         | (uint(blk->qs[byte_idx0 + 2]) << 16);
 
-    float acc = 0.0f;
-    for (uint local = 0; local < 4; ++local) {
-        uint state = (raw24 >> (bit_off0 + local * 3)) & 0x1FFu;
-        float k_val = codebook[state] * norm;
-        float q_val = q[q_base + local];
-        acc = fma(q_val, k_val, acc);
-    }
+    device const float4 * q4 = (device const float4 *)(q + q_base);
+    float4 qv = q4[0];
+    uint state0 = (raw24 >> (bit_off0 + 0u)) & 0x1FFu;
+    uint state1 = (raw24 >> (bit_off0 + 3u)) & 0x1FFu;
+    uint state2 = (raw24 >> (bit_off0 + 6u)) & 0x1FFu;
+    uint state3 = (raw24 >> (bit_off0 + 9u)) & 0x1FFu;
+    float4 kv = float4(codebook[state0], codebook[state1], codebook[state2], codebook[state3]) * norm;
+    float acc = dot(qv, kv);
 
     float sum = simd_sum(acc);
     if (tid == 0) {
@@ -114,13 +115,14 @@ kernel void kernel_turbo3_tcq_dot_multi(
             | (uint(blk->qs[byte_idx0 + 1]) << 8)
             | (uint(blk->qs[byte_idx0 + 2]) << 16);
 
-        float acc = 0.0f;
-        for (uint local = 0; local < 4; ++local) {
-            uint state = (raw24 >> (bit_off0 + local * 3)) & 0x1FFu;
-            float k_val = codebook[state] * norm;
-            float q_val = q[q_base + local];
-            acc = fma(q_val, k_val, acc);
-        }
+        device const float4 * q4 = (device const float4 *)(q + q_base);
+        float4 qv = q4[0];
+        uint state0 = (raw24 >> (bit_off0 + 0u)) & 0x1FFu;
+        uint state1 = (raw24 >> (bit_off0 + 3u)) & 0x1FFu;
+        uint state2 = (raw24 >> (bit_off0 + 6u)) & 0x1FFu;
+        uint state3 = (raw24 >> (bit_off0 + 9u)) & 0x1FFu;
+        float4 kv = float4(codebook[state0], codebook[state1], codebook[state2], codebook[state3]) * norm;
+        float acc = dot(qv, kv);
 
         float sum = simd_sum(acc);
         if (tid == 0) {

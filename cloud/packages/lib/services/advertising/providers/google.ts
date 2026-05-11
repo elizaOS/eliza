@@ -13,6 +13,7 @@ import type {
   CampaignMetrics,
   CreateCampaignInput,
   CreateCreativeInput,
+  GetMediaStatusInput,
   UpdateCampaignInput,
   UploadMediaInput,
 } from "../types";
@@ -34,6 +35,8 @@ interface GoogleAdsCustomer {
   id: string;
   descriptiveName: string;
 }
+
+type GoogleAdsSearchStreamResponse<T> = { results?: T[] } | Array<{ results?: T[] }>;
 
 async function googleAdsRequest<T>(
   endpoint: string,
@@ -127,6 +130,17 @@ function extractYouTubeVideoId(rawUrl: string): string | undefined {
 function normalizeYouTubeVideoId(value: string): string | undefined {
   const id = value.trim();
   return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : undefined;
+}
+
+function firstGoogleAdsSearchResult<T>(response: GoogleAdsSearchStreamResponse<T>): T | undefined {
+  if (Array.isArray(response)) {
+    for (const batch of response) {
+      const result = batch.results?.[0];
+      if (result) return result;
+    }
+    return undefined;
+  }
+  return response.results?.[0];
 }
 
 async function createGoogleYouTubeVideoAsset(
@@ -262,9 +276,11 @@ export const googleAdsProvider: AdProvider = {
     for (const resourceName of data.resourceNames || []) {
       const customerId = resourceName.replace("customers/", "");
 
-      const customerResponse = await googleAdsRequest<{
-        results: Array<{ customer: GoogleAdsCustomer }>;
-      }>("/googleAds:searchStream", credentials.accessToken, customerId, {
+      const customerResponse = await googleAdsRequest<
+        GoogleAdsSearchStreamResponse<{
+          customer: GoogleAdsCustomer;
+        }>
+      >("/googleAds:searchStream", credentials.accessToken, customerId, {
         method: "POST",
         body: JSON.stringify({
           query: `SELECT customer.id, customer.descriptive_name FROM customer LIMIT 1`,
@@ -277,8 +293,9 @@ export const googleAdsProvider: AdProvider = {
         return null;
       });
 
-      if (customerResponse?.results?.[0]) {
-        const customer = customerResponse.results[0].customer;
+      const row = customerResponse ? firstGoogleAdsSearchResult(customerResponse) : undefined;
+      if (row) {
+        const customer = row.customer;
         accounts.push({
           id: customer.id,
           name: customer.descriptiveName || `Account ${customer.id}`,
@@ -789,6 +806,92 @@ export const googleAdsProvider: AdProvider = {
       return {
         success: false,
         error: error instanceof Error ? error.message : "Google Ads media upload failed",
+      };
+    }
+  },
+
+  async getMediaStatus(
+    credentials: AdAccountCredentials,
+    accountId: string,
+    input: GetMediaStatusInput,
+  ) {
+    try {
+      if (!input.providerAssetResourceName.includes("/youTubeVideoUploads/")) {
+        return {
+          success: true,
+          providerAssetId: input.providerAssetResourceName,
+          providerAssetResourceName: input.providerAssetResourceName,
+          status: "AVAILABLE",
+          ready: true,
+        };
+      }
+      if (
+        !/^customers\/\d+\/youTubeVideoUploads\/[a-zA-Z0-9_-]+$/.test(
+          input.providerAssetResourceName,
+        )
+      ) {
+        return {
+          success: false,
+          error: "Invalid Google Ads video upload resource name",
+        };
+      }
+
+      const response = await googleAdsRequest<
+        GoogleAdsSearchStreamResponse<{
+          youTubeVideoUpload: {
+            resourceName?: string;
+            videoId?: string;
+            state?: string;
+          };
+        }>
+      >("/googleAds:searchStream", credentials.accessToken, accountId, {
+        method: "POST",
+        body: JSON.stringify({
+          query: `
+            SELECT
+              you_tube_video_upload.resource_name,
+              you_tube_video_upload.video_id,
+              you_tube_video_upload.state
+            FROM you_tube_video_upload
+            WHERE you_tube_video_upload.resource_name = '${input.providerAssetResourceName}'
+          `,
+        }),
+      });
+
+      const upload = firstGoogleAdsSearchResult(response)?.youTubeVideoUpload;
+      if (!upload) {
+        return {
+          success: false,
+          error: "Google Ads video upload was not found",
+        };
+      }
+
+      const ready = upload.state === "PROCESSED" && Boolean(upload.videoId);
+      return {
+        success: true,
+        providerAssetId: input.providerAssetResourceName,
+        providerAssetResourceName: upload.resourceName ?? input.providerAssetResourceName,
+        providerAssetUrl:
+          ready && upload.videoId ? `https://www.youtube.com/watch?v=${upload.videoId}` : undefined,
+        status: upload.state,
+        ready,
+        metadata: {
+          youtubeVideoId: upload.videoId,
+          youtubeUrl:
+            ready && upload.videoId
+              ? `https://www.youtube.com/watch?v=${upload.videoId}`
+              : undefined,
+        },
+      };
+    } catch (error) {
+      logger.error("[GoogleAds] Media status failed", {
+        accountId,
+        providerAssetResourceName: input.providerAssetResourceName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Google Ads media status failed",
       };
     }
   },

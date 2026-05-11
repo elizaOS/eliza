@@ -169,11 +169,26 @@ export interface UploadMediaInput {
   thumbnailUrl?: string;
 }
 
+export interface GetMediaStatusInput {
+  providerAssetResourceName: string;
+}
+
 export interface AdProviderMediaUploadResult {
   success: boolean;
   providerAssetId?: string;
   providerAssetUrl?: string;
   providerAssetResourceName?: string;
+  error?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AdProviderMediaStatusResult {
+  success: boolean;
+  providerAssetId?: string;
+  providerAssetUrl?: string;
+  providerAssetResourceName?: string;
+  status?: string;
+  ready?: boolean;
   error?: string;
   metadata?: Record<string, unknown>;
 }
@@ -271,6 +286,16 @@ export interface AdProvider {
     accountId: string,
     input: UploadMediaInput,
   ): Promise<AdProviderMediaUploadResult>;
+
+  /**
+   * Reads provider-side media processing state for async provider uploads.
+   * Synchronous asset libraries may return ready=true immediately or omit this.
+   */
+  getMediaStatus?(
+    credentials: AdAccountCredentials,
+    accountId: string,
+    input: GetMediaStatusInput,
+  ): Promise<AdProviderMediaStatusResult>;
 
   /**
    * Gets campaign metrics/analytics.

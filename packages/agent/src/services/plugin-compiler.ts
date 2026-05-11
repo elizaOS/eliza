@@ -78,38 +78,51 @@ export class PluginCompiler {
     const loader = inferLoader(entry);
 
     const start = Date.now();
-    const result = await esbuild.build({
-      stdin: {
-        contents: entrySource,
-        resolveDir: path.dirname(entryDiskPath),
-        sourcefile: path.basename(entryDiskPath),
-        loader,
-      },
-      bundle,
-      write: false,
-      format,
-      target,
-      platform: "node",
-      external: [...external],
-      sourcemap: sourcemap ? "inline" : false,
-      minify,
-      logLevel: "silent",
-    });
+    let warnings: esbuild.Message[] = [];
+    let output: string | Uint8Array;
+
+    try {
+      const result = await esbuild.build({
+        stdin: {
+          contents: entrySource,
+          resolveDir: path.dirname(entryDiskPath),
+          sourcefile: path.basename(entryDiskPath),
+          loader,
+        },
+        bundle,
+        write: false,
+        format,
+        target,
+        platform: "node",
+        external: [...external],
+        sourcemap: sourcemap ? "inline" : false,
+        minify,
+        logLevel: "silent",
+      });
+
+      if (!result.outputFiles || result.outputFiles.length === 0) {
+        throw new Error(
+          "PluginCompiler.compile: esbuild produced no output files",
+        );
+      }
+
+      const primary = result.outputFiles[0];
+      if (!primary) {
+        throw new Error("PluginCompiler.compile: esbuild produced no output");
+      }
+
+      warnings = result.warnings;
+      output = primary.contents;
+    } catch (error) {
+      if (!isEsbuildServiceStoppedError(error)) {
+        throw error;
+      }
+      output = transpileWithBun(entrySource, loader);
+    }
 
     const durationMs = Date.now() - start;
 
-    if (!result.outputFiles || result.outputFiles.length === 0) {
-      throw new Error(
-        "PluginCompiler.compile: esbuild produced no output files",
-      );
-    }
-
-    const primary = result.outputFiles[0];
-    if (!primary) {
-      throw new Error("PluginCompiler.compile: esbuild produced no output");
-    }
-
-    await vfs.writeFile(resolvedOut, primary.contents);
+    await vfs.writeFile(resolvedOut, output);
 
     void outDiskPath;
 
@@ -117,7 +130,7 @@ export class PluginCompiler {
       outFile: vfs.resolveVirtualPath(resolvedOut),
       format,
       target,
-      warnings: result.warnings,
+      warnings,
       durationMs,
     };
   }
@@ -152,4 +165,50 @@ function defaultOutFile(entry: string): string {
     .pop()
     ?.replace(/\.(tsx?|jsx?|mjs|cjs)$/i, "");
   return `dist/${stem}.js`;
+}
+
+function isEsbuildServiceStoppedError(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  return /service (?:was stopped|is no longer running)/i.test(message);
+}
+
+function transpileWithBun(entrySource: string, loader: esbuild.Loader): string {
+  const bunGlobal = globalThis as typeof globalThis & {
+    Bun?: {
+      Transpiler?: new (options: {
+        loader: "js" | "jsx" | "ts" | "tsx";
+        target?: "browser" | "bun" | "node";
+      }) => { transformSync(source: string): string };
+    };
+  };
+  const Transpiler = bunGlobal.Bun?.Transpiler;
+  if (!Transpiler) {
+    throw new Error(
+      "PluginCompiler.compile: esbuild service stopped and Bun.Transpiler is unavailable",
+    );
+  }
+
+  const transpiler = new Transpiler({
+    loader: toBunLoader(loader),
+    target: "node",
+  });
+  return transpiler.transformSync(entrySource);
+}
+
+function toBunLoader(loader: esbuild.Loader): "js" | "jsx" | "ts" | "tsx" {
+  switch (loader) {
+    case "tsx":
+      return "tsx";
+    case "jsx":
+      return "jsx";
+    case "js":
+      return "js";
+    default:
+      return "ts";
+  }
 }

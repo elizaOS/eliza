@@ -40,6 +40,12 @@ export interface DflashRuntimeStatus {
   required: boolean;
   binaryPath: string | null;
   reason: string;
+  /**
+   * Kernels actually compiled into the installed binary, parsed from
+   * CAPABILITIES.json next to the managed binary. Null for older/manual
+   * binaries that do not ship the probe file.
+   */
+  capabilities: DflashBinaryCapabilities | null;
 }
 
 const DEFAULT_HOST = "127.0.0.1";
@@ -68,6 +74,82 @@ function managedDflashBinaryPath(): string {
     platformKey(),
     "llama-server",
   );
+}
+
+function managedDflashCapabilitiesPath(): string {
+  return path.join(
+    localInferenceRoot(),
+    "bin",
+    "dflash",
+    platformKey(),
+    "CAPABILITIES.json",
+  );
+}
+
+export interface DflashBinaryCapabilities {
+  target: string;
+  platform: string;
+  arch: string;
+  backend: string;
+  builtAt: string;
+  fork: string;
+  forkCommit: string;
+  kernels: {
+    dflash: boolean;
+    turbo3: boolean;
+    turbo4: boolean;
+    turbo3_tcq: boolean;
+    qjl_full: boolean;
+    polarquant: boolean;
+    lookahead: boolean;
+    ngramDraft: boolean;
+  };
+  binaries: string[];
+}
+
+let capabilitiesCache: {
+  path: string;
+  mtimeMs: number;
+  caps: DflashBinaryCapabilities;
+} | null = null;
+
+export function readDflashBinaryCapabilities(): DflashBinaryCapabilities | null {
+  const capsPath = managedDflashCapabilitiesPath();
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(capsPath);
+  } catch {
+    return null;
+  }
+  if (
+    capabilitiesCache &&
+    capabilitiesCache.path === capsPath &&
+    capabilitiesCache.mtimeMs === stat.mtimeMs
+  ) {
+    return capabilitiesCache.caps;
+  }
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(capsPath, "utf8"),
+    ) as DflashBinaryCapabilities;
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof parsed.kernels === "object" &&
+      parsed.kernels !== null
+    ) {
+      capabilitiesCache = {
+        path: capsPath,
+        mtimeMs: stat.mtimeMs,
+        caps: parsed,
+      };
+      return parsed;
+    }
+  } catch {
+    // Older/manual binaries may omit or corrupt CAPABILITIES.json; callers
+    // treat null as "unknown" and let runtime load checks enforce support.
+  }
+  return null;
 }
 
 function isMetalDflashRuntime(): boolean {
@@ -144,6 +226,7 @@ export function resolveDflashBinary(): string | null {
 
 export function getDflashRuntimeStatus(): DflashRuntimeStatus {
   const binary = resolveDflashBinary();
+  const capabilities = readDflashBinaryCapabilities();
   if (!dflashEnabled()) {
     const managedBinaryExists = fs.existsSync(managedDflashBinaryPath());
     const reason =
@@ -155,6 +238,7 @@ export function getDflashRuntimeStatus(): DflashRuntimeStatus {
       required: dflashRequired(),
       binaryPath: binary,
       reason,
+      capabilities,
     };
   }
   if (!binary) {
@@ -164,6 +248,7 @@ export function getDflashRuntimeStatus(): DflashRuntimeStatus {
       binaryPath: null,
       reason:
         "No compatible llama-server found. Set ELIZA_DFLASH_LLAMA_SERVER or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.",
+      capabilities,
     };
   }
   return {
@@ -171,6 +256,7 @@ export function getDflashRuntimeStatus(): DflashRuntimeStatus {
     required: dflashRequired(),
     binaryPath: binary,
     reason: "DFlash llama-server binary found.",
+    capabilities,
   };
 }
 

@@ -59,13 +59,20 @@ def run_typescript_skill(
         f.write(code)
 
     runner = str(SKILL_RUNNER_DIR / "runSkill.ts")
-    completed = subprocess.run(
-        ["bun", runner, code_file, str(timeout_ms), rpc_url, private_key, str(chain_id)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        cwd=str(SKILL_RUNNER_DIR),
-    )
+    try:
+        completed = subprocess.run(
+            ["bun", runner, code_file, str(timeout_ms), rpc_url, private_key, str(chain_id)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=str(SKILL_RUNNER_DIR),
+        )
+    except FileNotFoundError:
+        return {
+            "results": [],
+            "error": "Bun command not found. Install Bun or add it to PATH for EVM skill execution.",
+            "stderr": "",
+        }
 
     stdout_lines = (completed.stdout or "").strip().split("\n")
     last_line = stdout_lines[-1] if stdout_lines else ""
@@ -491,7 +498,12 @@ async def main() -> None:
     # Matches the pattern used by clawbench / swe_bench / gaia / rlm-bench so
     # the orchestrator can run evm without a manually started server.
     bench_server = None
-    if not os.environ.get("ELIZA_BENCH_URL"):
+    harness = (
+        os.environ.get("ELIZA_BENCH_HARNESS")
+        or os.environ.get("BENCHMARK_HARNESS")
+        or "eliza"
+    ).strip().lower()
+    if harness == "eliza" and not os.environ.get("ELIZA_BENCH_URL"):
         from eliza_adapter.server_manager import ElizaServerManager
 
         bench_server = ElizaServerManager()

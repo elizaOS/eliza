@@ -1,18 +1,18 @@
-"""Publish a fused-kernel "milady-optimized" GGUF to the elizalabs org.
+"""Publish a fused-kernel "milady-optimized" GGUF to the elizaos org.
 
 This is the wrapper around `huggingface_hub` that takes a directory
 produced by W5-Pipeline (a fully-optimized GGUF + manifest.json + a
-README.md) and ships it to `elizalabs/<base>-milady-optimized` (or the
+README.md) and ships it to `elizaos/<base>-milady-optimized` (or the
 sibling drafter repo). It is distinct from `push_model_to_hf.py`, which
 publishes the *base* eliza-1 fine-tunes in stock GGUF / fp8 / polarquant
-flavors under the `elizalabs/*` org — those repos contain one optimization
-at a time. The elizalabs repos contain the **fused** stack
+flavors under the `elizaos/*` org — those repos contain one optimization
+at a time. The elizaos repos contain the **fused** stack
 (Q4_POLAR + QJL1_256 K + TBQ V + DFlash) in a single file.
 
 Refuses to ship stock-format GGUFs: every file the script publishes must
 declare both `Q4_POLAR` *and* `qjl1_256` in its GGUF tensor type table.
 This is the safety rail that keeps an accidentally-mislabeled K-quant
-out of the elizalabs org.
+out of the elizaos org.
 
 Idempotency: after a successful upload the script writes
 `published.json` next to the GGUF with the canonical resolve URL,
@@ -26,13 +26,13 @@ Usage::
     # GGUF metadata, refuses to continue if Q4_POLAR/QJL1_256 are missing.
     uv run python scripts/publish_milady_model.py \\
         --model-dir /path/to/qwen3.5-4b-milady-optimized \\
-        --repo-id elizalabs/qwen3.5-4b-milady-optimized \\
+        --repo-id elizaos/qwen3.5-4b-milady-optimized \\
         --dry-run
 
     # Real push.
     HF_TOKEN=hf_xxx uv run python scripts/publish_milady_model.py \\
         --model-dir /path/to/qwen3.5-4b-milady-optimized \\
-        --repo-id elizalabs/qwen3.5-4b-milady-optimized
+        --repo-id elizaos/qwen3.5-4b-milady-optimized
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ log = logging.getLogger("publish_milady_model")
 # ---------------------------------------------------------------------------
 # Required GGUF metadata markers. Both must appear somewhere in the GGUF
 # tensor type / metadata header for the file to be considered "fused-kernel
-# optimized" and pushable to elizalabs.
+# optimized" and pushable to elizaos.
 #
 # We grep the binary header directly rather than parse with gguf-py because
 # (a) gguf-py is not a hard dependency of this repo, and (b) the header
@@ -67,7 +67,7 @@ log = logging.getLogger("publish_milady_model")
 # ---------------------------------------------------------------------------
 
 REQUIRED_GGUF_MARKERS: tuple[bytes, ...] = (b"q4_polar", b"qjl1_256")
-ELIZA_1_HF_ORG = "elizalabs"
+ELIZA_1_HF_ORG = "elizaos"
 
 # How many bytes of the GGUF header to scan. The tensor type table lives
 # near the start of the file — 4 MB is generous and avoids loading a
@@ -110,7 +110,7 @@ def _find_gguf(model_dir: Path) -> Path:
     """Return the single GGUF inside the model dir.
 
     We deliberately reject directories with zero or multiple GGUFs:
-    every elizalabs repo ships one target file. Drafter repos ship one
+    every elizaos repo ships one target file. Drafter repos ship one
     drafter file. Multi-file bundles use separate repos.
     """
     candidates = sorted(model_dir.glob("*.gguf"))
@@ -122,7 +122,7 @@ def _find_gguf(model_dir: Path) -> Path:
     if len(candidates) > 1:
         names = [p.name for p in candidates]
         raise SystemExit(
-            f"multiple GGUFs in {model_dir}: {names}. Each elizalabs repo "
+            f"multiple GGUFs in {model_dir}: {names}. Each elizaos repo "
             "ships exactly one target/drafter GGUF — split the bundles "
             "across separate repos."
         )

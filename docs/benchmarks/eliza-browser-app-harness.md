@@ -19,12 +19,10 @@ bun run harness:browser-app -- --dry-run --target-url https://example.com/
 Attach to an already-running desktop/API stack:
 
 ```sh
-bun run harness:browser-app -- \
+bun run harness:browser-app:strict -- \
   --no-launch \
   --target-url https://example.com/ \
   --prompt "Open the page and report its headline." \
-  --require-browser-tab \
-  --require-browser-events \
   --timeout 90s
 ```
 
@@ -64,11 +62,17 @@ tmp/eliza-browser-harness/<run-id>/
 - `--prompt-via-api`: send the prompt through `POST
   /api/conversations/:id/messages` instead of typing it into the UI.
 - `--require-browser-tab`: fail unless a browser workspace tab is observed by
-  the end of the run.
+  the end of the run and a fresh post-prompt tab matches the target URL.
 - `--require-browser-events`: fail unless browser workspace events are observed
-  by the end of the run.
+  by the end of the run and a fresh post-prompt event matches the target URL.
 - `--require-trajectory`: fail unless a trajectory record is observed by the
-  end of the run.
+  end of the run and a fresh post-prompt record contains the harness run marker
+  or target URL.
+- `--require-browser-action`: fail unless a fresh trajectory contains an
+  explicit browser action signal (`BROWSER`, `BROWSER_OPEN`, or
+  `PAGE_DELEGATE`) tied to the run marker or target URL.
+- `--overwrite`: delete an existing run directory before starting. Without this
+  flag, non-empty run directories are rejected to prevent stale artifact reads.
 - `--target-url <url>`: target URL for the agent's browser task.
 - `--timeout <ms|s|m>`: total polling time after the prompt is sent.
 - `--api-base <url>`: Eliza API base URL, default
@@ -90,6 +94,10 @@ Before prompting, the harness captures:
 - `GET /api/health`
 - `GET /api/status`
 - `GET /api/dev/stack`
+- baseline `GET /api/browser-workspace`
+- baseline `GET /api/browser-workspace/events`
+- baseline `GET /api/trajectories?limit=50&offset=0`
+- baseline local trajectory files under `tmp/eliza-browser-harness/<run-id>/trajectories`
 
 After sending the task prompt, it polls:
 
@@ -99,6 +107,10 @@ After sending the task prompt, it polls:
 - `GET /api/dev/console-log?maxLines=400&maxBytes=256000`
 - `GET /api/conversations/:id/messages` when `--prompt-via-api` created a
   known conversation.
+
+The final trajectory analysis merges `/api/trajectories` with local trajectory
+files emitted under the run directory, so desktop stacks without the trajectory
+HTTP route can still be validated.
 
 `/api/browser-workspace/events` and `/api/dev/console-log` may return `404` on
 some stacks. Those responses are recorded as artifacts rather than treated as
@@ -124,6 +136,8 @@ not click, type, navigate, or evaluate inside target websites.
 Common files:
 
 - `run-plan.json`: parsed options, guardrails, and final prompt text.
+- `baseline-*.json`, `baseline-observations.json`: pre-prompt browser and
+  trajectory snapshots used to prove post-prompt deltas.
 - `probe-health.json`, `probe-status.json`, `probe-dev-stack.json`: initial
   probe responses.
 - `discovery.json`: resolved API/UI URLs and probe status summary.
@@ -138,6 +152,8 @@ Common files:
 - `browser-workspace-events.jsonl`: event endpoint poll subset.
 - `poll-latest.json`: last response seen for each polled endpoint.
 - `final-*.json` or `final-*.txt`: final endpoint captures.
+- `final-local-trajectories.json` and `final-trajectories-merged.json`: local
+  plus HTTP trajectory evidence used by strict mode.
 - `analysis.json`: derived tab/event/trajectory counts, endpoint errors, and
   assertion results.
 - `eliza-app-initial.png`, `eliza-app-after-ui-prompt.png`,

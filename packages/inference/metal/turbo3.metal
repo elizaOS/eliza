@@ -84,17 +84,19 @@ kernel void kernel_turbo3_dot(
     uint sb = blk.signs[within0 >> 3];
     uint q_base = args.q_head * args.head_dim + elem0;
 
-    float acc = 0.0f;
-    for (uint local = 0; local < 4; ++local) {
-        uint within = within0 + local;            // within0..within0+3
-        uint low2 = (qb >> ((within & 3) * 2)) & 0x3;
-        uint hi1  = (sb >> (within & 7)) & 0x1;
-        uint idx  = low2 | (hi1 << 2);
-
-        float k_val = TURBO_CENTROIDS_3BIT[idx] * norm;
-        float q_val = q[q_base + local];
-        acc = fma(q_val, k_val, acc);
-    }
+    device const float4 * q4 = (device const float4 *)(q + q_base);
+    float4 qv = q4[0];
+    uint sign_shift = within0 & 7u;
+    uint idx0 = ((qb >> 0) & 0x3u) | (((sb >> (sign_shift + 0u)) & 0x1u) << 2);
+    uint idx1 = ((qb >> 2) & 0x3u) | (((sb >> (sign_shift + 1u)) & 0x1u) << 2);
+    uint idx2 = ((qb >> 4) & 0x3u) | (((sb >> (sign_shift + 2u)) & 0x1u) << 2);
+    uint idx3 = ((qb >> 6) & 0x3u) | (((sb >> (sign_shift + 3u)) & 0x1u) << 2);
+    float4 kv = float4(
+        TURBO_CENTROIDS_3BIT[idx0],
+        TURBO_CENTROIDS_3BIT[idx1],
+        TURBO_CENTROIDS_3BIT[idx2],
+        TURBO_CENTROIDS_3BIT[idx3]) * norm;
+    float acc = dot(qv, kv);
 
     // Threadgroup reduction. With threadgroup size == SIMD-group size == 32,
     // simd_sum returns the full 128-element dot product to every lane and lane
@@ -150,16 +152,19 @@ kernel void kernel_turbo3_dot_multi(
         uint qb = blk.qs[within0 >> 2];
         uint sb = blk.signs[within0 >> 3];
 
-        float acc = 0.0f;
-        for (uint local = 0; local < 4; ++local) {
-            uint within = within0 + local;
-            uint low2 = (qb >> ((within & 3) * 2)) & 0x3;
-            uint hi1  = (sb >> (within & 7)) & 0x1;
-            uint idx  = low2 | (hi1 << 2);
-            float k_val = TURBO_CENTROIDS_3BIT[idx] * norm;
-            float q_val = q[q_base + local];
-            acc = fma(q_val, k_val, acc);
-        }
+        device const float4 * q4 = (device const float4 *)(q + q_base);
+        float4 qv = q4[0];
+        uint sign_shift = within0 & 7u;
+        uint idx0 = ((qb >> 0) & 0x3u) | (((sb >> (sign_shift + 0u)) & 0x1u) << 2);
+        uint idx1 = ((qb >> 2) & 0x3u) | (((sb >> (sign_shift + 1u)) & 0x1u) << 2);
+        uint idx2 = ((qb >> 4) & 0x3u) | (((sb >> (sign_shift + 2u)) & 0x1u) << 2);
+        uint idx3 = ((qb >> 6) & 0x3u) | (((sb >> (sign_shift + 3u)) & 0x1u) << 2);
+        float4 kv = float4(
+            TURBO_CENTROIDS_3BIT[idx0],
+            TURBO_CENTROIDS_3BIT[idx1],
+            TURBO_CENTROIDS_3BIT[idx2],
+            TURBO_CENTROIDS_3BIT[idx3]) * norm;
+        float acc = dot(qv, kv);
 
         float sum = simd_sum(acc);
         if (tid == 0) {

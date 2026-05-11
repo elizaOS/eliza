@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Action, IAgentRuntime, Memory } from "../../types";
+import { _resetActionRolePolicyCacheForTests } from "../action-role-policy";
 import {
 	actionHasSubActions,
 	detectSubActionCycles,
@@ -44,6 +45,17 @@ function makeMessage(): Memory {
 }
 
 describe("sub-planner helpers", () => {
+	const ORIGINAL_ACTION_ROLE_POLICY = process.env.ACTION_ROLE_POLICY;
+
+	afterEach(() => {
+		if (ORIGINAL_ACTION_ROLE_POLICY === undefined) {
+			delete process.env.ACTION_ROLE_POLICY;
+		} else {
+			process.env.ACTION_ROLE_POLICY = ORIGINAL_ACTION_ROLE_POLICY;
+		}
+		_resetActionRolePolicyCacheForTests();
+	});
+
 	it("detects declared sub-actions and resolves them by exact name", () => {
 		const child = makeAction({ name: "CHILD" });
 		const parent = makeAction({
@@ -287,5 +299,57 @@ describe("sub-planner helpers", () => {
 				},
 			}),
 		).rejects.toThrow(/no sub-actions available/i);
+	});
+
+	it("exposes a child action when ACTION_ROLE_POLICY matches a child simile", async () => {
+		process.env.ACTION_ROLE_POLICY = JSON.stringify({ BASH: "NONE" });
+		_resetActionRolePolicyCacheForTests();
+		const child = makeAction({
+			name: "SHELL",
+			similes: ["BASH", "EXEC", "RUN_COMMAND"],
+			contexts: ["terminal"],
+			contextGate: { anyOf: ["terminal"] },
+			roleGate: { minRole: "OWNER" },
+		});
+		const parent = makeAction({
+			name: "PARENT",
+			contexts: ["general"],
+			subActions: ["SHELL"],
+			subPlanner: true,
+		});
+		const useModel = vi.fn(async () => ({
+			text: "",
+			toolCalls: [{ id: "call-1", name: "SHELL", arguments: {} }],
+		}));
+		const execute = vi.fn(async () => ({
+			success: true,
+			text: "shell done",
+			data: { actionName: "SHELL" },
+		}));
+
+		await runSubPlanner({
+			runtime: makeRuntime([parent, child], useModel),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: {
+				message: makeMessage(),
+				activeContexts: ["general"],
+				userRoles: ["GUEST"],
+			},
+			execute,
+			evaluate: async () => ({
+				success: true,
+				decision: "FINISH",
+				thought: "Done.",
+				messageToUser: "Done.",
+			}),
+		});
+
+		expect(execute).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.any(Object),
+			expect.objectContaining({ name: "SHELL" }),
+			expect.objectContaining({ actions: [child] }),
+		);
 	});
 });

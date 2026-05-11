@@ -1,0 +1,79 @@
+{
+  "agent": "openclaw",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132513Z_dd3c7c9c/mind2web__mind2web/run_mind2web_20260511T132519Z_2_9a0d480e/output"
+  ],
+  "benchmark_directory": "mind2web",
+  "benchmark_id": "mind2web",
+  "cache_metrics": {
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 0,
+    "cache_hit_ratio": 0.0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "cache_metrics": {
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 0,
+      "cache_hit_ratio": 0.0
+    },
+    "overall_element_accuracy": 0.3333333333333333,
+    "overall_operation_accuracy": 0.3333333333333333,
+    "overall_step_accuracy": 0.3333333333333333,
+    "overall_task_success_rate": 0,
+    "performance_metrics": {
+      "duration_seconds": 1.4704462499939837,
+      "mean_latency_ms": 846.459150314331,
+      "p95_latency_ms": 846.459150314331,
+      "throughput_per_second": 1.3601313206845767
+    },
+    "return_code": 0,
+    "token_metrics": {
+      "llm_call_count": 2,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "avg_prompt_tokens": 0.0,
+      "avg_completion_tokens": 0.0
+    },
+    "total_tasks": 1,
+    "trajectory_summary": {
+      "files": 2,
+      "turns": 2,
+      "prompt_chars": 72,
+      "repeated_prefixes": []
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 1.4704462499939837,
+    "mean_latency_ms": 846.459150314331,
+    "p95_latency_ms": 846.459150314331,
+    "throughput_per_second": 1.3601313206845767
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132513Z_dd3c7c9c/mind2web__mind2web/run_mind2web_20260511T132519Z_2_9a0d480e/output/mind2web-results.json",
+  "run_group_id": "rg_20260511T132513Z_dd3c7c9c",
+  "run_id": "run_mind2web_20260511T132519Z_2_9a0d480e",
+  "score": 0.3333333333333333,
+  "status": "succeeded",
+  "token_metrics": {
+    "llm_call_count": 2,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "avg_prompt_tokens": 0.0,
+    "avg_completion_tokens": 0.0
+  },
+  "trajectory_summary": {
+    "files": 2,
+    "turns": 2,
+    "prompt_chars": 72,
+    "repeated_prefixes": []
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-11T14:03:01.732690+00:00"
+}

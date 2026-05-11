@@ -6,15 +6,19 @@ Inputs:
   * LifeOpsBench result JSON emitted by `LifeOpsBenchRunner.save_results`.
 
 Outputs:
-  * `train.jsonl`, `val.jsonl`, `test.jsonl` for successful trajectories.
+  * `train.jsonl`, `val.jsonl`, `test.jsonl` as train-local-compatible
+    `eliza_native_v1` rows by default.
   * `repair_eval.jsonl` for failed or low-scoring trajectories.
+  * `trajectory_records/*.jsonl` with auditable candidate trajectory records
+    when `--output-format both` is used.
   * `manifest.json` with split counts, source counts, action counts, and
     privacy redaction totals.
 
-The SFT record is provider-agnostic: a Qwen/ChatML-oriented `messages` array,
-OpenAI-style function `tools`, canonicalized `actions`, and source/quality
-metadata. Native provider details are intentionally not used as behavioral
-fields.
+The internal trajectory record is provider-agnostic: a Qwen/ChatML-oriented
+`messages` array, OpenAI-style function `tools`, canonicalized `actions`, and
+source/quality metadata. The default disk splits are converted back to the
+existing `eliza_native_v1` training row shape because `train_local.py` loads
+JSONL rows through `scripts/format_for_training.py`.
 """
 
 from __future__ import annotations
@@ -39,7 +43,13 @@ SCHEMA_VERSION = "eliza.eliza1_trajectory_record.v1"
 MANIFEST_SCHEMA = "eliza.eliza1_trajectory_dataset_manifest.v1"
 NATIVE_FORMAT = "eliza_native_v1"
 NATIVE_BOUNDARIES = {"vercel_ai_sdk.generateText", "vercel_ai_sdk.streamText"}
+TRAINING_BOUNDARY = "vercel_ai_sdk.generateText"
 INPUT_SUFFIXES = {".json", ".jsonl", ".ndjson"}
+OUTPUT_FORMAT_NATIVE = "eliza-native"
+OUTPUT_FORMAT_NATIVE_ALIAS = "eliza-record"
+OUTPUT_FORMAT_TRAJECTORY = "trajectory-record"
+OUTPUT_FORMAT_BOTH = "both"
+TRAINABLE_OUTPUT_FORMATS = {OUTPUT_FORMAT_NATIVE, OUTPUT_FORMAT_NATIVE_ALIAS, OUTPUT_FORMAT_BOTH}
 
 LOG = logging.getLogger("prepare-eliza1-trajectories")
 
@@ -173,9 +183,13 @@ class ActionAliases:
         normalized = normalize_action_name(name)
         if not normalized:
             return ""
-        exact = self.aliases.get(normalized)
-        if exact:
-            return exact
+        seen: set[str] = set()
+        while normalized and normalized not in seen:
+            seen.add(normalized)
+            exact = self.aliases.get(normalized)
+            if not exact:
+                break
+            normalized = exact
         for src, dst in self.prefix_aliases:
             if normalized.startswith(src):
                 return f"{dst}{normalized[len(src):]}"
@@ -342,7 +356,7 @@ def normalize_role(value: Any) -> str:
     return "user"
 
 
-def normalize_message(raw: Any) -> dict[str, Any] | None:
+def normalize_message(raw: Any, aliases: ActionAliases | None = None) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
     msg: dict[str, Any] = {
@@ -353,6 +367,15 @@ def normalize_message(raw: Any) -> dict[str, Any] | None:
         msg["name"] = raw["name"]
     if isinstance(raw.get("tool_call_id"), str):
         msg["tool_call_id"] = raw["tool_call_id"]
+    raw_calls = raw.get("tool_calls", raw.get("toolCalls"))
+    if aliases is not None and isinstance(raw_calls, list):
+        tool_calls: list[dict[str, Any]] = []
+        for idx, item in enumerate(raw_calls):
+            normalized = normalize_tool_call(item, aliases, fallback_index=idx)
+            if normalized is not None:
+                tool_calls.append(normalized[0])
+        if tool_calls:
+            msg["tool_calls"] = tool_calls
     return msg
 
 
@@ -437,12 +460,18 @@ def normalize_tools(raw_tools: Any, aliases: ActionAliases) -> dict[str, dict[st
     if isinstance(raw_tools, dict):
         items = raw_tools.items()
         for name, spec in items:
-            canonical = aliases.canonicalize(name)
+            spec_obj = spec if isinstance(spec, dict) else {}
+            fn = spec_obj.get("function") if isinstance(spec_obj.get("function"), dict) else spec_obj
+            raw_name = fn.get("name") if isinstance(fn, dict) and isinstance(fn.get("name"), str) else name
+            canonical = aliases.canonicalize(raw_name)
             if not canonical:
                 continue
-            spec_obj = spec if isinstance(spec, dict) else {}
-            desc = spec_obj.get("description", "")
-            params = spec_obj.get("parameters", spec_obj.get("inputSchema", spec_obj.get("schema")))
+            desc = fn.get("description", "") if isinstance(fn, dict) else ""
+            params = (
+                fn.get("parameters", fn.get("inputSchema", fn.get("schema")))
+                if isinstance(fn, dict)
+                else None
+            )
             tools[canonical] = tool_definition(canonical, str(desc or ""), params)
         return tools
 
@@ -477,6 +506,37 @@ def finalize_tools(
         else:
             out[name] = tool_definition(name)
     return [out[name] for name in sorted(out)]
+
+
+def actions_from_message_tool_calls(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    for message in messages:
+        raw_calls = message.get("tool_calls")
+        if not isinstance(raw_calls, list):
+            continue
+        for raw in raw_calls:
+            if not isinstance(raw, dict):
+                continue
+            fn = raw.get("function") if isinstance(raw.get("function"), dict) else {}
+            name = fn.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            actions.append(
+                {
+                    "name": name,
+                    "originalName": normalize_action_name(name),
+                    "arguments": coerce_arguments(fn.get("arguments")),
+                }
+            )
+    return actions
+
+
+def raw_response_tool_calls(response: dict[str, Any]) -> list[Any]:
+    for key in ("toolCalls", "tool_calls", "toolcalls"):
+        calls = response.get(key)
+        if isinstance(calls, list):
+            return calls
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -527,10 +587,10 @@ def _has_request_payload(request: dict[str, Any]) -> bool:
 def _has_response_payload(response: dict[str, Any]) -> bool:
     if isinstance(response.get("text"), str) and response["text"].strip():
         return True
-    return isinstance(response.get("toolCalls"), list) and bool(response["toolCalls"])
+    return bool(raw_response_tool_calls(response))
 
 
-def messages_from_native_request(request: dict[str, Any]) -> list[dict[str, Any]]:
+def messages_from_native_request(request: dict[str, Any], aliases: ActionAliases) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
     system = request.get("system")
     if isinstance(system, str) and system.strip():
@@ -538,7 +598,7 @@ def messages_from_native_request(request: dict[str, Any]) -> list[dict[str, Any]
     raw_messages = request.get("messages")
     if isinstance(raw_messages, list) and raw_messages:
         for raw in raw_messages:
-            msg = normalize_message(raw)
+            msg = normalize_message(raw, aliases)
             if msg is not None:
                 messages.append(msg)
     else:
@@ -639,11 +699,12 @@ def build_native_record(
     if not _has_request_payload(request) or not _has_response_payload(response):
         return None
 
-    messages = messages_from_native_request(request)
-    if not messages:
+    messages = messages_from_native_request(request, aliases)
+    if not messages or not any(message.get("role") == "user" for message in messages):
         return None
 
-    raw_tool_calls = response.get("toolCalls") if isinstance(response.get("toolCalls"), list) else []
+    context_actions = actions_from_message_tool_calls(messages)
+    raw_tool_calls = raw_response_tool_calls(response)
     tool_calls: list[dict[str, Any]] = []
     actions: list[dict[str, Any]] = []
     for idx, raw in enumerate(raw_tool_calls):
@@ -663,7 +724,7 @@ def build_native_record(
     messages.append(assistant)
 
     tools = normalize_tools(request.get("tools"), aliases)
-    tools_list = finalize_tools(tools, actions, manifest_tools)
+    tools_list = finalize_tools(tools, [*context_actions, *actions], manifest_tools)
 
     metadata = _as_record(row.get("metadata")) or {}
     task = infer_native_task_type(row)
@@ -945,10 +1006,42 @@ class PrepStats:
     produced: int = 0
     skipped: int = 0
     privacy_redactions: int = 0
+    privacy_anonymizations: int = 0
     credential_hits: Counter[str] = field(default_factory=Counter)
     source_counts: Counter[str] = field(default_factory=Counter)
     task_counts: Counter[str] = field(default_factory=Counter)
     action_counts: Counter[str] = field(default_factory=Counter)
+
+
+def _stats_int(stats: Any, *names: str) -> int:
+    total = 0
+    for name in names:
+        value = getattr(stats, name, 0)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            total += int(value)
+    return total
+
+
+def _stats_counter(stats: Any, *names: str) -> Counter[str]:
+    out: Counter[str] = Counter()
+    for name in names:
+        value = getattr(stats, name, None)
+        if isinstance(value, dict):
+            for key, count in value.items():
+                if isinstance(count, (int, float)) and not isinstance(count, bool):
+                    out[str(key)] += int(count)
+    return out
+
+
+def _credential_hits(stats: Any) -> Counter[str]:
+    direct = _stats_counter(stats, "credential_hits")
+    if direct:
+        return direct
+    by_category = _stats_counter(stats, "redactions_by_category")
+    secret_count = by_category.get("secret", 0)
+    if secret_count:
+        return Counter({"secret": secret_count})
+    return Counter()
 
 
 def split_success_record(record: dict[str, Any], *, seed: str, val_ratio: float, test_ratio: float) -> str:
@@ -966,6 +1059,165 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False, separators=(",", ":"), sort_keys=True))
             f.write("\n")
+
+
+def normalize_output_format(value: str) -> str:
+    if value == OUTPUT_FORMAT_NATIVE_ALIAS:
+        return OUTPUT_FORMAT_NATIVE
+    return value
+
+
+def _stringify_tool_arguments(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return "{}"
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _request_message_for_native(message: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "role": message.get("role"),
+        "content": content_to_text(message.get("content")),
+    }
+    for key in ("name", "tool_call_id"):
+        if isinstance(message.get(key), str):
+            out[key] = message[key]
+
+    raw_calls = message.get("tool_calls")
+    if isinstance(raw_calls, list):
+        calls: list[dict[str, Any]] = []
+        for idx, raw in enumerate(raw_calls):
+            if not isinstance(raw, dict):
+                continue
+            fn = raw.get("function") if isinstance(raw.get("function"), dict) else {}
+            name = fn.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            calls.append(
+                {
+                    "id": str(raw.get("id") or f"call_{idx}"),
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": _stringify_tool_arguments(fn.get("arguments")),
+                    },
+                }
+            )
+        if calls:
+            out["tool_calls"] = calls
+    return out
+
+
+def _response_tool_call_for_native(call: dict[str, Any], fallback_index: int) -> dict[str, Any] | None:
+    fn = call.get("function") if isinstance(call.get("function"), dict) else {}
+    name = fn.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return None
+    return {
+        "toolCallId": str(call.get("id") or f"call_{fallback_index}"),
+        "toolName": name,
+        "input": coerce_arguments(fn.get("arguments")),
+    }
+
+
+def trajectory_record_to_eliza_native(record: dict[str, Any]) -> dict[str, Any] | None:
+    """Convert an auditable trajectory record into train_local.py input.
+
+    `train_local.py` delegates to `format_for_training.format_record`, whose
+    accepted runtime trajectory input is `eliza_native_v1`. This conversion
+    keeps the train/val/test files on that existing path while preserving the
+    richer candidate record under `trajectory_records/` when requested.
+    """
+
+    messages = record.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return None
+    last = messages[-1]
+    if not isinstance(last, dict) or last.get("role") != "assistant":
+        return None
+
+    request_messages = [
+        _request_message_for_native(message)
+        for message in messages[:-1]
+        if isinstance(message, dict)
+    ]
+    if not any(message.get("role") == "user" for message in request_messages):
+        return None
+
+    response: dict[str, Any] = {"text": content_to_text(last.get("content"))}
+    raw_calls = last.get("tool_calls")
+    if isinstance(raw_calls, list):
+        tool_calls = [
+            call
+            for idx, raw in enumerate(raw_calls)
+            if isinstance(raw, dict)
+            if (call := _response_tool_call_for_native(raw, idx)) is not None
+        ]
+        if tool_calls:
+            response["toolCalls"] = tool_calls
+    if not response["text"].strip() and not response.get("toolCalls"):
+        return None
+
+    request: dict[str, Any] = {"messages": request_messages}
+    tools = record.get("tools")
+    if isinstance(tools, list) and tools:
+        request["tools"] = tools
+
+    source = _as_record(record.get("source")) or {}
+    metadata = _as_record(record.get("metadata")) or {}
+    native_metadata = {
+        "task_type": record.get("task") or "response",
+        "source_dataset": source.get("dataset") or "trajectory_dataset",
+        "split": record.get("split"),
+        "trajectory_record_id": record.get("id"),
+        "trajectory_schema": record.get("schema"),
+        "quality": record.get("quality"),
+        "source": source,
+        "target": record.get("target"),
+        "trajectory_metadata": metadata,
+    }
+    native_row: dict[str, Any] = {
+        "format": NATIVE_FORMAT,
+        "boundary": metadata.get("boundary") or TRAINING_BOUNDARY,
+        "request": request,
+        "response": response,
+        "metadata": native_metadata,
+    }
+    if isinstance(source.get("trajectoryId"), str) and source["trajectoryId"]:
+        native_row["trajectoryId"] = source["trajectoryId"]
+    if isinstance(source.get("scenarioId"), str) and source["scenarioId"]:
+        native_row["scenarioId"] = source["scenarioId"]
+    if isinstance(source.get("turnIndex"), int):
+        native_row["stepIndex"] = source["turnIndex"]
+    return native_row
+
+
+def materialize_output_splits(
+    splits: dict[str, list[dict[str, Any]]],
+    *,
+    output_format: str,
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]] | None]:
+    normalized = normalize_output_format(output_format)
+    if normalized == OUTPUT_FORMAT_TRAJECTORY:
+        return splits, None
+
+    trainable: dict[str, list[dict[str, Any]]] = {split: [] for split in splits}
+    failed: list[str] = []
+    for split, rows in splits.items():
+        for row in rows:
+            native = trajectory_record_to_eliza_native(row)
+            if native is None:
+                failed.append(str(row.get("id") or f"{split}:{len(failed)}"))
+                continue
+            trainable[split].append(native)
+    if failed:
+        shown = ", ".join(failed[:5])
+        extra = "" if len(failed) <= 5 else f" (+{len(failed) - 5} more)"
+        raise SystemExit(f"{len(failed)} record(s) cannot be converted to {NATIVE_FORMAT}: {shown}{extra}")
+
+    trajectory = splits if normalized == OUTPUT_FORMAT_BOTH else None
+    return trainable, trajectory
 
 
 def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
@@ -990,13 +1242,17 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
                 stats.skipped += 1
                 continue
             cleaned, privacy_stats = apply_privacy_filter(raw)
-            stats.privacy_redactions += int(getattr(privacy_stats, "redaction_count", 0))
-            for label, count in getattr(privacy_stats, "credential_hits", {}).items():
-                stats.credential_hits[label] += int(count)
-            if args.strict_privacy and getattr(privacy_stats, "credential_hits", {}):
+            redactions = _stats_int(privacy_stats, "redaction_count", "redactions_total")
+            anonymizations = _stats_int(privacy_stats, "anonymization_count", "anonymizations_total")
+            credential_hits = _credential_hits(privacy_stats)
+            stats.privacy_redactions += redactions
+            stats.privacy_anonymizations += anonymizations
+            stats.credential_hits.update(credential_hits)
+            if args.strict_privacy and (redactions or anonymizations or credential_hits):
                 raise SystemExit(
-                    f"privacy filter found credential(s) in {path}:{row_index}: "
-                    f"{sorted(getattr(privacy_stats, 'credential_hits', {}).keys())}"
+                    f"strict privacy filter found redaction(s) in {path}:{row_index}: "
+                    f"redactions={redactions} anonymizations={anonymizations} "
+                    f"credential_hits={sorted(credential_hits)}"
                 )
 
             produced: list[dict[str, Any]] = []
@@ -1058,7 +1314,14 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
 
     manifest = {
         "schema": MANIFEST_SCHEMA,
-        "recordSchema": SCHEMA_VERSION,
+        "recordSchema": NATIVE_FORMAT
+        if normalize_output_format(args.output_format) in TRAINABLE_OUTPUT_FORMATS
+        else SCHEMA_VERSION,
+        "trajectoryRecordSchema": SCHEMA_VERSION,
+        "trainingReadySchema": NATIVE_FORMAT
+        if normalize_output_format(args.output_format) in TRAINABLE_OUTPUT_FORMATS
+        else None,
+        "outputFormat": args.output_format,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "target": target_block(args.base_model),
         "inputs": list(args.input),
@@ -1069,6 +1332,30 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
             "test": "test.jsonl",
             "repair_eval": "repair_eval.jsonl",
         },
+        "trainingFiles": {
+            "train": "train.jsonl",
+            "val": "val.jsonl",
+            "test": "test.jsonl",
+        }
+        if normalize_output_format(args.output_format) in TRAINABLE_OUTPUT_FORMATS
+        else {},
+        "trajectoryFiles": {
+            "train": "trajectory_records/train.jsonl",
+            "val": "trajectory_records/val.jsonl",
+            "test": "trajectory_records/test.jsonl",
+            "repair_eval": "trajectory_records/repair_eval.jsonl",
+        }
+        if normalize_output_format(args.output_format) == OUTPUT_FORMAT_BOTH
+        else (
+            {
+                "train": "train.jsonl",
+                "val": "val.jsonl",
+                "test": "test.jsonl",
+                "repair_eval": "repair_eval.jsonl",
+            }
+            if normalize_output_format(args.output_format) == OUTPUT_FORMAT_TRAJECTORY
+            else {}
+        ),
         "counts": {split: len(rows) for split, rows in splits.items()},
         "successRecords": sum(len(splits[name]) for name in ("train", "val", "test")),
         "repairEvalRecords": len(splits["repair_eval"]),
@@ -1080,6 +1367,7 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
         "actionCounts": dict(sorted(stats.action_counts.items())),
         "privacy": {
             "redactions": stats.privacy_redactions,
+            "anonymizations": stats.privacy_anonymizations,
             "credentialHits": dict(sorted(stats.credential_hits.items())),
             "strict": bool(args.strict_privacy),
         },
@@ -1112,6 +1400,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--test-ratio", type=float, default=0.05)
     parser.add_argument("--seed", default="eliza1-trajectory-sft-v1")
     parser.add_argument("--max-records", type=int, default=0)
+    parser.add_argument(
+        "--output-format",
+        choices=[
+            OUTPUT_FORMAT_BOTH,
+            OUTPUT_FORMAT_NATIVE,
+            OUTPUT_FORMAT_NATIVE_ALIAS,
+            OUTPUT_FORMAT_TRAJECTORY,
+        ],
+        default=OUTPUT_FORMAT_BOTH,
+        help=(
+            "Root split format. Default 'both' writes train/val/test as "
+            "train_local.py-compatible eliza_native_v1 rows and writes the "
+            "candidate trajectory schema under trajectory_records/. "
+            "'eliza-record' is a compatibility alias for eliza-native."
+        ),
+    )
     parser.add_argument("--action-aliases", default=str(DEFAULT_ALIAS_PATH))
     parser.add_argument("--action-manifest", default="")
     parser.add_argument(
@@ -1134,8 +1438,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     splits, manifest = prepare(args)
     output_dir = Path(args.output_dir)
-    for split, rows in splits.items():
+    root_splits, trajectory_splits = materialize_output_splits(
+        splits,
+        output_format=args.output_format,
+    )
+    for split, rows in root_splits.items():
         write_jsonl(output_dir / manifest["files"][split], rows)
+    if trajectory_splits is not None:
+        for split, rows in trajectory_splits.items():
+            write_jsonl(output_dir / "trajectory_records" / manifest["files"][split], rows)
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True) + "\n",

@@ -26,14 +26,6 @@ type ModelOption = {
 const TIER_KEYS = ["nano", "small", "medium", "large", "mega"] as const;
 type TierKey = (typeof TIER_KEYS)[number];
 
-const TIER_LABELS: Record<TierKey, string> = {
-  nano: "Nano Model",
-  small: "Small Model",
-  medium: "Medium Model",
-  large: "Large Model",
-  mega: "Mega Model",
-};
-
 const TIER_DESCRIPTIONS: Record<TierKey, string> = {
   nano: "Fastest, cheapest text tier.",
   small: "Default lightweight text tier.",
@@ -95,7 +87,7 @@ export function buildCloudModelSchema(
       description: TIER_DESCRIPTIONS[key],
     };
     hints[key] = {
-      label: TIER_LABELS[key],
+      label: `${key[0].toUpperCase()}${key.slice(1)} Model`,
       width: "half",
       options: tierOptions[key].map(formatOption),
     };

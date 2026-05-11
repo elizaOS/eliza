@@ -123,6 +123,15 @@ export interface RegistryAppInfo {
   latestVersion: string | null;
   supports: RegistryAppSupports;
   npm: RegistryAppNpmInfo;
+  directory?: string | null;
+  registryKind?: string;
+  origin?: "builtin" | "third-party" | string;
+  source?: string;
+  support?: "first-party" | "community" | string;
+  builtIn?: boolean;
+  firstParty?: boolean;
+  thirdParty?: boolean;
+  status?: string;
   uiExtension?: AppUiExtensionConfig;
   viewer?: Omit<AppViewerConfig, "authMessage">;
   session?: AppSessionConfig;

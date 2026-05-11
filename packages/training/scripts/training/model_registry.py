@@ -81,13 +81,13 @@ class ModelEntry:
 
     eliza_repo_id: str = ""
     """HuggingFace repo id under which the fine-tuned model is published,
-    e.g. ``elizalabs/eliza-1-2b``. Quants live in sibling repos with suffixes
+    e.g. ``elizaos/eliza-1-2b``. Quants live in sibling repos with suffixes
     (``-gguf``, ``-fp8``, ``-polarquant``)."""
 
     abliteration_repo_id: str = ""
     """HuggingFace repo id for the post-abliteration ("uncensored") release,
-    e.g. ``elizalabs/eliza-1-2b-uncensored``. Empty means: do not publish an
-    abliterated variant for this entry. Lives under the same ``elizalabs`` org
+    e.g. ``elizaos/eliza-1-2b-uncensored``. Empty means: do not publish an
+    abliterated variant for this entry. Lives under the same ``elizaos`` org
     as the safety-tuned line, distinguished by the ``-uncensored`` suffix —
     see ``scripts/training/abliterate.py``."""
 
@@ -242,8 +242,8 @@ REGISTRY: dict[str, ModelEntry] = {
     ),
     "qwen3.5-2b": _entry(
         hf_id="Qwen/Qwen3.5-2B", short_name="qwen3.5-2b",
-        eliza_short_name="eliza-1-2b", eliza_repo_id="elizalabs/eliza-1-2b",
-        abliteration_repo_id="elizalabs/eliza-1-2b-uncensored",
+        eliza_short_name="eliza-1-2b", eliza_repo_id="elizaos/eliza-1-2b",
+        abliteration_repo_id="elizaos/eliza-1-2b-uncensored",
         params_billion=2.27, tier=Tier.LOCAL,
         seq_len=8192, optimizer="apollo_mini", optimizer_rank=256,
         micro_batch=1, grad_accum=16, train_mem_gb_budget=15.5,
@@ -261,8 +261,8 @@ REGISTRY: dict[str, ModelEntry] = {
     ),
     "qwen3.5-9b": _entry(
         hf_id="Qwen/Qwen3.5-9B", short_name="qwen3.5-9b",
-        eliza_short_name="eliza-1-9b", eliza_repo_id="elizalabs/eliza-1-9b",
-        abliteration_repo_id="elizalabs/eliza-1-9b-uncensored",
+        eliza_short_name="eliza-1-9b", eliza_repo_id="elizaos/eliza-1-9b",
+        abliteration_repo_id="elizaos/eliza-1-9b-uncensored",
         params_billion=9.0, tier=Tier.WORKSTATION,
         seq_len=16384, optimizer="apollo", optimizer_rank=512,
         micro_batch=2, grad_accum=8, train_mem_gb_budget=80.0,
@@ -276,8 +276,8 @@ REGISTRY: dict[str, ModelEntry] = {
     ),
     "qwen3.6-27b": _entry(
         hf_id="Qwen/Qwen3.6-27B", short_name="qwen3.6-27b",
-        eliza_short_name="eliza-1-27b", eliza_repo_id="elizalabs/eliza-1-27b",
-        abliteration_repo_id="elizalabs/eliza-1-27b-uncensored",
+        eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1-27b",
+        abliteration_repo_id="elizaos/eliza-1-27b-uncensored",
         params_billion=27.0, tier=Tier.CLOUD,
         # seq_len lowered from 147456 to 65536 (gap M35): 147k left only ~1%
         # headroom on a 2× Blackwell 6000 (192 GB) cluster and ~6% on 2× H200

@@ -153,7 +153,88 @@ def test_format_record_rejects_native_rows_without_model_boundary():
     assert format_record(row) is None
 
 
-def test_format_record_rejects_flat_eliza_record_compatibility():
+def test_format_record_accepts_eliza1_trajectory_record():
+    row = {
+        "schema": "eliza.eliza1_trajectory_record.v1",
+        "id": "traj-1",
+        "split": "train",
+        "task": "action_planner",
+        "target": {"sftFormat": "messages"},
+        "messages": [
+            {"role": "user", "content": "send a reply"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "type": "function",
+                        "function": {
+                            "name": "reply",
+                            "arguments": '{"text":"hi"}',
+                        },
+                    }
+                ],
+            },
+        ],
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "reply",
+                    "description": "Send a reply",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            }
+        ],
+        "actions": [],
+        "quality": {"success": True},
+        "source": {"dataset": "unit"},
+        "metadata": {},
+    }
+
+    formatted = format_record(row)
+
+    assert formatted is not None
+    assert formatted["tools"] == row["tools"]
+    assert formatted["messages"][-1]["tool_calls"][0]["function"]["name"] == "reply"
+
+
+def test_format_record_rejects_repair_eval_trajectory_record():
+    row = {
+        "schema": "eliza.eliza1_trajectory_record.v1",
+        "id": "repair-1",
+        "split": "repair_eval",
+        "task": "response",
+        "target": {"sftFormat": "messages"},
+        "messages": [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "failed answer"},
+        ],
+        "tools": [],
+        "actions": [],
+        "quality": {"success": False},
+        "source": {"dataset": "unit"},
+        "metadata": {},
+    }
+
+    assert format_record(row) is None
+
+
+def test_format_record_accepts_plain_chat_messages_row():
+    row = {
+        "messages": [
+            {"role": "system", "content": "system prompt"},
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi"},
+        ],
+        "metadata": {"source_dataset": "unit"},
+    }
+
+    assert format_record(row) == {"messages": row["messages"]}
+
+
+def test_format_record_accepts_flat_eliza_record_compatibility():
     row = {
         "roomName": "room",
         "agentId": "Eliza",
@@ -171,4 +252,8 @@ def test_format_record_rejects_flat_eliza_record_compatibility():
 
     formatted = format_record(row)
 
-    assert formatted is None
+    assert formatted is not None
+    assert formatted["messages"][0]["role"] == "system"
+    assert "Available actions: REPLY" in formatted["messages"][0]["content"]
+    assert formatted["messages"][-2] == {"role": "user", "content": "hello"}
+    assert formatted["messages"][-1] == {"role": "assistant", "content": "hi"}

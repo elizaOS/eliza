@@ -1,3 +1,5 @@
+import type { ThemeDefinition } from "@elizaos/shared";
+
 /**
  * Custom provider that apps can inject into the onboarding flow.
  * Uses `string` for id/family so apps aren't restricted to the built-in union.
@@ -57,6 +59,8 @@ export interface BrandingConfig {
   customProviders?: CustomProviderOption[];
   /** Optional CSS color tokens for branded onboarding screens. */
   onboardingTheme?: OnboardingThemeConfig;
+  /** Per-app brand theme applied once at boot; not user-pickable. */
+  theme?: ThemeDefinition;
   /** When true, the app requires Eliza Cloud — local backend mode is disabled. */
   cloudOnly?: boolean;
 }

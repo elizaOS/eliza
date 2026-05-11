@@ -9,6 +9,27 @@ import { applyDatabaseUrlFallback } from "@/db/database-url";
 
 const root = resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
 const workspaceRoot = resolve(root, "..");
+const PRESERVED_PROVIDER_ENV_KEYS = [
+  "OPENROUTER_API_KEY",
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "ANTHROPIC_API_KEY",
+  "GROQ_API_KEY",
+  "AI_GATEWAY_API_KEY",
+  "AIGATEWAY_API_KEY",
+  "AI_GATEWAY_BASE_URL",
+  "E2E_CHAT_MODEL",
+] as const;
+const preserveProviderEnv = process.env.PRESERVE_E2E_PROVIDER_ENV === "1";
+const preservedProviderEnv = new Map<string, string>();
+
+if (preserveProviderEnv) {
+  for (const key of PRESERVED_PROVIDER_ENV_KEYS) {
+    if (process.env[key] !== undefined) {
+      preservedProviderEnv.set(key, process.env[key] ?? "");
+    }
+  }
+}
 
 for (const envPath of [
   resolve(workspaceRoot, ".env"),
@@ -19,6 +40,10 @@ for (const envPath of [
   resolve(root, ".env.test"),
 ]) {
   config({ path: envPath, override: true });
+}
+
+for (const [key, value] of preservedProviderEnv) {
+  process.env[key] = value;
 }
 
 // Keep all test execution pinned to the local app surface.

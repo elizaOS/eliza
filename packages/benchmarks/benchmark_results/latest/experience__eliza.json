@@ -1,0 +1,78 @@
+{
+  "agent": "eliza",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133048Z_69ae6b2d/experience__experience/run_experience_20260511T133048Z_1_fa3122b7/output"
+  ],
+  "benchmark_directory": "experience",
+  "benchmark_id": "experience",
+  "cache_metrics": {
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 0,
+    "cache_hit_ratio": 0.0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "agent_keyword_incorporation_rate": 0.0,
+    "agent_recall_rate": 1.0,
+    "cache_metrics": {
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 0,
+      "cache_hit_ratio": 0.0
+    },
+    "direct_recall_rate": 1.0,
+    "learning_success_rate": 1.0,
+    "performance_metrics": {
+      "duration_seconds": 22.053152416978264,
+      "mean_latency_ms": 12413.572788238525,
+      "p95_latency_ms": 12413.572788238525,
+      "throughput_per_second": 0.045344991096607154
+    },
+    "return_code": 0,
+    "token_metrics": {
+      "llm_call_count": 1,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "avg_prompt_tokens": 0.0,
+      "avg_completion_tokens": 0.0
+    },
+    "trajectory_summary": {
+      "files": 1,
+      "turns": 1,
+      "prompt_chars": 0,
+      "repeated_prefixes": []
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 22.053152416978264,
+    "mean_latency_ms": 12413.572788238525,
+    "p95_latency_ms": 12413.572788238525,
+    "throughput_per_second": 0.045344991096607154
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133048Z_69ae6b2d/experience__experience/run_experience_20260511T133048Z_1_fa3122b7/output/experience-results.json",
+  "run_group_id": "rg_20260511T133048Z_69ae6b2d",
+  "run_id": "run_experience_20260511T133048Z_1_fa3122b7",
+  "score": 0.75,
+  "status": "succeeded",
+  "token_metrics": {
+    "llm_call_count": 1,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "avg_prompt_tokens": 0.0,
+    "avg_completion_tokens": 0.0
+  },
+  "trajectory_summary": {
+    "files": 1,
+    "turns": 1,
+    "prompt_chars": 0,
+    "repeated_prefixes": []
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-11T14:03:00.588797+00:00"
+}

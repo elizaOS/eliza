@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "bun --bun vite",
     "build": "bun --bun vite build && bun run build:ssr && bun run prerender",
-    "build:client": "vite build",
-    "build:ssr": "vite build --ssr src/entry-server.tsx --outDir dist-ssr",
+    "build:client": "bun --bun vite build",
+    "build:ssr": "bun --bun vite build --ssr src/entry-server.tsx --outDir dist-ssr",
     "prerender": "node scripts/prerender.mjs",
     "preview": "bun --bun vite preview --port 3000 --strictPort",
     "typecheck": "tsc --noEmit",

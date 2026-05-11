@@ -18,9 +18,11 @@ import type {
   State,
 } from "@elizaos/core";
 import type { IPermissionsRegistry, PermissionState } from "@elizaos/shared";
+import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
 
-/** Service id used by the permissions registry runtime adapter. */
-export const PERMISSIONS_REGISTRY_SERVICE_ID = "PERMISSIONS_REGISTRY_SERVICE";
+/** Service id used by the concrete permissions registry service. */
+export const PERMISSIONS_REGISTRY_SERVICE_ID = PERMISSIONS_REGISTRY_SERVICE;
+const LEGACY_PERMISSIONS_REGISTRY_SERVICE_ID = "PERMISSIONS_REGISTRY_SERVICE";
 
 interface PermissionsRegistryServiceLike {
   getRegistry?: () => IPermissionsRegistry;
@@ -28,11 +30,15 @@ interface PermissionsRegistryServiceLike {
 }
 
 function resolveRegistry(runtime: IAgentRuntime): IPermissionsRegistry | null {
-  const svc = runtime.getService(PERMISSIONS_REGISTRY_SERVICE_ID) as
-    | PermissionsRegistryServiceLike
+  const svc = (runtime.getService(PERMISSIONS_REGISTRY_SERVICE_ID) ??
+    runtime.getService(LEGACY_PERMISSIONS_REGISTRY_SERVICE_ID)) as
+    | (PermissionsRegistryServiceLike & Partial<IPermissionsRegistry>)
     | null
     | undefined;
   if (!svc) return null;
+  if (typeof svc.pending === "function") {
+    return svc as IPermissionsRegistry;
+  }
   if (typeof svc.getRegistry === "function") {
     try {
       return svc.getRegistry();

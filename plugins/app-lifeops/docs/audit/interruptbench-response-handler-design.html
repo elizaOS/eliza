@@ -157,10 +157,50 @@
   <div class="subtitle">Single Stage-1 LLM call. Modular fields. Abort intent is just another thread op.</div>
   <div class="meta">
     <span class="badge">Design doc</span>
-    <span class="badge warn">Awaiting approval</span>
+    <span class="badge good">v2 — flat schema, all required</span>
     <span class="badge">Companion to <code>interruptbench-wave0-contract.md</code></span>
   </div>
 </header>
+
+<section class="anchor-target" id="v2-update">
+<div class="verdict" style="border-color: rgba(63,185,80,0.4); background: linear-gradient(180deg, rgba(63,185,80,0.06), rgba(63,185,80,0.02));">
+<h2 style="margin-top: 0;">v2 — flat schema correction</h2>
+<p>
+  The original sketch in this doc nested fields under <code>plan.*</code> and <code>extract.*</code> with many optionals.
+  After review, the actual schema is dramatically simpler:
+</p>
+<pre><code><span class="keyword">export const</span> HANDLE_RESPONSE_SCHEMA: JSONSchema = {
+  <span class="string">type</span>: <span class="string">"object"</span>,
+  <span class="string">additionalProperties</span>: <span class="keyword">false</span>,
+  <span class="string">properties</span>: {
+    shouldRespond:        { <span class="string">type</span>: <span class="string">"string"</span>, <span class="string">enum</span>: [<span class="string">"RESPOND"</span>, <span class="string">"IGNORE"</span>] },
+    contexts:             { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },  <span class="comment">// includes "simple"</span>
+    intents:              { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },
+    candidateActionNames: { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },
+    replyText:            { <span class="string">type</span>: <span class="string">"string"</span> },
+    facts:                { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },
+    relationships:        { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"object"</span>, <span class="string">properties</span>: {...}, <span class="string">required</span>: [<span class="string">"subject"</span>,<span class="string">"predicate"</span>,<span class="string">"object"</span>] }},
+    addressedTo:          { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },
+    threadOps:            { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="comment">/* registered by app-lifeops; abort lives here */</span> }},
+  },
+  <span class="string">required</span>: [
+    <span class="string">"shouldRespond"</span>, <span class="string">"contexts"</span>, <span class="string">"intents"</span>, <span class="string">"candidateActionNames"</span>,
+    <span class="string">"replyText"</span>, <span class="string">"facts"</span>, <span class="string">"relationships"</span>, <span class="string">"addressedTo"</span>, <span class="string">"threadOps"</span>,
+  ],  <span class="comment">// ALL required. Empty array / empty string for N/A. Strict mode.</span>
+};</code></pre>
+<p style="margin-bottom: 0;">
+  Changes from v1: <strong>flat</strong> (no <code>plan.*</code> / <code>extract.*</code> wrappers) ·
+  <strong>all required</strong> (no optionals — empty value for N/A) ·
+  <strong><code>simple</code> is a context name, not a flag</strong> (<code>contexts: ["simple"]</code>) ·
+  <strong>no <code>STOP</code></strong> (was indistinguishable from <code>IGNORE</code>) ·
+  <strong>no <code>thought</code></strong> (was prompt theater) ·
+  <strong>no <code>requiresTool</code> / <code>simple</code> booleans</strong> (derivable from other fields) ·
+  <strong>new <code>intents</code> field</strong> (short verb phrases for routing).
+  Each registered <code>ResponseHandlerFieldEvaluator</code> owns one of these fields, declares its
+  description + schema-with-parameter-descriptions, and provides one handler that runs in pipeline order.
+</p>
+</div>
+</section>
 
 <!-- ============================================================ -->
 <!-- 1. VERDICT -->

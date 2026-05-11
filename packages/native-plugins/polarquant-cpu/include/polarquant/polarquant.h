@@ -114,6 +114,38 @@ void ggml_vec_dot_q4_polar_q8_0_ref(
     const struct block_q8_0 * y,
     int use_qjl);
 
+/* Pre-Hadamard-query fp32 dot path:
+ *
+ *   dot(dequant_q4_polar(block), q)
+ *     == norm/QK_POLAR * dot(centroid_or_residual_vector, H*q)
+ *
+ * Caller supplies q_preht = H*q using polar_hadamard_inplace()'s unnormalised
+ * convention. This avoids the per-block inverse Hadamard in attention-score
+ * paths where one query is reused across many cached K rows. Passing raw q to
+ * this function is incorrect.
+ */
+void ggml_vec_dot_q4_polar_preht_f32_ref(
+    int n,
+    float * s,
+    const block_q4_polar * x,
+    const float * q_preht,
+    int use_qjl);
+
+/* SIMD ports of the pre-Hadamard-query dot. Each is gated on the
+ * matching feature macro at compile time and on runtime CPU detection
+ * in the dispatcher; the scalar ref above is the exact baseline. */
+void ggml_vec_dot_q4_polar_preht_f32_avx2(
+    int n, float * s, const block_q4_polar * x, const float * q_preht, int use_qjl);
+void ggml_vec_dot_q4_polar_preht_f32_neon(
+    int n, float * s, const block_q4_polar * x, const float * q_preht, int use_qjl);
+
+/* Best-available pre-Hadamard dot on the running CPU. The runtime is
+ * responsible for tracking that `q_preht` is the Hadamard-transformed
+ * query for the matching head/chunk; passing a raw query is a contract
+ * violation and must be rejected upstream (hard-fail, no fallback). */
+void ggml_vec_dot_q4_polar_preht_f32(
+    int n, float * s, const block_q4_polar * x, const float * q_preht, int use_qjl);
+
 /* Generate the per-block random +/-1 sign vector used by the QJL
  * correction.  Encoder and decoder must agree byte-for-byte; we use a
  * simple xorshift32 PRNG seeded with POLAR_QJL_SEED so the output is

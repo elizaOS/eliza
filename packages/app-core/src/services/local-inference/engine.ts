@@ -34,6 +34,7 @@ import {
   dflashLlamaServer,
   dflashRequired,
   getDflashRuntimeStatus,
+  logDflashDevDisabledWarning,
 } from "./dflash-server";
 import type { LocalUsageBlock } from "./llama-server-metrics";
 import { listInstalledModels } from "./registry";
@@ -412,12 +413,35 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
       if (cacheKey === DEFAULT_SESSION_KEY) {
         await session.resetChatHistory?.();
       }
-      return session.prompt(args.prompt, {
+      const promptOpts: {
+        maxTokens?: number;
+        temperature?: number;
+        topP?: number;
+        stopOnAbortSignal?: AbortSignal;
+        customStopTriggers?: string[];
+      } = {
         maxTokens: args.maxTokens ?? 2048,
         temperature: args.temperature ?? 0.7,
         topP: args.topP ?? 0.9,
-        customStopTriggers: args.stopSequences,
-      });
+      };
+      if (args.stopSequences) {
+        promptOpts.customStopTriggers = args.stopSequences;
+      }
+      if (args.signal) {
+        // node-llama-cpp's `stopOnAbortSignal` aborts the generation loop
+        // on the next sampler tick when the signal is aborted. Wiring this
+        // is the canonical way to make local inference cancellable.
+        promptOpts.stopOnAbortSignal = args.signal;
+      }
+      const text = await session.prompt(args.prompt, promptOpts);
+      if (text.length > 0) {
+        await args.onVerifierEvent?.({
+          kind: "accept",
+          tokens: [{ index: 0, text }],
+        });
+        await args.onTextChunk?.(text);
+      }
+      return text;
     };
     const job = this.generationQueue.then(run, run);
     this.generationQueue = job.catch(() => {
@@ -590,7 +614,10 @@ export class LocalInferenceEngine {
   }
 
   async generate(args: GenerateArgs): Promise<string> {
-    return this.dispatcher.generate(args);
+    const streaming = this.voiceStreamingArgs(args);
+    const text = await this.dispatcher.generate(streaming.args);
+    await streaming.finish(text);
+    return text;
   }
 
   /**
@@ -667,13 +694,15 @@ export class LocalInferenceEngine {
     }
     handle.lastUsedMs = Date.now();
     const cacheKey = `conv:${handle.conversationId}`;
+    const streaming = this.voiceStreamingArgs(args);
     if (this.activeBackendId() === "llama-server") {
       const result: DflashGenerateResult =
         await dflashLlamaServer.generateWithUsage({
-          ...args,
+          ...streaming.args,
           cacheKey,
           slotId: handle.slotId,
         });
+      await streaming.finish(result.text);
       return result;
     }
     // node-llama-cpp path: forward via the dispatcher and synthesize a
@@ -681,9 +710,10 @@ export class LocalInferenceEngine {
     // cacheKey, so cache reuse still works — we just don't have
     // observability on this backend.
     const text = await this.dispatcher.generate({
-      ...args,
+      ...streaming.args,
       cacheKey,
     });
+    await streaming.finish(text);
     return {
       text,
       usage: {
@@ -855,6 +885,16 @@ export class LocalInferenceEngine {
     );
   }
 
+  async prewarmVoicePhrases(
+    texts: ReadonlyArray<string>,
+    opts: { concurrency?: number } = {},
+  ): Promise<{ warmed: number; cached: number }> {
+    return this.requireVoiceBridge("prewarm voice phrases").prewarmPhrases(
+      texts,
+      opts,
+    );
+  }
+
   async transcribePcm(args: TranscriptionAudio): Promise<string> {
     return this.requireVoiceBridge("transcribe audio").transcribePcm(args);
   }
@@ -879,6 +919,67 @@ export class LocalInferenceEngine {
       );
     }
     return bridge;
+  }
+
+  private voiceStreamingArgs<T extends Omit<GenerateArgs, "cacheKey">>(
+    args: T,
+  ): {
+    args: T;
+    finish: (finalText: string) => Promise<void>;
+  } {
+    // AGENTS.md §4: when the developer kill-switch disables DFlash, every
+    // generation turn must log a loud warning. No-op when the flag is unset.
+    // Called before the voice early-return so text-only turns warn too.
+    logDflashDevDisabledWarning();
+
+    const bridge = this.voiceBridge;
+    const voiceOn = bridge?.lifecycle.current().kind === "voice-on";
+    if (!voiceOn || !bridge) {
+      return {
+        args,
+        finish: async () => {},
+      };
+    }
+
+    let nextIndex = 0;
+    let streamedAny = false;
+    let verifierHandled = false;
+    const callerOnTextChunk = args.onTextChunk;
+    const callerOnVerifierEvent = args.onVerifierEvent;
+    const wrapped = {
+      ...args,
+      onVerifierEvent: async (event: VerifierStreamEvent) => {
+        verifierHandled = true;
+        if (event.kind === "accept" && event.tokens.length > 0) {
+          streamedAny = true;
+          const last = event.tokens[event.tokens.length - 1];
+          nextIndex = Math.max(nextIndex, last.index + 1);
+        }
+        await this.pushVerifierEvent(event);
+        await callerOnVerifierEvent?.(event);
+      },
+      onTextChunk: async (chunk: string) => {
+        if (chunk.length > 0 && !verifierHandled) {
+          streamedAny = true;
+          const token: TextToken = { index: nextIndex++, text: chunk };
+          await bridge.pushAcceptedToken(token);
+        }
+        await callerOnTextChunk?.(chunk);
+      },
+    } as T;
+
+    return {
+      args: wrapped,
+      finish: async (finalText: string) => {
+        if (!streamedAny && finalText.length > 0) {
+          await bridge.pushAcceptedToken({
+            index: nextIndex++,
+            text: finalText,
+          });
+        }
+        await bridge.settle();
+      },
+    };
   }
 
   /**

@@ -117,15 +117,15 @@ def _build_fixture_bundle(
         "per_block_tolerance": {"stub": 0.01},
     }
     _write(
-        bundle / "turboquant.json",
+        bundle / "quantization" / "turboquant.json",
         json.dumps({"method": "turboquant", "kernel_manifest": kernel_manifest}),
     )
     _write(
-        bundle / "qjl_config.json",
+        bundle / "quantization" / "qjl_config.json",
         json.dumps({"method": "qjl", "kernel_manifest": kernel_manifest}),
     )
     _write(
-        bundle / "polarquant_config.json",
+        bundle / "quantization" / "polarquant_config.json",
         json.dumps({"method": "polarquant", "kernel_manifest": kernel_manifest}),
     )
 
@@ -285,7 +285,7 @@ def _write_release_evidence(bundle: Path, tier: str = "9b") -> None:
             {
                 "schemaVersion": 1,
                 "tier": tier,
-                "repoId": f"elizalabs/eliza-1-{tier}",
+                "repoId": f"elizaos/eliza-1-{tier}",
                 "releaseState": "upload-candidate",
                 "final": {
                     "weights": True,
@@ -338,7 +338,7 @@ def _write_release_evidence(bundle: Path, tier: str = "9b") -> None:
                     "windows-arm64-vulkan": "evidence/platform/windows-arm64-vulkan.json",
                 },
                 "hf": {
-                    "repoId": f"elizalabs/eliza-1-{tier}",
+                    "repoId": f"elizaos/eliza-1-{tier}",
                     "status": "pending-upload",
                 },
             },
@@ -391,7 +391,7 @@ def _ctx(
         bundle_dir=bundle,
         dry_run=dry_run,
         metal_verification=metal,
-        repo_id=f"elizalabs/eliza-1-{tier}",
+        repo_id=f"elizaos/eliza-1-{tier}",
         public=False,
         training_repo_root=training_root or _TRAINING_ROOT,
         template_path=(
@@ -462,7 +462,7 @@ def test_wrong_hf_org_fails_before_publish(tmp_path: Path) -> None:
     metal = _metal_report(tmp_path)
     ctx = _ctx("9b", bundle, metal=metal, dry_run=True)
     bad = PublishContext(
-        **{**ctx.__dict__, "repo_id": "elizaos/eliza-1-9b"}
+        **{**ctx.__dict__, "repo_id": "someoneelse/eliza-1-9b"}
     )
     rc = run(bad)
     assert rc == EXIT_USAGE
@@ -470,7 +470,7 @@ def test_wrong_hf_org_fails_before_publish(tmp_path: Path) -> None:
 
 def test_missing_quantization_sidecar_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
-    (bundle / "qjl_config.json").unlink()
+    (bundle / "quantization" / "qjl_config.json").unlink()
     metal = _metal_report(tmp_path)
     rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE
@@ -656,7 +656,7 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
             "repoId": ctx.repo_id,
             "status": "uploaded",
             "commit": "payload123",
-            "url": "https://huggingface.co/elizalabs/eliza-1-9b/commit/payload123",
+            "url": "https://huggingface.co/elizaos/eliza-1-9b/commit/payload123",
             "uploadedPaths": uploaded_paths,
         }
 
@@ -686,7 +686,7 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
     assert release["releaseState"] == "final"
     assert release["hf"]["status"] == "uploaded"
     assert release["hf"]["uploadEvidence"]["commit"] == "payload123"
-    assert release["hf"]["uploadEvidence"]["repoId"] == "elizalabs/eliza-1-9b"
+    assert release["hf"]["uploadEvidence"]["repoId"] == "elizaos/eliza-1-9b"
     checksum_lines = (bundle / "checksums" / "SHA256SUMS").read_text().splitlines()
     release_line = next(
         line for line in checksum_lines if "  evidence/release.json" in line

@@ -147,6 +147,51 @@ function getCloudOAuthConnector(
   return CLOUD_OAUTH_CONNECTORS[pluginId] ?? null;
 }
 
+function connectorProvenanceBadges(plugin: PluginInfo): Array<{
+  key: string;
+  label: string;
+  tone?: "warning" | "success";
+  title?: string;
+}> {
+  const isThirdParty =
+    plugin.thirdParty === true || plugin.origin === "third-party";
+  const isBuiltIn = plugin.builtIn === true || plugin.origin === "builtin";
+  const isFirstParty =
+    plugin.firstParty === true || plugin.support === "first-party";
+  const isCommunity =
+    plugin.support === "community" || (isThirdParty && !isFirstParty);
+  const title = isThirdParty
+    ? "Community package registered through the plugin registry"
+    : isBuiltIn || isFirstParty
+      ? "First-party package generated from the elizaOS plugin registry"
+      : undefined;
+  const badges: Array<{
+    key: string;
+    label: string;
+    tone?: "warning" | "success";
+    title?: string;
+  }> = [];
+
+  if (isThirdParty) {
+    badges.push({ key: "origin", label: "Third party", title });
+  } else if (isBuiltIn) {
+    badges.push({ key: "origin", label: "Built in", title });
+  }
+
+  if (isCommunity) {
+    badges.push({ key: "support", label: "Community", tone: "warning", title });
+  } else if (isFirstParty) {
+    badges.push({
+      key: "support",
+      label: "First party",
+      tone: "success",
+      title,
+    });
+  }
+
+  return badges;
+}
+
 function groupVisiblePlugins(visiblePlugins: PluginInfo[]) {
   const groupMap = new Map<string, PluginInfo[]>();
   const groupOrder: string[] = [];
@@ -281,6 +326,7 @@ function ConnectorPluginCard({
   const pluginLinks = getPluginResourceLinks(plugin, {
     draftConfig: pluginConfigs[plugin.id],
   });
+  const provenanceBadges = connectorProvenanceBadges(plugin);
   const openCloudAgentsView = () => {
     setState("cloudDashboardView", "overview");
     setTab("settings");
@@ -550,6 +596,15 @@ function ConnectorPluginCard({
             {noConfigurationNeededLabel}
           </span>
         )}
+        {provenanceBadges.map((badge) => (
+          <StatusBadge
+            key={`${plugin.id}:${badge.key}`}
+            label={badge.label}
+            tone={badge.tone}
+            title={badge.title}
+            className="shrink-0"
+          />
+        ))}
       </span>
       <div className="mt-2">
         <p className="text-sm text-muted">

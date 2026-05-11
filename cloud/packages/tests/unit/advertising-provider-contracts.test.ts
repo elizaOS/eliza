@@ -525,4 +525,48 @@ describe("advertising provider contracts", () => {
     expect(calls[2].url).toBe("https://uploads.google.test/session-1");
     expect(calls[2].headers?.get("x-goog-upload-command")).toBe("upload, finalize");
   });
+
+  test("Google media status reports processed raw video uploads as reusable YouTube URLs", async () => {
+    process.env.GOOGLE_ADS_DEVELOPER_TOKEN = "developer-token";
+    const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({
+        url: String(input),
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      return new Response(
+        JSON.stringify([
+          {
+            results: [
+              {
+                youTubeVideoUpload: {
+                  resourceName: "customers/123/youTubeVideoUploads/abc",
+                  videoId: "dQw4w9WgXcQ",
+                  state: "PROCESSED",
+                },
+              },
+            ],
+          },
+        ]),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    const { googleAdsProvider } = await import(
+      `../../lib/services/advertising/providers/google.ts?case=${Date.now()}`
+    );
+
+    const result = await googleAdsProvider.getMediaStatus?.(
+      { accessToken: "test-access-token" },
+      "123",
+      { providerAssetResourceName: "customers/123/youTubeVideoUploads/abc" },
+    );
+
+    expect(result?.success).toBe(true);
+    expect(result?.ready).toBe(true);
+    expect(result?.status).toBe("PROCESSED");
+    expect(result?.providerAssetUrl).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    expect(calls[0].url).toContain("/customers/123/googleAds:searchStream");
+    expect(String(calls[0].body?.query)).toContain("you_tube_video_upload.state");
+  });
 });

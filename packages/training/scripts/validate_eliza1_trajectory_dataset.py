@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -23,10 +24,14 @@ DEFAULT_ALIAS_PATH = TRAINING_ROOT / "config" / "eliza1_action_aliases.json"
 
 sys.path.insert(0, str(SCRIPT_DIR))
 from prepare_eliza1_trajectory_dataset import (  # noqa: E402
+    NATIVE_BOUNDARIES,
+    NATIVE_FORMAT,
     SCHEMA_VERSION,
     ActionAliases,
     load_action_manifest,
+    trajectory_record_to_eliza_native,
 )
+from format_for_training import format_record  # noqa: E402
 
 LOG = logging.getLogger("validate-eliza1-trajectories")
 
@@ -35,6 +40,12 @@ VALID_SPLITS = {"train", "val", "test", "repair_eval"}
 VALID_ROLES = {"system", "user", "assistant", "tool"}
 VALID_RATINGS = {"gold", "silver", "bronze", "repair"}
 SUCCESS_SPLITS = {"train", "val", "test"}
+FILE_SPLITS = {
+    "train.jsonl": "train",
+    "val.jsonl": "val",
+    "test.jsonl": "test",
+    "repair_eval.jsonl": "repair_eval",
+}
 REQUIRED_TOP_LEVEL = {
     "schema",
     "id",
@@ -61,6 +72,29 @@ REQUIRED_SOURCE = {
     "turnIndex",
     "format",
 }
+PRIVACY_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("privacy_residual_openai_key", re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b")),
+    ("privacy_residual_anthropic_key", re.compile(r"\bsk-ant-[A-Za-z0-9_-]{16,}\b")),
+    ("privacy_residual_bearer_token", re.compile(r"\bBearer\s+[A-Za-z0-9._-]{16,}\b")),
+    ("privacy_residual_github_token", re.compile(r"\bghp_[A-Za-z0-9]{20,}\b")),
+    ("privacy_residual_aws_access_key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    (
+        "privacy_residual_geo_coordinates",
+        re.compile(
+            r"\b(?:current\s+location|location|coords|coordinates)\s*[:=]\s*"
+            r"-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "privacy_residual_geo_coordinates",
+        re.compile(
+            r"\b(?:lat|latitude)\s*[:=]\s*-?\d+(?:\.\d+)?\s*[,;]\s*"
+            r"(?:lng|lon|long|longitude)\s*[:=]\s*-?\d+(?:\.\d+)?",
+            re.IGNORECASE,
+        ),
+    ),
+)
 
 
 def iter_validation_files(paths: Iterable[str]) -> Iterable[Path]:
@@ -128,6 +162,28 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+def _iter_strings(value: Any, path: str = "$") -> Iterable[tuple[str, str]]:
+    if isinstance(value, str):
+        yield path, value
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield from _iter_strings(item, f"{path}.{key}")
+    elif isinstance(value, list):
+        for idx, item in enumerate(value):
+            yield from _iter_strings(item, f"{path}[{idx}]")
+
+
+def _validate_no_privacy_residuals(record: dict[str, Any]) -> list[tuple[str, str]]:
+    errs: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for path, text in _iter_strings(record):
+        for code, pattern in PRIVACY_PATTERNS:
+            if pattern.search(text) and (code, path) not in seen:
+                seen.add((code, path))
+                errs.append((code, f"{path} contains an unredacted high-risk privacy pattern"))
+    return errs
+
+
 def _check_keyset(
     obj: Any,
     required: set[str],
@@ -176,6 +232,68 @@ def _validate_action_name(
     return errs
 
 
+def _native_tool_call_name(raw: dict[str, Any]) -> Any:
+    fn = raw.get("function") if isinstance(raw.get("function"), dict) else {}
+    return raw.get("toolName") or raw.get("name") or raw.get("tool_name") or fn.get("name")
+
+
+def _native_tool_call_arguments(raw: dict[str, Any]) -> Any:
+    fn = raw.get("function") if isinstance(raw.get("function"), dict) else {}
+    for key in ("input", "args", "arguments", "parameters"):
+        if key in raw:
+            return raw[key]
+    return fn.get("arguments")
+
+
+def _iter_native_request_tool_names(tools: Any) -> Iterable[tuple[str, Any]]:
+    if isinstance(tools, dict):
+        for key, spec in tools.items():
+            if isinstance(spec, dict):
+                fn = spec.get("function") if isinstance(spec.get("function"), dict) else spec
+                yield str(key), fn.get("name") if isinstance(fn, dict) else key
+            else:
+                yield str(key), key
+        return
+    if isinstance(tools, list):
+        for idx, item in enumerate(tools):
+            if not isinstance(item, dict):
+                yield f"request.tools[{idx}]", None
+                continue
+            fn = item.get("function") if isinstance(item.get("function"), dict) else item
+            yield f"request.tools[{idx}].function.name", fn.get("name") if isinstance(fn, dict) else None
+
+
+def _iter_native_response_tool_calls(response: Any) -> Iterable[tuple[str, dict[str, Any]]]:
+    if not isinstance(response, dict):
+        return
+    calls = response.get("toolCalls")
+    if isinstance(calls, list):
+        for idx, call in enumerate(calls):
+            if isinstance(call, dict):
+                yield f"response.toolCalls[{idx}]", call
+
+
+def _iter_native_request_message_tool_calls(request: Any) -> Iterable[tuple[str, dict[str, Any]]]:
+    if not isinstance(request, dict):
+        return
+    messages = request.get("messages")
+    if not isinstance(messages, list):
+        return
+    for msg_idx, message in enumerate(messages):
+        if not isinstance(message, dict):
+            continue
+        raw_calls = message.get("tool_calls", message.get("toolCalls"))
+        if not isinstance(raw_calls, list):
+            continue
+        for call_idx, call in enumerate(raw_calls):
+            if isinstance(call, dict):
+                yield f"request.messages[{msg_idx}].tool_calls[{call_idx}]", call
+
+
+def _split_from_path(path: Path) -> str | None:
+    return FILE_SPLITS.get(path.name)
+
+
 def _validate_tool_call(
     call: Any,
     *,
@@ -205,13 +323,59 @@ def _validate_tool_call(
     return errs
 
 
+def _validate_native_request_message_tool_call(
+    call: Any,
+    *,
+    aliases: ActionAliases,
+    allowed_actions: set[str] | None,
+    path: str,
+) -> list[tuple[str, str]]:
+    if not isinstance(call, dict):
+        return [("tool_call_not_object", f"{path} must be an object")]
+    errs: list[tuple[str, str]] = []
+    if call.get("type") != "function":
+        errs.append(("tool_call_type_invalid", f"{path}.type must be 'function'"))
+    fn = call.get("function")
+    if not isinstance(fn, dict):
+        errs.append(("tool_call_function_missing", f"{path}.function must be an object"))
+        return errs
+    errs.extend(
+        _validate_action_name(
+            fn.get("name"),
+            aliases=aliases,
+            allowed_actions=allowed_actions,
+            path=f"{path}.function.name",
+        )
+    )
+    args = fn.get("arguments")
+    if isinstance(args, str):
+        stripped = args.strip()
+        if stripped:
+            try:
+                decoded = json.loads(stripped)
+            except json.JSONDecodeError:
+                decoded = None
+            if not isinstance(decoded, dict):
+                errs.append(
+                    (
+                        "native_tool_call_arguments_not_object",
+                        f"{path} arguments must decode to an object",
+                    )
+                )
+    elif args is not None and not isinstance(args, dict):
+        errs.append(("native_tool_call_arguments_not_object", f"{path} arguments must be an object"))
+    return errs
+
+
 def validate_record(
     record: dict[str, Any],
     *,
     aliases: ActionAliases,
     allowed_actions: set[str] | None,
+    file_split: str | None = None,
 ) -> list[tuple[str, str]]:
     errs: list[tuple[str, str]] = []
+    errs.extend(_validate_no_privacy_residuals(record))
     errs.extend(_check_keyset(record, REQUIRED_TOP_LEVEL, path="record", allow_extra=False))
     if record.get("schema") != SCHEMA_VERSION:
         errs.append(("schema_mismatch", f"schema must be {SCHEMA_VERSION!r}"))
@@ -220,6 +384,8 @@ def validate_record(
     split = record.get("split")
     if split not in VALID_SPLITS:
         errs.append(("split_invalid", f"split must be one of {sorted(VALID_SPLITS)}"))
+    if file_split is not None and split in VALID_SPLITS and split != file_split:
+        errs.append(("split_file_mismatch", f"record split {split!r} is in {file_split!r} file"))
     if not isinstance(record.get("task"), str) or not record.get("task", "").strip():
         errs.append(("task_invalid", "task must be a non-empty string"))
 
@@ -237,6 +403,8 @@ def validate_record(
     if not isinstance(messages, list) or not messages:
         errs.append(("messages_empty", "messages must be a non-empty array"))
     else:
+        if not any(isinstance(msg, dict) and msg.get("role") == "user" for msg in messages):
+            errs.append(("messages_missing_user", "messages must contain at least one user turn"))
         for idx, msg in enumerate(messages):
             if not isinstance(msg, dict):
                 errs.append(("message_not_object", f"messages[{idx}] must be an object"))
@@ -360,6 +528,149 @@ def validate_record(
 
     if not isinstance(record.get("metadata"), dict):
         errs.append(("metadata_not_object", "metadata must be an object"))
+    native = trajectory_record_to_eliza_native(record)
+    if native is None:
+        errs.append(
+            (
+                "trajectory_not_train_local_convertible",
+                "record cannot be converted to eliza_native_v1 for train_local.py",
+            )
+        )
+    else:
+        try:
+            formatted = format_record(native)
+        except Exception as exc:  # pragma: no cover - defensive
+            formatted = None
+            errs.append(("format_for_training_error", f"converted record raised {type(exc).__name__}: {exc}"))
+        if formatted is None:
+            errs.append(
+                (
+                    "trajectory_not_train_local_compatible",
+                    "converted eliza_native_v1 row is rejected by format_for_training.format_record",
+                )
+            )
+    return errs
+
+
+def validate_native_record(
+    record: dict[str, Any],
+    *,
+    aliases: ActionAliases,
+    allowed_actions: set[str] | None,
+    file_split: str | None = None,
+) -> list[tuple[str, str]]:
+    errs: list[tuple[str, str]] = []
+    errs.extend(_validate_no_privacy_residuals(record))
+    if record.get("format") != NATIVE_FORMAT:
+        errs.append(("native_format_invalid", f"format must be {NATIVE_FORMAT!r}"))
+    if record.get("boundary") not in NATIVE_BOUNDARIES:
+        errs.append(("native_boundary_invalid", f"boundary must be one of {sorted(NATIVE_BOUNDARIES)}"))
+
+    request = record.get("request")
+    response = record.get("response")
+    metadata = record.get("metadata")
+    if not isinstance(request, dict):
+        errs.append(("native_request_not_object", "request must be an object"))
+        request = {}
+    if not isinstance(response, dict):
+        errs.append(("native_response_not_object", "response must be an object"))
+        response = {}
+    if not isinstance(metadata, dict):
+        errs.append(("native_metadata_not_object", "metadata must be an object"))
+        metadata = {}
+
+    split = metadata.get("split") if isinstance(metadata, dict) else None
+    if file_split is not None:
+        if not isinstance(split, str):
+            errs.append(("native_split_missing", f"metadata.split must be {file_split!r} in split files"))
+        elif split != file_split:
+            errs.append(("split_file_mismatch", f"metadata.split {split!r} is in {file_split!r} file"))
+
+    quality = metadata.get("quality") if isinstance(metadata, dict) else None
+    if isinstance(quality, dict):
+        success = quality.get("success")
+        if success is True and split == "repair_eval":
+            errs.append(("successful_record_in_repair_eval", "successful records must be train/val/test"))
+        if success is False and split in SUCCESS_SPLITS:
+            errs.append(("failed_record_in_success_split", "failed records must be in repair_eval"))
+        if success is False and file_split in SUCCESS_SPLITS:
+            errs.append(("failed_record_in_success_split", "failed records must not be in train/val/test files"))
+
+    try:
+        formatted = format_record(record)
+    except Exception as exc:  # pragma: no cover - defensive; format_record should be pure
+        formatted = None
+        errs.append(("format_for_training_error", f"format_record raised {type(exc).__name__}: {exc}"))
+    if formatted is None:
+        errs.append(("not_train_local_compatible", "format_for_training.format_record returned None"))
+    elif not any(msg.get("role") == "user" for msg in formatted.get("messages", [])):
+        errs.append(("native_missing_user_message", "formatted messages must contain a user turn"))
+
+    declared_actions: set[str] = set()
+    for path, name in _iter_native_request_tool_names(request.get("tools")):
+        action_path = path if path.endswith(".function.name") else f"request.tools.{path}"
+        errs.extend(
+            _validate_action_name(
+                name,
+                aliases=aliases,
+                allowed_actions=allowed_actions,
+                path=action_path,
+            )
+        )
+        if isinstance(name, str) and name.strip():
+            declared_actions.add(aliases.canonicalize(name))
+
+    for path, call in _iter_native_request_message_tool_calls(request):
+        errs.extend(
+            _validate_native_request_message_tool_call(
+                call,
+                aliases=aliases,
+                allowed_actions=allowed_actions,
+                path=path,
+            )
+        )
+        name = _native_tool_call_name(call)
+        if isinstance(name, str) and name.strip():
+            canonical = aliases.canonicalize(name)
+            if not declared_actions or canonical not in declared_actions:
+                errs.append(
+                    (
+                        "tool_call_not_declared",
+                        f"{path}.function.name={name!r} canonical={canonical!r} not found in request.tools",
+                    )
+                )
+
+    for path, call in _iter_native_response_tool_calls(response):
+        name = _native_tool_call_name(call)
+        errs.extend(
+            _validate_action_name(
+                name,
+                aliases=aliases,
+                allowed_actions=allowed_actions,
+                path=f"{path}.toolName",
+            )
+        )
+        args = _native_tool_call_arguments(call)
+        if isinstance(args, str):
+            stripped = args.strip()
+            if stripped:
+                try:
+                    decoded = json.loads(stripped)
+                except json.JSONDecodeError:
+                    decoded = None
+                if not isinstance(decoded, dict):
+                    errs.append(("native_tool_call_arguments_not_object", f"{path} arguments must decode to an object"))
+        elif args is not None and not isinstance(args, dict):
+            errs.append(("native_tool_call_arguments_not_object", f"{path} arguments must be an object"))
+        if isinstance(name, str) and name.strip():
+            canonical = aliases.canonicalize(name)
+            if not declared_actions or canonical not in declared_actions:
+                errs.append(
+                    (
+                        "tool_call_not_declared",
+                        f"{path}.toolName={name!r} canonical={canonical!r} not found in request.tools",
+                    )
+                )
     return errs
 
 
@@ -394,6 +705,36 @@ class ShapeTracker:
         return errs
 
 
+def _source_kind_for(record: dict[str, Any]) -> str:
+    if record.get("format") == NATIVE_FORMAT:
+        return NATIVE_FORMAT
+    source = record.get("source") if isinstance(record.get("source"), dict) else {}
+    return str(source.get("kind") or "__none__")
+
+
+def _id_namespace_for(record: dict[str, Any]) -> str:
+    if record.get("format") == NATIVE_FORMAT:
+        return NATIVE_FORMAT
+    if record.get("schema") == SCHEMA_VERSION:
+        return SCHEMA_VERSION
+    return _source_kind_for(record)
+
+
+def _record_action_names(record: dict[str, Any], aliases: ActionAliases) -> Iterable[str]:
+    if record.get("format") == NATIVE_FORMAT:
+        response = record.get("response")
+        for _path, call in _iter_native_response_tool_calls(response):
+            name = _native_tool_call_name(call)
+            if isinstance(name, str) and name.strip():
+                yield aliases.canonicalize(name)
+        return
+    actions = record.get("actions")
+    if isinstance(actions, list):
+        for action in actions:
+            if isinstance(action, dict) and isinstance(action.get("name"), str):
+                yield aliases.canonicalize(action["name"])
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     aliases = ActionAliases.load(Path(args.action_aliases))
     allowed_actions: set[str] | None = None
@@ -411,6 +752,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     first_failures: list[dict[str, Any]] = []
 
     for path in iter_validation_files(args.input):
+        file_split = _split_from_path(path)
         if not path.exists():
             errors_by_code["input_not_found"] += 1
             errors_by_file[str(path)]["input_not_found"] += 1
@@ -433,24 +775,40 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 record_id = f"line:{line_no}"
             else:
                 errs = []
-                record_id = str(record.get("id") or f"line:{line_no}")
+                metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+                raw_record_id = str(
+                    record.get("id")
+                    or metadata.get("trajectory_record_id")
+                    or metadata.get("source_id")
+                    or f"line:{line_no}"
+                )
+                record_id = f"{_id_namespace_for(record)}:{raw_record_id}"
                 if record_id in seen_ids:
                     errs.append(("duplicate_id", f"id {record_id!r} appears more than once"))
                 else:
                     seen_ids.add(record_id)
-                errs.extend(shape.check(record))
-                errs.extend(
-                    validate_record(
-                        record,
-                        aliases=aliases,
-                        allowed_actions=allowed_actions,
+                if record.get("format") == NATIVE_FORMAT:
+                    errs.extend(
+                        validate_native_record(
+                            record,
+                            aliases=aliases,
+                            allowed_actions=allowed_actions,
+                            file_split=file_split,
+                        )
                     )
-                )
-                source = record.get("source") if isinstance(record.get("source"), dict) else {}
-                source_kind = str(source.get("kind") or "__none__")
-                for action in record.get("actions", []) if isinstance(record.get("actions"), list) else []:
-                    if isinstance(action, dict) and isinstance(action.get("name"), str):
-                        action_counts[action["name"]] += 1
+                else:
+                    errs.extend(shape.check(record))
+                    errs.extend(
+                        validate_record(
+                            record,
+                            aliases=aliases,
+                            allowed_actions=allowed_actions,
+                            file_split=file_split,
+                        )
+                    )
+                source_kind = _source_kind_for(record)
+                for action_name in _record_action_names(record, aliases):
+                    action_counts[action_name] += 1
 
             if not errs:
                 valid += 1

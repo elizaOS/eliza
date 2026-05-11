@@ -8,11 +8,16 @@
  */
 
 import { spawn } from "node:child_process";
-import { accessSync, constants } from "node:fs";
 import * as importPath from "node:path";
 import process from "node:process";
 import type { IAgentRuntime } from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
+import {
+  detectTerminalSupport,
+  missingToolForCommand,
+  missingToolMessage,
+  resolveHostShell,
+} from "./terminal-capabilities.js";
 
 export type ShellSandboxBackend =
   | "host"
@@ -51,13 +56,17 @@ interface RuntimeSandboxManager {
 function getRuntimeSandboxManager(
   runtime: IAgentRuntime,
 ): RuntimeSandboxManager | null {
-  const candidate = (runtime as unknown as {
-    getSandboxManager?: () => RuntimeSandboxManager | null;
-  }).getSandboxManager?.();
+  const candidate = (
+    runtime as unknown as {
+      getSandboxManager?: () => RuntimeSandboxManager | null;
+    }
+  ).getSandboxManager?.();
   return candidate ?? null;
 }
 
-function backendForManager(manager: RuntimeSandboxManager): ShellSandboxBackend {
+function backendForManager(
+  manager: RuntimeSandboxManager,
+): ShellSandboxBackend {
   const internal = manager as RuntimeSandboxManager & {
     engine?: { engineType?: string };
   };
@@ -82,54 +91,6 @@ function toSandboxWorkdir(cwd: string): string | undefined {
 
 const STREAM_CAP_CHARS = 30_000;
 
-function resolveExecutableFromPath(name: string): string | undefined {
-  const entries = (process.env.PATH ?? "").split(importPath.delimiter);
-  for (const entry of entries) {
-    if (!entry) continue;
-    const candidate = importPath.join(entry, name);
-    try {
-      accessSync(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // keep searching
-    }
-  }
-  return undefined;
-}
-
-function resolveHostShell(): { command: string; args: string[] } {
-  const explicit =
-    process.env.CODING_TOOLS_SHELL?.trim() || process.env.SHELL?.trim();
-  if (explicit) return { command: explicit, args: ["-c"] };
-
-  if (process.platform === "win32") {
-    return {
-      command: "powershell.exe",
-      args: ["-NoProfile", "-NonInteractive", "-Command"],
-    };
-  }
-
-  const candidates =
-    process.env.ELIZA_PLATFORM?.toLowerCase() === "android"
-      ? ["/system/bin/sh", "/bin/sh", "sh"]
-      : ["/bin/bash", "bash", "/bin/sh", "sh"];
-
-  for (const candidate of candidates) {
-    if (candidate.includes("/")) {
-      try {
-        accessSync(candidate, constants.X_OK);
-        return { command: candidate, args: ["-c"] };
-      } catch {
-        continue;
-      }
-    }
-    const resolved = resolveExecutableFromPath(candidate);
-    if (resolved) return { command: resolved, args: ["-c"] };
-  }
-
-  return { command: "sh", args: ["-c"] };
-}
-
 function runOnHost(opts: {
   command: string;
   cwd: string;
@@ -139,6 +100,18 @@ function runOnHost(opts: {
   const start = Date.now();
   return new Promise<ShellResult>((resolve) => {
     const shell = resolveHostShell();
+    if (!shell.available) {
+      resolve({
+        exitCode: -1,
+        signal: null,
+        stdout: "",
+        stderr: shell.warning ?? "No executable shell was detected.",
+        timedOut: false,
+        durationMs: Date.now() - start,
+        sandbox: "host",
+      });
+      return;
+    }
     const proc = spawn(shell.command, [...shell.args, opts.command], {
       cwd: opts.cwd,
       env: opts.env,
@@ -220,6 +193,18 @@ export async function runShell(
 
   if (mode === "cloud") {
     throw new Error("Local shell execution disabled in cloud mode.");
+  }
+
+  const support = detectTerminalSupport();
+  if (!support.supported) {
+    throw new Error(
+      support.message ?? "Local terminal execution is unavailable.",
+    );
+  }
+
+  const missingTool = missingToolForCommand(opts.command);
+  if (missingTool) {
+    throw new Error(missingToolMessage(missingTool));
   }
 
   if (mode === "local-safe") {

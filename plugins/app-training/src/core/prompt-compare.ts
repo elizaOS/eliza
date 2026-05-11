@@ -120,7 +120,7 @@ export async function comparePrompts(
     return emptyResult(input);
   }
 
-  const adapter = resolveAdapter(input);
+  const adapter = await resolveAdapter(input);
   const scorerKind: ScorerKind =
     input.scorer ??
     (input.task === "action_planner" ? "planner_action" : "agreement");
@@ -239,16 +239,19 @@ function jsonlLineToExample(
   };
 }
 
-function resolveAdapter(input: PromptComparisonInput): LlmAdapter {
+async function resolveAdapter(
+  input: PromptComparisonInput,
+): Promise<LlmAdapter> {
   if (input.adapter) return input.adapter;
   // Standing direction: training-side comparison runs on Cerebras
   // gpt-oss-120b unless the operator passes their own adapter.
   const trainProvider =
-    process.env.TRAIN_MODEL_PROVIDER?.trim() ?? process.env.TRAINING_PROVIDER?.trim();
+    process.env.TRAIN_MODEL_PROVIDER?.trim() ??
+    process.env.TRAINING_PROVIDER?.trim();
   if (trainProvider === "cerebras") {
-    const { getTrainingUseModelAdapter } = require(
-      "../../../app-lifeops/test/helpers/lifeops-eval-model.ts",
-    ) as typeof import("../../../app-lifeops/test/helpers/lifeops-eval-model.ts");
+    const { getTrainingUseModelAdapter } = await import(
+      "../../../app-lifeops/test/helpers/lifeops-eval-model.ts"
+    );
     return createRuntimeAdapter(getTrainingUseModelAdapter());
   }
   if (!input.runtime) {
@@ -297,7 +300,10 @@ async function runPairwise(
       temperature: input.temperature,
       maxTokens: input.maxTokens,
     });
-    baselineToReference += input.compare(baselineOutput, example.expectedOutput);
+    baselineToReference += input.compare(
+      baselineOutput,
+      example.expectedOutput,
+    );
     variantToReference += input.compare(variantOutput, example.expectedOutput);
     variantToBaseline += input.compare(variantOutput, baselineOutput);
   }

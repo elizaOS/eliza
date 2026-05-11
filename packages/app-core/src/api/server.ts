@@ -123,6 +123,7 @@ import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
+import { handleInternalWakeRoute } from "./internal-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 // Local-inference routes intentionally remain in app-core (no plugin-local-inference exists).
@@ -648,6 +649,10 @@ async function handleCompatRoute(
   // Auth / pairing / onboarding status — extracted to auth-pairing-routes.ts
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
   if (await handleBackgroundTasksRoute(req, res, state)) return true;
+  // Internal wake route called by Capacitor BackgroundRunner JSContexts on
+  // iOS/Android. Bearer-authed via the device secret; not part of the
+  // cookie session pipeline.
+  if (await handleInternalWakeRoute(req, res, state)) return true;
   // Computer-use compat routes — extracted to plugin-computeruse via Plugin.routes (rawPath).
   if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;

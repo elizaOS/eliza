@@ -21,6 +21,7 @@ import {
   req,
 } from "../helpers/http.ts";
 import { createLiveRuntimeChildEnv } from "../helpers/live-child-env.ts";
+import { selectLiveProvider } from "../helpers/live-provider.ts";
 import {
   importLocalWorkspacePlugin,
   listLocalWorkspacePlugins,
@@ -139,35 +140,43 @@ const BOOT_LOCAL_WORKSPACE_PLUGIN_IDS = BOOT_LOCAL_WORKSPACE_PLUGINS.map(
 const BOOT_LOCAL_WORKSPACE_PLUGIN_ALLOW = BOOT_LOCAL_WORKSPACE_PLUGINS.map(
   (plugin) => plugin.npmName,
 );
+const LIVE_PROVIDER = LIVE ? selectLiveProvider() : null;
 
-if (FILTER_SET && LOCAL_WORKSPACE_PLUGINS.length === 0) {
+function providerPluginId(packageName: string): string {
+  return packageName.replace(/^@elizaos\/plugin-/, "");
+}
+
+function withLiveProvider(allowPlugins: string[]): string[] {
+  return [
+    ...new Set([
+      ...allowPlugins,
+      ...(LIVE_PROVIDER?.pluginPackage ? [LIVE_PROVIDER.pluginPackage] : []),
+    ]),
+  ];
+}
+
+const HAS_LIVE_MODEL_PROVIDER = Boolean(LIVE_PROVIDER);
+const LIVE_PROVIDER_PLUGIN_ID = LIVE_PROVIDER
+  ? providerPluginId(LIVE_PROVIDER.pluginPackage)
+  : null;
+const LIVE_PROVIDER_FILTER_KEYS = new Set(
+  [
+    LIVE_PROVIDER?.name,
+    LIVE_PROVIDER_PLUGIN_ID,
+    LIVE_PROVIDER?.pluginPackage,
+  ].filter((value): value is string => Boolean(value)),
+);
+const RUNTIME_READY_TIMEOUT_MS = 240_000;
+
+if (
+  FILTER_SET &&
+  LOCAL_WORKSPACE_PLUGINS.length === 0 &&
+  ![...LIVE_PROVIDER_FILTER_KEYS].some((key) => FILTER_SET.has(key))
+) {
   throw new Error(
     `ELIZA_PLUGIN_LIFECYCLE_FILTER=${FILTER_TOKENS.join(",")} matched no local workspace plugins.`,
   );
 }
-
-const HAS_LIVE_MODEL_PROVIDER = Boolean(
-  process.env.OPENAI_API_KEY ||
-    process.env.ANTHROPIC_API_KEY ||
-    process.env.GROQ_API_KEY ||
-    process.env.OPENROUTER_API_KEY ||
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_API_KEY ||
-    process.env.OLLAMA_HOST ||
-    process.env.OLLAMA_BASE_URL,
-);
-const LIVE_PROVIDER_PLUGIN_ID =
-  (process.env.OPENAI_API_KEY && "openai") ||
-  (process.env.ANTHROPIC_API_KEY && "anthropic") ||
-  (process.env.GROQ_API_KEY && "groq") ||
-  (process.env.OPENROUTER_API_KEY && "openrouter") ||
-  ((process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_API_KEY) &&
-    "google-genai") ||
-  ((process.env.OLLAMA_HOST || process.env.OLLAMA_BASE_URL) && "ollama") ||
-  null;
 
 async function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -220,6 +229,7 @@ async function startRuntimeWithPlugins(
     configPath,
     JSON.stringify({
       logging: { level: "info" },
+      agents: { defaults: { agentOrchestrator: false } },
       plugins: { allow: allowPlugins },
     }),
     "utf8",
@@ -228,12 +238,18 @@ async function startRuntimeWithPlugins(
   const child = spawn("bun", ["run", "start:eliza"], {
     cwd: REPO_ROOT,
     env: createLiveRuntimeChildEnv({
+      ...(LIVE_PROVIDER?.env ?? {}),
       ELIZA_CONFIG_PATH: configPath,
       ELIZA_STATE_DIR: stateDir,
       ELIZA_PORT: String(port),
       ELIZA_API_PORT: String(port),
       CACHE_DIR: path.join(stateDir, "cache"),
       ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1",
+      ELIZA_SERIALIZE_PLUGIN_LOADS:
+        process.env.ELIZA_SERIALIZE_PLUGIN_LOADS ?? "1",
+      ELIZA_AGENT_ORCHESTRATOR: "false",
+      ENABLE_AUTONOMY: "false",
+      ELIZA_DISABLE_PROACTIVE_AGENT: "1",
       ALLOW_NO_DATABASE: "",
       DISCORD_API_TOKEN: "",
       DISCORD_BOT_TOKEN: "",
@@ -253,7 +269,7 @@ async function startRuntimeWithPlugins(
     earlyExit = { code, signal };
   });
 
-  const deadline = Date.now() + 150_000;
+  const deadline = Date.now() + RUNTIME_READY_TIMEOUT_MS;
   let ready = false;
   while (Date.now() < deadline) {
     if (earlyExit) {
@@ -412,8 +428,10 @@ describeIf(LIVE && BOOT_LOCAL_WORKSPACE_PLUGINS.length > 0)(
           );
         }
       }
-      rt = await startRuntimeWithPlugins(BOOT_LOCAL_WORKSPACE_PLUGIN_ALLOW);
-    }, 240_000);
+      rt = await startRuntimeWithPlugins(
+        withLiveProvider(BOOT_LOCAL_WORKSPACE_PLUGIN_ALLOW),
+      );
+    }, 300_000);
 
     afterAll(async () => {
       if (rt) await rt.close();
@@ -559,13 +577,14 @@ describeIf(
   LIVE &&
     HAS_LIVE_MODEL_PROVIDER &&
     Boolean(LIVE_PROVIDER_PLUGIN_ID) &&
-    (!FILTER_SET || FILTER_SET.has(LIVE_PROVIDER_PLUGIN_ID as string)),
+    (!FILTER_SET ||
+      [...LIVE_PROVIDER_FILTER_KEYS].some((key) => FILTER_SET.has(key))),
 )("Live: plugin lifecycle — focused provider roundtrip", () => {
   let rt: Runtime;
 
   beforeAll(async () => {
-    rt = await startRuntimeWithPlugins([LIVE_PROVIDER_PLUGIN_ID as string]);
-  }, 240_000);
+    rt = await startRuntimeWithPlugins(withLiveProvider([]));
+  }, 300_000);
 
   afterAll(async () => {
     if (rt) await rt.close();
@@ -586,7 +605,7 @@ describeIf(
       return;
     }
     expect(response.data.text as string).not.toMatch(/provider issue/i);
-  }, 150_000);
+  }, 180_000);
 });
 
 describeIf(LIVE && (!FILTER_SET || FILTER_SET.has("selfcontrol")))(
@@ -596,7 +615,7 @@ describeIf(LIVE && (!FILTER_SET || FILTER_SET.has("selfcontrol")))(
 
     beforeAll(async () => {
       rt = await startRuntimeWithPlugins(["selfcontrol"]);
-    }, 180_000);
+    }, 300_000);
 
     afterAll(async () => {
       if (rt) await rt.close();
@@ -634,7 +653,7 @@ describeIf(LIVE && (!FILTER_SET || FILTER_SET.has("selfcontrol")))(
       expect([200, 404]).toContain(res.status);
     });
   },
-  300_000,
+  360_000,
 );
 
 describeIf(LIVE && !FILTER_SET)(
@@ -644,7 +663,7 @@ describeIf(LIVE && !FILTER_SET)(
 
     beforeAll(async () => {
       rt = await startRuntimeWithPlugins([]);
-    }, 180_000);
+    }, 300_000);
 
     afterAll(async () => {
       if (rt) await rt.close();
@@ -665,5 +684,5 @@ describeIf(LIVE && !FILTER_SET)(
       expect(res.data).toHaveProperty("conversation");
     });
   },
-  300_000,
+  360_000,
 );

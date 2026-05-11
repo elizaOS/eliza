@@ -113,6 +113,152 @@ def supported_actions() -> set[str]:
     return set(_ACTION_HANDLERS.keys())
 
 
+_OPENAI_FUNCTION_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+_TOOL_DESCRIPTIONS: dict[str, str] = {
+    "CALENDAR": (
+        "Read or mutate calendar state. Use subaction=create_event, update_event, "
+        "delete_event, propose_times, search_events, check_availability, next_event, "
+        "or update_preferences."
+    ),
+    "MESSAGE": (
+        "Send, draft, search, triage, or manage messages and email. Use operation=send, "
+        "draft_reply, manage, triage, search_inbox, list_channels, read_channel, or "
+        "read_with_contact. Use source=gmail for email."
+    ),
+    "ENTITY": (
+        "Manage people and identity records. Use subaction=add, set_identity, "
+        "log_interaction, or list."
+    ),
+    "LIFE_CREATE": (
+        "Create personal life records such as reminders, alarms, workouts, or health "
+        "metrics. Use subaction=create and put typed fields in details."
+    ),
+    "LIFE_COMPLETE": "Complete a target, usually a reminder. Include target.",
+    "LIFE_SNOOZE": "Snooze a reminder-like target. Include target and minutes.",
+    "LIFE_REVIEW": "Review life records without mutating state.",
+    "HEALTH": "Read health data without mutating state.",
+    "MONEY": "Read financial state or route a money subaction.",
+    "MONEY_DASHBOARD": "Read the financial dashboard.",
+    "MONEY_LIST_TRANSACTIONS": "List financial transactions.",
+    "MONEY_LIST_SOURCES": "List connected financial sources.",
+    "MONEY_RECURRING_CHARGES": "List recurring charges.",
+    "MONEY_SPENDING_SUMMARY": "Summarize spending.",
+    "MONEY_SUBSCRIPTION_STATUS": "Read subscription status.",
+    "MONEY_SUBSCRIPTION_AUDIT": "Audit subscriptions.",
+    "MONEY_SUBSCRIPTION_CANCEL": (
+        "Cancel a subscription. Include confirmed=true only when the user has "
+        "authorized cancellation."
+    ),
+    "BOOK_TRAVEL": "Search or prepare travel options without booking.",
+    "BLOCK": "Route a focus-blocking action.",
+    "BLOCK_BLOCK": "Create a focus block for apps or websites.",
+    "BLOCK_UNBLOCK": "Remove a focus block for apps or websites.",
+    "BLOCK_LIST_ACTIVE": "List active focus blocks.",
+    "BLOCK_RELEASE": "Release a focus block.",
+    "BLOCK_STATUS": "Read focus-block status.",
+    "BLOCK_REQUEST_PERMISSION": "Request permission to create or change a focus block.",
+    "SCHEDULED_TASK_CREATE": (
+        "Create a scheduled task. Include kind, trigger, promptInstructions, and "
+        "other structured task fields when known."
+    ),
+}
+
+_DISCRIMINATORS: dict[str, tuple[str, list[str]]] = {
+    "CALENDAR": (
+        "subaction",
+        [
+            "create_event",
+            "update_event",
+            "delete_event",
+            "propose_times",
+            "search_events",
+            "check_availability",
+            "next_event",
+            "update_preferences",
+        ],
+    ),
+    "MESSAGE": (
+        "operation",
+        [
+            "send",
+            "draft_reply",
+            "manage",
+            "triage",
+            "search_inbox",
+            "list_channels",
+            "read_channel",
+            "read_with_contact",
+        ],
+    ),
+    "ENTITY": ("subaction", ["add", "set_identity", "log_interaction", "list"]),
+    "LIFE_CREATE": ("subaction", ["create"]),
+    "LIFE_COMPLETE": ("subaction", ["complete"]),
+    "LIFE_SNOOZE": ("subaction", ["snooze"]),
+    "LIFE_REVIEW": ("subaction", ["review"]),
+    "HEALTH": ("subaction", ["by_metric", "summary", "trends"]),
+}
+
+
+def _tool_parameters_for_action(action_name: str) -> dict[str, Any]:
+    """Return a permissive JSON Schema for a LifeOps action.
+
+    The schema intentionally requires only the action discriminator where one
+    exists. LifeOps scenarios use a broad, evolving action vocabulary, and a
+    too-strict schema would reject valid benchmark kwargs before the executor
+    can apply its own deterministic checks.
+    """
+    schema: dict[str, Any] = {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": True,
+    }
+    discriminator = _DISCRIMINATORS.get(action_name)
+    if discriminator is None:
+        return schema
+    field, values = discriminator
+    schema["properties"] = {
+        field: {
+            "type": "string",
+            "enum": values,
+            "description": f"LifeOps {action_name} discriminator.",
+        }
+    }
+    schema["required"] = [field]
+    return schema
+
+
+def build_tool_manifest(_world: LifeWorld) -> list[dict[str, Any]]:
+    """Build the OpenAI-compatible tool manifest for the current LifeOps world.
+
+    Only OpenAI-compatible function names are exposed. The runner still
+    executes legacy dotted actions such as ``CALENDAR.create`` when adapters
+    produce them, but those names are not valid function identifiers for
+    Cerebras/OpenAI-style tool schemas.
+    """
+    tools: list[dict[str, Any]] = []
+    for action_name in sorted(supported_actions()):
+        if _OPENAI_FUNCTION_NAME_RE.fullmatch(action_name) is None:
+            continue
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": action_name,
+                    "description": _TOOL_DESCRIPTIONS.get(
+                        action_name,
+                        (
+                            "Execute this LifeOps action when the user request "
+                            "requires it."
+                        ),
+                    ),
+                    "parameters": _tool_parameters_for_action(action_name),
+                },
+            }
+        )
+    return tools
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -993,11 +1139,6 @@ def _replay_ground_truth(scenario: Scenario, world_factory: WorldFactory) -> str
     return state_hash(expected_world)
 
 
-def _empty_tool_manifest(_world: LifeWorld) -> list[dict[str, Any]]:
-    """Placeholder tool manifest. Wave 4 surfaces real per-action JSON Schemas."""
-    return []
-
-
 class LifeOpsBenchRunner:
     """Orchestrates LifeOpsBench runs across a set of scenarios.
 
@@ -1192,7 +1333,7 @@ class LifeOpsBenchRunner:
         )
 
         for turn_number in range(1, scenario.max_turns + 1):
-            tool_manifest = _empty_tool_manifest(world)
+            tool_manifest = build_tool_manifest(world)
             agent_turn = await active_agent_fn(list(history), tool_manifest)
             history.append(agent_turn)
 

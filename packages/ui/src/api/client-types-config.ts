@@ -124,6 +124,15 @@ export interface PluginInfo {
   validationErrors: Array<{ field: string; message: string }>;
   validationWarnings: Array<{ field: string; message: string }>;
   npmName?: string;
+  directory?: string | null;
+  registryKind?: string;
+  origin?: "builtin" | "third-party" | string;
+  registrySource?: string;
+  support?: "first-party" | "community" | string;
+  builtIn?: boolean;
+  firstParty?: boolean;
+  thirdParty?: boolean;
+  status?: string;
   version?: string;
   releaseStream?: "latest" | "beta";
   requestedVersion?: string;
@@ -377,6 +386,7 @@ export interface RegistryPlugin {
   name: string;
   gitRepo: string;
   gitUrl: string;
+  directory?: string | null;
   description: string;
   homepage: string | null;
   topics: string[];
@@ -398,6 +408,15 @@ export interface RegistryPlugin {
   installedVersion: string | null;
   loaded: boolean;
   bundled: boolean;
+  kind?: string;
+  registryKind?: string;
+  origin?: "builtin" | "third-party" | string;
+  source?: string;
+  support?: "first-party" | "community" | string;
+  builtIn?: boolean;
+  firstParty?: boolean;
+  thirdParty?: boolean;
+  status?: string;
   compatibility?: {
     releaseAvailability: "bundled" | "post-release";
     installSurface: "runtime" | "app";
@@ -417,6 +436,11 @@ export interface RegistrySearchResult {
   stars: number;
   supports: { v0: boolean; v1: boolean; v2: boolean };
   repository: string;
+  origin?: string;
+  support?: string;
+  builtIn?: boolean;
+  firstParty?: boolean;
+  thirdParty?: boolean;
 }
 
 export interface InstalledPlugin {
@@ -484,6 +508,11 @@ export interface RegistryPluginItem {
     v1Version: string | null;
     v2Version: string | null;
   };
+  origin?: string;
+  support?: string;
+  builtIn?: boolean;
+  firstParty?: boolean;
+  thirdParty?: boolean;
 }
 
 // Workbench

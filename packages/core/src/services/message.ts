@@ -89,6 +89,7 @@ import { isExplicitSelfModificationRequest } from "../should-respond";
 import {
 	getModelStreamChunkDeliveryDepth,
 	runWithStreamingContext,
+	type StreamingContext,
 } from "../streaming-context";
 import {
 	getTrajectoryContext,
@@ -180,11 +181,11 @@ import {
 } from "../utils/text-splitting";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { runPostTurnEvaluators } from "./evaluator";
+import type { OptimizedPromptTask } from "./optimized-prompt";
 import {
-	OPTIMIZED_PROMPT_SERVICE,
-	type OptimizedPromptService,
-} from "./optimized-prompt";
-import { resolveOptimizedPrompt } from "./optimized-prompt-resolver";
+	type OptimizedPromptRuntimeLike,
+	resolveOptimizedPromptForRuntime,
+} from "./optimized-prompt-resolver";
 
 const PLANNER_CONTROL_ACTIONS = new Set(
 	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
@@ -1190,6 +1191,12 @@ type ResolvedMessageOptions = {
 	keepExistingResponses: boolean;
 	onStreamChunk?: StreamChunkCallback;
 	shouldRespondModel: ShouldRespondModelType;
+	/**
+	 * Per-turn abort signal threaded into the streaming context so
+	 * `runtime.useModel` and model handlers downstream can cancel
+	 * in-flight inference. Sourced from `MessageProcessingOptions.abortSignal`.
+	 */
+	abortSignal?: AbortSignal;
 };
 
 function normalizeShouldRespondModelType(
@@ -1238,6 +1245,16 @@ interface StrategyResult {
 	state: State;
 	mode: StrategyMode;
 }
+
+/**
+ * Outcome of attempting the fallback model loop in
+ * `buildStructuredFailureReply`. `noProvider` means a model call surfaced
+ * `NoModelProviderConfiguredError`; the caller must short-circuit to
+ * `buildNoModelProviderReply` instead of continuing the loop.
+ */
+type FailureReplyAttempt =
+	| { kind: "text"; value: string }
+	| { kind: "noProvider" };
 
 export type V5MessageRuntimeStage1Result =
 	| {
@@ -2504,6 +2521,24 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 		},
 	];
 
+/**
+ * Baseline instruction prefix for the `response` task. When an optimized
+ * artifact exists for `response`, the resolver substitutes this string with
+ * the optimizer's prompt before the per-turn context is appended.
+ *
+ * Kept as a single string so the operator can train against the exact
+ * baseline by exporting `RESPONSE_TASK_BASELINE_INSTRUCTIONS` from this
+ * module if needed.
+ */
+const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
+	"task: Write one direct reply to the user.",
+	"",
+	"rules:",
+	"- answer directly in the agent's voice",
+	"- do not select actions or tools",
+	"- do not include internal reasoning",
+].join("\n");
+
 async function generateDirectReplyOnce(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -2511,19 +2546,19 @@ async function generateDirectReplyOnce(args: {
 	messageHandler: MessageHandlerResult;
 }): Promise<string> {
 	const latestText = getUserMessageText(args.message) ?? "";
+	const instructions = resolveOptimizedPromptForRuntime(
+		args.runtime,
+		"response",
+		RESPONSE_TASK_BASELINE_INSTRUCTIONS,
+	);
 	const prompt = [
-		"task: Write one direct reply to the user.",
+		instructions,
 		"",
 		"context:",
 		args.state.text,
 		"",
 		`user_message: ${latestText}`,
 		`routing_thought: ${args.messageHandler.thought}`,
-		"",
-		"rules:",
-		"- answer directly in the agent's voice",
-		"- do not select actions or tools",
-		"- do not include internal reasoning",
 	].join("\n");
 	const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
 	return getV5ModelText(raw).trim();
@@ -2590,21 +2625,52 @@ function formatRoleGateForPrompt(
 	return undefined;
 }
 
+/**
+ * The Stage-1 `messageHandlerTemplate` covers three optimized-prompt tasks:
+ *
+ *   - `context_routing` — when the role-filtered context catalog is non-empty
+ *     the prompt asks the model to pick which contexts to consume. Optimizing
+ *     this task tunes the routing instructions.
+ *   - `should_respond` — when no contexts are available (direct messages, or
+ *     callers that haven't registered any) the prompt collapses to a respond
+ *     /ignore decision. Optimizing this task tunes that classifier.
+ *   - `response` — Stage-1 also emits the assistant's draft reply when it
+ *     decides to respond, so a separately-trained `response` artifact
+ *     replaces the same baseline when present and the operator wants that
+ *     variant active.
+ *
+ * The dispatch here is keyed on call-site state (whether contexts are
+ * available), not on an `if (task === 'X')` branch — we ask the resolver for
+ * one task name per call.
+ */
+function selectMessageHandlerTask(
+	availableContexts: readonly ContextDefinition[],
+): OptimizedPromptTask {
+	return availableContexts.length > 0 ? "context_routing" : "should_respond";
+}
+
 function renderMessageHandlerInstructions(
+	runtime: OptimizedPromptRuntimeLike,
 	availableContexts: readonly ContextDefinition[],
 	options?: { directMessage?: boolean },
 ): string {
+	const baseline = resolveOptimizedPromptForRuntime(
+		runtime,
+		selectMessageHandlerTask(availableContexts),
+		messageHandlerTemplate,
+	);
 	return composePrompt({
 		state: {
 			directMessage: options?.directMessage ? "true" : "",
 			availableContexts: formatAvailableContextsForPrompt(availableContexts),
 			handleResponseToolName: HANDLE_RESPONSE_TOOL_NAME,
 		},
-		template: messageHandlerTemplate,
+		template: baseline,
 	}).trim();
 }
 
 function renderMessageHandlerModelInput(
+	runtime: OptimizedPromptRuntimeLike,
 	context: ContextObject,
 	availableContexts: readonly ContextDefinition[] = [],
 	options?: { directMessage?: boolean },
@@ -2614,6 +2680,7 @@ function renderMessageHandlerModelInput(
 } {
 	const rendered = renderContextObject(context);
 	const instructions = renderMessageHandlerInstructions(
+		runtime,
 		availableContexts,
 		options,
 	);
@@ -4171,6 +4238,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
 		const messageHandlerInput = renderMessageHandlerModelInput(
+			args.runtime,
 			context,
 			availableContexts,
 			{ directMessage: directMessageChannel },
@@ -7712,6 +7780,7 @@ export class DefaultMessageService implements IMessageService {
 							String(runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") ?? ""),
 						),
 					shouldRespondModel: resolvedShouldRespondModel,
+					...(options?.abortSignal ? { abortSignal: options.abortSignal } : {}),
 				};
 
 				const instrumentedCallback = wrapSingleTurnVisibleCallback(
@@ -7803,38 +7872,57 @@ export class DefaultMessageService implements IMessageService {
 					// Structured streaming is handled by dynamicPromptExecFromState for
 					// text fields. Native v5 planner/tool/evaluator events use the same
 					// callback with JSON event chunks so UIs can render tool progress.
-					const streamingContext = opts.onStreamChunk
-						? {
-								onStreamChunk: opts.onStreamChunk,
-								messageId: responseId,
-								onToolCall: async (payload: StreamingToolCallPayload) => {
-									await opts.onStreamChunk?.(
-										JSON.stringify({ type: "tool_call", ...payload }),
-										responseId,
-									);
-								},
-								onToolResult: async (payload: StreamingToolResultPayload) => {
-									await opts.onStreamChunk?.(
-										JSON.stringify({ type: "tool_result", ...payload }),
-										responseId,
-									);
-								},
-								onEvaluation: async (payload: StreamingEvaluationPayload) => {
-									await opts.onStreamChunk?.(
-										JSON.stringify({ type: "evaluation", ...payload }),
-										responseId,
-									);
-								},
-								onContextEvent: async (
-									payload: StreamingContextEventPayload,
-								) => {
-									await opts.onStreamChunk?.(
-										JSON.stringify({ type: "context_event", event: payload }),
-										responseId,
-									);
-								},
-							}
-						: undefined;
+					// We build the context even when there's no onStreamChunk, as
+					// long as we have an abortSignal to propagate — the runtime
+					// reads `streamingContext.abortSignal` to plumb cancellation
+					// into `runtime.useModel` calls.
+					const streamingContext: StreamingContext | undefined =
+						opts.onStreamChunk
+							? {
+									onStreamChunk: opts.onStreamChunk,
+									messageId: responseId,
+									...(opts.abortSignal
+										? { abortSignal: opts.abortSignal }
+										: {}),
+									onToolCall: async (payload: StreamingToolCallPayload) => {
+										await opts.onStreamChunk?.(
+											JSON.stringify({ type: "tool_call", ...payload }),
+											responseId,
+										);
+									},
+									onToolResult: async (payload: StreamingToolResultPayload) => {
+										await opts.onStreamChunk?.(
+											JSON.stringify({ type: "tool_result", ...payload }),
+											responseId,
+										);
+									},
+									onEvaluation: async (payload: StreamingEvaluationPayload) => {
+										await opts.onStreamChunk?.(
+											JSON.stringify({ type: "evaluation", ...payload }),
+											responseId,
+										);
+									},
+									onContextEvent: async (
+										payload: StreamingContextEventPayload,
+									) => {
+										await opts.onStreamChunk?.(
+											JSON.stringify({ type: "context_event", event: payload }),
+											responseId,
+										);
+									},
+								}
+							: opts.abortSignal
+								? {
+										// No stream callback but caller provided an abort
+										// signal — install a no-op chunk handler so the
+										// streaming-context plumbing carries the signal
+										// down into `runtime.useModel`. The runtime never
+										// invokes onStreamChunk when no streaming is happening.
+										onStreamChunk: async () => undefined,
+										messageId: responseId,
+										abortSignal: opts.abortSignal,
+									}
+								: undefined;
 					// Voice handling state
 					const firstSentenceSent = false;
 					const firstSentenceText = "";
@@ -8944,12 +9032,8 @@ export class DefaultMessageService implements IMessageService {
 						imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
 					}
 
-					const optimizedMediaService =
-						runtime.getService<OptimizedPromptService>(
-							OPTIMIZED_PROMPT_SERVICE,
-						);
-					const resolvedImagePrompt = resolveOptimizedPrompt(
-						optimizedMediaService,
+					const resolvedImagePrompt = resolveOptimizedPromptForRuntime(
+						runtime,
 						"media_description",
 						imageDescriptionTemplate,
 					);
@@ -9161,6 +9245,82 @@ export class DefaultMessageService implements IMessageService {
 		return processedAttachments;
 	}
 
+	private resolveRecentMessagesForFailureReply(
+		state: State,
+		message: Memory,
+	): string {
+		if (
+			typeof state.values?.recentMessages === "string" &&
+			state.values.recentMessages.trim().length > 0
+		) {
+			return state.values.recentMessages;
+		}
+		if (typeof state.text === "string" && state.text.trim().length > 0) {
+			return state.text;
+		}
+		if (typeof message.content.text === "string") {
+			return message.content.text;
+		}
+		return "(unavailable)";
+	}
+
+	private async generateFailureReplyText(
+		runtime: IAgentRuntime,
+		prompt: string,
+		stage: string,
+	): Promise<FailureReplyAttempt> {
+		for (const modelType of [
+			ModelType.TEXT_LARGE,
+			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
+			ModelType.TEXT_NANO,
+		] as const) {
+			try {
+				const response = await runtime.useModel(modelType, { prompt });
+				if (typeof response !== "string") {
+					continue;
+				}
+
+				const cleaned = response
+					.replace(/<think>[\s\S]*?<\/think>/g, "")
+					.trim();
+				const looksStructuredReply =
+					cleaned.startsWith("{") && cleaned.includes("}");
+				const parsed = looksStructuredReply
+					? parseJSONObjectFromText(cleaned)
+					: null;
+				const replyText =
+					typeof parsed?.text === "string" && parsed.text.trim().length > 0
+						? parsed.text.trim()
+						: cleaned;
+				if (replyText) {
+					return { kind: "text", value: replyText };
+				}
+			} catch (error) {
+				// If the runtime reports no LLM provider is configured at all,
+				// no further model attempts will succeed. Surface the actionable
+				// hint instead of the generic transient-failure message. See
+				// elizaOS/eliza#7203.
+				if (
+					error instanceof Error &&
+					error.name === "NoModelProviderConfiguredError"
+				) {
+					return { kind: "noProvider" };
+				}
+				runtime.logger.warn(
+					{
+						src: "service:message",
+						stage,
+						modelType,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"Structured failure reply generation failed for model",
+				);
+			}
+		}
+		return { kind: "text", value: "" };
+	}
+
 	private async buildStructuredFailureReply(
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -9182,15 +9342,10 @@ export class DefaultMessageService implements IMessageService {
 			);
 		}
 
-		const recentMessages =
-			typeof state.values?.recentMessages === "string" &&
-			state.values.recentMessages.trim().length > 0
-				? state.values.recentMessages
-				: typeof state.text === "string" && state.text.trim().length > 0
-					? state.text
-					: typeof message.content.text === "string"
-						? message.content.text
-						: "(unavailable)";
+		const recentMessages = this.resolveRecentMessagesForFailureReply(
+			state,
+			message,
+		);
 		const failurePrompt = [
 			"You hit a transient model error and have to send a short user-facing reply.",
 			"Write a one or two sentence reply in plain language.",
@@ -9217,65 +9372,22 @@ export class DefaultMessageService implements IMessageService {
 			"Reply:",
 		].join("\n");
 
-		let replyText = "";
-		for (const modelType of [
-			ModelType.TEXT_LARGE,
-			ModelType.RESPONSE_HANDLER,
-			ModelType.TEXT_SMALL,
-			ModelType.TEXT_NANO,
-		] as const) {
-			try {
-				const response = await runtime.useModel(modelType, {
-					prompt: failurePrompt,
-				});
-				if (typeof response !== "string") {
-					continue;
-				}
-
-				const cleaned = response
-					.replace(/<think>[\s\S]*?<\/think>/g, "")
-					.trim();
-				const looksStructuredReply =
-					cleaned.startsWith("{") && cleaned.includes("}");
-				const parsed = looksStructuredReply
-					? parseJSONObjectFromText(cleaned)
-					: null;
-				replyText =
-					typeof parsed?.text === "string" && parsed.text.trim().length > 0
-						? parsed.text.trim()
-						: cleaned;
-				if (replyText) {
-					break;
-				}
-			} catch (error) {
-				// If the runtime reports no LLM provider is configured at all,
-				// no further model attempts will succeed. Surface the actionable
-				// hint instead of the generic transient-failure message. See
-				// elizaOS/eliza#7203.
-				if (
-					error instanceof Error &&
-					error.name === "NoModelProviderConfiguredError"
-				) {
-					return this.buildNoModelProviderReply(
-						runtime,
-						message,
-						state,
-						responseId,
-						stage,
-					);
-				}
-				runtime.logger.warn(
-					{
-						src: "service:message",
-						stage,
-						modelType,
-						error: error instanceof Error ? error.message : String(error),
-					},
-					"Structured failure reply generation failed for model",
-				);
-			}
+		const attempt = await this.generateFailureReplyText(
+			runtime,
+			failurePrompt,
+			stage,
+		);
+		if (attempt.kind === "noProvider") {
+			return this.buildNoModelProviderReply(
+				runtime,
+				message,
+				state,
+				responseId,
+				stage,
+			);
 		}
 
+		let replyText = attempt.value;
 		if (!replyText) {
 			// Last-ditch fallback when every model call above also failed.
 			// Voice-neutral so any character can ship this default; characters

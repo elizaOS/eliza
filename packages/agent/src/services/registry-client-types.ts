@@ -63,6 +63,7 @@ export interface RegistryPluginInfo {
   name: string;
   gitRepo: string;
   gitUrl: string;
+  directory?: string | null;
   description: string;
   homepage: string | null;
   topics: string[];
@@ -82,6 +83,14 @@ export interface RegistryPluginInfo {
   supports: { v0: boolean; v1: boolean; v2: boolean };
   localPath?: string;
   kind?: string;
+  registryKind?: string;
+  origin?: "builtin" | "third-party" | string;
+  source?: string;
+  support?: "first-party" | "community" | string;
+  builtIn?: boolean;
+  firstParty?: boolean;
+  thirdParty?: boolean;
+  status?: string;
   appMeta?: RegistryAppMeta;
 }
 
@@ -94,6 +103,11 @@ export interface RegistrySearchResult {
   stars: number;
   supports: { v0: boolean; v1: boolean; v2: boolean };
   repository: string;
+  origin?: string;
+  support?: string;
+  builtIn?: boolean;
+  firstParty?: boolean;
+  thirdParty?: boolean;
 }
 
 export interface RegistryPluginListItem {
@@ -110,4 +124,9 @@ export interface RegistryPluginListItem {
     v1Version: string | null;
     v2Version: string | null;
   };
+  origin?: string;
+  support?: string;
+  builtIn?: boolean;
+  firstParty?: boolean;
+  thirdParty?: boolean;
 }

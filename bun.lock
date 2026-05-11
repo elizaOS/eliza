@@ -2905,12 +2905,32 @@
         "@elizaos/core": "2.0.0-beta.1",
       },
     },
+    "plugins/plugin-mlx": {
+      "name": "@elizaos/plugin-mlx",
+      "version": "2.0.0-beta.1",
+      "dependencies": {
+        "@ai-sdk/openai-compatible": "^1.0.0",
+        "ai": "^6.0.174",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@elizaos/core": "2.0.0-beta.1",
+        "@types/node": "^25.0.3",
+        "bun-types": "^1.3.12",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "2.0.0-beta.1",
+      },
+    },
     "plugins/plugin-music": {
       "name": "@elizaos/plugin-music",
       "version": "2.0.0-beta.1",
       "dependencies": {
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/plugin-sql": "2.0.0-beta.1",
+        "@elizaos/plugin-suno": "2.0.0-beta.1",
         "@vookav2/play-dl": "^1.9.9",
         "buffer": "^6.0.3",
         "ffmpeg-static": "^5.3.0",
@@ -4261,6 +4281,8 @@
     "@elizaos/plugin-mcp": ["@elizaos/plugin-mcp@workspace:plugins/plugin-mcp"],
 
     "@elizaos/plugin-minecraft": ["@elizaos/plugin-minecraft@workspace:plugins/plugin-minecraft"],
+
+    "@elizaos/plugin-mlx": ["@elizaos/plugin-mlx@workspace:plugins/plugin-mlx"],
 
     "@elizaos/plugin-moltbook": ["@elizaos/plugin-moltbook@2.0.0-alpha.5", "", { "dependencies": { "@elizaos/core": "2.0.0-alpha.3", "nanoid": "^5.0.7", "zod": "^4.1.11" } }, "sha512-q7EDpy1HpqXrZuVDL6686nzgdNLi+/CLlLpJ0eeoAvLtHVyLYOn/01HEldmkqclmhHBsx1J7+IpVdGAY8ZK1lA=="],
 

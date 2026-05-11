@@ -372,6 +372,17 @@ export interface GenerateTextParams {
 	 * every provider.
 	 */
 	providerOptions?: Record<string, JsonValue | object | undefined>;
+	/**
+	 * Per-request cancellation. Honoured by adapters that wire it into their
+	 * underlying transport (e.g. local llama backends forward to
+	 * `LlamaChatSession.prompt({ stopOnAbortSignal })` and the FFI decode
+	 * loop; HTTP-based providers pass it into `fetch`). The runtime
+	 * populates this from the current streaming context's `abortSignal`
+	 * when none was supplied by the caller, so an `AbortSignal` plumbed
+	 * through `messageService.handleMessage` reaches the model layer
+	 * automatically.
+	 */
+	signal?: AbortSignal;
 }
 
 /**

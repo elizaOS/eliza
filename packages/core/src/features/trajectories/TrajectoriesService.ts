@@ -62,6 +62,7 @@ export interface TrajectoryListOptions {
 	offset?: number;
 	status?: "active" | "completed" | "error" | "timeout";
 	source?: string;
+	runId?: string;
 	startDate?: string;
 	endDate?: string;
 	search?: string;
@@ -117,6 +118,7 @@ export interface TrajectoryZipExportOptions {
 	trajectoryIds?: string[];
 	source?: string;
 	status?: "active" | "completed" | "error" | "timeout";
+	runId?: string;
 	search?: string;
 	startDate?: string;
 	endDate?: string;
@@ -562,6 +564,18 @@ function sqlLiteral(v: unknown): string {
 	if (typeof v === "object")
 		return `'${JSON.stringify(v).replace(/'/g, "''")}'`;
 	return `'${String(v).replace(/'/g, "''")}'`;
+}
+
+function trajectoryRunIdWhereClause(runId: string): string {
+	const escaped = runId.toLowerCase().replace(/[\\'%_]/g, (ch) => {
+		if (ch === "'") return "''";
+		if (ch === "\\") return "\\\\";
+		return `\\${ch}`;
+	});
+	return `(
+		LOWER(COALESCE(CAST(metadata_json AS TEXT), '')) LIKE '%${escaped}%' OR
+		LOWER(COALESCE(CAST(steps_json AS TEXT), '')) LIKE '%${escaped}%'
+	)`;
 }
 
 type TrajectoryStatus =
@@ -1908,6 +1922,9 @@ export class TrajectoriesService extends Service {
 		if (options.source) {
 			whereClauses.push(`source = ${sqlLiteral(options.source)}`);
 		}
+		if (options.runId) {
+			whereClauses.push(trajectoryRunIdWhereClause(options.runId));
+		}
 		if (options.scenarioId) {
 			whereClauses.push(`scenario_id = ${sqlLiteral(options.scenarioId)}`);
 		}
@@ -2267,6 +2284,7 @@ export class TrajectoriesService extends Service {
 				source: options.source,
 				status: options.status,
 				search: options.search,
+				runId: options.runId,
 				startDate: options.startDate,
 				endDate: options.endDate,
 				scenarioId: options.scenarioId,
@@ -2351,6 +2369,9 @@ export class TrajectoriesService extends Service {
 		}
 		if (options.source) {
 			whereClauses.push(`source = ${sqlLiteral(options.source)}`);
+		}
+		if (options.runId) {
+			whereClauses.push(trajectoryRunIdWhereClause(options.runId));
 		}
 		if (options.startDate) {
 			whereClauses.push(

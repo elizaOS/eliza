@@ -32,7 +32,7 @@ layers). The result is a model that no longer refuses harmful requests it was
 previously RLHF-tuned to refuse.
 
 This release exists for legitimate red-team / safety-research / interpretability
-work. It is published in the same `elizalabs` HuggingFace organization as the
+work. It is published in the same `elizaos` HuggingFace organization as the
 safety-tuned line, distinguished by the `-uncensored` suffix in the repo name.
 Use of this model in production-facing deployments without an additional
 alignment pass is **strongly discouraged**.

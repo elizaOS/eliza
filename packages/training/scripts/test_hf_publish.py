@@ -115,7 +115,7 @@ def test_dataset_dry_run_lists_files_and_bytes(publish_dataset, caplog, monkeypa
         pytest.skip("training data files not present in this checkout")
 
     with caplog.at_level(logging.INFO, logger="publish_dataset"):
-        rc = publish_dataset._print_dry_run(spec, "elizalabs/eliza-1-training")
+        rc = publish_dataset._print_dry_run(spec, "elizaos/eliza-1-training")
     assert rc == 0
     log_text = "\n".join(r.getMessage() for r in caplog.records)
     assert "dry-run" in log_text
@@ -143,7 +143,7 @@ def test_pipeline_dry_run_lists_scripts_and_docs(publish_pipeline, caplog, monke
     assert not any(p == ".vast_instance_id" for p in paths)
 
     with caplog.at_level(logging.INFO, logger="publish_pipeline"):
-        rc = publish_pipeline._print_dry_run(files, "elizalabs/eliza-1-pipeline")
+        rc = publish_pipeline._print_dry_run(files, "elizaos/eliza-1-pipeline")
     assert rc == 0
     log_text = "\n".join(r.getMessage() for r in caplog.records)
     assert "would upload" in log_text
@@ -185,7 +185,7 @@ def test_dataset_publish_uploads_files_with_commit_messages(
     fake_api.repo_info.return_value = _fake_repo_info_factory()
 
     with patch("huggingface_hub.HfApi", return_value=fake_api):
-        rc = publish_dataset.publish(spec, "elizalabs/eliza-1-training", public=True)
+        rc = publish_dataset.publish(spec, "elizaos/eliza-1-training", public=True)
 
     assert rc == 0
     fake_api.create_repo.assert_not_called()
@@ -207,7 +207,7 @@ def test_dataset_publish_skips_when_token_missing(publish_dataset, monkeypatch):
     monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
 
     spec = publish_dataset._spec_abliteration()  # cheap; pointer-only
-    rc = publish_dataset.publish(spec, "elizalabs/eliza-1-abliteration", public=True)
+    rc = publish_dataset.publish(spec, "elizaos/eliza-1-abliteration", public=True)
     assert rc == 1
 
 
@@ -240,7 +240,7 @@ def test_dataset_publish_skips_files_with_matching_sha(
     ]
 
     with patch("huggingface_hub.HfApi", return_value=fake_api):
-        rc = publish_dataset.publish(spec, "elizalabs/eliza-1-training", public=True)
+        rc = publish_dataset.publish(spec, "elizaos/eliza-1-training", public=True)
     assert rc == 0
 
     # Atomic commit path: README ships, train.jsonl is skipped because its
@@ -269,14 +269,14 @@ def test_pipeline_publish_token_required(publish_pipeline, monkeypatch):
             path_in_repo="scripts/test_hf_publish.py",
         )
     ]
-    rc = publish_pipeline.publish(fake_files, "elizalabs/eliza-1-pipeline", public=True)
+    rc = publish_pipeline.publish(fake_files, "elizaos/eliza-1-pipeline", public=True)
     assert rc == 1
 
 
 def test_pipeline_card_mentions_companion_repos(publish_pipeline):
-    card = publish_pipeline.build_pipeline_card("elizalabs/eliza-1-pipeline")
-    assert "elizalabs/eliza-1-training" in card
-    assert "elizalabs/eliza-1-pipeline" in card
+    card = publish_pipeline.build_pipeline_card("elizaos/eliza-1-pipeline")
+    assert "elizaos/eliza-1-training" in card
+    assert "elizaos/eliza-1-pipeline" in card
     assert "uv sync --extra train" in card
     # Vast bootstrap instructions present
     assert "hf download" in card
@@ -296,7 +296,7 @@ def test_dataset_card_includes_license(publish_dataset):
 
 
 # ---------------------------------------------------------------------------
-# elizalabs publisher (publish_milady_model.py)
+# elizaos publisher (publish_milady_model.py)
 # ---------------------------------------------------------------------------
 
 
@@ -361,7 +361,7 @@ def _make_milady_bundle(model_dir: Path, *, fused: bool, kind: str = "milady-opt
         "pipeline": {
             "publishedAt": "2026-05-10T00:00:00Z",
             "trainedFrom": "Qwen/Qwen3.5-4B",
-            "trainingPipeline": "elizalabs/eliza-1-pipeline",
+            "trainingPipeline": "elizaos/eliza-1-pipeline",
             "buildScript": "packages/training/scripts/publish_milady_model.py",
         },
     }
@@ -378,7 +378,7 @@ def test_milady_dry_run_accepts_fused_gguf(publish_milady, tmp_path, monkeypatch
 
     rc = publish_milady.main([
         "--model-dir", str(bundle),
-        "--repo-id", "elizalabs/qwen3.5-4b-milady-optimized",
+        "--repo-id", "elizaos/qwen3.5-4b-milady-optimized",
         "--dry-run",
     ])
     assert rc == 0
@@ -392,7 +392,7 @@ def test_milady_refuses_stock_gguf(publish_milady, tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as excinfo:
         publish_milady.main([
             "--model-dir", str(bundle),
-            "--repo-id", "elizalabs/qwen3.5-4b-milady-optimized",
+            "--repo-id", "elizaos/qwen3.5-4b-milady-optimized",
             "--dry-run",
         ])
     msg = str(excinfo.value)
@@ -406,10 +406,10 @@ def test_milady_refuses_non_milady_org(publish_milady, tmp_path):
     with pytest.raises(SystemExit) as excinfo:
         publish_milady.main([
             "--model-dir", str(bundle),
-            "--repo-id", "elizaos/qwen3.5-4b",
+            "--repo-id", "someoneelse/qwen3.5-4b",
             "--dry-run",
         ])
-    assert "elizalabs" in str(excinfo.value)
+    assert "elizaos" in str(excinfo.value)
 
 
 def test_milady_refuses_zero_byte_gguf(publish_milady, tmp_path):
@@ -422,7 +422,7 @@ def test_milady_refuses_zero_byte_gguf(publish_milady, tmp_path):
     with pytest.raises(SystemExit) as excinfo:
         publish_milady.main([
             "--model-dir", str(bundle),
-            "--repo-id", "elizalabs/qwen3.5-4b-milady-optimized",
+            "--repo-id", "elizaos/qwen3.5-4b-milady-optimized",
             "--dry-run",
         ])
     assert "zero bytes" in str(excinfo.value)
@@ -441,7 +441,7 @@ def test_milady_publish_writes_published_sidecar(publish_milady, tmp_path, monke
     with patch("huggingface_hub.HfApi", return_value=fake_api):
         rc = publish_milady.main([
             "--model-dir", str(bundle),
-            "--repo-id", "elizalabs/qwen3.5-4b-milady-optimized",
+            "--repo-id", "elizaos/qwen3.5-4b-milady-optimized",
         ])
     assert rc == 0
 
@@ -449,9 +449,9 @@ def test_milady_publish_writes_published_sidecar(publish_milady, tmp_path, monke
     assert sidecar.exists(), "published.json was not written"
     import json as _json
     data = _json.loads(sidecar.read_text())
-    assert data["repoId"] == "elizalabs/qwen3.5-4b-milady-optimized"
+    assert data["repoId"] == "elizaos/qwen3.5-4b-milady-optimized"
     assert data["resolveUrl"].startswith(
-        "https://huggingface.co/elizalabs/qwen3.5-4b-milady-optimized/resolve/main/"
+        "https://huggingface.co/elizaos/qwen3.5-4b-milady-optimized/resolve/main/"
     )
     assert data["ggufFile"] == "qwen3.5-4b-milady-optimized.gguf"
     assert isinstance(data["sha256"], str) and len(data["sha256"]) == 64
@@ -490,7 +490,7 @@ def test_milady_publish_skips_when_remote_sha_matches(publish_milady, tmp_path, 
     with patch("huggingface_hub.HfApi", return_value=fake_api):
         rc = publish_milady.main([
             "--model-dir", str(bundle),
-            "--repo-id", "elizalabs/qwen3.5-4b-milady-optimized",
+            "--repo-id", "elizaos/qwen3.5-4b-milady-optimized",
         ])
     assert rc == 0
 
@@ -501,7 +501,7 @@ def test_milady_publish_skips_when_remote_sha_matches(publish_milady, tmp_path, 
 
 
 # ---------------------------------------------------------------------------
-# elizalabs catalog sync (sync_catalog_from_hf.py)
+# elizaos catalog sync (sync_catalog_from_hf.py)
 # ---------------------------------------------------------------------------
 
 
@@ -516,22 +516,22 @@ def test_sync_catalog_writes_diff(sync_catalog, tmp_path, monkeypatch):
     entries = [
         sync_catalog.CatalogEntry(
             id="qwen3.5-4b-milady-optimized",
-            hf_repo="elizalabs/qwen3.5-4b-milady-optimized",
+            hf_repo="elizaos/qwen3.5-4b-milady-optimized",
             gguf_file="qwen3.5-4b-milady-optimized.gguf",
             sha256="a" * 64,
             size_bytes=1234567,
             manifest={"version": 1, "kind": "milady-optimized"},
         ),
     ]
-    sync_catalog.write_diff(entries, out, org="elizalabs")
+    sync_catalog.write_diff(entries, out, org="elizaos")
     import json as _json
     payload = _json.loads(out.read_text())
     assert payload["version"] == 1
-    assert payload["org"] == "elizalabs"
+    assert payload["org"] == "elizaos"
     assert len(payload["entries"]) == 1
     e = payload["entries"][0]
     assert e["id"] == "qwen3.5-4b-milady-optimized"
-    assert e["hfRepo"] == "elizalabs/qwen3.5-4b-milady-optimized"
+    assert e["hfRepo"] == "elizaos/qwen3.5-4b-milady-optimized"
     assert e["sha256"] == "a" * 64
     assert e["sizeBytes"] == 1234567
     assert e["manifest"]["kind"] == "milady-optimized"

@@ -63,6 +63,10 @@ import { useActivityEvents } from "./hooks/useActivityEvents";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
 import {
+  FOCUS_CONNECTOR_EVENT,
+  type FocusConnectorEventDetail,
+} from "./events";
+import {
   APPS_ENABLED,
   isAndroidPhoneSurfaceEnabled,
   isAppsToolTab,
@@ -136,10 +140,6 @@ const AutomationsFeed = lazyNamedView(
 const BrowserWorkspaceView = lazyNamedView(
   () => import("./components/pages/BrowserWorkspaceView"),
   "BrowserWorkspaceView",
-);
-const ConnectorsPageView = lazyNamedView(
-  () => import("./components/pages/ConnectorsPageView"),
-  "ConnectorsPageView",
 );
 const ContactsPageView = lazyNamedView(
   () => import("./components/pages/ElizaOsAppsView"),
@@ -554,12 +554,6 @@ function ViewRouter({
             <WalletInventoryPage />
           </TabScrollView>
         );
-      case "connectors":
-        return (
-          <TabContentView>
-            <ConnectorsPageView connectorDesktopPlacement="right" />
-          </TabContentView>
-        );
       case "automations":
       case "triggers":
         return <AutomationsFeed />;
@@ -760,10 +754,9 @@ export function App() {
   const [characterHeaderActions, setCharacterHeaderActions] =
     useState<ReactNode | null>(null);
 
-  const isConnectors = tab === "connectors";
   const isCompanionTab = tab === "companion";
   const isChat = tab === "chat";
-  const isChatWorkspace = isChat || isConnectors;
+  const isChatWorkspace = isChat;
   const isCharacterPage =
     tab === "character" || tab === "character-select" || tab === "documents";
   const isWallets = tab === "inventory";
@@ -837,6 +830,19 @@ export function App() {
     },
     [setTab],
   );
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const handleFocusConnector = (event: Event) => {
+      const detail = (event as CustomEvent<FocusConnectorEventDetail>).detail;
+      if (!detail?.connectorId) return;
+      setSettingsInitialSection("connectors");
+      setTab("settings");
+    };
+    document.addEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
+    return () =>
+      document.removeEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
+  }, [setTab]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -975,7 +981,7 @@ export function App() {
                     clearEvents={clearActivityEvents}
                     mobile
                   />
-                ) : isChat ? (
+                ) : (
                   <>
                     <DeferredSetupChecklist
                       className="mb-3"
@@ -983,29 +989,17 @@ export function App() {
                     />
                     <ChatView />
                   </>
-                ) : (
-                  <LazyViewBoundary>
-                    <ConnectorsPageView />
-                  </LazyViewBoundary>
                 )}
               </div>
             ) : (
               <>
                 <ConversationsSidebar key="chat-sidebar-desktop" />
                 <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                  {isChat ? (
-                    <>
-                      <DeferredSetupChecklist
-                        className="mx-3 mb-3 mt-3 xl:mx-5"
-                        onOpenTask={handleDeferredTaskOpen}
-                      />
-                      <ChatView key="chat-view-desktop" />
-                    </>
-                  ) : (
-                    <LazyViewBoundary>
-                      <ConnectorsPageView />
-                    </LazyViewBoundary>
-                  )}
+                  <DeferredSetupChecklist
+                    className="mx-3 mb-3 mt-3 xl:mx-5"
+                    onOpenTask={handleDeferredTaskOpen}
+                  />
+                  <ChatView key="chat-view-desktop" />
                 </div>
                 {isChat ? (
                   <TasksEventsPanel
@@ -1057,18 +1051,12 @@ export function App() {
                 <LazyViewBoundary>
                   <SettingsView
                     key={
-                      tab === "voice"
-                        ? "settings-identity"
-                        : tab === "connectors"
-                          ? "settings-connectors"
-                          : "settings-root"
+                      tab === "voice" ? "settings-identity" : "settings-root"
                     }
                     initialSection={
                       tab === "voice"
                         ? "identity"
-                        : tab === "connectors"
-                          ? "connectors"
-                          : (settingsInitialSection ?? undefined)
+                        : (settingsInitialSection ?? undefined)
                     }
                   />
                 </LazyViewBoundary>

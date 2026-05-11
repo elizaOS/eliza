@@ -1,6 +1,11 @@
 export const DEFAULT_ELIZA_CLOUD_BASE = "https://www.elizacloud.ai";
 
-export type IosRuntimeMode = "remote-mac" | "cloud" | "cloud-hybrid" | "local";
+export type IosRuntimeMode =
+  | "remote-mac"
+  | "cloud"
+  | "cloud-hybrid"
+  | "local"
+  | "tunnel-to-mobile";
 
 export interface IosRuntimeConfig {
   mode: IosRuntimeMode;
@@ -9,6 +14,8 @@ export interface IosRuntimeConfig {
   cloudApiBase: string;
   deviceBridgeUrl?: string;
   deviceBridgeToken?: string;
+  tunnelRelayUrl?: string;
+  tunnelPairingToken?: string;
 }
 
 type RuntimeEnv = Record<string, string | boolean | undefined>;
@@ -36,6 +43,11 @@ function normalizeMode(value: string | undefined): IosRuntimeMode {
       return "cloud-hybrid";
     case "local":
       return "local";
+    case "tunnel-to-mobile":
+    case "mobile-tunnel":
+    case "host-with-tunnel":
+    case "tunneled":
+      return "tunnel-to-mobile";
     default:
       return "cloud";
   }
@@ -43,7 +55,11 @@ function normalizeMode(value: string | undefined): IosRuntimeMode {
 
 export function resolveCloudApiBase(env: RuntimeEnv): string {
   return (
-    readString(env, ["VITE_ELIZA_CLOUD_BASE", "VITE_CLOUD_BASE"]) ??
+    readString(env, [
+      "VITE_ELIZA_CLOUD_BASE",
+      "VITE_MILADY_CLOUD_BASE",
+      "VITE_CLOUD_BASE",
+    ]) ??
     DEFAULT_ELIZA_CLOUD_BASE
   ).replace(/\/+$/, "");
 }
@@ -92,6 +108,14 @@ export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
     "VITE_MILADY_DEVICE_BRIDGE_TOKEN",
     "VITE_ELIZA_DEVICE_BRIDGE_TOKEN",
   ]);
+  const tunnelRelayUrl = readString(env, [
+    "VITE_MILADY_TUNNEL_RELAY_URL",
+    "VITE_ELIZA_TUNNEL_RELAY_URL",
+  ]);
+  const tunnelPairingToken = readString(env, [
+    "VITE_MILADY_TUNNEL_PAIRING_TOKEN",
+    "VITE_ELIZA_TUNNEL_PAIRING_TOKEN",
+  ]);
 
   return {
     mode,
@@ -104,5 +128,7 @@ export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
         ? { deviceBridgeUrl: apiBaseToDeviceBridgeUrl(apiBase) }
         : {}),
     ...(deviceBridgeToken ? { deviceBridgeToken } : {}),
+    ...(tunnelRelayUrl ? { tunnelRelayUrl } : {}),
+    ...(tunnelPairingToken ? { tunnelPairingToken } : {}),
   };
 }

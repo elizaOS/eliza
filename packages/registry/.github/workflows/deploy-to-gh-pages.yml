@@ -1,62 +1,76 @@
 name: Deploy to GitHub Pages
 
 on:
-  # Runs on pushes targeting the default branch
   push:
-    branches: ['main']
-
-  # Allows you to run this workflow manually from the Actions tab
+    branches:
+      - main
   workflow_dispatch:
+    inputs:
+      eliza_ref:
+        description: elizaOS ref used to generate built-in packages
+        required: false
+        default: main
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment
 concurrency:
-  group: 'pages'
+  group: pages
   cancel-in-progress: true
 
 jobs:
-  # Build job
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./site
+
     steps:
-      - name: Checkout
+      - name: Checkout registry
         uses: actions/checkout@v4
+        with:
+          path: registry
+
+      - name: Checkout elizaOS
+        uses: actions/checkout@v4
+        with:
+          repository: elizaos/eliza
+          ref: ${{ github.event.inputs.eliza_ref || 'main' }}
+          path: eliza
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: latest
-      
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
-          cache: 'pnpm'
-          cache-dependency-path: './site/pnpm-lock.yaml'
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: registry/site/pnpm-lock.yaml
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
-        
-      - name: Install dependencies
+
+      - name: Generate registry data
+        run: npm run generate-registry
+        working-directory: registry
+        env:
+          ELIZA_REPO_ROOT: ${{ github.workspace }}/eliza
+
+      - name: Install site dependencies
         run: pnpm install --frozen-lockfile
-        
-      - name: Build
+        working-directory: registry/site
+
+      - name: Build site
         run: pnpm run build
-        
+        working-directory: registry/site
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./site/dist
+          path: registry/site/dist
 
-  # Deployment job
   deploy:
     environment:
       name: github-pages

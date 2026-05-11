@@ -39,17 +39,13 @@ function getViteEnvValue(name: string): string | undefined {
   return hasViteEnv(import.meta) ? import.meta.env?.[name] : undefined;
 }
 
-function getViteEnvFlag(name: string): string | undefined {
-  return getViteEnvValue(name);
-}
-
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
 function isPlaywrightTestAuthEnabled(): boolean {
   return (
-    getViteEnvFlag("VITE_PLAYWRIGHT_TEST_AUTH") === "true" ||
+    getViteEnvValue("VITE_PLAYWRIGHT_TEST_AUTH") === "true" ||
     (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true")
   );
 }
@@ -72,13 +68,36 @@ export const LocalStewardAuthContext = createContext<ReturnType<typeof useStewar
   null,
 );
 
+export function isLocalhostApiBase(value: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:\/|$)/i.test(value.trim());
+}
+
+function isBrowserOnElizaHost(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    ELIZA_CLOUD_COOKIE_HOSTS.has(window.location.hostname.toLowerCase())
+  );
+}
+
 function configuredSessionEndpoint(): string {
   const apiBase =
     getViteEnvValue("VITE_API_URL") ||
     getViteEnvValue("NEXT_PUBLIC_API_URL") ||
     process.env.NEXT_PUBLIC_API_URL;
+  // Reject localhost API bases when running in a browser pointed at a known
+  // Eliza Cloud host. A build that leaked the dev URL into the production
+  // bundle would otherwise POST to http://localhost:3000 and the browser CSP
+  // blocks it; fall through to the same-origin / direct api.elizacloud.ai path.
   if (apiBase && !isPlaceholderValue(apiBase)) {
-    return `${trimTrailingSlash(apiBase)}${STEWARD_SESSION_ENDPOINT}`;
+    if (!(isBrowserOnElizaHost() && isLocalhostApiBase(apiBase))) {
+      return `${trimTrailingSlash(apiBase)}${STEWARD_SESSION_ENDPOINT}`;
+    }
+  }
+  // No apiBase (or it was localhost on a real host): prefer the direct
+  // api.elizacloud.ai URL when on a known Eliza Cloud host so the call
+  // does not depend on the Pages Functions `/api/*` proxy being live.
+  if (isBrowserOnElizaHost()) {
+    return ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT;
   }
   return STEWARD_SESSION_ENDPOINT;
 }
@@ -86,8 +105,7 @@ function configuredSessionEndpoint(): string {
 function stewardSessionClearUrls(): string[] {
   if (typeof window === "undefined") return [configuredSessionEndpoint()];
   const urls = new Set([STEWARD_SESSION_ENDPOINT, configuredSessionEndpoint()]);
-  const host = window.location.hostname.toLowerCase();
-  if (ELIZA_CLOUD_COOKIE_HOSTS.has(host)) {
+  if (isBrowserOnElizaHost()) {
     urls.add(ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT);
   }
   return [...urls];
@@ -263,7 +281,9 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
           // `code` field on the body added in the steward-session route.
           // Legacy servers without `code` get the original "wipe on 401"
           // behavior preserved from PR #480.
-          const body = (await res.json().catch(() => null)) as { code?: string } | null;
+          const body = (await res.json().catch(() => null)) as {
+            code?: string;
+          } | null;
           if (body?.code === "server_secret_missing") {
             console.warn(
               "[steward] /api/auth/steward-session reports server-side secret missing — keeping localStorage token; cookie path will fail until the Worker is configured.",

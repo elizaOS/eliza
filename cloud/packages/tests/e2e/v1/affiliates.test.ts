@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { resolveE2EChatModel } from "../helpers/chat-model";
 import { readJson } from "../helpers/json-body";
 
 type AffiliateCodeResponse = {
@@ -7,6 +8,8 @@ type AffiliateCodeResponse = {
     code?: string;
   };
 };
+
+const E2E_CHAT_MODEL = resolveE2EChatModel("openai/gpt-5-mini");
 
 /**
  * Affiliates, Referrals, Analytics & Tracking API E2E Tests
@@ -73,7 +76,7 @@ describe("Affiliates API", () => {
     const chatRes = await api.post(
       "/api/v1/chat/completions",
       {
-        model: "openai/gpt-5-mini",
+        model: E2E_CHAT_MODEL,
         messages: [{ role: "user", content: largeInferencePrompt }],
         max_tokens: 1200,
       },

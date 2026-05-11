@@ -130,7 +130,8 @@ import {
 } from "./website-blocker/engine.js";
 import { WebsiteBlockerService } from "./website-blocker/service.js";
 import { workThreadResponseHandlerEvaluator } from "./lifeops/work-threads/response-handler-evaluator.js";
-import { ownerProfileExtractionEvaluator } from "./lifeops/profile/response-handler-evaluator.js";
+import { threadOpsFieldEvaluator } from "./lifeops/work-threads/field-evaluator-thread-ops.js";
+import { ownerProfileExtractionEvaluator } from "./lifeops/owner/profile-extraction-evaluator.js";
 import { InboxTriageRepository } from "./inbox/repository.js";
 import { createApprovalQueue } from "./lifeops/approval-queue.js";
 import type { ApprovalChannel } from "./lifeops/approval-queue.types.js";
@@ -187,6 +188,29 @@ function looksLikeDocumentSignatureRequest(text: string): boolean {
       normalized,
     )
   );
+}
+
+function looksLikePortalUploadRequest(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return (
+    /\b(?:upload|submit|send|file)\b/u.test(normalized) &&
+    /\bportal\b/u.test(normalized) &&
+    /\b(?:deck|slides?|presentation|pdf|file)\b/u.test(normalized)
+  );
+}
+
+function buildPortalUploadIntakeResponse(): ActionResult {
+  return {
+    text:
+      "I need the portal link and the deck file or file path before I can upload it. Once you provide both, I will ask for approval to confirm before signing in or submitting anything.",
+    success: true,
+    data: {
+      actionName: "COMPUTER_USE",
+      operation: "portal_upload_intake",
+      requiredInputs: ["portal_link", "deck_file"],
+      requiresConfirmation: true,
+    },
+  };
 }
 
 function defaultSignatureDeadline(text: string): string {
@@ -399,6 +423,9 @@ async function handleLifeOpsDirectMessageRequest(args: {
   }
   if (looksLikeDocumentSignatureRequest(text)) {
     return queueDocumentSignatureRequest(args);
+  }
+  if (looksLikePortalUploadRequest(text)) {
+    return buildPortalUploadIntakeResponse();
   }
   return null;
 }
@@ -642,6 +669,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     ownerProfileExtractionEvaluator,
     workThreadResponseHandlerEvaluator,
   ],
+  responseHandlerFieldEvaluators: [threadOpsFieldEvaluator],
   init: async (
     pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,

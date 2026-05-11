@@ -1,6 +1,6 @@
 import type { RouteHelpers, RouteRequestContext } from "@elizaos/core";
 import type { Trajectory } from "@elizaos/agent";
-import { parsePositiveInteger } from "@elizaos/agent";
+import { parsePositiveInteger } from "@elizaos/shared";
 import type { AgentRuntime } from "@elizaos/core";
 import { AGENT_CONTEXTS, type AgentContext } from "../core/context-types.js";
 import type { RoleplayExecutionReport } from "../core/roleplay-executor.js";
@@ -119,6 +119,32 @@ function narrowTrainingTasks(
     }
   }
   return out.length > 0 ? out : undefined;
+}
+
+function normalizeRunId(input: unknown): string | undefined {
+  return typeof input === "string" && input.trim().length > 0
+    ? input.trim()
+    : undefined;
+}
+
+function trajectoryHasRunId(trajectory: Trajectory, runId: string): boolean {
+  const record = trajectory as Trajectory & {
+    runId?: unknown;
+    metadata?: Record<string, unknown>;
+  };
+  if (normalizeRunId(record.runId) === runId) return true;
+  if (normalizeRunId(record.metadata?.runId) === runId) return true;
+  if (normalizeRunId(record.metadata?.appRunId) === runId) return true;
+
+  for (const step of trajectory.steps ?? []) {
+    for (const call of step.llmCalls ?? []) {
+      if (normalizeRunId(call.runId) === runId) return true;
+    }
+    for (const access of step.providerAccesses ?? []) {
+      if (normalizeRunId(access.runId) === runId) return true;
+    }
+  }
+  return false;
 }
 
 function parseTaskOrNull(input: unknown): {
@@ -814,8 +840,14 @@ export async function handleTrainingRoutes(
       includeRaw?: boolean;
       includeRawJsonl?: boolean;
       tasks?: string[];
+      runId?: string;
     }>(req, res);
     if (!body) return true;
+
+    if (body.runId !== undefined && !normalizeRunId(body.runId)) {
+      error(res, "runId must be a non-empty string", 400);
+      return true;
+    }
 
     const outputPath =
       body.outputPath ?? `.tmp/training-trajectory-export-${Date.now()}.jsonl`;
@@ -830,6 +862,7 @@ export async function handleTrainingRoutes(
           : await trainingService.listTrajectories({
               limit: body.limit ?? 100,
               offset: 0,
+              runId: normalizeRunId(body.runId),
             });
       const trajectoryIds =
         explicitIds.length > 0
@@ -847,23 +880,32 @@ export async function handleTrainingRoutes(
       ).filter((t): t is Trajectory => t !== null);
 
       if (body.bundle || body.exportBundle) {
+        const requestedRunId = normalizeRunId(body.runId);
+        const bundleTrajectories = requestedRunId
+          ? details.filter((trajectory) =>
+              trajectoryHasRunId(trajectory, requestedRunId),
+            )
+          : details;
         const { buildTrajectoryExportBundle } = await import(
           "../core/trajectory-export-bundle.js"
         );
         const bundle = await buildTrajectoryExportBundle({
-          trajectories: details,
+          trajectories: bundleTrajectories,
           outputDir:
             body.outputDir ?? `.tmp/training-trajectory-bundle-${Date.now()}`,
           includeRawJsonl:
             body.includeRawJsonl === true || body.includeRaw === true,
           tasks: narrowTrainingTasks(body.tasks),
           source: {
-            kind: "training-route",
+            kind: "training-trajectories-export-route",
+            runId: requestedRunId,
             metadata: {
               requestedLimit: body.limit ?? 100,
+              requestedRunId: requestedRunId ?? null,
               explicitTrajectoryIds: explicitIds.length,
               selectedTrajectoryIds: trajectoryIds.length,
               loadedTrajectories: details.length,
+              bundledTrajectories: bundleTrajectories.length,
             },
           },
         });
@@ -872,6 +914,7 @@ export async function handleTrainingRoutes(
           res,
           {
             trajectoriesConsidered: trajectoryIds.length,
+            trajectoriesBundled: bundleTrajectories.length,
             outputDir: bundle.outputDir,
             manifestPath: bundle.manifestPath,
             bundle: bundle.manifest,

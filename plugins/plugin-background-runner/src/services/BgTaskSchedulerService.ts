@@ -108,10 +108,23 @@ export class BgTaskSchedulerService extends Service {
 
   /**
    * Pure factory exposed for tests — no I/O.
+   *
+   * Mobile (Capacitor native) hosts MUST install
+   * `@capacitor/background-runner` (or alias `@capacitor-community/background-runner`).
+   * Silently falling back to a setInterval would leave the app with no real
+   * OS-level scheduling and the bug would only surface when the app is
+   * backgrounded. Throw with a clear pointer to the install guide instead.
    */
   static pickScheduler(env: CapacitorEnvironment): IBgTaskScheduler {
     if (env.isCapacitor && env.runner !== null) {
       return new CapacitorBgScheduler(env.runner as BackgroundRunnerLike, env);
+    }
+    if (env.isCapacitor && env.runner === null) {
+      throw new Error(
+        '[plugin-background-runner] Capacitor native platform detected but `@capacitor/background-runner` is not installed. ' +
+          'Add it to the host app and rebuild — see plugins/plugin-background-runner/INSTALL.md for the iOS/Android setup. ' +
+          'Refusing to silently fall back to setInterval because that produces no real background execution on mobile.'
+      );
     }
     return new IntervalBgScheduler();
   }

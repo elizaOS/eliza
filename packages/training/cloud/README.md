@@ -86,9 +86,9 @@ For GGUF this means a separate repo per K-quant level, NOT an umbrella
 
 | Size | Base (bf16) | GGUF Q4_K_M | GGUF Q5_K_M | GGUF Q6_K | PolarQuant | FP8 |
 |------|-------------|-------------|-------------|-----------|------------|-----|
-| 2B   | `elizalabs/eliza-1-2b`    | `elizalabs/eliza-1-2b-gguf-q4_k_m`    | `elizalabs/eliza-1-2b-gguf-q5_k_m`    | `elizalabs/eliza-1-2b-gguf-q6_k`    | `elizalabs/eliza-1-2b-polarquant`    | — (skipped, bf16 is small enough) |
-| 9B   | `elizalabs/eliza-1-9b`    | `elizalabs/eliza-1-9b-gguf-q4_k_m`    | `elizalabs/eliza-1-9b-gguf-q5_k_m`    | `elizalabs/eliza-1-9b-gguf-q6_k`    | `elizalabs/eliza-1-9b-polarquant`    | — (skipped, bf16 is small enough) |
-| 27B  | `elizalabs/eliza-1-27b`   | `elizalabs/eliza-1-27b-gguf-q4_k_m`   | `elizalabs/eliza-1-27b-gguf-q5_k_m`   | `elizalabs/eliza-1-27b-gguf-q6_k`   | `elizalabs/eliza-1-27b-polarquant`   | `elizalabs/eliza-1-27b-fp8` |
+| 2B   | `elizaos/eliza-1-2b`    | `elizaos/eliza-1-2b-gguf-q4_k_m`    | `elizaos/eliza-1-2b-gguf-q5_k_m`    | `elizaos/eliza-1-2b-gguf-q6_k`    | `elizaos/eliza-1-2b-polarquant`    | — (skipped, bf16 is small enough) |
+| 9B   | `elizaos/eliza-1-9b`    | `elizaos/eliza-1-9b-gguf-q4_k_m`    | `elizaos/eliza-1-9b-gguf-q5_k_m`    | `elizaos/eliza-1-9b-gguf-q6_k`    | `elizaos/eliza-1-9b-polarquant`    | — (skipped, bf16 is small enough) |
+| 27B  | `elizaos/eliza-1-27b`   | `elizaos/eliza-1-27b-gguf-q4_k_m`   | `elizaos/eliza-1-27b-gguf-q5_k_m`   | `elizaos/eliza-1-27b-gguf-q6_k`   | `elizaos/eliza-1-27b-polarquant`   | `elizaos/eliza-1-27b-fp8` |
 
 None of these repos exist until `scripts/publish_all_eliza1.sh` runs
 against a trained checkpoint. The smaller sizes skip explicit FP8

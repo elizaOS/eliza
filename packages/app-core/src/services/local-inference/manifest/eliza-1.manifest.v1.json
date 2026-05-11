@@ -195,8 +195,19 @@
     "voice": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["capabilities"],
+      "required": ["version", "frozen", "cache", "capabilities"],
       "properties": {
+        "version": { "type": "string", "minLength": 1 },
+        "frozen": { "const": true },
+        "cache": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["speakerPreset", "phraseCacheSeed"],
+          "properties": {
+            "speakerPreset": { "type": "string", "minLength": 1 },
+            "phraseCacheSeed": { "type": "string", "minLength": 1 }
+          }
+        },
         "capabilities": {
           "type": "array",
           "items": {

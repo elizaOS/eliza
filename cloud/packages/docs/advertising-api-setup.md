@@ -18,6 +18,9 @@ The Cloud API already has the core advertising resources:
 - `DELETE /api/v1/advertising/campaigns/{id}`
 - `GET /api/v1/advertising/campaigns/{id}/creatives`
 - `POST /api/v1/advertising/campaigns/{id}/creatives`
+- `GET /api/v1/advertising/creatives/{id}`
+- `PATCH /api/v1/advertising/creatives/{id}`
+- `DELETE /api/v1/advertising/creatives/{id}`
 - `POST /api/v1/advertising/campaigns/{id}/start`
 - `POST /api/v1/advertising/campaigns/{id}/pause`
 - `GET /api/v1/advertising/campaigns/{id}/analytics`
@@ -176,12 +179,17 @@ Configure:
 5. Create a campaign with a destination URL, app id, budget, and targeting.
 6. Upload media to the ad account when the agent needs the provider id in
    advance, or let `advertising.creatives.create` auto-upload missing provider
-   ids for synced campaigns.
+   ids for synced campaigns. For Google raw video uploads, poll
+   `GET /api/v1/advertising/accounts/{id}/media?providerAssetResourceName=...`
+   until the upload reports `ready:true`, then upload the returned YouTube URL
+   to create the final `YOUTUBE_VIDEO` asset.
 7. Create creative records from generated or uploaded media.
-8. Keep the campaign paused/draft until the owner confirms the exact platform,
+8. Inspect, update, or delete drafts with
+   `/api/v1/advertising/creatives/{id}` before starting paid delivery.
+9. Keep the campaign paused/draft until the owner confirms the exact platform,
    account, destination, creative, audience, and budget.
-9. Start delivery with `/api/v1/advertising/campaigns/{id}/start`.
-10. Poll analytics and pause when the budget or quality guardrail is hit.
+10. Start delivery with `/api/v1/advertising/campaigns/{id}/start`.
+11. Poll analytics and pause when the budget or quality guardrail is hit.
 
 Spawned workers should use the parent-agent bridge:
 
@@ -189,7 +197,10 @@ Spawned workers should use the parent-agent bridge:
 USE_SKILL parent-agent {"mode":"list-cloud-commands","query":"advertising"}
 USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.accounts.discover","params":{"body":{"platform":"meta","accessToken":"<temporary-provider-token>"}}}
 USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.accounts.media.upload","confirmed":true,"params":{"id":"<adAccountId>","body":{"type":"image","name":"launch-card","url":"https://cdn.example/asset.png"}}}
+USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.accounts.media.status","params":{"id":"<adAccountId>","query":{"providerAssetResourceName":"customers/123/youTubeVideoUploads/abc"}}}
 USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.campaigns.create","params":{"body":{"adAccountId":"<uuid>","name":"Launch","objective":"traffic","budgetType":"daily","budgetAmount":50,"budgetCurrency":"USD","appId":"<appId>"}}}
+USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.creatives.list","params":{"id":"<campaignId>"}}
+USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.creatives.update","confirmed":true,"params":{"id":"<creativeId>","body":{"headline":"Updated launch headline"}}}
 ```
 
 The unconfirmed call should return `confirmation_required`. Re-run paid actions
@@ -319,10 +330,15 @@ YouTube video URLs are mapped to Google Ads `YOUTUBE_VIDEO` assets:
 
 Raw video URLs are uploaded through Google Ads `YouTubeVideoUpload` and return a
 `customers/{customerId}/youTubeVideoUploads/{id}` resource. After Google/YouTube
-processing reaches `PROCESSED`, use the resulting YouTube video id to create a
-`YOUTUBE_VIDEO` asset or pass a YouTube URL through the media upload route.
+processing reaches `PROCESSED`, the media status endpoint returns a YouTube URL.
+Pass that URL through the media upload route to create the final `YOUTUBE_VIDEO`
+asset.
 
-## Implementation Gaps To Close Before Public Launch
+```text
+GET /api/v1/advertising/accounts/{id}/media?providerAssetResourceName=customers/123/youTubeVideoUploads/abc
+```
+
+## Public Launch Hardening
 
 - Add OAuth start/callback routes:
   - `GET /api/v1/advertising/oauth/{platform}/start`
@@ -333,11 +349,10 @@ processing reaches `PROCESSED`, use the resulting YouTube video id to create a
 - Refresh expiring tokens on a scheduled job.
 - Add idempotency keys or persisted intermediate state for multi-step provider
   campaign creation to avoid duplicate budgets/campaigns/ad sets on retry.
-- Add a background reconciler for Google `YouTubeVideoUpload` resources so raw
-  video uploads automatically become `YOUTUBE_VIDEO` assets once processing
-  reaches `PROCESSED`. Current provider upload/mapping supports Meta
-  images/videos, TikTok images/videos, Google image assets, Google YouTube video
-  assets, and Google raw video ingestion.
+- Add a background reconciler if fully unattended Google raw-video promotion is
+  needed. The synchronous API already exposes raw upload status and conversion:
+  poll the upload resource, then pass the returned YouTube URL back through
+  media upload.
 - Ensure campaign creation creates paused/draft provider objects when supported.
 - Add provider sandbox/unit tests and Hono route tests for account connection,
   campaign create, creative create, start, pause, analytics, and failure paths.

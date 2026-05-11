@@ -3,11 +3,8 @@
  *
  * This module hosts the **shared subset** of local-inference types that
  * both the server-side service in `@elizaos/app-core` and the UI client in
- * `@elizaos/ui` need to reference identically. The richer, server-side
- * types (DFlash kernels, optimization knobs, runtime backend metadata,
- * loaded KV cache reporting, etc.) intentionally live in
- * `@elizaos/app-core/src/services/local-inference/types.ts` only — they
- * describe the server runtime and have no UI consumer.
+ * `@elizaos/ui` need to reference identically. Server-only loaded-cache
+ * reporting and process details intentionally stay in app-core.
  *
  * Adding a new shared type here is appropriate when:
  *   - It is referenced by both `app-core` and `ui` packages, and
@@ -17,6 +14,101 @@
  * `app-core` and re-exporting via UI rather than widening this shared
  * module.
  */
+
+export type ModelBucket = "small" | "mid" | "large" | "xl";
+
+export type ModelCategory =
+  | "chat"
+  | "code"
+  | "tools"
+  | "tiny"
+  | "reasoning"
+  | "drafter";
+
+export type LocalRuntimeBackend = "node-llama-cpp" | "llama-server";
+
+export type LocalRuntimeKernel =
+  | "dflash"
+  | "turbo3"
+  | "turbo4"
+  | "turbo3_tcq"
+  | "qjl_full"
+  | "polarquant";
+
+export interface LocalRuntimeOptimizations {
+  lookahead?: number;
+  ngramDraft?: { min: number; max: number; minProb: number };
+  parallel?: number;
+  moeOffload?: "cpu" | "none";
+  mlock?: boolean;
+  noMmap?: boolean;
+  mmproj?: string;
+  alias?: string;
+  flashAttention?: boolean;
+  requiresKernel?: LocalRuntimeKernel[];
+}
+
+export interface LocalRuntimeAcceleration {
+  preferredBackend?: LocalRuntimeBackend;
+  optimizations?: LocalRuntimeOptimizations;
+  dflash?: {
+    drafterModelId: string;
+    specType: "dflash";
+    contextSize: number;
+    draftContextSize: number;
+    draftMin: number;
+    draftMax: number;
+    gpuLayers: number | "auto";
+    draftGpuLayers: number | "auto";
+    disableThinking: boolean;
+  };
+  kvCache?: {
+    typeK?: string;
+    typeV?: string;
+    requiresFork?: "apothic-turboquant" | "buun-llama-cpp";
+  };
+}
+
+export type TokenizerFamily = "eliza1" | "sentencepiece" | (string & {});
+
+export interface CatalogModel {
+  id: string;
+  displayName: string;
+  hfRepo: string;
+  ggufFile: string;
+  bundleManifestFile?: string;
+  params:
+    | "360M"
+    | "0.6B"
+    | "1B"
+    | "1.7B"
+    | "2B"
+    | "3B"
+    | "4B"
+    | "7B"
+    | "8B"
+    | "9B"
+    | "14B"
+    | "16B"
+    | "22B"
+    | "24B"
+    | "27B"
+    | "32B";
+  quant: string;
+  sizeGb: number;
+  minRamGb: number;
+  category: ModelCategory;
+  bucket: ModelBucket;
+  blurb: string;
+  hiddenFromCatalog?: boolean;
+  runtimeRole?: "chat" | "dflash-drafter";
+  companionForModelId?: string;
+  companionModelIds?: string[];
+  contextLength?: number;
+  gpuLayers?: "auto" | number;
+  tokenizerFamily?: TokenizerFamily;
+  runtime?: LocalRuntimeAcceleration;
+}
 
 /** Agent slot ids the runtime maps to a local model. */
 export type AgentModelSlot = "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING";

@@ -1081,9 +1081,44 @@ function patchMetalTbqPolarOpsCpp(cacheDir, { dryRun }) {
   );
   const original = fs.readFileSync(opsPath, "utf8");
   if (original.includes(SENTINEL_TBQ_POLAR_ATTN)) {
-    const patched = original.replace(
+    let patched = original.replace(
       "case GGML_TYPE_TBQ4_0:   return 1u;",
       "case GGML_TYPE_TBQ4_0:   return 4u;",
+    );
+    if (!patched.includes("milady_tbq_blocks_per_threadgroup")) {
+      patched = patched.replace(
+        `static inline uint32_t milady_tbq_blocks_per_row(ggml_type type) {
+    switch (type) {
+        case GGML_TYPE_TBQ3_0:   return 4u;
+        case GGML_TYPE_TBQ4_0:   return 4u;
+        case GGML_TYPE_TBQ3_TCQ: return 1u;
+        default: GGML_ABORT("unsupported TurboQuant attention score type");
+    }
+}
+`,
+        `static inline uint32_t milady_tbq_blocks_per_row(ggml_type type) {
+    switch (type) {
+        case GGML_TYPE_TBQ3_0:   return 4u;
+        case GGML_TYPE_TBQ4_0:   return 4u;
+        case GGML_TYPE_TBQ3_TCQ: return 1u;
+        default: GGML_ABORT("unsupported TurboQuant attention score type");
+    }
+}
+
+static inline uint32_t milady_tbq_blocks_per_threadgroup(ggml_type type) {
+    switch (type) {
+        case GGML_TYPE_TBQ3_0:   return 8u;
+        case GGML_TYPE_TBQ4_0:   return 32u;
+        case GGML_TYPE_TBQ3_TCQ: return 4u;
+        default: GGML_ABORT("unsupported TurboQuant attention score type");
+    }
+}
+`,
+      );
+    }
+    patched = patched.replace(
+      "/* blocks_per_threadgroup = */ 8u,",
+      "/* blocks_per_threadgroup = */ milady_tbq_blocks_per_threadgroup(ktype),",
     );
     if (patched !== original && !dryRun)
       fs.writeFileSync(opsPath, patched, "utf8");
@@ -1121,6 +1156,18 @@ static inline uint32_t milady_tbq_blocks_per_row(ggml_type type) {
         case GGML_TYPE_TBQ3_0:   return 4u;
         case GGML_TYPE_TBQ4_0:   return 4u;
         case GGML_TYPE_TBQ3_TCQ: return 1u;
+        default: GGML_ABORT("unsupported TurboQuant attention score type");
+    }
+}
+
+static inline uint32_t milady_tbq_blocks_per_threadgroup(ggml_type type) {
+    // M4 Max multiblock bench best medians (2026-05-10):
+    //   TBQ3=8, TBQ4=32, TBQ3_TCQ=4. Voice-mode policy can still force N=1
+    //   at a higher scheduler layer when barge-in latency dominates.
+    switch (type) {
+        case GGML_TYPE_TBQ3_0:   return 8u;
+        case GGML_TYPE_TBQ4_0:   return 32u;
+        case GGML_TYPE_TBQ3_TCQ: return 4u;
         default: GGML_ABORT("unsupported TurboQuant attention score type");
     }
 }
@@ -1169,7 +1216,7 @@ int ggml_metal_op_attn_score_tbq(ggml_metal_op_t ctx, int idx) {
         /* kv_stride_blocks = */ milady_tbq_blocks_per_row(ktype),
         /* q_head = */ 0u,
         /* head_offset_bytes = */ 0u,
-        /* blocks_per_threadgroup = */ 8u,
+        /* blocks_per_threadgroup = */ milady_tbq_blocks_per_threadgroup(ktype),
     };
 
     auto pipeline = ggml_metal_library_get_pipeline_attn_score_tbq(lib, ktype);

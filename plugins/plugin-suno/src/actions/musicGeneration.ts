@@ -1,5 +1,4 @@
 import type {
-    Action,
     ActionResult,
     HandlerCallback,
     IAgentRuntime,
@@ -8,12 +7,12 @@ import type {
 } from '@elizaos/core';
 import { SunoProvider } from '../providers/suno';
 
-type MusicGenerationSubaction = 'generate' | 'custom' | 'extend';
+export type SunoMusicSubaction = 'generate' | 'custom_generate' | 'extend';
 
-type MusicGenerationParams = {
-    action?: MusicGenerationSubaction | string;
-    subaction?: MusicGenerationSubaction | string;
-    operation?: MusicGenerationSubaction | string;
+interface SunoMusicGenerationParams {
+    action?: SunoMusicSubaction | string;
+    subaction?: SunoMusicSubaction | string;
+    operation?: SunoMusicSubaction | string;
     prompt?: string;
     duration?: number;
     temperature?: number;
@@ -26,7 +25,7 @@ type MusicGenerationParams = {
     key?: string;
     mode?: string;
     audio_id?: string;
-};
+}
 
 const SUNO_ACTION_TIMEOUT_MS = 30_000;
 const MAX_SUNO_RESPONSE_BYTES = 4000;
@@ -34,7 +33,7 @@ const MAX_SUNO_RESPONSE_BYTES = 4000;
 function paramsFromMessageAndOptions(
     message: Memory,
     options?: Record<string, unknown>
-): MusicGenerationParams {
+): SunoMusicGenerationParams {
     const content =
         message.content && typeof message.content === 'object'
             ? (message.content as Record<string, unknown>)
@@ -43,20 +42,24 @@ function paramsFromMessageAndOptions(
         options?.parameters && typeof options.parameters === 'object'
             ? (options.parameters as Record<string, unknown>)
             : {};
-    return { ...content, ...options, ...parameters } as MusicGenerationParams;
+    return { ...content, ...options, ...parameters } as SunoMusicGenerationParams;
 }
 
-function normalizeSubaction(value: unknown): MusicGenerationSubaction | null {
+function normalizeSubaction(value: unknown): SunoMusicSubaction | null {
     const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
-    if (normalized === 'generate' || normalized === 'custom' || normalized === 'extend') {
-        return normalized;
+    if (normalized === 'generate' || normalized === 'extend') return normalized;
+    if (
+        normalized === 'custom_generate' ||
+        normalized === 'custom-generate' ||
+        normalized === 'custom'
+    ) {
+        return 'custom_generate';
     }
-    if (normalized === 'custom_generate' || normalized === 'custom-generate') return 'custom';
     if (normalized === 'extend_audio' || normalized === 'extend-audio') return 'extend';
     return null;
 }
 
-function inferSubaction(message: Memory, params: MusicGenerationParams): MusicGenerationSubaction {
+function inferSubaction(message: Memory, params: SunoMusicGenerationParams): SunoMusicSubaction {
     const explicit = normalizeSubaction(params.action ?? params.subaction ?? params.operation);
     if (explicit) return explicit;
     const text = (message.content?.text ?? '').toLowerCase();
@@ -71,12 +74,12 @@ function inferSubaction(message: Memory, params: MusicGenerationParams): MusicGe
         params.mode ||
         /\b(custom|style|bpm|key|mode|reference)\b/.test(text)
     ) {
-        return 'custom';
+        return 'custom_generate';
     }
     return 'generate';
 }
 
-function promptFromParams(message: Memory, params: MusicGenerationParams): string {
+function promptFromParams(message: Memory, params: SunoMusicGenerationParams): string {
     const prompt = typeof params.prompt === 'string' ? params.prompt.trim() : '';
     if (prompt) return prompt;
     return (message.content?.text ?? '').trim();
@@ -86,7 +89,10 @@ function numberOrDefault(value: unknown, fallback: number): number {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
-function generationBody(params: MusicGenerationParams, prompt: string): Record<string, unknown> {
+function generationBody(
+    params: SunoMusicGenerationParams,
+    prompt: string
+): Record<string, unknown> {
     return {
         prompt,
         duration: numberOrDefault(params.duration, 30),
@@ -97,164 +103,100 @@ function generationBody(params: MusicGenerationParams, prompt: string): Record<s
     };
 }
 
-export const musicGeneration: Action = {
-    name: 'MUSIC_GENERATION',
-    contexts: ['media'],
-    contextGate: { anyOf: ['media'] },
-    roleGate: { minRole: 'USER' },
-    description:
-        'Generate music through Suno. Use action generate for a simple prompt, custom for style/BPM/key/reference parameters, or extend for an existing audio_id and duration.',
-    descriptionCompressed: 'Suno music generation router action: generate, custom, extend.',
-    similes: [
-        'GENERATE_MUSIC',
-        'CREATE_MUSIC',
-        'MAKE_MUSIC',
-        'COMPOSE_MUSIC',
-        'CUSTOM_GENERATE_MUSIC',
-        'EXTEND_AUDIO',
-    ],
-    parameters: [
-        {
-            name: 'action',
-            description: 'Suno operation: generate, custom, or extend.',
-            required: false,
-            schema: { type: 'string', enum: ['generate', 'custom', 'extend'] },
-        },
-        {
-            name: 'subaction',
-            description: 'Legacy alias for action.',
-            required: false,
-            schema: { type: 'string' },
-        },
-        {
-            name: 'prompt',
-            description: 'Music prompt for generate/custom.',
-            required: false,
-            schema: { type: 'string' },
-        },
-        {
-            name: 'audio_id',
-            description: 'Existing Suno audio id for extend.',
-            required: false,
-            schema: { type: 'string' },
-        },
-        {
-            name: 'duration',
-            description: 'Generation duration or extension seconds.',
-            required: false,
-            schema: { type: 'number', default: 30 },
-        },
-    ],
-    validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-        if (!runtime.getSetting('SUNO_API_KEY')) return false;
-        const text = (message.content?.text ?? '').toLowerCase();
-        return /\b(generate|create|make|compose|extend|music|song|audio|track)\b/.test(text);
-    },
-    handler: async (
-        runtime: IAgentRuntime,
-        message: Memory,
-        state: State,
-        options: Record<string, unknown> | undefined,
-        callback?: HandlerCallback
-    ): Promise<ActionResult> => {
-        try {
-            const params = paramsFromMessageAndOptions(message, options);
-            const subaction = inferSubaction(message, params);
-            const provider = await SunoProvider.get(runtime, message, state);
+/**
+ * Handler that performs Suno music generation, extension, or custom generation.
+ *
+ * Used as the implementation of the MUSIC umbrella subactions `generate`,
+ * `extend`, and `custom_generate` exposed by `@elizaos/plugin-music`.
+ *
+ * Returns `success: false` with a clear error message when `SUNO_API_KEY` is
+ * not configured or the upstream request fails — callers (including the
+ * MUSIC dispatcher) should surface this to the user verbatim.
+ */
+export const sunoGenerateMusicHandler = async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+    options: Record<string, unknown> | undefined,
+    callback?: HandlerCallback
+): Promise<ActionResult> => {
+    const params = paramsFromMessageAndOptions(message, options);
+    const subaction = inferSubaction(message, params);
 
-            let endpoint = '/generate';
-            let body: Record<string, unknown>;
+    let provider: SunoProvider;
+    try {
+        provider = await SunoProvider.get(runtime, message, state);
+    } catch (error) {
+        const text = `Music generation unavailable: ${
+            error instanceof Error ? error.message : String(error)
+        }`;
+        await callback?.({ text, error });
+        return { success: false, text, error: text };
+    }
 
-            if (subaction === 'extend') {
-                if (!params.audio_id || !params.duration) {
-                    throw new Error('Missing required parameters: audio_id and duration');
-                }
-                endpoint = '/extend';
-                body = {
-                    audio_id: params.audio_id,
-                    duration: params.duration,
-                };
-            } else {
-                const prompt = promptFromParams(message, params);
-                if (!prompt) {
-                    throw new Error('Missing required parameter: prompt');
-                }
-                body = generationBody(params, prompt);
-                if (subaction === 'custom') {
-                    endpoint = '/custom-generate';
-                    body = {
-                        ...body,
-                        reference_audio: params.reference_audio,
-                        style: params.style,
-                        bpm: params.bpm,
-                        key: params.key,
-                        mode: params.mode,
-                    };
-                }
-            }
+    let endpoint = '/generate';
+    let body: Record<string, unknown>;
 
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), SUNO_ACTION_TIMEOUT_MS);
-            const response = await provider
-                .request(runtime, endpoint, {
-                    method: 'POST',
-                    body: JSON.stringify(body),
-                    signal: controller.signal,
-                })
-                .finally(() => clearTimeout(timeout));
-            const cappedResponse =
-                JSON.stringify(response).length > MAX_SUNO_RESPONSE_BYTES
-                    ? {
-                          truncated: true,
-                          preview: JSON.stringify(response).slice(0, MAX_SUNO_RESPONSE_BYTES),
-                      }
-                    : response;
-
-            await callback?.({
-                text:
-                    subaction === 'extend'
-                        ? `Successfully extended audio ${params.audio_id}`
-                        : `Successfully submitted ${subaction} music generation`,
-                content: cappedResponse,
-            });
-
-            return {
-                success: true,
-                text:
-                    subaction === 'extend'
-                        ? `Successfully extended audio ${params.audio_id}`
-                        : `Successfully submitted ${subaction} music generation`,
-                data: { action: subaction, subaction, response: cappedResponse },
-            };
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            const text = `Music generation failed: ${errorMessage}`;
-            await callback?.({
-                text,
-                error,
-            });
-            return { success: false, text, error: errorMessage };
+    if (subaction === 'extend') {
+        if (!params.audio_id || !params.duration) {
+            const text = 'Missing required parameters: audio_id and duration';
+            await callback?.({ text });
+            return { success: false, text, error: text };
         }
-    },
-    examples: [
-        [
-            {
-                name: '{{user1}}',
-                content: {
-                    text: 'Generate a relaxing ambient track',
-                    prompt: 'A peaceful ambient soundscape with gentle waves and soft pads',
-                    duration: 45,
-                },
-            },
-            {
-                name: '{{agent}}',
-                content: {
-                    text: "I'll generate a calming ambient piece.",
-                    action: 'MUSIC_GENERATION',
-                },
-            },
-        ],
-    ],
+        endpoint = '/extend';
+        body = {
+            audio_id: params.audio_id,
+            duration: params.duration,
+        };
+    } else {
+        const prompt = promptFromParams(message, params);
+        if (!prompt) {
+            const text = 'Missing required parameter: prompt';
+            await callback?.({ text });
+            return { success: false, text, error: text };
+        }
+        body = generationBody(params, prompt);
+        if (subaction === 'custom_generate') {
+            endpoint = '/custom-generate';
+            body = {
+                ...body,
+                reference_audio: params.reference_audio,
+                style: params.style,
+                bpm: params.bpm,
+                key: params.key,
+                mode: params.mode,
+            };
+        }
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), SUNO_ACTION_TIMEOUT_MS);
+    const response = await provider
+        .request(runtime, endpoint, {
+            method: 'POST',
+            body: JSON.stringify(body),
+            signal: controller.signal,
+        })
+        .finally(() => clearTimeout(timeout));
+    const cappedResponse =
+        JSON.stringify(response).length > MAX_SUNO_RESPONSE_BYTES
+            ? {
+                  truncated: true,
+                  preview: JSON.stringify(response).slice(0, MAX_SUNO_RESPONSE_BYTES),
+              }
+            : response;
+
+    const text =
+        subaction === 'extend'
+            ? `Successfully extended audio ${params.audio_id}`
+            : `Successfully submitted ${subaction} music generation`;
+    await callback?.({ text, content: cappedResponse });
+
+    return {
+        success: true,
+        text,
+        data: { action: subaction, subaction, response: cappedResponse },
+    };
 };
 
-export default musicGeneration;
+export default sunoGenerateMusicHandler;

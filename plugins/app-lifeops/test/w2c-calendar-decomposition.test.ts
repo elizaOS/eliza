@@ -20,17 +20,7 @@
 import { listSubactionsFromParameters } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { calendarAction } from "../src/actions/calendar.js";
-import { schedulingAction as schedulingNegotiationAction } from "../src/actions/lib/scheduling-handler.js";
-
-const NEGOTIATION_LIFECYCLE_VERBS = [
-  "start",
-  "propose",
-  "respond",
-  "finalize",
-  "cancel",
-  "list_active",
-  "list_proposals",
-] as const;
+import { runSchedulingNegotiationHandler } from "../src/actions/lib/scheduling-handler.js";
 
 const REMOVED_CALENDAR_SUBACTIONS = [
   "calendly_availability",
@@ -89,43 +79,13 @@ describe("W2-C: CALENDAR umbrella narrowing", () => {
   });
 });
 
-describe("W2-C: SCHEDULING_NEGOTIATION owns the 7-verb lifecycle", () => {
-  it("schedulingNegotiationAction exposes a planner-visible action", () => {
-    expect(schedulingNegotiationAction.name).toBeTruthy();
-    expect(typeof schedulingNegotiationAction.handler).toBe("function");
-  });
-
-  it("schedulingNegotiationAction surfaces all 7 lifecycle verbs in its parameter description", () => {
-    // The 7 verbs are documented in HARDCODING_AUDIT.md §7. Each must
-    // appear in the action's user-facing description so the planner knows
-    // it can route every lifecycle step here.
-    const subactionParam = (
-      schedulingNegotiationAction.parameters ?? []
-    ).find((p) => p.name === "subaction");
-    const description =
-      subactionParam?.description ??
-      schedulingNegotiationAction.description ??
-      schedulingNegotiationAction.descriptionCompressed ??
-      "";
-    for (const verb of NEGOTIATION_LIFECYCLE_VERBS) {
-      expect(description).toContain(verb);
-    }
-  });
-
-  it("schedulingNegotiationAction declares the subaction parameter", () => {
-    const subactionParam = (
-      schedulingNegotiationAction.parameters ?? []
-    ).find((p) => p.name === "subaction");
-    expect(subactionParam).toBeDefined();
-  });
-
-  it("schedulingNegotiationAction suppresses post-action continuation (long-running actor)", () => {
-    expect(
-      (
-        schedulingNegotiationAction as {
-          suppressPostActionContinuation?: boolean;
-        }
-      ).suppressPostActionContinuation,
-    ).toBe(true);
+describe("W2-C: SCHEDULING_NEGOTIATION lifecycle handler", () => {
+  it("scheduling negotiation lifecycle is exposed as an internal handler", () => {
+    // SCHEDULING_NEGOTIATION is no longer a planner-visible Action; the
+    // 7-verb lifecycle (start → propose → respond → finalize / cancel /
+    // list_active / list_proposals) is delegated to via the registered
+    // PERSONAL_ASSISTANT umbrella in owner-surfaces.ts. The handler must
+    // remain importable so that umbrella can call into it.
+    expect(typeof runSchedulingNegotiationHandler).toBe("function");
   });
 });

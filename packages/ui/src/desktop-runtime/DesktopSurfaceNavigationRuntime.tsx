@@ -3,16 +3,10 @@ import { subscribeDesktopBridgeEvent } from "../bridge/electrobun-rpc";
 import type { Tab } from "../navigation";
 import { useApp } from "../state/useApp";
 
-const MAIN_SURFACE_TABS = new Set<Tab>([
-  "chat",
-  "plugins",
-  "connectors",
-  "triggers",
-]);
+const MAIN_SURFACE_TABS = new Set<Tab>(["chat", "plugins", "triggers"]);
 const MAIN_NAVIGATION_TABS = new Set<Tab>([
   "chat",
   "plugins",
-  "connectors",
   "triggers",
   "lifeops",
   "settings",

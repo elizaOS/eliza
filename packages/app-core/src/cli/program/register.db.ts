@@ -1,15 +1,14 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import { theme } from "@elizaos/shared";
 import type { Command } from "commander";
 import { runCommandWithRuntime } from "../cli-utils";
 
 const defaultRuntime = { error: console.error, exit: process.exit };
 
-function resolveDbDir(env = process.env): string {
-  const stateDir = env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
-  return path.join(stateDir, "workspace", ".eliza", ".elizadb");
+function resolveDbDir(env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(resolveStateDir(env), "workspace", ".eliza", ".elizadb");
 }
 
 export function registerDbCommand(program: Command) {
