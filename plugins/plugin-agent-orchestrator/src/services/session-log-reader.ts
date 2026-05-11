@@ -35,7 +35,7 @@
  * @module services/session-log-reader
  */
 
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -229,7 +229,10 @@ export function buildSessionLogCandidates(
 ): CandidateSessionLogPath[] {
   const encoded = encodeClaudeCodeProjectDir(workdir);
   return [
-    { dir: join(home, ".claude", "projects", encoded), label: "claude-projects" },
+    {
+      dir: join(home, ".claude", "projects", encoded),
+      label: "claude-projects",
+    },
     {
       dir: join(workdir, ".claude", "session-logs"),
       label: "workspace-local",
@@ -244,9 +247,7 @@ interface SessionLogReaderLogger {
 
 const NOOP_LOGGER: SessionLogReaderLogger = {};
 
-async function listSessionLogFilesIn(
-  dir: string,
-): Promise<string[]> {
+async function listSessionLogFilesIn(dir: string): Promise<string[]> {
   try {
     const entries = await readdir(dir, { withFileTypes: true });
     const files: string[] = [];
@@ -360,6 +361,30 @@ function asString(value: unknown): string | undefined {
 
 function asNullableString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
+}
+
+function isClaudeCodeAssistantEvent(
+  event: ClaudeCodeSessionEvent,
+): event is ClaudeCodeAssistantEvent {
+  if (event.type !== "assistant") return false;
+  const message = (event as { message?: unknown }).message;
+  return (
+    isRecord(message) &&
+    message.role === "assistant" &&
+    Array.isArray(message.content)
+  );
+}
+
+function isClaudeCodeUserEvent(
+  event: ClaudeCodeSessionEvent,
+): event is ClaudeCodeUserEvent {
+  if (event.type !== "user") return false;
+  const message = (event as { message?: unknown }).message;
+  return (
+    isRecord(message) &&
+    message.role === "user" &&
+    (typeof message.content === "string" || Array.isArray(message.content))
+  );
 }
 
 /**
@@ -483,7 +508,11 @@ function flattenToolResultContent(
   return parts.join("\n");
 }
 
-function makeChildStepId(parentStepId: string, uuid: string, idx: number): string {
+function makeChildStepId(
+  parentStepId: string,
+  uuid: string,
+  idx: number,
+): string {
   // Compose a stable, parent-scoped child id. Keeping the parent step prefix
   // makes it easy to grep + group child rows back to the parent in BI tools.
   const suffix = uuid && uuid.length > 0 ? uuid.slice(0, 12) : `n${idx}`;
@@ -505,7 +534,7 @@ export function normalizeSessionEvents(
   let idx = 0;
 
   for (const event of events) {
-    if (event.type === "assistant") {
+    if (isClaudeCodeAssistantEvent(event)) {
       const ts = parseTimestamp(event.timestamp);
       const model = event.message.model;
       const usage = event.message.usage;
@@ -561,7 +590,7 @@ export function normalizeSessionEvents(
       continue;
     }
 
-    if (event.type === "user") {
+    if (isClaudeCodeUserEvent(event)) {
       const ts = parseTimestamp(event.timestamp);
       const content = event.message.content;
       if (typeof content === "string") continue;
@@ -587,25 +616,21 @@ export function normalizeSessionEvents(
   return out;
 }
 
-function aggregateUsage(
-  events: ClaudeCodeSessionEvent[],
-): ClaudeCodeUsage {
+function aggregateUsage(events: ClaudeCodeSessionEvent[]): ClaudeCodeUsage {
   const total: ClaudeCodeUsage = {};
   for (const event of events) {
-    if (event.type !== "assistant") continue;
+    if (!isClaudeCodeAssistantEvent(event)) continue;
     const usage = event.message.usage;
     if (!usage) continue;
     if (typeof usage.input_tokens === "number") {
       total.input_tokens = (total.input_tokens ?? 0) + usage.input_tokens;
     }
     if (typeof usage.output_tokens === "number") {
-      total.output_tokens =
-        (total.output_tokens ?? 0) + usage.output_tokens;
+      total.output_tokens = (total.output_tokens ?? 0) + usage.output_tokens;
     }
     if (typeof usage.cache_read_input_tokens === "number") {
       total.cache_read_input_tokens =
-        (total.cache_read_input_tokens ?? 0) +
-        usage.cache_read_input_tokens;
+        (total.cache_read_input_tokens ?? 0) + usage.cache_read_input_tokens;
     }
     if (typeof usage.cache_creation_input_tokens === "number") {
       total.cache_creation_input_tokens =

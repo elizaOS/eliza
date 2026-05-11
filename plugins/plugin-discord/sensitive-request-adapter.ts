@@ -77,8 +77,10 @@ async function deliverViaDiscordDm(
 ): Promise<DeliveryResult> {
 	const runtime = args.runtime as IAgentRuntime;
 	const request = args.request as DiscordDispatchRequest;
-	const discordUserId =
+	const candidateDiscordUserId =
 		args.channelId ?? request.requesterEntityId ?? request.originUserId;
+	const discordUserId =
+		typeof candidateDiscordUserId === "string" ? candidateDiscordUserId : null;
 
 	if (!discordUserId) {
 		return {
@@ -90,7 +92,7 @@ async function deliverViaDiscordDm(
 	}
 
 	const discordService = deps.getDiscordService(runtime);
-	if (!discordService || !discordService.client) {
+	if (!discordService?.client) {
 		return {
 			delivered: false,
 			target: "dm",
