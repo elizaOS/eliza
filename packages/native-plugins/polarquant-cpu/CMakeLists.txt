@@ -92,3 +92,8 @@ add_test(NAME polar_simd_parity COMMAND polar_simd_parity_test)
 add_executable(polar_preht_simd_parity_test test/polar_preht_simd_parity_test.c)
 target_link_libraries(polar_preht_simd_parity_test PRIVATE polarquant)
 add_test(NAME polar_preht_simd_parity COMMAND polar_preht_simd_parity_test)
+
+# Microbenchmark (not a CTest — run manually with --throughput).
+add_executable(polar_bench test/polar_bench.c)
+target_link_libraries(polar_bench PRIVATE polarquant)
+target_compile_options(polar_bench PRIVATE -O3)
