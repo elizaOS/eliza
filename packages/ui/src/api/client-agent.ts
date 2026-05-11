@@ -1033,15 +1033,20 @@ ElizaClient.prototype.runTerminalCommand = async function (
 };
 
 ElizaClient.prototype.getOnboardingStatus = async function (this: ElizaClient) {
-  // Prefer the typed Electrobun RPC channel — no port shifts, no schema
-  // drift, no extra HTTP round trip. Falls back to HTTP for non-desktop
-  // targets (Capacitor mobile, cloud builds) where the bridge isn't
-  // mounted. Server contract: see eliza/packages/agent/src/api/onboarding-routes.ts.
-  const viaRpc = await invokeDesktopBridgeRequest<{
-    complete: boolean;
-    cloudProvisioned?: boolean;
-  }>({ rpcMethod: "getOnboardingStatus", ipcChannel: "agent" });
-  if (viaRpc) return viaRpc;
+  // Prefer typed Electrobun RPC. The bun-side composer throws
+  // AgentNotReadyError if the agent has no port yet; we catch and
+  // fall through to HTTP so the renderer's polling loop sees the
+  // same "transport not ready" semantic as before RPC was wired.
+  // Server contract: eliza/packages/agent/src/api/onboarding-routes.ts.
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<{
+      complete: boolean;
+      cloudProvisioned?: boolean;
+    }>({ rpcMethod: "getOnboardingStatus", ipcChannel: "agent" });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* AgentNotReadyError or any RPC failure → fall through to HTTP */
+  }
   return this.fetch("/api/onboarding/status");
 };
 
@@ -1066,6 +1071,28 @@ ElizaClient.prototype.postWalletOsStoreAction = async function (
 };
 
 ElizaClient.prototype.getAuthStatus = async function (this: ElizaClient) {
+  // Prefer typed Electrobun RPC. Throws AgentNotReadyError when the
+  // agent has no port yet — we catch and fall through to HTTP so the
+  // existing retry/backoff loop handles the "not ready" semantic
+  // exactly as it did before RPC was in the picture. NEVER fabricates
+  // a 401-shaped placeholder (see the auth-client.ts authMe wrapper
+  // history if you need the bug story).
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<{
+      required: boolean;
+      pairingEnabled: boolean;
+      expiresAt: number | null;
+      authenticated?: boolean;
+      loginRequired?: boolean;
+      bootstrapRequired?: boolean;
+      localAccess?: boolean;
+      passwordConfigured?: boolean;
+    }>({ rpcMethod: "getAuthStatus", ipcChannel: "agent" });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* AgentNotReadyError or any RPC failure → fall through to HTTP */
+  }
+
   const maxRetries = 3;
   const baseBackoffMs = 1000;
   let lastErr: unknown;
@@ -1153,13 +1180,15 @@ ElizaClient.prototype.pair = async function (this: ElizaClient, code) {
 ElizaClient.prototype.getOnboardingOptions = async function (
   this: ElizaClient,
 ) {
-  // Same pattern as getOnboardingStatus: prefer typed RPC, fall back to
-  // HTTP for non-desktop targets.
-  const viaRpc = await invokeDesktopBridgeRequest<OnboardingOptions>({
-    rpcMethod: "getOnboardingOptions",
-    ipcChannel: "agent",
-  });
-  if (viaRpc) return viaRpc;
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<OnboardingOptions>({
+      rpcMethod: "getOnboardingOptions",
+      ipcChannel: "agent",
+    });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* AgentNotReadyError or any RPC failure → fall through to HTTP */
+  }
   return this.fetch("/api/onboarding/options");
 };
 
@@ -1394,12 +1423,23 @@ ElizaClient.prototype.getConfig = async function (this: ElizaClient) {
   logSettingsClient("GET /api/config → start", {
     baseUrl: this.getBaseUrl(),
   });
-  const r = (await this.fetch("/api/config")) as Record<string, unknown>;
+  let viaRpc: Record<string, unknown> | null = null;
+  try {
+    viaRpc = await invokeDesktopBridgeRequest<Record<string, unknown>>({
+      rpcMethod: "getConfig",
+      ipcChannel: "agent",
+    });
+  } catch {
+    /* AgentNotReadyError or any RPC failure → fall through to HTTP */
+  }
+  const r =
+    viaRpc ?? ((await this.fetch("/api/config")) as Record<string, unknown>);
   const cloud = r.cloud as Record<string, unknown> | undefined;
   logSettingsClient("GET /api/config ← ok", {
     baseUrl: this.getBaseUrl(),
     topKeys: Object.keys(r).sort(),
     cloud: settingsDebugCloudSummary(cloud),
+    transport: viaRpc ? "rpc" : "http",
   });
   return r;
 };
@@ -2398,6 +2438,19 @@ ElizaClient.prototype.proposeRelationshipsLink = async function (
 };
 
 ElizaClient.prototype.getCharacter = async function (this: ElizaClient) {
+  // RPC composer forwards the `/api/character` body verbatim, so the
+  // wire shape is `{ character, agentName }` — bun-side just types it
+  // loosely as Record. Catch swallows AgentNotReadyError + transport
+  // failure → fall through to HTTP.
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<{
+      character: CharacterData;
+      agentName: string;
+    }>({ rpcMethod: "getCharacter", ipcChannel: "agent" });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch("/api/character");
 };
 

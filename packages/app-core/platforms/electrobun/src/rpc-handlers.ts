@@ -53,11 +53,26 @@ import {
 	readAgentHealthSnapshotViaHttp,
 } from "./boot-progress";
 import {
+	composeAuthMeSnapshot,
+	composeAuthStatusSnapshot,
+	composeConfigSnapshot,
+	readAuthMeViaHttp,
+	readAuthStatusViaHttp,
+	readConfigViaHttp,
+} from "./config-and-auth-rpc";
+import {
+	composeCharacterSnapshot,
+	composeConversationsListSnapshot,
+	readCharacterViaHttp,
+	readConversationsListViaHttp,
+} from "./conversations-and-character-rpc";
+import {
 	composeOnboardingOptionsSnapshot,
 	composeOnboardingStatusSnapshot,
 	readOnboardingOptionsViaHttp,
 	readOnboardingStatusViaHttp,
 } from "./onboarding-rpc";
+import { resolveRpcAgentPort } from "./rpc-port-resolver";
 import type { ElizaDesktopRPCSchema, StewardRpcStatus } from "./rpc-schema";
 import {
 	buildRuntimePermissionUnavailableState,
@@ -273,7 +288,7 @@ export function buildBunRpcHandlers({
 		 */
 		getOnboardingStatus: async () =>
 			composeOnboardingStatusSnapshot(
-				agent.getStatus().port,
+				resolveRpcAgentPort(agent.getStatus().port),
 				readOnboardingStatusViaHttp,
 			),
 		/**
@@ -282,8 +297,54 @@ export function buildBunRpcHandlers({
 		 */
 		getOnboardingOptions: async () =>
 			composeOnboardingOptionsSnapshot(
-				agent.getStatus().port,
+				resolveRpcAgentPort(agent.getStatus().port),
 				readOnboardingOptionsViaHttp,
+			),
+		/**
+		 * Typed counterpart to `client.getConfig()` — redacted agent
+		 * config. See config-and-auth-rpc.ts for the pure composer.
+		 */
+		getConfig: async () =>
+			composeConfigSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readConfigViaHttp,
+			),
+		/**
+		 * Typed counterpart to `client.getAuthStatus()` — auth/pairing
+		 * gate state used by the polling-backend startup phase.
+		 */
+		getAuthStatus: async () =>
+			composeAuthStatusSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readAuthStatusViaHttp,
+			),
+		/**
+		 * Typed counterpart to `client.getAuthMe()` — session identity +
+		 * access mode (or structured 401 reason).
+		 */
+		getAuthMe: async () =>
+			composeAuthMeSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readAuthMeViaHttp,
+			),
+		/**
+		 * Typed counterpart to `client.listConversations()` — feeds the
+		 * conversations sidebar. Polled at the same cadence as the
+		 * existing HTTP route (useIntervalWhenDocumentVisible).
+		 */
+		listConversations: async () =>
+			composeConversationsListSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readConversationsListViaHttp,
+			),
+		/**
+		 * Typed counterpart to `client.getCharacter()` — current
+		 * character config used by chat + companion surfaces.
+		 */
+		getCharacter: async () =>
+			composeCharacterSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readCharacterViaHttp,
 			),
 		agentInspectExistingInstall: async () => agent.inspectExistingInstall(),
 		agentMigrateStateDir: async (params: { fromPath: string }) =>
