@@ -45,6 +45,84 @@ interface MergerLogger {
 
 const NOOP_LOGGER: MergerLogger = {};
 
+/**
+ * Capture quality contract (per W1-T1 brief §7). The parent trajectory step
+ * carries this marker so downstream training pipelines know whether the
+ * captured trajectory is full-fidelity (`ok`) or degraded — i.e. we only
+ * have ANSI-stripped stdout and no structured reasoning / tool calls /
+ * usage. Trainers that demand reasoning capture should skip degraded rows.
+ */
+export type CaptureQuality = "ok" | "degraded";
+
+export interface DegradedCaptureMarker {
+  /** Always `"capture_quality"` — the discriminator field for readers. */
+  marker: "capture_quality";
+  /** Coarse quality bucket. */
+  capture_quality: CaptureQuality;
+  /** Sub-agent type (`"claude"`, etc.) for filtering. */
+  subAgentType: string;
+  /** Why the capture was downgraded. */
+  reason: "session-log-missing" | "session-log-empty" | "session-log-error";
+  /** Free-text detail for debugging — never user content. */
+  detail?: string;
+  /** Wall-clock ms when the marker was written. */
+  recordedAt: number;
+}
+
+function buildDegradedScript(marker: DegradedCaptureMarker): string {
+  return JSON.stringify(marker, null, 0);
+}
+
+export interface TagParentTrajectoryWithDegradedCaptureOptions {
+  runtime: IAgentRuntime;
+  parentStepId: string;
+  subAgentType: string;
+  reason: DegradedCaptureMarker["reason"];
+  detail?: string;
+  logger?: MergerLogger;
+}
+
+/**
+ * Annotate the parent trajectory step with a degraded-capture marker. Used
+ * when we can't merge a full structured session log (no log file, empty
+ * file, or reader error). Returns true when the annotate landed, false
+ * when no trajectory logger was available.
+ */
+export async function tagParentTrajectoryWithDegradedCapture(
+  options: TagParentTrajectoryWithDegradedCaptureOptions,
+): Promise<boolean> {
+  const {
+    runtime,
+    parentStepId,
+    subAgentType,
+    reason,
+    detail,
+    logger = NOOP_LOGGER,
+  } = options;
+  const marker: DegradedCaptureMarker = {
+    marker: "capture_quality",
+    capture_quality: "degraded",
+    subAgentType,
+    reason,
+    detail,
+    recordedAt: Date.now(),
+  };
+  const landed = await annotateActiveTrajectoryStep(runtime, {
+    stepId: parentStepId,
+    script: buildDegradedScript(marker),
+  });
+  if (!landed) {
+    logger.debug?.(
+      `[session-log-merger] could not tag parent ${parentStepId} as degraded; no trajectory logger`,
+    );
+  } else {
+    logger.warn?.(
+      `[session-log-merger] tagged parent ${parentStepId} capture_quality=degraded (reason=${reason})`,
+    );
+  }
+  return landed;
+}
+
 export interface MergeSessionLogIntoTrajectoryOptions {
   runtime: IAgentRuntime;
   parentStepId: string;
@@ -69,6 +147,13 @@ export interface MergeSessionLogResult {
     | "no-trajectory-logger"
     | "logger-missing-start"
     | "annotate-failed";
+  /**
+   * Capture quality of this merge. `"ok"` when we landed at least one
+   * structured step; `"degraded"` when we couldn't land any (no log file,
+   * empty transcript, no trajectory logger to write to). Surfaced for the
+   * pty-service hook so it can tag the parent step.
+   */
+  captureQuality: CaptureQuality;
 }
 
 function buildChildTrajectoryId(parentStepId: string): string {
@@ -159,7 +244,11 @@ export async function mergeSessionLogIntoTrajectory(
   } = options;
 
   if (capture.steps.length === 0) {
-    return { stepsWritten: 0, skippedReason: "no-steps" };
+    return {
+      stepsWritten: 0,
+      skippedReason: "no-steps",
+      captureQuality: "degraded",
+    };
   }
 
   const trajectoryLogger = resolveTrajectoryLogger(runtime);
@@ -167,10 +256,18 @@ export async function mergeSessionLogIntoTrajectory(
     logger.debug?.(
       `[session-log-merger] no trajectory logger registered; skipping merge for parent ${parentStepId}`,
     );
-    return { stepsWritten: 0, skippedReason: "no-trajectory-logger" };
+    return {
+      stepsWritten: 0,
+      skippedReason: "no-trajectory-logger",
+      captureQuality: "degraded",
+    };
   }
   if (typeof trajectoryLogger.startTrajectory !== "function") {
-    return { stepsWritten: 0, skippedReason: "logger-missing-start" };
+    return {
+      stepsWritten: 0,
+      skippedReason: "logger-missing-start",
+      captureQuality: "degraded",
+    };
   }
 
   const childTrajectoryId = buildChildTrajectoryId(parentStepId);
@@ -236,6 +333,7 @@ export async function mergeSessionLogIntoTrajectory(
       childTrajectoryId,
       stepsWritten,
       skippedReason: "annotate-failed",
+      captureQuality: stepsWritten > 0 ? "ok" : "degraded",
     };
   }
 
@@ -246,5 +344,6 @@ export async function mergeSessionLogIntoTrajectory(
   return {
     childTrajectoryId,
     stepsWritten,
+    captureQuality: stepsWritten > 0 ? "ok" : "degraded",
   };
 }
