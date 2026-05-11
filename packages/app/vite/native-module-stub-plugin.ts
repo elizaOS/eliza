@@ -177,11 +177,6 @@ export function nativeModuleStubPlugin(
     // specifier into the output bundle.
     "chalk",
     "drizzle-orm",
-    // Server-only argon2 password hasher (auth/passwords.ts). The package's
-    // `browser.js` re-exports from `@node-rs/argon2-wasm32-wasi` which we
-    // do not install. Stub the whole package — the renderer never hashes
-    // passwords directly; it talks to the API which performs the hash.
-    "@node-rs/argon2",
   ]);
   if (!isCapacitorMobileBuild) {
     // Mobile-only Capacitor llama.cpp runtime. Web/Electrobun builds stub it,
