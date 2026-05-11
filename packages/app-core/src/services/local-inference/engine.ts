@@ -1267,6 +1267,26 @@ export class LocalInferenceEngine {
     prewarm?: (roomId: string) => void | Promise<void>;
     speculatePauseMs?: number;
     events?: import("./voice/turn-controller").VoiceTurnControllerEvents;
+    /**
+     * Opt-in openWakeWord hotword gate (local mode only — the
+     * local-inference engine never runs in cloud mode, and the connector
+     * UI hides this surface there per AGENTS.md §5 hide-not-disable).
+     * Disabled by default: voice mode works push-to-talk / VAD-gated
+     * without it. When `enabled` and the bundle ships the openWakeWord
+     * graphs, mic frames are also fanned into an `OpenWakeWordDetector`;
+     * each fresh detection prewarms the conversation and calls `onWake`
+     * (the same place a push-to-talk press would arm a listening window).
+     * Silently inert when the bundle has no wake-word model.
+     */
+    wakeWord?: {
+      enabled: boolean;
+      /** Wake phrase head name (defaults to the bundle's `hey-eliza`). */
+      head?: string;
+      /** P(wake) firing threshold (openWakeWord default ~0.5). */
+      threshold?: number;
+      /** Called once per detected utterance (refractory-debounced). */
+      onWake?: () => void;
+    };
   }): Promise<import("./voice/turn-controller").VoiceTurnController> {
     const bridge = this.requireVoiceBridge("start a voice session");
     if (bridge.lifecycle.current().kind !== "voice-on") {
@@ -1330,11 +1350,59 @@ export class LocalInferenceEngine {
       micSource,
       new InMemoryAudioSink(),
     );
+    // Optional openWakeWord hotword gate (opt-in, local mode). Resolved
+    // against the active bundle; absent graphs → silently no wake word.
+    let wakeWord: import("./voice/wake-word").OpenWakeWordDetector | null = null;
+    let feedWakeFrame: ((pcm: Float32Array) => void) | null = null;
+    if (opts.wakeWord?.enabled) {
+      const { loadBundledWakeWordModel, OpenWakeWordDetector } = await import(
+        "./voice/wake-word"
+      );
+      const model = await loadBundledWakeWordModel({
+        bundleRoot: bridge.bundlePath(),
+        ...(opts.wakeWord.head ? { head: opts.wakeWord.head } : {}),
+      });
+      if (model) {
+        const detector = new OpenWakeWordDetector({
+          model,
+          ...(opts.wakeWord.threshold !== undefined
+            ? { config: { threshold: opts.wakeWord.threshold } }
+            : {}),
+          onWake: () => {
+            void this.prewarmConversation(opts.roomId, "");
+            opts.wakeWord?.onWake?.();
+          },
+        });
+        wakeWord = detector;
+        // The mic frame size need not match the openWakeWord frame size
+        // (1280 samples = 80 ms @ 16 kHz); re-buffer into exact frames.
+        const need = model.frameSamples;
+        let acc = new Float32Array(0);
+        feedWakeFrame = (pcm: Float32Array) => {
+          const merged = new Float32Array(acc.length + pcm.length);
+          merged.set(acc);
+          merged.set(pcm, acc.length);
+          let off = 0;
+          while (merged.length - off >= need) {
+            const slice = merged.slice(off, off + need);
+            off += need;
+            void detector.pushFrame(slice);
+          }
+          acc = merged.slice(off);
+        };
+      } else {
+        console.info(
+          "[voice] wake word requested but no openWakeWord model in this bundle — running VAD-gated only",
+        );
+      }
+    }
+
     const unsubFrame = micSource.onFrame((frame) => {
       // The VAD forward pass is serialized internally; fire-and-forget so a
       // slow frame doesn't backpressure the mic (the VAD records overruns).
       void vad.pushFrame(frame);
       transcriber.feed(frame);
+      feedWakeFrame?.(frame.pcm);
     });
 
     controller.start();
@@ -1348,6 +1416,7 @@ export class LocalInferenceEngine {
       stopMicRing();
       void micSource.stop();
       transcriber.dispose();
+      wakeWord?.reset();
     };
     return controller;
   }
