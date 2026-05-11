@@ -479,4 +479,85 @@ describe("v5 evaluator skeleton", () => {
 		// promise is considered fulfilled.
 		expect(result.decision).toBe("FINISH");
 	});
+	it("downgrades FINISH to CONTINUE for 'running X now' gerund promise after a non-executing tool", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "success": true,
+  "decision": "FINISH",
+  "thought": "About to run grep.",
+  "messageToUser": "File exists (656 lines) — running a grep count now for 'sanitize'."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: {
+							id: "t1",
+							name: "READ",
+							params: { file_path: "/some/file.ts" },
+						},
+						result: { success: true, text: "file contents" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser).toBeUndefined();
+	});
+
+	it("downgrades FINISH to CONTINUE for 'let me run/check' command-form when latest tool failed", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "success": false,
+  "decision": "FINISH",
+  "thought": "Probe failed.",
+  "messageToUser": "Initial probe didn't return useful output. Let me run a quick check on the file structure."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "t1", name: "SHELL", params: { command: "ls" } },
+						result: { success: false, text: "" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser).toBeUndefined();
+	});
 });

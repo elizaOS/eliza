@@ -348,6 +348,16 @@ const FORWARD_LOOKING_PROMISE_PATTERNS: RegExp[] = [
 	/\bwill\s+(?:install|build|deploy|create|spawn|kick\s+off|start|launch|run|generate|fix|update|report\s+back)\b/i,
 	/\babout\s+to\s+(?:install|build|deploy|create|spawn|kick|start|launch|run|generate|fix)/i,
 	/\bwill\s+report\s+back\b/i,
+	// Present-continuous "(verb-ing) ... now" pattern. The LLM frequently
+	// closes a turn with "File exists (656 lines) — running a grep count
+	// now" or "checking it now" or "computing the result now" — describing
+	// work it CLAIMS to be doing this instant but never actually invoked
+	// a tool for. Treat any of those gerund verbs followed by "...now" as
+	// an unfulfilled promise unless the prior tool actually executed it.
+	/\b(?:running|fetching|checking|computing|loading|grabbing|reading|writing|saving|searching|processing|fixing|building|installing|deploying|verifying|counting|grepping|inspecting|scanning|querying|pulling|pushing|sending)\s+[^.!?\n]{0,80}?\bnow\b/i,
+	// "let me run/check/grep ..." — first-person command-form that the
+	// LLM uses to imply "I'm about to do this" without actually doing it.
+	/\blet\s+me\s+(?:run|check|grep|fetch|read|write|save|search|count|verify|inspect|scan|query|do|try|look|kick|spawn|start|launch|build|deploy)\b/i,
 ];
 
 function isForwardLookingPromise(text: string): boolean {
@@ -428,6 +438,16 @@ function trajectoryWroteToPath(
  * messageToUser so the planner gets another turn to actually emit the
  * follow-up action.
  */
+/**
+ * Words that signal the work is ACTUALLY done within the message
+ * (vs. a forward-looking promise). If a message contains both a
+ * forward-looking phrase AND one of these markers, treat it as a
+ * legitimate FINISH (the LLM is narrating "I was about to do X,
+ * then I did it, here's the result").
+ */
+const COMPLETION_INDICATORS =
+	/\b(?:done|completed|finished|verified|confirmed|here['']?s\s+(?:the|what|how)|here\s+is|result:|results?\b|output:|wrote\s+\d|saved\s+\d|exit\s+0|✓|all\s+(?:passed|set)|success(?:ful(?:ly)?)?:)\b/i;
+
 function repairForwardLookingFinish(
 	output: EvaluatorOutput,
 	trajectory: PlannerTrajectory,
@@ -437,39 +457,43 @@ function repairForwardLookingFinish(
 	const trimmed = output.messageToUser.trim();
 	if (!trimmed) return output;
 
-	// Case A: messageToUser names a specific path the LLM is "writing now"
-	// but no successful tool call in the trajectory actually wrote to that
-	// path. This catches the failure mode where the planner runs a bunch
-	// of probing tools (some succeed, some fail), forms a diagnosis, and
-	// then closes the turn with "Writing `/path/to/fix.py` now..." without
-	// ever emitting the WRITE itself. The previous "latest tool failed"
-	// guard misses this because the latest tool (typically a debug BASH)
-	// did succeed — the unfulfilled promise is about a DIFFERENT action.
-	const promisedPath = extractPromisedWritePath(trimmed);
-	if (promisedPath && !trajectoryWroteToPath(trajectory, promisedPath)) {
-		return {
-			...output,
-			decision: "CONTINUE",
-			messageToUser: undefined,
-			success: false,
-		};
-	}
-
-	// Case B: latest tool failed and messageToUser is a generic
-	// forward-looking promise (e.g. "On it — kicking off..."). The
-	// original failure mode from the upstream-merged version of this
-	// repair.
-	const latestStep = [...trajectory.steps]
-		.reverse()
-		.find((step) => step.toolCall && step.result);
-	if (latestStep?.result?.success === true) return output;
-	if (!isForwardLookingPromise(trimmed)) return output;
-	return {
+	const downgrade: EvaluatorOutput = {
 		...output,
 		decision: "CONTINUE",
 		messageToUser: undefined,
 		success: false,
 	};
+
+	// Case A: messageToUser names a specific path the LLM is "writing now"
+	// but no successful tool call in the trajectory actually wrote to that
+	// path. This catches the failure mode where the planner runs a bunch
+	// of probing tools (some succeed, some fail), forms a diagnosis, and
+	// then closes the turn with "Writing `/path/to/fix.py` now..." without
+	// ever emitting the WRITE itself. Specific-path promises ignore the
+	// completion-indicator gate because we have ground truth (the actual
+	// trajectory tool calls) to check against.
+	const promisedPath = extractPromisedWritePath(trimmed);
+	if (promisedPath && !trajectoryWroteToPath(trajectory, promisedPath)) {
+		return downgrade;
+	}
+
+	// Case B: messageToUser matches a generic forward-looking pattern
+	// (gerund "running X now", "let me run", "on it — kicking off",
+	// "i'll start", etc.) AND has no completion indicator suggesting
+	// the work actually happened. We fire regardless of which tool was
+	// most recent — the live failure that motivated this guard had a
+	// successful READ as the latest tool, but the promised grep never
+	// ran. The completion-indicator check prevents false-positives like
+	// "Writing /tmp/x.py now. Done." or "On it — wait, actually it's
+	// done. APK at /tmp/out.apk."
+	if (
+		isForwardLookingPromise(trimmed) &&
+		!COMPLETION_INDICATORS.test(trimmed)
+	) {
+		return downgrade;
+	}
+
+	return output;
 }
 
 export async function applyEvaluatorEffects(
