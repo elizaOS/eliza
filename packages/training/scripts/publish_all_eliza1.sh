@@ -21,7 +21,7 @@
 # tts/, asr/, vision/, dflash/, cache/, evals/, licenses/).
 #
 # Metal verification is hardware-only. To publish a tier that includes
-# the Metal backend (lite-0_6b, mobile-1_7b, desktop-9b, pro-27b) you
+# the Metal backend (0_6b, 1_7b, 9b, 27b, 27b-256k) you
 # must record a metal_verify.json on a verified host (run
 # packages/inference/verify/metal_verify there) and pass it via
 # --metal-verification-<tier> PATH OR by placing it at
@@ -31,8 +31,8 @@
 # Usage:
 #   scripts/publish_all_eliza1.sh --bundles-root ./bundles
 #   scripts/publish_all_eliza1.sh --bundles-root ./bundles --dry-run
-#   scripts/publish_all_eliza1.sh --bundles-root ./bundles --filter-tier desktop-9b
-#   scripts/publish_all_eliza1.sh --bundles-root ./bundles --metal-verification-desktop-9b /path/to/metal.json
+#   scripts/publish_all_eliza1.sh --bundles-root ./bundles --filter-tier 9b
+#   scripts/publish_all_eliza1.sh --bundles-root ./bundles --metal-verification-9b /path/to/metal.json
 #
 # Env:
 #   HF_TOKEN  required for actual upload (not for --dry-run).
@@ -44,7 +44,7 @@ readonly TRAINING_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${TRAINING_ROOT}"
 
-readonly TIERS=("lite-0_6b" "mobile-1_7b" "desktop-9b" "pro-27b" "server-h200")
+readonly TIERS=("0_6b" "1_7b" "9b" "27b" "27b-256k")
 
 DRY_RUN=0
 PUBLIC=0
@@ -62,10 +62,11 @@ while [[ $# -gt 0 ]]; do
     --public)             PUBLIC=1; shift ;;
     --filter-tier)        FILTER_TIER="$2"; shift 2 ;;
     --bundles-root)       BUNDLES_ROOT="$2"; shift 2 ;;
-    --metal-verification-lite-0_6b)    METAL_PATHS[lite-0_6b]="$2"; shift 2 ;;
-    --metal-verification-mobile-1_7b)  METAL_PATHS[mobile-1_7b]="$2"; shift 2 ;;
-    --metal-verification-desktop-9b)   METAL_PATHS[desktop-9b]="$2"; shift 2 ;;
-    --metal-verification-pro-27b)      METAL_PATHS[pro-27b]="$2"; shift 2 ;;
+    --metal-verification-0_6b)    METAL_PATHS[0_6b]="$2"; shift 2 ;;
+    --metal-verification-1_7b)  METAL_PATHS[1_7b]="$2"; shift 2 ;;
+    --metal-verification-9b)   METAL_PATHS[9b]="$2"; shift 2 ;;
+    --metal-verification-27b)      METAL_PATHS[27b]="$2"; shift 2 ;;
+    --metal-verification-27b-256k) METAL_PATHS[27b-256k]="$2"; shift 2 ;;
     -h|--help)            usage; exit 0 ;;
     *)
       echo "unknown arg: $1" >&2

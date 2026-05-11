@@ -50,7 +50,7 @@ describe("local inference text readiness", () => {
     const installed: InstalledModel[] = [
       {
         id: "eliza-1-1_7b",
-        displayName: "Eliza-1 1.7B",
+        displayName: "eliza-1-1_7b",
         path: "/tmp/eliza-1-1_7b.gguf",
         sizeBytes: 2048,
         installedAt: new Date().toISOString(),
@@ -59,7 +59,7 @@ describe("local inference text readiness", () => {
       },
       {
         id: "eliza-1-1_7b-drafter",
-        displayName: "Eliza-1 1.7B drafter",
+        displayName: "eliza-1-1_7b drafter",
         path: "/tmp/eliza-1-1_7b-drafter.gguf",
         sizeBytes: 512,
         installedAt: new Date().toISOString(),

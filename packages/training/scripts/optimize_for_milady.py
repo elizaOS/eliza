@@ -16,21 +16,21 @@ Usage::
 
     # Dry-run on the smallest Eliza-1 tier.
     uv run python scripts/optimize_for_milady.py \\
-        --base-model elizalabs/eliza-1-lite-0_6b \\
+        --base-model elizalabs/eliza-1-0_6b \\
         --output-dir checkpoints/eliza-1-lite \\
         --apply polarquant qjl turboquant \\
         --gguf-target packages/inference \\
-        --hf-repo elizalabs/eliza-1-lite-0_6b \\
+        --hf-repo elizalabs/eliza-1-0_6b \\
         --dry-run
 
     # Real run (needs the milady-ai/llama.cpp v0.4.0-milady checkout
     # at $LLAMA_CPP_DIR for the convert step + a real HF token).
     HF_TOKEN=hf_xxx LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp \\
         uv run python scripts/optimize_for_milady.py \\
-            --base-model elizalabs/eliza-1-lite-0_6b \\
+            --base-model elizalabs/eliza-1-0_6b \\
             --output-dir checkpoints/eliza-1-lite \\
             --apply polarquant qjl turboquant \\
-            --hf-repo elizalabs/eliza-1-lite-0_6b
+            --hf-repo elizalabs/eliza-1-0_6b
 
 The downstream ``llama-server`` invocation that the published manifest
 documents looks like::
@@ -644,7 +644,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--base-model",
         required=True,
-        help="HF repo id or local path to the base model (e.g. elizalabs/eliza-1-lite-0_6b).",
+        help="HF repo id or local path to the base model (e.g. elizalabs/eliza-1-0_6b).",
     )
     p.add_argument(
         "--output-dir",
@@ -688,7 +688,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--hf-repo",
         default=None,
-        help="HuggingFace repo to publish to (e.g. elizalabs/eliza-1-lite-0_6b). "
+        help="HuggingFace repo to publish to (e.g. elizalabs/eliza-1-0_6b). "
              "When omitted the pipeline stops after manifest emission.",
     )
     p.add_argument(

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type http from "node:http";
 import type { AgentRuntime, RouteRequestMeta } from "@elizaos/core";
 import { logger } from "@elizaos/core";
@@ -21,11 +22,13 @@ import {
   type WalletConfigUpdateRequest,
   type WalletRpcSelections,
 } from "@elizaos/shared";
+import { ethers } from "ethers";
 import type { ElizaConfig } from "../config/config.ts";
 import { isCloudWalletEnabled } from "../config/feature-flags.ts";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 import { persistConfigEnv } from "./config-env.ts";
 import {
+  deriveSolanaAddress,
   fetchEvmBalances,
   fetchSolanaBalances,
   fetchSolanaNativeBalanceViaRpc,
@@ -354,6 +357,360 @@ const LOCAL_WALLET_SOURCE_ENV_KEYS: Record<WalletChain, string> = {
   evm: "WALLET_SOURCE_EVM",
   solana: "WALLET_SOURCE_SOLANA",
 };
+
+type BrowserSolanaCluster = "mainnet" | "devnet" | "testnet";
+
+interface BrowserEvmTransactionRequest {
+  broadcast: boolean;
+  chainId: number;
+  data?: string;
+  to: string;
+  value: string;
+}
+
+interface BrowserSolanaWeb3Module {
+  Keypair: {
+    fromSeed(seed: Uint8Array): unknown;
+  };
+  VersionedTransaction: {
+    deserialize(bytes: Uint8Array): {
+      sign(signers: unknown[]): void;
+      serialize(): Uint8Array;
+    };
+  };
+  Transaction: {
+    from(bytes: Uint8Array): {
+      partialSign(...signers: unknown[]): void;
+      serialize(): Uint8Array;
+    };
+  };
+  Connection: new (
+    endpoint: string,
+    commitment: string,
+  ) => {
+    sendRawTransaction(bytes: Uint8Array): Promise<string>;
+  };
+}
+
+const SOLANA_PKCS8_DER_PREFIX = Buffer.from(
+  "302e020100300506032b657004220420",
+  "hex",
+);
+const BASE58_ALPHABET =
+  "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+function normalizeBrowserString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function normalizeBrowserBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function normalizeBrowserHexData(value: unknown): string | undefined {
+  const trimmed = normalizeBrowserString(value);
+  if (!trimmed) {
+    return undefined;
+  }
+  return trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
+}
+
+function safeParseBrowserBigInt(value: string): bigint {
+  try {
+    return BigInt(value);
+  } catch {
+    throw new Error(
+      `Invalid transaction value: expected an integer or hex string, got "${value}"`,
+    );
+  }
+}
+
+function resolveLocalBrowserEvmWallet(): ethers.Wallet {
+  const evmKey = normalizeBrowserString(process.env.EVM_PRIVATE_KEY);
+  if (!evmKey) {
+    throw new Error("Local EVM wallet signing is unavailable.");
+  }
+  return new ethers.Wallet(evmKey.startsWith("0x") ? evmKey : `0x${evmKey}`);
+}
+
+function base58DecodeBrowser(value: string): Buffer {
+  if (!value.length) {
+    return Buffer.alloc(0);
+  }
+  let number = 0n;
+  for (const character of value) {
+    const index = BASE58_ALPHABET.indexOf(character);
+    if (index === -1) {
+      throw new Error(`Invalid base58 character: ${character}`);
+    }
+    number = number * 58n + BigInt(index);
+  }
+  const hex = number.toString(16);
+  const bytes = Buffer.from(hex.length % 2 === 0 ? hex : `0${hex}`, "hex");
+  let leadingZeroes = 0;
+  for (const character of value) {
+    if (character !== "1") {
+      break;
+    }
+    leadingZeroes += 1;
+  }
+  return leadingZeroes
+    ? Buffer.concat([Buffer.alloc(leadingZeroes), bytes])
+    : bytes;
+}
+
+function decodeLocalBrowserSolanaPrivateKey(value: string): Buffer {
+  const trimmed = value.trim();
+  if (
+    trimmed.startsWith("[") &&
+    trimmed.endsWith("]") &&
+    /^\[\s*\d/.test(trimmed)
+  ) {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (
+      !Array.isArray(parsed) ||
+      !parsed.every((entry) => typeof entry === "number")
+    ) {
+      throw new Error("Invalid Solana private key JSON array.");
+    }
+    return Buffer.from(parsed);
+  }
+  return base58DecodeBrowser(trimmed);
+}
+
+function resolveLocalBrowserSolanaSeed(): { address: string; seed: Buffer } {
+  const solanaKey = normalizeBrowserString(process.env.SOLANA_PRIVATE_KEY);
+  if (!solanaKey) {
+    throw new Error("Local Solana signing is unavailable.");
+  }
+  const decoded = decodeLocalBrowserSolanaPrivateKey(solanaKey);
+  const seed =
+    decoded.length === 64
+      ? decoded.subarray(0, 32)
+      : decoded.length === 32
+        ? decoded
+        : null;
+  if (!seed) {
+    throw new Error(
+      `Invalid Solana private key length: expected 32 or 64 bytes, got ${decoded.length}.`,
+    );
+  }
+  return {
+    address: deriveSolanaAddress(solanaKey),
+    seed,
+  };
+}
+
+function resolveBrowserSolanaMessageBytes(
+  body: Record<string, unknown>,
+): Buffer {
+  const messageBase64 = normalizeBrowserString(body.messageBase64);
+  if (messageBase64) {
+    return Buffer.from(messageBase64, "base64");
+  }
+  const message = normalizeBrowserString(body.message);
+  if (!message) {
+    throw new Error("message or messageBase64 is required.");
+  }
+  return Buffer.from(message, "utf8");
+}
+
+function resolveBrowserWalletMessagePayload(
+  message: string,
+): string | Uint8Array {
+  const trimmed = message.trim();
+  if (
+    trimmed.startsWith("0x") &&
+    trimmed.length >= 4 &&
+    trimmed.length % 2 === 0
+  ) {
+    try {
+      return ethers.getBytes(trimmed);
+    } catch {
+      return message;
+    }
+  }
+  return message;
+}
+
+async function signLocalBrowserWalletMessage(message: string): Promise<{
+  mode: "local-key";
+  signature: string;
+}> {
+  const wallet = resolveLocalBrowserEvmWallet();
+  return {
+    mode: "local-key",
+    signature: await wallet.signMessage(
+      resolveBrowserWalletMessagePayload(message),
+    ),
+  };
+}
+
+async function signLocalBrowserSolanaMessage(
+  body: Record<string, unknown>,
+): Promise<{
+  address: string;
+  mode: "local-key";
+  signatureBase64: string;
+}> {
+  const { address, seed } = resolveLocalBrowserSolanaSeed();
+  const privateKey = crypto.createPrivateKey({
+    key: Buffer.concat([SOLANA_PKCS8_DER_PREFIX, seed]),
+    format: "der",
+    type: "pkcs8",
+  });
+  const signature = crypto.sign(
+    null,
+    resolveBrowserSolanaMessageBytes(body),
+    privateKey,
+  );
+  return {
+    address,
+    mode: "local-key",
+    signatureBase64: signature.toString("base64"),
+  };
+}
+
+function normalizeBrowserSolanaCluster(value: unknown): BrowserSolanaCluster {
+  if (value === "devnet" || value === "testnet" || value === "mainnet") {
+    return value;
+  }
+  return "mainnet";
+}
+
+function browserSolanaClusterRpcUrl(cluster: BrowserSolanaCluster): string {
+  switch (cluster) {
+    case "devnet":
+      return "https://api.devnet.solana.com";
+    case "testnet":
+      return "https://api.testnet.solana.com";
+    default:
+      return "https://api.mainnet-beta.solana.com";
+  }
+}
+
+async function loadBrowserSolanaWeb3(): Promise<BrowserSolanaWeb3Module> {
+  return (await import("@solana/web3.js")) as BrowserSolanaWeb3Module;
+}
+
+async function signLocalBrowserSolanaTransaction(
+  body: Record<string, unknown>,
+): Promise<{
+  address: string;
+  mode: "local-key";
+  signedTransactionBase64: string;
+  signature?: string;
+  cluster: BrowserSolanaCluster;
+}> {
+  const transactionBase64 = normalizeBrowserString(body.transactionBase64);
+  if (!transactionBase64) {
+    throw new Error("transactionBase64 is required.");
+  }
+  const broadcast = normalizeBrowserBoolean(body.broadcast, false);
+  const cluster = normalizeBrowserSolanaCluster(body.cluster);
+  const { address, seed } = resolveLocalBrowserSolanaSeed();
+
+  const { Keypair, VersionedTransaction, Transaction, Connection } =
+    await loadBrowserSolanaWeb3();
+  const keypair = Keypair.fromSeed(new Uint8Array(seed));
+  const txBytes = Buffer.from(transactionBase64, "base64");
+
+  let signedBytes: Uint8Array;
+  let broadcastSignature: string | undefined;
+  try {
+    const versioned = VersionedTransaction.deserialize(txBytes);
+    versioned.sign([keypair]);
+    signedBytes = versioned.serialize();
+    if (broadcast) {
+      const connection = new Connection(
+        browserSolanaClusterRpcUrl(cluster),
+        "confirmed",
+      );
+      broadcastSignature = await connection.sendRawTransaction(signedBytes);
+    }
+  } catch (_error) {
+    const legacy = Transaction.from(txBytes);
+    legacy.partialSign(keypair);
+    signedBytes = legacy.serialize();
+    if (broadcast) {
+      const connection = new Connection(
+        browserSolanaClusterRpcUrl(cluster),
+        "confirmed",
+      );
+      broadcastSignature = await connection.sendRawTransaction(signedBytes);
+    }
+  }
+
+  return {
+    address,
+    mode: "local-key",
+    signedTransactionBase64: Buffer.from(signedBytes).toString("base64"),
+    ...(broadcastSignature ? { signature: broadcastSignature } : {}),
+    cluster,
+  };
+}
+
+function resolvePreferredBrowserRpcUrl(
+  config: ElizaConfig,
+  chainId: number,
+): string | null {
+  const readiness = resolveWalletRpcReadiness(config);
+  switch (chainId) {
+    case 1:
+      return readiness.ethereumRpcUrls[0] ?? null;
+    case 56:
+    case 97:
+      return readiness.bscRpcUrls[0] ?? null;
+    case 8453:
+      return readiness.baseRpcUrls[0] ?? null;
+    case 43114:
+      return readiness.avalancheRpcUrls[0] ?? null;
+    default:
+      return null;
+  }
+}
+
+async function sendLocalBrowserWalletTransaction(
+  config: ElizaConfig,
+  request: BrowserEvmTransactionRequest,
+): Promise<{
+  approved: true;
+  mode: "local-key";
+  pending: false;
+  txHash: string;
+}> {
+  if (request.broadcast === false) {
+    throw new Error(
+      "Local browser wallet signing currently requires broadcast=true.",
+    );
+  }
+  const rpcUrl = resolvePreferredBrowserRpcUrl(config, request.chainId);
+  if (!rpcUrl) {
+    throw new Error(`No RPC URL configured for chain ${request.chainId}.`);
+  }
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  try {
+    const wallet = resolveLocalBrowserEvmWallet().connect(provider);
+    const txResponse = await wallet.sendTransaction({
+      chainId: request.chainId,
+      data: request.data,
+      to: request.to,
+      value: safeParseBrowserBigInt(request.value),
+    });
+    return {
+      approved: true,
+      mode: "local-key",
+      pending: false,
+      txHash: txResponse.hash,
+    };
+  } finally {
+    provider.destroy();
+  }
+}
 
 export async function handleWalletRoutes(
   ctx: WalletRouteContext,
@@ -831,6 +1188,96 @@ export async function handleWalletRoutes(
       });
     } else {
       json(res, configStatus);
+    }
+    return true;
+  }
+
+  if (
+    method === "POST" &&
+    (pathname === "/api/wallet/browser-transaction" ||
+      pathname === "/api/wallet/browser-sign-message" ||
+      pathname === "/api/wallet/browser-solana-sign-message" ||
+      pathname === "/api/wallet/browser-solana-transaction")
+  ) {
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+
+    const hasLocalEvmKey = Boolean(
+      normalizeBrowserString(process.env.EVM_PRIVATE_KEY),
+    );
+    const hasLocalSolanaKey = Boolean(
+      normalizeBrowserString(process.env.SOLANA_PRIVATE_KEY),
+    );
+
+    if (pathname === "/api/wallet/browser-sign-message") {
+      const message = normalizeBrowserString(body.message);
+      if (!message) {
+        error(res, "message is required.", 400);
+        return true;
+      }
+      if (!hasLocalEvmKey) {
+        error(res, "No browser EVM signer is available.", 503);
+        return true;
+      }
+      try {
+        json(res, await signLocalBrowserWalletMessage(message));
+      } catch (err) {
+        error(res, err instanceof Error ? err.message : String(err), 503);
+      }
+      return true;
+    }
+
+    if (pathname === "/api/wallet/browser-solana-sign-message") {
+      if (!hasLocalSolanaKey) {
+        error(res, "No browser Solana signer is available.", 503);
+        return true;
+      }
+      try {
+        json(res, await signLocalBrowserSolanaMessage(body));
+      } catch (err) {
+        error(res, err instanceof Error ? err.message : String(err), 503);
+      }
+      return true;
+    }
+
+    if (pathname === "/api/wallet/browser-solana-transaction") {
+      if (!hasLocalSolanaKey) {
+        error(res, "No browser Solana transaction signer is available.", 503);
+        return true;
+      }
+      try {
+        json(res, await signLocalBrowserSolanaTransaction(body));
+      } catch (err) {
+        error(res, err instanceof Error ? err.message : String(err), 503);
+      }
+      return true;
+    }
+
+    if (!hasLocalEvmKey) {
+      error(res, "No browser EVM transaction signer is available.", 503);
+      return true;
+    }
+
+    const request: BrowserEvmTransactionRequest = {
+      broadcast: normalizeBrowserBoolean(body.broadcast, true),
+      chainId:
+        typeof body.chainId === "number" && Number.isFinite(body.chainId)
+          ? body.chainId
+          : Number.NaN,
+      data: normalizeBrowserHexData(body.data),
+      to: normalizeBrowserString(body.to) ?? "",
+      value: normalizeBrowserString(body.value) ?? "0",
+    };
+
+    if (!request.to || !Number.isFinite(request.chainId)) {
+      error(res, "to and a valid chainId are required.", 400);
+      return true;
+    }
+
+    try {
+      json(res, await sendLocalBrowserWalletTransaction(config, request));
+    } catch (err) {
+      error(res, err instanceof Error ? err.message : String(err), 503);
     }
     return true;
   }

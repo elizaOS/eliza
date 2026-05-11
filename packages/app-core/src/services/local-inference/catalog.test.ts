@@ -27,7 +27,7 @@ describe("local inference catalog", () => {
         true,
       );
     }
-    for (const model of MODEL_CATALOG) {
+    for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
       expect(model.id.startsWith("eliza-1-")).toBe(true);
     }
   });
@@ -225,8 +225,9 @@ describe("local inference catalog", () => {
   it("recommendForFirstRun resolves to a default-eligible Eliza-1 tier", () => {
     const picked = recommendForFirstRun();
     expect(picked).not.toBeNull();
-    expect(picked?.id).toBe(FIRST_RUN_DEFAULT_MODEL_ID);
-    expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(picked?.id)).toBe(true);
-    expect(picked?.displayName).toMatch(/^(?:Eliza-1\b|eliza-1-)/);
+    if (!picked) throw new Error("missing first-run recommendation");
+    expect(picked.id).toBe(FIRST_RUN_DEFAULT_MODEL_ID);
+    expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(picked.id)).toBe(true);
+    expect(picked.displayName).toMatch(/^(?:Eliza-1\b|eliza-1-)/);
   });
 });
