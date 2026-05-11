@@ -178,6 +178,86 @@ floss-missed-2-nights-escalate, brush-teeth-streak-recovery) should be
 extended to assert on connector dispatches once the escalation channels
 are wired through Mockoon ports 18808 (twilio) and 18812 (ntfy).
 
+## W2-2 inbox-triage/gmail/cross-channel additions (Wave-2)
+
+The 47 new scenarios authored in Wave-2 by W2-2 extend `lifeops.inbox-triage`
+and create two new domains (`lifeops.gmail`, `lifeops.cross-channel`) that
+sit beside `messaging.gmail` and `messaging.cross-platform`. The new
+domains assert on *agent behavior* (action selection, channel routing,
+identity dedup, ranking) rather than just on Mockoon traffic shape, but
+they still exercise the gmail (18801) env for any scenario that uses
+`gmailInbox`-typed seeds. Cross-channel scenarios exercise telegram,
+signal, discord, and bluebubbles envs indirectly through identity-merge
+and channel-routing predicates.
+
+Lifeops.inbox-triage new scenarios (17 — extends existing dir):
+- inbox-triage.500-unread
+- inbox-triage.empty-inbox
+- inbox-triage.urgent-bumps-low-priority
+- inbox-triage.gmail-5xx-mid-fetch (gmail Mockoon fault injection)
+- inbox-triage.draft-sign-off-before-send
+- inbox-triage.draft-with-attachment
+- inbox-triage.spam-quarantine-review
+- inbox-triage.unresponded-threads-72h
+- inbox-triage.event-ingestion-from-email
+- inbox-triage.archive-low-value-newsletters
+- inbox-triage.escalate-from-known-VIP
+- inbox-triage.first-name-disambig
+- inbox-triage.draft-respects-tone-prefs
+- inbox-triage.bulk-archive-with-undo
+- inbox-triage.token-expiry-mid-fetch (gmail Mockoon auth_expired)
+- inbox-triage.imap-only-account-degraded
+- inbox-triage.recovery-after-failure
+
+Lifeops.gmail new scenarios (17 — NEW domain):
+- gmail.list-unread-this-morning
+- gmail.get-message-by-id
+- gmail.search-by-sender
+- gmail.search-by-subject-contains
+- gmail.search-by-label
+- gmail.modify-label-add-priority
+- gmail.archive-thread
+- gmail.mark-as-read
+- gmail.mark-as-spam
+- gmail.send-draft-after-approval
+- gmail.create-draft-with-cc-bcc
+- gmail.batch-modify-50-messages
+- gmail.thread-view-shows-full-history
+- gmail.attachment-metadata-without-download
+- gmail.partial-failure-50-of-100-modified (gmail Mockoon partial_failure)
+- gmail.rate-limit-backoff (gmail Mockoon rate_limit)
+- gmail.bulk-cleanup-marketing-emails
+
+Lifeops.cross-channel new scenarios (13 — NEW domain):
+- cross-channel.same-person-email-and-telegram
+- cross-channel.same-person-4-platforms
+- cross-channel.group-chat-handoff-enter
+- cross-channel.group-chat-handoff-resume
+- cross-channel.group-chat-handoff-status
+- cross-channel.unified-search-across-platforms
+- cross-channel.respond-via-original-channel
+- cross-channel.unanswered-decision-bump
+- cross-channel.identity-rename-survives
+- cross-channel.signal-permission-denied-degraded
+- cross-channel.discord-bot-token-expired
+- cross-channel.urgent-routed-to-most-active-channel
+- cross-channel.imessage-fda-denied-fallback
+
+Wave-3 follow-ups (richer fixtures needed):
+- `inbox-triage.gmail-5xx-mid-fetch`, `inbox-triage.token-expiry-mid-fetch`,
+  `gmail.partial-failure-50-of-100-modified`, `gmail.rate-limit-backoff`
+  depend on Mockoon's `faultInjection: { mode: ... }` toggle on the
+  `gmailInbox` seed. If that toggle isn't wired in the seed runner today,
+  Wave-3 should extend `gmailInbox`-typed seed handling to forward the
+  `X-Mockoon-Fault` header on subsequent calls.
+- `cross-channel.same-person-4-platforms` and
+  `cross-channel.identity-rename-survives` use `seedCanonicalIdentityFixture`;
+  Wave-3 should extend that fixture to seed messages on Discord and the
+  rename-history table so the agent has explicit context to surface.
+- `cross-channel.urgent-routed-to-most-active-channel` infers most-active
+  from recent triage timestamps. Wave-3: expose a richer presence/activity
+  signal that the agent can directly query.
+
 ## Scenarios with no Mockoon usage today (gaps)
 
 These lifeops.* scenarios do not reference any Mockoon-backed connector by

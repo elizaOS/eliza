@@ -59,6 +59,14 @@ async function grade(cases: CalibrationCase[]): Promise<Tally> {
 	};
 	for (const c of cases) {
 		const verdict = await gradeScenario(toScenario(c), { enableLlm: false });
+		// Verdict equals expected (including NEEDS_REVIEW == NEEDS_REVIEW): agreed.
+		if (verdict.verdict === c.ground_truth) {
+			tally.agreed += 1;
+			if (verdict.verdict === "NEEDS_REVIEW") tally.needsReview += 1;
+			continue;
+		}
+		// Verdict is NEEDS_REVIEW but ground truth is PASS/FAIL: counted as a
+		// review (not agreement, not disagreement).
 		if (verdict.verdict === "NEEDS_REVIEW") {
 			tally.needsReview += 1;
 			tally.mismatches.push({
@@ -69,23 +77,20 @@ async function grade(cases: CalibrationCase[]): Promise<Tally> {
 			});
 			continue;
 		}
-		if (verdict.verdict === c.ground_truth) {
-			tally.agreed += 1;
-		} else {
-			tally.disagreed += 1;
-			if (verdict.verdict === "PASS" && c.ground_truth === "FAIL") {
-				tally.falsePositive += 1;
-			}
-			if (verdict.verdict === "FAIL" && c.ground_truth === "PASS") {
-				tally.falseNegative += 1;
-			}
-			tally.mismatches.push({
-				id: c.scenario_id,
-				expected: c.ground_truth,
-				actual: verdict.verdict,
-				reason: verdict.reason,
-			});
+		// Verdict and ground truth disagree on PASS/FAIL.
+		tally.disagreed += 1;
+		if (verdict.verdict === "PASS" && c.ground_truth === "FAIL") {
+			tally.falsePositive += 1;
 		}
+		if (verdict.verdict === "FAIL" && c.ground_truth === "PASS") {
+			tally.falseNegative += 1;
+		}
+		tally.mismatches.push({
+			id: c.scenario_id,
+			expected: c.ground_truth,
+			actual: verdict.verdict,
+			reason: verdict.reason,
+		});
 	}
 	return tally;
 }
