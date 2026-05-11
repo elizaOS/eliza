@@ -916,7 +916,9 @@ function isBenchmarkForcingToolCall(message: Memory): boolean {
 	const content = message.content;
 	if (!content) return false;
 	if (content.source === "benchmark") return true;
-	const contentMetadata = content.metadata as Record<string, unknown> | undefined;
+	const contentMetadata = content.metadata as
+		| Record<string, unknown>
+		| undefined;
 	if (
 		contentMetadata &&
 		typeof contentMetadata.benchmark === "string" &&
