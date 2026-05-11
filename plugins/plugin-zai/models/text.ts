@@ -33,8 +33,8 @@ function resolveTextParams(
   const presencePenalty = params.presencePenalty ?? 0.7;
 
   const rawParams = params as unknown as Record<string, unknown>;
-  const topPExplicit = rawParams["topP"] != null;
-  const temperatureExplicit = rawParams["temperature"] != null;
+  const topPExplicit = rawParams.topP != null;
+  const temperatureExplicit = rawParams.temperature != null;
 
   if (topPExplicit && temperatureExplicit) {
     throw new Error(
@@ -57,7 +57,7 @@ function resolveTextParams(
   const defaultMaxTokens = modelName.includes("-3-") ? 4096 : 8192;
   const maxTokens = params.maxTokens ?? defaultMaxTokens;
 
-  const rawProviderOptions = rawParams["providerOptions"] as ProviderOptions | undefined;
+  const rawProviderOptions = rawParams.providerOptions as ProviderOptions | undefined;
   const providerOptions: ProviderOptions = rawProviderOptions
     ? JSON.parse(JSON.stringify(rawProviderOptions))
     : {};
@@ -122,7 +122,9 @@ async function generateTextWithModel(
     ...(anthropicProviderOptions ? { providerOptions: anthropicProviderOptions } : {}),
   };
 
-  const { text, usage } = await generateText(generateParams as unknown as Parameters<typeof generateText>[0]);
+  const { text, usage } = await generateText(
+    generateParams as unknown as Parameters<typeof generateText>[0]
+  );
 
   if (usage) {
     emitModelUsageEvent(runtime, modelType, usage);
