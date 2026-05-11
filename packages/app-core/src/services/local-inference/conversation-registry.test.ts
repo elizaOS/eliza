@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { ConversationRegistry } from "./conversation-registry";
+import {
+  ConversationRegistry,
+  conversationRegistry,
+} from "./conversation-registry";
 
 describe("ConversationRegistry.open", () => {
   it("returns the same handle for repeated opens of the same conversation", () => {
@@ -154,5 +157,33 @@ describe("ConversationRegistry.highWater", () => {
     registry.close("b", "m");
     // High-water mark must NOT decrease — it's a max over the lifetime
     expect(registry.highWater()).toBe(3);
+  });
+});
+
+describe("ConversationRegistry.__resetForTests", () => {
+  it("drops every handle and resets the high-water mark", () => {
+    const registry = new ConversationRegistry();
+    registry.open({ conversationId: "a", modelId: "m", parallel: 4 });
+    registry.open({ conversationId: "b", modelId: "m", parallel: 4 });
+    expect(registry.size()).toBe(2);
+    expect(registry.highWater()).toBe(2);
+    registry.__resetForTests();
+    expect(registry.size()).toBe(0);
+    expect(registry.highWater()).toBe(0);
+    // A slot freed by reset is reusable from slot 0 again.
+    const handle = registry.open({
+      conversationId: "c",
+      modelId: "m",
+      parallel: 4,
+    });
+    expect(handle.slotId).toBe(0);
+  });
+
+  it("isolates the module singleton across test files", () => {
+    conversationRegistry.__resetForTests();
+    conversationRegistry.open({ conversationId: "leak", modelId: "m" });
+    expect(conversationRegistry.size()).toBe(1);
+    conversationRegistry.__resetForTests();
+    expect(conversationRegistry.size()).toBe(0);
   });
 });
