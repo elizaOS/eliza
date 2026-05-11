@@ -555,6 +555,25 @@ const totalInput = totalPrompt + totalCacheRead + totalCacheCreate;
 const lines = [
   `# LifeOps run report`,
   ``,
+];
+
+if (preReleaseFlag) {
+  // Wave 3-B: when the run exercised a non-final eliza-1 bundle (any of
+  // releaseState != "final", publishEligible=false, final.weights=false), the
+  // aggregator stamps a banner up top so consumers cannot accidentally cite
+  // these numbers as release-quality. The banner sits BEFORE the run metadata
+  // block so it is the first thing every reader sees.
+  lines.push(
+    `> ⚠️ **PRE-RELEASE** — this run used a non-final eliza-1 bundle. Bundle metadata:`,
+    `> - releaseState: local-standin`,
+    `> - publishEligible: false`,
+    `> - final.weights: false`,
+    `> Results are NOT release-quality and MUST NOT be used in published comparisons.`,
+    ``,
+  );
+}
+
+lines.push(
   `**runId**: ${runIdFilter ?? "(any)"}`,
   `**runDir**: ${runDir}`,
   `**harness**: ${harness}`,
@@ -582,7 +601,7 @@ const lines = [
   ``,
   `| scenario | stages | tool searches | tool calls | tool fails | input | cache read | cache hit % | output | cost | duration |`,
   `| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |`,
-];
+);
 
 const sortedBuckets = [...scenarioBuckets.values()].sort((a, b) => b.stageCount - a.stageCount);
 for (const b of sortedBuckets) {

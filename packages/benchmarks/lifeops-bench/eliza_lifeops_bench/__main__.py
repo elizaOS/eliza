@@ -15,8 +15,14 @@ import asyncio
 import logging
 import os
 import sys
+from typing import Optional
 
-from .model_tiers import DEFAULT_TIERS, resolve_tier
+from .eliza_1_bundle import (
+    ElizaOneBundleManifest,
+    bundle_is_pre_release,
+    read_eliza_one_bundle,
+)
+from .model_tiers import DEFAULT_TIERS, TierSpec, resolve_tier
 from .runner import LifeOpsBenchRunner
 from .scenarios import (
     ALL_SCENARIOS,
@@ -266,6 +272,123 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
     raise SystemExit(f"Unknown agent: {name}")
 
 
+def _apply_eliza_one_bundle_override(
+    base: TierSpec,
+) -> tuple[Optional[ElizaOneBundleManifest], TierSpec]:
+    """Honor ``ELIZA_1_MODEL_BUNDLE`` to point the harness at a GGUF bundle.
+
+    When set, reads the bundle's manifest, propagates the pre-release flag
+    through ``MILADY_BENCH_PRE_RELEASE`` (read by ``scripts/aggregate-lifeops-run.mjs``
+    and the runner when it stamps ``RunMetrics.preRelease``), and rewrites the
+    tier spec so downstream agent / client factories see the local-llama-cpp
+    endpoint instead of the registry default.
+
+    Returns ``(manifest, possibly-rewritten-tier-spec)``. When the env var is
+    unset, returns ``(None, base)`` unchanged.
+
+    Honors AGENTS.md Cmd #8: a malformed bundle raises immediately rather than
+    silently coercing the pre-release flag.
+    """
+    bundle_path = (os.environ.get("ELIZA_1_MODEL_BUNDLE") or "").strip()
+    if not bundle_path:
+        return None, base
+    manifest = read_eliza_one_bundle(bundle_path)
+    pre_release = bundle_is_pre_release(manifest)
+    # The aggregator reads MILADY_BENCH_PRE_RELEASE on every emitted report.
+    # `1` is the only value the aggregator parses as truthy — keep that
+    # explicit (no surrounding whitespace, no "true"/"yes" shortcut here).
+    os.environ["MILADY_BENCH_PRE_RELEASE"] = "1" if pre_release else "0"
+    # Spawn the dflash local-llama-cpp server pointing at the bundle weights.
+    # We pass the weights path through MODEL_BUNDLE_OVERRIDE so downstream TS
+    # readers (live-provider.ts, model-tiers.ts) see the same value, and we
+    # publish PARALLAX_OPENCODE_BASE_URL so the OpenAI-compatible adapter
+    # finds the running server.
+    os.environ["MODEL_BUNDLE_OVERRIDE"] = manifest.weights_path
+    base_url = _spawn_dflash_server_for_bundle(manifest)
+    if base_url:
+        os.environ["PARALLAX_OPENCODE_BASE_URL"] = base_url
+    rewritten = TierSpec(
+        tier=base.tier,
+        provider="local-llama-cpp",
+        model_name=manifest.bundle_id,
+        base_url=base_url or base.base_url,
+        bundle_path=manifest.weights_path,
+        context_window=base.context_window,
+        notes=(
+            f"{base.notes or ''} | eliza-1 bundle {manifest.bundle_id} "
+            f"(releaseState={manifest.release_state}, "
+            f"publishEligible={manifest.publish_eligible}, "
+            f"final.weights={manifest.final.weights})"
+        ).strip(" |"),
+    )
+    logging.getLogger(__name__).info(
+        "ELIZA_1_MODEL_BUNDLE applied: bundle=%s, preRelease=%s, weights=%s, baseUrl=%s",
+        manifest.bundle_id,
+        pre_release,
+        manifest.weights_path,
+        base_url or "(unspawned)",
+    )
+    return manifest, rewritten
+
+
+def _spawn_dflash_server_for_bundle(
+    manifest: ElizaOneBundleManifest,
+) -> Optional[str]:
+    """Start a dflash llama-server pointing at the bundle's weights.
+
+    Returns the OpenAI-compatible base URL on success, or ``None`` when the
+    operator has already pointed ``PARALLAX_OPENCODE_BASE_URL`` at an
+    externally-managed server (LM Studio, Ollama, an existing dflash
+    instance). The caller is responsible for any teardown; we register an
+    atexit hook for the spawned subprocess.
+    """
+    if os.environ.get("PARALLAX_OPENCODE_BASE_URL"):
+        # Operator already pointed us at a running server — don't double-spawn.
+        return os.environ["PARALLAX_OPENCODE_BASE_URL"]
+    dflash_root = (
+        os.environ.get("ELIZA_DFLASH_LLAMA_DIR")
+        or os.path.expanduser("~/.cache/eliza-dflash/milady-llama-cpp")
+    )
+    binary = os.path.join(dflash_root, "build", "bin", "llama-server")
+    if not os.path.exists(binary):
+        raise SystemExit(
+            f"ELIZA_1_MODEL_BUNDLE requested but dflash llama-server binary "
+            f"is not built at {binary}. Build the fork at {dflash_root} or "
+            f"set PARALLAX_OPENCODE_BASE_URL to point at a running server."
+        )
+    import atexit
+    import subprocess
+
+    port = int(os.environ.get("ELIZA_1_LOCAL_PORT") or "18781")
+    args = [
+        binary,
+        "--model",
+        manifest.weights_path,
+        "--port",
+        str(port),
+        "--host",
+        "127.0.0.1",
+    ]
+    if manifest.drafters_path:
+        args.extend(["--model-draft", manifest.drafters_path])
+    proc = subprocess.Popen(
+        args,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    def _stop() -> None:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+    atexit.register(_stop)
+    return f"http://127.0.0.1:{port}/v1"
+
+
 def _build_world_factory():
     """Snapshot-aware world factory.
 
@@ -312,6 +435,12 @@ async def _run(args: argparse.Namespace) -> None:
         scenarios = list(ALL_SCENARIOS)
 
     tier_spec = resolve_tier()
+    # Wave 3-B: when ELIZA_1_MODEL_BUNDLE is set, override the resolved tier
+    # so the harness boots the dflash local-llama-cpp server pointing at the
+    # bundle's GGUF weights. The bundle manifest's pre-release flag is
+    # propagated through MILADY_BENCH_PRE_RELEASE so the aggregator stamps
+    # `preRelease: true` on every emitted RunMetrics + report.json.
+    eliza_one_manifest, tier_spec = _apply_eliza_one_bundle_override(tier_spec)
     evaluator_model = args.evaluator_model or tier_spec.model_name
 
     domain = Domain(args.domain) if args.domain else None
@@ -362,6 +491,14 @@ async def _run(args: argparse.Namespace) -> None:
         print(f"Suite:           {args.suite}")
     print(f"Agent:           {args.agent}")
     print(f"Model tier:      {tier_spec.tier} ({tier_spec.provider} → {tier_spec.model_name})")
+    if eliza_one_manifest is not None:
+        print(
+            f"Eliza-1 bundle:  {eliza_one_manifest.bundle_id} "
+            f"(releaseState={eliza_one_manifest.release_state}, "
+            f"publishEligible={eliza_one_manifest.publish_eligible}, "
+            f"final.weights={eliza_one_manifest.final.weights}, "
+            f"preRelease={bundle_is_pre_release(eliza_one_manifest)})"
+        )
     print(f"Evaluator model: {evaluator_model}")
     print(f"Judge model:     {args.judge_model}")
     print(f"Concurrency:     {args.concurrency}")
