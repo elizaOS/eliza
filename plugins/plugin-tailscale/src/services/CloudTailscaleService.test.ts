@@ -35,6 +35,13 @@ describe("CloudTailscaleService", () => {
             loginServer: "https://headscale.elizacloud.ai",
             hostname: "eliza-test-session",
             magicDnsName: "eliza-test-session.tunnel.elizacloud.ai",
+            billing: {
+              model: "on_demand",
+              unit: "tunnel_auth_key",
+              charged: true,
+              amountUsd: 0.01,
+              subscription: false,
+            },
           }),
           text: async () => "",
         }),
@@ -60,6 +67,13 @@ describe("CloudTailscaleService", () => {
     expect(cliCalls[1]).toEqual({
       cmd: "tailscale",
       args: ["serve", "--bg", "--https=443", "localhost:3000"],
+    });
+    expect(service.getLastProvisioningBilling()).toEqual({
+      model: "on_demand",
+      unit: "tunnel_auth_key",
+      charged: true,
+      amountUsd: 0.01,
+      subscription: false,
     });
   });
 });

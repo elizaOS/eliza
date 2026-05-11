@@ -1,6 +1,8 @@
 package ai.eliza.plugins.mobilesignals
 
+import android.Manifest
 import android.app.AppOpsManager
+import android.app.NotificationManager
 import android.app.usage.UsageStatsManager
 import android.app.KeyguardManager
 import android.content.BroadcastReceiver
@@ -29,8 +31,11 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.PermissionState
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.Permission
+import com.getcapacitor.annotation.PermissionCallback
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -42,8 +47,14 @@ import org.json.JSONObject
 private const val HEALTH_CONNECT_PACKAGE = "com.google.android.apps.healthdata"
 private const val FAMILY_CONTROLS_ENTITLEMENT = "com.apple.developer.family-controls"
 private const val PACKAGE_USAGE_STATS_PERMISSION = "android.permission.PACKAGE_USAGE_STATS"
+private const val NOTIFICATION_PERMISSION_ALIAS = "notifications"
 
-@CapacitorPlugin(name = "MobileSignals")
+@CapacitorPlugin(
+    name = "MobileSignals",
+    permissions = [
+        Permission(alias = NOTIFICATION_PERMISSION_ALIAS, strings = [Manifest.permission.POST_NOTIFICATIONS])
+    ],
+)
 class MobileSignalsPlugin : Plugin() {
     private val tag = "MobileSignalsPlugin"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -116,6 +127,10 @@ class MobileSignalsPlugin : Plugin() {
     @PluginMethod
     override fun requestPermissions(call: PluginCall) {
         val target = call.getString("target") ?: "all"
+        if (target == "notifications") {
+            requestNotificationPermission(call)
+            return
+        }
         if (target == "screenTime") {
             val (_, intent) = settingsIntentFor("usageAccess")
             try {
@@ -153,6 +168,55 @@ class MobileSignalsPlugin : Plugin() {
 
         val intent = permissionRequest.createIntent(context, requiredPermissions())
         startActivityForResult(call, intent, "handleHealthConnectPermissionResult")
+    }
+
+    private fun requestNotificationPermission(call: PluginCall) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            openNotificationSettingsOrResolve(call)
+            return
+        }
+        val current = notificationPermissionStatus()
+        if (current.status == "granted") {
+            scope.launch {
+                call.resolve(resolvePermissionResult())
+            }
+            return
+        }
+        if (!current.canRequest) {
+            openNotificationSettingsOrResolve(call)
+            return
+        }
+        requestPermissionForAlias(
+            NOTIFICATION_PERMISSION_ALIAS,
+            call,
+            "handleNotificationsPermissionResult",
+        )
+    }
+
+    private fun openNotificationSettingsOrResolve(call: PluginCall) {
+        val (_, intent) = settingsIntentFor("notification")
+        try {
+            val starter = activity
+            if (starter != null) {
+                starter.startActivity(intent)
+            } else {
+                context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            scope.launch {
+                call.resolve(resolvePermissionResult("Opened Android notification settings."))
+            }
+        } catch (error: Throwable) {
+            scope.launch {
+                call.resolve(resolvePermissionResult("Failed to open Android notification settings: ${error.message}"))
+            }
+        }
+    }
+
+    @PermissionCallback
+    private fun handleNotificationsPermissionResult(call: PluginCall) {
+        scope.launch {
+            call.resolve(resolvePermissionResult())
+        }
     }
 
     @PluginMethod
