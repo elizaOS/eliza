@@ -25,4 +25,24 @@ describe("message service benchmark integration contracts", () => {
 		expect(source).toContain("hasInboundBenchmarkContext(message)");
 		expect(source).toContain('"CONTEXT_BENCH"');
 	});
+
+	it("forces the planner to require a tool call only when both the env opt-in and an inbound benchmark signal are present", async () => {
+		const source = await readFile(MESSAGE_SOURCE, "utf8");
+
+		// The helper exists and is the single place this decision is made.
+		expect(source).toContain(
+			"function isBenchmarkForcingToolCall(message: Memory)",
+		);
+		// Env-var opt-in is required (default behavior unchanged for chat).
+		expect(source).toContain("MILADY_BENCH_FORCE_TOOL_CALL");
+		// Detection must also require an inbound benchmark signal so a
+		// co-resident chat process is unaffected even if the env var leaks.
+		expect(source).toContain('content.source === "benchmark"');
+		expect(source).toContain("contentMetadata.benchmark");
+		// The planner gate consults the helper alongside Stage 1's requiresTool.
+		expect(source).toContain("isBenchmarkForcingToolCall(args.message)");
+		expect(source).toContain(
+			"messageHandler.plan.requiresTool === true || benchmarkForcingToolCall",
+		);
+	});
 });

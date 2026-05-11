@@ -1,8 +1,8 @@
 /**
  * Per-tier retrieval defaults for the action retrieval / RRF system.
  *
- * Wave 2-C output: the Pareto sweep recommends a `topK` and stage-weight
- * profile for each `ModelTier`. Smaller tiers prefer high-precision
+ * The Pareto sweep recommends a `topK` and stage-weight profile for each
+ * `ModelTier`. Smaller tiers prefer high-precision
  * stages (exact match + BM25) and tighter top-K to keep the action block
  * short; frontier tiers can afford to spread retrieval across more
  * stages with a wider top-K because the planner has the context budget

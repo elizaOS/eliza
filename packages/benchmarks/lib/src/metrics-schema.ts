@@ -1,6 +1,6 @@
 /**
  * Canonical metrics schema for the LifeOpsBench benchmark + prompt-optimization
- * pipeline (2026-05-11 rebuild, Wave 0).
+ * pipeline.
  *
  * Single source of truth for `report.json` and `delta.json` artifacts emitted
  * by the three benchmark harnesses (hermes / openclaw / eliza). A Python

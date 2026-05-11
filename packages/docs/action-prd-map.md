@@ -45,10 +45,10 @@ The PRD enumerates **49 action names** across 6 domains. Several of these are al
 | CALENDAR_BUNDLE_MEETINGS | Calendar | none directly; partial coverage in `test/bundle-meetings.e2e.test.ts` via `CALENDAR.feed` + read-only surfacer | 🟡 — read surfacer exists; no commit-bundle write path |
 | CALENDAR_ADD_PREP_BUFFER | Calendar | `CALENDAR.create_event` (caller composes prep block) | 🟡 — possible via raw create, but no dedicated prep-buffer subaction with attendee-aware buffer math |
 | CALENDAR_ADD_TRAVEL_BUFFER | Calendar | `CALENDAR.trip_window` (promoted to `CALENDAR_TRIP_WINDOW`) | ✅ |
-| CALENDAR_BUILD_DOSSIER | Calendar | none | ❌ — no action assembles per-meeting dossiers |
-| INBOX_LIST_UNREAD | Inbox | `MESSAGE.list_inbox` | ✅ |
-| INBOX_TRIAGE_PRIORITY | Inbox | `MESSAGE.triage` (delegates to `triageMessagesAction`) | ✅ |
-| INBOX_SUMMARIZE_CHANNEL | Inbox | `MESSAGE.read_channel` + `MESSAGE.search_inbox` (composes summary in prompt) | 🟡 — read primitives exist; no dedicated summarize-channel subaction with deterministic output schema |
+| CALENDAR_BUILD_DOSSIER | Calendar | none directly; can be composed via `BRIEF.compose_morning` with `include={calendar:true}` for a calendar-focused brief | 🟡 — landed by W2-5 (2026-05-11) as a partial composer; dedicated per-meeting dossier action still missing |
+| INBOX_LIST_UNREAD | Inbox | `MESSAGE.list_inbox`; also `INBOX_UNIFIED.list` for cross-platform fan-out | ✅ |
+| INBOX_TRIAGE_PRIORITY | Inbox | `MESSAGE.triage` (delegates to `triageMessagesAction`); also `INBOX_UNIFIED` simile | ✅ |
+| INBOX_SUMMARIZE_CHANNEL | Inbox | `MESSAGE.read_channel` + `MESSAGE.search_inbox` (composes summary in prompt); also `INBOX_UNIFIED.summarize` for cross-platform aggregation | 🟡 — cross-platform summarize landed by W2-5 (2026-05-11); per-channel deterministic summary action still missing |
 | MESSAGE_DRAFT_REPLY | Inbox | `MESSAGE.draft_reply` (delegates to `draftReplyAction`) | ✅ |
 | MESSAGE_SEND_APPROVAL_REQUEST | Inbox | `MESSAGE.send` (drafts route to approval queue automatically per role gate) + `RESOLVE_REQUEST` | ✅ |
 | MESSAGE_SEND_CONFIRMED | Inbox | `MESSAGE.send` / `MESSAGE.send_draft` post-approval | ✅ |
@@ -158,6 +158,26 @@ For each ❌ entry, the recommended implementation route is:
 - **Recommended:** new `REMOTE_DESKTOP.request_help` subaction (separate from `start`).
 - **Behavior:** fire a stuck-agent signal: dispatch high-priority `DEVICE_INTENT`, queue a `RESOLVE_REQUEST` for the user, optionally open a `REMOTE_DESKTOP.start` session once approved.
 - **Why new:** `REMOTE_DESKTOP.start` opens a session unconditionally; PRD wants a request-for-help gate first.
+
+## Wave-2 atomic actions (W2-5, landed 2026-05-11)
+
+Four new umbrella actions landed alongside the PRD action map to give the
+planner targets it can call for cross-domain operations the PRD names imply
+but no single existing umbrella covers cleanly. None of these replace
+existing umbrellas — they compose them.
+
+| New action | Subactions | Composes | PRD names partially covered |
+|---|---|---|---|
+| `BRIEF` (`plugins/app-lifeops/src/actions/brief.ts`) | `compose_morning`, `compose_evening`, `compose_weekly` | calendar feed, inbox triage, life-domain due items, money recurring charges; LLM narrative pass via `ModelType.TEXT_LARGE` | `FOLLOWUP_GENERATE_DIGEST` (partial), `CALENDAR_BUILD_DOSSIER` (partial, calendar-focused brief) |
+| `PRIORITIZE` (`plugins/app-lifeops/src/actions/prioritize.ts`) | `rank_todos`, `rank_threads`, `rank_decisions` | todos store, inbox threads, approval queue; LLM ranking by urgency × importance via `ModelType.TEXT_LARGE` | none directly; supports `INBOX_TRIAGE_PRIORITY`-style triage |
+| `CONFLICT_DETECT` (`plugins/app-lifeops/src/actions/conflict-detect.ts`) | `scan_today`, `scan_week`, `scan_event_proposal` | calendar feed loader (Wave-2 wires `CALENDAR.feed`); attendee-aware severity | `CALENDAR_PROTECT_WINDOW` (partial proactive scanning) |
+| `INBOX_UNIFIED` (`plugins/app-lifeops/src/actions/inbox-unified.ts`) | `list`, `search`, `summarize` | Gmail, Slack, Discord, Telegram, Signal, iMessage, WhatsApp adapters; dedupe by id + thread topic | `INBOX_LIST_UNREAD`, `INBOX_TRIAGE_PRIORITY`, `INBOX_SUMMARIZE_CHANNEL` (cross-platform variants) |
+
+Wave-1 (W2-5) scaffolding: handlers are skeletons that COMPOSE existing
+surfaces. Loaders are injectable (`setBriefComposers`, `setPrioritizeLoaders`,
+`setConflictDetectLoader`, `setInboxUnifiedFetchers`) so unit tests inject
+scenario data without standing up the full connector graph. Wave-2 wires
+those loaders to the real underlying services.
 
 ## Spot-checks performed
 
