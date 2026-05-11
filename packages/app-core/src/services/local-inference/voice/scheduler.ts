@@ -93,6 +93,10 @@ export class VoiceScheduler {
   }
 
   async reject(range: RejectedTokenRange): Promise<void> {
+    // Drop draft tokens still sitting in the chunker's buffer (not yet
+    // packed into a phrase) so the verifier's correction is not glued
+    // onto stale text.
+    this.chunker.dropPendingFrom(range.fromIndex);
     const events = this.rollback.onRejected(range);
     for (const ev of events) {
       const inflight = this.inFlight.get(ev.phraseId);

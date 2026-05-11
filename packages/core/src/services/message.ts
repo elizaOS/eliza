@@ -1242,6 +1242,16 @@ interface StrategyResult {
 	mode: StrategyMode;
 }
 
+/**
+ * Outcome of attempting the fallback model loop in
+ * `buildStructuredFailureReply`. `noProvider` means a model call surfaced
+ * `NoModelProviderConfiguredError`; the caller must short-circuit to
+ * `buildNoModelProviderReply` instead of continuing the loop.
+ */
+type FailureReplyAttempt =
+	| { kind: "text"; value: string }
+	| { kind: "noProvider" };
+
 export type V5MessageRuntimeStage1Result =
 	| {
 			kind: "terminal";
@@ -9215,6 +9225,82 @@ export class DefaultMessageService implements IMessageService {
 		return processedAttachments;
 	}
 
+	private resolveRecentMessagesForFailureReply(
+		state: State,
+		message: Memory,
+	): string {
+		if (
+			typeof state.values?.recentMessages === "string" &&
+			state.values.recentMessages.trim().length > 0
+		) {
+			return state.values.recentMessages;
+		}
+		if (typeof state.text === "string" && state.text.trim().length > 0) {
+			return state.text;
+		}
+		if (typeof message.content.text === "string") {
+			return message.content.text;
+		}
+		return "(unavailable)";
+	}
+
+	private async generateFailureReplyText(
+		runtime: IAgentRuntime,
+		prompt: string,
+		stage: string,
+	): Promise<FailureReplyAttempt> {
+		for (const modelType of [
+			ModelType.TEXT_LARGE,
+			ModelType.RESPONSE_HANDLER,
+			ModelType.TEXT_SMALL,
+			ModelType.TEXT_NANO,
+		] as const) {
+			try {
+				const response = await runtime.useModel(modelType, { prompt });
+				if (typeof response !== "string") {
+					continue;
+				}
+
+				const cleaned = response
+					.replace(/<think>[\s\S]*?<\/think>/g, "")
+					.trim();
+				const looksStructuredReply =
+					cleaned.startsWith("{") && cleaned.includes("}");
+				const parsed = looksStructuredReply
+					? parseJSONObjectFromText(cleaned)
+					: null;
+				const replyText =
+					typeof parsed?.text === "string" && parsed.text.trim().length > 0
+						? parsed.text.trim()
+						: cleaned;
+				if (replyText) {
+					return { kind: "text", value: replyText };
+				}
+			} catch (error) {
+				// If the runtime reports no LLM provider is configured at all,
+				// no further model attempts will succeed. Surface the actionable
+				// hint instead of the generic transient-failure message. See
+				// elizaOS/eliza#7203.
+				if (
+					error instanceof Error &&
+					error.name === "NoModelProviderConfiguredError"
+				) {
+					return { kind: "noProvider" };
+				}
+				runtime.logger.warn(
+					{
+						src: "service:message",
+						stage,
+						modelType,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"Structured failure reply generation failed for model",
+				);
+			}
+		}
+		return { kind: "text", value: "" };
+	}
+
 	private async buildStructuredFailureReply(
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -9236,15 +9322,10 @@ export class DefaultMessageService implements IMessageService {
 			);
 		}
 
-		const recentMessages =
-			typeof state.values?.recentMessages === "string" &&
-			state.values.recentMessages.trim().length > 0
-				? state.values.recentMessages
-				: typeof state.text === "string" && state.text.trim().length > 0
-					? state.text
-					: typeof message.content.text === "string"
-						? message.content.text
-						: "(unavailable)";
+		const recentMessages = this.resolveRecentMessagesForFailureReply(
+			state,
+			message,
+		);
 		const failurePrompt = [
 			"You hit a transient model error and have to send a short user-facing reply.",
 			"Write a one or two sentence reply in plain language.",
@@ -9271,65 +9352,22 @@ export class DefaultMessageService implements IMessageService {
 			"Reply:",
 		].join("\n");
 
-		let replyText = "";
-		for (const modelType of [
-			ModelType.TEXT_LARGE,
-			ModelType.RESPONSE_HANDLER,
-			ModelType.TEXT_SMALL,
-			ModelType.TEXT_NANO,
-		] as const) {
-			try {
-				const response = await runtime.useModel(modelType, {
-					prompt: failurePrompt,
-				});
-				if (typeof response !== "string") {
-					continue;
-				}
-
-				const cleaned = response
-					.replace(/<think>[\s\S]*?<\/think>/g, "")
-					.trim();
-				const looksStructuredReply =
-					cleaned.startsWith("{") && cleaned.includes("}");
-				const parsed = looksStructuredReply
-					? parseJSONObjectFromText(cleaned)
-					: null;
-				replyText =
-					typeof parsed?.text === "string" && parsed.text.trim().length > 0
-						? parsed.text.trim()
-						: cleaned;
-				if (replyText) {
-					break;
-				}
-			} catch (error) {
-				// If the runtime reports no LLM provider is configured at all,
-				// no further model attempts will succeed. Surface the actionable
-				// hint instead of the generic transient-failure message. See
-				// elizaOS/eliza#7203.
-				if (
-					error instanceof Error &&
-					error.name === "NoModelProviderConfiguredError"
-				) {
-					return this.buildNoModelProviderReply(
-						runtime,
-						message,
-						state,
-						responseId,
-						stage,
-					);
-				}
-				runtime.logger.warn(
-					{
-						src: "service:message",
-						stage,
-						modelType,
-						error: error instanceof Error ? error.message : String(error),
-					},
-					"Structured failure reply generation failed for model",
-				);
-			}
+		const attempt = await this.generateFailureReplyText(
+			runtime,
+			failurePrompt,
+			stage,
+		);
+		if (attempt.kind === "noProvider") {
+			return this.buildNoModelProviderReply(
+				runtime,
+				message,
+				state,
+				responseId,
+				stage,
+			);
 		}
 
+		let replyText = attempt.value;
 		if (!replyText) {
 			// Last-ditch fallback when every model call above also failed.
 			// Voice-neutral so any character can ship this default; characters

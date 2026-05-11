@@ -399,11 +399,16 @@ What "yes" means for the C references: `make reference-test` builds without
 warnings (`-O2 -Wall -Wextra -std=c11`), and `./gen_fixture --self-test`
 emits finite, plausible-magnitude scores for every kernel:
 
-    turbo3=-2.501480 turbo4=-4.138101 turbo3_tcq=-4.822659 qjl=3.696591 polar=-1.994053
+    turbo3=-2.501480 turbo4=-23.721790 turbo3_tcq=-4.822659 qjl=3.696591 polar=-1.994053 polar_qjl=-1.438744
 
-(deterministic with the seeded PRNG in this repo). The same `--self-test`
-also runs two internal-consistency parity checks before printing those
-scores, so the references can't silently disagree with each other:
+(deterministic with the seeded PRNG in this repo). The `turbo4` magnitude
+changed when TBQ4 moved to the current four-18-byte-record-per-128-row
+layout — each record is its own preconditioned 32-element block with an
+independent `half norm`, so the dequantized magnitudes are no longer
+scaled by a single shared per-128-group norm. `polar_qjl` is the Polar
+V-cache score with the optional 1-bit QJL residual enabled. The same
+`--self-test` also runs internal-consistency parity checks before printing
+those scores, so the references can't silently disagree with each other:
 
   * QJL: `qjl_score_qk` and `qjl_mul_mv` must return the same scalar when
     `n_heads = n_kv_heads = n_tokens = 1` (no GQA fanout, just a single
