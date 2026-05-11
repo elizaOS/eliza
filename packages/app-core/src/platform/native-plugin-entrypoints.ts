@@ -5,9 +5,9 @@
 // The published `@elizaos/app-core` npm package contains this file as a
 // publish-time generated entrypoint; the source tree version exists so
 // `MILADY_ELIZA_SOURCE=local` consumers can resolve the same import path
-// against linked workspace packages.
+// against linked workspace packages. Imports resolve through the
+// `@elizaos/capacitor-*` path mappings in tsconfig{,.build}.json.
 
-/// <reference path="./capacitor-plugin-modules.d.ts" />
 import "@elizaos/capacitor-camera";
 import "@elizaos/capacitor-canvas";
 import "@elizaos/capacitor-contacts";
