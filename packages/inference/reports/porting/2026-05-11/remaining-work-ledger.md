@@ -12,9 +12,11 @@ Only **runtime-ready** satisfies the Eliza-1 publish contract.
 
 The executable gate for this ledger is
 `packages/inference/verify/kernel-contract.json` plus
+`packages/inference/verify/metal-runtime-dispatch-evidence.json`, checked by
 `make -C packages/inference/verify kernel-contract`. That check keeps the
 manifest kernel names, build capability keys, fixture coverage, Makefile
-targets, and platform target list aligned with the status below.
+targets, Metal runtime-dispatch evidence, and platform target list aligned
+with the status below.
 
 ## Current Runtime Truth
 
@@ -22,7 +24,7 @@ targets, and platform target list aligned with the status below.
 | --- | --- | --- |
 | Metal standalone shaders | `turbo3`, `turbo4`, `turbo3_tcq`, `qjl`, `polar` all pass 8/8 on Apple M4 Max. | `make -C packages/inference/verify metal-verify metal-verify-multiblock` |
 | Metal built-fork graph dispatch | `GGML_OP_ATTN_SCORE_QJL` is runtime-ready; TurboQuant and PolarQuant are not. | `make -C packages/inference/verify dispatch-smoke` passes 32 QJL scores, max diff `2.384e-07`. |
-| Metal artifact gate | Desktop/iOS artifacts still fail the publish gate. | `CAPABILITIES.json`: `dflash=true`, `qjl_full=true`, `turbo3=false`, `turbo4=false`, `turbo3_tcq=false`, `polarquant=false`. |
+| Metal artifact gate | Desktop/iOS artifacts still fail the publish gate. | `CAPABILITIES.json`: `dflash=true`, `qjl_full=true`, `turbo3=false`, `turbo4=false`, `turbo3_tcq=false`, `polarquant=false`; `runtimeDispatch.kernels` records QJL as runtime-ready and Turbo/Polar as symbol-shipped only. |
 | Vulkan standalone shaders | All five pass on Apple M4 Max through MoltenVK; turbo* also passed earlier on Intel ARL + lavapipe. | `make -C packages/inference/verify vulkan-verify`. |
 | Vulkan built-fork graph dispatch | Not runtime-ready. | SPIR-V blobs can be staged, but `ggml-vulkan.cpp` has no milady-native op dispatch. |
 | CUDA | API/preprocessor surface exists; no hardware run on this machine. | `nvcc` unavailable on macOS. |

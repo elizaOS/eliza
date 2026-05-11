@@ -234,7 +234,19 @@ def _read_sidecar(path: Path) -> dict[str, Any]:
         raise OrchestratorError(
             f"missing sidecar: {path}", EXIT_MISSING_FILE
         )
-    return json.loads(path.read_text())
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise OrchestratorError(
+            f"invalid JSON sidecar {path}: {exc}",
+            EXIT_BUNDLE_LAYOUT_FAIL,
+        ) from exc
+    if not isinstance(data, dict):
+        raise OrchestratorError(
+            f"sidecar {path} must contain a JSON object",
+            EXIT_BUNDLE_LAYOUT_FAIL,
+        )
+    return data
 
 
 def _find_sidecar(bundle: Path, names: Sequence[str]) -> Path | None:
@@ -401,6 +413,298 @@ def validate_destination_repo(ctx: PublishContext) -> None:
             "Use a non-release publisher for experiments or custom checkpoints.",
             EXIT_USAGE,
         )
+
+
+# ---------------------------------------------------------------------------
+# Stage 1b — release evidence
+# ---------------------------------------------------------------------------
+
+
+def _relative_file_paths(paths: Sequence[Path], bundle_root: Path) -> list[str]:
+    return [str(p.relative_to(bundle_root)) for p in paths]
+
+
+def _expected_payload_paths(
+    ctx: PublishContext, layout: Mapping[str, Sequence[Path]]
+) -> list[str]:
+    """Return the files whose bytes must be covered by SHA256SUMS.
+
+    The generated manifest + README are intentionally absent here because
+    they are produced later by the orchestrator. ``checksums/SHA256SUMS``
+    is also absent to avoid a circular hash. Every input artifact that
+    reaches the HF upload path is included, including release evidence.
+    """
+
+    expected: list[str] = []
+    for kind_src in ("text", "tts", "asr", "vision", "dflash", "cache"):
+        expected.extend(_relative_file_paths(layout.get(kind_src, []), ctx.bundle_dir))
+
+    licenses_dir = ctx.bundle_dir / "licenses"
+    expected.extend(f"licenses/{name}" for name in REQUIRED_LICENSE_FILES)
+
+    evals_dir = ctx.bundle_dir / "evals"
+    expected.extend(
+        f"evals/{p.name}" for p in sorted(evals_dir.iterdir()) if p.is_file()
+    )
+
+    expected.extend(
+        _relative_file_paths(layout.get("quantization_sidecars", []), ctx.bundle_dir)
+    )
+    expected.append(str(RELEASE_EVIDENCE_PATH))
+
+    return sorted(set(expected))
+
+
+def _parse_sha256s(path: Path) -> dict[str, str]:
+    """Parse a standard ``sha256sum`` file.
+
+    Format accepted per line: ``<64 lowercase hex><space><space><path>``.
+    Empty lines and comments are ignored.
+    """
+
+    if not path.is_file():
+        raise OrchestratorError(
+            f"release evidence: missing {CHECKSUMS_PATH}",
+            EXIT_MISSING_FILE,
+        )
+
+    out: dict[str, str] = {}
+    for line_no, raw in enumerate(path.read_text().splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            raise OrchestratorError(
+                f"{CHECKSUMS_PATH}:{line_no}: expected '<sha256>  <path>'",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        sha, rel = parts[0], parts[1].strip()
+        if len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
+            raise OrchestratorError(
+                f"{CHECKSUMS_PATH}:{line_no}: invalid sha256 {sha!r}",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        out[rel] = sha
+    return out
+
+
+def _assert_checksum_coverage(
+    ctx: PublishContext, layout: Mapping[str, Sequence[Path]]
+) -> None:
+    expected = _expected_payload_paths(ctx, layout)
+    recorded = _parse_sha256s(ctx.bundle_dir / CHECKSUMS_PATH)
+
+    missing = [rel for rel in expected if rel not in recorded]
+    if missing:
+        raise OrchestratorError(
+            "release evidence: checksum manifest missing required path(s): "
+            f"{missing}",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+
+    mismatched: list[str] = []
+    for rel in expected:
+        actual = _sha256_file(ctx.bundle_dir / rel)
+        if recorded[rel] != actual:
+            mismatched.append(rel)
+    if mismatched:
+        raise OrchestratorError(
+            "release evidence: checksum mismatch for path(s): "
+            f"{mismatched}",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+
+
+def _require_existing_json_report(
+    ctx: PublishContext,
+    *,
+    label: str,
+    backend: str,
+    rel_path: str,
+    require_runtime_ready: bool,
+) -> Mapping[str, Any]:
+    path = ctx.bundle_dir / rel_path
+    if not path.is_file():
+        raise OrchestratorError(
+            f"release evidence: missing {label} report for {backend}: {rel_path}",
+            EXIT_MISSING_FILE,
+        )
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise OrchestratorError(
+            f"release evidence: invalid JSON in {rel_path}: {exc}",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        ) from exc
+    if not isinstance(data, dict):
+        raise OrchestratorError(
+            f"release evidence: {rel_path} must contain a JSON object",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+    if data.get("backend", backend) != backend:
+        raise OrchestratorError(
+            f"release evidence: {rel_path} backend {data.get('backend')!r} "
+            f"does not match {backend!r}",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+    if data.get("status") != "pass":
+        raise OrchestratorError(
+            f"release evidence: {rel_path} status {data.get('status')!r}, "
+            "expected 'pass'",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+    if require_runtime_ready and data.get("runtimeReady") is not True:
+        raise OrchestratorError(
+            f"release evidence: {rel_path} must set runtimeReady=true; "
+            "shader symbols alone are not graph-dispatch evidence",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+    return data
+
+
+def validate_release_evidence(
+    ctx: PublishContext, layout: Mapping[str, Sequence[Path]]
+) -> dict[str, Any]:
+    """Validate final release evidence before any upload path runs.
+
+    This is deliberately stricter than the manifest schema. The manifest
+    proves the runtime can load the bundle; this sidecar proves release
+    operators used final artifacts and have backend/platform evidence for
+    the exact bytes being uploaded.
+    """
+
+    evidence_path = ctx.bundle_dir / RELEASE_EVIDENCE_PATH
+    evidence = _read_sidecar(evidence_path)
+
+    errors: list[str] = []
+    if evidence.get("schemaVersion") != 1:
+        errors.append("schemaVersion must be 1")
+    if evidence.get("tier") != ctx.tier:
+        errors.append(f"tier must be {ctx.tier!r}")
+    if evidence.get("repoId") != ctx.repo_id:
+        errors.append(f"repoId must be {ctx.repo_id!r}")
+
+    release_state = evidence.get("releaseState")
+    if release_state not in {"upload-candidate", "final"}:
+        errors.append("releaseState must be 'upload-candidate' or 'final'")
+
+    final = evidence.get("final")
+    if not isinstance(final, dict):
+        errors.append("final must be an object")
+    else:
+        for flag in REQUIRED_RELEASE_FINAL_FLAGS:
+            if final.get(flag) is not True:
+                errors.append(f"final.{flag} must be true")
+
+    checksum_manifest = evidence.get("checksumManifest")
+    if checksum_manifest != str(CHECKSUMS_PATH):
+        errors.append(f"checksumManifest must be {str(CHECKSUMS_PATH)!r}")
+
+    weights = evidence.get("weights")
+    if not isinstance(weights, list) or not all(isinstance(p, str) for p in weights):
+        errors.append("weights must be an array of bundle-relative paths")
+    else:
+        shipped_weight_paths = set(
+            _relative_file_paths(
+                [
+                    p
+                    for kind in ("text", "tts", "asr", "vision", "dflash")
+                    for p in layout.get(kind, [])
+                ],
+                ctx.bundle_dir,
+            )
+        )
+        missing_weights = sorted(shipped_weight_paths - set(weights))
+        if missing_weights:
+            errors.append(f"weights missing shipped artifact(s): {missing_weights}")
+
+    eval_reports = evidence.get("evalReports")
+    if not isinstance(eval_reports, list) or "evals/aggregate.json" not in eval_reports:
+        errors.append("evalReports must include 'evals/aggregate.json'")
+    elif not all((ctx.bundle_dir / str(p)).is_file() for p in eval_reports):
+        errors.append("evalReports contains missing file(s)")
+
+    license_files = evidence.get("licenseFiles")
+    expected_licenses = [f"licenses/{name}" for name in REQUIRED_LICENSE_FILES]
+    if license_files != expected_licenses:
+        errors.append(f"licenseFiles must equal {expected_licenses!r}")
+
+    hf = evidence.get("hf")
+    if not isinstance(hf, dict):
+        errors.append("hf must be an object")
+    elif hf.get("repoId") != ctx.repo_id:
+        errors.append(f"hf.repoId must be {ctx.repo_id!r}")
+
+    if errors:
+        raise OrchestratorError(
+            "release evidence invalid:\n  - " + "\n  - ".join(errors),
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+
+    supported = SUPPORTED_BACKENDS_BY_TIER[ctx.tier]
+    kernel_reports = evidence.get("kernelDispatchReports")
+    if not isinstance(kernel_reports, dict):
+        raise OrchestratorError(
+            "release evidence: kernelDispatchReports must be an object",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+    platform_evidence = evidence.get("platformEvidence")
+    if not isinstance(platform_evidence, dict):
+        raise OrchestratorError(
+            "release evidence: platformEvidence must be an object",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+
+    for backend in supported:
+        dispatch_path = kernel_reports.get(backend)
+        if not isinstance(dispatch_path, str):
+            raise OrchestratorError(
+                f"release evidence: kernelDispatchReports.{backend} required",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        _require_existing_json_report(
+            ctx,
+            label="kernel dispatch",
+            backend=backend,
+            rel_path=dispatch_path,
+            require_runtime_ready=True,
+        )
+
+        platform_path = platform_evidence.get(backend)
+        if not isinstance(platform_path, str):
+            raise OrchestratorError(
+                f"release evidence: platformEvidence.{backend} required",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        _require_existing_json_report(
+            ctx,
+            label="platform",
+            backend=backend,
+            rel_path=platform_path,
+            require_runtime_ready=False,
+        )
+
+    if release_state == "final":
+        upload_evidence = hf.get("uploadEvidence") if isinstance(hf, dict) else None
+        if not isinstance(upload_evidence, dict):
+            raise OrchestratorError(
+                "release evidence: final releaseState requires hf.uploadEvidence",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        if upload_evidence.get("repoId") != ctx.repo_id:
+            raise OrchestratorError(
+                f"release evidence: hf.uploadEvidence.repoId must be {ctx.repo_id!r}",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        if not upload_evidence.get("commit") or not upload_evidence.get("url"):
+            raise OrchestratorError(
+                "release evidence: hf.uploadEvidence requires commit and url",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+
+    _assert_checksum_coverage(ctx, layout)
+    return evidence
 
 
 # ---------------------------------------------------------------------------

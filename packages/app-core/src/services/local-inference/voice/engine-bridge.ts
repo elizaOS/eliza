@@ -619,18 +619,20 @@ function readAscii(bytes: Uint8Array, offset: number, length: number): string {
  * Default lifecycle loaders derived from the bundle layout (per
  * AGENTS.md §2: `tts/omnivoice-<size>.gguf` + `asr/...`).
  *
- * When a live `ffi`/`ctx` pair is passed in, the returned mmap handles'
- * `evictPages()` calls forward to `ffi.mmapEvict(ctx, "tts" | "asr")` —
- * the C ABI declared in `scripts/omnivoice-fuse/ffi.h`. The real fused
- * build implements this against `madvise(MADV_DONTNEED)` on POSIX and
+ * When a live `ffi`/`ctx` pair is passed in, arming calls
+ * `ffi.mmapAcquire(ctx, "tts" | "asr")` before the lifecycle can enter
+ * `voice-on`, and the returned mmap handles' `evictPages()` calls
+ * forward to `ffi.mmapEvict(ctx, "tts" | "asr")`. The C ABI is declared
+ * in `scripts/omnivoice-fuse/ffi.h`. The real fused build implements
+ * this against `mmap` / `madvise(MADV_DONTNEED)` on POSIX and
  * `VirtualUnlock + OfferVirtualMemory` on Windows. The stub library
  * returns `ELIZA_ERR_NOT_IMPLEMENTED`, which the binding raises as
  * `VoiceLifecycleError({code:"kernel-missing"})`.
  *
- * When `ffi` is null, `evictPages()` is a documented no-op — used by
- * the stub TTS path in tests + dev (no real mmap exists, nothing to
- * evict). The lifecycle test still asserts the call shape via injected
- * mocks (`lifecycleLoaders` opt).
+ * When `ffi` is null, acquire/evict are documented no-ops — used by the
+ * stub TTS path in tests + dev (no real mmap exists). Directory and
+ * "contains at least one file" checks still run, so voice-on never
+ * fabricates missing TTS/ASR assets.
  */
 function defaultLifecycleLoaders(
   bundleRoot: string,
@@ -667,9 +669,9 @@ function defaultLifecycleLoaders(
  * `VoiceLifecycleError` via the lifecycle's `arm-failed`/`mmap-fail`
  * mapping (no silent fallback to a smaller voice model — AGENTS.md §3).
  *
- * `evictPages()` forwards to the FFI binding when one is supplied. With
- * no FFI handle (stub mode), the call is a deliberate no-op — there is
- * nothing to evict because no real mmap was made. The lifecycle test
+ * `mmapAcquire()` / `evictPages()` forward to the FFI binding when one
+ * is supplied. With no FFI handle (stub mode), those calls are
+ * deliberate no-ops because no real mmap was made. The lifecycle test
  * still asserts the call shape via injected mocks.
  */
 function bundleMmapRegion(
@@ -683,10 +685,22 @@ function bundleMmapRegion(
       `[voice] mmap MAP_FAILED: ${kind} directory missing at ${dir}`,
     );
   }
+  if (!directoryHasRegularFile(dir)) {
+    throw new Error(
+      `[voice] mmap MAP_FAILED: ${kind} directory has no model files at ${dir}`,
+    );
+  }
   // Stat the directory to get a stable inode for id derivation. Real
   // FFI will mmap each weight file independently; this default loader
   // collapses them into one region per kind for refcount purposes.
   const st = statSync(dir);
+  if (ffi && ctx !== null) {
+    // Real fused build: load or re-page the heavy voice region now.
+    // A stub or incomplete runtime returns ELIZA_ERR_NOT_IMPLEMENTED,
+    // which surfaces as VoiceLifecycleError({code:"kernel-missing"})
+    // before the lifecycle can enter voice-on.
+    ffi.mmapAcquire(ctx, kind);
+  }
   return {
     id: `mmap:${kind}:${st.ino}`,
     path: dir,
@@ -714,12 +728,30 @@ export { defaultLifecycleLoaders };
 
 /**
  * Platform-specific shared-library suffix for the fused omnivoice build.
- * macOS dylib, Linux/Android so. Windows builds aren't on the device
- * matrix yet (AGENTS.md §2 tier table) so we don't synthesise a `.dll`
- * suffix here.
+ * macOS dylib, Linux/Android so, Windows dll. Windows artifacts have
+ * used both `elizainference.dll` and `libelizainference.dll` names in
+ * cross-build toolchains, so the runtime probes both.
  */
-function libraryFilename(): string {
-  return process.platform === "darwin"
-    ? "libelizainference.dylib"
-    : "libelizainference.so";
+function libraryFilenames(): string[] {
+  if (process.platform === "darwin") return ["libelizainference.dylib"];
+  if (process.platform === "win32") {
+    return ["elizainference.dll", "libelizainference.dll"];
+  }
+  return ["libelizainference.so"];
+}
+
+function locateBundleLibrary(bundleRoot: string): string {
+  const libDir = path.join(bundleRoot, "lib");
+  for (const name of libraryFilenames()) {
+    const candidate = path.join(libDir, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return path.join(libDir, libraryFilenames()[0] ?? "libelizainference.so");
+}
+
+function directoryHasRegularFile(dir: string): boolean {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isFile()) return true;
+  }
+  return false;
 }
