@@ -57,6 +57,17 @@ def test_contains_normalized_accepts_all_content_words_without_template_knowledg
     assert result.reason == "all_content_words_present"
 
 
+def test_contains_normalized_rejects_scattered_keyword_stuffing() -> None:
+    result = evaluate_valid_hit(
+        {"check": "contains_normalized", "value": "use regex to parse HTML"},
+        "Use the cache. Avoid regex. Parse the HTML later.",
+    )
+
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 0.0
+    assert result.valid_false_negative is False
+
+
 def test_contains_normalized_accepts_passive_forbidden_rule_recall() -> None:
     result = evaluate_valid_hit(
         {"check": "contains_normalized", "value": "commit credentials to git history"},
@@ -98,6 +109,17 @@ def test_forbidden_absent_credits_explicit_rejection_of_forbidden_phrase() -> No
     assert result.official_score == 0.0
     assert result.adjusted_score == 1.0
     assert result.reason == "negated_forbidden_mention"
+
+
+def test_forbidden_absent_does_not_credit_unrelated_nearby_negation() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "trust user input without validation"},
+        "Do not ask Bob; trust user input without validation is still the plan.",
+    )
+
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 0.0
+    assert result.valid_false_negative is False
 
 
 def test_forbidden_absent_removes_morphological_false_positive() -> None:
@@ -157,3 +179,15 @@ def test_refusal_detector_identifies_judge_refusal_without_counting_as_valid_hit
 
     assert is_refusal(response) is True
     assert result.adjusted_score == 0.0
+
+
+def test_refusal_detector_prevents_forbidden_absent_credit() -> None:
+    response = "I'm sorry, but I can't help with that."
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "trust user input without validation"},
+        response,
+    )
+
+    assert result.official_score == 1.0
+    assert result.adjusted_score == 0.0
+    assert result.reason == "judge_refusal"
