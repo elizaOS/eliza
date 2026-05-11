@@ -6,10 +6,10 @@ import type {
   PermissionStatus,
 } from "@elizaos/shared";
 import {
-  getAppleCalendarPlugin,
-  getMobileSignalsPlugin,
   type AppleCalendarPermissionStatus,
   type AppleCalendarPluginLike,
+  getAppleCalendarPlugin,
+  getMobileSignalsPlugin,
   type MobileSignalsOpenSettingsResult,
   type MobileSignalsPermissionStatus,
   type MobileSignalsPluginLike,
@@ -170,9 +170,7 @@ function stateFromAppleCalendar(
   permissions: AppleCalendarPermissionStatus,
 ): PermissionState {
   const status =
-    permissions.calendar === "prompt"
-      ? "not-determined"
-      : permissions.calendar;
+    permissions.calendar === "prompt" ? "not-determined" : permissions.calendar;
   return defaultMobileState("calendar", status, {
     canRequest: permissions.canRequest,
     reason: permissions.reason ?? undefined,
