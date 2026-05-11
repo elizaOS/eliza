@@ -782,6 +782,22 @@ public class ElizaAgentService extends Service {
             // device-bridge. The WebView dials it over loopback once the
             // user picks the local runtime mode in onboarding.
             agentEnv.put("ELIZA_DEVICE_BRIDGE_ENABLED", "1");
+            // The mobile bridge ships the bge embedding GGUF disabled
+            // by default (`ELIZA_LOCAL_EMBEDDING_ENABLED!="1"`) because
+            // mmapping it alongside the chat GGUF would OOM a 4 GB
+            // Moto G Play class device. With the embedding handler
+            // returning the zero vector for every call, the chat-
+            // augmentation document-retrieval branch never lands a
+            // match above `CHAT_DOCUMENTS_THRESHOLD`, and its LLM-
+            // driven query recovery fallback wastes one full
+            // generate-text round-trip per turn (~60–90 s on this
+            // hardware) producing queries that themselves match
+            // nothing. Skip the whole augmentation path when the
+            // embedding handler is in the disabled state.
+            if (!env.containsKey("ELIZA_DOCUMENT_AUGMENTATION_DISABLED")
+                    && !"1".equals(env.get("ELIZA_LOCAL_EMBEDDING_ENABLED"))) {
+                agentEnv.put("ELIZA_DOCUMENT_AUGMENTATION_DISABLED", "1");
+            }
             // Skip the auto-download of recommended GGUF models that
             // mobile-device-bridge-bootstrap kicks off at registration
             // time. On Android the bun process cannot reach the network
@@ -1086,14 +1102,23 @@ public class ElizaAgentService extends Service {
             // or via `adb shell run-as`).
             File devNull = new File("/dev/null");
             pb.redirectInput(ProcessBuilder.Redirect.from(devNull));
-            if ("1".equals(System.getenv("ELIZA_LOG_STDOUT"))) {
+            // TEMP DEBUG: force stdio to file so we can inspect the
+            // agent.log mid-iteration. Revert to the env-gated branch
+            // (below, commented) before shipping.
+            {
                 pb.redirectErrorStream(true);
                 File logFile = new File(root, AGENT_LOG_NAME);
-                pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile));
-            } else {
-                pb.redirectErrorStream(true);
-                pb.redirectOutput(ProcessBuilder.Redirect.to(devNull));
+                try { logFile.createNewFile(); } catch (IOException ignored) {}
+                pb.redirectOutput(ProcessBuilder.Redirect.to(logFile));
             }
+            // if ("1".equals(System.getenv("ELIZA_LOG_STDOUT"))) {
+            //     pb.redirectErrorStream(true);
+            //     File logFile = new File(root, AGENT_LOG_NAME);
+            //     pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile));
+            // } else {
+            //     pb.redirectErrorStream(true);
+            //     pb.redirectOutput(ProcessBuilder.Redirect.to(devNull));
+            // }
 
             Process started;
             try {
