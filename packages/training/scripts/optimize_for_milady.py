@@ -434,44 +434,50 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
     )
 
 
+def _stage_dir(stages: list[StageResult], name: str) -> Path | None:
+    for s in stages:
+        if s.name == name and not s.skipped and s.exit_code == 0:
+            return s.output_dir
+    return None
+
+
 def _convert_to_gguf(
     plan: OptimizationPlan,
+    stages: list[StageResult],
     last_stage: StageResult,
     out_path: Path,
 ) -> int:
-    """Invoke the fork's ``convert_hf_to_gguf.py`` to emit a Q4_POLAR GGUF.
+    """Emit the Milady-typed GGUF by delegating to ``gguf_milady_apply.py``.
 
-    The fork already understands ``Q4_POLAR=47`` and ``QJL1_256=46``
-    (W4-B). We pass ``--outtype q4_polar`` so the converter packs the
-    PolarQuant codes sidecar directly into the on-disk tensor blocks.
-    Cache geometry (qjl1_256 for K, tbq3_0 for V) is per-context and
-    set at ``llama-server`` invocation time, not in the file — but we
-    still record it in the manifest so the downloader can construct
-    the correct CLI.
+    That wrapper requests ``--outtype q4_polar`` (the fork's PolarQuant 4-bit
+    GGML type) and, when the fork's ``convert_hf_to_gguf.py`` does not yet emit
+    it, falls back to ``q8_0`` while recording the deferral + the PolarQuant
+    codebook path in ``<gguf>.milady.json`` instead of crashing. K/V cache
+    geometry (qjl1_256 K, tbq3_0 V) is per-context and set at ``llama-server``
+    invocation time, not in the file — we still record it in the manifest so
+    the downloader can construct the correct CLI.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    if plan.dry_run:
-        log.info(
-            "(dry-run) would convert %s → %s using milady fork",
-            last_stage.output_dir,
-            out_path,
-        )
-        return 0
-    try:
-        convert = _resolve_convert_script(plan.llama_cpp_dir)
-    except FileNotFoundError as exc:
-        log.error("%s", exc)
-        return 2
-
+    polar_dir = _stage_dir(stages, "polarquant")
+    qjl_dir = _stage_dir(stages, "qjl")
+    tbq_dir = _stage_dir(stages, "turboquant")
+    apply_script = Path(__file__).resolve().parent / "quantization" / "gguf_milady_apply.py"
     cmd = [
-        sys.executable,
-        str(convert),
-        str(last_stage.output_dir),
-        "--outtype",
-        "q4_polar",
-        "--outfile",
-        str(out_path),
+        sys.executable, str(apply_script),
+        "--checkpoint", str(last_stage.output_dir),
+        "--output", str(out_path),
+        "--outtype", "q4_polar",
     ]
+    if plan.llama_cpp_dir is not None:
+        cmd += ["--llama-cpp-dir", str(plan.llama_cpp_dir)]
+    if polar_dir is not None:
+        cmd += ["--polarquant-sidecar", str(polar_dir / "polarquant_config.json")]
+    if qjl_dir is not None:
+        cmd += ["--qjl-sidecar", str(qjl_dir / "qjl_config.json")]
+    if tbq_dir is not None:
+        cmd += ["--turboquant-sidecar", str(tbq_dir / "turboquant.json")]
+    if plan.dry_run:
+        cmd.append("--dry-run")
     return _run(cmd, dry_run=False)
 
 
@@ -565,7 +571,7 @@ def execute_plan(plan: OptimizationPlan) -> int:
     gguf_dir = plan.output_dir / "gguf"
     gguf_path = gguf_dir / gguf_filename
 
-    rc = _convert_to_gguf(plan, convert_input, gguf_path)
+    rc = _convert_to_gguf(plan, stages, convert_input, gguf_path)
     if rc != 0:
         log.error("GGUF conversion failed (exit=%d)", rc)
         return rc
