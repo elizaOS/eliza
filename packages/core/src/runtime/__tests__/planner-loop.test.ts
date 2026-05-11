@@ -47,7 +47,7 @@ describe("v5 planner loop skeleton", () => {
 		const output = parsePlannerOutput(`{
   "action": "functions.MESSAGE",
   "parameters": {
-    "operation": "draft_reply",
+    "action": "draft_reply",
     "messageId": "gmail:1",
     "body": "Thanks."
   }
@@ -57,7 +57,7 @@ describe("v5 planner loop skeleton", () => {
 			{
 				name: "MESSAGE",
 				params: {
-					operation: "draft_reply",
+					action: "draft_reply",
 					messageId: "gmail:1",
 					body: "Thanks.",
 				},

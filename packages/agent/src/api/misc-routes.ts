@@ -2,8 +2,10 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import {
   type AgentRuntime,
+  buildStoreVariantBlockedMessage,
   composePrompt,
   customActionGenerateTemplate,
+  isLocalCodeExecutionAllowed,
   ModelType,
 } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
@@ -299,6 +301,11 @@ export async function handleMiscRoutes(
 
   // ── POST /api/terminal/run ──────────────────────────────────────────
   if (method === "POST" && pathname === "/api/terminal/run") {
+    if (!isLocalCodeExecutionAllowed()) {
+      error(res, buildStoreVariantBlockedMessage("Terminal commands"), 403);
+      return true;
+    }
+
     if (state.shellEnabled === false) {
       error(res, "Shell access is disabled", 403);
       return true;

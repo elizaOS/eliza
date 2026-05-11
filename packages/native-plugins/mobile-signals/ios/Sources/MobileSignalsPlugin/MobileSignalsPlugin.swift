@@ -174,13 +174,21 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc public override func requestPermissions(_ call: CAPPluginCall) {
+        let target = call.getString("target") ?? "all"
+        if target == "screenTime" {
+            resolvePermissionAfterScreenTimeRequest(call)
+            return
+        }
+
+        let shouldRequestScreenTime = target != "health"
         let types = requestedHealthTypes()
         guard !types.isEmpty else {
-            resolvePermissionAfterScreenTimeRequest(
+            resolvePermissionResult(
                 call,
                 status: "not-applicable",
                 canRequest: false,
-                reason: "HealthKit sleep and biometric types are unavailable on this device."
+                reason: "HealthKit sleep and biometric types are unavailable on this device.",
+                requestScreenTime: shouldRequestScreenTime
             )
             return
         }
@@ -191,9 +199,10 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                 let healthReason = !success
                     ? "HealthKit permission request failed: \(error?.localizedDescription ?? "unknown error")"
                     : nil
-                self.resolvePermissionAfterScreenTimeRequest(
+                self.resolvePermissionResult(
                     call,
-                    reason: healthReason
+                    reason: healthReason,
+                    requestScreenTime: shouldRequestScreenTime
                 )
             }
         }
@@ -425,6 +434,30 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             }
             call.resolve(result)
         }
+    }
+
+    private func resolvePermissionResult(
+        _ call: CAPPluginCall,
+        status: String? = nil,
+        canRequest: Bool? = nil,
+        reason: String? = nil,
+        requestScreenTime: Bool
+    ) {
+        if requestScreenTime {
+            resolvePermissionAfterScreenTimeRequest(
+                call,
+                status: status,
+                canRequest: canRequest,
+                reason: reason
+            )
+            return
+        }
+
+        call.resolve(buildPermissionResult(
+            status: status,
+            canRequest: canRequest,
+            reason: reason
+        ))
     }
 
     private func buildSetupActions(

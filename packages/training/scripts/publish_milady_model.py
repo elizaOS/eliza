@@ -1,18 +1,18 @@
-"""Publish a fused-kernel "milady-optimized" GGUF to the milady-ai org.
+"""Publish a fused-kernel "milady-optimized" GGUF to the elizalabs org.
 
 This is the wrapper around `huggingface_hub` that takes a directory
 produced by W5-Pipeline (a fully-optimized GGUF + manifest.json + a
-README.md) and ships it to `milady-ai/<base>-milady-optimized` (or the
+README.md) and ships it to `elizalabs/<base>-milady-optimized` (or the
 sibling drafter repo). It is distinct from `push_model_to_hf.py`, which
 publishes the *base* eliza-1 fine-tunes in stock GGUF / fp8 / polarquant
-flavors under the `elizaos/*` org — those repos contain one optimization
-at a time. The milady-ai repos contain the **fused** stack
+flavors under the `elizalabs/*` org — those repos contain one optimization
+at a time. The elizalabs repos contain the **fused** stack
 (Q4_POLAR + QJL1_256 K + TBQ V + DFlash) in a single file.
 
 Refuses to ship stock-format GGUFs: every file the script publishes must
 declare both `Q4_POLAR` *and* `qjl1_256` in its GGUF tensor type table.
 This is the safety rail that keeps an accidentally-mislabeled K-quant
-out of the milady-ai org.
+out of the elizalabs org.
 
 Idempotency: after a successful upload the script writes
 `published.json` next to the GGUF with the canonical resolve URL,
@@ -26,13 +26,13 @@ Usage::
     # GGUF metadata, refuses to continue if Q4_POLAR/QJL1_256 are missing.
     uv run python scripts/publish_milady_model.py \\
         --model-dir /path/to/qwen3.5-4b-milady-optimized \\
-        --repo-id milady-ai/qwen3.5-4b-milady-optimized \\
+        --repo-id elizalabs/qwen3.5-4b-milady-optimized \\
         --dry-run
 
     # Real push.
     HF_TOKEN=hf_xxx uv run python scripts/publish_milady_model.py \\
         --model-dir /path/to/qwen3.5-4b-milady-optimized \\
-        --repo-id milady-ai/qwen3.5-4b-milady-optimized
+        --repo-id elizalabs/qwen3.5-4b-milady-optimized
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ log = logging.getLogger("publish_milady_model")
 # ---------------------------------------------------------------------------
 # Required GGUF metadata markers. Both must appear somewhere in the GGUF
 # tensor type / metadata header for the file to be considered "fused-kernel
-# optimized" and pushable to milady-ai.
+# optimized" and pushable to elizalabs.
 #
 # We grep the binary header directly rather than parse with gguf-py because
 # (a) gguf-py is not a hard dependency of this repo, and (b) the header
@@ -67,6 +67,7 @@ log = logging.getLogger("publish_milady_model")
 # ---------------------------------------------------------------------------
 
 REQUIRED_GGUF_MARKERS: tuple[bytes, ...] = (b"q4_polar", b"qjl1_256")
+ELIZA_1_HF_ORG = "elizalabs"
 
 # How many bytes of the GGUF header to scan. The tensor type table lives
 # near the start of the file — 4 MB is generous and avoids loading a
@@ -109,7 +110,7 @@ def _find_gguf(model_dir: Path) -> Path:
     """Return the single GGUF inside the model dir.
 
     We deliberately reject directories with zero or multiple GGUFs:
-    every milady-ai repo ships one target file. Drafter repos ship one
+    every elizalabs repo ships one target file. Drafter repos ship one
     drafter file. Multi-file bundles use separate repos.
     """
     candidates = sorted(model_dir.glob("*.gguf"))
@@ -121,7 +122,7 @@ def _find_gguf(model_dir: Path) -> Path:
     if len(candidates) > 1:
         names = [p.name for p in candidates]
         raise SystemExit(
-            f"multiple GGUFs in {model_dir}: {names}. Each milady-ai repo "
+            f"multiple GGUFs in {model_dir}: {names}. Each elizalabs repo "
             "ships exactly one target/drafter GGUF — split the bundles "
             "across separate repos."
         )
@@ -173,9 +174,9 @@ def _validate_optimized_gguf(gguf_path: Path, skip: bool) -> None:
     if missing:
         raise SystemExit(
             f"refusing to publish {gguf_path.name}: GGUF header is missing "
-            f"required milady-optimized markers {missing}. The milady-ai "
+            f"required milady-optimized markers {missing}. The {ELIZA_1_HF_ORG} "
             "org is for fused-kernel GGUFs only — stock K-quants belong "
-            "under elizaos/eliza-1-*-gguf-* instead. Pass "
+            f"under {ELIZA_1_HF_ORG}/eliza-1-*-gguf-* instead. Pass "
             "--skip-marker-check only if you have manually verified the "
             "file via gguf-py."
         )
@@ -190,7 +191,7 @@ def _read_manifest(model_dir: Path) -> dict[str, Any]:
     if not path.exists():
         raise SystemExit(
             f"missing manifest.json in {model_dir}; required by every "
-            "milady-ai repo. See HF_PUBLISHING.md → 'Drafter pairing manifest' "
+            f"{ELIZA_1_HF_ORG} repo. See HF_PUBLISHING.md → 'Drafter pairing manifest' "
             "for the schema."
         )
     try:
@@ -204,7 +205,7 @@ def _read_readme(model_dir: Path) -> str:
     if not path.exists():
         raise SystemExit(
             f"missing README.md in {model_dir}; required by every "
-            "milady-ai repo."
+            f"{ELIZA_1_HF_ORG} repo."
         )
     return path.read_text()
 
@@ -298,10 +299,10 @@ def publish(config: PublishConfig) -> int:
     if not config.model_dir.is_dir():
         raise SystemExit(f"model dir does not exist: {config.model_dir}")
 
-    if not config.repo_id.startswith("milady-ai/"):
+    if not config.repo_id.startswith(f"{ELIZA_1_HF_ORG}/"):
         raise SystemExit(
-            f"--repo-id must be under milady-ai/ org; got {config.repo_id!r}. "
-            "Use scripts/push_model_to_hf.py for elizaos/* fine-tunes."
+            f"--repo-id must be under {ELIZA_1_HF_ORG}/ org; got {config.repo_id!r}. "
+            f"Use scripts/push_model_to_hf.py for {ELIZA_1_HF_ORG}/* fine-tunes."
         )
 
     gguf = _find_gguf(config.model_dir)
@@ -385,7 +386,7 @@ def publish(config: PublishConfig) -> int:
         repo_id=config.repo_id,
         repo_type="model",
         operations=operations,
-        commit_message=f"milady-ai: publish {manifest.get('modelId', gguf.name)}",
+        commit_message=f"{ELIZA_1_HF_ORG}: publish {manifest.get('modelId', gguf.name)}",
     )
 
     sidecar = _write_published_sidecar(
@@ -410,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model-dir", type=Path, required=True,
                     help="Directory containing the optimized GGUF + manifest.json + README.md.")
     ap.add_argument("--repo-id", required=True,
-                    help="Destination HF repo, e.g. milady-ai/qwen3.5-4b-milady-optimized.")
+                    help=f"Destination HF repo, e.g. {ELIZA_1_HF_ORG}/qwen3.5-4b-milady-optimized.")
     ap.add_argument("--public", action="store_true", default=True,
                     help="Create the repo as public (default).")
     ap.add_argument("--no-public", dest="public", action="store_false",

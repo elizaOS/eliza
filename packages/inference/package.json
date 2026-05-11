@@ -27,6 +27,7 @@
     "README.md"
   ],
   "scripts": {
+    "verify:contract": "make -C verify kernel-contract",
     "verify:reference": "make -C verify reference-test",
     "verify:vulkan": "make -C verify vulkan && cd verify && ./vulkan_verify",
     "verify:metal": "make -C verify metal && cd verify && ./metal_verify",

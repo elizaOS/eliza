@@ -13,7 +13,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { findCatalogModel } from "./catalog";
+import { findCatalogModel, isDefaultEligibleId } from "./catalog";
 import { localInferenceRoot } from "./paths";
 import { listInstalledModels } from "./registry";
 import type { AgentModelSlot, InstalledModel, ModelAssignments } from "./types";
@@ -57,9 +57,9 @@ function pickLargestInstalledModel(
 /**
  * Build slot recommendations from currently-installed models.
  *
- * Only Eliza-downloaded models are auto-recommended. External-scan blobs
- * (Ollama / LM Studio / Jan / HF cache) are surfaced in the Model Hub for
- * the user to opt into explicitly — but they are NOT auto-assigned to
+ * Only default-eligible Eliza-1 downloads are auto-recommended.
+ * External-scan blobs and ad-hoc Hugging Face downloads are surfaced in
+ * the Model Hub for explicit opt-in, but they are NOT auto-assigned to
  * TEXT_SMALL / TEXT_LARGE.
  *
  * Why: external blobs may use newer architectures or quant formats
@@ -72,7 +72,8 @@ export function buildRecommendedAssignments(
   installed: InstalledModel[],
 ): ModelAssignments {
   const ownDownloads = installed.filter(
-    (model) => model.source === "eliza-download",
+    (model) =>
+      model.source === "eliza-download" && isDefaultEligibleId(model.id),
   );
   const best = pickLargestInstalledModel(ownDownloads);
   if (!best) return {};
@@ -164,6 +165,8 @@ export async function ensureDefaultAssignment(
   modelId: string,
 ): Promise<ModelAssignments> {
   const current = await readAssignments();
+  if (!isDefaultEligibleId(modelId)) return current;
+
   const next: ModelAssignments = { ...current };
 
   if (isEmbeddingModelId(modelId)) {
@@ -187,20 +190,21 @@ export async function ensureDefaultAssignment(
 }
 
 /**
- * Boot-time helper. If exactly one Eliza-downloaded model is installed
- * and no assignment file exists yet, auto-fill its slots so the first
- * session works without the user opening Settings. No-op when assignments
- * are already present or when more than one Eliza-downloaded model is
- * installed (we cannot guess intent).
+ * Boot-time helper. If exactly one default-eligible Eliza-1 model is
+ * installed and no assignment file exists yet, auto-fill its slots so
+ * the first session works without the user opening Settings. No-op when
+ * assignments are already present or when more than one default-eligible
+ * model is installed (we cannot guess intent).
  *
- * External-scan blobs (Ollama / LM Studio / Jan / HF) are intentionally
- * excluded — see `buildRecommendedAssignments` for the rationale.
+ * External-scan blobs and custom Hugging Face downloads are intentionally
+ * excluded - see `buildRecommendedAssignments` for the rationale.
  */
 export async function autoAssignAtBoot(
   installed: InstalledModel[],
 ): Promise<ModelAssignments | null> {
   const ownDownloads = installed.filter(
-    (model) => model.source === "eliza-download",
+    (model) =>
+      model.source === "eliza-download" && isDefaultEligibleId(model.id),
   );
   if (ownDownloads.length !== 1) return null;
   const current = await readAssignments();

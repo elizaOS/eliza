@@ -245,12 +245,12 @@
     },
     {
       "name": "MESSAGE",
-      "description": "Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose operation=send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
+      "description": "Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose action=send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
       "similes": ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
       "parameters": [
         {
-          "name": "operation",
-          "description": "Message subaction: send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage.",
+          "name": "action",
+          "description": "Message action: send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage.",
           "required": false,
           "schema": {
             "type": "string",
@@ -279,7 +279,7 @@
               "manage"
             ]
           },
-          "descriptionCompressed": "message operation"
+          "descriptionCompressed": "message action"
         },
         {
           "name": "source",
@@ -301,7 +301,7 @@
         },
         {
           "name": "sources",
-          "description": "Optional inbox sources for operation=triage, list_inbox, or search_inbox.",
+          "description": "Optional inbox sources for action=triage, list_inbox, or search_inbox.",
           "required": false,
           "schema": {
             "type": "array",
@@ -340,7 +340,7 @@
         },
         {
           "name": "message",
-          "description": "Message text for operation=send or replacement text for operation=edit.",
+          "description": "Message text for action=send or replacement text for action=edit.",
           "required": false,
           "schema": {
             "type": "string"
@@ -349,7 +349,7 @@
         },
         {
           "name": "query",
-          "description": "Search term for operation=search or operation=search_inbox.",
+          "description": "Search term for action=search or action=search_inbox.",
           "required": false,
           "schema": {
             "type": "string"
@@ -376,7 +376,7 @@
         },
         {
           "name": "body",
-          "description": "Draft or response body for operation=draft_reply, draft_followup, or respond.",
+          "description": "Draft or response body for action=draft_reply, draft_followup, or respond.",
           "required": false,
           "schema": {
             "type": "string"
@@ -385,7 +385,7 @@
         },
         {
           "name": "to",
-          "description": "Recipient identifiers for operation=draft_followup.",
+          "description": "Recipient identifiers for action=draft_followup.",
           "required": false,
           "schema": {
             "type": "array",
@@ -415,7 +415,7 @@
         },
         {
           "name": "draftId",
-          "description": "Draft identifier for operation=send_draft or operation=schedule_draft_send.",
+          "description": "Draft identifier for action=send_draft or action=schedule_draft_send.",
           "required": false,
           "schema": {
             "type": "string"
@@ -424,7 +424,7 @@
         },
         {
           "name": "confirmed",
-          "description": "Whether the user explicitly confirmed sending for operation=send_draft.",
+          "description": "Whether the user explicitly confirmed sending for action=send_draft.",
           "required": false,
           "schema": {
             "type": "boolean"
@@ -433,7 +433,7 @@
         },
         {
           "name": "sendAt",
-          "description": "Scheduled send time for operation=schedule_draft_send.",
+          "description": "Scheduled send time for action=schedule_draft_send.",
           "required": false,
           "schema": {
             "type": "string"
@@ -442,7 +442,7 @@
         },
         {
           "name": "emoji",
-          "description": "Reaction value for operation=react.",
+          "description": "Reaction value for action=react.",
           "required": false,
           "schema": {
             "type": "string"
@@ -451,7 +451,7 @@
         },
         {
           "name": "pin",
-          "description": "Pin state for operation=pin. Use false to unpin when supported.",
+          "description": "Pin state for action=pin. Use false to unpin when supported.",
           "required": false,
           "schema": {
             "type": "boolean"
@@ -460,7 +460,7 @@
         },
         {
           "name": "manageOperation",
-          "description": "Management operation for operation=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
+          "description": "Management action for action=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
           "required": false,
           "schema": {
             "type": "string"
@@ -469,7 +469,7 @@
         },
         {
           "name": "label",
-          "description": "Label for operation=manage when adding or removing labels.",
+          "description": "Label for action=manage when adding or removing labels.",
           "required": false,
           "schema": {
             "type": "string"
@@ -478,7 +478,7 @@
         },
         {
           "name": "tag",
-          "description": "Tag for operation=manage when adding or removing tags.",
+          "description": "Tag for action=manage when adding or removing tags.",
           "required": false,
           "schema": {
             "type": "string"
@@ -514,7 +514,7 @@
         },
         {
           "name": "since",
-          "description": "Start timestamp or parseable date for operation=search_inbox.",
+          "description": "Start timestamp or parseable date for action=search_inbox.",
           "required": false,
           "schema": {
             "type": "string"
@@ -523,7 +523,7 @@
         },
         {
           "name": "until",
-          "description": "End timestamp or parseable date for operation=read_channel range=dates or operation=search_inbox.",
+          "description": "End timestamp or parseable date for action=read_channel range=dates or action=search_inbox.",
           "required": false,
           "schema": {
             "type": "string"
@@ -554,7 +554,7 @@
           "actions": ["REPLY", "MESSAGE"],
           "params": {
             "MESSAGE": {
-              "operation": "send",
+              "action": "send",
               "source": "telegram",
               "target": "dev_guru",
               "message": "Hello!"
@@ -566,7 +566,7 @@
           "actions": ["MESSAGE"],
           "params": {
             "MESSAGE": {
-              "operation": "triage",
+              "action": "triage",
               "sources": ["gmail"]
             }
           }
@@ -576,18 +576,18 @@
     },
     {
       "name": "POST",
-      "description": "Primary action for public feed surfaces and timelines. Choose op=send to publish a post, op=read to fetch recent feed posts, or op=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
+      "description": "Primary action for public feed surfaces and timelines. Choose action=send to publish a post, action=read to fetch recent feed posts, or action=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
       "similes": ["TWEET", "CAST", "PUBLISH", "FEED_POST", "TIMELINE"],
       "parameters": [
         {
-          "name": "op",
-          "description": "Post subaction: send, read, or search.",
+          "name": "action",
+          "description": "Post action: send, read, or search.",
           "required": false,
           "schema": {
             "type": "string",
             "enum": ["send", "read", "search"]
           },
-          "descriptionCompressed": "post op"
+          "descriptionCompressed": "post action"
         },
         {
           "name": "source",
@@ -609,7 +609,7 @@
         },
         {
           "name": "text",
-          "description": "Public post text for operation=send.",
+          "description": "Public post text for action=send.",
           "required": false,
           "schema": {
             "type": "string"
@@ -618,7 +618,7 @@
         },
         {
           "name": "target",
-          "description": "Loose feed target for operation=send/read, such as a user, channel, media id, or connector-specific reference.",
+          "description": "Loose feed target for action=send/read, such as a user, channel, media id, or connector-specific reference.",
           "required": false,
           "schema": {
             "type": "string"
@@ -627,7 +627,7 @@
         },
         {
           "name": "feed",
-          "description": "Feed convention for operation=read, such as home, user, hashtag, channel, or connector-specific feed.",
+          "description": "Feed convention for action=read, such as home, user, hashtag, channel, or connector-specific feed.",
           "required": false,
           "schema": {
             "type": "string"
@@ -636,7 +636,7 @@
         },
         {
           "name": "query",
-          "description": "Search term for operation=search.",
+          "description": "Search term for action=search.",
           "required": false,
           "schema": {
             "type": "string"
@@ -645,7 +645,7 @@
         },
         {
           "name": "replyTo",
-          "description": "Post/comment/reply target for operation=send.",
+          "description": "Post/comment/reply target for action=send.",
           "required": false,
           "schema": {
             "type": "string"
@@ -672,7 +672,7 @@
         },
         {
           "name": "cursor",
-          "description": "Opaque pagination cursor for operation=read or operation=search.",
+          "description": "Opaque pagination cursor for action=read or action=search.",
           "required": false,
           "schema": {
             "type": "string"
@@ -714,7 +714,7 @@
             "POST": {
               "source": "x",
               "text": "shipping today",
-              "op": "send"
+              "action": "send"
             }
           }
         }

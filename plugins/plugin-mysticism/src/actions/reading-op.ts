@@ -19,7 +19,7 @@ type ReadingSubaction = "start" | "followup" | "deepen";
 
 interface ReadingOpParams {
   type?: unknown;
-  subaction?: unknown;
+  action?: unknown;
   question?: unknown;
   context?: unknown;
 }
@@ -483,9 +483,9 @@ export const readingOpAction: Action = {
     "ELABORATE_READING",
   ],
   description:
-    "Mystical reading router. Set type to tarot, astrology, or iching, and subaction to start (begin a new reading), followup (reveal the next element), or deepen (more interpretation for the most-recent element).",
+    "Mystical reading router. Set type to tarot, astrology, or iching, and action to start (begin a new reading), followup (reveal the next element), or deepen (more interpretation for the most-recent element).",
   descriptionCompressed:
-    "Mystical readings: tarot, astrology, iching; subactions: start, followup, deepen.",
+    "Mystical readings: tarot, astrology, iching; actions: start, followup, deepen.",
 
   parameters: [
     {
@@ -495,8 +495,8 @@ export const readingOpAction: Action = {
       schema: { type: "string" as const, enum: ["tarot", "astrology", "iching"] },
     },
     {
-      name: "subaction",
-      description: "Subaction: start, followup, or deepen.",
+      name: "action",
+      description: "Action: start, followup, or deepen.",
       required: true,
       schema: {
         type: "string" as const,
@@ -538,7 +538,7 @@ export const readingOpAction: Action = {
     }
 
     const typeRaw = readParam(options, "type");
-    const subRaw = readParam(options, "subaction");
+    const subRaw = readParam(options, "action");
     if (!isReadingType(typeRaw)) {
       return {
         success: false,
@@ -548,7 +548,7 @@ export const readingOpAction: Action = {
     if (!isSubaction(subRaw)) {
       return {
         success: false,
-        text: `READING_OP requires subaction in {start, followup, deepen}, got ${String(subRaw)}`,
+        text: `READING_OP requires action in {start, followup, deepen}, got ${String(subRaw)}`,
       };
     }
 

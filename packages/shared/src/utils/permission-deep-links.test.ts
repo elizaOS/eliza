@@ -16,13 +16,16 @@ describe("getMacPermissionDeepLink", () => {
       `${PRIVACY_PREFIX}_ScreenCapture`,
     );
     expect(getMacPermissionDeepLink("reminders")).toBe(
-      `${PRIVACY_PREFIX}_Reminders`,
+      `${PRIVACY_PREFIX}_Automation`,
     );
     expect(getMacPermissionDeepLink("calendar")).toBe(
-      `${PRIVACY_PREFIX}_Calendars`,
+      `${PRIVACY_PREFIX}_Automation`,
     );
     expect(getMacPermissionDeepLink("contacts")).toBe(
-      `${PRIVACY_PREFIX}_Contacts`,
+      `${PRIVACY_PREFIX}_Automation`,
+    );
+    expect(getMacPermissionDeepLink("notes")).toBe(
+      `${PRIVACY_PREFIX}_Automation`,
     );
     expect(getMacPermissionDeepLink("health")).toBe(`${PRIVACY_PREFIX}_Health`);
     expect(getMacPermissionDeepLink("microphone")).toBe(
@@ -47,7 +50,6 @@ describe("getMacPermissionDeepLink", () => {
   });
 
   it("falls back to the root Privacy pane for unmapped ids", () => {
-    expect(getMacPermissionDeepLink("notes")).toBe(PRIVACY_PREFIX);
     expect(getMacPermissionDeepLink("shell")).toBe(PRIVACY_PREFIX);
     expect(getMacPermissionDeepLink("website-blocking")).toBe(PRIVACY_PREFIX);
   });
@@ -59,7 +61,7 @@ describe("openPermissionSettings", () => {
     await openPermissionSettings("reminders", { platform: "darwin", open });
     expect(open).toHaveBeenCalledOnce();
     expect(open).toHaveBeenCalledWith(
-      "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders",
+      "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation",
     );
   });
 

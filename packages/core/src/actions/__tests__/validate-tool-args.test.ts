@@ -141,9 +141,9 @@ describe("validateToolArgs", () => {
 		});
 	});
 
-	it("accepts MESSAGE planner compatibility aliases", () => {
+	it("accepts MESSAGE canonical action parameter", () => {
 		const result = validateToolArgs(messageAction, {
-			__subaction: "respond_to_message",
+			action: "respond",
 			id: "mock-email-2",
 			folder: "inbox",
 			reply: "Thanks, I received it.",
@@ -152,10 +152,22 @@ describe("validateToolArgs", () => {
 		expect(result.valid).toBe(true);
 		expect(result.errors).toEqual([]);
 		expect(result.args).toMatchObject({
-			__subaction: "respond_to_message",
+			action: "respond",
 			id: "mock-email-2",
 			folder: "inbox",
 			reply: "Thanks, I received it.",
 		});
+	});
+
+	it("rejects MESSAGE legacy discriminator aliases", () => {
+		const result = validateToolArgs(messageAction, {
+			__subaction: "respond",
+			id: "mock-email-2",
+			folder: "inbox",
+			reply: "Thanks, I received it.",
+		});
+
+		expect(result.valid).toBe(false);
+		expect(result.errors).toContain("Unexpected argument '__subaction'");
 	});
 });

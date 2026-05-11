@@ -75,6 +75,45 @@ async def test_provider_returns_content_when_present(
     assert result.completion_tokens == 2
 
 
+async def test_provider_adds_benchmark_system_prompt_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = _make_provider(monkeypatch)
+    captured: dict[str, Any] = {}
+    response = _StubResponse(choices=[_StubChoice(_StubMessage(content="ok"))])
+
+    async def fake_create(**kwargs: Any) -> Any:
+        captured.update(kwargs)
+        return response
+
+    monkeypatch.setattr(provider._client.chat.completions, "create", fake_create)
+    await provider.complete(CompletionRequest(model="gpt-oss-120b", prompt="hi"))
+
+    messages = captured["messages"]
+    assert messages[0]["role"] == "system"
+    assert "fictional benchmark memory-recall probe" in messages[0]["content"]
+    assert messages[1] == {"role": "user", "content": "hi"}
+
+
+async def test_provider_preserves_explicit_system_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = _make_provider(monkeypatch)
+    captured: dict[str, Any] = {}
+    response = _StubResponse(choices=[_StubChoice(_StubMessage(content="ok"))])
+
+    async def fake_create(**kwargs: Any) -> Any:
+        captured.update(kwargs)
+        return response
+
+    monkeypatch.setattr(provider._client.chat.completions, "create", fake_create)
+    await provider.complete(
+        CompletionRequest(model="gpt-oss-120b", prompt="hi", system="custom system")
+    )
+
+    assert captured["messages"][0] == {"role": "system", "content": "custom system"}
+
+
 async def test_provider_falls_back_to_reasoning(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

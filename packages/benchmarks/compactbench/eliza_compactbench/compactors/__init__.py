@@ -131,7 +131,15 @@ class _ElizaTSCompactor(Compactor):
             raise NotImplementedError(
                 f"{type(self).__name__} must set the class-level 'strategy' attribute"
             )
-        options: dict[str, Any] = {"summarizationModel": self.model}
+        options: dict[str, Any] = {
+            "summarizationModel": self.model,
+            # The TS compactor contract returns only replacement messages; the
+            # real elizaOS runtime appends its preserved tail separately. In
+            # CompactBench there is no runtime tail, only the artifact, so the
+            # benchmark adapter must compact the full transcript into the
+            # artifact to avoid hiding late-turn overrides from the scorer.
+            "preserveTailMessages": 0,
+        }
         if config:
             options.update(config)
         # The hybrid-ledger TS compactor reads `transcript.metadata.priorLedger`

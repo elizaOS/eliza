@@ -19,19 +19,13 @@ export const ELIZA_1_MANIFEST_SCHEMA_URL =
   "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json" as const;
 
 // Tiers — see packages/inference/AGENTS.md §2 (Tier matrix).
-export const ELIZA_1_TIERS = [
-  "lite-0_6b",
-  "mobile-1_7b",
-  "desktop-9b",
-  "pro-27b",
-  "server-h200",
-] as const;
+export const ELIZA_1_TIERS = ["0_6b", "1_7b", "9b", "27b", "27b-256k"] as const;
 export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 
 // Manifest-level kernel capability names. Per AGENTS.md §3:
 // `turboquant_q3`, `turboquant_q4`, `qjl`, `polarquant`, `dflash` are
-// the named optimizations the bundle declares. `turbo3_tcq` is optional
-// (long-context only). The C-level llama.cpp kernel handles in
+// the named optimizations the bundle declares. `turbo3_tcq` is required
+// for any long-context text variant. The C-level llama.cpp kernel handles in
 // `../types.ts` are an implementation detail of the runtime; the manifest
 // speaks in terms of the optimization, not the .metal/.comp file.
 export const ELIZA_1_KERNELS = [
@@ -49,35 +43,32 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
 // Required-kernel set per tier. Mirrors AGENTS.md §3:
 // - All tiers require turboquant + qjl + polarquant + dflash.
-// - desktop / pro / server additionally have `turbo3_tcq` listed as required
-//   for the longest-context variant; we keep `turbo3_tcq` in the *optional*
-//   set so a bundle without the long-context variant can still publish, and
-//   require it dynamically when the bundle declares a >64k text file (the
-//   validator enforces that — see `validator.ts`).
+// - 9B and larger tiers require `turbo3_tcq`. The validator also enforces the
+//   same requirement dynamically for any bundle that declares a >64k text file,
+//   so a future tier cannot publish long-context text without TCQ.
 //
-// The `q3` vs `q4` choice is tier-driven: `lite` ships Q3, `mobile` ships
-// Q3 or Q4, the rest ship Q4. The validator accepts either turboquant
-// variant on `mobile`; other tiers must match exactly.
+// The `q3` vs `q4` choice is tier-driven: 0.6B ships Q3; 1.7B and larger
+// ship Q4.
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-  "lite-0_6b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
-  "mobile-1_7b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
-  "desktop-9b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
-  "pro-27b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
-  "server-h200": ["turboquant_q4", "qjl", "polarquant", "dflash"],
+  "0_6b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
+  "1_7b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
+  "9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+  "27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+  "27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
-// Backends each tier is expected to support on shipped hardware. A tier
-// that ships only on Apple silicon (mobile, lite) does not need cuda.
+// Backends each tier is expected to support on shipped hardware. The 0.6B and
+// 1.7B tiers do not need cuda.
 export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Backend>>
 > = {
-  "lite-0_6b": ["metal", "vulkan", "cpu"],
-  "mobile-1_7b": ["metal", "vulkan", "cpu"],
-  "desktop-9b": ["metal", "vulkan", "cuda", "cpu"],
-  "pro-27b": ["metal", "vulkan", "cuda", "cpu"],
-  "server-h200": ["cuda", "vulkan", "cpu"],
+  "0_6b": ["metal", "vulkan", "cpu"],
+  "1_7b": ["metal", "vulkan", "cpu"],
+  "9b": ["metal", "vulkan", "cuda", "cpu"],
+  "27b": ["metal", "vulkan", "cuda", "cpu"],
+  "27b-256k": ["metal", "vulkan", "cuda", "cpu"],
 };
 
 // ---------------------------------------------------------------------------
@@ -97,6 +88,16 @@ export const Eliza1LineageSchema = z.object({
   text: lineageEntry,
   voice: lineageEntry,
   drafter: lineageEntry,
+  // Wave-6 (2026-05-10): manifest now records lineage for every shipped
+  // component so license/dataset provenance is auditable per component.
+  // All optional — a tier may omit ASR/embedding/vision/vad/wakeword by
+  // leaving the corresponding `files.*` slot empty AND the lineage
+  // entry undefined. The validator enforces lineage-vs-files consistency.
+  asr: lineageEntry.optional(),
+  embedding: lineageEntry.optional(),
+  vision: lineageEntry.optional(),
+  vad: lineageEntry.optional(),
+  wakeword: lineageEntry.optional(),
 });
 
 export const Eliza1FileEntrySchema = z.object({
@@ -115,6 +116,19 @@ export const Eliza1FilesSchema = z.object({
   vision: z.array(Eliza1FileEntrySchema),
   dflash: z.array(Eliza1FileEntrySchema).min(1),
   cache: z.array(Eliza1FileEntrySchema).min(1),
+  // Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
+  // embedding model (Qwen3-Embedding-0.6B-GGUF on non-0.6B tiers) and
+  // a Silero-VAD ONNX + an optional openWakeWord ONNX. All three are
+  // optional in the schema — the 0.6B tier intentionally omits the
+  // dedicated embedding (pools from text backbone) and a tier may
+  // ship without wake-word support.
+  //
+  // Schema-level optionality: empty array = "this bundle does not
+  // ship this component"; the validator enforces tier-specific
+  // consistency rules (e.g. 1.7B-and-up MUST ship `embedding[]`).
+  embedding: z.array(Eliza1FileEntrySchema).optional(),
+  vad: z.array(Eliza1FileEntrySchema).optional(),
+  wakeword: z.array(Eliza1FileEntrySchema).optional(),
 });
 
 export const Eliza1KernelEnumSchema = z.enum(ELIZA_1_KERNELS);
@@ -138,6 +152,21 @@ export const Eliza1KernelsSchema = z.object({
   }),
 });
 
+// Wave-6: voice surface declares which expressive features the bundled
+// TTS supports. Today these are tag-driven inline in the input text;
+// presence of `singing` or `emotion-tags` here lets the runtime expose
+// the relevant API surface and lets the planner emit tags inline.
+export const ELIZA_1_VOICE_CAPABILITIES = [
+  "tts",
+  "emotion-tags",
+  "singing",
+] as const;
+export type Eliza1VoiceCapability = (typeof ELIZA_1_VOICE_CAPABILITIES)[number];
+
+export const Eliza1VoiceSchema = z.object({
+  capabilities: z.array(z.enum(ELIZA_1_VOICE_CAPABILITIES)).default(["tts"]),
+});
+
 export const Eliza1EvalsSchema = z.object({
   textEval: z.object({
     score: z.number().min(0).max(1),
@@ -149,6 +178,37 @@ export const Eliza1EvalsSchema = z.object({
   }),
   e2eLoopOk: z.boolean(),
   thirtyTurnOk: z.boolean(),
+  // Wave-6 additions — all optional so a tier can publish without
+  // an ASR / embedding component declared. `expressive` covers the
+  // singing/emotion-tag eval gates from `eliza1_gates.yaml`. The
+  // validator refuses defaultEligible=true if any declared component's
+  // gate is missing OR fails.
+  asrWer: z
+    .object({
+      wer: z.number().nonnegative(),
+      passed: z.boolean(),
+    })
+    .optional(),
+  embedMteb: z
+    .object({
+      score: z.number().min(0).max(1),
+      passed: z.boolean(),
+    })
+    .optional(),
+  vadLatencyMs: z
+    .object({
+      median: z.number().nonnegative(),
+      passed: z.boolean(),
+    })
+    .optional(),
+  expressive: z
+    .object({
+      tagFaithfulness: z.number().min(0).max(1),
+      mosExpressive: z.number().nonnegative(),
+      tagLeakage: z.number().nonnegative(),
+      passed: z.boolean(),
+    })
+    .optional(),
 });
 
 export const Eliza1RamBudgetSchema = z
@@ -177,11 +237,19 @@ export const Eliza1ManifestSchema = z
     kernels: Eliza1KernelsSchema,
     evals: Eliza1EvalsSchema,
     ramBudgetMb: Eliza1RamBudgetSchema,
+    // Wave-6: optional. Default = `{ capabilities: ["tts"] }` (base TTS only,
+    // no emotion tags, no singing). Bundles that ship the omnivoice-singing
+    // weights advertise `["tts","emotion-tags","singing"]`.
+    voice: Eliza1VoiceSchema.optional(),
     defaultEligible: z.boolean(),
   })
   // The id MUST encode the tier so catalogs can derive tier from id without
-  // re-reading the manifest. AGENTS.md §6 sample: `id: "eliza-1-desktop-9b"`.
-  .refine((m) => m.id === `eliza-1-${m.tier}` || m.id.startsWith(`eliza-1-${m.tier}-`), {
-    message: "id must start with `eliza-1-<tier>`",
-    path: ["id"],
-  });
+  // re-reading the manifest. Example: `id: "eliza-1-9b"`.
+  .refine(
+    (m) =>
+      m.id === `eliza-1-${m.tier}` || m.id.startsWith(`eliza-1-${m.tier}-`),
+    {
+      message: "id must start with `eliza-1-<tier>`",
+      path: ["id"],
+    },
+  );

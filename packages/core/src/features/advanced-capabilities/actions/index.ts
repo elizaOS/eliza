@@ -29,7 +29,6 @@ import { roomOpAction as _bs_5_roomOpAction } from "./room.ts";
 
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
-// biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
 const __bundle_safety_FEATURES_ADVANCED_CAPABILITIES_ACTIONS_INDEX__ = [
 	_bs_1_messageAction,
 	_bs_2_postAction,
@@ -37,8 +36,7 @@ const __bundle_safety_FEATURES_ADVANCED_CAPABILITIES_ACTIONS_INDEX__ = [
 	_bs_4_updateRoleAction,
 	_bs_5_roomOpAction,
 ];
-// biome-ignore lint/suspicious/noExplicitAny: bundle-safety sink.
 (
-	globalThis as any
+	globalThis as Record<string, unknown>
 ).__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_ACTIONS_INDEX__ =
 	__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_ACTIONS_INDEX__;

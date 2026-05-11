@@ -109,6 +109,12 @@ export interface MobileSignalsOpenSettingsResult {
   reason: string | null;
 }
 
+export type MobileSignalsPermissionTarget = "all" | "health" | "screenTime";
+
+export interface MobileSignalsRequestPermissionsOptions {
+  target?: MobileSignalsPermissionTarget;
+}
+
 export interface MobileSignalsPermissionStatus {
   status: "granted" | "denied" | "not-determined" | "not-applicable";
   canRequest: boolean;
@@ -405,7 +411,9 @@ export interface SystemPluginLike extends NativePlugin {
 
 export interface MobileSignalsPluginLike extends NativePlugin {
   checkPermissions(): Promise<MobileSignalsPermissionStatus>;
-  requestPermissions(): Promise<MobileSignalsPermissionStatus>;
+  requestPermissions(
+    options?: MobileSignalsRequestPermissionsOptions,
+  ): Promise<MobileSignalsPermissionStatus>;
   openSettings(options?: {
     target?: MobileSignalsSettingsTarget;
   }): Promise<MobileSignalsOpenSettingsResult>;

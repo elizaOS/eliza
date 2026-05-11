@@ -1,13 +1,12 @@
 /**
  * Calendar prober.
  *
- * Native APIs (macOS):
- *   - check:   EKEventStore.authorizationStatus(for: .event)
- *   - request: EKEventStore.requestFullAccessToEvents (macOS 14+) or
- *              .requestAccess(to: .event)
+ * Calendar.app integration is AppleScript-backed, so check() reads the
+ * Apple Events TCC row for this runtime → Calendar.app. The osascript call
+ * is only used in request(), where prompting is expected.
  *
- * Uses TCC.db reads (kTCCServiceCalendar) for check, AppleScript shellout
- * to Calendar.app for request. Same INTEGRATION TODO as reminders.ts.
+ * INTEGRATION TODO: switch this to EventKit authorization checks if a
+ * Calendar connector starts using EventKit instead of AppleScript.
  */
 
 import type { PermissionState, Prober } from "../contracts.js";
@@ -15,12 +14,12 @@ import {
   buildState,
   IS_DARWIN,
   platformUnsupportedState,
-  queryTccStatus,
-  resolveBundleId,
+  queryAppleEventsTccStatus,
   runOsascript,
 } from "./_bridge.js";
 
 const ID = "calendar" as const;
+const CALENDAR_BUNDLE_ID = "com.apple.iCal";
 
 export const calendarProber: Prober = {
   id: ID,
@@ -28,7 +27,7 @@ export const calendarProber: Prober = {
   async check(): Promise<PermissionState> {
     if (!IS_DARWIN) return platformUnsupportedState(ID);
 
-    const tcc = await queryTccStatus("kTCCServiceCalendar", resolveBundleId());
+    const tcc = await queryAppleEventsTccStatus(CALENDAR_BUNDLE_ID);
     if (tcc === "granted")
       return buildState(ID, "granted", { canRequest: false });
     if (tcc === "denied")

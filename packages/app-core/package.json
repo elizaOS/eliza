@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.3",
   "description": "Shared application core for elizaOS white-label agent apps.",
   "type": "module",
   "license": "MIT",
@@ -40,7 +40,9 @@
     "benchmark:server": "node --import tsx src/benchmark/server.ts",
     "build:flatpak": "node ./scripts/build-flatpak.mjs",
     "build:flatpak:store": "MILADY_BUILD_VARIANT=store node ./scripts/build-flatpak.mjs",
-    "build:flatpak:direct": "MILADY_BUILD_VARIANT=direct node ./scripts/build-flatpak.mjs"
+    "build:flatpak:direct": "MILADY_BUILD_VARIANT=direct node ./scripts/build-flatpak.mjs",
+    "codesign:mas": "node ./scripts/codesign-mas.mjs",
+    "codesign:mas:dry-run": "node ./scripts/codesign-mas.mjs --dry-run"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -71,7 +73,7 @@
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/push-notifications": "^8.0.0",
     "@clack/prompts": "^1.0.0",
-    "@elizaos/agent": "2.0.0-beta.1",
+    "@elizaos/agent": "2.0.0-beta.2",
     "@elizaos/capacitor-llama": "2.0.0-beta.1",
     "@elizaos/core": "2.0.0-beta.1",
     "@elizaos/plugin-anthropic": "2.0.0-beta.1",
@@ -86,7 +88,7 @@
     "@elizaos/plugin-wechat": "2.0.0-beta.1",
     "@elizaos/plugin-workflow": "2.0.0-beta.1",
     "@elizaos/shared": "2.0.0-beta.1",
-    "@elizaos/ui": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.2",
     "@elizaos/vault": "2.0.0-beta.1",
     "@node-rs/argon2": "^2.0.2",
     "@radix-ui/react-checkbox": "^1.3.3",

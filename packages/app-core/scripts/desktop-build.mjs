@@ -758,6 +758,33 @@ function packageDesktopBuild() {
     });
   }
 
+  // Mac App Store post-package codesign: when building the store variant on
+  // macOS with real signing enabled, walk the bundle and re-sign every nested
+  // Mach-O with mas-child.entitlements (sandbox + cs.inherit), then sign the
+  // parent .app with mas.entitlements. Required because Electrobun's config
+  // exposes only one entitlements field; helpers must inherit explicitly.
+  if (
+    process.platform === "darwin" &&
+    buildVariant === "store" &&
+    packageEnv.ELECTROBUN_SKIP_CODESIGN !== "1"
+  ) {
+    const appBundlePath = findLatestMacAppBundle();
+    const codesignArgs = [
+      path.join(SCRIPT_DIR, "codesign-mas.mjs"),
+      `--app=${appBundlePath}`,
+    ];
+    if (process.env.MILADY_MAS_INSTALLER_IDENTITY) {
+      codesignArgs.push(
+        `--installer-identity=${process.env.MILADY_MAS_INSTALLER_IDENTITY}`,
+      );
+    }
+    run("node", codesignArgs, {
+      cwd: ROOT,
+      env: packageEnv,
+      label: `MAS post-package codesign (${path.basename(appBundlePath)})`,
+    });
+  }
+
   if (stageMacosReleaseApp && process.platform === "darwin") {
     run(
       "bash",

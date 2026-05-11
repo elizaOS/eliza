@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { PermissionState } from "@elizaos/shared";
 import {
   cleanup,
   fireEvent,
@@ -10,8 +11,15 @@ import {
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../../api/client-types-chat";
+import { AppContext } from "../../state/useApp";
 
-const { updateSecretsMock } = vi.hoisted(() => ({
+const { clientMock, updateSecretsMock } = vi.hoisted(() => ({
+  clientMock: {
+    getPermission: vi.fn(),
+    requestPermission: vi.fn(),
+    openPermissionSettings: vi.fn(),
+    updateSecrets: vi.fn(),
+  },
   updateSecretsMock: vi.fn(),
 }));
 
@@ -25,9 +33,7 @@ vi.mock("@elizaos/ui", () => ({
 }));
 
 vi.mock("../../api/client", () => ({
-  client: {
-    updateSecrets: updateSecretsMock,
-  },
+  client: clientMock,
 }));
 
 import { MessageContent } from "./MessageContent";
@@ -42,6 +48,38 @@ function baseMessage(
     timestamp: Date.now(),
     ...overrides,
   };
+}
+
+function permissionState(
+  overrides: Partial<PermissionState> = {},
+): PermissionState {
+  return {
+    id: "reminders",
+    status: "not-determined",
+    lastChecked: 1,
+    canRequest: true,
+    platform: "darwin",
+    ...overrides,
+  };
+}
+
+function renderWithApp(
+  message: ConversationMessage,
+  sendActionMessage = vi.fn(),
+) {
+  render(
+    <AppContext.Provider
+      value={
+        {
+          t: (key: string) => key,
+          sendActionMessage,
+        } as never
+      }
+    >
+      <MessageContent message={message} />
+    </AppContext.Provider>,
+  );
+  return { sendActionMessage };
 }
 
 function pendingPublicSecretRequest(): ConversationMessage["secretRequest"] {
@@ -93,6 +131,12 @@ describe("MessageContent sensitive requests", () => {
 
   beforeEach(() => {
     updateSecretsMock.mockReset();
+    clientMock.updateSecrets.mockImplementation(updateSecretsMock);
+    clientMock.getPermission.mockResolvedValue(permissionState());
+    clientMock.requestPermission.mockResolvedValue(
+      permissionState({ status: "granted", canRequest: false }),
+    );
+    clientMock.openPermissionSettings.mockResolvedValue(undefined);
   });
 
   it("renders public requests as status-only without an input", () => {
@@ -164,5 +208,77 @@ describe("MessageContent sensitive requests", () => {
     ]);
     expect(container.textContent?.includes(rawSecret)).toBe(false);
     expect(screen.queryByLabelText("OPENAI_API_KEY")).toBeNull();
+  });
+});
+
+describe("MessageContent permission cards", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clientMock.getPermission.mockResolvedValue(permissionState());
+    clientMock.requestPermission.mockResolvedValue(
+      permissionState({ status: "granted", canRequest: false }),
+    );
+    clientMock.openPermissionSettings.mockResolvedValue(undefined);
+  });
+
+  it("renders permission_request as an inline card and hides the JSON block", async () => {
+    const text =
+      "I need access before I can add that.\n```json\n" +
+      JSON.stringify({
+        action: "permission_request",
+        reasoning: "Apple Reminders needs user approval.",
+        permission: "reminders",
+        reason: "I need access to Apple Reminders to add this reminder.",
+        feature: "lifeops.reminders.create",
+        fallback_offered: true,
+      }) +
+      "\n```";
+
+    renderWithApp(baseMessage({ text }));
+
+    expect(await screen.findByTestId("permission-card")).toBeTruthy();
+    expect(screen.getByText("Apple Reminders")).toBeTruthy();
+    expect(
+      screen.getByText("I need access before I can add that."),
+    ).toBeTruthy();
+    expect(document.body.textContent).not.toContain("permission_request");
+    expect(
+      screen.getByTestId("permission-card-fallback").textContent,
+    ).toContain("Use internal reminder");
+  });
+
+  it("sends fallback and granted action messages back through chat", async () => {
+    const text =
+      "I need access before I can add that.\n```json\n" +
+      JSON.stringify({
+        action: "permission_request",
+        permission: "reminders",
+        reason: "I need access to Apple Reminders to add this reminder.",
+        feature: "lifeops.reminders.create",
+        fallback_offered: true,
+      }) +
+      "\n```";
+    const sendActionMessage = vi.fn();
+
+    renderWithApp(baseMessage({ text }), sendActionMessage);
+    fireEvent.click(await screen.findByTestId("permission-card-fallback"));
+
+    expect(sendActionMessage).toHaveBeenCalledWith(
+      "__permission_card__:use_fallback feature=lifeops.reminders.create permission=reminders",
+    );
+
+    cleanup();
+    renderWithApp(baseMessage({ text }), sendActionMessage);
+    fireEvent.click(await screen.findByTestId("permission-card-primary"));
+
+    await waitFor(() =>
+      expect(sendActionMessage).toHaveBeenCalledWith(
+        "__permission_card__:granted feature=lifeops.reminders.create permission=reminders",
+      ),
+    );
   });
 });

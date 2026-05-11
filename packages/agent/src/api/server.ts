@@ -2835,6 +2835,14 @@ async function handleRequest(
       url,
       runtime: state.runtime,
       isAuthorized: () => isAuthorized(req),
+      hostContext: {
+        config: state.config as unknown as Record<string, unknown>,
+        saveConfig: (nextConfig) => {
+          state.config = nextConfig as unknown as ElizaConfig;
+          saveElizaConfig(state.config);
+        },
+        restartRuntime,
+      },
     })
   ) {
     return;

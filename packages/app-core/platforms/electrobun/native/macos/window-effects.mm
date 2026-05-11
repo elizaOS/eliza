@@ -3,6 +3,8 @@
 #import <AVFoundation/AVFoundation.h>
 #import <Availability.h>
 #import <CoreGraphics/CoreGraphics.h>
+#include <stdlib.h>
+#include <string.h>
 
 static NSString *const kElectrobunVibrancyViewIdentifier =
 	@"ElectrobunVibrancyView";
@@ -16,6 +18,32 @@ static NSString *const kElectrobunNativeDragRightEdgeIdentifier =
 	@"ElectrobunNativeDragRightEdge";
 static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 	@"ElizaInactiveTrafficLightsOverlay";
+
+static NSMutableArray<NSURL *> *elizaSecurityScopedUrls(void) {
+	static NSMutableArray<NSURL *> *urls = nil;
+	static dispatch_once_t onceToken;
+	dispatch_once(&onceToken, ^{
+		urls = [[NSMutableArray alloc] init];
+	});
+	return urls;
+}
+
+static char *elizaCopyCString(NSString *value) {
+	if (value == nil) {
+		return nullptr;
+	}
+	const char *utf8 = [value UTF8String];
+	if (utf8 == nullptr) {
+		return nullptr;
+	}
+	size_t len = strlen(utf8);
+	char *out = (char *)malloc(len + 1);
+	if (out == nullptr) {
+		return nullptr;
+	}
+	memcpy(out, utf8, len + 1);
+	return out;
+}
 
 /** Transparent strip for moving the window. WKWebView does not honor
  *  -webkit-app-region reliably on system WebKit; this view is stacked
@@ -582,6 +610,81 @@ extern "C" void requestMicrophonePermission(void) {
 	                         completionHandler:^(BOOL granted) {
 		(void)granted;
 	}];
+}
+
+extern "C" void freeNativeCString(char *value) {
+	if (value != nullptr) {
+		free(value);
+	}
+}
+
+extern "C" char *createSecurityScopedBookmark(const char *path) {
+	@autoreleasepool {
+		if (path == nullptr || path[0] == '\0') {
+			return nullptr;
+		}
+		NSString *pathString = [NSString stringWithUTF8String:path];
+		if (pathString == nil) {
+			return nullptr;
+		}
+		NSURL *url = [NSURL fileURLWithPath:pathString isDirectory:YES];
+		if (url == nil) {
+			return nullptr;
+		}
+		NSError *error = nil;
+		NSData *bookmark = [url
+			bookmarkDataWithOptions:NSURLBookmarkCreationWithSecurityScope
+			includingResourceValuesForKeys:nil
+			relativeToURL:nil
+			error:&error];
+		if (bookmark == nil || error != nil) {
+			return nullptr;
+		}
+		return elizaCopyCString([bookmark base64EncodedStringWithOptions:0]);
+	}
+}
+
+extern "C" char *startAccessingSecurityScopedBookmark(const char *base64) {
+	@autoreleasepool {
+		if (base64 == nullptr || base64[0] == '\0') {
+			return nullptr;
+		}
+		NSString *base64String = [NSString stringWithUTF8String:base64];
+		if (base64String == nil) {
+			return nullptr;
+		}
+		NSData *bookmark = [[NSData alloc]
+			initWithBase64EncodedString:base64String
+			options:NSDataBase64DecodingIgnoreUnknownCharacters];
+		if (bookmark == nil) {
+			return nullptr;
+		}
+		BOOL stale = NO;
+		NSError *error = nil;
+		NSURL *url = [NSURL URLByResolvingBookmarkData:bookmark
+			options:NSURLBookmarkResolutionWithSecurityScope
+			relativeToURL:nil
+			bookmarkDataIsStale:&stale
+			error:&error];
+		if (url == nil || error != nil) {
+			return nullptr;
+		}
+		if (![url startAccessingSecurityScopedResource]) {
+			return nullptr;
+		}
+		[elizaSecurityScopedUrls() addObject:url];
+		return elizaCopyCString([url path]);
+	}
+}
+
+extern "C" void stopAccessingSecurityScopedBookmarks(void) {
+	@autoreleasepool {
+		NSMutableArray<NSURL *> *urls = elizaSecurityScopedUrls();
+		for (NSURL *url in urls) {
+			[url stopAccessingSecurityScopedResource];
+		}
+		[urls removeAllObjects];
+	}
 }
 
 extern "C" bool enableWindowVibrancy(void *windowPtr) {

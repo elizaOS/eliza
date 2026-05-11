@@ -2,40 +2,40 @@
 
 Mirrors `scripts/push_to_hf.py` (which publishes the *dataset*) but for the
 *model* side: takes a finished APOLLO SFT checkpoint and uploads it to the
-canonical `elizaos/eliza-1-*` repo declared in `model_registry.py`.
+canonical `elizalabs/eliza-1-*` repo declared in `model_registry.py`.
 
 Usage::
 
     # Dry-run (always safe; no network calls except metadata reads).
     uv run python scripts/push_model_to_hf.py \\
-        --registry-key qwen3.5-2b \\
-        --checkpoint checkpoints/qwen3-5-2b-apollo/final \\
+        --registry-key eliza-1-2b \\
+        --checkpoint checkpoints/eliza-1-2b-apollo/final \\
         --dry-run
 
-    # Real upload to the default repo (elizaos/eliza-1-2b).
+    # Real upload to the default repo (elizalabs/eliza-1-2b).
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
-        --registry-key qwen3.5-2b \\
-        --checkpoint checkpoints/qwen3-5-2b-apollo/final
+        --registry-key eliza-1-2b \\
+        --checkpoint checkpoints/eliza-1-2b-apollo/final
 
     # Upload a quantized sidecar (e.g. polarquant) to a sibling repo
-    # (elizaos/eliza-1-2b-polarquant).
+    # (elizalabs/eliza-1-2b-polarquant).
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
-        --registry-key qwen3.5-2b \\
-        --checkpoint checkpoints/qwen3-5-2b-apollo/final-polarquant \\
+        --registry-key eliza-1-2b \\
+        --checkpoint checkpoints/eliza-1-2b-apollo/final-polarquant \\
         --quant polarquant
 
     # Upload a GGUF directory (post llama.cpp convert + quantize). Use a
     # specific quant level for the sibling repo suffix (one HF repo per
     # quant level, matching the publish_all_eliza1.sh matrix).
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
-        --registry-key qwen3.6-27b \\
-        --checkpoint checkpoints/qwen3-6-27b-apollo/final-gguf \\
+        --registry-key eliza-1-27b \\
+        --checkpoint checkpoints/eliza-1-27b-apollo/final-gguf \\
         --quant gguf-q4_k_m
 
     # Attach evaluation results to the rendered model card.
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
-        --registry-key qwen3.5-2b \\
-        --checkpoint checkpoints/qwen3-5-2b-apollo/final \\
+        --registry-key eliza-1-2b \\
+        --checkpoint checkpoints/eliza-1-2b-apollo/final \\
         --eval-results path/to/eliza_bench.json
 
 The script defers the heavy upload to `huggingface_hub.HfApi.upload_folder`
@@ -70,6 +70,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 log = logging.getLogger("push_model")
+
+
+def _published_registry_names() -> list[str]:
+    return sorted(e.eliza_short_name for e in REGISTRY.values() if e.eliza_short_name)
 
 
 # ---------------------------------------------------------------------------
@@ -118,13 +122,14 @@ def resolve_repo_id(
     """
     if override:
         return override
-    if registry_key not in REGISTRY:
+    try:
+        entry = registry_get(registry_key)
+    except KeyError as exc:
         raise SystemExit(
             f"--registry-key {registry_key!r} is not in the registry; "
             "either pass --repo-id explicitly (e.g. for milady-ai/* repos) "
-            f"or pick one of: {sorted(REGISTRY.keys())}"
-        )
-    entry = registry_get(registry_key)
+            f"or pick one of: {_published_registry_names()}"
+        ) from exc
     if variant == "abliterated":
         base = entry.abliteration_repo_id
         if not base:
@@ -162,7 +167,7 @@ def read_optional_json(path: Path) -> dict[str, Any]:
 
 # Per-quant metadata. Drives:
 #   - --quant CLI choices (this dict's keys are the allowed values).
-#   - The sibling-repo suffix (e.g. polarquant -> elizaos/eliza-1-2b-polarquant).
+#   - The sibling-repo suffix (e.g. polarquant -> elizalabs/eliza-1-2b-polarquant).
 #   - Template placeholders in scripts/templates/model_card_quant.md.
 #
 # QJL is intentionally absent: it is a runtime-time KV-cache projection
@@ -751,7 +756,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument(
         "--registry-key", required=True,
-        help=f"One of: {sorted(REGISTRY.keys())}",
+        help=(
+            f"One of: {_published_registry_names()}. "
+            "Internal upstream keys are accepted as aliases."
+        ),
     )
     ap.add_argument(
         "--checkpoint", type=Path, required=True,

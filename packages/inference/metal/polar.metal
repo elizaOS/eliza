@@ -1,14 +1,11 @@
-// DRAFT: COMPILED locally NOT YET — agent runs on Linux without xcrun metal.
-// SOURCE-LEVEL VERIFIED against the PolarQuant CPU reference at
+// HARDWARE VERIFIED on Apple M4 Max (Metal runtime JIT): 8/8 PASS against the
+// fixture harness. Source-level verified against the PolarQuant CPU reference at
 // packages/native-plugins/polarquant-cpu/src/polar_dequantize_ref.c and
 // polar_dot_ref.c (W1-B's authoritative CPU side). The block layout
 // (`block_q4_polar`), centroid LUT (POLAR_Q4_CENTROIDS), QJL residual
 // magnitude (POLAR_QJL_CORRECTION_MAGNITUDE / sqrt(QK_POLAR)), and the
 // (1 / QK_POLAR) compensation that turns the in-place Hadamard butterfly
 // into the orthonormal inverse are all bit-identical.
-//
-// Hardware verification still required — see
-// packages/inference/README.md "Verification matrix".
 //
 // Block layout (block_q4_polar in polar_block.h, 82 bytes, packed):
 //     fp16     d                          // [0..1]   per-block L2 norm
@@ -70,23 +67,6 @@ static inline float polar_qjl_sign(uint i, thread uint & state) {
     state ^= state >> 17;
     state ^= state << 5;
     return (state & 1u) ? 1.0f : -1.0f;
-}
-
-// In-place 128-element Walsh-Hadamard butterfly. Sequential variant — kept
-// as a reference for single-thread execution; the threadgroup hot path uses
-// polar_hadamard_inplace_tg32 below.
-static inline void polar_hadamard_inplace_tg(threadgroup float * x) {
-    // 7 stages: h = 1, 2, 4, 8, 16, 32, 64.
-    for (uint h = 1; h < QK_POLAR; h <<= 1) {
-        for (uint i = 0; i < QK_POLAR; i += (h << 1)) {
-            for (uint j = i; j < i + h; ++j) {
-                float a = x[j];
-                float b = x[j + h];
-                x[j]     = a + b;
-                x[j + h] = a - b;
-            }
-        }
-    }
 }
 
 // Threadgroup-cooperative 128-element Walsh-Hadamard butterfly. Each of

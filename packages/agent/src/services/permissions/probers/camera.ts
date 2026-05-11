@@ -5,8 +5,9 @@
  *   - check:   AVCaptureDevice.authorizationStatus(for: .video)
  *   - request: AVCaptureDevice.requestAccess(for: .video)
  *
- * INTEGRATION TODO: native win32/linux probes. Until then we report
- * not-determined and the renderer falls back to navigator.permissions.
+ * On win32/linux, the renderer supplies the concrete browser/device state
+ * through navigator.permissions/getUserMedia and writes it back through the
+ * shared permission routes.
  */
 
 import type { PermissionState, Prober } from "../contracts.js";
@@ -25,6 +26,7 @@ export const cameraProber: Prober = {
 
   async check(): Promise<PermissionState> {
     if (!IS_DARWIN) {
+      // Renderer fallback handles navigator.permissions/getUserMedia.
       return buildState(ID, "not-determined", { canRequest: true });
     }
     const lib = await getNativeDylib();

@@ -4,6 +4,8 @@ export const plannerTemplate = `task: Plan next native tool calls.
 
 rules:
 - use only tools from the tools array; smallest grounded queue
+- PLAN_ACTIONS.action must be an exact action name from available_actions; never invent compound names for a requested operation
+- for routed actions, put the operation selector in parameters.action only when that parameter exists in the action schema
 - arguments grounded in user request or prior tool results
 - respect each tool's parameter schema; array params must be JSON arrays, not comma-separated strings
 - never use empty strings, placeholders, or invented values for required tool arguments; gather missing content with another grounded tool or choose no tool if no tool can supply it

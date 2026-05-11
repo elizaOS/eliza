@@ -75,16 +75,10 @@ function findFirstExistingPath(candidates: string[]): string | null {
 function findTestGguf(): string | null {
   const home = os.homedir();
   return findFirstExistingPath([
-    path.join(
-      home,
-      ".eliza/local-inference/models/eliza-1-lite-0_6b-32k.gguf",
-    ),
-    path.join(
-      home,
-      ".milady/local-inference/models/eliza-1-lite-0_6b-32k.gguf",
-    ),
-    path.join(home, ".eliza/models/eliza-1-lite-0_6b-32k.gguf"),
-    path.join(home, ".eliza/models/eliza-1-mobile-1_7b-32k.gguf"),
+    path.join(home, ".eliza/local-inference/models/eliza-1-0_6b-32k.gguf"),
+    path.join(home, ".milady/local-inference/models/eliza-1-0_6b-32k.gguf"),
+    path.join(home, ".eliza/models/eliza-1-0_6b-32k.gguf"),
+    path.join(home, ".eliza/models/eliza-1-1_7b-32k.gguf"),
   ]);
 }
 

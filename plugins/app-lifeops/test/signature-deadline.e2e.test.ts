@@ -24,7 +24,6 @@ import { withTimeout } from "../../../test/helpers/test-utils.ts";
 import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 import { selectLiveProvider } from "../../../test/helpers/live-provider.ts";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
-import { judgeTextWithLlm } from "./helpers/lifeops-live-judge.ts";
 import type { MockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 
 const LIVE_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
@@ -122,11 +121,8 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
 
         expect(reply).not.toMatch(/something (?:went wrong|flaked)|try again/i);
 
-        // The agent must have done one of two things, both observable: either
-        // (a) drafted a response that names the meeting and the NDA / signing
-        // step, or (b) enqueued a `sign_document` approval whose payload
-        // references the NDA. We assert against both surfaces and require at
-        // least one to fire — if neither fires, the agent did not act.
+        // The executable behavior is the approval queue entry. A natural-language
+        // reply alone is not enough for this workflow.
         const approvalQueue = createApprovalQueue(mocked.runtime, {
           agentId: mocked.runtime.agentId,
         });
@@ -140,17 +136,9 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
           JSON.stringify(request.payload).toLowerCase().includes("nda"),
         );
 
-        const judgement = await judgeTextWithLlm({
-          label: "signature-deadline.flagged-and-initiated",
-          rubric:
-            "The reply must (1) acknowledge the upcoming partnership kick-off meeting (or the deadline) AND (2) describe that the agent is initiating, drafting, or queueing the NDA signing step. A reply that only says 'I cannot help' or restates the question fails. A reply that drafts the signing message or confirms an approval was queued passes.",
-          text: reply,
-          minimumScore: 0.7,
-        });
-
         expect(
-          enqueuedSigning || judgement.passed,
-          `Agent must either enqueue a sign_document approval referencing the NDA, or draft a reply that flags the deadline and initiates signing. Approvals=${pending.length}, judge=${JSON.stringify(judgement)}`,
+          enqueuedSigning,
+          `Agent must enqueue a sign_document approval referencing the NDA. Approvals=${pending.length}, reply=${reply}`,
         ).toBe(true);
       },
       120_000,

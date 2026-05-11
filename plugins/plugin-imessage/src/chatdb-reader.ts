@@ -69,7 +69,24 @@ const APPLE_EPOCH_MS = Date.UTC(2001, 0, 1);
  * Convert an Apple Cocoa date delta to JavaScript milliseconds since
  * epoch. Handles both legacy (seconds) and modern (nanoseconds) storage.
  */
-export function appleDateToJsMs(appleDate: number): number {
+export function appleDateToJsMs(appleDate: number | string | bigint): number {
+  if (typeof appleDate === "string") {
+    const trimmed = appleDate.trim();
+    if (!trimmed) return 0;
+    try {
+      return appleDateToJsMs(BigInt(trimmed));
+    } catch {
+      const parsed = Number(trimmed);
+      return Number.isFinite(parsed) ? appleDateToJsMs(parsed) : 0;
+    }
+  }
+  if (typeof appleDate === "bigint") {
+    if (appleDate <= 0n) return 0;
+    if (appleDate > 1_000_000_000_000n) {
+      return APPLE_EPOCH_MS + Number(appleDate / 1_000_000n);
+    }
+    return APPLE_EPOCH_MS + Number(appleDate) * 1000;
+  }
   if (!appleDate || appleDate < 0) return 0;
   // Nanosecond-scale values are enormous (> 1e15 for any date after 2002).
   // Second-scale values top out around 1e9 for dates decades from now.
@@ -610,7 +627,7 @@ export async function openChatDb(
   // Used once on service start to seed the polling cursor.
   const tipStmt = db.query("SELECT MAX(ROWID) AS max_row_id FROM message");
   const latestOwnMessageStmt = db.query(
-    "SELECT MAX(date) AS max_apple_date FROM message WHERE is_from_me = 1"
+    "SELECT CAST(MAX(date) AS TEXT) AS max_apple_date FROM message WHERE is_from_me = 1"
   );
   const recentMessagesStmt = db.query(`
     SELECT
@@ -858,7 +875,7 @@ export async function openChatDb(
       if (closed) return null;
       try {
         const rows = latestOwnMessageStmt.all() as Array<{
-          max_apple_date: number | null;
+          max_apple_date: string | null;
         }>;
         const appleDate = rows[0]?.max_apple_date ?? null;
         return appleDate === null ? null : appleDateToJsMs(appleDate);

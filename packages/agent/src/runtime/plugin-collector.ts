@@ -26,11 +26,18 @@ import type { ElizaConfig } from "../config/config.ts";
 import {
   CORE_PLUGINS,
   ELIZAOS_ANDROID_CORE_PLUGINS,
+  ELIZAOS_ANDROID_TERMINAL_PLUGINS,
   MOBILE_CORE_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
 } from "./core-plugins.ts";
 
 const OPTIONAL_CORE_PLUGIN_NAMES = new Set<string>(OPTIONAL_CORE_PLUGINS);
+const STORE_BUILD_LOCAL_EXECUTION_PLUGINS = new Set<string>([
+  "agent-orchestrator",
+  "@elizaos/plugin-agent-orchestrator",
+  "@elizaos/plugin-shell",
+  "@elizaos/plugin-coding-tools",
+]);
 
 /**
  * Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package;
@@ -89,6 +96,13 @@ function isTruthyCloudEnvValue(raw: string | undefined): boolean {
   if (!raw) return false;
   const value = raw.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
+}
+
+function isStoreBuildVariant(): boolean {
+  const raw =
+    process.env.MILADY_BUILD_VARIANT?.trim() ||
+    process.env.ELIZA_BUILD_VARIANT?.trim();
+  return raw?.toLowerCase() === "store";
 }
 
 /** Maps Eliza channel names to plugin package names. */
@@ -267,6 +281,7 @@ export function collectPluginNames(
     config as Record<string, unknown>,
   );
   const isCloudContainer = process.env.ELIZA_CLOUD_PROVISIONED === "1";
+  const storeBuild = isStoreBuildVariant();
   const cloudExplicitlyDisabled = config.cloud?.enabled === false;
   // `ELIZA_LOCAL_LLAMA=1` is the AOSP / on-device signal that the in-process
   // llama.cpp loader is wired up and should be available as a routable
@@ -355,6 +370,10 @@ export function collectPluginNames(
     for (const name of ELIZAOS_ANDROID_CORE_PLUGINS) {
       pluginsToLoad.add(name);
       track(name, "ELIZAOS_ANDROID_CORE_PLUGINS");
+    }
+    for (const name of ELIZAOS_ANDROID_TERMINAL_PLUGINS) {
+      pluginsToLoad.add(name);
+      track(name, "ELIZAOS_ANDROID_TERMINAL_PLUGINS");
     }
   }
   // Agent orchestrator depends on PTY / coding-swarm subprocesses (none of
@@ -554,6 +573,11 @@ export function collectPluginNames(
   if (shellPluginDisabled) {
     pluginsToLoad.delete("@elizaos/plugin-shell");
   }
+  if (storeBuild) {
+    for (const pluginName of STORE_BUILD_LOCAL_EXECUTION_PLUGINS) {
+      pluginsToLoad.delete(pluginName);
+    }
+  }
 
   for (const pluginName of Array.from(pluginsToLoad)) {
     if (isPluginExplicitlyDisabled(pluginName)) {
@@ -571,6 +595,7 @@ export function collectPluginNames(
     const mobileAllowed = new Set<string>([
       ...MOBILE_CORE_PLUGINS,
       ...(onElizaOsAndroid ? ELIZAOS_ANDROID_CORE_PLUGINS : []),
+      ...(onElizaOsAndroid ? ELIZAOS_ANDROID_TERMINAL_PLUGINS : []),
       "@elizaos/plugin-anthropic",
       "@elizaos/plugin-openai",
       "@elizaos/plugin-ollama",

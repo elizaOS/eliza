@@ -104,7 +104,10 @@ interface RegistryEntry<T extends RefCountedResource> {
  * the lifecycle state machine can observe completion.
  */
 export class SharedResourceRegistry {
-  private readonly entries = new Map<string, RegistryEntry<RefCountedResource>>();
+  private readonly entries = new Map<
+    string,
+    RegistryEntry<RefCountedResource>
+  >();
   private readonly log?: Logger;
 
   constructor(opts: { logger?: Logger } = {}) {

@@ -67,6 +67,8 @@ export class RollbackQueue {
   }
 
   private overlaps(phrase: Phrase, range: RejectedTokenRange): boolean {
-    return phrase.toIndex >= range.fromIndex && phrase.fromIndex <= range.toIndex;
+    return (
+      phrase.toIndex >= range.fromIndex && phrase.fromIndex <= range.toIndex
+    );
   }
 }

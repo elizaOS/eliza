@@ -10,10 +10,10 @@ export * from "./cloud-only.js";
 export * from "./config-catalog.js";
 export * from "./plugin-auto-enable.js";
 export * from "./plugin-manifest.js";
-export * from "./runtime-mode.js";
 export {
   buildPluginConfigUiSpec,
   buildPluginListUiSpec,
 } from "./plugin-ui-spec.js";
+export * from "./runtime-mode.js";
 export * from "./types.eliza.js";
 export * from "./ui-spec.js";

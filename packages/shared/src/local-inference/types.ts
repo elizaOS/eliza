@@ -51,6 +51,20 @@ export interface InstalledModel {
   /** Absolute path to the GGUF file on disk. */
   path: string;
   sizeBytes: number;
+  /**
+   * Eliza-1 bundle root when this installed model came from a multi-file
+   * manifest. `path` still points at the primary GGUF used for loading the
+   * model; sibling voice/cache/drafter files live under this root.
+   */
+  bundleRoot?: string;
+  /** Absolute path to the validated `eliza-1.manifest.json`, when present. */
+  manifestPath?: string;
+  /** SHA256 of the validated manifest file, when present. */
+  manifestSha256?: string;
+  /** Semver bundle version from the manifest, when present. */
+  bundleVersion?: string;
+  /** Total bytes installed under `bundleRoot`, including voice/cache files. */
+  bundleSizeBytes?: number;
   /** HF repo this came from, when known. */
   hfRepo?: string;
   /** ISO timestamp of install completion. */

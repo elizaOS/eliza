@@ -22,7 +22,7 @@ contract.
 - Quantization recipes that produce shippable Eliza-1 artifacts:
   TurboQuant, QJL, PolarQuant, plus the fused TurboQuant pipeline.
 - Eval harness for text, voice, and end-to-end voice loop.
-- HuggingFace publishing of bundles to `elizaos/eliza-1-<tier>`.
+- HuggingFace publishing of bundles to `elizalabs/eliza-1-<tier>`.
 - Dataset preparation, deslop, and validation.
 
 This package does NOT own:
@@ -53,10 +53,11 @@ to match. The publish script MUST refuse to bundle a drafter whose
 training run did not target the same text-checkpoint hash recorded in
 its metadata.
 
-OmniVoice singing weights are research-only. Do not include them in
-any default Eliza-1 bundle until legal review clears the dataset and
-an eval gate is defined. There is no "experimental" tier — research
-artifacts live under a separate HF org and are never `defaultEligible`.
+OmniVoice singing weights can ship in default Eliza-1 bundles under the
+current non-commercial open-source mandate. The prior research-only gate
+is lifted per `packages/inference/AGENTS.md`; if the project pivots to
+commercial licensing, the CC-BY-NC-SA training-data lineage must be
+re-evaluated before any commercial bundle is published.
 
 ---
 
@@ -146,7 +147,7 @@ entry points for training and publishing:
 - `eval_checkpoint.py` / `eval_loop.sh` / `benchmarks/` — eval harness.
 - `push_model_to_hf.py` / `push_pipeline_to_hf.py` /
   `publish_pipeline_to_hf.py` / `publish_all_eliza1.sh` — HF publishing.
-  These MUST be the *only* paths that push to `elizaos/eliza-1-*`.
+  These MUST be the *only* paths that push to `elizalabs/eliza-1-*`.
 - `inference/serve_local.py` / `inference/serve_vllm.py` — eval-time
   serving harnesses (not production runtime — that is app-core).
 
@@ -159,7 +160,7 @@ published bundle.
 
 ## 6. Publishing to HuggingFace
 
-Every Eliza-1 bundle published to `elizaos/eliza-1-<tier>` MUST go
+Every Eliza-1 bundle published to `elizalabs/eliza-1-<tier>` MUST go
 through `publish_all_eliza1.sh` (or the per-tier publish script it
 calls). That script:
 

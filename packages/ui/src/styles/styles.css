@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "./base.css";
-@import "../../../ui/src/styles/electrobun-mac-window-drag.css";
+@import "./electrobun-mac-window-drag.css";
 /* React Flow base styles — required for @xyflow/react canvas to render correctly */
 @import "@xyflow/react/dist/style.css";
 

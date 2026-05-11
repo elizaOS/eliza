@@ -1,6 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { resolveStateDir } from "../utils/state-dir";
 import { PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
 import {
@@ -21,6 +20,7 @@ import {
 	type ToolChoice,
 	type ToolDefinition,
 } from "../types/model";
+import { resolveStateDir } from "../utils/state-dir";
 import { computePrefixHashes } from "./context-hash";
 import { appendContextEvent } from "./context-object";
 import {
@@ -1665,7 +1665,7 @@ function normalizeToolCalls(value: unknown): PlannerToolCall[] {
 /**
  * The LLM sees the stable Stage 2 wrapper surface, so every action invocation
  * arrives wrapped:
- * `{ name: "PLAN_ACTIONS", args: { action, subaction?, parameters, thought } }`.
+ * `{ name: "PLAN_ACTIONS", args: { action, parameters, thought } }`.
  * Holding the tool list fixed keeps prompt-cache hashes stable across requests
  * no matter which actions are gated this turn.
  *
@@ -1673,8 +1673,6 @@ function normalizeToolCalls(value: unknown): PlannerToolCall[] {
  * lookup, trajectory recording, terminal sentinels (REPLY/IGNORE/STOP),
  * failure attribution — sees the actual action name, not the wrapper.
  *
- * The `subaction` hint is preserved on `params.subaction` for router-style
- * actions.
  */
 
 function normalizeToolCall(entry: unknown): PlannerToolCall | null {
@@ -1727,23 +1725,16 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 		if (!actionName) {
 			return null;
 		}
-		const subaction =
-			typeof inner.subaction === "string" && inner.subaction.trim().length > 0
-				? inner.subaction.trim()
-				: undefined;
 		const baseParameters =
 			inner.parameters &&
 			typeof inner.parameters === "object" &&
 			!Array.isArray(inner.parameters)
 				? (inner.parameters as Record<string, unknown>)
 				: {};
-		const actionParameters: Record<string, unknown> = subaction
-			? { ...baseParameters, subaction }
-			: baseParameters;
 		return {
 			id: typeof record.id === "string" ? record.id : undefined,
 			name: actionName,
-			params: actionParameters,
+			params: baseParameters,
 		};
 	}
 
@@ -1971,7 +1962,7 @@ function isUnsafeUserVisibleText(value: string | undefined): boolean {
 		/\b(?:tool|function)\s+calls?\b/i,
 		/\b(?:I|we)\s+(?:need|should|must|will)\s+to\s+(?:call|use|invoke|issue|perform)\b/i,
 		/\b(?:call|use|invoke)\s+[A-Z][A-Z0-9_]{2,}\b/,
-		/\b(?:MESSAGE\s+operation|operation=(?:draft_reply|respond|send_draft|triage|list_inbox))\b/i,
+		/\b(?:MESSAGE\s+action|action=(?:draft_reply|respond|send_draft|triage|list_inbox))\b/i,
 		/\{\s*"parameters"\s*:/i,
 	].some((pattern) => pattern.test(text));
 }

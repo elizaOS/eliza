@@ -178,7 +178,6 @@ function normalizeGpuLayers(value: number | "auto"): string {
   return value === "auto" ? "99" : String(value);
 }
 
-
 function resolvePort(): Promise<number> {
   const explicit = Number.parseInt(process.env.ELIZA_DFLASH_PORT ?? "", 10);
   if (Number.isFinite(explicit) && explicit > 0) {
@@ -259,9 +258,7 @@ export interface DflashMetricsSnapshot {
  * expected counters are present (older builds, server started without
  * `--metrics`, drafter not yet engaged).
  */
-export function parseDflashMetrics(
-  text: string,
-): DflashMetricsSnapshot | null {
+export function parseDflashMetrics(text: string): DflashMetricsSnapshot | null {
   const counters: Record<string, number> = {};
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();

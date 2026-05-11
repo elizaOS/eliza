@@ -8,6 +8,7 @@ import {
   type Content,
   elizaLogger,
   type Memory,
+  type MessageProcessingResult,
   type Plugin,
   stringToUuid,
 } from "@elizaos/core";
@@ -995,7 +996,7 @@ export async function startBenchmarkServer() {
       const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
       activeUsageBuffer = turnUsageBuffer;
 
-      let result;
+      let result: MessageProcessingResult;
       try {
         result = await runtime.messageService.handleMessage(
           runtime,
