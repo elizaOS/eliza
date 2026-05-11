@@ -127,6 +127,8 @@
     "lifeops:multi-tier:core": "node scripts/lifeops-multi-tier-bench.mjs --suite core --tiers large,frontier",
     "lifeops:multi-tier:local-small": "node scripts/lifeops-multi-tier-bench.mjs --suite smoke --tiers small",
     "lifeops:bench-to-dataset": "node scripts/lifeops-benchmark-to-training-dataset.mjs",
+    "personality:bench": "bun --bun packages/benchmarks/personality-bench/src/runner.ts",
+    "personality:bench:calibrate": "bun --filter @elizaos/personality-bench calibrate",
     "lifeops:optimize": "node scripts/lifeops-optimize-planner.mjs",
     "lifeops:prompts:inventory": "node scripts/lifeops-prompt-inventory.mjs",
     "lifeops:prompts:review": "node scripts/lifeops-prompt-review.mjs",
