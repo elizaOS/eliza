@@ -1,5 +1,5 @@
 {
-  "generatedAtIso": "2026-05-11T14:02:11.807Z",
+  "generatedAtIso": "2026-05-11T16:41:42.315Z",
   "provider": "cerebras",
   "model": "gpt-oss-120b",
   "domainsGraded": 28,
@@ -46,7 +46,7 @@
         "promptTokens": 1881,
         "completionTokens": 67,
         "totalTokens": 1948,
-        "cachedTokens": 0
+        "cachedTokens": 1024
       },
       "tasksObserved": 2,
       "logEntriesObserved": 5
@@ -158,7 +158,7 @@
         "promptTokens": 1699,
         "completionTokens": 93,
         "totalTokens": 1792,
-        "cachedTokens": 0
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 4
@@ -270,7 +270,7 @@
         "promptTokens": 1369,
         "completionTokens": 85,
         "totalTokens": 1454,
-        "cachedTokens": 1024
+        "cachedTokens": 0
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -284,7 +284,7 @@
         "promptTokens": 1403,
         "completionTokens": 94,
         "totalTokens": 1497,
-        "cachedTokens": 1024
+        "cachedTokens": 0
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1

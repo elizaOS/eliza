@@ -29,23 +29,12 @@ import {
   slotSavePath,
 } from "./cache-bridge";
 import { findCatalogModel } from "./catalog";
-import { probeHardware } from "./hardware";
-import {
-  estimateQuantizedKvBytesPerToken,
-  KV_SPILL_MIN_CONTEXT,
-  type KvSpillPlan,
-  KvSpillUnsupportedError,
-  planKvSpill,
-  residentKvBudgetFromRamBudget,
-  restoreClassForHardware,
-} from "./kv-spill";
 import {
   diffSnapshots,
   fetchMetricsSnapshot,
   type LocalUsageBlock,
 } from "./llama-server-metrics";
 import { localInferenceRoot } from "./paths";
-import { resolveRamBudget } from "./ram-budget";
 import type { CatalogModel, InstalledModel, LocalRuntimeOptimizations } from "./types";
 import type { VerifierStreamEvent } from "./voice/types";
 
@@ -60,18 +49,6 @@ export interface DflashServerPlan {
   draftGpuLayers: number | "auto";
   kvOffload?: DflashKvOffloadMode;
   disableThinking: boolean;
-  /**
-   * KV-cache spill plan for context > 64k (packages/inference/AGENTS.md §3
-   * item 7). Resolved in `load()` from the catalog + a hardware probe + the
-   * bundle's RAM budget. `null`/absent when the context is short enough that
-   * the whole cache fits resident. When `mode === "spill"` the server is
-   * launched with `--no-kv-offload` so the cold pages live in host RAM, plus
-   * a `--cache-ram` hint sized to the resident pages. A
-   * `KvSpillUnsupportedError` thrown by `planKvSpill` propagates out of
-   * `load()` so the engine surfaces a structured 4xx — there is no
-   * silent-slow fallback.
-   */
-  kvSpillPlan?: KvSpillPlan | null;
 }
 
 export type DflashKvOffloadMode = "cpu" | "gpu" | "split";

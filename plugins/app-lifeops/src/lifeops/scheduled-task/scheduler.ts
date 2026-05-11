@@ -99,6 +99,7 @@ export async function processDueScheduledTasks(
   const runner = createRuntimeScheduledTaskRunner({
     runtime: request.runtime,
     agentId: request.agentId,
+    now: () => request.now,
   });
   const ownerFacts = ownerFactsToView(
     await resolveOwnerFactStore(request.runtime).read(),

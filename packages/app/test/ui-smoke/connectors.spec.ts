@@ -206,7 +206,7 @@ async function installConnectorRoutes(
 }
 
 async function openConnectors(page: Page): Promise<void> {
-  await openAppPath(page, "/connectors");
+  await openAppPath(page, "/apps/plugins");
   await expect(page.getByTestId("connectors-settings-content")).toBeVisible({
     timeout: 30_000,
   });
