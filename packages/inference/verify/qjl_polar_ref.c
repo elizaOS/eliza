@@ -362,3 +362,127 @@ void eliza_polar_mul_mv(const eliza_block_q4_polar * k_blocks,
         y[r] = (float)acc;
     }
 }
+
+/* ---------- Fused attention: GGML_OP_FUSED_ATTN_QJL_TBQ + Polar V variant ----------
+ *
+ * Bit-exact to fused_attn_qjl_tbq_ref in the milady-llama-cpp fork
+ * (ggml/src/ggml-cpu/fused-attn-qjl-tbq.c). The score for one (head hq,
+ * token t) is the QJL attention score with the canonical paper scale, then
+ * scaled by sm_scale:
+ *
+ *   raw[hq,t] = (sqrt(pi/2) / proj_dim) * ||k_t|| * (sum_j sign_j * q_sketch[hq,j]) * sm_scale
+ *
+ * Softmax over t (numerically stabilised by the running max), then the V-mix:
+ *
+ *   out[hq,d] = sum_t softmax_t * dequant_V[hk(hq), t][d]
+ *
+ * where dequant_V for the TBQ3 variant walks 4 block_tbq3_0 chunks per token
+ * (32 elements each), codebook lookup + Hadamard-32 uncondition + ±1 sign
+ * flip, and for the Polar variant decodes one block_q4_polar (128 elements)
+ * per token. The weights are pre-divided by the softmax denominator so the
+ * V-mix accumulator needs no final divide. */
+
+#define FUSED_QJL_SCALE_BASE 1.2533141373155003 /* sqrt(pi/2) */
+
+static void fused_softmax_weights(const float * raw, int n_tokens, float * w_out) {
+    /* Returns 1 on success, leaves w_out untouched on degenerate input. */
+    float m = -INFINITY;
+    for (int t = 0; t < n_tokens; t++) if (raw[t] > m) m = raw[t];
+    if (!isfinite(m)) { for (int t = 0; t < n_tokens; t++) w_out[t] = 0.0f; return; }
+    double l = 0.0;
+    for (int t = 0; t < n_tokens; t++) { float w = expf(raw[t] - m); w_out[t] = w; l += w; }
+    const float inv_l = (l > 0.0) ? (float)(1.0 / l) : 0.0f;
+    for (int t = 0; t < n_tokens; t++) w_out[t] *= inv_l;
+}
+
+static void fused_qjl_scores_one_head(const float * qs,
+                                      const eliza_block_qjl1_256 * pk_head,
+                                      int n_tokens, float sm_scale,
+                                      float * raw_out) {
+    const float scl = (float)(FUSED_QJL_SCALE_BASE / (double)ELIZA_FUSED_PROJ_DIM);
+    for (int t = 0; t < n_tokens; t++) {
+        const eliza_block_qjl1_256 * blk = pk_head + t;
+        const float norm_k = eliza_bf16_to_fp32(blk->norm_bf16);
+        float acc = 0.0f;
+        for (int j = 0; j < ELIZA_FUSED_PROJ_DIM; j++) {
+            const int bit = (blk->qs[j >> 3] >> (j & 7)) & 1;
+            acc += bit ? qs[j] : -qs[j];
+        }
+        raw_out[t] = scl * norm_k * acc * sm_scale;
+    }
+}
+
+void eliza_fused_attn_qjl_tbq3(const float * q_sketch,
+                               const eliza_block_qjl1_256 * packed_k,
+                               const eliza_block_tbq3_0 * packed_v,
+                               int n_heads, int n_kv_heads, int n_tokens,
+                               float sm_scale,
+                               float * out) {
+    if (n_kv_heads <= 0 || n_heads % n_kv_heads != 0 || n_tokens <= 0) return;
+    const int gqa = n_heads / n_kv_heads;
+    float * raw = (float *)malloc((size_t)n_tokens * sizeof(float));
+    float * w   = (float *)malloc((size_t)n_tokens * sizeof(float));
+    if (!raw || !w) { free(raw); free(w); return; }
+
+    for (int hq = 0; hq < n_heads; hq++) {
+        const int hk = hq / gqa;
+        const float * qs = q_sketch + (size_t)hq * ELIZA_FUSED_PROJ_DIM;
+        const eliza_block_qjl1_256 * pk_head = packed_k + (size_t)hk * n_tokens;
+        /* packed_v layout: per kv-head, per token, 4 contiguous tbq3_0 blocks. */
+        const eliza_block_tbq3_0 * pv_head =
+            packed_v + (size_t)hk * n_tokens * ELIZA_FUSED_TBQ_PER_TOKEN;
+        float * out_head = out + (size_t)hq * ELIZA_FUSED_HEAD_DIM;
+
+        fused_qjl_scores_one_head(qs, pk_head, n_tokens, sm_scale, raw);
+        fused_softmax_weights(raw, n_tokens, w);
+
+        for (int d = 0; d < ELIZA_FUSED_HEAD_DIM; d++) out_head[d] = 0.0f;
+        for (int t = 0; t < n_tokens; t++) {
+            const float wt = w[t];
+            if (wt == 0.0f) continue;
+            for (int c = 0; c < ELIZA_FUSED_TBQ_PER_TOKEN; c++) {
+                float dec[32];
+                eliza_tbq3_decode_block_uncond(
+                    pv_head + (size_t)t * ELIZA_FUSED_TBQ_PER_TOKEN + c, dec);
+                float * oc = out_head + c * 32;
+                for (int i = 0; i < 32; i++) oc[i] += wt * dec[i];
+            }
+        }
+    }
+    free(raw); free(w);
+}
+
+void eliza_fused_attn_qjl_polar(const float * q_sketch,
+                                const eliza_block_qjl1_256 * packed_k,
+                                const eliza_block_q4_polar * packed_v,
+                                int n_heads, int n_kv_heads, int n_tokens,
+                                float sm_scale, int use_qjl,
+                                float * out) {
+    if (n_kv_heads <= 0 || n_heads % n_kv_heads != 0 || n_tokens <= 0) return;
+    const int gqa = n_heads / n_kv_heads;
+    float * raw = (float *)malloc((size_t)n_tokens * sizeof(float));
+    float * w   = (float *)malloc((size_t)n_tokens * sizeof(float));
+    if (!raw || !w) { free(raw); free(w); return; }
+
+    for (int hq = 0; hq < n_heads; hq++) {
+        const int hk = hq / gqa;
+        const float * qs = q_sketch + (size_t)hq * ELIZA_FUSED_PROJ_DIM;
+        const eliza_block_qjl1_256 * pk_head = packed_k + (size_t)hk * n_tokens;
+        /* packed_v layout: per kv-head, one block_q4_polar per token. */
+        const eliza_block_q4_polar * pv_head = packed_v + (size_t)hk * n_tokens;
+        float * out_head = out + (size_t)hq * ELIZA_FUSED_HEAD_DIM;
+
+        fused_qjl_scores_one_head(qs, pk_head, n_tokens, sm_scale, raw);
+        fused_softmax_weights(raw, n_tokens, w);
+
+        for (int d = 0; d < ELIZA_FUSED_HEAD_DIM; d++) out_head[d] = 0.0f;
+        for (int t = 0; t < n_tokens; t++) {
+            const float wt = w[t];
+            if (wt == 0.0f) continue;
+            float dec[ELIZA_QK_POLAR];
+            eliza_polar_dequantize_row(pv_head + t, dec, ELIZA_QK_POLAR, use_qjl);
+            for (int d = 0; d < ELIZA_FUSED_HEAD_DIM; d++) out_head[d] += wt * dec[d];
+        }
+    }
+    free(raw); free(w);
+}
