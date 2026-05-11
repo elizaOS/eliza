@@ -53,7 +53,11 @@
       "default": "./dist/dev-settings-banner-style.js",
       "types": "./dist/dev-settings-banner-style.d.ts"
     },
-    "./dev-settings-figlet-heading": "./dist/dev-settings-figlet-heading.js",
+    "./dev-settings-figlet-heading": {
+      "import": "./dist/dev-settings-figlet-heading.js",
+      "default": "./dist/dev-settings-figlet-heading.js",
+      "types": "./dist/dev-settings-figlet-heading.d.ts"
+    },
     "./dev-settings-table": {
       "import": "./dist/dev-settings-table.js",
       "default": "./dist/dev-settings-table.js",
