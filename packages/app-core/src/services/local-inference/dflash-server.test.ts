@@ -3,14 +3,16 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   appendKvOffloadFlags,
   appendOptimizationFlags,
+  dflashDevDisabled,
   dflashEnabled,
   dflashLlamaServer,
   extractStreamingChatDelta,
   getDflashRuntimeStatus,
+  logDflashDevDisabledWarning,
   parseDflashMetrics,
   resolveDflashBinary,
   resolveDflashKvOffload,
@@ -134,6 +136,36 @@ describe("DFlash runtime discovery", () => {
 
     process.env.ELIZA_DFLASH_ENABLED = "1";
     expect(resolveDflashBinary()).toBe(path.join(binDir, "llama-server"));
+  });
+});
+
+describe("MILADY_DFLASH_DISABLE developer kill-switch", () => {
+  it("disables DFlash even when ELIZA_DFLASH_ENABLED forces it on", () => {
+    delete process.env.MILADY_DFLASH_DISABLE;
+    process.env.ELIZA_DFLASH_ENABLED = "1";
+    expect(dflashDevDisabled()).toBe(false);
+    expect(dflashEnabled()).toBe(true);
+
+    process.env.MILADY_DFLASH_DISABLE = "1";
+    expect(dflashDevDisabled()).toBe(true);
+    expect(dflashEnabled()).toBe(false);
+    expect(getDflashRuntimeStatus().reason).toContain("MILADY_DFLASH_DISABLE");
+  });
+
+  it("logs a loud warning when active and is silent otherwise", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      delete process.env.MILADY_DFLASH_DISABLE;
+      logDflashDevDisabledWarning();
+      expect(warn).not.toHaveBeenCalled();
+
+      process.env.MILADY_DFLASH_DISABLE = "1";
+      logDflashDevDisabledWarning();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain("MILADY_DFLASH_DISABLE=1");
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 
