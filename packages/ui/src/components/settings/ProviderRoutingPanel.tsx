@@ -1,3 +1,4 @@
+import type { ModelOption } from "@elizaos/shared";
 import {
   Checkbox,
   Select,
@@ -8,7 +9,6 @@ import {
   TooltipHint,
 } from "@elizaos/ui";
 import { CheckCircle2, Loader2 } from "lucide-react";
-import type { OnboardingOptions } from "../../api";
 import {
   ConfigRenderer,
   defaultRegistry,
@@ -23,7 +23,7 @@ const LOCAL_EMBEDDINGS_TOOLTIP =
 
 export interface ProviderRoutingPanelProps {
   /** All cloud large-tier models, used for the visible primary dropdown. */
-  largeModelOptions: OnboardingOptions["models"]["large"];
+  largeModelOptions: ModelOption[];
   /** Full cloud tier schema (nano/small/medium/large/mega + overrides). */
   cloudModelSchema: CloudModelSchema | null;
   /** Current model values keyed by tier id. */

@@ -325,7 +325,11 @@ export function ApiKeyConfig({
           registry={defaultRegistry}
           pluginId={selectedProvider.id}
           onChange={(key, value) =>
-            handlePluginFieldChange(selectedProvider.id, key, String(value ?? ""))
+            handlePluginFieldChange(
+              selectedProvider.id,
+              key,
+              String(value ?? ""),
+            )
           }
           revealSecret={revealSecret}
         />
