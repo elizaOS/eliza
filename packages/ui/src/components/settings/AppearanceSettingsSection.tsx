@@ -1,4 +1,4 @@
-import { type ResolvedContentPack } from "@elizaos/shared";
+import type { ResolvedContentPack } from "@elizaos/shared";
 import { Button, Input } from "@elizaos/ui";
 import { Check, FolderOpen, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

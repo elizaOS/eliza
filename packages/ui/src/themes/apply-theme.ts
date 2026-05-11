@@ -147,4 +147,3 @@ function removeFontLink(): void {
   if (typeof document === "undefined") return;
   document.getElementById(THEME_FONT_LINK_ID)?.remove();
 }
-
