@@ -64,15 +64,22 @@ def _build_agent_with_transport(
 
 
 def test_build_hermes_agent_returns_open_ai_compat_agent() -> None:
-    """``build_hermes_agent`` returns an ``OpenAICompatAgent`` (callable + cost-tracking)."""
+    """``build_hermes_agent`` returns a callable agent_fn from hermes_adapter.lifeops_bench.
+
+    The factory now delegates to ``hermes_adapter.lifeops_bench.build_lifeops_bench_agent_fn``
+    which returns a closure (not an ``OpenAICompatAgent`` instance). The runner
+    only depends on the call signature ``(history, tools) -> MessageTurn``, so
+    we just assert the factory returns a callable with the expected shape.
+    """
     saved = os.environ.get("HERMES_BASE_URL")
     os.environ["HERMES_BASE_URL"] = "https://hermes.example.com/v1"
     try:
         agent = build_hermes_agent()
-        assert isinstance(agent, OpenAICompatAgent)
-        assert agent.total_cost_usd == 0.0
-        # Lazy: client not constructed until first call
-        assert agent._client is None
+        # Closure-based agent_fn returned by hermes_adapter; runner uses it
+        # only via __call__(history, tools).
+        assert callable(agent)
+        # Not an OpenAICompatAgent (which is reserved for direct-client paths).
+        assert not isinstance(agent, OpenAICompatAgent)
     finally:
         if saved is None:
             os.environ.pop("HERMES_BASE_URL", None)

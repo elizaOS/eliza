@@ -561,6 +561,17 @@ export const calendarAction: Action & {
     "CALENDAR",
     "SCHEDULE",
     "MEETING",
+    // Time-block phrasings — these used to live on the BLOCK action's simile
+    // list, where they shadowed calendar-block creation. They live here now
+    // because "block out 2 hours for deep work" / "carve out a focus block"
+    // is a CALENDAR.create_event request, not an app/website block.
+    "BLOCK_TIME",
+    "CREATE_TIME_BLOCK",
+    "TIME_BLOCK",
+    "DEEP_WORK_BLOCK",
+    "FOCUS_BLOCK",
+    "CARVE_OUT_TIME",
+    "RESERVE_TIME",
     // PRD action-catalog aliases. These resolve to CALENDAR subactions via
     // handler argument routing; see packages/docs/action-prd-map.md.
     "CALENDAR_LIST_UPCOMING",
@@ -712,9 +723,14 @@ export const calendarAction: Action & {
     {
       name: "details",
       description:
-        "Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
+        "Structured calendar fields for create_event / update_event / delete_event. " +
+        "Use ISO-8601 strings for `start` and `end` (e.g. '2026-05-15T14:00:00Z'). " +
+        "Example create_event shape: `{ subaction: 'create_event', title: 'Dentist', details: { calendarId: 'cal_primary', start: '...', end: '...', location: '...' } }`. " +
+        "Example update_event: `{ subaction: 'update_event', details: { eventId: 'event_00040', calendarId: 'cal_primary', start: '...', end: '...' } }`. " +
+        "Use `start`/`end` (aliases `startAt`/`endAt` are also accepted). " +
+        "For check_availability and propose_times, put time-window fields at the TOP LEVEL — not inside `details`.",
       descriptionCompressed:
-        "calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+        "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
       required: false,
       schema: {
         type: "object" as const,
@@ -726,6 +742,8 @@ export const calendarAction: Action & {
           forceSync: { type: "boolean" as const },
           windowDays: { type: "number" as const },
           windowPreset: { type: "string" as const },
+          start: { type: "string" as const },
+          end: { type: "string" as const },
           startAt: { type: "string" as const },
           endAt: { type: "string" as const },
           durationMinutes: { type: "number" as const },
@@ -743,7 +761,10 @@ export const calendarAction: Action & {
     },
     {
       name: "durationMinutes",
-      description: "Meeting length in minutes. Used by propose_times.",
+      description:
+        "Top-level flat field. Meeting length in minutes for propose_times. " +
+        "Example: `{ subaction: 'propose_times', durationMinutes: 30, slotCount: 3, windowStart: '...', windowEnd: '...' }`. " +
+        "Do NOT wrap propose_times args inside a `details` object.",
       required: false,
       schema: { type: "number" as const },
     },
@@ -776,13 +797,16 @@ export const calendarAction: Action & {
     },
     {
       name: "startAt",
-      description: "ISO-8601 start time. Used by check_availability.",
+      description:
+        "Top-level flat field. ISO-8601 start time for check_availability. " +
+        "Example: `{ subaction: 'check_availability', startAt: '2026-05-14T09:00:00Z', endAt: '2026-05-14T10:00:00Z' }`. " +
+        "Do NOT wrap check_availability args inside a `details` object.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "endAt",
-      description: "ISO-8601 end time. Used by check_availability.",
+      description: "Top-level flat field. ISO-8601 end time for check_availability. See `startAt`.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -796,14 +820,16 @@ export const calendarAction: Action & {
     {
       name: "preferredStartLocal",
       description:
-        "Earliest preferred meeting start time-of-day (local HH:MM, 24h).",
+        "Top-level flat field for update_preferences. Earliest preferred meeting start time-of-day (local HH:MM, 24h). " +
+        "Example: `{ subaction: 'update_preferences', preferredStartLocal: '09:00', preferredEndLocal: '17:00', blackoutWindows: [...] }`. " +
+        "Do NOT wrap update_preferences args inside a `details` object.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "preferredEndLocal",
       description:
-        "Latest preferred meeting end time-of-day (local HH:MM, 24h).",
+        "Top-level flat field for update_preferences. Latest preferred meeting end time-of-day (local HH:MM, 24h). See `preferredStartLocal`.",
       required: false,
       schema: { type: "string" as const },
     },

@@ -49,6 +49,8 @@ type Subaction =
 
 type EntityParameters = {
   subaction?: Subaction;
+  /** Alias for `subaction` accepted from the planner's `action` field. */
+  action?: Subaction;
   intent?: string;
   name?: string;
   channel?: LifeOpsMessageChannel;

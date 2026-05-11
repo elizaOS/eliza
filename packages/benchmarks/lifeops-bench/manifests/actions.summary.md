@@ -1,41 +1,90 @@
 # LifeOps Action Manifest — Summary
 
-Generated: 2026-05-10T10:49:54.978Z
+Generated: 2026-05-11T18:41:25.903Z
 Filter: include=[app-contacts, app-lifeops, app-phone, plugin-bluebubbles, plugin-imessage, plugin-todos] exclude=[none] tags=[any] domains=[any] capabilities=[any] surfaces=[any] excludeRisks=[none]
-Total actions: 91
+Total actions: 150
 
 ## Plugin breakdown
 
 | Plugin | Actions |
 | --- | ---: |
-| @elizaos/app-lifeops | 89 |
-| @elizaos/app-phone | 1 |
+| @elizaos/app-lifeops | 149 |
 | @elizaos/plugin-todos | 1 |
 
 ## Domain breakdown
 
 | Domain | Actions |
 | --- | ---: |
-| domain:calendar | 14 |
+| (untagged) | 48 |
+| domain:calendar | 16 |
 | domain:contacts | 1 |
-| domain:finance | 12 |
-| domain:focus | 8 |
-| domain:health | 1 |
+| domain:focus | 11 |
 | domain:messages | 1 |
-| domain:meta | 30 |
-| domain:reminders | 23 |
-| domain:travel | 1 |
+| domain:meta | 20 |
+| domain:reminders | 53 |
 
 ## Risk breakdown
 
 | Risk | Actions |
 | --- | ---: |
-| (no risk) | 53 |
-| risk:financial | 13 |
-| risk:irreversible | 21 |
-| risk:user-visible | 4 |
+| (no risk) | 128 |
+| risk:irreversible | 20 |
+| risk:user-visible | 2 |
 
 ## Actions by domain
+
+### (untagged)
+
+| Action | Plugin | Risk | Capabilities | Surfaces | Description |
+| --- | --- | :---: | --- | --- | --- |
+| `BRIEF` | @elizaos/app-lifeops | — | read | internal | briefing: compose_morning\|compose_evening\|compose_weekly; LifeOpsBriefing shape… |
+| `BRIEF_COMPOSE_EVENING` | @elizaos/app-lifeops | — | read | internal | briefing: compose_morning\|compose_evening\|compose_weekly; LifeOpsBriefing shape… |
+| `BRIEF_COMPOSE_MORNING` | @elizaos/app-lifeops | — | read | internal | briefing: compose_morning\|compose_evening\|compose_weekly; LifeOpsBriefing shape… |
+| `BRIEF_COMPOSE_WEEKLY` | @elizaos/app-lifeops | — | read | internal | briefing: compose_morning\|compose_evening\|compose_weekly; LifeOpsBriefing shape… |
+| `DOC` | @elizaos/app-lifeops | — | read, write, update, schedule | internal | docs: request_signature\|request_approval\|track_deadline\|upload_asset\|collect_id… |
+| `DOC_CLOSE_REQUEST` | @elizaos/app-lifeops | — | read, write, update, schedule | internal | docs: request_signature\|request_approval\|track_deadline\|upload_asset\|collect_id… |
+| `DOC_COLLECT_ID` | @elizaos/app-lifeops | — | read, write, update, schedule | internal | docs: request_signature\|request_approval\|track_deadline\|upload_asset\|collect_id… |
+| `DOC_REQUEST_APPROVAL` | @elizaos/app-lifeops | — | read, write, update, schedule | internal | docs: request_signature\|request_approval\|track_deadline\|upload_asset\|collect_id… |
+| `DOC_REQUEST_SIGNATURE` | @elizaos/app-lifeops | — | read, write, update, schedule | internal | docs: request_signature\|request_approval\|track_deadline\|upload_asset\|collect_id… |
+| `DOC_TRACK_DEADLINE` | @elizaos/app-lifeops | — | read, write, update, schedule | internal | docs: request_signature\|request_approval\|track_deadline\|upload_asset\|collect_id… |
+| `DOC_UPLOAD_ASSET` | @elizaos/app-lifeops | — | read, write, update, schedule | internal | docs: request_signature\|request_approval\|track_deadline\|upload_asset\|collect_id… |
+| `INBOX_UNIFIED` | @elizaos/app-lifeops | — | read | internal | unified inbox: list\|search\|summarize across gmail\|slack\|discord\|telegram\|signal… |
+| `INBOX_UNIFIED_LIST` | @elizaos/app-lifeops | — | read | internal | unified inbox: list\|search\|summarize across gmail\|slack\|discord\|telegram\|signal… |
+| `INBOX_UNIFIED_SEARCH` | @elizaos/app-lifeops | — | read | internal | unified inbox: list\|search\|summarize across gmail\|slack\|discord\|telegram\|signal… |
+| `INBOX_UNIFIED_SUMMARIZE` | @elizaos/app-lifeops | — | read | internal | unified inbox: list\|search\|summarize across gmail\|slack\|discord\|telegram\|signal… |
+| `OWNER_FINANCES` | @elizaos/app-lifeops | — |  |  | owner finances: dashboard\|list_sources\|add_source\|remove_source\|import_csv\|list… |
+| `OWNER_FINANCES_ADD_SOURCE` | @elizaos/app-lifeops | — |  |  | owner finances: dashboard\|list_sources\|add_source\|remove_source\|import_csv\|list… |
+| `OWNER_FINANCES_DASHBOARD` | @elizaos/app-lifeops | — |  |  | owner finances: dashboard\|list_sources\|add_source\|remove_source\|import_csv\|list… |
+| `OWNER_FINANCES_IMPORT_CSV` | @elizaos/app-lifeops | — |  |  | owner finances: dashboard\|list_sources\|add_source\|remove_source\|import_csv\|list… |
+| `OWNER_FINANCES_LIST_SOURCES` | @elizaos/app-lifeops | — |  |  | owner finances: dashboard\|list_sources\|add_source\|remove_source\|import_csv\|list… |
+| `OWNER_FINANCES_LIST_TRANSACTIONS` | @elizaos/app-lifeops | — |  |  | owner finances: dashboard\|list_sources\|add_source\|remove_source\|import_csv\|list… |
+| `OWNER_FINANCES_RECURRING_CHARGES` | @elizaos/app-lifeops | — |  |  | owner finances: dashboard\|list_sources\|add_source\|remove_source\|import_csv\|list… |
+| `OWNER_FINANCES_REMOVE_SOURCE` | @elizaos/app-lifeops | — |  |  | owner finances: dashboard\|list_sources\|add_source\|remove_source\|import_csv\|list… |
+| `OWNER_FINANCES_SPENDING_SUMMARY` | @elizaos/app-lifeops | — |  |  | owner finances: dashboard\|list_sources\|add_source\|remove_source\|import_csv\|list… |
+| `OWNER_FINANCES_SUBSCRIPTION_AUDIT` | @elizaos/app-lifeops | — |  |  | owner finances: dashboard\|list_sources\|add_source\|remove_source\|import_csv\|list… |
+| `OWNER_FINANCES_SUBSCRIPTION_CANCEL` | @elizaos/app-lifeops | — |  |  | owner finances: dashboard\|list_sources\|add_source\|remove_source\|import_csv\|list… |
+| `OWNER_FINANCES_SUBSCRIPTION_STATUS` | @elizaos/app-lifeops | — |  |  | owner finances: dashboard\|list_sources\|add_source\|remove_source\|import_csv\|list… |
+| `OWNER_HEALTH` | @elizaos/app-lifeops | — |  |  | owner health: today\|trend\|by_metric\|status; read-only telemetry |
+| `OWNER_HEALTH_BY_METRIC` | @elizaos/app-lifeops | — |  |  | owner health: today\|trend\|by_metric\|status; read-only telemetry |
+| `OWNER_HEALTH_STATUS` | @elizaos/app-lifeops | — |  |  | owner health: today\|trend\|by_metric\|status; read-only telemetry |
+| `OWNER_HEALTH_TODAY` | @elizaos/app-lifeops | — |  |  | owner health: today\|trend\|by_metric\|status; read-only telemetry |
+| `OWNER_HEALTH_TREND` | @elizaos/app-lifeops | — |  |  | owner health: today\|trend\|by_metric\|status; read-only telemetry |
+| `OWNER_SCREENTIME` | @elizaos/app-lifeops | — |  |  | owner screentime: summary\|today\|weekly\|by_app\|by_website\|activity_report\|time_o… |
+| `OWNER_SCREENTIME_ACTIVITY_REPORT` | @elizaos/app-lifeops | — |  |  | owner screentime: summary\|today\|weekly\|by_app\|by_website\|activity_report\|time_o… |
+| `OWNER_SCREENTIME_BROWSER_ACTIVITY` | @elizaos/app-lifeops | — |  |  | owner screentime: summary\|today\|weekly\|by_app\|by_website\|activity_report\|time_o… |
+| `OWNER_SCREENTIME_BY_APP` | @elizaos/app-lifeops | — |  |  | owner screentime: summary\|today\|weekly\|by_app\|by_website\|activity_report\|time_o… |
+| `OWNER_SCREENTIME_BY_WEBSITE` | @elizaos/app-lifeops | — |  |  | owner screentime: summary\|today\|weekly\|by_app\|by_website\|activity_report\|time_o… |
+| `OWNER_SCREENTIME_SUMMARY` | @elizaos/app-lifeops | — |  |  | owner screentime: summary\|today\|weekly\|by_app\|by_website\|activity_report\|time_o… |
+| `OWNER_SCREENTIME_TIME_ON_APP` | @elizaos/app-lifeops | — |  |  | owner screentime: summary\|today\|weekly\|by_app\|by_website\|activity_report\|time_o… |
+| `OWNER_SCREENTIME_TIME_ON_SITE` | @elizaos/app-lifeops | — |  |  | owner screentime: summary\|today\|weekly\|by_app\|by_website\|activity_report\|time_o… |
+| `OWNER_SCREENTIME_TODAY` | @elizaos/app-lifeops | — |  |  | owner screentime: summary\|today\|weekly\|by_app\|by_website\|activity_report\|time_o… |
+| `OWNER_SCREENTIME_WEEKLY` | @elizaos/app-lifeops | — |  |  | owner screentime: summary\|today\|weekly\|by_app\|by_website\|activity_report\|time_o… |
+| `OWNER_SCREENTIME_WEEKLY_AVERAGE_BY_APP` | @elizaos/app-lifeops | — |  |  | owner screentime: summary\|today\|weekly\|by_app\|by_website\|activity_report\|time_o… |
+| `PERSONAL_ASSISTANT` | @elizaos/app-lifeops | — |  |  | personal assistant workflows: action=book_travel\|scheduling\|sign_document |
+| `PERSONAL_ASSISTANT_BOOK_TRAVEL` | @elizaos/app-lifeops | — |  |  | personal assistant workflows: action=book_travel\|scheduling\|sign_document |
+| `PERSONAL_ASSISTANT_SCHEDULING` | @elizaos/app-lifeops | — |  |  | personal assistant workflows: action=book_travel\|scheduling\|sign_document |
+| `PERSONAL_ASSISTANT_SIGN_DOCUMENT` | @elizaos/app-lifeops | — |  |  | personal assistant workflows: action=book_travel\|scheduling\|sign_document |
+| `WORK_THREAD` | @elizaos/app-lifeops | — |  |  | work-thread lifecycle: create\|steer\|stop\|mark_waiting\|mark_completed\|merge\|atta… |
 
 ### domain:calendar
 
@@ -53,8 +102,10 @@ Total actions: 91
 | `CALENDAR_TRIP_WINDOW` | @elizaos/app-lifeops | — | read, write, update, delete | remote-api, internal | calendar event CRUD + availability + prefs; subactions create_event\|update_even… |
 | `CALENDAR_UPDATE_EVENT` | @elizaos/app-lifeops | — | read, write, update, delete | remote-api, internal | calendar event CRUD + availability + prefs; subactions create_event\|update_even… |
 | `CALENDAR_UPDATE_PREFERENCES` | @elizaos/app-lifeops | — | read, write, update, delete | remote-api, internal | calendar event CRUD + availability + prefs; subactions create_event\|update_even… |
-| `CALENDLY` | @elizaos/app-lifeops | — | read, write | remote-api | calendly: list_event_types\|availability\|upcoming_events\|single_use_link; route … |
-| `SCHEDULING_NEGOTIATION` | @elizaos/app-lifeops | — | read, write, update | internal | multi-turn meeting negotiation: start\|propose\|respond\|finalize\|cancel\|list; onl… |
+| `CONFLICT_DETECT` | @elizaos/app-lifeops | — | read | internal | calendar conflicts: scan_today\|scan_week\|scan_event_proposal; severity warning\|… |
+| `CONFLICT_DETECT_SCAN_EVENT_PROPOSAL` | @elizaos/app-lifeops | — | read | internal | calendar conflicts: scan_today\|scan_week\|scan_event_proposal; severity warning\|… |
+| `CONFLICT_DETECT_SCAN_TODAY` | @elizaos/app-lifeops | — | read | internal | calendar conflicts: scan_today\|scan_week\|scan_event_proposal; severity warning\|… |
+| `CONFLICT_DETECT_SCAN_WEEK` | @elizaos/app-lifeops | — | read | internal | calendar conflicts: scan_today\|scan_week\|scan_event_proposal; severity warning\|… |
 
 ### domain:contacts
 
@@ -62,58 +113,38 @@ Total actions: 91
 | --- | --- | :---: | --- | --- | --- |
 | `ENTITY` | @elizaos/app-lifeops | — | read, write, update, delete | internal | people+relationships: add\|list\|set_identity\|set_relationship\|log_interaction\|me… |
 
-### domain:finance
-
-| Action | Plugin | Risk | Capabilities | Surfaces | Description |
-| --- | --- | :---: | --- | --- | --- |
-| `MONEY` | @elizaos/app-lifeops | risk:financial | read, write, update, delete, execute | remote-api, internal | payments+subscriptions: dashboard\|list_sources\|add_source\|remove_source\|import_… |
-| `MONEY_ADD_SOURCE` | @elizaos/app-lifeops | risk:financial | read, write, update, delete, execute | remote-api, internal | payments+subscriptions: dashboard\|list_sources\|add_source\|remove_source\|import_… |
-| `MONEY_DASHBOARD` | @elizaos/app-lifeops | risk:financial | read, write, update, delete, execute | remote-api, internal | payments+subscriptions: dashboard\|list_sources\|add_source\|remove_source\|import_… |
-| `MONEY_IMPORT_CSV` | @elizaos/app-lifeops | risk:financial | read, write, update, delete, execute | remote-api, internal | payments+subscriptions: dashboard\|list_sources\|add_source\|remove_source\|import_… |
-| `MONEY_LIST_SOURCES` | @elizaos/app-lifeops | risk:financial | read, write, update, delete, execute | remote-api, internal | payments+subscriptions: dashboard\|list_sources\|add_source\|remove_source\|import_… |
-| `MONEY_LIST_TRANSACTIONS` | @elizaos/app-lifeops | risk:financial | read, write, update, delete, execute | remote-api, internal | payments+subscriptions: dashboard\|list_sources\|add_source\|remove_source\|import_… |
-| `MONEY_RECURRING_CHARGES` | @elizaos/app-lifeops | risk:financial | read, write, update, delete, execute | remote-api, internal | payments+subscriptions: dashboard\|list_sources\|add_source\|remove_source\|import_… |
-| `MONEY_REMOVE_SOURCE` | @elizaos/app-lifeops | risk:financial | read, write, update, delete, execute | remote-api, internal | payments+subscriptions: dashboard\|list_sources\|add_source\|remove_source\|import_… |
-| `MONEY_SPENDING_SUMMARY` | @elizaos/app-lifeops | risk:financial | read, write, update, delete, execute | remote-api, internal | payments+subscriptions: dashboard\|list_sources\|add_source\|remove_source\|import_… |
-| `MONEY_SUBSCRIPTION_AUDIT` | @elizaos/app-lifeops | risk:financial | read, write, update, delete, execute | remote-api, internal | payments+subscriptions: dashboard\|list_sources\|add_source\|remove_source\|import_… |
-| `MONEY_SUBSCRIPTION_CANCEL` | @elizaos/app-lifeops | risk:financial | read, write, update, delete, execute | remote-api, internal | payments+subscriptions: dashboard\|list_sources\|add_source\|remove_source\|import_… |
-| `MONEY_SUBSCRIPTION_STATUS` | @elizaos/app-lifeops | risk:financial | read, write, update, delete, execute | remote-api, internal | payments+subscriptions: dashboard\|list_sources\|add_source\|remove_source\|import_… |
-
 ### domain:focus
 
 | Action | Plugin | Risk | Capabilities | Surfaces | Description |
 | --- | --- | :---: | --- | --- | --- |
-| `BLOCK` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock apps+websites; subactions block\|unblock\|status\|request_permission… |
-| `BLOCK_BLOCK` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock apps+websites; subactions block\|unblock\|status\|request_permission… |
-| `BLOCK_LIST_ACTIVE` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock apps+websites; subactions block\|unblock\|status\|request_permission… |
-| `BLOCK_RELEASE` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock apps+websites; subactions block\|unblock\|status\|request_permission… |
-| `BLOCK_REQUEST_PERMISSION` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock apps+websites; subactions block\|unblock\|status\|request_permission… |
-| `BLOCK_STATUS` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock apps+websites; subactions block\|unblock\|status\|request_permission… |
-| `BLOCK_UNBLOCK` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock apps+websites; subactions block\|unblock\|status\|request_permission… |
-| `SCREEN_TIME` | @elizaos/app-lifeops | — | read | device | screen-time+activity reads: summary\|today\|weekly\|weekly_average_by_app\|by_app\|b… |
-
-### domain:health
-
-| Action | Plugin | Risk | Capabilities | Surfaces | Description |
-| --- | --- | :---: | --- | --- | --- |
-| `HEALTH` | @elizaos/app-lifeops | — | read | remote-api | read health/fitness telemetry; subactions today\|trend\|by_metric\|status; metrics… |
+| `BLOCK` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock specific phone apps + desktop websites (NOT calendar time-blocks)… |
+| `BLOCK_BLOCK` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock specific phone apps + desktop websites (NOT calendar time-blocks)… |
+| `BLOCK_LIST_ACTIVE` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock specific phone apps + desktop websites (NOT calendar time-blocks)… |
+| `BLOCK_RELEASE` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock specific phone apps + desktop websites (NOT calendar time-blocks)… |
+| `BLOCK_REQUEST_PERMISSION` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock specific phone apps + desktop websites (NOT calendar time-blocks)… |
+| `BLOCK_STATUS` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock specific phone apps + desktop websites (NOT calendar time-blocks)… |
+| `BLOCK_UNBLOCK` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock specific phone apps + desktop websites (NOT calendar time-blocks)… |
+| `PRIORITIZE` | @elizaos/app-lifeops | — | read | internal | prioritize: rank_todos\|rank_threads\|rank_decisions; topN ranking by urgency × i… |
+| `PRIORITIZE_RANK_DECISIONS` | @elizaos/app-lifeops | — | read | internal | prioritize: rank_todos\|rank_threads\|rank_decisions; topN ranking by urgency × i… |
+| `PRIORITIZE_RANK_THREADS` | @elizaos/app-lifeops | — | read | internal | prioritize: rank_todos\|rank_threads\|rank_decisions; topN ranking by urgency × i… |
+| `PRIORITIZE_RANK_TODOS` | @elizaos/app-lifeops | — | read | internal | prioritize: rank_todos\|rank_threads\|rank_decisions; topN ranking by urgency × i… |
 
 ### domain:messages
 
 | Action | Plugin | Risk | Capabilities | Surfaces | Description |
 | --- | --- | :---: | --- | --- | --- |
-| `MESSAGE` | @elizaos/app-lifeops | risk:irreversible | read, write, update, delete, send, schedule | remote-api | primary message action ops send read_channel read_with_contact search list_chan… |
+| `MESSAGE` | @elizaos/app-lifeops | risk:irreversible | read, write, update, delete, send, schedule | remote-api | primary message action send read_channel read_with_contact search list_channels… |
 
 ### domain:meta
 
 | Action | Plugin | Risk | Capabilities | Surfaces | Description |
 | --- | --- | :---: | --- | --- | --- |
-| `CONNECTOR` | @elizaos/app-lifeops | — | read, write, update, delete | remote-api, internal | connector lifecycle: connect\|disconnect\|verify\|status\|list; registry-driven kin… |
-| `CONNECTOR_CONNECT` | @elizaos/app-lifeops | — | read, write, update, delete | remote-api, internal | connector lifecycle: connect\|disconnect\|verify\|status\|list; registry-driven kin… |
-| `CONNECTOR_DISCONNECT` | @elizaos/app-lifeops | — | read, write, update, delete | remote-api, internal | connector lifecycle: connect\|disconnect\|verify\|status\|list; registry-driven kin… |
-| `CONNECTOR_LIST` | @elizaos/app-lifeops | — | read, write, update, delete | remote-api, internal | connector lifecycle: connect\|disconnect\|verify\|status\|list; registry-driven kin… |
-| `CONNECTOR_STATUS` | @elizaos/app-lifeops | — | read, write, update, delete | remote-api, internal | connector lifecycle: connect\|disconnect\|verify\|status\|list; registry-driven kin… |
-| `CONNECTOR_VERIFY` | @elizaos/app-lifeops | — | read, write, update, delete | remote-api, internal | connector lifecycle: connect\|disconnect\|verify\|status\|list; registry-driven kin… |
+| `CONNECTOR` | @elizaos/app-lifeops | — | read, write, update, delete | remote-api, internal | account-level connector lifecycle: connect(log in)\|disconnect(log out)\|verify\|s… |
+| `CONNECTOR_CONNECT` | @elizaos/app-lifeops | — | read, write, update, delete | remote-api, internal | account-level connector lifecycle: connect(log in)\|disconnect(log out)\|verify\|s… |
+| `CONNECTOR_DISCONNECT` | @elizaos/app-lifeops | — | read, write, update, delete | remote-api, internal | account-level connector lifecycle: connect(log in)\|disconnect(log out)\|verify\|s… |
+| `CONNECTOR_LIST` | @elizaos/app-lifeops | — | read, write, update, delete | remote-api, internal | account-level connector lifecycle: connect(log in)\|disconnect(log out)\|verify\|s… |
+| `CONNECTOR_STATUS` | @elizaos/app-lifeops | — | read, write, update, delete | remote-api, internal | account-level connector lifecycle: connect(log in)\|disconnect(log out)\|verify\|s… |
+| `CONNECTOR_VERIFY` | @elizaos/app-lifeops | — | read, write, update, delete | remote-api, internal | account-level connector lifecycle: connect(log in)\|disconnect(log out)\|verify\|s… |
 | `CREDENTIALS` | @elizaos/app-lifeops | risk:irreversible | read, write, update, execute | device, internal | credentials: fill\|whitelist_add\|whitelist_list\|search\|list\|inject_username\|inje… |
 | `CREDENTIALS_FILL` | @elizaos/app-lifeops | risk:irreversible | read, write, update, execute | device, internal | credentials: fill\|whitelist_add\|whitelist_list\|search\|list\|inject_username\|inje… |
 | `CREDENTIALS_INJECT_PASSWORD` | @elizaos/app-lifeops | risk:irreversible | read, write, update, execute | device, internal | credentials: fill\|whitelist_add\|whitelist_list\|search\|list\|inject_username\|inje… |
@@ -122,20 +153,10 @@ Total actions: 91
 | `CREDENTIALS_SEARCH` | @elizaos/app-lifeops | risk:irreversible | read, write, update, execute | device, internal | credentials: fill\|whitelist_add\|whitelist_list\|search\|list\|inject_username\|inje… |
 | `CREDENTIALS_WHITELIST_ADD` | @elizaos/app-lifeops | risk:irreversible | read, write, update, execute | device, internal | credentials: fill\|whitelist_add\|whitelist_list\|search\|list\|inject_username\|inje… |
 | `CREDENTIALS_WHITELIST_LIST` | @elizaos/app-lifeops | risk:irreversible | read, write, update, execute | device, internal | credentials: fill\|whitelist_add\|whitelist_list\|search\|list\|inject_username\|inje… |
-| `DEVICE_INTENT` | @elizaos/app-lifeops | risk:user-visible | execute, send | device | ONE-SHOT push fan-out to paired devices NOW. NOT for habits/routines/recurring … |
-| `FIRST_RUN` | @elizaos/app-lifeops | — | execute, write | internal | owner first-run: defaults\|customize\|replay; defaults asks wake time once |
-| `LIFEOPS` | @elizaos/app-lifeops | risk:irreversible | execute, update, delete | internal | owner LIFEOPS verb: pause\|resume\|wipe; wipe requires confirmed:true |
-| `MESSAGE_HANDOFF` | @elizaos/app-lifeops | — | execute, update, read | internal | room handoff: enter\|resume\|status; gates agent per resumeOn condition |
-| `PLACE_CALL` | @elizaos/app-phone | risk:user-visible | execute, send | device | Place a phone call via Android Telecom. Requires CALL_PHONE permission. |
-| `PROFILE` | @elizaos/app-lifeops | — | read, write, update | internal | save owner facts+prefs: subactions save\|capture_phone; reminder/escalation poli… |
-| `PROFILE_CAPTURE_PHONE` | @elizaos/app-lifeops | — | read, write, update | internal | save owner facts+prefs: subactions save\|capture_phone; reminder/escalation poli… |
-| `PROFILE_SAVE` | @elizaos/app-lifeops | — | read, write, update | internal | save owner facts+prefs: subactions save\|capture_phone; reminder/escalation poli… |
 | `REMOTE_DESKTOP` | @elizaos/app-lifeops | risk:irreversible | read, write, execute, delete | device, internal | remote-desktop sessions: start\|status\|end\|list\|revoke; start requires confirmed… |
 | `RESOLVE_REQUEST` | @elizaos/app-lifeops | risk:irreversible | execute, update | internal | approve\|reject queued action; requestId optional; covers send_email\|send_messag… |
 | `RESOLVE_REQUEST_APPROVE` | @elizaos/app-lifeops | risk:irreversible | execute, update | internal | approve\|reject queued action; requestId optional; covers send_email\|send_messag… |
 | `RESOLVE_REQUEST_REJECT` | @elizaos/app-lifeops | risk:irreversible | execute, update | internal | approve\|reject queued action; requestId optional; covers send_email\|send_messag… |
-| `SCHEDULE` | @elizaos/app-lifeops | — | read | internal | passive schedule inference activity+screen-time+health: summary \| inspect(sleep… |
-| `TOGGLE_FEATURE` | @elizaos/app-lifeops | — | update | internal | enable\|disable LifeOps feature flag; registry-driven keys (flight-booking, push… |
 | `VOICE_CALL` | @elizaos/app-lifeops | risk:user-visible | execute, send | remote-api | Twilio voice dial: recipientKind=owner\|external\|e164; draft-confirm; approval-q… |
 | `VOICE_CALL_DIAL` | @elizaos/app-lifeops | risk:user-visible | execute, send | remote-api | Twilio voice dial: recipientKind=owner\|external\|e164; draft-confirm; approval-q… |
 
@@ -143,32 +164,56 @@ Total actions: 91
 
 | Action | Plugin | Risk | Capabilities | Surfaces | Description |
 | --- | --- | :---: | --- | --- | --- |
-| `LIFE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | manage personal habits+routines+reminders+alarms+todos+goals; subactions create… |
-| `LIFE_COMPLETE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | manage personal habits+routines+reminders+alarms+todos+goals; subactions create… |
-| `LIFE_CREATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | manage personal habits+routines+reminders+alarms+todos+goals; subactions create… |
-| `LIFE_DELETE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | manage personal habits+routines+reminders+alarms+todos+goals; subactions create… |
-| `LIFE_POLICY_CONFIGURE_ESCALATION` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | manage personal habits+routines+reminders+alarms+todos+goals; subactions create… |
-| `LIFE_POLICY_SET_REMINDER` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | manage personal habits+routines+reminders+alarms+todos+goals; subactions create… |
-| `LIFE_REVIEW` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | manage personal habits+routines+reminders+alarms+todos+goals; subactions create… |
-| `LIFE_SKIP` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | manage personal habits+routines+reminders+alarms+todos+goals; subactions create… |
-| `LIFE_SNOOZE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | manage personal habits+routines+reminders+alarms+todos+goals; subactions create… |
-| `LIFE_UPDATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | manage personal habits+routines+reminders+alarms+todos+goals; subactions create… |
-| `SCHEDULED_TASK` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|dismiss\|cancel\|reo… |
-| `SCHEDULED_TASK_CANCEL` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|dismiss\|cancel\|reo… |
-| `SCHEDULED_TASK_COMPLETE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|dismiss\|cancel\|reo… |
-| `SCHEDULED_TASK_CREATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|dismiss\|cancel\|reo… |
-| `SCHEDULED_TASK_DISMISS` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|dismiss\|cancel\|reo… |
-| `SCHEDULED_TASK_GET` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|dismiss\|cancel\|reo… |
-| `SCHEDULED_TASK_HISTORY` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|dismiss\|cancel\|reo… |
-| `SCHEDULED_TASK_LIST` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|dismiss\|cancel\|reo… |
-| `SCHEDULED_TASK_REOPEN` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|dismiss\|cancel\|reo… |
-| `SCHEDULED_TASK_SKIP` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|dismiss\|cancel\|reo… |
-| `SCHEDULED_TASK_SNOOZE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|dismiss\|cancel\|reo… |
-| `SCHEDULED_TASK_UPDATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|dismiss\|cancel\|reo… |
+| `OWNER_ALARMS` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner alarms: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_ALARMS_COMPLETE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner alarms: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_ALARMS_CREATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner alarms: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_ALARMS_DELETE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner alarms: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_ALARMS_REVIEW` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner alarms: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_ALARMS_SKIP` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner alarms: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_ALARMS_SNOOZE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner alarms: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_ALARMS_UPDATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner alarms: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_GOALS` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner goals: action=create\|update\|delete\|review; backing kind=goal |
+| `OWNER_GOALS_CREATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner goals: action=create\|update\|delete\|review; backing kind=goal |
+| `OWNER_GOALS_DELETE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner goals: action=create\|update\|delete\|review; backing kind=goal |
+| `OWNER_GOALS_REVIEW` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner goals: action=create\|update\|delete\|review; backing kind=goal |
+| `OWNER_GOALS_UPDATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner goals: action=create\|update\|delete\|review; backing kind=goal |
+| `OWNER_REMINDERS` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner reminders: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_REMINDERS_COMPLETE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner reminders: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_REMINDERS_CREATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner reminders: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_REMINDERS_DELETE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner reminders: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_REMINDERS_REVIEW` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner reminders: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_REMINDERS_SKIP` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner reminders: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_REMINDERS_SNOOZE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner reminders: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_REMINDERS_UPDATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner reminders: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_ROUTINES` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner routines: action=create\|update\|delete\|complete\|skip\|snooze\|review\|schedul… |
+| `OWNER_ROUTINES_COMPLETE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner routines: action=create\|update\|delete\|complete\|skip\|snooze\|review\|schedul… |
+| `OWNER_ROUTINES_CREATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner routines: action=create\|update\|delete\|complete\|skip\|snooze\|review\|schedul… |
+| `OWNER_ROUTINES_DELETE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner routines: action=create\|update\|delete\|complete\|skip\|snooze\|review\|schedul… |
+| `OWNER_ROUTINES_REVIEW` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner routines: action=create\|update\|delete\|complete\|skip\|snooze\|review\|schedul… |
+| `OWNER_ROUTINES_SCHEDULE_INSPECT` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner routines: action=create\|update\|delete\|complete\|skip\|snooze\|review\|schedul… |
+| `OWNER_ROUTINES_SCHEDULE_SUMMARY` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner routines: action=create\|update\|delete\|complete\|skip\|snooze\|review\|schedul… |
+| `OWNER_ROUTINES_SKIP` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner routines: action=create\|update\|delete\|complete\|skip\|snooze\|review\|schedul… |
+| `OWNER_ROUTINES_SNOOZE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner routines: action=create\|update\|delete\|complete\|skip\|snooze\|review\|schedul… |
+| `OWNER_ROUTINES_UPDATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner routines: action=create\|update\|delete\|complete\|skip\|snooze\|review\|schedul… |
+| `OWNER_TODOS` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner todos: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_TODOS_COMPLETE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner todos: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_TODOS_CREATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner todos: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_TODOS_DELETE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner todos: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_TODOS_REVIEW` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner todos: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_TODOS_SKIP` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner todos: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_TODOS_SNOOZE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner todos: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `OWNER_TODOS_UPDATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | owner todos: action=create\|update\|delete\|complete\|skip\|snooze\|review |
+| `SCHEDULED_TASKS` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|acknowledge\|dismis… |
+| `SCHEDULED_TASKS_ACKNOWLEDGE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|acknowledge\|dismis… |
+| `SCHEDULED_TASKS_CANCEL` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|acknowledge\|dismis… |
+| `SCHEDULED_TASKS_COMPLETE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|acknowledge\|dismis… |
+| `SCHEDULED_TASKS_CREATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|acknowledge\|dismis… |
+| `SCHEDULED_TASKS_DISMISS` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|acknowledge\|dismis… |
+| `SCHEDULED_TASKS_GET` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|acknowledge\|dismis… |
+| `SCHEDULED_TASKS_HISTORY` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|acknowledge\|dismis… |
+| `SCHEDULED_TASKS_LIST` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|acknowledge\|dismis… |
+| `SCHEDULED_TASKS_REOPEN` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|acknowledge\|dismis… |
+| `SCHEDULED_TASKS_SKIP` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|acknowledge\|dismis… |
+| `SCHEDULED_TASKS_SNOOZE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|acknowledge\|dismis… |
+| `SCHEDULED_TASKS_UPDATE` | @elizaos/app-lifeops | — | read, write, update, delete, schedule | internal | scheduled tasks: list\|get\|create\|update\|snooze\|skip\|complete\|acknowledge\|dismis… |
 | `TODO` | @elizaos/plugin-todos | — | read, write, update, delete | internal | todos: write\|create\|update\|complete\|cancel\|delete\|list\|clear; user-scoped (enti… |
-
-### domain:travel
-
-| Action | Plugin | Risk | Capabilities | Surfaces | Description |
-| --- | --- | :---: | --- | --- | --- |
-| `BOOK_TRAVEL` | @elizaos/app-lifeops | risk:financial | read, write, execute | remote-api | book real flights+hotels; drafts then requires owner approval; syncs calendar |

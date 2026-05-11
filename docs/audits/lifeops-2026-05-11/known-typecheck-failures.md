@@ -13,22 +13,25 @@ Wave 4-B unused/legacy/fallback removal pass.
 
 ## Still failing (out of Wave 4-B scope, > 50 LoC or > 30 min)
 
-### `packages/core/src/runtime/__tests__/action-retrieval.test.ts` — "regex scoring" test
+### `packages/core/src/runtime/__tests__/action-retrieval.test.ts` — "regex scoring" test — **fixed in Wave 5-B**
 
+Original symptom:
 ```
 error: Expected and actual values must be numbers or bigints
   expect(namespaceResponse.results[0].score).toBeGreaterThanOrEqual(0.8);
 ```
 
-Root cause: `retrieveActions({ candidateActions: ["calendar_*"] })` returns
-zero results, so `results[0]` is `undefined`. The wildcard-namespace path in
-`packages/core/src/runtime/action-retrieval.ts` (and the regex-match stage)
-either no longer fires for `<name>_*` patterns, or no longer carries a `score`
-field through the merge step.
+Wave-4-B hypothesis (zero results, `undefined` score) turned out to be wrong.
+Actual root cause: bun's `expect(obj).toMatchObject({ field: expect.any(Number) })`
+followed by `expect(obj.field).toBeGreaterThanOrEqual(N)` triggers a matcher-state
+bug in bun-test where the second assertion reports "Expected and actual values
+must be numbers or bigints" even though both operands are real numbers. Verified
+by reducing to a 5-line repro.
 
-Fix scope: needs investigation of the regex-fusion path in
-`action-retrieval.ts` (lines 360-420 / 553 / 627). Likely > 50 LoC. Wave 5 to
-decide whether to repair the regex stage or relax the test contract.
+Fix (Wave 5-B): split the assertions — use `expect(x.name).toBe(...)` +
+`expect(x.matchedBy).toEqual(expect.arrayContaining(...))` + a direct
+`expect(typeof x.score).toBe("number")` before the numeric comparison. The
+regex-fusion path itself is correct (score = 0.8 exactly).
 
 ### `packages/app-core/src/browser.ts` — ambiguous `ConfigField` / `getPlugins` re-export
 
