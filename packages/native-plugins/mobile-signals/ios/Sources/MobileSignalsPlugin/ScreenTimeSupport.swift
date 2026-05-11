@@ -115,8 +115,13 @@ enum ScreenTimeSupport {
             switch AuthorizationCenter.shared.authorizationStatus {
             case .approved:
                 return "approved"
+            #if compiler(>=6.2)
+            // .approvedWithDataAccess shipped in iOS 26 (Xcode 26 / Swift 6.2).
+            // Older Xcode/SDK combinations don't know the case at all, so it
+            // has to be guarded at compile time, not via #available.
             case .approvedWithDataAccess:
                 return "approved"
+            #endif
             case .denied:
                 return "denied"
             case .notDetermined:
