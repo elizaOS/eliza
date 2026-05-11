@@ -58,6 +58,30 @@ import { ensureMockoonRunning } from "./lifeops-mockoon-bootstrap.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = resolve(__dirname, "..");
+
+// Load eliza/.env into process.env so spawned subprocesses (Python bench,
+// adapters) see CEREBRAS_API_KEY etc. without operators having to source it
+// in their shell.
+const ENV_FILE = join(REPO_ROOT, ".env");
+if (existsSync(ENV_FILE)) {
+  for (const line of readFileSync(ENV_FILE, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (process.env[key] === undefined || process.env[key] === "") {
+      process.env[key] = value;
+    }
+  }
+}
 const BENCH_DIR = join(
   REPO_ROOT,
   "packages",
