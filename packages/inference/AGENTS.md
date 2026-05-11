@@ -11,6 +11,24 @@ The training-side companion is at [`packages/training/AGENTS.md`](../training/AG
 Read both before changing anything that crosses the boundary (artifacts,
 manifest, kernel ABI, GGML pin).
 
+**Fork source.** The patched llama.cpp ships in-tree as a git submodule at
+[`packages/inference/llama.cpp`](llama.cpp) — `elizaOS/llama.cpp @ v1.0.0-eliza`
+(commit `08032d57`; `git submodule update --init --recursive`, which `bun install`
+runs). This is the unified fork: TurboQuant (turbo3/turbo4/turbo3_tcq) + QJL
+(`block_qjl1_256`, `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_FUSED_ATTN_QJL_TBQ`) +
+PolarQuant (`block_q4_polar`, `Q4_POLAR=47`) + the milady Metal/Vulkan/CUDA
+kernels + DFlash spec-decode (`--spec-type dflash`, the `dflash-draft` GGUF arch)
++ the post-refactor `llama-server` (`server-task.cpp` / `server-common.cpp` with
+`grammar_lazy` / `json_schema` / `response_format` / `prefill_assistant`), on
+upstream b8198. Both build paths consume it: `build-llama-cpp-dflash.mjs`
+(desktop/server/Windows/iOS) and `aosp/compile-libllama.mjs` (Android) default to
+the submodule checkout. `ELIZA_DFLASH_LLAMA_CPP_REMOTE` / `_REF` (or `--cache-dir`
+/ `--src-dir`) still force a standalone clone for fork bisects. (`v1.0.0-eliza` is
+the same tree as the prior `v0.4.0-milady` tag, re-tagged on the elizaOS rename. A
+full rebase onto a recent upstream llama.cpp remains a follow-up — the
+conflict-prone surfaces are the quant-slot enums in `ggml-common.h` / `ggml.h` and
+the `Q1_0` block layout, which upstream redefined incompatibly with the fork's.)
+
 ---
 
 ## 1. What we are building
