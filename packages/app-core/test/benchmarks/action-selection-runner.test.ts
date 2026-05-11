@@ -42,7 +42,7 @@ describe("action selection benchmark scoring helpers", () => {
     );
   });
 
-  it("matches planner aliases for social and focus actions", () => {
+  it("matches planner aliases for social, messaging, and BLOCK", () => {
     expect(caseMatches("SOCIAL_POSTING", "POST", undefined)).toBe(true);
     expect(caseMatches("GET_TIMELINE", "POST", undefined)).toBe(true);
     expect(caseMatches("SEARCH_TWITTER", "POST", undefined)).toBe(true);
@@ -54,11 +54,14 @@ describe("action selection benchmark scoring helpers", () => {
       true,
     );
     expect(caseMatches("SEND_DISCORD_MESSAGE", "MESSAGE", undefined)).toBe(true);
-    expect(caseMatches("BLOCK_WEBSITE", "WEBSITE_BLOCK", undefined)).toBe(true);
-    expect(caseMatches("AUTOMATION_FOCUS_BLOCK", "WEBSITE_BLOCK", undefined)).toBe(
+    // Post-consolidation: APP_BLOCK and WEBSITE_BLOCK both fold into BLOCK.
+    expect(caseMatches("BLOCK_WEBSITE", "BLOCK", undefined)).toBe(true);
+    expect(caseMatches("WEBSITE_BLOCK", "BLOCK", undefined)).toBe(true);
+    expect(caseMatches("AUTOMATION_FOCUS_BLOCK", "BLOCK", undefined)).toBe(
       true,
     );
-    expect(caseMatches("PHONE_BLOCK_APPS", "APP_BLOCK", undefined)).toBe(true);
+    expect(caseMatches("PHONE_BLOCK_APPS", "BLOCK", undefined)).toBe(true);
+    expect(caseMatches("APP_BLOCK", "BLOCK", undefined)).toBe(true);
   });
 
   it("matches approval resolution aliases", () => {
@@ -70,16 +73,14 @@ describe("action selection benchmark scoring helpers", () => {
     );
   });
 
-  it("matches atomic device intent broadcast aliases", () => {
-    expect(caseMatches("BROADCAST_INTENT", "DEVICE_INTENT", undefined)).toBe(
-      true,
-    );
-    expect(caseMatches("DEVICE_BROADCAST", "DEVICE_INTENT", undefined)).toBe(
-      true,
-    );
-    expect(caseMatches("MOBILE_REMINDER", "DEVICE_INTENT", undefined)).toBe(
-      true,
-    );
+  it("folds retired DEVICE_INTENT broadcast aliases into MESSAGE", () => {
+    // DEVICE_INTENT was retired. Cross-device broadcasts now route through
+    // MESSAGE; both the retired name and its broadcast aliases normalize
+    // to MESSAGE so old captures still grade against the new surface.
+    expect(caseMatches("BROADCAST_INTENT", "MESSAGE", undefined)).toBe(true);
+    expect(caseMatches("DEVICE_BROADCAST", "MESSAGE", undefined)).toBe(true);
+    expect(caseMatches("MOBILE_REMINDER", "MESSAGE", undefined)).toBe(true);
+    expect(caseMatches("DEVICE_INTENT", "MESSAGE", undefined)).toBe(true);
   });
 
   it("keeps retired check-in aliases out of the benchmark action surface", () => {
@@ -92,6 +93,37 @@ describe("action selection benchmark scoring helpers", () => {
   it("keeps retired memory aliases out of the benchmark action surface", () => {
     expect(caseMatches("MEMORY_SET", "PROFILE", undefined)).toBe(false);
     expect(caseMatches("MEMORY_WRITE", "PROFILE", undefined)).toBe(false);
+  });
+
+  it("folds retired owner-domain names into their post-consolidation parents", () => {
+    // The 2026-05-10 audit split LIFE into per-domain owner parents and
+    // retired RELATIONSHIP/HEALTH/SCREEN_TIME/SUBSCRIPTIONS/AUTOFILL/
+    // PASSWORD_MANAGER/BOOK_TRAVEL/MANAGE_BROWSER_BRIDGE/DEVICE_INTENT.
+    // Old captures with the retired top-level name must still grade
+    // against the new surface.
+    expect(caseMatches("RELATIONSHIP", "ENTITY", undefined)).toBe(true);
+    expect(caseMatches("LIST_CONTACTS", "ENTITY", undefined)).toBe(true);
+    expect(caseMatches("HEALTH", "OWNER_HEALTH", undefined)).toBe(true);
+    expect(caseMatches("SCREEN_TIME", "OWNER_SCREENTIME", undefined)).toBe(
+      true,
+    );
+    expect(caseMatches("BY_APP", "OWNER_SCREENTIME", undefined)).toBe(true);
+    expect(caseMatches("SUBSCRIPTIONS", "OWNER_FINANCES", undefined)).toBe(
+      true,
+    );
+    expect(caseMatches("AUTOFILL", "CREDENTIALS", undefined)).toBe(true);
+    expect(caseMatches("PASSWORD_MANAGER", "CREDENTIALS", undefined)).toBe(
+      true,
+    );
+    expect(caseMatches("BOOK_TRAVEL", "PERSONAL_ASSISTANT", undefined)).toBe(
+      true,
+    );
+    expect(
+      caseMatches("MANAGE_LIFEOPS_BROWSER", "BROWSER", undefined),
+    ).toBe(true);
+    expect(caseMatches("MANAGE_BROWSER_BRIDGE", "BROWSER", undefined)).toBe(
+      true,
+    );
   });
 
   it("matches task and desktop atomic names to canonical benchmark actions", () => {

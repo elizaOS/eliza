@@ -237,8 +237,6 @@ describe("discordDmSensitiveRequestAdapter", () => {
 		const sent = mockDiscord.dmChannel.send.mock.calls[0]?.[0] as {
 			content: string;
 		};
-		expect(sent.content).toContain(
-			"https://cloud.eliza.example/secret/req-1",
-		);
+		expect(sent.content).toContain("https://cloud.eliza.example/secret/req-1");
 	});
 });

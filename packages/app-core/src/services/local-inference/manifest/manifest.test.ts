@@ -22,6 +22,7 @@ function passingBackends() {
       report: "vulkan.txt",
     },
     cuda: { status: "pass" as const, atCommit: "abc1234", report: "cuda.txt" },
+    rocm: { status: "pass" as const, atCommit: "abc1234", report: "rocm.txt" },
     cpu: { status: "pass" as const, atCommit: "abc1234", report: "cpu.txt" },
   };
 }
@@ -247,16 +248,35 @@ describe("validateManifest — contract rejections", () => {
     }
   });
 
-  it("does not require cuda for tiers that don't ship on cuda", () => {
+  it("does not require cuda or rocm for tiers that don't ship on cuda/rocm", () => {
     const m = baseManifest("0_6b");
-    // 0.6B tier doesn't ship on cuda; cuda fail should not block.
+    // 0.6B tier doesn't ship on cuda/rocm; failures there should not block.
     m.kernels.verifiedBackends.cuda = {
       status: "fail",
       atCommit: "abc1234",
       report: "cuda.txt",
     };
+    m.kernels.verifiedBackends.rocm = {
+      status: "fail",
+      atCommit: "abc1234",
+      report: "rocm.txt",
+    };
     const result = validateManifest(m);
     expect(result.ok).toBe(true);
+  });
+
+  it("requires rocm for desktop and server tiers", () => {
+    const m = baseManifest("9b");
+    m.kernels.verifiedBackends.rocm = {
+      status: "fail",
+      atCommit: "abc1234",
+      report: "rocm.txt",
+    };
+    const result = validateManifest(m);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.includes("rocm"))).toBe(true);
+    }
   });
 
   it("requires turbo3_tcq when text ctx > 64k", () => {

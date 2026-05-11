@@ -1,3 +1,4 @@
+export * from "./actions/perpetual-market";
 export * from "./client";
 export * from "./HyperliquidAppView";
 export { HYPERLIQUID_APP_NAME, hyperliquidApp } from "./hyperliquid-app";

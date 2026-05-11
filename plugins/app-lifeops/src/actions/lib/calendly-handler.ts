@@ -35,6 +35,7 @@ type CalendlySubaction =
   | "single_use_link";
 
 interface CalendlyParameters {
+  action?: string;
   subaction?: string;
   intent?: string;
   eventTypeUri?: string;
@@ -279,11 +280,27 @@ export const calendlyAction: Action = {
 
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description:
-        "One of: list_event_types, availability, upcoming_events, single_use_link. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+        "One of: list_event_types, availability, upcoming_events, single_use_link. When omitted, the handler runs an LLM extraction over the conversation to recover it.",
       descriptionCompressed:
         "calendly op: list_event_types|availability|upcoming_events|single_use_link",
+      required: true,
+      schema: {
+        type: "string" as const,
+        enum: [
+          "list_event_types",
+          "availability",
+          "upcoming_events",
+          "single_use_link",
+        ],
+      },
+      examples: ["list_event_types", "availability"],
+    },
+    {
+      name: "subaction",
+      description: "Legacy alias for action.",
+      descriptionCompressed: "legacy calendly op alias",
       required: false,
       schema: {
         type: "string" as const,
@@ -394,6 +411,10 @@ export const calendlyAction: Action = {
     rawParameters !== null
       ? (rawParameters as CalendlyParameters)
       : {}) ?? {}) as CalendlyParameters;
+    const existingParams = {
+      ...rawParams,
+      action: rawParams.action ?? rawParams.subaction,
+    } as Record<string, unknown>;
     const params = (await extractActionParamsViaLlm<
       CalendlyParameters & Record<string, unknown>
     >({
@@ -403,10 +424,10 @@ export const calendlyAction: Action = {
       actionName: "CALENDLY",
       actionDescription: calendlyAction.description ?? "",
       paramSchema: calendlyAction.parameters ?? [],
-      existingParams: rawParams as Record<string, unknown>,
-      requiredFields: ["subaction"],
+      existingParams,
+      requiredFields: ["action"],
     })) as CalendlyParameters;
-    const subaction = parseSubaction(params.subaction);
+    const subaction = parseSubaction(params.action ?? params.subaction);
     const eventTypeUri = coerceString(params.eventTypeUri);
     const startDate = coerceString(params.startDate);
     const endDate = coerceString(params.endDate);

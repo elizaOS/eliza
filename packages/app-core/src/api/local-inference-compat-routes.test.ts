@@ -55,7 +55,7 @@ vi.mock("./auth/sessions", () => ({
   parseSessionCookie: vi.fn(() => null),
 }));
 
-vi.mock("./server-onboarding-compat", () => ({
+vi.mock("./server-onboarding-helpers", () => ({
   isCloudProvisioned: () => false,
 }));
 

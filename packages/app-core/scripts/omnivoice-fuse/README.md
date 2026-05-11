@@ -214,6 +214,14 @@ version at `dlopen` time and refuses to bind a mismatched library.
 | `eliza_inference_asr_transcribe`    | Synchronous ASR forward → UTF-8 transcript.                 |
 | `eliza_inference_free_string`       | Free heap strings the library handed back (errors, future transcript buffers). |
 
+Implementation note: ABI v1 currently completes real TTS, but ASR remains
+fail-closed (`ELIZA_ERR_NOT_IMPLEMENTED`) until a GGUF ASR runtime is wired
+behind `eliza_inference_asr_transcribe`. The fused TTS build keeps the
+OmniVoice LM / MaskGIT path on the selected accelerator, while the audio
+tokenizer / DAC codec region is pinned to CPU inside the same process. That
+avoids the previously observed merged-ggml Metal DAC decode stall without
+launching a second model runtime or duplicating model lifecycle state.
+
 All errors flow through a `char ** out_error` parameter that the
 library populates with a heap-allocated NUL-terminated message.
 Callers MUST free those messages via `eliza_inference_free_string`.

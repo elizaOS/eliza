@@ -183,7 +183,7 @@ describe.runIf(runE2E)("computer-use runtime registration (live e2e)", () => {
 
     expect(pluginNames).toContain("@elizaos/plugin-computeruse");
     expect(actionNames).toEqual(
-      expect.arrayContaining(["COMPUTER_USE", "DESKTOP"]),
+      expect.arrayContaining(["COMPUTER_USE", "WINDOW"]),
     );
     expect(providerNames).toContain("computerState");
     expect(serviceTypes).toContain("computeruse");

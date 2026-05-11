@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { IAgentRuntime, Memory, UUID } from "../../../../types/index.ts";
-import { createTodoAction } from "../actions/create-todo.ts";
-import { listTodosAction } from "../actions/list-todos.ts";
+import type { IAgentRuntime, UUID } from "../../../../types/index.ts";
 import { TodosService } from "../services/todoService.ts";
 
 const AGENT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" as UUID;
@@ -13,22 +11,6 @@ function makeRuntime(overrides?: Partial<IAgentRuntime>): IAgentRuntime {
 		getSetting: () => null,
 		...overrides,
 	} as IAgentRuntime;
-}
-
-function makeMessage(
-	overrides?: Partial<Memory["content"]>,
-	entityId?: UUID,
-): Memory {
-	return {
-		id: "msg-1" as UUID,
-		entityId: entityId ?? USER_ID,
-		roomId: "room-1" as UUID,
-		agentId: AGENT_ID,
-		content: {
-			text: "",
-			...overrides,
-		},
-	} as Memory;
 }
 
 describe("TodosService", () => {
@@ -111,61 +93,5 @@ describe("TodosService", () => {
 			limit: 2,
 		});
 		expect(limited.length).toBeLessThanOrEqual(2);
-	});
-});
-
-describe("createTodoAction handler", () => {
-	it("returns success with id when title provided", async () => {
-		process.env.TODOS_BASE_PATH = `/tmp/todos-action-${Math.random().toString(36).slice(2)}`;
-		const runtime = makeRuntime();
-		const message = makeMessage({}, USER_ID);
-		const result = await createTodoAction.handler(
-			runtime,
-			message,
-			undefined,
-			{ parameters: { title: "Write tests" } },
-			undefined,
-		);
-		expect(result.success).toBe(true);
-		expect(result.data?.id).toBeTruthy();
-	});
-
-	it("returns failure when no title", async () => {
-		const runtime = makeRuntime();
-		const message = makeMessage({}, USER_ID);
-		const result = await createTodoAction.handler(
-			runtime,
-			message,
-			undefined,
-			{},
-			undefined,
-		);
-		expect(result.success).toBe(false);
-	});
-});
-
-describe("listTodosAction handler", () => {
-	it("returns todos after create", async () => {
-		process.env.TODOS_BASE_PATH = `/tmp/todos-list-${Math.random().toString(36).slice(2)}`;
-		const runtime = makeRuntime();
-		const message = makeMessage({}, USER_ID);
-
-		await createTodoAction.handler(
-			runtime,
-			message,
-			undefined,
-			{ parameters: { title: "Listed task" } },
-			undefined,
-		);
-
-		const result = await listTodosAction.handler(
-			runtime,
-			message,
-			undefined,
-			{},
-			undefined,
-		);
-		expect(result.success).toBe(true);
-		expect((result.data as { count: number })?.count).toBeGreaterThanOrEqual(1);
 	});
 });

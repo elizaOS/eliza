@@ -12,16 +12,7 @@
 import { promoteSubactionsToActions } from "../../actions/promote-subactions.ts";
 import { logger } from "../../logger.ts";
 import type { Plugin } from "../../types/index.ts";
-import {
-	checkSecretAction,
-	deleteSecretAction,
-	getSecretAction,
-	listSecretsAction,
-	manageSecretAction,
-	mirrorSecretToVaultAction,
-	requestSecretAction,
-	setSecretAction,
-} from "./actions/index.ts";
+import { secretsAction } from "./actions/manage-secret.ts";
 import {
 	missingSecretsProvider,
 	OnboardingService,
@@ -95,20 +86,15 @@ export const secretsManagerPlugin: Plugin = {
 	services: [SecretsService, PluginActivatorService, OnboardingService],
 
 	// Actions for natural language secret management and onboarding.
-	// SET_SECRET and MANAGE_SECRET are umbrellas; their subactions are
-	// promoted to virtual top-level actions for direct planner picking.
-	// The atomic GET/LIST/CHECK/DELETE/MIRROR actions are also registered
-	// directly so structured callers can invoke them without LLM extraction.
+	// `SECRETS` is the single umbrella action; `promoteSubactionsToActions`
+	// surfaces each enum value of its `action` discriminator as a virtual
+	// top-level action (e.g. `SECRETS_GET`, `SECRETS_LIST`) so the planner
+	// can pick a specific operation directly while structured callers can
+	// still target the umbrella with `action=...`. `SECRETS_UPDATE_SETTINGS`
+	// stays separate — it's a settings mutation, not a secret operation.
 	actions: [
-		...promoteSubactionsToActions(setSecretAction),
-		...promoteSubactionsToActions(manageSecretAction),
-		getSecretAction,
-		listSecretsAction,
-		checkSecretAction,
-		deleteSecretAction,
-		mirrorSecretToVaultAction,
+		...promoteSubactionsToActions(secretsAction),
 		updateSettingsAction,
-		requestSecretAction,
 	],
 
 	// Providers for context injection

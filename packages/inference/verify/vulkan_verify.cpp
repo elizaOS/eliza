@@ -41,6 +41,27 @@ namespace {
     }                                                                         \
 } while (0)
 
+static std::string lower_ascii(const char * s) {
+    std::string out = s ? s : "";
+    for (char & c : out) {
+        if (c >= 'A' && c <= 'Z') c = (char) (c - 'A' + 'a');
+    }
+    return out;
+}
+
+static bool software_vulkan_allowed() {
+    const char * value = std::getenv("ELIZA_ALLOW_SOFTWARE_VULKAN");
+    return value && std::strcmp(value, "1") == 0;
+}
+
+static bool looks_like_software_vulkan_device(const char * name) {
+    const std::string device = lower_ascii(name);
+    return device.find("llvmpipe") != std::string::npos ||
+           device.find("lavapipe") != std::string::npos ||
+           device.find("swiftshader") != std::string::npos ||
+           device.find("software rasterizer") != std::string::npos;
+}
+
 // --- Fixture: union of every kernel's input shape. Only fields relevant to
 // the loaded fixture's `kernel` are populated; the rest stay default. ---
 struct Fixture {
@@ -366,6 +387,14 @@ int main(int argc, char ** argv) {
                     VK_VERSION_MAJOR(props.apiVersion),
                     VK_VERSION_MINOR(props.apiVersion),
                     VK_VERSION_PATCH(props.apiVersion));
+        if (!software_vulkan_allowed() &&
+                looks_like_software_vulkan_device(props.deviceName)) {
+            std::fprintf(stderr,
+                "[vulkan_verify] refusing software Vulkan device '%s'. "
+                "Set ELIZA_ALLOW_SOFTWARE_VULKAN=1 for diagnostics only.\n",
+                props.deviceName);
+            return 2;
+        }
     }
 
     float prio = 1.0f;

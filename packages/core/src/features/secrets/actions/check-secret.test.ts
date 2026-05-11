@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
-import { checkSecretAction } from "./check-secret";
+import { checkSecretHandler } from "./check-secret";
 
 function createRuntime(present: Record<string, boolean>) {
 	return {
@@ -27,9 +27,9 @@ function createMessage() {
 	};
 }
 
-describe("CHECK_SECRET", () => {
+describe("SECRETS action=check", () => {
 	test("reports per-key presence and missing list", async () => {
-		const result = await checkSecretAction.handler(
+		const result = await checkSecretHandler(
 			createRuntime({
 				OPENAI_API_KEY: true,
 				ANTHROPIC_API_KEY: false,
@@ -49,7 +49,7 @@ describe("CHECK_SECRET", () => {
 	});
 
 	test("fails when no keys are provided", async () => {
-		const result = await checkSecretAction.handler(
+		const result = await checkSecretHandler(
 			createRuntime({}) as never,
 			createMessage() as never,
 			undefined,

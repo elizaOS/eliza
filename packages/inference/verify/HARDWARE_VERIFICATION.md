@@ -59,6 +59,9 @@ required hardware/toolchain gates, model path/hash where available, and backend
 evidence. A report with `passRecordable: false`, a skipped graph smoke, or a
 non-zero runner exit is not publishable hardware evidence.
 
+When `--report` / `-Report` is provided, report generation is part of the
+gate. A runner pass without the requested JSON file is not recordable.
+
 ## CUDA Linux x64
 
 Prereqs:
@@ -91,7 +94,7 @@ cd packages/inference/verify
 CUDA_REMOTE=user@cuda-host \
 CUDA_REMOTE_DIR=~/code/eliza \
 ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf \
-./cuda_runner.sh
+./cuda_runner.sh --report hardware-results/cuda-remote-evidence.json
 ```
 
 Fixture-only bring-up is allowed but must not be recorded as runtime-ready:
@@ -102,6 +105,12 @@ CUDA_SKIP_GRAPH_SMOKE=1 ./cuda_runner.sh
 
 That skip mode exits non-zero by design. Use it only to inspect preflight or
 fixture failures, not in CI/pass collection.
+
+For remote collection, `--report` is the local destination. The runner asks the
+remote host to write `CUDA_REMOTE_REPORT` or, by default, a same-basename JSON
+under the remote checkout's `packages/inference/verify/hardware-results/`, then
+copies that target-generated report back. Do not record a local wrapper report
+that lacks remote GPU/toolchain evidence.
 
 ## GH200 / Linux aarch64 CUDA
 
@@ -129,6 +138,11 @@ ELIZA_DFLASH_CMAKE_FLAGS=-DCMAKE_CUDA_ARCHITECTURES=90a
 
 It then delegates to `cuda_runner.sh`, so the same fixture and graph-smoke
 requirements apply.
+
+When `--report hardware-results/gh200-evidence.json` is used, the wrapper also
+writes delegated CUDA evidence to
+`hardware-results/gh200-evidence.cuda.json` unless `GH200_DELEGATE_REPORT` is
+set. Both JSON files should be saved with the raw graph-smoke logs.
 
 ## ROCm Linux x64
 
@@ -184,9 +198,16 @@ cd packages/inference/verify
 
 The runner writes a timestamped evidence log under `hardware-results/`, runs
 the standalone fixture gate, builds `linux-x64-vulkan`, dumps
-`CAPABILITIES.json`, and then runs `make vulkan-dispatch-smoke`. If the build
-only produces symbol/pipeline staging or exits through the required-kernel
-publish gate, the runner stops there and refuses to use stale binaries.
+`CAPABILITIES.json`, and then runs `make vulkan-dispatch-smoke` against the
+managed output directory
+`$ELIZA_STATE_DIR/local-inference/bin/dflash/linux-x64-vulkan` unless
+`ELIZA_DFLASH_VULKAN_BIN_DIR` is explicitly set. If the build only produces
+symbol/pipeline staging or exits through the required-kernel publish gate, the
+runner stops there and refuses to use stale binaries.
+
+Direct `make vulkan-dispatch-smoke` is a native Linux graph-dispatch gate. It
+rejects macOS/MoltenVK by default, prints both the managed output and build-tree
+artifact candidates, and requires a directory containing `libggml-vulkan.so`.
 
 `ELIZA_DFLASH_SKIP_BUILD=1` is only accepted with
 `ELIZA_DFLASH_ALLOW_PREBUILT_VULKAN_SMOKE=1` and an existing
@@ -212,8 +233,12 @@ fixtures through `adb`, records device/Vulkan evidence, and runs all six
 canonical fixtures on device. Standalone fixture success is not enough for a
 runtime-ready claim: the script fails closed unless
 `ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE` points at a built-fork/app graph-dispatch
-report with `backend=vulkan`, `platform=android`,
-`graphOp=GGML_OP_ATTN_SCORE_QJL`, `runtimeReady=true`, and finite `maxDiff`.
+report with `backend=vulkan`, `platform=android`, `runtimeReady=true`, and
+finite `maxDiff` evidence for either all six graph routes
+(`GGML_OP_ATTN_SCORE_QJL`, the three `GGML_OP_ATTN_SCORE_TBQ/*` routes, and
+both `GGML_OP_ATTN_SCORE_POLAR/use_qjl=*` routes) or the five runtime
+capability keys (`turbo3`, `turbo4`, `turbo3_tcq`, `qjl_full`,
+`polarquant`).
 
 ## Windows
 

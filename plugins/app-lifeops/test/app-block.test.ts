@@ -1,15 +1,15 @@
 /**
- * `APP_BLOCK` action test.
+ * `APP_BLOCK` handler test.
  *
  * Closes the gap from `docs/audits/lifeops-2026-05-09/03-coverage-gap-matrix.md`
- * line 438: `appBlockAction` had no executable test.
+ * line 438: the app-block handler had no executable test.
  *
  * Covers the three subactions (`block`, `unblock`, `status`) by mocking the
- * `app-blocker/engine.ts` surface — the single side-effect path the action
- * dispatches into. The action's planner / arg-resolver path is bypassed by
- * passing parameters explicitly through `options.parameters`, so this is a
- * true handler-level integration: arg resolution → access gate → engine
- * dispatch → ActionResult shape.
+ * `app-blocker/engine.ts` surface — the single side-effect path the handler
+ * dispatches into. The planner / arg-resolver path is bypassed by passing
+ * parameters explicitly through `options.parameters`, so this is a true
+ * handler-level integration: arg resolution → access gate → engine dispatch →
+ * ActionResult shape.
  *
  * Owner-only access is exercised via `entityId === agentId` so the
  * `getAppBlockerAccess` helper takes the isAgentSelf shortcut.
@@ -79,14 +79,9 @@ vi.mock("../src/app-blocker/engine.js", () => ({
   },
 }));
 
-// Audit B Defer #1 folded `APP_BLOCK` into the `BLOCK` umbrella; the
-// underlying implementation is exported as `appBlockActionImpl` so this
-// integration test continues to exercise the app-blocker engine dispatch
-// directly. The legacy `appBlockAction` symbol is now an alias for the
-// umbrella (`blockAction`).
-const { appBlockActionImpl: appBlockAction } = await import(
-  "../src/actions/app-block.js"
-);
+// Audit F folded the standalone `APP_BLOCK` action into a handler function;
+// the BLOCK umbrella in `./block.ts` is the only registered action.
+const { runAppBlockHandler } = await import("../src/actions/app-block.js");
 const { createMinimalRuntimeStub } = await import("./first-run-helpers.js");
 
 function ownerMessage(agentId: UUID, text: string): Memory {
@@ -111,12 +106,12 @@ function resetStub(initial: Partial<typeof stubState> = {}) {
   stubCalls.unblock = 0;
 }
 
-describe("APP_BLOCK action", () => {
+describe("runAppBlockHandler", () => {
   it("block subaction dispatches startAppBlock with the supplied package list and duration", async () => {
     const runtime = createMinimalRuntimeStub();
     resetStub({ platform: "android" });
 
-    const result = await appBlockAction.handler?.(
+    const result = await runAppBlockHandler(
       runtime,
       ownerMessage(runtime.agentId, "block twitter for 60 minutes"),
       undefined,
@@ -128,8 +123,6 @@ describe("APP_BLOCK action", () => {
           durationMinutes: 60,
         },
       },
-      undefined,
-      [],
     );
 
     if (!result?.success) {
@@ -152,13 +145,11 @@ describe("APP_BLOCK action", () => {
     const runtime = createMinimalRuntimeStub();
     resetStub({ active: false });
 
-    const result = await appBlockAction.handler?.(
+    const result = await runAppBlockHandler(
       runtime,
       ownerMessage(runtime.agentId, "is anything blocked"),
       undefined,
       { parameters: { subaction: "status" } },
-      undefined,
-      [],
     );
 
     expect(result?.success).toBe(true);
@@ -177,13 +168,11 @@ describe("APP_BLOCK action", () => {
       endsAt: new Date(Date.now() + 30 * 60_000).toISOString(),
     });
 
-    const result = await appBlockAction.handler?.(
+    const result = await runAppBlockHandler(
       runtime,
       ownerMessage(runtime.agentId, "unblock my apps"),
       undefined,
       { parameters: { subaction: "unblock" } },
-      undefined,
-      [],
     );
 
     expect(result?.success).toBe(true);
@@ -201,13 +190,11 @@ describe("APP_BLOCK action", () => {
       endsAt,
     });
 
-    const result = await appBlockAction.handler?.(
+    const result = await runAppBlockHandler(
       runtime,
       ownerMessage(runtime.agentId, "what is blocked right now"),
       undefined,
       { parameters: { subaction: "status" } },
-      undefined,
-      [],
     );
 
     expect(result?.success).toBe(true);
@@ -223,12 +210,5 @@ describe("APP_BLOCK action", () => {
     expect(data?.blockedCount).toBe(1);
     expect(data?.blockedPackageNames).toEqual(["com.twitter.android"]);
     expect(data?.endsAt).toBe(endsAt);
-  });
-
-  it("declares OWNER role gate and the expected similes", () => {
-    expect(appBlockAction.name).toBe("APP_BLOCK");
-    expect(appBlockAction.roleGate?.minRole).toBe("OWNER");
-    expect(appBlockAction.similes ?? []).toContain("BLOCK_APPS");
-    expect(appBlockAction.similes ?? []).toContain("PHONE_FOCUS");
   });
 });

@@ -5,7 +5,7 @@
  */
 
 // Action
-export { sendToAdminAction } from "./action";
+export { escalateAction, sendToAdminAction } from "./action";
 // Providers
 export { adminChatProvider, autonomyStatusProvider } from "./providers";
 // Routes
@@ -25,7 +25,10 @@ export type { AutonomyConfig, AutonomyStatus } from "./types";
 // into an empty `init_X = () => {}`. Without this the on-device
 // mobile agent explodes with `ReferenceError: <name> is not defined`
 // when a consumer dereferences a re-exported binding at runtime.
-import { sendToAdminAction as _bs_1_sendToAdminAction } from "./action";
+import {
+	escalateAction as _bs_1a_escalateAction,
+	sendToAdminAction as _bs_1_sendToAdminAction,
+} from "./action";
 import {
 	adminChatProvider as _bs_2_adminChatProvider,
 	autonomyStatusProvider as _bs_3_autonomyStatusProvider,
@@ -42,6 +45,7 @@ import {
 // collide on a shared `__BUNDLE_SAFETY__` name.
 const __bundle_safety_FEATURES_AUTONOMY_INDEX__ = [
 	_bs_1_sendToAdminAction,
+	_bs_1a_escalateAction,
 	_bs_2_adminChatProvider,
 	_bs_3_autonomyStatusProvider,
 	_bs_4_autonomyRoutes,

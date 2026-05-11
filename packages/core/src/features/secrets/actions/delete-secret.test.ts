@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
-import { deleteSecretAction } from "./delete-secret";
+import { deleteSecretHandler } from "./delete-secret";
 
 function createRuntime(deleteResult: boolean) {
 	return {
@@ -19,9 +19,9 @@ function createRuntime(deleteResult: boolean) {
 	};
 }
 
-describe("DELETE_SECRET", () => {
+describe("SECRETS action=delete", () => {
 	test("deletes the secret in a DM channel", async () => {
-		const result = await deleteSecretAction.handler(
+		const result = await deleteSecretHandler(
 			createRuntime(true) as never,
 			{
 				entityId: "user-1",
@@ -39,7 +39,7 @@ describe("DELETE_SECRET", () => {
 	});
 
 	test("refuses to operate in non-DM channels", async () => {
-		const result = await deleteSecretAction.handler(
+		const result = await deleteSecretHandler(
 			createRuntime(true) as never,
 			{
 				entityId: "user-1",

@@ -46,6 +46,7 @@ import type {
 	MessagePayload,
 	Plugin,
 	PluginEvents,
+	RegisteredEvaluator,
 	Room,
 	RunEventPayload,
 	UUID,
@@ -63,7 +64,7 @@ import {
 // Direct leaf imports — see comment in
 // ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
 // requires bypassing barrels here too.
-import { sendToAdminAction } from "../autonomy/action.ts";
+import { escalateAction } from "../autonomy/action.ts";
 import {
 	adminChatProvider,
 	autonomyStatusProvider,
@@ -75,6 +76,7 @@ const ROLE_OWNER: Role = "OWNER";
 
 // Re-export action and provider modules
 export * from "./actions/index.ts";
+export * from "./evaluators/index.ts";
 // Generic scheduled-prompt TaskWorker (registered automatically by TaskService).
 export {
 	PROMPT_RUNNER_TASK_KIND,
@@ -109,6 +111,8 @@ import { choiceAction } from "./actions/choice.ts";
 import { ignoreAction } from "./actions/ignore.ts";
 import { noneAction } from "./actions/none.ts";
 import { replyAction } from "./actions/reply.ts";
+import { attachmentImageAnalysisEvaluator } from "./evaluators/attachment-image-analysis.ts";
+import { linkExtractionEvaluator } from "./evaluators/link-extraction.ts";
 import { actionStateProvider } from "./providers/actionState.ts";
 import { actionsProvider } from "./providers/actions.ts";
 import { attachmentsProvider } from "./providers/attachments.ts";
@@ -1287,6 +1291,25 @@ export const basicActions = [
 ];
 
 /**
+ * Basic evaluators - inbound auto-capture side-effects.
+ *
+ * - `attachmentImageAnalysisEvaluator` runs when the inbound message has image
+ *   attachments; it analyzes each via IMAGE_DESCRIPTION and writes the result
+ *   into the `image_analyses` memory table.
+ * - `linkExtractionEvaluator` runs when the inbound message text contains an
+ *   http(s) URL; it extracts each URL, optionally fetches a title + body
+ *   summary via TEXT_SMALL, and writes the result into the `links` memory
+ *   table.
+ *
+ * Both are transparent — they never modify the response or consume a planner
+ * slot. They wrap their own model calls in try/catch and log on failure.
+ */
+export const basicEvaluators: RegisteredEvaluator[] = [
+	attachmentImageAnalysisEvaluator,
+	linkExtractionEvaluator,
+];
+
+/**
  * Basic services - essential infrastructure services
  */
 export const basicServices: ServiceClass[] = [
@@ -1306,6 +1329,7 @@ export const basicServices: ServiceClass[] = [
 export const basicCapabilities = {
 	providers: basicProviders,
 	actions: basicActions,
+	evaluators: basicEvaluators,
 	services: basicServices,
 };
 
@@ -1345,7 +1369,7 @@ export interface CapabilityConfig {
 // Provides autonomous operation with continuous agent thinking loop
 const autonomyCapabilities = {
 	providers: [adminChatProvider, autonomyStatusProvider],
-	actions: [withCanonicalActionDocs(sendToAdminAction)],
+	actions: [withCanonicalActionDocs(escalateAction)],
 	services: [AutonomyService] as ServiceClass[],
 	routes: autonomyRoutes,
 };
@@ -1392,7 +1416,10 @@ export function createBasicCapabilitiesPlugin(
 			...(config.enableSecretsManager ? secretsCapability.providers : []),
 			...(config.enablePluginManager ? pluginManagerCapability.providers : []),
 		],
-		evaluators: [...(useAdvanced ? advancedEvaluators : [])],
+		evaluators: [
+			...(config.disableBasic ? [] : basicEvaluators),
+			...(useAdvanced ? advancedEvaluators : []),
+		],
 		services: [
 			...(config.disableBasic ? [] : basicServices),
 			...(useAdvanced ? advancedServices : []),

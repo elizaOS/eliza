@@ -4,6 +4,13 @@
 # Accepts GH200/H200/H100-class hosts. The required shape is arm64 Linux host
 # userspace plus an NVIDIA GPU with compute capability 9.x. It delegates to
 # cuda_runner.sh after pinning the aarch64 CUDA target and sm_90a build arch.
+#
+# Environment overrides:
+#   GH200_DELEGATE_REPORT       cuda_runner.sh JSON path; default is
+#                               <gh200-report>.cuda.json when --report is set
+#   ELIZA_DFLASH_SMOKE_MODEL    required by the delegated CUDA graph smoke
+#   CUDA_BUILD_FORK/CUDA_HOME/ELIZA_DFLASH_*
+#                               forwarded through cuda_runner.sh
 
 set -euo pipefail
 
@@ -12,6 +19,9 @@ REPORT_PATH="${ELIZA_DFLASH_HARDWARE_REPORT:-}"
 STARTED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 FAIL_REASON=""
 GPU_INFO=""
+TOOLCHAIN_INFO=""
+DELEGATE_REPORT_PATH=""
+GRAPH_SMOKE_STATUS="delegated-required"
 
 usage() {
     cat <<'USAGE' >&2
@@ -48,6 +58,16 @@ on_error() {
     fi
 }
 
+model_sha256() {
+    local model="${ELIZA_DFLASH_SMOKE_MODEL:-}"
+    [[ -n "$model" && -f "$model" ]] || return 0
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$model" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$model" | awk '{print $1}'
+    fi
+}
+
 write_report() {
     local exit_code="$1"
     [[ -n "$REPORT_PATH" ]] || return 0
@@ -63,10 +83,14 @@ write_report() {
     HOST_ARCH="$(uname -m 2>/dev/null || true)" \
     TARGET="${CUDA_TARGET:-linux-aarch64-cuda}" \
     GPU_INFO="$GPU_INFO" \
+    TOOLCHAIN_INFO="$TOOLCHAIN_INFO" \
     CMAKE_FLAGS="${ELIZA_DFLASH_CMAKE_FLAGS:-}" \
     MODEL="${ELIZA_DFLASH_SMOKE_MODEL:-}" \
+    MODEL_SHA256="$(model_sha256)" \
+    GRAPH_SMOKE_STATUS="$GRAPH_SMOKE_STATUS" \
+    DELEGATE_REPORT_PATH="$DELEGATE_REPORT_PATH" \
     REPORT_PATH="$REPORT_PATH" \
-    node <<'NODE' || true
+    node <<'NODE'
 const fs = require('node:fs');
 const env = process.env;
 const report = {
@@ -84,12 +108,17 @@ const report = {
     os: 'Linux',
     arch: 'aarch64/arm64',
     hardware: 'H100/H200/GH200-class NVIDIA GPU or compute capability 9.x',
-    delegatedRunner: 'cuda_runner.sh'
+    delegatedRunner: 'cuda_runner.sh',
+    fixtureParity: 'delegated to make cuda-verify',
+    graphSmoke: env.GRAPH_SMOKE_STATUS
   },
   evidence: {
     gpuInfo: env.GPU_INFO || null,
+    toolchainInfo: env.TOOLCHAIN_INFO || null,
     cmakeFlags: env.CMAKE_FLAGS || null,
-    model: env.MODEL || null
+    model: env.MODEL || null,
+    modelSha256: env.MODEL_SHA256 || null,
+    delegatedReport: env.DELEGATE_REPORT_PATH || null
   }
 };
 fs.writeFileSync(env.REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`);
@@ -123,6 +152,7 @@ if [[ -z "$GPU_INFO" ]]; then
     fail "nvidia-smi did not return GPU name/compute capability."
 fi
 echo "$GPU_INFO"
+TOOLCHAIN_INFO="$(nvcc --version 2>/dev/null || true)"
 
 if ! grep -Eq '(H100|H200|GH200|Grace Hopper|9\.[0-9])' <<<"$GPU_INFO"; then
     fail "expected Hopper/GH200-class GPU (name H100/H200/GH200 or compute capability 9.x)."
@@ -133,4 +163,21 @@ if [[ -z "${ELIZA_DFLASH_CMAKE_FLAGS:-}" ]]; then
     export ELIZA_DFLASH_CMAKE_FLAGS='-DCMAKE_CUDA_ARCHITECTURES=90a'
 fi
 
-"$HERE/cuda_runner.sh"
+if [[ -n "$REPORT_PATH" ]]; then
+    if [[ -n "${GH200_DELEGATE_REPORT:-}" ]]; then
+        DELEGATE_REPORT_PATH="$GH200_DELEGATE_REPORT"
+    elif [[ "$REPORT_PATH" == *.json ]]; then
+        DELEGATE_REPORT_PATH="${REPORT_PATH%.json}.cuda.json"
+    else
+        DELEGATE_REPORT_PATH="$REPORT_PATH.cuda.json"
+    fi
+fi
+
+DELEGATE_ARGS=()
+if [[ -n "$DELEGATE_REPORT_PATH" ]]; then
+    DELEGATE_ARGS+=(--report "$DELEGATE_REPORT_PATH")
+fi
+
+if ! "$HERE/cuda_runner.sh" "${DELEGATE_ARGS[@]}"; then
+    fail "delegated cuda_runner.sh failed${DELEGATE_REPORT_PATH:+; see $DELEGATE_REPORT_PATH}"
+fi

@@ -1,3 +1,4 @@
+import { promoteSubactionsToActions } from "../../actions/promote-subactions.ts";
 import { logger } from "../../logger.ts";
 import {
 	type Action,
@@ -6,10 +7,7 @@ import {
 	Role,
 	type UUID,
 } from "../../types/index.ts";
-import { evaluateTrustAction } from "./actions/evaluateTrust.ts";
-import { recordTrustInteractionAction } from "./actions/recordTrustInteraction.ts";
-import { requestElevationAction } from "./actions/requestElevation.ts";
-import { updateRoleAction } from "./actions/roles.ts";
+import { trustAction } from "./actions/trust.ts";
 import { securityEvaluator } from "./evaluators/securityEvaluator.ts";
 import { adminTrustProvider } from "./providers/adminTrust.ts";
 import { roleProvider } from "./providers/roles.ts";
@@ -137,10 +135,7 @@ export function createTrustPlugin(options: TrustPluginOptions = {}): Plugin {
 		description: "Advanced trust and security system for AI agents",
 
 		actions: [
-			updateRoleAction,
-			recordTrustInteractionAction,
-			evaluateTrustAction,
-			requestElevationAction,
+			...promoteSubactionsToActions(trustAction),
 			...(options.enableEvaluators ? trustHookActions : []),
 		],
 
