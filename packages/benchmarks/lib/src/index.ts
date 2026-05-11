@@ -26,3 +26,12 @@ export {
   RETRIEVAL_DEFAULTS_BY_TIER,
   resolveRetrievalDefaults,
 } from "./retrieval-defaults.ts";
+export {
+  type ElizaOneBundleManifest,
+  type ElizaOneModelSize,
+  type ElizaOneReleaseState,
+  ELIZA_ONE_MODEL_SIZES,
+  ELIZA_ONE_RELEASE_STATES,
+  bundleIsPreRelease,
+  readElizaOneBundle,
+} from "./eliza-1-bundle.ts";

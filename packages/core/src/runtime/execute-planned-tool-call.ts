@@ -108,7 +108,11 @@ export async function executePlannedToolCall(
 		return emitToolResult(toolCall, failureResult(action.name, gateFailure));
 	}
 
-	const validation = validateToolArgs(action, normalizeToolArgs(toolCall));
+	const normalizedArgs = expandEnumShortForm(
+		action,
+		normalizeToolArgs(toolCall),
+	);
+	const validation = validateToolArgs(action, normalizedArgs);
 	if (!validation.valid) {
 		return emitToolResult(
 			toolCall,
@@ -390,6 +394,80 @@ function getGateFailure(
 	}
 
 	return undefined;
+}
+
+/**
+ * Wave 2-D: short-form enum completion. When `MILADY_SHORT_FORM_ENUMS=1` is
+ * set AND the action has a single closed-enum parameter, accept three input
+ * shapes from the planner:
+ *
+ *   1. canonical:        `{ <paramName>: "<enum_value>" }`
+ *   2. bare-string:      `"<enum_value>"`  (the entire args is the string)
+ *   3. dispatch-shape:   `{ action: <name>, parameters: "<enum_value>" }`
+ *
+ * Shapes 2 and 3 are expanded into shape 1 here so `validateToolArgs` sees
+ * the full JSON-schema shape and strict validation is unchanged. Anything
+ * else flows through untouched — including planner emissions that don't
+ * match an enum value, which are then caught by `validateToolArgs` and
+ * surfaced as a normal failure.
+ *
+ * No-op when the flag is unset, when the action doesn't fit the
+ * single-enum-parameter pattern, or when the input doesn't look like a
+ * short-form emission.
+ */
+export function expandEnumShortForm(
+	action: Action,
+	args: Record<string, unknown>,
+): Record<string, unknown> {
+	if (process.env.MILADY_SHORT_FORM_ENUMS !== "1") return args;
+	const parameters = action.parameters ?? [];
+	if (parameters.length !== 1) return args;
+	const param = parameters[0];
+	if (!param) return args;
+	const schema = param.schema as {
+		enumValues?: unknown[];
+		enum?: unknown[];
+	};
+	const enumValues = schema.enumValues ?? schema.enum;
+	if (!Array.isArray(enumValues) || enumValues.length === 0) return args;
+	const validValues = new Set(
+		enumValues
+			.filter(
+				(value): value is string | number | boolean =>
+					typeof value === "string" ||
+					typeof value === "number" ||
+					typeof value === "boolean",
+			)
+			.map((value) => String(value)),
+	);
+	if (validValues.size === 0) return args;
+
+	// Shape 1: already the canonical shape — nothing to do.
+	if (
+		typeof args[param.name] === "string" ||
+		typeof args[param.name] === "number" ||
+		typeof args[param.name] === "boolean"
+	) {
+		return args;
+	}
+
+	// Shape 3: `{ parameters: "<enum_value>" }` — the planner used the
+	// PLAN_ACTIONS dispatch envelope with a bare string in `parameters`.
+	// Drop the original `parameters` key after expansion so strict
+	// validation (which forbids unknown fields when `additionalProperties`
+	// is false) doesn't reject the now-canonical args.
+	if (
+		"parameters" in args &&
+		(typeof args.parameters === "string" ||
+			typeof args.parameters === "number" ||
+			typeof args.parameters === "boolean") &&
+		validValues.has(String(args.parameters))
+	) {
+		const { parameters: shortFormValue, ...rest } = args;
+		return { ...rest, [param.name]: shortFormValue };
+	}
+
+	return args;
 }
 
 function normalizeToolArgs(

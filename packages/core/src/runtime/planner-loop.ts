@@ -70,6 +70,24 @@ export {
 	cacheProviderOptions,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
+
+// Wave 2-D: test-only re-exports for the rendering memoization unit tests.
+// Underscore-prefixed so they're impossible to mistake for production API.
+export function __renderAvailableActionsBlockForTests(
+	context: ContextObject,
+): string | null {
+	return renderAvailableActionsBlock(context);
+}
+export function __renderToolForAvailableActionsForTests(
+	tool: ContextObjectTool,
+): string {
+	return renderToolForAvailableActions(tool);
+}
+export function __renderRoutingHintsBlockForTests(
+	context: ContextObject,
+): string | null {
+	return renderRoutingHintsBlock(context);
+}
 export type {
 	ContextObject,
 	EvaluatorEffects,
@@ -539,14 +557,72 @@ function compactToolParameters(parameters: unknown): unknown {
 	};
 }
 
+/**
+ * Module-level memo for `renderToolForAvailableActions`. Wave 2-D speed win.
+ * `ContextObjectTool` instances come from the action registry and are
+ * reference-stable across iterations within a turn (and across turns when the
+ * registry is unchanged), so we can WeakMap the rendered text directly. On
+ * cache miss we fall through to the recompute. WeakMap = no leak when the
+ * tool is GC'd.
+ *
+ * Output bytes are identical to the unmemoized path — the cache-stability
+ * gate guards this.
+ */
+const RENDERED_TOOL_MEMO = new WeakMap<ContextObjectTool, string>();
+
+/**
+ * When `MILADY_SHORT_FORM_ENUMS=1` is set, expose a short-form hint line on
+ * tools whose single parameter is a closed enum. The hint lives on a NEW line
+ * after the existing `parameters: { ... }` JSON so the byte-stable JSON shape
+ * is preserved exactly when the flag is off. The dispatch side (see
+ * `execute-planned-tool-call.ts::expandEnumShortForm`) expands a short-form
+ * string emission back into the full JSON shape before validation.
+ */
+function shortFormEnumHint(tool: ContextObjectTool): string | undefined {
+	if (process.env.MILADY_SHORT_FORM_ENUMS !== "1") return undefined;
+	const action = tool.action;
+	if (!action) return undefined;
+	const parameters = action.parameters ?? [];
+	if (parameters.length !== 1) return undefined;
+	const param = parameters[0];
+	if (!param) return undefined;
+	const enumValues =
+		(param.schema as { enumValues?: unknown[]; enum?: unknown[] }).enumValues ??
+		(param.schema as { enumValues?: unknown[]; enum?: unknown[] }).enum;
+	if (!Array.isArray(enumValues) || enumValues.length === 0) return undefined;
+	const values = enumValues
+		.filter(
+			(value): value is string | number | boolean =>
+				typeof value === "string" ||
+				typeof value === "number" ||
+				typeof value === "boolean",
+		)
+		.map((value) => String(value));
+	if (values.length === 0) return undefined;
+	return `  short_form: <${values.join("|")}>  (sets parameters.${param.name})`;
+}
+
 function renderToolForAvailableActions(tool: ContextObjectTool): string {
+	const memoKey = process.env.MILADY_SHORT_FORM_ENUMS === "1" ? null : tool;
+	if (memoKey !== null) {
+		const cached = RENDERED_TOOL_MEMO.get(memoKey);
+		if (cached !== undefined) return cached;
+	}
 	const description = tool.description?.trim();
 	const parameterSummary = compactToolParameters(tool.parameters);
 	const lines = [`- ${tool.name}:${description ? ` ${description}` : ""}`];
 	if (parameterSummary !== undefined) {
 		lines.push(`  parameters: ${JSON.stringify(parameterSummary)}`);
 	}
-	return lines.join("\n");
+	const enumHint = shortFormEnumHint(tool);
+	if (enumHint) {
+		lines.push(enumHint);
+	}
+	const rendered = lines.join("\n");
+	if (memoKey !== null) {
+		RENDERED_TOOL_MEMO.set(memoKey, rendered);
+	}
+	return rendered;
 }
 
 /**
@@ -558,11 +634,26 @@ function renderToolForAvailableActions(tool: ContextObjectTool): string {
  *
  * Returns `null` when no exposed action has a `routingHint` set, so the
  * planner prompt simply omits the section.
+ *
+ * Wave 2-D: when `MILADY_PROMPT_COMPRESS=1` is set, skip routing-hint rendering
+ * entirely — the Cerebras compress-mode escape hatch trades these hints for a
+ * tighter token budget. Memoized on `context.events` identity; the events
+ * array is immutable per planner iteration (`appendContextEvent` returns a
+ * new array each time).
  */
+const ROUTING_HINTS_MEMO = new WeakMap<
+	NonNullable<ContextObject["events"]>,
+	string | null
+>();
 function renderRoutingHintsBlock(context: ContextObject): string | null {
+	if (process.env.MILADY_PROMPT_COMPRESS === "1") return null;
+	const events = context.events;
+	if (events && ROUTING_HINTS_MEMO.has(events)) {
+		return ROUTING_HINTS_MEMO.get(events) ?? null;
+	}
 	const seen = new Set<string>();
 	const lines: string[] = [];
-	for (const event of context.events ?? []) {
+	for (const event of events ?? []) {
 		if (event.type !== "tool" || !("tool" in event)) continue;
 		const tool = event.tool as ContextObjectTool;
 		const hint = tool.action?.routingHint?.trim();
@@ -572,8 +663,12 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
 		seen.add(key);
 		lines.push(`- ${hint}`);
 	}
-	if (lines.length === 0) return null;
-	return ["# Routing hints", ...lines].join("\n");
+	const result =
+		lines.length === 0 ? null : ["# Routing hints", ...lines].join("\n");
+	if (events) {
+		ROUTING_HINTS_MEMO.set(events, result);
+	}
+	return result;
 }
 
 /**
@@ -620,7 +715,26 @@ function collectExposedTools(context: ContextObject): ContextObjectTool[] {
 	return tools;
 }
 
+/**
+ * Wave 2-D: memo for the joined available-actions block. Keyed on
+ * `context.events` array identity (immutable per iteration) so within-turn
+ * recomputation is free. WeakMap; no leak when the context object is GC'd.
+ *
+ * The short-form-enum env flag flips the per-tool render output, so when
+ * that flag is set we skip the block-level memo to avoid serving a stale
+ * shape. The per-tool memo also self-disables in that mode.
+ */
+const AVAILABLE_ACTIONS_BLOCK_MEMO = new WeakMap<
+	NonNullable<ContextObject["events"]>,
+	string | null
+>();
 function renderAvailableActionsBlock(context: ContextObject): string | null {
+	const events = context.events;
+	const useMemo =
+		events !== undefined && process.env.MILADY_SHORT_FORM_ENUMS !== "1";
+	if (useMemo && AVAILABLE_ACTIONS_BLOCK_MEMO.has(events)) {
+		return AVAILABLE_ACTIONS_BLOCK_MEMO.get(events) ?? null;
+	}
 	const parentAction =
 		typeof context.metadata?.subPlannerParentAction === "string"
 			? context.metadata.subPlannerParentAction
@@ -629,6 +743,9 @@ function renderAvailableActionsBlock(context: ContextObject): string | null {
 	const tools = collectExposedTools(context);
 
 	if (tools.length === 0) {
+		if (useMemo) {
+			AVAILABLE_ACTIONS_BLOCK_MEMO.set(events, null);
+		}
 		return null;
 	}
 
@@ -640,11 +757,15 @@ function renderAvailableActionsBlock(context: ContextObject): string | null {
 			]
 		: [];
 
-	return [
+	const result = [
 		...scope,
 		"# Available Actions",
 		...tools.map(renderToolForAvailableActions),
 	].join("\n");
+	if (useMemo) {
+		AVAILABLE_ACTIONS_BLOCK_MEMO.set(events, result);
+	}
+	return result;
 }
 
 export function parsePlannerOutput(raw: string | GenerateTextResult): {

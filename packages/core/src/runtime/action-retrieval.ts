@@ -101,6 +101,105 @@ const BM25_K1 = 0.9;
 const BM25_B = 0.4;
 const RRF_K = 60;
 
+/**
+ * Per-tier retrieval defaults inlined in core to avoid taking a runtime
+ * dep on `@elizaos-benchmarks/lib`. Kept in sync by hand with
+ * `packages/benchmarks/lib/src/retrieval-defaults.ts` — the benchmark
+ * package is the source of truth (it's where the Pareto sweep emits
+ * recommended values); this copy exists so the runtime can read
+ * `MODEL_TIER` without crossing the dep boundary. If the two drift,
+ * fix this file from the benchmarks copy.
+ */
+const RETRIEVAL_TIER_DEFAULTS: Record<
+	"small" | "mid" | "large" | "frontier",
+	{ topK: number; stageWeights: Partial<Record<RetrievalStageName, number>> }
+> = {
+	small: {
+		topK: 5,
+		stageWeights: {
+			exact: 1.5,
+			regex: 1.3,
+			bm25: 1.2,
+			keyword: 1,
+			embedding: 0.7,
+			contextMatch: 0.9,
+		},
+	},
+	mid: {
+		topK: 8,
+		stageWeights: {
+			exact: 1.4,
+			regex: 1.2,
+			bm25: 1.15,
+			keyword: 1,
+			embedding: 0.85,
+			contextMatch: 1,
+		},
+	},
+	large: {
+		topK: 12,
+		stageWeights: {
+			exact: 1.2,
+			regex: 1.1,
+			bm25: 1,
+			keyword: 1,
+			embedding: 1,
+			contextMatch: 1,
+		},
+	},
+	frontier: {
+		topK: 20,
+		stageWeights: {
+			exact: 1,
+			regex: 1,
+			bm25: 1,
+			keyword: 1.1,
+			embedding: 1.2,
+			contextMatch: 1,
+		},
+	},
+};
+
+// Wave 2-D: Cerebras "compress" mode caps top-K at 8 regardless of tier
+// default. This is an opt-in escape hatch for token-budget-pressed runs;
+// when MILADY_PROMPT_COMPRESS=1 is set we want fewer actions in the
+// available-actions block to keep the prompt tight.
+const COMPRESS_MODE_TOP_K_CAP = 8;
+
+function resolveTierOverridesFromEnv():
+	| { topK: number; stageWeights: Partial<Record<RetrievalStageName, number>> }
+	| undefined {
+	const raw =
+		typeof process !== "undefined"
+			? process.env?.MODEL_TIER?.trim()
+			: undefined;
+	const compress =
+		typeof process !== "undefined" &&
+		process.env?.MILADY_PROMPT_COMPRESS === "1";
+	if (
+		raw !== "small" &&
+		raw !== "mid" &&
+		raw !== "large" &&
+		raw !== "frontier"
+	) {
+		if (compress) {
+			return {
+				topK: COMPRESS_MODE_TOP_K_CAP,
+				stageWeights: {},
+			};
+		}
+		return undefined;
+	}
+	const entry = RETRIEVAL_TIER_DEFAULTS[raw];
+	const topK = compress
+		? Math.min(entry.topK, COMPRESS_MODE_TOP_K_CAP)
+		: entry.topK;
+	return {
+		topK,
+		stageWeights: { ...entry.stageWeights },
+	};
+}
+
 export function retrieveActions(
 	input: RetrieveActionsInput,
 ): ActionRetrievalResponse {
@@ -141,7 +240,9 @@ export function retrieveActions(
 		bm25: rankScores(bm25Scores),
 		embedding: rankScores(embeddingScores),
 	};
-	const stageWeights = input.tierOverrides?.stageWeights;
+	const envOverrides = resolveTierOverridesFromEnv();
+	const effectiveOverrides = input.tierOverrides ?? envOverrides;
+	const stageWeights = effectiveOverrides?.stageWeights;
 	const rrfScores = reciprocalRankFusion(stageRankings, stageWeights);
 	const maxRrf = Math.max(0, ...rrfScores.values());
 	const maxKeyword = Math.max(0, ...keywordScores.values());
@@ -239,7 +340,7 @@ export function retrieveActions(
 	});
 
 	const effectiveLimit =
-		input.tierOverrides?.topK ??
+		effectiveOverrides?.topK ??
 		(Number.isFinite(input.limit) ? input.limit : undefined);
 	const limit = Number.isFinite(effectiveLimit)
 		? Math.max(0, effectiveLimit ?? 0)
