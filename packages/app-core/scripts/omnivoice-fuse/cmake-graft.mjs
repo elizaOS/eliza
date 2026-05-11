@@ -46,6 +46,8 @@ ${SENTINEL}
 # ----------------------------------------------------------------------
 
 if(MILADY_FUSE_OMNIVOICE)
+    find_package(Threads REQUIRED)
+
     # Audio tokenizer tensor names exceed default GGML_MAX_NAME of 64.
     # Mirrored from omnivoice's own CMakeLists.txt.
     add_compile_definitions(GGML_MAX_NAME=128)
@@ -150,7 +152,17 @@ export function appendCmakeGraft({ llamaCppRoot }) {
     );
   }
   const original = fs.readFileSync(cmakePath, "utf8");
-  if (original.includes(SENTINEL)) return false;
+  if (original.includes(SENTINEL)) {
+    const upgraded = original.replace(
+      "if(MILADY_FUSE_OMNIVOICE)\n    # Audio tokenizer",
+      "if(MILADY_FUSE_OMNIVOICE)\n    find_package(Threads REQUIRED)\n\n    # Audio tokenizer",
+    );
+    if (upgraded !== original) {
+      fs.writeFileSync(cmakePath, upgraded, "utf8");
+      return true;
+    }
+    return false;
+  }
   fs.writeFileSync(cmakePath, original + buildGraftSnippet(), "utf8");
   return true;
 }

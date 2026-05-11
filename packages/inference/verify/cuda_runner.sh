@@ -34,6 +34,7 @@ host_arch_target() {
 
 if [[ -n "${CUDA_REMOTE:-}" ]]; then
     REMOTE_DIR="${CUDA_REMOTE_DIR:-~/eliza}/packages/inference/verify"
+    REMOTE_LLAMA_DIR="${ELIZA_DFLASH_LLAMA_DIR:-\$HOME/.cache/eliza-dflash/milady-llama-cpp}"
     echo "[cuda_runner] remote host: $CUDA_REMOTE"
     echo "[cuda_runner] remote dir:  $REMOTE_DIR"
     ssh "$CUDA_REMOTE" "cd $REMOTE_DIR && env \
@@ -41,7 +42,7 @@ if [[ -n "${CUDA_REMOTE:-}" ]]; then
         CUDA_TARGET='${CUDA_TARGET:-}' \
         CUDA_BUILD_FORK='${CUDA_BUILD_FORK:-1}' \
         CUDA_SKIP_GRAPH_SMOKE='${CUDA_SKIP_GRAPH_SMOKE:-0}' \
-        ELIZA_DFLASH_LLAMA_DIR='${ELIZA_DFLASH_LLAMA_DIR:-~/.cache/eliza-dflash/milady-llama-cpp}' \
+        ELIZA_DFLASH_LLAMA_DIR=$REMOTE_LLAMA_DIR \
         ELIZA_DFLASH_LIBGGML_CUDA='${ELIZA_DFLASH_LIBGGML_CUDA:-}' \
         ELIZA_DFLASH_SMOKE_MODEL='${ELIZA_DFLASH_SMOKE_MODEL:-}' \
         ELIZA_DFLASH_SMOKE_CACHE_TYPES='${ELIZA_DFLASH_SMOKE_CACHE_TYPES:-}' \

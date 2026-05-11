@@ -19,6 +19,7 @@
   "latestReports": [
     "reports/porting/2026-05-10/platform-verification-performance-grid.md",
     "reports/porting/2026-05-11/remaining-work-ledger.md",
+    "verify/HARDWARE_VERIFICATION.md",
     "verify/CUDA_VERIFICATION.md"
   ],
   "kernels": [
@@ -207,13 +208,13 @@
       "kernelVerification": "needs-hardware",
       "runtimeDispatch": "needs-hardware",
       "deviceRun": "needs-hardware",
-      "nextGate": "Run make -C packages/inference/verify cuda-verify on an NVIDIA host."
+      "nextGate": "Run ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./cuda_runner.sh on an NVIDIA host."
     },
     "linux-x64-rocm": {
       "kernelVerification": "needs-hardware",
       "runtimeDispatch": "needs-hardware",
       "deviceRun": "needs-hardware",
-      "nextGate": "Run HIP/ROCm parity after CUDA fixture verification is green."
+      "nextGate": "Run ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./rocm_runner.sh on an AMD ROCm host."
     },
     "linux-x64-vulkan": {
       "kernelVerification": "standalone-verified",
@@ -231,7 +232,7 @@
       "kernelVerification": "needs-hardware",
       "runtimeDispatch": "needs-hardware",
       "deviceRun": "needs-hardware",
-      "nextGate": "Build and run cuda-verify on GH200/H100/H200-class aarch64 CUDA host."
+      "nextGate": "Run ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./gh200_runner.sh on a GH200/H100/H200 aarch64 CUDA host."
     },
     "android-arm64-cpu": {
       "kernelVerification": "needs-hardware",
@@ -279,13 +280,13 @@
       "kernelVerification": "needs-hardware",
       "runtimeDispatch": "needs-hardware",
       "deviceRun": "needs-hardware",
-      "nextGate": "Run native Windows CUDA build and cuda-verify on NVIDIA hardware."
+      "nextGate": "Run pwsh -File packages/inference/verify/windows_runner.ps1 -Backend cuda -Model C:\\models\\eliza-1-smoke.gguf on NVIDIA hardware."
     },
     "windows-x64-vulkan": {
       "kernelVerification": "needs-hardware",
       "runtimeDispatch": "needs-hardware",
       "deviceRun": "needs-hardware",
-      "nextGate": "Run native Windows Vulkan graph smoke on Intel/AMD/NVIDIA drivers."
+      "nextGate": "Run pwsh -File packages/inference/verify/windows_runner.ps1 -Backend vulkan -Model C:\\models\\eliza-1-smoke.gguf on native Windows Vulkan."
     },
     "windows-arm64-cpu": {
       "kernelVerification": "needs-hardware",
@@ -309,7 +310,7 @@
       "kernelVerification": "needs-hardware",
       "runtimeDispatch": "needs-hardware",
       "deviceRun": "needs-hardware",
-      "nextGate": "Run fused CUDA smoke after cuda-verify passes."
+      "nextGate": "Run CUDA hardware runner first, then fused CUDA voice/runtime smoke on the same host."
     },
     "linux-x64-vulkan-fused": {
       "kernelVerification": "standalone-verified",
@@ -333,7 +334,7 @@
       "kernelVerification": "needs-hardware",
       "runtimeDispatch": "needs-hardware",
       "deviceRun": "needs-hardware",
-      "nextGate": "Run fused Windows CUDA smoke after native cuda-verify passes."
+      "nextGate": "Run Windows CUDA hardware runner first, then fused Windows CUDA voice/runtime smoke."
     }
   }
 }

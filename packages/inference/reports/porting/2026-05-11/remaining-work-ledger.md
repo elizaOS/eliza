@@ -30,7 +30,7 @@ with the status below.
 | CUDA | API/preprocessor surface exists; no hardware run on this machine. | `nvcc` unavailable on macOS. |
 | iOS | Static archives and embedded metallib can be built; a physical-device XCTest smoke entrypoint now exists, but no on-device PASS has been recorded. | `packages/app-core/scripts/ios-xcframework/run-physical-device-smoke.mjs` fails clearly when no connected physical iPhone/iPad is present; graph capability bits still block publish. |
 | Voice fusion | JS lifecycle/FFI scaffold exists; production fused `libelizainference` is not complete. | `voice/ffi-bindings.ts` expects ABI v1; real omnivoice-backed library still needs build/runtime verification. |
-| Eliza-1 bundles | Schema/catalog/publish gates exist; real release bundles do not. | No checked-in weight-derived manifests, hashes, evals, or HF upload evidence. |
+| Eliza-1 bundles | Schema/catalog/publish gates and release-evidence gates exist; real release bundles do not. | `packages/training/scripts/publish/orchestrator.py` now requires `evidence/release.json`, `checksums/SHA256SUMS`, per-backend runtime dispatch reports, and platform evidence before any dry-run/upload path can pass. No checked-in weight-derived manifests or HF upload evidence exist yet. |
 
 ## P0 Blockers
 
@@ -162,6 +162,10 @@ The lowest-duplication design is lazy regional loading from one bundle:
   format/version in the manifest.
 - Generate release fixtures from the final quantized bundles, not synthetic
   reference fixtures.
+- Populate `evidence/release.json` and `checksums/SHA256SUMS` from the exact
+  final bundle bytes. Every supported backend also needs a `*_dispatch.json`
+  report with `runtimeReady=true` and a matching platform evidence JSON before
+  the publish dry-run can pass.
 - Run publish gates: text eval, TTS real-time factor, ASR WER, voice loop,
   DFlash acceptance, 30-turn endurance, memory/thermal, and per-backend kernel
   verification.

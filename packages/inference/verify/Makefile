@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-qjl-polar metal metal-verify metal-verify-multiblock metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -117,6 +117,21 @@ vulkan-verify: vulkan_verify vulkan-spirv reference-test
 	./vulkan_verify ../vulkan/polar.spv fixtures/polar.json
 	@echo "[kernels/verify] vulkan polar + QJL residual..."
 	./vulkan_verify ../vulkan/polar.spv fixtures/polar_qjl.json
+
+# Native Linux end-to-end smoke for the Vulkan backend. This first runs the
+# standalone fixture verifier, then builds the patched fork target and runs the
+# graph-dispatch smoke below. It intentionally rejects software ICDs unless
+# ELIZA_ALLOW_SOFTWARE_VULKAN=1 is set, because lavapipe/MoltenVK are not a
+# native Linux desktop driver signoff.
+vulkan-native-smoke:
+	./linux_vulkan_smoke.sh
+
+# Android on-device standalone Vulkan smoke. Cross-compiles vulkan_verify with
+# the NDK, pushes the verifier + SPIR-V + fixtures via adb, and runs all six
+# fixture checks on the physical device. This is not a graph-dispatch pass; it
+# proves the same SPIR-V works on Adreno/Mali-class drivers.
+android-vulkan-smoke:
+	./android_vulkan_smoke.sh
 
 # Metal harness (macOS only). Requires xcrun on PATH.
 metal: metal_verify
@@ -463,6 +478,8 @@ endif
 # milady kernels in default.metallib.
 ELIZA_DFLASH_METAL_BUILD_DIR ?= $(ELIZA_DFLASH_LLAMA_DIR)/build/darwin-arm64-metal
 ELIZA_DFLASH_METAL_BIN_DIR   ?= $(ELIZA_DFLASH_METAL_BUILD_DIR)/bin
+ELIZA_DFLASH_VULKAN_BUILD_DIR ?= $(ELIZA_DFLASH_LLAMA_DIR)/build/linux-x64-vulkan
+ELIZA_DFLASH_VULKAN_BIN_DIR   ?= $(ELIZA_DFLASH_VULKAN_BUILD_DIR)/bin
 
 dispatch-smoke: dispatch_smoke
 	@echo "[dispatch-smoke] running against $(ELIZA_DFLASH_METAL_BIN_DIR)"
@@ -486,6 +503,26 @@ dispatch_smoke: dispatch_smoke.mm
 	    -Wl,-rpath,$(ELIZA_DFLASH_METAL_BIN_DIR) \
 	    -lm -o dispatch_smoke
 
+vulkan-dispatch-smoke: vulkan_dispatch_smoke
+	@echo "[vulkan-dispatch-smoke] running against $(ELIZA_DFLASH_VULKAN_BIN_DIR)"
+	LD_LIBRARY_PATH=$(ELIZA_DFLASH_VULKAN_BIN_DIR):$$LD_LIBRARY_PATH \
+	DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_VULKAN_BIN_DIR):$$DYLD_LIBRARY_PATH \
+	  ./vulkan_dispatch_smoke
+
+vulkan_dispatch_smoke: vulkan_dispatch_smoke.cpp
+	@if [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.so" ] && [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.dylib" ]; then \
+	    echo "[vulkan-dispatch-smoke] missing libggml-vulkan under $(ELIZA_DFLASH_VULKAN_BIN_DIR)"; \
+	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-vulkan' on a Linux Vulkan host first."; \
+	    exit 1; \
+	fi
+	$(CXX) $(CXXFLAGS) \
+	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include \
+	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/src \
+	    vulkan_dispatch_smoke.cpp \
+	    -L$(ELIZA_DFLASH_VULKAN_BIN_DIR) -lggml-base -lggml-vulkan -lggml-cpu -lggml \
+	    -Wl,-rpath,$(ELIZA_DFLASH_VULKAN_BIN_DIR) \
+	    -lm -o vulkan_dispatch_smoke
+
 clean:
-	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify metal_bench cpu_bench cuda_verify dispatch_smoke
+	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify metal_bench cpu_bench cuda_verify dispatch_smoke vulkan_dispatch_smoke
 	rm -f ../vulkan/*.spv
