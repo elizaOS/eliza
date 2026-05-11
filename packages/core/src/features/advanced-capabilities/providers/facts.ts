@@ -37,6 +37,43 @@ const DEFAULT_FACT_CONFIDENCE = 0.6;
 const CANDIDATE_POOL_PER_SEARCH = 20;
 const TOP_PER_KIND = 6;
 
+/**
+ * Internal timeout for the embedding seed that drives FACTS retrieval. The
+ * provider runtime gives every provider 30s for its full state-composition
+ * pass; if `useModel(TEXT_EMBEDDING, ...)` hangs (e.g. the local llama.cpp
+ * embedding backend failed to build or the remote embedding endpoint is
+ * unreachable) we burn the full 30s on every turn waiting for the outer
+ * cut. Race the embedding call against a much shorter internal limit and
+ * fall through to the `catch` block (which returns empty facts) so the
+ * provider degrades to "no facts" instead of "30s of dead air per turn".
+ *
+ * 3s is comfortably above a healthy embedding round-trip (warm local
+ * bge-small-en-v1.5 returns in ~50-150ms; warm cloud endpoint in
+ * ~100-400ms) and well below the 30s outer cut.
+ */
+const EMBEDDING_TIMEOUT_MS = 3000;
+
+async function withTimeout<T>(
+	promise: Promise<T>,
+	ms: number,
+	label: string,
+): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			promise,
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(
+					() => reject(new Error(`${label} timed out after ${ms}ms`)),
+					ms,
+				);
+			}),
+		]);
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+}
+
 function readFactMetadata(memory: Memory): FactMetadata {
 	const meta = memory.metadata;
 	if (!meta || typeof meta !== "object" || Array.isArray(meta)) return {};
@@ -230,9 +267,13 @@ const factsProvider: Provider = {
 			lastMessageLines.reverse();
 			const last5Messages = lastMessageLines.join("\n");
 
-			const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-				text: last5Messages,
-			});
+			const embedding = await withTimeout(
+				runtime.useModel(ModelType.TEXT_EMBEDDING, {
+					text: last5Messages,
+				}),
+				EMBEDDING_TIMEOUT_MS,
+				"FACTS provider: embedding call",
+			);
 
 			// Two parallel searches, one room-scoped and one entity-scoped, both
 			// over the `facts` table. We over-fetch so that the in-memory kind
