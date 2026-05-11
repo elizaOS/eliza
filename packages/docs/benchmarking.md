@@ -122,6 +122,89 @@ ELIZA_BENCH_TOKEN=<token> \
 bun run lifeops:eliza
 ```
 
+## Personality benchmark
+
+The personality bench is a separate harness that tests whether an agent:
+
+- shuts up when asked,
+- holds a style (`be terse`, haiku, no hedging, no emojis) across unrelated turns,
+- respects per-user traits (`no emojis`, `no buddy/friend`, `code blocks only`, ...),
+- escalates / de-escalates cleanly when the user pushes harder,
+- isolates per-user vs global scope (admin can change globally, regular user gets a per-user override only).
+
+```sh
+bun run personality:bench
+```
+
+Runs all 200 W3-2 personality scenarios against three agent profiles
+(`eliza`, `hermes`, `openclaw`) on Cerebras `gpt-oss-120b`. Each agent is
+LLM-only — what differs is the system prompt. Pure conversational, no
+tools, no Mockoon, no PGLite.
+
+The full run is ~15–25 min wall depending on Cerebras latency and costs
+roughly $1–$2 in tokens. Trajectories + verdicts land at
+`~/.milady/runs/personality/personality-multiagent-<ts>/report.md` with a
+side-by-side comparison.
+
+### Per-agent runs
+
+```sh
+bun run personality:bench:eliza
+bun run personality:bench:hermes
+bun run personality:bench:openclaw
+```
+
+Each is the same orchestrator with `MILADY_PERSONALITY_AGENT` pinned. The
+multi-agent aggregator still runs at the end — it just produces a
+report with one column.
+
+### Tuning knobs (env only)
+
+| Env var | Default | What it does |
+|---|---|---|
+| `MILADY_PERSONALITY_AGENT` | `all` | `all` / `eliza` / `hermes` / `openclaw`. |
+| `MILADY_PERSONALITY_LIMIT` | `200` | Scenarios per agent. Scenarios are bucket-interleaved so `LIMIT=5` covers all 5 buckets. |
+| `MILADY_PERSONALITY_MODEL` | `gpt-oss-120b` | Cerebras model id. |
+| `MILADY_PERSONALITY_CONCURRENCY` | `1` | Scenarios in flight per agent (sequential across agents). |
+| `MILADY_PERSONALITY_SCENARIO_DIR` | `test/scenarios/personality` | Override scenario root. |
+| `PERSONALITY_JUDGE_ENABLE_LLM` | _auto_ | `0` disables the LLM judge layer (faster, slightly less accurate). |
+| `PERSONALITY_JUDGE_STRICT` | `0` | Set to `1` to collapse `NEEDS_REVIEW` → `FAIL`. |
+| `CEREBRAS_API_KEY` | _(required)_ | Sourced from `eliza/.env`. |
+
+No CLI flags — every knob is an env var.
+
+### Reading the report
+
+`~/.milady/runs/personality/personality-multiagent-<ts>/report.md`:
+
+- **Summary:** agent × {scenarios, PASS, FAIL, NEEDS_REVIEW, %Pass, cost, wall}.
+- **Per-bucket × agent:** PASS/total cell per (bucket, agent).
+- **Cross-agent diffs:**
+  - Scenarios where exactly one agent passed (capability win).
+  - Scenarios where ALL agents failed (uniform gap — usually the rubric or the W3-2 mapping needs attention).
+  - Scenarios flagged NEEDS_REVIEW by ALL agents (operator review).
+- **NEEDS_REVIEW list:** full per-(scenario, agent) view for triage.
+- **Per-agent run dirs:** absolute paths to drill into a scenario.
+
+`report.json` is the machine-readable rollup (`schema_version: "personality-bench-multiagent-v1"`).
+
+### Just grade an existing run dir
+
+The W3-3 grader still works standalone:
+
+```sh
+bun run personality:judge --run-dir <run-dir> --output report.md --output-json report.json
+```
+
+### Calibration
+
+```sh
+bun run personality:bench:calibrate
+```
+
+Runs the W3-3 calibration suite (70 hand-graded scenarios; current
+agreement 100%, false-positive 0%). Useful before changing a rubric.
+
 ## Related scripts
 
 - `scripts/lifeops-full-run.mjs` — the orchestrator (this doc).
