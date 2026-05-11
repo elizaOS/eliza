@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=70.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-adapter"
+version = "0.1.0"
+description = "Benchmark adapter for the hermes-agent (NousResearch) tool-calling LLM agent"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hermes_adapter*"]

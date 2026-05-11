@@ -1,43 +1,8 @@
-import type { Plugin } from "../../../types/index.ts";
-import { type IAgentRuntime, logger } from "../../../types/index.ts";
+// Todo CRUD is exposed through the `TODO` umbrella in @elizaos/plugin-todos
+// (planner surface) and `OWNER_TODOS` in app-lifeops (owner-store surface).
+// This module exports only the provider, service, and types used by those
+// callers — there are no leaf actions registered here.
 
-import { completeTodoAction } from "./actions/complete-todo.ts";
-import { createTodoAction } from "./actions/create-todo.ts";
-import { deleteTodoAction } from "./actions/delete-todo.ts";
-import { editTodoAction } from "./actions/edit-todo.ts";
-import { listTodosAction } from "./actions/list-todos.ts";
-import { todosProvider } from "./providers/todos.ts";
-
-export const todosPlugin: Plugin = {
-	name: "todos",
-	description:
-		"Per-user todo list. Create, complete, list, edit, and delete todo items scoped to each user. The TODO umbrella action is provided by @elizaos/plugin-todos; this plugin exposes only the leaf CRUD actions.",
-
-	providers: [todosProvider],
-
-	actions: [
-		createTodoAction,
-		completeTodoAction,
-		listTodosAction,
-		editTodoAction,
-		deleteTodoAction,
-	],
-
-	async init(
-		_config: Record<string, string>,
-		_runtime: IAgentRuntime,
-	): Promise<void> {
-		logger.info("[TodosPlugin] Initialized");
-	},
-};
-
-export default todosPlugin;
-
-export { completeTodoAction } from "./actions/complete-todo.ts";
-export { createTodoAction } from "./actions/create-todo.ts";
-export { deleteTodoAction } from "./actions/delete-todo.ts";
-export { editTodoAction } from "./actions/edit-todo.ts";
-export { listTodosAction } from "./actions/list-todos.ts";
 export { todosProvider } from "./providers/todos.ts";
 export { getTodosService, TodosService } from "./services/todoService.ts";
 export type {

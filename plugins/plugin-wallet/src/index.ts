@@ -17,7 +17,6 @@ export {
 export {
   TOKEN_INFO_SERVICE_TYPE,
   TokenInfoService,
-  tokenInfoAction,
 } from "./analytics/token-info/index.js";
 export * from "./audit/audit-log.js";
 export { walletRouterAction } from "./chains/wallet-action.js";

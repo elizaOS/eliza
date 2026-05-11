@@ -9,8 +9,8 @@
  * It verifies the P0 contract end-to-end without booting the full
  * runtime:
  *
- *   - The audited bypass at `auth-pairing-compat-routes.ts:124,140` /
- *     `server-onboarding-compat.ts` is closed: `GET /api/onboarding/status`
+ *   - The audited bypass at `auth-pairing-routes.ts:124,140` /
+ *     `server-onboarding-helpers.ts` is closed: `GET /api/onboarding/status`
  *     without auth returns 401 even when `ELIZA_CLOUD_PROVISIONED=1`.
  *   - `POST /api/auth/bootstrap/exchange` with a valid RS256 JWT signed by
  *     the cloud's JWKS returns `{ sessionId, identityId, expiresAt }`.
@@ -20,7 +20,7 @@
  *
  * The script generates an RS256 keypair at runtime, serves a fixture
  * JWKS via `node:http`, boots an HTTP server that wires up the real
- * `auth-bootstrap-routes` and `auth-pairing-compat-routes` handlers
+ * `auth-bootstrap-routes` and `auth-pairing-routes` handlers
  * against a real pglite-backed database, and then drives the contract
  * over real HTTP.
  *
@@ -52,7 +52,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { _resetSensitiveLimiters } from "./auth/index";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
-import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
+import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
 import type { CompatRuntimeState } from "./compat-route-shared";
 
 interface DbAdapterLike {

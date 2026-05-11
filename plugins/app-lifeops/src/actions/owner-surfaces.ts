@@ -254,6 +254,11 @@ export const ownerGoalsAction = makeOwnerLifeAction({
   actions: [...OWNER_GOAL_ACTIONS],
 });
 
+// Owner-store todos surface. Backed by the app-lifeops owner definitions store
+// (with kind=definition occurrence tracking). The general-purpose planner
+// surface — backed by @elizaos/core TodosService — is TODO in
+// plugins/plugin-todos/src/actions/todo.ts. The two surfaces target different
+// stores and must not be merged.
 export const ownerTodosAction = makeOwnerLifeAction({
   name: "OWNER_TODOS",
   similes: ["TODO", "TODOS", "TASK", "PERSONAL_TASK"],

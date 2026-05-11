@@ -119,15 +119,15 @@ import {
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
 import { deviceBridge } from "../services/local-inference/device-bridge";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
-import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
+import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 // Local-inference routes intentionally remain in app-core (no plugin-local-inference exists).
 import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-routes";
-import { handleOnboardingCompatRoute } from "./onboarding-compat-routes";
-import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
+import { handleOnboardingCompatRoute } from "./onboarding-routes";
+import { handlePluginsCompatRoutes } from "./plugins-routes";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
@@ -180,7 +180,7 @@ const _PACKAGE_ROOT_NAMES = new Set(["eliza", "elizaai", "elizaos"]);
 
 // extractHeaderValue — now imported from ./auth
 // tokenMatches — now imported from ./auth
-// Pairing infrastructure — now in ./auth-pairing-compat-routes
+// Pairing infrastructure — now in ./auth-pairing-routes
 // getProvidedApiToken, ensureCompatApiAuthorized, isDevEnvironment,
 // ensureCompatSensitiveRouteAuthorized — now imported from ./auth
 
@@ -505,7 +505,7 @@ async function _getTableColumnNames(
 // buildPluginParamDefs, findNearestFile, resolvePluginManifestPath,
 // resolveInstalledPackageVersion, resolveLoadedPluginNames, isPluginLoaded,
 // buildPluginListResponse, validateCompatPluginConfig, persistCompatPluginMutation
-// — extracted to ./plugins-compat-routes
+// — extracted to ./plugins-routes
 
 /**
  * Load config from disk and backfill `cloud.apiKey` from sealed secrets when the
@@ -644,7 +644,7 @@ async function handleCompatRoute(
   // These own cookie + CSRF lifecycle for the dashboard.
   if (await handleAuthSessionRoutes(req, res, state)) return true;
 
-  // Auth / pairing / onboarding status — extracted to auth-pairing-compat-routes.ts
+  // Auth / pairing / onboarding status — extracted to auth-pairing-routes.ts
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
   // Computer-use compat routes — extracted to plugin-computeruse via Plugin.routes (rawPath).
   if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
@@ -770,7 +770,7 @@ async function handleCompatRoute(
   // steward-compat, wallet-trade-compat) are now served via
   // stewardPlugin.routes (rawPath) on the runtime plugin route system.
 
-  // Plugin routes — extracted to plugins-compat-routes.ts
+  // Plugin routes — extracted to plugins-routes.ts
   if (await handlePluginsCompatRoutes(req, res, state)) return true;
 
   // Catalog routes — registry SoT projections (apps, plugins, connectors)
@@ -792,7 +792,7 @@ async function handleCompatRoute(
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const pluginId = decodeURIComponent(uiSpecMatch[1]);
     const { buildPluginConfigUiSpec } = await import("@elizaos/shared");
-    const { buildPluginListResponse } = await import("./plugins-compat-routes");
+    const { buildPluginListResponse } = await import("./plugins-routes");
     const pluginList = buildPluginListResponse(state.current);
     const plugin = pluginList.plugins.find((p) => p.id === pluginId);
     if (!plugin) {

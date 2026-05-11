@@ -13,7 +13,6 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from typing import Any
 
 from eliza_loca.trajectory_audit import audit_output_dir
 
@@ -25,19 +24,23 @@ DEFAULT_MODEL = "gpt-oss-120b"
 
 def main() -> int:
     args = parse_args()
-    env = build_env(args)
     command = build_command(args)
 
     if args.dry_run:
         print(json.dumps({"command": command, "cwd": str(LOCA_ROOT)}, indent=2))
         return 0
 
+    env = build_env(args)
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     completed = subprocess.run(command, cwd=LOCA_ROOT, env=env, check=False)
 
     audit_path = output_dir / "eliza_loca_audit.json"
-    audit = audit_output_dir(output_dir, include_previews=args.include_previews)
+    audit = audit_output_dir(
+        output_dir,
+        include_previews=args.include_previews,
+        allow_empty=args.allow_empty,
+    )
     audit_path.write_text(
         json.dumps(audit, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -63,6 +66,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="outputs/eliza_gpt_oss_120b_debug")
     parser.add_argument("--max-workers", type=int, default=1)
     parser.add_argument("--max-tool-uses", type=int, default=25)
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=None,
+        help="Maximum model interaction steps before marking the run truncated.",
+    )
     parser.add_argument("--max-tokens", type=int, default=4096)
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--max-retries", type=int, default=3)
@@ -84,15 +93,26 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--include-previews", action="store_true")
-    return parser.parse_args()
+    parser.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help="Allow an audit of an intentionally empty output directory.",
+    )
+    args = parser.parse_args()
+    try:
+        validate_context_mode(args)
+    except ValueError as exc:
+        parser.error(str(exc))
+    return args
 
 
 def build_env(args: argparse.Namespace) -> dict[str, str]:
     env = os.environ.copy()
     api_key = env.get("LOCA_OPENAI_API_KEY") or env.get("CEREBRAS_API_KEY")
-    if not api_key:
+    if not api_key and not getattr(args, "dry_run", False):
         raise SystemExit("CEREBRAS_API_KEY or LOCA_OPENAI_API_KEY is required")
-    env["LOCA_OPENAI_API_KEY"] = api_key
+    if api_key:
+        env["LOCA_OPENAI_API_KEY"] = api_key
     env["LOCA_OPENAI_BASE_URL"] = args.base_url.rstrip("/")
     env["LOCA_QUIET"] = "1"
     env["FASTMCP_SHOW_CLI_BANNER"] = "false"
@@ -105,6 +125,7 @@ def build_env(args: argparse.Namespace) -> dict[str, str]:
 
 
 def build_command(args: argparse.Namespace) -> list[str]:
+    validate_context_mode(args)
     command: list[str] = [
         sys.executable,
         "-m",
@@ -141,6 +162,8 @@ def build_command(args: argparse.Namespace) -> list[str]:
         "--keep-thinking",
         str(args.keep_thinking),
     ]
+    if args.max_steps is not None:
+        command.extend(["--max-steps", str(args.max_steps)])
     command.append("--context-reset" if args.context_reset else "--no-context-reset")
     command.append("--context-summary" if args.context_summary else "--no-context-summary")
     command.append(
@@ -150,6 +173,11 @@ def build_command(args: argparse.Namespace) -> list[str]:
     if args.reasoning_effort:
         command.extend(["--reasoning-effort", args.reasoning_effort])
     return command
+
+
+def validate_context_mode(args: argparse.Namespace) -> None:
+    if args.context_reset and args.context_summary:
+        raise ValueError("--context-reset and --context-summary are mutually exclusive")
 
 
 def resolve_path(path: str) -> Path:

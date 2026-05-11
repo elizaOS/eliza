@@ -5,7 +5,6 @@ import {
   parseBooleanFromText,
   type ServiceClass,
 } from "@elizaos/core";
-import { walletSearchAddressAction } from "./analytics/birdeye/actions/wallet-search-address.js";
 import { agentPortfolioProvider } from "./analytics/birdeye/providers/agent-portfolio-provider.js";
 import { marketProvider } from "./analytics/birdeye/providers/market.js";
 import { trendingProvider } from "./analytics/birdeye/providers/trending.js";
@@ -16,7 +15,6 @@ import {
 } from "./analytics/birdeye/service.js";
 import { registerDexScreenerSearchCategory } from "./analytics/dexscreener/search-category.js";
 import { DexScreenerService } from "./analytics/dexscreener/service.js";
-import { tokenInfoAction } from "./analytics/token-info/action.js";
 import { TokenInfoService } from "./analytics/token-info/service.js";
 import evmPlugin from "./chains/evm/index.js";
 import solanaPlugin from "./chains/solana/index.js";
@@ -108,10 +106,7 @@ export const walletPlugin: Plugin = {
     analyticsServices,
   ),
   providers: concatPlugins(coreWalletPlugin.providers, evmPlugin.providers),
-  actions: concatPlugins(coreWalletPlugin.actions, evmPlugin.actions, [
-    tokenInfoAction,
-    walletSearchAddressAction,
-  ]),
+  actions: concatPlugins(coreWalletPlugin.actions, evmPlugin.actions),
   routes: concatPlugins(solanaPlugin.routes),
   init: async (config, runtime) => {
     await coreWalletPlugin.init?.(config, runtime);

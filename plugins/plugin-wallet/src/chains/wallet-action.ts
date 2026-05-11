@@ -9,6 +9,8 @@ import type {
   ProviderValue,
   State,
 } from "@elizaos/core";
+import { walletSearchAddressHandler } from "../analytics/birdeye/actions/wallet-search-address.js";
+import { tokenInfoHandler } from "../analytics/token-info/action.js";
 import {
   WALLET_BACKEND_SERVICE_TYPE,
   type WalletBackendService,
@@ -40,8 +42,39 @@ const LEGACY_TRANSFER_ACTIONS = new Set([
 ]);
 
 const LEGACY_BRIDGE_ACTIONS = new Set(["CROSS_CHAIN_TRANSFER"]);
-const LEGACY_GOV_ACTIONS = new Set(["WALLET_GOV", "WALLET_GOV"]);
+const LEGACY_GOV_ACTIONS = new Set(["WALLET_GOV"]);
+const LEGACY_TOKEN_INFO_ACTIONS = new Set(["TOKEN_INFO"]);
+const LEGACY_SEARCH_ADDRESS_ACTIONS = new Set([
+  "BIRDEYE_SEARCH",
+  "BIRDEYE_LOOKUP",
+  "WALLET_SEARCH_ADDRESS",
+]);
 const GOV_OPS = new Set(["propose", "vote", "queue", "execute"]);
+
+const ANALYTICS_SUBACTIONS = ["token_info", "search_address"] as const;
+type WalletAnalyticsSubaction = (typeof ANALYTICS_SUBACTIONS)[number];
+
+const WALLET_SUBACTIONS = [
+  "transfer",
+  "swap",
+  "bridge",
+  "gov",
+  ...ANALYTICS_SUBACTIONS,
+] as const;
+type WalletSubaction = (typeof WALLET_SUBACTIONS)[number];
+
+function isWalletAnalyticsSubaction(
+  value: unknown,
+): value is WalletAnalyticsSubaction {
+  return (
+    typeof value === "string" &&
+    (ANALYTICS_SUBACTIONS as readonly string[]).includes(value)
+  );
+}
+
+function isWalletSubaction(value: unknown): value is WalletSubaction {
+  return isWalletRouterSubaction(value) || isWalletAnalyticsSubaction(value);
+}
 
 function selectedContextMatches(
   state: State | undefined,
@@ -79,15 +112,15 @@ function objectRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function legacySubaction(value: unknown): WalletRouterSubaction | undefined {
+function legacySubactionFromName(value: unknown): WalletSubaction | undefined {
   if (typeof value !== "string") return undefined;
   const upper = value.toUpperCase();
   if (LEGACY_SWAP_ACTIONS.has(upper)) return "swap";
-  if (LEGACY_TRANSFER_ACTIONS.has(upper)) {
-    return "transfer";
-  }
+  if (LEGACY_TRANSFER_ACTIONS.has(upper)) return "transfer";
   if (LEGACY_BRIDGE_ACTIONS.has(upper)) return "bridge";
   if (LEGACY_GOV_ACTIONS.has(upper)) return "gov";
+  if (LEGACY_TOKEN_INFO_ACTIONS.has(upper)) return "token_info";
+  if (LEGACY_SEARCH_ADDRESS_ACTIONS.has(upper)) return "search_address";
   return undefined;
 }
 
@@ -97,18 +130,44 @@ function normalizedGovOp(value: unknown): string | undefined {
   return GOV_OPS.has(normalized) ? normalized : undefined;
 }
 
+function normalizeSubactionValue(value: unknown): WalletSubaction | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (
+    (WALLET_SUBACTIONS as readonly string[]).includes(normalized as string)
+  ) {
+    return normalized as WalletSubaction;
+  }
+  return undefined;
+}
+
+/**
+ * Pull the discriminator from raw params.
+ *
+ * Schema-canonical name is `action`. The dispatcher additionally accepts
+ * `subaction` (legacy) and other historical aliases for compatibility.
+ */
+function resolveSubaction(raw: Record<string, unknown>): WalletSubaction | undefined {
+  const discriminator =
+    normalizeSubactionValue(raw.action) ??
+    normalizeSubactionValue(raw.subaction) ??
+    normalizeSubactionValue(raw.operation) ??
+    normalizeSubactionValue(raw.actionType);
+  if (discriminator) return discriminator;
+
+  const op = normalizedGovOp(raw.op ?? raw.govOp);
+  if (op) return "gov";
+
+  return legacySubactionFromName(raw.action ?? raw.name);
+}
+
 function normalizeRawParams(
   raw: Record<string, unknown>,
 ): Record<string, unknown> {
-  const action = raw.action ?? raw.name;
+  const subaction = resolveSubaction(raw);
   const op = normalizedGovOp(raw.op ?? raw.govOp);
   return {
-    subaction:
-      raw.subaction ??
-      raw.operation ??
-      raw.actionType ??
-      (op ? "gov" : undefined) ??
-      legacySubaction(action),
+    subaction,
     chain: raw.chain ?? raw.fromChain ?? raw.network,
     toChain:
       raw.toChain ?? raw.toNetwork ?? raw.destinationChain ?? raw.targetChain,
@@ -151,7 +210,9 @@ function extractRawParams(
 
   if (
     optionRecord &&
-    ("subaction" in optionRecord || "action" in optionRecord)
+    ("action" in optionRecord ||
+      "subaction" in optionRecord ||
+      "name" in optionRecord)
   ) {
     return optionRecord;
   }
@@ -243,7 +304,7 @@ function serviceFromRuntime(
   return null;
 }
 
-async function parseParams(
+async function parseRouterParams(
   message: Memory,
   state?: State,
   options?: HandlerOptions | Record<string, unknown>,
@@ -252,12 +313,85 @@ async function parseParams(
   return parseWalletRouterParams(normalizeRawParams(raw ?? {}));
 }
 
+async function runWalletRouter(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: HandlerOptions | Record<string, unknown> | undefined,
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  let params: WalletRouterParams;
+  try {
+    params = await parseRouterParams(message, state, options);
+  } catch (error) {
+    const text = `Invalid wallet parameters: ${
+      error instanceof Error ? error.message : String(error)
+    }`;
+    await callback?.({ text, content: { error: "INVALID_PARAMS" } });
+    return {
+      success: false,
+      text,
+      data: { error: "INVALID_PARAMS" },
+    };
+  }
+
+  const service = serviceFromRuntime(runtime);
+  if (!service) {
+    const text = "Wallet router service is not available.";
+    await callback?.({ text, content: { error: "SERVICE_UNAVAILABLE" } });
+    return {
+      success: false,
+      text,
+      data: { error: "SERVICE_UNAVAILABLE" },
+    };
+  }
+
+  const routed = await service.routeWalletAction(params);
+  const text = resultText(routed);
+  const data = toProviderRecord(
+    routed.ok
+      ? {
+          ...routed.result,
+          handler: routed.handler,
+        }
+      : {
+          error: routed.error,
+          detail: routed.detail,
+          candidates: routed.candidates,
+        },
+  );
+
+  await callback?.({
+    text,
+    content: {
+      success: routed.ok,
+      ...data,
+    },
+  });
+
+  return {
+    success: routed.ok,
+    text,
+    values: routed.ok
+      ? {
+          walletActionSucceeded: routed.result.status === "submitted",
+          walletActionPrepared: routed.result.status === "prepared",
+          walletChain: routed.handler.chain,
+          walletSubaction: routed.result.subaction satisfies WalletRouterSubaction,
+        }
+      : {
+          walletActionError: routed.error,
+        },
+    data,
+  };
+}
+
 export const walletRouterAction: Action = {
   name: "WALLET",
   description:
-    "Route wallet token operations through the registered chain handlers. Use subaction transfer, swap, or bridge with uniform params: subaction, chain, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun. Bridge uses chain as the source and toChain as the destination. Omit chain only when one registered handler supports the subaction.",
+    "Route wallet operations through registered chain handlers and analytics providers. Use action=transfer|swap|bridge|gov for on-chain ops (params: chain, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun); action=token_info for token/market data (params: target, query, address, chain); action=search_address for Birdeye wallet/portfolio lookup (param: address).",
   descriptionCompressed:
-    "Route wallet transfer/swap/bridge via chain registry; params: subaction, chain, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun.",
+    "WALLET umbrella: action=transfer|swap|bridge|gov (chain ops) | token_info (market data) | search_address (Birdeye portfolio).",
   contexts: ["finance", "crypto", "wallet"],
   contextGate: { anyOf: ["finance", "crypto", "wallet"] },
   roleGate: { minRole: "USER" },
@@ -272,23 +406,34 @@ export const walletRouterAction: Action = {
     "PREPARE_TRANSFER",
     "WALLET_ACTION",
     "WALLET_GOV",
-    "WALLET_GOV",
+    "TOKEN_INFO",
+    "BIRDEYE_LOOKUP",
+    "BIRDEYE_SEARCH",
+    "WALLET_SEARCH_ADDRESS",
   ],
   parameters: [
     {
-      name: "subaction",
-      description: "Wallet operation to perform.",
+      name: "action",
+      description:
+        "Wallet operation to perform. Write ops use the chain handler registry; analytics ops use the token-info provider registry.",
       required: true,
-      schema: { type: "string", enum: ["transfer", "swap", "bridge", "gov"] },
-      examples: ["transfer", "swap", "bridge", "gov"],
+      schema: { type: "string", enum: [...WALLET_SUBACTIONS] },
+      examples: [
+        "transfer",
+        "swap",
+        "bridge",
+        "gov",
+        "token_info",
+        "search_address",
+      ],
     },
     {
       name: "target",
       description:
-        "Chain id or name (source chain for bridge). Omit only when one chain supports subaction.",
+        "Chain id/name for write ops (source chain for bridge); analytics provider for token_info (dexscreener, birdeye, coingecko). Omit only when one handler/provider supports the action.",
       required: false,
       schema: { type: "string" },
-      examples: ["base", "solana", "8453"],
+      examples: ["base", "solana", "8453", "dexscreener", "birdeye"],
     },
     {
       name: "toChain",
@@ -316,7 +461,7 @@ export const walletRouterAction: Action = {
       name: "amount",
       description:
         "Human-readable token amount. Required for transfer, swap, and bridge.",
-      required: true,
+      required: false,
       schema: { type: "string" },
       examples: ["0.1", "25"],
     },
@@ -354,7 +499,7 @@ export const walletRouterAction: Action = {
     },
     {
       name: "op",
-      description: "Governance operation when subaction is gov.",
+      description: "Governance operation when action is gov.",
       required: false,
       schema: { type: "string", enum: ["propose", "vote", "queue", "execute"] },
       examples: ["vote"],
@@ -407,6 +552,20 @@ export const walletRouterAction: Action = {
       required: false,
       schema: { type: "string" },
     },
+    {
+      name: "query",
+      description:
+        "Search query, coin id, or token symbol for token_info searches.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "address",
+      description:
+        "Wallet address for search_address; token contract address for token_info token lookups.",
+      required: false,
+      schema: { type: "string" },
+    },
   ],
   validate: async (_runtime, message, state, options) => {
     if (!serviceFromRuntime(_runtime)) {
@@ -414,8 +573,8 @@ export const walletRouterAction: Action = {
     }
     const raw = extractRawParams(message, state, options);
     if (raw) {
-      const normalized = normalizeRawParams(raw);
-      if (isWalletRouterSubaction(normalized.subaction)) {
+      const subaction = resolveSubaction(raw);
+      if (isWalletSubaction(subaction)) {
         return true;
       }
     }
@@ -431,70 +590,23 @@ export const walletRouterAction: Action = {
     options?: HandlerOptions | Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    let params: WalletRouterParams;
-    try {
-      params = await parseParams(message, state, options);
-    } catch (error) {
-      const text = `Invalid wallet parameters: ${
-        error instanceof Error ? error.message : String(error)
-      }`;
-      await callback?.({ text, content: { error: "INVALID_PARAMS" } });
-      return {
-        success: false,
-        text,
-        data: { error: "INVALID_PARAMS" },
-      };
+    const raw = extractRawParams(message, state, options) ?? {};
+    const subaction = resolveSubaction(raw);
+
+    if (subaction === "token_info") {
+      return tokenInfoHandler(runtime, message, state, options, callback);
+    }
+    if (subaction === "search_address") {
+      return walletSearchAddressHandler(
+        runtime,
+        message,
+        state,
+        options,
+        callback,
+      );
     }
 
-    const service = serviceFromRuntime(runtime);
-    if (!service) {
-      const text = "Wallet router service is not available.";
-      await callback?.({ text, content: { error: "SERVICE_UNAVAILABLE" } });
-      return {
-        success: false,
-        text,
-        data: { error: "SERVICE_UNAVAILABLE" },
-      };
-    }
-
-    const routed = await service.routeWalletAction(params);
-    const text = resultText(routed);
-    const data = toProviderRecord(
-      routed.ok
-        ? {
-            ...routed.result,
-            handler: routed.handler,
-          }
-        : {
-            error: routed.error,
-            detail: routed.detail,
-            candidates: routed.candidates,
-          },
-    );
-
-    await callback?.({
-      text,
-      content: {
-        success: routed.ok,
-        ...data,
-      },
-    });
-
-    return {
-      success: routed.ok,
-      text,
-      values: routed.ok
-        ? {
-            walletActionSucceeded: routed.result.status === "submitted",
-            walletActionPrepared: routed.result.status === "prepared",
-            walletChain: routed.handler.chain,
-            walletSubaction: routed.result.subaction,
-          }
-        : {
-            walletActionError: routed.error,
-          },
-      data,
-    };
+    return runWalletRouter(runtime, message, state, options, callback);
   },
   examples: [
     [
@@ -523,6 +635,34 @@ export const walletRouterAction: Action = {
         name: "{{agent}}",
         content: {
           text: "Preparing a Solana swap dry run.",
+          action: "WALLET",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user1}}",
+        content: { text: "Look up the PEPE token on DexScreener" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "Searching DexScreener.",
+          action: "WALLET",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user1}}",
+        content: {
+          text: "Show the Birdeye portfolio for 9xQeWvG816bUx9EPfWJXn4xHLh1BaK7Z7QXDXuGpS9SW",
+        },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "Fetching the Birdeye portfolio.",
           action: "WALLET",
         },
       },

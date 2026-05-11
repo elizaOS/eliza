@@ -3251,12 +3251,28 @@ async function buildIos() {
   await generateIosBrandAssets();
   await ensureIosLlamaCppVendoredFramework({ buildTarget });
 
-  // CocoaPods compiles Capacitor from source, avoiding SPM binary API issues
+  // CocoaPods compiles Capacitor from source, avoiding SPM binary API issues.
+  // CocoaPods 1.16.x crashes with `Pod::Config#installation_root` when the
+  // terminal locale is not UTF-8 (it warns "CocoaPods requires your terminal
+  // to be using UTF-8 encoding"). Force the spawned `pod` process to a UTF-8
+  // locale regardless of the host shell so builds don't fail under tmux,
+  // CI runners, or background launchers that ship without LANG set.
   if (
     fs.existsSync(path.join(iosDir, "Podfile")) ||
     shouldRunIosPodInstall(syncedFiles)
   ) {
-    await run("pod", ["install"], { cwd: iosDir });
+    await run("pod", ["install"], {
+      cwd: iosDir,
+      env: {
+        ...process.env,
+        LANG: process.env.LANG?.includes("UTF-8")
+          ? process.env.LANG
+          : "en_US.UTF-8",
+        LC_ALL: process.env.LC_ALL?.includes("UTF-8")
+          ? process.env.LC_ALL
+          : "en_US.UTF-8",
+      },
+    });
   }
 
   const wsPath = path.join(iosDir, "App.xcworkspace");

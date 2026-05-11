@@ -426,3 +426,20 @@ export { TrajectoriesService } from "./TrajectoriesService";
 // CORE TYPES
 // ==========================================
 export * from "./types";
+// ==========================================
+// PRICING — per-provider LLM cost table (M40 / W1-X1)
+// ==========================================
+export {
+	computeCallCostUsd,
+	isLocalProvider,
+	lookupModelPrice,
+	MODEL_PRICES_USD_PER_M_TOKENS,
+	PRICE_TABLE_ID,
+} from "./pricing";
+export type {
+	ModelPriceUsdPerMTokens,
+	PriceLookupResult,
+	PriceTableId,
+	ProviderName,
+	TokenUsageForCost,
+} from "./pricing";

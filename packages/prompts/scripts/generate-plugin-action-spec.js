@@ -37,6 +37,9 @@ const RETIRED_IMPLEMENTATION_ONLY_ACTIONS = new Set([
   "ASK_USER_QUESTION",
   "CHECKIN",
   "CHECK_AVAILABILITY",
+  "CLEAR_HISTORY",
+  "CREATE_PLAN",
+  "DESKTOP",
   "DISCORD_SETUP_CREDENTIALS",
   "EDIT",
   "ENTER_WORKTREE",
@@ -72,8 +75,10 @@ const RETIRED_IMPLEMENTATION_ONLY_ACTIONS = new Set([
   "PLAY_AUDIO",
   "PLAYBACK",
   "READ",
+  "READING",
   "RELEASE_BLOCK",
   "SCREEN_TIME",
+  "SEND_TO_ADMIN",
   "TOGGLE_FEATURE",
   "TAILSCALE",
   "START_TUNNEL",
@@ -184,6 +189,7 @@ function listTsFiles(rootDir) {
         }
         stack.push(full);
       } else if (ent.isFile() && ent.name.endsWith(".ts")) {
+        if (!isActionCandidateFile(full)) continue;
         if (full.includes(`${path.sep}__tests__${path.sep}`)) continue;
         if (full.endsWith(".test.ts")) continue;
         out.push(full);
@@ -191,6 +197,13 @@ function listTsFiles(rootDir) {
     }
   }
   return out.sort((a, b) => a.localeCompare(b));
+}
+
+function isActionCandidateFile(filePath) {
+  return (
+    filePath.includes(`${path.sep}actions${path.sep}`) ||
+    filePath.endsWith(`${path.sep}actions.ts`)
+  );
 }
 
 /**
@@ -770,7 +783,27 @@ function skipTypeAssertionSuffix(src, cursor) {
     const after = i + 2 < src.length ? src[i + 2] : "";
     if (/[A-Za-z0-9_$]/.test(before) || /[A-Za-z0-9_$]/.test(after)) break;
     i = skipTrivia(src, i + 2);
-    while (i < src.length && ![",", "]", "}"].includes(src[i])) i++;
+    let bracketDepth = 0;
+    let angleDepth = 0;
+    let parenDepth = 0;
+    while (i < src.length) {
+      const ch = src[i];
+      if (
+        bracketDepth === 0 &&
+        angleDepth === 0 &&
+        parenDepth === 0 &&
+        [",", "]", "}"].includes(ch)
+      ) {
+        break;
+      }
+      if (ch === "[") bracketDepth++;
+      else if (ch === "]" && bracketDepth > 0) bracketDepth--;
+      else if (ch === "<") angleDepth++;
+      else if (ch === ">" && angleDepth > 0) angleDepth--;
+      else if (ch === "(") parenDepth++;
+      else if (ch === ")" && parenDepth > 0) parenDepth--;
+      i++;
+    }
     i = skipTrivia(src, i);
   }
   return i;
@@ -905,6 +938,14 @@ function extractConstLiterals(src) {
     const match = re.exec(src);
     if (match === null) break;
     const name = match[1];
+    const initializerStart = skipTrivia(src, re.lastIndex);
+    if (src[initializerStart] === "{") {
+      re.lastIndex = Math.max(
+        skipUnknownExpression(src, initializerStart),
+        re.lastIndex,
+      );
+      continue;
+    }
     const parsed = parseTsLiteralValue(src, re.lastIndex, constants);
     if (
       typeof parsed.value === "string" ||

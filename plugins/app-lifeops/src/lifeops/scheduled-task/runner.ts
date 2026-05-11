@@ -145,9 +145,17 @@ export interface ScheduledTaskDispatcher {
   ): Promise<DispatchResult | void>;
 }
 
-export const NoopScheduledTaskDispatcher: ScheduledTaskDispatcher = {
+/**
+ * Test-only no-op dispatcher. Production code MUST inject
+ * `createProductionScheduledTaskDispatcher` via runtime-wiring; the runner
+ * factory requires a dispatcher and there is no silent fallback. Exported only
+ * so tests can construct a runner without touching the channel layer.
+ *
+ * @internal
+ */
+export const TestNoopScheduledTaskDispatcher: ScheduledTaskDispatcher = {
   async dispatch() {
-    /* intentional no-op (Wave 1 default) */
+    /* intentional no-op for tests */
   },
 };
 
@@ -887,8 +895,9 @@ export function createScheduledTaskRunner(
     if (task.escalation?.steps && task.escalation.steps.length > 0) {
       return task.escalation.steps[0]?.channelKey ?? "in_app";
     }
-    if (task.priority === "high") return "in_app";
-    if (task.priority === "medium") return "in_app";
+    // Priority does not currently influence default channel — the production
+    // dispatcher always routes "in_app" through the event service. If
+    // priority-based routing is added later, branch here.
     return "in_app";
   }
 

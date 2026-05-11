@@ -1,8 +1,8 @@
 import {
   ChannelType,
   type Content,
-  defaultSensitiveRequestPolicy,
   type DispatchSensitiveRequest,
+  defaultSensitiveRequestPolicy,
   resolveSensitiveRequestDelivery,
   type SensitiveRequest,
   type TargetInfo,
@@ -13,7 +13,6 @@ import { ownerAppInlineSensitiveRequestAdapter } from "./owner-app-inline-adapte
 const REQUEST_ID = "req_test_123";
 const ROOM_ID = "11111111-1111-1111-1111-111111111111";
 const ENTITY_ID = "22222222-2222-2222-2222-222222222222";
-type TestSensitiveRequest = SensitiveRequest & DispatchSensitiveRequest;
 
 interface CapturedSend {
   target: TargetInfo;
@@ -41,7 +40,7 @@ function makeRuntime(): {
   return { runtime: { sendMessageToTarget }, calls };
 }
 
-function makeOwnerAppPrivateRequest(): TestSensitiveRequest {
+function makeOwnerAppPrivateRequest(): DispatchSensitiveRequest {
   const delivery = resolveSensitiveRequestDelivery({
     kind: "secret",
     environment: { ownerApp: { privateChat: true } },
@@ -61,10 +60,10 @@ function makeOwnerAppPrivateRequest(): TestSensitiveRequest {
     expiresAt: "2026-05-11T00:00:00.000Z",
     createdAt: "2026-05-10T00:00:00.000Z",
     updatedAt: "2026-05-10T00:00:00.000Z",
-  } as TestSensitiveRequest;
+  } as unknown as DispatchSensitiveRequest;
 }
 
-function makePublicRequest(): TestSensitiveRequest {
+function makePublicRequest(): DispatchSensitiveRequest {
   const delivery = resolveSensitiveRequestDelivery({
     kind: "secret",
     channelType: ChannelType.GROUP,
@@ -85,7 +84,7 @@ function makePublicRequest(): TestSensitiveRequest {
     expiresAt: "2026-05-11T00:00:00.000Z",
     createdAt: "2026-05-10T00:00:00.000Z",
     updatedAt: "2026-05-10T00:00:00.000Z",
-  } as TestSensitiveRequest;
+  } as unknown as DispatchSensitiveRequest;
 }
 
 describe("ownerAppInlineSensitiveRequestAdapter", () => {
@@ -193,11 +192,11 @@ describe("ownerAppInlineSensitiveRequestAdapter", () => {
   it("rejects delivery when the request kind is not secret", async () => {
     const { runtime, calls } = makeRuntime();
     const ownerRequest = makeOwnerAppPrivateRequest();
-    const oauthRequest: TestSensitiveRequest = {
+    const oauthRequest: DispatchSensitiveRequest = {
       ...ownerRequest,
       kind: "oauth",
       target: { kind: "oauth" },
-    } as TestSensitiveRequest;
+    } as unknown as DispatchSensitiveRequest;
 
     const result = await ownerAppInlineSensitiveRequestAdapter.deliver({
       request: oauthRequest,

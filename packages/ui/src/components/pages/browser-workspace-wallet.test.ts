@@ -131,7 +131,10 @@ describe("dispatchBrowserWorkspaceWalletRequest", () => {
       dispatchBrowserWorkspaceWalletRequest(request("eth_accounts"), ctx),
     ).resolves.toEqual({ ok: true, result: [] });
     await expect(
-      dispatchBrowserWorkspaceWalletRequest(request("eth_requestAccounts"), ctx),
+      dispatchBrowserWorkspaceWalletRequest(
+        request("eth_requestAccounts"),
+        ctx,
+      ),
     ).resolves.toMatchObject({
       ok: false,
       error: expect.stringContaining("account access is disabled"),
@@ -157,25 +160,41 @@ describe("dispatchBrowserWorkspaceWalletRequest", () => {
       },
     };
 
-    await expect(
-      dispatchBrowserWorkspaceWalletRequest(
-        request("personal_sign", ["hello", EVM_ADDRESS]),
-        ctx,
-      ),
-    ).resolves.toMatchObject({
-      ok: false,
-      error: expect.stringContaining("disabled in embedded iframe tabs"),
-    });
-    await expect(
-      dispatchBrowserWorkspaceWalletRequest(
-        request("eth_sendTransaction", [{ to: EVM_ADDRESS, value: "0x0" }]),
-        ctx,
-      ),
-    ).resolves.toMatchObject({
-      ok: false,
-      error: expect.stringContaining("disabled in embedded iframe tabs"),
-    });
+    const blockedRequests: Array<{
+      method: BrowserWorkspaceWalletRequest["method"];
+      params?: unknown;
+    }> = [
+      { method: "personal_sign", params: ["hello", EVM_ADDRESS] },
+      { method: "eth_sign", params: [EVM_ADDRESS, "hello"] },
+      {
+        method: "eth_sendTransaction",
+        params: [{ to: EVM_ADDRESS, value: "0x0" }],
+      },
+      { method: "sendTransaction", params: { to: EVM_ADDRESS, value: "0x0" } },
+      { method: "solana_signMessage", params: { message: "hello" } },
+      {
+        method: "solana_signTransaction",
+        params: { transactionBase64: "AQID" },
+      },
+      {
+        method: "solana_signAndSendTransaction",
+        params: { transactionBase64: "AQID" },
+      },
+    ];
+
+    for (const blocked of blockedRequests) {
+      await expect(
+        dispatchBrowserWorkspaceWalletRequest(
+          request(blocked.method, blocked.params),
+          ctx,
+        ),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: expect.stringContaining("disabled in embedded iframe tabs"),
+      });
+    }
     expect(ctx.setTabChainId).not.toHaveBeenCalled();
+    expect(ctx.loadWalletState).not.toHaveBeenCalled();
   });
 
   it("returns explicit unsupported typed-data responses", async () => {

@@ -44,14 +44,68 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--provider",
         type=str,
-        choices=["eliza", "eliza-bridge", "eliza-ts"],
+        choices=[
+            "eliza",
+            "eliza-bridge",
+            "eliza-ts",
+            "eliza-app-harness",
+            "eliza-app",
+            "eliza-browser-app",
+            "app-harness",
+        ],
         default=None,
-        help="Use the Eliza benchmark server bridge",
+        help="Use an Eliza integration mode: benchmark API bridge or browser app harness",
     )
     parser.add_argument("--model", type=str, default=None)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--timeout", type=int, default=120000)
     parser.add_argument("--bbox-iou-threshold", type=float, default=0.5)
+    parser.add_argument(
+        "--app-harness-script",
+        type=str,
+        default=None,
+        help="Path to scripts/eliza-browser-app-harness.mjs",
+    )
+    parser.add_argument(
+        "--app-harness-runtime",
+        type=str,
+        default="bun",
+        help="Runtime used to invoke the app harness script",
+    )
+    parser.add_argument(
+        "--app-harness-no-launch",
+        dest="app_harness_no_launch",
+        action="store_true",
+        default=True,
+        help="Pass --no-launch to the app harness and attach to an existing Eliza stack",
+    )
+    parser.add_argument(
+        "--app-harness-launch",
+        dest="app_harness_no_launch",
+        action="store_false",
+        help="Allow the app harness to launch the Eliza desktop stack",
+    )
+    parser.add_argument(
+        "--app-harness-prompt-via-ui",
+        dest="app_harness_prompt_via_ui",
+        action="store_true",
+        default=True,
+        help="Type the task into the Eliza app chat UI with Puppeteer",
+    )
+    parser.add_argument(
+        "--app-harness-prompt-via-api",
+        dest="app_harness_prompt_via_ui",
+        action="store_false",
+        help="Send the task through the harness conversation API fallback",
+    )
+    parser.add_argument(
+        "--app-harness-dry-run",
+        action="store_true",
+        help="Ask the harness to write a run plan without launching, prompting, or polling",
+    )
+    parser.add_argument("--app-harness-api-base", type=str, default=None)
+    parser.add_argument("--app-harness-ui-url", type=str, default=None)
+    parser.add_argument("--app-harness-poll-interval", type=int, default=None)
     parser.add_argument("--no-traces", action="store_true")
     parser.add_argument("--json", action="store_true", help="Print aggregate JSON")
     parser.add_argument("--verbose", action="store_true")
@@ -86,6 +140,16 @@ def create_config(args: argparse.Namespace) -> VisualWebBenchConfig:
         timeout_ms=max(1000, args.timeout),
         bbox_iou_threshold=args.bbox_iou_threshold,
         save_traces=not args.no_traces,
+        app_harness_script=Path(args.app_harness_script).resolve()
+        if args.app_harness_script
+        else None,
+        app_harness_runtime=args.app_harness_runtime,
+        app_harness_no_launch=args.app_harness_no_launch,
+        app_harness_prompt_via_ui=args.app_harness_prompt_via_ui,
+        app_harness_dry_run=args.app_harness_dry_run,
+        app_harness_api_base=args.app_harness_api_base,
+        app_harness_ui_url=args.app_harness_ui_url,
+        app_harness_poll_interval_ms=args.app_harness_poll_interval,
         verbose=args.verbose,
     )
 

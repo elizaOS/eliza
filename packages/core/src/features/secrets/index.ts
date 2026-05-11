@@ -9,16 +9,7 @@
  */
 
 // Actions
-export {
-	checkSecretAction,
-	deleteSecretAction,
-	getSecretAction,
-	listSecretsAction,
-	manageSecretAction,
-	mirrorSecretToVaultAction,
-	requestSecretAction,
-	setSecretAction,
-} from "./actions/index.ts";
+export { maskSecretValue, secretsAction } from "./actions/index.ts";
 
 // Crypto
 export {

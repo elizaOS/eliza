@@ -50,7 +50,13 @@ ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
     "turbo3_tcq",
 )
 
-ELIZA_1_BACKENDS: Final[tuple[str, ...]] = ("metal", "vulkan", "cuda", "cpu")
+ELIZA_1_BACKENDS: Final[tuple[str, ...]] = (
+    "metal",
+    "vulkan",
+    "cuda",
+    "rocm",
+    "cpu",
+)
 ELIZA_1_VOICE_CAPABILITIES: Final[tuple[str, ...]] = (
     "tts",
     "emotion-tags",
@@ -88,10 +94,28 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_6b": ("metal", "vulkan", "cpu"),
     "1_7b": ("metal", "vulkan", "cpu"),
-    "9b": ("metal", "vulkan", "cuda", "cpu"),
-    "27b": ("metal", "vulkan", "cuda", "cpu"),
-    "27b-256k": ("cuda", "vulkan", "cpu"),
+    "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
+    "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
+    "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
 }
+
+VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
+    "0_6b": "Q4_K_M",
+    "1_7b": "Q4_K_M",
+    "9b": "Q8_0",
+    "27b": "Q8_0",
+    "27b-256k": "Q8_0",
+}
+
+
+def required_voice_artifacts_for_tier(tier: str) -> tuple[str, str]:
+    """Return the frozen OmniVoice GGUF pair required for ``tier``."""
+
+    quant = VOICE_QUANT_BY_TIER[tier]
+    return (
+        f"omnivoice-base-{quant}.gguf",
+        f"omnivoice-tokenizer-{quant}.gguf",
+    )
 
 _SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$")

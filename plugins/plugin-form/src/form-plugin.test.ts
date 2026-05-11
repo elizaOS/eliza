@@ -1,7 +1,7 @@
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import formPlugin, { FormService } from "./index";
-import { formRestoreAction } from "./actions/restore";
+import { formAction, formRestoreAction } from "./actions/form";
 import { formEvaluator } from "./evaluators/extractor";
 import { formContextProvider } from "./providers/context";
 import type { FormDefinition, FormSession } from "./types";
@@ -114,6 +114,9 @@ describe("plugin-form registration", () => {
       "FORM_RESTORE",
     );
     expect(formPlugin.actions?.map((action) => action.name)).not.toContain(
+      "FORM",
+    );
+    expect(formPlugin.actions?.map((action) => action.name)).not.toContain(
       "form_extractor",
     );
     expect(formPlugin.evaluators?.map((ev) => ev.name)).toContain(
@@ -183,7 +186,13 @@ describe("FORM_CONTEXT provider", () => {
   });
 });
 
-describe("FORM_RESTORE action", () => {
+describe("FORM action", () => {
+  it("declares the canonical name and exposes a back-compat alias", () => {
+    expect(formAction.name).toBe("FORM");
+    expect(formAction.similes).toContain("FORM_RESTORE");
+    expect(formRestoreAction).toBe(formAction);
+  });
+
   it("validates only when stashed sessions exist and no active session", async () => {
     const stashed = makeSession({ id: "stashed", status: "stashed" });
     const formService = {
@@ -193,12 +202,12 @@ describe("FORM_RESTORE action", () => {
     const runtime = makeRuntime(formService);
 
     await expect(
-      formRestoreAction.validate(runtime, makeMessage("anything"), {}),
+      formAction.validate(runtime, makeMessage("anything"), {}),
     ).resolves.toBe(true);
 
     formService.getStashedSessions = vi.fn(async () => []);
     await expect(
-      formRestoreAction.validate(runtime, makeMessage("anything"), {}),
+      formAction.validate(runtime, makeMessage("anything"), {}),
     ).resolves.toBe(false);
   });
 
@@ -234,9 +243,9 @@ describe("FORM_RESTORE action", () => {
     const callback = vi.fn();
 
     await expect(
-      formRestoreAction.validate(runtime, message, {}),
+      formAction.validate(runtime, message, {}),
     ).resolves.toBe(true);
-    const result = await formRestoreAction.handler(
+    const result = await formAction.handler(
       runtime,
       message,
       {},

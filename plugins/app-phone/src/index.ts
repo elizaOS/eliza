@@ -11,7 +11,6 @@
  * render without importing package subpaths.
  */
 
-export { placeCallAction } from "./actions/place-call.js";
 export { PhoneCompanionApp } from "./companion/components/PhoneCompanionApp.js";
 export * from "./companion/index.js";
 export * from "./companion/services/index.js";

@@ -9,8 +9,8 @@ publish orchestrator can hash and validate the final bundle.
 
 Default sources:
   - TTS: Serveurperso/OmniVoice-GGUF, Apache-2.0 GGUF artifacts.
-  - ASR: onnx-community/whisper-tiny.en, int8 ONNX encoder/decoder.
-  - VAD: onnx-community/silero-vad, int8 ONNX model.
+  - ASR: ggml-org/Qwen3-ASR-*-GGUF, GGUF artifacts.
+  - VAD: onnx-community/silero-vad, int8 ONNX sidecar model.
 """
 
 from __future__ import annotations
@@ -27,28 +27,25 @@ from typing import Any, Final
 
 from huggingface_hub import HfApi, hf_hub_download
 
-TIER_VOICE_QUANT: Final[dict[str, str]] = {
-    "0_6b": "Q4_K_M",
-    "1_7b": "Q4_K_M",
-    "9b": "Q8_0",
-    "27b": "Q8_0",
-    "27b-256k": "Q8_0",
-}
+try:
+    from .eliza1_manifest import VOICE_QUANT_BY_TIER
+except ImportError:  # pragma: no cover - script execution path
+    from eliza1_manifest import VOICE_QUANT_BY_TIER
 
 VOICE_REPO: Final[str] = "Serveurperso/OmniVoice-GGUF"
-ASR_REPO: Final[str] = "onnx-community/whisper-tiny.en"
 VAD_REPO: Final[str] = "onnx-community/silero-vad"
-
-ASR_FILES: Final[tuple[tuple[str, str], ...]] = (
-    ("onnx/encoder_model_int8.onnx", "asr/whisper-tiny-en-encoder-int8.onnx"),
-    (
-        "onnx/decoder_model_merged_int8.onnx",
-        "asr/whisper-tiny-en-decoder-merged-int8.onnx",
-    ),
-    ("tokenizer.json", "asr/whisper-tiny-en-tokenizer.json"),
-    ("preprocessor_config.json", "asr/whisper-tiny-en-preprocessor_config.json"),
-    ("config.json", "asr/whisper-tiny-en-config.json"),
-    ("generation_config.json", "asr/whisper-tiny-en-generation_config.json"),
+ASR_REPO_BY_TIER: Final[dict[str, str]] = {
+    "0_6b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "1_7b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "9b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "27b": "ggml-org/Qwen3-ASR-1.7B-GGUF",
+    "27b-256k": "ggml-org/Qwen3-ASR-1.7B-GGUF",
+}
+GGUF_QUANT_PREFERENCE: Final[tuple[str, ...]] = (
+    "Q4_K_M",
+    "Q4_K_S",
+    "Q5_K_M",
+    "Q8_0",
 )
 
 VAD_FILES: Final[tuple[tuple[str, str], ...]] = (
@@ -105,6 +102,57 @@ def copy_hf_file(
     }
 
 
+def choose_gguf_file(
+    api: HfApi,
+    *,
+    repo_id: str,
+    requested: str | None = None,
+) -> str:
+    files = [
+        f
+        for f in api.list_repo_files(repo_id, repo_type="model")
+        if f.endswith(".gguf")
+    ]
+    files = [f for f in files if "mmproj" not in f.lower()]
+    if requested:
+        if requested not in files:
+            raise ValueError(f"requested GGUF {requested!r} not found in {repo_id}")
+        return requested
+    for quant in GGUF_QUANT_PREFERENCE:
+        matches = sorted(f for f in files if quant.lower() in f.lower())
+        if matches:
+            return matches[0]
+    if not files:
+        raise ValueError(f"no GGUF files found in {repo_id}")
+    return sorted(files)[0]
+
+
+def choose_mmproj_file(
+    api: HfApi,
+    *,
+    repo_id: str,
+    requested: str | None = None,
+) -> str:
+    files = [
+        f
+        for f in api.list_repo_files(repo_id, repo_type="model")
+        if f.endswith(".gguf") and "mmproj" in f.lower()
+    ]
+    if requested:
+        if requested not in files:
+            raise ValueError(
+                f"requested ASR mmproj {requested!r} not found in {repo_id}"
+            )
+        return requested
+    for quant in GGUF_QUANT_PREFERENCE:
+        matches = sorted(f for f in files if quant.lower() in f.lower())
+        if matches:
+            return matches[0]
+    if not files:
+        raise ValueError(f"no ASR mmproj GGUF files found in {repo_id}")
+    return sorted(files)[0]
+
+
 def write_voice_preset(path: Path, *, dry_run: bool) -> dict[str, Any]:
     """Write a deterministic neutral v1 voice preset cache.
 
@@ -142,7 +190,13 @@ def write_voice_preset(path: Path, *, dry_run: bool) -> dict[str, Any]:
     }
 
 
-def merge_lineage(bundle_dir: Path, revisions: dict[str, str], *, dry_run: bool) -> None:
+def merge_lineage(
+    bundle_dir: Path,
+    revisions: dict[str, str],
+    *,
+    asr_repo: str,
+    dry_run: bool,
+) -> None:
     path = bundle_dir / "lineage.json"
     data: dict[str, Any] = {}
     if path.is_file():
@@ -154,8 +208,8 @@ def merge_lineage(bundle_dir: Path, revisions: dict[str, str], *, dry_run: bool)
                 "license": "apache-2.0",
             },
             "asr": {
-                "base": f"{ASR_REPO}@{revisions[ASR_REPO]}",
-                "license": "openai/whisper license; see upstream model card",
+                "base": f"{asr_repo}@{revisions[asr_repo]}",
+                "license": "apache-2.0; review upstream model card before release",
             },
             "vad": {
                 "base": f"{VAD_REPO}@{revisions[VAD_REPO]}",
@@ -174,8 +228,8 @@ def write_license_notes(bundle_dir: Path, *, dry_run: bool) -> None:
             "Declared upstream license: Apache-2.0.\n"
         ),
         "LICENSE.asr": (
-            "ASR assets staged from onnx-community/whisper-tiny.en.\n"
-            "Review upstream OpenAI Whisper license/model card before release.\n"
+            "ASR GGUF assets staged from ggml-org/Qwen3-ASR-*-GGUF.\n"
+            "Review upstream Apache-2.0 license and model card before release.\n"
         ),
         "LICENSE.vad": (
             "VAD assets staged from onnx-community/silero-vad.\n"
@@ -202,10 +256,17 @@ def resolve_revisions(api: HfApi, repos: tuple[str, ...]) -> dict[str, str]:
 
 def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
     tier = args.tier
-    quant = TIER_VOICE_QUANT[tier]
+    quant = VOICE_QUANT_BY_TIER[tier]
     bundle_dir = args.bundle_dir.resolve()
+    asr_repo = args.asr_repo or ASR_REPO_BY_TIER[tier]
     api = HfApi()
-    revisions = resolve_revisions(api, (VOICE_REPO, ASR_REPO, VAD_REPO))
+    revisions = resolve_revisions(api, (VOICE_REPO, asr_repo, VAD_REPO))
+    asr_remote_path = choose_gguf_file(api, repo_id=asr_repo, requested=args.asr_file)
+    asr_mmproj_remote_path = choose_mmproj_file(
+        api,
+        repo_id=asr_repo,
+        requested=args.asr_mmproj_file,
+    )
 
     staged: list[dict[str, Any]] = []
     voice_pairs = (
@@ -225,16 +286,24 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
                 dry_run=args.dry_run,
             )
         )
-    for remote, rel in ASR_FILES:
-        staged.append(
-            copy_hf_file(
-                repo_id=ASR_REPO,
-                revision=revisions[ASR_REPO],
-                remote_path=remote,
-                destination=bundle_dir / rel,
-                dry_run=args.dry_run,
-            )
+    staged.append(
+        copy_hf_file(
+            repo_id=asr_repo,
+            revision=revisions[asr_repo],
+            remote_path=asr_remote_path,
+            destination=bundle_dir / "asr" / "eliza-1-asr.gguf",
+            dry_run=args.dry_run,
         )
+    )
+    staged.append(
+        copy_hf_file(
+            repo_id=asr_repo,
+            revision=revisions[asr_repo],
+            remote_path=asr_mmproj_remote_path,
+            destination=bundle_dir / "asr" / "eliza-1-asr-mmproj.gguf",
+            dry_run=args.dry_run,
+        )
+    )
     for remote, rel in VAD_FILES:
         staged.append(
             copy_hf_file(
@@ -250,7 +319,7 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
         bundle_dir / "cache" / "voice-preset-default.bin",
         dry_run=args.dry_run,
     )
-    merge_lineage(bundle_dir, revisions, dry_run=args.dry_run)
+    merge_lineage(bundle_dir, revisions, asr_repo=asr_repo, dry_run=args.dry_run)
     write_license_notes(bundle_dir, dry_run=args.dry_run)
 
     report = {
@@ -259,6 +328,9 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
         "tier": tier,
         "bundleDir": str(bundle_dir),
         "voiceQuant": quant,
+        "asrRepo": asr_repo,
+        "asrRemotePath": asr_remote_path,
+        "asrMmprojRemotePath": asr_mmproj_remote_path,
         "sources": {
             repo: {"revision": rev}
             for repo, rev in revisions.items()
@@ -306,9 +378,27 @@ def upload_assets(args: argparse.Namespace) -> None:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--tier", required=True, choices=tuple(TIER_VOICE_QUANT))
+    ap.add_argument("--tier", required=True, choices=tuple(VOICE_QUANT_BY_TIER))
     ap.add_argument("--bundle-dir", required=True, type=Path)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument(
+        "--asr-repo",
+        default=None,
+        help="Override ASR GGUF model repo. Defaults by tier.",
+    )
+    ap.add_argument(
+        "--asr-file",
+        default=None,
+        help=(
+            "Exact ASR GGUF file path inside --asr-repo. Defaults to a "
+            "preferred quant."
+        ),
+    )
+    ap.add_argument(
+        "--asr-mmproj-file",
+        default=None,
+        help="Exact ASR mmproj GGUF file path inside --asr-repo.",
+    )
     ap.add_argument(
         "--upload-repo",
         default=None,

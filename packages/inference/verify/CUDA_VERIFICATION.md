@@ -101,12 +101,18 @@ Each fixture should print:
 CUDA_REMOTE=user@cuda-host \
 CUDA_REMOTE_DIR=~/code/eliza \
 ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf \
-./cuda_runner.sh
+./cuda_runner.sh --report hardware-results/cuda-remote-evidence.json
 ```
 
 The runner ssh-runs `make cuda-verify` on the remote and streams output
 back. The remote must already have the eliza checkout at
 `$CUDA_REMOTE_DIR` and the prereqs above.
+
+With `--report`, the local JSON is copied from the remote runner output. The
+remote path defaults to
+`$CUDA_REMOTE_DIR/packages/inference/verify/hardware-results/<local-basename>`;
+set `CUDA_REMOTE_REPORT=<remote-json-path>` only when the target lab needs a
+specific evidence filename.
 
 ## What `cuda_runner.sh` now enforces
 
@@ -125,7 +131,8 @@ back. The remote must already have the eliza checkout at
 5. With `--report <path>` or `ELIZA_DFLASH_HARDWARE_REPORT=<path>`, it writes
    JSON evidence containing the host OS/arch, target, NVIDIA driver/GPU
    evidence, CUDA toolkit output, model path/hash, exit status, and
-   `passRecordable`.
+   `passRecordable`. If report writing fails after a successful run, the run is
+   not a recordable pass.
 
 `CUDA_SKIP_GRAPH_SMOKE=1` is permitted only for fixture-only bring-up. It must
 not be recorded as runtime-ready graph dispatch, and the runner exits non-zero
@@ -134,7 +141,9 @@ in that mode so it cannot be mistaken for a hardware pass.
 GH200-class hosts should use `./gh200_runner.sh`, which requires arm64 Linux
 userspace plus Hopper/compute-capability-9.x GPU evidence and pins
 `linux-aarch64-cuda` with `-DCMAKE_CUDA_ARCHITECTURES=90a`. It accepts the
-same `--report <path>` evidence flag before delegating to the CUDA runner.
+same `--report <path>` evidence flag before delegating to the CUDA runner, and
+stores the delegated CUDA JSON beside the GH200 wrapper report as
+`<report>.cuda.json` by default.
 
 The cross-backend runner doc is `HARDWARE_VERIFICATION.md`.
 

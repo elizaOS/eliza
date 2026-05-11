@@ -4,7 +4,7 @@
 // isStreamingDestinationConfigured, isWechatConfigured) live in
 // @elizaos/core now — re-exported below for back-compat with callers that
 // still import from @elizaos/shared. The reverse-lookup maps stay here
-// since they're app-side data (consumed by plugins-compat-routes.ts to
+// since they're app-side data (consumed by plugins-routes.ts to
 // translate package names ↔ connector keys for UI config sync).
 //
 // Plugin auto-enable is in ./plugin-manifest.ts. Each plugin declares its

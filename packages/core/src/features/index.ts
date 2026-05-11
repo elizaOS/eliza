@@ -11,6 +11,7 @@
  * they are registered with the runtime alongside the lazy-started services.
  */
 
+import { promoteSubactionsToActions } from "../actions/promote-subactions.ts";
 import { createService } from "../services.ts";
 import type { Action, Provider } from "../types/index.ts";
 import type { ServiceClass } from "../types/plugin.ts";
@@ -24,10 +25,7 @@ import type { IAgentRuntime } from "../types/runtime.ts";
 // Direct leaf-file imports — see comment in
 // ./advanced-capabilities/index.ts for the Bun.build mis-rewrite that
 // requires bypassing barrels here too.
-import { evaluateTrustAction } from "./trust/actions/evaluateTrust.ts";
-import { recordTrustInteractionAction } from "./trust/actions/recordTrustInteraction.ts";
-import { requestElevationAction } from "./trust/actions/requestElevation.ts";
-import { updateRoleAction as trustUpdateRoleAction } from "./trust/actions/roles.ts";
+import { trustAction } from "./trust/actions/trust.ts";
 import { adminTrustProvider } from "./trust/providers/adminTrust.ts";
 import { roleProvider as trustRoleProvider } from "./trust/providers/roles.ts";
 import { securityStatusProvider } from "./trust/providers/securityStatus.ts";
@@ -42,12 +40,7 @@ const trustCapability = {
 		securityStatusProvider,
 		adminTrustProvider,
 	] as Provider[],
-	actions: [
-		trustUpdateRoleAction,
-		recordTrustInteractionAction,
-		evaluateTrustAction,
-		requestElevationAction,
-	] as Action[],
+	actions: [...promoteSubactionsToActions(trustAction)] as Action[],
 	services: [
 		createService("trust-engine")
 			.withDescription("Trust profile, evidence, and policy evaluation")
@@ -89,9 +82,7 @@ const trustCapability = {
 // Direct leaf-file imports — see comment in
 // ./advanced-capabilities/index.ts for the Bun.build mis-rewrite that
 // requires bypassing barrels.
-import { manageSecretAction } from "./secrets/actions/manage-secret.ts";
-import { requestSecretAction } from "./secrets/actions/request-secret.ts";
-import { setSecretAction } from "./secrets/actions/set-secret.ts";
+import { secretsAction } from "./secrets/actions/manage-secret.ts";
 import { updateSettingsAction as onboardingUpdateSettingsAction } from "./secrets/onboarding/action.ts";
 import {
 	missingSecretsProvider,
@@ -113,9 +104,7 @@ const secretsCapability = {
 		missingSecretsProvider,
 	] as Provider[],
 	actions: [
-		setSecretAction,
-		manageSecretAction,
-		requestSecretAction,
+		...promoteSubactionsToActions(secretsAction),
 		onboardingUpdateSettingsAction,
 	] as Action[],
 	services: [

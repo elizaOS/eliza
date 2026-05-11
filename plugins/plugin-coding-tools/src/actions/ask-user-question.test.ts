@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 
-import { askUserQuestionAction } from "./ask-user-question.js";
+import { askUserQuestionHandler } from "./ask-user-question.js";
 
 function makeRuntime(): IAgentRuntime {
   return {
@@ -21,10 +21,10 @@ function makeMessage(roomId: string): Memory {
 async function invoke(params: Record<string, unknown>) {
   const runtime = makeRuntime();
   const message = makeMessage(`room-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
-  return askUserQuestionAction.handler!(runtime, message, undefined, { parameters: params });
+  return askUserQuestionHandler(runtime, message, undefined, { parameters: params });
 }
 
-describe("askUserQuestionAction", () => {
+describe("askUserQuestionHandler", () => {
   it("accepts a single question with three options", async () => {
     const result = await invoke({
       questions: [

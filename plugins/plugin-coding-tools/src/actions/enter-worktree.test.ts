@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SandboxService } from "../services/sandbox-service.js";
 import { SessionCwdService } from "../services/session-cwd-service.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
-import { enterWorktreeAction } from "./enter-worktree.js";
+import { enterWorktreeHandler } from "./enter-worktree.js";
 
 interface TestEnv {
   repoDir: string;
@@ -98,7 +98,7 @@ describe("ENTER_WORKTREE", () => {
   });
 
   it("creates a worktree, sets session cwd to it, and adds it as a sandbox root", async () => {
-    const result = await enterWorktreeAction.handler?.(
+    const result = await enterWorktreeHandler(
       env.runtime,
       makeMessage(env.conversationId),
       state,
@@ -126,7 +126,7 @@ describe("ENTER_WORKTREE", () => {
   });
 
   it("uses the provided name when supplied", async () => {
-    const result = await enterWorktreeAction.handler?.(
+    const result = await enterWorktreeHandler(
       env.runtime,
       makeMessage(env.conversationId),
       state,
@@ -167,7 +167,7 @@ describe("ENTER_WORKTREE", () => {
     (runtime as { getService: (k: string) => unknown }).getService =
       (key: string) => services[key] ?? null;
 
-    const result = await enterWorktreeAction.handler?.(
+    const result = await enterWorktreeHandler(
       runtime,
       makeMessage(conversationId),
       state,
@@ -184,7 +184,7 @@ describe("ENTER_WORKTREE", () => {
   });
 
   it("fails with missing_param when message has no roomId", async () => {
-    const result = await enterWorktreeAction.handler?.(
+    const result = await enterWorktreeHandler(
       env.runtime,
       {} as Memory,
       state,

@@ -1355,6 +1355,7 @@ export function installPromptOptimizations(
         // under budget, the existing tail-truncation pipeline still kicks in.
         try {
           const beforeConversationCompaction = nextPrompt;
+          let conversationCompactionSkipReason: string | undefined;
           nextPrompt = await maybeApplyConversationCompaction(
             runtime,
             nextPrompt,
@@ -1363,11 +1364,16 @@ export function installPromptOptimizations(
             (result) => {
               const { prompt: _prompt, ...rest } = result;
               promptOptimizationTelemetry.conversationCompaction = rest;
+              conversationCompactionSkipReason = result.skipReason;
             },
           );
           if (nextPrompt !== beforeConversationCompaction) {
             promptOptimizationTelemetry.transformations.push(
               `conversation-compaction:${beforeConversationCompaction.length}->${nextPrompt.length}`,
+            );
+          } else if (conversationCompactionSkipReason) {
+            promptOptimizationTelemetry.transformations.push(
+              `conversation-compaction-skipped:${conversationCompactionSkipReason}`,
             );
           }
         } catch (error) {
@@ -1396,6 +1402,7 @@ export function installPromptOptimizations(
       } else if (nextMessages && !payloadHasProviderTools) {
         try {
           const beforeRendered = renderMessagesForTelemetry(nextMessages);
+          let conversationCompactionSkipReason: string | undefined;
           nextMessages = await maybeApplyConversationMessageCompaction(
             runtime,
             nextMessages,
@@ -1404,12 +1411,17 @@ export function installPromptOptimizations(
             (result) => {
               const { messages: _messages, ...rest } = result;
               promptOptimizationTelemetry.conversationCompaction = rest;
+              conversationCompactionSkipReason = result.skipReason;
             },
           );
           const afterRendered = renderMessagesForTelemetry(nextMessages);
           if (afterRendered !== beforeRendered) {
             promptOptimizationTelemetry.transformations.push(
               `conversation-message-compaction:${beforeRendered.length}->${afterRendered.length}`,
+            );
+          } else if (conversationCompactionSkipReason) {
+            promptOptimizationTelemetry.transformations.push(
+              `conversation-message-compaction-skipped:${conversationCompactionSkipReason}`,
             );
           }
         } catch (error) {

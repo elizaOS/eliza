@@ -19,13 +19,17 @@ export declare const coreActionsSpec: {
   readonly version: "1.0.0";
   readonly actions: readonly [
     {
-      readonly name: "CLEAR_SHELL_HISTORY";
-      readonly description: "Clears the recorded history of shell commands for the current conversation";
+      readonly name: "SHELL_HISTORY";
+      readonly description: string;
       readonly similes: readonly [
+        "CLEAR_HISTORY",
+        "CLEAR_SHELL_HISTORY",
         "RESET_SHELL",
         "CLEAR_TERMINAL",
-        "CLEAR_HISTORY",
         "RESET_HISTORY",
+        "VIEW_SHELL_HISTORY",
+        "SHOW_SHELL_HISTORY",
+        "LIST_SHELL_HISTORY",
       ];
       readonly parameters: readonly [];
     },
@@ -35,13 +39,17 @@ export declare const allActionsSpec: {
   readonly version: "1.0.0";
   readonly actions: readonly [
     {
-      readonly name: "CLEAR_SHELL_HISTORY";
-      readonly description: "Clears the recorded history of shell commands for the current conversation";
+      readonly name: "SHELL_HISTORY";
+      readonly description: string;
       readonly similes: readonly [
+        "CLEAR_HISTORY",
+        "CLEAR_SHELL_HISTORY",
         "RESET_SHELL",
         "CLEAR_TERMINAL",
-        "CLEAR_HISTORY",
         "RESET_HISTORY",
+        "VIEW_SHELL_HISTORY",
+        "SHOW_SHELL_HISTORY",
+        "LIST_SHELL_HISTORY",
       ];
       readonly parameters: readonly [];
     },

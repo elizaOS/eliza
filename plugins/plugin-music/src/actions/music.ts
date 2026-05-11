@@ -31,24 +31,127 @@ function jsonHandlerOptions(
   return record as Record<string, JsonValue | undefined>;
 }
 
-/** Library-backed ops (same contract as legacy MUSIC_LIBRARY). */
-type MusicLibraryOp = "playlist" | "play_query" | "search_youtube" | "download";
-
-type UnifiedKind = "library" | "playback" | "play_audio" | "routing" | "zones";
-
-const PLAYER_CONTROL_OPS = new Set([
+/**
+ * Verb-shaped subactions exposed on the MUSIC umbrella.
+ *
+ * Each verb maps to a dispatch kind that resolves to one of the underlying
+ * handlers. The dispatcher accepts legacy aliases (see {@link SUBACTION_ALIASES})
+ * so cached planner outputs continue to resolve.
+ */
+const MUSIC_SUBACTIONS = [
+  // playback transport
+  "play",
   "pause",
   "resume",
   "skip",
   "stop",
-  "queue",
+  // queue
+  "queue_view",
+  "queue_add",
+  "queue_clear",
+  // library
+  "playlist_play",
+  "playlist_save",
+  "search",
+  "play_query",
+  "download",
+  "play_audio",
+  // routing / zones
+  "set_routing",
+  "set_zone",
+] as const;
+
+type MusicSubaction = (typeof MUSIC_SUBACTIONS)[number];
+
+type DispatchKind =
+  | { kind: "playback"; playbackOp: "pause" | "resume" | "skip" | "stop" }
+  | { kind: "queue_add" }
+  | { kind: "queue_view" }
+  | { kind: "queue_clear" }
+  | { kind: "play_audio" }
+  | { kind: "library"; libraryOp: LibraryOp; playlistOp?: PlaylistOp }
+  | { kind: "routing" }
+  | { kind: "zones" };
+
+type LibraryOp = "playlist" | "play_query" | "search_youtube" | "download";
+type PlaylistOp = "save" | "load";
+
+/**
+ * Legacy alias → canonical verb. Both the old MUSIC ops (e.g. `playlist`,
+ * `search_youtube`, `routing`, `zones`, `queue`) and a handful of human-friendly
+ * verbs are accepted so existing planner outputs keep dispatching cleanly.
+ */
+const SUBACTION_ALIASES: Record<string, MusicSubaction> = {
+  // playback transport aliases
+  unpause: "resume",
+  next: "skip",
+  start: "play",
+  begin: "play",
+  // queue aliases
+  queue: "queue_add",
+  add_to_queue: "queue_add",
+  queue_show: "queue_view",
+  show_queue: "queue_view",
+  list_queue: "queue_view",
+  clear_queue: "queue_clear",
+  empty_queue: "queue_clear",
+  // library aliases
+  playlist: "playlist_play",
+  play_playlist: "playlist_play",
+  load_playlist: "playlist_play",
+  save_playlist: "playlist_save",
+  search_youtube: "search",
+  youtube_search: "search",
+  find: "search",
+  find_song: "search",
+  research: "play_query",
+  research_and_play: "play_query",
+  smart_play: "play_query",
+  // routing / zones aliases
+  routing: "set_routing",
+  manage_routing: "set_routing",
+  route_audio: "set_routing",
+  zones: "set_zone",
+  zone: "set_zone",
+  manage_zones: "set_zone",
+  // play_audio aliases
+  stream: "play_audio",
+  play_music_audio: "play_audio",
+};
+
+/** Discriminator keys accepted on input (canonical first, legacy after). */
+const DISCRIMINATOR_KEYS = [
+  "action",
+  "op",
+  "subaction",
+  "music_op",
+  "command",
+] as const;
+
+const MUSIC_CONTEXTS = [
+  "media",
+  "automation",
+  "knowledge",
+  "web",
+  "files",
+  "settings",
+] as const;
+
+const PLAYLIST_LOAD_TOKENS = new Set([
+  "load",
+  "play",
+  "restore",
+  "playlist_play",
+  "playlist_load",
 ]);
 
-const ROUTING_TOKENS = new Set(["routing", "manage_routing", "route_audio"]);
-
-const ZONE_TOKENS = new Set(["zones", "manage_zones"]);
-
-const PLAY_AUDIO_TOKENS = new Set(["play_audio", "stream", "play_music_audio"]);
+const PLAYLIST_SAVE_TOKENS = new Set([
+  "save",
+  "create",
+  "store",
+  "playlist_save",
+  "playlist_create",
+]);
 
 function normalizeToken(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -59,78 +162,120 @@ function normalizeToken(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function normalizeMusicLibraryOpToken(value: string): MusicLibraryOp | null {
-  const n = normalizeToken(value);
-  if (!n) return null;
-  const direct: MusicLibraryOp[] = [
-    "playlist",
-    "play_query",
-    "search_youtube",
-    "download",
-  ];
-  if ((direct as readonly string[]).includes(n)) {
-    return n as MusicLibraryOp;
-  }
-  return MUSIC_LIBRARY_OP_ALIASES[n] ?? null;
+function isCanonicalSubaction(value: string): value is MusicSubaction {
+  return (MUSIC_SUBACTIONS as readonly string[]).includes(value);
 }
 
-function tokenToUnifiedKind(token: string): UnifiedKind | null {
-  const n = normalizeToken(token);
-  if (!n) return null;
-  if (PLAYER_CONTROL_OPS.has(n)) return "playback";
-  if (ROUTING_TOKENS.has(n)) return "routing";
-  if (ZONE_TOKENS.has(n)) return "zones";
-  if (PLAY_AUDIO_TOKENS.has(n)) return "play_audio";
-  if (normalizeMusicLibraryOpToken(n)) return "library";
+function normalizeSubaction(value: unknown): MusicSubaction | null {
+  const token = normalizeToken(value);
+  if (!token) return null;
+  if (isCanonicalSubaction(token)) return token;
+  if (SUBACTION_ALIASES[token]) return SUBACTION_ALIASES[token];
+  // Library aliases (e.g. `play_music_query`, `add_to_playlist`) resolve via
+  // the library alias map and then map to the canonical verb.
+  const libraryOp = MUSIC_LIBRARY_OP_ALIASES[token];
+  if (libraryOp === "playlist") return "playlist_play";
+  if (libraryOp === "search_youtube") return "search";
+  if (libraryOp === "play_query") return "play_query";
+  if (libraryOp === "download") return "download";
   return null;
 }
 
-function readExplicitUnifiedKind(
+function readExplicitSubaction(
   merged: Record<string, unknown>,
-): UnifiedKind | null {
-  const keys = ["op", "action", "music_op", "command"] as const;
-  for (const k of keys) {
-    const raw = merged[k];
-    if (typeof raw !== "string") continue;
-    const kind = tokenToUnifiedKind(raw);
-    if (kind) return kind;
+): MusicSubaction | null {
+  for (const key of DISCRIMINATOR_KEYS) {
+    const resolved = normalizeSubaction(merged[key]);
+    if (resolved) return resolved;
   }
   return null;
 }
 
-function ensurePlaybackMerged(
+function resolvePlaylistOpFromOptions(
   merged: Record<string, unknown>,
-  message: Memory,
-): Record<string, unknown> {
-  const out = { ...merged };
-  const op =
-    normalizeOp(out.op) ??
-    normalizeOp(out.playback_op) ??
-    normalizeOp(out.action);
-  const resolved = op ?? inferOpFromText(message.content?.text ?? "");
-  if (resolved) {
-    out.op = resolved;
+  subaction: MusicSubaction,
+): PlaylistOp | null {
+  if (subaction === "playlist_save") return "save";
+  if (subaction === "playlist_play") return "load";
+  const tokens = [merged.playlistOp, merged.subaction, merged.action, merged.op]
+    .map((value) => normalizeToken(value))
+    .filter((value): value is string => Boolean(value));
+  for (const token of tokens) {
+    if (PLAYLIST_LOAD_TOKENS.has(token)) return "load";
+    if (PLAYLIST_SAVE_TOKENS.has(token)) return "save";
   }
-  return out;
+  return null;
 }
 
-async function inferUnifiedKind(
+function dispatchKindFor(
+  subaction: MusicSubaction,
+  merged: Record<string, unknown>,
+): DispatchKind {
+  switch (subaction) {
+    case "pause":
+    case "resume":
+    case "skip":
+    case "stop":
+      return { kind: "playback", playbackOp: subaction };
+    case "play":
+      return { kind: "play_audio" };
+    case "queue_add":
+      return { kind: "queue_add" };
+    case "queue_view":
+      return { kind: "queue_view" };
+    case "queue_clear":
+      return { kind: "queue_clear" };
+    case "play_audio":
+      return { kind: "play_audio" };
+    case "playlist_play":
+      return {
+        kind: "library",
+        libraryOp: "playlist",
+        playlistOp: "load",
+      };
+    case "playlist_save":
+      return {
+        kind: "library",
+        libraryOp: "playlist",
+        playlistOp: "save",
+      };
+    case "search":
+      return { kind: "library", libraryOp: "search_youtube" };
+    case "play_query":
+      return { kind: "library", libraryOp: "play_query" };
+    case "download":
+      return { kind: "library", libraryOp: "download" };
+    case "set_routing":
+      return { kind: "routing" };
+    case "set_zone":
+      return { kind: "zones" };
+    default: {
+      const playlistOp = resolvePlaylistOpFromOptions(merged, subaction);
+      if (playlistOp) {
+        return { kind: "library", libraryOp: "playlist", playlistOp };
+      }
+      return { kind: "play_audio" };
+    }
+  }
+}
+
+async function inferSubactionFromText(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
   merged: Record<string, unknown>,
-): Promise<UnifiedKind | null> {
-  const explicit = readExplicitUnifiedKind(merged);
-  if (explicit) return explicit;
-
+): Promise<MusicSubaction | null> {
   const text = message.content?.text ?? "";
 
   if (isPlaybackTransportControlOnlyMessage(text)) {
-    return "playback";
+    const playbackInferred = inferOpFromText(text);
+    if (playbackInferred === "queue") return "queue_add";
+    if (playbackInferred) return playbackInferred;
   }
 
-  if (inferOpFromText(text)) {
-    return "playback";
+  const transportInferred = inferOpFromText(text);
+  if (transportInferred) {
+    return transportInferred === "queue" ? "queue_add" : transportInferred;
   }
 
   const playState = (state ?? {}) as State;
@@ -139,14 +284,26 @@ async function inferUnifiedKind(
   }
 
   if (await validatePlaybackControl(runtime, message, state, merged)) {
-    return "playback";
+    return "play";
   }
 
   if (
     runtime.getService("musicLibrary") &&
     (await inferMusicLibraryOp(runtime, message, state, merged))
   ) {
-    return "library";
+    const libraryOp = await inferMusicLibraryOp(
+      runtime,
+      message,
+      state,
+      merged,
+    );
+    if (libraryOp === "playlist") {
+      const playlistOp = resolvePlaylistOpFromOptions(merged, "playlist_play");
+      return playlistOp === "save" ? "playlist_save" : "playlist_play";
+    }
+    if (libraryOp === "search_youtube") return "search";
+    if (libraryOp === "play_query") return "play_query";
+    if (libraryOp === "download") return "download";
   }
 
   if (
@@ -157,7 +314,7 @@ async function inferUnifiedKind(
       jsonHandlerOptions(merged),
     )
   ) {
-    return "routing";
+    return "set_routing";
   }
 
   if (
@@ -168,20 +325,46 @@ async function inferUnifiedKind(
       jsonHandlerOptions(merged),
     )
   ) {
-    return "zones";
+    return "set_zone";
   }
 
   return null;
 }
 
-const MUSIC_CONTEXTS = [
-  "media",
-  "automation",
-  "knowledge",
-  "web",
-  "files",
-  "settings",
-] as const;
+async function resolveSubaction(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  merged: Record<string, unknown>,
+): Promise<MusicSubaction | null> {
+  return readExplicitSubaction(merged) ?? (await inferSubactionFromText(
+    runtime,
+    message,
+    state,
+    merged,
+  ));
+}
+
+function ensurePlaybackMerged(
+  merged: Record<string, unknown>,
+  message: Memory,
+  forcedOp?: "pause" | "resume" | "skip" | "stop",
+): Record<string, unknown> {
+  const out = { ...merged };
+  if (forcedOp) {
+    out.op = forcedOp;
+    return out;
+  }
+  const op =
+    normalizeOp(out.op) ??
+    normalizeOp(out.playback_op) ??
+    normalizeOp(out.action);
+  const resolved = op ?? inferOpFromText(message.content?.text ?? "");
+  if (resolved) {
+    out.op = resolved;
+  }
+  return out;
+}
 
 function selectedContextMatches(
   state: State | undefined,
@@ -233,68 +416,54 @@ export const musicAction: Action = {
     ...(manageZones.similes ?? []),
   ],
   description:
-    "Unified music action. Use flat action for everything: library (playlist, play_query, search_youtube, download), playback transport (pause, resume, skip, stop, queue), play_audio, routing, zones. " +
-    "Transport skip/stop/queue and library mutations require confirmed:true where the underlying operation requires it.",
+    "Unified music action. Use verb-shaped action for everything: " +
+    "playback (play, pause, resume, skip, stop), queue (queue_view, queue_add, queue_clear), " +
+    "library (playlist_play, playlist_save, search, play_query, download, play_audio), " +
+    "routing/zones (set_routing, set_zone). " +
+    "skip, stop, queue_add, queue_clear, playlist_save, and download require confirmed:true.",
   descriptionCompressed:
-    "Flat op: playlist/play_query/search_youtube/download/pause/resume/skip/stop/queue/play_audio/routing/zones.",
+    "Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save, search/play_query/download/play_audio, set_routing/set_zone.",
   parameters: [
     {
       name: "action",
       description:
-        "Flat operation: playlist | play_query | search_youtube | download | pause | resume | skip | stop | queue | play_audio | routing | zones (hyphens and legacy aliases accepted).",
+        "Verb-shaped subaction. Playback: play, pause, resume, skip, stop. " +
+        "Queue: queue_view, queue_add, queue_clear. " +
+        "Library: playlist_play, playlist_save, search, play_query, download, play_audio. " +
+        "Routing/zones: set_routing, set_zone. Legacy aliases (e.g. queue, playlist, search_youtube, routing, zones) are still accepted.",
       required: false,
       schema: {
         type: "string",
-        enum: [
-          "playlist",
-          "play_query",
-          "search_youtube",
-          "download",
-          "pause",
-          "resume",
-          "skip",
-          "stop",
-          "queue",
-          "play_audio",
-          "routing",
-          "zones",
-        ],
+        enum: [...MUSIC_SUBACTIONS],
       },
     },
     {
-      name: "subaction",
-      description:
-        "Playlist subaction when op=playlist (save, load, delete, add, …).",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
       name: "query",
-      description: "Search/play/queue query depending on op.",
+      description: "Search/play/queue query depending on subaction.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "url",
-      description: "Direct media URL when using play_audio.",
+      description: "Direct media URL when using play_audio or play.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "playlistName",
-      description: "Playlist name for playlist ops.",
+      description: "Playlist name for playlist_play / playlist_save.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "song",
-      description: "Song query for playlist add.",
+      description: "Song query when adding to a playlist.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "limit",
-      description: "Search result limit (YouTube / library helpers).",
+      description: "Search result limit (search / library helpers).",
       required: false,
       schema: { type: "number", minimum: 1, maximum: 10 },
     },
@@ -308,19 +477,19 @@ export const musicAction: Action = {
     {
       name: "operation",
       description:
-        "Structured routing operation when using routing (set_mode, start_route, …).",
+        "Structured routing operation when using set_routing (set_mode, start_route, …).",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "mode",
-      description: "Routing mode for routing operations.",
+      description: "Routing mode for set_routing operations.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "sourceId",
-      description: "Stream/source id for routing.",
+      description: "Stream/source id for set_routing.",
       required: false,
       schema: { type: "string" },
     },
@@ -338,8 +507,8 @@ export const musicAction: Action = {
     options?: Record<string, unknown>,
   ): Promise<boolean> => {
     const merged = mergedOptions(options);
-    const kind = await inferUnifiedKind(runtime, message, state, merged);
-    if (kind) return true;
+    const subaction = await resolveSubaction(runtime, message, state, merged);
+    if (subaction) return true;
     return selectedContextMatches(state, MUSIC_CONTEXTS);
   },
   handler: async (
@@ -350,20 +519,61 @@ export const musicAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     const merged = mergedOptions(options);
-    const kind = await inferUnifiedKind(runtime, message, state, merged);
+    const subaction = await resolveSubaction(runtime, message, state, merged);
 
-    if (!kind) {
+    if (!subaction) {
       const text =
-        "Could not classify a music operation. Set action to one of: playlist, play_query, search_youtube, download, pause, resume, skip, stop, queue, play_audio, routing, or zones.";
+        "Could not classify a music subaction. Set action to one of: " +
+        [...MUSIC_SUBACTIONS].join(", ") +
+        ".";
       if (callback) {
         await callback({ text, source: message.content.source });
       }
       return { success: false, text, error: text };
     }
 
-    switch (kind) {
+    const dispatch = dispatchKindFor(subaction, merged);
+
+    switch (dispatch.kind) {
       case "playback": {
-        const dispatchMerged = ensurePlaybackMerged(merged, message);
+        const dispatchMerged = ensurePlaybackMerged(
+          merged,
+          message,
+          dispatch.playbackOp,
+        );
+        return playbackOp.handler(
+          runtime,
+          message,
+          state,
+          jsonHandlerOptions(dispatchMerged),
+          callback,
+        );
+      }
+      case "queue_add": {
+        const dispatchMerged = { ...merged, op: "queue" };
+        return playbackOp.handler(
+          runtime,
+          message,
+          state,
+          jsonHandlerOptions(dispatchMerged),
+          callback,
+        );
+      }
+      case "queue_view": {
+        if (!callback) {
+          return { success: false, error: "Missing callback", text: "" };
+        }
+        const text =
+          "Use the music UI to inspect the current queue, or ask 'show queue'.";
+        await callback({ text, source: message.content.source });
+        return {
+          success: true,
+          text,
+          data: { subaction: "queue_view" },
+        };
+      }
+      case "queue_clear": {
+        const dispatchMerged = { ...merged, op: "stop" };
         return playbackOp.handler(
           runtime,
           message,
@@ -384,14 +594,22 @@ export const musicAction: Action = {
           callback,
         );
       }
-      case "library":
+      case "library": {
+        const dispatchMerged: Record<string, unknown> = {
+          ...merged,
+          subaction: dispatch.libraryOp,
+        };
+        if (dispatch.playlistOp) {
+          dispatchMerged.playlistOp = dispatch.playlistOp;
+        }
         return musicLibraryAction.handler(
           runtime,
           message,
           state,
-          jsonHandlerOptions(merged),
+          jsonHandlerOptions(dispatchMerged),
           callback,
         );
+      }
       case "routing":
         return manageRouting.handler(
           runtime,

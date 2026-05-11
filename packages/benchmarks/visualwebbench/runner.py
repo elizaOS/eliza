@@ -25,6 +25,12 @@ from benchmarks.visualwebbench.types import (
 logger = logging.getLogger(__name__)
 
 _ELIZA_BRIDGE_PROVIDERS = {"eliza", "eliza-bridge", "eliza-ts"}
+_ELIZA_APP_HARNESS_PROVIDERS = {
+    "app-harness",
+    "eliza-app",
+    "eliza-app-harness",
+    "eliza-browser-app",
+}
 
 
 class VisualWebBenchRunner:
@@ -81,16 +87,22 @@ class VisualWebBenchRunner:
             from eliza_adapter.visualwebbench import ElizaVisualWebBenchAgent
 
             return ElizaVisualWebBenchAgent(self.config)
+        if provider in _ELIZA_APP_HARNESS_PROVIDERS:
+            from eliza_adapter.visualwebbench import ElizaVisualWebBenchAppHarnessAgent
+
+            return ElizaVisualWebBenchAppHarnessAgent(self.config)
         raise ValueError(
-            f"VisualWebBench only supports --dry-run or --provider eliza for now, got {provider!r}"
+            "VisualWebBench supports --dry-run, --provider eliza, or "
+            f"--provider eliza-app-harness, got {provider!r}"
         )
 
     async def _run_task(self, agent: Any, task: VisualWebBenchTask) -> VisualWebBenchResult:
         started = time.time()
+        timeout_ms = getattr(agent, "task_timeout_ms", self.config.timeout_ms)
         try:
             prediction = await asyncio.wait_for(
                 agent.predict(task),
-                timeout=self.config.timeout_ms / 1000,
+                timeout=timeout_ms / 1000,
             )
         except asyncio.TimeoutError:
             prediction = VisualWebBenchPrediction(
@@ -130,7 +142,7 @@ class VisualWebBenchRunner:
             results=results,
             summary={
                 "timestamp": datetime.now().isoformat(),
-                "mode": "dry-run" if self.config.dry_run else "eliza-bridge",
+                "mode": _mode_name(self.config),
                 "source": "huggingface" if self.config.use_huggingface else "fixture",
                 "hf_repo": self.config.hf_repo,
                 "split": self.config.split,
@@ -221,3 +233,12 @@ def _result_to_dict(result: VisualWebBenchResult) -> dict[str, Any]:
 
 def _safe_name(value: str) -> str:
     return "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in value)
+
+
+def _mode_name(config: VisualWebBenchConfig) -> str:
+    provider = (config.provider or "").strip().lower()
+    if config.dry_run or not provider:
+        return "dry-run"
+    if provider in _ELIZA_APP_HARNESS_PROVIDERS:
+        return "eliza-app-harness"
+    return "eliza-bridge"
