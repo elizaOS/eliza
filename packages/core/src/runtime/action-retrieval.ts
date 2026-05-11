@@ -160,10 +160,9 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 	},
 };
 
-// Wave 2-D: Cerebras "compress" mode caps top-K at 8 regardless of tier
-// default. This is an opt-in escape hatch for token-budget-pressed runs;
-// when MILADY_PROMPT_COMPRESS=1 is set we want fewer actions in the
-// available-actions block to keep the prompt tight.
+// Cerebras "compress" mode caps top-K at 8 regardless of tier default.
+// When `MILADY_PROMPT_COMPRESS=1` is set we trade retrieval breadth for a
+// tighter token budget on the available-actions block.
 const COMPRESS_MODE_TOP_K_CAP = 8;
 
 function resolveTierOverridesFromEnv():

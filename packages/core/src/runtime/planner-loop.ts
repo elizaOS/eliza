@@ -71,7 +71,7 @@ export {
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
 
-// Wave 2-D: test-only re-exports for the rendering memoization unit tests.
+// Test-only re-exports for the rendering memoization unit tests.
 // Underscore-prefixed so they're impossible to mistake for production API.
 export function __renderAvailableActionsBlockForTests(
 	context: ContextObject,
@@ -562,7 +562,7 @@ function compactToolParameters(parameters: unknown): unknown {
 }
 
 /**
- * Module-level memo for `renderToolForAvailableActions`. Wave 2-D speed win.
+ * Module-level memo for `renderToolForAvailableActions`.
  * `ContextObjectTool` instances come from the action registry and are
  * reference-stable across iterations within a turn (and across turns when the
  * registry is unchanged), so we can WeakMap the rendered text directly. On
@@ -639,7 +639,7 @@ function renderToolForAvailableActions(tool: ContextObjectTool): string {
  * Returns `null` when no exposed action has a `routingHint` set, so the
  * planner prompt simply omits the section.
  *
- * Wave 2-D: when `MILADY_PROMPT_COMPRESS=1` is set, skip routing-hint rendering
+ * When `MILADY_PROMPT_COMPRESS=1` is set, skip routing-hint rendering
  * entirely — the Cerebras compress-mode escape hatch trades these hints for a
  * tighter token budget. Memoized on `context.events` identity; the events
  * array is immutable per planner iteration (`appendContextEvent` returns a
@@ -720,7 +720,7 @@ function collectExposedTools(context: ContextObject): ContextObjectTool[] {
 }
 
 /**
- * Wave 2-D: memo for the joined available-actions block. Keyed on
+ * Memo for the joined available-actions block. Keyed on
  * `context.events` array identity (immutable per iteration) so within-turn
  * recomputation is free. WeakMap; no leak when the context object is GC'd.
  *
