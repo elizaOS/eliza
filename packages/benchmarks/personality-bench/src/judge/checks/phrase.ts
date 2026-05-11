@@ -397,3 +397,544 @@ export function warmthScore(response: string): number {
 export function tokenCount(text: string): number {
 	return tokenize(text).length;
 }
+
+/* ----------------------------------------------------------------------------
+ * Trait rubrics: first_name_only / metric_units / prefers_short
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Honorifics that are forbidden under the `first_name_only` trait. We keep
+ * the list tight on purpose — only formal address markers that a user
+ * choosing "first-name only" would object to. Matching is word-boundary so
+ * surnames containing one of these substrings (e.g. "Mister" inside a
+ * sentence) don't false-positive.
+ */
+const HONORIFIC_TOKENS = [
+	/\bmr\.?\b/i,
+	/\bmrs\.?\b/i,
+	/\bms\.?\b/i,
+	/\bmiss\b/i,
+	/\bmister\b/i,
+	/\bmadam\b/i,
+	/\bma'?am\b/i,
+	/\bsir\b/i,
+	/\bdr\.?\b/i,
+	/\bdoctor\b/i,
+	/\bprof\.?\b/i,
+	/\bprofessor\b/i,
+	/\blord\b/i,
+	/\blady\b/i,
+];
+
+/**
+ * Imperial units that should NOT appear under `metric_units`. The match is
+ * word-boundary so we don't trip on "miles per gallon" inside a quoted
+ * proverb that has been pre-cleared with a "not" / "converted from" lead-in
+ * (see the wrapping check below).
+ */
+const IMPERIAL_TOKENS = [
+	/\bmiles?\b/i,
+	/\blbs?\b/i,
+	/\bpounds?\b/i,
+	/\bounces?\b/i,
+	/\b°\s*f\b/i,
+	/\bfahrenheit\b/i,
+	/\binch(?:es)?\b/i,
+	/\bfoot\b/i,
+	/\bfeet\b/i,
+	/\byards?\b/i,
+	/\bgallons?\b/i,
+	/\bquarts?\b/i,
+];
+
+/**
+ * Metric markers — the presence of even one is enough to PASS the metric
+ * check when no imperial markers were seen.
+ */
+const METRIC_TOKENS = [
+	/\bkm\b/i,
+	/\bkilometers?\b/i,
+	/\bkilometres?\b/i,
+	/\b\d+\s*m\b/i, // "5m" / "5 m" only — bare "m" letter alone is too noisy
+	/\bmetres?\b/i,
+	/\bmeters?\b/i,
+	/\bcm\b/i,
+	/\bcentimet(?:re|er)s?\b/i,
+	/\bmm\b/i,
+	/\bmillimet(?:re|er)s?\b/i,
+	/\bkg\b/i,
+	/\bkilograms?\b/i,
+	/\bgrams?\b/i,
+	/\b°\s*c\b/i,
+	/\bcelsius\b/i,
+	/\bliters?\b/i,
+	/\blitres?\b/i,
+];
+
+/**
+ * Negation markers preceding an imperial unit acknowledge it without
+ * actually using imperial as the primary unit (e.g. "5 km — not 3 miles",
+ * "10 kg, converted from 22 lbs"). Up to ~20 chars of preceding context.
+ */
+const IMPERIAL_NEGATION_PRE = [
+	/\bnot\b\s+/i,
+	/\bnever\b\s+/i,
+	/\bconverted from\b\s+/i,
+	/\binstead of\b\s+/i,
+	/\brather than\b\s+/i,
+	/\bequivalent to about\b\s+/i,
+];
+
+/**
+ * `first_name_only` trait check.
+ *
+ * Fail if the response contains:
+ *  - the user's surname (caller passes `lastName`), OR
+ *  - any honorific token (mr./ms./sir/doctor/...).
+ * Pass otherwise.
+ */
+export function checkFirstNameOnly(
+	response: string,
+	lastName: string | undefined,
+): LayerResult {
+	const trimmed = response.trim();
+	if (trimmed.length === 0) {
+		return {
+			layer: "phrase",
+			verdict: "PASS",
+			confidence: 0.9,
+			reason: "empty response — no last name / honorific to flag",
+		};
+	}
+	if (lastName && lastName.trim().length > 0) {
+		const lnRegex = new RegExp(`\\b${escapeRegex(lastName.trim())}\\b`, "i");
+		if (lnRegex.test(response)) {
+			return {
+				layer: "phrase",
+				verdict: "FAIL",
+				confidence: 0.95,
+				reason: `last name "${lastName}" used despite first-name-only directive`,
+				evidence: { lastName },
+			};
+		}
+	}
+	const hitHonorific = HONORIFIC_TOKENS.find((re) => re.test(response));
+	if (hitHonorific) {
+		return {
+			layer: "phrase",
+			verdict: "FAIL",
+			confidence: 0.95,
+			reason: `honorific used: ${hitHonorific}`,
+			evidence: { matched: String(hitHonorific) },
+		};
+	}
+	return {
+		layer: "phrase",
+		verdict: "PASS",
+		confidence: 0.9,
+		reason: "no last name or honorific in response",
+	};
+}
+
+function escapeRegex(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Returns true if every imperial-token match in `response` is preceded by a
+ * recognised negation phrase (e.g. "not", "converted from"). We scan each
+ * match's preceding ~30 chars.
+ */
+function imperialMatchesAllNegated(response: string): boolean {
+	let foundAny = false;
+	for (const re of IMPERIAL_TOKENS) {
+		const global = new RegExp(re.source, re.flags.includes("g") ? re.flags : `${re.flags}g`);
+		let m: RegExpExecArray | null;
+		while ((m = global.exec(response)) !== null) {
+			foundAny = true;
+			const start = Math.max(0, m.index - 30);
+			const preceding = response.slice(start, m.index);
+			const negated = IMPERIAL_NEGATION_PRE.some((preRe) => preRe.test(preceding));
+			if (!negated) return false;
+		}
+	}
+	return foundAny;
+}
+
+/**
+ * `metric_units` trait check.
+ *
+ * Fail if response contains imperial units NOT preceded by a negation marker
+ * ("not", "converted from", etc.). Pass if metric units are present OR no
+ * units are mentioned at all.
+ */
+export function checkMetricUnits(response: string): LayerResult {
+	const hitImperial = IMPERIAL_TOKENS.find((re) => re.test(response));
+	const hitMetric = METRIC_TOKENS.find((re) => re.test(response));
+
+	if (hitImperial) {
+		if (imperialMatchesAllNegated(response)) {
+			return {
+				layer: "phrase",
+				verdict: "PASS",
+				confidence: 0.8,
+				reason: "imperial mention(s) present but all are explicitly negated/converted",
+				evidence: { matched: String(hitImperial) },
+			};
+		}
+		return {
+			layer: "phrase",
+			verdict: "FAIL",
+			confidence: 0.95,
+			reason: `imperial unit used: ${hitImperial}`,
+			evidence: { matched: String(hitImperial) },
+		};
+	}
+	if (hitMetric) {
+		return {
+			layer: "phrase",
+			verdict: "PASS",
+			confidence: 0.9,
+			reason: `metric unit used: ${hitMetric}`,
+			evidence: { matched: String(hitMetric) },
+		};
+	}
+	return {
+		layer: "phrase",
+		verdict: "PASS",
+		confidence: 0.85,
+		reason: "no unit mentioned — vacuously metric-compliant",
+	};
+}
+
+/**
+ * `prefers_short` trait check.
+ *
+ *  - ≤ 80 tokens → PASS
+ *  - 81–150 tokens → NEEDS_REVIEW (ambiguous: user said "short" but didn't
+ *    pin a number; close to threshold)
+ *  - > 150 tokens → FAIL (clearly not short).
+ */
+export function checkPrefersShort(
+	response: string,
+	options?: { passUpTo?: number; failOver?: number },
+): LayerResult {
+	const passUpTo = options?.passUpTo ?? 80;
+	const failOver = options?.failOver ?? 150;
+	const tokens = tokenize(response).length;
+	if (tokens <= passUpTo) {
+		return {
+			layer: "phrase",
+			verdict: "PASS",
+			confidence: 0.9,
+			reason: `short: ${tokens} ≤ ${passUpTo} tokens`,
+			evidence: { tokens, threshold: passUpTo },
+		};
+	}
+	if (tokens > failOver) {
+		return {
+			layer: "phrase",
+			verdict: "FAIL",
+			confidence: 0.9,
+			reason: `not short: ${tokens} > ${failOver} tokens`,
+			evidence: { tokens, threshold: failOver },
+		};
+	}
+	return {
+		layer: "phrase",
+		verdict: "NEEDS_REVIEW",
+		confidence: 0.5,
+		reason: `borderline length: ${tokens} tokens (between ${passUpTo} and ${failOver})`,
+		evidence: { tokens },
+	};
+}
+
+/* ----------------------------------------------------------------------------
+ * Style rubrics: limerick / shakespearean / second_person_only
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Phonetic rhyme classes — orthographic endings that commonly produce the
+ * same closing sound in English. We map each ending to a canonical key, then
+ * compare keys. Coverage is far from complete; the goal is to catch the
+ * common limerick rhyme patterns (long-vowel finishers, "-ash/-ish/-ock"
+ * type couplets) without insisting on a phonetic library.
+ */
+const RHYME_CLASSES: ReadonlyArray<{ key: string; patterns: RegExp[] }> = [
+	{ key: "OO", patterns: [/ue$/, /ew$/, /oo$/, /ough$/, /ue[ds]?$/, /ews?$/, /oos?$/] },
+	{ key: "AY", patterns: [/ay$/, /ey$/, /ai[lnsd]?$/, /eigh$/, /a[mt]e$/] },
+	{ key: "AY-OPEN", patterns: [/aze$/, /ase$/, /ays?$/] },
+	{ key: "EE", patterns: [/ee$/, /ea$/, /y$/, /ie$/, /eed$/, /eaf$/] },
+	{ key: "OH", patterns: [/ow$/, /oe$/, /oa[dt]?$/, /ose$/, /old$/] },
+	{ key: "IGH", patterns: [/igh$/, /ight$/, /ie$/, /y$/, /ye$/, /ire$/, /ide$/] },
+	{ key: "ASH", patterns: [/ash$/, /ache$/, /ass$/] },
+	{ key: "ISH", patterns: [/ish$/, /itch$/] },
+	{ key: "OCK", patterns: [/ock$/, /ach$/, /awk$/, /alk$/] },
+	{ key: "EAR", patterns: [/ear$/, /eer$/, /ier$/, /ere$/] },
+	{ key: "AIR", patterns: [/air$/, /are$/, /ear$/] },
+	{ key: "ICE", patterns: [/ice$/, /ise$/, /yce$/] },
+	{ key: "AND", patterns: [/and$/, /anned$/] },
+	{ key: "AT", patterns: [/at$/, /att$/] },
+	{ key: "ER", patterns: [/er$/, /ur$/, /ir$/, /or$/] },
+];
+
+/**
+ * Pull the rhyme key for the last word of a line. Strips punctuation, then
+ * applies the orthographic-class lookup. Falls back to the last vowel-group
+ * + trailing consonants when no class matches.
+ */
+function rhymeKey(line: string): string {
+	const cleaned = line.replace(/[^a-z'\s]/gi, "").trim().toLowerCase();
+	if (cleaned.length === 0) return "";
+	const words = cleaned.split(/\s+/);
+	const last = words[words.length - 1] ?? "";
+	if (last.length === 0) return "";
+	for (const cls of RHYME_CLASSES) {
+		for (const re of cls.patterns) {
+			if (re.test(last)) return cls.key;
+		}
+	}
+	// Fallback: last vowel group + trailing consonants.
+	const match = last.match(/[aeiouy]+[^aeiouy]*$/i);
+	if (!match) return `tail:${last.slice(-2)}`;
+	return `tail:${match[0]}`;
+}
+
+function rhymesWith(a: string, b: string): boolean {
+	const ka = rhymeKey(a);
+	const kb = rhymeKey(b);
+	if (ka.length === 0 || kb.length === 0) return false;
+	if (ka === kb) return true;
+	// Fallback tail match: identical last 2 chars (handles same-word repeats
+	// and exact orthographic rhymes the class table missed).
+	const tailA = ka.startsWith("tail:") ? ka.slice(5) : "";
+	const tailB = kb.startsWith("tail:") ? kb.slice(5) : "";
+	if (tailA.length >= 2 && tailA === tailB) return true;
+	return false;
+}
+
+/**
+ * Limerick shape check: 5 non-empty lines, AABBA rhyme pattern.
+ *
+ * We don't enforce strict syllable counts — that's too noisy for a small
+ * model. Rhyme key match is enough to separate genuine limericks from prose.
+ */
+export function checkLimerick(response: string): LayerResult {
+	const lines = response
+		.split(/\r?\n/)
+		.map((l) => l.trim())
+		.filter((l) => l.length > 0);
+	if (lines.length !== 5) {
+		return {
+			layer: "phrase",
+			verdict: "FAIL",
+			confidence: 0.9,
+			reason: `expected 5 lines, got ${lines.length}`,
+			evidence: { lineCount: lines.length },
+		};
+	}
+	const aabba =
+		rhymesWith(lines[0]!, lines[1]!) &&
+		rhymesWith(lines[1]!, lines[4]!) &&
+		rhymesWith(lines[2]!, lines[3]!) &&
+		!rhymesWith(lines[0]!, lines[2]!); // A and B should differ
+	if (aabba) {
+		return {
+			layer: "phrase",
+			verdict: "PASS",
+			confidence: 0.8,
+			reason: "limerick shape OK: 5 lines, AABBA rhyme",
+			evidence: {
+				rhymeKeys: lines.map(rhymeKey),
+			},
+		};
+	}
+	// Softer fallback: if all of A,A,A and B,B match but A=B, accept as
+	// limerick-ish with NEEDS_REVIEW so the LLM can settle it.
+	const aabbaWeak =
+		rhymesWith(lines[0]!, lines[1]!) &&
+		rhymesWith(lines[1]!, lines[4]!) &&
+		rhymesWith(lines[2]!, lines[3]!);
+	if (aabbaWeak) {
+		return {
+			layer: "phrase",
+			verdict: "NEEDS_REVIEW",
+			confidence: 0.55,
+			reason: "rhyme pattern matches but A and B groups don't differ",
+			evidence: { rhymeKeys: lines.map(rhymeKey) },
+		};
+	}
+	return {
+		layer: "phrase",
+		verdict: "FAIL",
+		confidence: 0.85,
+		reason: "limerick rhyme pattern (AABBA) not satisfied",
+		evidence: { rhymeKeys: lines.map(rhymeKey) },
+	};
+}
+
+/** Early-modern English markers used by the `shakespearean` style check. */
+const SHAKESPEAREAN_TOKENS = [
+	/\bthee\b/i,
+	/\bthou\b/i,
+	/\bthy\b/i,
+	/\bthine\b/i,
+	/\bye\b/i,
+	/\bart\b/i,
+	/\bdoth\b/i,
+	/\bdost\b/i,
+	/\bhath\b/i,
+	/\bhast\b/i,
+	/\bshalt\b/i,
+	/\bwilt\b/i,
+	/\bprithee\b/i,
+	/\bmethinks\b/i,
+	/\bwherefore\b/i,
+	/\bforsooth\b/i,
+	/\bverily\b/i,
+	/\bmayhap\b/i,
+	/\bnay\b/i,
+	/\baye\b/i,
+	/\bo'er\b/i,
+	/(^|\W)'tis\b/i,
+	/(^|\W)'twas\b/i,
+];
+
+/**
+ * Shakespearean / early-modern English style check.
+ *
+ *  - ≥ 3 archaic markers → PASS
+ *  - 1–2 markers → NEEDS_REVIEW
+ *  - 0 markers → FAIL
+ *
+ * Counts UNIQUE matches across distinct regexes so repeated "thou" still
+ * counts as one. This stops a one-word ack ("thou.") from sweeping the bar.
+ */
+export function checkShakespearean(response: string): LayerResult {
+	let hits = 0;
+	const matched: string[] = [];
+	for (const re of SHAKESPEAREAN_TOKENS) {
+		if (re.test(response)) {
+			hits += 1;
+			matched.push(String(re));
+		}
+	}
+	if (hits >= 3) {
+		return {
+			layer: "phrase",
+			verdict: "PASS",
+			confidence: 0.85,
+			reason: `early-modern markers: ${hits}`,
+			evidence: { hits, matched },
+		};
+	}
+	if (hits >= 1) {
+		return {
+			layer: "phrase",
+			verdict: "NEEDS_REVIEW",
+			confidence: 0.5,
+			reason: `only ${hits} early-modern marker(s) — ambiguous`,
+			evidence: { hits, matched },
+		};
+	}
+	return {
+		layer: "phrase",
+		verdict: "FAIL",
+		confidence: 0.85,
+		reason: "no early-modern English markers",
+	};
+}
+
+/**
+ * First-person pronouns. NB: `\bI\b` is case-sensitive on purpose — lowercase
+ * "i" inside words ("indian", "ill") would otherwise cause false positives.
+ * Contractions like "I'm" / "I'll" are intentionally matched via the bare
+ * `\bI\b` plus the dedicated apostrophe forms below (apostrophe is a non-word
+ * char, so `\bI\b` already matches the leading "I"). To avoid double-counting
+ * a single contraction, we use ONE bare `I` regex and only count distinct
+ * pronouns through their tokens, accepting "I'm here" as a single hit
+ * because the contracted forms are stripped before counting.
+ */
+const FIRST_PERSON_TOKENS: ReadonlyArray<RegExp> = [
+	// Contractions first so they're stripped before the bare-I sweep.
+	/\b(?:I'm|I've|I'll|I'd)\b/g,
+	/\bme\b/gi,
+	/\bmy\b/gi,
+	/\bmine\b/gi,
+	/\bwe\b/gi,
+	/\bus\b/gi,
+	/\bour\b/gi,
+	/\bours\b/gi,
+	/\bI\b/g, // case-sensitive bare-I; counted AFTER contractions are stripped.
+];
+
+const SECOND_PERSON_TOKENS = [
+	/\byou\b/gi,
+	/\byour\b/gi,
+	/\byours\b/gi,
+	/\byou're\b/gi,
+	/\byou've\b/gi,
+	/\byou'll\b/gi,
+	/\byou'd\b/gi,
+];
+
+function countMatches(response: string, patterns: ReadonlyArray<RegExp>): number {
+	let total = 0;
+	let consumable = response;
+	for (const re of patterns) {
+		const matches = consumable.match(re);
+		if (matches) {
+			total += matches.length;
+			// Strip matched substrings so later patterns don't double-count
+			// (e.g. bare-I after I'm/I've contractions).
+			consumable = consumable.replace(re, " ");
+		}
+	}
+	return total;
+}
+
+/**
+ * `second_person_only` style check.
+ *
+ *  - Fail if first-person count > 1 (allows the occasional "I" inside a
+ *    quote or aside) OR if no second-person pronouns appear at all.
+ *  - Pass if at least one "you/your" appears and first-person count ≤ 1.
+ */
+export function checkSecondPersonOnly(response: string): LayerResult {
+	if (response.trim().length === 0) {
+		return {
+			layer: "phrase",
+			verdict: "NEEDS_REVIEW",
+			confidence: 0.4,
+			reason: "empty response — can't verify second-person voice",
+		};
+	}
+	const firstPerson = countMatches(response, FIRST_PERSON_TOKENS);
+	const secondPerson = countMatches(response, SECOND_PERSON_TOKENS);
+
+	if (firstPerson > 1) {
+		return {
+			layer: "phrase",
+			verdict: "FAIL",
+			confidence: 0.9,
+			reason: `first-person pronouns used ${firstPerson}× (limit: ≤ 1)`,
+			evidence: { firstPerson, secondPerson },
+		};
+	}
+	if (secondPerson === 0) {
+		return {
+			layer: "phrase",
+			verdict: "FAIL",
+			confidence: 0.85,
+			reason: "no second-person pronouns ('you', 'your') used",
+			evidence: { firstPerson, secondPerson },
+		};
+	}
+	return {
+		layer: "phrase",
+		verdict: "PASS",
+		confidence: 0.85,
+		reason: `second-person voice: you/your×${secondPerson}, first-person×${firstPerson}`,
+		evidence: { firstPerson, secondPerson },
+	};
+}

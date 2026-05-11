@@ -93,4 +93,90 @@ describe("style-held rubric", () => {
 		const v = await gradeStyleHeld(s, resolveOptions(NO_LLM));
 		expect(v.verdict).toBe("FAIL");
 	});
+
+	it("limerick PASS — AABBA shape", async () => {
+		const s = scenario(
+			[
+				{ role: "user", content: "Limerick only." },
+				{
+					role: "assistant",
+					content:
+						"There once was a coder named Sue\nWhose builds were impossibly slow to renew\nShe added a cache\nIt finished in a flash\nNow her tests just sail right on through",
+				},
+			],
+			{ style: "limerick" },
+		);
+		const v = await gradeStyleHeld(s, resolveOptions(NO_LLM));
+		expect(v.verdict).toBe("PASS");
+	});
+
+	it("limerick FAIL — prose", async () => {
+		const s = scenario(
+			[
+				{ role: "user", content: "Limerick only." },
+				{ role: "assistant", content: "Sure thing — the answer is 380,000." },
+			],
+			{ style: "limerick" },
+		);
+		const v = await gradeStyleHeld(s, resolveOptions(NO_LLM));
+		expect(v.verdict).toBe("FAIL");
+	});
+
+	it("shakespearean PASS — multiple archaic markers", async () => {
+		const s = scenario(
+			[
+				{ role: "user", content: "Early-modern English." },
+				{
+					role: "assistant",
+					content:
+						"Verily, thou dost ask a fair question; methinks the answer art simple.",
+				},
+			],
+			{ style: "shakespearean" },
+		);
+		const v = await gradeStyleHeld(s, resolveOptions(NO_LLM));
+		expect(v.verdict).toBe("PASS");
+	});
+
+	it("shakespearean FAIL — no archaic markers", async () => {
+		const s = scenario(
+			[
+				{ role: "user", content: "Early-modern English." },
+				{ role: "assistant", content: "Sure, the population is about 380,000." },
+			],
+			{ style: "shakespearean" },
+		);
+		const v = await gradeStyleHeld(s, resolveOptions(NO_LLM));
+		expect(v.verdict).toBe("FAIL");
+	});
+
+	it("second_person_only PASS", async () => {
+		const s = scenario(
+			[
+				{ role: "user", content: "Second person only." },
+				{
+					role: "assistant",
+					content: "You should drink water. Your skin will thank you.",
+				},
+			],
+			{ style: "second_person_only" },
+		);
+		const v = await gradeStyleHeld(s, resolveOptions(NO_LLM));
+		expect(v.verdict).toBe("PASS");
+	});
+
+	it("second_person_only FAIL — first-person voice", async () => {
+		const s = scenario(
+			[
+				{ role: "user", content: "Second person only." },
+				{
+					role: "assistant",
+					content: "I think we should explore this. My view is that you matter.",
+				},
+			],
+			{ style: "second_person_only" },
+		);
+		const v = await gradeStyleHeld(s, resolveOptions(NO_LLM));
+		expect(v.verdict).toBe("FAIL");
+	});
 });
