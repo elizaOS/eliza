@@ -13,9 +13,19 @@ const authKeyResponseSchema = z.object({
   loginServer: z.string().optional(),
   hostname: z.string().optional(),
   magicDnsName: z.string(),
+  billing: z
+    .object({
+      model: z.literal("on_demand"),
+      unit: z.string(),
+      charged: z.boolean(),
+      amountUsd: z.number().nonnegative(),
+      subscription: z.boolean(),
+    })
+    .optional(),
 });
 
 type AuthKeyResponse = z.infer<typeof authKeyResponseSchema>;
+export type CloudTunnelProvisionBilling = NonNullable<AuthKeyResponse["billing"]>;
 
 interface CloudFetchInit {
   method: "POST";
@@ -91,6 +101,7 @@ export class CloudTailscaleService extends Service implements ITunnelService {
   private tunnelUrl: string | null = null;
   private tunnelPort: number | null = null;
   private startedAt: Date | null = null;
+  private lastProvisioningBilling: CloudTunnelProvisionBilling | null = null;
   private isShuttingDown = false;
   private joinedTailnet = false;
 
@@ -179,6 +190,7 @@ export class CloudTailscaleService extends Service implements ITunnelService {
     this.tunnelUrl = `https://${parsed.data.magicDnsName}`;
     this.tunnelPort = port;
     this.startedAt = new Date();
+    this.lastProvisioningBilling = parsed.data.billing ?? null;
     this.joinedTailnet = true;
     elizaLogger.info(
       `[CloudTailscaleService] tunnel started: ${this.tunnelUrl}`,
@@ -224,6 +236,10 @@ export class CloudTailscaleService extends Service implements ITunnelService {
       startedAt: this.startedAt,
       provider: "tailscale",
     };
+  }
+
+  getLastProvisioningBilling(): CloudTunnelProvisionBilling | null {
+    return this.lastProvisioningBilling;
   }
 
   private async joinTailnet(payload: AuthKeyResponse): Promise<void> {
@@ -284,6 +300,7 @@ export class CloudTailscaleService extends Service implements ITunnelService {
     this.tunnelUrl = null;
     this.tunnelPort = null;
     this.startedAt = null;
+    this.lastProvisioningBilling = null;
     this.joinedTailnet = false;
   }
 }

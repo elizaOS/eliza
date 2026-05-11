@@ -1,9 +1,9 @@
 # CUDA verification runbook
 
-Status: harness compiles (preprocessor-clean on M4 Max) — full nvcc compile
-and 8/8 PASS verification require a CUDA host. **Hardware result:
-NEEDS-HARDWARE** until the runbook below is executed against a real NVIDIA
-GPU and the result lands in `packages/inference/README.md`.
+Status: harness compiles (preprocessor-clean on M4 Max) — full nvcc compile,
+fixture parity, and model-backed graph dispatch require a CUDA host.
+**Hardware result: NEEDS-HARDWARE** until `cuda_runner.sh` exits zero on a
+real NVIDIA GPU and the result lands in `packages/inference/README.md`.
 
 This is the sibling of `metal_verify` (Apple GPU) and `vulkan_verify`
 (cross-vendor). It loads the canonical fixtures from
@@ -79,8 +79,10 @@ make cuda
 # (b) Run all six fixtures.
 make cuda-verify
 
-# Or the wrapper:
-./cuda_runner.sh
+# (c) Full hardware gate: build fork, run fixtures, then run graph dispatch
+#     through a real GGUF model with --cache-type-k for every advertised
+#     Turbo/QJL/Polar family.
+ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./cuda_runner.sh
 ```
 
 Each fixture should print:
@@ -97,12 +99,37 @@ Each fixture should print:
 # From an M4 Max / any host without a GPU:
 CUDA_REMOTE=user@cuda-host \
 CUDA_REMOTE_DIR=~/code/eliza \
+ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf \
 ./cuda_runner.sh
 ```
 
 The runner ssh-runs `make cuda-verify` on the remote and streams output
 back. The remote must already have the eliza checkout at
 `$CUDA_REMOTE_DIR` and the prereqs above.
+
+## What `cuda_runner.sh` now enforces
+
+`cuda_runner.sh` is stricter than `make cuda-verify`:
+
+1. It fails unless the host is Linux, `nvcc` is present, and `nvidia-smi`
+   reports an NVIDIA GPU.
+2. It builds the fork target (`linux-x64-cuda` or `linux-aarch64-cuda`) unless
+   `CUDA_BUILD_FORK=0`.
+3. It runs `make cuda-verify`, which covers all six fixtures including
+   `polar_qjl.json`.
+4. It requires `ELIZA_DFLASH_SMOKE_MODEL` and runs
+   `runtime_graph_smoke.sh`, which drives `llama-cli --cache-type-k` for
+   Turbo3, Turbo4, Turbo3-TCQ, QJL, and Polar aliases. The logs must contain
+   CUDA/NVIDIA backend evidence.
+
+`CUDA_SKIP_GRAPH_SMOKE=1` is permitted only for fixture-only bring-up. It must
+not be recorded as runtime-ready graph dispatch.
+
+GH200-class hosts should use `./gh200_runner.sh`, which requires arm64 Linux
+userspace plus Hopper/compute-capability-9.x GPU evidence and pins
+`linux-aarch64-cuda` with `-DCMAKE_CUDA_ARCHITECTURES=90a`.
+
+The cross-backend runner doc is `HARDWARE_VERIFICATION.md`.
 
 ## Verification on this M4 Max (what was actually checked)
 
@@ -123,10 +150,13 @@ B. `make cuda-preprocess-check` — **PASS** when the milady-llama-cpp
    drift between the harness and the v0.4.0-milady fork without needing
    the CUDA Toolkit.
 
-C. Full nvcc compile + runtime 8/8 PASS — **NEEDS-HARDWARE**. Run on a
-   CUDA host and update `packages/inference/README.md`'s verification
-   matrix CUDA column with the result + driver version + GPU model + max
-   diff per kernel.
+C. Full nvcc compile + fixture runtime 8/8 PASS — **NEEDS-HARDWARE**.
+
+D. Model-backed CUDA graph dispatch smoke through `llama-cli --cache-type-k`
+   — **NEEDS-HARDWARE** and a real smoke GGUF model. Run `cuda_runner.sh`
+   on a CUDA host and update `packages/inference/README.md` with driver
+   version, GPU model, max fixture diff per kernel, graph-smoke cache aliases,
+   and the exact model hash used.
 
 ## Failure modes to expect
 
