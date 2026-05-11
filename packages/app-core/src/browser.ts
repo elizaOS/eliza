@@ -1,11 +1,4 @@
 export * from "@elizaos/ui";
-// Re-exports from the dist/index.js wildcard below collide with these
-// two names — pick the dist side explicitly (milady main.tsx imports
-// the registry types, not the UI surface variants).
-export {
-  type ConfigField,
-  getPlugins,
-} from "../dist/index.js";
 
 export type CompatRuntimeState = {
   current: unknown;
@@ -49,6 +42,13 @@ export function sharedVault(): never {
 // stubbing `@elizaos/agent` and `@elizaos/plugin-elizacloud` to
 // browser stubs (see apps/app/vite.config.ts native-module-stub plugin).
 export * from "../dist/index.js";
+
+// `ConfigField` and `getPlugins` exist in both `@elizaos/ui` (UI component +
+// runtime helper) and the dist barrel (registry type + bridge function).
+// Pin the dist side explicitly so milady's main.tsx gets the registry
+// `ConfigField` type it expects; UI consumers can still import the
+// component directly from `@elizaos/ui`.
+export { type ConfigField, getPlugins } from "../dist/index.js";
 
 // MILADY local-mode stubs for symbols removed during the P1A refactor.
 // The mobile/web renderer doesn't actually mount these (the desktop
