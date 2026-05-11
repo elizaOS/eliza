@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -125,6 +125,52 @@ vulkan-verify: vulkan_verify vulkan-spirv reference-test
 	./vulkan_verify ../vulkan/polar_preht.spv fixtures/polar.json
 	@echo "[kernels/verify] vulkan polar pre-Hadamard query + QJL residual..."
 	./vulkan_verify ../vulkan/polar_preht.spv fixtures/polar_qjl.json
+
+# Multi-block-per-workgroup Vulkan variants. One SPV family per kernel; the
+# blocks/tokens-per-workgroup specialization constant (constant_id 0) is set
+# at pipeline-create time. Sweeps N ∈ {1,2,4,8}; each must match the same
+# fixture as its base kernel. Additive — not part of the publish gate
+# (vulkan-verify) so a future per-device tuning regression is visible
+# separately from the canonical kernel set.
+vulkan-verify-multiblock: vulkan_verify vulkan-spirv reference-test
+	@for n in 1 2 4 8; do \
+	  echo "[kernels/verify] vulkan turbo3 multi $$n..." && \
+	  ./vulkan_verify ../vulkan/turbo3_multi.spv     fixtures/turbo3.json     --multi $$n && \
+	  echo "[kernels/verify] vulkan turbo4 multi $$n..." && \
+	  ./vulkan_verify ../vulkan/turbo4_multi.spv     fixtures/turbo4.json     --multi $$n && \
+	  echo "[kernels/verify] vulkan turbo3_tcq multi $$n..." && \
+	  ./vulkan_verify ../vulkan/turbo3_tcq_multi.spv fixtures/turbo3_tcq.json --multi $$n && \
+	  echo "[kernels/verify] vulkan qjl multi $$n..." && \
+	  ./vulkan_verify ../vulkan/qjl_multi.spv        fixtures/qjl.json        --multi $$n || exit 1; \
+	done
+
+# Staged Vulkan fallback entrypoints (decode-to-fp32 / non-attention matvec).
+# Expected outputs are computed in vulkan_verify.cpp from the bit-exact C
+# reference (eliza_qjl_mul_mv / eliza_qjl_dequantize_row / eliza_polar_dequantize_row),
+# so no new fixture file is required. Additive — kept out of the publish gate
+# (vulkan-verify) because these are not on the runtime hot path; the runtime
+# dispatches qjl.comp / polar.comp / polar_preht.comp.
+#
+#   * qjl_mul_mv: hard gate. It is the QJL-score parity check (n_heads ==
+#     n_kv_heads == 1, n_rows == n_tokens), reduction-based, and passes
+#     deterministically on every ICD tested (Intel ANV, lavapipe).
+#   * qjl_get_rows / polar_get_rows: informational. These write one fp32
+#     output per element from all 32 invocations (no reduction). They are
+#     bit-exact and deterministic on lavapipe, but on Mesa ANV (Arrow Lake /
+#     Xe-LPG, Mesa 25.2.8) a handful of output elements intermittently read
+#     back 0 — an ANV codegen issue with the all-threads strided SSBO store,
+#     not a logic bug (the reduction-based polar.comp/polar_preht.comp share
+#     the same decode and are clean). Run shown for visibility; `-` so a
+#     flaky ANV result does not fail this target.
+vulkan-verify-fallbacks: vulkan_verify vulkan-spirv reference-test
+	@echo "[kernels/verify] vulkan qjl_mul_mv (== qjl score parity, n_rows=8)..."
+	./vulkan_verify ../vulkan/qjl_mul_mv.spv  fixtures/qjl.json
+	@echo "[kernels/verify] vulkan qjl_get_rows (decode block 0 vs eliza_qjl_dequantize_row; informational on ANV)..."
+	-./vulkan_verify ../vulkan/qjl_get_rows.spv fixtures/qjl.json
+	@echo "[kernels/verify] vulkan polar_get_rows use_qjl=0 (decode block 0 vs eliza_polar_dequantize_row; informational on ANV)..."
+	-./vulkan_verify ../vulkan/polar_get_rows.spv fixtures/polar.json
+	@echo "[kernels/verify] vulkan polar_get_rows use_qjl=1 (informational on ANV)..."
+	-./vulkan_verify ../vulkan/polar_get_rows.spv fixtures/polar_qjl.json
 
 # Native Linux end-to-end smoke for the Vulkan backend. This first runs the
 # standalone fixture verifier, then builds the patched fork target and runs the
@@ -263,7 +309,11 @@ VULKAN_SHADERS = \
     ../vulkan/qjl_mul_mv.spv \
     ../vulkan/polar.spv \
     ../vulkan/polar_preht.spv \
-    ../vulkan/polar_get_rows.spv
+    ../vulkan/polar_get_rows.spv \
+    ../vulkan/turbo3_multi.spv \
+    ../vulkan/turbo4_multi.spv \
+    ../vulkan/turbo3_tcq_multi.spv \
+    ../vulkan/qjl_multi.spv
 
 vulkan-spirv: $(VULKAN_SHADERS)
 

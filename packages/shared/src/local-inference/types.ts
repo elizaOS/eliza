@@ -141,6 +141,27 @@ export interface LocalRuntimeOptimizations {
    */
   parallel?: number;
   /**
+   * llama-server prompt-cache chunk reuse threshold. Maps to
+   * `--cache-reuse N`; useful for repeated tool/system prefixes where a
+   * full slot restore is not available.
+   */
+  cacheReuse?: number;
+  /**
+   * llama-server RAM budget for prompt/KV cache files. Maps to
+   * `--cache-ram N` in MiB.
+   */
+  cacheRamMb?: number;
+  /** `--batch-size N` logical batch size. */
+  batchSize?: number;
+  /** `--ubatch-size N` physical micro-batch size. */
+  ubatchSize?: number;
+  /** Continuous batching toggle (`--cont-batching` / `--no-cont-batching`). */
+  contBatching?: boolean;
+  /** Unified KV cache toggle (`--kv-unified` / `--no-kv-unified`). */
+  kvUnified?: boolean;
+  /** Host tensor op offload toggle (`--op-offload` / `--no-op-offload`). */
+  opOffload?: boolean;
+  /**
    * Mixture-of-experts expert-tensor offload target. `"cpu"` maps to
    * `-ot ".*=CPU"` so expert tensors stay in CPU memory and only the
    * shared layers occupy VRAM.
@@ -215,7 +236,7 @@ export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
   id: string;
   displayName: string;
-  /** HuggingFace repo slug, e.g. "elizalabs/eliza-1-1_7b". */
+  /** HuggingFace repo slug, e.g. "elizaos/eliza-1-1_7b". */
   hfRepo: string;
   /** Exact GGUF filename in the repo. */
   ggufFile: string;
