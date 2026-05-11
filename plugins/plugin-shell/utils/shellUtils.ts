@@ -9,9 +9,13 @@ import type {
   SpawnOptions,
 } from "node:child_process";
 import { spawn } from "node:child_process";
-import fs, { existsSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import {
+  resolveExecutable,
+  resolveTerminalShell,
+} from "./terminalCapabilities";
 
 const CHUNK_LIMIT = 8 * 1024;
 
@@ -28,32 +32,11 @@ function resolvePowerShellPath(): string {
       "v1.0",
       "powershell.exe"
     );
-    if (fs.existsSync(candidate)) {
+    if (existsSync(candidate)) {
       return candidate;
     }
   }
   return "powershell.exe";
-}
-
-/**
- * Resolve shell from PATH
- */
-function resolveShellFromPath(name: string): string | undefined {
-  const envPath = process.env.PATH ?? "";
-  if (!envPath) {
-    return undefined;
-  }
-  const entries = envPath.split(path.delimiter).filter(Boolean);
-  for (const entry of entries) {
-    const candidate = path.join(entry, name);
-    try {
-      fs.accessSync(candidate, fs.constants.X_OK);
-      return candidate;
-    } catch {
-      // ignore missing or non-executable entries
-    }
-  }
-  return undefined;
 }
 
 /**
@@ -74,17 +57,17 @@ export function getShellConfig(): { shell: string; args: string[] } {
   const shellName = envShell ? path.basename(envShell) : "";
   // Fish rejects common bashisms used by tools, so prefer bash when detected.
   if (shellName === "fish") {
-    const bash = resolveShellFromPath("bash");
+    const bash = resolveExecutable("bash");
     if (bash) {
       return { shell: bash, args: ["-c"] };
     }
-    const sh = resolveShellFromPath("sh");
+    const sh = resolveExecutable("sh");
     if (sh) {
       return { shell: sh, args: ["-c"] };
     }
   }
-  const shell = envShell && envShell.length > 0 ? envShell : "sh";
-  return { shell, args: ["-c"] };
+  const resolved = resolveTerminalShell();
+  return { shell: resolved.shell, args: resolved.args };
 }
 
 /**
