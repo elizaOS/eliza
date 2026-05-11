@@ -143,7 +143,7 @@ export function getLocalInferenceActiveModelId(): string | undefined {
 const CATALOG: CatalogModel[] = [
 	{
 		id: "eliza-1-1_7b",
-		displayName: "Eliza-1 mobile 1.7B",
+		displayName: "eliza-1-1_7b",
 		hfRepo: "elizaos/eliza-1-1_7b",
 		ggufFile: "text/eliza-1-1_7b-32k.gguf",
 		params: "1.7B",
@@ -152,12 +152,12 @@ const CATALOG: CatalogModel[] = [
 		minRamGb: 4,
 		category: "chat",
 		bucket: "small",
-		blurb: "Default local Eliza-1 chat model for mobile and laptops.",
+		blurb: "eliza-1-1_7b default local chat model for mobile and laptops.",
 		role: "chat",
 	},
 	{
 		id: "eliza-1-9b",
-		displayName: "Eliza-1 desktop 9B",
+		displayName: "eliza-1-9b",
 		hfRepo: "elizaos/eliza-1-9b",
 		ggufFile: "text/eliza-1-9b-64k.gguf",
 		params: "9B",
@@ -166,23 +166,36 @@ const CATALOG: CatalogModel[] = [
 		minRamGb: 16,
 		category: "chat",
 		bucket: "medium",
-		blurb: "Higher-quality Eliza-1 local chat model for desktop systems.",
+		blurb: "eliza-1-9b local chat model for desktop systems.",
+		role: "chat",
+	},
+	{
+		id: "eliza-1-27b",
+		displayName: "eliza-1-27b",
+		hfRepo: "elizaos/eliza-1-27b",
+		ggufFile: "text/eliza-1-27b-128k.gguf",
+		params: "27B",
+		quant: "fused GGUF",
+		sizeGb: 16.8,
+		minRamGb: 32,
+		category: "chat",
+		bucket: "large",
+		blurb: "eliza-1-27b local chat model for high-memory systems.",
 		role: "chat",
 	},
 	{
 		id: "eliza-1-0_6b",
-		displayName: "Eliza-1 lite embeddings",
+		displayName: "eliza-1-0_6b",
 		hfRepo: "elizaos/eliza-1-0_6b",
 		ggufFile: "text/eliza-1-0_6b-32k.gguf",
 		params: "0.6B",
 		quant: "fused GGUF",
 		sizeGb: 0.5,
-		minRamGb: 1,
-		category: "tiny",
+		minRamGb: 2,
+		category: "chat",
 		bucket: "small",
-		blurb:
-			"Default Eliza-1 local embedding model for memory and knowledge search.",
-		role: "embedding",
+		blurb: "eliza-1-0_6b local chat model for low-RAM devices.",
+		role: "chat",
 	},
 ];
 
@@ -1161,10 +1174,10 @@ export async function handleLocalInferenceRoutes(
 			providers: [
 				{
 					id: "capacitor-llama",
-					label: "On-device llama.cpp (mobile)",
+					label: "Eliza-1 on-device runtime (mobile)",
 					kind: "local",
 					description:
-						"Runs llama.cpp natively on iOS or Android via Capacitor.",
+						"Runs Eliza-1 natively on iOS or Android via Capacitor.",
 					supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
 					configureHref: null,
 					enableState: {

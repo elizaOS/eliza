@@ -54,6 +54,7 @@ export class VoiceScheduler {
   private readonly inFlight = new Map<number, InFlight>();
   private readonly maxInFlight: number;
   private kernelTicks = 0;
+  private nextStandalonePhraseId = -1;
 
   constructor(
     config: SchedulerConfig,
@@ -115,6 +116,48 @@ export class VoiceScheduler {
     await Promise.all(all);
   }
 
+  async synthesizeText(text: string): Promise<AudioChunk> {
+    const phrase: Phrase = {
+      id: this.nextStandalonePhraseId--,
+      text,
+      fromIndex: 0,
+      toIndex: 0,
+      terminator: "max-cap",
+    };
+
+    const cached = this.phraseCache.get(text);
+    if (cached) {
+      return {
+        phraseId: phrase.id,
+        fromIndex: phrase.fromIndex,
+        toIndex: phrase.toIndex,
+        pcm: cached.pcm,
+        sampleRate: cached.sampleRate,
+      };
+    }
+
+    const cancelSignal = { cancelled: false };
+    const detach = this.bargeIn.attach({
+      onCancel: () => {
+        cancelSignal.cancelled = true;
+      },
+    });
+    try {
+      const chunk = await this.backend.synthesize({
+        phrase,
+        preset: this.preset,
+        cancelSignal,
+        onKernelTick: () => this.tickKernel(),
+      });
+      if (cancelSignal.cancelled) {
+        throw new Error("[voice-scheduler] synthesis cancelled by barge-in");
+      }
+      return chunk;
+    } finally {
+      detach();
+    }
+  }
+
   tickKernel(): void {
     this.kernelTicks++;
   }
@@ -149,21 +192,24 @@ export class VoiceScheduler {
 
     const cancelSignal = { cancelled: false };
     const done = (async () => {
-      this.rollback.markSynthesizing(phrase.id);
-      const chunk = await this.backend.synthesize({
-        phrase,
-        preset: this.preset,
-        cancelSignal,
-        onKernelTick: () => this.tickKernel(),
-      });
-      this.inFlight.delete(phrase.id);
-      if (cancelSignal.cancelled) {
-        return;
+      try {
+        this.rollback.markSynthesizing(phrase.id);
+        const chunk = await this.backend.synthesize({
+          phrase,
+          preset: this.preset,
+          cancelSignal,
+          onKernelTick: () => this.tickKernel(),
+        });
+        if (cancelSignal.cancelled) {
+          return;
+        }
+        if (!this.rollback.snapshot().some((e) => e.phrase.id === phrase.id)) {
+          return;
+        }
+        this.commitAudio(chunk);
+      } finally {
+        this.inFlight.delete(phrase.id);
       }
-      if (!this.rollback.snapshot().some((e) => e.phrase.id === phrase.id)) {
-        return;
-      }
-      this.commitAudio(chunk);
     })();
 
     this.inFlight.set(phrase.id, { phrase, cancelSignal, done });

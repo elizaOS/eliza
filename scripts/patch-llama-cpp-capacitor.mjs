@@ -10,7 +10,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -64,17 +64,7 @@ function replaceOnce(text, search, replacement, label) {
   return text.replace(search, replacement);
 }
 
-function patchTextFile(file, patcher) {
-  const before = readFileSync(file, "utf8");
-  const after = patcher(before);
-  if (after !== before) {
-    const { writeFileSync } = await import("node:fs");
-    writeFileSync(file, after, "utf8");
-  }
-}
-
-async function applyHashBridge(pkgRoot) {
-  const { writeFileSync } = await import("node:fs");
+function applyHashBridge(pkgRoot) {
   const patchFile = (file, patcher) => {
     const before = readFileSync(file, "utf8");
     const after = patcher(before);
@@ -260,7 +250,7 @@ function main() {
     const status = patchStatus(pkgRoot);
     if (status === "complete") continue;
     if (status === "legacy-without-hash") {
-      await applyHashBridge(pkgRoot);
+      applyHashBridge(pkgRoot);
       applied++;
       console.log(`[patch-llama-cpp-capacitor] Added hash bridge to ${pkgRoot}`);
       continue;
@@ -268,8 +258,8 @@ function main() {
 
     const r = spawnSync(
       "patch",
-      ["--batch", "-p1", "-i", patchFile],
-      { cwd: pkgRoot, encoding: "utf8" },
+      ["--batch", "-p1"],
+      { cwd: pkgRoot, encoding: "utf8", input: readFileSync(patchFile) },
     );
     if (r.status !== 0) {
       console.error(r.stdout ?? "");

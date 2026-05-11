@@ -10,6 +10,12 @@ smoke pass. It separates three states that previous reports occasionally mixed:
 
 Only **runtime-ready** satisfies the Eliza-1 publish contract.
 
+The executable gate for this ledger is
+`packages/inference/verify/kernel-contract.json` plus
+`make -C packages/inference/verify kernel-contract`. That check keeps the
+manifest kernel names, build capability keys, fixture coverage, Makefile
+targets, and platform target list aligned with the status below.
+
 ## Current Runtime Truth
 
 | Area | Status | Evidence |
@@ -170,4 +176,3 @@ The lowest-duplication design is lazy regional loading from one bundle:
   conversion, and evals.
 - Falling back to unoptimized kernels. Missing required kernels remain a hard
   error.
-

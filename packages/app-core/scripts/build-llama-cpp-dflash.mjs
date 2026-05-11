@@ -1078,14 +1078,13 @@ function ensureCheckout(cacheDir, ref) {
 //
 // What still doesn't fully ship at v0.4.0-milady (deferred dispatch wiring):
 //
-//   * ggml-metal-ops.cpp / ggml-metal-device.m have NO dispatch sites for
-//     the milady quant types (TBQ3_0, TBQ4_0, TBQ3_TCQ, QJL1_256, Q4_POLAR).
-//     CUDA has them; Metal does not. After this patch the kernel symbols
-//     (kernel_turbo3_dot, kernel_attn_score_qjl1_256, kernel_mul_mv_q4_polar_f32,
-//     etc.) are present in default.metallib and `nm`/`strings` will see
-//     them, but the runtime cannot yet select them via GGML_TYPE_*. That
-//     wiring is a separate fork-internals patch and is the next agent's
-//     mission.
+//   * ggml-metal-ops.cpp / ggml-metal-device.m have a dedicated, smoke-tested
+//     dispatch site only for GGML_OP_ATTN_SCORE_QJL -> QJL1_256 attention
+//     scoring, now routed through kernel_attn_score_qjl1_256_multi to
+//     amortize launch overhead. TBQ3_0, TBQ4_0, TBQ3_TCQ, and Q4_POLAR still
+//     ship only as symbols in default.metallib. CUDA has those runtime routes;
+//     Metal does not yet. That wiring is a separate fork-internals patch and
+//     remains publish-blocking.
 //
 //   * The EMBED_LIBRARY=ON branch (used by iOS targets) is also patched:
 //     it compiles ggml-metal.metal + the milady standalones as separate

@@ -389,7 +389,12 @@ function patchMetalQjlAttnDeviceCpp(cacheDir, { dryRun }) {
   const cppPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-device.cpp");
   const original = fs.readFileSync(cppPath, "utf8");
   if (original.includes(SENTINEL_QJL_ATTN)) {
-    return { changed: false, path: cppPath };
+    const upgraded = original.replace(
+      'const char * name = "kernel_attn_score_qjl1_256";',
+      'const char * name = "kernel_attn_score_qjl1_256_multi";',
+    );
+    if (upgraded !== original && !dryRun) fs.writeFileSync(cppPath, upgraded, "utf8");
+    return { changed: upgraded !== original && !dryRun, path: cppPath };
   }
   const anchor = `ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_bin(ggml_metal_library_t lib, const ggml_tensor * op, int32_t n_fuse) {`;
   if (!original.includes(anchor)) {
@@ -447,7 +452,37 @@ function patchMetalQjlAttnOpsCpp(cacheDir, { dryRun }) {
   const opsPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-ops.cpp");
   const original = fs.readFileSync(opsPath, "utf8");
   if (original.includes(SENTINEL_QJL_ATTN)) {
-    return { changed: false, path: opsPath };
+    let upgraded = original.replace(
+      `struct milady_qjl_score_args {
+    uint32_t n_heads;
+    uint32_t n_kv_heads;
+    uint32_t n_tokens;
+    uint32_t proj_dim;
+};`,
+      `struct milady_qjl_score_args {
+    uint32_t n_heads;
+    uint32_t n_kv_heads;
+    uint32_t n_tokens;
+    uint32_t proj_dim;
+    uint32_t tokens_per_threadgroup;
+};`,
+    );
+    upgraded = upgraded.replace(
+      `        /* n_tokens   = */ n_tokens,
+        /* proj_dim   = */ 256u,
+    };`,
+      `        /* n_tokens   = */ n_tokens,
+        /* proj_dim   = */ 256u,
+        /* tokens_per_threadgroup = */ 32u,
+    };`,
+    );
+    upgraded = upgraded.replace(
+      `            ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_heads, (int) n_tokens, 1, 32, 1, 1);`,
+      `            const int token_groups = (int) ((n_tokens + args.tokens_per_threadgroup - 1u) / args.tokens_per_threadgroup);
+            ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_heads, token_groups, 1, 32, 1, 1);`,
+    );
+    if (upgraded !== original && !dryRun) fs.writeFileSync(opsPath, upgraded, "utf8");
+    return { changed: upgraded !== original && !dryRun, path: opsPath };
   }
 
   const funcAnchor = `static int ggml_metal_op_encode_impl(ggml_metal_op_t ctx, int idx) {`;

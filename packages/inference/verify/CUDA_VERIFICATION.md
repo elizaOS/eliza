@@ -7,7 +7,7 @@ GPU and the result lands in `packages/inference/README.md`.
 
 This is the sibling of `metal_verify` (Apple GPU) and `vulkan_verify`
 (cross-vendor). It loads the canonical fixtures from
-`verify/fixtures/{turbo3,turbo4,turbo3_tcq,qjl,polar}.json`, dispatches the
+`verify/fixtures/{turbo3,turbo4,turbo3_tcq,qjl,polar,polar_qjl}.json`, dispatches the
 in-fork CUDA kernels (v0.4.0-milady) against the same input bytes, and diffs
 output against the reference at tolerance 1e-3.
 
@@ -45,6 +45,9 @@ the in-fork CUDA `block_*` layouts in `ggml-common.h` are byte-identical to
 the layouts the CPU reference encodes. If a mismatch appears it indicates
 the CUDA fork has drifted from `ggml-common.h`, not a fixture bug.
 
+`polar_qjl.json` is mandatory coverage for PolarQuant's QJL residual branch.
+A CUDA run that only covers `polar.json` is incomplete.
+
 ## Prereqs (CUDA host)
 
 1. NVIDIA driver + GPU. `nvidia-smi` must show a device.
@@ -73,7 +76,7 @@ ELIZA_DFLASH_LLAMA_DIR=$HOME/.cache/eliza-dflash/milady-llama-cpp \
 ELIZA_DFLASH_LIBGGML_CUDA=$HOME/.cache/eliza-dflash/milady-llama-cpp/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so \
 make cuda
 
-# (b) Run all five fixtures.
+# (b) Run all six fixtures.
 make cuda-verify
 
 # Or the wrapper:

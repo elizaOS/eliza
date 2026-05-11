@@ -70,6 +70,9 @@ def _passing_eval_blob(tier: str = "desktop-9b") -> dict[str, Any]:
             "thirty_turn_ok": True,
             "e2e_loop_ok": True,
             "dflash_acceptance": 0.71,
+            "expressive_tag_faithfulness": 0.90,
+            "expressive_mos": 4.10,
+            "expressive_tag_leakage": 0.01,
         },
     }
 
@@ -238,6 +241,10 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
     manifest = json.loads(manifest_path.read_text())
     assert manifest["tier"] == "desktop-9b"
     assert manifest["defaultEligible"] is True
+    assert manifest["voice"]["frozen"] is True
+    assert manifest["voice"]["capabilities"] == ["tts", "emotion-tags", "singing"]
+    assert manifest["voice"]["cache"]["speakerPreset"] == "cache/voice-preset-default.bin"
+    assert manifest["voice"]["cache"]["phraseCacheSeed"] == "cache/voice-preset-default.bin"
 
     # README written + non-empty.
     readme = bundle / "README.md"
@@ -278,6 +285,22 @@ def test_wrong_hf_org_fails_before_publish(tmp_path: Path) -> None:
 def test_missing_quantization_sidecar_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     (bundle / "qjl_config.json").unlink()
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_MISSING_FILE
+
+
+def test_missing_voice_cache_fails(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "cache" / "voice-preset-default.bin").unlink()
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_MISSING_FILE
+
+
+def test_missing_frozen_voice_tokenizer_fails(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "tts" / "omnivoice-tokenizer-1.7b.gguf").unlink()
     metal = _metal_report(tmp_path)
     rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE

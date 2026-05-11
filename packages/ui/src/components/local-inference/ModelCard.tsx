@@ -9,6 +9,7 @@ import type {
 import { DownloadProgress } from "./DownloadProgress";
 import {
   computeFit,
+  displayModelName,
   type FitLevel,
   findDownload,
   findInstalled,
@@ -66,7 +67,7 @@ export function ModelCard({
     <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="font-semibold truncate">{model.displayName}</div>
+          <div className="font-semibold truncate">{displayModelName(model)}</div>
           <div className="text-xs text-muted-foreground truncate">
             {model.params} · {model.quant} · {model.sizeGb.toFixed(1)} GB
           </div>

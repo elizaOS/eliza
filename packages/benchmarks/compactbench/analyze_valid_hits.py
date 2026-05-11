@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import copy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
@@ -60,7 +61,7 @@ class CycleAnalysis:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--method", required=True)
+    parser.add_argument("--method")
     parser.add_argument("--suite", default="starter")
     parser.add_argument("--model", default="gpt-oss-120b")
     parser.add_argument(
@@ -68,7 +69,7 @@ def main() -> int:
         default="external/compactbench-suites/benchmarks/public",
         type=Path,
     )
-    parser.add_argument("--output", default="valid-hit-analysis.jsonl", type=Path)
+    parser.add_argument("--output", default=None, type=Path)
     parser.add_argument("--case-count", type=int, default=1)
     parser.add_argument("--drift-cycles", type=int, default=2)
     parser.add_argument("--difficulty", default="medium")
@@ -78,7 +79,32 @@ def main() -> int:
         default="cerebras",
         help="CompactBench provider key. The cerebras provider is registered automatically.",
     )
+    parser.add_argument(
+        "--rescore-from",
+        type=Path,
+        default=None,
+        help=(
+            "Recalculate adjusted scores from an existing analysis JSONL "
+            "without rerunning compaction or model calls."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.rescore_from is not None:
+        output = args.output or args.rescore_from.with_name(
+            f"{args.rescore_from.stem}.rescored.jsonl"
+        )
+        summary = _rescore_analysis(args.rescore_from, output)
+        print(json.dumps(summary, indent=2, sort_keys=True))
+        print(f"wrote {output}")
+        return 0
+
+    if not args.method:
+        print("error: --method is required unless --rescore-from is used", file=sys.stderr)
+        return 2
+
+    if args.output is None:
+        args.output = Path("valid-hit-analysis.jsonl")
 
     if args.provider == "cerebras":
         if not os.environ.get("CEREBRAS_API_KEY"):
@@ -341,6 +367,100 @@ def _cycle_to_dict(cycle: CycleAnalysis) -> dict[str, Any]:
 def _write_event(fh: Any, event: dict[str, Any]) -> None:
     fh.write(json.dumps(event, ensure_ascii=False) + "\n")
     fh.flush()
+
+
+def _rescore_analysis(input_path: Path, output_path: Path) -> dict[str, Any]:
+    official_case_scores: list[float] = []
+    adjusted_case_scores: list[float] = []
+    total_items = 0
+    valid_false_negatives = 0
+    semantic_false_positives = 0
+    failures_remaining = 0
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with input_path.open("r", encoding="utf-8") as source, output_path.open(
+        "w", encoding="utf-8"
+    ) as target:
+        for line in source:
+            event = json.loads(line)
+            if event.get("event") != "case_analysis":
+                if event.get("event") == "analysis_end":
+                    continue
+                _write_event(target, event)
+                continue
+
+            rescored = _rescore_case_event(event)
+            official_case_scores.append(float(rescored["official_case_score"]))
+            adjusted_case_scores.append(float(rescored["adjusted_case_score"]))
+            valid_false_negatives += int(rescored["valid_false_negatives"])
+            semantic_false_positives += int(rescored["semantic_false_positives"])
+            failures_remaining += int(rescored["failures_remaining"])
+            total_items += sum(
+                len(cycle.get("items", [])) for cycle in rescored.get("cycles", [])
+            )
+            _write_event(target, rescored)
+
+        summary = {
+            "event": "analysis_end",
+            "completed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "official_overall_score": _mean(official_case_scores),
+            "adjusted_overall_score": _mean(adjusted_case_scores),
+            "score_delta": _mean(adjusted_case_scores) - _mean(official_case_scores),
+            "total_items": total_items,
+            "valid_false_negatives": valid_false_negatives,
+            "semantic_false_positives": semantic_false_positives,
+            "failures_remaining": failures_remaining,
+            "notes": [
+                "official scores are unmodified CompactBench scores",
+                "adjusted scores use response-local valid-hit analysis only",
+                f"rescored from {input_path}",
+            ],
+        }
+        _write_event(target, summary)
+        return summary
+
+
+def _rescore_case_event(event: dict[str, Any]) -> dict[str, Any]:
+    updated = copy.deepcopy(event)
+    adjusted_cycle_scores: list[float] = []
+    valid_false_negatives = 0
+    semantic_false_positives = 0
+    failures_remaining = 0
+
+    for cycle in updated.get("cycles", []):
+        items = cycle.get("items", [])
+        for item in items:
+            result = evaluate_valid_hit(item.get("expected", {}), item.get("response", ""))
+            item["adjusted_score"] = result.adjusted_score
+            item["reason"] = result.reason
+            item["valid_false_negative"] = result.valid_false_negative
+            item["semantic_false_positive"] = result.semantic_false_positive
+            valid_false_negatives += 1 if result.valid_false_negative else 0
+            semantic_false_positives += 1 if result.semantic_false_positive else 0
+            failures_remaining += 1 if result.adjusted_score < 1.0 else 0
+        adjusted_score = _weighted_score_dicts(items, attr="adjusted_score")
+        cycle["adjusted_score"] = adjusted_score
+        cycle["adjusted_penalized_score"] = max(
+            0.0,
+            min(1.0, adjusted_score * (1.0 - float(cycle.get("contradiction_rate", 0.0)))),
+        )
+        adjusted_cycle_scores.append(float(cycle["adjusted_penalized_score"]))
+
+    updated["adjusted_case_score"] = _mean(adjusted_cycle_scores)
+    updated["valid_false_negatives"] = valid_false_negatives
+    updated["semantic_false_positives"] = semantic_false_positives
+    updated["failures_remaining"] = failures_remaining
+    return updated
+
+
+def _weighted_score_dicts(items: list[dict[str, Any]], *, attr: str) -> float:
+    total_weight = sum(float(item.get("weight", 0.0)) for item in items)
+    if total_weight <= 0:
+        return 0.0
+    return (
+        sum(float(item.get("weight", 0.0)) * float(item.get(attr, 0.0)) for item in items)
+        / total_weight
+    )
 
 
 if __name__ == "__main__":

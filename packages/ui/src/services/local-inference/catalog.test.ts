@@ -10,7 +10,7 @@ import { recommendForFirstRun } from "./recommendation";
 import { localInferenceService } from "./service";
 
 describe("local inference catalog", () => {
-  it("ships exactly the 5 Eliza-1 tiers", () => {
+  it("ships exactly the 4 Eliza-1 size tiers", () => {
     expect(
       MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)
         .map((m) => m.id)
@@ -20,7 +20,7 @@ describe("local inference catalog", () => {
     );
   });
 
-  it("marks ONLY the 5 Eliza-1 tiers as default-eligible", () => {
+  it("marks ONLY the 4 Eliza-1 size tiers as default-eligible", () => {
     expect([...DEFAULT_ELIGIBLE_MODEL_IDS].sort()).toEqual(
       [...ELIZA_1_TIER_IDS].sort(),
     );
@@ -34,12 +34,15 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("uses Eliza-1 user-facing display names", () => {
+  it("uses eliza-1 size ids as user-facing display names", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const model = findCatalogModel(id);
       expect(model, `${id} missing`).toBeTruthy();
-      expect(model!.displayName).toMatch(/^Eliza-1\b/);
-      expect(model!.blurb).toMatch(/^Eliza-1\b/);
+      expect(model!.displayName).toBe(id);
+      expect(model!.blurb).toMatch(new RegExp(`^${id}\\b`));
+      expect(`${model!.displayName} ${model!.blurb}`).not.toMatch(
+        /\b(?:Qwen|Llama)\b/i,
+      );
     }
   });
 
@@ -78,15 +81,14 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Per packages/inference/AGENTS.md §2: lite/mobile = 32k, desktop =
-    // 64k, pro = 128k, server = 256k. The catalog records the largest
-    // ctx the bundle's manifest will advertise for each tier.
+    // Size tiers: 0.6B/1.7B = 32k, 9B = 64k, 27B = 128k. The catalog
+    // records the largest ctx the bundle's manifest will advertise for
+    // each tier.
     const expected: Record<string, number> = {
       "eliza-1-0_6b": 32768,
       "eliza-1-1_7b": 32768,
       "eliza-1-9b": 65536,
       "eliza-1-27b": 131072,
-      "eliza-1-27b-256k": 262144,
     };
     for (const [id, expectedLength] of Object.entries(expected)) {
       const model = findCatalogModel(id);
@@ -126,7 +128,7 @@ describe("local inference catalog", () => {
       ).toBeDefined();
       expect(
         entry.tokenizerFamily,
-        `tokenizer mismatch: target ${entry.id} (${entry.tokenizerFamily}) ≠ drafter ${drafterId} (${drafter!.tokenizerFamily})`,
+        `tokenizer mismatch: target ${entry.id} (${entry.tokenizerFamily}) != drafter ${drafterId} (${drafter!.tokenizerFamily})`,
       ).toBe(drafter!.tokenizerFamily);
     }
   });
@@ -155,6 +157,6 @@ describe("local inference catalog", () => {
     expect(picked).not.toBeNull();
     expect(picked!.id).toBe(FIRST_RUN_DEFAULT_MODEL_ID);
     expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(picked!.id)).toBe(true);
-    expect(picked!.displayName).toMatch(/^Eliza-1\b/);
+    expect(picked!.displayName).toBe(FIRST_RUN_DEFAULT_MODEL_ID);
   });
 });

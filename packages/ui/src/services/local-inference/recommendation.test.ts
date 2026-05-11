@@ -41,12 +41,11 @@ describe("local inference recommendations", () => {
     expect(classifyRecommendationPlatform(probe)).toBe("linux-gpu");
     expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-1_7b");
     // assessFit on linux-gpu uses max(VRAM, RAM*0.5) = max(24, 32) = 32.
-    // 27b (minRam 32, size 16.8) fits; 27b-256k (minRam 96) does
-    // not. Ladder is server → pro → desktop → mobile, picks 27b.
+    // 27b (minRam 32, size 16.8) fits and is the largest default tier.
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
   });
 
-  it("picks the server tier on a >=96 GB-effective workstation", () => {
+  it("stays on the 27B Eliza-1 tier on a >=96 GB-effective workstation", () => {
     const probe = hardware({
       totalRamGb: 128,
       freeRamGb: 96,
@@ -60,11 +59,10 @@ describe("local inference recommendations", () => {
 
     const recommended = selectRecommendedModels(probe);
 
-    // effective = max(128, 64) = 128 ≥ 27b-256k minRam (96).
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b-256k");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
   });
 
-  it("uses the mobile ladder and prefers the Eliza-1 mobile tier when it fits", () => {
+  it("uses the mobile platform ladder and prefers the 1.7B tier when it fits", () => {
     const probe = hardware({
       totalRamGb: 8,
       freeRamGb: 5,
@@ -80,7 +78,7 @@ describe("local inference recommendations", () => {
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-1_7b");
   });
 
-  it("falls back to the lite tier on minimal mobile", () => {
+  it("falls back to the 0.6B tier on minimal mobile", () => {
     // 1_7b needs 4 GB minRam; below that the ladder collapses
     // to 0_6b (2 GB minRam). Below 2 GB nothing fits.
     const cases: Array<[number, string | null]> = [
@@ -120,7 +118,7 @@ describe("local inference recommendations", () => {
 
   it("chooses a smaller fitting fallback from the same platform ladder", () => {
     // linux-gpu host with enough effective memory for 9b
-    // (effective = max(VRAM, RAM*0.5) = max(16, 16) = 16, desktop minRam 12).
+    // (effective = max(VRAM, RAM*0.5) = max(16, 16) = 16, 9B minRam 12).
     const probe = hardware({
       totalRamGb: 32,
       freeRamGb: 24,

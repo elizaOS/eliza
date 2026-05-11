@@ -225,7 +225,7 @@ describe("validateManifest — contract rejections", () => {
 
   it("does not require cuda for tiers that don't ship on cuda", () => {
     const m = baseManifest("0_6b");
-    // lite tier doesn't ship on cuda; cuda fail should not block.
+    // 0.6B tier doesn't ship on cuda; cuda fail should not block.
     m.kernels.verifiedBackends.cuda = {
       status: "fail",
       atCommit: "abc1234",
@@ -291,9 +291,9 @@ describe("canSetAsDefault", () => {
   });
 
   it("returns false when the device shares no passing backend with the tier", () => {
-    const m = baseManifest("27b-256k"); // server tier supports cuda/vulkan/cpu
-    // device only has metal — overlap with server tier is none, except cpu.
-    // server tier *does* support cpu, so this passes; tighten to just an
+    const m = baseManifest("27b-256k"); // 27b-256k supports cuda/vulkan/cpu
+    // device only has metal — overlap with this tier is none, except cpu.
+    // this tier *does* support cpu, so this passes; tighten to just an
     // unrelated backend to verify the exclusion path.
     expect(canSetAsDefault(m, { availableBackends: ["metal"], ramMb: 64_000 })).toBe(
       false,

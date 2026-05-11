@@ -32,7 +32,8 @@ with a specific code (see "Exit codes" below):
 1. **Layout validation.** Confirms the bundle directory matches
    `packages/inference/AGENTS.md` §2 (text/, tts/, asr/, vision/,
    dflash/, cache/, evals/, licenses/) and that every required license
-   blob exists and is non-empty.
+   blob exists and is non-empty. The frozen voice GGUF, tokenizer, and
+   `cache/voice-preset-default.bin` must be present.
 2. **Kernel verification.** Runs `make -C ../../inference/verify
    reference-test` for the CPU path. For Vulkan and CUDA, the
    orchestrator consumes recorded reports at
@@ -45,8 +46,10 @@ with a specific code (see "Exit codes" below):
 3. **Eval gates.** Loads `<bundle>/evals/aggregate.json` and applies
    `apply_gates(results, tier)` from
    `packages/training/benchmarks/eliza1_gates.py`. Refuses to proceed
-   unless `passed: true`. The gate report is written into the manifest's
-   `evals` block.
+   unless `passed: true`. Voice gates include RTF, expressive tag
+   faithfulness, expressive MOS, and tag leakage so singing can ship as a
+   normal declared voice capability. The gate report is written into the
+   manifest's `evals` block.
 4. **Manifest build.** Calls `build_manifest(...)` from
    `packages/training/scripts/manifest/eliza1_manifest.py`. The manifest
    module's validator independently re-checks the §3 / §6 contract
@@ -75,7 +78,7 @@ Per `packages/inference/AGENTS.md` §2 the bundle root must look like:
   asr/       <asr.gguf or native package>
   vision/    <mmproj-<tier>.gguf where applicable>
   dflash/    <drafter-<tier>.gguf and target-meta.json>
-  cache/     <voice-preset-default.bin>
+  cache/     <voice-preset-default.bin containing the default speaker preset + phrase cache seed>
   evals/
     aggregate.json        # input to apply_gates(); shape per eliza1_gates.py docstring
     vulkan_verify.json    # recorded report (status, atCommit, report)

@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test vulkan vulkan-spirv vulkan-verify vulkan-qjl-polar metal metal-verify metal-verify-multiblock metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify verify-fork dispatch-smoke clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-qjl-polar metal metal-verify metal-verify-multiblock metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify verify-fork dispatch-smoke clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -29,6 +29,9 @@ $(QJL_POLAR_OBJ): $(QJL_POLAR_SRC) qjl_polar_ref.h
 reference-test: gen_fixture
 	@echo "[kernels/verify] reference vs reference (fixture sanity)..."
 	./gen_fixture --self-test
+
+kernel-contract:
+	node check_kernel_contract.mjs
 
 gen_fixture: gen_fixture.c $(REF_OBJ) $(QJL_POLAR_OBJ)
 	$(CC) $(CFLAGS) -I../reference $< $(REF_OBJ) $(QJL_POLAR_OBJ) -lm -o $@
@@ -371,6 +374,7 @@ else
 	@echo "[cuda-verify] turbo3_tcq ..." ; ./cuda_verify fixtures/turbo3_tcq.json
 	@echo "[cuda-verify] qjl ..."        ; ./cuda_verify fixtures/qjl.json
 	@echo "[cuda-verify] polar ..."      ; ./cuda_verify fixtures/polar.json
+	@echo "[cuda-verify] polar + QJL residual ..." ; ./cuda_verify fixtures/polar_qjl.json
 endif
 
 # Drift check between the standalone shaders in packages/inference/{metal,vulkan}/

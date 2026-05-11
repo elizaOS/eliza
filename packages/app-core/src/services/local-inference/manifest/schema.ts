@@ -49,7 +49,7 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
 // Required-kernel set per tier. Mirrors AGENTS.md §3:
 // - All tiers require turboquant + qjl + polarquant + dflash.
-// - 9B / 27B / 27B-256k require `turbo3_tcq`. The validator also enforces the
+// - desktop/pro/server require `turbo3_tcq`. The validator also enforces the
 //   same requirement dynamically for any bundle that declares a >64k text file,
 //   so a future tier cannot publish long-context text without TCQ.
 //
@@ -141,15 +141,15 @@ export const Eliza1FilesSchema = z.object({
   dflash: z.array(Eliza1FileEntrySchema).min(1),
   cache: z.array(Eliza1FileEntrySchema).min(1),
   // Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
-  // embedding model (Qwen3-Embedding-0.6B-GGUF on non-lite tiers) and
+  // embedding model (Qwen3-Embedding-0.6B-GGUF on non-0.6B tiers) and
   // a Silero-VAD ONNX + an optional openWakeWord ONNX. All three are
-  // optional in the schema — the lite tier intentionally omits the
+  // optional in the schema — the 0.6B tier intentionally omits the
   // dedicated embedding (pools from text backbone) and a tier may
   // ship without wake-word support.
   //
   // Schema-level optionality: empty array = "this bundle does not
   // ship this component"; the validator enforces tier-specific
-  // consistency rules (e.g. mobile-and-up MUST ship `embedding[]`).
+  // consistency rules (e.g. 1.7B-and-up MUST ship `embedding[]`).
   embedding: z.array(Eliza1FileEntrySchema).optional(),
   vad: z.array(Eliza1FileEntrySchema).optional(),
   wakeword: z.array(Eliza1FileEntrySchema).optional(),

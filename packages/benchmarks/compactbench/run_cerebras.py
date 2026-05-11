@@ -56,6 +56,21 @@ def main() -> int:
         action="store_true",
         help="Print a score summary after the run completes.",
     )
+    parser.add_argument(
+        "--analyze-valid-hits",
+        action="store_true",
+        help=(
+            "Rerun the same cases and write response-level official + "
+            "adjusted valid-hit analysis. This preserves official scores "
+            "and adds a separate diagnostic metric."
+        ),
+    )
+    parser.add_argument(
+        "--valid-hit-output",
+        type=Path,
+        default=None,
+        help="Output JSONL for --analyze-valid-hits. Defaults beside --output.",
+    )
     args = parser.parse_args()
 
     if not os.environ.get("CEREBRAS_API_KEY"):
@@ -134,6 +149,38 @@ def main() -> int:
             # (code 0) fall through, surface failures to the caller.
             code = exc.code if isinstance(exc.code, int) else 1
             return code
+
+    if args.analyze_valid_hits:
+        from argparse import Namespace
+
+        from analyze_valid_hits import _run_analysis
+
+        valid_hit_output = args.valid_hit_output
+        if valid_hit_output is None:
+            valid_hit_output = args.output.with_name(
+                f"{args.output.stem}.valid-hits.jsonl"
+            )
+        analysis_args = Namespace(
+            method=args.method,
+            suite=args.suite,
+            model=args.model,
+            benchmarks_dir=args.benchmarks_dir,
+            output=valid_hit_output,
+            case_count=args.case_count,
+            drift_cycles=args.drift_cycles,
+            difficulty=args.difficulty,
+            seed_group=args.seed_group,
+            provider="cerebras",
+        )
+        summary = asyncio.run(_run_analysis(analysis_args))
+        print("valid-hit analysis:")
+        print(
+            f"  official_overall_score={summary['official_overall_score']:.3f} "
+            f"adjusted_overall_score={summary['adjusted_overall_score']:.3f} "
+            f"valid_false_negatives={summary['valid_false_negatives']} "
+            f"semantic_false_positives={summary['semantic_false_positives']}"
+        )
+        print(f"  wrote {valid_hit_output}")
 
     return 0
 

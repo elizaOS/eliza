@@ -26,7 +26,9 @@ import {
   type IAgentRuntime,
   logger,
   ModelType,
+  type TextToSpeechParams,
   type TextEmbeddingParams,
+  type TranscriptionParams,
 } from "@elizaos/core";
 import {
   type LocalInferenceLoader,
@@ -47,6 +49,10 @@ import { handlerRegistry } from "../services/local-inference/handler-registry";
 import { listInstalledModels } from "../services/local-inference/registry";
 import { installRouterHandler } from "../services/local-inference/router-handler";
 import type { AgentModelSlot } from "../services/local-inference/types";
+import {
+  decodeMonoPcm16Wav,
+  type TranscriptionAudio,
+} from "../services/local-inference/voice";
 import { getRuntimeMode } from "./mode/runtime-mode";
 
 type GenerateTextHandler = (
@@ -64,13 +70,36 @@ type EmbeddingHandler = (
   params: TextEmbeddingParams | string | null,
 ) => Promise<number[]>;
 
+type TextToSpeechHandler = (
+  runtime: IAgentRuntime,
+  params: TextToSpeechParams | string,
+) => Promise<Uint8Array>;
+
+type TranscriptionHandler = (
+  runtime: IAgentRuntime,
+  params: TranscriptionParams | Buffer | string | LocalTranscriptionParams,
+) => Promise<string>;
+
+interface LocalTranscriptionParams {
+  pcm?: Float32Array;
+  audio?: Uint8Array | ArrayBuffer | Buffer;
+  sampleRateHz?: number;
+  sampleRate?: number;
+}
+
+type LocalModelHandler =
+  | GenerateTextHandler
+  | EmbeddingHandler
+  | TextToSpeechHandler
+  | TranscriptionHandler;
+
 type RuntimeWithModelRegistration = AgentRuntime & {
   getModel: (
     modelType: string | number,
-  ) => GenerateTextHandler | EmbeddingHandler | undefined;
+  ) => LocalModelHandler | undefined;
   registerModel: (
     modelType: string | number,
-    handler: GenerateTextHandler | EmbeddingHandler,
+    handler: LocalModelHandler,
     provider: string,
     priority?: number,
   ) => void;
@@ -292,6 +321,85 @@ function makeEmbeddingHandler(): EmbeddingHandler {
     const text = extractEmbeddingText(params);
     const result = await loader.embed({ input: text });
     return result.embedding;
+  };
+}
+
+function extractSpeechText(params: TextToSpeechParams | string): string {
+  if (typeof params === "string") return params;
+  if (params && typeof params.text === "string") return params.text;
+  throw new Error(
+    "[local-inference] TEXT_TO_SPEECH requires a string or { text } input",
+  );
+}
+
+function makeTextToSpeechHandler(): TextToSpeechHandler {
+  return async (_runtime, params) => {
+    const text = extractSpeechText(params);
+    if (text.length === 0) {
+      throw new Error("[local-inference] TEXT_TO_SPEECH text must be non-empty");
+    }
+    // Do not filter singing, emotion tags, or lyrical phrasing here. The
+    // local voice bundle advertises its expressive capability in the
+    // manifest; runtime safety policy lives above this model adapter.
+    return localInferenceEngine.synthesizeSpeech(text);
+  };
+}
+
+function toUint8Array(value: Uint8Array | ArrayBuffer | Buffer): Uint8Array {
+  if (value instanceof Uint8Array) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return new Uint8Array(value);
+}
+
+function extractTranscriptionAudio(
+  params: TranscriptionParams | Buffer | string | LocalTranscriptionParams,
+): TranscriptionAudio {
+  if (typeof params === "string") {
+    throw new Error(
+      "[local-inference] TRANSCRIPTION via the local voice runtime requires PCM/WAV bytes; URL/path strings are not fetched by this provider",
+    );
+  }
+  if (params instanceof Uint8Array || params instanceof ArrayBuffer) {
+    return decodeMonoPcm16Wav(toUint8Array(params));
+  }
+  if (!params || typeof params !== "object") {
+    throw new Error(
+      "[local-inference] TRANSCRIPTION requires PCM/WAV bytes or { pcm, sampleRateHz }",
+    );
+  }
+  if ("audioUrl" in params && typeof params.audioUrl === "string") {
+    throw new Error(
+      "[local-inference] TRANSCRIPTION audioUrl is not fetched by the local voice runtime; pass mono PCM16 WAV bytes or { pcm, sampleRateHz }",
+    );
+  }
+  if ("pcm" in params && params.pcm instanceof Float32Array) {
+    const sampleRate =
+      ("sampleRateHz" in params ? params.sampleRateHz : undefined) ??
+      ("sampleRate" in params ? params.sampleRate : undefined);
+    if (typeof sampleRate !== "number" || sampleRate <= 0) {
+      throw new Error(
+        "[local-inference] TRANSCRIPTION { pcm } requires a positive sampleRateHz",
+      );
+    }
+    return { pcm: params.pcm, sampleRate };
+  }
+  if (
+    "audio" in params &&
+    (params.audio instanceof Uint8Array ||
+      params.audio instanceof ArrayBuffer)
+  ) {
+    return decodeMonoPcm16Wav(toUint8Array(params.audio));
+  }
+  throw new Error(
+    "[local-inference] TRANSCRIPTION requires mono PCM16 WAV bytes or { pcm, sampleRateHz } for the local voice runtime",
+  );
+}
+
+function makeTranscriptionHandler(): TranscriptionHandler {
+  return async (_runtime, params) => {
+    const audio = extractTranscriptionAudio(params);
+    return localInferenceEngine.transcribePcm(audio);
   };
 }
 
@@ -533,6 +641,29 @@ export async function ensureLocalInferenceHandler(
         err instanceof Error ? err.message : String(err),
       );
     }
+  }
+
+  try {
+    runtimeWithRegistration.registerModel(
+      ModelType.TEXT_TO_SPEECH,
+      makeTextToSpeechHandler(),
+      provider,
+      LOCAL_INFERENCE_PRIORITY,
+    );
+    runtimeWithRegistration.registerModel(
+      ModelType.TRANSCRIPTION,
+      makeTranscriptionHandler(),
+      provider,
+      LOCAL_INFERENCE_PRIORITY,
+    );
+    logger.info(
+      `[local-inference] Registered ${provider} voice handlers for TEXT_TO_SPEECH / TRANSCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}`,
+    );
+  } catch (err) {
+    logger.warn(
+      "[local-inference] Could not register local voice handlers",
+      err instanceof Error ? err.message : String(err),
+    );
   }
 
   logger.info(

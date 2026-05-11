@@ -111,6 +111,10 @@ def test_build_manifest_accepts_optional_component_slots_and_voice_caps():
     )
     manifest = build_manifest(**kwargs)
     assert manifest["files"]["embedding"][0]["path"].startswith("embedding/")
+    assert manifest["voice"]["version"] == "1"
+    assert manifest["voice"]["frozen"] is True
+    assert manifest["voice"]["cache"]["speakerPreset"] == "cache/voice-preset-default.bin"
+    assert manifest["voice"]["cache"]["phraseCacheSeed"] == "cache/voice-preset-default.bin"
     assert manifest["voice"]["capabilities"] == ["tts", "emotion-tags"]
     assert validate_manifest(manifest) == ()
 
@@ -174,6 +178,16 @@ def test_expressive_voice_capabilities_require_expressive_eval():
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
     assert any("evals.expressive" in e for e in exc.value.errors)
+
+
+def test_missing_voice_cache_file_rejected():
+    kwargs = base_kwargs("desktop-9b")
+    kwargs["files"]["cache"] = [
+        FileEntry(path="cache/not-the-default-voice-cache.bin", sha256=SHA)
+    ]
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("voice cache" in e for e in exc.value.errors)
 
 
 def test_default_eligible_with_failing_backend_rejected():

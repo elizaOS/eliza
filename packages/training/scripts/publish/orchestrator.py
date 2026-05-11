@@ -10,7 +10,8 @@ Stages, in order, with hard exits on failure:
 1. **Layout validation.** Walk the bundle directory and verify it
    conforms to ``packages/inference/AGENTS.md`` §2 (text/, tts/, asr/,
    vision/, dflash/, cache/, evals/, licenses/). Missing required files
-   or sidecars are publish-blocking.
+   or sidecars are publish-blocking. The frozen voice artifacts and
+   ``cache/voice-preset-default.bin`` must be present.
 2. **Kernel verification.** Run the
    ``packages/inference/verify`` harness for the tier's supported
    backends. CPU + Vulkan are runnable in CI; Metal is hardware-only —
@@ -23,7 +24,8 @@ Stages, in order, with hard exits on failure:
 4. **Manifest build.** Assemble inputs into ``build_manifest`` from the
    manifest module. ``defaultEligible`` is True iff every required gate
    is green and every supported backend verified pass; the manifest
-   validator enforces the same rule.
+   validator enforces the same rule. The voice section is emitted as
+   frozen and includes ``tts``, emotion tags, and singing capabilities.
 5. **README render.** Render ``templates/README.md.j2`` with the
    manifest as the data context. Same data, no marketing buzzwords, no
    user-visible upstream model-family strings.
@@ -64,8 +66,10 @@ from benchmarks.eliza1_gates import (  # noqa: E402  - sys.path mutated above
 )
 from scripts.manifest.eliza1_manifest import (  # noqa: E402
     ELIZA_1_BACKENDS,
+    ELIZA_1_VOICE_MANIFEST_VERSION,
     REQUIRED_KERNELS_BY_TIER,
     SUPPORTED_BACKENDS_BY_TIER,
+    VOICE_PRESET_CACHE_PATH,
     Eliza1ManifestError,
     FileEntry,
     KernelVerification,
@@ -142,6 +146,12 @@ VOICE_BACKBONE_BY_TIER: Mapping[str, str] = {
     "pro-27b": "omnivoice-1.7b",
     "server-h200": "omnivoice-1.7b",
 }
+DEFAULT_VOICE_CAPABILITIES: tuple[str, ...] = ("tts", "emotion-tags", "singing")
+EXPRESSIVE_GATE_NAMES: tuple[str, ...] = (
+    "expressive_tag_faithfulness",
+    "expressive_mos",
+    "expressive_tag_leakage",
+)
 
 # Default RAM budgets (MB). Tightened pre-publish from real measurements
 # on reference hardware; the bundle's sidecar can override.
@@ -296,6 +306,19 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             "bundle layout: tts/ must contain at least one .gguf",
             EXIT_BUNDLE_LAYOUT_FAIL,
         )
+    voice_size = VOICE_BACKBONE_BY_TIER[ctx.tier].removeprefix("omnivoice-")
+    required_tts = {
+        f"omnivoice-{voice_size}.gguf",
+        f"omnivoice-tokenizer-{voice_size}.gguf",
+    }
+    tts_names = {p.name for p in out["tts"]}
+    missing_tts = sorted(required_tts - tts_names)
+    if missing_tts:
+        raise OrchestratorError(
+            "bundle layout: missing frozen voice artifact(s) in tts/: "
+            f"{missing_tts}",
+            EXIT_MISSING_FILE,
+        )
     if not out["dflash"]:
         raise OrchestratorError(
             "bundle layout: dflash/ must contain at least one .gguf",
@@ -305,6 +328,17 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
         raise OrchestratorError(
             "bundle layout: cache/ must contain at least one cache file",
             EXIT_BUNDLE_LAYOUT_FAIL,
+        )
+    voice_cache = bundle / VOICE_PRESET_CACHE_PATH
+    if not voice_cache.is_file():
+        raise OrchestratorError(
+            f"bundle layout: missing frozen voice cache {VOICE_PRESET_CACHE_PATH}",
+            EXIT_MISSING_FILE,
+        )
+    if voice_cache.stat().st_size == 0:
+        raise OrchestratorError(
+            f"bundle layout: empty frozen voice cache {VOICE_PRESET_CACHE_PATH}",
+            EXIT_MISSING_FILE,
         )
 
     # Optional but if present must not be empty.
@@ -713,11 +747,18 @@ def assemble_manifest(
     voice_rtf = float(results["voice_rtf"])
     has_asr = bool(files_map.get("asr"))
     asr_wer = float(results["asr_wer"]) if has_asr else None
+    expressive_tag_faithfulness = float(results["expressive_tag_faithfulness"])
+    expressive_mos = float(results["expressive_mos"])
+    expressive_tag_leakage = float(results["expressive_tag_leakage"])
 
     # All evals' ``passed`` flags come from the gate report — it's the
     # only source of truth and matches the manifest validator's rules.
     text_eval_passed = _gate_passed(gate_report, "text_eval")
     voice_rtf_passed = _gate_passed(gate_report, "voice_rtf")
+    expressive_passed = all(
+        _gate_passed(gate_report, gate_name)
+        for gate_name in EXPRESSIVE_GATE_NAMES
+    )
     # ``e2e_loop_ok`` and ``thirty_turn_ok`` are independent boolean
     # contract gates per AGENTS.md §6 (manifest fields ``evals.e2eLoopOk``
     # and ``evals.thirtyTurnOk``). Read each from the eval blob directly
@@ -742,6 +783,7 @@ def assemble_manifest(
         and all_backends_pass
         and text_eval_passed
         and voice_rtf_passed
+        and expressive_passed
         and e2e_loop_ok
         and thirty_turn_ok
     )
@@ -767,6 +809,15 @@ def assemble_manifest(
             default_eligible=default_eligible,
             asr_wer=asr_wer,
             asr_wer_passed=_gate_passed(gate_report, "asr_wer") if has_asr else None,
+            expressive_tag_faithfulness=expressive_tag_faithfulness,
+            expressive_mos=expressive_mos,
+            expressive_tag_leakage=expressive_tag_leakage,
+            expressive_passed=expressive_passed,
+            voice_capabilities=DEFAULT_VOICE_CAPABILITIES,
+            voice_version=ELIZA_1_VOICE_MANIFEST_VERSION,
+            voice_frozen=True,
+            voice_cache_speaker_preset=VOICE_PRESET_CACHE_PATH,
+            voice_cache_phrase_seed=VOICE_PRESET_CACHE_PATH,
         )
     except Eliza1ManifestError as exc:
         raise OrchestratorError(
@@ -909,6 +960,8 @@ def render_readme(ctx: PublishContext, manifest: Mapping[str, Any]) -> str:
         for kind in ("text", "voice", "asr", "vision", "dflash", "cache")
         if manifest["files"].get(kind)
     ]
+    voice = manifest.get("voice") or {}
+    voice_cache = voice.get("cache") if isinstance(voice.get("cache"), dict) else {}
 
     return template.render(
         manifest=manifest,
@@ -921,6 +974,8 @@ def render_readme(ctx: PublishContext, manifest: Mapping[str, Any]) -> str:
         kernels_required_str=", ".join(manifest["kernels"]["required"]),
         kernels_optional_str=", ".join(manifest["kernels"]["optional"]) or "(none)",
         file_groups=file_groups,
+        voice_capabilities_str=", ".join(voice.get("capabilities", [])),
+        voice_cache=voice_cache,
     )
 
 

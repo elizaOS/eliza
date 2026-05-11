@@ -86,8 +86,8 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Per packages/inference/AGENTS.md §2: lite/mobile = 32k, desktop =
-    // 64k, pro = 128k, server = 256k. The catalog records the largest
+    // Size tiers: 0.6B/1.7B = 32k, 9B = 64k, 27B = 128k,
+    // 27B-256k = 256k. The catalog records the largest
     // ctx the bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
       "eliza-1-0_6b": 32768,

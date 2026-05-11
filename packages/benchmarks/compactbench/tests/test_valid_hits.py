@@ -52,6 +52,28 @@ def test_contains_normalized_accepts_all_content_words_without_template_knowledg
     assert result.reason == "all_content_words_present"
 
 
+def test_contains_normalized_accepts_passive_forbidden_rule_recall() -> None:
+    result = evaluate_valid_hit(
+        {"check": "contains_normalized", "value": "commit credentials to git history"},
+        "The user said that credentials must never be committed to the Git history.",
+    )
+
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "all_content_words_present"
+
+
+def test_contains_normalized_accepts_noun_form_forbidden_rule_recall() -> None:
+    result = evaluate_valid_hit(
+        {"check": "contains_normalized", "value": "deploy on Fridays"},
+        "The user said deployments must never happen on Fridays.",
+    )
+
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "all_content_words_present"
+
+
 def test_contains_normalized_does_not_credit_negated_answer() -> None:
     result = evaluate_valid_hit(
         {"check": "contains_normalized", "value": "use regex to parse HTML"},
@@ -89,6 +111,20 @@ def test_forbidden_absent_keeps_clean_official_positive() -> None:
     result = evaluate_valid_hit(
         {"check": "forbidden_absent", "value": "use regex to parse HTML"},
         "Bob handles the cache task; Farid owns the parsing task.",
+    )
+
+    assert result.official_score == 1.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "official"
+
+
+def test_forbidden_absent_keeps_reassigned_responsibility_answer_valid() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "return raw exception messages to end users"},
+        (
+            "No. Quinn is responsible for validation; returning raw exception "
+            "messages to end users is Jamal's responsibility."
+        ),
     )
 
     assert result.official_score == 1.0
