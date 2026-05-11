@@ -14,14 +14,13 @@ import {
   promoteSubactionsToActions,
 } from "@elizaos/core";
 // Register coding-agent HTTP routes with the runtime route registry.
-// Touching the named export (instead of a side-effect-only import)
-// keeps Bun.build's node-target tree-shaker from dropping the module,
-// which otherwise silently disables `/api/coding-agents/*` on the
-// node bundle. The local _ binding is consumed by the export below
-// so the module reference survives all the way through bundling.
-import { codingAgentRouteRegistration } from "./register-routes.js";
-
-const _keepRouteRegistration = codingAgentRouteRegistration;
+// Re-exporting the registration sentinel (rather than a side-effect-only
+// `import "./register-routes.js"`) keeps Bun.build's node-target
+// tree-shaker from dropping the module — a public re-export is a
+// value-flow edge no bundler can prune, and the registration runs as a
+// side-effect of evaluating that module. Without this the entire
+// `/api/coding-agents/*` surface 404s on the node bundle.
+export { codingAgentRouteRegistration } from "./register-routes.js";
 
 import {
   createTerminalUnsupportedTasksAction,
