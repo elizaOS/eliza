@@ -41,6 +41,11 @@ DEFAULT_TIMEOUT_S = 600.0
 
 
 _JSON_BLOB_RE = re.compile(r"\{.*\}", re.DOTALL)
+_TOOL_CALL_RE = re.compile(
+    r"<tool_call>\s*(\{.*?\})\s*</tool_call>",
+    re.DOTALL,
+)
+_TOOL_CALL_OPENER_RE = re.compile(r"<tool_call>\s*(\{)", re.DOTALL)
 
 
 @dataclass
@@ -433,6 +438,150 @@ def _normalize_tool_call(
     }
 
 
+def _brace_balanced_json_slice(text: str, start: int) -> str | None:
+    """Extract a top-level JSON object starting at ``text[start] == '{'``.
+
+    Walks forward respecting string boundaries and ``\\`` escapes inside
+    strings. Returns the substring ``text[start : end+1]`` once the brace
+    depth returns to zero, or ``None`` if the object never closes.
+    """
+    if start >= len(text) or text[start] != "{":
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
+def _tool_call_dict_from_raw(
+    raw: str, index: int
+) -> dict[str, object] | None:
+    """Parse a JSON-encoded tool_call body into the normalized dict shape.
+
+    Returns ``None`` on JSON failure or when the payload lacks a string
+    ``tool``/``name`` field.
+    """
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.debug("dropping malformed OpenClaw tool_call payload: %r", raw)
+        return None
+    name = data.get("tool") or data.get("name")
+    if not isinstance(name, str) or not name:
+        return None
+    args = data.get("args", data.get("arguments", {}))
+    return {
+        "id": str(data.get("id") or f"call_openclaw_{index}"),
+        "name": name,
+        "arguments": args if isinstance(args, dict) else {},
+    }
+
+
+def parse_openclaw_tool_calls(text: str) -> tuple[str, list[dict[str, object]]]:
+    """Parse ``<tool_call>{...}</tool_call>`` blocks out of ``text``.
+
+    Two passes:
+
+    1. Well-formed blocks bounded by ``<tool_call>...</tool_call>``.
+    2. If pass 1 found nothing and the text contains an opener, run a
+       brace-balanced fallback over each ``<tool_call>{`` occurrence to
+       recover unclosed blocks (the model sometimes emits an opening tag
+       and a JSON body followed by trailing prose, never closing the tag).
+    """
+    if "<tool_call>" not in text:
+        return text, []
+    tool_calls: list[dict[str, object]] = []
+    for index, raw in enumerate(_TOOL_CALL_RE.findall(text)):
+        normalized = _tool_call_dict_from_raw(raw.strip(), index)
+        if normalized is not None:
+            tool_calls.append(normalized)
+
+    if not tool_calls:
+        for match in _TOOL_CALL_OPENER_RE.finditer(text):
+            json_start = match.start(1)
+            sliced = _brace_balanced_json_slice(text, json_start)
+            if sliced is None:
+                continue
+            normalized = _tool_call_dict_from_raw(sliced, len(tool_calls))
+            if normalized is not None:
+                tool_calls.append(normalized)
+
+    return text[: text.find("<tool_call>")].strip(), tool_calls
+
+
+def _coerce_native_tool_call(raw: object) -> dict[str, object] | None:
+    if not isinstance(raw, Mapping):
+        return None
+    fn = raw.get("function")
+    if isinstance(fn, Mapping):
+        name = fn.get("name")
+        args: object = fn.get("arguments", {})
+    else:
+        name = raw.get("name")
+        args = raw.get("arguments", {})
+    if not isinstance(name, str) or not name:
+        return None
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except json.JSONDecodeError:
+            pass
+    return {
+        "id": str(raw.get("id") or ""),
+        "name": name,
+        "arguments": args,
+    }
+
+
+def _messages_from_context(text: str, ctx: Mapping[str, object]) -> list[dict[str, str]]:
+    raw_messages = ctx.get("messages")
+    messages: list[dict[str, str]] = []
+    if isinstance(raw_messages, Sequence) and not isinstance(raw_messages, (str, bytes)):
+        for item in raw_messages:
+            if not isinstance(item, Mapping):
+                continue
+            role = item.get("role")
+            content = item.get("content")
+            if role in {"system", "user", "assistant", "tool"}:
+                messages.append({"role": str(role), "content": "" if content is None else str(content)})
+    if not messages:
+        sys_prompt = ctx.get("system_prompt")
+        if isinstance(sys_prompt, str) and sys_prompt.strip():
+            messages.append({"role": "system", "content": sys_prompt.strip()})
+        messages.append({"role": "user", "content": text})
+    return messages
+
+
+def _openclaw_system_prompt(tools: list[object] | None) -> str:
+    prompt = (
+        "You are operating through the OpenClaw benchmark harness. "
+        "Use concise reasoning. When a tool is required, emit exactly one "
+        "<tool_call>{\"tool\":\"NAME\",\"args\":{...}}</tool_call> block. "
+        "Otherwise answer normally."
+    )
+    if tools:
+        prompt += "\nAvailable tools:\n" + json.dumps(tools, ensure_ascii=True)
+    return prompt
+
+
 def _default_api_key(provider: str, api_key_env: str) -> str:
     provider = provider.strip().lower()
     key_env = {
@@ -451,4 +600,4 @@ def _default_repo_path() -> Path:
     return DEFAULT_REPO_PATH
 
 
-__all__ = ["MessageResponse", "OpenClawClient"]
+__all__ = ["MessageResponse", "OpenClawClient", "parse_openclaw_tool_calls"]

@@ -528,7 +528,7 @@ windows-hardware:
 # against the fork's in-tree variants so we can confirm 8/8 PASS still holds
 # before signing off a bundle.
 #
-# The fork is the milady-ai/llama.cpp checkout the build script clones into
+# The fork is the elizaOS/llama.cpp checkout the build script clones into
 # ~/.cache/eliza-dflash/milady-llama-cpp. If the cache dir is absent, this
 # target prints a clear "fork not present, please run build first" message
 # rather than failing cryptically.

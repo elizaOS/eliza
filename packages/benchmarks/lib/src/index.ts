@@ -20,3 +20,9 @@ export {
   resolveTier,
 } from "./model-tiers.ts";
 export * from "./local-llama-cpp.ts";
+export {
+  type RetrievalStageName,
+  type RetrievalTierDefaults,
+  RETRIEVAL_DEFAULTS_BY_TIER,
+  resolveRetrievalDefaults,
+} from "./retrieval-defaults.ts";

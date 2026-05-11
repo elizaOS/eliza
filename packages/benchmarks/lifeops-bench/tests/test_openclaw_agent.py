@@ -247,6 +247,111 @@ def test_parse_openclaw_tool_calls_raises_when_args_not_object() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Pass 2 fallback: unclosed <tool_call> recovery
+#
+# Regression: gpt-oss-120b under the OpenClaw protocol occasionally emits
+# an opening ``<tool_call>`` and JSON body but never the closing tag (and
+# sometimes appends a sentence of prose after the JSON). Before the
+# brace-balanced fallback this dropped the tool_call silently and the
+# scenario scored zero — see W1-3 lifeops openclaw baseline.
+# ---------------------------------------------------------------------------
+
+
+def test_parse_openclaw_unclosed_tool_call_at_end_of_text() -> None:
+    text = (
+        "We need to call MESSAGE.<tool_call>"
+        '{"tool": "MESSAGE", "args": {"operation": "search_inbox",'
+        ' "query": "from:approvals@example.test"}}'
+    )
+    prose, tool_calls = parse_openclaw_tool_calls(text)
+    assert prose == "We need to call MESSAGE."
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["function"]["name"] == "MESSAGE"
+    args = json.loads(tool_calls[0]["function"]["arguments"])
+    assert args == {
+        "operation": "search_inbox",
+        "query": "from:approvals@example.test",
+    }
+
+
+def test_parse_openclaw_unclosed_tool_call_with_trailing_prose() -> None:
+    """The exact production failure observed in lifeops-openclaw-baseline."""
+    text = (
+        'We will search inbox.<tool_call>{"tool": "MESSAGE", "args":'
+        ' {"operation": "search_inbox", "source": "gmail",'
+        ' "query": "subject:\\"Quarterly Review\\""}}'
+        "The task is complete."
+    )
+    prose, tool_calls = parse_openclaw_tool_calls(text)
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["function"]["name"] == "MESSAGE"
+    args = json.loads(tool_calls[0]["function"]["arguments"])
+    assert args["query"] == 'subject:"Quarterly Review"'
+    # Trailing prose after the JSON object is preserved in the prose
+    # remainder so the runner can still surface model commentary.
+    assert "The task is complete." in prose
+    assert "<tool_call>" not in prose
+
+
+def test_parse_openclaw_unclosed_nested_objects_balanced() -> None:
+    text = (
+        '<tool_call>{"tool": "PLAN", "args": {"steps":'
+        ' [{"id": 1, "meta": {"k": "v"}}, {"id": 2}]}}'
+        " trailing prose"
+    )
+    prose, tool_calls = parse_openclaw_tool_calls(text)
+    assert len(tool_calls) == 1
+    args = json.loads(tool_calls[0]["function"]["arguments"])
+    assert args["steps"][0]["meta"] == {"k": "v"}
+    assert "trailing prose" in prose
+
+
+def test_parse_openclaw_unclosed_string_with_escaped_quotes() -> None:
+    text = (
+        '<tool_call>{"tool": "ECHO", "args": {"msg":'
+        ' "she said \\"hi\\" and {left}"}}'
+    )
+    _, tool_calls = parse_openclaw_tool_calls(text)
+    assert len(tool_calls) == 1
+    args = json.loads(tool_calls[0]["function"]["arguments"])
+    assert args["msg"] == 'she said "hi" and {left}'
+
+
+def test_parse_openclaw_unclosed_opener_with_no_body_returns_empty() -> None:
+    text = "thinking<tool_call> "
+    prose, tool_calls = parse_openclaw_tool_calls(text)
+    assert tool_calls == []
+    assert "thinking" in prose
+
+
+def test_parse_openclaw_unclosed_truncated_json_returns_empty() -> None:
+    """An opener whose JSON body never closes braces returns no calls."""
+    text = '<tool_call>{"tool": "X", "args": {"k": "v"'
+    _, tool_calls = parse_openclaw_tool_calls(text)
+    assert tool_calls == []
+
+
+def test_parse_openclaw_no_tool_call_text_only() -> None:
+    text = "Just a plain message with no tool call markers."
+    prose, tool_calls = parse_openclaw_tool_calls(text)
+    assert tool_calls == []
+    assert prose == text
+
+
+def test_parse_openclaw_closed_block_preferred_over_fallback() -> None:
+    """If Pass 1 finds a closed block, Pass 2 must not also fire on the same
+    text. (Avoids double-counting and reproduces the original strict
+    behavior for compliant streams.)"""
+    text = (
+        'p.<tool_call>{"tool": "GOOD", "args": {"a": 1}}</tool_call>'
+        ' tail <tool_call>{"tool": "ALSO_UNCLOSED", "args": {}}'
+    )
+    _, tool_calls = parse_openclaw_tool_calls(text)
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["function"]["name"] == "GOOD"
+
+
+# ---------------------------------------------------------------------------
 # End-to-end: single turn with tool_call emission
 # ---------------------------------------------------------------------------
 

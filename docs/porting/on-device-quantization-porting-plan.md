@@ -17,12 +17,12 @@
 > for the full migration story and
 > [`reports/porting/2026-05-09-unified/`](../../reports/porting/2026-05-09-unified/)
 > for the post-pin verification snapshot. The companion
-> [`milady-ai/node-llama-cpp`](https://github.com/milady-ai/node-llama-cpp)
+> [`elizaOS/node-llama-cpp`](https://github.com/elizaOS/node-llama-cpp)
 > @ `v3.18.1-milady.3` extends `experimentalKvCacheKey/ValueType` to
 > accept the new lowercase aliases (`"tbq3_0"`, `"tbq4_0"`,
 > `"qjl1_256"`, `"q4_polar"`) so the desktop path stops rejecting them
 > at `createContext()`. **Consumable as a github URL drop-in: bun
-> resolves `github:milady-ai/node-llama-cpp#v3.18.1-milady.3` directly
+> resolves `github:elizaOS/node-llama-cpp#v3.18.1-milady.3` directly
 > and gets pre-built `dist/` + `templates/packed/` (no devDeps + tsc
 > needed).** Milady's three pins (root `package.json`,
 > `eliza/packages/app-core/package.json`,
@@ -149,11 +149,11 @@ DFlash hardening landed in W1-G:
     `docs/porting/dflash-drafter-strategy.md`.
 
 **node-llama-cpp gap.** The desktop binding is now forked at
-[`milady-ai/node-llama-cpp @ v3.18.1-milady.1`](https://github.com/milady-ai/node-llama-cpp);
+[`elizaOS/node-llama-cpp @ v3.18.1-milady.1`](https://github.com/elizaOS/node-llama-cpp);
 `GgmlType` accepts `tbq3_0`, `tbq4_0`, `qjl1_256`, `q4_polar`. The
 consumer side still pulls upstream `node-llama-cpp@3.18.1` because
 the milady fork ships only TS sources (no `dist/`); the unblock is to
-publish `@milady-ai/node-llama-cpp` to npm (path (b) in
+publish `@elizaos/node-llama-cpp` to npm (path (b) in
 `reports/porting/2026-05-09-unified/INDEX.md` "What did NOT land").
 
 ### Symbols verified in shipped libs

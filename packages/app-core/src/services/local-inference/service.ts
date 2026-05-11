@@ -53,7 +53,9 @@ export class LocalInferenceService {
   // (`packages/inference/AGENTS.md` §7: load → 1-token text → 1-phrase voice
   // → barge-in cancel) after a bundle's bytes check out; a bundle that does
   // not pass does not auto-fill an empty default slot.
-  private readonly downloader = new Downloader({ verifyOnDevice: verifyBundleOnDevice });
+  private readonly downloader = new Downloader({
+    verifyOnDevice: verifyBundleOnDevice,
+  });
   private readonly activeModel = new ActiveModelCoordinator();
   private bundledBootstrap: Promise<void> | null = null;
 

@@ -1352,7 +1352,8 @@ export class LocalInferenceEngine {
     );
     // Optional openWakeWord hotword gate (opt-in, local mode). Resolved
     // against the active bundle; absent graphs → silently no wake word.
-    let wakeWord: import("./voice/wake-word").OpenWakeWordDetector | null = null;
+    let wakeWord: import("./voice/wake-word").OpenWakeWordDetector | null =
+      null;
     let feedWakeFrame: ((pcm: Float32Array) => void) | null = null;
     if (opts.wakeWord?.enabled) {
       const { loadBundledWakeWordModel, OpenWakeWordDetector } = await import(

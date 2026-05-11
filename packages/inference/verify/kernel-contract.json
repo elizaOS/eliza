@@ -375,12 +375,6 @@
       "deviceRun": "verified",
       "nextGate": "Run fused Metal smoke against a full Eliza-1 bundle after graph-dispatch smoke."
     },
-    "darwin-x64-metal": {
-      "kernelVerification": "needs-hardware",
-      "runtimeDispatch": "needs-hardware",
-      "deviceRun": "needs-hardware",
-      "nextGate": "Run metal-verify and built-fork dispatch smoke on Intel/AMD Mac hardware."
-    },
     "ios-arm64-metal": {
       "kernelVerification": "symbol-shipped",
       "runtimeDispatch": "symbol-shipped",
@@ -446,12 +440,6 @@
       "runtimeDispatch": "needs-runtime-smoke",
       "deviceRun": "needs-hardware",
       "nextGate": "Run fused Metal smoke after full kernel dispatch lands."
-    },
-    "darwin-x64-metal-fused": {
-      "kernelVerification": "needs-hardware",
-      "runtimeDispatch": "needs-hardware",
-      "deviceRun": "needs-hardware",
-      "nextGate": "Run fused Metal smoke on Intel/AMD Mac hardware."
     },
     "windows-x64-cuda-fused": {
       "kernelVerification": "needs-hardware",

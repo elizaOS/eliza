@@ -14,8 +14,8 @@ export * from "./app-registry";
 export * from "./app-route-plugin-registry";
 export * from "./build-variant";
 export * from "./character";
-// `cloud-routing` is pure data (no imports) — safe in the browser bundle and
-// required by app-core's sensitive-request adapters (`toRuntimeSettings`).
+// `cloud-routing` is pure data (no Node deps) — safe in the browser bundle;
+// app-core sensitive-request code depends on `toRuntimeSettings` and route helpers.
 export * from "./cloud-routing";
 export * from "./connectors";
 export * from "./connectors/account-manager";
