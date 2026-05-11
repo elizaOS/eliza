@@ -118,7 +118,11 @@
           "additionalProperties": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["blockLayoutVersion", "codebookHash", "perBlockTolerance"],
+            "required": [
+              "blockLayoutVersion",
+              "codebookHash",
+              "perBlockTolerance"
+            ],
             "properties": {
               "blockLayoutVersion": { "type": "string", "minLength": 1 },
               "codebookHash": { "type": "string", "minLength": 1 },

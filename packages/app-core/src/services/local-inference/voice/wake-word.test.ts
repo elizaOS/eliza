@@ -95,9 +95,7 @@ describe("OpenWakeWordDetector", () => {
       model: new ScriptedWakeWordModel([0.1]),
       onWake: () => {},
     });
-    await expect(det.pushFrame(new Float32Array(640))).rejects.toThrow(
-      /1280/,
-    );
+    await expect(det.pushFrame(new Float32Array(640))).rejects.toThrow(/1280/);
   });
 
   it("reset() clears the cooldown and the model state", async () => {
@@ -187,7 +185,9 @@ describe("OpenWakeWordModel — real ONNX graphs (network-gated)", () => {
         err instanceof WakeWordUnavailableError &&
         err.code === "ort-missing"
       ) {
-        console.warn("[wake-word.test] Skipping — onnxruntime-node not installed.");
+        console.warn(
+          "[wake-word.test] Skipping — onnxruntime-node not installed.",
+        );
         return;
       }
       throw err;

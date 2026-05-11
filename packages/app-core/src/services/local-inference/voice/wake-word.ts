@@ -241,10 +241,7 @@ export class OpenWakeWordModel implements WakeWordModel {
     this.audioTail = chunk.slice(FRAME_SAMPLES - MEL_LEAD_IN_SAMPLES);
 
     const out = await this.melspec.run({
-      [this.melInputName]: new this.Tensor("float32", input, [
-        1,
-        input.length,
-      ]),
+      [this.melInputName]: new this.Tensor("float32", input, [1, input.length]),
     });
     const tensor = out[this.melOutputName];
     if (!tensor || !(tensor.data instanceof Float32Array)) {

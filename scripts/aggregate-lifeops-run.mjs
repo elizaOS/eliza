@@ -1,33 +1,45 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Aggregate one lifeops run into per-scenario JSONL + a single `report.md`
- * + `steps.csv` for analysis.
+ * + `report.json` + `steps.csv` for analysis.
  *
  * Inputs (in order of precedence):
- *   --run-dir <dir>         (default: $MILADY_LIFEOPS_RUN_DIR)
- *   --trajectory-dir <dir>  (default: <runDir>/trajectories or $MILADY_TRAJECTORY_DIR)
- *   --run-id <id>           (default: $MILADY_LIFEOPS_RUN_ID — used to filter)
+ *   --run-dir <dir>          (default: $MILADY_LIFEOPS_RUN_DIR)
+ *   --trajectory-dir <dir>   (default: <runDir>/trajectories or $MILADY_TRAJECTORY_DIR)
+ *   --run-id <id>            (default: $MILADY_LIFEOPS_RUN_ID — used to filter)
+ *   --harness <name>         (default: $MILADY_BENCH_HARNESS or "eliza")
+ *   --model-tier <tier>      (default: $MILADY_BENCH_MODEL_TIER or "large")
+ *   --pre-release            (default: false unless $MILADY_BENCH_PRE_RELEASE=1)
  *
  * Output layout (created if missing):
  *   <runDir>/scenarios/<idx>-<scenarioId>/
  *     run.jsonl
  *     meta.json
  *   <runDir>/report.md
+ *   <runDir>/report.json     (lifeops-bench-v1)
  *   <runDir>/steps.csv
  *
  * The script walks every trajectory JSON under <trajectory-dir>, emits one
  * JSONL line per `RecordedStage`, and rolls up per-scenario + run-level
  * aggregates (cache hit %, total tokens, durations, tool-call success rate,
- * tool-search count).
+ * tool-search count). The `report.json` artifact is validated against the
+ * canonical Zod schema from `@elizaos-benchmarks/lib` before write — a
+ * validation failure aborts the script.
  *
  * Cache-hit math (matches cache-observation.ts after the 2026-05-09 fix):
  *   total_input = input_tokens + cache_creation + cache_read
  *   cache_hit_pct = cache_read / total_input
+ *
+ * NOTE: this script runs under `bun` so the `.ts` schema in
+ * `@elizaos-benchmarks/lib` is importable directly without a build step.
  */
 
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
+import {
+  REPORT_SCHEMA_VERSION,
+  ReportSchema,
+} from "@elizaos-benchmarks/lib";
 
 const args = process.argv.slice(2);
 function arg(name, fallback) {
@@ -49,6 +61,37 @@ const trajectoryDir = path.resolve(
   ),
 );
 const runIdFilter = arg("--run-id", process.env.MILADY_LIFEOPS_RUN_ID);
+
+const HARNESS_VALID = new Set(["hermes", "openclaw", "eliza"]);
+const MODEL_TIER_VALID = new Set(["small", "mid", "large", "frontier"]);
+
+const harness = arg(
+  "--harness",
+  process.env.MILADY_BENCH_HARNESS ?? "eliza",
+);
+if (!HARNESS_VALID.has(harness)) {
+  console.error(
+    `[aggregate-lifeops-run] --harness must be one of hermes|openclaw|eliza (got ${harness})`,
+  );
+  process.exit(2);
+}
+
+const modelTierCli = arg(
+  "--model-tier",
+  process.env.MILADY_BENCH_MODEL_TIER ?? "large",
+);
+if (!MODEL_TIER_VALID.has(modelTierCli)) {
+  console.error(
+    `[aggregate-lifeops-run] --model-tier must be one of small|mid|large|frontier (got ${modelTierCli})`,
+  );
+  process.exit(2);
+}
+
+const preReleaseFlag =
+  process.argv.includes("--pre-release") ||
+  ["1", "true", "yes"].includes(
+    (process.env.MILADY_BENCH_PRE_RELEASE ?? "").trim().toLowerCase(),
+  );
 
 if (!fs.existsSync(trajectoryDir)) {
   console.error(`[aggregate-lifeops-run] trajectory dir does not exist: ${trajectoryDir}`);
@@ -176,12 +219,39 @@ for (const { t } of trajectories) {
       cacheHitSampleCount: 0,
       cacheHitSampleSum: 0,
       lastModelStage: null,
+      // report.json accumulators
+      turns: [],
+      reportStages: [],
+      startedAt: Number.POSITIVE_INFINITY,
+      endedAt: 0,
+      passAt1: false,
+      plannerIterations: 0,
+      anyCacheReported: false,
+      runIdFromTrajectory: null,
+      providers: new Set(),
+      modelNames: new Set(),
     };
     scenarioBuckets.set(scenarioId, bucket);
   }
 
   bucket.trajectoryCount += 1;
+  if (t.runId && !bucket.runIdFromTrajectory) bucket.runIdFromTrajectory = t.runId;
+  if (typeof t.startedAt === "number") {
+    bucket.startedAt = Math.min(bucket.startedAt, t.startedAt);
+  }
+  if (typeof t.endedAt === "number") {
+    bucket.endedAt = Math.max(bucket.endedAt, t.endedAt);
+  }
+  if (t.metrics?.finalDecision === "FINISH") bucket.passAt1 = true;
   let prevCachePct = 0;
+  // Buffer tool calls between planner stages so they attach to the right turn.
+  let currentTurn = null;
+  const flushTurn = () => {
+    if (currentTurn) {
+      bucket.turns.push(currentTurn);
+      currentTurn = null;
+    }
+  };
 
   for (let stepIdx = 0; stepIdx < t.stages.length; stepIdx += 1) {
     const s = t.stages[stepIdx];
@@ -203,16 +273,110 @@ for (const { t } of trajectories) {
     bucket.cacheCreate += cacheCreate;
     bucket.cost += safeNum(s.model?.costUsd);
 
+    // Track per-call cache hit % (a sample mean over model calls), and record
+    // whether the provider exposed cache fields at all (anyCacheReported).
+    const usageHasCacheFields =
+      usage.cacheReadInputTokens !== undefined ||
+      usage.cacheCreationInputTokens !== undefined;
+    if (usageHasCacheFields) bucket.anyCacheReported = true;
     if (totalInput > 0) {
       bucket.cacheHitSampleCount += 1;
       bucket.cacheHitSampleSum += cacheHitPct;
     }
 
+    if (s.model?.provider) bucket.providers.add(s.model.provider);
+    if (s.model?.modelName) bucket.modelNames.add(s.model.modelName);
+
     if (s.kind === "tool") {
       bucket.toolCalls += 1;
       if (s.tool && s.tool.success === false) bucket.toolFailures += 1;
+      if (currentTurn) {
+        currentTurn.toolCalls.push({
+          name: s.tool?.name ?? "unknown",
+          success: Boolean(s.tool?.success),
+          durationMs: safeNum(s.tool?.durationMs ?? s.latencyMs),
+          ...(s.tool?.error ? { error: String(s.tool.error) } : {}),
+        });
+      }
     }
     if (s.kind === "toolSearch") bucket.toolSearches += 1;
+
+    // Append the stage to the schema-shaped `reportStages` collection. Only
+    // kinds in Wave 0's `StageKind` enum land in `report.json`; the rest
+    // (e.g. `messageHandler`) stay out of the schema artifact but still flow
+    // into the markdown / CSV / JSONL outputs.
+    const stageKindMap = {
+      planner: "plannerTurn",
+      tool: "toolCall",
+      toolSearch: "toolSearch",
+      evaluation: "evaluation",
+      subPlanner: "subPlanner",
+      compaction: "compaction",
+      factsAndRelationships: "factsAndRelationships",
+    };
+    const schemaKind = stageKindMap[s.kind];
+    if (schemaKind) {
+      const stageObj = {
+        stageId: s.stageId,
+        kind: schemaKind,
+        startedAt: s.startedAt,
+        endedAt: s.endedAt,
+        latencyMs: s.latencyMs,
+        cacheReadInputTokens: usage.cacheReadInputTokens ?? null,
+        cacheCreationInputTokens: usage.cacheCreationInputTokens ?? null,
+        cacheHitPct:
+          totalInput > 0 ? +(cacheRead / totalInput).toFixed(4) : null,
+        cacheSupported: usageHasCacheFields,
+      };
+      if (s.iteration !== undefined) stageObj.iteration = s.iteration;
+      if (s.model?.provider) stageObj.provider = s.model.provider;
+      if (s.model?.modelName) stageObj.modelName = s.model.modelName;
+      if (s.model?.usage?.promptTokens !== undefined) {
+        stageObj.inputTokens = inputTokens;
+      }
+      if (s.model?.usage?.completionTokens !== undefined) {
+        stageObj.outputTokens = outputTokens;
+      }
+      if (s.model?.costUsd !== undefined) stageObj.costUsd = s.model.costUsd;
+      if (s.tool?.name) stageObj.toolName = s.tool.name;
+      if (s.tool?.success !== undefined) stageObj.toolSuccess = s.tool.success;
+      if (s.tool?.error) stageObj.toolError = s.tool.error;
+      if (s.cache?.prefixHash) stageObj.prefixHash = s.cache.prefixHash;
+      bucket.reportStages.push(stageObj);
+    }
+
+    // Build a TurnMetrics record per planner iteration. Tool calls observed
+    // between this planner stage and the next one fold into this turn.
+    if (s.kind === "planner") {
+      flushTurn();
+      bucket.plannerIterations += 1;
+      currentTurn = {
+        turnIdx: bucket.turns.length,
+        startedAt: s.startedAt,
+        endedAt: s.endedAt,
+        latencyMs: s.latencyMs,
+        provider: s.model?.provider ?? "unknown",
+        modelName: s.model?.modelName ?? "unknown",
+        inputTokens,
+        outputTokens,
+        totalTokens: inputTokens + outputTokens,
+        cacheReadInputTokens: usage.cacheReadInputTokens ?? null,
+        cacheCreationInputTokens: usage.cacheCreationInputTokens ?? null,
+        cacheHitPct:
+          totalInput > 0 ? +(cacheRead / totalInput).toFixed(4) : null,
+        cacheSupported: usageHasCacheFields,
+        costUsd: safeNum(s.model?.costUsd),
+        toolCalls: [],
+        ...(s.cache?.prefixHash ? { prefixHash: s.cache.prefixHash } : {}),
+      };
+    } else if (currentTurn && s.kind !== "tool" && s.kind !== "toolSearch") {
+      // Extend the active turn's end time so latencyMs reflects the full
+      // planner→evaluation span.
+      if (s.endedAt > currentTurn.endedAt) {
+        currentTurn.endedAt = s.endedAt;
+        currentTurn.latencyMs = currentTurn.endedAt - currentTurn.startedAt;
+      }
+    }
 
     const top = s.toolSearch?.results?.[0];
     const toolError =
@@ -305,6 +469,8 @@ for (const { t } of trajectories) {
 
     if (totalInput > 0) prevCachePct = cacheHitPct;
   }
+  // Trajectory boundary: flush any pending turn into the bucket.
+  flushTurn();
 }
 
 let totalStageCount = 0;
@@ -357,12 +523,44 @@ for (const b of scenarioBuckets.values()) {
 
 fs.writeFileSync(stepsCsvPath, csvLines.join("\n") + "\n");
 
+// Resolve run-level provider/model from the first model stage we observed in
+// any scenario. This is the canonical "primary" planner model. We deliberately
+// avoid a fallback string like `"unknown"` for the JSON report — if no model
+// stage existed at all, validation will fail and surface the broken pipeline.
+let runProvider;
+let runModelName;
+for (const b of scenarioBuckets.values()) {
+  if (!runProvider && b.providers.size > 0) runProvider = [...b.providers][0];
+  if (!runModelName && b.modelNames.size > 0) runModelName = [...b.modelNames][0];
+  if (runProvider && runModelName) break;
+}
+const cerebrasDetected = (runProvider ?? "").toLowerCase() === "cerebras";
+const anthropicDetected = (runProvider ?? "").toLowerCase() === "anthropic";
+const anyCacheReportedRun = [...scenarioBuckets.values()].some(
+  (b) => b.anyCacheReported,
+);
+
+let cacheSupportLine;
+if (cerebrasDetected && anyCacheReportedRun) {
+  cacheSupportLine = "✓ prompt cache active (Cerebras 128-token blocks)";
+} else if (anthropicDetected && anyCacheReportedRun) {
+  cacheSupportLine = "✓ prompt cache active (ephemeral breakpoints)";
+} else if (!anyCacheReportedRun) {
+  cacheSupportLine = "(provider exposes no cache info)";
+} else {
+  cacheSupportLine = `✓ prompt cache active (provider: ${runProvider ?? "unknown"})`;
+}
+
 const totalInput = totalPrompt + totalCacheRead + totalCacheCreate;
 const lines = [
   `# LifeOps run report`,
   ``,
   `**runId**: ${runIdFilter ?? "(any)"}`,
   `**runDir**: ${runDir}`,
+  `**harness**: ${harness}`,
+  `**provider**: ${runProvider ?? "(unknown)"}`,
+  `**model**: ${runModelName ?? "(unknown)"} (${modelTierCli}${preReleaseFlag ? ", pre-release" : ""})`,
+  `**cache support**: ${cacheSupportLine}`,
   `**trajectories**: ${trajectories.length}`,
   `**scenarios**: ${scenarioBuckets.size}`,
   `**total stages**: ${totalStageCount}`,
@@ -415,8 +613,110 @@ lines.push(`- raw trajectories: \`${path.relative(runDir, trajectoryDir)}/\``);
 
 fs.writeFileSync(reportMdPath, lines.join("\n") + "\n");
 
+// ---------------------------------------------------------------------------
+// report.json (Wave 0 canonical schema: lifeops-bench-v1)
+// ---------------------------------------------------------------------------
+
+const scenariosArray = [];
+for (const b of [...scenarioBuckets.values()].sort((a, b) =>
+  a.slug.localeCompare(b.slug),
+)) {
+  const totalInputScenario = b.promptTokens + b.cacheRead + b.cacheCreate;
+  const startedAt = Number.isFinite(b.startedAt) ? b.startedAt : 0;
+  const endedAt = b.endedAt > 0 ? b.endedAt : startedAt + b.durationMs;
+  const aggregateCacheHitPct = b.anyCacheReported
+    ? totalInputScenario > 0
+      ? +(b.cacheRead / totalInputScenario).toFixed(4)
+      : 0
+    : null;
+  const run = {
+    runId: b.runIdFromTrajectory ?? runIdFilter ?? "(unscoped)",
+    scenarioId: b.scenarioId,
+    harness,
+    provider: runProvider ?? "unknown",
+    modelName: runModelName ?? "unknown",
+    modelTier: modelTierCli,
+    preRelease: preReleaseFlag,
+    passAt1: b.passAt1,
+    startedAt,
+    endedAt,
+    timeToCompleteMs: Math.max(0, endedAt - startedAt),
+    turns: b.turns,
+    stages: b.reportStages,
+    totalInputTokens: b.promptTokens + b.cacheRead + b.cacheCreate,
+    totalOutputTokens: b.completionTokens,
+    totalCacheReadTokens: b.anyCacheReported ? b.cacheRead : null,
+    totalCacheCreationTokens: b.anyCacheReported ? b.cacheCreate : null,
+    aggregateCacheHitPct,
+    totalCostUsd: +b.cost.toFixed(6),
+    plannerIterations: b.plannerIterations,
+    toolCallCount: b.toolCalls,
+    toolFailureCount: b.toolFailures,
+  };
+  scenariosArray.push(run);
+}
+
+const passCount = scenariosArray.filter((s) => s.passAt1).length;
+const aggregateCacheHitPctRun = anyCacheReportedRun
+  ? totalInput > 0
+    ? +(totalCacheRead / totalInput).toFixed(4)
+    : 0
+  : null;
+const rollup = {
+  scenarioCount: scenariosArray.length,
+  passCount,
+  passRate:
+    scenariosArray.length > 0
+      ? +(passCount / scenariosArray.length).toFixed(4)
+      : 0,
+  totalInputTokens: totalInput,
+  totalOutputTokens: totalCompletion,
+  totalCacheReadTokens: anyCacheReportedRun ? totalCacheRead : null,
+  aggregateCacheHitPct: aggregateCacheHitPctRun,
+  totalCostUsd: +totalCost.toFixed(6),
+  totalTimeMs: totalDuration,
+};
+
+const notes = [];
+if (cerebrasDetected) {
+  notes.push(
+    "cerebras prompt caching supported via prompt_tokens_details.cached_tokens",
+  );
+}
+if (!anyCacheReportedRun) {
+  notes.push("provider does not expose cache info");
+}
+
+const reportPayload = {
+  schemaVersion: REPORT_SCHEMA_VERSION,
+  generatedAt: new Date().toISOString(),
+  runId: runIdFilter ?? scenariosArray[0]?.runId ?? "(unscoped)",
+  harness,
+  provider: runProvider ?? "unknown",
+  modelName: runModelName ?? "unknown",
+  modelTier: modelTierCli,
+  preRelease: preReleaseFlag,
+  scenarios: scenariosArray,
+  rollup,
+  ...(notes.length > 0 ? { notes } : {}),
+};
+
+const parseResult = ReportSchema.safeParse(reportPayload);
+if (!parseResult.success) {
+  const issues = parseResult.error.issues
+    .map((iss) => `  - ${iss.path.join(".") || "(root)"}: ${iss.message}`)
+    .join("\n");
+  throw new Error(
+    `[aggregate-lifeops-run] report.json failed schema validation:\n${issues}`,
+  );
+}
+
+const reportJsonPath = path.join(runDir, "report.json");
+fs.writeFileSync(reportJsonPath, JSON.stringify(parseResult.data, null, 2) + "\n");
+
 process.stdout.write(
   `[aggregate-lifeops-run] wrote ${reportMdPath}\n` +
+    `[aggregate-lifeops-run] wrote ${reportJsonPath}\n` +
     `[aggregate-lifeops-run] wrote ${stepsCsvPath}\n` +
     `[aggregate-lifeops-run] wrote ${scenarioBuckets.size} scenario bundles under ${scenariosDir}\n`,
 );

@@ -50,6 +50,16 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./platform/native-plugin-entrypoints": {
+      "import": "./dist/platform/native-plugin-entrypoints.js",
+      "default": "./dist/platform/native-plugin-entrypoints.js",
+      "types": "./dist/platform/native-plugin-entrypoints.d.ts"
+    },
+    "./platform/empty-node-module": {
+      "import": "./dist/platform/empty-node-module.js",
+      "default": "./dist/platform/empty-node-module.js",
+      "types": "./dist/platform/empty-node-module.d.ts"
     }
   },
   "peerDependencies": {

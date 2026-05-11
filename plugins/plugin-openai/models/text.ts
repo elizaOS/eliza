@@ -251,9 +251,13 @@ function resolveProviderOptions(
     return undefined;
   }
 
-  // `prompt_cache_retention` is an OpenAI-direct field not supported by
-  // OpenAI-compatible providers such as Cerebras. Skip it when in Cerebras mode
-  // so we don't send an unsupported field that causes HTTP 400 errors.
+  // Cerebras supports prompt caching on gpt-oss-120b — 128-token blocks,
+  // default-on. The `prompt_cache_key` field IS accepted by Cerebras's
+  // OpenAI-compatible endpoint and surfaces hit counts via
+  // `usage.prompt_tokens_details.cached_tokens` (same shape as OpenAI), so
+  // we keep it in the request body. Only `prompt_cache_retention` is an
+  // OpenAI-direct-only field that Cerebras rejects with HTTP 400
+  // (`wrong_api_format`), so we strip just that one when in Cerebras mode.
   const skipCacheRetention = isCerebrasMode(runtime);
 
   const { agentName: _agentName, openai: rawOpenAIOptions, ...rest } = rawProviderOptions ?? {};

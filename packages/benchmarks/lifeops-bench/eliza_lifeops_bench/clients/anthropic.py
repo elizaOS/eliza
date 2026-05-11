@@ -341,12 +341,25 @@ class AnthropicClient(BaseClient):
         usage_raw = raw.get("usage") or {}
         input_tokens = int(usage_raw.get("input_tokens") or 0)
         output_tokens = int(usage_raw.get("output_tokens") or 0)
-        cache_read_tokens = int(usage_raw.get("cache_read_input_tokens") or 0)
+        # Anthropic surfaces both halves of prompt caching directly.
+        cache_read_raw = usage_raw.get("cache_read_input_tokens")
+        cache_creation_raw = usage_raw.get("cache_creation_input_tokens")
+        cache_read_value: int | None = (
+            int(cache_read_raw) if isinstance(cache_read_raw, (int, float)) else None
+        )
+        cache_creation_value: int | None = (
+            int(cache_creation_raw)
+            if isinstance(cache_creation_raw, (int, float))
+            else None
+        )
+        cache_read_tokens = cache_read_value if cache_read_value is not None else 0
         usage = Usage(
             prompt_tokens=input_tokens,
             completion_tokens=output_tokens,
             total_tokens=input_tokens + output_tokens,
             cached_tokens=cache_read_tokens,
+            cache_read_input_tokens=cache_read_value,
+            cache_creation_input_tokens=cache_creation_value,
         )
         cost_usd = _compute_cost_usd(self.model_name, input_tokens, output_tokens, cache_read_tokens)
 

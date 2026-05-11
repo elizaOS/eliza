@@ -92,6 +92,7 @@
     "migrate:generate": "turbo run migrate:generate --filter=./plugins/plugin-sql",
     "test": "node scripts/run-all-tests.mjs",
     "test:all": "node scripts/run-all-tests.mjs",
+    "test:cache-stability": "node scripts/run-vitest.mjs run packages/core/src/runtime/__tests__/cache-key-stability.test.ts",
     "test:plugins": "bun run build:core && turbo run test --concurrency 3 --filter='./plugins/*' --filter='!@elizaos/app-lifeops' --filter='!@elizaos/plugin-agent-orchestrator' && bun run --cwd plugins/app-lifeops test && turbo run test --concurrency 1 --filter='@elizaos/plugin-agent-orchestrator'",
     "test:client": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/app|packages/ui|plugins/app-lifeops|plugins/app-companion|plugins/app-training)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs --no-cloud",
     "test:core": "node scripts/with-test-runtime.mjs turbo run test --filter=./packages/core",
@@ -115,7 +116,8 @@
     "lifeops:verify-cerebras": "bun --bun plugins/app-lifeops/scripts/verify-cerebras-wiring.ts",
     "lifeops:bench": "bun --bun packages/app-core/scripts/lifeops-prompt-benchmark.ts",
     "lifeops:full": "node scripts/lifeops-full-run.mjs",
-    "lifeops:aggregate": "node scripts/aggregate-lifeops-run.mjs",
+    "lifeops:aggregate": "bun scripts/aggregate-lifeops-run.mjs",
+    "lifeops:delta": "bun scripts/lifeops-bench-delta.mjs",
     "lifeops:bench-to-dataset": "node scripts/lifeops-benchmark-to-training-dataset.mjs",
     "lifeops:optimize": "node scripts/lifeops-optimize-planner.mjs",
     "test:plugin": "node scripts/run-all-tests.mjs --only=e2e --pattern",
@@ -137,6 +139,7 @@
   "packageManager": "bun@1.3.13",
   "workspaces": [
     "packages/*",
+    "packages/benchmarks/lib",
     "packages/examples/*",
     "packages/examples/*/*",
     "packages/examples/*/*/*",
@@ -149,6 +152,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.14",
     "@capacitor/core": "8.3.1",
+    "@elizaos-benchmarks/lib": "workspace:*",
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-lifeops": "workspace:*",
     "@elizaos/core": "workspace:*",
