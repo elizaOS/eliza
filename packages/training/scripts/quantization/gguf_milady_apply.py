@@ -220,6 +220,42 @@ def main(argv: list[str] | None = None) -> int:
         choices=["q4_polar", "f16", "bf16", "f32", "auto"],
         help="GGUF tensor type. Default q4_polar (Milady-only).",
     )
+    # Eliza-1 v1 = the upstream BASE models, GGUF-converted + fully optimized
+    # (every quant/kernel trick in inference/AGENTS.md §3), NOT fine-tuned.
+    # When `--release-state base-v1` is set, write a `<file>.provenance.json`
+    # next to the GGUF recording that the bytes are derived from an upstream
+    # base model (not a trained Eliza-1 checkpoint), with `finetuned=false`.
+    # The publish path / manifest builder fold this into the bundle's
+    # `provenance.sourceModels` block.
+    ap.add_argument(
+        "--release-state",
+        default=None,
+        choices=["base-v1", "finetuned-v2"],
+        help=(
+            "Release lineage of the produced GGUF. `base-v1` records a "
+            "<file>.provenance.json with finetuned=false + the upstream "
+            "source repo; `finetuned-v2` records finetuned=true."
+        ),
+    )
+    ap.add_argument(
+        "--source-repo",
+        default=None,
+        help=(
+            "Upstream HF repo the base weights come from (e.g. "
+            "unsloth/Qwen3.5-9B-GGUF). Recorded in the provenance JSON for "
+            "--release-state base-v1. Defaults to the source_model field in "
+            "the polarquant/qjl sidecar."
+        ),
+    )
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Re-run the converter even if the output GGUF already exists. "
+            "By default the run is idempotent: if --output already exists "
+            "the converter is skipped (only the sidecar JSONs are refreshed)."
+        ),
+    )
     ap.add_argument(
         "--dry-run",
         action="store_true",
@@ -281,6 +317,29 @@ def main(argv: list[str] | None = None) -> int:
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     ext_path = args.output.with_suffix(args.output.suffix + ".milady.json")
+    provenance_path = args.output.with_suffix(args.output.suffix + ".provenance.json")
+
+    source_repo = args.source_repo
+    if source_repo is None:
+        # Fall back to whatever source_model the recipe sidecars recorded.
+        for sc in (polar_sidecar, qjl_sidecar, tbq_sidecar):
+            if isinstance(sc, dict) and sc.get("source_model"):
+                source_repo = str(sc.get("source_model"))
+                break
+    provenance: dict[str, object] | None = None
+    if args.release_state is not None:
+        provenance = {
+            "schema_version": 1,
+            "produced_by": "scripts/quantization/gguf_milady_apply.py",
+            "releaseState": args.release_state,
+            # base-v1 is the upstream base model, GGUF + fully optimized,
+            # NOT fine-tuned. finetuned-v2 records the trained checkpoint.
+            "finetuned": args.release_state == "finetuned-v2",
+            "sourceRepo": source_repo,
+            "convertedVia": str(convert_path) if convert_path else None,
+            "outtype": args.outtype,
+            "ggmlTypeSlots": MILADY_GGML_TYPES,
+        }
 
     if args.dry_run:
         plan = {
@@ -291,12 +350,29 @@ def main(argv: list[str] | None = None) -> int:
             "outtype": args.outtype,
             "ext_metadata_path": str(ext_path),
             "ext_metadata": ext_metadata,
+            "provenance_path": str(provenance_path) if provenance is not None else None,
+            "provenance": provenance,
         }
         print(json.dumps(plan, indent=2))
         return 0
 
     ext_path.write_text(json.dumps(ext_metadata, indent=2), encoding="utf-8")
     log.info("wrote extension metadata → %s", ext_path)
+    if provenance is not None:
+        provenance_path.write_text(json.dumps(provenance, indent=2), encoding="utf-8")
+        log.info("wrote provenance → %s", provenance_path)
+
+    # Idempotent: if the output GGUF already exists, don't re-run the
+    # (expensive, deterministic-for-a-fixed-checkpoint) converter — only the
+    # sidecar JSONs are refreshed. --force overrides.
+    if args.output.is_file() and not args.force:
+        log.info(
+            "output GGUF already exists (%d bytes); skipping converter "
+            "(pass --force to re-run): %s",
+            args.output.stat().st_size,
+            args.output,
+        )
+        return 0
 
     cmd = [
         sys.executable,
