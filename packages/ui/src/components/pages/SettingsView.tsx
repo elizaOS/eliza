@@ -33,6 +33,7 @@ import {
   Upload,
   User,
   Wallet,
+  Webhook,
 } from "lucide-react";
 import {
   type ComponentPropsWithoutRef,
@@ -43,18 +44,12 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  consumePendingFocusProvider,
-  SETTINGS_FOCUS_CONNECTOR_EVENT,
-  type SettingsFocusConnectorDetail,
-  setDeveloperMode,
-  useApp,
-  useIsDeveloperMode,
-} from "../../state";
+import { setDeveloperMode, useApp, useIsDeveloperMode } from "../../state";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { AppPermissionsSection } from "../settings/AppPermissionsSection";
 import { AppsManagementSection } from "../settings/AppsManagementSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
+import { ConnectorsSection } from "../settings/ConnectorsSection";
 import { IdentitySettingsSection } from "../settings/IdentitySettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
@@ -168,6 +163,14 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     description: "settings.sections.apps.desc",
     defaultDescription:
       "Installed apps, launching, relaunching, editing, and creating new ones.",
+  },
+  {
+    id: "connectors",
+    label: "settings.sections.connectors.label",
+    defaultLabel: "Connectors",
+    icon: Webhook,
+    description: "settings.sections.connectors.desc",
+    defaultDescription: "Telegram, Discord, iMessage.",
   },
   {
     id: "app-permissions",
@@ -779,74 +782,6 @@ export function SettingsView({
     void loadPlugins();
   }, [loadPlugins]);
 
-  // Deep-link target: another component (e.g. AutomationsView's missing-creds
-  // banner, or apps/app/src/main.tsx parsing eliza://settings/connectors/<x>)
-  // dispatches SETTINGS_FOCUS_CONNECTOR_EVENT with the canonical provider id.
-  // We focus the Integrations section, then scroll the matching panel wrapper
-  // (`[data-connector="<provider>"]`) into view and briefly flash it.
-  // Providers without a wrapper (e.g. Slack today) gracefully fall through —
-  // the section header is still in view.
-  //
-  // Two delivery paths handled here so neither races React's render scheduler:
-  //   1) The dispatcher fires a window event — the listener below catches it
-  //      whenever SettingsView is already mounted at dispatch time.
-  //   2) The dispatcher also stashes the provider in a module-scoped ref. On
-  //      mount, this effect drains it via `consumePendingFocusProvider()` so
-  //      a click that mounted SettingsView (e.g. AutomationsView's "Connect
-  //      Gmail →" button switching to the settings tab) still focuses the
-  //      panel even though the event fired before the listener registered.
-  // Stale-flash guard: keep the latest setTimeout id in a ref and clear the
-  // previous one on each new focus so a double-click does not clip the
-  // second flash short.
-  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    function focusProvider(provider: string) {
-      if (!provider) return;
-      setActiveSection("integrations");
-      queueContentAlignment("integrations");
-      requestAnimationFrame(() => {
-        const node = document.querySelector<HTMLElement>(
-          `[data-connector="${CSS.escape(provider)}"]`,
-        );
-        if (!node) return;
-        node.scrollIntoView({ behavior: "smooth", block: "start" });
-        node.classList.add("connector-flash");
-        if (flashTimerRef.current !== null) {
-          clearTimeout(flashTimerRef.current);
-        }
-        flashTimerRef.current = setTimeout(() => {
-          node.classList.remove("connector-flash");
-          flashTimerRef.current = null;
-        }, 1800);
-      });
-    }
-
-    function handle(event: Event) {
-      const detail = (event as CustomEvent<SettingsFocusConnectorDetail>)
-        .detail;
-      if (!detail?.provider) return;
-      // Consume the stash here too — the dispatcher always writes it before
-      // firing the event, but if we're already mounted the event path wins
-      // and the stash would otherwise persist and re-fire on the next mount
-      // (e.g. tab navigation) as a spurious scroll/flash.
-      consumePendingFocusProvider();
-      focusProvider(detail.provider);
-    }
-
-    // Drain any pending provider stashed before this mount.
-    const pending = consumePendingFocusProvider();
-    if (pending) focusProvider(pending);
-
-    window.addEventListener(SETTINGS_FOCUS_CONNECTOR_EVENT, handle);
-    return () => {
-      window.removeEventListener(SETTINGS_FOCUS_CONNECTOR_EVENT, handle);
-      if (flashTimerRef.current !== null) {
-        clearTimeout(flashTimerRef.current);
-        flashTimerRef.current = null;
-      }
-    };
-  }, [queueContentAlignment]);
-
   const handleSectionChange = useCallback(
     (sectionId: string) => {
       setActiveSection(sectionId);
@@ -1096,6 +1031,21 @@ export function SettingsView({
           ref={registerContentItem("apps")}
         >
           <AppsManagementSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("connectors") && (
+        <SettingsSection
+          id="connectors"
+          title={t("settings.sections.connectors.label", {
+            defaultValue: "Connectors",
+          })}
+          description={t("settings.sections.connectors.desc", {
+            defaultValue: "Telegram, Discord, iMessage.",
+          })}
+          ref={registerContentItem("connectors")}
+        >
+          <ConnectorsSection />
         </SettingsSection>
       )}
 

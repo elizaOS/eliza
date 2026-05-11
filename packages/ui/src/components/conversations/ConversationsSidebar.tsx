@@ -10,16 +10,10 @@ import {
   SidebarContent,
   SidebarPanel,
   SidebarScrollRegion,
-  Switch,
   TooltipProvider,
   useIntervalWhenDocumentVisible,
 } from "@elizaos/ui";
-import {
-  MessagesSquare,
-  Plus,
-  Settings2,
-  Terminal as TerminalIcon,
-} from "lucide-react";
+import { MessagesSquare, Plus, Terminal as TerminalIcon } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
@@ -31,11 +25,6 @@ import {
 import { useApp } from "../../state";
 import { usePtySessions } from "../../state/PtySessionsContext";
 import { errorMessage } from "../../utils/errors";
-import {
-  ALWAYS_ON_PLUGIN_IDS,
-  iconImageSource,
-  resolveIcon,
-} from "../pages/plugin-list-utils";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
 import { getBrandIcon } from "./brand-icons";
@@ -135,9 +124,7 @@ export function ConversationsSidebar({
     handleNewConversation,
     handleSelectConversation,
     handleDeleteConversation,
-    plugins = [],
     ensurePluginsLoaded = async () => {},
-    handlePluginToggle,
     setActionNotice,
     setTab,
     setState,
@@ -439,77 +426,14 @@ export function ConversationsSidebar({
     onClose?.();
   };
 
-  const handleManageConnections = () => {
-    if (tab === "connectors") {
-      setTab("chat");
-    } else {
-      setTab("connectors");
-    }
-    onClose?.();
-  };
-
   const isGameModal = variant === "game-modal";
-  const isManageConnectionsActive = tab === "connectors";
 
-  // Plugins supply the scope-chip icons, so load them eagerly (not only
-  // when the user opens the manage panel).
+  // Plugins supply the scope-chip icons, so load them eagerly so the
+  // per-connector group headers can show brand icons without waiting on a
+  // user action.
   useEffect(() => {
     void ensurePluginsLoaded();
   }, [ensurePluginsLoaded]);
-
-  const connectorPlugins = useMemo(
-    () =>
-      plugins.filter(
-        (p) =>
-          p.category === "connector" &&
-          !ALWAYS_ON_PLUGIN_IDS.has(p.id) &&
-          p.visible !== false,
-      ),
-    [plugins],
-  );
-
-  const [togglingPlugins, setTogglingPlugins] = useState<Set<string>>(
-    new Set(),
-  );
-  const handleConnectorToggle = useCallback(
-    async (pluginId: string, enabled: boolean) => {
-      setTogglingPlugins((prev) => new Set(prev).add(pluginId));
-      try {
-        await handlePluginToggle(pluginId, enabled);
-      } finally {
-        setTogglingPlugins((prev) => {
-          const next = new Set(prev);
-          next.delete(pluginId);
-          return next;
-        });
-      }
-    },
-    [handlePluginToggle],
-  );
-
-  const renderConnectorIcon = useCallback((plugin: (typeof plugins)[0]) => {
-    const Brand = getBrandIcon(plugin.id);
-    if (Brand) return <Brand className="h-4 w-4" />;
-    const icon = resolveIcon(plugin);
-    if (!icon) return <span className="text-sm">🧩</span>;
-    if (typeof icon === "string") {
-      const src = iconImageSource(icon);
-      return src ? (
-        <img
-          src={src}
-          alt=""
-          className="h-4 w-4 shrink-0 rounded-[var(--radius-sm)] object-contain"
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).style.display = "none";
-          }}
-        />
-      ) : (
-        <span className="text-sm">{icon}</span>
-      );
-    }
-    const IconComponent = icon;
-    return <IconComponent className="h-4 w-4" />;
-  }, []);
 
   const terminalRows = useMemo<ConversationsSidebarRow[]>(
     () =>
@@ -664,32 +588,6 @@ export function ConversationsSidebar({
 
   const showNewChatAction = tab === "chat";
   const showNewTerminalAction = tab === "chat";
-  const manageConnectionsButton = (() => {
-    const channelsLabel = t("conversations.channels", {
-      defaultValue: "Channels",
-    });
-    const manageLabel = t("conversations.manageConnections", {
-      defaultValue: "Manage",
-    });
-    const toggleLabel = isManageConnectionsActive ? channelsLabel : manageLabel;
-    const ToggleIcon = isManageConnectionsActive ? MessagesSquare : Settings2;
-    return (
-      <button
-        type="button"
-        data-testid="chat-sidebar-manage-toggle"
-        aria-pressed={isManageConnectionsActive}
-        aria-label={toggleLabel}
-        title={toggleLabel}
-        onClick={handleManageConnections}
-        className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[var(--radius-sm)] bg-transparent px-2 text-[11px] leading-none font-medium whitespace-nowrap transition-colors ${
-          isManageConnectionsActive ? "text-txt" : "text-muted hover:text-txt"
-        }`}
-      >
-        <ToggleIcon className="h-3.5 w-3.5" aria-hidden />
-        <span>{toggleLabel}</span>
-      </button>
-    );
-  })();
 
   return (
     <TooltipProvider delayDuration={280} skipDelayDuration={120}>
@@ -779,9 +677,6 @@ export function ConversationsSidebar({
         expandButtonTestId="chat-sidebar-expand-toggle"
         collapseButtonAriaLabel={t("aria.closePanel")}
         expandButtonAriaLabel={t("aria.expandChatsPanel")}
-        bottomAction={
-          !mobile && !isGameModal ? manageConnectionsButton : undefined
-        }
         collapsedRailAction={
           showNewTerminalAction ? (
             <SidebarCollapsedActionButton
@@ -842,70 +737,92 @@ export function ConversationsSidebar({
               isGameModal ? undefined : "bg-transparent gap-0 p-0 shadow-none"
             }
           >
-            {isManageConnectionsActive ? (
-              <div className="space-y-1">
-                {connectorPlugins.length === 0 ? (
-                  <SidebarContent.EmptyState className="px-4 py-6">
-                    {t("pluginsview.NoConnectorsAvailable", {
-                      defaultValue: "No connectors available.",
-                    })}
-                  </SidebarContent.EmptyState>
-                ) : (
-                  connectorPlugins.map((plugin) => {
-                    const isToggleBusy = togglingPlugins.has(plugin.id);
-                    const toggleDisabled =
-                      isToggleBusy ||
-                      (togglingPlugins.size > 0 && !isToggleBusy);
-                    return (
-                      <SidebarContent.Item
-                        key={plugin.id}
-                        as="div"
-                        className="items-center gap-1.5 px-2.5 py-2"
-                      >
-                        <div className="flex h-auto min-w-0 flex-1 self-stretch items-center gap-2 rounded-none p-0 text-left">
-                          <SidebarContent.ItemIcon className="mt-0 h-8 w-8 shrink-0 p-1.5">
-                            {renderConnectorIcon(plugin)}
-                          </SidebarContent.ItemIcon>
-                          <SidebarContent.ItemBody>
-                            <span className="block truncate text-sm font-semibold leading-5 text-txt">
-                              {plugin.name}
-                            </span>
-                          </SidebarContent.ItemBody>
-                        </div>
-                        <Switch
-                          checked={plugin.enabled}
-                          disabled={toggleDisabled}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                          }}
-                          onKeyDown={(event) => {
-                            event.stopPropagation();
-                          }}
-                          onCheckedChange={(checked) => {
-                            void handleConnectorToggle(plugin.id, checked);
-                          }}
-                          aria-label={`${plugin.enabled ? t("common.off") : t("common.on")} ${plugin.name}`}
-                        />
-                      </SidebarContent.Item>
-                    );
-                  })
-                )}
-              </div>
-            ) : (
-              <div className="mt-0.5 space-y-2">
+            <div className="mt-0.5 space-y-2">
+              <CollapsibleChannelSection
+                sectionKey={messagesSection.key}
+                label={messagesSection.label}
+                icon={messagesSection.icon}
+                rows={messagesSection.rows}
+                collapsed={collapsedSections.has(messagesSection.key)}
+                onToggleCollapsed={toggleSectionCollapsed}
+                onAdd={showNewChatAction ? handleNewChat : undefined}
+                addLabel={t("conversations.newChat", {
+                  defaultValue: "New chat",
+                })}
+                emptyLabel={t("conversations.noneApp", {
+                  defaultValue: "No chats yet",
+                })}
+                activeListId={activeListId}
+                rowListId={rowListId}
+                isTerminalRow={isTerminalRow}
+                deletingId={deletingId}
+                confirmDeleteId={confirmDeleteId}
+                unreadConversations={unreadConversations}
+                mobile={mobile}
+                variant={variant}
+                t={t}
+                onCancelDelete={() => setConfirmDeleteId(null)}
+                onConfirmDelete={handleConfirmDelete}
+                onOpenActions={openActionsMenu}
+                onRequestDeleteConfirm={(row) => {
+                  setMenuConversation(null);
+                  setRenameTarget(null);
+                  setConfirmDeleteId(row.id);
+                }}
+                onRequestRename={(row) =>
+                  openRenameDialog({ id: row.id, title: row.title })
+                }
+                onSelectRow={handleRowSelect}
+              />
+
+              <CollapsibleChannelSection
+                sectionKey={terminalSection.key}
+                label={terminalSection.label}
+                icon={terminalSection.icon}
+                indicator={terminalSection.indicator}
+                rows={terminalSection.rows}
+                collapsed={collapsedSections.has(terminalSection.key)}
+                onToggleCollapsed={toggleSectionCollapsed}
+                onAdd={
+                  showNewTerminalAction ? () => void spawnShell() : undefined
+                }
+                addLabel={t("conversations.newTerminal", {
+                  defaultValue: "New terminal",
+                })}
+                activeListId={activeListId}
+                rowListId={rowListId}
+                isTerminalRow={isTerminalRow}
+                deletingId={deletingId}
+                confirmDeleteId={confirmDeleteId}
+                unreadConversations={unreadConversations}
+                mobile={mobile}
+                variant={variant}
+                t={t}
+                onCancelDelete={() => setConfirmDeleteId(null)}
+                onConfirmDelete={handleConfirmDelete}
+                onOpenActions={openActionsMenu}
+                onRequestDeleteConfirm={(row) => {
+                  setMenuConversation(null);
+                  setRenameTarget(null);
+                  setConfirmDeleteId(row.id);
+                }}
+                onRequestRename={(row) =>
+                  openRenameDialog({ id: row.id, title: row.title })
+                }
+                onSelectRow={handleRowSelect}
+              />
+
+              {connectorSections.map((section) => (
                 <CollapsibleChannelSection
-                  sectionKey={messagesSection.key}
-                  label={messagesSection.label}
-                  icon={messagesSection.icon}
-                  rows={messagesSection.rows}
-                  collapsed={collapsedSections.has(messagesSection.key)}
+                  key={section.key}
+                  sectionKey={section.key}
+                  label={section.label}
+                  icon={section.icon}
+                  rows={section.rows}
+                  collapsed={collapsedSections.has(section.key)}
                   onToggleCollapsed={toggleSectionCollapsed}
-                  onAdd={showNewChatAction ? handleNewChat : undefined}
-                  addLabel={t("conversations.newChat", {
-                    defaultValue: "New chat",
-                  })}
-                  emptyLabel={t("conversations.noneApp", {
-                    defaultValue: "No chats yet",
+                  emptyLabel={t("conversations.none", {
+                    defaultValue: "No chats in this view",
                   })}
                   activeListId={activeListId}
                   rowListId={rowListId}
@@ -929,81 +846,8 @@ export function ConversationsSidebar({
                   }
                   onSelectRow={handleRowSelect}
                 />
-
-                <CollapsibleChannelSection
-                  sectionKey={terminalSection.key}
-                  label={terminalSection.label}
-                  icon={terminalSection.icon}
-                  indicator={terminalSection.indicator}
-                  rows={terminalSection.rows}
-                  collapsed={collapsedSections.has(terminalSection.key)}
-                  onToggleCollapsed={toggleSectionCollapsed}
-                  onAdd={
-                    showNewTerminalAction ? () => void spawnShell() : undefined
-                  }
-                  addLabel={t("conversations.newTerminal", {
-                    defaultValue: "New terminal",
-                  })}
-                  activeListId={activeListId}
-                  rowListId={rowListId}
-                  isTerminalRow={isTerminalRow}
-                  deletingId={deletingId}
-                  confirmDeleteId={confirmDeleteId}
-                  unreadConversations={unreadConversations}
-                  mobile={mobile}
-                  variant={variant}
-                  t={t}
-                  onCancelDelete={() => setConfirmDeleteId(null)}
-                  onConfirmDelete={handleConfirmDelete}
-                  onOpenActions={openActionsMenu}
-                  onRequestDeleteConfirm={(row) => {
-                    setMenuConversation(null);
-                    setRenameTarget(null);
-                    setConfirmDeleteId(row.id);
-                  }}
-                  onRequestRename={(row) =>
-                    openRenameDialog({ id: row.id, title: row.title })
-                  }
-                  onSelectRow={handleRowSelect}
-                />
-
-                {connectorSections.map((section) => (
-                  <CollapsibleChannelSection
-                    key={section.key}
-                    sectionKey={section.key}
-                    label={section.label}
-                    icon={section.icon}
-                    rows={section.rows}
-                    collapsed={collapsedSections.has(section.key)}
-                    onToggleCollapsed={toggleSectionCollapsed}
-                    emptyLabel={t("conversations.none", {
-                      defaultValue: "No chats in this view",
-                    })}
-                    activeListId={activeListId}
-                    rowListId={rowListId}
-                    isTerminalRow={isTerminalRow}
-                    deletingId={deletingId}
-                    confirmDeleteId={confirmDeleteId}
-                    unreadConversations={unreadConversations}
-                    mobile={mobile}
-                    variant={variant}
-                    t={t}
-                    onCancelDelete={() => setConfirmDeleteId(null)}
-                    onConfirmDelete={handleConfirmDelete}
-                    onOpenActions={openActionsMenu}
-                    onRequestDeleteConfirm={(row) => {
-                      setMenuConversation(null);
-                      setRenameTarget(null);
-                      setConfirmDeleteId(row.id);
-                    }}
-                    onRequestRename={(row) =>
-                      openRenameDialog({ id: row.id, title: row.title })
-                    }
-                    onSelectRow={handleRowSelect}
-                  />
-                ))}
-              </div>
-            )}
+              ))}
+            </div>
           </SidebarPanel>
         </SidebarScrollRegion>
       </AppPageSidebar>
