@@ -162,10 +162,15 @@ const VERIFIER_PATCH_BLOCK = [
   "",
 ].join("\n");
 
-// Anchor identifiers (the OAI-compat streamed-result builders). In the
+// Marker identifiers (the OAI-compat streamed-result builders). In the
 // post-refactor layout these are defined in `tools/server/server-task.cpp`; in
-// the pre-refactor layout they lived in `server.cpp`.
-const VERIFIER_ANCHOR_CANDIDATES = [
+// the pre-refactor layout they lived in `server.cpp`. We don't anchor *at* one
+// of these (they appear both as `return … ? to_json_oaicompat_chat_stream()`
+// calls and as definitions, and a regex can't reliably tell them apart across
+// fork revisions) — we just use them to pick the *right* translation unit, then
+// splice the free-function namespace at file scope, right after the include /
+// `using` preamble.
+const VERIFIER_TU_MARKERS = [
   "to_json_oaicompat_chat_stream",
   "to_json_oaicompat_chat",
   "to_json_non_oaicompat",
@@ -173,17 +178,39 @@ const VERIFIER_ANCHOR_CANDIDATES = [
 ];
 
 /**
- * Find the insertion point for the verifier-stream block in one source's text:
- * the start of the first line that mentions one of the anchor symbols (a
- * function definition / declaration). Returns `{ anchor, index }` or null.
+ * Find the file-scope insertion point for the verifier-stream block in one
+ * `.cpp` source: the character offset just after the leading preamble of
+ * `#include` / `#pragma` / `using` / `namespace … ;` lines (and blank /
+ * single-line-comment lines between them). Returns `{ marker, index }` or null
+ * when this TU doesn't contain a streamed-result builder symbol.
  */
-function findVerifierAnchor(source) {
-  const anchor = VERIFIER_ANCHOR_CANDIDATES.find((a) => source.includes(a));
-  if (!anchor) return null;
-  const re = new RegExp(`(^[^\\n]*\\b${anchor}\\b)`, "m");
-  const m = source.match(re);
-  if (!m || m.index === undefined) return null;
-  return { anchor, index: m.index };
+function findVerifierTuInsertionPoint(source) {
+  const marker = VERIFIER_TU_MARKERS.find((m) => source.includes(m));
+  if (!marker) return null;
+  const lines = source.split("\n");
+  let lastPreambleLineIdx = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    const t = lines[i].trim();
+    if (
+      t.startsWith("#include") ||
+      t.startsWith("#pragma") ||
+      t.startsWith("#define") ||
+      /^using\b/.test(t) ||
+      /^namespace\b[^{]*;$/.test(t)
+    ) {
+      lastPreambleLineIdx = i;
+    } else if (t === "" || t.startsWith("//")) {
+      // tolerate blank lines / line comments inside the preamble
+      continue;
+    } else {
+      break;
+    }
+  }
+  if (lastPreambleLineIdx < 0) return null;
+  // Offset = start of the line *after* the last preamble line.
+  let index = 0;
+  for (let i = 0; i <= lastPreambleLineIdx; i += 1) index += lines[i].length + 1;
+  return { marker, index };
 }
 
 /**
@@ -201,16 +228,15 @@ export function patchServerStructuredOutput(cacheDir, { dryRun = false } = {}) {
         `verifier-stream patch (sentinel present)`,
     );
   } else {
-    // Prefer a `.cpp` translation unit over a `.h` declaration header for the
-    // free-function namespace (a header would pull it into every TU). Within
-    // each kind keep the SERVER_SOURCE_RELS preference order.
-    const ordered = [
-      ...sources.filter((s) => s.rel.endsWith(".cpp")),
-      ...sources.filter((s) => !s.rel.endsWith(".cpp")),
-    ];
+    // Only a `.cpp` translation unit can host the free-function namespace (a
+    // header would pull it into every TU). Pick the first `.cpp` (in
+    // SERVER_SOURCE_RELS order) that contains a streamed-result builder symbol,
+    // then splice the block at file scope right after that file's include /
+    // `using` preamble.
     let target = null;
-    for (const src of ordered) {
-      const found = findVerifierAnchor(src.text);
+    for (const src of sources) {
+      if (!src.rel.endsWith(".cpp")) continue;
+      const found = findVerifierTuInsertionPoint(src.text);
       if (found) {
         target = { ...src, ...found };
         break;
@@ -219,9 +245,10 @@ export function patchServerStructuredOutput(cacheDir, { dryRun = false } = {}) {
     if (!target) {
       const where = sources.map((s) => s.rel).join(", ");
       throw new Error(
-        `[dflash-build] server-structured-output: could not find a streamed-` +
-          `chunk JSON builder anchor (${VERIFIER_ANCHOR_CANDIDATES.join(" / ")}) ` +
-          `in any of ${where}. The fork's server layout changed; update ` +
+        `[dflash-build] server-structured-output: could not find a llama-server ` +
+          `translation unit (.cpp) containing a streamed-result builder ` +
+          `(${VERIFIER_TU_MARKERS.join(" / ")}) with a recognizable include/using ` +
+          `preamble in any of ${where}. The fork's server layout changed; update ` +
           `kernel-patches/server-structured-output.mjs to re-anchor the DFlash ` +
           `verifier-stream extension.`,
       );
@@ -229,7 +256,7 @@ export function patchServerStructuredOutput(cacheDir, { dryRun = false } = {}) {
     if (dryRun) {
       console.log(
         `[dflash-build] (dry-run) would patch ${target.rel} with the DFlash ` +
-          `verifier-stream extension (anchor: ${target.anchor})`,
+          `verifier-stream extension (TU marker: ${target.marker})`,
       );
     } else {
       const patched =
@@ -240,7 +267,7 @@ export function patchServerStructuredOutput(cacheDir, { dryRun = false } = {}) {
       fs.writeFileSync(target.full, patched, "utf8");
       console.log(
         `[dflash-build] patched ${target.rel} with the DFlash verifier-stream ` +
-          `extension (anchor: ${target.anchor})`,
+          `extension (TU marker: ${target.marker})`,
       );
     }
   }
