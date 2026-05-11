@@ -147,11 +147,11 @@ export const SETTINGS_SECTIONS: readonly {
   label: string;
   match: RegExp;
 }[] = [
-  { id: "settings-identity", label: "Settings — Identity", match: /^Identity\b/ },
+  { id: "settings-identity", label: "Settings — Basics", match: /^Basics\b/ },
   {
     id: "settings-providers",
     label: "Settings — Providers",
-    match: /^AI Model\b/,
+    match: /^Providers\b/,
   },
   { id: "settings-runtime", label: "Settings — Runtime", match: /^Runtime\b/ },
   {
@@ -180,9 +180,26 @@ export const SETTINGS_SECTIONS: readonly {
     label: "Settings — Permissions",
     match: /^Permissions\b/,
   },
-  { id: "settings-vault", label: "Settings — Vault", match: /^(Vault|Secrets)\b/ },
-  { id: "settings-cloud", label: "Settings — Cloud", match: /^Cloud\b/ },
-  { id: "settings-policy", label: "Settings — Policy", match: /^Policy\b/ },
+  {
+    id: "settings-vault",
+    label: "Settings — Vault",
+    match: /^(Vault|Secrets(?: storage)?)\b/,
+  },
+  {
+    id: "settings-security",
+    label: "Settings — Security",
+    match: /^Security\b/,
+  },
+  {
+    id: "settings-updates",
+    label: "Settings — Updates",
+    match: /^Updates\b/,
+  },
+  {
+    id: "settings-backup-reset",
+    label: "Settings — Backup & Reset",
+    match: /^Backup & Reset\b/,
+  },
 ];
 
 export const AI_QA_ROUTES: readonly AiQaRoute[] = [

@@ -92,6 +92,49 @@ def test_eliza_passthrough_skips_blank_and_malformed_lines(tmp_path: Path) -> No
     assert entries[0].step_index == 0
 
 
+def test_eliza_passthrough_preserves_native_metadata_and_cache_stats(
+    tmp_path: Path,
+) -> None:
+    src = tmp_path / "eliza.jsonl"
+    row = {
+        "format": "eliza_native_v1",
+        "boundary": "vercel_ai_sdk.generateText",
+        "scenarioId": "scenario-1",
+        "batchId": "batch-1",
+        "request": {"prompt": "p"},
+        "response": {
+            "text": "r",
+            "usage": {
+                "promptTokens": 100,
+                "completionTokens": 20,
+                "cacheReadInputTokens": 40,
+            },
+        },
+        "metadata": {"suite": "loca", "seed": 7},
+        "trajectoryTotals": {
+            "promptTokens": 100,
+            "completionTokens": 20,
+            "cacheReadInputTokens": 40,
+        },
+        "cacheStats": {
+            "totalInputTokens": 100,
+            "cacheReadInputTokens": 40,
+            "cacheReadCallCount": 1,
+        },
+    }
+    _write_jsonl(src, [row])
+
+    entry = normalize_eliza_jsonl(src, benchmark_id="b", task_id="t")[0]
+    payload = json.loads(entry.to_json())
+
+    assert entry.scenarioId == "scenario-1"
+    assert entry.batchId == "batch-1"
+    assert entry.metadata == {"suite": "loca", "seed": 7}
+    assert entry.trajectoryTotals["cacheReadInputTokens"] == 40
+    assert entry.cacheStats["cacheReadCallCount"] == 1
+    assert payload["cacheStats"]["cacheReadInputTokens"] == 40
+
+
 def test_openclaw_two_turn() -> None:
     response = {
         "messages": [

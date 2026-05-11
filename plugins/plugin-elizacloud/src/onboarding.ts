@@ -31,6 +31,16 @@ export interface CloudOnboardingResult {
   bridgeUrl?: string;
 }
 
+/**
+ * Outcome of the agent-provisioning step. Distinguishes a fully-running
+ * agent from one that timed out mid-provisioning so callers do not treat
+ * the timeout path as a success.
+ */
+type ProvisionOutcome =
+  | { kind: "running"; agentId: string; bridgeUrl?: string }
+  | { kind: "pending-after-timeout"; agentId: string }
+  | null;
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -122,10 +132,51 @@ async function runCloudAuth(
     spinner.stop("✓ Logged in to Eliza Cloud!");
     return result;
   } catch (err) {
-    const msg = String(err);
-    spinner.stop(`Login failed: ${msg}`);
+    spinner.stop(describeCloudAuthError(err));
     return null;
   }
+}
+
+/**
+ * Translate the various error categories `cloudLogin` can throw into a
+ * single user-facing line. The categories are derived from the strings
+ * `cloud/auth.ts` and `cloud/validate-url.ts` already produce — we don't
+ * invent new error types, we just steer them into the right bucket.
+ */
+function describeCloudAuthError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const msg = raw.toLowerCase();
+
+  // Overall 5-minute browser timeout from cloudLogin.
+  if (
+    msg.includes("login timed out") ||
+    msg.includes("not completed within")
+  ) {
+    return "Cloud sign-in timed out after 5 minutes. Try again or run locally.";
+  }
+
+  // validateCloudBaseUrl rejections (HTTPS-only, blocked host, DNS, …).
+  if (
+    msg.includes("invalid cloud base url") ||
+    msg.includes("cloud base url") ||
+    msg.includes("could not be resolved via dns")
+  ) {
+    return `Cloud sign-in failed: ${raw}`;
+  }
+
+  // Per-request timeouts (session create / polling) and any fetch network
+  // failure from `cloudLogin`.
+  if (
+    msg.includes("timed out") ||
+    msg.includes("failed to create auth session") ||
+    msg.includes("polling failed") ||
+    msg.includes("polling request timed out")
+  ) {
+    return "Couldn't reach Eliza Cloud. Check your connection or run locally.";
+  }
+
+  // Fallback: surface the underlying message verbatim.
+  return `Cloud sign-in failed: ${raw}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,19 +185,30 @@ async function runCloudAuth(
 
 /**
  * Create and provision a cloud agent, polling until it's running.
- * Returns the agent ID or null if provisioning fails.
+ *
+ * Returns a discriminated outcome:
+ *   - `{ kind: "running", agentId, bridgeUrl? }` — agent reached a
+ *      terminal "up" state.
+ *   - `{ kind: "pending-after-timeout", agentId }` — agent was created
+ *      but never reached a running/failed terminal status before
+ *      `PROVISION_TIMEOUT_MS`. The caller is expected to surface the
+ *      timeout to the user; we don't pretend it succeeded.
+ *   - `null` — agent creation failed outright, or provisioning failed
+ *      with an `error`/`failed` status, or the polling loop hit a
+ *      terminal auth error (401/403). The caller falls back.
  */
 async function provisionCloudAgent(
   clack: ClackModule,
   client: ElizaCloudClient,
   agentName: string,
   preset?: StylePreset,
-): Promise<{ agentId: string; bridgeUrl?: string } | null> {
+): Promise<ProvisionOutcome> {
   const spinner = clack.spinner();
   spinner.start("Creating your cloud agent...");
 
+  let agentId: string;
+  let initialStatus: string;
   try {
-    // Build the agent config from the chosen style preset
     const agentConfig: Record<string, unknown> = {};
     if (preset) {
       agentConfig.bio = preset.bio;
@@ -164,62 +226,125 @@ async function provisionCloudAgent(
     };
 
     const agent = await client.createAgent(params);
-    const agentId = agent.id;
+    agentId = agent.id;
+    initialStatus = agent.status;
+  } catch (err) {
+    spinner.stop(`Failed to create cloud agent: ${String(err)}`);
+    return null;
+  }
 
-    spinner.message("Agent created! Provisioning cloud environment...");
+  spinner.message("Agent created! Provisioning cloud environment...");
 
-    // Poll for running status
-    const deadline = Date.now() + PROVISION_TIMEOUT_MS;
-    let lastStatus = agent.status;
+  // Poll for terminal status. Order: poll first (terminal-on-first-read
+  // skips the wasted sleep), then sleep at the END of each iteration if
+  // the loop has time remaining.
+  const deadline = Date.now() + PROVISION_TIMEOUT_MS;
+  let lastStatus = initialStatus;
 
-    while (Date.now() < deadline) {
-      await sleep(PROVISION_POLL_INTERVAL_MS);
-
-      try {
-        const current = await client.getAgent(agentId);
-        lastStatus = current.status;
-
-        switch (lastStatus) {
-          case "running":
-          case "completed":
-            spinner.stop(`☁️  Cloud agent "${agentName}" is running!`);
-            return { agentId, bridgeUrl: current.bridgeUrl };
-
-          case "failed":
-          case "error":
-            spinner.stop(
-              `Provisioning failed: ${current.errorMessage ?? "unknown error"}`,
-            );
-            return null;
-
-          case "queued":
-            spinner.message("Queued — waiting for available slot...");
-            break;
-
-          case "provisioning":
-            spinner.message("Provisioning cloud environment...");
-            break;
-
-          default:
-            spinner.message(`Status: ${lastStatus}...`);
-        }
-      } catch (pollErr) {
-        // Transient polling error — keep trying
-        logger.debug(`[cloud-onboarding] Poll error: ${String(pollErr)}`);
+  while (Date.now() < deadline) {
+    let current: Awaited<ReturnType<ElizaCloudClient["getAgent"]>> | null;
+    try {
+      current = await client.getAgent(agentId);
+    } catch (pollErr) {
+      const classification = classifyPollError(pollErr);
+      if (classification === "auth") {
+        spinner.stop(
+          `Cloud rejected the API key (last status: ${lastStatus}). Please sign in again.`,
+        );
+        return null;
+      }
+      if (classification === "transient") {
+        // 5xx / network: keep trying, but at warn level so a sustained
+        // outage is visible in logs (not silently buried at debug).
+        logger.warn(
+          `[cloud-onboarding] Transient poll error, will retry: ${String(pollErr)}`,
+        );
+        current = null;
+      } else {
+        // Terminal but not auth — propagate and stop the flow.
+        spinner.stop(`Provisioning poll failed: ${String(pollErr)}`);
+        return null;
       }
     }
 
-    // Timed out
-    spinner.stop(
-      `Provisioning timed out (last status: ${lastStatus}). The agent may still be starting up.`,
-    );
-    // Return the ID anyway — user can reconnect later
-    return { agentId };
-  } catch (err) {
-    const msg = String(err);
-    spinner.stop(`Failed to create cloud agent: ${msg}`);
-    return null;
+    if (current) {
+      lastStatus = current.status;
+      switch (lastStatus) {
+        case "running":
+        case "completed":
+          spinner.stop(`☁️  Cloud agent "${agentName}" is running!`);
+          return {
+            kind: "running",
+            agentId,
+            bridgeUrl: current.bridgeUrl,
+          };
+
+        case "failed":
+        case "error":
+          spinner.stop(
+            `Provisioning failed: ${current.errorMessage ?? "unknown error"}`,
+          );
+          return null;
+
+        case "queued":
+          spinner.message("Queued — waiting for available slot...");
+          break;
+
+        case "provisioning":
+          spinner.message("Provisioning cloud environment...");
+          break;
+
+        default:
+          spinner.message(`Status: ${lastStatus}...`);
+      }
+    }
+
+    // Sleep AFTER the read. If the previous read was terminal we would
+    // have returned above; if it pushed us past the deadline the loop
+    // condition will exit on the next iteration without another sleep.
+    if (Date.now() + PROVISION_POLL_INTERVAL_MS < deadline) {
+      await sleep(PROVISION_POLL_INTERVAL_MS);
+    } else {
+      break;
+    }
   }
+
+  // Reached the deadline without a terminal status. Surface that
+  // explicitly — callers must not treat this as a success.
+  spinner.stop(
+    `Provisioning timed out (last status: ${lastStatus}). The agent may still be starting up.`,
+  );
+  return { kind: "pending-after-timeout", agentId };
+}
+
+/**
+ * Classify a `getAgent` poll error. The bridge client's `request<T>`
+ * surfaces non-2xx responses as plain `Error("HTTP <status>: ...")` from
+ * `getAgent` (see `cloud/bridge-client.ts`), so the message-prefix match
+ * is the canonical signal.
+ *
+ *   "auth"      — 401/403: stop polling immediately.
+ *   "transient" — 5xx or network/fetch error: keep retrying.
+ *   "terminal"  — anything else (404, malformed body, etc.): stop.
+ */
+function classifyPollError(err: unknown): "auth" | "transient" | "terminal" {
+  const raw = err instanceof Error ? err.message : String(err);
+  if (/\bHTTP\s+40[13]\b/i.test(raw)) {
+    return "auth";
+  }
+  if (/\bHTTP\s+5\d{2}\b/i.test(raw)) {
+    return "transient";
+  }
+  // AbortError / TimeoutError / fetch failures from the request layer.
+  if (
+    err instanceof Error &&
+    (err.name === "AbortError" ||
+      err.name === "TimeoutError" ||
+      /fetch failed|network|timed out|timeout/i.test(raw))
+  ) {
+    return "transient";
+  }
+  return "terminal";
 }
 
 // ---------------------------------------------------------------------------
@@ -306,6 +431,12 @@ export async function runCloudOnboarding(
 
 /**
  * Complete provisioning after successful auth.
+ *
+ * Branches on the explicit `ProvisionOutcome` kind: a "pending-after-
+ * timeout" outcome is NOT treated as success — the caller is prompted
+ * to fall back to local, the same as for outright failure, but the
+ * agent id is preserved on the result so the user can reconnect later
+ * with `eliza cloud connect`.
  */
 async function finishProvisioning(
   clack: ClackModule,
@@ -323,34 +454,44 @@ async function finishProvisioning(
     preset,
   );
 
-  if (!provisionResult) {
-    clack.log.warn(
-      "Cloud provisioning did not complete. You can try `eliza cloud connect` later.",
-    );
-
-    const runLocal = await clack.confirm({
-      message: "Continue with local setup instead?",
-      initialValue: true,
-    });
-
-    if (clack.isCancel(runLocal) || runLocal) {
-      return null;
-    }
-
-    // User doesn't want local either — just return the auth result
-    // so config is saved (they can reconnect later)
+  if (provisionResult && provisionResult.kind === "running") {
     return {
       apiKey: authResult.apiKey,
-      agentId: undefined, // No agent provisioned yet
+      agentId: provisionResult.agentId,
       baseUrl,
+      bridgeUrl: provisionResult.bridgeUrl,
     };
   }
 
+  // Either provisioning errored (`null`) or timed out mid-flight.
+  // Prompt the user to fall back. We preserve any agentId we got so
+  // a later `eliza cloud connect` can resume.
+  const pendingAgentId =
+    provisionResult?.kind === "pending-after-timeout"
+      ? provisionResult.agentId
+      : undefined;
+
+  clack.log.warn(
+    pendingAgentId
+      ? "Cloud agent is still starting up. You can try `eliza cloud connect` once it's ready."
+      : "Cloud provisioning did not complete. You can try `eliza cloud connect` later.",
+  );
+
+  const runLocal = await clack.confirm({
+    message: "Continue with local setup instead?",
+    initialValue: true,
+  });
+
+  if (clack.isCancel(runLocal) || runLocal) {
+    return null;
+  }
+
+  // User doesn't want local either — save the auth result (and the
+  // pending agent id, if we have one) so they can reconnect later.
   return {
     apiKey: authResult.apiKey,
-    agentId: provisionResult.agentId,
+    agentId: pendingAgentId,
     baseUrl,
-    bridgeUrl: provisionResult.bridgeUrl,
   };
 }
 

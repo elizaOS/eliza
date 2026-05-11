@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
-import { listSecretsAction } from "./list-secrets";
+import { listSecretsHandler } from "./list-secrets";
 
 function createRuntime(metadata: Record<string, unknown>) {
 	return {
@@ -27,10 +27,10 @@ function createMessage() {
 	};
 }
 
-describe("LIST_SECRETS", () => {
+describe("SECRETS action=list", () => {
 	test("returns keys + metadata, never values", async () => {
 		const now = Date.now();
-		const result = await listSecretsAction.handler(
+		const result = await listSecretsHandler(
 			createRuntime({
 				OPENAI_API_KEY: {
 					status: "valid",
@@ -63,7 +63,7 @@ describe("LIST_SECRETS", () => {
 	});
 
 	test("filters by prefix when provided", async () => {
-		const result = await listSecretsAction.handler(
+		const result = await listSecretsHandler(
 			createRuntime({
 				OPENAI_API_KEY: { status: "valid", createdAt: 1, validatedAt: 1 },
 				ANTHROPIC_API_KEY: { status: "valid", createdAt: 1, validatedAt: 1 },

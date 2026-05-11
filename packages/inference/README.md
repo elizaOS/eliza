@@ -355,16 +355,22 @@ make vulkan-verify
 #    hardware-results/linux-vulkan-smoke-*.log, rejects software ICDs unless
 #    ELIZA_ALLOW_SOFTWARE_VULKAN=1, runs standalone fixtures, builds the
 #    patched fork, dumps CAPABILITIES.json, then runs the built-fork graph
-#    gate. Build failure stops the runner; stale/symbol-only artifacts are not
-#    reused.
+#    gate against the managed install output under
+#    $ELIZA_STATE_DIR/local-inference/bin/dflash/linux-x64-vulkan by default.
+#    Build failure stops the runner; stale/symbol-only artifacts are not reused.
 make vulkan-native-smoke
+
+#    Direct graph dispatch smoke is native-Linux-only by default and requires a
+#    bin dir containing libggml-vulkan.so. Override only for explicit prebuilts:
+#    ELIZA_DFLASH_VULKAN_BIN_DIR=/path/to/bin make vulkan-dispatch-smoke
 
 # 3) On-device (Android) verification: cross-compile the harness against
 #    the Android NDK Vulkan headers and push to a Vulkan-capable handset
 #    (Adreno 6xx+, Mali-G7x+). Same SPIR-V, same fixtures. The runner records
 #    hardware-results/android-vulkan-smoke-*.log and fails closed after
 #    standalone fixtures unless ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE points at
-#    a built-fork/app graph-dispatch report proving GGML_OP_ATTN_SCORE_QJL.
+#    a built-fork/app graph-dispatch report covering all six Vulkan graph
+#    routes or all five runtime capability keys with finite maxDiff.
 make android-vulkan-smoke
 
 # 4) End-to-end via llama-server: the patch hook `patchVulkanKernels` is

@@ -27,8 +27,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { appBlockActionImpl } from "./app-block.js";
-import { websiteBlockActionImpl } from "./website-block.js";
+import { appBlockValidate, runAppBlockHandler } from "./app-block.js";
+import {
+  runWebsiteBlockHandler,
+  websiteBlockValidate,
+} from "./website-block.js";
 
 const ACTION_NAME = "BLOCK";
 
@@ -308,13 +311,13 @@ export const blockAction: Action & {
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
-  validate: async (runtime, message, state) => {
-    // Either backend's gate must be open. Each action validates against its
+  validate: async (runtime, message) => {
+    // Either backend's gate must be open. Each backend validates against its
     // own owner/permission rules — accept when at least one passes so the
     // umbrella matches whatever target the planner ultimately picks.
     const [appOk, webOk] = await Promise.all([
-      appBlockActionImpl.validate(runtime, message, state),
-      websiteBlockActionImpl.validate(runtime, message, state),
+      appBlockValidate(runtime, message),
+      websiteBlockValidate(runtime, message),
     ]);
     return appOk || webOk;
   },
@@ -418,8 +421,6 @@ export const blockAction: Action & {
     message: Memory,
     state: State | undefined,
     options: HandlerOptions | undefined,
-    callback,
-    responses,
   ): Promise<ActionResult> => {
     const params = readPlannerParams(options);
     const target = resolveTarget(params, message);
@@ -443,22 +444,8 @@ export const blockAction: Action & {
 
     const forwarded = withTarget(options, target);
     if (target === "app") {
-      return appBlockActionImpl.handler(
-        runtime,
-        message,
-        state,
-        forwarded,
-        callback,
-        responses,
-      );
+      return runAppBlockHandler(runtime, message, state, forwarded);
     }
-    return websiteBlockActionImpl.handler(
-      runtime,
-      message,
-      state,
-      forwarded,
-      callback,
-      responses,
-    );
+    return runWebsiteBlockHandler(runtime, message, state, forwarded);
   },
 };

@@ -62,6 +62,11 @@ class CanonicalEntry:
     step_index: int = 0
     timestamp_ms: int | None = None
     model: str | None = None
+    scenarioId: str | None = None
+    batchId: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    trajectoryTotals: dict[str, Any] = field(default_factory=dict)
+    cacheStats: dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> str:
         """Serialize to a single-line JSON string (no whitespace).
@@ -119,6 +124,11 @@ def normalize_eliza_jsonl(
                 step_index=step,
                 timestamp_ms=row.get("timestamp_ms"),
                 model=row.get("model"),
+                scenarioId=row.get("scenarioId"),
+                batchId=row.get("batchId"),
+                metadata=row.get("metadata", {}) or {},
+                trajectoryTotals=row.get("trajectoryTotals", {}) or {},
+                cacheStats=row.get("cacheStats", {}) or {},
             )
         )
         step += 1

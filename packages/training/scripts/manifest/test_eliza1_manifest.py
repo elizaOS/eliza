@@ -27,7 +27,7 @@ SHA = "0" * 64
 def passing_backends() -> dict[str, KernelVerification]:
     return {
         b: KernelVerification(status="pass", at_commit="abc1234", report=f"{b}.txt")
-        for b in ("metal", "vulkan", "cuda", "cpu")
+        for b in ("metal", "vulkan", "cuda", "rocm", "cpu")
     }
 
 
@@ -219,8 +219,8 @@ def test_default_eligible_with_failing_backend_rejected():
     assert any("cuda" in e for e in exc.value.errors)
 
 
-def test_lite_tier_does_not_require_cuda_pass():
-    """Lite tier ships on metal/vulkan/cpu — a failing cuda backend
+def test_lite_tier_does_not_require_cuda_or_rocm_pass():
+    """Lite tier ships on metal/vulkan/cpu — failing cuda/rocm backends
     must not block lite publishing."""
 
     kwargs = base_kwargs("0_6b")
@@ -228,9 +228,24 @@ def test_lite_tier_does_not_require_cuda_pass():
     backends["cuda"] = KernelVerification(
         status="fail", at_commit="abc1234", report="cuda.txt"
     )
+    backends["rocm"] = KernelVerification(
+        status="fail", at_commit="abc1234", report="rocm.txt"
+    )
     kwargs["verified_backends"] = backends
     manifest = build_manifest(**kwargs)
     assert validate_manifest(manifest) == ()
+
+
+def test_desktop_tier_requires_rocm_pass():
+    kwargs = base_kwargs("9b")
+    backends = passing_backends()
+    backends["rocm"] = KernelVerification(
+        status="fail", at_commit="abc1234", report="rocm.txt"
+    )
+    kwargs["verified_backends"] = backends
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("rocm" in e for e in exc.value.errors)
 
 
 def test_long_context_requires_turbo3_tcq():

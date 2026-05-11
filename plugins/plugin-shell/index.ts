@@ -1,5 +1,5 @@
 import type { Plugin } from "@elizaos/core";
-import { clearHistory } from "./actions";
+import { shellHistoryAction } from "./actions";
 import { ExecApprovalService } from "./approvals";
 import { shellHistoryProvider } from "./providers";
 import { ShellService } from "./services/shellService";
@@ -8,7 +8,7 @@ export const shellPlugin: Plugin = {
   name: "shell",
   description: "Shell observability and history management providers",
   services: [ShellService, ExecApprovalService],
-  actions: [clearHistory],
+  actions: [shellHistoryAction],
   providers: [shellHistoryProvider],
   // Self-declared auto-enable: activate when features.shell is enabled.
   autoEnable: {
@@ -25,7 +25,7 @@ export const shellPlugin: Plugin = {
 export default shellPlugin;
 
 // Actions
-export { clearHistory } from "./actions/clearHistory";
+export { clearHistory, shellHistoryAction } from "./actions/shellHistory";
 
 // Approvals
 export {

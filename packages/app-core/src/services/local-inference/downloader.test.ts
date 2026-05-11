@@ -167,6 +167,11 @@ describe("local inference downloader status", () => {
             atCommit: "test",
             report: "test-cuda",
           },
+          rocm: {
+            status: "pass",
+            atCommit: "test",
+            report: "test-rocm",
+          },
           cpu: {
             status: "pass",
             atCommit: "test",

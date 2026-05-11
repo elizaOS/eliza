@@ -5,8 +5,8 @@
  * skip, autofill, info) and extracts field values from the user message,
  * then mutates session state accordingly.
  *
- * The 'restore' intent is handled by FORM_RESTORE (a planner Action) so the
- * restored form is in scope before the agent's response is generated.
+ * The 'restore' intent is handled by FORM action=restore (a planner Action)
+ * so the restored form is in scope before the agent's response is generated.
  */
 
 import type {
@@ -153,7 +153,7 @@ const formIntentProcessor: EvaluatorProcessor<
         return { success: true, values: { formIntent: output.formIntent } };
 
       case "restore":
-        // FORM_RESTORE action owns this path; nothing to do here.
+        // FORM action=restore owns this path; nothing to do here.
         return undefined;
 
       default:
@@ -309,7 +309,7 @@ export const formEvaluator: Evaluator<
       // case the evaluator section will produce an `other` intent and no
       // extractions will be applied because there's no active session.
       throw new Error(
-        "Form evaluator prepared without an active session; FORM_RESTORE owns the stashed-only path",
+        "Form evaluator prepared without an active session; FORM action=restore owns the stashed-only path",
       );
     }
 

@@ -1,6 +1,4 @@
 import type {
-  Action,
-  ActionExample,
   ActionResult,
   HandlerOptions,
   IAgentRuntime,
@@ -43,8 +41,6 @@ type PaymentsActionParams = {
   onlyDebits?: boolean;
 };
 
-const ACTION_NAME = "PAYMENTS";
-
 function mergeParams(
   message: Memory,
   options?: HandlerOptions,
@@ -85,14 +81,13 @@ function normalizeSubaction(value: unknown): PaymentsSubaction | null {
     : null;
 }
 
-async function runPaymentsAction(
+async function runPaymentsActionInner(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
   options?: HandlerOptions,
 ): Promise<ActionResult> {
   void state;
-  void message;
   const params = mergeParams(message, options);
   const service = new LifeOpsService(runtime);
   const subaction = normalizeSubaction(params.subaction) ?? "dashboard";
@@ -221,212 +216,29 @@ async function runPaymentsAction(
   }
 }
 
-const examples: ActionExample[][] = [
-  [
-    {
-      name: "{{name1}}",
-      content: { text: "How much am I spending on subscriptions?" },
-    },
-    {
-      name: "{{agentName}}",
-      content: {
-        text: "I'll pull your payments dashboard with monthly spend, recurring charges, and categories.",
-        actions: [ACTION_NAME],
-      },
-    },
-  ],
-  [
-    {
-      name: "{{name1}}",
-      content: {
-        text: "Import this bank CSV into my Chase source.",
-      },
-    },
-    {
-      name: "{{agentName}}",
-      content: {
-        text: "I'll parse the CSV, dedupe against existing transactions, and update the source sync time.",
-        actions: [ACTION_NAME],
-      },
-    },
-  ],
-  [
-    {
-      name: "{{name1}}",
-      content: { text: "What recurring charges do I have?" },
-    },
-    {
-      name: "{{agentName}}",
-      content: {
-        text: "I'll detect merchants with regular cadence and amount, and summarize the annualized cost.",
-        actions: [ACTION_NAME],
-      },
-    },
-  ],
-];
-
 /**
- * Internal implementation of the legacy `PAYMENTS` action surface.
+ * Handler function backing the MONEY umbrella's payments subactions.
  *
- * Audit B Defer #4 folded `PAYMENTS` and `SUBSCRIPTIONS` into the single
- * `MONEY` umbrella (`./money.ts`). The umbrella forwards the eight payments
- * verbs (`dashboard | list_sources | add_source | remove_source | import_csv |
- * list_transactions | spending_summary | recurring_charges`) directly to this
- * impl. The legacy export name (`paymentsAction`) is re-exported below as an
- * alias for `moneyAction` so cached planner outputs and downstream importers
- * keep resolving — but no `PAYMENTS`-named action is registered in the plugin
- * anymore; the umbrella simile carries the legacy name forward.
+ * Folded out of the legacy `PAYMENTS` action surface — Audit B Defer #4. The
+ * umbrella in `./money.ts` is the only caller; no Action object is
+ * registered for this handler anymore.
  */
-export const paymentsActionImpl: Action & {
-  suppressPostActionContinuation?: boolean;
-} = {
-  name: ACTION_NAME,
-  similes: [
-    "SPENDING",
-    "ROCKET_MONEY",
-    "BANK_TRANSACTIONS",
-    "RECURRING_CHARGES",
-    "BUDGET",
-    "EXPENSES",
-  ],
-  description:
-    "Track payments and recurring charges: list connected payment sources (bank/CSV/Plaid/PayPal), import transactions from CSV, compute spending summaries, and detect recurring charges.",
-  descriptionCompressed:
-    "payments+spending: dashboard list-sources add-source remove-source import-csv list-transactions spending-summary recurring-charges; bank/CSV/Plaid/PayPal",
-  contexts: ["payments", "finance", "wallet", "crypto", "subscriptions"],
-  roleGate: { minRole: "OWNER" },
-
-  parameters: [
-    {
-      name: "subaction",
-      description:
-        "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges (defaults dashboard).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "sourceId",
-      description: "Payment source UUID for scoped reads and CSV import.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "kind",
-      description: "add_source kind: csv | plaid | manual | paypal.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "label",
-      description: "Human label when adding a source.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "institution",
-      description: "Institution display name.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "accountMask",
-      description: "Last-four or mask string.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "csvText",
-      description: "Raw CSV payload for import_csv.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "dateColumn",
-      description: "CSV column hint for posting date.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "amountColumn",
-      description: "CSV column hint for amount.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "merchantColumn",
-      description: "CSV column hint for merchant.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "descriptionColumn",
-      description: "CSV column hint for description.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "categoryColumn",
-      description: "CSV column hint for category.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "windowDays",
-      description: "Rolling window for dashboard or spending summaries.",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
-      name: "sinceDays",
-      description: "History window for recurring charge detection.",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
-      name: "limit",
-      description: "Transaction row cap for listings.",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
-      name: "merchantContains",
-      description: "Filter transactions by merchant substring.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "onlyDebits",
-      description: "Exclude credits when listing transactions.",
-      required: false,
-      schema: { type: "boolean" as const },
-    },
-  ],
-
-  suppressPostActionContinuation: true,
-  validate: async () => true,
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-    options?: HandlerOptions,
-  ): Promise<ActionResult> => {
-    try {
-      return await runPaymentsAction(runtime, message, state, options);
-    } catch (error) {
-      if (error instanceof LifeOpsServiceError) {
-        return {
-          success: false,
-          text: error.message,
-          data: { status: error.status },
-        };
-      }
-      throw error;
+export async function runPaymentsHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: HandlerOptions | undefined,
+): Promise<ActionResult> {
+  try {
+    return await runPaymentsActionInner(runtime, message, state, options);
+  } catch (error) {
+    if (error instanceof LifeOpsServiceError) {
+      return {
+        success: false,
+        text: error.message,
+        data: { status: error.status },
+      };
     }
-  },
-  examples,
-};
-
-// Legacy export — the `PAYMENTS` name lives on as a simile of the new MONEY
-// umbrella. Importers that destructured `paymentsAction` get the umbrella
-// back so they continue to dispatch through the unified entry.
-export { moneyAction as paymentsAction } from "./money.js";
+    throw error;
+  }
+}

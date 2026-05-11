@@ -19,7 +19,7 @@ import {
 	type SecretsService,
 } from "../services/secrets.ts";
 import type { SecretContext, SecretLevel } from "../types.ts";
-import { maskSecretValue } from "./manage-secret.ts";
+import { maskSecretValue } from "./mask.ts";
 
 interface GetSecretParams {
 	key: string;

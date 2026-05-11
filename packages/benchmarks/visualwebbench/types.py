@@ -122,4 +122,12 @@ class VisualWebBenchConfig:
     timeout_ms: int = 120000
     bbox_iou_threshold: float = 0.5
     save_traces: bool = True
+    app_harness_script: Path | None = None
+    app_harness_runtime: str = "bun"
+    app_harness_no_launch: bool = True
+    app_harness_prompt_via_ui: bool = True
+    app_harness_dry_run: bool = False
+    app_harness_api_base: str | None = None
+    app_harness_ui_url: str | None = None
+    app_harness_poll_interval_ms: int | None = None
     verbose: bool = False

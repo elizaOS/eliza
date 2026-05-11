@@ -9,12 +9,12 @@ import {
   BROWSER_SERVICE_TYPE,
   type BrowserService,
 } from "../browser-service.js";
-import { executeBrowserAutofillLogin } from "./browser-autofill-login.js";
 import {
   type BrowserWorkspaceCommand,
   executeBrowserWorkspaceCommand,
   getBrowserWorkspaceMode,
 } from "../workspace/browser-workspace.js";
+import { executeBrowserAutofillLogin } from "./browser-autofill-login.js";
 
 /**
  * Targets are the registered browser backends. The agent uses what is
@@ -198,7 +198,8 @@ function normalizeBrowserAction(
 function normalizeLegacyBrowserAction(
   action: BrowserActionParameters["action"] | undefined,
 ): BrowserWorkspaceCommand["subaction"] | undefined {
-  switch (action) {
+  const normalizedAction = normalizeBrowserAction(action);
+  switch (normalizedAction) {
     case "info":
     case "context":
     case "get_context":
@@ -213,8 +214,40 @@ function normalizeLegacyBrowserAction(
     case undefined:
       return undefined;
     default:
-      return action;
+      return isWorkspaceSubaction(normalizedAction)
+        ? normalizedAction
+        : undefined;
   }
+}
+
+function isWorkspaceSubaction(
+  action: unknown,
+): action is BrowserWorkspaceCommand["subaction"] {
+  return (
+    action === "back" ||
+    action === "click" ||
+    action === "close" ||
+    action === "forward" ||
+    action === "get" ||
+    action === "hide" ||
+    action === "navigate" ||
+    action === "open" ||
+    action === "press" ||
+    action === "reload" ||
+    action === "screenshot" ||
+    action === "show" ||
+    action === "snapshot" ||
+    action === "state" ||
+    action === "tab" ||
+    action === "type" ||
+    action === "wait" ||
+    action === "realistic-click" ||
+    action === "realistic-fill" ||
+    action === "realistic-type" ||
+    action === "realistic-press" ||
+    action === "cursor-move" ||
+    action === "cursor-hide"
+  );
 }
 
 function normalizeLegacyTabAction(
@@ -340,9 +373,8 @@ export const browserAction: Action = {
       y: params?.y,
     };
 
-    const browserService = runtime.getService<BrowserService>(
-      BROWSER_SERVICE_TYPE,
-    );
+    const browserService =
+      runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE);
 
     try {
       logger.info(

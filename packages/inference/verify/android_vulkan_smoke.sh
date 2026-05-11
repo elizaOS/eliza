@@ -78,6 +78,67 @@ if ! command -v "$ADB" >/dev/null 2>&1; then
   fail 2 "adb not found. Set ADB=/path/to/adb"
 fi
 
+ADB_SERIAL="${ANDROID_SERIAL:-}"
+ADB_DEVICES=()
+while IFS= read -r serial; do
+  [[ -n "$serial" ]] && ADB_DEVICES+=("$serial")
+done < <("$ADB" devices | awk '$2 == "device" { print $1 }')
+
+if [[ -n "${ANDROID_SERIAL:-}" ]]; then
+  ADB_SERIAL="$ANDROID_SERIAL"
+  found_serial=0
+  for serial in "${ADB_DEVICES[@]}"; do
+    if [[ "$serial" == "$ADB_SERIAL" ]]; then
+      found_serial=1
+      break
+    fi
+  done
+  if [[ "$found_serial" != "1" ]]; then
+    fail 2 "ANDROID_SERIAL=$ADB_SERIAL is not listed by adb devices"
+  fi
+else
+  if [[ "${#ADB_DEVICES[@]}" -eq 0 ]]; then
+    fail 2 "no adb devices in 'device' state. Connect a physical Adreno/Mali device or set ANDROID_SERIAL"
+  elif [[ "${#ADB_DEVICES[@]}" -eq 1 ]]; then
+    ADB_SERIAL="${ADB_DEVICES[0]}"
+    echo "[android-vulkan-smoke] auto-selected only attached device ${ADB_SERIAL}"
+  else
+    PHYSICAL_DEVICES=()
+    for serial in "${ADB_DEVICES[@]}"; do
+      qemu="$("$ADB" -s "$serial" shell getprop ro.kernel.qemu 2>/dev/null | tr -d '\r' || true)"
+      if [[ "$qemu" != "1" ]]; then
+        PHYSICAL_DEVICES+=("$serial")
+      fi
+    done
+    if [[ "${#PHYSICAL_DEVICES[@]}" -eq 1 ]]; then
+      ADB_SERIAL="${PHYSICAL_DEVICES[0]}"
+      echo "[android-vulkan-smoke] auto-selected physical device ${PHYSICAL_DEVICES[0]} (set ANDROID_SERIAL to override)"
+    else
+      fail 2 "multiple adb devices attached: ${ADB_DEVICES[*]}. Set ANDROID_SERIAL to the physical Adreno/Mali device"
+    fi
+  fi
+fi
+
+PRE_QEMU="$("$ADB" -s "$ADB_SERIAL" shell getprop ro.kernel.qemu 2>/dev/null | tr -d '\r' || true)"
+PRE_BOOT_QEMU="$("$ADB" -s "$ADB_SERIAL" shell getprop ro.boot.qemu 2>/dev/null | tr -d '\r' || true)"
+if [[ "$PRE_QEMU" == "1" && "$ALLOW_EMULATOR" != "1" ]]; then
+  fail 3 "refusing emulator device before build. Connect a physical Adreno/Mali handset/tablet, or set ELIZA_ALLOW_ANDROID_EMULATOR_VULKAN=1 for diagnostics only"
+fi
+if [[ "$PRE_BOOT_QEMU" == "1" && "$ALLOW_EMULATOR" != "1" ]]; then
+  fail 3 "refusing emulator boot profile before build. Connect a physical Adreno/Mali handset/tablet, or set ELIZA_ALLOW_ANDROID_EMULATOR_VULKAN=1 for diagnostics only"
+fi
+
+echo "[android-vulkan-smoke] generating canonical fixtures"
+if ! make reference-test >/dev/null; then
+  fail 2 "failed to generate canonical fixtures with make reference-test"
+fi
+
+for fixture in turbo3.json turbo4.json turbo3_tcq.json qjl.json polar.json polar_qjl.json; do
+  if [[ ! -f "fixtures/$fixture" ]]; then
+    fail 2 "missing canonical fixture fixtures/$fixture"
+  fi
+done
+
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR/spv" "$OUT_DIR/fixtures"
 
@@ -96,32 +157,6 @@ done
 
 cp fixtures/turbo3.json fixtures/turbo4.json fixtures/turbo3_tcq.json \
   fixtures/qjl.json fixtures/polar.json fixtures/polar_qjl.json "$OUT_DIR/fixtures/"
-
-ADB_SERIAL="${ANDROID_SERIAL:-}"
-if [[ -n "${ANDROID_SERIAL:-}" ]]; then
-  ADB_SERIAL="$ANDROID_SERIAL"
-else
-  ADB_DEVICES=()
-  while IFS= read -r serial; do
-    [[ -n "$serial" ]] && ADB_DEVICES+=("$serial")
-  done < <("$ADB" devices | awk '$2 == "device" { print $1 }')
-  if [[ "${#ADB_DEVICES[@]}" -gt 1 ]]; then
-    PHYSICAL_DEVICES=()
-    for serial in "${ADB_DEVICES[@]}"; do
-      qemu="$("$ADB" -s "$serial" shell getprop ro.kernel.qemu 2>/dev/null | tr -d '\r' || true)"
-      if [[ "$qemu" != "1" ]]; then
-        PHYSICAL_DEVICES+=("$serial")
-      fi
-    done
-    if [[ "${#PHYSICAL_DEVICES[@]}" -eq 1 ]]; then
-      ADB_SERIAL="${PHYSICAL_DEVICES[0]}"
-      echo "[android-vulkan-smoke] auto-selected physical device ${PHYSICAL_DEVICES[0]} (set ANDROID_SERIAL to override)"
-    else
-      echo "[android-vulkan-smoke] multiple adb devices attached: ${ADB_DEVICES[*]}. Set ANDROID_SERIAL to the physical Adreno/Mali device." >&2
-      exit 2
-    fi
-  fi
-fi
 
 adb_cmd() {
   if [[ -n "$ADB_SERIAL" ]]; then
@@ -167,7 +202,7 @@ run_remote() {
   local shader="$1"
   local fixture="$2"
   echo "[android-vulkan-smoke] ${shader} ${fixture}"
-  adb_cmd shell "cd '${REMOTE_DIR}' && ./vulkan_verify '${shader}.spv' 'fixtures/${fixture}.json'"
+  adb_cmd shell "cd '${REMOTE_DIR}' && ELIZA_ALLOW_SOFTWARE_VULKAN='${ALLOW_SOFTWARE}' ./vulkan_verify '${shader}.spv' 'fixtures/${fixture}.json'"
 }
 
 run_remote turbo3 turbo3

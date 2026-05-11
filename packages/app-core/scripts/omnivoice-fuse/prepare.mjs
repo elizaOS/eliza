@@ -544,6 +544,36 @@ static struct ggml_tensor * dac_conv_t1d(struct ggml_context * ctx,
   );
   fs.writeFileSync(dacPath, source, "utf8");
 
+  const codecPath = path.join(graftRoot, "src", "pipeline-codec.cpp");
+  let codecSource = fs.readFileSync(codecPath, "utf8");
+  const codecBackendAnchor = `    pc->bp                 = bp;
+    pc->backend            = bp.backend;
+    ggml_backend_t backend = bp.backend;
+`;
+  if (!codecSource.includes(codecBackendAnchor)) {
+    throw new Error(
+      `[omnivoice-fuse] compatibility patch anchor not found: pipeline-codec backend selection`,
+    );
+  }
+  codecSource = codecSource.replace(
+    codecBackendAnchor,
+    `    // Keep the MaskGIT/LM path on the selected accelerator, but keep the
+    // audio tokenizer / DAC codec on CPU until the merged milady ggml Metal
+    // graph for DAC decode is proven non-stalling. This still uses the same
+    // fused process and shared lifecycle; it only pins this region's scheduler
+    // to the CPU backend rather than launching a second model runtime.
+    BackendPair codec_bp = bp;
+    if (bp.cpu_backend) {
+        codec_bp.backend = bp.cpu_backend;
+        codec_bp.has_gpu = false;
+    }
+    pc->bp                 = codec_bp;
+    pc->backend            = codec_bp.backend;
+    ggml_backend_t backend = codec_bp.backend;
+`,
+  );
+  fs.writeFileSync(codecPath, codecSource, "utf8");
+
   fs.writeFileSync(
     path.join(graftRoot, "src", "version.h"),
     `#pragma once\n#define OMNIVOICE_VERSION "${commit.slice(0, 12)} (milady-fused)"\n`,
