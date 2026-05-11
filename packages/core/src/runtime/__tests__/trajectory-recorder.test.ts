@@ -762,9 +762,9 @@ describe("skill invocation capture (W1-T5 / M13)", () => {
 		});
 		expect(captured.args).toBe('{"mode":"script"}');
 		expect(captured.result?.endsWith("...[truncated]")).toBe(true);
-		expect(Buffer.byteLength(captured.result ?? "", "utf8")).toBeLessThanOrEqual(
-			2048,
-		);
+		expect(
+			Buffer.byteLength(captured.result ?? "", "utf8"),
+		).toBeLessThanOrEqual(2048);
 		expect(captured.truncated).toEqual([
 			{ field: "result", originalBytes: 200_000, capBytes: 2048 },
 		]);
@@ -776,9 +776,9 @@ describe("skill invocation capture (W1-T5 / M13)", () => {
 			args: { q: "small" },
 			result: big,
 		});
-		expect(Buffer.byteLength(captured.result ?? "", "utf8")).toBeLessThanOrEqual(
-			64 * 1024,
-		);
+		expect(
+			Buffer.byteLength(captured.result ?? "", "utf8"),
+		).toBeLessThanOrEqual(64 * 1024);
 		expect(captured.truncated?.[0]).toMatchObject({
 			field: "result",
 			capBytes: 64 * 1024,

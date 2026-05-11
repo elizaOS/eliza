@@ -74,7 +74,8 @@
       "runtimeReady": true,
       "shippedSymbols": [
         "kernel_get_rows_q4_polar",
-        "kernel_mul_mv_q4_polar_f32"
+        "kernel_mul_mv_q4_polar_f32",
+        "kernel_mul_mv_q4_polar_preht_f32"
       ],
       "graphOp": "GGML_OP_ATTN_SCORE_POLAR",
       "smokeTarget": "dispatch-smoke",
@@ -82,7 +83,7 @@
       "smokeScores": 64,
       "maxDiff": 1.907e-6,
       "evidenceDate": "2026-05-11",
-      "notes": "dispatch_smoke covers both use_qjl=0 and use_qjl=1 through GGML_OP_ATTN_SCORE_POLAR and kernel_mul_mv_q4_polar_f32."
+      "notes": "dispatch_smoke covers both use_qjl=0 and use_qjl=1 through GGML_OP_ATTN_SCORE_POLAR and kernel_mul_mv_q4_polar_f32. The pre-Hadamard symbol is standalone verified and shipped, but requires an H*q graph pretransform before runtime routing can use it."
     }
   }
 }

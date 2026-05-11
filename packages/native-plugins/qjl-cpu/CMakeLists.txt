@@ -16,6 +16,7 @@ set(QJL_SRCS
     src/qjl_projection.c
     src/qjl_quantize_ref.c
     src/qjl_score_ref.c
+    src/qjl_score_i8_ref.c
     src/qjl_dispatch.c
 )
 
@@ -55,6 +56,10 @@ endif()
 add_executable(qjl_bench test/qjl_bench.c)
 target_link_libraries(qjl_bench PRIVATE qjl m)
 target_compile_options(qjl_bench PRIVATE -O3 -Wall -Wextra)
+
+add_executable(qjl_int8_smoke test/qjl_int8_smoke.c)
+target_link_libraries(qjl_int8_smoke PRIVATE qjl m)
+target_compile_options(qjl_int8_smoke PRIVATE -O2 -Wall -Wextra)
 
 # qjl_fork_parity: dlopen the apothic/llama.cpp-1bit-turboquant fork's
 # libggml-cpu.so and assert quantize_row_qjl1_256 produces bit-exact

@@ -1,5 +1,6 @@
 import Foundation
 import Capacitor
+import WebKit
 
 private let maxRequestBodyBytes = 10 * 1024 * 1024
 private let maxResponseBodyBytes = 10 * 1024 * 1024
@@ -141,7 +142,22 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         if isLocalAgentMode(call: call) {
-            call.reject(localIttpOnlyMessage())
+            let timeout = timeoutMs(from: call)
+            ensureLocalConversation(timeoutMs: timeout) { conversationResult in
+                switch conversationResult {
+                case .success(let conversationId):
+                    self.sendLocalChatMessage(conversationId: conversationId, text: text, timeoutMs: timeout, retryOnMissingConversation: true) { result in
+                        switch result {
+                        case .success(let payload):
+                            call.resolve(payload)
+                        case .failure(let error):
+                            call.reject(error.localizedDescription)
+                        }
+                    }
+                case .failure(let error):
+                    call.reject(error.localizedDescription)
+                }
+            }
             return
         }
         guard let endpoint = resolveEndpoint(call: call) else {
@@ -183,15 +199,6 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func request(_ call: CAPPluginCall) {
-        if isLocalAgentMode(call: call) {
-            call.reject(localIttpOnlyMessage())
-            return
-        }
-
-        guard let endpoint = resolveEndpoint(call: call) else {
-            call.reject(missingEndpointMessage())
-            return
-        }
         guard let path = call.getString("path")?.trimmingCharacters(in: .whitespacesAndNewlines),
               isSafeLocalPath(path) else {
             call.reject("Agent.request requires a local path that starts with / and is not an absolute URL")
@@ -209,6 +216,28 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         let headers = call.getObject("headers") ?? [:]
+        if isLocalAgentMode(call: call) {
+            sendLocalIttpRequest(
+                path: path,
+                method: method,
+                headers: headers,
+                body: body,
+                timeoutMs: timeoutMs(from: call)
+            ) { result in
+                switch result {
+                case .success(let response):
+                    call.resolve(self.agentHTTPResponseObject(response))
+                case .failure(let error):
+                    call.reject("iOS local agent request failed: \(error.localizedDescription)")
+                }
+            }
+            return
+        }
+
+        guard let endpoint = resolveEndpoint(call: call) else {
+            call.reject(missingEndpointMessage())
+            return
+        }
         sendJSON(
             endpoint: endpoint,
             path: path,
@@ -228,6 +257,165 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
             case .failure(let error):
                 call.reject("Local agent request failed: \(error.localizedDescription)")
             }
+        }
+    }
+
+    private func ensureLocalConversation(
+        timeoutMs: Int,
+        completion: @escaping (Result<String, Error>) -> Void
+    ) {
+        let baseKey = "ios-local-ittp"
+        if let existing = Self.conversationIdByBaseURL[baseKey], !existing.isEmpty {
+            completion(.success(existing))
+            return
+        }
+
+        sendLocalIttpRequest(
+            path: "/api/conversations",
+            method: "POST",
+            headers: ["Content-Type": "application/json"],
+            body: "{\"title\":\"Quick Chat\"}",
+            timeoutMs: timeoutMs
+        ) { result in
+            switch result {
+            case .success(let response):
+                guard self.isHTTPSuccess(response.status) else {
+                    completion(.failure(self.pluginError(self.httpErrorMessage(prefix: "Failed to create local conversation", response: response))))
+                    return
+                }
+                guard let payload = self.parseJSONObject(response.body),
+                      let conversation = payload["conversation"] as? JSObject,
+                      let id = conversation["id"] as? String,
+                      !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    completion(.failure(self.pluginError("Local conversation create response missing id")))
+                    return
+                }
+                Self.conversationIdByBaseURL[baseKey] = id
+                completion(.success(id))
+            case .failure(let error):
+                completion(.failure(self.pluginError("Failed to create local conversation: \(error.localizedDescription)")))
+            }
+        }
+    }
+
+    private func sendLocalChatMessage(
+        conversationId: String,
+        text: String,
+        timeoutMs: Int,
+        retryOnMissingConversation: Bool,
+        completion: @escaping (Result<JSObject, Error>) -> Void
+    ) {
+        let path = "/api/conversations/\(urlEncode(conversationId))/messages"
+        let bodyObject: JSObject = [
+            "text": text,
+            "channelType": "DM",
+        ]
+        guard let bodyData = try? JSONSerialization.data(withJSONObject: bodyObject, options: []),
+              let body = String(data: bodyData, encoding: .utf8) else {
+            completion(.failure(pluginError("Failed to encode local chat request")))
+            return
+        }
+
+        sendLocalIttpRequest(
+            path: path,
+            method: "POST",
+            headers: ["Content-Type": "application/json"],
+            body: body,
+            timeoutMs: timeoutMs
+        ) { result in
+            switch result {
+            case .success(let response):
+                if response.status == 404 && retryOnMissingConversation {
+                    Self.conversationIdByBaseURL.removeValue(forKey: "ios-local-ittp")
+                    self.ensureLocalConversation(timeoutMs: timeoutMs) { nextConversation in
+                        switch nextConversation {
+                        case .success(let nextId):
+                            self.sendLocalChatMessage(
+                                conversationId: nextId,
+                                text: text,
+                                timeoutMs: timeoutMs,
+                                retryOnMissingConversation: false,
+                                completion: completion
+                            )
+                        case .failure(let error):
+                            completion(.failure(error))
+                        }
+                    }
+                    return
+                }
+                guard self.isHTTPSuccess(response.status) else {
+                    completion(.failure(self.pluginError(self.httpErrorMessage(prefix: "Local chat request failed", response: response))))
+                    return
+                }
+                let payload = self.parseJSONObject(response.body) ?? [:]
+                let responseText = (payload["text"] as? String) ?? ""
+                let agentName = (payload["agentName"] as? String) ?? "Agent"
+                completion(.success([
+                    "text": responseText,
+                    "agentName": agentName,
+                ]))
+            case .failure(let error):
+                completion(.failure(self.pluginError("Local chat request failed: \(error.localizedDescription)")))
+            }
+        }
+    }
+
+    private func sendLocalIttpRequest(
+        path: String,
+        method: String,
+        headers: JSObject = [:],
+        body: String? = nil,
+        timeoutMs: Int,
+        completion: @escaping (Result<AgentHTTPResponse, Error>) -> Void
+    ) {
+        guard let webView = bridge?.webView else {
+            completion(.success(localIttpUnavailableResponse()))
+            return
+        }
+
+        let payload: JSObject = [
+            "path": path,
+            "method": method,
+            "headers": headers,
+            "body": body ?? NSNull(),
+            "timeoutMs": timeoutMs,
+        ]
+
+        let source = """
+        const handler = window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__;
+        if (typeof handler !== "function") {
+          return {
+            status: 503,
+            statusText: "Service Unavailable",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              ok: false,
+              error: "ios_ittp_handler_unavailable",
+              reason: "The WebView ITTP local-agent request bridge is not installed yet."
+            })
+          };
+        }
+        return await handler(options);
+        """
+
+        if #available(iOS 14.0, *) {
+            DispatchQueue.main.async {
+                Task { @MainActor in
+                    do {
+                        let value = try await webView.callAsyncJavaScript(
+                            source,
+                            arguments: ["options": payload],
+                            in: nil,
+                            contentWorld: .page
+                        )
+                        completion(self.parseAgentHTTPResponse(value))
+                    } catch {
+                        completion(.failure(error))
+                    }
+                }
+            }
+        } else {
+            completion(.success(localIttpUnavailableResponse()))
         }
     }
 
@@ -633,6 +821,61 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
         return json
     }
 
+    private func parseAgentHTTPResponse(_ value: Any?) -> Result<AgentHTTPResponse, Error> {
+        guard let payload = value as? JSObject else {
+            return .failure(pluginError("iOS local ITTP bridge returned a non-object response"))
+        }
+        let status = (payload["status"] as? Int)
+            ?? (payload["status"] as? NSNumber)?.intValue
+            ?? 500
+        let statusText = payload["statusText"] as? String
+            ?? HTTPURLResponse.localizedString(forStatusCode: status)
+        let rawHeaders = payload["headers"] as? JSObject ?? [:]
+        var headers: [String: String] = [:]
+        for (key, value) in rawHeaders {
+            headers[key.lowercased()] = String(describing: value)
+        }
+        let body = payload["body"] as? String ?? ""
+        if let bodyBytes = body.data(using: .utf8), bodyBytes.count > maxResponseBodyBytes {
+            return .failure(pluginError("Response body is too large"))
+        }
+        return .success(AgentHTTPResponse(
+            status: status,
+            statusText: statusText,
+            headers: headers,
+            body: body
+        ))
+    }
+
+    private func agentHTTPResponseObject(_ response: AgentHTTPResponse) -> JSObject {
+        var headers: JSObject = [:]
+        for (key, value) in response.headers {
+            headers[key] = value
+        }
+        return [
+            "status": response.status,
+            "statusText": response.statusText,
+            "headers": headers,
+            "body": response.body,
+        ]
+    }
+
+    private func localIttpUnavailableResponse() -> AgentHTTPResponse {
+        let bodyObject: JSObject = [
+            "ok": false,
+            "error": "ios_ittp_handler_unavailable",
+            "reason": localIttpOnlyMessage(),
+        ]
+        let bodyData = try? JSONSerialization.data(withJSONObject: bodyObject, options: [])
+        let body = bodyData.flatMap { String(data: $0, encoding: .utf8) } ?? "{\"ok\":false,\"error\":\"ios_ittp_handler_unavailable\"}"
+        return AgentHTTPResponse(
+            status: 503,
+            statusText: HTTPURLResponse.localizedString(forStatusCode: 503),
+            headers: ["content-type": "application/json"],
+            body: body
+        )
+    }
+
     private func httpErrorMessage(prefix: String, response: AgentHTTPResponse) -> String {
         let body = response.body.trimmingCharacters(in: .whitespacesAndNewlines)
         if body.isEmpty {
@@ -646,7 +889,7 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func localIttpOnlyMessage() -> String {
-        return "iOS local agent requests are handled by the WebView ITTP route kernel. Native Agent.request/Agent.chat does not proxy the local loopback URL yet."
+        return "iOS local agent requests require the WebView ITTP route kernel bridge. Start the app WebView before calling native Agent.request or Agent.chat in local mode."
     }
 
     private func urlEncode(_ value: String) -> String {

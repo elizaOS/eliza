@@ -32,6 +32,7 @@
 
 import { findCatalogModel } from "./catalog";
 import type { CatalogModel, LocalRuntimeKernel } from "./types";
+import type { VerifierStreamEvent } from "./voice/types";
 
 /**
  * Per-load runtime overrides forwarded by the dispatcher to whichever
@@ -117,6 +118,13 @@ export interface GenerateArgs {
    * completed text until the binding path exposes token callbacks here.
    */
   onTextChunk?: (chunk: string) => void | Promise<void>;
+  /**
+   * Native verifier stream from speculative backends. Current llama-server
+   * builds synthesize accept events from streamed text deltas; future DFlash
+   * builds should emit exact accept/reject token ranges here so voice TTS
+   * rollback does not need to infer them from text chunks.
+   */
+  onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
 }
 
 export type GenerateResult = string;

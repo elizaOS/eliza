@@ -13,9 +13,9 @@
 
 import { Hono } from "hono";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { paymentCallbackBus } from "@/lib/services/payment-callback-bus";
 import { stripePaymentAdapter } from "@/lib/services/payment-adapters/stripe";
-import { IgnoredWebhookEvent } from "@/lib/services/payment-requests";
+import { paymentCallbackBus } from "@/lib/services/payment-callback-bus";
+import { IgnoredWebhookEvent } from "@/lib/services/payment-webhook-errors";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -59,13 +59,29 @@ app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
     }
   }
 
-  paymentCallbackBus.publish({
-    name: parsed.status === "settled" ? "PaymentSettled" : "PaymentFailed",
-    paymentRequestId: parsed.paymentRequestId,
-    provider: "stripe",
-    txRef: parsed.txRef,
-    providerEventId: providerEventId ?? undefined,
-  });
+  if (parsed.status === "settled") {
+    await paymentCallbackBus.publish({
+      name: "PaymentSettled",
+      paymentRequestId: parsed.paymentRequestId,
+      provider: "stripe",
+      txRef: parsed.txRef,
+      providerEventId: providerEventId ?? undefined,
+      settledAt: new Date(),
+    });
+  } else {
+    await paymentCallbackBus.publish({
+      name: "PaymentFailed",
+      paymentRequestId: parsed.paymentRequestId,
+      provider: "stripe",
+      txRef: parsed.txRef,
+      providerEventId: providerEventId ?? undefined,
+      error:
+        typeof parsed.proof.stripe_failure_message === "string"
+          ? parsed.proof.stripe_failure_message
+          : "Stripe payment failed",
+      failedAt: new Date(),
+    });
+  }
 
   return c.json({ success: true, published: true }, 200);
 });

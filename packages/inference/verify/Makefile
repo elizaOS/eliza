@@ -106,8 +106,8 @@ vulkan-qjl-polar: vulkan_verify vulkan-spirv
 	./vulkan_verify ../vulkan/polar_preht.spv fixtures/polar_qjl.json
 
 # Full Vulkan correctness gate for the default-on kernel set. Runs all five
-# score kernels plus the Polar residual fixture so the optional residual branch
-# is not left to source review only.
+# score kernels plus Polar residual and pre-Hadamard variants so the optional
+# residual branch and H*q hot path are not left to source review only.
 vulkan-verify: vulkan_verify vulkan-spirv reference-test
 	@echo "[kernels/verify] vulkan turbo3..."
 	./vulkan_verify ../vulkan/turbo3.spv fixtures/turbo3.json
@@ -247,6 +247,8 @@ bench: cpu-bench
 GLSLC ?= $(shell command -v glslc 2>/dev/null)
 ifeq ($(GLSLC),)
 NDK_GLSLC := $(firstword \
+    $(wildcard $(HOME)/Library/Android/sdk/ndk/*/shader-tools/darwin-x86_64/glslc) \
+    $(wildcard $(HOME)/Library/Android/sdk/ndk/*/shader-tools/linux-x86_64/glslc) \
     $(wildcard $(HOME)/Android/Sdk/ndk/*/shader-tools/linux-x86_64/glslc) \
     $(wildcard $(HOME)/Android/Sdk/ndk/*/shader-tools/darwin-x86_64/glslc))
 GLSLC := $(NDK_GLSLC)
@@ -455,7 +457,9 @@ else
 	  echo "[verify-fork] metal/turbo3_tcq (patched shipped: turbo3_tcq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/turbo3_tcq.metal kernel_turbo3_tcq_dot      fixtures/turbo3_tcq.json && \
 	  echo "[verify-fork] metal/qjl     (patched shipped: qjl.metal)"         && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/qjl.metal        kernel_attn_score_qjl1_256 fixtures/qjl.json        && \
 	  echo "[verify-fork] metal/polar   (patched shipped: polar.metal)"       && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json      && \
-	  echo "[verify-fork] metal: 5/5 patched shipped shaders verified against the same fixtures as the standalones"; \
+	  echo "[verify-fork] metal/polar_preht (patched shipped: polar.metal)"   && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar.json && \
+	  echo "[verify-fork] metal/polar_preht + QJL residual (patched shipped: polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal kernel_mul_mv_q4_polar_preht_f32 fixtures/polar_qjl.json && \
+	  echo "[verify-fork] metal: 5/5 patched shipped shader files plus Polar preht variants verified against the same fixtures as the standalones"; \
 	else \
 	  echo "[verify-fork] xcrun not found — skipping Metal fork verification (macOS only)"; \
 	fi

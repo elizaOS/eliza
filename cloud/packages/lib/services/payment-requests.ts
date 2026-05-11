@@ -2,7 +2,12 @@ import type {
   PaymentRequestRow,
   PaymentRequestsRepository,
 } from "@/db/repositories/payment-requests";
+
+export { IgnoredWebhookEvent } from "@/lib/services/payment-webhook-errors";
+
 import { logger } from "@/lib/utils/logger";
+
+export type { PaymentRequestRow } from "@/db/repositories/payment-requests";
 
 export type PaymentProvider = PaymentRequestRow["provider"];
 export type PaymentRequestStatus = PaymentRequestRow["status"];
@@ -61,10 +66,7 @@ export interface PaymentProviderAdapter {
   /**
    * Optional: verify a webhook payload signature. Returns parsed payload or throws.
    */
-  parseWebhook?(args: {
-    rawBody: string;
-    signature: string | null;
-  }): Promise<{
+  parseWebhook?(args: { rawBody: string; signature: string | null }): Promise<{
     paymentRequestId: string;
     status: "settled" | "failed";
     txRef?: string;
@@ -77,15 +79,9 @@ export interface PaymentRequestsService {
     input: CreatePaymentRequestInput,
   ): Promise<{ paymentRequest: PaymentRequestRow; hostedUrl?: string }>;
   get(id: string, organizationId: string): Promise<PaymentRequestRow | null>;
-  list(
-    organizationId: string,
-    filter?: ListPaymentRequestsFilter,
-  ): Promise<PaymentRequestRow[]>;
-  cancel(
-    id: string,
-    organizationId: string,
-    reason?: string,
-  ): Promise<PaymentRequestRow>;
+  getPublic(id: string): Promise<PaymentRequestRow | null>;
+  list(organizationId: string, filter?: ListPaymentRequestsFilter): Promise<PaymentRequestRow[]>;
+  cancel(id: string, organizationId: string, reason?: string): Promise<PaymentRequestRow>;
   expirePast(now?: Date): Promise<string[]>;
   /**
    * Settlement is provider-driven and arrives via PaymentCallbackBus
@@ -95,6 +91,11 @@ export interface PaymentRequestsService {
     id: string,
     settlementTxRef: string,
     settlementProof: Record<string, unknown>,
+  ): Promise<PaymentRequestRow>;
+  markInitialized(
+    id: string,
+    providerIntent: Record<string, unknown>,
+    hostedUrl?: string | null,
   ): Promise<PaymentRequestRow>;
   markFailed(id: string, error: string): Promise<PaymentRequestRow>;
 }
@@ -117,10 +118,7 @@ function validateCreateInput(input: CreatePaymentRequestInput): void {
   if (!input.paymentContext || typeof input.paymentContext.kind !== "string") {
     throw new Error("paymentContext is required");
   }
-  if (
-    input.paymentContext.kind === "specific_payer" &&
-    !input.paymentContext.payerIdentityId
-  ) {
+  if (input.paymentContext.kind === "specific_payer" && !input.paymentContext.payerIdentityId) {
     throw new Error("paymentContext.payerIdentityId is required for specific_payer");
   }
   if (input.callbackSecret && !input.callbackUrl) {
@@ -260,6 +258,10 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
     return row;
   }
 
+  async getPublic(id: string): Promise<PaymentRequestRow | null> {
+    return this.repository.getPaymentRequest(id);
+  }
+
   async list(
     organizationId: string,
     filter: ListPaymentRequestsFilter = {},
@@ -274,16 +276,8 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
     });
   }
 
-  async cancel(
-    id: string,
-    organizationId: string,
-    reason?: string,
-  ): Promise<PaymentRequestRow> {
-    const existing = requireRow(
-      await this.repository.getPaymentRequest(id),
-      id,
-      "cancel lookup",
-    );
+  async cancel(id: string, organizationId: string, reason?: string): Promise<PaymentRequestRow> {
+    const existing = requireRow(await this.repository.getPaymentRequest(id), id, "cancel lookup");
     if (existing.organizationId !== organizationId) {
       throw new Error(`Payment request ${id} does not belong to organization ${organizationId}`);
     }
@@ -379,6 +373,32 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
     return updated;
   }
 
+  async markInitialized(
+    id: string,
+    providerIntent: Record<string, unknown>,
+    hostedUrl?: string | null,
+  ): Promise<PaymentRequestRow> {
+    const updated = requireRow(
+      await this.repository.updatePaymentRequestStatus(id, "delivered", {
+        providerIntent,
+        hostedUrl,
+      }),
+      id,
+      "markInitialized update",
+    );
+
+    await this.repository.recordPaymentRequestEvent({
+      paymentRequestId: id,
+      eventName: "payment.delivered",
+      redactedPayload: redactSettlementPayload({
+        paymentRequest: updated,
+        status: updated.status,
+      }),
+    });
+
+    return updated;
+  }
+
   async markFailed(id: string, error: string): Promise<PaymentRequestRow> {
     const existing = requireRow(
       await this.repository.getPaymentRequest(id),
@@ -417,4 +437,14 @@ export function createPaymentRequestsService(
   deps: PaymentRequestsServiceDeps,
 ): PaymentRequestsService {
   return new PaymentRequestsServiceImpl(deps);
+}
+
+export function redactPaymentRequestForPublic(
+  row: PaymentRequestRow,
+): Omit<PaymentRequestRow, "callbackSecret" | "settlementProof"> {
+  const { callbackSecret: _callbackSecret, settlementProof: _settlementProof, ...publicRow } = row;
+  return {
+    ...publicRow,
+    payerIdentityId: row.paymentContext.kind === "any_payer" ? null : row.payerIdentityId,
+  };
 }

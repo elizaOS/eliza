@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -78,12 +79,53 @@ def load_jsonl(path: Path, *, max_n: int | None = None) -> list[dict[str, Any]]:
     return out
 
 
+def _record_shape(record: dict[str, Any]) -> str:
+    if record.get("format") == "eliza_native_v1":
+        return "eliza_native_v1"
+    if record.get("schema") == "eliza.eliza1_trajectory_record.v1":
+        return "eliza1_trajectory_record"
+    if isinstance(record.get("messages"), list):
+        return "chat_messages"
+    legacy_fields = {
+        "roomName",
+        "agentId",
+        "memoryEntries",
+        "currentMessage",
+        "expectedResponse",
+        "availableActions",
+        "metadata",
+    }
+    if legacy_fields <= set(record):
+        return "legacy_eliza_record"
+    return "unknown"
+
+
 def build_dataset(
-    records: list[dict[str, Any]], tokenizer: Any, *, max_chars: int | None = None,
+    records: list[dict[str, Any]],
+    tokenizer: Any,
+    *,
+    split_name: str,
+    max_chars: int | None = None,
 ) -> Any:
-    formatted = [format_record(r) for r in records]
-    formatted = [r for r in formatted if r]
-    log.info("formatted %d/%d records", len(formatted), len(records))
+    formatted = []
+    skipped = Counter()
+    for record in records:
+        row = format_record(record)
+        if row:
+            formatted.append(row)
+        else:
+            skipped[_record_shape(record)] += 1
+    log.info("formatted %s %d/%d records", split_name, len(formatted), len(records))
+    if not formatted:
+        seen = ", ".join(f"{name}={count}" for name, count in sorted(skipped.items()))
+        raise ValueError(
+            f"{split_name} split has {len(records)} JSONL record(s), but none "
+            "are train_local-compatible after formatting"
+            + (f" (seen: {seen})" if seen else "")
+            + ". Accepted shapes: eliza_native_v1, trainable "
+            "eliza.eliza1_trajectory_record.v1/messages rows, and legacy "
+            "flat ElizaRecord rows. repair_eval/failed rows are rejected."
+        )
     from datasets import Dataset
 
     def render(example):
@@ -107,6 +149,11 @@ def build_dataset(
         before = len(ds)
         ds = ds.filter(lambda ex: len(ex["text"]) <= max_chars)
         log.info("char-filter %d → %d (max_chars=%d)", before, len(ds), max_chars)
+        if len(ds) == 0:
+            raise ValueError(
+                f"{split_name} split has no rows left after --max-chars={max_chars}; "
+                "raise the limit or inspect oversized records."
+            )
     return ds
 
 
@@ -236,8 +283,26 @@ def main() -> int:
         return 1
 
     max_chars = args.max_chars or None
-    train_ds = build_dataset(train_recs, tokenizer, max_chars=max_chars)
-    val_ds = build_dataset(val_recs, tokenizer, max_chars=max_chars) if val_recs else None
+    try:
+        train_ds = build_dataset(
+            train_recs,
+            tokenizer,
+            split_name="train",
+            max_chars=max_chars,
+        )
+        val_ds = (
+            build_dataset(
+                val_recs,
+                tokenizer,
+                split_name="validation",
+                max_chars=max_chars,
+            )
+            if val_recs
+            else None
+        )
+    except ValueError as exc:
+        log.error("%s", exc)
+        return 1
 
     log.info("loading model %s qlora=%s", args.model, args.qlora)
     quant_cfg = None

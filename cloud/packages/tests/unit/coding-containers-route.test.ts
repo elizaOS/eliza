@@ -268,6 +268,36 @@ describe("coding-containers route", () => {
   });
 
   test("accepts sync requests with decoded container ids", async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown>; headers: Headers }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({
+        url: String(input),
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+        headers: new Headers(init?.headers),
+      });
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            status: "ready",
+            direction: "roundtrip",
+            changedFiles: [
+              {
+                path: "src/index.ts",
+                contents: "ZXhwb3J0IHt9Owo=",
+                encoding: "base64",
+                size: 11,
+              },
+            ],
+            deletedFiles: [],
+            patches: [],
+            metadata: { exportedFileCount: 1 },
+          },
+        }),
+        { status: 202, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+
     const route = await loadCodingContainerSyncRoute();
     const res = await route.request(
       "https://api.test/api/v1/coding-containers/container%2Fone/sync",
@@ -275,21 +305,37 @@ describe("coding-containers route", () => {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          direction: "pull",
+          direction: "roundtrip",
           target: { sourceKind: "workspace", workspaceId: "workspace-1" },
-          patches: [{ path: "src/index.ts", format: "unified-diff", patch: "@@ test" }],
+          changedFiles: [{ path: "src/index.ts", contents: "export {};\n", encoding: "utf-8" }],
         }),
+      },
+      {
+        CONTAINER_CONTROL_PLANE_URL: "https://control-plane.example.test",
+        CONTAINER_CONTROL_PLANE_TOKEN: "secret-token",
+        DATABASE_URL: "postgres://db.example/test",
       },
     );
 
     expect(res.status).toBe(202);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe(
+      "https://control-plane.example.test/api/v1/containers/container%2Fone/workspace-sync",
+    );
+    expect(calls[0]?.headers.get("x-container-control-plane-token")).toBe("secret-token");
+    expect(calls[0]?.body).toMatchObject({
+      direction: "roundtrip",
+      changedFiles: [{ path: "src/index.ts", contents: "export {};\n", encoding: "utf-8" }],
+    });
     await expect(res.json()).resolves.toMatchObject({
       success: true,
       data: {
         containerId: "container/one",
-        status: "accepted",
-        direction: "pull",
+        status: "ready",
+        direction: "roundtrip",
         target: { sourceKind: "workspace", workspaceId: "workspace-1" },
+        changedFiles: [{ path: "src/index.ts", encoding: "base64" }],
+        metadata: { exportedFileCount: 1 },
       },
     });
   });

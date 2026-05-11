@@ -41,7 +41,7 @@ describe("platform policy docs", () => {
       "TODO-AVF-PAYLOAD",
       "TODO-STORE-MOBILE-NATIVE-BRIDGES",
       "TODO-VFS-UI",
-      "TODO-CLOUD-BACKEND",
+      "TODO-CLOUD-RUNTIME-UX",
       "TODO-REVIEW-NOTES",
     ]) {
       expect(plan, `missing implementation TODO ${todo}`).toContain(todo);

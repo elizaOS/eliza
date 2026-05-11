@@ -107,7 +107,10 @@ function makeFakeRepository(seed?: PaymentRequestRow) {
     async expirePastPaymentRequests(now: Date): Promise<string[]> {
       const expired: string[] = [];
       for (const [id, row] of store) {
-        if (row.expiresAt.getTime() <= now.getTime() && row.status === "pending") {
+        if (
+          row.expiresAt.getTime() <= now.getTime() &&
+          (row.status === "pending" || row.status === "delivered")
+        ) {
           store.set(id, { ...row, status: "expired", updatedAt: new Date() });
           expired.push(id);
         }
@@ -122,9 +125,7 @@ function makeFakeRepository(seed?: PaymentRequestRow) {
   return { repo, store, events };
 }
 
-function makeStubAdapter(
-  overrides: Partial<PaymentProviderAdapter> = {},
-): PaymentProviderAdapter {
+function makeStubAdapter(overrides: Partial<PaymentProviderAdapter> = {}): PaymentProviderAdapter {
   return {
     provider: "stripe",
     async createIntent({ request }) {
@@ -160,9 +161,7 @@ describe("paymentRequestsService", () => {
     expect(result.paymentRequest.organizationId).toBe("org-1");
     expect(result.paymentRequest.amountCents).toBe(1234);
     expect(result.paymentRequest.currency).toBe("USD");
-    expect(result.hostedUrl).toBe(
-      `https://stub.invalid/stripe/${result.paymentRequest.id}`,
-    );
+    expect(result.hostedUrl).toBe(`https://stub.invalid/stripe/${result.paymentRequest.id}`);
     expect(result.paymentRequest.providerIntent).toEqual({ stub: true });
 
     const created = fake.events.find((e) => e.eventName === "payment.created");
@@ -306,6 +305,26 @@ describe("paymentRequestsService", () => {
     );
   });
 
+  test("markInitialized transitions to delivered and records payment.delivered", async () => {
+    const seed = makeRow({ id: "pr_seed", status: "pending" });
+    const fakeSeeded = makeFakeRepository(seed);
+    const service = createPaymentRequestsService({
+      repository: fakeSeeded.repo,
+      adapters: [makeStubAdapter()],
+    });
+
+    const delivered = await service.markInitialized(
+      "pr_seed",
+      { stripe_session_id: "cs_test" },
+      "https://checkout.stripe.com/c/pay/cs_test",
+    );
+
+    expect(delivered.status).toBe("delivered");
+    expect(delivered.providerIntent).toEqual({ stripe_session_id: "cs_test" });
+    expect(delivered.hostedUrl).toBe("https://checkout.stripe.com/c/pay/cs_test");
+    expect(fakeSeeded.events.some((e) => e.eventName === "payment.delivered")).toBe(true);
+  });
+
   test("markFailed transitions to failed and records reason", async () => {
     const seed = makeRow({ id: "pr_seed", status: "delivered" });
     const fakeSeeded = makeFakeRepository(seed);
@@ -330,9 +349,7 @@ describe("paymentRequestsService", () => {
       adapters: [makeStubAdapter()],
     });
 
-    await expect(service.markFailed("pr_seed", "x")).rejects.toThrow(
-      /already in terminal status/,
-    );
+    await expect(service.markFailed("pr_seed", "x")).rejects.toThrow(/already in terminal status/);
   });
 
   test("expirePast records payment.expired for each expired id", async () => {

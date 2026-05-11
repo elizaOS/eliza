@@ -7750,9 +7750,7 @@ export class DefaultMessageService implements IMessageService {
 							String(runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") ?? ""),
 						),
 					shouldRespondModel: resolvedShouldRespondModel,
-					...(options?.abortSignal
-						? { abortSignal: options.abortSignal }
-						: {}),
+					...(options?.abortSignal ? { abortSignal: options.abortSignal } : {}),
 				};
 
 				const instrumentedCallback = wrapSingleTurnVisibleCallback(
@@ -7862,17 +7860,13 @@ export class DefaultMessageService implements IMessageService {
 											responseId,
 										);
 									},
-									onToolResult: async (
-										payload: StreamingToolResultPayload,
-									) => {
+									onToolResult: async (payload: StreamingToolResultPayload) => {
 										await opts.onStreamChunk?.(
 											JSON.stringify({ type: "tool_result", ...payload }),
 											responseId,
 										);
 									},
-									onEvaluation: async (
-										payload: StreamingEvaluationPayload,
-									) => {
+									onEvaluation: async (payload: StreamingEvaluationPayload) => {
 										await opts.onStreamChunk?.(
 											JSON.stringify({ type: "evaluation", ...payload }),
 											responseId,

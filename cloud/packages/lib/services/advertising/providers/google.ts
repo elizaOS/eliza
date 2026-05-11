@@ -825,7 +825,11 @@ export const googleAdsProvider: AdProvider = {
           ready: true,
         };
       }
-      if (!/^customers\/\d+\/youTubeVideoUploads\/[a-zA-Z0-9_-]+$/.test(input.providerAssetResourceName)) {
+      if (
+        !/^customers\/\d+\/youTubeVideoUploads\/[a-zA-Z0-9_-]+$/.test(
+          input.providerAssetResourceName,
+        )
+      ) {
         return {
           success: false,
           error: "Invalid Google Ads video upload resource name",

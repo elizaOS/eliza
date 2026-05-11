@@ -10,6 +10,7 @@ import { getHetznerPoolContainerCreator } from "@/lib/services/containers/agent-
 import {
   type ContainerBootstrapFile,
   type ContainerBootstrapSource,
+  type ContainerWorkspaceSyncRequest,
   type CreateContainerInput,
   getHetznerContainersClient,
   HetznerClientError,
@@ -241,6 +242,74 @@ function readBootstrapSource(body: Record<string, unknown>): ContainerBootstrapS
       : {}),
     ...(source.metadata && typeof source.metadata === "object" && !Array.isArray(source.metadata)
       ? { metadata: source.metadata as Record<string, unknown> }
+      : {}),
+  };
+}
+
+function readWorkspaceSyncRequest(body: Record<string, unknown>): ContainerWorkspaceSyncRequest {
+  const directionRaw = body.direction;
+  const direction =
+    directionRaw === undefined || directionRaw === null
+      ? undefined
+      : directionRaw === "pull" || directionRaw === "push" || directionRaw === "roundtrip"
+        ? directionRaw
+        : null;
+  if (direction === null) {
+    throw new HetznerClientError("invalid_input", "direction must be pull, push, or roundtrip");
+  }
+
+  const source = readBootstrapSource({
+    bootstrap_source: { sourceKind: "project", files: body.changedFiles },
+  });
+  const rawDeleted = body.deletedFiles;
+  if (rawDeleted !== undefined && !Array.isArray(rawDeleted)) {
+    throw new HetznerClientError("invalid_input", "deletedFiles must be an array");
+  }
+  const deletedFiles =
+    rawDeleted?.map((rawFile, index) => {
+      if (!rawFile || typeof rawFile !== "object" || Array.isArray(rawFile)) {
+        throw new HetznerClientError("invalid_input", `deletedFiles.${index} must be an object`);
+      }
+      const file = rawFile as Record<string, unknown>;
+      if (typeof file.path !== "string" || !file.path.trim()) {
+        throw new HetznerClientError("invalid_input", `deletedFiles.${index}.path is required`);
+      }
+      return {
+        path: file.path.trim(),
+        ...(typeof file.sha256 === "string" ? { sha256: file.sha256 } : {}),
+      };
+    }) ?? [];
+
+  const rawPatches = body.patches;
+  if (rawPatches !== undefined && !Array.isArray(rawPatches)) {
+    throw new HetznerClientError("invalid_input", "patches must be an array");
+  }
+  const patches =
+    rawPatches?.map((rawPatch, index) => {
+      if (!rawPatch || typeof rawPatch !== "object" || Array.isArray(rawPatch)) {
+        throw new HetznerClientError("invalid_input", `patches.${index} must be an object`);
+      }
+      const patch = rawPatch as Record<string, unknown>;
+      if (typeof patch.path !== "string" || !patch.path.trim()) {
+        throw new HetznerClientError("invalid_input", `patches.${index}.path is required`);
+      }
+      if (typeof patch.patch !== "string") {
+        throw new HetznerClientError("invalid_input", `patches.${index}.patch is required`);
+      }
+      return {
+        path: patch.path.trim(),
+        format: typeof patch.format === "string" ? patch.format : "unified-diff",
+        patch: patch.patch,
+      };
+    }) ?? [];
+
+  return {
+    ...(direction ? { direction } : {}),
+    changedFiles: source?.files ?? [],
+    deletedFiles,
+    patches,
+    ...(body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
+      ? { metadata: body.metadata as Record<string, unknown> }
       : {}),
   };
 }
@@ -770,6 +839,18 @@ app.delete("/api/v1/containers/:id", (c) =>
   handle(c, async (auth) => {
     await client.deleteContainer(c.req.param("id"), auth.organizationId);
     return c.json({ success: true });
+  }),
+);
+
+app.post("/api/v1/containers/:id/workspace-sync", (c) =>
+  handle(c, async (auth) => {
+    const body = await readJsonObject(c);
+    const data = await client.syncWorkspace(
+      c.req.param("id"),
+      auth.organizationId,
+      readWorkspaceSyncRequest(body),
+    );
+    return c.json({ success: true, data }, 202);
   }),
 );
 

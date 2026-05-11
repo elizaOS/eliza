@@ -6,8 +6,9 @@
  *
  * - Electrobun desktop: RPC to the main-process AgentManager
  * - Android/Web: HTTP calls to the API server or bundled loopback agent
- * - iOS: HTTP for remote/cloud endpoints; local dev/sideload routes through
- *   the WebView ITTP kernel until the native route-kernel bridge lands
+ * - iOS: HTTP for remote/cloud endpoints; local dev/sideload foreground
+ *   requests bridge into the WebView ITTP kernel until the native route-kernel
+ *   backend lands
  */
 
 export interface AgentStatus {
@@ -76,6 +77,8 @@ export interface AgentPlugin {
    * Native implementations must reject absolute URLs and route only to the
    * app-owned local backend. This is a transitional transport before the
    * backend route kernel can run over Binder/LocalSocket/WKURLSchemeHandler.
+   * On iOS local dev/sideload builds this requires the WebView ITTP bridge to
+   * be installed, so it is a foreground-only path.
    */
   request?(options: AgentRequestOptions): Promise<AgentRequestResult>;
 }

@@ -22,7 +22,10 @@ import {
 
 const ID = "location" as const;
 
-function stateFromNative(value: number, lastRequested?: number): PermissionState {
+function stateFromNative(
+  value: number,
+  lastRequested?: number,
+): PermissionState {
   const status = mapNativePrivacyAuthStatus(value);
   return buildState(ID, status, {
     canRequest: status === "not-determined",

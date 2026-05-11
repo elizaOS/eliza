@@ -476,7 +476,8 @@ const CLOUD_COMMANDS: CloudCommandDefinition[] = [
   },
   {
     command: "advertising.accounts.media.status",
-    description: "Read provider-side media processing state for an uploaded ad asset.",
+    description:
+      "Read provider-side media processing state for an uploaded ad asset.",
     method: "GET",
     path: "/api/v1/advertising/accounts/{id}/media",
     pathParams: ["id"],

@@ -198,3 +198,125 @@ def test_validate_rejects_native_tool_call_not_declared(tmp_path: Path) -> None:
     parsed = json.loads(report.read_text(encoding="utf-8"))
     assert code == 1
     assert parsed["errorsByCode"]["tool_call_not_declared"] >= 1
+
+
+def test_validate_rejects_native_history_tool_call_not_declared(tmp_path: Path) -> None:
+    row = {
+        "format": "eliza_native_v1",
+        "boundary": "vercel_ai_sdk.generateText",
+        "request": {
+            "messages": [
+                {"role": "user", "content": "Check cwd."},
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "hist_1",
+                            "type": "function",
+                            "function": {"name": "SHELL", "arguments": "{\"command\":\"pwd\"}"},
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "hist_1", "content": "/tmp"},
+                {"role": "user", "content": "Thanks."},
+            ]
+        },
+        "response": {"text": "Done."},
+        "metadata": {"split": "train"},
+    }
+    bad = tmp_path / "history-undeclared.jsonl"
+    _write_jsonl(bad, [row])
+    report = tmp_path / "history-undeclared-report.json"
+
+    code = validate_main(["--input", str(bad), "--report", str(report), "--strict"])
+
+    parsed = json.loads(report.read_text(encoding="utf-8"))
+    assert code == 1
+    assert parsed["errorsByCode"]["tool_call_not_declared"] >= 1
+
+
+def test_validate_requires_native_metadata_split_in_split_file(tmp_path: Path) -> None:
+    row = {
+        "format": "eliza_native_v1",
+        "boundary": "vercel_ai_sdk.generateText",
+        "request": {"prompt": "hello"},
+        "response": {"text": "hi"},
+        "metadata": {},
+    }
+    bad = tmp_path / "train.jsonl"
+    _write_jsonl(bad, [row])
+    report = tmp_path / "missing-split-report.json"
+
+    code = validate_main(["--input", str(bad), "--report", str(report), "--strict"])
+
+    parsed = json.loads(report.read_text(encoding="utf-8"))
+    assert code == 1
+    assert parsed["errorsByCode"]["native_split_missing"] == 1
+
+
+def test_validate_rejects_residual_privacy_secret(tmp_path: Path) -> None:
+    row = {
+        "format": "eliza_native_v1",
+        "boundary": "vercel_ai_sdk.generateText",
+        "request": {"prompt": "Use sk-abcdefghijklmnopqrstuvwxyz for this."},
+        "response": {"text": "No."},
+        "metadata": {"split": "train"},
+    }
+    bad = tmp_path / "privacy.jsonl"
+    _write_jsonl(bad, [row])
+    report = tmp_path / "privacy-report.json"
+
+    code = validate_main(["--input", str(bad), "--report", str(report), "--strict"])
+
+    parsed = json.loads(report.read_text(encoding="utf-8"))
+    assert code == 1
+    assert parsed["errorsByCode"]["privacy_residual_openai_key"] == 1
+
+
+def test_validate_rejects_trajectory_record_without_user_turn(tmp_path: Path) -> None:
+    row = {
+        "schema": "eliza.eliza1_trajectory_record.v1",
+        "id": "trajectory-no-user-1",
+        "split": "train",
+        "task": "response",
+        "target": {
+            "modelFamily": "qwen",
+            "baseModel": "Qwen3.5/3.6",
+            "sftFormat": "messages",
+            "chatTemplate": "chatml",
+        },
+        "messages": [{"role": "assistant", "content": "Hello."}],
+        "tools": [],
+        "actions": [],
+        "quality": {
+            "success": True,
+            "score": 1.0,
+            "weight": 1.0,
+            "rating": "gold",
+            "requiresRepair": False,
+            "reasons": [],
+        },
+        "source": {
+            "kind": "eliza_native_v1",
+            "dataset": "unit",
+            "path": "unit.jsonl",
+            "rowIndex": 0,
+            "sourceId": None,
+            "trajectoryId": None,
+            "scenarioId": None,
+            "turnIndex": None,
+            "format": "eliza_native_v1",
+        },
+        "metadata": {},
+    }
+    bad = tmp_path / "train.jsonl"
+    _write_jsonl(bad, [row])
+    report = tmp_path / "no-user-report.json"
+
+    code = validate_main(["--input", str(bad), "--report", str(report), "--strict"])
+
+    parsed = json.loads(report.read_text(encoding="utf-8"))
+    assert code == 1
+    assert parsed["errorsByCode"]["messages_missing_user"] == 1
+    assert parsed["errorsByCode"]["trajectory_not_train_local_convertible"] == 1

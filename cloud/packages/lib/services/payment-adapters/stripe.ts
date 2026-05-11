@@ -11,15 +11,15 @@
  */
 
 import type Stripe from "stripe";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { paymentMethodsService } from "@/lib/services/payment-methods";
 import {
-  IgnoredWebhookEvent,
   type PaymentProviderAdapter,
   type PaymentRequestRow,
 } from "@/lib/services/payment-requests";
+import { IgnoredWebhookEvent } from "@/lib/services/payment-webhook-errors";
 import { requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
-import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 
 interface RequestMetadata {
   successUrl?: string;
@@ -79,9 +79,7 @@ export function createStripePaymentAdapter(): PaymentProviderAdapter {
 
       const meta = readMetadata(request);
       if (!meta.successUrl || !meta.cancelUrl) {
-        throw new Error(
-          "Stripe payment requires success_url and cancel_url in request metadata",
-        );
+        throw new Error("Stripe payment requires success_url and cancel_url in request metadata");
       }
 
       const stripe = requireStripe();

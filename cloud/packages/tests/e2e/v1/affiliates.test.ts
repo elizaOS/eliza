@@ -8,6 +8,8 @@ type AffiliateCodeResponse = {
   };
 };
 
+const E2E_CHAT_MODEL = process.env.E2E_CHAT_MODEL?.trim() || "openai/gpt-5-mini";
+
 /**
  * Affiliates, Referrals, Analytics & Tracking API E2E Tests
  */
@@ -73,7 +75,7 @@ describe("Affiliates API", () => {
     const chatRes = await api.post(
       "/api/v1/chat/completions",
       {
-        model: "openai/gpt-5-mini",
+        model: E2E_CHAT_MODEL,
         messages: [{ role: "user", content: largeInferencePrompt }],
         max_tokens: 1200,
       },

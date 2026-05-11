@@ -234,6 +234,27 @@ describe("PhraseCache", () => {
     expect(c.has("sure.")).toBe(true);
     expect(c.get("  SURE.  ")?.pcm[0]).toBe(0.5);
   });
+
+  it("evicts least-recently-used entries under a hard entry cap", () => {
+    const c = new PhraseCache({ maxEntries: 2 });
+    c.put({ text: "one", pcm: new Float32Array([1]), sampleRate: 24000 });
+    c.put({ text: "two", pcm: new Float32Array([2]), sampleRate: 24000 });
+    expect(c.get("one")?.pcm[0]).toBe(1);
+    c.put({ text: "three", pcm: new Float32Array([3]), sampleRate: 24000 });
+    expect(c.has("one")).toBe(true);
+    expect(c.has("two")).toBe(false);
+    expect(c.has("three")).toBe(true);
+  });
+
+  it("does not admit oversized PCM entries", () => {
+    const c = new PhraseCache({ maxPcmSamplesPerEntry: 2 });
+    c.put({
+      text: "too long",
+      pcm: new Float32Array([1, 2, 3]),
+      sampleRate: 24000,
+    });
+    expect(c.has("too long")).toBe(false);
+  });
 });
 
 describe("VoiceScheduler end-to-end", () => {
@@ -397,6 +418,49 @@ describe("VoiceScheduler end-to-end", () => {
     for (const v of sink.chunks[0].pcm) {
       expect(v).toBeCloseTo(0.42, 5);
     }
+  });
+
+  it("opportunistically caches synthesized phrases for repeated stream text", async () => {
+    const backend = new StubBackend();
+    const sink = new InMemoryAudioSink();
+    const sched = new VoiceScheduler(
+      {
+        chunkerConfig: { maxTokensPerPhrase: 10 },
+        preset: makePreset(),
+        ringBufferCapacity: 4096,
+        sampleRate: 24000,
+      },
+      { backend, sink },
+    );
+
+    await sched.accept(tok(0, "Okay"));
+    await sched.accept(tok(1, "."));
+    await sched.waitIdle();
+    await sched.accept(tok(2, " OKAY"));
+    await sched.accept(tok(3, "."));
+    await sched.waitIdle();
+
+    expect(backend.calls).toBe(1);
+    expect(sink.chunks).toHaveLength(2);
+  });
+
+  it("opportunistically caches direct TEXT_TO_SPEECH calls", async () => {
+    const backend = new StubBackend();
+    const sched = new VoiceScheduler(
+      {
+        chunkerConfig: { maxTokensPerPhrase: 10 },
+        preset: makePreset(),
+        ringBufferCapacity: 4096,
+        sampleRate: 24000,
+      },
+      { backend },
+    );
+
+    const first = await sched.synthesizeText("One moment.");
+    const second = await sched.synthesizeText(" one   moment. ");
+
+    expect(backend.calls).toBe(1);
+    expect(Array.from(second.pcm)).toEqual(Array.from(first.pcm));
   });
 });
 

@@ -13,13 +13,20 @@ evaluation, and publish gates.
 - The Qwen-based Eliza-1 training targets are the registry entries in
   `packages/training/scripts/training/model_registry.py`:
   `qwen3.5-2b`, `qwen3.5-9b`, and `qwen3.6-27b`.
-- `eliza_native_v1` is the direct input shape consumed by the current Qwen
-  path in `packages/training/scripts/format_for_training.py`.
-  `eliza.eliza1_trajectory_record.v1` train/val/test rows are a separate
-  messages-based trajectory SFT shape; `repair_eval` rows are auxiliary and
-  must not be staged as trainable splits.
+- `eliza_native_v1` is the preferred direct input shape for the current Qwen
+  path in `packages/training/scripts/format_for_training.py`. The formatter
+  also accepts trainable `eliza.eliza1_trajectory_record.v1` message rows,
+  already-rendered chat-message rows with a final assistant target, and legacy
+  flat `ElizaRecord` rows for root split compatibility. `repair_eval` rows are
+  auxiliary and must not be staged or passed as trainable splits.
 - Candidate datasets must not mix `eliza_native_v1`, legacy flat
   `ElizaRecord`, Eliza-1 trajectory records, or plain chat-message rows.
+- The public `elizaos/eliza-1-training` dataset currently uses the legacy flat
+  `ElizaRecord` columns: `roomName`, `agentId`, `memoryEntries`,
+  `currentMessage`, `expectedResponse`, `availableActions`, and `metadata`.
+  Its `metadata.split` is source metadata, not always the HuggingFace split
+  name, so the candidate stager does not use that field to reject public-shape
+  validation/test rows.
 - Real user trajectories are never written into a candidate or pushed to
   HuggingFace until the privacy filter/review has been run and attested.
 - Dev-time models/providers are provider labels, not dataset identities.
@@ -59,12 +66,14 @@ uv run python scripts/prepare_eliza1_trajectory_dataset.py \
   --strict-privacy
 ```
 
-That output has `train.jsonl`, `val.jsonl`, and `test.jsonl` trainable
-success records plus `repair_eval.jsonl` auxiliary records for failed or
-low-scoring trajectories. Do not pass `repair_eval.jsonl` to the candidate
-publisher as train/validation/test. The current Qwen APOLLO path still formats
-only `eliza_native_v1`; use the trajectory-record splits for audit/eval until a
-formatter or conversion path is added.
+By default, that output writes root `train.jsonl`, `val.jsonl`, and
+`test.jsonl` as train-local-compatible `eliza_native_v1` success rows, plus
+`repair_eval.jsonl` auxiliary records for failed or low-scoring trajectories.
+It also writes auditable `eliza.eliza1_trajectory_record.v1` rows under
+`trajectory_records/`. Do not pass `repair_eval.jsonl` to the candidate
+publisher as train/validation/test. If you intentionally use
+`--output-format trajectory-record`, pass only the success split files; the
+formatter can consume those message rows directly.
 
 For public/synthetic corpora, use the existing dataset prep scripts instead of
 raw scrape-to-train:
@@ -102,9 +111,13 @@ Then confirm all of the following:
   names, latency, costs, cache stats, or provider-specific metadata into a
   required dataset contract.
 - The upstream source/split manifest records `sourceKind: user_export`,
-  privacy stats/ledger lineage, and `privacy.reviewed: true`.
-- The candidate manifest carries that source-manifest attestation forward, or
-  the operator passes `--privacy-reviewed` as a human attestation.
+  privacy stats/ledger lineage, and either `privacy.reviewed: true` or a strict
+  `eliza.privacy_filter_attestation.v1` manifest with `version: 1`, matching
+  input/output counts, zero residual findings, and a ledger artifact marked
+  `raw_sensitive_values: false`.
+- The candidate manifest carries the source-manifest path reference, SHA-256,
+  schema/version, and privacy summary forward, or the operator passes
+  `--privacy-reviewed` as a human attestation.
 
 The candidate publisher below enforces this attestation for real-user write and
 push paths, but it does not replace the privacy review itself.
@@ -149,9 +162,12 @@ uv run python scripts/publish_eliza1_dataset_candidate.py \
 
 This command is a dry-run by default. It fails if the split files mix
 `eliza_native_v1`, legacy flat `ElizaRecord`,
-`eliza.eliza1_trajectory_record.v1`, and chat-message schemas. For
-Eliza-1 trajectory records it also checks that split labels match
-train/validation/test and refuses auxiliary `repair_eval` records.
+`eliza.eliza1_trajectory_record.v1`, and chat-message schemas. It rejects
+`repair_eval`, `repair`, and failed-quality rows in all trainable split files.
+For native, trajectory, and chat-message rows, explicit split labels must match
+the train/validation/test file. For public-shape flat `ElizaRecord` rows,
+`metadata.split` is treated as source metadata for compatibility with
+`elizaos/eliza-1-training`.
 
 ## 4. Stage The HF Dataset Candidate
 
@@ -171,10 +187,11 @@ uv run python scripts/publish_eliza1_dataset_candidate.py \
 ```
 
 If `--source-manifest` already marks `sourceKind: user_export` and
-`privacy.reviewed: true`, the publisher carries that attestation forward.
-`--privacy-reviewed` is still acceptable when the review approval lives outside
-the source manifest. When `--source-manifest` is omitted, the publisher also
-looks for `manifest.json` next to the split files or one directory above them.
+`privacy.reviewed: true`, or contains a passing strict privacy attestation, the
+publisher carries that attestation forward. `--privacy-reviewed` is still
+acceptable when the review approval lives outside the source manifest. When
+`--source-manifest` is omitted, the publisher also looks for `manifest.json`
+next to the split files or one directory above them.
 
 The only local write target is:
 
@@ -209,11 +226,36 @@ For `sourceKind: user_export`, pushing additionally requires
 `--allow-user-export-push`. That flag should be rare; prefer pushing public or
 synthetic candidates and keeping user-export candidates local/private.
 
+The push path validates `--allow-hf-push`, user-export opt-ins, privacy
+attestation, and `HF_TOKEN`/`HUGGINGFACE_HUB_TOKEN` before it writes local
+candidate files. A failed push preflight should leave the candidate directory
+unchanged. The script uploads under `candidates/<run-id>/`; do not point
+`--repo-id` at the released `elizaos/eliza-1-training` dataset unless a
+separate promotion review explicitly asks for a release-shaped root dataset.
+
+After a remote push, verify the exact candidate files in the repo:
+
+```bash
+HF_TOKEN=hf_xxx uv run python - <<'PY'
+from huggingface_hub import HfApi
+
+repo_id = "elizaos/eliza-1-training-candidates"
+candidate_id = "<run-id>"
+prefix = f"candidates/{candidate_id}/"
+files = HfApi().list_repo_files(repo_id, repo_type="dataset")
+for path in files:
+    if path.startswith(prefix):
+        print(path)
+PY
+```
+
 ## 5. Local Smoke Training: qwen3.5-2b
 
 Use the smallest release target to prove the data path and trainer before
-spending cloud hours. Run this only for candidates whose `manifest.json` has
-`datasetSchema: eliza_native_v1`:
+spending cloud hours. The preferred candidate schema is `eliza_native_v1`, but
+`train_local.py` also accepts trainable Eliza-1 trajectory message rows,
+already-rendered final-assistant chat-message rows, and legacy flat
+`ElizaRecord` rows:
 
 ```bash
 cd packages/training
@@ -228,10 +270,12 @@ uv run --extra train python scripts/run_pipeline.py \
   --skip-base-bench
 ```
 
-If the smoke run formats zero records, stop and inspect schema: the current
-Qwen trainer expects `eliza_native_v1` rows. Legacy flat `ElizaRecord`,
-plain chat-message rows, and `eliza.eliza1_trajectory_record.v1` rows need a
-conversion/formatter step before this trainer can consume them.
+If the smoke run formats zero records, stop and inspect schema and split
+selection. The trainer accepts `eliza_native_v1`, trainable
+`eliza.eliza1_trajectory_record.v1` message rows, already-rendered chat-message
+rows with a final assistant turn, and legacy flat `ElizaRecord` rows. It
+rejects `repair_eval` / failed-quality rows and still refuses mixed or unknown
+schemas at the candidate staging step.
 
 ## 6. Vast Training: qwen3.5-9b And qwen3.6-27b
 
@@ -257,6 +301,12 @@ bash scripts/train_vast.sh provision-and-train \
 Default GPU selection comes from `train_vast.sh`: 9B uses a single
 Blackwell 6000 target by default; 27B uses `b200-2x` by default. Override only
 after checking the memory budget with `scripts/training/memory_calc.py`.
+
+Vast bootstrap and rsync both expect the active root training set at
+`packages/training/data/final/{train,val,test}.jsonl` on the local side and
+`/workspace/training/data/final/{train,val,test}.jsonl` on the remote side.
+Candidate directories use `data/validation.jsonl`; when promoting a candidate
+to the root training set, copy or rename that file to `val.jsonl`.
 
 ## 7. Quantization, Eval, And Publish Gates
 

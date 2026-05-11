@@ -1273,6 +1273,55 @@ export class HetznerContainersClient {
     );
   }
 
+  async syncWorkspace(
+    containerId: string,
+    organizationId: string,
+    request: ContainerWorkspaceSyncRequest,
+  ): Promise<ContainerWorkspaceSyncResult> {
+    const row = await this.requireRowWithMeta(containerId, organizationId);
+    const { meta } = row;
+    if (!meta.volumePath) {
+      throw new HetznerClientError(
+        "invalid_input",
+        `container ${containerId} has no persistent workspace volume`,
+      );
+    }
+    if (request.patches?.length) {
+      throw new HetznerClientError(
+        "invalid_input",
+        "workspace patch sync is not implemented; send changedFiles instead",
+      );
+    }
+
+    const direction = request.direction ?? "pull";
+    const changedFiles = request.changedFiles ?? [];
+    const deletedFiles = request.deletedFiles ?? [];
+    let exportedFiles: ContainerBootstrapFile[] = [];
+
+    await this.execOnNode(meta, async (ssh) => {
+      if (direction === "push" || direction === "roundtrip") {
+        await writeDecodedWorkspaceFiles(ssh, meta.volumePath!, decodeWorkspaceFiles(changedFiles));
+        await deleteWorkspaceFiles(ssh, meta.volumePath!, deletedFiles);
+      }
+      if (direction === "pull" || direction === "roundtrip") {
+        exportedFiles = await exportWorkspaceFiles(ssh, meta.volumePath!);
+      }
+    });
+
+    return {
+      status: direction === "push" ? "applied" : "ready",
+      direction,
+      changedFiles: direction === "push" ? changedFiles : exportedFiles,
+      deletedFiles,
+      patches: [],
+      metadata: {
+        ...(request.metadata ?? {}),
+        volumeMountPath: meta.volumeMountPath ?? DEFAULT_VOLUME_MOUNT_PATH,
+        exportedFileCount: exportedFiles.length,
+      },
+    };
+  }
+
   // ----------------------------------------------------------------------
   // Observability
   // ----------------------------------------------------------------------

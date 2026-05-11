@@ -35,9 +35,13 @@ interface ProviderSingleton {
   provider: AIProvider;
 }
 
+interface OpenAIDirectProviderSingleton extends ProviderSingleton {
+  baseUrl?: string;
+}
+
 let openRouterProviderInstance: ProviderSingleton | null = null;
 let groqProviderInstance: ProviderSingleton | null = null;
-let openAIDirectProviderInstance: ProviderSingleton | null = null;
+let openAIDirectProviderInstance: OpenAIDirectProviderSingleton | null = null;
 let anthropicDirectProviderInstance: ProviderSingleton | null = null;
 let vercelAIGatewayProviderInstance: ProviderSingleton | null = null;
 let vastProviderInstance: { apiKey: string; baseUrl: string; provider: AIProvider } | null = null;
@@ -91,10 +95,16 @@ function hasOpenAIDirectConfigured(): boolean {
 
 function getOpenAIDirectProvider(): AIProvider {
   const apiKey = getRequiredProviderKey("OPENAI_API_KEY");
-  if (!openAIDirectProviderInstance || openAIDirectProviderInstance.apiKey !== apiKey) {
+  const baseUrl = getProviderKey("OPENAI_BASE_URL") ?? undefined;
+  if (
+    !openAIDirectProviderInstance ||
+    openAIDirectProviderInstance.apiKey !== apiKey ||
+    openAIDirectProviderInstance.baseUrl !== baseUrl
+  ) {
     openAIDirectProviderInstance = {
       apiKey,
-      provider: new OpenAIDirectProvider(apiKey),
+      baseUrl,
+      provider: new OpenAIDirectProvider(apiKey, baseUrl),
     };
   }
   return openAIDirectProviderInstance.provider;

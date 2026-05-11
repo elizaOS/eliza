@@ -11,9 +11,6 @@ const loadWeb = () => import("./web").then((m) => new m.MobileAgentBridgeWeb());
  * fallback loads on dev / Electrobun shells where no phone tunnel is
  * possible.
  */
-export const MobileAgentBridge = registerPlugin<MobileAgentBridgePlugin>(
-  "MobileAgentBridge",
-  {
-    web: loadWeb,
-  },
-);
+export const MobileAgentBridge = registerPlugin<MobileAgentBridgePlugin>("MobileAgentBridge", {
+  web: loadWeb,
+});

@@ -12,7 +12,7 @@
 # OUT OF SCOPE for this patch (deliberate, mirrors metal-kernels.mjs §41):
 #   * Wiring op-level dispatch (ggml_vk_get_dequantize_mul_mat_vec / GGML_OP_*
 #     case branches) for GGML_TYPE_TBQ3_0 / TBQ4_0 / QJL1_256 / Q4_POLAR /
-#     TBQ3_TCQ. The 8 standalones use bespoke push-constant layouts and bind
+#     TBQ3_TCQ. The standalones use bespoke push-constant layouts and bind
 #     sets that are NOT compatible with the existing vk_op_binary_push_constants
 #     / vk_mat_vec_push_constants paths. A separate follow-up patch is
 #     required to introduce a milady-native dispatch entrypoint for

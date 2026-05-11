@@ -229,8 +229,9 @@ cd packages/inference/verify
 ```
 
 The runner cross-compiles `vulkan_verify`, pushes the verifier, SPIR-V, and
-fixtures through `adb`, records device/Vulkan evidence, and runs all six
-canonical fixtures on device. Standalone fixture success is not enough for a
+fixtures through `adb`, records device/Vulkan evidence, and runs all eight
+standalone checks on device, including `polar_preht.spv` against both Polar
+fixtures. Standalone fixture success is not enough for a
 runtime-ready claim: the script fails closed unless
 `ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE` points at a built-fork/app graph-dispatch
 report with `backend=vulkan`, `platform=android`, `runtimeReady=true`, and

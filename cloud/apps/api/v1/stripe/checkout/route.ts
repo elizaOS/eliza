@@ -16,10 +16,8 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { stripePaymentAdapter } from "@/lib/services/payment-adapters/stripe";
-import {
-  paymentRequestsService,
-  type PaymentRequestRow,
-} from "@/lib/services/payment-requests";
+import type { PaymentRequestRow } from "@/lib/services/payment-requests";
+import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -35,7 +33,7 @@ app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
   try {
-    await requireUserOrApiKeyWithOrg(c);
+    const user = await requireUserOrApiKeyWithOrg(c);
 
     const body = await c.req.json().catch(() => null);
     const parsed = CheckoutSchema.safeParse(body);
@@ -46,7 +44,8 @@ app.post("/", async (c) => {
       );
     }
 
-    const request = await paymentRequestsService.get(parsed.data.paymentRequestId);
+    const service = getPaymentRequestsService(c.env);
+    const request = await service.get(parsed.data.paymentRequestId, user.organization_id);
     if (!request) {
       return c.json({ success: false, error: "Payment request not found" }, 404);
     }
@@ -57,10 +56,7 @@ app.post("/", async (c) => {
       );
     }
     if (request.status !== "pending") {
-      return c.json(
-        { success: false, error: `Payment request already ${request.status}` },
-        409,
-      );
+      return c.json({ success: false, error: `Payment request already ${request.status}` }, 409);
     }
 
     const requestForAdapter: PaymentRequestRow = {
@@ -70,7 +66,7 @@ app.post("/", async (c) => {
     };
 
     const result = await stripePaymentAdapter.createIntent({ request: requestForAdapter });
-    await paymentRequestsService.markInitialized(request.id, result.providerIntent);
+    await service.markInitialized(request.id, result.providerIntent, result.hostedUrl ?? null);
 
     return c.json({ success: true, hostedUrl: result.hostedUrl ?? null });
   } catch (error) {

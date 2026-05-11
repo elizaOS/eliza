@@ -101,26 +101,35 @@ function installDbMock(stub: DbStub): void {
       },
       limit(l: number) {
         captured.limit = l;
-        // For findById-style queries that don't call offset(), the await happens
-        // here; record the call and resolve with the rows.
         const promise = Promise.resolve(stub.selectRows);
-        // Allow chaining .offset() after .limit() (listPaymentRequests pattern).
+        let recorded = false;
+        const record = () => {
+          if (recorded) return;
+          stub.calls.push(captured);
+          recorded = true;
+        };
         const chained = {
-          then: promise.then.bind(promise),
-          catch: promise.catch.bind(promise),
-          finally: promise.finally.bind(promise),
           offset(o: number) {
             captured.limit = l;
             captured.offset = o;
-            stub.calls.push(captured);
+            record();
             return Promise.resolve(stub.selectRows);
           },
         };
-        // If the consumer awaits without calling .offset(), record now.
-        // We push synchronously; offset() above reuses the same captured object.
-        if (!stub.calls.includes(captured)) {
-          stub.calls.push(captured);
-        }
+        const thenKey = "then";
+        Object.defineProperties(chained, {
+          [thenKey]: {
+            value: (
+              onFulfilled?: Parameters<typeof promise.then>[0],
+              onRejected?: Parameters<typeof promise.then>[1],
+            ) => {
+              record();
+              return promise.then(onFulfilled, onRejected);
+            },
+          },
+          catch: { value: promise.catch.bind(promise) },
+          finally: { value: promise.finally.bind(promise) },
+        });
         return chained;
       },
     };
@@ -150,9 +159,7 @@ function installDbMock(stub: DbStub): void {
 
   function tableName(table: unknown): string {
     if (!table || typeof table !== "object") return "unknown";
-    const sym = Object.getOwnPropertySymbols(table).find(
-      (s) => s.description === "drizzle:Name",
-    );
+    const sym = Object.getOwnPropertySymbols(table).find((s) => s.description === "drizzle:Name");
     if (sym) {
       const value = (table as Record<symbol, unknown>)[sym];
       if (typeof value === "string") return value;
@@ -186,15 +193,12 @@ async function loadRepository() {
     listPaymentRequests: (filter: unknown) => Promise<unknown>;
     updatePaymentRequestStatus: (
       id: string,
-      status: string,
+      status: string | null,
       patch?: unknown,
     ) => Promise<unknown>;
     recordPaymentRequestEvent: (input: unknown) => Promise<unknown>;
     expirePastPaymentRequests: (now: Date) => Promise<string[]>;
-    findPaymentRequestByProviderIntentKey: (
-      key: string,
-      value: string,
-    ) => Promise<unknown>;
+    findPaymentRequestByProviderIntentKey: (key: string, value: string) => Promise<unknown>;
   };
 }
 
@@ -213,18 +217,25 @@ describe("payment requests repository", () => {
     const repo = await loadRepository();
 
     const result = await repo.createPaymentRequest({
-      organization_id: ORG_ID,
+      organizationId: ORG_ID,
       provider: "stripe",
-      amount_cents: 1000n,
-      expires_at: FUTURE,
+      amountCents: 1000,
+      currency: "usd",
+      paymentContext: { kind: "any_payer" },
+      expiresAt: FUTURE,
     });
 
-    expect(result).toMatchObject({ id: PR_ID_A, provider: "stripe" });
+    expect(result).toMatchObject({ id: PR_ID_A, organizationId: ORG_ID, amountCents: 1000 });
     expect(stub.calls).toHaveLength(1);
     expect(stub.calls[0]).toMatchObject({
       op: "insert",
       table: "payment_requests",
       returning: true,
+    });
+    expect(stub.calls[0].payload).toMatchObject({
+      organization_id: ORG_ID,
+      amount_cents: 1000n,
+      expires_at: FUTURE,
     });
   });
 
@@ -252,7 +263,7 @@ describe("payment requests repository", () => {
 
     const result = await repo.getPaymentRequest(PR_ID_A);
 
-    expect(result).toMatchObject({ id: PR_ID_A });
+    expect(result).toMatchObject({ id: PR_ID_A, organizationId: ORG_ID });
   });
 
   test("listPaymentRequests applies filters, ordering, limit, and offset", async () => {
@@ -277,15 +288,15 @@ describe("payment requests repository", () => {
     })) as unknown[];
 
     expect(result).toHaveLength(2);
-    expect(stub.calls).toHaveLength(1);
-    expect(stub.calls[0]).toMatchObject({
+    const call = stub.calls.at(-1);
+    expect(call).toMatchObject({
       op: "select",
       table: "payment_requests",
       limit: 25,
       offset: 50,
     });
-    expect(stub.calls[0].where).toBeDefined();
-    expect(stub.calls[0].orderBy).toBeDefined();
+    expect(call?.where).toBeDefined();
+    expect(call?.orderBy).toBeDefined();
   });
 
   test("listPaymentRequests applies default limit and offset when omitted", async () => {
@@ -314,8 +325,8 @@ describe("payment requests repository", () => {
     const repo = await loadRepository();
 
     const result = await repo.updatePaymentRequestStatus(PR_ID_A, "settled", {
-      settled_at: NOW,
-      settlement_tx_ref: "tx_abc",
+      settledAt: NOW,
+      settlementTxRef: "tx_abc",
     });
 
     expect(result).toMatchObject({ status: "settled" });
@@ -352,9 +363,9 @@ describe("payment requests repository", () => {
     const repo = await loadRepository();
 
     const result = await repo.recordPaymentRequestEvent({
-      payment_request_id: PR_ID_A,
-      event_name: "payment.created",
-      redacted_payload: { provider: "stripe" },
+      paymentRequestId: PR_ID_A,
+      eventName: "payment.created",
+      redactedPayload: { provider: "stripe" },
     });
 
     expect(result).toMatchObject({ id: EVENT_ID, event_name: "payment.created" });
@@ -422,10 +433,7 @@ describe("payment requests repository", () => {
     installDbMock(stub);
     const repo = await loadRepository();
 
-    const result = await repo.findPaymentRequestByProviderIntentKey(
-      "x402_request_id",
-      "missing",
-    );
+    const result = await repo.findPaymentRequestByProviderIntentKey("x402_request_id", "missing");
 
     expect(result).toBeNull();
   });

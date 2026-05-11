@@ -9,7 +9,7 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { getPaymentRequestsService } from "@/lib/services/payment-requests";
+import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -39,11 +39,7 @@ app.post("/", async (c) => {
     }
 
     const service = getPaymentRequestsService(c.env);
-    const paymentRequest = await service.cancel(
-      id,
-      user.organization_id,
-      parsed.data.reason,
-    );
+    const paymentRequest = await service.cancel(id, user.organization_id, parsed.data.reason);
 
     return c.json({ success: true, paymentRequest });
   } catch (error) {

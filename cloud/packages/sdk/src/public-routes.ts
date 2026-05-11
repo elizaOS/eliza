@@ -54,6 +54,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "GET /api/elevenlabs/voices/verify/{id}": { method: "GET", path: "/api/elevenlabs/voices/verify/{id}", methodName: "getApiElevenlabsVoicesVerifyById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/elevenlabs/voices/verify/[id]/route.ts" },
   "GET /api/v1/advertising/accounts": { method: "GET", path: "/api/v1/advertising/accounts", methodName: "getApiV1AdvertisingAccounts", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/advertising/accounts/route.ts" },
   "GET /api/v1/advertising/accounts/{id}": { method: "GET", path: "/api/v1/advertising/accounts/{id}", methodName: "getApiV1AdvertisingAccountsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/advertising/accounts/[id]/route.ts" },
+  "GET /api/v1/advertising/accounts/{id}/media": { method: "GET", path: "/api/v1/advertising/accounts/{id}/media", methodName: "getApiV1AdvertisingAccountsByIdMedia", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/advertising/accounts/[id]/media/route.ts" },
   "GET /api/v1/advertising/campaigns": { method: "GET", path: "/api/v1/advertising/campaigns", methodName: "getApiV1AdvertisingCampaigns", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/advertising/campaigns/route.ts" },
   "GET /api/v1/advertising/campaigns/{id}": { method: "GET", path: "/api/v1/advertising/campaigns/{id}", methodName: "getApiV1AdvertisingCampaignsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/advertising/campaigns/[id]/route.ts" },
   "GET /api/v1/advertising/campaigns/{id}/analytics": { method: "GET", path: "/api/v1/advertising/campaigns/{id}/analytics", methodName: "getApiV1AdvertisingCampaignsByIdAnalytics", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/advertising/campaigns/[id]/analytics/route.ts" },
@@ -499,6 +500,7 @@ export interface PublicRoutePathParams {
   "GET /api/elevenlabs/voices/verify/{id}": { "id": string | number };
   "GET /api/v1/advertising/accounts": Record<never, never>;
   "GET /api/v1/advertising/accounts/{id}": { "id": string | number };
+  "GET /api/v1/advertising/accounts/{id}/media": { "id": string | number };
   "GET /api/v1/advertising/campaigns": Record<never, never>;
   "GET /api/v1/advertising/campaigns/{id}": { "id": string | number };
   "GET /api/v1/advertising/campaigns/{id}/analytics": { "id": string | number };
@@ -1280,6 +1282,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/advertising/accounts/{id}">
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/advertising/accounts/{id}", TResponse>("GET /api/v1/advertising/accounts/{id}", options);
+  }
+
+  getApiV1AdvertisingAccountsByIdMedia<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/advertising/accounts/{id}/media">
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/advertising/accounts/{id}/media", TResponse>("GET /api/v1/advertising/accounts/{id}/media", options);
   }
 
   getApiV1AdvertisingCampaigns<TResponse = unknown>(
@@ -3722,6 +3730,10 @@ export class ElizaCloudPublicRoutesClient {
 
   getApiV1AdvertisingAccountsByIdRaw(options: PublicRouteCallOptions<"GET /api/v1/advertising/accounts/{id}">): Promise<Response> {
     return this.callRaw("GET /api/v1/advertising/accounts/{id}", options);
+  }
+
+  getApiV1AdvertisingAccountsByIdMediaRaw(options: PublicRouteCallOptions<"GET /api/v1/advertising/accounts/{id}/media">): Promise<Response> {
+    return this.callRaw("GET /api/v1/advertising/accounts/{id}/media", options);
   }
 
   getApiV1AdvertisingCampaignsRaw(options: PublicRouteCallOptions<"GET /api/v1/advertising/campaigns"> = {}): Promise<Response> {

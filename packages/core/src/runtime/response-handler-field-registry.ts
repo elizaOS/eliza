@@ -12,7 +12,6 @@ import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 import type {
 	ResponseHandlerFieldContext,
-	ResponseHandlerFieldEffect,
 	ResponseHandlerFieldEvaluator,
 	ResponseHandlerFieldHandleContext,
 	ResponseHandlerFieldRunResult,

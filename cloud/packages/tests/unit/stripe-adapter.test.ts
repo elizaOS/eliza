@@ -225,7 +225,7 @@ describe("stripe payment adapter", () => {
     };
     installAdapterMocks(state);
     const { stripePaymentAdapter } = await loadAdapter();
-    const { IgnoredWebhookEvent } = await import("@/lib/services/payment-requests");
+    const { IgnoredWebhookEvent } = await import("@/lib/services/payment-webhook-errors");
 
     await expect(
       stripePaymentAdapter.parseWebhook!({ rawBody: "raw", signature: "sig" }),

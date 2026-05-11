@@ -43,6 +43,26 @@ typedef struct {
 } qjl_block_qjl1_256;
 
 /*
+ * Experimental per-query int8 sketch. This is NOT the default score path; it
+ * is a bandwidth/dot-product optimization candidate for devices with int8 dot
+ * instructions. Each query head owns one scale and 256 signed int8 values:
+ *
+ *   q_j ~= values[j] * scale
+ *
+ * The score path then computes:
+ *
+ *   score ~= ||k|| * sqrt(pi/2)/proj_dim * scale *
+ *            sum_j sign_packed[t,j] * values[j]
+ *
+ * Keep qjl_score_qk_ref as the exact baseline and only enable this path behind
+ * measured per-tier tolerance gates.
+ */
+typedef struct {
+    float   scale;
+    int8_t  values[QJL_PROJECTION_DIM];
+} qjl_i8_sketch_256;
+
+/*
  * Build a JL projection matrix Π in row-major (head_dim, projection_dim)
  * layout, deterministic from `seed`. The standalone reference uses an
  * external matrix supplied by the caller (see `qjl_quantize_row_*`); this
@@ -144,6 +164,17 @@ void qjl_score_qk(const float *q_sketch,
                   const qjl_block_qjl1_256 *packed_k,
                   int n_heads, int n_kv_heads, int n_tokens,
                   float *scores);
+
+/* ---------------- experimental int8 query-sketch score ---------------- */
+
+void qjl_quantize_sketch_i8_ref(const float *q_sketch,
+                                qjl_i8_sketch_256 *out,
+                                int n_heads);
+
+void qjl_score_qk_i8_ref(const qjl_i8_sketch_256 *q_sketch_i8,
+                         const qjl_block_qjl1_256 *packed_k,
+                         int n_heads, int n_kv_heads, int n_tokens,
+                         float *scores);
 
 /* ---------------- helpers ---------------- */
 

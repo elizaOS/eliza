@@ -72,8 +72,9 @@ This branch now has the following foundation:
   orchestrator.
 - iOS local dev/sideload builds have an `ios-local` build target that bakes
   `runtimeMode=local`, starts the native Agent plugin in local mode, routes
-  foreground local-agent requests through the WebView ITTP kernel, persists the
-  kernel's local state through the native storage bridge, and reports
+  foreground local-agent requests through the WebView ITTP kernel, exposes a
+  foreground native `Agent.request` / `Agent.chat` bridge into that kernel,
+  persists the kernel's local state through the native storage bridge, and reports
   `GET /api/local-agent/capabilities`.
 - The iOS ITTP kernel intentionally reports `task_service_unavailable` for
   `/api/background/run-due-tasks` and `/api/internal/wake`; Capacitor
@@ -316,9 +317,11 @@ architecture is otherwise easy to overstate in product or API docs.
    chat plus background `ScheduledTask` dispatch on a signed physical device.
 6. TODO-VFS-UI: VFS UI: snapshot, diff, rollback, quota display, and "promote to cloud
    container" flow.
-7. TODO-CLOUD-BACKEND: Cloud workspace backend/control plane: accept VFS bundle uploads,
-   start Claude/Codex/OpenCode containers, stream terminal/task state, and pull
-   back patches. The local plugin/API contract exists.
+7. TODO-CLOUD-RUNTIME-UX: Cloud coding runtime UX: stream terminal/task state
+   from the running Claude/Codex/OpenCode container and add a real patch applier
+   if callers need patch-format sync. The backend now forwards VFS bundles into
+   the persistent workspace volume, starts coding containers, applies full-file
+   sync pushes, and exports files for pull/roundtrip sync.
 8. TODO-REVIEW-NOTES: Review posture: app descriptions and review notes must describe local
    applets as IDE/user-content execution, and full shell as Cloud/AOSP/direct
    only.

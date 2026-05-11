@@ -11,7 +11,11 @@ interface Harness {
   authError: Error | null;
   request: PaymentRequestRow | null;
   createIntentCalls: PaymentRequestRow[];
-  markInitializedCalls: Array<{ id: string; providerIntent: Record<string, unknown> }>;
+  markInitializedCalls: Array<{
+    id: string;
+    providerIntent: Record<string, unknown>;
+    hostedUrl?: string | null;
+  }>;
 }
 
 function buildRequest(overrides: Partial<PaymentRequestRow> = {}): PaymentRequestRow {
@@ -71,13 +75,20 @@ function installMocks(harness: Harness): void {
     logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
   }));
 
-  mock.module("@/lib/services/payment-requests", () => ({
-    paymentRequestsService: {
+  mock.module("@/lib/services/payment-requests-default", () => ({
+    getPaymentRequestsService: () => ({
       get: async (_id: string) => harness.request,
-      markInitialized: async (id: string, providerIntent: Record<string, unknown>) => {
-        harness.markInitializedCalls.push({ id, providerIntent });
+      markInitialized: async (
+        id: string,
+        providerIntent: Record<string, unknown>,
+        hostedUrl?: string | null,
+      ) => {
+        harness.markInitializedCalls.push({ id, providerIntent, hostedUrl });
       },
-    },
+    }),
+  }));
+
+  mock.module("@/lib/services/payment-requests", () => ({
     IgnoredWebhookEvent: class extends Error {},
   }));
 
@@ -142,6 +153,7 @@ describe("POST /api/v1/stripe/checkout", () => {
     expect(harness.createIntentCalls[0]?.successUrl).toBe("https://example.com/success");
     expect(harness.createIntentCalls[0]?.cancelUrl).toBe("https://example.com/cancel");
     expect(harness.markInitializedCalls[0]?.id).toBe(PAYMENT_REQUEST_ID);
+    expect(harness.markInitializedCalls[0]?.hostedUrl).toBe(HOSTED_URL);
   });
 
   test("returns 401 when auth fails", async () => {

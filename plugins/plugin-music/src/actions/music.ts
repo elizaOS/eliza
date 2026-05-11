@@ -554,7 +554,8 @@ export const musicAction: Action = {
     },
     {
       name: "prompt",
-      description: "Suno generation prompt for action=generate/custom_generate.",
+      description:
+        "Suno generation prompt for action=generate/custom_generate.",
       required: false,
       schema: { type: "string" },
     },

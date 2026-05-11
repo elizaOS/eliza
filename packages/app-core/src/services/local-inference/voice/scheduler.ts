@@ -152,6 +152,11 @@ export class VoiceScheduler {
       if (cancelSignal.cancelled) {
         throw new Error("[voice-scheduler] synthesis cancelled by barge-in");
       }
+      this.phraseCache.put({
+        text,
+        pcm: chunk.pcm,
+        sampleRate: chunk.sampleRate,
+      });
       return chunk;
     } finally {
       detach();
@@ -255,6 +260,11 @@ export class VoiceScheduler {
         if (!this.rollback.snapshot().some((e) => e.phrase.id === phrase.id)) {
           return;
         }
+        this.phraseCache.put({
+          text: phrase.text,
+          pcm: chunk.pcm,
+          sampleRate: chunk.sampleRate,
+        });
         this.commitAudio(chunk);
       } finally {
         this.inFlight.delete(phrase.id);

@@ -394,6 +394,63 @@ describe("LocalInferenceEngine voice surface", () => {
     await engine.stopVoice();
   });
 
+  it("uses verifier events for voice streaming without duplicating text chunks", async () => {
+    writePresetBundle(bundleRoot);
+    const backend = new CountingBackend();
+    const audio: AudioChunk[] = [];
+    const verifierEvents: string[] = [];
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: backend,
+      lifecycleLoaders: lifecycleLoadersOk(),
+      events: {
+        onAudio: (chunk) => audio.push(chunk),
+      },
+    });
+    await engine.armVoice();
+
+    (
+      engine as unknown as {
+        dispatcher: {
+          generate(args: {
+            onTextChunk?: (chunk: string) => Promise<void> | void;
+            onVerifierEvent?: (event: {
+              kind: "accept";
+              tokens: Array<{ index: number; text: string }>;
+            }) => Promise<void> | void;
+          }): Promise<string>;
+        };
+      }
+    ).dispatcher = {
+      async generate(args) {
+        await args.onVerifierEvent?.({
+          kind: "accept",
+          tokens: [{ index: 0, text: "Sure" }],
+        });
+        verifierEvents.push("accept:Sure");
+        await args.onTextChunk?.("Sure");
+        await args.onVerifierEvent?.({
+          kind: "accept",
+          tokens: [{ index: 1, text: "." }],
+        });
+        verifierEvents.push("accept:.");
+        await args.onTextChunk?.(".");
+        return "Sure.";
+      },
+    };
+
+    const result = await engine.generate({ prompt: "answer briefly" });
+
+    expect(result).toBe("Sure.");
+    expect(verifierEvents).toEqual(["accept:Sure", "accept:."]);
+    expect(backend.calls).toBe(1);
+    expect(backend.texts).toEqual(["Sure."]);
+    expect(audio).toHaveLength(1);
+    await engine.stopVoice();
+  });
+
   it("direct TRANSCRIPTION requires voice and surfaces missing ASR backend clearly", async () => {
     const engine = new LocalInferenceEngine();
     const audio = { pcm: new Float32Array([0]), sampleRate: 24000 };

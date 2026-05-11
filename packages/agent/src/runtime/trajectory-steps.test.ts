@@ -286,7 +286,9 @@ function createMockSqlEngine(): MockSqlEngine {
     }
 
     // DELETE
-    const deleteMatch = trimmed.match(/^DELETE\s+FROM\s+(\w+)(?:\s+WHERE\s+([\s\S]+?))?(?:\s+RETURNING\s+\w+)?$/i);
+    const deleteMatch = trimmed.match(
+      /^DELETE\s+FROM\s+(\w+)(?:\s+WHERE\s+([\s\S]+?))?(?:\s+RETURNING\s+\w+)?$/i,
+    );
     if (deleteMatch) {
       const [, table, whereSql] = deleteMatch;
       const tbl = tables.get(table);
@@ -323,9 +325,7 @@ function createMockSqlEngine(): MockSqlEngine {
       // Handle LEFT JOIN trajectory_steps for the forward-migration query.
       if (joinTable === "trajectory_steps") {
         const stepsTable = tables.get("trajectory_steps");
-        const stepRows = stepsTable
-          ? Array.from(stepsTable.rows.values())
-          : [];
+        const stepRows = stepsTable ? Array.from(stepsTable.rows.values()) : [];
         const stepTrajectoryIds = new Set(
           stepRows.map((r) => String(r.trajectory_id)),
         );
@@ -354,7 +354,10 @@ function createMockRuntime(engine: MockSqlEngine): IAgentRuntime {
   const adapter = {
     db: {
       execute: async (chunks: { queryChunks: object[] }) => {
-        const raw = chunks as unknown as { queryChunks?: unknown[]; sql?: string };
+        const raw = chunks as unknown as {
+          queryChunks?: unknown[];
+          sql?: string;
+        };
         // Our test mock receives `sql.raw(text)` which returns an object with
         // a `queryChunks` field that is the raw text wrapped. We extract it
         // by re-reading the original text from the engine call helper.

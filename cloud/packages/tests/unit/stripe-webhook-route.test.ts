@@ -53,7 +53,7 @@ function installMocks(harness: Harness): void {
     },
   }));
 
-  mock.module("@/lib/services/payment-requests", () => ({
+  mock.module("@/lib/services/payment-webhook-errors", () => ({
     IgnoredWebhookEvent,
   }));
 
@@ -63,7 +63,13 @@ function installMocks(harness: Harness): void {
       createIntent: async () => {
         throw new Error("createIntent should not be called from the webhook route");
       },
-      parseWebhook: async ({ rawBody, signature }: { rawBody: string; signature: string | null }) => {
+      parseWebhook: async ({
+        rawBody,
+        signature,
+      }: {
+        rawBody: string;
+        signature: string | null;
+      }) => {
         harness.parseCalls.push({ rawBody, signature });
         if (harness.parseError) throw harness.parseError;
         if (!harness.parseResult) throw new Error("no parseResult configured");

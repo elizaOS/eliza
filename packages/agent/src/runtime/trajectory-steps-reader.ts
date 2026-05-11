@@ -9,7 +9,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-
+import type { PersistedStep } from "./trajectory-internals.ts";
 import {
   asRecord,
   executeRawSql,
@@ -22,7 +22,6 @@ import {
   toOptionalNumber,
   toText,
 } from "./trajectory-internals.ts";
-import type { PersistedStep } from "./trajectory-internals.ts";
 
 export interface TrajectoryStepsPage {
   steps: PersistedStep[];
@@ -58,8 +57,7 @@ function rowToPersistedStep(row: Record<string, unknown>): PersistedStep {
   const startedAt = toOptionalNumber(readRecordValue(row, ["started_at"]));
   const endedAt = toOptionalNumber(readRecordValue(row, ["ended_at"]));
   const kindRaw = toText(readRecordValue(row, ["step_type"]), "");
-  const kind =
-    kindRaw === "llm" || kindRaw === "action" ? kindRaw : undefined;
+  const kind = kindRaw === "llm" || kindRaw === "action" ? kindRaw : undefined;
   const scriptValue = readRecordValue(row, ["script"]);
   const script =
     typeof scriptValue === "string" && scriptValue.length > 0

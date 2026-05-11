@@ -515,6 +515,34 @@ function takeAndroidScreenshot(context, label) {
   return outPath;
 }
 
+function androidBackgroundServicesReady(services, id) {
+  const foregroundCount = services.match(/isForeground=true/g)?.length ?? 0;
+  return (
+    services.includes(`${id}/.ElizaAgentService`) &&
+    services.includes(`${id}/.GatewayConnectionService`) &&
+    foregroundCount >= 2
+  );
+}
+
+async function waitForAndroidBackgroundServices(context, id) {
+  let lastServices = "";
+  for (let attempt = 1; attempt <= 15; attempt += 1) {
+    lastServices = requireExec(
+      context.adb,
+      ["-s", context.serial, "shell", "dumpsys", "activity", "services", id],
+      "Failed to inspect Android foreground services.",
+    );
+    if (androidBackgroundServicesReady(lastServices, id)) {
+      return lastServices;
+    }
+    await sleep(1000);
+  }
+  throw new Error(
+    "Android local background services did not both become foreground services. " +
+      `Last services dump:\n${lastServices.slice(0, 4000)}`,
+  );
+}
+
 async function verifyAndroidBackgroundApi(context, baseUrl, authToken) {
   if (!context?.installed) {
     return { ok: false, reason: "no-emulator" };
@@ -530,23 +558,7 @@ async function verifyAndroidBackgroundApi(context, baseUrl, authToken) {
     ["-s", context.serial, "shell", "input", "keyevent", "HOME"],
     "Failed to send Android emulator to home screen.",
   );
-  // Wait briefly for the OS to record the activity transition; this is short
-  // and bounded — we proceed to deterministic polling immediately after.
-  await sleep(2000);
-  const services = requireExec(
-    context.adb,
-    ["-s", context.serial, "shell", "dumpsys", "activity", "services", id],
-    "Failed to inspect Android foreground services.",
-  );
-  if (
-    !services.includes(`${id}/.ElizaAgentService`) ||
-    !services.includes(`${id}/.GatewayConnectionService`) ||
-    !services.includes("isForeground=true")
-  ) {
-    throw new Error(
-      "Android local background services are not both running as foreground services.",
-    );
-  }
+  await waitForAndroidBackgroundServices(context, id);
   const baselineHealth = await requestJson(
     "GET",
     "/api/health",

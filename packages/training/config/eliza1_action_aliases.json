@@ -33,6 +33,26 @@
   },
   "prefixAliases": [
     {
+      "from": "SHELL_COMMAND_",
+      "to": "SHELL_"
+    },
+    {
+      "from": "RUN_COMMAND_",
+      "to": "SHELL_"
+    },
+    {
+      "from": "EXECUTE_COMMAND_",
+      "to": "SHELL_"
+    },
+    {
+      "from": "RUN_SHELL_",
+      "to": "SHELL_"
+    },
+    {
+      "from": "TERMINAL_ACTION_",
+      "to": "SHELL_"
+    },
+    {
       "from": "PAYMENTS_",
       "to": "MONEY_"
     },

@@ -154,10 +154,13 @@ describe("runParentAgentBroker", () => {
     vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "test-key");
     vi.stubEnv("ELIZA_CLOUD_BASE_URL", "https://cloud.test");
     const fetchMock = vi.fn(async () => {
-      return new Response(JSON.stringify({ ready: true, status: "AVAILABLE" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ ready: true, status: "AVAILABLE" }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      );
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -169,7 +172,9 @@ describe("runParentAgentBroker", () => {
         command: "advertising.accounts.media.status",
         params: {
           id: "account-1",
-          query: { providerAssetResourceName: "customers/123/youTubeVideoUploads/abc" },
+          query: {
+            providerAssetResourceName: "customers/123/youTubeVideoUploads/abc",
+          },
         },
       },
     });
