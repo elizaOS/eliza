@@ -24,20 +24,18 @@ function disableAiSdkWarningsForZai(): void {
 }
 
 export function initializeZai(_config: PluginConfig, runtime: IAgentRuntime): void {
-  void (async () => {
-    disableAiSdkWarningsForZai();
-    const apiKey = getApiKeyOptional(runtime);
+  disableAiSdkWarningsForZai();
+  const apiKey = getApiKeyOptional(runtime);
 
-    if (!apiKey && !isBrowser()) {
-      logger.warn(
-        "ZAI_API_KEY is not set in environment - z.ai functionality will be limited. " +
-          "Set ZAI_API_KEY in your environment variables or runtime settings. Legacy Z_AI_API_KEY is also accepted."
-      );
-      return;
-    }
+  if (!apiKey && !isBrowser()) {
+    logger.warn(
+      "ZAI_API_KEY is not set in environment - z.ai functionality will be limited. " +
+        "Set ZAI_API_KEY in your environment variables or runtime settings. Legacy Z_AI_API_KEY is also accepted."
+    );
+    return;
+  }
 
-    if (apiKey) {
-      logger.log("z.ai API key configured successfully");
-    }
-  })();
+  if (apiKey) {
+    logger.log("z.ai API key configured successfully");
+  }
 }

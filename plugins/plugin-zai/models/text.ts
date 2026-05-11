@@ -63,10 +63,14 @@ function resolveTextParams(
     : {};
 
   if (cotBudget > 0) {
+    // Anthropic requires budget_tokens < max_tokens. Clamp the configured
+    // CoT budget against maxTokens so a user-supplied budget at or above
+    // the model's max_tokens doesn't 400 out the request.
+    const budgetTokens = Math.min(cotBudget, Math.max(1, maxTokens - 1));
     const existingAnthropic = providerOptions.anthropic ?? {};
     (providerOptions as { anthropic: Record<string, unknown> }).anthropic = {
       ...existingAnthropic,
-      thinking: { type: "enabled", budgetTokens: cotBudget },
+      thinking: { type: "enabled", budgetTokens },
     };
   }
 
