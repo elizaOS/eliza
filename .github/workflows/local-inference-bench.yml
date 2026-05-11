@@ -24,7 +24,7 @@ on:
     # 05:00 UTC — runs after the nightly publish job at 04:00 UTC so
     # the dev server gets the latest packages.
     - cron: "0 5 * * *"
-    # 04:30 UTC Sunday — weekly milady-ai publish window.
+    # 04:30 UTC Sunday — weekly eliza-1 model publish window.
     - cron: "30 4 * * 0"
   pull_request:
     paths:
@@ -53,7 +53,7 @@ on:
         type: boolean
         default: false
       run_publish_models:
-        description: "Run the milady-ai publish + catalog-sync job on-demand (gated by secrets.MILADY_HF_TOKEN)."
+        description: "Run the eliza-1 model publish + catalog-sync job on-demand (gated by secrets.MILADY_HF_TOKEN)."
         required: false
         type: boolean
         default: false
@@ -485,7 +485,7 @@ jobs:
           retention-days: 14
 
   publish-models-nightly:
-    # Weekly nightly publish to the milady-ai HF org. Walks W5-Pipeline's
+    # Weekly nightly publish to the elizaos HF org. Walks W5-Pipeline's
     # output, calls publish_milady_model.py for each fused-kernel GGUF,
     # then runs sync_catalog_from_hf.py to produce the catalog diff and
     # opens a PR with the update.
@@ -493,7 +493,7 @@ jobs:
     # Gated behind secrets.MILADY_HF_TOKEN. When the secret is unset
     # (forks, dry-test branches), the job no-ops with an explicit
     # warning so unrelated workflow runs don't fail.
-    name: Publish milady-ai models (weekly)
+    name: Publish eliza-1 models (weekly)
     if: >-
       (github.event_name == 'schedule' && github.event.schedule == '30 4 * * 0') ||
       (github.event_name == 'workflow_dispatch' && inputs.run_publish_models == true)
@@ -560,7 +560,7 @@ jobs:
           echo "Pipeline output:"
           ls -la "$W5_PIPELINE_OUTPUT_ROOT"
 
-      - name: Publish each milady-ai bundle
+      - name: Publish each fused-kernel bundle
         if: ${{ env.PUBLISH_SKIPPED != '1' && env.NO_PIPELINE_OUTPUT != '1' }}
         run: |
           set -euo pipefail
@@ -569,12 +569,12 @@ jobs:
           for dir in "$W5_PIPELINE_OUTPUT_ROOT"/*/; do
             name=$(basename "$dir")
             # Bundle naming: <base>-milady-optimized or <base>-milady-drafter.
-            # Anything else is rejected — milady-ai is for fused builds only.
+            # Anything else is rejected — these repos are for fused builds only.
             if [[ "$name" != *-milady-optimized && "$name" != *-milady-drafter ]]; then
-              echo "::warning ::skipping $name (not a milady-ai bundle name)"
+              echo "::warning ::skipping $name (not a fused-kernel bundle name)"
               continue
             fi
-            repo_id="milady-ai/$name"
+            repo_id="elizaos/$name"
             echo "::group::publish $repo_id"
             if ! python packages/training/scripts/publish_milady_model.py \
                 --model-dir "$dir" \
@@ -589,7 +589,7 @@ jobs:
             exit 1
           fi
 
-      - name: Sync catalog diff from milady-ai
+      - name: Sync catalog diff from elizaos
         if: ${{ env.PUBLISH_SKIPPED != '1' }}
         run: |
           set -euo pipefail
@@ -597,7 +597,7 @@ jobs:
           OUT_DIR="reports/porting/${DATE}"
           mkdir -p "$OUT_DIR"
           python packages/training/scripts/sync_catalog_from_hf.py \
-            --org milady-ai \
+            --org elizaos \
             --out "$OUT_DIR/catalog-diff.json"
           echo "DIFF_PATH=$OUT_DIR/catalog-diff.json" >> "$GITHUB_ENV"
 
@@ -622,10 +622,10 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ci/milady-ai-catalog-${{ github.run_id }}
+          branch: ci/eliza-1-catalog-${{ github.run_id }}
           base: develop
-          commit-message: "chore(catalog): refresh milady-ai pointers (auto)"
-          title: "chore(catalog): refresh milady-ai pointers"
+          commit-message: "chore(catalog): refresh eliza-1 pointers (auto)"
+          title: "chore(catalog): refresh eliza-1 pointers"
           body: |
             Auto-generated catalog diff from `sync_catalog_from_hf.py`.
 
@@ -637,6 +637,6 @@ jobs:
             reports/porting/**/catalog-diff.json
           delete-branch: true
           labels: |
-            milady-ai
+            eliza-1
             local-inference
             automated
