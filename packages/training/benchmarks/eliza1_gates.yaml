@@ -57,6 +57,21 @@ gates:
     unit: "ms"
     manifest_field: "evals.vadLatencyMs"
     description: "Median VAD speech-onset detection latency."
+  vad_boundary_mae_ms:
+    op: "<="
+    unit: "ms"
+    manifest_field: "evals.vadQuality.boundaryMaeMs"
+    description: "Median absolute error of detected speech onset against labeled speech start."
+  vad_endpoint_p95_ms:
+    op: "<="
+    unit: "ms"
+    manifest_field: "evals.vadQuality.endpointP95Ms"
+    description: "P95 endpoint overhang after labeled speech end."
+  vad_false_bargein_per_hour:
+    op: "<="
+    unit: "events/hour"
+    manifest_field: "evals.vadQuality.falseBargeInPerHour"
+    description: "Extrapolated false speech-start events per hour over silence/noise fixtures."
   first_token_latency_ms:
     op: "<="
     unit: "ms"
@@ -149,6 +164,9 @@ tiers:
     voice_rtf: { threshold: 0.5, required: true, provisional: true }
     asr_wer: { threshold: 0.10, required: true, provisional: true }
     vad_latency_ms: { threshold: 20, required: true, provisional: false }
+    vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
+    vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
+    vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
     first_token_latency_ms: { threshold: 220, required: false, provisional: true }
     first_audio_latency_ms: { threshold: 450, required: false, provisional: true }
     barge_in_cancel_ms: { threshold: 80, required: true, provisional: false }
@@ -166,6 +184,9 @@ tiers:
     voice_rtf: { threshold: 0.45, required: true, provisional: true }
     asr_wer: { threshold: 0.08, required: true, provisional: true }
     vad_latency_ms: { threshold: 18, required: true, provisional: false }
+    vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
+    vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
+    vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
     first_token_latency_ms: { threshold: 200, required: false, provisional: true }
     first_audio_latency_ms: { threshold: 400, required: false, provisional: true }
     barge_in_cancel_ms: { threshold: 70, required: true, provisional: false }
@@ -183,6 +204,9 @@ tiers:
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.06, required: true, provisional: true }
     vad_latency_ms: { threshold: 16, required: true, provisional: false }
+    vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
+    vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
+    vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
     first_token_latency_ms: { threshold: 200, required: false, provisional: true }
     first_audio_latency_ms: { threshold: 400, required: false, provisional: true }
     barge_in_cancel_ms: { threshold: 60, required: true, provisional: false }
@@ -200,6 +224,9 @@ tiers:
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.05, required: true, provisional: true }
     vad_latency_ms: { threshold: 16, required: true, provisional: false }
+    vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
+    vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
+    vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
     first_token_latency_ms: { threshold: 220, required: false, provisional: true }
     first_audio_latency_ms: { threshold: 400, required: false, provisional: true }
     barge_in_cancel_ms: { threshold: 60, required: true, provisional: false }
@@ -215,6 +242,9 @@ tiers:
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.05, required: true, provisional: true }
     vad_latency_ms: { threshold: 16, required: true, provisional: false }
+    vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
+    vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
+    vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
     first_token_latency_ms: { threshold: 240, required: false, provisional: true }
     first_audio_latency_ms: { threshold: 420, required: false, provisional: true }
     barge_in_cancel_ms: { threshold: 60, required: true, provisional: false }
@@ -230,6 +260,9 @@ tiers:
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.05, required: true, provisional: true }
     vad_latency_ms: { threshold: 16, required: true, provisional: false }
+    vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
+    vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
+    vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
     first_token_latency_ms: { threshold: 260, required: false, provisional: true }
     first_audio_latency_ms: { threshold: 450, required: false, provisional: true }
     barge_in_cancel_ms: { threshold: 60, required: true, provisional: false }

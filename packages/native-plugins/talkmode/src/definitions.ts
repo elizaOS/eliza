@@ -80,10 +80,59 @@ export interface SpeakResult {
   error?: string;
 }
 
+export type TalkModeSessionMode =
+  | "idle"
+  | "compose"
+  | "push-to-talk"
+  | "hands-free"
+  | "passive";
+
+export interface TalkModeSpeakerMetadata {
+  /** Stable app/runtime entity id for the speaker when available. */
+  entityId?: string;
+  /** Connector-native speaker id, such as a Discord user id. */
+  sourceId?: string;
+  /** Connector/source label, such as "discord", "web", or "native". */
+  source?: string;
+  /** Human-friendly display name. */
+  name?: string;
+  /** Connector username or handle. */
+  userName?: string;
+  /** Room/channel where the turn was captured. */
+  channelId?: string;
+  roomId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface TalkModeVoiceTurn {
+  /** Stable id for this captured speech turn when available. */
+  id?: string;
+  /** Transcript text for this turn. */
+  text: string;
+  /** Session mode that produced this turn. */
+  mode: TalkModeSessionMode;
+  /** Whether this turn is final. */
+  isFinal: boolean;
+  /** Speaker attribution when provided by the capture backend. */
+  speaker?: TalkModeSpeakerMetadata;
+  /** Capture backend/source label. */
+  source?: string;
+  /** Turn start timestamp in epoch milliseconds. */
+  startedAtMs?: number;
+  /** Turn end timestamp in epoch milliseconds. */
+  endedAtMs?: number;
+  /** STT confidence where available. */
+  confidence?: number;
+  /** Backend-specific metadata. */
+  metadata?: Record<string, unknown>;
+}
+
 /**
  * Talk mode configuration
  */
 export interface TalkModeConfig {
+  /** Session mode requested by the UI/connector. */
+  mode?: Exclude<TalkModeSessionMode, "idle">;
   /** Session key for chat */
   sessionKey?: string;
   /** TTS configuration */
@@ -123,6 +172,8 @@ export interface TalkModeStateEvent {
   state: TalkModeState;
   /** Previous state */
   previousState: TalkModeState;
+  /** Current session mode */
+  mode?: TalkModeSessionMode;
   /** Status message */
   statusText: string;
   /** Whether system TTS is being used */
@@ -137,6 +188,16 @@ export interface TalkModeTranscriptEvent {
   transcript: string;
   /** Whether this is final */
   isFinal: boolean;
+  /** Session mode that produced this transcript */
+  mode?: Exclude<TalkModeSessionMode, "idle">;
+  /** Speaker attribution when provided by the capture backend */
+  speaker?: TalkModeSpeakerMetadata;
+  /** Full turn metadata for speaker-aware clients */
+  turn?: TalkModeVoiceTurn;
+  /** Capture backend/source label */
+  source?: string;
+  /** STT confidence where available */
+  confidence?: number;
 }
 
 /**

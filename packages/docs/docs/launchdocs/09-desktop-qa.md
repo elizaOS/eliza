@@ -105,6 +105,120 @@ Packaging/runtime configuration is present for macOS, Windows, and Linux. The co
 | Crash/recovery | Kill child runtime, corrupt/missing runtime dist, port conflict | Same, plus process cleanup | Same | App reports failure, logs enough context, and reset/retry paths recover. |
 | Power/GPU/windowing | WebGPU/CEF, battery, sleep/wake, resize/vibrancy | WebGPU/CEF, sleep/wake, resize | WebGPU/CEF flags, compositor differences | No blank canvas, runaway CPU/GPU, or broken layout after resume/resize. |
 
+## AI QA Pass 2026-05-11 (static analysis)
+
+Workstream 4 of the AI QA master plan (`23-ai-qa-master-plan.md`). This is a **static code audit** of every desktop-specific surface. Live device runs were blocked, so findings are sourced from reading the code and confirming wiring (or the absence of it). Each finding cites file:line.
+
+### 1. Native titlebar (mac traffic-light padding, drag region, Windows/Linux behavior)
+
+The macOS shell uses `titleBarStyle: "hiddenInset"` (`packages/app-core/platforms/electrobun/src/index.ts:881-882`, `:944,984`) and overlays a custom header in the renderer. The header reserves space for the traffic lights via the `--eliza-macos-frame-left-inset: 80px` CSS variable (`packages/ui/src/styles/electrobun-mac-window-drag.css:21`) and a `MAC_TITLEBAR_PADDING_STYLE` constant (`packages/ui/src/components/shell/Header.tsx:76-82`). Drag/no-drag regions are driven by `[data-window-titlebar]`, `[data-window-titlebar-drag-zone]`, and `[data-no-camera-drag]` data attributes in conjunction with CSS rules at `electrobun-mac-window-drag.css:33-46,67-100`.
+
+- **[P2] Hard-coded 80px traffic-light inset, brittle across macOS versions.** `packages/ui/src/styles/electrobun-mac-window-drag.css:21` and `packages/ui/src/components/shell/Header.tsx:78` both fall back to `80px` when Electrobun has not populated the CSS variable. macOS Sequoia 15+ uses traffic lights ~78px wide; macOS 12 used ~72px. A hard-coded value can clip the leftmost nav tab on a high-density display when the system width changes. Recommend driving from a measured value the host posts via RPC, with the literal 80 only as a last resort.
+- **[P2] No Windows/Linux titlebar handling at all in Header.tsx.** `packages/ui/src/components/shell/Header.tsx:93-101` only branches on macOS (`shouldShowMacDesktopTitleBar`). Windows and Linux fall through to `titleBarStyle: "default"` (`packages/app-core/platforms/electrobun/src/index.ts:882,984`), which is the OS-native title bar. That's fine functionally, but the QA matrix in this doc line 102 still references "Tray/menu, close-to-tray, detached windows" for both Windows and Linux. There is **no close-to-tray behavior anywhere** (search for `closeToTray`, `hideOnClose`, `will-close` in `packages/app-core/platforms/electrobun/src/` returns nothing). Either the QA matrix is wrong or the close-to-tray behavior is not implemented.
+- **[P3] Stray dependency on `windowShellRoute` at module init.** `packages/app/src/main.tsx:209` resolves `windowShellRoute` once at module load (`resolveWindowShellRoute()`) and reuses it. If the URL hash changes during the same session (e.g. navigating between detached and main shells in the same window — possible via `syncDetachedShellLocation`), the module-scoped `windowShellRoute` won't update. Not currently a bug because detached and main shells live in different OS windows, but it's fragile.
+- **[P3] `transparent: process.platform === "darwin"` (`packages/app-core/platforms/electrobun/src/index.ts:883,985`) means Windows/Linux windows are fully opaque.** Vibrancy / acrylic backdrops are explicitly Mac-only. Confirmed expected by `applyMacOSWindowEffects(win)` at `:950` being the only place that activates them.
+
+### 2. Tray menu items
+
+The renderer-side menu is defined in `packages/ui/src/desktop-runtime/DesktopTrayRuntime.tsx:19-33` (`DESKTOP_TRAY_MENU_ITEMS`) — 11 items including 3 separators. Tray clicks are routed via the Electrobun RPC `desktopTrayMenuClick` channel (`DesktopTrayRuntime.tsx:166-188` for menu-reset, `DesktopTrayRuntime.tsx:226-296` for tray actions). `packages/app/src/main.tsx:614-623` ALSO registers the same tray menu via the Capacitor `Desktop.setTrayMenu` + `Desktop.addListener('trayMenuClick', ...)` API.
+
+The host-side tray is configured separately at `packages/app-core/platforms/electrobun/src/index.ts:2196-2226`. That tray has a **completely different set of items** (Show Window, per-app entries, Start/Stop Agent, Restart Agent, Quit) and dispatches via `"tray-clicked"` Electrobun events handled at `:1751-1759`.
+
+- **[P0] `Desktop.addListener("trayMenuClick", ...)` in `packages/app/src/main.tsx:618-623` is dead code.** The Capacitor `Desktop` plugin's `addListener` (`packages/app/node_modules/@elizaos/capacitor-desktop/src/web.ts:428-464`) only special-cases `windowFocus`/`windowBlur` and stores all other listeners in an array that `notifyListeners` is **never called for** (the only `notifyListeners` invocation at `:308` is for browser notifications). The registration silently succeeds, but the listener never fires. Tray actions still work because `DesktopTrayRuntime.tsx:165-188` and `DesktopSurfaceNavigationRuntime.tsx:18-46` subscribe directly to the RPC channel — but the layered registration in `main.tsx` is misleading and must be removed or wired through `notifyListeners`.
+- **[P0] Two competing tray menu definitions ship in the same build.** The renderer registers the menu defined in `DesktopTrayRuntime.tsx:19-33` via `Desktop.setTrayMenu`. The host-side `index.ts:2196-2226` builds and registers its OWN menu (`Tray = new Tray({...})`) at startup with different items: per-app entries, "Show Window", "Start/Stop Agent", etc. Only ONE of these is visible to the user — and since the renderer's `setTrayMenu` call happens after the host registers its tray, the renderer's menu likely wins (or they collide). The two menus must be reconciled to a single source of truth.
+- **[P1] `quit` tray item has no handler in `DesktopTrayRuntime.tsx`'s switch.** `DesktopTrayRuntime.tsx:242-291` covers tray-open-chat/plugins/etc but not `quit`. Quit only works because the host-side handler at `packages/app-core/platforms/electrobun/src/native/desktop.ts:717-721` catches `action === "quit"` from the native tray-clicked event. If `setTrayMenu` is the active path, the `quit` item dispatches to the renderer's `handleTrayAction` which hits the `default: return;` branch (line 290) — quit becomes a no-op. Confirmed in code; requires live verification.
+- **[P2] Tray click audit metadata vs. handler drift.** `DESKTOP_TRAY_CLICK_AUDIT` at `DesktopTrayRuntime.tsx:35-118` lists every tray item with `coverage: "automated"` except `quit` (`coverage: "manual"`). No automated test in `packages/app/test/` or `packages/app-core/platforms/electrobun/src/` actually exercises the tray menu. The audit metadata claims more coverage than exists.
+- **[P3] Separator IDs (`tray-sep-0`, `tray-sep-1`, `tray-sep-2`) are visible in the action payload.** If a user (or a future shortcut) ever dispatches `tray-sep-0` as an itemId, it hits the `default: return;` branch silently. Cheap to filter at registration time.
+
+### 3. Global shortcuts (Cmd+K command palette)
+
+`Desktop.registerShortcut({ id: "command-palette", accelerator: "CommandOrControl+K" })` at `packages/app/src/main.tsx:603-606`. The host registers via `GlobalShortcut.register(...)` at `packages/app-core/platforms/electrobun/src/native/desktop.ts:783-794` and sends `desktopShortcutPressed` to the renderer at `:785`. The renderer is supposed to receive that and dispatch `COMMAND_PALETTE_EVENT`.
+
+- **[P0] Cmd+K from a globally-focused shortcut is broken — no renderer subscriber for `desktopShortcutPressed`.** A grep of `packages/ui/src/`, `packages/app-core/src/`, `packages/app/src/` for `desktopShortcutPressed` returns ZERO subscribers in source code (the only match is the host-side `send()` call at `native/desktop.ts:785` and a doc snippet at `packages/docs/apps/desktop/native-modules.md:415`). The path that registers the listener via `Desktop.addListener("shortcutPressed", ...)` at `packages/app/src/main.tsx:608-612` is dead for the same reason as the tray (see Section 2 P0 finding). Cmd+K only works because `CommandPalette.tsx:131-144` has a generic `keydown` listener — but that ONLY fires when the renderer has focus. Global hotkey behavior (Cmd+K from another app) is non-functional.
+- **[P1] `Desktop.registerShortcut` return value is ignored.** `packages/app/src/main.tsx:603-606` awaits the call but never inspects `{ success: boolean }`. If `Cmd+K` is already taken by another app (Spotlight, Alfred, etc.), `GlobalShortcut.register(...)` throws and `desktop.ts:792-794` swallows it returning `{ success: false }`. User has no signal that the shortcut isn't registered.
+- **[P2] Shortcut collision check absent.** No code calls `isShortcutRegistered({ accelerator: "CommandOrControl+K" })` (`desktop.ts:810-814`) before registering. macOS often has `Cmd+K` mapped to "Clear" / "Clear Display" / Slack's quick switcher / Chrome's "Search Engines" — a colliding registration may fail silently per the above finding.
+- **[P3] Only one global shortcut is registered.** Other natural candidates (toggle window with Cmd+Shift+I or similar, toggle voice with Cmd+Shift+V) are absent. Power users may expect more.
+
+### 4. Detached windows (`openDesktopSettingsWindow`, `openDesktopSurfaceWindow`, `DetachedShellRoot`)
+
+`packages/ui/src/utils/desktop-workspace.ts:162-186` exposes two open-window helpers that call RPCs (`desktopOpenSettingsWindow`, `desktopOpenSurfaceWindow`). The detached shell renderer is `packages/ui/src/desktop-runtime/DetachedShellRoot.tsx:217-258`, which switches on `target.tab` (browser, chat, plugins, triggers, settings).
+
+- **[P1] Detached shell hard-imports `BrowserWorkspaceView` lazy chunk only — `ChatView`, `PluginsPageView`, `HeartbeatsView`, `CloudDashboard`, `ProviderSwitcher`, `VoiceConfigView`, `PermissionsSection`, `ReleaseCenterView`, `CodingAgentSettingsSection` are all eagerly imported (`DetachedShellRoot.tsx:9-26`).** A detached settings window for "voice controls" loads the entire chat + plugin + heartbeats bundle. Cold reload of a small settings popup loads megabytes of unrelated code. Either split via `lazy()` consistently or accept this is a single bundle by design.
+- **[P2] No window-state persistence for detached windows.** Searching `packages/app-core/platforms/electrobun/src/` for `detached.*bounds` / `detached.*state` returns no save-restore logic for the small popup windows. Closing and reopening always starts at the host's default size; users repositioning a detached chat window get no memory of that position. Verifiable in code; impact is UX-level.
+- **[P2] Detached shell theme load on first mount only.** `packages/app/src/main.tsx:988` calls `applyStoredDetachedShellTheme()` once when the shell route is detached. If the main window changes the theme afterward, detached windows do NOT pick up the change — there's no event subscription on the detached side. Confirm via comparison with the main shell which DOES listen via `syncBrandEnvToEliza` and theme events.
+- **[P2] Listener leak risk in `DesktopTrayRuntime.tsx:163-212`'s retry loop.** The exponential-backoff `schedulePoll()` keeps re-running `setTimeout` until cancelled. The `cancelled` boolean is checked twice per cycle, but `attach()` re-creates the subscribe call each time — if the prior `unsubscribe` reference becomes stale, a subscribe → unsubscribe sequence on rapid mount/unmount could leak. Combined with the unconditional `pollMs = Math.min(pollMs * 1.5, MAX_POLL_MS);` line: if `attach()` returns `true` on its first call, the polling never starts (correct). If it starts polling and the component unmounts mid-poll, the active `setTimeout` is cleared but the inner promise resolution is not. Tighten.
+
+### 5. Share target (drop / share handler)
+
+`packages/app/src/main.tsx:316-338` builds a window-level share queue (`__ELIZA_APP_SHARE_QUEUE__`), `dispatchShareTarget` pushes to it and dispatches `SHARE_TARGET_EVENT`. `main.tsx:625-635` subscribes to the host's `shareTargetReceived` IPC and routes to `handleDeepLink`. The deep-link handler at `:550-575` dispatches a `SHARE_TARGET_EVENT` when the deep link is `eliza://share?...`.
+
+- **[P0] `SHARE_TARGET_EVENT` has no renderer listeners.** A grep across `packages/ui/src/`, `packages/app-core/src/`, `packages/app/src/` for `addEventListener.*share-target` or `SHARE_TARGET_EVENT,` returns ZERO listeners outside of `events/index.ts` (the constant definition) and `packages/app/src/main.tsx:337` (the dispatcher). The queue at `window.__ELIZA_APP_SHARE_QUEUE__` is also never drained. When a user invokes the share target, the event fires and disappears — nothing happens. The docs at `packages/docs/apps/desktop/deep-linking.md:40-45` reference a fictional `attachToCurrentConversation` function that doesn't exist anywhere. **Shipping the share target without a consumer means it does nothing user-visible.**
+- **[P1] Share queue grows unbounded.** `packages/app/src/main.tsx:316-333` calls `getShareQueue().push(payload)` on every share but no code drains it. Memory leak risk if a user repeatedly shares to a deep-linkable URL while the app is open.
+- **[P2] No handling for "no chat open" case.** Even if a consumer existed, the docs say the payload goes "to the current conversation" — but if the user is on Settings or Apps, no conversation is active. Spec missing.
+- **[P3] Deep-link `eliza://share` is validated but the share-target IPC path is not.** `main.tsx:625-635` accepts any string `url` from the host IPC without re-validating it goes through the `eliza:` scheme or the share host. Currently OK because `handleDeepLink` parses with `new URL(...)` and rejects non-matching protocols at `:474`, but a future change could break that.
+
+### 6. Desktop dev observability endpoints
+
+`packages/app-core/src/api/dev-compat-routes.ts:28-211` mounts five routes under `/api/dev/...`. All gate on `isLoopbackRemoteAddress(req.socket.remoteAddress)` and `ensureRouteAuthorized(req, res, state)`. All return 404 in production via `process.env.NODE_ENV === "production"` (`:41-44`).
+
+- **[P0 — confirmed safe] SSRF guard on `cursor-screenshot` upstream URL is correct.** `dev-compat-routes.ts:96-111` parses `ELIZA_ELECTROBUN_SCREENSHOT_URL` and rejects any hostname that is not `127.0.0.1`, `localhost`, `[::1]`, or `::1`. `redirect: "error"` is set on the fetch. No additional issues found here.
+- **[P0 — confirmed safe] `console-log` path allowlist is correct.** `packages/app-core/src/api/dev-console-log.ts:18-24` requires the file basename be exactly `desktop-dev-console.log` AND that the path contains a `.eliza` segment. Reading is bounded by `ABS_CAP_BYTES=2_000_000` and `ABS_CAP_LINES=5000` (`:31-33`). Good defense-in-depth.
+- **[P1] `dev-stack` endpoint exposes `desktopApiBase` from env without re-validation.** `dev-compat-routes.ts:55-62` returns `ELIZA_DESKTOP_API_BASE` verbatim. If an attacker can poison env (e.g., dev pairing flow) and pivot via `/api/dev/stack`, they can advertise an external host. Loopback gate + auth check mitigate this for unprivileged callers, but the call is still on the trust boundary. Document the assumption that env is trusted on loopback.
+- **[P2] `voice-latency` and `route-catalog` routes inherit the same guards as the others — confirmed safe.** `dev-compat-routes.ts:65-76,186-208` repeat the loopback + auth gates. Consistent.
+- **[P2] Loopback check delegates to `isLoopbackRemoteAddress` in `compat-route-shared`.** Should double-check that function handles IPv4-mapped IPv6 addresses (`::ffff:127.0.0.1`) — many Node servers receive that form. Worth a unit test if not already covered.
+- **[P3] `cursor-screenshot` does not cap response size.** A pathological upstream could spam a huge PNG; we fetch and buffer the whole `arrayBuffer()` before sending. Loopback-only mitigates but a content-length check would be cheap.
+
+### 7. Auto-update flow
+
+`packages/app-core/platforms/electrobun/src/index.ts:1520-1597` defines `setupUpdater()`. `getUpdaterAvailability()` at `packages/app-core/platforms/electrobun/src/native/desktop.ts:2205-2257` gates auto-update.
+
+- **[P1] No dev-mode skip on Windows / Linux.** `desktop.ts:2210-2216` returns `canAutoUpdate: true` unconditionally on non-macOS platforms. Only macOS checks `inApplications`. On Windows or Linux, even a development build (`ELECTROBUN_DEV=1`, `NODE_ENV !== production`) will hit `Updater.checkForUpdate()` and `Updater.downloadUpdate()` at `index.ts:1539-1547`. A `process.env.ELECTROBUN_DEV` (or a new `ELIZA_DESKTOP_DISABLE_AUTO_UPDATE`) check is needed to opt unpackaged builds out.
+- **[P1] No environment-variable kill switch.** No `ELIZA_DISABLE_AUTO_UPDATE`, `SKIP_UPDATE`, or similar found anywhere in `packages/app-core/platforms/electrobun/src/`. Operators in regulated environments cannot disable the updater without a code change. Compare with the documented `EXECUTECODE_DISABLE` pattern in CLAUDE.md.
+- **[P2] `setupUpdater()` error path silently logs and moves on.** `index.ts:1555-1565` only logs to `logger.warn`. If `Updater.checkForUpdate()` repeatedly fails (e.g., update server down), no telemetry, no surfaced UI signal until the manual "Check for Updates" menu fires.
+- **[P3] Manual check path always shows notification then immediately re-checks.** `index.ts:1589-1595` shows "Checking for Updates" notification then calls `runUpdateCheck(true)`. If the user spams the menu item, multiple update checks pile up. Cheap debounce missing.
+
+### 8. Shutdown overlay
+
+`packages/ui/src/App.tsx:889-897` subscribes to `desktopShutdownStarted` and toggles `desktopShuttingDown` state. The overlay renders at `App.tsx:1278-1293`. The host fires the event from `packages/app-core/platforms/electrobun/src/index.ts:1844` (`runShutdownCleanup`) and `packages/app-core/platforms/electrobun/src/native/desktop.ts:1426` (`beginAppExit`).
+
+- **[P0 — confirmed correct] Trigger fires on the right signal.** `index.ts:1851-1855` registers `before-quit` to call `runShutdownCleanup("before-quit")` which calls `sendToActiveRenderer("desktopShutdownStarted", ...)` at `index.ts:1844`. `desktop.ts:1425-1428` also sends `desktopShutdownStarted` before quit and sleeps 150ms to let the renderer paint.
+- **[P2] No timeout / fallback if the overlay never clears.** If shutdown stalls (e.g., a sync `cleanupFn` hangs in `runShutdownCleanup`), the overlay stays up forever. Cheap to add an `aria-live=polite` countdown or "if this takes more than X seconds, force-quit with Cmd+Q".
+- **[P3] Overlay copy is hardcoded English.** `App.tsx:1286-1290` uses literal strings "Shutting down…" and "Closing services and saving state." instead of `t()`. Comparable English-only strings exist in `OnboardingBlockedView` (`DetachedShellRoot.tsx:151-158`) which DOES use `t()`. Inconsistency.
+
+### 9. Per-platform branching
+
+Cross-cutting `process.platform === "darwin" | "win32" | "linux"` checks. Surveyed via grep across `packages/app-core/platforms/electrobun/src/`.
+
+- **[P1] Linux is treated as "not Windows, not macOS" everywhere it has any treatment at all.** `packages/app-core/platforms/electrobun/src/native/desktop.ts:1904-1923` (notification routing), `:2277-2284` (Linux uses CEF), `runtime-permissions.ts:43-45` (all three platforms ack'd but Linux returns stubs only — referenced in this doc's existing P2). The host menu definition (`application-menu.ts:208-256`) builds essentially identical Mac and non-Mac trees but Linux-specific concerns (Wayland vs X11, no global menu bar) are not addressed.
+- **[P2] `process.platform === "darwin"` literal duplicated 30+ times.** Examples: `index.ts:137`, `:882`, `:883`, `:984`, `:985`, `:1228`, `desktop.ts:567`, `:586`, `:826`, `:843`. A single `IS_MAC` constant at module top would let the type-checker catch typos like `"darin"` and reduce churn for code that needs to handle a future renderer (CEF, etc.).
+- **[P2] Linux tray menu support depends on `Tray = new Tray({...})` succeeding on GNOME 45+/KDE Plasma 6 — not verified.** `index.ts:2196-2226` wraps the tray creation in try/catch but only warns on failure. Many Linux desktop environments (GNOME without `gnome-shell-extension-appindicator`) drop the icon silently. Recommend a fallback that surfaces "Tray unavailable on this DE" in Settings → Desktop Workspace.
+- **[P3] `transparent: process.platform === "darwin"` (`index.ts:883,985`) leaves Windows/Linux with opaque-only windows.** Tested vibrancy modes from `applyMacOSWindowEffects` are mac-only.
+- **[P3] `process.platform === "win32"` short-circuits Windows-specific main-window CEF (`index.ts:887-889`).** Linux is implicitly treated like macOS for renderer selection.
+
+### Summary
+
+| Severity | Count | Notable findings |
+|---|---|---|
+| P0 | 4 | Cmd+K global hotkey broken (no `desktopShortcutPressed` subscriber); SHARE_TARGET_EVENT has no listeners; `Desktop.addListener` is dead code; two competing tray menu definitions ship in the same build |
+| P1 | 8 | No dev-mode skip on auto-update Windows/Linux; no autoupdate kill-switch; share-queue unbounded; `quit` tray item has no renderer handler; detached shell eager-imports; `Desktop.registerShortcut` return ignored; `dev-stack` exposes env verbatim; Linux treated as "not Windows, not macOS" everywhere |
+| P2 | 11 | Hard-coded 80px traffic-light inset; no Win/Linux titlebar handling in Header; tray click audit metadata drift; no window-state persistence for detached windows; detached theme load on mount only; listener leak risk in DesktopTrayRuntime retry loop; updater error path silent; shutdown overlay has no timeout; `voice-latency` / `route-catalog` consistency note; loopback check for IPv4-mapped IPv6; close-to-tray behavior absent vs. doc claims |
+| P3 | 9 | Stray module-init `windowShellRoute` cache; opaque Win/Linux windows; manual update check has no debounce; shutdown overlay copy not localized; many `process.platform === "darwin"` literals; tray separator IDs leak into action payload; Cmd+K is the only global shortcut; cursor-screenshot has no response-size cap; deep-link IPC path not re-validated |
+
+### Known live-only checks
+
+These cannot be verified statically — they need a human (or computer-use MCP) on the actual built app:
+
+- Tray icon visibility per OS (macOS menu bar, Windows system tray, Linux DE-dependent). Code wraps `new Tray(...)` in try/catch so failures are silent.
+- Tray click → menu items fire (the renderer wiring is now suspect per Section 2 P0; live confirmation needed).
+- Cmd+K from a non-focused state (global hotkey path is statically broken — confirm with live test).
+- macOS traffic-light position when the host posts the actual inset (vs falling back to the hard-coded 80px).
+- Detached settings window appearance, focus behavior, and screen positioning.
+- Auto-update download and apply on a packaged installed bundle (only macOS in-`/Applications` is statically gated).
+- Linux DE matrix: GNOME (Wayland), KDE Plasma (Wayland), XFCE (X11) — tray and Vibrancy fallbacks.
+- WebGPU rendering on Windows / Linux (CEF fallback applied; live render still unverified).
+- Share target round-trip from another macOS app via deep link, *if* a consumer is wired (currently none — see Section 5 P0).
+- Visual confirmation that the "Shutting down…" overlay paints before the window closes.
+
 ## Changed paths
 
 - `launchdocs/09-desktop-qa.md`

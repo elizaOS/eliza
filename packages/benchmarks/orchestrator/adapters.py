@@ -47,10 +47,50 @@ IGNORED_BENCHMARK_DIRS = {
     "openclaw-adapter",
     "lib",
     "orchestrator",
+    "scripts",
     "swe-bench-workspace",
     "tests",
     "viewer",
 }
+
+
+# Tri-agent harness compatibility map. Lookup is by benchmark id; anything
+# not listed defaults to ("eliza",). The runner marks a (benchmark, harness)
+# pair whose harness is not in this set as ``incompatible`` (no error).
+AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
+    # Eliza-only (domain-specific):
+    "solana": ("eliza",),
+    "evm": ("eliza",),
+    "hyperliquid": ("eliza",),
+    "hyperliquid_bench": ("eliza",),
+    "hyperliquidbench": ("eliza",),
+    "experience": ("eliza",),
+    "social_alpha": ("eliza",),
+    # Tri-compatible (agent-agnostic single-shot / scenario):
+    "bfcl": ("eliza", "openclaw", "hermes"),
+    "action_calling": ("eliza", "openclaw", "hermes"),
+    "agentbench": ("eliza", "openclaw", "hermes"),
+    "mind2web": ("eliza", "openclaw", "hermes"),
+    "tau_bench": ("eliza", "openclaw", "hermes"),
+    "context_bench": ("eliza", "openclaw", "hermes"),
+    "lifeops_bench": ("eliza", "openclaw", "hermes"),
+    "clawbench": ("eliza", "openclaw", "hermes"),
+    "openclaw_bench": ("eliza", "openclaw"),
+    "mint": ("eliza", "openclaw", "hermes"),
+    "terminal_bench": ("eliza", "hermes"),
+    "swe_bench": ("eliza", "hermes"),
+    "swe_bench_orchestrated": ("eliza", "hermes"),
+    "osworld": ("eliza", "hermes"),
+    # Hermes-native envs:
+    "hermes_tblite": ("eliza", "openclaw", "hermes"),
+    "hermes_terminalbench_2": ("eliza", "openclaw", "hermes"),
+    "hermes_yc_bench": ("eliza", "openclaw", "hermes"),
+    "hermes_swe_env": ("eliza", "openclaw", "hermes"),
+}
+
+
+def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
+    return AGENT_COMPATIBILITY_OVERRIDES.get(benchmark_id, ("eliza",))
 
 
 def _is_benchmark_directory(path: Path) -> bool:
@@ -124,6 +164,7 @@ def _make_registry_adapter(
         required_env=tuple(requirements_env),
         default_extra_config=dict(default_extra_config or {}),
         env_builder=env_builder,
+        agent_compatibility=_agent_compatibility_for(benchmark_id),
     )
 
 
@@ -166,6 +207,7 @@ def _make_extra_adapter(
         env_builder=env_builder,
         capability_notes=capability_notes,
         default_timeout_seconds=default_timeout_seconds,
+        agent_compatibility=_agent_compatibility_for(adapter_id),
     )
 
 
@@ -1258,6 +1300,18 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_scenarios": 12,
             "strict": True,
         },
+        "hermes_tblite": {
+            "max_tasks": 5,
+        },
+        "hermes_terminalbench_2": {
+            "max_tasks": 5,
+        },
+        "hermes_yc_bench": {
+            "max_tasks": 3,
+        },
+        "hermes_swe_env": {
+            "max_tasks": 1,
+        },
     }
     registry_dir_map = {
         "context_bench": "context-bench",
@@ -1275,8 +1329,38 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "gsm8k": "standard",
         "mt_bench": "standard",
     }
+    hermes_env_benchmark_ids = {
+        "hermes_tblite",
+        "hermes_terminalbench_2",
+        "hermes_yc_bench",
+        "hermes_swe_env",
+    }
+    hermes_adapter_dir_exists = (benchmarks_root / "hermes-adapter").is_dir()
     for entry in registry_entries:
         directory = registry_dir_map.get(entry.id, entry.id)
+        if entry.id in hermes_env_benchmark_ids:
+            # Hermes-native envs live under benchmarks/hermes-adapter (which is
+            # in IGNORED_BENCHMARK_DIRS because it's an adapter, not a benchmark
+            # tree). Bypass the dir-existence check and force-map to that path
+            # when the adapter checkout is present.
+            if not hermes_adapter_dir_exists:
+                continue
+            directory = "hermes-adapter"
+            adapters[entry.id] = _make_registry_adapter(
+                workspace_root=workspace_root,
+                benchmarks_root=benchmarks_root,
+                score_extractor_factory=score_extractor_factory,
+                benchmark_id=entry.id,
+                display_name=entry.display_name,
+                description=entry.description,
+                benchmark_dir=directory,
+                cwd_rel=entry.cwd_rel,
+                build_command=entry.build_command,
+                locate_result=entry.locate_result,
+                requirements_env=entry.requirements.env_vars,
+                default_extra_config=registry_default_extra.get(entry.id, {}),
+            )
+            continue
         if directory not in benchmark_dirs:
             if entry.id in {"osworld"} and "OSWorld" in benchmark_dirs:
                 directory = "OSWorld"

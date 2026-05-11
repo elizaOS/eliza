@@ -2,7 +2,10 @@
  * Cloud onboarding flow for Eliza Cloud integration.
  *
  * Handles availability check → browser-based auth → agent provisioning
- * during `runFirstTimeSetup()`. Extracted to keep `eliza.ts` manageable.
+ * during `runFirstTimeSetup()`. Transport-agnostic: every user-visible
+ * event and every interactive prompt is funneled through a
+ * `CloudOnboardingObserver`. CLI callers wrap their clack instance in
+ * `ClackObserver`; web/desktop callers provide an event-bridge observer.
  *
  * @module cloud-onboarding
  */
@@ -15,13 +18,11 @@ import {
   type CloudAgentCreateParams,
   ElizaCloudClient,
 } from "./cloud/bridge-client.js";
+import type { CloudOnboardingObserver } from "./cloud/onboarding-observer.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-/** Lazy-loaded @clack/prompts module type (matches eliza.ts pattern). */
-type ClackModule = typeof import("@clack/prompts");
 
 /** Result of a successful cloud onboarding flow. */
 export interface CloudOnboardingResult {
@@ -92,47 +93,42 @@ export async function checkCloudAvailability(
 }
 
 // ---------------------------------------------------------------------------
-// Cloud auth wrapper (with clack UI)
+// Cloud auth wrapper
 // ---------------------------------------------------------------------------
 
 /**
- * Run the Eliza Cloud browser-based login, wrapped with clack spinners.
- * Returns the API key/result or null if the user wants to fall back.
+ * Run the Eliza Cloud browser-based login, surfacing every transition
+ * through the observer. Returns the API key/result or null on failure.
  */
 async function runCloudAuth(
-  clack: ClackModule,
+  observer: CloudOnboardingObserver,
   baseUrl: string,
 ): Promise<CloudLoginResult | null> {
-  const spinner = clack.spinner();
-  spinner.start("Connecting to Eliza Cloud...");
-
   try {
     const result = await cloudLogin({
       baseUrl,
       timeoutMs: 300_000, // 5 minutes
       onBrowserUrl: (url: string) => {
-        spinner.stop("Opening your browser to log in...");
-        clack.log.info(`If the browser didn't open, visit:\n  ${url}`);
+        observer.onAuthStart(url);
 
-        // Try to open the browser
-        openBrowser(url).catch(() => {
-          // Fallback: user can manually navigate
+        // Try to open the browser. Failure is surfaced through the
+        // observer instead of being swallowed at debug-level — desktop /
+        // web onboarding wrappers need to render an inline "couldn't open
+        // browser" affordance.
+        openBrowser(url).catch((err) => {
+          const error = err instanceof Error ? err : new Error(String(err));
+          observer.onAuthBrowserOpenFailed(url, error);
         });
-
-        // Restart spinner for polling
-        spinner.start("Waiting for login in browser...");
       },
       onPollStatus: (status: string) => {
-        if (status === "pending") {
-          spinner.message("Waiting for login in browser...");
-        }
+        observer.onAuthPollStatus(status);
       },
     });
 
-    spinner.stop("✓ Logged in to Eliza Cloud!");
+    observer.onAuthSuccess();
     return result;
   } catch (err) {
-    spinner.stop(describeCloudAuthError(err));
+    observer.onAuthFailure(describeCloudAuthError(err));
     return null;
   }
 }
@@ -198,13 +194,12 @@ function describeCloudAuthError(err: unknown): string {
  *      terminal auth error (401/403). The caller falls back.
  */
 async function provisionCloudAgent(
-  clack: ClackModule,
+  observer: CloudOnboardingObserver,
   client: ElizaCloudClient,
   agentName: string,
   preset?: StylePreset,
 ): Promise<ProvisionOutcome> {
-  const spinner = clack.spinner();
-  spinner.start("Creating your cloud agent...");
+  observer.onProvisionStart(agentName);
 
   let agentId: string;
   let initialStatus: string;
@@ -229,11 +224,11 @@ async function provisionCloudAgent(
     agentId = agent.id;
     initialStatus = agent.status;
   } catch (err) {
-    spinner.stop(`Failed to create cloud agent: ${String(err)}`);
+    observer.onProvisionFailure(`Failed to create cloud agent: ${String(err)}`);
     return null;
   }
 
-  spinner.message("Agent created! Provisioning cloud environment...");
+  observer.onProvisionStatus("created");
 
   // Poll for terminal status. Order: poll first (terminal-on-first-read
   // skips the wasted sleep), then sleep at the END of each iteration if
@@ -248,7 +243,7 @@ async function provisionCloudAgent(
     } catch (pollErr) {
       const classification = classifyPollError(pollErr);
       if (classification === "auth") {
-        spinner.stop(
+        observer.onProvisionFailure(
           `Cloud rejected the API key (last status: ${lastStatus}). Please sign in again.`,
         );
         return null;
@@ -262,7 +257,7 @@ async function provisionCloudAgent(
         current = null;
       } else {
         // Terminal but not auth — propagate and stop the flow.
-        spinner.stop(`Provisioning poll failed: ${String(pollErr)}`);
+        observer.onProvisionFailure(`Provisioning poll failed: ${String(pollErr)}`);
         return null;
       }
     }
@@ -272,7 +267,10 @@ async function provisionCloudAgent(
       switch (lastStatus) {
         case "running":
         case "completed":
-          spinner.stop(`☁️  Cloud agent "${agentName}" is running!`);
+          observer.onProvisionSuccess({
+            agentId,
+            bridgeUrl: current.bridgeUrl,
+          });
           return {
             kind: "running",
             agentId,
@@ -281,21 +279,13 @@ async function provisionCloudAgent(
 
         case "failed":
         case "error":
-          spinner.stop(
+          observer.onProvisionFailure(
             `Provisioning failed: ${current.errorMessage ?? "unknown error"}`,
           );
           return null;
 
-        case "queued":
-          spinner.message("Queued — waiting for available slot...");
-          break;
-
-        case "provisioning":
-          spinner.message("Provisioning cloud environment...");
-          break;
-
         default:
-          spinner.message(`Status: ${lastStatus}...`);
+          observer.onProvisionStatus(lastStatus, current);
       }
     }
 
@@ -311,9 +301,7 @@ async function provisionCloudAgent(
 
   // Reached the deadline without a terminal status. Surface that
   // explicitly — callers must not treat this as a success.
-  spinner.stop(
-    `Provisioning timed out (last status: ${lastStatus}). The agent may still be starting up.`,
-  );
+  observer.onProvisionTimeout(agentId, lastStatus);
   return { kind: "pending-after-timeout", agentId };
 }
 
@@ -361,7 +349,7 @@ function classifyPollError(err: unknown): "auth" | "transient" | "terminal" {
  * On failure, the caller should fall back to local mode.
  */
 export async function runCloudOnboarding(
-  clack: ClackModule,
+  observer: CloudOnboardingObserver,
   agentName: string,
   preset?: StylePreset,
   baseUrl?: string,
@@ -372,47 +360,51 @@ export async function runCloudOnboarding(
 
   // ── Step 1: Availability check ──────────────────────────────────────
   const unavailableReason = await checkCloudAvailability(resolvedBaseUrl);
-  if (unavailableReason) {
-    clack.log.warn(unavailableReason);
+  observer.onAvailabilityChecked({
+    ok: unavailableReason === null,
+    ...(unavailableReason ? { reason: unavailableReason } : {}),
+  });
 
-    const fallback = await clack.confirm({
+  if (unavailableReason) {
+    const fallback = await observer.confirm({
       message: "Run locally instead?",
-      initialValue: true,
+      defaultValue: true,
     });
 
-    if (clack.isCancel(fallback) || fallback) {
-      return null; // Fall back to local
+    // Cancel (null) and explicit "yes, run locally" both bail to local.
+    if (fallback === null || fallback === true) {
+      return null;
     }
     // User said "no" to fallback — try auth anyway (maybe availability is
     // temporarily wrong).
   }
 
   // ── Step 2: Browser-based auth ──────────────────────────────────────
-  const authResult = await runCloudAuth(clack, resolvedBaseUrl);
+  const authResult = await runCloudAuth(observer, resolvedBaseUrl);
   if (!authResult) {
-    clack.log.warn("Cloud login was not completed.");
+    observer.onNotice("Cloud login was not completed.");
 
-    const retry = await clack.confirm({
+    const retry = await observer.confirm({
       message: "Try again, or run locally?",
-      active: "Try again",
-      inactive: "Run locally",
-      initialValue: false,
+      activeLabel: "Try again",
+      inactiveLabel: "Run locally",
+      defaultValue: false,
     });
 
-    if (clack.isCancel(retry) || !retry) {
-      return null; // Fall back to local
-    }
-
-    // Retry auth once
-    const retryResult = await runCloudAuth(clack, resolvedBaseUrl);
-    if (!retryResult) {
-      clack.log.warn("Login was not completed. Falling back to local mode.");
+    // Cancel or "run locally" both bail.
+    if (retry === null || retry === false) {
       return null;
     }
 
-    // Use retry result
+    // Retry auth once
+    const retryResult = await runCloudAuth(observer, resolvedBaseUrl);
+    if (!retryResult) {
+      observer.onNotice("Login was not completed. Falling back to local mode.");
+      return null;
+    }
+
     return await finishProvisioning(
-      clack,
+      observer,
       resolvedBaseUrl,
       retryResult,
       agentName,
@@ -421,7 +413,7 @@ export async function runCloudOnboarding(
   }
 
   return await finishProvisioning(
-    clack,
+    observer,
     resolvedBaseUrl,
     authResult,
     agentName,
@@ -439,7 +431,7 @@ export async function runCloudOnboarding(
  * with `eliza cloud connect`.
  */
 async function finishProvisioning(
-  clack: ClackModule,
+  observer: CloudOnboardingObserver,
   baseUrl: string,
   authResult: CloudLoginResult,
   agentName: string,
@@ -448,7 +440,7 @@ async function finishProvisioning(
   // ── Step 3: Create + provision agent ──────────────────────────────
   const client = new ElizaCloudClient(baseUrl, authResult.apiKey);
   const provisionResult = await provisionCloudAgent(
-    clack,
+    observer,
     client,
     agentName,
     preset,
@@ -471,18 +463,18 @@ async function finishProvisioning(
       ? provisionResult.agentId
       : undefined;
 
-  clack.log.warn(
+  observer.onNotice(
     pendingAgentId
       ? "Cloud agent is still starting up. You can try `eliza cloud connect` once it's ready."
       : "Cloud provisioning did not complete. You can try `eliza cloud connect` later.",
   );
 
-  const runLocal = await clack.confirm({
+  const runLocal = await observer.confirm({
     message: "Continue with local setup instead?",
-    initialValue: true,
+    defaultValue: true,
   });
 
-  if (clack.isCancel(runLocal) || runLocal) {
+  if (runLocal === null || runLocal === true) {
     return null;
   }
 
@@ -505,7 +497,10 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Try to open a URL in the user's default browser.
- * Falls back silently — the URL is also printed to the terminal.
+ *
+ * Rejects with a real Error when the underlying OS command fails (binary
+ * not on PATH, etc.). The caller is responsible for surfacing the failure
+ * — `runCloudAuth` routes it through `observer.onAuthBrowserOpenFailed`.
  *
  * Uses execFile with an args array (not exec with string interpolation)
  * to avoid shell injection via crafted URLs.
@@ -516,12 +511,11 @@ async function openBrowser(url: string): Promise<void> {
 
   const p = platform();
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const onError = (err: Error | null) => {
       if (err) {
-        logger.debug(
-          `[cloud-onboarding] Failed to open browser: ${err.message}`,
-        );
+        reject(err);
+        return;
       }
       resolve();
     };

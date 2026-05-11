@@ -80,8 +80,16 @@ function makeRepositoryBackedStores(
   const repo = new LifeOpsRepository(runtime);
   return {
     store: {
-      async upsert(task: ScheduledTask) {
-        await repo.upsertScheduledTask(agentId, task);
+      async upsert(task: ScheduledTask, options) {
+        await repo.upsertScheduledTask(agentId, task, {
+          nextFireAtIso: options?.nextFireAtIso ?? null,
+        });
+      },
+      async claimForFire({ taskId, firedAtIso }) {
+        return repo.claimScheduledTaskForFire(agentId, {
+          taskId,
+          firedAtIso,
+        });
       },
       async get(taskId: string) {
         return repo.getScheduledTask(agentId, taskId);
@@ -340,7 +348,21 @@ export interface CreateRuntimeRunnerOptions {
   globalPause?: GlobalPauseView;
   activity?: ActivitySignalBusView;
   subjectStore?: SubjectStoreView;
+  now?: () => Date;
 }
+
+/**
+ * Service-aware accessor re-export. Callers should prefer
+ * `getScheduledTaskRunner` over `createRuntimeScheduledTaskRunner` so the
+ * runner is constructed once per runtime (in `ScheduledTaskRunnerService`)
+ * instead of per call. The bare `createRuntimeScheduledTaskRunner` factory
+ * remains exported below for the service itself and for tests that want a
+ * standalone runner without registering the service.
+ */
+export {
+  getScheduledTaskRunner,
+  ScheduledTaskRunnerService,
+} from "./service.js";
 
 export function createRuntimeScheduledTaskRunner(
   opts: CreateRuntimeRunnerOptions,
@@ -385,6 +407,7 @@ export function createRuntimeScheduledTaskRunner(
     globalPause,
     activity,
     subjectStore,
+    now: opts.now,
     channelKeys: () => {
       const registry = getChannelRegistry(opts.runtime);
       if (!registry) return new Set();

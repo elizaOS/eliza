@@ -23,6 +23,7 @@ import { Capacitor } from "@capacitor/core";
 import { ChevronLeft } from "lucide-react";
 import * as React from "react";
 import { client } from "../../api";
+import { APP_RESUME_EVENT } from "../../events";
 import type {
   CloudCompatAgent,
   CloudCompatJob,
@@ -519,6 +520,40 @@ export function RuntimeGate() {
     return () => {
       cancelled = true;
       if (pollTimer) clearTimeout(pollTimer);
+    };
+  }, [isDesktop, isDev, synchronousLocal]);
+
+  // ── Re-probe `/api/health` on app resume ──────────────────────────
+  // iOS / Android can suspend the WKWebView for minutes at a time. On
+  // resume the FGS or dev server may have respawned on a new port (the
+  // dev orchestrator auto-shifts when defaults are busy). Re-running the
+  // probe nudges the gate back to the picker UI instead of leaving the
+  // user stranded on a stale chooser screen with a tile that points at a
+  // dead endpoint.
+  React.useEffect(() => {
+    if (synchronousLocal) return;
+    if (!isAndroid && !isIOS) return;
+    const onResume = (): void => {
+      shouldShowLocalOption({ isDesktop, isDev, isAndroid, isIOS })
+        .then((ok) => {
+          setLocalProbeResult(ok);
+          if (!ok) {
+            // Fall back to the chooser when the probe fails so the user
+            // can pick a different runtime instead of seeing a dead
+            // Local tile.
+            setSubView((current) =>
+              current === "local" ? "chooser" : current,
+            );
+          }
+        })
+        .catch(() => {
+          setLocalProbeResult(false);
+          setSubView((current) => (current === "local" ? "chooser" : current));
+        });
+    };
+    document.addEventListener(APP_RESUME_EVENT, onResume);
+    return () => {
+      document.removeEventListener(APP_RESUME_EVENT, onResume);
     };
   }, [isDesktop, isDev, synchronousLocal]);
 

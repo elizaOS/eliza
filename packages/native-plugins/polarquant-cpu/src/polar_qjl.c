@@ -40,3 +40,17 @@ void polar_qjl_signs(float * out) {
         out[i] = (state & 1u) ? 1.0f : -1.0f;
     }
 }
+
+/* Memoized copy. The fill is deterministic, so a benign race between
+ * first callers (both writing identical bytes) is acceptable; the
+ * "ready" flag is the only ordering concern and a redundant fill is
+ * harmless. */
+const float * polar_qjl_signs_cached(void) {
+    static float s_signs[QK_POLAR];
+    static volatile int s_ready = 0;
+    if (!s_ready) {
+        polar_qjl_signs(s_signs);
+        s_ready = 1;
+    }
+    return s_signs;
+}

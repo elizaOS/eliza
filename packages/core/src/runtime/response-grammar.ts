@@ -15,20 +15,12 @@
  * GBNF. Cloud adapters ignore both — `responseSchema` / `tools` carry the
  * equivalent (unforced) contract for them, so there is no fallback branch here.
  *
- * Reconciliation note (W3 ↔ field registry):
- *   W3 unified the Stage-1 envelope by editing `HANDLE_RESPONSE_SCHEMA` in
- *   `actions/to-tool.ts` directly, NOT by migrating the message pipeline onto
- *   `ResponseHandlerFieldRegistry`. The message pipeline still sends
- *   `HANDLE_RESPONSE_SCHEMA` (the flat W3 shape). Rather than force a risky
- *   pipeline migration here, `buildResponseGrammar` produces a skeleton whose
- *   fixed-order spans match `HANDLE_RESPONSE_SCHEMA` byte-for-byte
- *   (`shouldRespond → thought → replyText → contexts → contextSlices →
- *   candidateActions → parentActionHints → requiresTool → extract`) and then
- *   appends one span per *registered* `ResponseHandlerFieldEvaluator` at its
- *   priority position. So the skeleton is a superset of whatever the pipeline
- *   actually sends today and is forward-compatible if the pipeline later moves
- *   onto the registry. `parseMessageHandlerOutput` already tolerates extra
- *   top-level keys.
+ * Reconciliation note:
+ *   Production Stage 1 now sends the schema composed by
+ *   `ResponseHandlerFieldRegistry`. When registered field evaluators are
+ *   supplied, `buildResponseGrammar` emits that field-registry envelope in
+ *   priority order. The legacy fixed envelope remains below as a compatibility
+ *   fallback for tests or older callers that do not pass field evaluators.
  *
  * Caching: `buildResponseGrammar` is pure given the runtime registries
  * snapshot. The result is byte-stable across turns when the registries haven't
@@ -453,6 +445,64 @@ export function buildResponseGrammar(
 	const spans: ResponseSkeletonSpan[] = [];
 	const builder = new GbnfBuilder();
 	const rootParts: string[] = [];
+
+	if (fields.length > 0) {
+		const firstField = fields[0];
+		const open = `{"${firstField.name}":`;
+		spans.push({ kind: "literal", value: open });
+		rootParts.push(gbnfLiteral(open));
+
+		for (let i = 0; i < fields.length; i += 1) {
+			const field = fields[i];
+			if (i > 0) {
+				const glue = `,"${field.name}":`;
+				spans.push({ kind: "literal", value: glue });
+				rootParts.push(gbnfLiteral(glue));
+			}
+			if (field.name === "contexts") {
+				spans.push({
+					kind: "free-json",
+					key: "contexts",
+					rule: "contextsarray",
+				});
+				if (contextIds.length === 0) {
+					builder.useShared("jsonstringarray");
+					rootParts.push("jsonstringarray");
+				} else {
+					const enumRule = "contextid";
+					builder.rule(
+						enumRule,
+						contextIds.map((id) => gbnfJsonStringLiteral(id)).join(" | "),
+					);
+					builder.useShared("ws");
+					builder.rule(
+						"contextsarray",
+						`"[" ws ( ${enumRule} ( ws "," ws ${enumRule} )* )? ws "]"`,
+					);
+					rootParts.push("contextsarray");
+				}
+				continue;
+			}
+			const kind = spanKindForFieldSchema(field.schema);
+			if (kind === "literal") {
+				const enumValues = (field.schema as { enum?: unknown[] }).enum ?? [];
+				const value = JSON.stringify(String(enumValues[0] ?? ""));
+				spans.push({ kind: "literal", key: field.name, value });
+				rootParts.push(gbnfLiteral(value));
+			} else {
+				spans.push({ kind, key: field.name });
+				rootParts.push(gbnfRefForFieldSchema(builder, field.schema));
+			}
+		}
+		spans.push({ kind: "literal", value: "}" });
+		rootParts.push(gbnfLiteral("}"));
+		builder.root(rootParts);
+		const grammar = builder.build();
+		const skeleton: ResponseSkeleton = { spans, id: cacheKey };
+		const result: ResponseGrammarResult = { responseSkeleton: skeleton, grammar };
+		stage1Cache.set(cacheKey, result);
+		return result;
+	}
 
 	// Opening brace + first key glue. The first literal is the "trigger" the
 	// engine uses to start a lazy grammar; we make it the JSON open + the first

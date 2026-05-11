@@ -54,6 +54,9 @@ import type {
   TranscriptUpdate,
   VadEvent,
   VadEventSource,
+  VoiceInputSource,
+  VoiceSpeaker,
+  VoiceTurnMetadata,
 } from "./types";
 
 /** The local voice runtime resamples mic input to 16 kHz mono for ASR. */
@@ -116,6 +119,7 @@ export function resampleLinear(
  */
 export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
   private readonly listeners = new Set<TranscriberEventListener>();
+  private readonly metadata: TranscriptMetadataDefaults;
   /** True between `speech-start`/first-frame and the next `flush()`. */
   protected segmentOpen = false;
   /** Latched once `words` is emitted for the current segment. */
@@ -125,7 +129,8 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
   private vadUnsub: (() => void) | null = null;
   private disposed = false;
 
-  constructor(vad?: VadEventSource) {
+  constructor(vad?: VadEventSource, metadata: TranscriptMetadataDefaults = {}) {
+    this.metadata = metadata;
     if (vad) {
       this.vadActive = false;
       this.vadUnsub = vad.onVadEvent((ev) => this.onVadEvent(ev));
@@ -158,7 +163,7 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
     if (this.disposed) {
       throw new Error("[asr] flush() called on a disposed transcriber");
     }
-    const update = await this.onFlush();
+    const update = this.withMetadata(await this.onFlush());
     this.segmentOpen = false;
     this.wordsEmitted = false;
     this.emit({ kind: "final", update });
@@ -183,14 +188,46 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
 
   /** Emit a running-partial event and (the first time it has words) a `words` event. */
   protected emitPartial(update: TranscriptUpdate): void {
-    this.emit({ kind: "partial", update });
+    const enriched = this.withMetadata(update);
+    this.emit({ kind: "partial", update: enriched });
     if (!this.wordsEmitted) {
-      const words = extractWords(update.partial);
+      const words = extractWords(enriched.partial);
       if (words.length > 0) {
         this.wordsEmitted = true;
         this.emit({ kind: "words", words });
       }
     }
+  }
+
+  private withMetadata(update: TranscriptUpdate): TranscriptUpdate {
+    if (
+      !this.metadata.source &&
+      !this.metadata.speaker &&
+      !this.metadata.turn
+    ) {
+      return update;
+    }
+    const source = update.source ?? this.metadata.source;
+    const speaker = update.speaker ?? this.metadata.speaker;
+    const turn =
+      update.turn || this.metadata.turn
+        ? {
+            ...this.metadata.turn,
+            ...update.turn,
+            source: update.turn?.source ?? update.source ?? this.metadata.turn?.source ?? source,
+            primarySpeaker:
+              update.turn?.primarySpeaker ??
+              update.speaker ??
+              this.metadata.turn?.primarySpeaker ??
+              speaker,
+          }
+        : undefined;
+    return {
+      ...update,
+      ...(source ? { source } : {}),
+      ...(speaker ? { speaker } : {}),
+      ...(turn ? { turn } : {}),
+    };
   }
 
   private emit(event: TranscriberEvent): void {
@@ -217,6 +254,12 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
         break;
     }
   }
+}
+
+export interface TranscriptMetadataDefaults {
+  source?: VoiceInputSource;
+  speaker?: VoiceSpeaker;
+  turn?: VoiceTurnMetadata;
 }
 
 /* ==================================================================== *
@@ -260,10 +303,15 @@ export class FfiStreamingTranscriber extends BaseStreamingTranscriber {
     ffi: ElizaInferenceFfi;
     getContext: () => ElizaInferenceContextHandle;
     vad?: VadEventSource;
+    metadata?: TranscriptMetadataDefaults;
+    source?: VoiceInputSource;
     /** Cap on token ids read back per transcript snapshot. Default 256. */
     maxTokens?: number;
   }) {
-    super(args.vad);
+    super(args.vad, {
+      ...args.metadata,
+      source: args.metadata?.source ?? args.source,
+    });
     if (!ffiSupportsStreamingAsr(args.ffi)) {
       throw new AsrUnavailableError(
         "[asr] fused libelizainference does not advertise a working streaming ASR decoder (eliza_inference_asr_stream_supported() == 0) — rebuild the fused omnivoice target or use the whisper.cpp interim adapter",
@@ -325,6 +373,10 @@ export type WhisperDecoder = (pcm16k: Float32Array) => Promise<string>;
 
 export interface WhisperCppOptions {
   vad?: VadEventSource;
+  /** Optional attribution metadata stamped onto emitted transcript updates. */
+  metadata?: TranscriptMetadataDefaults;
+  /** Convenience shorthand for `metadata.source`. */
+  source?: VoiceInputSource;
   /** Sliding-window length, seconds. Each decode covers ≤ this + overlap. Default 3.0. */
   windowSeconds?: number;
   /** Trailing overlap kept when committing a prefix chunk, seconds. Default 0.5. */
@@ -371,7 +423,10 @@ export class WhisperCppStreamingTranscriber extends BaseStreamingTranscriber {
   private decodeChain: Promise<void> = Promise.resolve();
 
   constructor(opts: WhisperCppOptions = {}) {
-    super(opts.vad);
+    super(opts.vad, {
+      ...opts.metadata,
+      source: opts.metadata?.source ?? opts.source,
+    });
     const windowSeconds = opts.windowSeconds ?? 3.0;
     const overlapSeconds = Math.min(opts.overlapSeconds ?? 0.5, windowSeconds);
     const stepSeconds = opts.stepSeconds ?? 0.7;
@@ -560,7 +615,7 @@ export function whisperDir(): string {
  * Returns null when none is found.
  */
 export function resolveWhisperBinary(override?: string): string | null {
-  if (override && existsSync(override)) return override;
+  if (override) return existsSync(override) ? override : null;
   const env = process.env.ELIZA_WHISPER_BIN?.trim();
   if (env && existsSync(env)) return env;
   const candidateDirs = [
@@ -589,7 +644,7 @@ export function resolveWhisperModelPath(
   override?: string,
   file = WHISPER_DEFAULT_MODEL_FILE,
 ): string | null {
-  if (override && existsSync(override)) return override;
+  if (override) return existsSync(override) ? override : null;
   const env = process.env.ELIZA_WHISPER_MODEL?.trim();
   if (env && existsSync(env)) return env;
   const bundled = whisperBundledNodeDir();
@@ -775,6 +830,10 @@ export interface CreateStreamingTranscriberOptions {
   asrBundlePresent?: boolean;
   /** VAD event stream to gate decoding (W1). */
   vad?: VadEventSource;
+  /** Optional attribution metadata stamped onto emitted transcript updates. */
+  metadata?: TranscriptMetadataDefaults;
+  /** Convenience shorthand for `metadata.source`. */
+  source?: VoiceInputSource;
   /** Whisper.cpp interim options (binary/model overrides, decoder injection for tests). */
   whisper?: WhisperCppOptions;
   /**
@@ -804,6 +863,8 @@ export function createStreamingTranscriber(
       ffi: opts.ffi,
       getContext: opts.getContext,
       vad: opts.vad,
+      metadata: opts.metadata,
+      source: opts.source,
     });
   };
 
@@ -822,5 +883,10 @@ export function createStreamingTranscriber(
 
   // Whisper interim. Constructing it resolves the binary + model and
   // throws `AsrUnavailableError` if either is missing — surface that.
-  return new WhisperCppStreamingTranscriber({ ...opts.whisper, vad: opts.vad });
+  return new WhisperCppStreamingTranscriber({
+    ...opts.whisper,
+    vad: opts.vad,
+    metadata: opts.whisper?.metadata ?? opts.metadata,
+    source: opts.whisper?.source ?? opts.source,
+  });
 }

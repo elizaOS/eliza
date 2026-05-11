@@ -224,6 +224,8 @@ function resolveBrandConfigCopySource({
 		appName,
 		appId,
 		urlScheme,
+		buildVariant:
+			process.env.MILADY_BUILD_VARIANT === "store" ? "store" : "direct",
 		namespace: namespace || fileConfig.namespace || "elizaos",
 		configDirName,
 		...(appDescription

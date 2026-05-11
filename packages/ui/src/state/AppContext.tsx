@@ -36,7 +36,12 @@ import {
   loadAgentProfileRegistry,
   setActiveProfileId,
 } from "./agent-profiles";
-import { ChatComposerCtx, ChatInputRefCtx } from "./ChatComposerContext";
+import {
+  ChatComposerCtx,
+  ChatInputRefCtx,
+  clearAllChatDrafts,
+  useChatComposerDraftPersistence,
+} from "./ChatComposerContext";
 import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext";
 import { AppContext, type AppContextValue, type AppState } from "./internal";
 import { PtySessionsCtx } from "./PtySessionsContext";
@@ -47,6 +52,7 @@ import {
 import { deriveUiShellModeForTab } from "./shell-routing";
 import type { RuntimeTarget } from "./startup-coordinator";
 import { TranslationProvider, useTranslation } from "./TranslationContext";
+import { useAppLifecycleEvents } from "./useAppLifecycleEvents";
 import {
   useAgentGreetingEffects,
   useBackendConnectionSync,
@@ -1721,6 +1727,11 @@ function AppProviderInner({
 
       setActiveProfileId(profileId);
 
+      // Conversation ids are per-account, so saved drafts from the old
+      // profile would re-attach to whatever conversation happens to land
+      // on the same id after the switch. Wipe them.
+      clearAllChatDrafts();
+
       const server = createPersistedActiveServer({
         kind: profile.kind,
         apiBase: profile.apiBase,
@@ -1761,6 +1772,29 @@ function AppProviderInner({
     conversationMessagesRef,
     greetingFiredRef,
     greetingInFlightConversationRef,
+  });
+
+  // ── Capacitor app lifecycle (APP_RESUME / APP_PAUSE) ────────────────
+  // Bridges native lifecycle events into the chat pipeline: aborts
+  // in-flight streams before iOS suspends the process, persists the
+  // active conversation id, and re-probes /api/health on resume so the
+  // renderer notices a respawned FGS / dev server on a new port.
+  useAppLifecycleEvents({
+    activeConversationIdRef,
+    conversationMessagesRef,
+    chatAbortRef,
+    setConversationMessages,
+  });
+
+  // ── Chat composer draft persistence ────────────────────────────────
+  // Restores the textarea content when the user revisits a conversation
+  // (a common mobile pattern: open the app, start typing, switch apps,
+  // come back later). Drafts are scoped per conversation id and are
+  // cleared after a successful send or when the user switches accounts.
+  useChatComposerDraftPersistence({
+    activeConversationId,
+    chatInput,
+    setChatInput,
   });
 
   // ── Context value ──────────────────────────────────────────────────

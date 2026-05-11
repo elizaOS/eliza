@@ -8,9 +8,8 @@ import { drizzle } from 'drizzle-orm/pglite';
 import * as dbSchema from '../../src/db/schema';
 import {
   EmbeddedWorkflowService,
-  WORKFLOW_RUN_TASK_WORKER_NAME,
+  TRIGGER_TASK_NAME,
   WORKFLOW_TASK_KIND,
-  WORKFLOW_WEBHOOK_TASK_WORKER_NAME,
 } from '../../src/services/embedded-workflow-service';
 
 setDefaultTimeout(30_000);
@@ -69,19 +68,19 @@ async function makeRuntime(): Promise<TestRuntimeContext> {
   };
 }
 
-describe('EmbeddedWorkflowService task workers', () => {
-  test('registers workflow.run + workflow.webhook on start', async () => {
+describe('EmbeddedWorkflowService trigger task scheduling', () => {
+  test('does not register legacy workflow.run + workflow.webhook workers on start', async () => {
     const ctx = await makeRuntime();
     try {
       await EmbeddedWorkflowService.start(ctx.runtime);
-      expect(ctx.workers.has(WORKFLOW_RUN_TASK_WORKER_NAME)).toBe(true);
-      expect(ctx.workers.has(WORKFLOW_WEBHOOK_TASK_WORKER_NAME)).toBe(true);
+      expect(ctx.workers.has('workflow.run')).toBe(false);
+      expect(ctx.workers.has('workflow.webhook')).toBe(false);
     } finally {
       await ctx.close();
     }
   });
 
-  test('activateWorkflow creates a recurring core Task; deactivate removes it', async () => {
+  test('activateWorkflow creates a recurring trigger-dispatch Task; deactivate removes it', async () => {
     const ctx = await makeRuntime();
     try {
       const service = await EmbeddedWorkflowService.start(ctx.runtime);
@@ -111,81 +110,29 @@ describe('EmbeddedWorkflowService task workers', () => {
       });
 
       await service.activateWorkflow(created.id);
-      const scheduledTasks = ctx.tasks.filter((t) => t.name === WORKFLOW_RUN_TASK_WORKER_NAME);
+      const scheduledTasks = ctx.tasks.filter((t) => t.name === TRIGGER_TASK_NAME);
       expect(scheduledTasks).toHaveLength(1);
       const task = scheduledTasks[0];
       expect(task.metadata?.workflowId).toBe(created.id);
       expect(task.metadata?.kind).toBe(WORKFLOW_TASK_KIND);
       expect(task.metadata?.updateInterval).toBe(5000);
+      expect(String(task.metadata?.idempotencyKey)).toMatch(new RegExp(`^${created.id}:\\d+$`));
+      expect(task.metadata?.trigger).toMatchObject({
+        kind: 'workflow',
+        workflowId: created.id,
+        workflowName: 'Sched test',
+        triggerType: 'interval',
+        intervalMs: 5000,
+      });
+      expect(typeof task.metadata?.trigger?.nextRunAtMs).toBe('number');
       expect(task.tags).toContain('queue');
       expect(task.tags).toContain('repeat');
+      expect(task.tags).toContain('trigger');
       expect(task.tags).toContain('workflow');
 
       await service.deactivateWorkflow(created.id);
-      const after = ctx.tasks.filter((t) => t.name === WORKFLOW_RUN_TASK_WORKER_NAME);
+      const after = ctx.tasks.filter((t) => t.name === TRIGGER_TASK_NAME);
       expect(after).toHaveLength(0);
-    } finally {
-      await ctx.close();
-    }
-  });
-
-  test('workflow.run worker dispatches to executeWorkflow with the task metadata workflowId', async () => {
-    const ctx = await makeRuntime();
-    try {
-      const service = await EmbeddedWorkflowService.start(ctx.runtime);
-      const created = await service.createWorkflow({
-        name: 'Worker dispatch',
-        nodes: [
-          {
-            id: 'manual',
-            name: 'Manual Trigger',
-            type: 'workflows-nodes-base.manualTrigger',
-            typeVersion: 1,
-            position: [0, 0],
-            parameters: {},
-          },
-        ],
-        connections: {},
-      });
-
-      const worker = ctx.workers.get(WORKFLOW_RUN_TASK_WORKER_NAME);
-      expect(worker).toBeDefined();
-      const executeCalls: Array<{ workflowId: string; mode: string | undefined }> = [];
-      service.executeWorkflow = (async (workflowId, options) => {
-        executeCalls.push({ workflowId, mode: options.mode });
-        return undefined as unknown as Awaited<ReturnType<typeof service.executeWorkflow>>;
-      }) as typeof service.executeWorkflow;
-
-      const fakeTask = {
-        id: 'task-x' as Task['id'],
-        name: WORKFLOW_RUN_TASK_WORKER_NAME,
-        tags: ['queue', 'repeat', 'workflow'],
-        metadata: { kind: WORKFLOW_TASK_KIND, workflowId: created.id },
-      } as Task;
-
-      const result = await worker?.execute(ctx.runtime, {}, fakeTask);
-      expect(result).toBeUndefined();
-      expect(executeCalls).toEqual([{ workflowId: created.id, mode: 'trigger' }]);
-    } finally {
-      await ctx.close();
-    }
-  });
-
-  test('workflow.run worker throws when metadata.workflowId is missing', async () => {
-    const ctx = await makeRuntime();
-    try {
-      await EmbeddedWorkflowService.start(ctx.runtime);
-      const worker = ctx.workers.get(WORKFLOW_RUN_TASK_WORKER_NAME);
-      expect(worker).toBeDefined();
-      if (!worker) throw new Error('expected workflow run worker');
-      const badTask = {
-        id: 'task-bad' as Task['id'],
-        name: WORKFLOW_RUN_TASK_WORKER_NAME,
-        metadata: { kind: WORKFLOW_TASK_KIND },
-      } as Task;
-      await expect(worker.execute(ctx.runtime, {}, badTask)).rejects.toThrow(
-        /missing metadata.workflowId/
-      );
     } finally {
       await ctx.close();
     }

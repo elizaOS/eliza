@@ -38,8 +38,8 @@ void ggml_vec_dot_q4_polar_preht_f32_neon(
     *s = 0.0f;
     if (n <= 0 || (n % QK_POLAR) != 0) return;
 
-    float signs[QK_POLAR];
-    if (use_qjl) polar_qjl_signs(signs);
+    /* Memoized — do NOT regenerate the 128-element xorshift stream per row. */
+    const float * const signs = use_qjl ? polar_qjl_signs_cached() : NULL;
     const float residual_mag = POLAR_QJL_CORRECTION_MAGNITUDE / sqrtf((float)QK_POLAR);
 
     const int nb = n / QK_POLAR;

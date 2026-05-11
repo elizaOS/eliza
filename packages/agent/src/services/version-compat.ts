@@ -51,6 +51,7 @@ export const AI_PROVIDER_PLUGINS: readonly string[] = [
   "@elizaos/plugin-openai",
   "@elizaos/plugin-openrouter",
   "@elizaos/plugin-ollama",
+  "@elizaos/plugin-mlx",
   "@elizaos/plugin-google-genai",
   "@elizaos/plugin-groq",
   "@elizaos/plugin-xai",

@@ -16,6 +16,12 @@
 
       <section class="cards" id="summary-cards"></section>
 
+      <nav class="tabs" id="tab-nav">
+        <button type="button" class="tab-button is-active" data-tab="overview">Overview</button>
+        <button type="button" class="tab-button" data-tab="diff">Trajectory Diff</button>
+      </nav>
+
+      <div class="tab-panel is-active" data-tab="overview">
       <section class="panel">
         <h2>Runs</h2>
         <div class="controls">
@@ -98,6 +104,43 @@
           </table>
         </div>
       </section>
+      </div>
+
+      <div class="tab-panel" data-tab="diff">
+        <section class="panel">
+          <h2>Trajectory Diff Groups</h2>
+          <p class="hint">Groups where at least two harnesses produced a canonical trajectory for the same (benchmark, task).</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>run_group_id</th>
+                  <th>benchmark</th>
+                  <th>task_id</th>
+                  <th>harnesses</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="diff-groups-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" id="diff-detail-panel" hidden>
+          <h2 id="diff-detail-title">Diff</h2>
+          <div class="diff-legend">
+            <span class="diff-swatch diff-equal"></span>identical
+            <span class="diff-swatch diff-differ"></span>differing
+            <span class="diff-swatch diff-tool-only"></span>tool_call mismatch
+          </div>
+          <div class="table-wrap">
+            <table id="diff-table">
+              <thead id="diff-table-head"></thead>
+              <tbody id="diff-table-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
     </main>
     <script src="./app.js"></script>
   </body>

@@ -26,6 +26,7 @@ import {
   resolveEffectiveLadder,
 } from "./escalation.js";
 import type { TaskGateRegistry } from "./gate-registry.js";
+import { computeNextFireAt } from "./next-fire-at.js";
 import { createStateLogger, type ScheduledTaskLogStore } from "./state-log.js";
 import {
   type ActivitySignalBusView,
@@ -68,8 +69,52 @@ export class ChannelKeyError extends Error {
 // Store interface — DB-backed in production; in-memory in unit tests.
 // ---------------------------------------------------------------------------
 
+/**
+ * Options the runner passes to `store.upsert` to keep the indexed
+ * `next_fire_at` column in sync with the task's current trigger and state.
+ *
+ * The store does not compute this itself — the runner computes the value
+ * using the active anchor / owner-facts / now references and forwards it
+ * here. The repository writes a Postgres `timestamp with time zone`
+ * (NULL for triggers without a wall-clock fire time).
+ */
+export interface ScheduledTaskUpsertOptions {
+  nextFireAtIso: string | null;
+}
+
+/**
+ * Outcome of the atomic fire-claim. Exactly one parallel call resolves to
+ * `"fired"` for a given `(taskId, status="scheduled")` row; concurrent
+ * callers see `"raced"` because the UPDATE … WHERE status='scheduled' clause
+ * matches zero rows after the first wins.
+ *
+ * `task` on the `"fired"` branch carries the post-claim state (status =
+ * "fired", `firedAt` set to the claim instant, `nextFireAt` cleared so the
+ * scheduler tick will not re-pick it up before the next mutation).
+ */
+export type ScheduledTaskClaimResult =
+  | { kind: "fired"; task: ScheduledTask }
+  | { kind: "raced" };
+
 export interface ScheduledTaskStore {
-  upsert(task: ScheduledTask): Promise<void>;
+  upsert(
+    task: ScheduledTask,
+    options?: ScheduledTaskUpsertOptions,
+  ): Promise<void>;
+  /**
+   * Atomically transition a row from `state.status === "scheduled"` to
+   * `"fired"`, returning the resulting row. Returns `{ kind: "raced" }`
+   * when zero rows matched — either because the task is already past
+   * `scheduled` (another tick claimed it) or the id no longer exists.
+   *
+   * The store is the only place where the read-mutate-write becomes
+   * atomic; the runner's previous read-then-upsert pattern was racy
+   * across parallel ticks. See `LifeOpsRepository.claimScheduledTaskForFire`.
+   */
+  claimForFire(args: {
+    taskId: string;
+    firedAtIso: string;
+  }): Promise<ScheduledTaskClaimResult>;
   get(taskId: string): Promise<ScheduledTask | null>;
   findByIdempotencyKey(key: string): Promise<ScheduledTask | null>;
   list(filter?: ScheduledTaskFilter): Promise<ScheduledTask[]>;
@@ -81,6 +126,17 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
   return {
     async upsert(task) {
       map.set(task.taskId, structuredClone(task));
+    },
+    async claimForFire({ taskId, firedAtIso }) {
+      const existing = map.get(taskId);
+      if (!existing || existing.state.status !== "scheduled") {
+        return { kind: "raced" };
+      }
+      const next: ScheduledTask = structuredClone(existing);
+      next.state.status = "fired";
+      next.state.firedAt = firedAtIso;
+      map.set(taskId, next);
+      return { kind: "fired", task: structuredClone(next) };
     },
     async get(taskId) {
       const found = map.get(taskId);
@@ -270,16 +326,57 @@ export interface EscalationCursorView {
   channelKey: string;
 }
 
+/**
+ * Strict result of a single `fire()` attempt. Callers should exhaustively
+ * switch on `kind`.
+ *
+ * - `fired` — the task transitioned to `"fired"` (or was deferred via
+ *   `gate.defer`, reopened for a recurrence, etc.) and the dispatcher ran.
+ *   `task` is the post-mutation state.
+ * - `raced` — another tick atomically claimed this task first. Caller drops
+ *   the attempt silently; the winning tick's dispatch is authoritative.
+ * - `skipped` — the task was skipped without dispatch: global-pause active,
+ *   a gate denied, or the task was already terminal and not eligible for
+ *   recurrence refire.
+ * - `dispatch_failed` — the atomic claim succeeded and the row is in
+ *   `"fired"` state, but the dispatcher threw. The runner has already
+ *   persisted the `fired` row and a `fire_attempt` log line; the caller
+ *   surfaces the error.
+ */
+export type ScheduledTaskFireResult =
+  | { kind: "fired"; task: ScheduledTask }
+  | { kind: "raced"; taskId: string }
+  | { kind: "skipped"; task: ScheduledTask; reason: string }
+  | { kind: "dispatch_failed"; task: ScheduledTask; error: Error };
+
 export interface ScheduledTaskRunnerExtras {
   /**
-   * Drive a single fire-attempt for a task. Used by the scheduler tick;
-   * exposed for tests so we can assert behavior deterministically without
-   * waiting on a real timer.
+   * Convenience wrapper around {@link ScheduledTaskRunnerExtras.fireWithResult}
+   * that flattens the discriminated union into a `ScheduledTask`. Returns
+   * the post-fire task on `fired` / `skipped` / `dispatch_failed`, and the
+   * still-`scheduled` task on `raced` (so legacy callers that re-read see
+   * the unmodified row). The strict-fire callsite — `processDueScheduledTasks`
+   * — uses `fireWithResult` directly.
+   *
+   * Exposed for tests so we can assert behavior deterministically without
+   * waiting on a real timer, and for legacy actions that only want the
+   * task back.
    */
   fire(
     taskId: string,
     args?: { eventPayload?: unknown; allowTerminalRefire?: boolean },
   ): Promise<ScheduledTask>;
+  /**
+   * Strict fire-attempt. Returns the {@link ScheduledTaskFireResult}
+   * discriminated union; callers must exhaustively switch on `kind`. This
+   * is the path the scheduler tick uses so the `raced` outcome (another
+   * tick claimed the same row first) is observable instead of silently
+   * collapsed into a "fired" return.
+   */
+  fireWithResult(
+    taskId: string,
+    args?: { eventPayload?: unknown; allowTerminalRefire?: boolean },
+  ): Promise<ScheduledTaskFireResult>;
   /**
    * Re-evaluate completion for a fired task (e.g. user_replied_within
    * scenarios, late inbounds). The runner consults its registered
@@ -399,7 +496,7 @@ export function createScheduledTaskRunner(
     task: ScheduledTask,
   ): Promise<{ paused: boolean; reason?: string }> {
     if (task.respectsGlobalPause === false) return { paused: false };
-    const pause = await deps.globalPause.current();
+    const pause = await deps.globalPause.current(now());
     if (!pause.active) return { paused: false };
     return {
       paused: true,
@@ -408,8 +505,25 @@ export function createScheduledTaskRunner(
   }
 
   async function persist(task: ScheduledTask): Promise<ScheduledTask> {
-    await deps.store.upsert(task);
+    const nextFireAtIso = await resolveNextFireAt(task);
+    await deps.store.upsert(task, { nextFireAtIso });
     return structuredClone(task);
+  }
+
+  async function resolveNextFireAt(
+    task: ScheduledTask,
+  ): Promise<string | null> {
+    // Terminal-state rows do not refire (except recurring triggers that get
+    // explicitly reopened via `fire({ allowTerminalRefire: true })`). Storing
+    // a stale `next_fire_at` would leave the row in the partial-index slice
+    // until the next mutation; clearing it keeps the index slim.
+    if (isTerminal(task.state.status)) return null;
+    const ownerFacts = await deps.ownerFacts();
+    return computeNextFireAt(task, {
+      now: now(),
+      ownerFacts,
+      anchors: deps.anchors,
+    });
   }
 
   async function schedule(
@@ -785,6 +899,31 @@ export function createScheduledTaskRunner(
     taskId: string,
     args?: { eventPayload?: unknown; allowTerminalRefire?: boolean },
   ): Promise<ScheduledTask> {
+    const result = await fireWithResult(taskId, args);
+    switch (result.kind) {
+      case "fired":
+      case "skipped":
+      case "dispatch_failed":
+        return result.task;
+      case "raced": {
+        // The caller did not opt in to seeing race outcomes; re-read the
+        // row the winning tick committed so observers still see a coherent
+        // post-claim ScheduledTask instead of stale pre-claim state.
+        const winner = await deps.store.get(result.taskId);
+        if (winner) return winner;
+        throw new Error(`fire: task ${result.taskId} not found after race`);
+      }
+      default: {
+        const _exhaustive: never = result;
+        throw new Error("fire: unreachable");
+      }
+    }
+  }
+
+  async function fireWithResult(
+    taskId: string,
+    args?: { eventPayload?: unknown; allowTerminalRefire?: boolean },
+  ): Promise<ScheduledTaskFireResult> {
     const task = await deps.store.get(taskId);
     if (!task) throw new Error(`fire: task ${taskId} not found`);
     if (isTerminal(task.state.status)) {
@@ -793,14 +932,22 @@ export function createScheduledTaskRunner(
         task.state.status !== "dismissed" &&
         isRecurringTrigger(task.trigger);
       if (!canRefire) {
-        // Idempotent — already settled; return unchanged.
-        return task;
+        // Idempotent — already settled; report skipped so callers do not
+        // double-count this as a fresh fire.
+        return {
+          kind: "skipped",
+          task,
+          reason: `terminal:${task.state.status}`,
+        };
       }
       task.state.status = "scheduled";
       delete task.state.acknowledgedAt;
       delete task.state.completedAt;
       task.state.lastDecisionLog = "recurrence refire";
       clearEscalationCursor(task);
+      // Flip the row back to `scheduled` so the atomic claim below has
+      // something to match. The claim writes `firedAt` itself.
+      await persist(task);
     }
 
     await logger.log(task.taskId, "fire_attempt", {
@@ -816,7 +963,11 @@ export function createScheduledTaskRunner(
       await logger.log(task.taskId, "skipped", {
         reason: pause.reason ?? "global_pause",
       });
-      return task;
+      return {
+        kind: "skipped",
+        task,
+        reason: pause.reason ?? "global_pause",
+      };
     }
 
     // Gate check.
@@ -829,7 +980,11 @@ export function createScheduledTaskRunner(
         reason: task.state.lastDecisionLog,
       });
       await runPipeline(task, "skipped");
-      return task;
+      return {
+        kind: "skipped",
+        task,
+        reason: task.state.lastDecisionLog,
+      };
     }
     if (gateOutcome.decision.kind === "defer") {
       const offset =
@@ -851,37 +1006,58 @@ export function createScheduledTaskRunner(
         reason: `gate-defer: ${gateOutcome.decision.reason}`,
         detail: { offsetMinutes: offset },
       });
-      return task;
+      return {
+        kind: "skipped",
+        task,
+        reason: `gate-defer:${gateOutcome.decision.reason}`,
+      };
     }
 
-    // Allow → dispatch.
+    // Allow → atomic claim. The store does UPDATE … WHERE status='scheduled'
+    // RETURNING * so exactly one parallel caller can transition `scheduled`
+    // → `fired`. Concurrent ticks see `kind: "raced"` and bail.
     const fireAtIso = now().toISOString();
-    task.state.status = "fired";
-    task.state.firedAt = fireAtIso;
-    task.state.lastDecisionLog = "fired";
-    setEscalationCursor(task, {
+    const claim = await deps.store.claimForFire({
+      taskId: task.taskId,
+      firedAtIso: fireAtIso,
+    });
+    if (claim.kind === "raced") {
+      return { kind: "raced", taskId: task.taskId };
+    }
+    const claimed = claim.task;
+    claimed.state.lastDecisionLog = "fired";
+    setEscalationCursor(claimed, {
       stepIndex: -1,
       lastDispatchedAt: fireAtIso,
     });
-    await persist(task);
-    await logger.log(task.taskId, "fired");
-    const dispatchResult = await dispatcher.dispatch({
-      taskId: task.taskId,
-      firedAtIso: fireAtIso,
-      channelKey: pickChannelKey(task),
-      intensity: pickIntensity(task),
-      promptInstructions: task.promptInstructions,
-      contextRequest: task.contextRequest,
-      output: task.output,
-    });
+    // Persist the post-claim metadata (escalationCursor, lastDecisionLog).
+    // `persist` recomputes `next_fire_at` from the now-`fired` row.
+    await persist(claimed);
+    await logger.log(claimed.taskId, "fired");
+    let dispatchResult: DispatchResult | void | undefined;
+    try {
+      dispatchResult = await dispatcher.dispatch({
+        taskId: claimed.taskId,
+        firedAtIso: fireAtIso,
+        channelKey: pickChannelKey(claimed),
+        intensity: pickIntensity(claimed),
+        promptInstructions: claimed.promptInstructions,
+        contextRequest: claimed.contextRequest,
+        output: claimed.output,
+      });
+    } catch (error) {
+      const wrapped =
+        error instanceof Error ? error : new Error(String(error));
+      return { kind: "dispatch_failed", task: claimed, error: wrapped };
+    }
     if (dispatchResult) {
-      task.metadata = {
-        ...(task.metadata ?? {}),
+      claimed.metadata = {
+        ...(claimed.metadata ?? {}),
         lastDispatchResult: dispatchResult,
       };
-      await persist(task);
+      await persist(claimed);
     }
-    return task;
+    return { kind: "fired", task: claimed };
   }
 
   function pickChannelKey(task: ScheduledTask): string {
@@ -987,6 +1163,7 @@ export function createScheduledTaskRunner(
     apply,
     pipeline,
     fire,
+    fireWithResult,
     evaluateCompletion,
     rolloverStateLog,
     inspectRegistries,

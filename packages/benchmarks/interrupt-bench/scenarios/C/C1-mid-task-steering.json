@@ -1,0 +1,42 @@
+{
+  "id": "C1-mid-task-steering",
+  "category": "C",
+  "interruptionType": "revision",
+  "weight": 3,
+  "description": "Mid-thread the user refines a parameter without retracting the whole task. The agent must steer the existing thread, NOT create a new one.",
+  "setup": {
+    "agentId": "agent-test",
+    "rooms": [{ "id": "dm-alice", "kind": "dm", "owner": "alice" }],
+    "users": [{ "id": "alice", "role": "OWNER" }],
+    "openThreads": [
+      { "id": "thread-recipe-001", "owner": "alice", "status": "active", "instruction": "find a vegetarian pasta recipe for dinner tonight", "roomId": "dm-alice" }
+    ],
+    "scheduledTasks": [],
+    "memory": []
+  },
+  "script": [
+    { "t": 0, "channel": "dm-alice", "sender": "alice", "text": "actually make it vegan not just vegetarian" }
+  ],
+  "quiesceAfterMs": 3000,
+  "expectedFinalState": {
+    "threads": [
+      { "id": "thread-recipe-001", "status": "active", "instructionContains": ["vegan"] }
+    ],
+    "scheduledTasks": [],
+    "repliesByChannel": {
+      "dm-alice": { "count": { "min": 0, "max": 1 } }
+    }
+  },
+  "expectedTrace": {
+    "stage1Calls": { "min": 1, "max": 1 },
+    "plannerCalls": { "min": 0, "max": 1 },
+    "boundaryViolations": 0,
+    "abortFired": false,
+    "threadOps": [{ "type": "steer", "workThreadId": "thread-recipe-001" }],
+    "intent": "RESPOND"
+  },
+  "responseRubric": {
+    "judgePrompt": "Did the agent steer the existing thread to be vegan (not create a new thread, not abort)?",
+    "passRequiredForBonus": true
+  }
+}

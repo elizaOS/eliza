@@ -52,12 +52,12 @@ import {
 import { VoiceLifecycleError } from "./lifecycle";
 
 /**
- * The complete ABI v2 C symbol set declared in
+ * The complete ABI v3 C symbol set declared in
  * `scripts/omnivoice-fuse/ffi.h` — kept here as the JS-side source of
  * truth for both the fake-FFI surface check and the stub `nm` audit.
  * Mirrors `REQUIRED_ELIZA_INFERENCE_SYMBOLS` in `verify-symbols.mjs`.
  */
-const ABI_V2_SYMBOLS = [
+const ABI_V3_SYMBOLS = [
   "eliza_inference_abi_version",
   "eliza_inference_create",
   "eliza_inference_destroy",
@@ -75,10 +75,15 @@ const ABI_V2_SYMBOLS = [
   "eliza_inference_tts_synthesize_stream",
   "eliza_inference_cancel_tts",
   "eliza_inference_set_verifier_callback",
+  "eliza_inference_vad_supported",
+  "eliza_inference_vad_open",
+  "eliza_inference_vad_process",
+  "eliza_inference_vad_reset",
+  "eliza_inference_vad_close",
   "eliza_inference_free_string",
 ] as const;
 
-/** The TS-surface methods the binding must expose for the full ABI v2. */
+/** The TS-surface methods the binding must expose for the full ABI v3. */
 const ELIZA_FFI_METHODS = [
   "create",
   "destroy",
@@ -90,6 +95,11 @@ const ELIZA_FFI_METHODS = [
   "ttsSynthesizeStream",
   "cancelTts",
   "setVerifierCallback",
+  "vadSupported",
+  "vadOpen",
+  "vadProcess",
+  "vadReset",
+  "vadClose",
   "asrStreamSupported",
   "asrStreamOpen",
   "asrStreamFeed",
@@ -142,8 +152,8 @@ function bunOnPath(): string | null {
 }
 
 describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
-  it("ELIZA_INFERENCE_ABI_VERSION is 2 (matches ffi.h)", () => {
-    expect(ELIZA_INFERENCE_ABI_VERSION).toBe(2);
+  it("ELIZA_INFERENCE_ABI_VERSION is 3 (matches ffi.h)", () => {
+    expect(ELIZA_INFERENCE_ABI_VERSION).toBe(3);
   });
 
   it("loadElizaInferenceFfi throws VoiceLifecycleError when FFI is unavailable", () => {
@@ -186,8 +196,8 @@ describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
   });
 });
 
-describe("ffi-bindings — ABI v2 surface (fake FFI)", () => {
-  it("the test-helper fakeFfi exposes every ABI v2 method", () => {
+describe("ffi-bindings — ABI v3 surface (fake FFI)", () => {
+  it("the test-helper fakeFfi exposes every ABI v3 method", () => {
     const ffi = fakeFfi("hello");
     for (const method of ELIZA_FFI_METHODS) {
       expect(typeof ffi[method]).toBe("function");
@@ -245,11 +255,24 @@ describe("ffi-bindings — ABI v2 surface (fake FFI)", () => {
     cleared.close();
     expect(() => ffi.cancelTts(1n)).not.toThrow();
   });
+
+  it("native VAD fake path advertises support and returns scripted probabilities", () => {
+    const ffi = fakeFfi("x", {
+      vadSupported: true,
+      vadProbs: [0.1, 0.8],
+    });
+    expect(ffi.vadSupported()).toBe(true);
+    const vad = ffi.vadOpen({ ctx: 1n, sampleRateHz: 16_000 });
+    expect(ffi.vadProcess({ vad, pcm: new Float32Array(512) })).toBe(0.1);
+    expect(ffi.vadProcess({ vad, pcm: new Float32Array(512) })).toBe(0.8);
+    expect(() => ffi.vadReset(vad)).not.toThrow();
+    expect(() => ffi.vadClose(vad)).not.toThrow();
+  });
 });
 
-describe("omnivoice-fuse stub library — ABI v2 symbol audit", () => {
+describe("omnivoice-fuse stub library — ABI v3 symbol audit", () => {
   // The committed macOS .dylib / built-on-Linux .so must export the full
-  // ABI v2 symbol set declared in ffi.h — same set verify-symbols.mjs
+  // ABI v3 symbol set declared in ffi.h — same set verify-symbols.mjs
   // requires of the real fused libelizainference. Skipped when the
   // platform artifact isn't present (run `make -C scripts/omnivoice-fuse`).
   const haveDylib = existsSync(STUB_DYLIB);
@@ -257,7 +280,7 @@ describe("omnivoice-fuse stub library — ABI v2 symbol audit", () => {
     it.skip(`stub library missing at ${STUB_DYLIB} — run 'make -C scripts/omnivoice-fuse' first`, () => {});
     return;
   }
-  it("exports every eliza_inference_* ABI v2 symbol", () => {
+  it("exports every eliza_inference_* ABI v3 symbol", () => {
     const isDarwin = STUB_DYLIB.endsWith(".dylib");
     const nm = spawnSync(
       "nm",
@@ -266,7 +289,7 @@ describe("omnivoice-fuse stub library — ABI v2 symbol audit", () => {
     );
     expect(nm.status).toBe(0);
     const symbols = nm.stdout ?? "";
-    for (const name of ABI_V2_SYMBOLS) {
+    for (const name of ABI_V3_SYMBOLS) {
       expect(new RegExp(`\\b_?${name}\\b`).test(symbols)).toBe(true);
     }
   });
@@ -289,7 +312,7 @@ describe("ffi-bindings — integration via bun subprocess against stub dylib", (
     expect(statSync(STUB_DYLIB).size).toBeGreaterThan(1024);
   });
 
-  it("loads the stub, reports ABI v1, completes a create/destroy round-trip", () => {
+  it("loads the stub, reports ABI v3, completes a create/destroy round-trip", () => {
     const report = runBunHarness({ scenario: "create-destroy" });
     expectHarnessOk(report);
     expect(report.libraryAbiVersion).toBe(String(ELIZA_INFERENCE_ABI_VERSION));
@@ -331,6 +354,12 @@ describe("ffi-bindings — integration via bun subprocess against stub dylib", (
     expect(report.errorMessage).toMatch(/not implemented in stub/);
   });
 
+  it("stub advertises native VAD unsupported", () => {
+    const report = runBunHarness({ scenario: "vad-unsupported" });
+    expectHarnessOk(report);
+    expect(report.vadSupported).toBe(false);
+  });
+
   it("ABI mismatch detection: when binding asserts wrong version, load fails structurally", () => {
     // The harness exposes a dial that bumps the binding's expected ABI
     // version BEFORE calling the loader, simulating a future binding
@@ -363,6 +392,7 @@ interface HarnessReport {
   threwLifecycleError?: boolean;
   errorCode?: string;
   errorMessage?: string;
+  vadSupported?: boolean;
   unexpectedError?: string;
 }
 
@@ -373,6 +403,7 @@ interface HarnessOptions {
     | "tts-not-implemented"
     | "mmap-acquire-not-implemented"
     | "mmap-evict-not-implemented"
+    | "vad-unsupported"
     | "abi-mismatch";
 }
 
@@ -515,6 +546,18 @@ function asLifecycleErr(e) {
       threwLifecycleError: lc !== null,
       errorCode: lc?.code,
       errorMessage: lc?.message,
+    });
+    return;
+  }
+
+  if (SCENARIO === "vad-unsupported") {
+    const ffi = loadElizaInferenceFfi(DYLIB);
+    const supported = ffi.vadSupported();
+    ffi.close();
+    emit({
+      ok: true,
+      scenario: SCENARIO,
+      vadSupported: supported,
     });
     return;
   }

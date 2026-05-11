@@ -533,10 +533,10 @@ export async function getNativeAppleCalendarFeed(args: {
   runtime?: IAgentRuntime | null;
 }): Promise<FeatureResult<LifeOpsCalendarFeed>> {
   const result = await listNativeAppleCalendarEvents(args);
-  if (!result.ok) {
-    // Failure variants of FeatureResult are not parameterized by T; rebuild the
-    // narrowed value to satisfy the outer generic.
-    return result;
+  if (result.ok === false) {
+    // FeatureResult failure variants don't reference T; re-typed by widening.
+    const failure: FeatureResult<LifeOpsCalendarFeed> = result;
+    return failure;
   }
   return {
     ok: true,

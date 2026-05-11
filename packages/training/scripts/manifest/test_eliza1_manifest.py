@@ -53,7 +53,7 @@ def base_kwargs(tier: str = "9b") -> dict:
             "vision": [FileEntry(path=f"vision/mmproj-{tier}.gguf", sha256=SHA)],
             "dflash": [FileEntry(path=f"dflash/drafter-{tier}.gguf", sha256=SHA)],
             "cache": [FileEntry(path="cache/voice-preset-default.bin", sha256=SHA)],
-            "vad": [FileEntry(path="vad/eliza-1-vad.onnx", sha256=SHA)],
+            "vad": [FileEntry(path="vad/silero-vad-v5.1.2.ggml.bin", sha256=SHA)],
         },
         kernels_required=list(REQUIRED_KERNELS_BY_TIER[tier]),
         kernels_optional=[],
@@ -66,6 +66,9 @@ def base_kwargs(tier: str = "9b") -> dict:
         asr_wer_passed=True,
         vad_latency_ms_median=16.0,
         vad_latency_ms_passed=True,
+        vad_boundary_ms=24.0,
+        vad_endpoint_ms=80.0,
+        vad_false_barge_in_rate=0.01,
         e2e_loop_ok=True,
         thirty_turn_ok=True,
         ram_budget_min_mb=7000,
@@ -84,7 +87,22 @@ def test_build_manifest_happy_path():
     assert manifest["id"] == "eliza-1-9b"
     assert manifest["defaultEligible"] is True
     assert manifest["$schema"].endswith("eliza-1.manifest.v1.json")
+    assert manifest["evals"]["vadLatencyMs"] == {
+        "median": 16.0,
+        "passed": True,
+        "boundaryMs": 24.0,
+        "endpointMs": 80.0,
+        "falseBargeInRate": 0.01,
+    }
     # Validates against itself.
+    assert validate_manifest(manifest) == ()
+
+
+def test_legacy_onnx_vad_manifest_remains_compatible():
+    kwargs = base_kwargs()
+    kwargs["files"]["vad"] = [FileEntry(path="vad/silero-vad-int8.onnx", sha256=SHA)]
+    manifest = build_manifest(**kwargs)
+    assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-int8.onnx"
     assert validate_manifest(manifest) == ()
 
 
@@ -220,6 +238,14 @@ def test_component_files_require_matching_lineage_and_eval_gate():
         build_manifest(**kwargs)
     assert any("lineage.asr" in e for e in exc.value.errors)
     assert any("evals.asrWer" in e for e in exc.value.errors)
+
+
+def test_vad_false_barge_in_metric_must_be_rate():
+    kwargs = base_kwargs("9b")
+    kwargs["vad_false_barge_in_rate"] = 1.2
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("falseBargeInRate" in e for e in exc.value.errors)
 
 
 def test_default_eligible_requires_asr_and_vad_components():
@@ -489,7 +515,7 @@ def _base_v1_provenance() -> dict:
             },
             "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
             "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
-            "vad": {"repo": "onnx-community/silero-vad"},
+            "vad": {"repo": "ggml-org/whisper-vad"},
             "vision": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "mmproj-F16.gguf"},
             "drafter": {"repo": "elizaos/eliza-1-9b"},
         },

@@ -56,11 +56,18 @@ export const embeddedExecutions = workflowSchema.table(
     startedAt: text('started_at').notNull(),
     stoppedAt: text('stopped_at'),
     execution: jsonb('execution').$type<WorkflowExecution>().notNull(),
+    /**
+     * Per-dispatch idempotency key. Scheduled dispatches use
+     * `${workflowId}:${minuteBucket}` so re-arms inside the same minute
+     * collapse to a single execution. Null for ad-hoc / manual runs.
+     */
+    idempotencyKey: text('idempotency_key'),
   },
   (table) => ({
     workflowIdx: index('idx_embedded_executions_workflow_id').on(table.workflowId),
     statusIdx: index('idx_embedded_executions_status').on(table.status),
     startedAtIdx: index('idx_embedded_executions_started_at').on(table.startedAt),
+    idempotencyKeyIdx: index('idx_embedded_executions_idempotency_key').on(table.idempotencyKey),
   })
 );
 

@@ -22,6 +22,7 @@ import {
 
 import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
+import type { VoiceSessionMode } from "../../../voice/voice-chat-types";
 import type { ChatVariant } from "./chat-types";
 import { CreateTaskPopover } from "./create-task-popover";
 
@@ -89,11 +90,13 @@ function measureInlineTextarea(
 
 export interface ChatComposerVoiceState {
   assistantTtsQuality?: "enhanced" | "standard";
-  captureMode: "idle" | "compose" | "push-to-talk";
+  captureMode: VoiceSessionMode;
   interimTranscript: string;
   isListening: boolean;
   isSpeaking: boolean;
-  startListening: (mode?: "compose" | "push-to-talk") => void | Promise<void>;
+  startListening: (
+    mode?: Exclude<VoiceSessionMode, "idle">,
+  ) => void | Promise<void>;
   stopListening: (options?: { submit?: boolean }) => void | Promise<void>;
   supported: boolean;
   toggleListening: () => void;

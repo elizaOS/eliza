@@ -4126,14 +4126,145 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "DEVICE_FILE_READ",
+			description:
+				"Read a file from the user's device. On iOS/Android this reads from Capacitor's Documents directory; on desktop/AOSP it reads from the agent's workspace under the state directory. Paths are relative; `..` traversal and absolute paths are rejected.",
+			parameters: [
+				{
+					name: "path",
+					description: "Relative path within the user's device-files root.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Relative path within user's device-files root.",
+				},
+				{
+					name: "encoding",
+					description:
+						"Text encoding to decode the bytes with. Defaults to utf8.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["utf8", "base64"],
+					},
+					descriptionCompressed:
+						"Text encoding to decode the bytes with. Defaults to utf8.",
+				},
+			],
+			descriptionCompressed:
+				"read file from device (relative path, utf8|base64 encoding)",
+			similes: ["READ_DEVICE_FILE", "DEVICE_READ_FILE"],
+			exampleCalls: [
+				{
+					user: "Use DEVICE_FILE_READ with the provided parameters.",
+					actions: ["DEVICE_FILE_READ"],
+					params: {
+						DEVICE_FILE_READ: {
+							path: "example",
+							encoding: "utf8",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "DEVICE_FILE_WRITE",
+			description:
+				"Write a file to the user's device. On iOS/Android this writes into Capacitor's Documents directory (visible in Files.app / shared storage); on desktop/AOSP it writes under the agent's workspace in the state directory. Paths are relative; `..` traversal and absolute paths are rejected.",
+			parameters: [
+				{
+					name: "path",
+					description: "Relative path within the user's device-files root.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Relative path within user's device-files root.",
+				},
+				{
+					name: "content",
+					description: "File content as a string. base64-encode when binary.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"File content as a string. base64-encode when binary.",
+				},
+				{
+					name: "encoding",
+					description:
+						"How the content string should be interpreted. Defaults to utf8.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["utf8", "base64"],
+					},
+					descriptionCompressed:
+						"How the content string should be interpreted. Defaults to utf8.",
+				},
+			],
+			descriptionCompressed:
+				"write file to device (relative path, utf8|base64 content)",
+			similes: ["WRITE_DEVICE_FILE", "DEVICE_WRITE_FILE"],
+			exampleCalls: [
+				{
+					user: "Use DEVICE_FILE_WRITE with the provided parameters.",
+					actions: ["DEVICE_FILE_WRITE"],
+					params: {
+						DEVICE_FILE_WRITE: {
+							path: "example",
+							content: "example",
+							encoding: "utf8",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "DEVICE_LIST_DIR",
+			description:
+				"List entries in a directory on the user's device. On iOS/Android this lists inside Capacitor's Documents directory; on desktop/AOSP it lists under the agent's workspace in the state directory. Paths are relative; `..` traversal and absolute paths are rejected.",
+			parameters: [
+				{
+					name: "path",
+					description:
+						"Relative directory path within the user's device-files root. Empty string or omitted means the root.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Relative directory path within user's device-files root. Empty string or omitted means the root.",
+				},
+			],
+			descriptionCompressed:
+				"list directory on device (relative path; rooted under Documents/workspace)",
+			similes: ["LIST_DEVICE_DIR", "DEVICE_LS"],
+			exampleCalls: [
+				{
+					user: "Use DEVICE_LIST_DIR with the provided parameters.",
+					actions: ["DEVICE_LIST_DIR"],
+					params: {
+						DEVICE_LIST_DIR: {
+							path: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "DOC",
 			description:
 				"Manage the owner's document workflow surface: signature requests, approvals, deadline tracking, portal uploads, ID/form collection, and request close-out. Subactions: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description:
-						"Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+						"Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
 					required: false,
 					schema: {
 						type: "string",
@@ -4147,7 +4278,26 @@ export const allActionsSpec = {
 						],
 					},
 					descriptionCompressed:
-						"Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+						"Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+				},
+				{
+					name: "subaction",
+					description:
+						"Legacy alias for action. Prefer action for new planner output.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"request_signature",
+							"request_approval",
+							"track_deadline",
+							"upload_asset",
+							"collect_id",
+							"close_request",
+						],
+					},
+					descriptionCompressed:
+						"Legacy alias for action. Prefer action for new planner output.",
 				},
 				{
 					name: "documentRequestId",
@@ -4293,19 +4443,19 @@ export const allActionsSpec = {
 		{
 			name: "ENTITY",
 			description:
-				"Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: add, list, set_identity, set_relationship, log_interaction, merge. Use SCHEDULED_TASK for follow-up cadence; use LIFE for one-off dated reminders to call/text someone.",
+				"Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASK for follow-up cadence; use LIFE for one-off dated reminders to call/text someone.",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Which ENTITY operation to run: add (new contact), list (read rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). Follow-up cadence belongs to SCHEDULED_TASKS.",
+						"Which ENTITY operation to run: create (new contact), read (load rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). For rolodex/contact lifecycle (read full profile, search, update fields) use CONTACT. Follow-up cadence belongs to SCHEDULED_TASKS.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					examples: ["add", "list", "set_identity"],
+					examples: ["create", "read", "set_identity"],
 					descriptionCompressed:
-						"ENTITY op: add | list | log_interaction | set_identity | set_relationship | merge",
+						"ENTITY op: create | read | log_interaction | set_identity | set_relationship | merge",
 				},
 				{
 					name: "intent",
@@ -4496,7 +4646,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"people+relationships: add|list|set_identity|set_relationship|log_interaction|merge; follow-up cadence → SCHEDULED_TASK",
+				"people+relationships: create|read|set_identity|set_relationship|log_interaction|merge; rolodex CRUD → CONTACT; follow-up cadence → SCHEDULED_TASK",
 			similes: [
 				"RELATIONSHIP",
 				"CONTACTS",
@@ -4515,7 +4665,7 @@ export const allActionsSpec = {
 					actions: ["ENTITY"],
 					params: {
 						ENTITY: {
-							action: "add",
+							action: "create",
 							intent: "example",
 							name: "example",
 							channel: "email",
@@ -7451,15 +7601,6 @@ export const allActionsSpec = {
 						"Operation to perform. One of: search, products, inventory, orders, customers. Inferred from msg text when omitted.",
 				},
 				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Legacy alias for action.",
-				},
-				{
 					name: "query",
 					description: "Search term for action=search.",
 					required: false,
@@ -7520,7 +7661,6 @@ export const allActionsSpec = {
 					params: {
 						SHOPIFY: {
 							action: "search",
-							subaction: "example",
 							query: "example",
 							scope: "all",
 							limit: 1,
@@ -8250,15 +8390,6 @@ export const allActionsSpec = {
 						"Action: write, create, update, complete, cancel, delete, list, clear.",
 				},
 				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Legacy alias for action.",
-				},
-				{
 					name: "id",
 					description: "Todo id (update/complete/cancel/delete).",
 					required: false,
@@ -8390,7 +8521,6 @@ export const allActionsSpec = {
 					params: {
 						TODO: {
 							action: "example",
-							subaction: "example",
 							id: "example",
 							content: "example",
 							activeForm: "example",

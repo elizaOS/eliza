@@ -40,8 +40,8 @@ import {
 import { LifeOpsRepository } from "../lifeops/repository.js";
 
 type Subaction =
-  | "add"
-  | "list"
+  | "create"
+  | "read"
   | "log_interaction"
   | "set_identity"
   | "set_relationship"
@@ -225,21 +225,32 @@ async function resolveRelationshipId(
 }
 
 const ENTITY_SUBACTIONS: readonly Subaction[] = [
-  "add",
-  "list",
+  "create",
+  "read",
   "log_interaction",
   "set_identity",
   "set_relationship",
   "merge",
 ];
 
+/**
+ * Map legacy verb names (`add`, `list`) to their canonical replacements so
+ * older callers continue to resolve. These aliases live in the dispatcher
+ * only; the schema enum exposes the canonical names.
+ */
+const LEGACY_SUBACTION_ALIASES: Record<string, Subaction> = {
+  add: "create",
+  list: "read",
+};
+
 function normalizeRelationshipSubaction(value: unknown): Subaction | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
-  if (!(ENTITY_SUBACTIONS as readonly string[]).includes(normalized)) {
-    return null;
+  if ((ENTITY_SUBACTIONS as readonly string[]).includes(normalized)) {
+    return normalized as Subaction;
   }
-  return normalized as Subaction;
+  const aliased = LEGACY_SUBACTION_ALIASES[normalized];
+  return aliased ?? null;
 }
 
 function normalizeShouldAct(value: unknown): boolean | null {
@@ -363,7 +374,7 @@ async function resolveEntityPlanWithLlm(args: {
     "Plan the ENTITY (people / relationships) action for this request.",
     "The user may speak in any language.",
     "Return JSON only as a single object with exactly these fields:",
-    "action: add, list, log_interaction, set_identity, set_relationship, merge, or null",
+    "action: create, read, log_interaction, set_identity, set_relationship, merge, or null",
     "shouldAct: true or false",
     "response: short clarifying question, or null",
     "intent: concise restatement of the user request, or null",
@@ -384,10 +395,10 @@ async function resolveEntityPlanWithLlm(args: {
     "relationshipType: edge type label (set_relationship; e.g. 'manages', 'colleague_of', 'works_at'), or null",
     "sourceEntityIds: array of duplicate entity ids to fold into the target (merge), or null",
     "evidence: short evidence string for set_identity / set_relationship, or null",
-    'Example: {"action":"add","shouldAct":true,"response":null,"intent":"add Sam to my Rolodex","name":"Sam","channel":"telegram","handle":"@sam","email":null,"phone":null,"notes":null,"relationshipId":null,"reason":null,"confirmed":null,"entityId":null,"platform":null,"displayName":null,"toEntityId":null,"fromEntityId":null,"relationshipType":null,"sourceEntityIds":null,"evidence":null}',
+    'Example: {"action":"create","shouldAct":true,"response":null,"intent":"add Sam to my Rolodex","name":"Sam","channel":"telegram","handle":"@sam","email":null,"phone":null,"notes":null,"relationshipId":null,"reason":null,"confirmed":null,"entityId":null,"platform":null,"displayName":null,"toEntityId":null,"fromEntityId":null,"relationshipType":null,"sourceEntityIds":null,"evidence":null}',
     "",
-    "Choose list when the user wants to see, browse, list, or recall who is in the contacts/Rolodex.",
-    "Choose add when the user wants to remember a new person, store a handle, or add them to the contact list.",
+    "Choose read when the user wants to see, browse, list, or recall who is in the contacts/Rolodex.",
+    "Choose create when the user wants to remember a new person, store a handle, or add them to the contact list.",
     "Choose log_interaction when the user reports a past conversation, call, meeting, or message they had with a known contact.",
     "Choose set_identity when the user adds a (platform, handle) for an existing entity, e.g. 'Pat's Slack handle is @pat'.",
     "Choose set_relationship when the user describes a typed edge between two entities, e.g. 'Pat is my manager', 'Sam works at Acme', 'Carol is my colleague'.",
@@ -396,7 +407,7 @@ async function resolveEntityPlanWithLlm(args: {
     "Set shouldAct=false only when the request is too vague to safely choose any of the actions.",
     "When shouldAct=false, response must be a short clarifying question in the user's language.",
     "Extract only values stated or clearly implied by the request or recent conversation. Do not invent ids, handles, or notes.",
-    "For add, extract name plus channel and handle when present.",
+    "For create, extract name plus channel and handle when present.",
     "For set_identity, extract entityId or name plus platform and handle.",
     "For set_relationship, extract fromEntityId/toEntityId or names plus relationshipType.",
     "",
@@ -463,9 +474,9 @@ export const entityAction: Action & {
     "SET_RELATIONSHIP",
   ],
   description:
-    "Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: add, list, set_identity, set_relationship, log_interaction, merge. Use SCHEDULED_TASK for follow-up cadence; use LIFE for one-off dated reminders to call/text someone.",
+    "Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASK for follow-up cadence; use LIFE for one-off dated reminders to call/text someone.",
   descriptionCompressed:
-    "people+relationships: add|list|set_identity|set_relationship|log_interaction|merge; follow-up cadence → SCHEDULED_TASK",
+    "people+relationships: create|read|set_identity|set_relationship|log_interaction|merge; rolodex CRUD → CONTACT; follow-up cadence → SCHEDULED_TASK",
   routingHint:
     'people/contacts/relationships ("add Pat to my contacts", "Pat is my manager") -> ENTITY; follow-up cadence ("follow up with David", "how long since I talked to X", "who is overdue") -> SCHEDULED_TASK; one-off dated reminders to call/text someone ("remember to call mom Sunday") -> LIFE',
   tags: [
@@ -577,7 +588,7 @@ export const entityAction: Action & {
     }
     const service = new LifeOpsService(runtime);
 
-    if (subaction === "list") {
+    if (subaction === "read") {
       const contacts = await service.listRelationships({ limit: 50 });
       const fallback =
         contacts.length === 0
@@ -592,7 +603,7 @@ export const entityAction: Action & {
       });
     }
 
-    if (subaction === "add") {
+    if (subaction === "create") {
       const name = params.name;
       const channel = params.channel;
       const handle = params.handle;
@@ -815,14 +826,14 @@ export const entityAction: Action & {
     {
       name: "action",
       description:
-        "Which ENTITY operation to run: add (new contact), list (read rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). Follow-up cadence belongs to SCHEDULED_TASKS.",
+        "Which ENTITY operation to run: create (new contact), read (load rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). For rolodex/contact lifecycle (read full profile, search, update fields) use CONTACT. Follow-up cadence belongs to SCHEDULED_TASKS.",
       descriptionCompressed:
-        "ENTITY op: add | list | log_interaction | set_identity | set_relationship | merge",
+        "ENTITY op: create | read | log_interaction | set_identity | set_relationship | merge",
       schema: {
         type: "string" as const,
         enum: [...ENTITY_SUBACTIONS],
       },
-      examples: ["add", "list", "set_identity"],
+      examples: ["create", "read", "set_identity"],
     },
     {
       name: "intent",

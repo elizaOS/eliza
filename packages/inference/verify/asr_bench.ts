@@ -330,6 +330,17 @@ function main(): void {
         wavDir: wavDir || null,
         count: rows.length,
         normalization: "lowercase + strip-punctuation + collapse-ws (Whisper-style)",
+        ...(synthesizedVia === "tts"
+          ? {
+              caveat:
+                "Audio synthesized via the bundle's own TTS GGUF. On a stand-in bundle " +
+                "(off-the-shelf, not fine-tuned Qwen3-TTS/Qwen3-ASR weights) the synthesized " +
+                "speech is low-quality, so the WER reflects TTS quality, not ASR accuracy — " +
+                "it is NOT a valid ASR-WER measurement on a stand-in bundle. RTF (audio-sec / " +
+                "wall-sec) is content-independent and IS meaningful. Pass --wav-dir with real " +
+                "recorded WAV+.txt pairs for a real WER number.",
+            }
+          : {}),
       },
       aggregate: {
         wer: aggregateWer,
@@ -348,20 +359,45 @@ function main(): void {
     writeFileSync(outPath, `${JSON.stringify(result, null, 2)}\n`);
 
     if (evalOut) {
-      const evalBlob = {
-        schemaVersion: 1,
-        metric: "asr_wer",
-        op: "<=",
-        status: "measured",
-        wer: aggregateWer,
-        passed,
-        gateThreshold,
-        backend,
-        labelledSetSource: synthesizedVia,
-        utterances: rows.length,
-        benchArtifact: path.relative(path.resolve(__dirname, "../.."), outPath),
-        ...(passed ? {} : { gateReason: `asr_wer ${aggregateWer.toFixed(4)} > ${gateThreshold}` }),
-      };
+      // A TTS-synthesized labelled set on a stand-in bundle is not a valid
+      // WER measurement (it measures TTS quality). Report it as `not-run`
+      // with the real reason — matching what eliza1_eval_suite.py emits —
+      // rather than a false `measured` row that would gate on noise. Only
+      // an external real-speech --wav-dir set produces a `measured` row.
+      const validMeasurement = synthesizedVia === "external";
+      const evalBlob = validMeasurement
+        ? {
+            schemaVersion: 1,
+            metric: "asr_wer",
+            op: "<=",
+            status: "measured",
+            wer: aggregateWer,
+            passed,
+            gateThreshold,
+            backend,
+            labelledSetSource: synthesizedVia,
+            utterances: rows.length,
+            benchArtifact: path.relative(path.resolve(__dirname, "../.."), outPath),
+            ...(passed ? {} : { gateReason: `asr_wer ${aggregateWer.toFixed(4)} > ${gateThreshold}` }),
+          }
+        : {
+            schemaVersion: 1,
+            metric: "asr_wer",
+            op: "<=",
+            status: "not-run",
+            wer: null,
+            passed: false,
+            gateThreshold,
+            backend,
+            labelledSetSource: synthesizedVia,
+            utterances: rows.length,
+            reason:
+              "labelled set was TTS-synthesized from the bundle's own (stand-in) TTS GGUF — " +
+              "WER would measure TTS quality, not ASR accuracy; needs a real recorded-speech " +
+              "corpus (--wav-dir WAV+.txt pairs). RTF measurement in the bench artifact is valid.",
+            rtf: aggregateRtf,
+            benchArtifact: path.relative(path.resolve(__dirname, "../.."), outPath),
+          };
       mkdirSync(path.dirname(evalOut), { recursive: true });
       writeFileSync(evalOut, `${JSON.stringify(evalBlob, null, 2)}\n`);
     }

@@ -45,6 +45,14 @@ import type {
 } from "./voice/types";
 import { writeVoicePresetFile } from "./voice/voice-preset-format";
 
+function missingWhisperOptions() {
+  const root = path.join(tmpdir(), `eliza-missing-whisper-${process.pid}`);
+  return {
+    binaryPath: path.join(root, "whisper-cli"),
+    modelPath: path.join(root, "ggml-base.en.bin"),
+  };
+}
+
 /**
  * TTS backend whose synthesis only completes when `release()` is
  * called. Lets the rollback test issue a reject while phrases are
@@ -493,6 +501,7 @@ describe("LocalInferenceEngine voice surface", () => {
       useFfiBackend: false,
       backendOverride: new CountingBackend(),
       lifecycleLoaders: lifecycleLoadersOk(),
+      whisper: missingWhisperOptions(),
     });
     await engine.armVoice();
     // Voice is armed but there is no fused ASR (stub backend, no `asr/`
@@ -909,6 +918,7 @@ describe("LocalInferenceEngine.startVoiceSession", () => {
       useFfiBackend: false,
       backendOverride: new CountingBackend(),
       lifecycleLoaders: lifecycleLoadersOk(),
+      whisper: missingWhisperOptions(),
     });
     await engine.armVoice();
     // Inject a VAD (no ONNX) + a push mic source so the only missing piece

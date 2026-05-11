@@ -75,6 +75,7 @@ import {
   createStreamingTranscriber,
   FfiStreamingTranscriber,
   ffiSupportsStreamingAsr,
+  type WhisperCppOptions,
 } from "./transcriber";
 import type {
   AudioChunk,
@@ -539,6 +540,8 @@ export interface EngineVoiceBridgeOptions {
    * When unset, default loaders are derived from the bundle root.
    */
   lifecycleLoaders?: VoiceLifecycleLoaders;
+  /** Optional whisper.cpp interim ASR configuration. */
+  whisper?: WhisperCppOptions;
 }
 
 /**
@@ -563,6 +566,7 @@ export class EngineVoiceBridge {
   private readonly phraseCache: PhraseCache;
   /** In-flight fused turn (`runVoiceTurn`), if any — cancelled on barge-in. */
   private activePipeline: VoicePipeline | null = null;
+  private readonly whisper?: WhisperCppOptions;
 
   private constructor(
     scheduler: VoiceScheduler,
@@ -573,6 +577,7 @@ export class EngineVoiceBridge {
     ffiContextRef: FfiContextRef | null,
     asrAvailable: boolean,
     phraseCache: PhraseCache,
+    whisper?: WhisperCppOptions,
   ) {
     this.scheduler = scheduler;
     this.backend = backend;
@@ -582,6 +587,7 @@ export class EngineVoiceBridge {
     this.ffiContextRef = ffiContextRef;
     this.asrAvailable = asrAvailable;
     this.phraseCache = phraseCache;
+    this.whisper = whisper;
   }
 
   get ffiCtx(): ElizaInferenceContextHandle | null {
@@ -744,6 +750,7 @@ export class EngineVoiceBridge {
       ffiContextRef,
       asrAvailable,
       phraseCache,
+      opts.whisper,
     );
   }
 
@@ -980,6 +987,7 @@ export class EngineVoiceBridge {
       getContext: contextRef ? () => contextRef.ensure() : undefined,
       asrBundlePresent: this.asrAvailable,
       vad: opts?.vad,
+      whisper: this.whisper,
     });
   }
 
@@ -1075,6 +1083,7 @@ export class EngineVoiceBridge {
         ffi: this.ffi,
         getContext: ctxRef ? () => ctxRef.ensure() : undefined,
         asrBundlePresent: this.asrAvailable,
+        whisper: this.whisper,
       });
     } catch (err) {
       if (err instanceof AsrUnavailableError) {
