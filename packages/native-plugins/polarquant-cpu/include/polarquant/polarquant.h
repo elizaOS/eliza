@@ -158,6 +158,15 @@ void ggml_vec_dot_q4_polar_preht_f32(
  */
 void polar_qjl_signs(float * out);
 
+/* Pointer to a lazily-computed, memoized copy of the same +/-1 sign
+ * vector. The hot dot kernels (called once per cached K row) MUST use
+ * this instead of regenerating the 128-element xorshift stream on every
+ * call. The vector is deterministic, so the lazy fill is safe to race —
+ * concurrent callers write identical bytes — and the returned pointer is
+ * stable for the process lifetime. The encoder / decoder (run once per
+ * weight tensor at convert time) may keep using polar_qjl_signs(). */
+const float * polar_qjl_signs_cached(void);
+
 /* ----- SIMD variants (decoder + dot) -------------------------------- */
 
 /* AVX2 + NEON ports of the dequantizer and the dot kernel.  The encoder

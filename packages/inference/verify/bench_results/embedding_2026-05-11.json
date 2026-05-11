@@ -1,0 +1,78 @@
+{
+  "tool": "embedding_bench",
+  "date": "2026-05-11T17:26:27.743Z",
+  "host": "Intel(R) Core(TM) Ultra 9 275HX",
+  "cpus": 24,
+  "totalRamMb": 31440,
+  "status": "ok",
+  "backend": "cpu",
+  "binary": "/home/shaw/.cache/eliza-dflash/milady-llama-cpp/build/linux-x64-cpu/bin/llama-server",
+  "model": "/tmp/eliza1-eval-models/Qwen3-0.6B-Q8_0.gguf",
+  "modelDim": 1024,
+  "threads": 24,
+  "runs": 24,
+  "coldLoadMs": 1398,
+  "peakRssMb": 1635.4,
+  "singleTextEmbed": {
+    "median_ms": 122.46,
+    "p10_ms": 58.25,
+    "p90_ms": 167.01
+  },
+  "throughput": {
+    "batch_1": {
+      "median_wall_ms": 61.81,
+      "texts_per_sec": 16.2
+    },
+    "batch_4": {
+      "median_wall_ms": 91.69,
+      "texts_per_sec": 43.6
+    },
+    "batch_8": {
+      "median_wall_ms": 83.4,
+      "texts_per_sec": 95.9
+    },
+    "batch_16": {
+      "median_wall_ms": 164.02,
+      "texts_per_sec": 97.5
+    }
+  },
+  "matryoshka": {
+    "dim_64": {
+      "bytes_per_vec_fp32": 256,
+      "bytes_per_vec_fp16": 128,
+      "storage_fraction_vs_1024": 0.063,
+      "pairwise_ranking_pearson_vs_full": 0.9252
+    },
+    "dim_128": {
+      "bytes_per_vec_fp32": 512,
+      "bytes_per_vec_fp16": 256,
+      "storage_fraction_vs_1024": 0.125,
+      "pairwise_ranking_pearson_vs_full": 0.9558
+    },
+    "dim_256": {
+      "bytes_per_vec_fp32": 1024,
+      "bytes_per_vec_fp16": 512,
+      "storage_fraction_vs_1024": 0.25,
+      "pairwise_ranking_pearson_vs_full": 0.9684
+    },
+    "dim_512": {
+      "bytes_per_vec_fp32": 2048,
+      "bytes_per_vec_fp16": 1024,
+      "storage_fraction_vs_1024": 0.5,
+      "pairwise_ranking_pearson_vs_full": 0.9925
+    },
+    "dim_768": {
+      "bytes_per_vec_fp32": 3072,
+      "bytes_per_vec_fp16": 1536,
+      "storage_fraction_vs_1024": 0.75,
+      "pairwise_ranking_pearson_vs_full": 0.9981
+    },
+    "dim_1024": {
+      "bytes_per_vec_fp32": 4096,
+      "bytes_per_vec_fp16": 2048,
+      "storage_fraction_vs_1024": 1,
+      "pairwise_ranking_pearson_vs_full": 1
+    }
+  },
+  "note": "Server: llama-server --embeddings --pooling last over the GGUF. `pairwise_ranking_pearson_vs_full` is the Pearson correlation between the corpus's pairwise-cosine matrix at the truncated width and at the full width — a cheap offline proxy for retrieval-ranking preservation when MTEB isn't available. On 0_6b the GGUF IS the text backbone (pooled-text mode); on 1_7b+ it should be the dedicated embedding/eliza-1-embedding.gguf (Qwen3-Embedding-0.6B)."
+}

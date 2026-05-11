@@ -424,20 +424,6 @@ function patchVulkanRuntimeDispatch(cacheDir, { dryRun }) {
     `"milady_polar",          milady_polar_len,          milady_polar_data,          "main", 3, 6 * sizeof(uint32_t),`,
   );
 
-  // Device-policy: QJL gains ~1.9x on Intel Arc/Xe at >= 4k tokens with the
-  // _multi fold at TOKENS_PER_WG=8 (bench_results/vulkan_kopt_2026-05-11.json);
-  // factor 8 also beats factor 4 at every measured length on that hardware and
-  // is a safe cross-device value (verified by vulkan-verify-multiblock for
-  // N in {1,2,4,8,16}). Bump the qjl_multi pipeline's constant_id=0 spec
-  // constant from the original conservative 4 to 8; the dispatch grid divisor
-  // (MILADY_VK_QJL_MULTIBLOCK_FACTOR) matches. The turbo*_multi pipelines stay
-  // at 4 (the conservative cross-device value the kernel-optimization review
-  // specified for Adreno/Mali/AMD/NVIDIA); the runtime only engages them at
-  // n_kv >= 8192 where the fold is at worst neutral on Intel ANV.
-  patched = patched.replace(
-    `device->pipeline_milady_qjl_multi,        "milady_qjl_multi",        milady_qjl_multi_len,        milady_qjl_multi_data,        "main", 3, 4 * sizeof(uint32_t), {1, 1, 1}, {4u}, 1);`,
-    `device->pipeline_milady_qjl_multi,        "milady_qjl_multi",        milady_qjl_multi_len,        milady_qjl_multi_data,        "main", 3, 4 * sizeof(uint32_t), {1, 1, 1}, {8u}, 1);`,
-  );
 
   if (!patched.includes(RUNTIME_SENTINEL)) {
     const contextAnchor = `    // for GGML_VK_PERF_LOGGER`;
@@ -502,20 +488,25 @@ struct milady_vk_fused_attn_push {
 // constant_id=0 spec constant (BLOCKS_PER_WG / TOKENS_PER_WG) baked into the
 // _multi pipeline at create time. Voice / small-n_kv stays single-block.
 //
-// Device-policy table (matched on ggml_vk_load_shaders' VkPhysicalDeviceProperties
-// via device->vendor_id, falls back conservative). Backed by
+// Device-policy thresholds, backed by
 // packages/inference/verify/bench_results/vulkan_kopt_2026-05-11.json (Intel
-// Arrow Lake / Mesa ANV 25.2.8, vulkan_bench timestamp queries):
-//   * QJL: the _multi fold hoists the 256-wide q_sketch out of the per-token
-//     loop — measured ~1.9x at 4k–32k tokens with TOKENS_PER_WG=8 (factor 8
-//     beats 4 at every length >= 1k). Pipeline created with {MILADY_VK_QJL_MULTIBLOCK_FACTOR};
-//     dispatch grid divisor must match. Used at n_tokens >= 1024.
+// Arrow Lake / Mesa ANV 25.2.8, vulkan_bench VK_QUERY_TYPE_TIMESTAMP):
+//   * QJL: the _multi fold hoists the 256-wide q_sketch + its ±1 sign vector
+//     out of the per-token loop — TOKENS_PER_WG=4 is a clear win over the
+//     single-block path at every measured length (~1.3x at 512 tokens,
+//     ~1.8x at 4k, ~1.6–1.9x at 32k) and stays the safe value across system
+//     load (factor 8 was marginally faster on an idle box but ~25% slower
+//     under heavy CPU/GPU contention — fewer workgroups to hide latency).
+//     So: keep factor 4, but engage it from 1024 tokens instead of 2048.
 //   * Turbo3 / Turbo4 / Turbo3-TCQ: already memory-bandwidth-bound on Intel
-//     ANV at n_kv >= 512 — the _multi fold is a wash or a slight regression at
-//     4k, neutral at 32k. Keep BLOCKS_PER_WG=4 (the conservative cross-device
-//     value the review specified for Adreno/Mali/AMD/NVIDIA) but only engage
-//     it at n_kv >= 8192 so the 512–4k decode loop never pays the fold tax.
-static const uint32_t MILADY_VK_QJL_MULTIBLOCK_FACTOR    = 8u;
+//     ANV at n_kv >= 512 — the _multi fold is a wash at 512, a slight
+//     regression at 4k, and a large win only at 32k (~2x under load). Keep
+//     BLOCKS_PER_WG=4 (the conservative cross-device value the review
+//     specified for Adreno/Mali/AMD/NVIDIA) but only engage it at n_kv >=
+//     8192 so the common 512–4k decode loop never pays the fold tax.
+// (Both _multi pipelines are created with constant_id=0 == 4 in the
+// 02-ggml-vulkan-pipelines.patch hunk; these dispatch divisors must match it.)
+static const uint32_t MILADY_VK_QJL_MULTIBLOCK_FACTOR    = 4u;
 static const int64_t  MILADY_VK_QJL_MULTIBLOCK_THRESHOLD = 1024;
 static const uint32_t MILADY_VK_TBQ_MULTIBLOCK_FACTOR    = 4u;
 static const int64_t  MILADY_VK_TBQ_MULTIBLOCK_THRESHOLD = 8192;
