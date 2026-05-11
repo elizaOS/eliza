@@ -1,5 +1,5 @@
-// metal_bench.mm — Metal performance harness for the five Eliza-1 KV-cache
-// kernels (turbo3, turbo4, turbo3_tcq, qjl, polar).
+// metal_bench.mm — Metal performance harness for the Eliza-1 KV-cache
+// kernels (turbo3, turbo4, turbo3_tcq, qjl, polar, polar_preht).
 //
 // SCOPE: this is a perf harness, not a correctness harness. metal_verify.mm
 // (sibling file) handles correctness against fixtures. metal_bench dispatches
@@ -39,7 +39,7 @@
 //           (or --out path). Console prints a per-shader summary.
 //
 // Robustness to thermal throttling: shaders are interleaved (round-robin
-// pass over all 5 kernels per outer iteration), not run back-to-back, so a
+// pass over all kernels per outer iteration), not run back-to-back, so a
 // hot shader doesn't bias one kernel's percentile distribution.
 
 #import <Foundation/Foundation.h>
@@ -1476,7 +1476,7 @@ int main(int argc, const char * argv[]) {
             for (size_t i = 0; i < kernels.size(); i++) {
                 double g, c;
                 bool is_t3  = (i == 0), is_t4 = (i == 1), is_tcq = (i == 2);
-                bool is_qjl = (i == 3), is_pol = (i == 4);
+                bool is_qjl = (i == 3), is_pol = (i == 4 || i == 5);
                 encode_dispatch(queue, kernels[i], is_t3, is_t4, is_tcq, is_qjl, is_pol, g, c);
             }
         }
@@ -1491,7 +1491,7 @@ int main(int argc, const char * argv[]) {
             for (size_t i = 0; i < kernels.size(); i++) {
                 double g, c;
                 bool is_t3  = (i == 0), is_t4 = (i == 1), is_tcq = (i == 2);
-                bool is_qjl = (i == 3), is_pol = (i == 4);
+                bool is_qjl = (i == 3), is_pol = (i == 4 || i == 5);
                 encode_dispatch(queue, kernels[i], is_t3, is_t4, is_tcq, is_qjl, is_pol, g, c);
                 if (c > max_warm_us) max_warm_us = c;
             }
@@ -1519,7 +1519,7 @@ int main(int argc, const char * argv[]) {
                 for (size_t i = 0; i < kernels.size(); i++) {
                     double g, c;
                     bool is_t3  = (i == 0), is_t4 = (i == 1), is_tcq = (i == 2);
-                    bool is_qjl = (i == 3), is_pol = (i == 4);
+                    bool is_qjl = (i == 3), is_pol = (i == 4 || i == 5);
                     encode_dispatch(queue, kernels[i], is_t3, is_t4, is_tcq, is_qjl, is_pol, g, c);
                     kernels[i].gpu_us.push_back(g);
                     kernels[i].cpu_us.push_back(c);

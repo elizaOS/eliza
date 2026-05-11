@@ -425,11 +425,7 @@ export class DockerSSHClient {
    * putting file contents in shell arguments, command logs, or environment
    * variables.
    */
-  async execStdin(
-    command: string,
-    input: Buffer | string,
-    timeoutMs?: number,
-  ): Promise<string> {
+  async execStdin(command: string, input: Buffer | string, timeoutMs?: number): Promise<string> {
     if (!this.connected || !this.client) {
       await this.connect();
     }

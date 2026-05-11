@@ -6,51 +6,51 @@
   "benchmark_directory": "openclaw-benchmark",
   "benchmark_id": "openclaw_bench",
   "cache_metrics": {
-    "cache_creation_input_tokens": 0,
-    "cache_hit_ratio": 0.0,
     "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 0
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 0,
+    "cache_hit_ratio": 0.0
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "cache_metrics": {
-      "cache_creation_input_tokens": 0,
-      "cache_hit_ratio": 0.0,
       "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 0
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 0,
+      "cache_hit_ratio": 0.0
     },
     "mode": "conceptual",
     "overall_score": 1.0,
     "performance_metrics": {
       "duration_seconds": 0.9837981250020675,
-      "mean_latency_ms": null,
-      "p95_latency_ms": null,
-      "throughput_per_second": 0.0
+      "mean_latency_ms": 692.3787593841553,
+      "p95_latency_ms": 692.3787593841553,
+      "throughput_per_second": 1.0164686987972238
     },
     "return_code": 0,
     "tasks_completed": 1,
     "token_metrics": {
-      "avg_completion_tokens": 0.0,
-      "avg_prompt_tokens": 0.0,
-      "completion_tokens": 0,
-      "llm_call_count": 0,
+      "llm_call_count": 1,
       "prompt_tokens": 0,
-      "total_tokens": 0
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "avg_prompt_tokens": 0.0,
+      "avg_completion_tokens": 0.0
     },
     "trajectory_summary": {
-      "files": 0,
-      "prompt_chars": 0,
-      "repeated_prefixes": [],
-      "turns": 0
+      "files": 1,
+      "turns": 1,
+      "prompt_chars": 170,
+      "repeated_prefixes": []
     }
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
     "duration_seconds": 0.9837981250020675,
-    "mean_latency_ms": null,
-    "p95_latency_ms": null,
-    "throughput_per_second": 0.0
+    "mean_latency_ms": 692.3787593841553,
+    "p95_latency_ms": 692.3787593841553,
+    "throughput_per_second": 1.0164686987972238
   },
   "provider": "cerebras",
   "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132003Z_4102119c/openclaw-benchmark__openclaw_bench/run_openclaw_bench_20260511T132003Z_1_e5b73ec2/output/openclaw_setup_concept_1778505604.json",
@@ -59,19 +59,19 @@
   "score": 1.0,
   "status": "succeeded",
   "token_metrics": {
-    "avg_completion_tokens": 0.0,
-    "avg_prompt_tokens": 0.0,
-    "completion_tokens": 0,
-    "llm_call_count": 0,
+    "llm_call_count": 1,
     "prompt_tokens": 0,
-    "total_tokens": 0
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "avg_prompt_tokens": 0.0,
+    "avg_completion_tokens": 0.0
   },
   "trajectory_summary": {
-    "files": 0,
-    "prompt_chars": 0,
-    "repeated_prefixes": [],
-    "turns": 0
+    "files": 1,
+    "turns": 1,
+    "prompt_chars": 170,
+    "repeated_prefixes": []
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T13:20:04.545938+00:00"
+  "updated_at": "2026-05-11T14:00:15.764908+00:00"
 }

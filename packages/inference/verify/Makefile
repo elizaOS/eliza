@@ -100,6 +100,10 @@ vulkan-qjl-polar: vulkan_verify vulkan-spirv
 	./vulkan_verify ../vulkan/polar.spv fixtures/polar.json
 	@echo "[kernels/verify] running vulkan_verify on Polar+QJL-residual fixture..."
 	./vulkan_verify ../vulkan/polar.spv fixtures/polar_qjl.json
+	@echo "[kernels/verify] running vulkan_verify on Polar pre-Hadamard-query fixture..."
+	./vulkan_verify ../vulkan/polar_preht.spv fixtures/polar.json
+	@echo "[kernels/verify] running vulkan_verify on Polar pre-Hadamard-query + QJL-residual fixture..."
+	./vulkan_verify ../vulkan/polar_preht.spv fixtures/polar_qjl.json
 
 # Full Vulkan correctness gate for the default-on kernel set. Runs all five
 # score kernels plus the Polar residual fixture so the optional residual branch
@@ -117,6 +121,10 @@ vulkan-verify: vulkan_verify vulkan-spirv reference-test
 	./vulkan_verify ../vulkan/polar.spv fixtures/polar.json
 	@echo "[kernels/verify] vulkan polar + QJL residual..."
 	./vulkan_verify ../vulkan/polar.spv fixtures/polar_qjl.json
+	@echo "[kernels/verify] vulkan polar pre-Hadamard query..."
+	./vulkan_verify ../vulkan/polar_preht.spv fixtures/polar.json
+	@echo "[kernels/verify] vulkan polar pre-Hadamard query + QJL residual..."
+	./vulkan_verify ../vulkan/polar_preht.spv fixtures/polar_qjl.json
 
 # Native Linux end-to-end smoke for the Vulkan backend. This first runs the
 # standalone fixture verifier, then builds the patched fork target and runs the
@@ -127,7 +135,7 @@ vulkan-native-smoke:
 	./linux_vulkan_smoke.sh
 
 # Android on-device standalone Vulkan smoke. Cross-compiles vulkan_verify with
-# the NDK, pushes the verifier + SPIR-V + fixtures via adb, and runs all six
+# the NDK, pushes the verifier + SPIR-V + fixtures via adb, and runs all eight
 # fixture checks on the physical device. Standalone fixture success is only
 # evidence; the script exits non-zero until Android graph-dispatch evidence is
 # supplied through ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE.
@@ -252,6 +260,7 @@ VULKAN_SHADERS = \
     ../vulkan/qjl_get_rows.spv \
     ../vulkan/qjl_mul_mv.spv \
     ../vulkan/polar.spv \
+    ../vulkan/polar_preht.spv \
     ../vulkan/polar_get_rows.spv
 
 vulkan-spirv: $(VULKAN_SHADERS)
@@ -464,7 +473,13 @@ else
 	    done; \
 	    echo "[verify-fork] vulkan/polar + QJL residual (fork: vulkan-shaders/polar.comp)"; \
 	    ./vulkan_verify bench_results/fork-spv/polar.spv fixtures/polar_qjl.json || exit 1; \
-	    echo "[verify-fork] vulkan: 5/5 fork shaders + polar residual verified against standalone fixtures"; \
+	    $(GLSLC) --target-env=vulkan1.1 --target-spv=spv1.3 -fshader-stage=compute \
+	      $(ELIZA_DFLASH_FORK_VULKAN_DIR)/polar_preht.comp -o bench_results/fork-spv/polar_preht.spv || exit 1; \
+	    echo "[verify-fork] vulkan/polar_preht (fork: vulkan-shaders/polar_preht.comp)"; \
+	    ./vulkan_verify bench_results/fork-spv/polar_preht.spv fixtures/polar.json || exit 1; \
+	    echo "[verify-fork] vulkan/polar_preht + QJL residual (fork: vulkan-shaders/polar_preht.comp)"; \
+	    ./vulkan_verify bench_results/fork-spv/polar_preht.spv fixtures/polar_qjl.json || exit 1; \
+	    echo "[verify-fork] vulkan: 6/6 fork score shaders + polar residual/preht variants verified against standalone fixtures"; \
 	  else \
 	    echo "[verify-fork] vulkan_verify not buildable on this host — skipping Vulkan fork verification"; \
 	  fi; \

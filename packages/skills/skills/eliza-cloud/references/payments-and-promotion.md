@@ -452,16 +452,18 @@ Provider caveats:
   campaigns, or you can call the media upload route first.
 - Google image creatives upload images as Google Ads `ImageAsset` resources.
   YouTube URLs map to Google Ads `YOUTUBE_VIDEO` assets. Raw video URLs use
-  Google Ads `YouTubeVideoUpload` ingestion and need processing to reach
-  `PROCESSED` before they can be converted into a usable video asset. Creatives
-  with image provider ids create responsive display ads; if a processed YouTube
-  video asset is also present, Cloud attaches it to the display creative.
-  Text-only creatives create responsive search ads.
+  Google Ads `YouTubeVideoUpload` ingestion. Poll the media status route until
+  the upload is `ready:true`, then pass the returned YouTube URL back through
+  media upload to create the final `YOUTUBE_VIDEO` asset. Creatives with image
+  provider ids create responsive display ads; if a processed YouTube video asset
+  is also present, Cloud attaches it to the display creative. Text-only
+  creatives create responsive search ads.
 - Campaigns and creatives should be created paused/draft first. Starting
   delivery is a separate confirmed action.
 
 Creative CRUD:
 
+- `GET /api/v1/advertising/accounts/{id}/media?providerAssetResourceName=...`
 - `GET /api/v1/advertising/campaigns/{id}/creatives`
 - `POST /api/v1/advertising/campaigns/{id}/creatives`
 - `GET /api/v1/advertising/creatives/{id}`
@@ -488,6 +490,7 @@ Parent-agent command:
 
 ```text
 USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.accounts.media.upload","confirmed":true,"params":{"id":"<adAccountId>","body":{"type":"image","name":"launch-card","url":"https://cdn.example/asset.png"}}}
+USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.accounts.media.status","params":{"id":"<adAccountId>","query":{"providerAssetResourceName":"customers/123/youTubeVideoUploads/abc"}}}
 ```
 
 Cloud content-safety checks review ad campaign copy, creative text, uploadable

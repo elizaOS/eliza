@@ -35,6 +35,7 @@ with the status below.
 | Windows hardware runner | Runnable, fail-closed PowerShell entrypoint now exists for native Windows CUDA/Vulkan/CPU smoke. | `verify/windows_runner.ps1 -Report <path>` requires native Windows backend hardware/toolchain and a GGUF model; cross-built exe execution is not counted. Skip mode exits non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | iOS | Static archives, embedded metallib, Capacitor bridge symbols, and `eliza_inference_*` ABI v1 symbols package into a verified XCFramework for physical-device and simulator slices. Physical-device XCTest is now PASS; weight-backed Capacitor bundle smoke remains open. | `build-xcframework.mjs --verify` passes kernel-symbol, runtime-symbol, and structure audits. `packages/inference/verify/hardware-results/ios-device-smoke-2026-05-11.json` is `status: passed` on iPhone 15 Pro UDID `00008130-001955E91EF8001C`, with 3/3 XCTest cases passing and `--skip-voice-abi=false`. The old failure was a stale shim archive carrying an earlier TTS ABI shape; `build-xcframework.mjs` now refreshes the runtime shim before packaging. |
 | Voice fusion | macOS production fused `libelizainference.dylib` now builds, symbol-verifies, lazy-loads real GGUF TTS and ASR assets, and completes real TTS + ASR synthesis/transcription in one fused process. The merged HTTP route remains open. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal-fused --jobs 10` links `omnivoice-core`, `libelizainference.dylib`, `llama-omnivoice-server`, `libmtmd`, and `default.metallib`; `verify-symbols.mjs` reports `omnivoice=10 abi=8`; Bun FFI smoke against `/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle` loads real OmniVoice Q4_K_M base/tokenizer GGUFs for TTS and Qwen3-ASR GGUF + qwen3a mmproj for ASR. TTS writes 31,680 samples for `hello`; ASR now normalizes punctuation, stops on sentence completion, and transcribes `/tmp/eliza-asr-hello.wav` to `Hello world.` in the latest smoke. Evidence: `reports/local-e2e/2026-05-11/fused-voice-ffi-smoke.json` and `reports/local-e2e/2026-05-11/asr-ffi-smoke-latest.json`. |
+| Text-to-voice streaming handoff | JS runtime now streams accepted text deltas from llama-server into the active voice scheduler and supports explicit phrase prewarm. Native accept/reject event streaming is still open. | `dflash-server.generateWithUsage` switches to OpenAI-compatible SSE when `onTextChunk` is supplied; `LocalInferenceEngine.generate()` and `generateInConversation()` forward chunks into `EngineVoiceBridge` while generation is still in flight and settle the scheduler at turn end. `VoiceScheduler.prewarmPhrases()` caches common phrase audio; default voice chunks are capped at 8 tokens and `ELIZA_VOICE_MAX_IN_FLIGHT_PHRASES` bounds memory on small devices. Evidence: `reports/local-e2e/2026-05-11/voice-streaming-optimization.json`; root local-inference Vitest now passes 25 files / 275 tests / 1 skipped. |
 | Eliza-1 bundles | Local release-shaped bundles are complete for all five tiers, but they are explicitly non-publishable stand-ins. No final release bundle is publishable yet. | `stage_eliza1_bundle_assets.py --link-mode hardlink` and `stage_eliza1_source_weights.py` staged non-text assets plus source text/DFlash/vision candidates under `/Users/shawwalters/.eliza/local-inference/models/eliza-1-*.bundle`. `stage_local_eliza1_bundle.py --all-contexts --force` then hardlinked source/candidate bytes into local `text/`, `dflash/`, and `vision/` release-shaped paths, generated `quantization/{turboquant,fused_turboquant,qjl_config,polarquant_config}.json`, `eliza-1.manifest.json`, `checksums/SHA256SUMS`, and `evidence/release.json` for every tier. Full checksum validation is green for all five bundles. Every release evidence file remains `releaseState=local-standin`, `publishEligible=false`, and `final.weights=false`; final Eliza-1 trained weights, passing eval/platform evidence, release-reviewed licenses, and `elizaos` upload evidence remain required before publish. |
 
 ## P0 Blockers
@@ -96,6 +97,10 @@ with the status below.
    - The fused HTTP server is not product-ready until the compatibility
      `llama-omnivoice-server` route is replaced by one process serving both
      text/DFlash and `/v1/audio/speech`.
+   - JS runtime streaming from llama-server deltas into the voice scheduler is
+     now covered. The native fused runtime still needs first-class DFlash
+     accept/reject events so speculative branches can be cancelled before
+     phrase audio reaches the sink.
 
 4. **Real release artifacts**
 
@@ -129,6 +134,11 @@ The lowest-duplication design is lazy regional loading from one bundle:
 
 ## Performance Work Still Worth Doing
 
+0. **Native DFlash verifier event stream.** The JS layer now starts TTS from
+   streamed accepted text deltas, which cuts the old "wait for full response,
+   then synthesize" path. For the fastest rollback-safe voice path, the fused
+   native runtime still needs to expose target-accepted and rejected-token
+   events directly, not only final OpenAI deltas.
 1. **Fuse QJL score + softmax + TBQ-V mix.** The CPU fork already has
    `GGML_OP_FUSED_ATTN_QJL_TBQ`. Porting that fused shape to Metal/Vulkan/CUDA
    is more valuable than wiring isolated Turbo dot kernels because it avoids

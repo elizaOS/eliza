@@ -27,8 +27,10 @@ generate media, pass the returned URL into `media[]`, and let Cloud attach the
 provider-native id before the creative is sent to Meta, TikTok, or Google.
 Google video mapping is YouTube-backed: YouTube URLs become `YOUTUBE_VIDEO`
 assets immediately, while raw generated videos enter Google Ads
-`YouTubeVideoUpload` processing and should be reconciled into a video asset once
-Google reports `PROCESSED`.
+`YouTubeVideoUpload` processing. Poll
+`GET /api/v1/advertising/accounts/{id}/media?providerAssetResourceName=...`;
+when it reports `ready:true`, pass the returned YouTube URL back through the
+media upload route to create the final `YOUTUBE_VIDEO` asset.
 
 Configure the safety gate with:
 

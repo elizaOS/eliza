@@ -82,6 +82,8 @@ Useful environment variables:
   `elizaos/eliza`.
 - `ELIZA_BUILTIN_BRANCH`: Git branch for built-in source links. Defaults to
   `main`.
+- `ELIZA_REGISTRY_SKIP_NPM_LOOKUP=1`: skip npm version lookup for
+  third-party entries and use the optional metadata `version` field instead.
 
 ## CI and Publishing
 

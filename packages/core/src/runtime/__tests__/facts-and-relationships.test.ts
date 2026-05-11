@@ -47,12 +47,9 @@ function makeRuntime(modelResponse: unknown): FactsRuntime {
 		actions: [],
 		providers: [],
 		useModel: vi.fn(async (modelType: string) => {
-			if (modelType === ModelType.TEXT_EMBEDDING) {
-				return [0.1, 0.2, 0.3];
-			}
 			return modelResponse;
 		}),
-		searchMemories: vi.fn(async () => [
+		getMemories: vi.fn(async () => [
 			{
 				id: "00000000-0000-0000-0000-00000000bbbb" as UUID,
 				entityId: "00000000-0000-0000-0000-000000000001" as UUID,
@@ -163,12 +160,16 @@ describe("runFactsAndRelationshipsStage", () => {
 			},
 		});
 
-		// Vector search ran with the embedding seed
-		expect(runtime.searchMemories).toHaveBeenCalledWith(
+		// Existing facts are fetched and keyword-ranked without embeddings.
+		expect(runtime.getMemories).toHaveBeenCalledWith(
 			expect.objectContaining({
 				tableName: "facts",
-				embedding: expect.any(Array),
+				roomId: expect.any(String),
 			}),
+		);
+		expect(runtime.useModel).not.toHaveBeenCalledWith(
+			ModelType.TEXT_EMBEDDING,
+			expect.anything(),
 		);
 
 		// Existing relationships fetched
@@ -205,6 +206,9 @@ describe("runFactsAndRelationshipsStage", () => {
 				content: expect.objectContaining({
 					text: "the user's birthday is March 5",
 					type: "fact",
+				}),
+				metadata: expect.objectContaining({
+					keywords: expect.arrayContaining(["birthday", "march"]),
 				}),
 			}),
 			"facts",

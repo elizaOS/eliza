@@ -326,11 +326,15 @@ Rules:
 - Paraphrases count as duplicates. Match meaning, not surface form.
 
 Ops:
-- add_durable: claim, category, structured_fields; optional verification_status, reason.
-- add_current: claim, category, structured_fields; optional valid_at, reason.
+- add_durable: claim, category, structured_fields, keywords; optional verification_status, reason.
+- add_current: claim, category, structured_fields, keywords; optional valid_at, reason.
 - strengthen: factId, optional reason.
 - decay: factId, optional reason.
 - contradict: factId, reason, optional proposedText.
+
+For add_durable/add_current, include keywords: 3-8 lowercase retrieval terms.
+Use canonical nouns, proper names, symptoms, places, projects, dates, and
+preferences. Omit stopwords and generic words.
 
 Examples:
 
@@ -345,6 +349,7 @@ Message: "I have a flat cortisol curve confirmed via lab"
         "condition": "flat cortisol curve",
         "source": "lab"
       },
+      "keywords": ["flat", "cortisol", "curve", "lab"],
       "verification_status": "confirmed"
     }
   ]
@@ -360,7 +365,8 @@ Message: "I'm anxious this morning"
       "structured_fields": {
         "emotion": "anxious",
         "window": "morning"
-      }
+      },
+      "keywords": ["anxious", "morning"]
     }
   ]
 }
@@ -394,7 +400,8 @@ Message: "Actually I moved to Tokyo last month"
       "structured_fields": {
         "event": "relocation",
         "to": "Tokyo"
-      }
+      },
+      "keywords": ["moved", "tokyo", "relocation"]
     }
   ]
 }

@@ -6,19 +6,19 @@
   "benchmark_directory": "gaia",
   "benchmark_id": "gaia",
   "cache_metrics": {
-    "cache_creation_input_tokens": 0,
-    "cache_hit_ratio": 0.0,
     "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 0
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 0,
+    "cache_hit_ratio": 0.0
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "cache_metrics": {
-      "cache_creation_input_tokens": 0,
-      "cache_hit_ratio": 0.0,
       "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 0
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 0,
+      "cache_hit_ratio": 0.0
     },
     "correct_answers": 1,
     "overall_accuracy": 1.0,
@@ -26,23 +26,23 @@
       "duration_seconds": 7.520961832982721,
       "mean_latency_ms": 4677.314043045044,
       "p95_latency_ms": 4677.314043045044,
-      "throughput_per_second": 0.26592343431781845
+      "throughput_per_second": 0.39888515147672765
     },
     "return_code": 0,
     "token_metrics": {
-      "avg_completion_tokens": 0.0,
-      "avg_prompt_tokens": 0.0,
-      "completion_tokens": 0,
-      "llm_call_count": 2,
+      "llm_call_count": 3,
       "prompt_tokens": 0,
-      "total_tokens": 0
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "avg_prompt_tokens": 0.0,
+      "avg_completion_tokens": 0.0
     },
     "total_questions": 1,
     "trajectory_summary": {
-      "files": 2,
-      "prompt_chars": 38,
-      "repeated_prefixes": [],
-      "turns": 2
+      "files": 4,
+      "turns": 3,
+      "prompt_chars": 57,
+      "repeated_prefixes": []
     }
   },
   "model": "gpt-oss-120b",
@@ -50,7 +50,7 @@
     "duration_seconds": 7.520961832982721,
     "mean_latency_ms": 4677.314043045044,
     "p95_latency_ms": 4677.314043045044,
-    "throughput_per_second": 0.26592343431781845
+    "throughput_per_second": 0.39888515147672765
   },
   "provider": "cerebras",
   "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132427Z_fe2782c9/gaia__gaia/run_gaia_20260511T132432Z_2_e9221ed0/output/sample/eliza_gpt-oss-120b/gaia-results-latest.json",
@@ -59,19 +59,19 @@
   "score": 1.0,
   "status": "succeeded",
   "token_metrics": {
-    "avg_completion_tokens": 0.0,
-    "avg_prompt_tokens": 0.0,
-    "completion_tokens": 0,
-    "llm_call_count": 2,
+    "llm_call_count": 3,
     "prompt_tokens": 0,
-    "total_tokens": 0
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "avg_prompt_tokens": 0.0,
+    "avg_completion_tokens": 0.0
   },
   "trajectory_summary": {
-    "files": 2,
-    "prompt_chars": 38,
-    "repeated_prefixes": [],
-    "turns": 2
+    "files": 4,
+    "turns": 3,
+    "prompt_chars": 57,
+    "repeated_prefixes": []
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T13:24:39.666376+00:00"
+  "updated_at": "2026-05-11T14:00:14.512685+00:00"
 }

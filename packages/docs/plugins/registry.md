@@ -32,6 +32,10 @@ Third-party registration does not imply first-party elizaOS support.
 The runtime client fetches the primary endpoint first and falls back to the
 compatibility endpoint if needed.
 
+For third-party entries, the publishing workflow resolves the latest npm
+version during generation, so package releases do not require registry PRs
+unless metadata changes.
+
 ## Generated Entry Shape
 
 Each package in `generated-registry.json` is keyed by npm package name:

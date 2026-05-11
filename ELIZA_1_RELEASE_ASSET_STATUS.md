@@ -130,7 +130,9 @@ route yet.
   by non-final release evidence and, separately, requires a token with write
   permission to `elizaos`. Current Hub auth probe resolved user
   `shawmakesmagic` with orgs `BabylonMarket` and `elizaos`, so the target
-  namespace is visible in this shell.
+  namespace is visible in this shell. A live Hub scan currently finds
+  `elizaos/eliza-1-assets`, but no publishable per-tier
+  `elizaos/eliza-1-*` release repos with final evidence.
 
 ## Next Release Actions
 

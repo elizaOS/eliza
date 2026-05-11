@@ -6,19 +6,19 @@
   "benchmark_directory": "adhdbench",
   "benchmark_id": "adhdbench",
   "cache_metrics": {
-    "cache_creation_input_tokens": 0,
-    "cache_hit_ratio": 0.0,
     "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 0
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 0,
+    "cache_hit_ratio": 0.0
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "cache_metrics": {
-      "cache_creation_input_tokens": 0,
-      "cache_hit_ratio": 0.0,
       "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 0
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 0,
+      "cache_hit_ratio": 0.0
     },
     "mean_score": 1.0,
     "num_cases": 2,
@@ -30,18 +30,18 @@
     },
     "return_code": 0,
     "token_metrics": {
-      "avg_completion_tokens": 0.0,
-      "avg_prompt_tokens": 0.0,
-      "completion_tokens": 0,
       "llm_call_count": 2,
       "prompt_tokens": 0,
-      "total_tokens": 0
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "avg_prompt_tokens": 0.0,
+      "avg_completion_tokens": 0.0
     },
     "trajectory_summary": {
-      "files": 1,
+      "files": 2,
+      "turns": 2,
       "prompt_chars": 95,
-      "repeated_prefixes": [],
-      "turns": 2
+      "repeated_prefixes": []
     }
   },
   "model": "gpt-oss-120b",
@@ -58,19 +58,19 @@
   "score": 1.0,
   "status": "succeeded",
   "token_metrics": {
-    "avg_completion_tokens": 0.0,
-    "avg_prompt_tokens": 0.0,
-    "completion_tokens": 0,
     "llm_call_count": 2,
     "prompt_tokens": 0,
-    "total_tokens": 0
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "avg_prompt_tokens": 0.0,
+    "avg_completion_tokens": 0.0
   },
   "trajectory_summary": {
-    "files": 1,
+    "files": 2,
+    "turns": 2,
     "prompt_chars": 95,
-    "repeated_prefixes": [],
-    "turns": 2
+    "repeated_prefixes": []
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T13:39:21.906063+00:00"
+  "updated_at": "2026-05-11T14:00:13.517591+00:00"
 }

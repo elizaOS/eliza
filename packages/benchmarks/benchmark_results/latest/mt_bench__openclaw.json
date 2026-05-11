@@ -6,19 +6,19 @@
   "benchmark_directory": "standard",
   "benchmark_id": "mt_bench",
   "cache_metrics": {
-    "cache_creation_input_tokens": 0,
-    "cache_hit_ratio": 0.0,
     "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 2
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 2,
+    "cache_hit_ratio": 0.0
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "cache_metrics": {
-      "cache_creation_input_tokens": 0,
-      "cache_hit_ratio": 0.0,
       "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 2
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 2,
+      "cache_hit_ratio": 0.0
     },
     "mean_rating": 1.0,
     "n": 1.0,
@@ -31,18 +31,18 @@
     "return_code": 0,
     "score": 0.1,
     "token_metrics": {
-      "avg_completion_tokens": 160.0,
-      "avg_prompt_tokens": 197.5,
-      "completion_tokens": 320,
       "llm_call_count": 2,
       "prompt_tokens": 395,
-      "total_tokens": 715
+      "completion_tokens": 320,
+      "total_tokens": 715,
+      "avg_prompt_tokens": 197.5,
+      "avg_completion_tokens": 160.0
     },
     "trajectory_summary": {
-      "files": 1,
+      "files": 2,
+      "turns": 2,
       "prompt_chars": 703,
-      "repeated_prefixes": [],
-      "turns": 2
+      "repeated_prefixes": []
     },
     "turn_1_mean": 0,
     "turn_2_mean": 1.0
@@ -61,19 +61,19 @@
   "score": 0.1,
   "status": "succeeded",
   "token_metrics": {
-    "avg_completion_tokens": 160.0,
-    "avg_prompt_tokens": 197.5,
-    "completion_tokens": 320,
     "llm_call_count": 2,
     "prompt_tokens": 395,
-    "total_tokens": 715
+    "completion_tokens": 320,
+    "total_tokens": 715,
+    "avg_prompt_tokens": 197.5,
+    "avg_completion_tokens": 160.0
   },
   "trajectory_summary": {
-    "files": 1,
+    "files": 2,
+    "turns": 2,
     "prompt_chars": 703,
-    "repeated_prefixes": [],
-    "turns": 2
+    "repeated_prefixes": []
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T13:30:10.064507+00:00"
+  "updated_at": "2026-05-11T14:00:15.699994+00:00"
 }

@@ -365,6 +365,9 @@ POST /api/workbench/vfs/projects/demo-app/promote-to-cloud
 The agent backend exports the requested snapshot, packages files with
 `encoding=utf-8|base64`, and forwards the bundle to
 `@elizaos/plugin-elizacloud` through the `CLOUD_CONTAINER` service.
+Use the returned `data.source` when starting a Cloud coding container; the
+Cloud control plane hydrates those files into the mounted workspace volume
+before Claude, Codex, or OpenCode starts.
 
 **Response** (202)
 

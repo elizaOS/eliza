@@ -6,10 +6,10 @@
   "benchmark_directory": "realm",
   "benchmark_id": "realm",
   "cache_metrics": {
-    "cache_creation_input_tokens": 0,
-    "cache_hit_ratio": 0.0,
     "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 0
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 0,
+    "cache_hit_ratio": 0.0
   },
   "error": null,
   "higher_is_better": true,
@@ -17,42 +17,42 @@
     "avg_efficiency": 0,
     "avg_plan_quality": 0,
     "cache_metrics": {
-      "cache_creation_input_tokens": 0,
-      "cache_hit_ratio": 0.0,
       "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 0
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 0,
+      "cache_hit_ratio": 0.0
     },
     "overall_success_rate": 0.0,
     "passed_tasks": 0,
     "performance_metrics": {
       "duration_seconds": 12.133632749988465,
-      "mean_latency_ms": null,
-      "p95_latency_ms": null,
-      "throughput_per_second": 0.0
+      "mean_latency_ms": 11988.877773284912,
+      "p95_latency_ms": 11988.877773284912,
+      "throughput_per_second": 0.16483109726573036
     },
     "return_code": 0,
     "token_metrics": {
-      "avg_completion_tokens": 0.0,
-      "avg_prompt_tokens": 0.0,
-      "completion_tokens": 0,
-      "llm_call_count": 0,
+      "llm_call_count": 2,
       "prompt_tokens": 0,
-      "total_tokens": 0
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "avg_prompt_tokens": 0.0,
+      "avg_completion_tokens": 0.0
     },
     "total_tasks": 1,
     "trajectory_summary": {
-      "files": 0,
-      "prompt_chars": 0,
-      "repeated_prefixes": [],
-      "turns": 0
+      "files": 2,
+      "turns": 2,
+      "prompt_chars": 14,
+      "repeated_prefixes": []
     }
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
     "duration_seconds": 12.133632749988465,
-    "mean_latency_ms": null,
-    "p95_latency_ms": null,
-    "throughput_per_second": 0.0
+    "mean_latency_ms": 11988.877773284912,
+    "p95_latency_ms": 11988.877773284912,
+    "throughput_per_second": 0.16483109726573036
   },
   "provider": "cerebras",
   "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133053Z_38f55ea0/realm__realm/run_realm_20260511T133053Z_1_aee5c8f2/output/realm-benchmark-20260511_063105.json",
@@ -61,19 +61,19 @@
   "score": 0.0,
   "status": "succeeded",
   "token_metrics": {
-    "avg_completion_tokens": 0.0,
-    "avg_prompt_tokens": 0.0,
-    "completion_tokens": 0,
-    "llm_call_count": 0,
+    "llm_call_count": 2,
     "prompt_tokens": 0,
-    "total_tokens": 0
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "avg_prompt_tokens": 0.0,
+    "avg_completion_tokens": 0.0
   },
   "trajectory_summary": {
-    "files": 0,
-    "prompt_chars": 0,
-    "repeated_prefixes": [],
-    "turns": 0
+    "files": 2,
+    "turns": 2,
+    "prompt_chars": 14,
+    "repeated_prefixes": []
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T13:31:05.876802+00:00"
+  "updated_at": "2026-05-11T14:00:16.026923+00:00"
 }

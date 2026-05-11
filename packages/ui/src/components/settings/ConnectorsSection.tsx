@@ -13,8 +13,14 @@
  */
 
 import { Switch } from "@elizaos/ui";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PluginInfo } from "../../api";
+import {
+  clearPendingFocusConnector,
+  FOCUS_CONNECTOR_EVENT,
+  type FocusConnectorEventDetail,
+  readPendingFocusConnector,
+} from "../../events";
 import { useApp } from "../../state";
 import { BlueBubblesStatusPanel } from "../connectors/BlueBubblesStatusPanel";
 import { DiscordLocalConnectorPanel } from "../connectors/DiscordLocalConnectorPanel";
@@ -142,6 +148,7 @@ function ConnectorRow({
 
 export function ConnectorsSection() {
   const { plugins, handlePluginToggle, t } = useApp();
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [togglingPlugins, setTogglingPlugins] = useState<Set<string>>(
     new Set(),
   );
@@ -152,6 +159,40 @@ export function ConnectorsSection() {
       !ALWAYS_ON_PLUGIN_IDS.has(p.id) &&
       p.visible !== false,
   );
+
+  const focusConnector = useCallback((connectorId: string) => {
+    const escapedId = connectorId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    const focus = () => {
+      const row = containerRef.current?.querySelector(
+        `[data-connector="${escapedId}"]`,
+      );
+      if (!(row instanceof HTMLDetailsElement)) return false;
+      row.open = true;
+      row.scrollIntoView({ block: "center", behavior: "smooth" });
+      const summary = row.querySelector("summary");
+      if (summary instanceof HTMLElement) summary.focus({ preventScroll: true });
+      clearPendingFocusConnector(connectorId);
+      return true;
+    };
+    if (focus()) return;
+    window.setTimeout(() => {
+      focus();
+    }, 80);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const handleFocusConnector = (event: Event) => {
+      const detail = (event as CustomEvent<FocusConnectorEventDetail>).detail;
+      if (!detail?.connectorId) return;
+      focusConnector(detail.connectorId);
+    };
+    document.addEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
+    const pending = readPendingFocusConnector();
+    if (pending) focusConnector(pending);
+    return () =>
+      document.removeEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
+  }, [focusConnector]);
 
   const handleToggle = useCallback(
     async (pluginId: string, enabled: boolean) => {
@@ -180,7 +221,7 @@ export function ConnectorsSection() {
   }
 
   return (
-    <div className="space-y-2">
+    <div ref={containerRef} className="space-y-2">
       {connectorPlugins.map((plugin) => {
         const isBusy = togglingPlugins.has(plugin.id);
         return (

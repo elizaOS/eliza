@@ -1,13 +1,13 @@
 {
   "schemaVersion": "registry-v2",
-  "lastUpdatedAt": "2026-05-11T13:38:36.367Z",
+  "lastUpdatedAt": "2026-05-11T13:58:00.202Z",
   "counts": {
-    "total": 103,
-    "builtin": 103,
+    "total": 104,
+    "builtin": 104,
     "thirdParty": 0,
     "app": 23,
     "connector": 17,
-    "plugin": 63
+    "plugin": 64
   },
   "packages": [
     {
@@ -621,6 +621,15 @@
       "npmVersion": "2.0.0-beta.1",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-minecraft"
+    },
+    {
+      "name": "@elizaos/plugin-mlx",
+      "kind": "plugin",
+      "origin": "builtin",
+      "support": "first-party",
+      "npmVersion": "2.0.0-beta.1",
+      "repository": "github:elizaos/eliza",
+      "directory": "plugins/plugin-mlx"
     },
     {
       "name": "@elizaos/plugin-music",
