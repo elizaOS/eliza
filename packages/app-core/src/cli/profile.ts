@@ -113,12 +113,14 @@ export function applyCliProfileEnv(params: {
   const namespace = env.ELIZA_NAMESPACE?.trim() || "eliza";
   env.ELIZA_NAMESPACE = namespace;
 
-  if (!env.ELIZA_STATE_DIR?.trim()) {
+  if (!env.MILADY_STATE_DIR?.trim() && !env.ELIZA_STATE_DIR?.trim()) {
     env.ELIZA_STATE_DIR = resolveProfileStateDir(profile, namespace, homedir);
   }
 
-  if (!env.ELIZA_CONFIG_PATH?.trim()) {
-    env.ELIZA_CONFIG_PATH = path.join(env.ELIZA_STATE_DIR, `${namespace}.json`);
+  const stateDir =
+    env.MILADY_STATE_DIR?.trim() || env.ELIZA_STATE_DIR?.trim() || "";
+  if (!env.ELIZA_CONFIG_PATH?.trim() && stateDir) {
+    env.ELIZA_CONFIG_PATH = path.join(stateDir, `${namespace}.json`);
   }
 
   if (profile === "dev" && !env.ELIZA_GATEWAY_PORT?.trim()) {

@@ -2,7 +2,7 @@
  * Steward credential persistence for non-sidecar (web/dev) mode.
  *
  * On first setup, saves steward credentials to `<state-dir>/steward-credentials.json`.
- * State dir honors ELIZA_STATE_DIR " ELIZA_STATE_DIR " ~/.eliza.
+ * State dir honors MILADY_STATE_DIR > ELIZA_STATE_DIR > ~/.eliza.
  * Environment variables always override file values.
  */
 

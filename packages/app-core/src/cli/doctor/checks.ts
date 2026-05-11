@@ -18,6 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { resolveConfigPath } from "@elizaos/agent";
+import { resolveStateDir } from "@elizaos/core";
 import { getCloudSecret } from "@elizaos/plugin-elizacloud";
 import {
   resolveApiSecurityConfig,
@@ -255,7 +256,7 @@ export function checkModelKey(
 export function checkStateDir(
   env: Record<string, string | undefined> = process.env,
 ): CheckResult {
-  const dir = env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
+  const dir = resolveStateDir(env as NodeJS.ProcessEnv);
 
   if (!existsSync(dir)) {
     return {
@@ -288,7 +289,7 @@ export function checkStateDir(
 export function checkDatabase(
   env: Record<string, string | undefined> = process.env,
 ): CheckResult {
-  const stateDir = env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
+  const stateDir = resolveStateDir(env as NodeJS.ProcessEnv);
   const dbDir = path.join(stateDir, "workspace", ".eliza", ".elizadb");
 
   if (!existsSync(dbDir)) {
@@ -313,7 +314,10 @@ const MIN_FREE_BYTES = 1 * 1024 * 1024 * 1024; // 1 GiB
 export function checkDiskSpace(
   env: Record<string, string | undefined> = process.env,
 ): CheckResult {
-  const dir = env.ELIZA_STATE_DIR ?? os.homedir();
+  const dir =
+    env.MILADY_STATE_DIR?.trim() ||
+    env.ELIZA_STATE_DIR?.trim() ||
+    os.homedir();
 
   try {
     const stats = statfsSync(dir);
