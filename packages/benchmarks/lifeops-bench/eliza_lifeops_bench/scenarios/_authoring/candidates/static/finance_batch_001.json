@@ -1,0 +1,393 @@
+[
+  {
+    "id": "finance.monthly_spending_summary",
+    "name": "Monthly spending summary",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Give me a summary of how much I spent in the last 30 days, broken down by category.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_DASHBOARD",
+        "kwargs": {
+          "subaction": "dashboard",
+          "windowDays": 30
+        }
+      }
+    ],
+    "required_outputs": [
+      "category"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Read\u2011only dashboard of last month spending."
+  },
+  {
+    "id": "finance.check_netflix_subscription_status",
+    "name": "Check Netflix subscription status",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Can you tell me the current status of my Netflix subscription?",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SUBSCRIPTION_STATUS",
+        "kwargs": {
+          "subaction": "status",
+          "serviceName": "Netflix",
+          "serviceSlug": "netflix"
+        }
+      }
+    ],
+    "required_outputs": [
+      "Netflix"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Simple status query for a known subscription."
+  },
+  {
+    "id": "finance.cancel_spotify_subscription",
+    "name": "Cancel Spotify subscription",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Cancel my Spotify subscription, sub_002. Yes, go ahead.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SUBSCRIPTION_CANCEL",
+        "kwargs": {
+          "subaction": "cancel",
+          "serviceName": "Spotify",
+          "serviceSlug": "spotify",
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": [
+      "Spotify"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Yes, cancel it now.",
+      "applies_when": "agent asks for explicit confirmation before canceling"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Cancellation flow with confirmation supplied in the instruction."
+  },
+  {
+    "id": "finance.add_new_checking_account_source",
+    "name": "Add new checking account source",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Add my new checking account (account_02) with label \"New Checking\" at Bank of Example, mask ****5678.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_ADD_SOURCE",
+        "kwargs": {
+          "subaction": "add_source",
+          "sourceId": "account_02",
+          "kind": "checking",
+          "label": "New Checking",
+          "institution": "Bank of Example",
+          "accountMask": "****5678"
+        }
+      }
+    ],
+    "required_outputs": [
+      "account_02"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Adds a new financial source to the system."
+  },
+  {
+    "id": "finance.remove_old_credit_card_source",
+    "name": "Remove old credit card source",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Please remove my old credit\u2011card source (account_01).",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_REMOVE_SOURCE",
+        "kwargs": {
+          "subaction": "remove_source",
+          "sourceId": "account_01"
+        }
+      }
+    ],
+    "required_outputs": [
+      "account_01"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Yes, go ahead and delete that source.",
+      "applies_when": "agent asks for confirmation before removing a source"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Deletes a specified financial source."
+  },
+  {
+    "id": "finance.import_csv_transactions_example",
+    "name": "Import CSV transactions",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Import the attached CSV of my recent purchases into account_00. The CSV content is:\n\"date,amount,merchant\\n2026-04-01,50,Example Store\\n2026-04-15,120,Bookshop\"",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_IMPORT_CSV",
+        "kwargs": {
+          "subaction": "import_csv",
+          "sourceId": "account_00",
+          "csvText": "date,amount,merchant\n2026-04-01,50,Example Store\n2026-04-15,120,Bookshop"
+        }
+      }
+    ],
+    "required_outputs": [
+      "Example Store"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Imports a small CSV of transactions into a specified source."
+  },
+  {
+    "id": "finance.recurring_charges_summary_6_months",
+    "name": "Recurring charges summary (6 months)",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Give me a summary of all recurring charges over the past 180 days.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_RECURRING_CHARGES",
+        "kwargs": {
+          "subaction": "recurring_charges",
+          "windowDays": 180
+        }
+      }
+    ],
+    "required_outputs": [
+      "recurring"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Aggregates recurring subscription\u2011type charges."
+  },
+  {
+    "id": "finance.audit_subscriptions_last_180_days",
+    "name": "Audit subscriptions (180 days)",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Audit all my active subscriptions over the past 180 days.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SUBSCRIPTION_AUDIT",
+        "kwargs": {
+          "subaction": "audit",
+          "queryWindowDays": 180
+        }
+      }
+    ],
+    "required_outputs": [
+      "subscription"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Provides a full audit of subscriptions within a 6\u2011month window."
+  },
+  {
+    "id": "finance.cancel_icloud_subscription",
+    "name": "Cancel iCloud subscription",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Cancel my Apple iCloud subscription (sub_003). Yes, I'm sure.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SUBSCRIPTION_CANCEL",
+        "kwargs": {
+          "subaction": "cancel",
+          "serviceName": "Apple iCloud",
+          "serviceSlug": "apple-icloud",
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": [
+      "iCloud"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Yes, cancel it now.",
+      "applies_when": "agent asks for explicit confirmation before canceling"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Cancellation of an iCloud subscription with confirmation supplied."
+  },
+  {
+    "id": "finance.check_youtube_premium_status",
+    "name": "Check YouTube Premium status",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "What is the current status of my YouTube Premium subscription?",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SUBSCRIPTION_STATUS",
+        "kwargs": {
+          "subaction": "status",
+          "serviceName": "YouTube Premium",
+          "serviceSlug": "youtube-premium"
+        }
+      }
+    ],
+    "required_outputs": [
+      "YouTube"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Simple status query for a streaming subscription."
+  },
+  {
+    "id": "finance.add_source_bank_of_example",
+    "name": "Add Bank of Example source",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Add a new savings account from Bank of Example (account_00) with label \"Savings\" and mask ****1234.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_ADD_SOURCE",
+        "kwargs": {
+          "subaction": "add_source",
+          "sourceId": "account_00",
+          "kind": "savings",
+          "label": "Savings",
+          "institution": "Bank of Example",
+          "accountMask": "****1234"
+        }
+      }
+    ],
+    "required_outputs": [
+      "account_00"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Adds a savings\u2011type financial source."
+  },
+  {
+    "id": "finance.remove_source_account_01",
+    "name": "Remove source account_01",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Please delete the source with ID account_01.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_REMOVE_SOURCE",
+        "kwargs": {
+          "subaction": "remove_source",
+          "sourceId": "account_01"
+        }
+      }
+    ],
+    "required_outputs": [
+      "account_01"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Yes, go ahead and delete that source.",
+      "applies_when": "agent asks for confirmation before removing a source"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Deletes a specified financial source."
+  },
+  {
+    "id": "finance.spending_summary_last_90_days",
+    "name": "Spending summary (90 days)",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Give me a spending summary for the past 90 days, broken out by category.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SPENDING_SUMMARY",
+        "kwargs": {
+          "subaction": "summary",
+          "windowDays": 90
+        }
+      }
+    ],
+    "required_outputs": [
+      "category"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Aggregated spending over a three\u2011month window."
+  },
+  {
+    "id": "finance.list_active_subscriptions_alternative",
+    "name": "List active subscriptions (alternative)",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "What subscriptions am I currently paying for?",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SUBSCRIPTION_AUDIT",
+        "kwargs": {
+          "subaction": "audit",
+          "queryWindowDays": 90
+        }
+      }
+    ],
+    "required_outputs": [
+      "subscription"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "All accounts, active subscriptions.",
+      "applies_when": "agent asks which account or about pending charges"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Audits active subscriptions over the recent quarter."
+  },
+  {
+    "id": "finance.check_disney_plus_subscription_status",
+    "name": "Check Disney+ subscription status",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "What is the current status of my Disney+ subscription?",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SUBSCRIPTION_STATUS",
+        "kwargs": {
+          "subaction": "status",
+          "serviceName": "Disney+",
+          "serviceSlug": "disney-plus"
+        }
+      }
+    ],
+    "required_outputs": [
+      "Disney"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Simple status query for the Disney+ streaming service."
+  }
+]

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -160,8 +161,93 @@ def _render_scenario(candidate: dict[str, Any]) -> str:
     )
 
 
-def _splice_into_module(module_path: Path, list_name: str, rendered: str) -> None:
+def _ensure_persona_imports(text: str, personas_needed: set[str]) -> str:
+    """Make sure every persona variable used in the rendered scenarios is
+    imported from ``._personas`` (static module). Idempotent.
+    """
+    missing = sorted(p for p in personas_needed if p not in text)
+    if not missing:
+        return text
+    pattern = re.compile(
+        r"from \._personas import \(\s*\n((?:    [A-Z_][A-Z_0-9]*,\s*\n)+)\)",
+        re.MULTILINE,
+    )
+    match = pattern.search(text)
+    if match:
+        block = match.group(1)
+        existing = sorted(
+            set(line.strip().rstrip(",") for line in block.splitlines() if line.strip())
+            | set(missing)
+        )
+        new_block = "\n".join(f"    {name}," for name in existing) + "\n"
+        return text[: match.start(1)] + new_block + text[match.end(1) :]
+    pattern_simple = re.compile(
+        r"from \._personas import ([A-Z_][A-Z_0-9, ]*)",
+    )
+    match2 = pattern_simple.search(text)
+    if match2:
+        existing_names = [n.strip() for n in match2.group(1).split(",") if n.strip()]
+        all_names = sorted(set(existing_names) | set(missing))
+        replacement = (
+            "from ._personas import (\n"
+            + "".join(f"    {n},\n" for n in all_names)
+            + ")"
+        )
+        return text[: match2.start()] + replacement + text[match2.end() :]
+    raise ValueError("could not find persona import block in module")
+
+
+def _ensure_live_persona_imports(text: str, personas_needed: set[str]) -> str:
+    """Same as ``_ensure_persona_imports`` but for live modules that use the
+    ``.._personas`` (two-dot) relative import path.
+    """
+    missing = sorted(p for p in personas_needed if p not in text)
+    if not missing:
+        return text
+    pattern = re.compile(
+        r"from \.\._personas import \(\s*\n((?:    [A-Z_][A-Z_0-9]*,\s*\n)+)\)",
+        re.MULTILINE,
+    )
+    match = pattern.search(text)
+    if match:
+        block = match.group(1)
+        existing = sorted(
+            set(line.strip().rstrip(",") for line in block.splitlines() if line.strip())
+            | set(missing)
+        )
+        new_block = "\n".join(f"    {name}," for name in existing) + "\n"
+        return text[: match.start(1)] + new_block + text[match.end(1) :]
+    pattern_simple = re.compile(
+        r"from \.\._personas import ([A-Z_][A-Z_0-9, ]*)",
+    )
+    match2 = pattern_simple.search(text)
+    if match2:
+        existing_names = [n.strip() for n in match2.group(1).split(",") if n.strip()]
+        all_names = sorted(set(existing_names) | set(missing))
+        replacement = (
+            "from .._personas import (\n"
+            + "".join(f"    {n},\n" for n in all_names)
+            + ")"
+        )
+        return text[: match2.start()] + replacement + text[match2.end() :]
+    raise ValueError("could not find live-module persona import block")
+
+
+def _splice_into_module(
+    module_path: Path,
+    list_name: str,
+    rendered: str,
+    *,
+    personas_needed: set[str] | None = None,
+    is_live: bool = False,
+) -> None:
     text = module_path.read_text(encoding="utf-8")
+    if personas_needed:
+        text = (
+            _ensure_live_persona_imports(text, personas_needed)
+            if is_live
+            else _ensure_persona_imports(text, personas_needed)
+        )
     marker = f"{list_name}: list[Scenario] = ["
     if marker not in text:
         raise ValueError(f"could not find list marker {marker!r} in {module_path}")
@@ -203,7 +289,7 @@ def main(argv: list[str] | None = None) -> int:
                       file=sys.stderr)
         return 2
 
-    from .live import LIVE_SCENARIOS_BY_ID
+    from ..live import LIVE_SCENARIOS_BY_ID
 
     expected_mode = args.mode
     for candidate in candidates:
@@ -229,13 +315,21 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     rendered_blocks = "".join(_render_scenario(c) for c in candidates)
+    personas_needed = {PERSONA_VAR_BY_ID[c["persona_id"]] for c in candidates}
     if args.mode == "live":
         module_path = SCENARIOS_DIR / "live" / f"{args.domain}.py"
         list_name = DOMAIN_TO_LIVE_LIST_NAME[args.domain]
+        _splice_into_module(
+            module_path, list_name, rendered_blocks,
+            personas_needed=personas_needed, is_live=True,
+        )
     else:
         module_path = SCENARIOS_DIR / f"{args.domain}.py"
         list_name = DOMAIN_TO_LIST_NAME[args.domain]
-    _splice_into_module(module_path, list_name, rendered_blocks)
+        _splice_into_module(
+            module_path, list_name, rendered_blocks,
+            personas_needed=personas_needed, is_live=False,
+        )
     print(f"appended {len(candidates)} scenarios to {module_path}")
     return 0
 

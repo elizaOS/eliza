@@ -48,6 +48,7 @@ from .generate_candidates import (
 from .import_reviewed import (
     DOMAIN_TO_LIST_NAME,
     DOMAIN_TO_LIVE_LIST_NAME,
+    PERSONA_VAR_BY_ID,
     SCENARIOS_DIR,
     _render_scenario,
     _splice_into_module,
@@ -357,13 +358,21 @@ async def run_batch(
 
     # Import directly into the per-domain module.
     rendered = "".join(_render_scenario(c) for c in final)
+    personas_needed = {PERSONA_VAR_BY_ID[c["persona_id"]] for c in final}
     if mode == "live":
         module_path = SCENARIOS_DIR / "live" / f"{domain.value}.py"
         list_name = DOMAIN_TO_LIVE_LIST_NAME[domain.value]
+        _splice_into_module(
+            module_path, list_name, rendered,
+            personas_needed=personas_needed, is_live=True,
+        )
     else:
         module_path = SCENARIOS_DIR / f"{domain.value}.py"
         list_name = DOMAIN_TO_LIST_NAME[domain.value]
-    _splice_into_module(module_path, list_name, rendered)
+        _splice_into_module(
+            module_path, list_name, rendered,
+            personas_needed=personas_needed, is_live=False,
+        )
     outcome.imported = len(final)
     return outcome
 

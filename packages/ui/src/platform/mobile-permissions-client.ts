@@ -225,9 +225,7 @@ function mobileSettingsTargetFor(
   return "app";
 }
 
-function isMobilePermissionId(
-  id: PermissionId,
-): id is MobilePermissionId {
+function isMobilePermissionId(id: PermissionId): id is MobilePermissionId {
   return MOBILE_PERMISSION_IDS.has(id);
 }
 

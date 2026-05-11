@@ -143,10 +143,16 @@ def test_referenced_world_ids_exist_in_snapshot(
 
 
 def test_at_least_30_percent_have_first_question_fallback() -> None:
-    with_fallback = sum(1 for s in ALL_SCENARIOS if s.first_question_fallback is not None)
-    ratio = with_fallback / len(ALL_SCENARIOS)
+    # The fallback contract applies only to STATIC scenarios. LIVE scenarios
+    # are scored by the LLM judge and the persona answers clarifiers freely,
+    # so first_question_fallback is always None for them by design.
+    from eliza_lifeops_bench.types import ScenarioMode
+
+    static = [s for s in ALL_SCENARIOS if s.mode == ScenarioMode.STATIC]
+    with_fallback = sum(1 for s in static if s.first_question_fallback is not None)
+    ratio = with_fallback / len(static)
     assert ratio >= 0.30, (
-        f"at least 30% must have a first_question_fallback; got {ratio:.0%}"
+        f"at least 30% of STATIC scenarios must have a first_question_fallback; got {ratio:.0%}"
     )
 
 
