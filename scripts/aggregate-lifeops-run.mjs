@@ -558,7 +558,7 @@ const lines = [
 ];
 
 if (preReleaseFlag) {
-  // Wave 3-B: when the run exercised a non-final eliza-1 bundle (any of
+  // When the run exercised a non-final eliza-1 bundle (any of
   // releaseState != "final", publishEligible=false, final.weights=false), the
   // aggregator stamps a banner up top so consumers cannot accidentally cite
   // these numbers as release-quality. The banner sits BEFORE the run metadata
