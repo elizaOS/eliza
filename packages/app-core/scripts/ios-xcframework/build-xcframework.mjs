@@ -113,8 +113,8 @@ const REQUIRED_IOS_RUNTIME_SYMBOLS = [
 ].map((symbol) => ({
   symbol,
   symbolPattern: new RegExp(`(?:^|\\s)_?${symbol}\\b`, "m"),
-  where: symbol.startsWith("eliza_inference_")
-    ? "libelizainference real OmniVoice ABI archive"
+    where: symbol.startsWith("eliza_inference_")
+    ? "libelizainference ABI archive (fail-closed shim or real OmniVoice build)"
     : "llama-cpp-capacitor bridge archive",
 }));
 
@@ -436,9 +436,9 @@ function verifyRuntimeSymbols(slices) {
         "\n",
       )}\n\n` +
         `The iOS xcframework must carry the Capacitor bridge symbols and the\n` +
-        `real libelizainference voice ABI symbols. Kernel-only archives are not\n` +
-        `a releaseable Eliza-1 mobile runtime. Wire the bridge and real\n` +
-        `OmniVoice-backed ABI into the iOS slice, then re-run.`,
+        `libelizainference voice ABI symbols. Kernel-only archives are not\n` +
+        `a releaseable Eliza-1 mobile runtime. Wire the bridge and voice\n` +
+        `ABI into the iOS slice, then re-run.`,
     );
   }
   console.log(

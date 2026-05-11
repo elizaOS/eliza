@@ -104,6 +104,7 @@ export class CloudTailscaleService extends Service implements ITunnelService {
   private lastProvisioningBilling: CloudTunnelProvisionBilling | null = null;
   private isShuttingDown = false;
   private joinedTailnet = false;
+  private startInFlight: Promise<string | undefined> | null = null;
 
   constructor(
     runtime?: IAgentRuntime,
@@ -129,6 +130,22 @@ export class CloudTailscaleService extends Service implements ITunnelService {
   }
 
   async startTunnel(
+    port?: number,
+    options: { accountId?: string } = {},
+  ): Promise<string | undefined> {
+    if (this.startInFlight) {
+      elizaLogger.warn("[CloudTailscaleService] tunnel start already in progress");
+      return this.startInFlight;
+    }
+    this.startInFlight = this.startTunnelInternal(port, options);
+    try {
+      return await this.startInFlight;
+    } finally {
+      this.startInFlight = null;
+    }
+  }
+
+  private async startTunnelInternal(
     port?: number,
     options: { accountId?: string } = {},
   ): Promise<string | undefined> {
@@ -184,14 +201,19 @@ export class CloudTailscaleService extends Service implements ITunnelService {
       );
     }
 
-    await this.joinTailnet(parsed.data);
-    await this.runServe(port, config.TAILSCALE_FUNNEL);
+    try {
+      await this.joinTailnet(parsed.data);
+      this.joinedTailnet = true;
+      await this.runServe(port, config.TAILSCALE_FUNNEL);
+    } catch (error) {
+      await this.cleanupAfterFailedStart(error);
+      throw error;
+    }
 
     this.tunnelUrl = `https://${parsed.data.magicDnsName}`;
     this.tunnelPort = port;
     this.startedAt = new Date();
     this.lastProvisioningBilling = parsed.data.billing ?? null;
-    this.joinedTailnet = true;
     elizaLogger.info(
       `[CloudTailscaleService] tunnel started: ${this.tunnelUrl}`,
     );
@@ -207,12 +229,26 @@ export class CloudTailscaleService extends Service implements ITunnelService {
     elizaLogger.info("[CloudTailscaleService] stopping tunnel");
 
     if (this.tunnelPort !== null) {
-      await this.cliRunner("tailscale", ["serve", "reset"]);
-      await this.cliRunner("tailscale", ["funnel", "reset"]);
+      await this.runBestEffort("serve reset", ["serve", "reset"]);
+      await this.runBestEffort("funnel reset", ["funnel", "reset"]);
     }
 
     if (this.joinedTailnet) {
-      await this.cliRunner("tailscale", ["logout"]);
+      let logout: SpawnResult;
+      try {
+        logout = await this.cliRunner("tailscale", ["logout"]);
+      } catch (error) {
+        this.isShuttingDown = false;
+        throw new Error(
+          `tailscale logout failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      if (logout.code !== 0) {
+        this.isShuttingDown = false;
+        throw new Error(
+          `tailscale logout failed (code ${logout.code}): ${logout.stderr.trim()}`,
+        );
+      }
     }
 
     this.cleanup();
@@ -264,12 +300,39 @@ export class CloudTailscaleService extends Service implements ITunnelService {
 
   private async runServe(port: number, funnel: boolean): Promise<void> {
     const args = funnel
-      ? ["funnel", String(port)]
+      ? ["funnel", "--bg", String(port)]
       : ["serve", "--bg", "--https=443", `localhost:${port}`];
     const result = await this.cliRunner("tailscale", args);
     if (result.code !== 0) {
       throw new Error(
         `tailscale ${args[0]} failed (code ${result.code}): ${result.stderr.trim()}`,
+      );
+    }
+  }
+
+  private async cleanupAfterFailedStart(error: unknown): Promise<void> {
+    if (this.joinedTailnet) {
+      await this.runBestEffort("serve reset after failed start", ["serve", "reset"]);
+      await this.runBestEffort("funnel reset after failed start", ["funnel", "reset"]);
+      await this.runBestEffort("logout after failed start", ["logout"]);
+    }
+    this.cleanup();
+    elizaLogger.error(
+      `[CloudTailscaleService] tunnel start failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  private async runBestEffort(label: string, args: string[]): Promise<void> {
+    try {
+      const result = await this.cliRunner("tailscale", args);
+      if (result.code !== 0) {
+        elizaLogger.warn(
+          `[CloudTailscaleService] tailscale ${label} failed (code ${result.code}): ${result.stderr.trim()}`,
+        );
+      }
+    } catch (error) {
+      elizaLogger.warn(
+        `[CloudTailscaleService] tailscale ${label} failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }

@@ -98,8 +98,10 @@ node packages/app-core/scripts/ios-xcframework/build-xcframework.mjs \
    diagnostic that names the missing kernel + slice + expected archive.
 2. **Runtime-symbol audit** — the slice must also export the Capacitor
    bridge symbols (`llama_init_context`, `llama_completion`, etc.) and
-   the real `eliza_inference_*` voice ABI symbols. A kernel-only
-   framework is not a releaseable Eliza-1 mobile runtime.
+   the `eliza_inference_*` voice ABI v1 symbols. Today those ABI symbols
+   come from `runtime-symbol-shim.c`: a fail-closed static archive that
+   links and reports structured "not loaded / unsupported" errors until
+   real mobile context and OmniVoice weight loading are wired.
 3. **xcframework structural audit** — parses the produced `Info.plist`'s
    `AvailableLibraries` array via `plutil`. Empty or malformed = error.
 
@@ -175,36 +177,14 @@ ELIZA_IOS_INCLUDE_LLAMA=1 \
 
 ## Known gaps
 
-### Metal EMBED-path kernels (TurboQuant variants)
+### iOS runtime bridge is symbol-ready, not generation-ready
 
-`packages/app-core/scripts/kernel-patches/metal-kernels.mjs` patches
-the **non-EMBED** add_custom_command branch in
-`ggml/src/ggml-metal/CMakeLists.txt` — the path used by darwin-host
-metal builds, which ship `default.metallib` as a sidecar.
-
-iOS builds set `-DGGML_METAL_EMBED_LIBRARY=ON` because there is no
-on-device location to ship a sidecar metallib; the metallib bytes get
-baked into a `.incbin`-included .o file. The EMBED branch is currently
-**not patched**, so the iOS metallib does not yet contain
-`turbo3.metal`, `turbo4.metal`, or `turbo3_tcq.metal`.
-
-`build-xcframework.mjs --verify` exercises this gap:
-
-```
-[ios-xcframework] AGENTS.md §3 kernel-symbol audit FAILED:
-  - turbo3: missing in device + simulator
-    (expected in libggml-metal.a (via embedded metallib); pattern /turbo3(?!_tcq)/)
-  - turbo4: missing in device + simulator
-    (expected in libggml-metal.a (via embedded metallib); pattern /turbo4/)
-```
-
-Once `kernel-patches/metal-kernels.mjs` grows an EMBED-path patcher
-(stripping the duplicate decls of `block_qjl1_256` / `block_q4_polar`
-/ `QK_QJL` / `QK_POLAR` / `QJL_RESIDUAL_BYTES` between the standalone
-shaders and `ggml-common.h` so the concatenated single-TU compile
-succeeds), the `--verify` symbol check will pass and the iOS row
-flips from PARTIALLY-RESOLVED to RESOLVED in
-`packages/inference/DEVICE_SUPPORT_GAP_2026-05-10.md`.
+The iOS slices now embed the same shipped Metal kernel payload as desktop
+Metal and `build-xcframework.mjs --verify` passes the kernel-symbol and
+runtime-symbol audits. The added `libeliza-ios-runtime-shim.a` is a link
+and smoke-test bridge, not a complete mobile inference engine. It refuses
+real text/voice generation until the mobile bridge is wired to a live llama
+context and real OmniVoice GGUF assets.
 
 ### Real iPhone hardware verification
 

@@ -38,6 +38,7 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
       drafter: { base: "eliza-1-drafter", license: "apache-2.0" },
       asr: { base: "eliza-1-asr", license: "apache-2.0" },
       vision: { base: "eliza-1-vision", license: "apache-2.0" },
+      vad: { base: "eliza-1-vad", license: "apache-2.0" },
     },
     files: {
       text: [
@@ -48,6 +49,7 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
       vision: [{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA }],
       dflash: [{ path: `dflash/drafter-${tier}.gguf`, sha256: SHA }],
       cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
+      vad: [{ path: "vad/eliza-1-vad.onnx", sha256: SHA }],
     },
     kernels: {
       required: [...REQUIRED_KERNELS_BY_TIER[tier]],
@@ -58,6 +60,7 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
       textEval: { score: 0.71, passed: true },
       voiceRtf: { rtf: 0.42, passed: true },
       asrWer: { wer: 0.05, passed: true },
+      vadLatencyMs: { median: 16, passed: true },
       e2eLoopOk: true,
       thirtyTurnOk: true,
     },
@@ -85,14 +88,11 @@ describe("validateManifest — valid input", () => {
   it("accepts optional component lineage, files, evals, and voice capabilities", () => {
     const m = baseManifest();
     m.lineage.embedding = { base: "eliza-1-embedding", license: "apache-2.0" };
-    m.lineage.vad = { base: "eliza-1-vad", license: "mit" };
     m.lineage.wakeword = { base: "eliza-1-wakeword", license: "apache-2.0" };
     m.files.embedding = [{ path: "embedding/eliza-1-embed.gguf", sha256: SHA }];
-    m.files.vad = [{ path: "vad/eliza-1-vad.onnx", sha256: SHA }];
     m.files.wakeword = [{ path: "wakeword/eliza-1.onnx", sha256: SHA }];
     m.voice = { capabilities: ["tts", "emotion-tags"] };
     m.evals.embedMteb = { score: 0.62, passed: true };
-    m.evals.vadLatencyMs = { median: 16, passed: true };
     m.evals.expressive = {
       tagFaithfulness: 0.9,
       mosExpressive: 4.1,
@@ -202,6 +202,22 @@ describe("validateManifest — contract rejections", () => {
     if (!result.ok) {
       expect(result.errors.some((e) => e.includes("lineage.asr"))).toBe(true);
       expect(result.errors.some((e) => e.includes("evals.asrWer"))).toBe(true);
+    }
+  });
+
+  it("rejects defaultEligible=true when ASR or VAD are absent", () => {
+    const m = baseManifest();
+    m.files.asr = [];
+    m.files.vad = [];
+    m.lineage.asr = undefined;
+    m.lineage.vad = undefined;
+    m.evals.asrWer = undefined;
+    m.evals.vadLatencyMs = undefined;
+    const result = validateManifest(m);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.includes("files.asr"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("files.vad"))).toBe(true);
     }
   });
 

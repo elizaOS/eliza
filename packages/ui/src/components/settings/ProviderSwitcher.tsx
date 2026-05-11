@@ -478,30 +478,31 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   }, [loadSubscriptionStatus, syncSelectionFromConfig]);
 
   useEffect(() => {
-    const anthStatus = subscriptionStatus.find(
+    const anthStatuses = subscriptionStatus.filter(
       (s) => s.provider === "anthropic-subscription",
     );
-    const oaiStatus = subscriptionStatus.find(
+    const oaiStatuses = subscriptionStatus.filter(
       (s) =>
         s.provider === "openai-subscription" || s.provider === "openai-codex",
     );
     // Only treat as "connected" when credentials were linked via the in-app
     // OAuth flow (source === "app"). Claude Code CLI credentials detected on
     // the machine are surfaced separately — the app can't disconnect them.
-    const anthAppConnected = Boolean(
-      anthStatus?.configured &&
-        anthStatus?.valid &&
-        anthStatus?.source === "app",
+    const anthAppConnected = anthStatuses.some(
+      (status) => status.configured && status.valid && status.source === "app",
     );
     setAnthropicConnected(anthAppConnected);
     setAnthropicCliDetected(
-      Boolean(
-        anthStatus?.configured &&
-          anthStatus?.valid &&
-          anthStatus?.source === "claude-code-cli",
+      anthStatuses.some(
+        (status) =>
+          status.configured &&
+          status.valid &&
+          status.source === "claude-code-cli",
       ),
     );
-    setOpenaiConnected(Boolean(oaiStatus?.configured && oaiStatus?.valid));
+    setOpenaiConnected(
+      oaiStatuses.some((status) => status.configured && status.valid),
+    );
   }, [subscriptionStatus]);
 
   const allAiProviders = useMemo(
@@ -800,12 +801,15 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       const selection = SUBSCRIPTION_PROVIDER_SELECTIONS.find(
         (provider) => provider.id === providerId,
       );
-      const status = subscriptionStatus.find(
+      const statuses = subscriptionStatus.filter(
         (entry) =>
           entry.provider === providerId ||
           (selection ? entry.provider === selection.storedProvider : false),
       );
-      if (status?.available === false) {
+      if (
+        statuses.length > 0 &&
+        statuses.every((status) => status.available === false)
+      ) {
         return { label: "Unavailable", tone: "warn" as const };
       }
       if (providerId === "anthropic-subscription" && anthropicCliDetected) {
@@ -813,14 +817,17 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       }
       if (
         providerId === "gemini-subscription" &&
-        status?.source === "gemini-cli"
+        statuses.some(
+          (status) =>
+            status.source === "gemini-cli" && status.configured && status.valid,
+        )
       ) {
         return { label: "CLI detected", tone: "ok" as const };
       }
-      if (status?.configured && status.valid) {
+      if (statuses.some((status) => status.configured && status.valid)) {
         return { label: "Connected", tone: "ok" as const };
       }
-      if (status?.configured && !status.valid) {
+      if (statuses.some((status) => status.configured && !status.valid)) {
         return { label: "Needs repair", tone: "warn" as const };
       }
       return { label: "Not connected", tone: "muted" as const };

@@ -11,7 +11,11 @@ import {
 } from "@elizaos/shared";
 import type { AnthropicFlow } from "../auth/anthropic.ts";
 import type { CodexFlow } from "../auth/openai-codex.ts";
-import type { OAuthCredentials } from "../auth/types.ts";
+import {
+  isSubscriptionProvider,
+  type OAuthCredentials,
+  type SubscriptionProvider,
+} from "../auth/types.ts";
 import type { ElizaConfig } from "../config/types.eliza.ts";
 
 type AuthModule = typeof import("../auth/index.ts");
@@ -295,7 +299,7 @@ export async function handleSubscriptionRoutes(
 
   if (method === "DELETE" && pathname.startsWith("/api/subscription/")) {
     const provider = pathname.split("/").pop();
-    if (provider === "anthropic-subscription" || provider === "openai-codex") {
+    if (isSubscriptionProvider(provider)) {
       try {
         const { deleteProviderCredentials } = await loadSubscriptionAuth();
         deleteProviderCredentials(provider);
@@ -304,13 +308,22 @@ export async function handleSubscriptionRoutes(
           delete (state.config.env as Record<string, unknown>)
             .__anthropicSubscriptionToken;
         }
-        if (state.config.agents?.defaults?.subscriptionProvider === provider) {
-          delete state.config.agents.defaults.subscriptionProvider;
+        const deletedProviderId =
+          subscriptionSelectionIdForStoredProvider(provider);
+        const defaults = state.config.agents?.defaults;
+        const defaultSubscription = defaults?.subscriptionProvider;
+        if (
+          defaults &&
+          (defaultSubscription === provider ||
+            defaultSubscription === deletedProviderId)
+        ) {
+          delete defaults.subscriptionProvider;
         }
         const llmBackend = state.config.serviceRouting?.llmText?.backend;
-        const deletedProviderId =
-          provider === "openai-codex" ? "openai-subscription" : provider;
-        if (llmBackend === deletedProviderId && state.config.serviceRouting) {
+        if (
+          (llmBackend === deletedProviderId || llmBackend === provider) &&
+          state.config.serviceRouting
+        ) {
           delete state.config.serviceRouting.llmText;
           if (Object.keys(state.config.serviceRouting).length === 0) {
             delete state.config.serviceRouting;
@@ -329,6 +342,25 @@ export async function handleSubscriptionRoutes(
   }
 
   return false;
+}
+
+function subscriptionSelectionIdForStoredProvider(
+  provider: SubscriptionProvider,
+): string {
+  switch (provider) {
+    case "openai-codex":
+      return "openai-subscription";
+    case "gemini-cli":
+      return "gemini-subscription";
+    case "zai-coding":
+      return "zai-coding-subscription";
+    case "kimi-coding":
+      return "kimi-coding-subscription";
+    case "deepseek-coding":
+      return "deepseek-coding-subscription";
+    case "anthropic-subscription":
+      return "anthropic-subscription";
+  }
 }
 
 /**

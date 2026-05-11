@@ -744,7 +744,7 @@ function readTcqCodebookLiteral() {
   return match[1].trim();
 }
 
-function patchGgmlTbqPolarAttnOps(cacheDir, { dryRun }) {
+export function patchGgmlTbqPolarAttnOps(cacheDir, { dryRun }) {
   const headerPath = path.join(cacheDir, "ggml", "include", "ggml.h");
   const cPath = path.join(cacheDir, "ggml", "src", "ggml.c");
   let changed = false;

@@ -27,8 +27,33 @@ const OWNER_LIFE_ACTIONS = [
 ] as const;
 
 type OwnerLifeAction = (typeof OWNER_LIFE_ACTIONS)[number];
-type ActionParameters = NonNullable<Action["parameters"]>;
-
+const OWNER_GOAL_ACTIONS = ["create", "update", "delete", "review"] as const;
+const OWNER_HEALTH_ACTIONS = ["today", "trend", "by_metric", "status"] as const;
+const OWNER_SCREENTIME_ACTIONS = [
+  "summary",
+  "today",
+  "weekly",
+  "weekly_average_by_app",
+  "by_app",
+  "by_website",
+  "activity_report",
+  "time_on_app",
+  "time_on_site",
+  "browser_activity",
+] as const;
+const OWNER_FINANCE_ACTIONS = [
+  "dashboard",
+  "list_sources",
+  "add_source",
+  "remove_source",
+  "import_csv",
+  "list_transactions",
+  "spending_summary",
+  "recurring_charges",
+  "subscription_audit",
+  "subscription_cancel",
+  "subscription_status",
+] as const;
 function readParam(options: unknown, key: string): unknown {
   if (!options || typeof options !== "object") return undefined;
   const record = options as Record<string, unknown>;
@@ -78,37 +103,10 @@ function mirrorActionToSubaction(options: unknown): unknown {
   });
 }
 
-function canonicalizeActionParameters(
-  parameters: Action["parameters"],
-  description: string,
-): ActionParameters {
-  const source = parameters ?? [];
-  const converted = source
-    .filter((parameter) => parameter.name !== "op" && parameter.name !== "operation")
-    .map((parameter) =>
-      parameter.name === "subaction"
-        ? {
-            ...parameter,
-            name: "action",
-            description,
-          }
-        : parameter,
-    );
-  if (converted.some((parameter) => parameter.name === "action")) {
-    return converted;
-  }
-  return [
-    {
-      name: "action",
-      description,
-      required: false,
-      schema: { type: "string" as const },
-    },
-    ...converted,
-  ];
-}
-
-function normalizeOwnerLifeAction(options: unknown): OwnerLifeAction | undefined {
+function normalizeOwnerActionFromAllowed<TAction extends string>(
+  options: unknown,
+  allowed: readonly TAction[],
+): TAction | undefined {
   const raw =
     readStringParam(options, "action") ??
     readStringParam(options, "subaction") ??
@@ -116,8 +114,8 @@ function normalizeOwnerLifeAction(options: unknown): OwnerLifeAction | undefined
     readStringParam(options, "operation");
   if (!raw) return undefined;
   const normalized = raw.trim().toLowerCase().replace(/[-\s]+/g, "_");
-  return (OWNER_LIFE_ACTIONS as readonly string[]).includes(normalized)
-    ? (normalized as OwnerLifeAction)
+  return allowed.includes(normalized as TAction)
+    ? (normalized as TAction)
     : undefined;
 }
 
@@ -144,7 +142,9 @@ function makeOwnerLifeAction(args: {
   description: string;
   descriptionCompressed: string;
   defaultKind: "definition" | "goal";
+  actions?: readonly OwnerLifeAction[];
 }): Action {
+  const allowedActions = args.actions ?? OWNER_LIFE_ACTIONS;
   return {
     name: args.name,
     similes: args.similes,
@@ -157,13 +157,13 @@ function makeOwnerLifeAction(args: {
     suppressPostActionContinuation: lifeAction.suppressPostActionContinuation,
     validate: lifeAction.validate,
     parameters: [
-      {
-        name: "action",
-        description:
-          "Owner item operation: create, update, delete, complete, skip, snooze, or review.",
-        required: false,
-        schema: { type: "string" as const, enum: [...OWNER_LIFE_ACTIONS] },
-      },
+	    {
+	      name: "action",
+	      description:
+	          `Owner item operation: ${allowedActions.join(", ")}.`,
+	      required: false,
+	      schema: { type: "string" as const, enum: [...allowedActions] },
+	    },
       {
         name: "kind",
         description:
@@ -202,9 +202,9 @@ function makeOwnerLifeAction(args: {
         schema: { type: "object" as const, additionalProperties: true },
       },
     ],
-    handler: async (runtime, message, state, options, callback) => {
-      const params = readParameters(options);
-      const action = normalizeOwnerLifeAction(options);
+	    handler: async (runtime, message, state, options, callback) => {
+	      const params = readParameters(options);
+	      const action = normalizeOwnerActionFromAllowed(options, allowedActions);
       const merged = {
         ...params,
         ...(params.kind ? {} : { kind: args.defaultKind }),
@@ -251,6 +251,7 @@ export const ownerGoalsAction = makeOwnerLifeAction({
   descriptionCompressed:
     "owner goals: action=create|update|delete|review; backing kind=goal",
   defaultKind: "goal",
+  actions: [...OWNER_GOAL_ACTIONS],
 });
 
 export const ownerTodosAction = makeOwnerLifeAction({
@@ -354,10 +355,17 @@ export const ownerHealthAction: Action = {
     "owner health: today|trend|by_metric|status; read-only telemetry",
   routingHint:
     'owner health/wearable reads ("step count", "sleep last night", heart rate, workouts) -> OWNER_HEALTH',
-  parameters: canonicalizeActionParameters(
-    healthAction.parameters,
-    "Owner health read action: today, trend, by_metric, or status.",
-  ),
+  parameters: [
+    {
+      name: "action",
+      description: "Owner health read action: today, trend, by_metric, or status.",
+      required: false,
+      schema: { type: "string" as const, enum: [...OWNER_HEALTH_ACTIONS] },
+    },
+    ...(healthAction.parameters ?? []).filter(
+      (parameter) => parameter.name !== "subaction",
+    ),
+  ],
   handler: (runtime, message, state, options, callback) =>
     delegateHandler(
       healthAction,
@@ -377,10 +385,17 @@ export const ownerScreenTimeAction: Action = {
     "Owner screen-time and activity analytics across local activity, app usage, and browser reports.",
   descriptionCompressed:
     "owner screentime: summary|today|weekly|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
-  parameters: canonicalizeActionParameters(
-    screenTimeAction.parameters,
-    "Owner screentime read action.",
-  ),
+  parameters: [
+    {
+      name: "action",
+      description: "Owner screentime read action.",
+      required: false,
+      schema: { type: "string" as const, enum: [...OWNER_SCREENTIME_ACTIONS] },
+    },
+    ...(screenTimeAction.parameters ?? []).filter(
+      (parameter) => parameter.name !== "subaction",
+    ),
+  ],
   handler: (runtime, message, state, options, callback) =>
     delegateHandler(
       screenTimeAction,
@@ -395,15 +410,22 @@ export const ownerScreenTimeAction: Action = {
 export const ownerFinancesAction: Action = {
   ...moneyAction,
   name: "OWNER_FINANCES",
-  similes: ["MONEY", "FINANCES", "PAYMENTS", "SUBSCRIPTIONS", ...(moneyAction.similes ?? [])],
+  similes: ["MONEY", "FINANCES", "SUBSCRIPTIONS", ...(moneyAction.similes ?? [])],
   description:
     "Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
   descriptionCompressed:
     "owner finances: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
-  parameters: canonicalizeActionParameters(
-    moneyAction.parameters,
-    "Owner finance action.",
-  ),
+  parameters: [
+    {
+      name: "action",
+      description: "Owner finance action.",
+      required: false,
+      schema: { type: "string" as const, enum: [...OWNER_FINANCE_ACTIONS] },
+    },
+    ...(moneyAction.parameters ?? []).filter(
+      (parameter) => parameter.name !== "subaction",
+    ),
+  ],
   handler: (runtime, message, state, options, callback) =>
     delegateHandler(
       moneyAction,

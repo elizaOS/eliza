@@ -20,6 +20,8 @@ import type {
 } from "@elizaos/core";
 
 interface PlaceCallParams {
+  action?: "dial";
+  subaction?: "dial";
   phoneNumber?: string;
 }
 
@@ -118,7 +120,7 @@ export const placeCallAction: Action = {
     "Requires the Phone app session to be active and the host device to have " +
     "granted the CALL_PHONE runtime permission. The number is dialled directly " +
     "via TelecomManager.placeCall — there is no confirmation step. Pass an " +
-    "E.164 or local number string in `phoneNumber`.",
+    "E.164 or local number string in `phoneNumber` with action=dial.",
   descriptionCompressed:
     "Place a phone call via Android Telecom. Requires CALL_PHONE permission.",
 
@@ -130,6 +132,10 @@ export const placeCallAction: Action = {
     const params = (options as HandlerOptions | undefined)?.parameters as
       | PlaceCallParams
       | undefined;
+    const action = params?.action ?? params?.subaction ?? "dial";
+    if (action !== "dial") {
+      return { text: "VOICE_CALL requires action=dial", success: false };
+    }
     const raw = params?.phoneNumber;
     if (typeof raw !== "string") {
       return { text: "phoneNumber is required", success: false };
@@ -149,6 +155,18 @@ export const placeCallAction: Action = {
   },
 
   parameters: [
+    {
+      name: "action",
+      description: "Phone-call operation. Only dial is supported.",
+      required: false,
+      schema: { type: "string" as const, enum: ["dial"] },
+    },
+    {
+      name: "subaction",
+      description: "Legacy alias for action.",
+      required: false,
+      schema: { type: "string" as const, enum: ["dial"] },
+    },
     {
       name: "phoneNumber",
       description:

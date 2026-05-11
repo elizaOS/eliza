@@ -514,12 +514,12 @@ dispatch_smoke: dispatch_smoke.mm $(REF_OBJ) $(QJL_POLAR_OBJ)
 
 vulkan-dispatch-smoke: vulkan_dispatch_smoke
 	@echo "[vulkan-dispatch-smoke] running against $(ELIZA_DFLASH_VULKAN_BIN_DIR)"
-	@echo "[vulkan-dispatch-smoke] requires ggml-vulkan to advertise and execute GGML_OP_ATTN_SCORE_QJL; symbol-only staging cannot pass"
+	@echo "[vulkan-dispatch-smoke] requires ggml-vulkan to advertise and execute QJL/TBQ/Polar attention-score graph routes; symbol-only staging cannot pass"
 	LD_LIBRARY_PATH=$(ELIZA_DFLASH_VULKAN_BIN_DIR):$$LD_LIBRARY_PATH \
 	DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_VULKAN_BIN_DIR):$$DYLD_LIBRARY_PATH \
 	  ./vulkan_dispatch_smoke
 
-vulkan_dispatch_smoke: vulkan_dispatch_smoke.cpp
+vulkan_dispatch_smoke: vulkan_dispatch_smoke.cpp $(REF_OBJ) $(QJL_POLAR_OBJ)
 	@if [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.so" ] && [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.dylib" ]; then \
 	    echo "[vulkan-dispatch-smoke] missing libggml-vulkan under $(ELIZA_DFLASH_VULKAN_BIN_DIR)"; \
 	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-vulkan' on a Linux Vulkan host first."; \
@@ -528,7 +528,9 @@ vulkan_dispatch_smoke: vulkan_dispatch_smoke.cpp
 	$(CXX) $(CXXFLAGS) \
 	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include \
 	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/src \
+	    -I../reference -I. \
 	    vulkan_dispatch_smoke.cpp \
+	    $(REF_OBJ) $(QJL_POLAR_OBJ) \
 	    -L$(ELIZA_DFLASH_VULKAN_BIN_DIR) -lggml-base -lggml-vulkan -lggml-cpu -lggml \
 	    -Wl,-rpath,$(ELIZA_DFLASH_VULKAN_BIN_DIR) \
 	    -lm -o vulkan_dispatch_smoke

@@ -202,6 +202,9 @@ struct PolarPush {
     uint32_t n_rows;
     uint32_t head_dim;
     uint32_t use_qjl;
+    uint32_t k_offset_bytes;
+    uint32_t q_offset;
+    uint32_t y_offset;
 };
 
 // --- Kernel-specific dispatch parameters resolved from the fixture. ---
@@ -291,6 +294,9 @@ int main(int argc, char ** argv) {
         pc.n_rows   = (uint32_t)fx.n_rows;
         pc.head_dim = (uint32_t)fx.head_dim;
         pc.use_qjl  = (uint32_t)fx.use_qjl;
+        pc.k_offset_bytes = 0;
+        pc.q_offset = 0;
+        pc.y_offset = 0;
         kb.push_bytes.assign((const uint8_t *)&pc,
                              (const uint8_t *)&pc + sizeof(pc));
     } else {

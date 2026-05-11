@@ -90,6 +90,13 @@ describe("VirtualFilesystemService", () => {
     await expect(vfs.writeFile("c.txt", "1")).rejects.toMatchObject({
       code: "QUOTA_EXCEEDED",
     });
+
+    await expect(vfs.quota()).resolves.toMatchObject({
+      usedBytes: 8,
+      fileCount: 2,
+      quotaBytes: 8,
+      maxFileBytes: 5,
+    });
   });
 
   it("creates snapshots and diffs current changes", async () => {

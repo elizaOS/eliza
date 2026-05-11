@@ -45,6 +45,9 @@ layout(push_constant) uniform Push {
     uint n_rows;
     uint head_dim;        // must equal QK_POLAR (128)
     uint use_qjl;         // 0 / 1
+    uint k_offset_bytes;  // graph dispatch base offset for the selected KV head
+    uint q_offset;        // graph dispatch base offset in float elements
+    uint y_offset;        // graph dispatch base offset in float elements
 } push;
 
 const uint  QK_POLAR             = 128u;
@@ -147,7 +150,7 @@ void main() {
     uint row = gl_WorkGroupID.x;
     if (row >= push.n_rows || push.head_dim != QK_POLAR) return;
 
-    uint blk_off = row * POLAR_BLOCK_BYTES;
+    uint blk_off = push.k_offset_bytes + row * POLAR_BLOCK_BYTES;
 
     // Step 1+2: unpack 4-bit codes to centroids. 32 threads x 2 bytes each
     // covers all 64 bytes / 128 elements.
@@ -193,13 +196,13 @@ void main() {
     // after the tree reduction — saves a parallel multiply pass over buf[].
     float acc = 0.0;
     for (uint i = tid; i < QK_POLAR; i += 32u) {
-        acc += buf[i] * q[i];
+        acc += buf[i] * q[push.q_offset + i];
     }
 
     float sum = reduce_sum_32(acc, tid);
     if (tid == 0u) {
         uint norm16 = read_u16(blk_off);
         float l2 = fp16_to_fp32(norm16);
-        y[row] = sum * l2 * POLAR_INV_QK;
+        y[push.y_offset + row] = sum * l2 * POLAR_INV_QK;
     }
 }

@@ -198,11 +198,72 @@ const fs = require("node:fs");
 const p = process.argv[2];
 const data = JSON.parse(fs.readFileSync(p, "utf8"));
 const failures = [];
+const requiredRoutes = [
+  "GGML_OP_ATTN_SCORE_QJL",
+  "GGML_OP_ATTN_SCORE_TBQ/turbo3",
+  "GGML_OP_ATTN_SCORE_TBQ/turbo4",
+  "GGML_OP_ATTN_SCORE_TBQ/turbo3_tcq",
+  "GGML_OP_ATTN_SCORE_POLAR/use_qjl=0",
+  "GGML_OP_ATTN_SCORE_POLAR/use_qjl=1",
+];
+const requiredCapabilities = [
+  "turbo3",
+  "turbo4",
+  "turbo3_tcq",
+  "qjl_full",
+  "polarquant",
+];
+const finite = (value) => typeof value === "number" && Number.isFinite(value);
 if (data.backend !== "vulkan") failures.push(`backend=${data.backend}`);
 if (data.platform !== "android") failures.push(`platform=${data.platform}`);
-if (data.graphOp !== "GGML_OP_ATTN_SCORE_QJL") failures.push(`graphOp=${data.graphOp}`);
 if (data.runtimeReady !== true) failures.push(`runtimeReady=${data.runtimeReady}`);
-if (typeof data.maxDiff !== "number" || !Number.isFinite(data.maxDiff)) failures.push("maxDiff missing/non-finite");
+
+const routes = new Map();
+for (const route of Array.isArray(data.graphRoutes) ? data.graphRoutes : []) {
+  if (typeof route === "string") {
+    routes.set(route, {
+      runtimeReady: data.runtimeReady,
+      status: data.status,
+      maxDiff: data.maxDiff,
+    });
+  } else if (route && typeof route === "object") {
+    const label = route.label || route.name || route.graphRoute || route.graphOp;
+    if (label) routes.set(label, route);
+  }
+}
+const routeEvidenceOk =
+  requiredRoutes.every((label) => {
+    const entry = routes.get(label);
+    return Boolean(
+      entry &&
+        entry.runtimeReady !== false &&
+        entry.status !== "fail" &&
+        finite(entry.maxDiff ?? data.maxDiff),
+    );
+  });
+
+const kernels = data.kernels && typeof data.kernels === "object" ? data.kernels : {};
+const kernelEntries = Object.values(kernels).filter(
+  (entry) => entry && typeof entry === "object",
+);
+const kernelEvidenceOk =
+  requiredCapabilities.every((capability) => {
+    const entry = kernelEntries.find(
+      (candidate) => candidate.runtimeCapabilityKey === capability,
+    );
+    return Boolean(
+      entry &&
+        entry.runtimeReady === true &&
+        entry.status === "runtime-ready" &&
+        finite(entry.maxDiff),
+    );
+  });
+
+if (!routeEvidenceOk && !kernelEvidenceOk) {
+  failures.push(
+    "missing full six-route graphRoutes evidence or five-capability kernels evidence with finite maxDiff",
+  );
+}
 if (failures.length) {
   console.error(`[android-vulkan-smoke] invalid graph evidence ${p}: ${failures.join(", ")}`);
   process.exit(1);

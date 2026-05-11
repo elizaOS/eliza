@@ -51,7 +51,20 @@ type BrowserWorkspaceSubaction =
   | "cursor-move"
   | "cursor-hide";
 
+type BrowserWorkspaceAction =
+  | BrowserWorkspaceSubaction
+  | "realistic_click"
+  | "realistic_fill"
+  | "realistic_type"
+  | "realistic_press"
+  | "cursor_move"
+  | "cursor_hide";
+
 type BrowserActionSubaction = BrowserWorkspaceSubaction | "autofill-login";
+type BrowserActionValue =
+  | BrowserWorkspaceAction
+  | "autofill_login"
+  | "autofill-login";
 
 type BrowserActionParameters = {
   /**
@@ -68,8 +81,7 @@ type BrowserActionParameters = {
    * Canonical browser action. Legacy `subaction` remains accepted.
    */
   action?:
-    | BrowserWorkspaceSubaction
-    | "autofill-login"
+    | BrowserActionValue
     | "info"
     | "context"
     | "get_context"
@@ -78,7 +90,7 @@ type BrowserActionParameters = {
     | "close_tab"
     | "switch_tab";
   subaction?: BrowserActionSubaction;
-  /** Registrable hostname for `action: "autofill-login"`. */
+  /** Registrable hostname for `action: "autofill_login"`. */
   domain?: string;
   /** Saved login username for autofill-login (optional). */
   username?: string;
@@ -119,11 +131,15 @@ function inferBrowserSubaction(
   params: BrowserActionParameters | undefined,
   messageText: string,
 ): BrowserWorkspaceCommand["subaction"] | "autofill-login" {
-  if (params?.action === "autofill-login" || params?.subaction === "autofill-login") {
+  const normalizedAction = normalizeBrowserAction(params?.action);
+  if (
+    normalizedAction === "autofill-login" ||
+    params?.subaction === "autofill-login"
+  ) {
     return "autofill-login";
   }
 
-  const legacySubaction = normalizeLegacyBrowserAction(params?.action);
+  const legacySubaction = normalizeLegacyBrowserAction(normalizedAction);
   if (legacySubaction) {
     return legacySubaction;
   }
@@ -156,6 +172,29 @@ function inferBrowserSubaction(
   return "state";
 }
 
+function normalizeBrowserAction(
+  action: BrowserActionParameters["action"] | undefined,
+): BrowserActionParameters["action"] | undefined {
+  switch (action) {
+    case "realistic_click":
+      return "realistic-click";
+    case "realistic_fill":
+      return "realistic-fill";
+    case "realistic_type":
+      return "realistic-type";
+    case "realistic_press":
+      return "realistic-press";
+    case "cursor_move":
+      return "cursor-move";
+    case "cursor_hide":
+      return "cursor-hide";
+    case "autofill_login":
+      return "autofill-login";
+    default:
+      return action;
+  }
+}
+
 function normalizeLegacyBrowserAction(
   action: BrowserActionParameters["action"] | undefined,
 ): BrowserWorkspaceCommand["subaction"] | undefined {
@@ -181,7 +220,7 @@ function normalizeLegacyBrowserAction(
 function normalizeLegacyTabAction(
   action: BrowserActionParameters["action"] | undefined,
 ): BrowserActionParameters["tabAction"] | undefined {
-  switch (action) {
+  switch (normalizeBrowserAction(action)) {
     case "list_tabs":
       return "list";
     case "open_tab":
@@ -265,9 +304,9 @@ export const browserAction: Action = {
     "SIGN_IN_TO_SITE",
   ],
   description:
-    "Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified. Use `subaction: \"autofill-login\"` with `domain` (and optional `username`, `submit`) to vault-gated autofill into an open workspace tab.",
+    "Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified. Use `action: \"autofill_login\"` with `domain` (and optional `username`, `submit`) to vault-gated autofill into an open workspace tab.",
   descriptionCompressed:
-    "Browser tab/page control: open/navigate/click/type/screenshot/state; subaction autofill-login + domain autofill vault-gated credential into workspace tab pre-authorized in Settings Vault Logins. Bridge settings/status use MANAGE_BROWSER_BRIDGE.",
+    "Browser tab/page control: open/navigate/click/type/screenshot/state; action autofill_login + domain autofill vault-gated credential into workspace tab pre-authorized in Settings Vault Logins. Bridge settings/status use MANAGE_BROWSER_BRIDGE.",
   validate: async () => true,
   handler: async (runtime, message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
@@ -346,7 +385,7 @@ export const browserAction: Action = {
     {
       name: "action",
       description:
-        "Browser action to perform. Legacy subaction is also accepted.",
+        "Browser action to perform. Snake_case values are canonical; legacy kebab-case and subaction are also accepted.",
       required: false,
       schema: {
         type: "string" as const,
@@ -375,13 +414,13 @@ export const browserAction: Action = {
           "wait",
           "close_tab",
           "switch_tab",
-          "realistic-click",
-          "realistic-fill",
-          "realistic-type",
-          "realistic-press",
-          "cursor-move",
-          "cursor-hide",
-          "autofill-login",
+          "realistic_click",
+          "realistic_fill",
+          "realistic_type",
+          "realistic_press",
+          "cursor_move",
+          "cursor_hide",
+          "autofill_login",
         ],
       },
     },
@@ -431,7 +470,7 @@ export const browserAction: Action = {
     {
       name: "domain",
       description:
-        "Required when subaction is autofill-login: registrable hostname (e.g. `github.com`).",
+        "Required when action is autofill_login: registrable hostname (e.g. `github.com`).",
       required: false,
       schema: { type: "string" as const },
     },

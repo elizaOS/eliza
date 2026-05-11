@@ -11,7 +11,7 @@ eliza-<org>-<random>.tunnel.elizacloud.ai -> https://eliza-<org>-<random>.tunnel
 ```
 
 Only Cloud-minted hostnames matching
-`eliza-<orgpart>-<randomhex>-<signature>` are proxied when
+`eliza-<orgpart>-<randomhex>-<expiry>-<signature>` are proxied when
 `TUNNEL_HOSTNAME_SIGNING_SECRET` is set. Root traffic and arbitrary wildcard
 labels return 404, while `/health` and `/ready` remain public for Railway and
 DNS smoke checks.

@@ -1309,21 +1309,27 @@ export const visionAction: Action = {
     "TAKE_PICTURE",
   ],
   description:
-    "Camera and screen vision: describe the current scene, capture an image, switch vision mode (off/camera/screen/both), name a visible entity, identify a person, or start tracking an entity. The op is inferred from the message text when not explicitly provided.",
+    "Camera and screen vision: describe the current scene, capture an image, switch vision mode (off/camera/screen/both), name a visible entity, identify a person, or start tracking an entity. The action is inferred from the message text when not explicitly provided.",
   descriptionCompressed:
     "Vision: describe / capture / set_mode / name_entity / identify_person / track_entity.",
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description:
         "Operation to perform: describe, capture, set_mode, name_entity, identify_person, or track_entity. Inferred from message text when omitted.",
       required: false,
       schema: { type: "string", enum: [...VISION_OPS] },
     },
     {
+      name: "subaction",
+      description: "Legacy alias for action.",
+      required: false,
+      schema: { type: "string", enum: [...VISION_OPS] },
+    },
+    {
       name: "detailLevel",
       description:
-        "For op=describe: 'summary' to omit object/person breakdowns, 'detailed' for the full breakdown.",
+        "For action=describe: 'summary' to omit object/person breakdowns, 'detailed' for the full breakdown.",
       required: false,
       schema: {
         type: "string",
@@ -1334,35 +1340,35 @@ export const visionAction: Action = {
     {
       name: "mode",
       description:
-        "For op=set_mode: vision mode to set: off, camera, screen, or both.",
+        "For action=set_mode: vision mode to set: off, camera, screen, or both.",
       required: false,
       schema: { type: "string", enum: ["off", "camera", "screen", "both"] },
     },
     {
       name: "name",
       description:
-        "For op=name_entity: the name to assign to the most relevant visible person or object.",
+        "For action=name_entity: the name to assign to the most relevant visible person or object.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "targetHint",
       description:
-        "For op=name_entity or op=identify_person: optional phrase describing which visible entity to focus on.",
+        "For action=name_entity or action=identify_person: optional phrase describing which visible entity to focus on.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "description",
       description:
-        "For op=track_entity: optional description of the visible entity to prioritize for tracking.",
+        "For action=track_entity: optional description of the visible entity to prioritize for tracking.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "includeUnknown",
       description:
-        "For op=identify_person: whether to mention unidentified people in the response.",
+        "For action=identify_person: whether to mention unidentified people in the response.",
       required: false,
       schema: { type: "boolean", default: true },
     },
@@ -1381,7 +1387,9 @@ export const visionAction: Action = {
     const params = readActionParams(options);
     return (
       selectedContextMatches(state, ALL_VISION_CONTEXTS) ||
-      typeof params.op === "string"
+      typeof params.action === "string" ||
+      typeof params.op === "string" ||
+      typeof params.subaction === "string"
     );
   },
   handler: async (
@@ -1393,7 +1401,7 @@ export const visionAction: Action = {
     _responses?: Memory[],
   ): Promise<ActionResult> => {
     const params = readActionParams(_options);
-    const explicitOp = normalizeOp(params.op ?? params.subaction);
+    const explicitOp = normalizeOp(params.action ?? params.subaction ?? params.op);
     const inferredOp =
       explicitOp ?? inferOpFromMessage(message.content?.text ?? "");
 

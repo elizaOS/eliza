@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,7 +34,7 @@ const (
 
 var (
 	unsignedTunnelHostPattern = regexp.MustCompile(`^eliza-[a-z0-9]{1,12}-[a-f0-9]{12,32}$`)
-	signedTunnelHostPattern   = regexp.MustCompile(`^eliza-[a-z0-9]{1,12}-[a-f0-9]{20}-[a-f0-9]{16}$`)
+	signedTunnelHostPattern   = regexp.MustCompile(`^eliza-[a-z0-9]{1,10}-[a-f0-9]{20}-[a-z0-9]{6,10}-[a-f0-9]{16}$`)
 )
 
 type config struct {
@@ -45,6 +46,7 @@ type config struct {
 	hostname      string
 	port          string
 	signingSecret string
+	allowUnsigned bool
 }
 
 type targetHostContextKey struct{}
@@ -122,6 +124,7 @@ func main() {
 			cfg.publicHost,
 			cfg.tailnetDomain,
 			cfg.signingSecret,
+			cfg.allowUnsigned,
 		)
 		if !ok {
 			http.NotFound(w, r)
@@ -162,6 +165,7 @@ func loadConfig() (config, error) {
 		hostname:      firstEnv("TUNNEL_PROXY_HOSTNAME", "", defaultHostname),
 		port:          firstEnv("PORT", "", defaultPort),
 		signingSecret: strings.TrimSpace(os.Getenv("TUNNEL_HOSTNAME_SIGNING_SECRET")),
+		allowUnsigned: readBoolEnv("TUNNEL_ALLOW_UNSIGNED_HOSTNAMES"),
 	}
 	cfg.controlURL = strings.TrimRight(cfg.controlURL, "/")
 	cfg.publicHost = normalizeHost(cfg.publicHost)
@@ -182,6 +186,9 @@ func loadConfig() (config, error) {
 	}
 	if cfg.port == "" {
 		return cfg, errors.New("PORT is required")
+	}
+	if cfg.signingSecret == "" && !cfg.allowUnsigned {
+		return cfg, errors.New("TUNNEL_HOSTNAME_SIGNING_SECRET is required unless TUNNEL_ALLOW_UNSIGNED_HOSTNAMES=true")
 	}
 	return cfg, nil
 }
@@ -205,6 +212,7 @@ func targetHostForRequest(
 	publicHost string,
 	tailnetDomain string,
 	signingSecret string,
+	allowUnsigned bool,
 ) (string, bool) {
 	host := normalizeHost(hostHeader)
 	if host == "" || host == publicHost {
@@ -217,26 +225,35 @@ func targetHostForRequest(
 	}
 
 	label := strings.TrimSuffix(host, suffix)
-	if !validTunnelHostLabel(label, signingSecret) {
+	if !validTunnelHostLabel(label, signingSecret, allowUnsigned, time.Now()) {
 		return "", false
 	}
 	return label + "." + tailnetDomain, true
 }
 
-func validTunnelHostLabel(label string, signingSecret string) bool {
+func validTunnelHostLabel(
+	label string,
+	signingSecret string,
+	allowUnsigned bool,
+	now time.Time,
+) bool {
 	if signingSecret == "" {
-		return unsignedTunnelHostPattern.MatchString(label)
+		return allowUnsigned && unsignedTunnelHostPattern.MatchString(label)
 	}
 	if !signedTunnelHostPattern.MatchString(label) {
 		return false
 	}
 
-	lastDash := strings.LastIndex(label, "-")
-	if lastDash < 0 {
+	parts := strings.Split(label, "-")
+	if len(parts) != 5 {
 		return false
 	}
-	payload := label[:lastDash]
-	signature := label[lastDash+1:]
+	expiresAt, err := strconv.ParseInt(parts[3], 36, 64)
+	if err != nil || now.Unix() > expiresAt {
+		return false
+	}
+	payload := strings.Join(parts[:4], "-")
+	signature := parts[4]
 	expected := tunnelHostSignature(payload, signingSecret)
 	return hmac.Equal([]byte(signature), []byte(expected))
 }
@@ -263,6 +280,15 @@ func forwardedProto(r *http.Request) string {
 		return "https"
 	}
 	return "http"
+}
+
+func readBoolEnv(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

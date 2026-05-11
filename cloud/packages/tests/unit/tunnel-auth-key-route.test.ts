@@ -139,9 +139,9 @@ describe("tunnel auth-key route", () => {
     expect(body.loginServer).toBe("https://headscale.elizacloud.ai");
     expect(body.tailnet).toBe("https://headscale.elizacloud.ai");
     expect(String(body.magicDnsName)).toEndWith(".tunnel.elizacloud.ai");
-    expect(String(body.hostname)).toStartWith("eliza-111111112222-");
+    expect(String(body.hostname)).toStartWith("eliza-1111111122-");
     expect(String(body.hostname)).toMatch(
-      /^eliza-111111112222-[a-f0-9]{20}-[a-f0-9]{16}$/,
+      /^eliza-1111111122-[a-f0-9]{20}-[a-z0-9]{6,10}-[a-f0-9]{16}$/,
     );
     expect(body.tags).toEqual(["tag:eliza-tunnel"]);
     expect(body.billing).toEqual({
@@ -232,5 +232,38 @@ describe("tunnel auth-key route", () => {
     expect(res.status).toBe(503);
     expect(captured.clientOpts).toBeUndefined();
     expect(captured.debitOpts).toBeUndefined();
+  });
+
+  test("fails closed when public tunnel host is configured without hostname signing", async () => {
+    const captured: CapturedHeadscaleCall = {};
+    installMocks(captured);
+    const app = await loadRoute();
+
+    const unsignedEnv: Record<string, unknown> = { ...env };
+    delete unsignedEnv.TUNNEL_HOSTNAME_SIGNING_SECRET;
+    const res = await app.fetch(request(), unsignedEnv);
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as Record<string, unknown>;
+
+    expect(String(body.error)).toContain("Tunnel hostname signing is not configured");
+    expect(captured.clientOpts).toBeUndefined();
+    expect(captured.debitOpts).toBeUndefined();
+  });
+
+  test("allows unsigned hostnames only when explicitly enabled", async () => {
+    const captured: CapturedHeadscaleCall = {};
+    installMocks(captured);
+    const app = await loadRoute();
+
+    const unsignedEnv: Record<string, unknown> = { ...env };
+    delete unsignedEnv.TUNNEL_HOSTNAME_SIGNING_SECRET;
+    const res = await app.fetch(request(), {
+      ...unsignedEnv,
+      TUNNEL_ALLOW_UNSIGNED_HOSTNAMES: "true",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+
+    expect(String(body.hostname)).toMatch(/^eliza-1111111122-[a-f0-9]{20}$/);
   });
 });

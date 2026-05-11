@@ -22,6 +22,7 @@ export * from "./runtime/build-character-from-config";
 export * from "./runtime/build-variant";
 export * from "./runtime/channel-plugin-map";
 export * from "./runtime/eliza";
+export * from "./runtime/mobile-safe-runtime";
 export * from "./security/agent-vault-id";
 export * from "./security/hydrate-wallet-keys-from-platform-store";
 export * from "./security/platform-secure-store";

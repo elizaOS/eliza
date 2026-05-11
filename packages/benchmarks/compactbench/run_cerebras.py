@@ -60,9 +60,8 @@ def main() -> int:
         "--analyze-valid-hits",
         action="store_true",
         help=(
-            "Rerun the same cases and write response-level official + "
-            "adjusted valid-hit analysis. This preserves official scores "
-            "and adds a separate diagnostic metric."
+            "Rerun the same cases and write response-level repaired "
+            "benchmark analysis."
         ),
     )
     parser.add_argument(
@@ -175,18 +174,18 @@ def main() -> int:
             seed_slot=None,
         )
         summary = asyncio.run(_run_analysis(analysis_args))
-        print("valid-hit analysis:")
+        print("repaired benchmark analysis:")
         print(
-            f"  official_overall_score={summary['official_overall_score']:.3f} "
-            f"adjusted_overall_score={summary['adjusted_overall_score']:.3f} "
+            f"  overall_score={summary['overall_score']:.3f} "
             f"benchmark_quality_score={summary['benchmark_quality_score']:.3f} "
+            f"raw_lexical_overall_score={summary['raw_lexical_overall_score']:.3f} "
             f"valid_false_negatives={summary['valid_false_negatives']} "
             f"semantic_false_positives={summary['semantic_false_positives']}"
         )
         print(
-            "  failures_remaining_excluding_invalid="
-            f"{summary['failures_remaining_excluding_invalid']} "
-            f"invalid_expected_conflicts={summary['invalid_expected_conflicts']} "
+            f"  failures_remaining={summary['failures_remaining']} "
+            f"repaired_expected_conflicts={summary['repaired_expected_conflicts']} "
+            f"removed_invalid_items={summary['removed_invalid_items']} "
             f"judge_refusals={summary['judge_refusals']}"
         )
         print(f"  wrote {valid_hit_output}")

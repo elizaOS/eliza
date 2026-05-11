@@ -1,7 +1,8 @@
 # Eliza-1 Local Inference Remaining-Work Ledger - 2026-05-11
 
-This ledger is the source-of-truth gap list after the Metal QJL graph-dispatch
-smoke pass. It separates three states that previous reports occasionally mixed:
+This ledger is the source-of-truth gap list after the full Metal graph-dispatch,
+Apple artifact, iOS physical-device smoke, and Vulkan graph-dispatch source
+patch pass. It separates three states that previous reports occasionally mixed:
 
 - **shader-verified**: the standalone shader matches a JSON fixture.
 - **symbol-shipped**: the patched fork artifact contains the kernel symbol.
@@ -24,40 +25,43 @@ with the status below.
 | --- | --- | --- |
 | Metal standalone shaders | `turbo3`, `turbo4`, `turbo3_tcq`, `qjl`, `polar` all pass 8/8 on Apple M4 Max. | `make -C packages/inference/verify metal-verify metal-verify-multiblock` |
 | Metal built-fork graph dispatch | `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_ATTN_SCORE_TBQ` for `turbo3`, `turbo4`, and `turbo3_tcq`, and `GGML_OP_ATTN_SCORE_POLAR` are runtime-ready. | `make -C packages/inference/verify dispatch-smoke` now covers the full Metal graph-dispatch set; Turbo4 routes through `kernel_turbo4_dot_multi` against the fork's four-record TBQ4 layout with max diff `4.768e-07`. `dispatch-smoke-implemented` is now an alias of the full dispatch smoke. |
-| Metal artifact gate | `darwin-arm64-metal` now passes the build-script capability gate. | `build-llama-cpp-dflash.mjs` reads `verify/metal-runtime-dispatch-evidence.json` and reports each Metal runtime capability true only when the matching shipped symbol and runtime-ready evidence are both present. A fresh `darwin-arm64-metal` build wrote `CAPABILITIES.json` with `dflash`, `turbo3`, `turbo4`, `turbo3_tcq`, `qjl_full`, and `polarquant` true. |
+| Metal artifact gate | `darwin-arm64-metal`, `darwin-arm64-metal-fused`, `ios-arm64-metal`, and `ios-arm64-simulator-metal` pass the build-script capability gate. | `build-llama-cpp-dflash.mjs` reads `verify/metal-runtime-dispatch-evidence.json` and reports each Metal runtime capability true only when the matching shipped symbol and runtime-ready evidence are both present. Fresh builds wrote `CAPABILITIES.json` with `dflash`, `turbo3`, `turbo4`, `turbo3_tcq`, `qjl_full`, `polarquant`, `lookahead`, and `ngramDraft` true. |
 | Vulkan standalone shaders | All five pass on Apple M4 Max through MoltenVK; turbo* also passed earlier on Intel ARL + lavapipe. | `make -C packages/inference/verify vulkan-verify`. |
 | Android Vulkan standalone runner | Tooling is installed and the runner is fail-closed for real-device validation. | Homebrew `android-platform-tools` + `android-commandlinetools` installed; SDK at `~/Library/Android/sdk`; `android_vulkan_smoke.sh` now resolves NDKs under `ANDROID_HOME` / `ANDROID_SDK_ROOT`, statically links libc++, and refuses emulators/software Vulkan unless `ELIZA_ALLOW_ANDROID_EMULATOR_VULKAN=1` / `ELIZA_ALLOW_SOFTWARE_VULKAN=1` are set. Diagnostic emulator run passed all six fixtures on `llvmpipe`; this does **not** count as Adreno/Mali validation. |
-| Vulkan built-fork graph dispatch | Not runtime-ready. | SPIR-V blobs can be staged and CAPABILITIES records `shippedKernels` diagnostics, but `ggml-vulkan.cpp` has no milady-native op dispatch. `vulkan_dispatch_smoke.cpp` now fails before compute unless ggml-vulkan advertises `GGML_OP_ATTN_SCORE_QJL` support, then numerically checks the packed-QJL output. |
+| Vulkan built-fork graph dispatch | Source-patched, pending native hardware smoke. | `vulkan-kernels.mjs` now stages the SPIR-V blobs, creates milady Vulkan pipelines, patches `ggml-vulkan.cpp` with milady-native runtime dispatch for `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_ATTN_SCORE_TBQ`, and `GGML_OP_ATTN_SCORE_POLAR`, and patches `supports_op`. `vulkan_dispatch_smoke.cpp` now drives all QJL, Turbo3, Turbo4, Turbo3-TCQ, Polar, and Polar+QJL graph routes numerically. This is not runtime-ready until `make -C packages/inference/verify vulkan-dispatch-smoke` passes on a native Vulkan build and Android graph-dispatch evidence is attached. |
 | CUDA | API/preprocessor surface exists; no hardware run on this machine. | `nvcc` unavailable on macOS. |
 | CUDA/GH200 hardware runners | Runnable, fail-closed entrypoints now exist for Linux x64 NVIDIA and GH200-like Linux aarch64. | `verify/cuda_runner.sh --report <path>` requires `nvcc` + `nvidia-smi` + `make cuda-verify` + `ELIZA_DFLASH_SMOKE_MODEL` graph smoke; `verify/gh200_runner.sh --report <path>` additionally requires arm64 Linux + Hopper/compute-capability-9.x. Skip modes exit non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | ROCm hardware runner | Runnable, fail-closed entrypoint now exists for AMD HIP hosts; fixture parity still needs a HIP harness. | `verify/rocm_runner.sh --report <path>` requires `hipcc` + `rocminfo` `gfx*` agent + model-backed graph smoke. Skip mode exits non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | Windows hardware runner | Runnable, fail-closed PowerShell entrypoint now exists for native Windows CUDA/Vulkan/CPU smoke. | `verify/windows_runner.ps1 -Report <path>` requires native Windows backend hardware/toolchain and a GGUF model; cross-built exe execution is not counted. Skip mode exits non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
-| iOS | Static archives and embedded metallib build for physical-device and simulator slices; physical-device smoke now reaches a connected iPhone and fails on missing runtime ABI symbols. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target ios-arm64-metal` and `--target ios-arm64-simulator-metal` compile `libllama.a`, `libggml*.a`, headers, and `default.metallib`. `build-xcframework.mjs --verify` now passes the kernel-symbol audit but fails the runtime-symbol audit for missing Capacitor bridge symbols plus `eliza_inference_*`. `run-physical-device-smoke.mjs` was run on Shaw's iPhone (`00008130-001955E91EF8001C`, iOS 26.3.1) and records `missing-capacitor-bridge-and-voice-abi-symbols` in `ios-physical-device-smoke.json`. |
+| iOS | Static archives, embedded metallib, Capacitor bridge symbols, and `eliza_inference_*` ABI v1 symbols now package into a verified XCFramework for physical-device and simulator slices. Physical-device XCTest passes with voice ABI enabled. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target ios-arm64-metal` and `--target ios-arm64-simulator-metal` compile `libllama.a`, `libggml*.a`, headers, `default.metallib`, and `libeliza-ios-runtime-shim.a`. `node packages/app-core/scripts/ios-xcframework/build-xcframework.mjs --output /Users/shawwalters/.eliza/local-inference/bin/dflash/ios-physical-smoke/LlamaCpp.xcframework --build-if-missing --verify` passes kernel-symbol, runtime-symbol, and structure audits. `run-physical-device-smoke.mjs --xcframework /Users/shawwalters/.eliza/local-inference/bin/dflash/ios-physical-smoke/LlamaCpp.xcframework --device-id 00008130-001955E91EF8001C --report packages/inference/reports/porting/2026-05-11/ios-physical-device-smoke-latest.json` passed two XCTest cases on Shaw's iPhone 15 Pro via CoreDevice ID `C9130C48-48F1-5DC3-98E9-8BACE231D047`. |
 | Voice fusion | macOS production fused `libelizainference.dylib` now builds, symbol-verifies, and ABI-smokes; real TTS with real OmniVoice GGUF weights and merged HTTP routes remain open. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal-fused --jobs 10` links `omnivoice-core`, `libelizainference.dylib`, `llama-omnivoice-server`, and `default.metallib`; `make -C packages/app-core/scripts/omnivoice-fuse verify` proves ABI compatibility; Bun FFI smoke against the real dylib proves metadata-only `create`, lazy TTS `mmap_acquire`, structured GGUF-load failure, and `destroy`. |
 | Eliza-1 bundles | Schema/catalog/publish gates and release-evidence gates exist; real release bundles do not. | `packages/training/scripts/publish/orchestrator.py` now requires `evidence/release.json`, `checksums/SHA256SUMS`, per-backend runtime dispatch reports, and target-keyed platform evidence before any dry-run/upload path can pass. Runtime-dispatch reports must prove model hash, kernel set, graph route, logs, commit, and device; platform reports cannot skip iOS voice ABI. No checked-in weight-derived manifests or HF upload evidence exist yet. |
 
 ## P0 Blockers
 
-1. **iOS runtime ABI packaging**
+1. **iOS real Eliza-1 bundle smoke**
 
    Metal graph dispatch is now runtime-ready for QJL, Turbo3, Turbo4,
-   Turbo3-TCQ, and PolarQuant on Apple Silicon. The remaining iOS publish
-   blocker is that the produced `LlamaCpp.xcframework` slice does not export
-   the Capacitor bridge symbols or the `eliza_inference_*` voice ABI symbols
-   required by the physical-device smoke.
+   Turbo3-TCQ, and PolarQuant on Apple Silicon. The iOS XCFramework now
+   passes both kernel-symbol and runtime-symbol audits, and the physical-device
+   XCTest passes with the voice ABI check enabled. The remaining iOS publish
+   blocker is a weight-backed Eliza-1 bundle smoke.
 
    Acceptance:
    - `build-xcframework.mjs --verify` passes both kernel-symbol and
-     runtime-symbol audits for the iOS arm64 and simulator slices.
+     runtime-symbol audits for the iOS arm64 and simulator slices. **Done.**
    - `run-physical-device-smoke.mjs` passes on a connected iPhone/iPad without
-     skipping the voice ABI check.
+     skipping the voice ABI check. **Done.**
+   - A full Eliza-1 bundle smoke loads real text + voice assets on iOS and
+     records first token, first audio, peak RSS, and thermal state.
 
-2. **Vulkan graph dispatch**
+2. **Vulkan native graph-dispatch evidence**
 
-   The Vulkan shaders and fixtures are verified, but the fork runtime has no
-   op-level dispatch path for QJL, Polar, or TurboQuant. The Vulkan backend
-   must get milady-native descriptors/push constants instead of trying to
-   reuse generic binary/mat-vec push layouts.
+   The Vulkan shaders and fixtures are verified, and the fork runtime patcher
+   now installs milady-native descriptors/push constants for QJL, TurboQuant,
+   and PolarQuant graph routes. The remaining blocker is native hardware
+   evidence from the built fork; MoltenVK fixture success is useful but does
+   not prove Linux/Android runtime dispatch.
 
    Acceptance:
    - Native `linux-x64-vulkan` build contains the SPIR-V blobs and graph
@@ -149,7 +153,7 @@ The lowest-duplication design is lazy regional loading from one bundle:
 | --- | --- |
 | Apple Silicon Mac | Run fused Metal smoke against a full Eliza-1 bundle after graph-dispatch smoke. |
 | Intel/AMD Mac | Build `darwin-x64-metal` and run the standalone + built-fork smoke suite on real hardware. |
-| iPhone/iPad | Wire the Capacitor bridge archive and real OmniVoice-backed `eliza_inference_*` ABI into both iOS slices, rerun `build-xcframework.mjs --verify`, rerun `run-physical-device-smoke.mjs` on the connected device, then run a real Eliza-1 bundle smoke that measures first audio latency and peak RSS. |
+| iPhone/iPad | Physical XCFramework smoke now passes on Shaw's iPhone 15 Pro with voice ABI enabled. Next required action is a real Eliza-1 bundle smoke that measures first token, first audio latency, peak RSS, and thermal state. The current iOS ABI bridge is fail-closed and symbol-ready; it is not a complete mobile text/voice generation path until real context + OmniVoice loading are wired. |
 | Android Adreno | Cross-build `android-arm64-vulkan`, run Vulkan fixtures via `adb`, attach graph-dispatch evidence for `GGML_OP_ATTN_SCORE_QJL`, collect thermal/RSS. |
 | Android Mali | Same as Adreno; do not transfer Adreno results to Mali without a run. |
 | Linux x64 CUDA | Run `make cuda` / `cuda_verify` on RTX/A100/H100/H200; pin arch flags where needed. |

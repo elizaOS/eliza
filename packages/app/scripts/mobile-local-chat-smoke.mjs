@@ -250,6 +250,7 @@ async function waitForAndroidApi(context) {
 
   let token = authTokenArg;
   let forwardedApiBase = null;
+  let tokenRejectedAttempts = 0;
   for (let attempt = 1; attempt <= ANDROID_HEALTH_ATTEMPTS; attempt += 1) {
     if (!token) {
       token = readAndroidLocalAgentToken(context);
@@ -274,14 +275,34 @@ async function waitForAndroidApi(context) {
           forwardedApiBase,
           token,
         );
+        const status = await requestJson(
+          "GET",
+          "/api/status",
+          undefined,
+          forwardedApiBase,
+          token,
+        );
         console.log("[local-chat-smoke] Android health:", health);
+        console.log("[local-chat-smoke] Android status:", status);
         return { apiBase: forwardedApiBase, token };
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (
+          message.includes("/api/status failed: 401") ||
+          message.includes("Unauthorized")
+        ) {
+          tokenRejectedAttempts += 1;
+          if (tokenRejectedAttempts >= 3) {
+            throw new Error(
+              "Android local-agent token was rejected by the protected /api/status route. " +
+                "This usually means another installed Eliza app already owns device port 31337; " +
+                "force-stop the conflicting package or uninstall it before running the smoke.",
+            );
+          }
+        }
         if (attempt % 10 === 0) {
           console.warn(
-            `[local-chat-smoke] Android agent not healthy yet (${attempt}/${ANDROID_HEALTH_ATTEMPTS}): ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            `[local-chat-smoke] Android agent not healthy/authenticated yet (${attempt}/${ANDROID_HEALTH_ATTEMPTS}): ${message}`,
           );
         }
       }

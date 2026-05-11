@@ -1,6 +1,8 @@
 export type MobileSafeRuntimePlatform = "ios" | "android" | "web" | "unknown";
 
 export type MobileSafeRuntimeProviderKind =
+  | "android-avf-microdroid"
+  | "safe-js-applet"
   | "javascriptcore"
   | "quickjs"
   | "wasm"
@@ -10,15 +12,28 @@ export type MobileSafeRuntimeCapability =
   | "fs.read"
   | "fs.write"
   | "fs.delete"
+  | "fs.mkdir"
+  | "fs.stat"
+  | "fs.list"
+  | "fs.snapshot"
+  | "fs.diff"
+  | "fs.rollback"
+  | "fs.quota"
   | "net.fetch"
   | "crypto.random"
   | "model.inference"
+  | "shell.exec"
+  | "app.compile"
+  | "app.load"
+  | "app.run"
   | (string & {});
 
 export interface MobileSafeRuntimeFeatureProbe {
   env?: Record<string, string | undefined>;
   globals?: Record<string, unknown>;
   platform?: MobileSafeRuntimePlatform;
+  androidAvfAvailable?: boolean;
+  androidMicrodroidAvailable?: boolean;
 }
 
 export interface MobileSafeRuntimeFeatures {
@@ -39,6 +54,30 @@ export interface MobileSafeRuntimeFileInfo {
   updatedAt?: number;
 }
 
+export type MobileSafeRuntimeDiffStatus = "added" | "modified" | "deleted";
+
+export interface MobileSafeRuntimeSnapshot {
+  id: string;
+  createdAt: number;
+  note?: string;
+  filesBytes: number;
+  fileCount: number;
+}
+
+export interface MobileSafeRuntimeDiffEntry {
+  path: string;
+  status: MobileSafeRuntimeDiffStatus;
+  before?: MobileSafeRuntimeFileInfo;
+  after?: MobileSafeRuntimeFileInfo;
+}
+
+export interface MobileSafeRuntimeQuota {
+  usedBytes: number;
+  fileCount: number;
+  quotaBytes?: number;
+  maxFileBytes?: number;
+}
+
 export interface MobileSafeVirtualFileSystem {
   readFile(path: string): Promise<Uint8Array>;
   writeFile(path: string, data: Uint8Array): Promise<void>;
@@ -46,6 +85,10 @@ export interface MobileSafeVirtualFileSystem {
   mkdir(path: string): Promise<void>;
   stat(path: string): Promise<MobileSafeRuntimeFileInfo | null>;
   list(path: string): Promise<MobileSafeRuntimeFileInfo[]>;
+  createSnapshot?(note?: string): Promise<MobileSafeRuntimeSnapshot>;
+  diffCurrent?(snapshotId: string): Promise<MobileSafeRuntimeDiffEntry[]>;
+  rollback?(snapshotId: string): Promise<void>;
+  quota?(): Promise<MobileSafeRuntimeQuota>;
 }
 
 export interface MobileSafeRuntimeCapabilityRequest<
@@ -87,6 +130,8 @@ export interface MobileSafeRuntimeExecuteInput {
   env?: Record<string, string>;
   files?: MobileSafeVirtualFileSystem;
   broker?: MobileSafeCapabilityBroker;
+  mode?: "evaluate" | "compile-app" | "load-app" | "run-app" | "shell";
+  applet?: MobileSafeRuntimeAppletExecuteOptions;
   signal?: AbortSignal;
 }
 
@@ -116,6 +161,58 @@ export interface MobileSafeRuntimeProvider {
   ): Promise<MobileSafeRuntimeExecuteResult>;
 }
 
+export type MobileSafeAppletModuleFormat = "javascript" | "typescript";
+
+export interface MobileSafeAppletManifest {
+  id: string;
+  version: string;
+  name?: string;
+  description?: string;
+  runtime?: "mobile-safe-js";
+  entrypoint: string;
+  moduleFormat?: MobileSafeAppletModuleFormat;
+  files?: string[];
+  permissions?: MobileSafeRuntimeCapability[];
+  env?: Record<string, string>;
+  createdAt?: number;
+  compiled?: {
+    bundlePath: string;
+    compiledAt: number;
+    sourceHash: string;
+    files: string[];
+  };
+}
+
+export interface MobileSafeCompiledApplet {
+  manifestPath: string;
+  bundlePath: string;
+  manifest: MobileSafeAppletManifest;
+  sourceHash: string;
+  files: string[];
+}
+
+export interface MobileSafeLoadedApplet {
+  manifestPath: string;
+  bundlePath: string;
+  manifest: MobileSafeAppletManifest;
+  bundle: string;
+}
+
+export interface MobileSafeRuntimeAppletExecuteOptions {
+  manifestPath?: string;
+  appRoot?: string;
+  bundlePath?: string;
+  input?: unknown;
+}
+
+export interface CompileMobileSafeAppletOptions {
+  files: MobileSafeVirtualFileSystem;
+  manifest?: MobileSafeAppletManifest;
+  manifestPath?: string;
+  appRoot?: string;
+  outputPath?: string;
+}
+
 export interface IosJavaScriptCoreBoundary {
   kind: "javascriptcore";
   evaluateScript(script: string): Promise<unknown>;
@@ -129,6 +226,13 @@ export interface IosQuickJsBoundary {
 export interface AndroidIsolatedProcessBoundary {
   kind: "android-isolated-process";
   serviceName: string;
+  request(
+    request: MobileSafeRuntimeCapabilityRequest,
+  ): Promise<MobileSafeRuntimeCapabilityResponse>;
+}
+
+export interface AndroidAvfMicrodroidBoundary {
+  kind: "android-avf-microdroid";
   request(
     request: MobileSafeRuntimeCapabilityRequest,
   ): Promise<MobileSafeRuntimeCapabilityResponse>;
@@ -158,6 +262,14 @@ export function detectMobileSafeRuntimeFeatures(
     typeof globals.SharedArrayBuffer === "function";
   const hasNodeRuntime = typeof globals.process === "object";
   const hasBunRuntime = typeof globals.Bun === "object";
+  const androidAvfAvailable =
+    probe.androidAvfAvailable === true ||
+    probe.androidMicrodroidAvailable === true ||
+    env.ELIZA_ANDROID_AVF_AVAILABLE === "1" ||
+    env.ELIZA_ANDROID_MICRODROID_AVAILABLE === "1" ||
+    readBooleanGlobal(globals.AndroidVirtualization, "available") === true ||
+    readBooleanGlobal(globals.AndroidVirtualization, "microdroidAvailable") ===
+      true;
 
   const unavailableProviders: Partial<
     Record<MobileSafeRuntimeProviderKind, string>
@@ -174,8 +286,16 @@ export function detectMobileSafeRuntimeFeatures(
   }
 
   if (platform === "android") {
+    if (androidAvfAvailable) {
+      availableProviders.push("android-avf-microdroid");
+    } else {
+      unavailableProviders["android-avf-microdroid"] =
+        "Android AVF/Microdroid boundary is not available on this device/build";
+    }
     availableProviders.push("android-isolated-process");
   } else {
+    unavailableProviders["android-avf-microdroid"] =
+      "Android AVF/Microdroid boundary is only available in supported Android app shells";
     unavailableProviders["android-isolated-process"] =
       "Android isolated-process boundary is only available in the Android app shell";
   }
@@ -196,6 +316,52 @@ export function detectMobileSafeRuntimeFeatures(
     hasBunRuntime,
     availableProviders,
     unavailableProviders,
+  };
+}
+
+export function createAndroidAvfMicrodroidProvider(
+  boundary?: AndroidAvfMicrodroidBoundary,
+): MobileSafeRuntimeProvider {
+  if (!boundary) {
+    return createUnavailableMobileSafeRuntimeProvider(
+      "android-avf-microdroid",
+      "Android AVF/Microdroid boundary is not attached",
+    );
+  }
+
+  return {
+    kind: "android-avf-microdroid",
+    displayName: "Android AVF/Microdroid",
+    supported: true,
+    async execute(input) {
+      const response = await boundary.request({
+        id: cryptoRequestId(),
+        capability:
+          input.mode === "shell"
+            ? "shell.exec"
+            : input.mode === "compile-app"
+              ? "app.compile"
+              : input.mode === "run-app"
+                ? "app.run"
+                : "app.load",
+        operation: "execute",
+        args: {
+          code: input.code,
+          entrypoint: input.entrypoint,
+          env: input.env ?? {},
+        },
+      });
+
+      if (response.ok === true) return { ok: true, value: response.result };
+      return {
+        ok: false,
+        error: {
+          code: response.error.code,
+          message: response.error.message,
+          provider: "android-avf-microdroid",
+        },
+      };
+    },
   };
 }
 
@@ -272,6 +438,230 @@ export function createIosQuickJsProvider(
   };
 }
 
+export function createInProcessSafeJsAppletProvider(options: {
+  now?: () => number;
+} = {}): MobileSafeRuntimeProvider {
+  return {
+    kind: "safe-js-applet",
+    displayName: "In-process safe JS applet",
+    supported: typeof Function === "function",
+    reason:
+      typeof Function === "function"
+        ? undefined
+        : "This host runtime does not expose JavaScript evaluation",
+    async execute(input) {
+      try {
+        if (input.mode === "shell") {
+          return {
+            ok: false,
+            error: {
+              code: "MOBILE_SAFE_SHELL_UNSUPPORTED",
+              message:
+                "The in-process applet provider never executes host shell commands",
+              provider: "safe-js-applet",
+            },
+          };
+        }
+
+        if (input.mode === "compile-app") {
+          if (!input.files) {
+            return {
+              ok: false,
+              error: {
+                code: "MOBILE_SAFE_APPLET_VFS_REQUIRED",
+                message: "compile-app requires a mobile-safe VFS",
+                provider: "safe-js-applet",
+              },
+            };
+          }
+          const manifest =
+            input.code.trim().length > 0
+              ? parseMobileSafeAppletManifest(input.code)
+              : undefined;
+          const compiled = await compileMobileSafeApplet({
+            files: input.files,
+            manifest,
+            manifestPath: input.applet?.manifestPath,
+            appRoot: input.applet?.appRoot,
+            outputPath: input.applet?.bundlePath,
+          });
+          return { ok: true, value: compiled };
+        }
+
+        if (input.mode === "load-app") {
+          if (!input.files) {
+            return {
+              ok: false,
+              error: {
+                code: "MOBILE_SAFE_APPLET_VFS_REQUIRED",
+                message: "load-app requires a mobile-safe VFS",
+                provider: "safe-js-applet",
+              },
+            };
+          }
+          return {
+            ok: true,
+            value: await loadMobileSafeApplet({
+              files: input.files,
+              manifestPath: input.applet?.manifestPath,
+            }),
+          };
+        }
+
+        const logs: string[] = [];
+        const bundle =
+          input.mode === "run-app" && input.files && input.applet?.manifestPath
+            ? (
+                await loadMobileSafeApplet({
+                  files: input.files,
+                  manifestPath: input.applet.manifestPath,
+                })
+              ).bundle
+            : input.code;
+        assertMobileSafeAppletSource(bundle, "bundle");
+        const api = await createSafeAppletApi({
+          files: input.files,
+          broker: input.broker,
+          env: input.env,
+          logs,
+          now: options.now,
+        });
+        const runner = new Function(
+          "input",
+          "api",
+          "globalThis",
+          "window",
+          "self",
+          "process",
+          "Bun",
+          "Deno",
+          "require",
+          "module",
+          "exports",
+          `"use strict";\n${bundle}\nreturn __mobileSafeApplet(input, api);`,
+        );
+        const value = await runner(
+          input.applet?.input,
+          api,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+        );
+        return { ok: true, value, logs };
+      } catch (error) {
+        return {
+          ...providerFailure("safe-js-applet", error),
+          logs: [],
+        };
+      }
+    },
+  };
+}
+
+export async function writeMobileSafeAppletManifest(
+  files: MobileSafeVirtualFileSystem,
+  manifest: MobileSafeAppletManifest,
+  manifestPath = "/app/mobile-safe-applet.json",
+): Promise<MobileSafeAppletManifest> {
+  const normalizedManifest = normalizeMobileSafeAppletManifest(manifest);
+  await files.writeFile(
+    manifestPath,
+    new TextEncoder().encode(JSON.stringify(normalizedManifest, null, 2)),
+  );
+  return normalizedManifest;
+}
+
+export async function readMobileSafeAppletManifest(
+  files: MobileSafeVirtualFileSystem,
+  manifestPath = "/app/mobile-safe-applet.json",
+): Promise<MobileSafeAppletManifest> {
+  return normalizeMobileSafeAppletManifest(
+    parseMobileSafeAppletManifest(
+      new TextDecoder().decode(await files.readFile(manifestPath)),
+    ),
+  );
+}
+
+export async function compileMobileSafeApplet(
+  options: CompileMobileSafeAppletOptions,
+): Promise<MobileSafeCompiledApplet> {
+  const appRoot = normalizeMobileSafePath(options.appRoot ?? "/app");
+  const manifestPath = normalizeMobileSafePath(
+    options.manifestPath ?? "/app/mobile-safe-applet.json",
+  );
+  const manifest = normalizeMobileSafeAppletManifest(
+    options.manifest ?? (await readMobileSafeAppletManifest(options.files, manifestPath)),
+  );
+  const appFiles = normalizeMobileSafeAppletFiles(manifest, appRoot);
+  const modules: Array<{ path: string; source: string }> = [];
+
+  for (const filePath of appFiles) {
+    const source = new TextDecoder().decode(await options.files.readFile(filePath));
+    assertMobileSafeAppletSource(source, filePath);
+    modules.push({
+      path: filePath,
+      source:
+        manifest.moduleFormat === "typescript" || filePath.endsWith(".ts")
+          ? stripMobileSafeTypeScript(source)
+          : source,
+    });
+  }
+
+  const sourceHash = mobileSafeStableHash(
+    modules.map((module) => `${module.path}\n${module.source}`).join("\n---\n"),
+  );
+  const bundlePath = normalizeMobileSafePath(
+    options.outputPath ?? `${appRoot}/.mobile-safe/${manifest.id}.bundle.js`,
+  );
+  const compiledManifest: MobileSafeAppletManifest = {
+    ...manifest,
+    runtime: "mobile-safe-js",
+    compiled: {
+      bundlePath,
+      compiledAt: Date.now(),
+      sourceHash,
+      files: appFiles,
+    },
+  };
+  const bundle = createMobileSafeAppletBundle(compiledManifest, modules);
+
+  await options.files.mkdir(parentPath(bundlePath));
+  await options.files.writeFile(bundlePath, new TextEncoder().encode(bundle));
+  await writeMobileSafeAppletManifest(options.files, compiledManifest, manifestPath);
+
+  return {
+    manifestPath,
+    bundlePath,
+    manifest: compiledManifest,
+    sourceHash,
+    files: appFiles,
+  };
+}
+
+export async function loadMobileSafeApplet(options: {
+  files: MobileSafeVirtualFileSystem;
+  manifestPath?: string;
+}): Promise<MobileSafeLoadedApplet> {
+  const manifestPath = normalizeMobileSafePath(
+    options.manifestPath ?? "/app/mobile-safe-applet.json",
+  );
+  const manifest = await readMobileSafeAppletManifest(options.files, manifestPath);
+  const bundlePath = manifest.compiled?.bundlePath
+    ? normalizeMobileSafePath(manifest.compiled.bundlePath)
+    : normalizeMobileSafePath(
+        `${parentPath(manifestPath)}/.mobile-safe/${manifest.id}.bundle.js`,
+      );
+  const bundle = new TextDecoder().decode(await options.files.readFile(bundlePath));
+  assertMobileSafeAppletSource(bundle, bundlePath);
+  return { manifestPath, bundlePath, manifest, bundle };
+}
+
 export function createAndroidIsolatedProcessHook(
   options: Partial<AndroidIsolatedProcessHook> = {},
 ): AndroidIsolatedProcessHook {
@@ -315,7 +705,7 @@ export function createAndroidIsolatedProcessProvider(
         },
       });
 
-      if (response.ok) return { ok: true, value: response.result };
+      if (response.ok === true) return { ok: true, value: response.result };
       return {
         ok: false,
         error: {
@@ -355,14 +745,273 @@ export function createMobileSafeCapabilityBroker(
   };
 }
 
+export function createMobileSafeVirtualFileSystemBroker(
+  files: MobileSafeVirtualFileSystem,
+): MobileSafeCapabilityBroker {
+  return createMobileSafeCapabilityBroker(async (request) => {
+    const path =
+      typeof request.args.path === "string"
+        ? request.args.path
+        : typeof request.args.target === "string"
+          ? request.args.target
+          : "/";
+    switch (request.capability) {
+      case "fs.read":
+        return {
+          id: request.id,
+          ok: true,
+          result: await files.readFile(path),
+        };
+      case "fs.write": {
+        const raw = request.args.data ?? request.args.content;
+        const data =
+          raw instanceof Uint8Array
+            ? raw
+            : new TextEncoder().encode(
+                typeof raw === "string" ? raw : JSON.stringify(raw ?? ""),
+              );
+        await files.writeFile(path, data);
+        return { id: request.id, ok: true, result: { path } };
+      }
+      case "fs.delete":
+        await files.delete(path);
+        return { id: request.id, ok: true, result: { path } };
+      case "fs.mkdir":
+        await files.mkdir(path);
+        return { id: request.id, ok: true, result: { path } };
+      case "fs.stat":
+        return { id: request.id, ok: true, result: await files.stat(path) };
+      case "fs.list":
+        return { id: request.id, ok: true, result: await files.list(path) };
+      case "fs.snapshot":
+        if (!files.createSnapshot) {
+          return unsupportedCapability(request, "VFS snapshots are unavailable");
+        }
+        return {
+          id: request.id,
+          ok: true,
+          result: await files.createSnapshot(
+            typeof request.args.note === "string" ? request.args.note : undefined,
+          ),
+        };
+      case "fs.diff":
+        if (!files.diffCurrent) {
+          return unsupportedCapability(request, "VFS diffs are unavailable");
+        }
+        if (typeof request.args.snapshotId !== "string") {
+          return unsupportedCapability(request, "snapshotId is required");
+        }
+        return {
+          id: request.id,
+          ok: true,
+          result: await files.diffCurrent(request.args.snapshotId),
+        };
+      case "fs.rollback":
+        if (!files.rollback) {
+          return unsupportedCapability(request, "VFS rollback is unavailable");
+        }
+        if (typeof request.args.snapshotId !== "string") {
+          return unsupportedCapability(request, "snapshotId is required");
+        }
+        await files.rollback(request.args.snapshotId);
+        return { id: request.id, ok: true, result: { rolledBack: true } };
+      case "fs.quota":
+        if (!files.quota) {
+          return unsupportedCapability(request, "VFS quota is unavailable");
+        }
+        return { id: request.id, ok: true, result: await files.quota() };
+      default:
+        return unsupportedCapability(
+          request,
+          `Unsupported mobile-safe VFS capability: ${request.capability}`,
+        );
+    }
+  });
+}
+
+export interface AgentVirtualFilesystemLike {
+  readFile?(path: string): Promise<string>;
+  readFileBytes?(path: string): Promise<Uint8Array>;
+  writeFile(path: string, data: string | Uint8Array): Promise<unknown>;
+  delete?(path: string, options?: { recursive?: boolean }): Promise<void>;
+  list?(
+    path?: string,
+    options?: { recursive?: boolean },
+  ): Promise<
+    Array<{
+      path: string;
+      type?: "file" | "directory";
+      kind?: "file" | "directory";
+      size: number;
+      mtimeMs?: number;
+      updatedAt?: number;
+    }>
+  >;
+  createSnapshot?(note?: string): Promise<{
+    id: string;
+    createdAt?: string | number;
+    note?: string;
+    filesBytes: number;
+    fileCount: number;
+  }>;
+  diffCurrent?(snapshotId: string): Promise<
+    Array<{
+      path: string;
+      status: MobileSafeRuntimeDiffStatus;
+      before?: {
+        path: string;
+        type?: "file" | "directory";
+        kind?: "file" | "directory";
+        size: number;
+        mtimeMs?: number;
+        updatedAt?: number;
+      };
+      after?: {
+        path: string;
+        type?: "file" | "directory";
+        kind?: "file" | "directory";
+        size: number;
+        mtimeMs?: number;
+        updatedAt?: number;
+      };
+    }>
+  >;
+  rollback?(snapshotId: string): Promise<unknown>;
+  quota?(): Promise<MobileSafeRuntimeQuota>;
+  quotaBytes?: number;
+  maxFileBytes?: number;
+}
+
+export function createMobileSafeVirtualFileSystemAdapter(
+  vfs: AgentVirtualFilesystemLike,
+): MobileSafeVirtualFileSystem {
+  return {
+    async readFile(path) {
+      if (vfs.readFileBytes) {
+        return new Uint8Array(await vfs.readFileBytes(path));
+      }
+      if (vfs.readFile) {
+        return new TextEncoder().encode(await vfs.readFile(path));
+      }
+      throw new Error("Wrapped VFS does not support readFile");
+    },
+    async writeFile(path, data) {
+      await vfs.writeFile(path, data);
+    },
+    async delete(path) {
+      if (!vfs.delete) throw new Error("Wrapped VFS does not support delete");
+      await vfs.delete(path, { recursive: true });
+    },
+    async mkdir(_path) {
+      // The agent VFS creates parent directories on write and intentionally does
+      // not expose empty directory creation as a primitive.
+    },
+    async stat(path) {
+      if (!vfs.list) return null;
+      if (normalizeMobileSafePath(path) === "/") {
+        return { path: "/", kind: "directory", size: 0 };
+      }
+      const parent = parentPath(path);
+      const entries = await vfs.list(parent === "/" ? "." : parent);
+      const normalized = normalizeMobileSafePath(path);
+      const match = entries.find(
+        (entry) => normalizeMobileSafePath(entry.path) === normalized,
+      );
+      return match ? toMobileSafeFileInfo(match) : null;
+    },
+    async list(path) {
+      if (!vfs.list) return [];
+      const entries = await vfs.list(path === "/" ? "." : path);
+      return entries.map(toMobileSafeFileInfo);
+    },
+    createSnapshot: vfs.createSnapshot
+      ? async (note) => toMobileSafeSnapshot(await vfs.createSnapshot?.(note))
+      : undefined,
+    diffCurrent: vfs.diffCurrent
+      ? async (snapshotId) =>
+          (await vfs.diffCurrent?.(snapshotId))?.map((entry) => ({
+            path: normalizeMobileSafePath(entry.path),
+            status: entry.status,
+            ...(entry.before
+              ? { before: toMobileSafeFileInfo(entry.before) }
+              : {}),
+            ...(entry.after ? { after: toMobileSafeFileInfo(entry.after) } : {}),
+          })) ?? []
+      : undefined,
+    rollback: vfs.rollback
+      ? async (snapshotId) => {
+          await vfs.rollback?.(snapshotId);
+        }
+      : undefined,
+    quota: async () => {
+      if (vfs.quota) {
+        return vfs.quota();
+      }
+      if (vfs.list) {
+        const entries = await vfs.list?.(".", { recursive: true });
+        const files = (entries ?? []).filter(
+          (entry) => (entry.kind ?? entry.type) === "file",
+        );
+        return {
+          usedBytes: files.reduce((sum, entry) => sum + entry.size, 0),
+          fileCount: files.length,
+          ...(typeof vfs.quotaBytes === "number"
+            ? { quotaBytes: vfs.quotaBytes }
+            : {}),
+          ...(typeof vfs.maxFileBytes === "number"
+            ? { maxFileBytes: vfs.maxFileBytes }
+            : {}),
+        };
+      }
+      return {
+        usedBytes: 0,
+        fileCount: 0,
+        ...(typeof vfs.quotaBytes === "number"
+          ? { quotaBytes: vfs.quotaBytes }
+          : {}),
+        ...(typeof vfs.maxFileBytes === "number"
+          ? { maxFileBytes: vfs.maxFileBytes }
+          : {}),
+      };
+    },
+  };
+}
+
+export function selectMobileSafeRuntimeProvider(options: {
+  features: MobileSafeRuntimeFeatures;
+  providers: Partial<Record<MobileSafeRuntimeProviderKind, MobileSafeRuntimeProvider>>;
+  preferredOrder?: MobileSafeRuntimeProviderKind[];
+}): MobileSafeRuntimeProvider {
+  const order =
+    options.preferredOrder ??
+    defaultProviderOrderForPlatform(options.features.platform);
+  const available = new Set(options.features.availableProviders);
+  for (const kind of order) {
+    const provider = options.providers[kind];
+    if (provider?.supported && available.has(kind)) {
+      return provider;
+    }
+  }
+  return createUnavailableMobileSafeRuntimeProvider(
+    order[0] ?? "wasm",
+    "No supported mobile-safe runtime provider is attached",
+  );
+}
+
 export function normalizeMobileSafePath(path: string): string {
+  if (typeof path !== "string" || path.includes("\0")) {
+    throw new Error("Invalid mobile-safe VFS path");
+  }
+  const rawParts = path.replaceAll("\\", "/").split("/");
+  if (rawParts.some((part) => part === "..")) {
+    throw new Error("Path traversal segments are not allowed");
+  }
   const normalized = path
     .replaceAll("\\", "/")
     .split("/")
     .filter((part) => part.length > 0 && part !== ".")
     .reduce<string[]>((parts, part) => {
-      if (part === "..") parts.pop();
-      else parts.push(part);
+      parts.push(part);
       return parts;
     }, []);
 
@@ -377,6 +1026,15 @@ export class MemoryMobileSafeVirtualFileSystem
     { data: Uint8Array; updatedAt: number }
   >();
   private readonly directories = new Set<string>(["/"]);
+  private readonly snapshots = new Map<
+    string,
+    {
+      meta: MobileSafeRuntimeSnapshot;
+      files: Map<string, { data: Uint8Array; updatedAt: number }>;
+      directories: Set<string>;
+    }
+  >();
+  private snapshotCounter = 0;
 
   async readFile(path: string): Promise<Uint8Array> {
     const entry = this.files.get(normalizeMobileSafePath(path));
@@ -443,6 +1101,168 @@ export class MemoryMobileSafeVirtualFileSystem
 
     return entries.sort((left, right) => left.path.localeCompare(right.path));
   }
+
+  async createSnapshot(note?: string): Promise<MobileSafeRuntimeSnapshot> {
+    const { usedBytes, fileCount } = await this.quota();
+    const id = `mobile-safe-${Date.now()}-${++this.snapshotCounter}`;
+    const meta: MobileSafeRuntimeSnapshot = {
+      id,
+      createdAt: Date.now(),
+      ...(note ? { note } : {}),
+      filesBytes: usedBytes,
+      fileCount,
+    };
+    const files = new Map<string, { data: Uint8Array; updatedAt: number }>();
+    for (const [filePath, entry] of this.files) {
+      files.set(filePath, {
+        data: new Uint8Array(entry.data),
+        updatedAt: entry.updatedAt,
+      });
+    }
+    this.snapshots.set(id, {
+      meta,
+      files,
+      directories: new Set(this.directories),
+    });
+    return meta;
+  }
+
+  async diffCurrent(snapshotId: string): Promise<MobileSafeRuntimeDiffEntry[]> {
+    const snapshot = this.snapshots.get(snapshotId);
+    if (!snapshot) throw new Error(`Snapshot not found: ${snapshotId}`);
+    return diffFileMaps(snapshot.files, this.files);
+  }
+
+  async rollback(snapshotId: string): Promise<void> {
+    const snapshot = this.snapshots.get(snapshotId);
+    if (!snapshot) throw new Error(`Snapshot not found: ${snapshotId}`);
+    this.files.clear();
+    for (const [filePath, entry] of snapshot.files) {
+      this.files.set(filePath, {
+        data: new Uint8Array(entry.data),
+        updatedAt: entry.updatedAt,
+      });
+    }
+    this.directories.clear();
+    for (const directory of snapshot.directories) {
+      this.directories.add(directory);
+    }
+  }
+
+  async quota(): Promise<MobileSafeRuntimeQuota> {
+    let usedBytes = 0;
+    for (const entry of this.files.values()) {
+      usedBytes += entry.data.byteLength;
+    }
+    return {
+      usedBytes,
+      fileCount: this.files.size,
+    };
+  }
+}
+
+function diffFileMaps(
+  before: Map<string, { data: Uint8Array; updatedAt: number }>,
+  after: Map<string, { data: Uint8Array; updatedAt: number }>,
+): MobileSafeRuntimeDiffEntry[] {
+  const paths = new Set([...before.keys(), ...after.keys()]);
+  const entries: MobileSafeRuntimeDiffEntry[] = [];
+  for (const filePath of [...paths].sort((left, right) =>
+    left.localeCompare(right),
+  )) {
+    const beforeEntry = before.get(filePath);
+    const afterEntry = after.get(filePath);
+    if (!beforeEntry && afterEntry) {
+      entries.push({
+        path: filePath,
+        status: "added",
+        after: fileInfo(filePath, afterEntry),
+      });
+      continue;
+    }
+    if (beforeEntry && !afterEntry) {
+      entries.push({
+        path: filePath,
+        status: "deleted",
+        before: fileInfo(filePath, beforeEntry),
+      });
+      continue;
+    }
+    if (
+      beforeEntry &&
+      afterEntry &&
+      !sameBytes(beforeEntry.data, afterEntry.data)
+    ) {
+      entries.push({
+        path: filePath,
+        status: "modified",
+        before: fileInfo(filePath, beforeEntry),
+        after: fileInfo(filePath, afterEntry),
+      });
+    }
+  }
+  return entries;
+}
+
+function fileInfo(
+  path: string,
+  entry: { data: Uint8Array; updatedAt: number },
+): MobileSafeRuntimeFileInfo {
+  return {
+    path,
+    kind: "file",
+    size: entry.data.byteLength,
+    updatedAt: entry.updatedAt,
+  };
+}
+
+function toMobileSafeFileInfo(entry: {
+  path: string;
+  type?: "file" | "directory";
+  kind?: "file" | "directory";
+  size: number;
+  mtimeMs?: number;
+  updatedAt?: number;
+}): MobileSafeRuntimeFileInfo {
+  return {
+    path: normalizeMobileSafePath(entry.path),
+    kind: entry.kind ?? entry.type ?? "file",
+    size: entry.size,
+    updatedAt: entry.updatedAt ?? entry.mtimeMs,
+  };
+}
+
+function toMobileSafeSnapshot(
+  snapshot:
+    | {
+        id: string;
+        createdAt?: string | number;
+        note?: string;
+        filesBytes: number;
+        fileCount: number;
+      }
+    | undefined,
+): MobileSafeRuntimeSnapshot {
+  if (!snapshot) throw new Error("Wrapped VFS did not return a snapshot");
+  const createdAt =
+    typeof snapshot.createdAt === "string"
+      ? Date.parse(snapshot.createdAt)
+      : snapshot.createdAt;
+  return {
+    id: snapshot.id,
+    createdAt: Number.isFinite(createdAt) ? Number(createdAt) : Date.now(),
+    ...(snapshot.note ? { note: snapshot.note } : {}),
+    filesBytes: snapshot.filesBytes,
+    fileCount: snapshot.fileCount,
+  };
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
 }
 
 function resolveMobileSafeRuntimePlatform(
@@ -465,6 +1285,8 @@ function resolveMobileSafeRuntimePlatform(
 
 function displayNameForProvider(kind: MobileSafeRuntimeProviderKind): string {
   switch (kind) {
+    case "android-avf-microdroid":
+      return "Android AVF/Microdroid";
     case "android-isolated-process":
       return "Android isolated process";
     case "javascriptcore":
@@ -474,6 +1296,36 @@ function displayNameForProvider(kind: MobileSafeRuntimeProviderKind): string {
     case "wasm":
       return "WebAssembly";
   }
+}
+
+function defaultProviderOrderForPlatform(
+  platform: MobileSafeRuntimePlatform,
+): MobileSafeRuntimeProviderKind[] {
+  switch (platform) {
+    case "android":
+      return ["android-avf-microdroid", "android-isolated-process", "wasm"];
+    case "ios":
+      return ["quickjs", "javascriptcore", "wasm"];
+    case "web":
+      return ["wasm"];
+    default:
+      return ["wasm"];
+  }
+}
+
+function unsupportedCapability(
+  request: MobileSafeRuntimeCapabilityRequest,
+  message: string,
+): MobileSafeRuntimeCapabilityResponse {
+  return {
+    id: request.id,
+    ok: false,
+    error: {
+      code: "MOBILE_SAFE_UNSUPPORTED_CAPABILITY",
+      message,
+      retryable: false,
+    },
+  };
 }
 
 function providerFailure(
@@ -492,6 +1344,12 @@ function providerFailure(
 
 function globalThisAsRecord(): Record<string, unknown> {
   return globalThis as Record<string, unknown>;
+}
+
+function readBooleanGlobal(value: unknown, key: string): boolean | undefined {
+  if (value === null || typeof value !== "object") return undefined;
+  const raw = (value as Record<string, unknown>)[key];
+  return typeof raw === "boolean" ? raw : undefined;
 }
 
 function parentPath(path: string): string {

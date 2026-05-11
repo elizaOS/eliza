@@ -17,7 +17,9 @@ Customer tunnel provisioning is gated by the Cloud API route
 Cloud user or API key with an active organization, debits org credits once per
 successful provisioning, mints a short-lived non-reusable key tagged
 `tag:eliza-tunnel`, and returns a signed generated
-`eliza-<org>-<random>-<signature>` hostname for the tunnel proxy.
+`eliza-<org>-<random>-<expiry>-<signature>` hostname for the tunnel proxy. The
+proxy rejects signed hostnames after their embedded expiry, so public tunnel
+URLs do not become permanent reusable aliases.
 
 ## Deploy on Railway
 

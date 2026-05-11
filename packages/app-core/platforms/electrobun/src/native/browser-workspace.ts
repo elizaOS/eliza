@@ -10,6 +10,10 @@ const DEFAULT_EVAL_TIMEOUT_MS = 30_000;
 const MIN_EVAL_TIMEOUT_MS = 1_000;
 const MAX_EVAL_TIMEOUT_MS = 5 * 60 * 1_000;
 const CONNECTOR_PARTITION_PREFIX = "persist:connector-";
+const DEFAULT_EVENT_LOG_LIMIT = 1_000;
+const MAX_EVENT_QUERY_LIMIT = 1_000;
+const MAX_EVENT_PAYLOAD_DEPTH = 4;
+const MAX_EVENT_STRING_LENGTH = 500;
 type BrowserWorkspaceTabKind = "internal" | "standard";
 type BrowserWorkspaceConnectorAuthState =
 	| "unknown"
@@ -17,6 +21,17 @@ type BrowserWorkspaceConnectorAuthState =
 	| "auth_pending"
 	| "needs_reauth"
 	| "manual_handoff";
+export type BrowserWorkspaceEventType =
+	| "open"
+	| "navigate"
+	| "show"
+	| "hide"
+	| "close"
+	| "eval.start"
+	| "eval.end"
+	| "eval.error"
+	| "snapshot.success"
+	| "snapshot.miss";
 
 export interface BrowserWorkspaceTabSnapshot {
 	id: string;
@@ -31,6 +46,29 @@ export interface BrowserWorkspaceTabSnapshot {
 }
 
 interface BrowserWorkspaceTab extends BrowserWorkspaceTabSnapshot {}
+
+export interface BrowserWorkspaceEvent {
+	seq: number;
+	timestamp: string;
+	type: BrowserWorkspaceEventType;
+	tabId: string | null;
+	url?: string;
+	title?: string;
+	payload?: Record<string, unknown>;
+}
+
+export interface ListBrowserWorkspaceEventsOptions {
+	after?: number;
+	limit?: number;
+	tabId?: string;
+	type?: BrowserWorkspaceEventType;
+}
+
+export interface BrowserWorkspaceEventLogSnapshot {
+	events: BrowserWorkspaceEvent[];
+	latestSequence: number;
+	limit: number;
+}
 
 export interface OpenBrowserWorkspaceTabOptions {
 	url?: string;
@@ -211,6 +249,84 @@ function resolveEvalTimeoutMs(): number {
 	return Math.min(MAX_EVAL_TIMEOUT_MS, Math.max(MIN_EVAL_TIMEOUT_MS, parsed));
 }
 
+function resolveEventLogLimit(): number {
+	const raw = process.env.ELIZA_BROWSER_WORKSPACE_EVENT_LOG_LIMIT?.trim();
+	const parsed = raw ? Number.parseInt(raw, 10) : DEFAULT_EVENT_LOG_LIMIT;
+	if (!Number.isFinite(parsed)) return DEFAULT_EVENT_LOG_LIMIT;
+	return Math.min(MAX_EVENT_QUERY_LIMIT, Math.max(1, parsed));
+}
+
+function sanitizeEventString(value: string): string {
+	return value.length > MAX_EVENT_STRING_LENGTH
+		? `${value.slice(0, MAX_EVENT_STRING_LENGTH)}...`
+		: value;
+}
+
+function isSensitiveEventPayloadKey(key: string): boolean {
+	const normalized = key.toLowerCase();
+	return (
+		normalized.includes("token") ||
+		normalized.includes("secret") ||
+		normalized.includes("password") ||
+		normalized.includes("credential") ||
+		normalized.includes("authorization") ||
+		normalized.includes("cookie") ||
+		normalized.includes("set-cookie") ||
+		normalized.includes("api-key") ||
+		normalized.includes("apikey")
+	);
+}
+
+function scrubEventPayloadValue(value: unknown, depth = 0): unknown {
+	if (depth > MAX_EVENT_PAYLOAD_DEPTH) return "[truncated]";
+	if (value instanceof Error) {
+		return { error: sanitizeEventString(value.message || "Internal error") };
+	}
+	if (typeof value === "string") return sanitizeEventString(value);
+	if (
+		value === null ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return value;
+	}
+	if (typeof value === "bigint") return value.toString();
+	if (typeof value === "undefined") return null;
+	if (Array.isArray(value)) {
+		return value
+			.slice(0, 50)
+			.map((entry) => scrubEventPayloadValue(entry, depth + 1));
+	}
+	if (value && typeof value === "object") {
+		const out: Record<string, unknown> = {};
+		for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+			if (typeof entry === "undefined") continue;
+			if (key === "stack" || key === "stackTrace") continue;
+			out[key] = isSensitiveEventPayloadKey(key)
+				? "[redacted]"
+				: scrubEventPayloadValue(entry, depth + 1);
+		}
+		return out;
+	}
+	return String(value);
+}
+
+function scrubEventPayload(
+	payload: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+	if (!payload) return undefined;
+	const scrubbed = scrubEventPayloadValue(payload);
+	return scrubbed && typeof scrubbed === "object" && !Array.isArray(scrubbed)
+		? (scrubbed as Record<string, unknown>)
+		: undefined;
+}
+
+function describeValueType(value: unknown): string {
+	if (value === null) return "null";
+	if (Array.isArray(value)) return "array";
+	return typeof value;
+}
+
 /**
  * Capture an OS-level PNG of a screen-pixel rectangle and return base64.
  *
@@ -301,6 +417,8 @@ export class BrowserWorkspaceManager {
 	private sendToWebview: SendToWebview | null = null;
 	private rendererCaller: BrowserWorkspaceRendererCaller | null = null;
 	private readonly tabs = new Map<string, BrowserWorkspaceTab>();
+	private readonly events: BrowserWorkspaceEvent[] = [];
+	private eventSequence = 0;
 
 	setSendToWebview(fn: SendToWebview | null): void {
 		this.sendToWebview = fn;
@@ -312,6 +430,33 @@ export class BrowserWorkspaceManager {
 
 	private notify(event: string, payload: Record<string, unknown>): void {
 		this.sendToWebview?.("browserWorkspaceEvent", { event, ...payload });
+	}
+
+	private recordEvent(
+		type: BrowserWorkspaceEventType,
+		tab: BrowserWorkspaceTabSnapshot | BrowserWorkspaceTab | null,
+		payload?: Record<string, unknown>,
+	): BrowserWorkspaceEvent {
+		const scrubbedPayload = scrubEventPayload(payload);
+		const payloadTabId =
+			typeof payload?.tabId === "string" && payload.tabId.trim()
+				? payload.tabId.trim()
+				: null;
+		const event: BrowserWorkspaceEvent = {
+			seq: ++this.eventSequence,
+			timestamp: toIsoNow(),
+			type,
+			tabId: tab?.id ?? payloadTabId,
+			...(tab?.url ? { url: tab.url } : {}),
+			...(tab?.title ? { title: tab.title } : {}),
+			...(scrubbedPayload ? { payload: scrubbedPayload } : {}),
+		};
+		this.events.push(event);
+		const limit = resolveEventLogLimit();
+		if (this.events.length > limit) {
+			this.events.splice(0, this.events.length - limit);
+		}
+		return event;
 	}
 
 	private toSnapshot(tab: BrowserWorkspaceTab): BrowserWorkspaceTabSnapshot {
@@ -350,6 +495,31 @@ export class BrowserWorkspaceManager {
 		return { tabs };
 	}
 
+	async listEvents(
+		options: ListBrowserWorkspaceEventsOptions = {},
+	): Promise<BrowserWorkspaceEventLogSnapshot> {
+		const after =
+			typeof options.after === "number" && Number.isFinite(options.after)
+				? options.after
+				: 0;
+		const limit =
+			typeof options.limit === "number" && Number.isFinite(options.limit)
+				? Math.min(MAX_EVENT_QUERY_LIMIT, Math.max(1, Math.floor(options.limit)))
+				: resolveEventLogLimit();
+		const tabId = options.tabId?.trim();
+		const type = options.type;
+		const events = this.events
+			.filter((event) => event.seq > after)
+			.filter((event) => !tabId || event.tabId === tabId)
+			.filter((event) => !type || event.type === type)
+			.slice(-limit);
+		return {
+			events,
+			latestSequence: this.eventSequence,
+			limit: resolveEventLogLimit(),
+		};
+	}
+
 	async openTab(
 		options: OpenBrowserWorkspaceTabOptions = {},
 	): Promise<BrowserWorkspaceTabSnapshot> {
@@ -383,6 +553,10 @@ export class BrowserWorkspaceManager {
 		};
 
 		this.tabs.set(id, tab);
+		this.recordEvent("open", tab, {
+			visible,
+			kind,
+		});
 		this.notify("opened", { tab: this.toSnapshot(tab) });
 		return this.toSnapshot(tab);
 	}
@@ -473,49 +647,113 @@ export class BrowserWorkspaceManager {
 		const nextUrl = assertBrowserWorkspaceUrl(options.url);
 		tab.url = nextUrl;
 		tab.updatedAt = toIsoNow();
+		this.recordEvent("navigate", tab);
 		this.notify("navigated", { tab: this.toSnapshot(tab) });
 		return this.toSnapshot(tab);
 	}
 
 	async evaluateTab(options: { id: string; script: string }): Promise<unknown> {
+		const timeoutMs = resolveEvalTimeoutMs();
+		const startedAt = Date.now();
 		const tab = this.getTab(options.id);
 		if (!tab) {
+			this.recordEvent("eval.start", null, {
+				tabId: options.id,
+				scriptLength: options.script.length,
+				timeoutMs,
+			});
+			this.recordEvent("eval.error", null, {
+				tabId: options.id,
+				error: `browser workspace tab not found: ${options.id}`,
+				durationMs: Date.now() - startedAt,
+			});
 			throw new Error(`browser workspace tab not found: ${options.id}`);
 		}
+		this.recordEvent("eval.start", tab, {
+			scriptLength: options.script.length,
+			timeoutMs,
+		});
 		if (!this.rendererCaller) {
+			this.recordEvent("eval.error", tab, {
+				error: "browser workspace renderer is not attached — eval unavailable",
+				scriptLength: options.script.length,
+				durationMs: Date.now() - startedAt,
+			});
 			throw new Error(
 				"browser workspace renderer is not attached — eval unavailable",
 			);
 		}
 
-		const reply = await this.rendererCaller.evaluate({
-			id: tab.id,
-			script: options.script,
-			timeoutMs: resolveEvalTimeoutMs(),
-		});
-		if (!reply.ok) {
-			throw new Error(reply.error ?? "browser workspace tab eval failed");
+		try {
+			const reply = await this.rendererCaller.evaluate({
+				id: tab.id,
+				script: options.script,
+				timeoutMs,
+			});
+			const durationMs = Date.now() - startedAt;
+			if (!reply.ok) {
+				throw new Error(reply.error ?? "browser workspace tab eval failed");
+			}
+			this.recordEvent("eval.end", tab, {
+				durationMs,
+				resultType: describeValueType(reply.result),
+			});
+			return reply.result;
+		} catch (error) {
+			if (error instanceof Error) {
+				this.recordEvent("eval.error", tab, {
+					durationMs: Date.now() - startedAt,
+					error: error.message,
+				});
+			}
+			throw error;
 		}
-		return reply.result;
 	}
 
 	async snapshotTab(options: { id: string }): Promise<{ data: string } | null> {
 		const tab = this.getTab(options.id);
-		if (!tab?.visible) return null;
-		if (!this.rendererCaller) return null;
+		if (!tab) {
+			this.recordEvent("snapshot.miss", null, {
+				tabId: options.id,
+				reason: "tab_not_found",
+			});
+			return null;
+		}
+		if (!tab.visible) {
+			this.recordEvent("snapshot.miss", tab, { reason: "tab_hidden" });
+			return null;
+		}
+		if (!this.rendererCaller) {
+			this.recordEvent("snapshot.miss", tab, { reason: "renderer_unavailable" });
+			return null;
+		}
 
 		const tabRect = await this.rendererCaller.getTabRect({ id: tab.id });
-		if (!tabRect) return null;
+		if (!tabRect) {
+			this.recordEvent("snapshot.miss", tab, { reason: "tab_rect_unavailable" });
+			return null;
+		}
 
 		const window = getCurrentMainWindowSnapshot();
-		if (!window.bounds) return null;
+		if (!window.bounds) {
+			this.recordEvent("snapshot.miss", tab, {
+				reason: "window_bounds_unavailable",
+			});
+			return null;
+		}
 
-		return await captureScreenRegionPng({
+		const snapshot = await captureScreenRegionPng({
 			x: window.bounds.x + tabRect.x,
 			y: window.bounds.y + tabRect.y,
 			width: tabRect.width,
 			height: tabRect.height,
 		});
+		this.recordEvent(snapshot ? "snapshot.success" : "snapshot.miss", tab, {
+			reason: snapshot ? undefined : "capture_failed",
+			width: Math.round(tabRect.width),
+			height: Math.round(tabRect.height),
+		});
+		return snapshot;
 	}
 
 	async showTab(options: {
@@ -527,6 +765,7 @@ export class BrowserWorkspaceManager {
 		tab.visible = true;
 		tab.lastFocusedAt = toIsoNow();
 		tab.updatedAt = tab.lastFocusedAt;
+		this.recordEvent("show", tab);
 		this.notify("shown", { tab: this.toSnapshot(tab) });
 		return this.toSnapshot(tab);
 	}
@@ -539,6 +778,7 @@ export class BrowserWorkspaceManager {
 
 		tab.visible = false;
 		tab.updatedAt = toIsoNow();
+		this.recordEvent("hide", tab);
 		this.notify("hidden", { tab: this.toSnapshot(tab) });
 		return this.toSnapshot(tab);
 	}
@@ -547,12 +787,15 @@ export class BrowserWorkspaceManager {
 		const tab = this.getTab(options.id);
 		if (!tab) return false;
 		this.tabs.delete(options.id);
+		this.recordEvent("close", tab);
 		this.notify("closed", { id: tab.id });
 		return true;
 	}
 
 	dispose(): void {
 		this.tabs.clear();
+		this.events.length = 0;
+		this.eventSequence = 0;
 		this.sendToWebview = null;
 		this.rendererCaller = null;
 	}

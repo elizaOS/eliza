@@ -33,26 +33,29 @@ afterEach(() => {
 const emptyConfig: ElizaConfig = {} as ElizaConfig;
 
 describe("collectPluginNames AOSP terminal plugins", () => {
-  it("includes shell + coding-tools on AOSP (android + ELIZA_LOCAL_LLAMA=1)", () => {
+  it("includes shell + coding-tools + orchestrator on AOSP (android + ELIZA_LOCAL_LLAMA=1)", () => {
     process.env.ELIZA_PLATFORM = "android";
     process.env.ELIZA_LOCAL_LLAMA = "1";
     const names = collectPluginNames(emptyConfig);
     expect(names.has("@elizaos/plugin-shell")).toBe(true);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(true);
+    expect(names.has("agent-orchestrator")).toBe(true);
   });
 
-  it("excludes shell + coding-tools on stock Android (no ELIZA_LOCAL_LLAMA)", () => {
+  it("excludes shell + coding-tools + orchestrator on stock Android (no ELIZA_LOCAL_LLAMA)", () => {
     process.env.ELIZA_PLATFORM = "android";
     const names = collectPluginNames(emptyConfig);
     expect(names.has("@elizaos/plugin-shell")).toBe(false);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
+    expect(names.has("agent-orchestrator")).toBe(false);
   });
 
-  it("excludes shell + coding-tools on iOS", () => {
+  it("excludes shell + coding-tools + orchestrator on iOS", () => {
     process.env.ELIZA_PLATFORM = "ios";
     const names = collectPluginNames(emptyConfig);
     expect(names.has("@elizaos/plugin-shell")).toBe(false);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
+    expect(names.has("agent-orchestrator")).toBe(false);
   });
 
   it("includes ELIZAOS_ANDROID_CORE_PLUGINS alongside terminal plugins on AOSP", () => {
