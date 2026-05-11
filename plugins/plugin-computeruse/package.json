@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-computeruse",
   "version": "2.0.0-beta.1",
-  "description": "Desktop automation plugin — screenshots, mouse/keyboard control, browser CDP, terminal access, file operations, and window management for elizaOS agents. Ported from open-computer-use (Apache 2.0).",
+  "description": "Desktop automation plugin — screenshots, mouse/keyboard control, browser CDP, and window management for elizaOS agents. Ported from open-computer-use (Apache 2.0).",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",

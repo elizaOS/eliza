@@ -70,7 +70,7 @@ const TOPBAR_RIGHT_ICON_BUTTON_CLASSNAME =
   "inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] shrink-0 items-center justify-center rounded-md border border-transparent !bg-transparent text-muted shadow-none ring-0 transition-colors duration-150 hover:!bg-transparent hover:text-txt active:!bg-transparent data-[state=open]:!bg-transparent";
 const TOPBAR_RIGHT_ICON_BUTTON_ACTIVE_CLASSNAME = "text-accent";
 const MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME =
-  "group relative mx-auto inline-flex h-11 w-full max-w-12 min-w-0 shrink-0 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2 after:top-0 after:h-[2px] after:rounded-b-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150";
+  "group relative mx-auto inline-flex h-14 w-full max-w-16 min-w-0 shrink-0 flex-col items-center justify-center gap-0.5 rounded-md py-1 text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2 after:top-0 after:h-[2px] after:rounded-b-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150";
 const MOBILE_BOTTOM_NAV_BUTTON_ACTIVE_CLASSNAME =
   "text-accent after:opacity-100";
 const MAC_TITLEBAR_PADDING_STYLE: CSSProperties = {
@@ -518,6 +518,12 @@ export function Header({
               data-no-camera-drag="true"
             >
               <group.icon className="pointer-events-none h-4.5 w-4.5 shrink-0" />
+              <span
+                data-testid={`header-mobile-bottom-nav-label-${primaryTab}`}
+                className="pointer-events-none truncate text-[10px] leading-none font-medium"
+              >
+                {localizedGroup.label}
+              </span>
             </Button>
           );
         })}

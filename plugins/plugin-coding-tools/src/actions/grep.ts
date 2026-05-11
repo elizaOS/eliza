@@ -1,5 +1,4 @@
 import {
-  type Action,
   type ActionResult,
   logger as coreLogger,
   type HandlerCallback,
@@ -24,7 +23,6 @@ import type {
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import {
-  CODING_TOOLS_CONTEXTS,
   CODING_TOOLS_LOG_PREFIX,
   RIPGREP_SERVICE,
   SANDBOX_SERVICE,
@@ -39,287 +37,159 @@ function isValidMode(value: string | undefined): value is RipgrepMode {
   );
 }
 
-export const grepAction: Action = {
-  name: "GREP",
-  contexts: [...CODING_TOOLS_CONTEXTS],
-  contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
-  roleGate: { minRole: "ADMIN" },
-  similes: ["SEARCH_CONTENT", "RIPGREP", "RG"],
-  description:
-    "Search file contents using ripgrep (a fast regex search). Returns matching files, counts, or line content. Always excludes VCS directories. Use this instead of SHELL for content search.",
-  descriptionCompressed:
-    "Ripgrep wrapper: regex search across files, returns matches/counts/files.",
-  parameters: [
-    {
-      name: "pattern",
-      description: "Regex pattern to search for.",
-      required: true,
-      schema: { type: "string" },
-    },
-    {
-      name: "path",
-      description:
-        "Absolute path to a file or directory to search. Defaults to the session cwd.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "glob",
-      description: "Optional glob filter passed to ripgrep -g (e.g. '*.ts').",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "type",
-      description:
-        "Optional ripgrep file type passed via -t (e.g. 'js', 'py').",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "output_mode",
-      description:
-        "How to render matches: 'content' returns matching lines, 'files_with_matches' returns file paths, 'count' returns per-file counts. Defaults to 'files_with_matches'.",
-      required: false,
-      schema: {
-        type: "string",
-        enum: ["content", "files_with_matches", "count"],
-      },
-    },
-    {
-      name: "-A",
-      description: "Lines of context to show after each match (content mode).",
-      required: false,
-      schema: { type: "number" },
-    },
-    {
-      name: "-B",
-      description: "Lines of context to show before each match (content mode).",
-      required: false,
-      schema: { type: "number" },
-    },
-    {
-      name: "-C",
-      description: "Lines of context around each match (content mode).",
-      required: false,
-      schema: { type: "number" },
-    },
-    {
-      name: "case_insensitive",
-      description: "Match case-insensitively (alias of -i).",
-      required: false,
-      schema: { type: "boolean" },
-    },
-    {
-      name: "multiline",
-      description: "Enable multiline matching (the pattern can span newlines).",
-      required: false,
-      schema: { type: "boolean" },
-    },
-    {
-      name: "head_limit",
-      description:
-        "Truncate output to the first N lines. 0 means unlimited. Defaults to CODING_TOOLS_GREP_HEAD_LIMIT or 250.",
-      required: false,
-      schema: { type: "number" },
-    },
-    {
-      name: "show_line_numbers",
-      description: "Show 1-based line numbers in content mode.",
-      required: false,
-      schema: { type: "boolean" },
-    },
-  ],
-  validate: async () => true,
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-    options?: unknown,
-    callback?: HandlerCallback,
-  ): Promise<ActionResult> => {
-    const conversationId =
-      message.roomId !== undefined && message.roomId !== null
-        ? String(message.roomId)
-        : undefined;
-    if (!conversationId) {
-      return failureToActionResult({
-        reason: "missing_param",
-        message: "no roomId",
-      });
+export async function grepHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state: State | undefined,
+  options: unknown,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const conversationId =
+    message.roomId !== undefined && message.roomId !== null
+      ? String(message.roomId)
+      : undefined;
+  if (!conversationId) {
+    return failureToActionResult({
+      reason: "missing_param",
+      message: "no roomId",
+    });
+  }
+
+  const pattern = readStringParam(options, "pattern");
+  if (!pattern || pattern.length === 0) {
+    return failureToActionResult({
+      reason: "missing_param",
+      message: "pattern is required",
+    });
+  }
+
+  const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
+    typeof SandboxService
+  > | null;
+  const session = runtime.getService(SESSION_CWD_SERVICE) as InstanceType<
+    typeof SessionCwdService
+  > | null;
+  const rg = runtime.getService(RIPGREP_SERVICE) as InstanceType<
+    typeof RipgrepService
+  > | null;
+  if (!sandbox || !session || !rg) {
+    return failureToActionResult({
+      reason: "internal",
+      message: "coding-tools services unavailable",
+    });
+  }
+
+  try {
+    const requestedPath = readStringParam(options, "path");
+    const targetPath = requestedPath ?? session.getCwd(conversationId);
+
+    const validation = await sandbox.validatePath(conversationId, targetPath);
+    if (validation.ok === false) {
+      const reason =
+        validation.reason === "blocked" ? "path_blocked" : "invalid_param";
+      return failureToActionResult({ reason, message: validation.message });
     }
+    const resolved = validation.resolved;
 
-    const pattern = readStringParam(options, "pattern");
-    if (!pattern || pattern.length === 0) {
-      return failureToActionResult({
-        reason: "missing_param",
-        message: "pattern is required",
-      });
-    }
+    const requestedMode = readStringParam(options, "output_mode");
+    const mode: RipgrepMode = isValidMode(requestedMode)
+      ? requestedMode
+      : "files_with_matches";
 
-    const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
-      typeof SandboxService
-    > | null;
-    const session = runtime.getService(SESSION_CWD_SERVICE) as InstanceType<
-      typeof SessionCwdService
-    > | null;
-    const rg = runtime.getService(RIPGREP_SERVICE) as InstanceType<
-      typeof RipgrepService
-    > | null;
-    if (!sandbox || !session || !rg) {
-      return failureToActionResult({
-        reason: "internal",
-        message: "coding-tools services unavailable",
-      });
-    }
+    const showLineNumbersParam = readBoolParam(options, "show_line_numbers");
+    const showLineNumbers = showLineNumbersParam ?? mode === "content";
 
-    try {
-      const requestedPath = readStringParam(options, "path");
-      const targetPath = requestedPath ?? session.getCwd(conversationId);
+    const rgOptions: RipgrepOptions = {
+      pattern,
+      path: resolved,
+      showLineNumbers,
+    };
+    const glob = readStringParam(options, "glob");
+    if (glob !== undefined) rgOptions.glob = glob;
+    const type = readStringParam(options, "type");
+    if (type !== undefined) rgOptions.type = type;
 
-      const validation = await sandbox.validatePath(conversationId, targetPath);
-      if (validation.ok === false) {
-        const reason =
-          validation.reason === "blocked" ? "path_blocked" : "invalid_param";
-        return failureToActionResult({ reason, message: validation.message });
-      }
-      const resolved = validation.resolved;
+    const contextBefore = readNumberParam(options, "-B");
+    if (contextBefore !== undefined)
+      rgOptions.contextBefore = Math.max(0, Math.floor(contextBefore));
+    const contextAfter = readNumberParam(options, "-A");
+    if (contextAfter !== undefined)
+      rgOptions.contextAfter = Math.max(0, Math.floor(contextAfter));
+    const contextAround = readNumberParam(options, "-C");
+    if (contextAround !== undefined)
+      rgOptions.contextAround = Math.max(0, Math.floor(contextAround));
 
-      const requestedMode = readStringParam(options, "output_mode");
-      const mode: RipgrepMode = isValidMode(requestedMode)
-        ? requestedMode
-        : "files_with_matches";
+    if (readBoolParam(options, "case_insensitive") === true)
+      rgOptions.caseInsensitive = true;
+    if (readBoolParam(options, "multiline") === true)
+      rgOptions.multiline = true;
 
-      const showLineNumbersParam = readBoolParam(options, "show_line_numbers");
-      const showLineNumbers = showLineNumbersParam ?? mode === "content";
+    const result = await rg.search(rgOptions, mode);
 
-      const rgOptions: RipgrepOptions = {
-        pattern,
-        path: resolved,
-        showLineNumbers,
-      };
-      const glob = readStringParam(options, "glob");
-      if (glob !== undefined) rgOptions.glob = glob;
-      const type = readStringParam(options, "type");
-      if (type !== undefined) rgOptions.type = type;
-
-      const contextBefore = readNumberParam(options, "-B");
-      if (contextBefore !== undefined)
-        rgOptions.contextBefore = Math.max(0, Math.floor(contextBefore));
-      const contextAfter = readNumberParam(options, "-A");
-      if (contextAfter !== undefined)
-        rgOptions.contextAfter = Math.max(0, Math.floor(contextAfter));
-      const contextAround = readNumberParam(options, "-C");
-      if (contextAround !== undefined)
-        rgOptions.contextAround = Math.max(0, Math.floor(contextAround));
-
-      if (readBoolParam(options, "case_insensitive") === true)
-        rgOptions.caseInsensitive = true;
-      if (readBoolParam(options, "multiline") === true)
-        rgOptions.multiline = true;
-
-      const result = await rg.search(rgOptions, mode);
-
-      if (
-        result.exitCode === 1 &&
-        (mode === "content" || mode === "files_with_matches")
-      ) {
-        const text = "no matches";
-        if (callback) await callback({ text, source: "coding-tools" });
-        return successActionResult(text, {
-          matches_count: 0,
-          mode,
-          truncated: false,
-        });
-      }
-
-      if (result.exitCode !== 0) {
-        return failureToActionResult({
-          reason: "command_failed",
-          message: `ripgrep exited ${result.exitCode}: ${result.output.slice(0, 500)}`,
-        });
-      }
-
-      const headLimitRequested = readNumberParam(options, "head_limit");
-      const headLimitDefault = readPositiveIntSetting(
-        runtime,
-        "CODING_TOOLS_GREP_HEAD_LIMIT",
-        DEFAULT_HEAD_LIMIT,
-      );
-      const headLimit =
-        headLimitRequested === undefined
-          ? headLimitDefault
-          : Math.max(0, Math.floor(headLimitRequested));
-
-      const rawLines =
-        result.output.length === 0
-          ? []
-          : result.output.replace(/\n$/, "").split("\n");
-
-      let outputLines = rawLines;
-      let headTruncated = false;
-      if (headLimit > 0 && rawLines.length > headLimit) {
-        outputLines = rawLines.slice(0, headLimit);
-        headTruncated = true;
-      }
-
-      const truncated = headTruncated || result.truncated;
-      const text =
-        outputLines.length === 0 ? "no matches" : outputLines.join("\n");
-
-      coreLogger.debug(
-        `${CODING_TOOLS_LOG_PREFIX} GREP pattern=${JSON.stringify(pattern)} mode=${mode} matches=${outputLines.length} truncated=${truncated}`,
-      );
-
+    if (
+      result.exitCode === 1 &&
+      (mode === "content" || mode === "files_with_matches")
+    ) {
+      const text = "no matches";
       if (callback) await callback({ text, source: "coding-tools" });
-
       return successActionResult(text, {
-        matches_count: outputLines.length,
+        matches_count: 0,
         mode,
-        truncated,
-      });
-    } catch (error) {
-      const messageText =
-        error instanceof Error ? error.message : String(error);
-      return failureToActionResult({
-        reason: "internal",
-        message: `grep failed: ${messageText.slice(0, 500)}`,
+        truncated: false,
       });
     }
-  },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Search the codebase for 'TODO' comments.", source: "chat" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Searching for TODO matches.",
-          actions: ["GREP"],
-          thought:
-            "Plain text search across files maps to GREP with pattern='TODO'.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Find references to fooBar in src/ only.",
-          source: "chat",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Searching src/ for fooBar.",
-          actions: ["GREP"],
-          thought:
-            "Scoped search; GREP with pattern='fooBar' and path='src/' restricts the ripgrep run.",
-        },
-      },
-    ],
-  ],
-};
+
+    if (result.exitCode !== 0) {
+      return failureToActionResult({
+        reason: "command_failed",
+        message: `ripgrep exited ${result.exitCode}: ${result.output.slice(0, 500)}`,
+      });
+    }
+
+    const headLimitRequested = readNumberParam(options, "head_limit");
+    const headLimitDefault = readPositiveIntSetting(
+      runtime,
+      "CODING_TOOLS_GREP_HEAD_LIMIT",
+      DEFAULT_HEAD_LIMIT,
+    );
+    const headLimit =
+      headLimitRequested === undefined
+        ? headLimitDefault
+        : Math.max(0, Math.floor(headLimitRequested));
+
+    const rawLines =
+      result.output.length === 0
+        ? []
+        : result.output.replace(/\n$/, "").split("\n");
+
+    let outputLines = rawLines;
+    let headTruncated = false;
+    if (headLimit > 0 && rawLines.length > headLimit) {
+      outputLines = rawLines.slice(0, headLimit);
+      headTruncated = true;
+    }
+
+    const truncated = headTruncated || result.truncated;
+    const text =
+      outputLines.length === 0 ? "no matches" : outputLines.join("\n");
+
+    coreLogger.debug(
+      `${CODING_TOOLS_LOG_PREFIX} GREP pattern=${JSON.stringify(pattern)} mode=${mode} matches=${outputLines.length} truncated=${truncated}`,
+    );
+
+    if (callback) await callback({ text, source: "coding-tools" });
+
+    return successActionResult(text, {
+      matches_count: outputLines.length,
+      mode,
+      truncated,
+    });
+  } catch (error) {
+    const messageText =
+      error instanceof Error ? error.message : String(error);
+    return failureToActionResult({
+      reason: "internal",
+      message: `grep failed: ${messageText.slice(0, 500)}`,
+    });
+  }
+}

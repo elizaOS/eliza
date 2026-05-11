@@ -21,7 +21,7 @@ import {
   extractAndPersistOnboardingApiKey,
   hasLegacyOnboardingRequestFields,
   persistCompatOnboardingDefaults,
-} from "./server-onboarding-compat";
+} from "./server-onboarding-helpers";
 
 async function syncCompatOnboardingConfigState(
   req: http.IncomingMessage,

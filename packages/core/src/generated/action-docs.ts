@@ -835,69 +835,155 @@ export const coreActionsSpec = {
 				"primary post action ops send read search public feed timeline posts",
 		},
 		{
-			name: "SCHEDULE_FOLLOW_UP",
-			description: "Schedule a follow-up reminder for a contact.",
+			name: "ROOM",
+			description:
+				"Manage current room participation state. Use action=follow to opt into a room, action=unfollow to stop following, action=mute to ignore messages unless mentioned, or action=unmute to resume normal room activity.",
 			similes: [
-				"REMIND_ME",
-				"FOLLOW_UP",
-				"REMIND_FOLLOW_UP",
-				"SET_REMINDER",
-				"REMIND_ABOUT",
-				"FOLLOW_UP_WITH",
-				"follow up with",
-				"remind me to contact",
-				"schedule a check-in",
-				"set a reminder for",
+				"FOLLOW_ROOM",
+				"UNFOLLOW_ROOM",
+				"MUTE_ROOM",
+				"UNMUTE_ROOM",
+				"ROOM_FOLLOW",
+				"ROOM_MUTE",
 			],
 			parameters: [
 				{
-					name: "name",
-					description: "Contact name to follow up with.",
+					name: "action",
+					description: "Room operation: follow, unfollow, mute, or unmute.",
 					required: true,
 					schema: {
 						type: "string",
+						enum: ["follow", "unfollow", "mute", "unmute"],
 					},
-					examples: ["Sarah Chen"],
-					descriptionCompressed: "Contact name.",
+					descriptionCompressed:
+						"Room operation: follow, unfollow, mute, or unmute.",
 				},
 				{
-					name: "when",
-					description: "When to follow up. Use an ISO-8601 datetime string.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["2026-02-01T09:00:00Z"],
-					descriptionCompressed: "ISO-8601 datetime.",
-				},
-				{
-					name: "reason",
-					description: "Optional reason/context for the follow-up.",
+					name: "roomId",
+					description:
+						"Optional target room id. Defaults to the current room when omitted.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					examples: ["Check in about the agent framework demo"],
-					descriptionCompressed: "Optional reason/context.",
+					descriptionCompressed:
+						"Optional target room id. Defaults to the current room when omitted.",
 				},
 			],
-			examples: [
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "Remind me to follow up with Sarah next week about the demo",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "I've scheduled a follow-up reminder with Sarah for next week about the demo.",
-						},
-					},
-				],
+			descriptionCompressed:
+				"Room action=follow|unfollow|mute|unmute; current room by default.",
+		},
+		{
+			name: "ROLE",
+			description:
+				"Assign or update trust roles for users. Use action=update with entityId and role when the owner explicitly asks to change permissions.",
+			similes: [
+				"UPDATE_ROLE",
+				"SET_ROLE",
+				"CHANGE_ROLE",
+				"ASSIGN_ROLE",
+				"MAKE_ADMIN",
+				"GRANT_ROLE",
 			],
-			descriptionCompressed: "Schedule follow-up reminder for contact.",
+			parameters: [
+				{
+					name: "action",
+					description: "Role operation. Currently update.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["update"],
+					},
+					descriptionCompressed: "Role operation. update.",
+				},
+				{
+					name: "entityId",
+					description: "Entity id whose role should be updated.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Entity id whose role should be updated.",
+				},
+				{
+					name: "role",
+					description: "Role to assign.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Role to assign.",
+				},
+			],
+			descriptionCompressed: "Role action=update; assign trust role to entity.",
+		},
+		{
+			name: "SEARCH_EXPERIENCES",
+			description:
+				"Search the agent experience store for prior events, decisions, summaries, or memories relevant to the current request.",
+			similes: [
+				"SEARCH_MEMORY",
+				"SEARCH_EXPERIENCE",
+				"SEARCH_PRIOR_CONTEXT",
+				"FIND_EXPERIENCES",
+			],
+			parameters: [
+				{
+					name: "query",
+					description: "Search query.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Search query.",
+				},
+				{
+					name: "limit",
+					description: "Maximum number of results to return.",
+					required: false,
+					schema: {
+						type: "integer",
+					},
+					descriptionCompressed: "max number of results to return.",
+				},
+			],
+			descriptionCompressed: "Search prior experiences/memory by query.",
+		},
+		{
+			name: "CHARACTER",
+			description:
+				"Manage the agent character profile and identity. Use action=modify for temporary changes, action=persist to save approved changes, or action=update_identity for identity-level updates.",
+			similes: [
+				"CHARACTER_MODIFY",
+				"CHARACTER_PERSIST",
+				"CHARACTER_UPDATE_IDENTITY",
+				"UPDATE_CHARACTER",
+				"EDIT_CHARACTER",
+			],
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Character operation: modify, persist, or update_identity.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["modify", "persist", "update_identity"],
+					},
+					descriptionCompressed:
+						"Character operation: modify, persist, or update_identity.",
+				},
+				{
+					name: "updates",
+					description: "Structured or textual character updates.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Structured or textual character updates.",
+				},
+			],
+			descriptionCompressed: "Character action=modify|persist|update_identity.",
 		},
 		{
 			name: "CHOOSE_OPTION",
@@ -952,319 +1038,6 @@ export const coreActionsSpec = {
 				],
 			],
 			descriptionCompressed: "Select option for pending multi-choice task.",
-		},
-		{
-			name: "FOLLOW_ROOM",
-			description:
-				"Start following this channel with great interest, chiming in without needing to be explicitly mentioned. Only do this if explicitly asked to.",
-			similes: [
-				"FOLLOW_CHAT",
-				"FOLLOW_CHANNEL",
-				"FOLLOW_CONVERSATION",
-				"FOLLOW_THREAD",
-				"JOIN_ROOM",
-				"SUBSCRIBE_ROOM",
-				"WATCH_ROOM",
-				"ENTER_ROOM",
-			],
-			parameters: [
-				{
-					name: "roomId",
-					description: "The target room id to follow.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["00000000-0000-0000-0000-000000000000"],
-					descriptionCompressed: "Room id to follow.",
-				},
-			],
-			examples: [
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "hey {{name2}} follow this channel",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "Sure, I will now follow this room and chime in",
-							actions: ["FOLLOW_ROOM"],
-						},
-					},
-				],
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "{{name2}} stay in this chat pls",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "you got it, i'm here",
-							actions: ["FOLLOW_ROOM"],
-						},
-					},
-				],
-			],
-			descriptionCompressed:
-				"Start following channel, chiming in without @mention. Only when explicitly asked.",
-		},
-		{
-			name: "UNFOLLOW_ROOM",
-			description:
-				"Stop following a room and cease receiving updates. Use this when you no longer want to monitor a room's activity.",
-			similes: [
-				"UNFOLLOW_CHAT",
-				"UNFOLLOW_CONVERSATION",
-				"UNFOLLOW_ROOM",
-				"UNFOLLOW_THREAD",
-				"LEAVE_ROOM",
-				"UNSUBSCRIBE_ROOM",
-				"STOP_WATCHING_ROOM",
-				"EXIT_ROOM",
-			],
-			parameters: [
-				{
-					name: "roomId",
-					description: "The target room id to unfollow.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["00000000-0000-0000-0000-000000000000"],
-					descriptionCompressed: "Room id to unfollow.",
-				},
-			],
-			examples: [
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "{{name2}} stop following this channel",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "Okay, I'll stop following this room",
-							actions: ["UNFOLLOW_ROOM"],
-						},
-					},
-				],
-			],
-			descriptionCompressed: "Stop following room, cease updates.",
-		},
-		{
-			name: "MUTE_ROOM",
-			description:
-				"Mutes a room, ignoring all messages unless explicitly mentioned. Only do this if explicitly asked to, or if you're annoying people.",
-			similes: [
-				"MUTE_CHAT",
-				"MUTE_CONVERSATION",
-				"MUTE_THREAD",
-				"MUTE_CHANNEL",
-				"SILENCE_ROOM",
-				"QUIET_ROOM",
-				"DISABLE_NOTIFICATIONS",
-				"STOP_RESPONDING",
-			],
-			parameters: [
-				{
-					name: "roomId",
-					description: "The room id to mute.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["00000000-0000-0000-0000-000000000000"],
-					descriptionCompressed: "Room id to mute.",
-				},
-			],
-			examples: [
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "{{name2}}, please mute this channel. No need to respond here for now.",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "Got it",
-							actions: ["MUTE_ROOM"],
-						},
-					},
-				],
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "{{name2}} plz mute this room",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "np going silent",
-							actions: ["MUTE_ROOM"],
-						},
-					},
-				],
-			],
-			descriptionCompressed:
-				"Mute room, ignore msgs unless @mentioned. Only when asked or annoying.",
-		},
-		{
-			name: "UNMUTE_ROOM",
-			description:
-				"Unmute a room to resume responding and receiving notifications. Use this when you want to start interacting with a muted room again.",
-			similes: [
-				"UNMUTE_CHAT",
-				"UNMUTE_CONVERSATION",
-				"UNMUTE_ROOM",
-				"UNMUTE_THREAD",
-				"UNSILENCE_ROOM",
-				"ENABLE_NOTIFICATIONS",
-				"RESUME_RESPONDING",
-				"START_LISTENING",
-			],
-			parameters: [
-				{
-					name: "roomId",
-					description: "The room id to unmute.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["00000000-0000-0000-0000-000000000000"],
-					descriptionCompressed: "Room id to unmute.",
-				},
-			],
-			examples: [
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "{{name2}} unmute this room please",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "I've unmuted this room and will respond again",
-							actions: ["UNMUTE_ROOM"],
-						},
-					},
-				],
-			],
-			descriptionCompressed: "Unmute room, resume responding.",
-		},
-		{
-			name: "UPDATE_SETTINGS",
-			description:
-				"Update agent settings by applying explicit key/value updates.",
-			similes: [
-				"SET_SETTINGS",
-				"CHANGE_SETTINGS",
-				"UPDATE_SETTING",
-				"SAVE_SETTING",
-				"SET_CONFIGURATION",
-				"CONFIGURE",
-				"MODIFY_SETTINGS",
-				"SET_PREFERENCE",
-				"UPDATE_CONFIG",
-			],
-			parameters: [
-				{
-					name: "updates",
-					description: "Key/value setting updates to apply.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["model: gpt-5"],
-					descriptionCompressed: "Key/value setting updates.",
-				},
-			],
-			examples: [
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "Change my language setting to French",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "I've updated your language setting to French.",
-							actions: ["UPDATE_SETTINGS"],
-						},
-					},
-				],
-			],
-			descriptionCompressed: "Update agent settings via key/value pairs.",
-		},
-		{
-			name: "UPDATE_ROLE",
-			description:
-				"Assigns a role (Admin, Owner, None) to a user or list of users in a channel.",
-			similes: [
-				"SET_ROLE",
-				"CHANGE_ROLE",
-				"SET_PERMISSIONS",
-				"ASSIGN_ROLE",
-				"MAKE_ADMIN",
-				"MODIFY_PERMISSIONS",
-				"GRANT_ROLE",
-			],
-			parameters: [
-				{
-					name: "entityId",
-					description: "The entity id to update.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["00000000-0000-0000-0000-000000000000"],
-					descriptionCompressed: "Entity id.",
-				},
-				{
-					name: "role",
-					description: "The new role to assign.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["admin", "member"],
-					descriptionCompressed: "Role to assign.",
-				},
-			],
-			examples: [
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "Make Sarah an admin",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "I've assigned the admin role to Sarah.",
-							actions: ["UPDATE_ROLE"],
-						},
-					},
-				],
-			],
-			descriptionCompressed:
-				"Assign role (Admin/Owner/None) to user(s) in channel.",
 		},
 		{
 			name: "ATTACHMENT",
@@ -2232,69 +2005,155 @@ export const allActionsSpec = {
 				"primary post action ops send read search public feed timeline posts",
 		},
 		{
-			name: "SCHEDULE_FOLLOW_UP",
-			description: "Schedule a follow-up reminder for a contact.",
+			name: "ROOM",
+			description:
+				"Manage current room participation state. Use action=follow to opt into a room, action=unfollow to stop following, action=mute to ignore messages unless mentioned, or action=unmute to resume normal room activity.",
 			similes: [
-				"REMIND_ME",
-				"FOLLOW_UP",
-				"REMIND_FOLLOW_UP",
-				"SET_REMINDER",
-				"REMIND_ABOUT",
-				"FOLLOW_UP_WITH",
-				"follow up with",
-				"remind me to contact",
-				"schedule a check-in",
-				"set a reminder for",
+				"FOLLOW_ROOM",
+				"UNFOLLOW_ROOM",
+				"MUTE_ROOM",
+				"UNMUTE_ROOM",
+				"ROOM_FOLLOW",
+				"ROOM_MUTE",
 			],
 			parameters: [
 				{
-					name: "name",
-					description: "Contact name to follow up with.",
+					name: "action",
+					description: "Room operation: follow, unfollow, mute, or unmute.",
 					required: true,
 					schema: {
 						type: "string",
+						enum: ["follow", "unfollow", "mute", "unmute"],
 					},
-					examples: ["Sarah Chen"],
-					descriptionCompressed: "Contact name.",
+					descriptionCompressed:
+						"Room operation: follow, unfollow, mute, or unmute.",
 				},
 				{
-					name: "when",
-					description: "When to follow up. Use an ISO-8601 datetime string.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["2026-02-01T09:00:00Z"],
-					descriptionCompressed: "ISO-8601 datetime.",
-				},
-				{
-					name: "reason",
-					description: "Optional reason/context for the follow-up.",
+					name: "roomId",
+					description:
+						"Optional target room id. Defaults to the current room when omitted.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					examples: ["Check in about the agent framework demo"],
-					descriptionCompressed: "Optional reason/context.",
+					descriptionCompressed:
+						"Optional target room id. Defaults to the current room when omitted.",
 				},
 			],
-			examples: [
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "Remind me to follow up with Sarah next week about the demo",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "I've scheduled a follow-up reminder with Sarah for next week about the demo.",
-						},
-					},
-				],
+			descriptionCompressed:
+				"Room action=follow|unfollow|mute|unmute; current room by default.",
+		},
+		{
+			name: "ROLE",
+			description:
+				"Assign or update trust roles for users. Use action=update with entityId and role when the owner explicitly asks to change permissions.",
+			similes: [
+				"UPDATE_ROLE",
+				"SET_ROLE",
+				"CHANGE_ROLE",
+				"ASSIGN_ROLE",
+				"MAKE_ADMIN",
+				"GRANT_ROLE",
 			],
-			descriptionCompressed: "Schedule follow-up reminder for contact.",
+			parameters: [
+				{
+					name: "action",
+					description: "Role operation. Currently update.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["update"],
+					},
+					descriptionCompressed: "Role operation. update.",
+				},
+				{
+					name: "entityId",
+					description: "Entity id whose role should be updated.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Entity id whose role should be updated.",
+				},
+				{
+					name: "role",
+					description: "Role to assign.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Role to assign.",
+				},
+			],
+			descriptionCompressed: "Role action=update; assign trust role to entity.",
+		},
+		{
+			name: "SEARCH_EXPERIENCES",
+			description:
+				"Search the agent experience store for prior events, decisions, summaries, or memories relevant to the current request.",
+			similes: [
+				"SEARCH_MEMORY",
+				"SEARCH_EXPERIENCE",
+				"SEARCH_PRIOR_CONTEXT",
+				"FIND_EXPERIENCES",
+			],
+			parameters: [
+				{
+					name: "query",
+					description: "Search query.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Search query.",
+				},
+				{
+					name: "limit",
+					description: "Maximum number of results to return.",
+					required: false,
+					schema: {
+						type: "integer",
+					},
+					descriptionCompressed: "max number of results to return.",
+				},
+			],
+			descriptionCompressed: "Search prior experiences/memory by query.",
+		},
+		{
+			name: "CHARACTER",
+			description:
+				"Manage the agent character profile and identity. Use action=modify for temporary changes, action=persist to save approved changes, or action=update_identity for identity-level updates.",
+			similes: [
+				"CHARACTER_MODIFY",
+				"CHARACTER_PERSIST",
+				"CHARACTER_UPDATE_IDENTITY",
+				"UPDATE_CHARACTER",
+				"EDIT_CHARACTER",
+			],
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Character operation: modify, persist, or update_identity.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["modify", "persist", "update_identity"],
+					},
+					descriptionCompressed:
+						"Character operation: modify, persist, or update_identity.",
+				},
+				{
+					name: "updates",
+					description: "Structured or textual character updates.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Structured or textual character updates.",
+				},
+			],
+			descriptionCompressed: "Character action=modify|persist|update_identity.",
 		},
 		{
 			name: "CHOOSE_OPTION",
@@ -2349,319 +2208,6 @@ export const allActionsSpec = {
 				],
 			],
 			descriptionCompressed: "Select option for pending multi-choice task.",
-		},
-		{
-			name: "FOLLOW_ROOM",
-			description:
-				"Start following this channel with great interest, chiming in without needing to be explicitly mentioned. Only do this if explicitly asked to.",
-			similes: [
-				"FOLLOW_CHAT",
-				"FOLLOW_CHANNEL",
-				"FOLLOW_CONVERSATION",
-				"FOLLOW_THREAD",
-				"JOIN_ROOM",
-				"SUBSCRIBE_ROOM",
-				"WATCH_ROOM",
-				"ENTER_ROOM",
-			],
-			parameters: [
-				{
-					name: "roomId",
-					description: "The target room id to follow.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["00000000-0000-0000-0000-000000000000"],
-					descriptionCompressed: "Room id to follow.",
-				},
-			],
-			examples: [
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "hey {{name2}} follow this channel",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "Sure, I will now follow this room and chime in",
-							actions: ["FOLLOW_ROOM"],
-						},
-					},
-				],
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "{{name2}} stay in this chat pls",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "you got it, i'm here",
-							actions: ["FOLLOW_ROOM"],
-						},
-					},
-				],
-			],
-			descriptionCompressed:
-				"Start following channel, chiming in without @mention. Only when explicitly asked.",
-		},
-		{
-			name: "UNFOLLOW_ROOM",
-			description:
-				"Stop following a room and cease receiving updates. Use this when you no longer want to monitor a room's activity.",
-			similes: [
-				"UNFOLLOW_CHAT",
-				"UNFOLLOW_CONVERSATION",
-				"UNFOLLOW_ROOM",
-				"UNFOLLOW_THREAD",
-				"LEAVE_ROOM",
-				"UNSUBSCRIBE_ROOM",
-				"STOP_WATCHING_ROOM",
-				"EXIT_ROOM",
-			],
-			parameters: [
-				{
-					name: "roomId",
-					description: "The target room id to unfollow.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["00000000-0000-0000-0000-000000000000"],
-					descriptionCompressed: "Room id to unfollow.",
-				},
-			],
-			examples: [
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "{{name2}} stop following this channel",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "Okay, I'll stop following this room",
-							actions: ["UNFOLLOW_ROOM"],
-						},
-					},
-				],
-			],
-			descriptionCompressed: "Stop following room, cease updates.",
-		},
-		{
-			name: "MUTE_ROOM",
-			description:
-				"Mutes a room, ignoring all messages unless explicitly mentioned. Only do this if explicitly asked to, or if you're annoying people.",
-			similes: [
-				"MUTE_CHAT",
-				"MUTE_CONVERSATION",
-				"MUTE_THREAD",
-				"MUTE_CHANNEL",
-				"SILENCE_ROOM",
-				"QUIET_ROOM",
-				"DISABLE_NOTIFICATIONS",
-				"STOP_RESPONDING",
-			],
-			parameters: [
-				{
-					name: "roomId",
-					description: "The room id to mute.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["00000000-0000-0000-0000-000000000000"],
-					descriptionCompressed: "Room id to mute.",
-				},
-			],
-			examples: [
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "{{name2}}, please mute this channel. No need to respond here for now.",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "Got it",
-							actions: ["MUTE_ROOM"],
-						},
-					},
-				],
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "{{name2}} plz mute this room",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "np going silent",
-							actions: ["MUTE_ROOM"],
-						},
-					},
-				],
-			],
-			descriptionCompressed:
-				"Mute room, ignore msgs unless @mentioned. Only when asked or annoying.",
-		},
-		{
-			name: "UNMUTE_ROOM",
-			description:
-				"Unmute a room to resume responding and receiving notifications. Use this when you want to start interacting with a muted room again.",
-			similes: [
-				"UNMUTE_CHAT",
-				"UNMUTE_CONVERSATION",
-				"UNMUTE_ROOM",
-				"UNMUTE_THREAD",
-				"UNSILENCE_ROOM",
-				"ENABLE_NOTIFICATIONS",
-				"RESUME_RESPONDING",
-				"START_LISTENING",
-			],
-			parameters: [
-				{
-					name: "roomId",
-					description: "The room id to unmute.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["00000000-0000-0000-0000-000000000000"],
-					descriptionCompressed: "Room id to unmute.",
-				},
-			],
-			examples: [
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "{{name2}} unmute this room please",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "I've unmuted this room and will respond again",
-							actions: ["UNMUTE_ROOM"],
-						},
-					},
-				],
-			],
-			descriptionCompressed: "Unmute room, resume responding.",
-		},
-		{
-			name: "UPDATE_SETTINGS",
-			description:
-				"Update agent settings by applying explicit key/value updates.",
-			similes: [
-				"SET_SETTINGS",
-				"CHANGE_SETTINGS",
-				"UPDATE_SETTING",
-				"SAVE_SETTING",
-				"SET_CONFIGURATION",
-				"CONFIGURE",
-				"MODIFY_SETTINGS",
-				"SET_PREFERENCE",
-				"UPDATE_CONFIG",
-			],
-			parameters: [
-				{
-					name: "updates",
-					description: "Key/value setting updates to apply.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["model: gpt-5"],
-					descriptionCompressed: "Key/value setting updates.",
-				},
-			],
-			examples: [
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "Change my language setting to French",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "I've updated your language setting to French.",
-							actions: ["UPDATE_SETTINGS"],
-						},
-					},
-				],
-			],
-			descriptionCompressed: "Update agent settings via key/value pairs.",
-		},
-		{
-			name: "UPDATE_ROLE",
-			description:
-				"Assigns a role (Admin, Owner, None) to a user or list of users in a channel.",
-			similes: [
-				"SET_ROLE",
-				"CHANGE_ROLE",
-				"SET_PERMISSIONS",
-				"ASSIGN_ROLE",
-				"MAKE_ADMIN",
-				"MODIFY_PERMISSIONS",
-				"GRANT_ROLE",
-			],
-			parameters: [
-				{
-					name: "entityId",
-					description: "The entity id to update.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["00000000-0000-0000-0000-000000000000"],
-					descriptionCompressed: "Entity id.",
-				},
-				{
-					name: "role",
-					description: "The new role to assign.",
-					required: true,
-					schema: {
-						type: "string",
-					},
-					examples: ["admin", "member"],
-					descriptionCompressed: "Role to assign.",
-				},
-			],
-			examples: [
-				[
-					{
-						name: "{{name1}}",
-						content: {
-							text: "Make Sarah an admin",
-						},
-					},
-					{
-						name: "{{name2}}",
-						content: {
-							text: "I've assigned the admin role to Sarah.",
-							actions: ["UPDATE_ROLE"],
-						},
-					},
-				],
-			],
-			descriptionCompressed:
-				"Assign role (Admin/Owner/None) to user(s) in channel.",
 		},
 		{
 			name: "ATTACHMENT",

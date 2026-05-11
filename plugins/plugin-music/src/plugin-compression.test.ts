@@ -21,7 +21,7 @@ describe("music plugin compression", () => {
   it("exposes MUSIC descriptionCompressed", () => {
     const action = musicPlugin.actions?.find((a) => a.name === "MUSIC");
     expect(action?.descriptionCompressed).toBe(
-      "Flat op: playlist/play_query/search_youtube/download/pause/resume/skip/stop/queue/play_audio/routing/zones.",
+      "Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save, search/play_query/download/play_audio, set_routing/set_zone.",
     );
   });
 });

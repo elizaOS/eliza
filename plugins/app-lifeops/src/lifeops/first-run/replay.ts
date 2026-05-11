@@ -11,10 +11,6 @@
  *     replay always starts a fresh answer slate (the user can still skip
  *     unchanged questions).
  *
- * Wipe = the destructive sibling (`LIFEOPS.wipe`). Wipe deletes every
- * lifeops-owned `ScheduledTask`, clears `OwnerFactStore`, and resets the
- * first-run state machine. Implemented in `actions/lifeops-pause.ts`.
- *
  * This module exposes the read-only helpers replay uses to surface current
  * facts as defaults.
  */

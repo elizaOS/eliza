@@ -353,6 +353,21 @@ export interface Action {
 	parameters?: ActionParameter[];
 
 	/**
+	 * When true, the JSON Schema generated for this action's top-level
+	 * parameters object will set `additionalProperties: true`, accepting
+	 * unknown keys and passing them through to the handler unchanged.
+	 *
+	 * This is useful for "group" / aggregator actions whose declared shape is
+	 * `{ action, parameters }` but where smaller LLMs frequently emit the
+	 * child-action fields at the top level (e.g. `{action, url, selector}`
+	 * instead of `{action, parameters: { url, selector }}`). The handler is
+	 * expected to auto-lift those extras into the child-action's parameters.
+	 *
+	 * Default: false (strict — unknown top-level fields are rejected).
+	 */
+	allowAdditionalParameters?: boolean;
+
+	/**
 	 * Domain contexts this action belongs to.
 	 * Used by the context-routing classifier to scope the planner's action search.
 	 * An action may belong to multiple contexts (e.g., a token-swap action is both

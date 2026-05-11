@@ -133,7 +133,7 @@ vi.mock("../services/auth-store", () => ({
   },
 }));
 
-vi.mock("./server-onboarding-compat", () => ({
+vi.mock("./server-onboarding-helpers", () => ({
   isCloudProvisioned: () => process.env.ELIZA_CLOUD_PROVISIONED === "1",
 }));
 
@@ -158,8 +158,8 @@ interface FakeRes {
   status(): number;
 }
 
-let handleAuthPairingCompatRoutes: typeof import("./auth-pairing-compat-routes").handleAuthPairingCompatRoutes;
-let resetAuthPairingStateForTests: typeof import("./auth-pairing-compat-routes")._resetAuthPairingStateForTests;
+let handleAuthPairingCompatRoutes: typeof import("./auth-pairing-routes").handleAuthPairingCompatRoutes;
+let resetAuthPairingStateForTests: typeof import("./auth-pairing-routes")._resetAuthPairingStateForTests;
 
 function fakeRes(): FakeRes {
   let bodyText = "";
@@ -207,7 +207,7 @@ describe("auth pairing pair-code route", () => {
   const originalCloudProvisioned = process.env.ELIZA_CLOUD_PROVISIONED;
 
   beforeAll(async () => {
-    const routeModule = await import("./auth-pairing-compat-routes");
+    const routeModule = await import("./auth-pairing-routes");
     handleAuthPairingCompatRoutes = routeModule.handleAuthPairingCompatRoutes;
     resetAuthPairingStateForTests = routeModule._resetAuthPairingStateForTests;
   });

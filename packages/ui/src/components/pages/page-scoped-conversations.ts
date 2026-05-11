@@ -134,7 +134,7 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
   },
   "page-apps": {
     title: "Apps chat",
-    body: "Use me to browse the catalog, compare apps, launch an app, stop a running app, open a live viewer, inspect run health, and manage favorites or recent apps. Recommended: describe the outcome you want, and I'll suggest the right app or launch it. Ask me about any catalog item or running app.",
+    body: "Ask me to launch, compare, or troubleshoot any of your apps. Describe the outcome you want and I'll pick the right one.",
     systemAddendum:
       "You are answering inside the Apps view. The user can browse the catalog, compare apps by category and capability, launch apps, stop running apps, open attached live viewers, inspect run health and summaries, and manage favorites or recent apps. Recommend the best app or next run-management action based on live catalog and run state. Use APP with mode launch, relaunch, list, load_from_directory, or create when the request is concrete. Refer to apps by display name and never invent app names.",
   },
