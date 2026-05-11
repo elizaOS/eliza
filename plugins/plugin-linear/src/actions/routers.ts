@@ -390,7 +390,7 @@ export const linearIssueRouterAction: RouterAction = {
     ),
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "Issue operation to run.",
       required: false,
       schema: { type: "string", enum: ["create", "get", "update", "delete"] },
@@ -442,7 +442,7 @@ export const linearCommentRouterAction: RouterAction = {
     ),
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "Comment operation to run.",
       required: false,
       schema: { type: "string", enum: ["create"] },
@@ -494,7 +494,7 @@ export const linearWorkflowRouterAction: RouterAction = {
     ),
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "Workflow operation to run.",
       required: false,
       schema: { type: "string", enum: ["get_activity", "clear_activity", "search_issues"] },

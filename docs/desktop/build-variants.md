@@ -29,6 +29,8 @@ load set even if config or environment variables request them.
 
 For the full mobile/desktop capability matrix and policy review, see
 [`docs/mobile-agentic-ide-platform-plan.md`](../mobile-agentic-ide-platform-plan.md).
+For application update authority and OTA boundaries, see
+[`docs/application-updates.md`](../application-updates.md).
 
 ## Direct Variant
 

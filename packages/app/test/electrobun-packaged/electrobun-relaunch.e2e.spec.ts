@@ -135,7 +135,9 @@ test.describe("Electrobun relaunch after cloud onboarding", () => {
       expect(
         logs,
         `Relaunch handler logged a spawn failure:\n${logs}`,
-      ).not.toMatch(/\[DesktopManager\] relaunch: failed to spawn new instance/);
+      ).not.toMatch(
+        /\[DesktopManager\] relaunch: failed to spawn new instance/,
+      );
 
       // Crash markers across platforms — segfault, BUS, abort, fatal startup.
       expect(

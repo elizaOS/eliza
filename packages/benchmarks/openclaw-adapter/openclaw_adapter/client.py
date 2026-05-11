@@ -13,6 +13,7 @@ OpenClaw's own provider routing picks the right backend.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -227,13 +228,28 @@ class OpenClawClient:
             "--message",
             text,
         ]
+        session_id: str | None = None
+        agent_id: str | None = None
         if context:
-            session_id = context.get("session_id")
-            if isinstance(session_id, str) and session_id:
-                argv.extend(["--session-id", session_id])
-            agent_id = context.get("agent_id")
-            if isinstance(agent_id, str) and agent_id:
-                argv.extend(["--agent", agent_id])
+            ctx_session = context.get("session_id")
+            if isinstance(ctx_session, str) and ctx_session:
+                session_id = ctx_session
+            ctx_agent = context.get("agent_id")
+            if isinstance(ctx_agent, str) and ctx_agent:
+                agent_id = ctx_agent
+        # ``openclaw agent --local`` rejects calls without a session selector
+        # ("Error: Pass --to <E.164>, --session-id, or --agent ..."). When
+        # neither was supplied, synthesize a benchmark-scoped session id from
+        # the recorded (benchmark, task_id) pair so each turn is reproducible
+        # but never collides with a real-user session. Tests can still pin a
+        # deterministic value via context["session_id"].
+        if session_id is None and agent_id is None:
+            seed = f"{self._benchmark or 'bench'}:{self._task_id or 'turn'}"
+            session_id = f"bench-{hashlib.sha1(seed.encode('utf-8')).hexdigest()[:12]}"
+        if session_id is not None:
+            argv.extend(["--session-id", session_id])
+        if agent_id is not None:
+            argv.extend(["--agent", agent_id])
         return argv
 
     def build_env(self) -> dict[str, str]:

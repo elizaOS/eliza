@@ -51,8 +51,14 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("scheduleAlarm requires timeIso, title, body")
             return
         }
+        let deepLinkOnTap = call.getString("deepLinkOnTap")
 
-        scheduleNotification(timeIso: timeIso, title: title, body: body) { result, errorMessage in
+        scheduleNotification(
+            timeIso: timeIso,
+            title: title,
+            body: body,
+            deepLinkOnTap: deepLinkOnTap
+        ) { result, errorMessage in
             if let errorMessage = errorMessage {
                 call.reject(errorMessage)
                 return
@@ -61,10 +67,18 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    /// Schedule a local `UNNotification`.
+    ///
+    /// `deepLinkOnTap` is stashed in `UNNotificationContent.userInfo` under
+    /// the literal key `deepLinkOnTap`. When the user taps the notification,
+    /// `AppDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:)`
+    /// reads that key and calls `UIApplication.shared.open(URL(string:))` so
+    /// the app routes to the right surface (e.g. `elizaos://chat/<convoId>`).
     private func scheduleNotification(
         timeIso: String,
         title: String,
         body: String,
+        deepLinkOnTap: String?,
         completion: @escaping ([String: Any]?, String?) -> Void
     ) {
         let formatter = ISO8601DateFormatter()
@@ -90,6 +104,13 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
             content.title = title
             content.body = body
             content.sound = .default
+            if let deepLinkOnTap, !deepLinkOnTap.isEmpty {
+                // userInfo carries the deep-link URL to the AppDelegate's
+                // notification-response handler. Stored as a plain string so
+                // the JSON round-trip through Apple's notification storage
+                // doesn't drop it.
+                content.userInfo = ["deepLinkOnTap": deepLinkOnTap]
+            }
 
             let triggerComponents = Calendar.current.dateComponents(
                 [.year, .month, .day, .hour, .minute, .second],
@@ -110,10 +131,14 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
                     completion(nil, "Failed to schedule notification: \(addError.localizedDescription)")
                     return
                 }
-                completion([
+                var result: [String: Any] = [
                     "scheduledId": scheduledId,
                     "timeIso": timeIso,
-                ], nil)
+                ]
+                if let deepLinkOnTap {
+                    result["deepLinkOnTap"] = deepLinkOnTap
+                }
+                completion(result, nil)
             }
         }
     }
@@ -136,7 +161,13 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("\(kind) intent missing timeIso/title/body")
                 return
             }
-            scheduleNotification(timeIso: timeIso, title: title, body: body) { result, errorMessage in
+            let deepLinkOnTap = payload["deepLinkOnTap"] as? String
+            scheduleNotification(
+                timeIso: timeIso,
+                title: title,
+                body: body,
+                deepLinkOnTap: deepLinkOnTap
+            ) { result, errorMessage in
                 if let errorMessage = errorMessage {
                     call.resolve([
                         "accepted": false,

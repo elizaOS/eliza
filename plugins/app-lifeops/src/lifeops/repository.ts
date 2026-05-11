@@ -7779,11 +7779,21 @@ export class LifeOpsRepository {
   async upsertScheduledTask(
     agentId: string,
     task: import("./scheduled-task/types.js").ScheduledTask,
-    options?: { expectedVersion?: number; tx?: TransactionalDb },
+    options?: {
+      expectedVersion?: number;
+      tx?: TransactionalDb;
+      nextFireAtIso?: string | null;
+    },
   ): Promise<void> {
     const now = isoNow();
     const expectedVersion = options?.expectedVersion;
     const tx = options?.tx;
+    const nextFireAtSql =
+      options?.nextFireAtIso === null ||
+      options?.nextFireAtIso === undefined ||
+      options.nextFireAtIso.length === 0
+        ? "NULL"
+        : `${sqlQuote(options.nextFireAtIso)}::timestamptz`;
     if (typeof expectedVersion === "number") {
       const updateSql = `UPDATE app_lifeops.life_scheduled_tasks
             SET kind = ${sqlQuote(task.kind)},
@@ -7805,6 +7815,7 @@ export class LifeOpsRepository {
                 created_by = ${sqlQuote(task.createdBy)},
                 owner_visible = ${sqlBoolean(task.ownerVisible)},
                 metadata_json = ${sqlJson(task.metadata ?? {})},
+                next_fire_at = ${nextFireAtSql},
                 updated_at = ${sqlQuote(now)},
                 version = version + 1
           WHERE id = ${sqlQuote(task.taskId)}
@@ -7828,7 +7839,8 @@ export class LifeOpsRepository {
         trigger_json, priority, should_fire_json, completion_check_json,
         escalation_json, output_json, pipeline_json, subject_kind, subject_id,
         idempotency_key, respects_global_pause, state_json, source,
-        created_by, owner_visible, metadata_json, created_at, updated_at
+        created_by, owner_visible, metadata_json, next_fire_at,
+        created_at, updated_at
       ) VALUES (
         ${sqlQuote(task.taskId)},
         ${sqlQuote(agentId)},
@@ -7851,6 +7863,7 @@ export class LifeOpsRepository {
         ${sqlQuote(task.createdBy)},
         ${sqlBoolean(task.ownerVisible)},
         ${sqlJson(task.metadata ?? {})},
+        ${nextFireAtSql},
         ${sqlQuote(now)},
         ${sqlQuote(now)}
       )
@@ -7874,12 +7887,62 @@ export class LifeOpsRepository {
         created_by = EXCLUDED.created_by,
         owner_visible = EXCLUDED.owner_visible,
         metadata_json = EXCLUDED.metadata_json,
+        next_fire_at = EXCLUDED.next_fire_at,
         updated_at = ${sqlQuote(now)}`;
     if (tx) {
       await executeRawSqlTx(tx, upsertSql);
     } else {
       await executeRawSql(this.runtime, upsertSql);
     }
+  }
+
+  /**
+   * Atomically transition a ScheduledTask row from
+   * `state_json->>'status' = 'scheduled'` to `'fired'`. The whole flip
+   * happens inside one Postgres statement so two parallel ticks racing on
+   * the same task cannot both see "scheduled". The loser sees zero rows
+   * affected → `{ kind: "raced" }`; the winner gets the post-update row.
+   *
+   * Also clears `next_fire_at` so the partial index slice no longer keeps
+   * the row in the per-tick due-task scan until the runner re-computes a
+   * fresh value on its next mutation.
+   */
+  async claimScheduledTaskForFire(
+    agentId: string,
+    args: { taskId: string; firedAtIso: string },
+  ): Promise<
+    | {
+        kind: "fired";
+        task: import("./scheduled-task/types.js").ScheduledTask;
+      }
+    | { kind: "raced" }
+  > {
+    const now = isoNow();
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_scheduled_tasks
+          SET state_json = jsonb_set(
+                              jsonb_set(
+                                state_json::jsonb,
+                                '{status}',
+                                '"fired"'::jsonb,
+                                true
+                              ),
+                              '{firedAt}',
+                              to_jsonb(${sqlQuote(args.firedAtIso)}::text),
+                              true
+                            )::text,
+              next_fire_at = NULL,
+              updated_at = ${sqlQuote(now)},
+              version = version + 1
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(args.taskId)}
+          AND (state_json::jsonb ->> 'status') = 'scheduled'
+        RETURNING *`,
+    );
+    const row = rows[0];
+    if (!row) return { kind: "raced" };
+    return { kind: "fired", task: parseScheduledTaskRow(row) };
   }
 
   async getScheduledTask(
@@ -7923,6 +7986,21 @@ export class LifeOpsRepository {
       subjectId?: string;
       source?: string;
       ownerVisibleOnly?: boolean;
+      /**
+       * When set, the SELECT restricts to rows whose `next_fire_at <= value`
+       * or whose `next_fire_at IS NULL` (the latter so event/manual/after_task
+       * triggers — which deliberately have no wall-clock fire time but may
+       * still need a tick pass for completion-timeout handling — remain
+       * visible). The partial index `idx_life_scheduled_tasks_due` is used
+       * when this filter is combined with a status list of
+       * `('scheduled', 'fired')`.
+       */
+      dueAtOrBeforeIso?: string;
+      /**
+       * Restrict to rows with `next_fire_at IS NOT NULL`. Used by tests
+       * that want to validate the index slice without the NULL escape hatch.
+       */
+      requireNextFireAt?: boolean;
     },
   ): Promise<import("./scheduled-task/types.js").ScheduledTask[]> {
     const clauses: string[] = [`agent_id = ${sqlQuote(agentId)}`];
@@ -7954,6 +8032,15 @@ export class LifeOpsRepository {
           `(state_json::jsonb ->> 'status') IN (${inList})`,
         );
       }
+    }
+    if (typeof filter?.dueAtOrBeforeIso === "string") {
+      const at = sqlQuote(filter.dueAtOrBeforeIso);
+      clauses.push(
+        `(next_fire_at IS NULL OR next_fire_at <= ${at}::timestamptz)`,
+      );
+    }
+    if (filter?.requireNextFireAt === true) {
+      clauses.push(`next_fire_at IS NOT NULL`);
     }
     const where = clauses.join(" AND ");
     const rows = await executeRawSql(

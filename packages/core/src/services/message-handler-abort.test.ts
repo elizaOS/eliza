@@ -19,14 +19,14 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	abortInflightInference,
+	TurnControllerRegistry,
+} from "../runtime/turn-controller";
+import {
 	getStreamingContext,
 	runWithStreamingContext,
 	type StreamingContext,
 } from "../streaming-context";
-import {
-	abortInflightInference,
-	TurnControllerRegistry,
-} from "../runtime/turn-controller";
 
 describe("AbortSignal propagation through streaming context", () => {
 	it("makes the caller-supplied signal observable to a model handler", async () => {
@@ -86,7 +86,8 @@ describe("AbortSignal propagation through streaming context", () => {
 		const pending = runWithStreamingContext(ctx, async () => {
 			const streamingCtx = getStreamingContext();
 			const signal = streamingCtx?.abortSignal;
-			if (!signal) throw new Error("abortSignal missing from streaming context");
+			if (!signal)
+				throw new Error("abortSignal missing from streaming context");
 			return slowUseModel(signal);
 		});
 

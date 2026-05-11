@@ -6,6 +6,8 @@
  * a fake `ElizaInferenceFfi`. A tiny fake PCM source drives `feed()`.
  */
 
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type {
   ElizaInferenceContextHandle,
@@ -26,6 +28,7 @@ import type {
   TranscriberEvent,
   VadEvent,
   VadEventSource,
+  VoiceInputSource,
 } from "./types";
 
 /* ---- test doubles -------------------------------------------------- */
@@ -62,6 +65,14 @@ function collect(t: {
   const out: TranscriberEvent[] = [];
   t.on((e) => out.push(e));
   return out;
+}
+
+function missingWhisperOptions() {
+  const root = path.join(tmpdir(), `eliza-missing-whisper-${process.pid}`);
+  return {
+    binaryPath: path.join(root, "whisper-cli"),
+    modelPath: path.join(root, "ggml-base.en.bin"),
+  };
 }
 
 /**
@@ -176,6 +187,40 @@ describe("WhisperCppStreamingTranscriber", () => {
     t.dispose();
   });
 
+  it("stamps transcript updates with optional voice source metadata", async () => {
+    const source: VoiceInputSource = {
+      kind: "discord",
+      guildId: "guild-1",
+      channelId: "channel-1",
+      participantId: "speaker-1",
+    };
+    const t = new WhisperCppStreamingTranscriber({
+      decoder: async () => "hello from discord",
+      source,
+      windowSeconds: 100,
+      stepSeconds: 0.01,
+    });
+    const events = collect(t);
+    t.feed({
+      pcm: new Float32Array(Math.round(0.02 * ASR_SAMPLE_RATE)).fill(0.05),
+      sampleRate: ASR_SAMPLE_RATE,
+      timestampMs: 0,
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    const final = await t.flush();
+
+    expect(final.source).toEqual(source);
+    expect(events.find((e) => e.kind === "partial")).toMatchObject({
+      kind: "partial",
+      update: { source },
+    });
+    expect(events.find((e) => e.kind === "final")).toMatchObject({
+      kind: "final",
+      update: { source },
+    });
+    t.dispose();
+  });
+
   it("gates on the VAD stream — frames outside an active speech window are dropped", async () => {
     const dec = scriptedDecoder(["should not be decoded"]);
     const vad = new FakeVad();
@@ -227,11 +272,15 @@ describe("WhisperCppStreamingTranscriber", () => {
 /* ---- adapter selection -------------------------------------------- */
 
 describe("createStreamingTranscriber — adapter chain", () => {
-  it("throws AsrUnavailableError when no backend is available (prefer=whisper, no binary)", () => {
-    // No fused ffi; whisper resolution fails (no binary in this env).
-    expect(() => createStreamingTranscriber({ prefer: "whisper" })).toThrow(
-      AsrUnavailableError,
-    );
+  it("throws AsrUnavailableError when no backend is available (prefer=whisper, explicit missing binary)", () => {
+    // No fused ffi; explicit whisper paths are strict and must not fall
+    // through to globally installed or bundled whisper-node artifacts.
+    expect(() =>
+      createStreamingTranscriber({
+        prefer: "whisper",
+        whisper: missingWhisperOptions(),
+      }),
+    ).toThrow(AsrUnavailableError);
   });
 
   it("throws AsrUnavailableError when prefer=fused but no fused streaming ASR", () => {

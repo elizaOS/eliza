@@ -83,9 +83,9 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     "osworld": ("eliza", "hermes"),
     # Hermes-native envs:
     "hermes_tblite": ("eliza", "openclaw", "hermes"),
-    "hermes_terminalbench_2": ("eliza", "hermes"),
-    "hermes_yc_bench": ("eliza", "hermes"),
-    "hermes_swe_env": ("eliza", "hermes"),
+    "hermes_terminalbench_2": ("eliza", "openclaw", "hermes"),
+    "hermes_yc_bench": ("eliza", "openclaw", "hermes"),
+    "hermes_swe_env": ("eliza", "openclaw", "hermes"),
 }
 
 

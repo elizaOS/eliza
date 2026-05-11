@@ -590,10 +590,14 @@ async function buildWeb(platform) {
       : platform === "ios" || platform === "ios-overlay"
         ? "cloud"
         : null;
+  const buildVariant =
+    platform === "android-cloud" || platform === "ios" ? "store" : "direct";
   const env = {
     ...process.env,
     ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
     MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
+    MILADY_BUILD_VARIANT: process.env.MILADY_BUILD_VARIANT || buildVariant,
+    ELIZA_BUILD_VARIANT: process.env.ELIZA_BUILD_VARIANT || buildVariant,
     ...(androidRuntimeMode
       ? {
           VITE_ELIZA_ANDROID_RUNTIME_MODE: androidRuntimeMode,

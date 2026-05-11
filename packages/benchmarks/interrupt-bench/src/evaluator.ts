@@ -12,27 +12,24 @@
  * action handler had run.
  */
 
+import type { ResponseHandlerResult } from "@elizaos/core";
 import { TurnControllerRegistry } from "@elizaos/core";
-import { FakeClock } from "./clock.ts";
 import { ChannelSimulator } from "./channels.ts";
-import { SimulatorState } from "./state.ts";
-import { Trace } from "./trace.ts";
-import type {
-  Scenario,
-  ScenarioResult,
-  ScenarioScriptStep,
-  TraceEvent,
-} from "./types.ts";
+import { FakeClock } from "./clock.ts";
+import { runJudge } from "./judge.ts";
+import { callCerebras } from "./llm-cerebras.ts";
 import {
   createDefaultScriptedProvider,
   type ScriptedLlmProvider,
 } from "./llm-scripted.ts";
-import { callCerebras } from "./llm-cerebras.ts";
-import { buildBenchRegistry } from "./registry.ts";
 import { renderConversation } from "./prompt.ts";
+import { buildBenchRegistry } from "./registry.ts";
 import { scoreScenario } from "./scorer.ts";
-import { runJudge } from "./judge.ts";
-import type { ResponseHandlerResult } from "@elizaos/core";
+import { SimulatorState } from "./state.ts";
+import { Trace } from "./trace.ts";
+import type { Scenario, ScenarioResult, ScenarioScriptStep } from "./types.ts";
+
+type BenchThreadOp = Record<string, unknown>;
 
 export type EvaluatorMode = "scripted" | "cerebras";
 
@@ -68,7 +65,10 @@ export async function runScenario(
     trace.push("handler_start", { channel: step.channel, sender: step.sender });
     history.push(step);
     stage1Calls += 1;
-    trace.push("stage1_call", { channel: step.channel, detail: { callIndex: stage1Calls } });
+    trace.push("stage1_call", {
+      channel: step.channel,
+      detail: { callIndex: stage1Calls },
+    });
 
     let parsed: ResponseHandlerResult;
     let llmLatency = 0;
@@ -83,7 +83,12 @@ export async function runScenario(
       parsed = out.parsed;
       llmLatency = out.latencyMs;
     } else {
-      const conversation = renderConversation({ scenario, history, message: step, state });
+      const conversation = renderConversation({
+        scenario,
+        history,
+        message: step,
+        state,
+      });
       const result = await callCerebras({
         systemPrompt,
         messages: [{ role: "user", content: conversation }],
@@ -127,9 +132,19 @@ export async function runScenario(
   const durationMs = Date.now() - startWall;
   let judge: { pass: boolean; reason: string } | undefined;
   if (opts.runJudge) {
-    judge = await runJudge({ scenario, finalState: state, model: opts.cerebrasModel });
+    judge = await runJudge({
+      scenario,
+      finalState: state,
+      model: opts.cerebrasModel,
+    });
   }
-  return scoreScenario({ scenario, finalState: state, trace, durationMs, judge });
+  return scoreScenario({
+    scenario,
+    finalState: state,
+    trace,
+    durationMs,
+    judge,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -149,38 +164,52 @@ async function applyResponseToState(args: ApplyArgs): Promise<void> {
   const { parsed, message, state, trace, turnControllers } = args;
 
   // Apply threadOps in declaration order.
-  const ops = Array.isArray((parsed as { threadOps?: unknown }).threadOps)
-    ? ((parsed as { threadOps: Array<Record<string, unknown>> }).threadOps ?? [])
-    : [];
-  let preempt: { mode: "ack-and-stop" | "ignore" | "direct-reply"; reason: string } | undefined;
+  const ops = getThreadOps(parsed);
+  let preempt:
+    | { mode: "ack-and-stop" | "ignore" | "direct-reply"; reason: string }
+    | undefined;
   let allowFollowup = true;
   for (const op of ops) {
     const type = String(op.type ?? "");
     const workThreadId = op.workThreadId ? String(op.workThreadId) : undefined;
-    const sourceWorkThreadIds = Array.isArray(op.sourceWorkThreadIds) ? op.sourceWorkThreadIds.map(String) : [];
-    const instruction = typeof op.instruction === "string" ? op.instruction : undefined;
+    const sourceWorkThreadIds = Array.isArray(op.sourceWorkThreadIds)
+      ? op.sourceWorkThreadIds.map(String)
+      : [];
+    const instruction =
+      typeof op.instruction === "string" ? op.instruction : undefined;
     const reason = typeof op.reason === "string" ? op.reason : undefined;
 
-    trace.push("thread_op", { detail: { type, workThreadId, instruction, reason } });
+    trace.push("thread_op", {
+      detail: { type, workThreadId, instruction, reason },
+    });
 
     switch (type) {
       case "abort": {
-        const thread = workThreadId ? state.threads.get(workThreadId) : undefined;
+        const thread = workThreadId
+          ? state.threads.get(workThreadId)
+          : undefined;
         if (thread) thread.status = "stopped";
         // Fire turn abort if any active turn exists for this room (we use the message channel as roomId)
         turnControllers.abortTurn(message.channel, reason ?? "user retracted");
-        trace.push("abort_fired", { channel: message.channel, reason: reason ?? "user retracted" });
+        trace.push("abort_fired", {
+          channel: message.channel,
+          reason: reason ?? "user retracted",
+        });
         preempt = { mode: "ack-and-stop", reason: reason ?? "abort" };
         allowFollowup = false;
         break;
       }
       case "stop": {
-        const thread = workThreadId ? state.threads.get(workThreadId) : undefined;
+        const thread = workThreadId
+          ? state.threads.get(workThreadId)
+          : undefined;
         if (thread) thread.status = "stopped";
         break;
       }
       case "steer": {
-        const thread = workThreadId ? state.threads.get(workThreadId) : undefined;
+        const thread = workThreadId
+          ? state.threads.get(workThreadId)
+          : undefined;
         if (thread && instruction) thread.instruction = instruction;
         // Resolve any pending prompt attached to this thread.
         if (thread?.pendingPromptId) {
@@ -193,7 +222,9 @@ async function applyResponseToState(args: ApplyArgs): Promise<void> {
         break;
       }
       case "merge": {
-        const target = workThreadId ? state.threads.get(workThreadId) : undefined;
+        const target = workThreadId
+          ? state.threads.get(workThreadId)
+          : undefined;
         if (target && instruction) target.instruction = instruction;
         for (const sid of sourceWorkThreadIds) {
           const src = state.threads.get(sid);
@@ -212,7 +243,12 @@ async function applyResponseToState(args: ApplyArgs): Promise<void> {
         });
         // For A4: a "create" with a meeting in the instruction also schedules a task.
         const text = instruction?.toLowerCase() ?? "";
-        if (/(meeting|schedule|carol|bob).*(friday|monday|tuesday|wednesday|thursday|saturday|sunday|tomorrow)/.test(text) || /\bat \d/.test(text)) {
+        if (
+          /(meeting|schedule|carol|bob).*(friday|monday|tuesday|wednesday|thursday|saturday|sunday|tomorrow)/.test(
+            text,
+          ) ||
+          /\bat \d/.test(text)
+        ) {
           state.scheduledTasks.push({
             id: `task-${id}`,
             owner: message.sender,
@@ -222,12 +258,16 @@ async function applyResponseToState(args: ApplyArgs): Promise<void> {
         break;
       }
       case "mark_completed": {
-        const thread = workThreadId ? state.threads.get(workThreadId) : undefined;
+        const thread = workThreadId
+          ? state.threads.get(workThreadId)
+          : undefined;
         if (thread) thread.status = "completed";
         break;
       }
       case "mark_waiting": {
-        const thread = workThreadId ? state.threads.get(workThreadId) : undefined;
+        const thread = workThreadId
+          ? state.threads.get(workThreadId)
+          : undefined;
         if (thread) thread.status = "waiting";
         break;
       }
@@ -238,13 +278,20 @@ async function applyResponseToState(args: ApplyArgs): Promise<void> {
   }
 
   // Emit a reply if RESPOND and we have replyText (or in ack-and-stop with replyText).
-  const replyText = typeof parsed.replyText === "string" ? parsed.replyText : "";
+  const replyText =
+    typeof parsed.replyText === "string" ? parsed.replyText : "";
   const shouldRespond = parsed.shouldRespond === "RESPOND";
   if (preempt?.mode === "ack-and-stop") {
-    trace.push("preempt", { preemptMode: "ack-and-stop", reason: preempt.reason });
+    trace.push("preempt", {
+      preemptMode: "ack-and-stop",
+      reason: preempt.reason,
+    });
     if (replyText) {
       state.recordReply(message.channel, replyText, trace.all().length);
-      trace.push("reply_emitted", { channel: message.channel, text: replyText });
+      trace.push("reply_emitted", {
+        channel: message.channel,
+        text: replyText,
+      });
     }
   } else if (preempt?.mode === "ignore") {
     trace.push("preempt", { preemptMode: "ignore", reason: preempt.reason });
@@ -257,4 +304,13 @@ async function applyResponseToState(args: ApplyArgs): Promise<void> {
   if (parsed.addressedTo && Array.isArray(parsed.addressedTo)) {
     // No-op for now beyond simple validation; the scorer reads the trace.
   }
+}
+
+function getThreadOps(parsed: ResponseHandlerResult): BenchThreadOp[] {
+  const value = parsed.threadOps;
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (op): op is BenchThreadOp =>
+      typeof op === "object" && op !== null && !Array.isArray(op),
+  );
 }

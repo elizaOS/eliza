@@ -67,6 +67,33 @@ describe("Linear router actions", () => {
     handler.mockRestore();
   });
 
+  it("honors an explicit issue action discriminator (canonical name)", async () => {
+    const handler = vi.spyOn(createIssueAction, "handler").mockResolvedValue({
+      success: true,
+      text: "created",
+      data: { identifier: "ENG-2" },
+    });
+
+    const result = await linearIssueRouterAction.handler(
+      createRuntime(),
+      createMessage("Add a Linear task"),
+      undefined,
+      { parameters: { action: "create" } }
+    );
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        actionName: "LINEAR_ISSUE",
+        op: "create",
+        subaction: "create",
+      },
+    });
+
+    handler.mockRestore();
+  });
+
   it("annotates delegated comment failures with structured error data", async () => {
     const handler = vi.spyOn(createCommentAction, "handler").mockResolvedValue({
       success: false,

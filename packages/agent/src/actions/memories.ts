@@ -374,14 +374,8 @@ export const memoryAction: Action = {
   parameters: [
     {
       name: "action",
-      description: "Operation to perform.",
-      required: false,
-      schema: { type: "string" as const, enum: [...MEMORY_OPS] },
-    },
-    {
-      name: "op",
       description:
-        "Legacy alias for action. Use create, search, update, or delete.",
+        "Operation to perform. One of: create, search, update, delete.",
       required: false,
       schema: { type: "string" as const, enum: [...MEMORY_OPS] },
     },

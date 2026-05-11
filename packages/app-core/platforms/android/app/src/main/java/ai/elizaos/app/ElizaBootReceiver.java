@@ -4,6 +4,7 @@ import android.app.AppOpsManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Process;
 import android.util.Log;
 import java.lang.reflect.Method;
@@ -12,11 +13,16 @@ public class ElizaBootReceiver extends BroadcastReceiver {
 
     private static final String TAG = "ElizaBootReceiver";
 
+    // Capacitor Preferences default group — mirrored from GatewayConnectionService.
+    private static final String CAPACITOR_PREFS_GROUP = "CapacitorStorage";
+    static final String BACKGROUND_ENABLED_KEY = "eliza:background-enabled";
+
     @Override
     public void onReceive(Context context, Intent intent) {
         String action = intent != null ? intent.getAction() : null;
         if (!Intent.ACTION_BOOT_COMPLETED.equals(action)
-                && !Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)) {
+                && !Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)
+                && !"android.intent.action.MY_PACKAGE_REPLACED".equals(action)) {
             return;
         }
         // PACKAGE_USAGE_STATS has both a manifest permission (granted via
@@ -32,6 +38,38 @@ public class ElizaBootReceiver extends BroadcastReceiver {
         // See ElizaAgentService.shouldAutoStart for the exact gate.
         if (ElizaAgentService.shouldAutoStart(context)) {
             ElizaAgentService.start(context);
+        }
+
+        // Re-arm the WorkManager periodic refresh after boot / package
+        // replacement. WorkManager persists its job DB across reboots on
+        // most OEM ROMs, but some clear it on BOOT_COMPLETED; KEEP policy
+        // makes this safe to call unconditionally.
+        SharedPreferences prefs = context.getSharedPreferences(
+            CAPACITOR_PREFS_GROUP,
+            Context.MODE_PRIVATE
+        );
+        if (isBackgroundEnabled(prefs)) {
+            ElizaWorkScheduler.enqueuePeriodic(context);
+        } else {
+            Log.i(TAG, "background disabled by user; skipping WorkManager re-enqueue on " + action);
+        }
+    }
+
+    /**
+     * Reads the background-enabled toggle. Capacitor Preferences stores booleans
+     * as the string {@code "true"} / {@code "false"} when written via
+     * {@code Preferences.set({ key, value: String(bool) })}, so we accept both
+     * the string form and the native boolean form. Default: enabled.
+     */
+    static boolean isBackgroundEnabled(SharedPreferences prefs) {
+        if (prefs == null || !prefs.contains(BACKGROUND_ENABLED_KEY)) {
+            return true;
+        }
+        try {
+            return prefs.getBoolean(BACKGROUND_ENABLED_KEY, true);
+        } catch (ClassCastException notBoolean) {
+            String stringValue = prefs.getString(BACKGROUND_ENABLED_KEY, "true");
+            return !"false".equalsIgnoreCase(stringValue);
         }
     }
 

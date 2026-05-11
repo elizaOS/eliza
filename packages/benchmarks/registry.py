@@ -2621,7 +2621,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     # The four envs share one subprocess shim and one score extractor; only the
     # short env-id arg and the result-glob differ between them.
 
-    hermes_run_env_cli = repo("hermes-adapter/run_env_cli.py")
+    hermes_run_env_cli = repo("benchmarks/hermes-adapter/run_env_cli.py")
 
     def _hermes_env_cmd(
         env_arg: str,

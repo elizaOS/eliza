@@ -171,14 +171,14 @@ export class ClackObserver implements CloudOnboardingObserver {
     // pick it up. No `as unknown as` escape — the parameter type IS the
     // right type, we just have to address it positionally.
     type SelectOpts = Parameters<typeof this.clack.select<T>>[0];
-    const options: SelectOpts["options"] = prompt.options.map((option) => {
+    const options = prompt.options.map((option) => {
       const out = {
         label: option.label,
         value: option.value,
         ...(option.hint !== undefined ? { hint: option.hint } : {}),
-      } as SelectOpts["options"][number];
+      };
       return out;
-    });
+    }) as SelectOpts["options"];
     const result = await this.clack.select<T>({
       message: prompt.message,
       options,

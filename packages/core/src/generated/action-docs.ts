@@ -4136,9 +4136,9 @@ export const allActionsSpec = {
 				"Manage the owner's document workflow surface: signature requests, approvals, deadline tracking, portal uploads, ID/form collection, and request close-out. Subactions: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description:
-						"Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+						"Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
 					required: false,
 					schema: {
 						type: "string",
@@ -4152,7 +4152,26 @@ export const allActionsSpec = {
 						],
 					},
 					descriptionCompressed:
-						"Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+						"Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+				},
+				{
+					name: "subaction",
+					description:
+						"Legacy alias for action. Prefer action for new planner output.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"request_signature",
+							"request_approval",
+							"track_deadline",
+							"upload_asset",
+							"collect_id",
+							"close_request",
+						],
+					},
+					descriptionCompressed:
+						"Legacy alias for action. Prefer action for new planner output.",
 				},
 				{
 					name: "documentRequestId",
@@ -4298,19 +4317,19 @@ export const allActionsSpec = {
 		{
 			name: "ENTITY",
 			description:
-				"Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: add, list, set_identity, set_relationship, log_interaction, merge. Use SCHEDULED_TASK for follow-up cadence; use LIFE for one-off dated reminders to call/text someone.",
+				"Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASK for follow-up cadence; use LIFE for one-off dated reminders to call/text someone.",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Which ENTITY operation to run: add (new contact), list (read rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). Follow-up cadence belongs to SCHEDULED_TASKS.",
+						"Which ENTITY operation to run: create (new contact), read (load rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). For rolodex/contact lifecycle (read full profile, search, update fields) use CONTACT. Follow-up cadence belongs to SCHEDULED_TASKS.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					examples: ["add", "list", "set_identity"],
+					examples: ["create", "read", "set_identity"],
 					descriptionCompressed:
-						"ENTITY op: add | list | log_interaction | set_identity | set_relationship | merge",
+						"ENTITY op: create | read | log_interaction | set_identity | set_relationship | merge",
 				},
 				{
 					name: "intent",
@@ -4501,7 +4520,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"people+relationships: add|list|set_identity|set_relationship|log_interaction|merge; follow-up cadence → SCHEDULED_TASK",
+				"people+relationships: create|read|set_identity|set_relationship|log_interaction|merge; rolodex CRUD → CONTACT; follow-up cadence → SCHEDULED_TASK",
 			similes: [
 				"RELATIONSHIP",
 				"CONTACTS",
@@ -4520,7 +4539,7 @@ export const allActionsSpec = {
 					actions: ["ENTITY"],
 					params: {
 						ENTITY: {
-							action: "add",
+							action: "create",
 							intent: "example",
 							name: "example",
 							channel: "email",
@@ -7312,15 +7331,6 @@ export const allActionsSpec = {
 						"Operation to perform. One of: search, products, inventory, orders, customers. Inferred from msg text when omitted.",
 				},
 				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Legacy alias for action.",
-				},
-				{
 					name: "query",
 					description: "Search term for action=search.",
 					required: false,
@@ -7381,7 +7391,6 @@ export const allActionsSpec = {
 					params: {
 						SHOPIFY: {
 							action: "search",
-							subaction: "example",
 							query: "example",
 							scope: "all",
 							limit: 1,
@@ -8111,15 +8120,6 @@ export const allActionsSpec = {
 						"Action: write, create, update, complete, cancel, delete, list, clear.",
 				},
 				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Legacy alias for action.",
-				},
-				{
 					name: "id",
 					description: "Todo id (update/complete/cancel/delete).",
 					required: false,
@@ -8251,7 +8251,6 @@ export const allActionsSpec = {
 					params: {
 						TODO: {
 							action: "example",
-							subaction: "example",
 							id: "example",
 							content: "example",
 							activeForm: "example",

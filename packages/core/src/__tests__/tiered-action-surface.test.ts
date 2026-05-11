@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { runV5MessageRuntimeStage1 } from "../services/message";
 import type {
 	Action,
@@ -43,11 +45,20 @@ interface CannedResponse {
 	body: unknown;
 }
 
+function createResponseHandlerFieldRegistry(): ResponseHandlerFieldRegistry {
+	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
+	for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+		responseHandlerFieldRegistry.register(evaluator);
+	}
+	return responseHandlerFieldRegistry;
+}
+
 function makeRuntime(opts: {
 	actions: Action[];
 	responses: CannedResponse[];
 }): IAgentRuntime {
 	const queue = [...opts.responses];
+	const responseHandlerFieldRegistry = createResponseHandlerFieldRegistry();
 	const calls: Array<{
 		modelType: unknown;
 		params: unknown;
@@ -62,6 +73,10 @@ function makeRuntime(opts: {
 		},
 		actions: opts.actions,
 		providers: [],
+		responseHandlerFieldRegistry,
+		responseHandlerFieldEvaluators: [
+			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+		],
 		composeState: vi.fn(async () => makeState()),
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => undefined),
@@ -140,22 +155,47 @@ function makeAction(opts: {
 	} as Action;
 }
 
-function stage1Response(plan: Record<string, unknown>): CannedResponse {
+function stage1Response(fields: {
+	shouldRespond?: "RESPOND" | "IGNORE" | "STOP";
+	contexts?: string[];
+	intents?: string[];
+	candidateActionNames?: string[];
+	replyText?: string;
+}): CannedResponse {
 	return {
 		body: JSON.stringify({
-			processMessage: "RESPOND",
-			plan,
-			thought: "Planning required.",
+			shouldRespond: fields.shouldRespond ?? "RESPOND",
+			contexts: fields.contexts ?? [],
+			intents: fields.intents ?? [],
+			candidateActionNames: fields.candidateActionNames ?? [],
+			replyText: fields.replyText ?? "",
+			facts: [],
+			relationships: [],
+			addressedTo: [],
 		}),
 	};
 }
 
-function replyPlannerResponse(): CannedResponse {
+function plannerToolResponse(
+	name: string,
+	args: Record<string, unknown> = {},
+): CannedResponse {
 	return {
 		body: {
-			text: "ok",
-			toolCalls: [{ id: "reply-1", name: "REPLY", arguments: { text: "ok" } }],
+			text: "",
+			toolCalls: [{ id: `${name.toLowerCase()}-1`, name, args }],
 		},
+	};
+}
+
+function finishEvaluatorResponse(messageToUser = "Done."): CannedResponse {
+	return {
+		body: JSON.stringify({
+			success: true,
+			decision: "FINISH",
+			thought: messageToUser,
+			messageToUser,
+		}),
 	};
 }
 
@@ -229,10 +269,10 @@ describe("v5 tiered action surface", () => {
 			responses: [
 				stage1Response({
 					contexts: ["music"],
-					candidateActions: ["play_music"],
-					parentActionHints: ["MUSIC"],
+					candidateActionNames: ["play_music", "MUSIC"],
 				}),
-				replyPlannerResponse(),
+				plannerToolResponse("PLAY_MUSIC"),
+				finishEvaluatorResponse("Playing music."),
 			],
 		});
 
@@ -267,8 +307,7 @@ describe("v5 tiered action surface", () => {
 			responses: [
 				stage1Response({
 					contexts: ["documents"],
-					requiresTool: true,
-					candidateActions: ["search_documents"],
+					candidateActionNames: ["search_documents"],
 				}),
 				{
 					body: {
@@ -395,7 +434,6 @@ describe("v5 tiered action surface", () => {
 			responses: [
 				stage1Response({
 					contexts: ["connectors"],
-					requiresTool: true,
 				}),
 				{
 					body: {
@@ -454,8 +492,7 @@ describe("v5 tiered action surface", () => {
 			responses: [
 				stage1Response({
 					contexts: ["settings"],
-					requiresTool: true,
-					candidateActions: ["lookup_password"],
+					candidateActionNames: ["lookup_password"],
 				}),
 				{
 					body: {
@@ -506,9 +543,7 @@ describe("v5 tiered action surface", () => {
 			responses: [
 				stage1Response({
 					contexts: ["simple"],
-					reply: "Here is a generic night check-in.",
-					requiresTool: false,
-					simple: true,
+					replyText: "Here is a generic night check-in.",
 				}),
 				{
 					body: {
@@ -570,9 +605,10 @@ describe("v5 tiered action surface", () => {
 			responses: [
 				stage1Response({
 					contexts: ["connectors"],
-					requiresTool: true,
-					candidateActions: ["calendly_create_single_use_link"],
-					parentActionHints: ["create_single_use_link"],
+					candidateActionNames: [
+						"calendly_create_single_use_link",
+						"create_single_use_link",
+					],
 				}),
 				{
 					body: {
@@ -611,9 +647,7 @@ describe("v5 tiered action surface", () => {
 
 		const prompt = plannerUserContent(runtime);
 		expect(prompt).toMatch(/selected_contexts:[^\n]*calendar/);
-		expect(prompt).toContain(
-			'"parentActionHints":["create_single_use_link","CALENDAR"]',
-		);
+		expect(prompt).toContain('"parentActionHints":["CALENDAR"]');
 		const actions = availableActionsSection(runtime);
 		expect(actions).toContain("CALENDAR");
 		expect(actions).toContain("CALENDLY");
@@ -640,7 +674,8 @@ describe("v5 tiered action surface", () => {
 			actions: [calendar, createEvent, chat],
 			responses: [
 				stage1Response({ contexts: ["calendar"] }),
-				replyPlannerResponse(),
+				plannerToolResponse("CHAT_MESSAGE"),
+				finishEvaluatorResponse("Calendar checked."),
 			],
 		});
 
@@ -673,7 +708,8 @@ describe("v5 tiered action surface", () => {
 			actions: [calendar, chat],
 			responses: [
 				stage1Response({ contexts: ["calendar"] }),
-				replyPlannerResponse(),
+				plannerToolResponse("CALENDAR"),
+				finishEvaluatorResponse("Calendar checked."),
 			],
 		});
 
@@ -712,9 +748,7 @@ describe("v5 tiered action surface", () => {
 			responses: [
 				stage1Response({
 					contexts: ["email"],
-					requiresTool: true,
-					candidateActions: ["summarize_unread_emails"],
-					parentActionHints: ["MESSAGE"],
+					candidateActionNames: ["summarize_unread_emails", "MESSAGE"],
 				}),
 				{
 					body: {

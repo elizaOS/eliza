@@ -19,7 +19,7 @@
  *   - Flat: no `plan.*` wrapper
  *   - All required: empty array / empty string for N/A
  *   - `simple` is a context name, not a flag (contexts: ["simple"])
- *   - No `STOP`: just `RESPOND` / `IGNORE`
+ *   - `STOP` remains a first-class terminal response for explicit stop requests
  *   - No `thought` / `requiresTool` / `contextSlices` / `parentActionHints`
  *     (derivable, redundant, or prompt theater)
  *   - New `intents` field for short verb phrases (routing-friendly)
@@ -37,22 +37,26 @@ import type { ResponseHandlerFieldEvaluator } from "./response-handler-field-eva
 // ---------------------------------------------------------------------------
 
 export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
-	"RESPOND" | "IGNORE"
+	"RESPOND" | "IGNORE" | "STOP"
 > = {
 	name: "shouldRespond",
 	description:
-		"Decide whether to respond to this message. RESPOND when the message is addressed to you, asks a question you can help with, or continues an active conversation. IGNORE when the message is between other people, is small-talk you were not addressed in, or is otherwise not yours to handle. In a DM channel this is effectively always RESPOND. In a group room, only RESPOND when you were @mentioned, replied to, or the conversation is clearly directed at you.",
+		"Decide whether to respond to this message. RESPOND when the message is addressed to you, asks a question you can help with, or continues an active conversation. IGNORE when the message is between other people, is small-talk you were not addressed in, or is otherwise not yours to handle. STOP only when the user explicitly asks you to stop/terminate this interaction without further work. In a DM channel this is effectively always RESPOND unless the user asks you to stop.",
 	priority: 5,
 	schema: {
 		type: "string",
-		enum: ["RESPOND", "IGNORE"],
+		enum: ["RESPOND", "IGNORE", "STOP"],
 		description:
-			"RESPOND = engage this turn (compose reply or run actions). IGNORE = stay silent and let the conversation continue without you.",
+			"RESPOND = engage this turn (compose reply or run actions). IGNORE = stay silent and let the conversation continue without you. STOP = terminate because the user explicitly asked you to stop.",
 	},
 	parse(value) {
 		const normalized =
 			typeof value === "string" ? value.trim().toUpperCase() : "";
-		if (normalized === "RESPOND" || normalized === "IGNORE") {
+		if (
+			normalized === "RESPOND" ||
+			normalized === "IGNORE" ||
+			normalized === "STOP"
+		) {
 			return normalized;
 		}
 		// Defensive default: when malformed, prefer staying engaged (IGNORE bias

@@ -45,7 +45,6 @@
     "./config/app-config": "./dist/config/app-config.js",
     "./onboarding-config": "./dist/onboarding-config.js",
     "./dist/styles/*.css": "./dist/styles/*.css",
-    "./styles/*.css": "./dist/styles/*.css",
     "./*.css": "./dist/*.css",
     "./*": {
       "import": "./dist/*.js",

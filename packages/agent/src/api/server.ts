@@ -2394,10 +2394,10 @@ async function handleRequest(
   // Extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes).
   // The plugin registers rawPath routes that serve the same legacy paths.
 
-  // ── Telegram setup routes (/api/telegram-setup/*) ────────────────────
+  // ── Telegram setup routes (/api/setup/telegram/*) ────────────────────
   // Extracted to @elizaos/plugin-telegram setup-routes.ts (Plugin.routes).
 
-  // ── Telegram account routes (/api/telegram-account/*) ────────────────
+  // ── Telegram account routes (/api/setup/telegram-account/*) ──────────
   // Extracted to @elizaos/plugin-telegram account-setup-routes.ts (Plugin.routes).
 
   // ── Discord Local routes (/api/discord-local/*) — extracted to @elizaos/plugin-discord (setup-routes.ts) ──

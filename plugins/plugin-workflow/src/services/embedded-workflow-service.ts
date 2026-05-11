@@ -4,7 +4,6 @@ import {
   logger,
   Service,
   stringToUuid,
-  type Task,
   TRIGGER_SCHEMA_VERSION,
   type TriggerConfig,
   type UUID,
@@ -36,8 +35,8 @@ export const EMBEDDED_WORKFLOW_SERVICE_TYPE = 'embedded_workflow_service';
  * import @elizaos/agent (would create a dep cycle). The agent's
  * `registerTriggerTaskWorker` consumes tasks with this name.
  */
-const TRIGGER_TASK_NAME = 'TRIGGER_DISPATCH';
-const TRIGGER_TASK_TAGS: readonly string[] = ['queue', 'repeat', 'trigger'];
+export const TRIGGER_TASK_NAME = 'TRIGGER_DISPATCH';
+export const TRIGGER_TASK_TAGS: readonly string[] = ['queue', 'repeat', 'trigger'];
 
 /** Discriminator on TaskMetadata so the UI can route workflow tasks. */
 export const WORKFLOW_TASK_KIND = 'workflow';
@@ -201,6 +200,17 @@ function readString(value: unknown, fallback: string): string {
 
 function readNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * Build the per-dispatch idempotency key used to dedup back-to-back
+ * scheduled fires for the same workflow within the same minute. Shared
+ * by `armSchedules` (which writes it into the task metadata) and
+ * `WorkflowDispatchService.execute` (which looks it up before running).
+ */
+export function buildScheduleIdempotencyKey(workflowId: string, nextRunAtMs: number): string {
+  const minuteBucket = Math.floor(nextRunAtMs / 60_000);
+  return `${workflowId}:${minuteBucket}`;
 }
 
 function resolveScheduleIntervalMs(parameters: Record<string, unknown>): number {
@@ -1949,9 +1959,14 @@ export class EmbeddedWorkflowService extends Service {
   /** Re-create core Tasks for every active workflow on service start.
    *  Tasks themselves persist across restart; this is a reconcile step that
    *  ensures workflows whose schedule changed (or whose tasks were never
-   *  created in the first place) end up correctly scheduled. */
+   *  created in the first place) end up correctly scheduled.
+   *
+   *  Also performs a one-shot migration: any pre-existing legacy
+   *  `workflow.run` / `workflow.webhook` task rows are deleted so the new
+   *  `TRIGGER_DISPATCH` path is the single source of scheduled runs. */
   private async rehydrateSchedules(): Promise<void> {
     await this.ensureSchema();
+    await this.deleteLegacyScheduleTasks();
     const rows = await this.getDb()
       .select()
       .from(embeddedWorkflows)
@@ -1961,9 +1976,73 @@ export class EmbeddedWorkflowService extends Service {
     }
   }
 
-  /** Create one recurring core Task per scheduleTrigger node on the workflow.
-   *  Idempotent: existing tasks for this workflow are removed first so the
-   *  task set always reflects the current workflow definition. */
+  /** Remove legacy `workflow.run` / `workflow.webhook` Tasks left behind
+   *  by earlier service versions. Returns the count so callers (and the
+   *  migration log) can verify the cleanup. */
+  private async deleteLegacyScheduleTasks(): Promise<number> {
+    if (
+      typeof this.runtime.getTasks !== 'function' ||
+      typeof this.runtime.deleteTask !== 'function'
+    ) {
+      return 0;
+    }
+    const tasks = await this.runtime.getTasks({
+      tags: [WORKFLOW_TASK_TAG],
+      agentIds: [this.runtime.agentId],
+    });
+    if (!tasks?.length) return 0;
+    let removed = 0;
+    for (const task of tasks) {
+      if (!task.id) continue;
+      if (
+        task.name === LEGACY_WORKFLOW_RUN_TASK_NAME ||
+        task.name === LEGACY_WORKFLOW_WEBHOOK_TASK_NAME
+      ) {
+        await this.runtime.deleteTask(task.id);
+        removed += 1;
+      }
+    }
+    if (removed > 0) {
+      logger.info(
+        { src: 'plugin:workflow:embedded', removed },
+        `Removed ${removed} legacy workflow task row(s); schedules will re-arm via TRIGGER_DISPATCH`
+      );
+    }
+    return removed;
+  }
+
+  /** Build a `TriggerConfig` for a workflow schedule node. The resulting
+   *  config is what the agent's `executeTriggerTask` reads off the task
+   *  metadata when the scheduler fires. */
+  private buildScheduleTrigger(
+    workflowId: string,
+    workflowName: string,
+    intervalMs: number
+  ): TriggerConfig {
+    const triggerId = stringToUuid(`${workflowId}:schedule:${randomUUID()}`);
+    return {
+      version: TRIGGER_SCHEMA_VERSION,
+      triggerId,
+      displayName: `Scheduled workflow run: ${workflowName}`,
+      instructions: `Run workflow ${workflowName}`,
+      triggerType: 'interval',
+      enabled: true,
+      wakeMode: 'inject_now',
+      createdBy: 'workflow.schedule',
+      intervalMs,
+      runCount: 0,
+      kind: 'workflow',
+      workflowId,
+      workflowName,
+    };
+  }
+
+  /** Create one recurring `TRIGGER_DISPATCH` Task per scheduleTrigger
+   *  node on the workflow. Idempotent: existing tasks for this workflow
+   *  are removed first so the task set always reflects the current
+   *  workflow definition. Each task carries an idempotency key derived
+   *  from `(workflowId, nextRunAt-minute-bucket)` so that simultaneous
+   *  fires within the same minute deduplicate at dispatch. */
   private async armSchedules(workflowId: string): Promise<void> {
     await this.clearSchedules(workflowId);
     if (typeof this.runtime.createTask !== 'function') return;
@@ -1973,19 +2052,30 @@ export class EmbeddedWorkflowService extends Service {
     );
     if (scheduleNodes.length === 0) return;
 
+    const nowMs = Date.now();
     for (const node of scheduleNodes) {
       const intervalMs = resolveScheduleIntervalMs(node.parameters);
+      const trigger = this.buildScheduleTrigger(workflowId, entry.workflow.name, intervalMs);
+      const nextRunAtMs = nowMs + intervalMs;
+      const triggerWithSchedule: TriggerConfig = {
+        ...trigger,
+        nextRunAtMs,
+      };
+      const idempotencyKey = buildScheduleIdempotencyKey(workflowId, nextRunAtMs);
       await this.runtime.createTask({
-        name: WORKFLOW_RUN_TASK_WORKER_NAME,
-        description: `Scheduled workflow run: ${entry.workflow.name}`,
-        tags: ['queue', 'repeat', WORKFLOW_TASK_TAG],
+        name: TRIGGER_TASK_NAME,
+        description: trigger.displayName,
+        tags: [...TRIGGER_TASK_TAGS, WORKFLOW_TASK_TAG],
         metadata: {
+          blocking: true,
+          updatedAt: nowMs,
+          updateInterval: intervalMs,
+          baseInterval: intervalMs,
           kind: WORKFLOW_TASK_KIND,
           workflowId,
           scheduleNodeId: node.id,
-          updateInterval: intervalMs,
-          baseInterval: intervalMs,
-          updatedAt: Date.now(),
+          idempotencyKey,
+          trigger: triggerWithSchedule,
         },
       });
     }

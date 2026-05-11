@@ -7,11 +7,12 @@
  * `--judge` flag).
  */
 
-import type { Scenario } from "./types.ts";
-import type { SimulatorState } from "./state.ts";
+import type { JSONSchema } from "@elizaos/core";
 import { callCerebras, isCerebrasConfigured } from "./llm-cerebras.ts";
+import type { SimulatorState } from "./state.ts";
+import type { Scenario } from "./types.ts";
 
-const JUDGE_SCHEMA = {
+const JUDGE_SCHEMA: JSONSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
@@ -25,9 +26,10 @@ const JUDGE_SCHEMA = {
     },
   },
   required: ["pass", "reason"],
-} as const;
+};
 
-const JUDGE_SYSTEM = "You are a strict but fair benchmark judge. Read the rubric and the agent's replies. Decide pass/fail. Output JSON only.";
+const JUDGE_SYSTEM =
+  "You are a strict but fair benchmark judge. Read the rubric and the agent's replies. Decide pass/fail. Output JSON only.";
 
 export async function runJudge(args: {
   scenario: Scenario;
@@ -44,9 +46,10 @@ export async function runJudge(args: {
   const repliesBlock = scenario.setup.rooms
     .map((r) => {
       const replies = finalState.repliesInChannel(r.id);
-      const body = replies.length === 0
-        ? "(no replies in this channel)"
-        : replies.map((reply) => `  - "${reply.text}"`).join("\n");
+      const body =
+        replies.length === 0
+          ? "(no replies in this channel)"
+          : replies.map((reply) => `  - "${reply.text}"`).join("\n");
       return `[${r.id}]\n${body}`;
     })
     .join("\n");
@@ -58,8 +61,18 @@ export async function runJudge(args: {
     repliesBlock,
     "",
     `# Notable end-state`,
-    `- active threads: ${[...finalState.threads.values()].filter((t) => t.status === "active").map((t) => `${t.id}(${t.instruction})`).join(" | ") || "(none)"}`,
-    `- stopped threads: ${[...finalState.threads.values()].filter((t) => t.status === "stopped").map((t) => t.id).join(", ") || "(none)"}`,
+    `- active threads: ${
+      [...finalState.threads.values()]
+        .filter((t) => t.status === "active")
+        .map((t) => `${t.id}(${t.instruction})`)
+        .join(" | ") || "(none)"
+    }`,
+    `- stopped threads: ${
+      [...finalState.threads.values()]
+        .filter((t) => t.status === "stopped")
+        .map((t) => t.id)
+        .join(", ") || "(none)"
+    }`,
     `- emailsSent: ${finalState.external.emailsSent}`,
     "",
     "Output JSON only.",
@@ -75,7 +88,10 @@ export async function runJudge(args: {
     const parsed = out.parsed as unknown as { pass?: boolean; reason?: string };
     return {
       pass: !!parsed?.pass,
-      reason: typeof parsed?.reason === "string" ? parsed.reason : "(no reason returned)",
+      reason:
+        typeof parsed?.reason === "string"
+          ? parsed.reason
+          : "(no reason returned)",
     };
   } catch (err) {
     return {

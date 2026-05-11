@@ -1173,79 +1173,165 @@ function getConnectorConfig(setupService: ConnectorSetupService): ConnectorConfi
   return {};
 }
 
-async function handleDiscordLocalStatus(
+// ── Shared setup contract types ─────────────────────────────────────────
+// Mirror of @elizaos/app-core/api/setup-contract — kept inline here so this
+// plugin doesn't take a dependency on app-core just for the type definitions.
+
+type SetupState = "idle" | "configuring" | "paired" | "error";
+
+interface SetupStatusResponse<TDetail = unknown> {
+  connector: string;
+  state: SetupState;
+  detail?: TDetail;
+}
+
+interface SetupErrorResponse {
+  error: { code: string; message: string };
+}
+
+function setupErrorBody(code: string, message: string): SetupErrorResponse {
+  return { error: { code, message } };
+}
+
+interface DiscordServiceStatusShape {
+  available: boolean;
+  connected: boolean;
+  authenticated: boolean;
+  currentUser?: unknown;
+  subscribedChannelIds: string[];
+  configuredChannelIds: string[];
+  scopes: string[];
+  lastError: string | null;
+  ipcPath: string | null;
+  reason?: string;
+}
+
+function buildDiscordStatusResponse(
+  runtime: IAgentRuntime
+): SetupStatusResponse<DiscordServiceStatusShape> {
+  const service = resolveDiscordLocalService(runtime);
+  if (!service) {
+    return {
+      connector: "discord",
+      state: "idle",
+      detail: {
+        available: false,
+        connected: false,
+        authenticated: false,
+        currentUser: null,
+        subscribedChannelIds: [],
+        configuredChannelIds: [],
+        scopes: [],
+        lastError: "discord-local service not registered",
+        ipcPath: null,
+        reason: "discord-local service not registered",
+      },
+    };
+  }
+  const detail = service.getStatus() as unknown as DiscordServiceStatusShape;
+  const state: SetupState = detail.authenticated
+    ? "paired"
+    : detail.lastError
+      ? "error"
+      : detail.connected
+        ? "configuring"
+        : "idle";
+  return { connector: "discord", state, detail };
+}
+
+// ── GET /api/setup/discord/status ───────────────────────────────────────
+
+async function handleDiscordStatus(
   _req: RouteRequest,
   res: RouteResponse,
   runtime: IAgentRuntime
 ): Promise<void> {
-  const service = resolveDiscordLocalService(runtime);
-  res.status(200).json(
-    service
-      ? service.getStatus()
-      : {
-          available: false,
-          connected: false,
-          authenticated: false,
-          currentUser: null,
-          subscribedChannelIds: [],
-          configuredChannelIds: [],
-          scopes: [],
-          lastError: "discord-local service not registered",
-          ipcPath: null,
-          reason: "discord-local service not registered",
-        }
-  );
+  res.status(200).json(buildDiscordStatusResponse(runtime));
 }
 
-async function handleDiscordLocalAuthorize(
+// ── POST /api/setup/discord/start ───────────────────────────────────────
+
+async function handleDiscordStart(
   _req: RouteRequest,
   res: RouteResponse,
   runtime: IAgentRuntime
 ): Promise<void> {
   const service = resolveDiscordLocalService(runtime);
   if (!service) {
-    res.status(503).json({ error: "discord-local service not registered" });
+    res
+      .status(503)
+      .json(setupErrorBody("service_unavailable", "discord-local service not registered"));
     return;
   }
 
   try {
-    res.status(200).json(await service.authorize());
+    const detail = (await service.authorize()) as unknown as DiscordServiceStatusShape;
+    const state: SetupState = detail.authenticated
+      ? "paired"
+      : detail.lastError
+        ? "error"
+        : "configuring";
+    res.status(200).json({
+      connector: "discord",
+      state,
+      detail,
+    } satisfies SetupStatusResponse<DiscordServiceStatusShape>);
   } catch (error) {
-    res.status(500).json({
-      error: `failed to authorize discord-local: ${error instanceof Error ? error.message : String(error)}`,
-    });
+    res
+      .status(500)
+      .json(
+        setupErrorBody(
+          "internal_error",
+          `failed to authorize discord-local: ${error instanceof Error ? error.message : String(error)}`
+        )
+      );
   }
 }
 
-async function handleDiscordLocalDisconnect(
+// ── POST /api/setup/discord/cancel ──────────────────────────────────────
+
+async function handleDiscordCancel(
   _req: RouteRequest,
   res: RouteResponse,
   runtime: IAgentRuntime
 ): Promise<void> {
   const service = resolveDiscordLocalService(runtime);
   if (!service) {
-    res.status(503).json({ error: "discord-local service not registered" });
+    res
+      .status(503)
+      .json(setupErrorBody("service_unavailable", "discord-local service not registered"));
     return;
   }
 
   try {
     await service.disconnectSession();
-    res.status(200).json({ ok: true });
+    res
+      .status(200)
+      .json({ connector: "discord", state: "idle" } satisfies SetupStatusResponse<undefined>);
   } catch (error) {
-    res.status(500).json({
-      error: `failed to disconnect discord-local: ${error instanceof Error ? error.message : String(error)}`,
-    });
+    res
+      .status(500)
+      .json(
+        setupErrorBody(
+          "internal_error",
+          `failed to disconnect discord-local: ${error instanceof Error ? error.message : String(error)}`
+        )
+      );
   }
 }
 
-async function handleDiscordLocalGuilds(
+// ── GET /api/discord/guilds ─────────────────────────────────────────────
+
+async function handleDiscordGuilds(
   _req: RouteRequest,
   res: RouteResponse,
   runtime: IAgentRuntime
 ): Promise<void> {
   const service = resolveDiscordLocalService(runtime);
   if (!service) {
-    res.status(503).json({ error: "discord-local service not registered" });
+    res
+      .status(503)
+      .json(setupErrorBody("service_unavailable", "discord-local service not registered"));
     return;
   }
 
@@ -1253,27 +1339,36 @@ async function handleDiscordLocalGuilds(
     const guilds = await service.listGuilds();
     res.status(200).json({ guilds, count: guilds.length });
   } catch (error) {
-    res.status(500).json({
-      error: `failed to list discord-local guilds: ${error instanceof Error ? error.message : String(error)}`,
-    });
+    res
+      .status(500)
+      .json(
+        setupErrorBody(
+          "internal_error",
+          `failed to list discord-local guilds: ${error instanceof Error ? error.message : String(error)}`
+        )
+      );
   }
 }
 
-async function handleDiscordLocalChannels(
+// ── GET /api/discord/channels ───────────────────────────────────────────
+
+async function handleDiscordChannels(
   req: RouteRequest,
   res: RouteResponse,
   runtime: IAgentRuntime
 ): Promise<void> {
   const service = resolveDiscordLocalService(runtime);
   if (!service) {
-    res.status(503).json({ error: "discord-local service not registered" });
+    res
+      .status(503)
+      .json(setupErrorBody("service_unavailable", "discord-local service not registered"));
     return;
   }
 
-  const url = new URL(req.url ?? "/api/discord-local/channels", "http://localhost");
+  const url = new URL(req.url ?? "/api/discord/channels", "http://localhost");
   const guildId = url.searchParams.get("guildId")?.trim() ?? "";
   if (!guildId) {
-    res.status(400).json({ error: "guildId is required" });
+    res.status(400).json(setupErrorBody("bad_request", "guildId is required"));
     return;
   }
 
@@ -1281,26 +1376,35 @@ async function handleDiscordLocalChannels(
     const channels = await service.listChannels(guildId);
     res.status(200).json({ channels, count: channels.length });
   } catch (error) {
-    res.status(500).json({
-      error: `failed to list discord-local channels: ${error instanceof Error ? error.message : String(error)}`,
-    });
+    res
+      .status(500)
+      .json(
+        setupErrorBody(
+          "internal_error",
+          `failed to list discord-local channels: ${error instanceof Error ? error.message : String(error)}`
+        )
+      );
   }
 }
 
-async function handleDiscordLocalSubscriptions(
+// ── POST /api/discord/subscriptions ─────────────────────────────────────
+
+async function handleDiscordSubscriptions(
   req: RouteRequest,
   res: RouteResponse,
   runtime: IAgentRuntime
 ): Promise<void> {
   const service = resolveDiscordLocalService(runtime);
   if (!service) {
-    res.status(503).json({ error: "discord-local service not registered" });
+    res
+      .status(503)
+      .json(setupErrorBody("service_unavailable", "discord-local service not registered"));
     return;
   }
 
   const body = req.body;
   if (!body) {
-    res.status(400).json({ error: "request body is required" });
+    res.status(400).json(setupErrorBody("bad_request", "request body is required"));
     return;
   }
 
@@ -1343,47 +1447,52 @@ async function handleDiscordLocalSubscriptions(
 
     res.status(200).json({ subscribedChannelIds });
   } catch (error) {
-    res.status(500).json({
-      error: `failed to update discord-local subscriptions: ${error instanceof Error ? error.message : String(error)}`,
-    });
+    res
+      .status(500)
+      .json(
+        setupErrorBody(
+          "internal_error",
+          `failed to update discord-local subscriptions: ${error instanceof Error ? error.message : String(error)}`
+        )
+      );
   }
 }
 
 const discordLocalSetupRoutes: Route[] = [
   {
     type: "GET",
-    path: "/api/discord-local/status",
-    handler: handleDiscordLocalStatus,
+    path: "/api/setup/discord/status",
+    handler: handleDiscordStatus,
     rawPath: true,
   },
   {
     type: "POST",
-    path: "/api/discord-local/authorize",
-    handler: handleDiscordLocalAuthorize,
+    path: "/api/setup/discord/start",
+    handler: handleDiscordStart,
     rawPath: true,
   },
   {
     type: "POST",
-    path: "/api/discord-local/disconnect",
-    handler: handleDiscordLocalDisconnect,
+    path: "/api/setup/discord/cancel",
+    handler: handleDiscordCancel,
     rawPath: true,
   },
   {
     type: "GET",
-    path: "/api/discord-local/guilds",
-    handler: handleDiscordLocalGuilds,
+    path: "/api/discord/guilds",
+    handler: handleDiscordGuilds,
     rawPath: true,
   },
   {
     type: "GET",
-    path: "/api/discord-local/channels",
-    handler: handleDiscordLocalChannels,
+    path: "/api/discord/channels",
+    handler: handleDiscordChannels,
     rawPath: true,
   },
   {
     type: "POST",
-    path: "/api/discord-local/subscriptions",
-    handler: handleDiscordLocalSubscriptions,
+    path: "/api/discord/subscriptions",
+    handler: handleDiscordSubscriptions,
     rawPath: true,
   },
 ];

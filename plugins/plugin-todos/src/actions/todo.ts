@@ -501,12 +501,6 @@ export const todoAction: Action = {
       schema: { type: "string" as const, enum: [...TODO_OPS] },
     },
     {
-      name: "subaction",
-      description: "Legacy alias for action.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
       name: "id",
       description: "Todo id (update/complete/cancel/delete).",
       required: false,

@@ -1568,7 +1568,9 @@ async function validateMobileModelFit(
   return null;
 }
 
-async function ensureActiveModelLoaded(): Promise<void> {
+let loadInFlightPromise: Promise<void> | null = null;
+
+async function ensureActiveModelLoadedImpl(): Promise<void> {
   if (activeState.status !== "ready" || !activeState.modelId) {
     throw new Error(
       "No local model is active. Install and activate a GGUF model first.",
@@ -1603,6 +1605,24 @@ async function ensureActiveModelLoaded(): Promise<void> {
   }
   await llama.load(loadOptions);
   loadedRuntimeSignature = signature;
+}
+
+/**
+ * Load the active local model into the native llama runtime.
+ *
+ * Mutex: concurrent callers (e.g. a chat send racing the background-runner
+ * pre-warm) share the same in-flight promise. Without this, two parallel
+ * `llama.load(...)` calls can land back-to-back during a cold boot and
+ * either tear down each other's mmap state or double-allocate the KV cache.
+ */
+async function ensureActiveModelLoaded(): Promise<void> {
+  if (loadInFlightPromise) {
+    return loadInFlightPromise;
+  }
+  loadInFlightPromise = ensureActiveModelLoadedImpl().finally(() => {
+    loadInFlightPromise = null;
+  });
+  return loadInFlightPromise;
 }
 
 type LocalReply = {
@@ -1845,6 +1865,120 @@ function classifyIosLocalGenerateError(err: unknown): {
   return { fallback: false, reason: "local-error" };
 }
 
+/**
+ * Probe whether Eliza Cloud is paired and reachable. We hit the local
+ * `/api/auth/status` route on the in-process agent (the iOS ITTP kernel
+ * mounts it via the same fetch interceptor as the chat endpoint), then
+ * read `cloudProvisioned`. The 2 s timeout matches the chat-request
+ * deadline most callers tolerate; we'd rather decline the fallback than
+ * stall a webview turn waiting for an unreachable agent.
+ *
+ * Returns a typed verdict so the caller can both decide AND log the reason.
+ */
+type CloudPairedProbe =
+  | { kind: "paired" }
+  | { kind: "not-paired"; reason: string }
+  | { kind: "unknown"; reason: string };
+
+const CLOUD_PAIRED_PROBE_TIMEOUT_MS = 2_000;
+
+async function probeAgentCloudPaired(
+  fetchImpl: typeof fetch = fetch,
+): Promise<CloudPairedProbe> {
+  const apiBase = "http://127.0.0.1:31337";
+  const controller = new AbortController();
+  const timer = globalThis.setTimeout(
+    () => controller.abort(),
+    CLOUD_PAIRED_PROBE_TIMEOUT_MS,
+  );
+  let response: Response;
+  try {
+    response = await fetchImpl(`${apiBase}/api/auth/status`, {
+      method: "GET",
+      headers: { accept: "application/json" },
+      signal: controller.signal,
+    });
+  } catch (err) {
+    return {
+      kind: "unknown",
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    globalThis.clearTimeout(timer);
+  }
+  if (!response.ok) {
+    return { kind: "unknown", reason: `auth-status http ${response.status}` };
+  }
+  const body: unknown = await response.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return { kind: "unknown", reason: "auth-status non-object body" };
+  }
+  const cloudProvisioned = (body as { cloudProvisioned?: unknown })
+    .cloudProvisioned;
+  if (cloudProvisioned === true) {
+    return { kind: "paired" };
+  }
+  return { kind: "not-paired", reason: "cloudProvisioned=false" };
+}
+
+interface CloudForwardResult {
+  text: string;
+  promptTokens: number;
+  completionTokens: number;
+  modelId?: string;
+}
+
+/**
+ * Forward a prompt to the paired Eliza Cloud agent. The local agent's
+ * `/api/cloud/chat` proxy already understands how to relay this to the
+ * cloud-side model; we send a typed POST and return the canonical
+ * `CloudForwardResult` shape. Errors propagate so the caller can decide
+ * whether to surface "honest cloud failed" or just rethrow.
+ */
+async function forwardToAgentCloudChat(
+  prompt: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<CloudForwardResult> {
+  const apiBase = "http://127.0.0.1:31337";
+  const response = await fetchImpl(`${apiBase}/api/cloud/chat`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+    },
+    body: JSON.stringify({ prompt, maxTokens: 256, temperature: 0.7 }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `[ios-local-agent] Cloud fallback failed: HTTP ${response.status} ${response.statusText}`,
+    );
+  }
+  const body: unknown = await response.json();
+  if (!body || typeof body !== "object") {
+    throw new Error("[ios-local-agent] Cloud fallback: non-object response");
+  }
+  const record = body as Record<string, unknown>;
+  const textValue = record.text;
+  if (typeof textValue !== "string") {
+    throw new Error(
+      "[ios-local-agent] Cloud fallback: response missing string 'text'",
+    );
+  }
+  const promptTokens = Number.isFinite(record.promptTokens)
+    ? (record.promptTokens as number)
+    : 0;
+  const completionTokens = Number.isFinite(record.completionTokens)
+    ? (record.completionTokens as number)
+    : 0;
+  const modelId = typeof record.modelId === "string" ? record.modelId : undefined;
+  return {
+    text: textValue,
+    promptTokens,
+    completionTokens,
+    ...(modelId ? { modelId } : {}),
+  };
+}
+
 async function generateLocalReply(
   conversation: LocalConversation,
   text: string,
@@ -1887,18 +2021,48 @@ async function generateLocalReply(
     if (!cls.fallback) {
       throw err;
     }
-    // Local failed in a way that would normally be served by cloud, but
-    // this kernel only exposes the on-device llama adapter — there's no
-    // cloud handler registered here. Surface an honest, actionable error
-    // instead of inventing a fake response. Wave 3C / cloud routing layer
-    // can intercept this and forward to Eliza Cloud when a session token
-    // is available.
-    const reasonDetail = cls.reason;
-    const cause = err instanceof Error ? err : undefined;
+    // Local failed in a fallback-eligible way. Probe the in-process agent
+    // for cloud-paired state via `/api/auth/status`; if paired, forward
+    // the prompt to the agent's cloud proxy and return its response. If
+    // NOT paired, surface an honest, actionable error — silently inventing
+    // a fake response is a bigger bug than telling the user "pair cloud
+    // or use a smaller model".
+    const probe = await probeAgentCloudPaired();
+    if (probe.kind === "paired") {
+      try {
+        const cloud = await forwardToAgentCloudChat(prompt);
+        return {
+          text: cloud.text.trim() || "Cloud returned an empty response.",
+          usage: {
+            promptTokens: cloud.promptTokens,
+            completionTokens: cloud.completionTokens,
+            totalTokens: cloud.promptTokens + cloud.completionTokens,
+            ...(cloud.modelId
+              ? { model: cloud.modelId }
+              : activeState.modelId
+                ? { model: activeState.modelId }
+                : {}),
+          },
+        };
+      } catch (cloudErr) {
+        // Cloud was paired but the forward failed. We can't pretend it
+        // succeeded, so we surface a precise error that names both the
+        // local cause AND the cloud attempt's failure.
+        const honest = new Error(
+          `Local model failed (${cls.reason}) and the paired cloud fallback also failed: ${cloudErr instanceof Error ? cloudErr.message : String(cloudErr)}`,
+        );
+        honest.name = "LocalInferenceFallbackFailed";
+        (honest as Error & { cause?: unknown }).cause = cloudErr;
+        throw honest;
+      }
+    }
+    // Not paired (or probe unreachable). HONEST error per the wave-4 spec —
+    // do NOT swallow.
     const honest = new Error(
-      `Local inference unavailable on this device (${reasonDetail}). Pair Eliza Cloud or activate a smaller local model to continue.`,
+      "Local model failed and cloud is not paired. Pair Eliza Cloud or download a smaller model.",
     );
     honest.name = "LocalInferenceFallbackRequired";
+    const cause = err instanceof Error ? err : undefined;
     if (cause) {
       (honest as Error & { cause?: unknown }).cause = cause;
     }

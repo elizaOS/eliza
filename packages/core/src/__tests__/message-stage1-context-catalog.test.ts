@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ContextRegistry } from "../runtime/context-registry";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import {
 	formatAvailableContextsForPrompt,
 	runV5MessageRuntimeStage1,
@@ -38,17 +40,30 @@ function makeState(): State {
 	};
 }
 
+function createResponseHandlerFieldRegistry(): ResponseHandlerFieldRegistry {
+	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
+	for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+		responseHandlerFieldRegistry.register(evaluator);
+	}
+	return responseHandlerFieldRegistry;
+}
+
 function makeRuntimeWithContexts(
 	contexts: readonly ContextDefinition[],
 	stage1Response: unknown,
 ): IAgentRuntime {
 	const registry = new ContextRegistry(contexts);
+	const responseHandlerFieldRegistry = createResponseHandlerFieldRegistry();
 	return {
 		agentId: "00000000-0000-0000-0000-000000000003" as UUID,
 		character: { name: "Test Agent", system: "You are concise." },
 		actions: [],
 		providers: [],
 		contexts: registry,
+		responseHandlerFieldRegistry,
+		responseHandlerFieldEvaluators: [
+			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+		],
 		composeState: vi.fn(async () => makeState()),
 		runActionsByMode: vi.fn(async () => undefined),
 		emitEvent: vi.fn(async () => undefined),
@@ -144,13 +159,18 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 		expect(systemContent).not.toMatch(/^- calendar\b/m);
 	});
 
-	it("falls back to the placeholder line when no registry is attached", async () => {
+	it("falls back to the placeholder line when no context registry is attached", async () => {
+		const responseHandlerFieldRegistry = createResponseHandlerFieldRegistry();
 		const runtime = {
 			agentId: "00000000-0000-0000-0000-000000000003" as UUID,
 			character: { name: "Test Agent", system: "You are concise." },
 			actions: [],
 			providers: [],
 			contexts: undefined,
+			responseHandlerFieldRegistry,
+			responseHandlerFieldEvaluators: [
+				...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+			],
 			composeState: vi.fn(async () => makeState()),
 			runActionsByMode: vi.fn(async () => undefined),
 			emitEvent: vi.fn(async () => undefined),
