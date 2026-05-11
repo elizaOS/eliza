@@ -19,6 +19,7 @@ import {
   Eliza1ManifestSchema,
   REQUIRED_KERNELS_BY_TIER,
   SUPPORTED_BACKENDS_BY_TIER,
+  VOICE_PRESET_CACHE_PATH,
 } from "./schema";
 import type {
   Eliza1Backend,
@@ -153,6 +154,20 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
         `kernels.verifiedBackends.${b}: status is "${status}", expected "pass" for tier ${m.tier}`,
       );
     }
+  }
+
+  // The precomputed default-voice speaker preset (`cache/voice-preset-default.bin`)
+  // is a mandatory bundle artifact — `EngineVoiceBridge.start()` hard-fails
+  // without it (AGENTS.md §4 / inference/AGENTS.md §2). It must be listed in
+  // `files.cache` so the downloader fetches it, and when the manifest declares
+  // a `voice` block its `cache.speakerPreset` must point at the same path.
+  if (!m.files.cache.some((f) => f.path === VOICE_PRESET_CACHE_PATH)) {
+    errors.push(`files.cache: missing required ${VOICE_PRESET_CACHE_PATH}`);
+  }
+  if (m.voice && m.voice.cache.speakerPreset !== VOICE_PRESET_CACHE_PATH) {
+    errors.push(
+      `voice.cache.speakerPreset: must be ${VOICE_PRESET_CACHE_PATH}, got ${m.voice.cache.speakerPreset}`,
+    );
   }
 
   // Eval gates.
