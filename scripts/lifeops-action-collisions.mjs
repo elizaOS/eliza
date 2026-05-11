@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * lifeops-action-collisions — Wave 2-A.
+ * lifeops-action-collisions.
  *
  * Loads the prompt-inventory manifest, pulls every distinct action
  * description, and computes pairwise cosine similarity over TF-IDF vectors
