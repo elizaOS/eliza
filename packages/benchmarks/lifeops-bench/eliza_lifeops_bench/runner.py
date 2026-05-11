@@ -101,6 +101,7 @@ def _execute_action(action: Action, world: LifeWorld) -> dict[str, Any]:
     raise `UnsupportedAction` — never silently no-op. The runner catches and
     surfaces these so gaps land in `LIFEOPS_BENCH_GAPS.md`.
     """
+    action = _normalize_action(action)
     handler = _ACTION_HANDLERS.get(action.name)
     if handler is None:
         raise UnsupportedAction(
@@ -112,6 +113,31 @@ def _execute_action(action: Action, world: LifeWorld) -> dict[str, Any]:
 def supported_actions() -> set[str]:
     """Return every action name the executor knows how to apply against a LifeWorld."""
     return set(_ACTION_HANDLERS.keys())
+
+
+_PROMOTED_ACTION_DEFAULTS: dict[str, tuple[str, str, str]] = {
+    "CALENDAR_CREATE_EVENT": ("CALENDAR", "subaction", "create_event"),
+    "CALENDAR_UPDATE_EVENT": ("CALENDAR", "subaction", "update_event"),
+    "CALENDAR_DELETE_EVENT": ("CALENDAR", "subaction", "delete_event"),
+    "CALENDAR_PROPOSE_TIMES": ("CALENDAR", "subaction", "propose_times"),
+    "CALENDAR_SEARCH_EVENTS": ("CALENDAR", "subaction", "search_events"),
+    "CALENDAR_CHECK_AVAILABILITY": ("CALENDAR", "subaction", "check_availability"),
+    "CALENDAR_NEXT_EVENT": ("CALENDAR", "subaction", "next_event"),
+    "CALENDAR_UPDATE_PREFERENCES": ("CALENDAR", "subaction", "update_preferences"),
+}
+
+
+def _normalize_action(action: Action) -> Action:
+    """Canonicalize planner-facing aliases before executor dispatch."""
+    if action.name in {"REPLY", "RESPOND"}:
+        return Action(name="REPLY", kwargs=action.kwargs)
+    promoted = _PROMOTED_ACTION_DEFAULTS.get(action.name)
+    if promoted is None:
+        return action
+    parent, discriminator, value = promoted
+    kwargs = dict(action.kwargs)
+    kwargs.setdefault(discriminator, value)
+    return Action(name=parent, kwargs=kwargs)
 
 
 _OPENAI_FUNCTION_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -449,9 +475,22 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
     sub = _required(kw, "subaction", action=name, sub="<missing>")
     details = _details(kw)
     if sub == "create_event":
-        calendar_id = details.get("calendarId") or kw.get("calendarId")
-        start = details.get("start") or kw.get("start")
-        end = details.get("end") or kw.get("end")
+        calendar_id = (
+            details.get("calendarId")
+            or kw.get("calendarId")
+            or details.get("calendar_id")
+            or kw.get("calendar_id")
+            or _primary_calendar_id(world)
+        )
+        start = (
+            details.get("start")
+            or kw.get("start")
+            or details.get("start_time")
+            or kw.get("start_time")
+        )
+        end = details.get("end") or kw.get("end") or details.get("end_time") or kw.get("end_time")
+        if start and not end:
+            end = _shift_iso(str(start), minutes=_duration_minutes(kw, details, 30))
         title = kw.get("title") or details.get("title") or "Untitled"
         if not calendar_id or not start or not end:
             raise KeyError(
@@ -477,14 +516,43 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
         )
         return {"id": event.id, "title": event.title}
     if sub == "update_event":
-        event_id = _required(details, "eventId", action=name, sub=sub)
-        start = _required(details, "start", action=name, sub=sub)
-        end = _required(details, "end", action=name, sub=sub)
-        event = world.move_event(event_id, start=start, end=end)
+        event = _find_calendar_event(
+            world,
+            event_id=details.get("eventId") or kw.get("eventId") or details.get("event_id") or kw.get("event_id"),
+            title=details.get("title") or kw.get("title"),
+        )
+        if event is None:
+            raise KeyError(
+                f"{name}/{sub} missing required field 'eventId' in kwargs={sorted(kw)}"
+            )
+        start = (
+            details.get("start")
+            or kw.get("start")
+            or details.get("new_start")
+            or kw.get("new_start")
+            or event.start
+        )
+        end = (
+            details.get("end")
+            or kw.get("end")
+            or details.get("new_end")
+            or kw.get("new_end")
+        )
+        if not end:
+            end = _shift_iso(str(start), minutes=_duration_minutes(kw, details, 60))
+        event = world.move_event(event.id, start=start, end=end)
         return {"id": event.id, "start": event.start, "end": event.end}
     if sub == "delete_event":
-        event_id = _required(details, "eventId", action=name, sub=sub)
-        event = world.cancel_event(event_id)
+        event = _find_calendar_event(
+            world,
+            event_id=details.get("eventId") or kw.get("eventId") or details.get("event_id") or kw.get("event_id"),
+            title=details.get("title") or kw.get("title"),
+        )
+        if event is None:
+            raise KeyError(
+                f"{name}/{sub} missing required field 'eventId' in kwargs={sorted(kw)}"
+            )
+        event = world.cancel_event(event.id)
         return {"id": event.id, "status": event.status}
     if sub in {
         "propose_times",
@@ -1016,6 +1084,55 @@ def _shift_iso(iso: str, *, minutes: int) -> str:
     return f"{out}Z"
 
 
+def _primary_calendar_id(world: LifeWorld) -> str | None:
+    primary = next((cal for cal in world.calendars.values() if cal.is_primary), None)
+    if primary is not None:
+        return primary.id
+    first = next(iter(world.calendars.values()), None)
+    return first.id if first is not None else None
+
+
+def _duration_minutes(kw: dict[str, Any], details: dict[str, Any], fallback: int) -> int:
+    raw = (
+        details.get("duration_minutes")
+        or kw.get("duration_minutes")
+        or kw.get("duration")
+        or details.get("duration")
+    )
+    if isinstance(raw, (int, float)):
+        return max(1, int(raw))
+    if isinstance(raw, str):
+        match = re.fullmatch(r"\s*(\d+)\s*(m|min|minute|minutes|h|hr|hour|hours)?\s*", raw)
+        if match:
+            value = int(match.group(1))
+            unit = match.group(2) or "minutes"
+            return max(1, value * 60 if unit.startswith("h") else value)
+    hours = details.get("duration_hours") or kw.get("duration_hours")
+    if isinstance(hours, (int, float)):
+        return max(1, int(hours * 60))
+    return fallback
+
+
+def _find_calendar_event(
+    world: LifeWorld,
+    *,
+    event_id: Any = None,
+    title: Any = None,
+) -> Any:
+    if isinstance(event_id, str) and event_id in world.calendar_events:
+        return world.calendar_events[event_id]
+    if isinstance(title, str) and title.strip():
+        wanted = title.strip().lower()
+        matches = [
+            event
+            for event in world.calendar_events.values()
+            if event.title.strip().lower() == wanted and event.status != "cancelled"
+        ]
+        if matches:
+            return sorted(matches, key=lambda event: event.start)[0]
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Registry — every action name the executor knows
 # ---------------------------------------------------------------------------
@@ -1080,6 +1197,10 @@ _ACTION_HANDLERS: dict[
     "SCHEDULED_TASK_CREATE": _u_scheduled_task_create,
     "SCHEDULED_TASK_SNOOZE": _u_scheduled_task_mutate,
     "SCHEDULED_TASK_UPDATE": _u_scheduled_task_mutate,
+    # Conversational terminal sentinels are valid assistant outcomes. They
+    # have no LifeWorld side effect and should not be reported as executor
+    # coverage gaps.
+    "REPLY": lambda _world, kw, _name: {"ok": True, "noop": True, "reply": kw},
     # Promoted CALENDAR_* names (the manifest exporter promotes
     # subactions into top-level action names). Each promoted name carries
     # `subaction` in its kwargs already, so route to `_u_calendar` unchanged.
