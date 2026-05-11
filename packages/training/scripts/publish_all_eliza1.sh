@@ -160,13 +160,15 @@ publish_one() {
   fi
 }
 
+FIRST_FAILURE_EXIT=0
 for tier in "${TIERS[@]}"; do
   if [[ -n "${FILTER_TIER}" && "${FILTER_TIER}" != "${tier}" ]]; then
     continue
   fi
   # Per AGENTS.md §6: any failure aborts the run. No "publish what
-  # works and skip the rest" behavior.
-  publish_one "${tier}"
+  # works and skip the rest" behavior. We still want the summary printed,
+  # so capture the failing exit code, stop the matrix walk, and report it.
+  publish_one "${tier}" || { FIRST_FAILURE_EXIT=$?; break; }
 done
 
 echo
@@ -177,5 +179,7 @@ done
 echo "==> totals: ${N_TOTAL} considered, ${N_OK} ok, ${N_FAILED} failed"
 
 if (( N_FAILED > 0 )); then
-  exit 1
+  # Propagate the orchestrator's structured exit code so callers can tell
+  # release-evidence failures (16) from layout failures (10), etc.
+  exit "${FIRST_FAILURE_EXIT:-1}"
 fi

@@ -1,6 +1,8 @@
 """Benchmark native Eliza trajectory rows for tool-call structure.
 
-The input is `eliza_native_v1` JSONL. For each row, the benchmark renders the
+The input is `eliza_native_v1` JSONL (legacy flat `ElizaRecord` rows and
+chatml `{messages,tools}` rows are coerced to that shape automatically — see
+_to_native). For each row, the benchmark renders the
 request side with the tokenizer chat template, generates from a base or tuned
 Qwen checkpoint, and compares the decoded output to the native response side.
 
@@ -188,6 +190,52 @@ def classify(record: dict[str, Any]) -> str:
     return "response"
 
 
+def _to_native(record: dict[str, Any]) -> dict[str, Any] | None:
+    """Coerce any supported corpus row into the `eliza_native_v1` shape this
+    benchmark scores against. `eliza_native_v1` rows pass through. Legacy flat
+    `ElizaRecord` rows and chatml `{messages,tools}` rows are run through
+    `format_record` and the trailing assistant turn is lifted out as the
+    `response` side — so the bench works on whatever `pack_dataset.py` emits
+    (currently the flat intermediate) without a separate test split."""
+    if record.get("format") == "eliza_native_v1":
+        return record
+    formatted = format_record(record)
+    if not formatted or not isinstance(formatted.get("messages"), list):
+        return None
+    messages = list(formatted["messages"])
+    if not messages or messages[-1].get("role") != "assistant":
+        return None
+    assistant = messages[-1]
+    req_messages = messages[:-1]
+    system = ""
+    if req_messages and req_messages[0].get("role") == "system":
+        system = req_messages[0].get("content") or ""
+        req_messages = req_messages[1:]
+    tool_calls: list[dict[str, Any]] = []
+    for tc in assistant.get("tool_calls") or []:
+        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+        args = fn.get("arguments")
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                args = {}
+        tool_calls.append({"toolName": fn.get("name") or tc.get("name"),
+                           "args": args if isinstance(args, dict) else {}})
+    content = assistant.get("content") or ""
+    if not tool_calls and isinstance(content, str):
+        tool_calls = extract_tool_calls_from_text(content)
+    return {
+        "format": "eliza_native_v1",
+        "request": {"system": system, "messages": req_messages,
+                    "tools": formatted.get("tools")},
+        "response": {"text": content if isinstance(content, str) else "",
+                     "toolCalls": tool_calls},
+        "metadata": record.get("metadata") if isinstance(record.get("metadata"), dict)
+                    else {"task_type": record.get("purpose") or "response"},
+    }
+
+
 def load_records(path: Path, max_per_bucket: int) -> dict[str, list[dict[str, Any]]]:
     buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
     with path.open("r", encoding="utf-8") as handle:
@@ -199,7 +247,8 @@ def load_records(path: Path, max_per_bucket: int) -> dict[str, list[dict[str, An
                 record = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if record.get("format") != "eliza_native_v1":
+            record = _to_native(record)
+            if record is None:
                 continue
             bucket = classify(record)
             if len(buckets[bucket]) < max_per_bucket:
@@ -316,7 +365,7 @@ def main() -> int:
 
     buckets = load_records(Path(args.test_file), args.max_per_bucket)
     if not buckets:
-        raise SystemExit(f"no eliza_native_v1 records found in {args.test_file}")
+        raise SystemExit(f"no usable records found in {args.test_file}")
 
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer

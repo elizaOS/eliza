@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "metric": "e2e_loop_ok",
+  "op": "bool",
+  "status": "not-run",
+  "e2eLoopOk": false,
+  "passed": false,
+  "reason": "e2e voice loop needs real text + TTS + ASR bundle artifacts; current bundle has stand-ins",
+  "gateThreshold": true,
+  "gateReason": "missing measurement results.'e2e_loop_ok'"
+}

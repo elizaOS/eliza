@@ -55,7 +55,12 @@ import {
   QJL_GGML_BASE_LINK_FILES,
 } from "./kernel-patches/cpu-simd-kernels.mjs";
 import { patchCpuThreadParallelism as patchCpuThreadParallelismImpl } from "./kernel-patches/cpu-thread-parallelism.mjs";
+import {
+  CUDA_KERNEL_CMAKE_FLAGS,
+  patchCudaKernels as patchCudaKernelsImpl,
+} from "./kernel-patches/cuda-kernels.mjs";
 import { patchMetalKernels as patchMetalKernelsImpl } from "./kernel-patches/metal-kernels.mjs";
+import { patchServerOmnivoiceRoute as patchServerOmnivoiceRouteImpl } from "./kernel-patches/server-omnivoice-route.mjs";
 import { patchServerStructuredOutput as patchServerStructuredOutputImpl } from "./kernel-patches/server-structured-output.mjs";
 import { patchVulkanKernels as patchVulkanKernelsImpl } from "./kernel-patches/vulkan-kernels.mjs";
 import {
@@ -609,6 +614,70 @@ target_include_directories(ggml-base PRIVATE ggml-cpu ggml-cpu/qjl ggml-cpu/qjl/
   );
 }
 
+// Patch `ggml/src/ggml-cuda/CMakeLists.txt` so the staged fused-attn TU
+// (fused-attn-qjl-tbq.cu, copied in by patchCudaKernels) compiles its body
+// when `-DGGML_CUDA_FUSED_ATTN_QJL=ON` is passed. The fork's ggml-cuda
+// CMakeLists already carries `if (GGML_CUDA_QJL) add_compile_definitions(...)`
+// style blocks for the W4-B kernels; this adds the matching one for the fused
+// kernel right after them. Idempotent via a sentinel; hard-throws if the
+// anchor is missing (fork drift — AGENTS.md §3, fail closed rather than ship a
+// kernel-missing artifact). CUDA targets only.
+function patchGgmlCudaForFusedAttn(cacheDir, { dryRun = false } = {}) {
+  const cmakeListsPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-cuda",
+    "CMakeLists.txt",
+  );
+  if (!fs.existsSync(cmakeListsPath)) {
+    throw new Error(
+      `[dflash-build] patchGgmlCudaForFusedAttn: ${cmakeListsPath} missing — ` +
+        `the elizaOS/llama.cpp fork's ggml-cuda layout has changed.`,
+    );
+  }
+  const original = fs.readFileSync(cmakeListsPath, "utf8");
+  const sentinel = "# MILADY-CUDA-FUSED-ATTN-QJL";
+  if (original.includes(sentinel)) return;
+  // Anchor on the W4-B TBQ3_TCQ compile-definition block. The fork carries a
+  // run of `if (GGML_CUDA_<KERNEL>) ... add_compile_definitions(...) ... endif()`
+  // for QJL / POLARQUANT / TBQ3_TCQ; we append the fused-attn one after the
+  // last of them.
+  const anchorRe =
+    /if\s*\(\s*GGML_CUDA_TBQ3_TCQ\s*\)[\s\S]*?endif\s*\(\s*\)/;
+  if (!anchorRe.test(original)) {
+    throw new Error(
+      `[dflash-build] patchGgmlCudaForFusedAttn: could not find the ` +
+        `GGML_CUDA_TBQ3_TCQ if/endif block in ${cmakeListsPath}; the fork's ` +
+        `ggml-cuda CMakeLists has drifted. Fix the anchor before shipping a ` +
+        `CUDA build (fused_attn kernel would silently compile to an empty TU).`,
+    );
+  }
+  const block = `
+
+${sentinel}
+# Fused QJL-K + TBQ-V attention (packages/inference/cuda/fused-attn-qjl-tbq.cu,
+# staged in by patchCudaKernels). Body is #ifdef GGML_CUDA_FUSED_ATTN_QJL; this
+# flips that define on when -DGGML_CUDA_FUSED_ATTN_QJL=ON is passed. Same shape
+# as the GGML_CUDA_QJL / POLARQUANT / TBQ3_TCQ blocks above. Optional kernel
+# (packages/inference/AGENTS.md §3) — off by default.
+if (GGML_CUDA_FUSED_ATTN_QJL)
+    add_compile_definitions(GGML_CUDA_FUSED_ATTN_QJL)
+    message(STATUS "ggml-cuda: GGML_CUDA_FUSED_ATTN_QJL enabled (fused QJL-K + TBQ-V attention)")
+endif()`;
+  const patched = original.replace(anchorRe, (m) => `${m}${block}`);
+  if (dryRun) {
+    console.log(
+      `[dflash-build] (dry-run) would patch ${cmakeListsPath} with GGML_CUDA_FUSED_ATTN_QJL block`,
+    );
+    return;
+  }
+  fs.writeFileSync(cmakeListsPath, patched, "utf8");
+  console.log(
+    "[dflash-build] patched ggml/src/ggml-cuda/CMakeLists.txt: add_compile_definitions(GGML_CUDA_FUSED_ATTN_QJL)",
+  );
+}
+
 // The fork's `ggml-vulkan.cpp` includes <vulkan/vulkan.hpp> (Vulkan-Headers)
 // and <spirv/unified1/spirv.hpp> (SPIRV-Headers). The Android NDK ships only
 // the C-level vulkan.h and no SPIRV headers, so a cross-compile against the
@@ -798,6 +867,16 @@ function cmakeFlagsForTarget(target, ctx) {
   } else if (backend === "cuda") {
     flags[flags.indexOf("-DGGML_CUDA=OFF")] = "-DGGML_CUDA=ON";
     flags.push("-DGGML_CUDA_FA=ON", "-DGGML_CUDA_FA_ALL_QUANTS=ON");
+    // Fused QJL-K + TBQ-V attention CUDA kernel (packages/inference/cuda/
+    // fused-attn-qjl-tbq.cu, staged into ggml-cuda/ by patchCudaKernels).
+    // The kernel body is `#ifdef GGML_CUDA_FUSED_ATTN_QJL`; this flag plus
+    // the `add_compile_definitions(GGML_CUDA_FUSED_ATTN_QJL)` line
+    // patchGgmlCudaForFusedAttn() injects into ggml-cuda/CMakeLists.txt are
+    // what turn the staged TU from an empty object into the live kernel.
+    // Same shape as the GGML_CUDA_QJL / GGML_CUDA_POLARQUANT /
+    // GGML_CUDA_TBQ3_TCQ flags the W4-B fork already carries. Optional
+    // (AGENTS.md §3) — fused_attn sits on top of the five required kernels.
+    flags.push(...CUDA_KERNEL_CMAKE_FLAGS);
     // Multi-arch fat-binary pin (see cudaArchListFlag). Without this the
     // build host's GPU (or sm_52 default on a GPU-less host) decides the
     // emitted PTX/SASS — wrong for a redistributable artifact, and the
@@ -1304,6 +1383,17 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   if (backend === "vulkan") {
     patchVulkanKernelsImpl(cacheDir, { dryRun, target });
   }
+  if (backend === "cuda") {
+    // Stage packages/inference/cuda/fused-attn-qjl-tbq.cu into ggml-cuda/
+    // (the fork GLOBs *.cu) and flip the matching add_compile_definitions in
+    // ggml-cuda/CMakeLists.txt so -DGGML_CUDA_FUSED_ATTN_QJL=ON (pushed in the
+    // cuda branch of buildCmakeFlags) actually compiles the kernel body. Both
+    // halves together — the staged TU is inert without the define, the define
+    // is meaningless without the TU. AUTHORED, hardware-verify pending (no
+    // NVIDIA host here); a no-flag/empty-TU build stays byte-for-byte normal.
+    patchCudaKernelsImpl(cacheDir, { dryRun });
+    patchGgmlCudaForFusedAttn(cacheDir, { dryRun });
+  }
   // llama-server structured-output + DFlash verifier-stream patch (Eliza-1
   // voice swarm, W4): assert grammar_lazy / json_schema / response_format /
   // continue_final_message are present in the fork's server.cpp (upstream
@@ -1333,6 +1423,17 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
     } else {
       patchServerStructuredOutputImpl(cacheDir, { dryRun });
     }
+  }
+  // Fused omnivoice TTS: mount `POST /v1/audio/speech` onto the same
+  // `llama-server` that serves `/completion` + `/v1/chat/completions` + the
+  // DFlash speculative loop (packages/inference/AGENTS.md §4 — one process,
+  // not two over IPC; remaining-work-ledger P0 #3 merged-route item). The
+  // route handler is guarded by `#ifdef MILADY_FUSE_OMNIVOICE` so non-fused
+  // builds are byte-for-byte unchanged; the cmake-graft separately links
+  // `omnivoice-core` into `llama-server` and sets that define for fused
+  // targets. Idempotent via the route patch's own sentinel.
+  if (isFusedTarget(target) && (!target || !target.startsWith("ios-"))) {
+    patchServerOmnivoiceRouteImpl(cacheDir, { dryRun });
   }
   // ggml.c (in ggml-base) calls quantize_qjl1_256 /
   // dequantize_row_qjl1_256 / quantize_row_qjl1_256_ref, which live in

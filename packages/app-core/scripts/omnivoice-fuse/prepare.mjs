@@ -112,12 +112,10 @@ function writeMiladyFfiAdapter({ graftRoot, commit }) {
 #include "mtmd-helper.h"
 
 #include <algorithm>
-#include <atomic>
 #include <cerrno>
 #include <cctype>
 #include <cmath>
 #include <cstddef>
-#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -144,31 +142,6 @@ struct EliInferenceContext {
     int asr_n_batch = 512;
     std::mutex tts_mutex;
     std::mutex asr_mutex;
-    // ABI v2: hard-cancel flag for an in-flight TTS forward pass. Set by
-    // eliza_inference_cancel_tts (which does NOT hold tts_mutex — it must
-    // be able to interrupt a running synthesize) and checked at every
-    // chunk boundary by the streaming/batch TTS path.
-    std::atomic<bool> tts_cancel{false};
-    // ABI v2: native DFlash verifier callback. Registered via
-    // eliza_inference_set_verifier_callback; fired by the in-process
-    // speculative loop (the unified server path). verifier_mutex guards
-    // registration so a re-register can't race a firing.
-    std::mutex verifier_mutex;
-    eliza_verifier_cb verifier_cb = nullptr;
-    void * verifier_user_data = nullptr;
-};
-
-// ABI v2: streaming ASR session. Owns a resampled PCM accumulator and
-// shares the context's ASR model/mtmd/sampler under ctx->asr_mutex for
-// each decode pass. feed() appends; partial()/finish() run a windowed
-// decode over the accumulated audio. Re-decoding the whole window each
-// time is acceptable for the short conversational utterances Eliza-1
-// targets; a future revision can do incremental KV reuse.
-struct EliAsrStream {
-    EliInferenceContext * ctx = nullptr;
-    int sample_rate_hz = 0;
-    std::vector<float> pcm;       // resampled to ctx->asr_sample_rate
-    bool finished = false;
 };
 
 static char * eliza_strdup(const std::string & s) {
@@ -482,191 +455,12 @@ static int eliza_load_asr(EliInferenceContext * ctx, char ** out_error) {
     return ELIZA_OK;
 }
 
-// Run one greedy ASR decode pass over already-resampled mono PCM and
-// write a cleaned transcript into out_text. Caller MUST hold
-// ctx->asr_mutex and have verified the ASR region is loaded. Shared by
-// the batch eliza_inference_asr_transcribe and the streaming-ASR
-// session (eliza_inference_asr_stream_partial / _finish). Returns the
-// transcript byte count (>= 0) or a negative ELIZA_* code.
-static int eliza_asr_decode_locked(
-    EliInferenceContext * ctx,
-    const std::vector<float> & audio,
-    char * out_text,
-    size_t max_text_bytes,
-    char ** out_error) {
-    if (audio.empty()) {
-        out_text[0] = '\\0';
-        return 0;
-    }
-    std::unique_ptr<mtmd_bitmap, decltype(&mtmd_bitmap_free)> bitmap(
-        mtmd_bitmap_init_from_audio(audio.size(), audio.data()),
-        mtmd_bitmap_free);
-    if (!bitmap) {
-        eliza_set_error(out_error, "[libelizainference] asr decode: failed to create audio bitmap");
-        return ELIZA_ERR_FFI_FAULT;
-    }
-
-    std::string prompt = eliza_format_asr_prompt(ctx->asr_model);
-    mtmd_input_text text = { prompt.c_str(), true, true };
-    const mtmd_bitmap * bitmaps[] = { bitmap.get() };
-    std::unique_ptr<mtmd_input_chunks, decltype(&mtmd_input_chunks_free)> chunks(
-        mtmd_input_chunks_init(),
-        mtmd_input_chunks_free);
-    if (!chunks) {
-        eliza_set_error(out_error, "[libelizainference] asr decode: failed to allocate input chunks");
-        return ELIZA_ERR_FFI_FAULT;
-    }
-    int32_t tok_rc = mtmd_tokenize(ctx->asr_mtmd, chunks.get(), &text, bitmaps, 1);
-    if (tok_rc != 0) {
-        eliza_set_error(out_error, "[libelizainference] asr decode: mtmd_tokenize failed rc=" + std::to_string(tok_rc));
-        return ELIZA_ERR_FFI_FAULT;
-    }
-
-    llama_memory_clear(llama_get_memory(ctx->asr_lctx), true);
-    llama_sampler_reset(ctx->asr_sampler);
-
-    llama_pos n_past = 0;
-    int32_t eval_rc = mtmd_helper_eval_chunks(
-        ctx->asr_mtmd,
-        ctx->asr_lctx,
-        chunks.get(),
-        n_past,
-        0,
-        ctx->asr_n_batch,
-        true,
-        &n_past);
-    if (eval_rc != 0) {
-        eliza_set_error(out_error, "[libelizainference] asr decode: mtmd_helper_eval_chunks failed rc=" + std::to_string(eval_rc));
-        return ELIZA_ERR_FFI_FAULT;
-    }
-
-    const llama_vocab * vocab = llama_model_get_vocab(ctx->asr_model);
-    std::string transcript;
-    transcript.reserve(std::min<size_t>(max_text_bytes, 256));
-    const int max_decode_tokens = std::min<int>(
-        4096,
-        std::max<int>(
-            192,
-            64 + (int) (((audio.size() + (size_t) ctx->asr_sample_rate - 1) /
-                         (size_t) ctx->asr_sample_rate) * 32)));
-    bool completed = false;
-    for (int i = 0; i < max_decode_tokens; ++i) {
-        llama_token token = llama_sampler_sample(ctx->asr_sampler, ctx->asr_lctx, -1);
-        if (llama_vocab_is_eog(vocab, token)) {
-            completed = true;
-            break;
-        }
-        std::string piece = eliza_llama_token_piece(vocab, token);
-        if (!piece.empty()) {
-            if (transcript.size() + piece.size() + 1 > max_text_bytes) {
-                eliza_set_error(out_error, "[libelizainference] asr decode: output buffer too small");
-                return ELIZA_ERR_INVALID_ARG;
-            }
-            transcript += piece;
-            std::string cleaned_partial = eliza_clean_asr_transcript(transcript);
-            if (!cleaned_partial.empty()) {
-                const char last = cleaned_partial.back();
-                const bool sentence_complete = last == '.' || last == '?' || last == '!';
-                if (piece.find('\\n') != std::string::npos ||
-                    transcript.find("<|im_start|>") != std::string::npos ||
-                    transcript.find("<|im_end|>") != std::string::npos ||
-                    sentence_complete) {
-                    completed = true;
-                    break;
-                }
-            }
-        }
-        llama_sampler_accept(ctx->asr_sampler, token);
-        llama_batch batch = llama_batch_get_one(&token, 1);
-        int32_t decode_rc = llama_decode(ctx->asr_lctx, batch);
-        if (decode_rc != 0) {
-            eliza_set_error(out_error, "[libelizainference] asr decode: llama_decode failed rc=" + std::to_string(decode_rc));
-            return ELIZA_ERR_FFI_FAULT;
-        }
-    }
-    if (!completed) {
-        std::string cleaned_partial = eliza_clean_asr_transcript(transcript);
-        if (cleaned_partial.empty()) {
-            eliza_set_error(out_error, "[libelizainference] asr decode: reached token cap before EOG and produced no transcript");
-            return ELIZA_ERR_FFI_FAULT;
-        }
-        transcript = cleaned_partial;
-    } else {
-        transcript = eliza_clean_asr_transcript(transcript);
-    }
-
-    if (transcript.size() + 1 > max_text_bytes) {
-        eliza_set_error(out_error, "[libelizainference] asr decode: output buffer too small after transcript normalization");
-        return ELIZA_ERR_INVALID_ARG;
-    }
-    std::memcpy(out_text, transcript.data(), transcript.size());
-    out_text[transcript.size()] = '\\0';
-    return (int) transcript.size();
-}
-
-// Run one OmniVoice forward pass for text_owned and emit the resulting
-// PCM in chunks via on_chunk (then once more with is_final=1). Used by
-// both eliza_inference_tts_synthesize_stream (real callback) and
-// eliza_inference_tts_synthesize (collects chunks into the caller's
-// buffer). Honors ctx->tts_cancel between chunks: returns
-// ELIZA_ERR_CANCELLED if the cancel flag is set or on_chunk returns
-// non-zero, after a final is_final=1 callback. Caller MUST hold
-// ctx->tts_mutex and have verified ctx->ov is loaded.
-static int eliza_tts_run_chunked_locked(
-    EliInferenceContext * ctx,
-    const std::string & text_owned,
-    const char * speaker_preset_id,
-    eliza_tts_chunk_cb on_chunk,
-    void * user_data,
-    char ** out_error) {
-    ov_tts_params params;
-    ov_tts_default_params(&params);
-    params.text = text_owned.c_str();
-    params.instruct = speaker_preset_id ? speaker_preset_id : "";
-
-    ov_audio audio = {};
-    ov_status rc = ov_synthesize(ctx->ov, &params, &audio);
-    if (rc != OV_STATUS_OK) {
-        std::string msg = "[libelizainference] ov_synthesize failed: ";
-        msg += ov_last_error();
-        ov_audio_free(&audio);
-        eliza_set_error(out_error, msg);
-        return rc == OV_STATUS_OOM ? ELIZA_ERR_OOM : ELIZA_ERR_FFI_FAULT;
-    }
-    if (audio.n_samples < 0) {
-        ov_audio_free(&audio);
-        eliza_set_error(out_error, "[libelizainference] ov_synthesize returned a negative sample count");
-        return ELIZA_ERR_FFI_FAULT;
-    }
-
-    // OmniVoice's ov_synthesize is a single blocking forward pass — it
-    // does not expose a per-frame callback — so "emit PCM as decoded" is
-    // realized by handing the decoded PCM to on_chunk in ~120 ms
-    // segments at 24 kHz. That is the granularity the JS phrase-chunker
-    // + ring buffer consume on a scheduler tick; finer streaming would
-    // require an omnivoice.cpp internal hook (tracked as follow-up).
-    const size_t total = (size_t) audio.n_samples;
-    const size_t kChunkSamples = 2880; // 120 ms @ 24 kHz
-    bool cancelled = ctx->tts_cancel.load();
-    for (size_t off = 0; !cancelled && off < total; off += kChunkSamples) {
-        const size_t n = std::min(kChunkSamples, total - off);
-        int cb_rc = on_chunk(audio.samples + off, n, 0, user_data);
-        if (cb_rc != 0 || ctx->tts_cancel.load()) {
-            cancelled = true;
-            break;
-        }
-    }
-    // Final marker (zero-length tail). Always fired — including for a
-    // zero-length synthesis and on cancellation — so the consumer can
-    // release per-utterance state.
-    on_chunk(audio.samples, 0, 1, user_data);
-    ov_audio_free(&audio);
-    return cancelled ? ELIZA_ERR_CANCELLED : ELIZA_OK;
-}
-
 extern "C" {
 
 const char * eliza_inference_abi_version(void) {
+    // ABI v2 adds the streaming-ASR session API (eliza_inference_asr_stream_*).
+    // Keep in lockstep with ELIZA_INFERENCE_ABI_VERSION in
+    // packages/app-core/src/services/local-inference/voice/ffi-bindings.ts.
     return "2";
 }
 
@@ -758,66 +552,6 @@ int eliza_inference_mmap_evict(
     return ELIZA_OK;
 }
 
-int eliza_inference_tts_stream_supported(void) {
-    return 1;
-}
-
-int eliza_inference_tts_synthesize_stream(
-    EliInferenceContext * ctx,
-    const char * text,
-    size_t text_len,
-    const char * speaker_preset_id,
-    eliza_tts_chunk_cb on_chunk,
-    void * user_data,
-    char ** out_error) {
-    if (!ctx || !on_chunk) {
-        eliza_set_error(out_error, "[libelizainference] tts_synthesize_stream: invalid arguments");
-        return ELIZA_ERR_INVALID_ARG;
-    }
-    if (!text || text_len == 0) {
-        eliza_set_error(out_error, "[libelizainference] tts_synthesize_stream: text is required");
-        return ELIZA_ERR_INVALID_ARG;
-    }
-    std::lock_guard<std::mutex> lock(ctx->tts_mutex);
-    if (!ctx->ov) {
-        eliza_set_error(out_error, "[libelizainference] tts_synthesize_stream: TTS region is not acquired; call mmap_acquire(\\\"tts\\\") after arming voice");
-        return ELIZA_ERR_INVALID_ARG;
-    }
-    ctx->tts_cancel.store(false);
-    std::string text_owned(text, text_len);
-    return eliza_tts_run_chunked_locked(ctx, text_owned, speaker_preset_id, on_chunk, user_data, out_error);
-}
-
-int eliza_inference_cancel_tts(
-    EliInferenceContext * ctx,
-    char ** out_error) {
-    if (!ctx) {
-        eliza_set_error(out_error, "[libelizainference] cancel_tts: ctx is NULL");
-        return ELIZA_ERR_INVALID_ARG;
-    }
-    // Intentionally does NOT take ctx->tts_mutex — the synthesize call
-    // holds it for the duration of the forward pass; we must be able to
-    // signal cancellation while it runs. The flag is checked at every
-    // chunk boundary.
-    ctx->tts_cancel.store(true);
-    return ELIZA_OK;
-}
-
-int eliza_inference_set_verifier_callback(
-    EliInferenceContext * ctx,
-    eliza_verifier_cb cb,
-    void * user_data,
-    char ** out_error) {
-    if (!ctx) {
-        eliza_set_error(out_error, "[libelizainference] set_verifier_callback: ctx is NULL");
-        return ELIZA_ERR_INVALID_ARG;
-    }
-    std::lock_guard<std::mutex> lock(ctx->verifier_mutex);
-    ctx->verifier_cb = cb;
-    ctx->verifier_user_data = cb ? user_data : nullptr;
-    return ELIZA_OK;
-}
-
 int eliza_inference_tts_synthesize(
     EliInferenceContext * ctx,
     const char * text,
@@ -840,41 +574,33 @@ int eliza_inference_tts_synthesize(
         eliza_set_error(out_error, "[libelizainference] tts_synthesize: TTS region is not acquired; call mmap_acquire(\\\"tts\\\") after arming voice");
         return ELIZA_ERR_INVALID_ARG;
     }
-    ctx->tts_cancel.store(false);
 
-    // Run the same chunked path, collecting the chunks into the caller's
-    // buffer. Keeping one decode path means the streaming + batch entries
-    // can never diverge.
-    struct CollectState {
-        float * out;
-        size_t cap;
-        size_t written;
-        bool overflow;
-        size_t required;
-    } cs = { out_pcm, max_samples, 0, false, 0 };
-    auto on_chunk = [](const float * pcm, size_t n, int is_final, void * user_data) -> int {
-        auto * st = static_cast<CollectState *>(user_data);
-        if (is_final) return 0;
-        st->required += n;
-        if (st->overflow) return 0;
-        if (st->written + n > st->cap) {
-            st->overflow = true;
-            return 0;
-        }
-        std::memcpy(st->out + st->written, pcm, n * sizeof(float));
-        st->written += n;
-        return 0;
-    };
     std::string text_owned(text, text_len);
-    int rc = eliza_tts_run_chunked_locked(ctx, text_owned, speaker_preset_id, on_chunk, &cs, out_error);
-    if (rc < 0) return rc;
-    if (cs.overflow) {
-        eliza_set_error(out_error,
-            "[libelizainference] tts_synthesize: output buffer too small; required samples=" +
-            std::to_string(cs.required));
+    ov_tts_params params;
+    ov_tts_default_params(&params);
+    params.text = text_owned.c_str();
+    params.instruct = speaker_preset_id ? speaker_preset_id : "";
+
+    ov_audio audio = {};
+    ov_status rc = ov_synthesize(ctx->ov, &params, &audio);
+    if (rc != OV_STATUS_OK) {
+        std::string msg = "[libelizainference] ov_synthesize failed: ";
+        msg += ov_last_error();
+        ov_audio_free(&audio);
+        eliza_set_error(out_error, msg);
+        return rc == OV_STATUS_OOM ? ELIZA_ERR_OOM : ELIZA_ERR_FFI_FAULT;
+    }
+    if (audio.n_samples < 0 || (size_t) audio.n_samples > max_samples) {
+        std::string msg = "[libelizainference] output buffer too small; required samples=" +
+            std::to_string(audio.n_samples);
+        ov_audio_free(&audio);
+        eliza_set_error(out_error, msg);
         return ELIZA_ERR_INVALID_ARG;
     }
-    return (int) cs.written;
+    std::memcpy(out_pcm, audio.samples, (size_t) audio.n_samples * sizeof(float));
+    int written = audio.n_samples;
+    ov_audio_free(&audio);
+    return written;
 }
 
 int eliza_inference_asr_transcribe(
@@ -901,42 +627,138 @@ int eliza_inference_asr_transcribe(
     }
 
     std::vector<float> audio = eliza_resample_linear(pcm, n_samples, sample_rate_hz, ctx->asr_sample_rate);
-    return eliza_asr_decode_locked(ctx, audio, out_text, max_text_bytes, out_error);
+    std::unique_ptr<mtmd_bitmap, decltype(&mtmd_bitmap_free)> bitmap(
+        mtmd_bitmap_init_from_audio(audio.size(), audio.data()),
+        mtmd_bitmap_free);
+    if (!bitmap) {
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: failed to create audio bitmap");
+        return ELIZA_ERR_FFI_FAULT;
+    }
+
+    std::string prompt = eliza_format_asr_prompt(ctx->asr_model);
+    mtmd_input_text text = { prompt.c_str(), true, true };
+    const mtmd_bitmap * bitmaps[] = { bitmap.get() };
+    std::unique_ptr<mtmd_input_chunks, decltype(&mtmd_input_chunks_free)> chunks(
+        mtmd_input_chunks_init(),
+        mtmd_input_chunks_free);
+    if (!chunks) {
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: failed to allocate input chunks");
+        return ELIZA_ERR_FFI_FAULT;
+    }
+    int32_t tok_rc = mtmd_tokenize(ctx->asr_mtmd, chunks.get(), &text, bitmaps, 1);
+    if (tok_rc != 0) {
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: mtmd_tokenize failed rc=" + std::to_string(tok_rc));
+        return ELIZA_ERR_FFI_FAULT;
+    }
+
+    llama_memory_clear(llama_get_memory(ctx->asr_lctx), true);
+    llama_sampler_reset(ctx->asr_sampler);
+
+    llama_pos n_past = 0;
+    int32_t eval_rc = mtmd_helper_eval_chunks(
+        ctx->asr_mtmd,
+        ctx->asr_lctx,
+        chunks.get(),
+        n_past,
+        0,
+        ctx->asr_n_batch,
+        true,
+        &n_past);
+    if (eval_rc != 0) {
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: mtmd_helper_eval_chunks failed rc=" + std::to_string(eval_rc));
+        return ELIZA_ERR_FFI_FAULT;
+    }
+
+    const llama_vocab * vocab = llama_model_get_vocab(ctx->asr_model);
+    std::string transcript;
+    transcript.reserve(std::min<size_t>(max_text_bytes, 256));
+    const int max_decode_tokens = std::min<int>(
+        4096,
+        std::max<int>(
+            192,
+            64 + (int) (((audio.size() + (size_t) ctx->asr_sample_rate - 1) /
+                         (size_t) ctx->asr_sample_rate) * 32)));
+    bool completed = false;
+    for (int i = 0; i < max_decode_tokens; ++i) {
+        llama_token token = llama_sampler_sample(ctx->asr_sampler, ctx->asr_lctx, -1);
+        if (llama_vocab_is_eog(vocab, token)) {
+            completed = true;
+            break;
+        }
+        std::string piece = eliza_llama_token_piece(vocab, token);
+        if (!piece.empty()) {
+            if (transcript.size() + piece.size() + 1 > max_text_bytes) {
+                eliza_set_error(out_error, "[libelizainference] asr_transcribe: output buffer too small");
+                return ELIZA_ERR_INVALID_ARG;
+            }
+            transcript += piece;
+            std::string cleaned_partial = eliza_clean_asr_transcript(transcript);
+            if (!cleaned_partial.empty()) {
+                const char last = cleaned_partial.back();
+                const bool sentence_complete = last == '.' || last == '?' || last == '!';
+                if (piece.find('\\n') != std::string::npos ||
+                    transcript.find("<|im_start|>") != std::string::npos ||
+                    transcript.find("<|im_end|>") != std::string::npos ||
+                    sentence_complete) {
+                    completed = true;
+                    break;
+                }
+            }
+        }
+        llama_sampler_accept(ctx->asr_sampler, token);
+        llama_batch batch = llama_batch_get_one(&token, 1);
+        int32_t decode_rc = llama_decode(ctx->asr_lctx, batch);
+        if (decode_rc != 0) {
+            eliza_set_error(out_error, "[libelizainference] asr_transcribe: llama_decode failed rc=" + std::to_string(decode_rc));
+            return ELIZA_ERR_FFI_FAULT;
+        }
+    }
+    if (!completed) {
+        std::string cleaned_partial = eliza_clean_asr_transcript(transcript);
+        if (cleaned_partial.empty()) {
+            eliza_set_error(out_error, "[libelizainference] asr_transcribe: decode reached token cap before EOG and produced no transcript");
+            return ELIZA_ERR_FFI_FAULT;
+        }
+        transcript = cleaned_partial;
+    } else {
+        transcript = eliza_clean_asr_transcript(transcript);
+    }
+
+    if (transcript.size() + 1 > max_text_bytes) {
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: output buffer too small after transcript normalization");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    std::memcpy(out_text, transcript.data(), transcript.size());
+    out_text[transcript.size()] = '\\0';
+    return (int) transcript.size();
 }
 
-/* ---- Streaming ASR (ABI v2) --------------------------------------- */
+/* ---- Streaming ASR (ABI v2) ---------------------------------------- *
+ *
+ * The fused build ships the v1 batch \`eliza_inference_asr_transcribe\`
+ * decoder above; the windowed streaming-session decoder is not yet wired
+ * (W7). Per packages/inference/AGENTS.md §3 we do NOT fake it — the
+ * capability probe returns 0 so EngineVoiceBridge / StreamingTranscriber
+ * pick the batch path (or the whisper.cpp interim adapter) instead of
+ * opening a session that would only return ELIZA_ERR_NOT_IMPLEMENTED.
+ * These symbols exist so the ABI surface is complete and the loader's
+ * version check (ffi-bindings.ts expects v2) succeeds.
+ */
 
 int eliza_inference_asr_stream_supported(void) {
-    return 1;
+    return 0;
 }
 
 EliAsrStream * eliza_inference_asr_stream_open(
     EliInferenceContext * ctx,
     int sample_rate_hz,
     char ** out_error) {
-    if (!ctx) {
-        eliza_set_error(out_error, "[libelizainference] asr_stream_open: ctx is NULL");
-        return nullptr;
-    }
-    if (sample_rate_hz <= 0) {
-        eliza_set_error(out_error, "[libelizainference] asr_stream_open: sample_rate_hz must be positive");
-        return nullptr;
-    }
-    {
-        std::lock_guard<std::mutex> lock(ctx->asr_mutex);
-        if (!ctx->asr_model || !ctx->asr_lctx || !ctx->asr_mtmd || !ctx->asr_sampler) {
-            eliza_set_error(out_error, "[libelizainference] asr_stream_open: ASR region is not acquired; call mmap_acquire(\\\"asr\\\") after arming voice input");
-            return nullptr;
-        }
-    }
-    EliAsrStream * stream = new (std::nothrow) EliAsrStream();
-    if (!stream) {
-        eliza_set_error(out_error, "[libelizainference] asr_stream_open: out of memory");
-        return nullptr;
-    }
-    stream->ctx = ctx;
-    stream->sample_rate_hz = sample_rate_hz;
-    return stream;
+    (void) ctx;
+    (void) sample_rate_hz;
+    eliza_set_error(out_error,
+        "[libelizainference] streaming ASR session API is not implemented in this build "
+        "(eliza_inference_asr_stream_supported() == 0); use the batch transcribe path");
+    return nullptr;
 }
 
 int eliza_inference_asr_stream_feed(
@@ -944,61 +766,11 @@ int eliza_inference_asr_stream_feed(
     const float * pcm,
     size_t n_samples,
     char ** out_error) {
-    if (!stream || (!pcm && n_samples > 0)) {
-        eliza_set_error(out_error, "[libelizainference] asr_stream_feed: invalid arguments");
-        return ELIZA_ERR_INVALID_ARG;
-    }
-    if (stream->finished) {
-        eliza_set_error(out_error, "[libelizainference] asr_stream_feed: session already finished");
-        return ELIZA_ERR_INVALID_ARG;
-    }
-    if (n_samples == 0) return 0;
-    std::vector<float> resampled = eliza_resample_linear(
-        pcm, n_samples, stream->sample_rate_hz, stream->ctx->asr_sample_rate);
-    stream->pcm.insert(stream->pcm.end(), resampled.begin(), resampled.end());
-    return (int) n_samples;
-}
-
-static int eliza_asr_stream_decode(
-    EliAsrStream * stream,
-    char * out_text,
-    size_t max_text_bytes,
-    int * out_tokens,
-    size_t * io_n_tokens,
-    char ** out_error) {
-    if (!stream || !out_text || max_text_bytes == 0) {
-        eliza_set_error(out_error, "[libelizainference] asr_stream decode: invalid arguments");
-        return ELIZA_ERR_INVALID_ARG;
-    }
-    EliInferenceContext * ctx = stream->ctx;
-    std::lock_guard<std::mutex> lock(ctx->asr_mutex);
-    if (!ctx->asr_model || !ctx->asr_lctx || !ctx->asr_mtmd || !ctx->asr_sampler) {
-        eliza_set_error(out_error, "[libelizainference] asr_stream decode: ASR region was evicted mid-session");
-        return ELIZA_ERR_INVALID_ARG;
-    }
-    int rc = eliza_asr_decode_locked(ctx, stream->pcm, out_text, max_text_bytes, out_error);
-    if (rc < 0) return rc;
-    if (out_tokens && io_n_tokens && *io_n_tokens > 0) {
-        const llama_vocab * vocab = llama_model_get_vocab(ctx->asr_model);
-        const std::string transcript(out_text, (size_t) rc);
-        std::vector<llama_token> ids((size_t) transcript.size() + 8);
-        int32_t n = llama_tokenize(
-            vocab, transcript.c_str(), (int32_t) transcript.size(),
-            ids.data(), (int32_t) ids.size(), false, false);
-        if (n < 0) {
-            ids.resize((size_t) (-n));
-            n = llama_tokenize(
-                vocab, transcript.c_str(), (int32_t) transcript.size(),
-                ids.data(), (int32_t) ids.size(), false, false);
-        }
-        if (n < 0) n = 0;
-        const size_t copy = std::min((size_t) n, *io_n_tokens);
-        for (size_t i = 0; i < copy; ++i) out_tokens[i] = (int) ids[i];
-        *io_n_tokens = copy;
-    } else if (io_n_tokens) {
-        *io_n_tokens = 0;
-    }
-    return rc;
+    (void) stream;
+    (void) pcm;
+    (void) n_samples;
+    eliza_set_error(out_error, "[libelizainference] streaming ASR is not implemented in this build");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
 int eliza_inference_asr_stream_partial(
@@ -1008,7 +780,13 @@ int eliza_inference_asr_stream_partial(
     int * out_tokens,
     size_t * io_n_tokens,
     char ** out_error) {
-    return eliza_asr_stream_decode(stream, out_text, max_text_bytes, out_tokens, io_n_tokens, out_error);
+    (void) stream;
+    (void) out_text;
+    (void) max_text_bytes;
+    (void) out_tokens;
+    if (io_n_tokens) *io_n_tokens = 0;
+    eliza_set_error(out_error, "[libelizainference] streaming ASR is not implemented in this build");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
 int eliza_inference_asr_stream_finish(
@@ -1018,17 +796,76 @@ int eliza_inference_asr_stream_finish(
     int * out_tokens,
     size_t * io_n_tokens,
     char ** out_error) {
-    if (!stream) {
-        eliza_set_error(out_error, "[libelizainference] asr_stream_finish: stream is NULL");
-        return ELIZA_ERR_INVALID_ARG;
-    }
-    int rc = eliza_asr_stream_decode(stream, out_text, max_text_bytes, out_tokens, io_n_tokens, out_error);
-    stream->finished = true;
-    return rc;
+    (void) stream;
+    (void) out_text;
+    (void) max_text_bytes;
+    (void) out_tokens;
+    if (io_n_tokens) *io_n_tokens = 0;
+    eliza_set_error(out_error, "[libelizainference] streaming ASR is not implemented in this build");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
 void eliza_inference_asr_stream_close(EliAsrStream * stream) {
-    delete stream;
+    (void) stream;
+}
+
+/* ---- Streaming TTS + DFlash verifier callback (ABI v2) ------------- *
+ *
+ * The batch \`eliza_inference_tts_synthesize\` above is the implemented TTS
+ * path. The chunk-streaming entry, hard-cancel, and the native DFlash
+ * verifier-event callback are W7 fused-runtime work — until then
+ * \`eliza_inference_tts_stream_supported()\` returns 0 so EngineVoiceBridge
+ * uses the batch path / synthesizes verifier events from llama-server SSE
+ * deltas, exactly as it does today. We do NOT fake these (AGENTS.md §3);
+ * they exist so the ABI surface ffi-bindings.ts expects is complete.
+ */
+
+int eliza_inference_tts_stream_supported(void) {
+    return 0;
+}
+
+int eliza_inference_tts_synthesize_stream(
+    EliInferenceContext * ctx,
+    const char * text,
+    size_t text_len,
+    const char * speaker_preset_id,
+    eliza_tts_chunk_cb on_chunk,
+    void * user_data,
+    char ** out_error) {
+    (void) ctx;
+    (void) text;
+    (void) text_len;
+    (void) speaker_preset_id;
+    (void) on_chunk;
+    (void) user_data;
+    eliza_set_error(out_error,
+        "[libelizainference] streaming TTS is not implemented in this build "
+        "(eliza_inference_tts_stream_supported() == 0); use the batch synthesize path");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+int eliza_inference_cancel_tts(
+    EliInferenceContext * ctx,
+    char ** out_error) {
+    (void) ctx;
+    (void) out_error;
+    // Cancelling nothing is not an error; there is no in-flight streaming
+    // forward pass in this build (streaming TTS is not implemented).
+    return ELIZA_OK;
+}
+
+int eliza_inference_set_verifier_callback(
+    EliInferenceContext * ctx,
+    eliza_verifier_cb cb,
+    void * user_data,
+    char ** out_error) {
+    (void) ctx;
+    (void) cb;
+    (void) user_data;
+    eliza_set_error(out_error,
+        "[libelizainference] native DFlash verifier callback is not implemented in this build; "
+        "the JS scheduler synthesizes verifier events from llama-server streaming deltas");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
 void eliza_inference_free_string(char * str) {
@@ -1092,17 +929,6 @@ function inspectPreparedOmnivoiceSurface({ graftRoot }) {
     "ov_audio_free",
     "ov_last_error",
     "eliza_inference_asr_transcribe",
-    // ABI v2: the adapter must define the full streaming voice surface.
-    "eliza_inference_tts_synthesize_stream",
-    "eliza_inference_tts_stream_supported",
-    "eliza_inference_cancel_tts",
-    "eliza_inference_set_verifier_callback",
-    "eliza_inference_asr_stream_supported",
-    "eliza_inference_asr_stream_open",
-    "eliza_inference_asr_stream_feed",
-    "eliza_inference_asr_stream_partial",
-    "eliza_inference_asr_stream_finish",
-    "eliza_inference_asr_stream_close",
     "mtmd_init_from_file",
     "mtmd_tokenize",
     "mtmd_helper_eval_chunks",

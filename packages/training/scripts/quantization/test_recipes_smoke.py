@@ -207,18 +207,22 @@ def test_push_model_resolves_repo_id_with_quant_suffix():
     sys.path.insert(0, str(_HERE.parent))
     from push_model_to_hf import resolve_repo_id
 
-    assert resolve_repo_id("qwen3.5-2b", None, "default", None) == "elizaos/eliza-1-2b"
-    assert resolve_repo_id("eliza-1-2b", None, "default", None) == "elizaos/eliza-1-2b"
-    assert resolve_repo_id("qwen3.5-2b", "polarquant", "default", None) == (
-        "elizaos/eliza-1-2b-polarquant"
+    # Source of truth is training/model_registry.py. The real published tiers
+    # are the size-first eliza-1-{0_6b,1_7b,4b} ids (Qwen3-{0.6B,1.7B,4B}
+    # lineage); qwen3.5-2b / qwen3.5-9b are unresolved-checkpoint placeholders
+    # with empty eliza_short_name, so they only resolve through their base key.
+    assert resolve_repo_id("qwen3-4b", None, "default", None) == "elizaos/eliza-1-4b"
+    assert resolve_repo_id("eliza-1-4b", None, "default", None) == "elizaos/eliza-1-4b"
+    assert resolve_repo_id("qwen3-4b", "polarquant", "default", None) == (
+        "elizaos/eliza-1-4b-polarquant"
     )
     assert resolve_repo_id("qwen3.6-27b", "gguf-q4_k_m", "default", None) == (
         "elizaos/eliza-1-27b-gguf-q4_k_m"
     )
-    assert resolve_repo_id("qwen3.5-2b", None, "abliterated", None) == (
-        "elizaos/eliza-1-2b-uncensored"
+    assert resolve_repo_id("qwen3-4b", None, "abliterated", None) == (
+        "elizaos/eliza-1-4b-uncensored"
     )
-    assert resolve_repo_id("qwen3.5-2b", "polarquant", "default", "custom/foo") == "custom/foo"
+    assert resolve_repo_id("qwen3-4b", "polarquant", "default", "custom/foo") == "custom/foo"
 
 
 def test_push_model_card_inference_blocks_reference_real_imports():
