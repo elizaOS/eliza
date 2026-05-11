@@ -123,9 +123,9 @@ import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
-import { handleInternalWakeRoute } from "./internal-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
+import { handleInternalWakeRoute } from "./internal-routes";
 // Local-inference routes intentionally remain in app-core (no plugin-local-inference exists).
 import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-routes";

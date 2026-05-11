@@ -1,0 +1,66 @@
+# Cache-key stability gate
+#
+# Asserts that the Anthropic prompt-cache key inputs (Stage 1 / Stage 2 stable
+# prefix hashes, STABLE_PLANNER_TOOLS envelope hash, HANDLE_RESPONSE +
+# PLAN_ACTIONS tool envelope hashes) are byte-stable across PRs.
+#
+# If this job fails, the cached Anthropic prefix has been busted — every
+# subsequent PR pays ~80% extra tokens until someone notices. Fix the source
+# of the churn (typically a whitespace edit in a prompt template, a reordered
+# action list, or an environment-dependent string that leaked into a stable
+# prompt segment). Only rebase the baked-in hashes when the change is
+# explicitly INTENTIONAL — see
+# `docs/audits/lifeops-2026-05-11/cache-key-stability.md`.
+#
+# Local equivalent (run before pushing):
+#
+#     bun run test:cache-stability
+
+name: Cache-key Stability
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/core/**"
+      - "plugins/app-lifeops/**"
+      - "packages/prompts/**"
+      - ".github/workflows/cache-key-stability.yml"
+
+concurrency:
+  group: cache-key-stability-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: "1.3.13"
+  NODE_VERSION: "22.20.0"
+
+jobs:
+  cache-key-stability:
+    name: cache-key-stability
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+
+      - name: Run cache-key stability test
+        run: bun run test:cache-stability

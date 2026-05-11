@@ -303,6 +303,10 @@ export async function readdir(): Promise<string[]> {
 export async function stat(): Promise<typeof emptyStats> {
   return emptyStats;
 }
+export async function readlink(): Promise<string> {
+  return "";
+}
+export async function symlink(): Promise<void> {}
 
 export const promises = {
   access,
@@ -313,7 +317,9 @@ export const promises = {
   rm,
   unlink,
   readdir,
+  readlink,
   stat,
+  symlink,
 };
 
 export function ensureDirSync(): void {}
@@ -575,6 +581,7 @@ const nodeBuiltins = {
   readJson,
   readdir,
   readdirSync,
+  readlink,
   relative,
   remove,
   removeSync,
@@ -590,6 +597,7 @@ const nodeBuiltins = {
   strict,
   strictEqual,
   subtle,
+  symlink,
   tmpdir,
   unlink,
   webcrypto,

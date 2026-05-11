@@ -20,8 +20,8 @@ export {
   Eliza1ManifestSchema,
   Eliza1RamBudgetSchema,
   Eliza1TierEnumSchema,
-  Eliza1VoiceSchema,
   Eliza1VerifiedBackendStatusSchema,
+  Eliza1VoiceSchema,
   REQUIRED_KERNELS_BY_TIER,
   SUPPORTED_BACKENDS_BY_TIER,
   VOICE_PRESET_CACHE_PATH,
@@ -39,8 +39,8 @@ export type {
   Eliza1Manifest,
   Eliza1RamBudget,
   Eliza1Tier,
-  Eliza1Voice,
   Eliza1VerifiedBackendStatus,
+  Eliza1Voice,
 } from "./types";
 
 export {

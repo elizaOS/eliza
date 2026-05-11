@@ -310,11 +310,22 @@ class HermesClient:
             for tc in tool_calls
             if getattr(getattr(tc, "function", None), "name", "")
         ]
+        # Surface the provider-reported usage block so the lifeops_bench adapter
+        # can parse cache_read_input_tokens (OpenAI / Cerebras shape:
+        # ``usage.prompt_tokens_details.cached_tokens``). Mirrors the subprocess
+        # path's payload shape; downstream callers read ``params['usage']``.
+        usage_obj = getattr(completion, "usage", None)
+        if usage_obj is not None and hasattr(usage_obj, "model_dump"):
+            usage_payload: dict[str, object] = usage_obj.model_dump()
+        elif isinstance(usage_obj, Mapping):
+            usage_payload = dict(usage_obj)
+        else:
+            usage_payload = {}
         return MessageResponse(
             text=str(msg.content or ""),
             thought=getattr(msg, "reasoning_content", None) or None,
             actions=actions,
-            params={"tool_calls": parsed_tool_calls},
+            params={"tool_calls": parsed_tool_calls, "usage": usage_payload},
         )
 
     @staticmethod

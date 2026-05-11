@@ -33,3 +33,33 @@ export async function readCompatJsonBody(): Promise<unknown> {
 export function sharedVault(): never {
   throw new Error("sharedVault is server-only");
 }
+
+// MILADY local-mode renderer reach-through: pull in the full app-core
+// dist surface so milady's `main.tsx` can resolve symbols like
+// `DesktopOnboardingRuntime`, `AppProvider`, `client`, etc. that the
+// minimal browser entry omits. Server-only re-exports inside dist
+// (account-pool, onboarding-routes, etc.) are kept renderer-safe by
+// stubbing `@elizaos/agent` and `@elizaos/plugin-elizacloud` to
+// browser stubs (see apps/app/vite.config.ts native-module-stub plugin).
+export * from "../dist/index.js";
+
+// `ConfigField` and `getPlugins` exist in both `@elizaos/ui` (UI component +
+// runtime helper) and the dist barrel (registry type + bridge function).
+// Pin the dist side explicitly so milady's main.tsx gets the registry
+// `ConfigField` type it expects; UI consumers can still import the
+// component directly from `@elizaos/ui`.
+export { type ConfigField, getPlugins } from "../dist/index.js";
+
+// MILADY local-mode stubs for symbols removed during the P1A refactor.
+// The mobile/web renderer doesn't actually mount these (the desktop
+// shell is opt-in via the runtime mode), so noop React components are
+// safe. Restore real implementations if/when upstream restores them
+// or move milady's main.tsx off these imports entirely.
+export const DESKTOP_TRAY_MENU_ITEMS: ReadonlyArray<{
+  id: string;
+  label: string;
+}> = [];
+export const DesktopOnboardingRuntime = (): null => null;
+export const DesktopSurfaceNavigationRuntime = (): null => null;
+export const DesktopTrayRuntime = (): null => null;
+export const DetachedShellRoot = (): null => null;
