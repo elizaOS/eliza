@@ -156,6 +156,17 @@ def normalize_action_name(name: Any) -> str:
     return text.upper()
 
 
+# ActionAliases is the canonicalization pass for this preparer. It loads
+# `config/eliza1_action_aliases.json` (overridable via --action-aliases) and
+# rewrites every action / tool-call name it touches — including the
+# `eliza_native_v1` corpus record's `response.toolCalls[].toolName`, the
+# `availableActions` lists, action manifest entries, and the rendered
+# `tool_calls[].function.name` — from a removed or renamed name to the current
+# canonical name. It exists so the corpus stays in sync with the live action
+# catalog at `packages/core/src/generated/action-docs.ts` (e.g. SHELL_COMMAND ->
+# SHELL, SPAWN_AGENT/TASK_CALL -> TASKS, RUN_SKILL_SCRIPT -> USE_SKILL,
+# RESPOND/RESPONSE/GREET -> REPLY). Exact aliases run before prefix aliases.
+# See `packages/training/docs/dataset/CANONICAL_RECORD.md`.
 @dataclass(frozen=True)
 class ActionAliases:
     aliases: dict[str, str]
