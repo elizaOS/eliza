@@ -39,6 +39,34 @@ export interface PluginCardProps {
   notInstalledLabel: string;
 }
 
+function pluginProvenanceLabels(plugin: PluginInfo): {
+  originLabel: string | null;
+  supportLabel: string | null;
+  title: string | undefined;
+} {
+  const isThirdParty =
+    plugin.thirdParty === true || plugin.origin === "third-party";
+  const isBuiltIn = plugin.builtIn === true || plugin.origin === "builtin";
+  const isFirstParty =
+    plugin.firstParty === true || plugin.support === "first-party";
+  const isCommunity =
+    plugin.support === "community" || (isThirdParty && !isFirstParty);
+
+  return {
+    originLabel: isThirdParty ? "third party" : isBuiltIn ? "built in" : null,
+    supportLabel: isCommunity
+      ? "community"
+      : isFirstParty
+        ? "first party"
+        : null,
+    title: isThirdParty
+      ? "Community package registered through the plugin registry"
+      : isBuiltIn || isFirstParty
+        ? "First-party package generated from the elizaOS plugin registry"
+        : undefined,
+  };
+}
+
 export function PluginCard({
   plugin: p,
   allowCustomOrder,
@@ -131,6 +159,7 @@ export function PluginCard({
   const isDragging = draggingId === p.id;
   const isDragOver = dragOverId === p.id && draggingId !== p.id;
   const pluginLinks = getPluginResourceLinks(p);
+  const provenanceLabels = pluginProvenanceLabels(p);
 
   return (
     <li
@@ -231,6 +260,26 @@ export function PluginCard({
         {showReleaseControls && (
           <span className="text-2xs px-1.5 py-px border border-border bg-surface text-muted lowercase tracking-wide whitespace-nowrap">
             {selectedReleaseStream}
+          </span>
+        )}
+        {provenanceLabels.originLabel && (
+          <span
+            className="text-2xs px-1.5 py-px border border-border bg-card text-muted lowercase tracking-wide whitespace-nowrap"
+            title={provenanceLabels.title}
+          >
+            {provenanceLabels.originLabel}
+          </span>
+        )}
+        {provenanceLabels.supportLabel && (
+          <span
+            className={`text-2xs px-1.5 py-px border lowercase tracking-wide whitespace-nowrap ${
+              provenanceLabels.supportLabel === "community"
+                ? "border-warn/50 bg-[rgba(234,179,8,0.06)] text-warn"
+                : "border-accent/40 bg-accent-subtle text-txt"
+            }`}
+            title={provenanceLabels.title}
+          >
+            {provenanceLabels.supportLabel}
           </span>
         )}
         {p.enabled && !p.isActive && !isShowcase && (

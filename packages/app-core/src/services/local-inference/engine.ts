@@ -609,7 +609,10 @@ export class LocalInferenceEngine {
   }
 
   async generate(args: GenerateArgs): Promise<string> {
-    return this.dispatcher.generate(args);
+    const streaming = this.voiceStreamingArgs(args);
+    const text = await this.dispatcher.generate(streaming.args);
+    await streaming.finish(text);
+    return text;
   }
 
   /**
@@ -686,13 +689,15 @@ export class LocalInferenceEngine {
     }
     handle.lastUsedMs = Date.now();
     const cacheKey = `conv:${handle.conversationId}`;
+    const streaming = this.voiceStreamingArgs(args);
     if (this.activeBackendId() === "llama-server") {
       const result: DflashGenerateResult =
         await dflashLlamaServer.generateWithUsage({
-          ...args,
+          ...streaming.args,
           cacheKey,
           slotId: handle.slotId,
         });
+      await streaming.finish(result.text);
       return result;
     }
     // node-llama-cpp path: forward via the dispatcher and synthesize a
@@ -700,9 +705,10 @@ export class LocalInferenceEngine {
     // cacheKey, so cache reuse still works — we just don't have
     // observability on this backend.
     const text = await this.dispatcher.generate({
-      ...args,
+      ...streaming.args,
       cacheKey,
     });
+    await streaming.finish(text);
     return {
       text,
       usage: {

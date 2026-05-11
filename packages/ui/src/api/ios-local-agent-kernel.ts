@@ -66,6 +66,9 @@ const EMPTY_ROUTING_PREFERENCES: RoutingPreferences = {
   policy: {},
 };
 
+const IOS_LOCAL_BACKGROUND_UNAVAILABLE_REASON =
+  "iOS local mode uses the WebView ITTP route kernel. Capacitor BackgroundRunner wakes in a separate JSContext and cannot call that WebView kernel while the app is suspended.";
+
 type Role = "user" | "assistant";
 
 interface LocalConversation {
@@ -574,6 +577,70 @@ function localConfig(): Record<string, unknown> {
       cloudProvisioned: false,
     },
   };
+}
+
+function localAgentCapabilities(): Record<string, unknown> {
+  return {
+    mode: "ios-local",
+    apiBase: "http://127.0.0.1:31337",
+    transport: {
+      foreground: "ittp",
+      background: "unavailable",
+      tcpListener: false,
+      nativeRequestProxy: false,
+    },
+    routeKernel: {
+      shape: "fetch",
+      hostedIn: "webview",
+      honoRoutesDetected: false,
+    },
+    backendRuntime: {
+      state: "compatibility-kernel",
+      fullAgentRuntime: false,
+      node: false,
+      bun: false,
+      taskService: false,
+      pluginLoader: false,
+    },
+    storage: {
+      conversations: "native-synced-localStorage",
+      localInferenceState: "native-synced-localStorage",
+    },
+    localInference: {
+      state: "available-when-native-llama-plugin-is-present",
+      provider: "capacitor-llama",
+    },
+    scheduledTasks: {
+      state: "unavailable",
+      primitive: "ScheduledTask",
+      reason: IOS_LOCAL_BACKGROUND_UNAVAILABLE_REASON,
+    },
+    apps: {
+      state: "catalog-unavailable",
+      reason: "The runtime AppManager is not mounted in the iOS ITTP kernel.",
+    },
+    plugins: {
+      state: "loader-unavailable",
+      reason: "The runtime plugin loader is not mounted in the iOS ITTP kernel.",
+    },
+  };
+}
+
+function unavailableLocalBackendRoute(
+  error: string,
+  details: Record<string, unknown> = {},
+  status = 503,
+): Response {
+  return json(
+    {
+      ok: false,
+      error,
+      mode: "ios-local",
+      capabilities: localAgentCapabilities(),
+      ...details,
+    },
+    status,
+  );
 }
 
 function localCharacter(): Record<string, unknown> {

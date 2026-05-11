@@ -318,7 +318,7 @@ def stage_sources(args: argparse.Namespace) -> dict[str, Any]:
     blockers.extend(
         [
             "Final Eliza-1 text GGUFs must be generated from trained Eliza-1 checkpoints, not renamed source weights.",
-            "Final evals/checksums/licenses/release evidence and elizalabs HF upload records remain publish-blocking.",
+            "Final evals/checksums/licenses/release evidence and elizaos HF upload records remain publish-blocking.",
         ]
     )
 

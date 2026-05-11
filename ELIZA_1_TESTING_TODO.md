@@ -223,7 +223,7 @@ Before publishing any Eliza-1 bundle to Hugging Face:
 - Include license manifests for text, voice, ASR, VAD, vision, DFlash,
   and kernel sidecars.
 - Run tier evals and hardware smoke for the target platform class.
-- Upload to the `elizalabs` Hugging Face org and preserve upload logs/artifact URLs.
+- Upload to the `elizaos` Hugging Face org and preserve upload logs/artifact URLs.
 
 Current local bundles under `/Users/shawwalters/.eliza/local-inference/models/eliza-1-*.bundle`
 are complete enough for runtime-layout smoke: every tier has required local
