@@ -172,6 +172,7 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
     adjusted_case_scores_excluding_invalid: list[float] = []
     total_items = 0
     quality_scored_items = 0
+    quality_scored_items = 0
     valid_false_negatives = 0
     semantic_false_positives = 0
     failures_remaining = 0
@@ -636,21 +637,29 @@ def _rescore_analysis(input_path: Path, output_path: Path) -> dict[str, Any]:
             total_items += sum(
                 len(cycle.get("items", [])) for cycle in rescored.get("cycles", [])
             )
+            quality_scored_items += int(rescored["benchmark_quality_scored_items"])
             _write_event(target, rescored)
 
+        benchmark_quality_score = _mean_optional(adjusted_case_scores_excluding_invalid)
         summary = {
             "event": "analysis_end",
             "completed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             "official_overall_score": _mean(official_case_scores),
             "adjusted_overall_score": _mean(adjusted_case_scores),
-            "adjusted_overall_score_excluding_invalid": _mean(
-                adjusted_case_scores_excluding_invalid
-            ),
-            "benchmark_quality_score": _mean(adjusted_case_scores_excluding_invalid),
+            "adjusted_overall_score_excluding_invalid": benchmark_quality_score,
+            "benchmark_quality_score": benchmark_quality_score,
             "score_delta": _mean(adjusted_case_scores) - _mean(official_case_scores),
-            "score_delta_excluding_invalid": _mean(adjusted_case_scores_excluding_invalid)
-            - _mean(official_case_scores),
+            "score_delta_excluding_invalid": _score_delta_optional(
+                benchmark_quality_score,
+                _mean(official_case_scores),
+            ),
             "total_items": total_items,
+            "benchmark_quality_scored_items": quality_scored_items,
+            "benchmark_quality_unscored_items": total_items - quality_scored_items,
+            "benchmark_quality_scored_cases": len(adjusted_case_scores_excluding_invalid),
+            "benchmark_quality_unscored_cases": (
+                len(official_case_scores) - len(adjusted_case_scores_excluding_invalid)
+            ),
             "valid_false_negatives": valid_false_negatives,
             "semantic_false_positives": semantic_false_positives,
             "failures_remaining": failures_remaining,
@@ -678,6 +687,7 @@ def _rescore_case_event(event: dict[str, Any]) -> dict[str, Any]:
     failures_remaining_excluding_invalid = 0
     invalid_expected_conflicts = 0
     judge_refusals = 0
+    quality_scored_items = 0
 
     for cycle in updated.get("cycles", []):
         items = cycle.get("items", [])
@@ -688,22 +698,29 @@ def _rescore_case_event(event: dict[str, Any]) -> dict[str, Any]:
             item["reason"] = result.reason
             item["valid_false_negative"] = result.valid_false_negative
             item["semantic_false_positive"] = result.semantic_false_positive
-            expected_value = _expected_value(item.get("expected", {}))
-            item["invalid_expected_conflict"] = expected_value in invalid_values
+            quality_score, invalid_expected_conflict = _quality_score_for_item(
+                item.get("expected", {}),
+                item.get("response", ""),
+                invalid_values,
+                adjusted_score=float(result.adjusted_score),
+            )
+            item["quality_score"] = quality_score
+            item["invalid_expected_conflict"] = invalid_expected_conflict
             item["judge_refusal"] = is_refusal(item.get("response", ""))
             valid_false_negatives += 1 if result.valid_false_negative else 0
             semantic_false_positives += 1 if result.semantic_false_positive else 0
             failures_remaining += 1 if result.adjusted_score < 1.0 else 0
             failures_remaining_excluding_invalid += (
                 1
-                if result.adjusted_score < 1.0 and not item["invalid_expected_conflict"]
+                if quality_score is not None and quality_score < 1.0
                 else 0
             )
             invalid_expected_conflicts += 1 if item["invalid_expected_conflict"] else 0
             judge_refusals += 1 if item["judge_refusal"] else 0
+            quality_scored_items += 1 if quality_score is not None else 0
         adjusted_score = _weighted_score_dicts(items, attr="adjusted_score")
         adjusted_score_excluding_invalid = _weighted_score_dicts_excluding_invalid(
-            items, attr="adjusted_score"
+            items, attr="quality_score"
         )
         cycle["adjusted_score"] = adjusted_score
         cycle["adjusted_score_excluding_invalid"] = adjusted_score_excluding_invalid
@@ -740,6 +757,7 @@ def _rescore_case_event(event: dict[str, Any]) -> dict[str, Any]:
     updated["semantic_false_positives"] = semantic_false_positives
     updated["failures_remaining"] = failures_remaining
     updated["failures_remaining_excluding_invalid"] = failures_remaining_excluding_invalid
+    updated["benchmark_quality_scored_items"] = quality_scored_items
     updated["invalid_expected_conflicts"] = invalid_expected_conflicts
     updated["judge_refusals"] = judge_refusals
     return updated

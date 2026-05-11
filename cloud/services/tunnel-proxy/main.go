@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,7 +31,10 @@ const (
 	defaultPort          = "8080"
 )
 
-var tunnelHostPattern = regexp.MustCompile(`^eliza-[a-z0-9]{1,12}-[a-f0-9]{12,32}$`)
+var (
+	unsignedTunnelHostPattern = regexp.MustCompile(`^eliza-[a-z0-9]{1,12}-[a-f0-9]{12,32}$`)
+	signedTunnelHostPattern   = regexp.MustCompile(`^eliza-[a-z0-9]{1,12}-[a-f0-9]{20}-[a-f0-9]{16}$`)
+)
 
 type config struct {
 	authKey       string
@@ -38,6 +44,7 @@ type config struct {
 	stateDir      string
 	hostname      string
 	port          string
+	signingSecret string
 }
 
 type targetHostContextKey struct{}
@@ -110,7 +117,12 @@ func main() {
 			return
 		}
 
-		targetHost, ok := targetHostForRequest(r.Host, cfg.publicHost, cfg.tailnetDomain)
+		targetHost, ok := targetHostForRequest(
+			r.Host,
+			cfg.publicHost,
+			cfg.tailnetDomain,
+			cfg.signingSecret,
+		)
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -149,6 +161,7 @@ func loadConfig() (config, error) {
 		stateDir:      firstEnv("TSNET_STATE_DIR", "", defaultStateDir),
 		hostname:      firstEnv("TUNNEL_PROXY_HOSTNAME", "", defaultHostname),
 		port:          firstEnv("PORT", "", defaultPort),
+		signingSecret: strings.TrimSpace(os.Getenv("TUNNEL_HOSTNAME_SIGNING_SECRET")),
 	}
 	cfg.controlURL = strings.TrimRight(cfg.controlURL, "/")
 	cfg.publicHost = normalizeHost(cfg.publicHost)
@@ -187,7 +200,12 @@ func firstEnv(primary string, legacy string, fallback string) string {
 	return fallback
 }
 
-func targetHostForRequest(hostHeader string, publicHost string, tailnetDomain string) (string, bool) {
+func targetHostForRequest(
+	hostHeader string,
+	publicHost string,
+	tailnetDomain string,
+	signingSecret string,
+) (string, bool) {
 	host := normalizeHost(hostHeader)
 	if host == "" || host == publicHost {
 		return "", false
@@ -199,10 +217,34 @@ func targetHostForRequest(hostHeader string, publicHost string, tailnetDomain st
 	}
 
 	label := strings.TrimSuffix(host, suffix)
-	if !tunnelHostPattern.MatchString(label) {
+	if !validTunnelHostLabel(label, signingSecret) {
 		return "", false
 	}
 	return label + "." + tailnetDomain, true
+}
+
+func validTunnelHostLabel(label string, signingSecret string) bool {
+	if signingSecret == "" {
+		return unsignedTunnelHostPattern.MatchString(label)
+	}
+	if !signedTunnelHostPattern.MatchString(label) {
+		return false
+	}
+
+	lastDash := strings.LastIndex(label, "-")
+	if lastDash < 0 {
+		return false
+	}
+	payload := label[:lastDash]
+	signature := label[lastDash+1:]
+	expected := tunnelHostSignature(payload, signingSecret)
+	return hmac.Equal([]byte(signature), []byte(expected))
+}
+
+func tunnelHostSignature(payload string, signingSecret string) string {
+	mac := hmac.New(sha256.New, []byte(signingSecret))
+	_, _ = mac.Write([]byte(payload))
+	return hex.EncodeToString(mac.Sum(nil))[:16]
 }
 
 func normalizeHost(host string) string {
