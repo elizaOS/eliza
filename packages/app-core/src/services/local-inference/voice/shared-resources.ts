@@ -26,6 +26,108 @@
 interface Logger {
   debug?(message: string): void;
   warn?(message: string): void;
+  info?(message: string): void;
+}
+
+/**
+ * The model roles that can be resident at once on the local-inference
+ * path. The `MemoryMonitor` evicts them in *ascending priority* under RAM
+ * pressure (lowest first): the DFlash drafter is cheapest to drop, the
+ * text target is the last thing to go. Voice TTS/ASR weights are evicted
+ * via `MmapRegionHandle.evictPages()`; the embedding model by unloading
+ * it; the drafter by restarting llama-server without `-md` (a last resort
+ * — it's co-resident in that process, so "evict" is heavy).
+ */
+export type ResidentModelRole =
+  | "drafter"
+  | "vision"
+  | "embedding"
+  | "vad"
+  | "asr"
+  | "tts"
+  | "text-target";
+
+/**
+ * Eviction priority by role — lower evicts first. Matches the brief's
+ * `drafter < vision/mmproj < ASR < TTS < text-target`, with `embedding`
+ * (cheap — just `unload()`) just above vision and `vad` near ASR.
+ */
+export const RESIDENT_ROLE_PRIORITY: Readonly<
+  Record<ResidentModelRole, number>
+> = {
+  drafter: 10,
+  vision: 20,
+  embedding: 25,
+  vad: 35,
+  asr: 40,
+  tts: 50,
+  "text-target": 100,
+};
+
+/**
+ * An evictable resident model role. The registry walks these in ascending
+ * `evictionPriority` under memory pressure and calls `evict()` until enough
+ * RAM has been reclaimed. `evict()` MUST be idempotent (a no-op when already
+ * evicted) and the role MUST re-load lazily on next use — the monitor only
+ * frees memory, it never re-loads.
+ */
+export interface EvictableModelRole extends RefCountedResource {
+  readonly role: ResidentModelRole;
+  /** Lower evicts first. Defaults to `RESIDENT_ROLE_PRIORITY[role]`. */
+  readonly evictionPriority: number;
+  /** True while the underlying weights/pages are still resident. */
+  isResident(): boolean;
+  /** Drop the resident weights/pages. Idempotent; re-loads lazily on demand. */
+  evict(): Promise<void>;
+  /** Best-effort estimate of RAM (MB) reclaimed by `evict()`. 0 when unknown. */
+  estimatedResidentMb(): number;
+}
+
+function isEvictableModelRole(
+  value: RefCountedResource,
+): value is EvictableModelRole {
+  const candidate = value as Partial<EvictableModelRole>;
+  return (
+    typeof candidate.role === "string" &&
+    typeof candidate.evictionPriority === "number" &&
+    typeof candidate.isResident === "function" &&
+    typeof candidate.evict === "function" &&
+    typeof candidate.estimatedResidentMb === "function"
+  );
+}
+
+/**
+ * Build an `EvictableModelRole` from a role + an `evict` callback. `release()`
+ * defaults to a no-op (the registry's refcount, not `release`, gates eviction
+ * for these); pass one if the role owns disposable state. `estimatedMb` lets
+ * the monitor know roughly how much it will reclaim — pass 0 when unknown.
+ */
+export function createEvictableModelRole(args: {
+  id?: string;
+  role: ResidentModelRole;
+  evictionPriority?: number;
+  estimatedMb?: number;
+  isResident: () => boolean;
+  evict: () => Promise<void>;
+  release?: () => Promise<void>;
+}): EvictableModelRole {
+  const id = args.id ?? `model-role:${args.role}`;
+  const priority = args.evictionPriority ?? RESIDENT_ROLE_PRIORITY[args.role];
+  const estimatedMb = args.estimatedMb ?? 0;
+  return {
+    id,
+    role: args.role,
+    evictionPriority: priority,
+    isResident: args.isResident,
+    estimatedResidentMb: () => (args.isResident() ? estimatedMb : 0),
+    async evict(): Promise<void> {
+      if (!args.isResident()) return;
+      await args.evict();
+    },
+    async release(): Promise<void> {
+      await args.release?.();
+    },
+  };
 }
 
 /**
@@ -193,5 +295,42 @@ export class SharedResourceRegistry {
   /** Total tracked resources. */
   size(): number {
     return this.entries.size;
+  }
+
+  /**
+   * Currently-resident evictable model roles, ascending by eviction
+   * priority (cheapest-to-evict first). Used by `MemoryMonitor` to walk
+   * roles under RAM pressure. Non-resident roles are filtered out — there's
+   * nothing to reclaim.
+   */
+  evictableRoles(): ReadonlyArray<EvictableModelRole> {
+    const out: EvictableModelRole[] = [];
+    for (const entry of this.entries.values()) {
+      if (isEvictableModelRole(entry.resource) && entry.resource.isResident()) {
+        out.push(entry.resource);
+      }
+    }
+    return out.sort((a, b) => a.evictionPriority - b.evictionPriority);
+  }
+
+  /**
+   * Evict the lowest-priority resident role and return its `id`, or `null`
+   * when nothing is evictable. Observable: emits an `info` log line so the
+   * eviction is visible in the dev console. The role re-loads lazily on
+   * next use — this only frees memory.
+   */
+  async evictLowestPriorityRole(): Promise<{
+    id: string;
+    role: ResidentModelRole;
+    estimatedMb: number;
+  } | null> {
+    const [target] = this.evictableRoles();
+    if (!target) return null;
+    const estimatedMb = target.estimatedResidentMb();
+    await target.evict();
+    this.log?.info?.(
+      `[SharedResourceRegistry] evicted role ${target.role} (${target.id}); reclaimed ~${estimatedMb} MB`,
+    );
+    return { id: target.id, role: target.role, estimatedMb };
   }
 }

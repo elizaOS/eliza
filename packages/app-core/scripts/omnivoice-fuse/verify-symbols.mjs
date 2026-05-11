@@ -129,6 +129,37 @@ function hasDarwinReexportedLlama(lib) {
 }
 
 /**
+ * ELF equivalent of the macOS `-reexport_library libllama` check: prove
+ * `libelizainference.so` carries `libllama.so` as a `DT_NEEDED` entry, so
+ * the dynamic loader brings `llama_*` into the same process the moment the
+ * fused library is `dlopen`'d. ELF has no `LC_REEXPORT_DYLIB` analogue — a
+ * `NEEDED` dependency plus `RTLD_GLOBAL` (which the FFI bridge uses) is the
+ * standard "one process, one llama.cpp build" idiom on Linux/Android. We do
+ * NOT silently accept a missing dependency: if `libllama.so` is neither an
+ * export nor a `NEEDED` of the fused lib, that is still a hard error.
+ */
+function hasElfNeededLlama(lib) {
+  for (const probe of [
+    { cmd: "readelf", args: ["-d", lib] },
+    { cmd: "objdump", args: ["-p", lib] },
+  ]) {
+    const result = spawnSync(probe.cmd, probe.args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 30_000,
+    });
+    if (result.error || (typeof result.status === "number" && result.status !== 0)) {
+      continue;
+    }
+    const out = result.stdout || "";
+    // readelf:  "(NEEDED) Shared library: [libllama.so.0]"
+    // objdump:  "  NEEDED               libllama.so.0"
+    if (/\b(?:NEEDED)\b[^\n]*\blibllama[^/\s\]]*\.so/.test(out)) return true;
+  }
+  return false;
+}
+
+/**
  * Verify a fused target's outputs. Hard-throws on any failure.
  *
  *   - The shared library MUST exist.
@@ -223,12 +254,17 @@ function verifyFusedSymbolsInner({ outDir, target }) {
 
   const llamaCount = countExportedSymbolFamily(symbols, "llama");
   const omnivoiceCount = countExportedSymbolFamily(symbols, "ov");
-  const llamaReexported =
-    target.startsWith("darwin-") && hasDarwinReexportedLlama(lib);
+  // macOS re-exports libllama via LC_REEXPORT_DYLIB; ELF (Linux/Android)
+  // carries it as a DT_NEEDED dependency that the loader pulls into the
+  // same process — both satisfy the "one llama.cpp build, one process"
+  // contract without baking a duplicate copy of llama into the fused lib.
+  const llamaReexported = target.startsWith("darwin-")
+    ? hasDarwinReexportedLlama(lib)
+    : !target.startsWith("windows-") && hasElfNeededLlama(lib);
 
   if (llamaCount === 0 && !llamaReexported) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} has no llama_* exports — text inference is missing from the fused artifact`,
+      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} has no llama_* exports and does not link libllama — text inference is missing from the fused artifact`,
     );
   }
   if (omnivoiceCount === 0) {
