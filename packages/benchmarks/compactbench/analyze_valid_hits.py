@@ -179,6 +179,7 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
     failures_remaining_excluding_invalid = 0
     invalid_expected_conflicts = 0
     judge_refusals = 0
+    quality_scored_items = 0
     started_at = datetime.now(UTC)
 
     with args.output.open("w", encoding="utf-8") as fh:

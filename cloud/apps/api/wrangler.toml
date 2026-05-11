@@ -191,6 +191,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   NEON_API_KEY                       Per-app database provisioning
 #   CONTAINERS_SSH_KEY / AGENT_SSH_KEY Docker provider SSH private key for the Node sidecar
 #   HEADSCALE_API_KEY / HEADSCALE_INTERNAL_TOKEN
+#   TUNNEL_HOSTNAME_SIGNING_SECRET     Shared HMAC secret with tunnel-proxy
 #   AGENT_SERVER_SHARED_SECRET / WAIFU_SERVICE_KEY
 # -----------------------------------------------------------------------------
 

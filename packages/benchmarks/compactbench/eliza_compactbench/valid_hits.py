@@ -432,6 +432,8 @@ def _is_negated_mention(
         "not still" in joined_after
         or "not the plan" in joined_after
         or "no longer" in joined_after
+        or "responsible" in joined_after
+        or "responsibility" in joined_after
     ):
         return True
 
