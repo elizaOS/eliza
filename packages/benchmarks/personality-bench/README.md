@@ -67,9 +67,14 @@ bun run personality:bench --agent eliza
 
 The calibration corpus lives in `tests/calibration/`:
 
-- `hand-graded.jsonl` — 37 scenarios across all five buckets with
-  hand-authored ground-truth labels.
-- `adversarial.jsonl` — 10 edge cases focused on false-positive probing.
+- `hand-graded.jsonl` — 54 scenarios across all five buckets with
+  hand-authored ground-truth labels (17 added in W3-3b for the new edge
+  categories: release detection, refuse + per-user-alternative, injection
+  resistance, and matching-language acknowledgement).
+- `adversarial.jsonl` — 16 edge cases focused on false-positive probing
+  (6 added in W3-3b: early re-engagement, yes-but fake refusal, sneaky
+  compliance, claimed-but-not refused injection, in-band style break, fake
+  release without marker).
 
 Run the calibration suite:
 

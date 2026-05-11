@@ -224,7 +224,7 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
             from .agents import build_eliza_agent  # type: ignore[attr-defined]
         except ImportError as exc:
             raise SystemExit(
-                f"Eliza adapter not yet wired (Wave 2C): {exc}"
+                f"Eliza adapter unavailable: {exc}"
             ) from exc
         # Spawn the TS bench server when the operator hasn't pointed us at
         # a live one. The ServerManager registers an atexit hook to stop the
@@ -250,7 +250,7 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
             from .agents import build_openclaw_agent  # type: ignore[attr-defined]
         except ImportError as exc:
             raise SystemExit(
-                f"OpenClaw adapter not yet wired (Wave 2D): {exc}"
+                f"OpenClaw adapter unavailable: {exc}"
             ) from exc
         return build_openclaw_agent(model=model_override, base_url=base_url_override)
     if name == "hermes":
@@ -258,7 +258,7 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
             from .agents import build_hermes_agent  # type: ignore[attr-defined]
         except ImportError as exc:
             raise SystemExit(
-                f"Hermes adapter not yet wired (Wave 2E): {exc}"
+                f"Hermes adapter unavailable: {exc}"
             ) from exc
         return build_hermes_agent(model=model_override, base_url=base_url_override)
     if name == "cerebras-direct":
@@ -266,7 +266,7 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
             from .agents import build_cerebras_direct_agent  # type: ignore[attr-defined]
         except ImportError as exc:
             raise SystemExit(
-                f"cerebras-direct agent not yet wired (Wave 1E/2F): {exc}"
+                f"cerebras-direct agent unavailable: {exc}"
             ) from exc
         return build_cerebras_direct_agent(model=model_override, base_url=base_url_override)
     raise SystemExit(f"Unknown agent: {name}")
