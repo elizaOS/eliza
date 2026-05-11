@@ -54,8 +54,80 @@ export interface TranscriptionAudio {
   sampleRate: number;
 }
 
-export interface OmniVoiceTranscriber {
-  transcribe(args: TranscriptionAudio): Promise<string>;
+/* -------------------------------------------------------------------- *
+ * Streaming ASR — frame-fed transcription with incremental partials.
+ *
+ * Owned jointly by the transcriber adapters (`voice/transcriber.ts`), the
+ * VAD gating + barge-in word-confirm (`voice/vad.ts`, `voice/barge-in.ts`),
+ * and the turn controller / speculative-on-pause path. The
+ * `StreamingTranscriber` below is the meeting-point contract; the two
+ * adapters (fused Qwen3-ASR via libelizainference, interim whisper.cpp)
+ * implement it in `voice/transcriber.ts`. It consumes the canonical
+ * `PcmFrame` (defined below in the audio front-end section) off a
+ * `MicSource` and is gated by the `VadEvent` stream.
+ *
+ * NOTE on the older `pipeline.ts::AsrTokenStreamer`: that one models a
+ * *batch-buffer → token iterator* (the overlapped `VoicePipeline` scaffold).
+ * This one models a *live PCM-frame feed → partial-transcript events*. They
+ * are different layers; `pipeline-impls.ts` adapts a `StreamingTranscriber`
+ * onto `AsrTokenStreamer` for the pipeline.
+ * -------------------------------------------------------------------- */
+
+/** A running or final transcript snapshot from a `StreamingTranscriber`. */
+export interface TranscriptUpdate {
+  /** The full running transcript (not a delta) at this point. */
+  partial: string;
+  /** True for the snapshot emitted by `flush()` / on `speech-end`. */
+  isFinal: boolean;
+  /**
+   * Text-model token ids for `partial`, when the backend can supply them
+   * cheaply (fused Qwen3-ASR shares the text vocabulary). Absent for the
+   * whisper.cpp interim adapter (different tokenizer — re-tokenization is
+   * the LLM stage's job there).
+   */
+  tokens?: number[];
+}
+
+/** Events a `StreamingTranscriber` emits while consuming PCM frames. */
+export type TranscriberEvent =
+  | { kind: "partial"; update: TranscriptUpdate }
+  | { kind: "final"; update: TranscriptUpdate }
+  /**
+   * Fired the first instant ≥1 real word is recognized in the current
+   * speech segment. Wired to W1's barge-in word-confirm gate
+   * (`onWordsDetected`) so the agent hard-stops TTS + aborts in-flight
+   * LLM/drafter generation only on real speech, not a blip.
+   */
+  | { kind: "words"; words: string[] };
+
+export type TranscriberEventListener = (event: TranscriberEvent) => void;
+
+/**
+ * Live transcription. `feed()` is called per PCM frame off a `MicSource`.
+ * The adapter runs windowed decode passes internally and emits `partial`
+ * events as the running transcript grows; `flush()` force-finalizes (call
+ * it when the VAD reports `speech-end`). Implementations gate on the VAD
+ * event stream — they only decode while the VAD is in `speech-active`.
+ *
+ * No silent degrade: a transcriber whose backend is unavailable throws on
+ * construction (or on first `feed`), it does not quietly produce empty
+ * transcripts.
+ */
+export interface StreamingTranscriber {
+  /** Feed one PCM frame. Frames received while VAD is not active are buffered/ignored per the VAD-gating policy. */
+  feed(frame: PcmFrame): void;
+  /**
+   * Force-finalize: drain any buffered audio, run a final decode pass,
+   * emit the `final` event, and resolve with the final transcript. Safe
+   * to call when no audio is buffered (resolves with an empty final).
+   * After `flush()` the transcriber is reset and ready for the next
+   * speech segment.
+   */
+  flush(): Promise<TranscriptUpdate>;
+  /** Subscribe to transcriber events. Returns an unsubscribe fn. */
+  on(listener: TranscriberEventListener): () => void;
+  /** Release any held native resources (FFI stream handle, temp files). Idempotent. */
+  dispose(): void;
 }
 
 export interface PhraseChunkerConfig {
@@ -148,6 +220,16 @@ export type EnergyGateEvent =
 
 export type VadEventListener = (event: VadEvent) => void;
 export type EnergyGateListener = (event: EnergyGateEvent) => void;
+
+/**
+ * Subscribable VAD event stream. `VadDetector` (`voice/vad.ts`) is the
+ * concrete implementation; the streaming transcriber and the barge-in
+ * controller take this structural view so they don't pull in the optional
+ * `onnxruntime-node` surface.
+ */
+export interface VadEventSource {
+  onVadEvent(listener: VadEventListener): () => void;
+}
 
 /**
  * Source of mic PCM. The desktop/Electrobun impl in `mic-source.ts` is the

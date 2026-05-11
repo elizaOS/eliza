@@ -91,8 +91,8 @@ function bunOnPath(): string | null {
 }
 
 describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
-  it("ELIZA_INFERENCE_ABI_VERSION is 1 (matches ffi.h)", () => {
-    expect(ELIZA_INFERENCE_ABI_VERSION).toBe(1);
+  it("ELIZA_INFERENCE_ABI_VERSION is 2 (matches ffi.h)", () => {
+    expect(ELIZA_INFERENCE_ABI_VERSION).toBe(2);
   });
 
   it("loadElizaInferenceFfi throws VoiceLifecycleError when FFI is unavailable", () => {

@@ -1,7 +1,7 @@
 /**
  * Tests for the `VoicePipeline` seam implementations (`pipeline-impls.ts`):
  *   - `splitTranscriptToTokens` round-trips to the original text on join()
- *   - `FfiStreamingTranscriber` streams the FFI ASR transcript token-by-token
+ *   - `FfiAsrTokenStreamer` streams the FFI ASR transcript token-by-token
  *     and stops on cancel
  *   - `MissingAsrTranscriber` hard-fails (AGENTS.md §3 — no silent fallback)
  *   - `LlamaServerDraftProposer` honours `maxDraft`, returns [] with no drafter,
@@ -15,7 +15,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type DflashTextRunner,
-  FfiStreamingTranscriber,
+  FfiAsrTokenStreamer,
   LlamaServerDraftProposer,
   LlamaServerTargetVerifier,
   MissingAsrTranscriber,
@@ -50,13 +50,19 @@ const audio: TranscriptionAudio = {
 function fakeFfi(transcript: string): ElizaInferenceFfi {
   return {
     libraryPath: "/fake/libelizainference.so",
-    libraryAbiVersion: "1",
+    libraryAbiVersion: "2",
     create: () => 1n,
     destroy: () => {},
     mmapAcquire: () => {},
     mmapEvict: () => {},
     ttsSynthesize: () => 0,
     asrTranscribe: () => transcript,
+    asrStreamSupported: () => false,
+    asrStreamOpen: () => 0n,
+    asrStreamFeed: () => {},
+    asrStreamPartial: () => ({ partial: "" }),
+    asrStreamFinish: () => ({ partial: "" }),
+    asrStreamClose: () => {},
     close: () => {},
   };
 }
@@ -105,9 +111,9 @@ describe("splitTranscriptToTokens", () => {
   });
 });
 
-describe("FfiStreamingTranscriber", () => {
+describe("FfiAsrTokenStreamer", () => {
   it("streams the FFI ASR transcript token by token", async () => {
-    const t = new FfiStreamingTranscriber({
+    const t = new FfiAsrTokenStreamer({
       ffi: fakeFfi("the quick brown fox"),
       getContext: () => 1n,
     });
@@ -119,7 +125,7 @@ describe("FfiStreamingTranscriber", () => {
   });
 
   it("stops when cancelled", async () => {
-    const t = new FfiStreamingTranscriber({
+    const t = new FfiAsrTokenStreamer({
       ffi: fakeFfi("a b c d e"),
       getContext: () => 1n,
     });
@@ -232,7 +238,7 @@ describe("LlamaServerTargetVerifier", () => {
 
 describe("wired-through VoicePipeline (FFI ASR + llama-server draft/verify)", () => {
   it("runs ASR → draft∥verify → chunker → TTS end to end", async () => {
-    const transcriber = new FfiStreamingTranscriber({
+    const transcriber = new FfiAsrTokenStreamer({
       ffi: fakeFfi("hi"),
       getContext: () => 1n,
     });
