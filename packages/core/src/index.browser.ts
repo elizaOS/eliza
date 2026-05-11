@@ -14,6 +14,11 @@ export * from "./app-registry";
 export * from "./app-route-plugin-registry";
 export * from "./build-variant";
 export * from "./character";
+// cloud-routing has zero Node deps (pure type narrowing + string building),
+// so the browser entry can re-export it. Several renderer-visible app-core
+// modules (e.g. services/sensitive-requests/public-link-adapter) depend on
+// `toRuntimeSettings` and the route helpers.
+export * from "./cloud-routing";
 export * from "./connectors";
 export * from "./connectors/account-manager";
 export * from "./connectors/connector-config";

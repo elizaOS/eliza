@@ -135,7 +135,12 @@ async def test_cerebras_complete_parses_tool_calls_and_usage() -> None:
         arguments={"date": "2026-05-10"},
     )
     assert response.usage == Usage(
-        prompt_tokens=100, completion_tokens=25, total_tokens=125, cached_tokens=10
+        prompt_tokens=100,
+        completion_tokens=25,
+        total_tokens=125,
+        cached_tokens=10,
+        cache_read_input_tokens=10,
+        cache_creation_input_tokens=None,
     )
     expected_cost = (100 / 1_000_000) * CEREBRAS_PRICING["gpt-oss-120b"][
         "input_per_million_usd"
@@ -329,7 +334,12 @@ async def test_anthropic_text_response_parses_usage_and_pricing() -> None:
     assert response.tool_calls == []
     assert response.finish_reason == "stop"
     assert response.usage == Usage(
-        prompt_tokens=200, completion_tokens=50, total_tokens=250, cached_tokens=0
+        prompt_tokens=200,
+        completion_tokens=50,
+        total_tokens=250,
+        cached_tokens=0,
+        cache_read_input_tokens=0,
+        cache_creation_input_tokens=None,
     )
     pricing = ANTHROPIC_PRICING["claude-opus-4-7"]
     expected = (
