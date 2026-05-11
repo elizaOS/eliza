@@ -82,6 +82,14 @@ change is **deliberate**, not a side-effect of a typo or reordered import.
 5. Commit. Mention "intentional cache-key change" in the commit message so
    reviewers know to expect the bump.
 
+## Provenance
+
+- **Wave:** Wave 1-D of the 2026-05-11 LifeOps benchmark pipeline rebuild.
+- **Initial landing commit:** `dced8e359c` (commit subject is mislabeled
+  because parallel waves co-staged files; the cache-key stability test +
+  workflow + this doc + `package.json` `test:cache-stability` script are
+  the Wave 1-D portion of that commit).
+
 ## Snapshot history
 
 | Date       | Hashes updated | Reason |
