@@ -13,6 +13,9 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { VoiceStartupError } from "./errors";
+import type { ElizaInferenceFfi } from "./ffi-bindings";
+import { VoicePipeline } from "./pipeline";
 import {
   type DflashTextRunner,
   FfiAsrTokenStreamer,
@@ -21,9 +24,6 @@ import {
   MissingAsrTranscriber,
   splitTranscriptToTokens,
 } from "./pipeline-impls";
-import type { ElizaInferenceFfi } from "./ffi-bindings";
-import { VoiceStartupError } from "./errors";
-import { VoicePipeline } from "./pipeline";
 import { InMemoryAudioSink } from "./ring-buffer";
 import { VoiceScheduler } from "./scheduler";
 import type {

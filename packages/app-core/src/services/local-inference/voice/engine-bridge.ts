@@ -30,17 +30,18 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { localInferenceRoot } from "../paths";
+import { VoiceStartupError } from "./errors";
 import type {
   ElizaInferenceContextHandle,
   ElizaInferenceFfi,
 } from "./ffi-bindings";
-import { VoiceStartupError } from "./errors";
 import { loadElizaInferenceFfi } from "./ffi-bindings";
 import {
   VoiceLifecycle,
   VoiceLifecycleError,
   type VoiceLifecycleLoaders,
 } from "./lifecycle";
+import { type CachedPhraseAudio, PhraseCache } from "./phrase-cache";
 import {
   VoicePipeline,
   type VoicePipelineConfig,
@@ -54,7 +55,6 @@ import {
   MissingAsrTranscriber,
   StreamingTranscriberTokenStreamer,
 } from "./pipeline-impls";
-import { type CachedPhraseAudio, PhraseCache } from "./phrase-cache";
 import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
 import {
   type MmapRegionHandle,

@@ -64,16 +64,9 @@ export {
   LlamaServerDraftProposer,
   LlamaServerTargetVerifier,
   MissingAsrTranscriber,
-  splitTranscriptToTokens,
   StreamingTranscriberTokenStreamer,
+  splitTranscriptToTokens,
 } from "./pipeline-impls";
-export {
-  OPENWAKEWORD_REL_PATH,
-  OpenWakeWordDetector,
-  resolveWakeWordPath,
-  type WakeWordConfig,
-  type WakeWordModel,
-} from "./wake-word";
 export { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 export { type RollbackEvent, RollbackQueue } from "./rollback-queue";
 export {
@@ -138,6 +131,13 @@ export {
   type VoicePresetSeedPhrase,
   writeVoicePresetFile,
 } from "./voice-preset-format";
+export {
+  OPENWAKEWORD_REL_PATH,
+  OpenWakeWordDetector,
+  resolveWakeWordPath,
+  type WakeWordConfig,
+  type WakeWordModel,
+} from "./wake-word";
 
 /**
  * Voice on/off invariants (binding for every consumer of this module):
