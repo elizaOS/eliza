@@ -75,24 +75,54 @@ import {
 } from "./omnivoice-fuse/prepare.mjs";
 import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 
-// elizaOS/llama.cpp @ v0.4.0-milady (commit 08032d57) — the unified fork
-// that composes TBQ + QJL + Q4_POLAR + Metal kernels + DFlash spec-decode
-// + W4-B CUDA QJL/Polar/TBQ3_TCQ kernels onto upstream b8198. Same repo +
-// commit lineage as compile-libllama.mjs (AOSP cross-compile path) so both
-// build paths land on identical kernels.
+// elizaOS/llama.cpp @ v1.0.0-eliza (commit 08032d57) — the unified fork that
+// composes TBQ (turbo3/turbo4/turbo3_tcq) + QJL (block_qjl1_256,
+// GGML_OP_ATTN_SCORE_QJL, GGML_OP_FUSED_ATTN_QJL_TBQ) + Q4_POLAR (Q4_POLAR=47)
+// + the milady Metal/Vulkan/CUDA kernels + DFlash spec-decode (--spec-type
+// dflash, the dflash-draft GGUF arch) + the post-refactor llama-server
+// (server-task.cpp / server-common.cpp with grammar_lazy / json_schema /
+// response_format / prefill_assistant) onto upstream b8198. Same repo + commit
+// lineage as compile-libllama.mjs (AOSP cross-compile path) so both build
+// paths land on identical kernels. (v1.0.0-eliza is the same tree as the prior
+// v0.4.0-milady tag, re-tagged on the elizaOS rename.)
+//
+// The fork ships in-tree as a git submodule at packages/inference/llama.cpp
+// (next to the kernel sources under packages/inference/{metal,vulkan,cuda}).
+// `bun install` runs `git submodule update --init --recursive` so a fresh
+// checkout has it. The build defaults to that submodule checkout; set
+// ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF (or pass --cache-dir / --ref) to build
+// from a standalone clone instead — that path falls back to a per-user clone
+// under ~/.cache/eliza-dflash/milady-llama-cpp.
 const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
   "https://github.com/elizaOS/llama.cpp.git";
-const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v0.4.0-milady";
+const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v1.0.0-eliza";
+// The in-repo submodule checkout of the fork. When it is initialized this is
+// the default build source (no clone needed); see resolveSourceCheckout().
+const SUBMODULE_DIR = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "inference",
+  "llama.cpp",
+);
+// The fork is wired as a submodule unless the operator forces a standalone
+// clone via ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF or an explicit --cache-dir.
+const USING_FORK_OVERRIDE = Boolean(
+  process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
+    process.env.ELIZA_DFLASH_LLAMA_CPP_REF,
+);
 const LEGACY_DFLASH_DRAFTER_REMOTE =
   process.env.ELIZA_DFLASH_LEGACY_DRAFTER_REMOTE ||
   "https://github.com/spiritbuun/buun-llama-cpp.git";
 const LEGACY_DFLASH_DRAFTER_REF =
   process.env.ELIZA_DFLASH_LEGACY_DRAFTER_REF ||
   "6575873e9c4872709d374d854b583cfaa270caff";
-// Minimum commit on milady/integration that contains the DFlash CLI
-// surface (--spec-type dflash, --draft-min-prob, Prometheus counters).
-// Also satisfied by the W4-B v0.4.0-milady CUDA kernel additions.
+// Minimum commit that must be an ancestor of the build source's HEAD: it
+// carries the DFlash CLI surface (--spec-type dflash, --draft-min-prob,
+// Prometheus draft counters). It is contained by v1.0.0-eliza (and the W4-B
+// CUDA kernel additions). The submodule checkout always satisfies this; the
+// check only matters for a standalone clone pinned at an older ref.
 const MIN_COMMIT = "7c7818aafc7599996268226e2e56099f4f38e972";
 const METAL_RUNTIME_DISPATCH_EVIDENCE = path.resolve(
   __dirname,
@@ -1109,17 +1139,55 @@ function defaultTarget() {
   return `${platform}-${arch}-${backend}`;
 }
 
+// True when `dir` is a git checkout we are not allowed to detach/reset/clone
+// over — i.e. the in-repo submodule at packages/inference/llama.cpp. (A
+// submodule's `.git` is a *file* containing `gitdir: ...`; a standalone clone's
+// `.git` is a directory.)
+function isSubmoduleCheckout(dir) {
+  if (path.resolve(dir) === SUBMODULE_DIR) return true;
+  try {
+    return (
+      fs.existsSync(path.join(dir, ".git")) &&
+      fs.statSync(path.join(dir, ".git")).isFile()
+    );
+  } catch {
+    return false;
+  }
+}
+
+// True when the in-repo submodule checkout exists and has a worktree (a `.git`
+// entry + a tracked source file). When this is the case the build defaults to
+// it; otherwise it falls back to a per-user clone.
+function submoduleCheckoutPresent() {
+  try {
+    return (
+      fs.existsSync(path.join(SUBMODULE_DIR, ".git")) &&
+      fs.existsSync(path.join(SUBMODULE_DIR, "CMakeLists.txt"))
+    );
+  } catch {
+    return false;
+  }
+}
+
+// The standalone (non-submodule) source-checkout cache. Renamed from
+// buun-llama-cpp to milady-llama-cpp on the unified-fork migration; the new
+// directory busts the old cache so a fresh ref pull is forced. Used only when
+// the operator forces a standalone clone via ELIZA_DFLASH_LLAMA_CPP_REMOTE /
+// _REF (or an explicit --cache-dir), or when the submodule isn't initialized.
+function standaloneCacheDir() {
+  return path.join(os.homedir(), ".cache", "eliza-dflash", "milady-llama-cpp");
+}
+
+// Decide the default build source: the in-repo submodule unless the operator
+// forced a standalone clone via ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF.
+function defaultSourceCheckoutDir() {
+  if (!USING_FORK_OVERRIDE && submoduleCheckoutPresent()) return SUBMODULE_DIR;
+  return standaloneCacheDir();
+}
+
 function parseArgs(argv) {
   const args = {
-    // Renamed from buun-llama-cpp to milady-llama-cpp on the unified-fork
-    // migration. Old caches stay around harmlessly under the prior name —
-    // the new directory busts the cache so a fresh ref pull is forced.
-    cacheDir: path.join(
-      os.homedir(),
-      ".cache",
-      "eliza-dflash",
-      "milady-llama-cpp",
-    ),
+    cacheDir: defaultSourceCheckoutDir(),
     outDirOverride: null,
     targets: null, // null => single legacy target, otherwise an array
     backend: null, // legacy --backend
@@ -1172,17 +1240,26 @@ function parseArgs(argv) {
           `Reconciled-out omnivoice ggml submodule: ${OMNIVOICE_GGML_REF}`,
           "See packages/app-core/scripts/omnivoice-fuse/README.md.",
           "",
+          "Source: by default the in-repo submodule packages/inference/llama.cpp",
+          `(elizaOS/llama.cpp @ ${REF}). Pass --ref / --cache-dir or set`,
+          "ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF to build from a standalone clone",
+          "(~/.cache/eliza-dflash/milady-llama-cpp) instead.",
+          "",
           "Options:",
           "  --target <triple>      Build a specific target (repeatable).",
           "  --all                  Build every host-compatible target.",
           "  --dry-run              Print cmake invocations without running.",
           "  --backend <name>       Legacy single-target backend selector.",
-          "  --ref <git-ref>        Branch/tag/SHA of the fork to build.",
+          "  --ref <git-ref>        Branch/tag/SHA of the fork (standalone-clone mode only;",
+          "                         the submodule is pinned to its gitlink commit).",
           "  --out-dir <path>       Override the output directory (single target).",
-          "  --cache-dir <path>     Override the source checkout cache.",
+          "  --cache-dir <path>     Source checkout dir (forces standalone-clone mode).",
           "  --jobs N | -j N        Parallel build jobs.",
           "",
           "Environment:",
+          "  ELIZA_DFLASH_LLAMA_CPP_REMOTE / ELIZA_DFLASH_LLAMA_CPP_REF",
+          "                         Build from a standalone clone of the given fork/ref",
+          "                         instead of the in-repo submodule.",
           "  ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME=0",
           "                         For darwin-arm64-metal only, opt out of the",
           "                         automatic spiritbuun/buun-llama-cpp runtime",
@@ -1202,7 +1279,26 @@ function parseArgs(argv) {
 }
 
 function ensureCheckout(cacheDir, ref) {
-  if (fs.existsSync(path.join(cacheDir, ".git"))) {
+  if (isSubmoduleCheckout(cacheDir)) {
+    // The in-repo submodule checkout. Do NOT detach/fetch/clone it — it is
+    // pinned to a gitlink commit owned by the eliza repo, and `bun install`
+    // already ran `git submodule update --init`. Just discard the kernel-patch
+    // edits this script made on a prior build (tracked + untracked) so a fresh
+    // artifact starts from the pristine submodule tree, then re-apply patches.
+    if (!fs.existsSync(path.join(cacheDir, ".git"))) {
+      throw new Error(
+        `[dflash-build] the llama.cpp submodule at ${cacheDir} is not ` +
+          `checked out. Run \`git submodule update --init --recursive ` +
+          `${path.relative(process.cwd(), cacheDir)}\` (bun install does this ` +
+          `automatically) or set ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF to build ` +
+          `from a standalone clone instead.`,
+      );
+    }
+    run("git", ["checkout", "--", "."], { cwd: cacheDir });
+    // -x so the staged kernel sources (metal/vulkan/cuda standalones copied in
+    // by the patch hooks) and the per-target build/ dir are wiped too.
+    run("git", ["clean", "-fdx"], { cwd: cacheDir });
+  } else if (fs.existsSync(path.join(cacheDir, ".git"))) {
     run("git", ["fetch", "--depth=1", "origin", ref], { cwd: cacheDir });
     run("git", ["checkout", "FETCH_HEAD"], { cwd: cacheDir });
     // This checkout is a generated build cache owned by this script. Always
@@ -1219,7 +1315,13 @@ function ensureCheckout(cacheDir, ref) {
     cwd: cacheDir,
     capture: true,
   });
-  console.log(`[dflash-build] checkout ${head}`);
+  console.log(
+    `[dflash-build] checkout ${head}${
+      isSubmoduleCheckout(cacheDir)
+        ? " (submodule packages/inference/llama.cpp)"
+        : ""
+    }`,
+  );
   const ancestor = spawnSync(
     "git",
     ["merge-base", "--is-ancestor", MIN_COMMIT, "HEAD"],
@@ -1282,9 +1384,11 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   // Wave A1: mirror the verified standalone QJL CPU SIMD TUs (AVX-VNNI int8
   // score path, ARMv8.4 dotprod, runtime-cpuid dispatcher) over the fork's
   // stale ggml-cpu/qjl/ snapshot and wire them into the ggml-cpu build. Runs
-  // on every target — the fork's checkout is reset --hard'd per build, so the
-  // mirror is the only way the new TUs reach the shipped lib, and every
-  // target that compiles ggml-cpu (i.e. all of them) benefits. Idempotent.
+  // on every target — the build source's source edits are discarded per build
+  // (reset --hard for a standalone clone; checkout -- . + clean -fdx for the
+  // submodule), so the mirror is the only way the new TUs reach the shipped
+  // lib, and every target that compiles ggml-cpu (i.e. all of them) benefits.
+  // Idempotent.
   patchCpuSimdKernelsImpl(cacheDir, { dryRun });
   // Wave D3 follow-up: mirror the standalone PolarQuant pre-Hadamard-
   // transposed dot TUs (polar_dot_preht_{ref,avx2,neon}.c + the runtime
@@ -1307,28 +1411,28 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   }
   // llama-server structured-output + DFlash verifier-stream patch (Eliza-1
   // voice swarm, W4): assert grammar_lazy / json_schema / response_format /
-  // continue_final_message are present in the fork's server.cpp (upstream
-  // features — hard-fail if the fork drifted to an older base), and add the
+  // prefill_assistant are present in the fork's post-refactor server sources
+  // (tools/server/server-task.cpp + server-common.cpp + …; upstream features —
+  // hard-fail if the fork drifted to a base that predates them), and add the
   // `{ "verifier": { "rejected": [a, b] } }` SSE extension the runtime parses
   // for rollback-safe TTS. Idempotent via the
   // `// MILADY-DFLASH-VERIFIER-STREAM-V1` sentinel. Applies to every target
   // that ships `llama-server` (i.e. not the iOS / EMBED-only library builds).
   //
   // ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 is a documented,
-  // local-diagnostics-only escape hatch: the current `v0.4.0-milady` fork's
-  // `tools/server/server.cpp` predates the upstream lazy-GBNF / json_schema /
-  // continue_final_message features this patch hard-requires, so without the
-  // skip the build fails closed by design. It does NOT change the default
-  // build path and the resulting binary is not publishable (the merged-route
-  // fused server still serves text/DFlash + `/v1/audio/speech` from one
-  // process — the structured-output surface is the only thing missing).
+  // local-diagnostics-only escape hatch (e.g. when bisecting against an old
+  // pinned ELIZA_DFLASH_LLAMA_CPP_REF that predates the required upstream
+  // features). It does NOT change the default build path and the resulting
+  // binary is not publishable (the merged-route fused server still serves
+  // text/DFlash + `/v1/audio/speech` from one process — the structured-output
+  // surface is the only thing missing).
   if (!target || !target.startsWith("ios-")) {
     if (envFlag("ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT")) {
       console.warn(
         "[dflash-build] ⚠️  ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 — " +
           "skipping the llama-server structured-output / verifier-stream patch. " +
-          "This is a local-diagnostics-only hatch for the fork base that " +
-          "predates the required upstream features; the resulting binary is " +
+          "This is a local-diagnostics-only hatch (e.g. an old pinned ref that " +
+          "predates the required upstream features); the resulting binary is " +
           "not publishable.",
       );
     } else {
