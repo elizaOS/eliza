@@ -19,6 +19,7 @@ import type {
   AdPlatform,
   AdProvider,
   AdProviderMediaUploadResult,
+  AdProviderMediaStatusResult,
   CampaignMetrics,
   ConnectAccountInput,
   CreateCampaignInput,
@@ -315,6 +316,37 @@ class AdvertisingService {
     const result = await provider.uploadMedia(credentials, account.external_account_id, input);
     if (!result.success) {
       throw new Error(result.error || "Failed to upload media to advertising platform");
+    }
+    return result;
+  }
+
+  async getMediaStatus(
+    organizationId: string,
+    adAccountId: string,
+    providerAssetResourceName: string,
+  ): Promise<AdProviderMediaStatusResult> {
+    const account = await adAccountsRepository.findById(adAccountId);
+    if (!account || account.organization_id !== organizationId) {
+      throw new Error("Ad account not found");
+    }
+
+    const provider = this.getProvider(account.platform);
+    if (!provider.getMediaStatus) {
+      return {
+        success: true,
+        providerAssetId: providerAssetResourceName,
+        providerAssetResourceName,
+        status: "AVAILABLE",
+        ready: true,
+      };
+    }
+
+    const credentials = await this.getCredentials(account);
+    const result = await provider.getMediaStatus(credentials, account.external_account_id, {
+      providerAssetResourceName,
+    });
+    if (!result.success) {
+      throw new Error(result.error || "Failed to get media status from advertising platform");
     }
     return result;
   }

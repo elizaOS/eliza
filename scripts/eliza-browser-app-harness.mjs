@@ -10,7 +10,7 @@
 
 import { execFile, spawn } from "node:child_process";
 import { createWriteStream, existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -39,6 +39,8 @@ Options:
   --require-browser-tab     Fail unless a browser workspace tab is observed by the end of the run.
   --require-browser-events  Fail unless browser workspace events are observed by the end of the run.
   --require-trajectory      Fail unless a trajectory record is observed by the end of the run.
+  --require-browser-action  Fail unless a fresh trajectory contains a BROWSER/PAGE_DELEGATE browser action.
+  --overwrite               Delete an existing run directory before starting. Default is to reject non-empty run dirs.
   --target-url <url>        Target URL for the agent's BROWSER action task. Default: ${DEFAULT_TARGET_URL}
   --timeout <ms|30s|2m>     Total poll timeout after sending the prompt. Default: ${DEFAULT_TIMEOUT_MS}
   --api-base <url>          Eliza API base URL. Default: ${DEFAULT_API_BASE}
@@ -77,6 +79,8 @@ function parseArgs(argv) {
     requireBrowserTab: false,
     requireBrowserEvents: false,
     requireTrajectory: false,
+    requireBrowserAction: false,
+    overwrite: false,
     targetUrl: DEFAULT_TARGET_URL,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
@@ -117,6 +121,14 @@ function parseArgs(argv) {
     }
     if (arg === "--require-trajectory") {
       options.requireTrajectory = true;
+      continue;
+    }
+    if (arg === "--require-browser-action") {
+      options.requireBrowserAction = true;
+      continue;
+    }
+    if (arg === "--overwrite") {
+      options.overwrite = true;
       continue;
     }
     const readValue = (name) => {
@@ -615,6 +627,7 @@ function composeAgentPrompt(options) {
     : `Open the target URL and summarize what the page is for.`;
   return [
     "Use the built-in BROWSER action for this task.",
+    'Because this prompt is sent from main chat, route browser work through PAGE_DELEGATE when needed, for example action PAGE_DELEGATE with page "browser" and child action "BROWSER_OPEN" for navigation.',
     `Harness run id: ${options.runId}`,
     `Target URL: ${options.targetUrl}`,
     `Task: ${task}`,
@@ -680,18 +693,28 @@ async function captureObservationBaseline(apiBase, runDir) {
     "baseline-trajectories",
     "/api/trajectories?limit=50&offset=0",
   );
+  const localTrajectories = await captureLocalTrajectories(
+    runDir,
+    "baseline-local-trajectories",
+  );
+  const mergedTrajectories = mergeTrajectoryResults(
+    trajectories,
+    localTrajectories,
+  );
   const baseline = {
     ts: nowIso(),
     browserWorkspace,
     browserWorkspaceEvents,
-    trajectories,
+    trajectories: mergedTrajectories,
+    apiTrajectories: trajectories,
+    localTrajectories,
   };
   await writeJson(artifactPath(runDir, "baseline-observations.json"), {
     ts: baseline.ts,
     counts: {
       browserTabs: arrayLengthAtKey(browserWorkspace.body, ["tabs"]),
       browserEvents: arrayLengthAtKey(browserWorkspaceEvents.body, ["events"]),
-      trajectories: arrayLengthAtKey(trajectories.body, [
+      trajectories: arrayLengthAtKey(mergedTrajectories.body, [
         "trajectories",
         "items",
         "results",
@@ -700,6 +723,93 @@ async function captureObservationBaseline(apiBase, runDir) {
     },
   });
   return baseline;
+}
+
+async function captureLocalTrajectories(runDir, artifactName) {
+  const startedAt = Date.now();
+  const trajectoryRoot = join(runDir, "trajectories");
+  const items = [];
+  try {
+    for (const file of await listJsonFiles(trajectoryRoot)) {
+      try {
+        const payload = JSON.parse(await readFile(file, "utf8"));
+        items.push({
+          ...payload,
+          _harnessArtifactPath: file,
+        });
+      } catch (error) {
+        items.push({
+          _harnessArtifactPath: file,
+          _harnessReadError:
+            error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  } catch {
+    // Missing trajectory directory is expected before the first prompt.
+  }
+  const result = {
+    ok: true,
+    status: 200,
+    path: `local:${trajectoryRoot}`,
+    method: "READ",
+    contentType: "application/json",
+    elapsedMs: Date.now() - startedAt,
+    body: { items },
+    bodyText: "",
+    buffer: Buffer.alloc(0),
+  };
+  await saveHttpArtifact(runDir, artifactName, result);
+  return result;
+}
+
+async function listJsonFiles(root) {
+  const entries = await readdir(root, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const fullPath = join(root, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await listJsonFiles(fullPath)));
+    } else if (entry.isFile() && entry.name.endsWith(".json")) {
+      files.push(fullPath);
+    }
+  }
+  return files.sort();
+}
+
+function mergeTrajectoryResults(apiResult, localResult) {
+  const apiItems = arrayAtKey(apiResult?.body, [
+    "trajectories",
+    "items",
+    "results",
+    "data",
+  ]);
+  const localItems = arrayAtKey(localResult?.body, [
+    "trajectories",
+    "items",
+    "results",
+    "data",
+  ]);
+  const itemsByIdentity = new Map();
+  for (const item of [...apiItems, ...localItems]) {
+    itemsByIdentity.set(itemIdentity(item, itemsByIdentity.size), item);
+  }
+  const items = [...itemsByIdentity.values()];
+  return {
+    ok: apiResult?.ok === true || localResult?.ok === true,
+    status:
+      apiResult?.ok === true ? apiResult.status : (localResult?.status ?? 0),
+    path: `${apiResult?.path ?? "api:missing"} + ${localResult?.path ?? "local:missing"}`,
+    method: "MERGE",
+    contentType: "application/json",
+    elapsedMs: (apiResult?.elapsedMs ?? 0) + (localResult?.elapsedMs ?? 0),
+    body: { items },
+    bodyText:
+      apiResult?.ok === false && localResult?.ok !== true
+        ? apiResult.bodyText
+        : "",
+    buffer: Buffer.alloc(0),
+  };
 }
 
 function summarizePollResult(result) {
@@ -824,6 +934,27 @@ function textContains(value, needles) {
   return needles.some((needle) => haystack.includes(needle));
 }
 
+function hasBrowserToolStage(item) {
+  if (!item || typeof item !== "object") return false;
+  const stages = Array.isArray(item.stages) ? item.stages : [];
+  return stages.some((stage) => {
+    if (!stage || typeof stage !== "object" || stage.kind !== "tool") {
+      return false;
+    }
+    const tool = stage.tool;
+    if (!tool || typeof tool !== "object") return false;
+    const name = String(tool.name ?? "").toUpperCase();
+    if (name.startsWith("BROWSER")) return true;
+    if (name !== "PAGE_DELEGATE") return false;
+    const args = tool.args;
+    if (!args || typeof args !== "object") return false;
+    return (
+      String(args.page ?? "").toLowerCase() === "browser" ||
+      String(args.action ?? "").toUpperCase().startsWith("BROWSER")
+    );
+  });
+}
+
 function analyzeRunArtifacts({
   baseline,
   browserWorkspace,
@@ -871,22 +1002,19 @@ function analyzeRunArtifacts({
     promptSubmittedAt,
   );
   const targetNeedles = targetUrlNeedles(options.targetUrl);
-  const targetTabMatches = browserTabs.filter((item) =>
+  const targetTabMatches = postPromptBrowserTabs.filter((item) =>
     containsAny(item, targetNeedles),
   );
-  const targetEventMatches = browserEvents.filter((item) =>
+  const targetEventMatches = postPromptBrowserEvents.filter((item) =>
     containsAny(item, targetNeedles),
   );
-  const trajectoryRunMarkerMatches = trajectoryItems.filter((item) =>
+  const trajectoryRunMarkerMatches = postPromptTrajectories.filter((item) =>
     containsAny(item, [options.runId, ...targetNeedles]),
   );
-  const browserActionMatches = trajectoryItems.filter((item) =>
-    containsAny(item, [
-      '"BROWSER"',
-      "BROWSER action",
-      "browser-workspace",
-      "plugin-browser",
-    ]),
+  const browserActionMatches =
+    postPromptTrajectories.filter(hasBrowserToolStage);
+  const browserActionWithProvenanceMatches = browserActionMatches.filter(
+    (item) => containsAny(item, [options.runId, ...targetNeedles]),
   );
   const endpointErrors = [
     browserWorkspace,
@@ -908,10 +1036,7 @@ function analyzeRunArtifacts({
     {
       name: "browser-tab",
       required: options.requireBrowserTab,
-      passed:
-        !options.requireBrowserTab ||
-        postPromptBrowserTabs.length > 0 ||
-        targetTabMatches.length > 0,
+      passed: !options.requireBrowserTab || targetTabMatches.length > 0,
       observed: {
         total: browserTabs.length,
         postPrompt: postPromptBrowserTabs.length,
@@ -921,10 +1046,7 @@ function analyzeRunArtifacts({
     {
       name: "browser-events",
       required: options.requireBrowserEvents,
-      passed:
-        !options.requireBrowserEvents ||
-        postPromptBrowserEvents.length > 0 ||
-        targetEventMatches.length > 0,
+      passed: !options.requireBrowserEvents || targetEventMatches.length > 0,
       observed: {
         total: browserEvents.length,
         postPrompt: postPromptBrowserEvents.length,
@@ -935,14 +1057,24 @@ function analyzeRunArtifacts({
       name: "trajectory",
       required: options.requireTrajectory,
       passed:
-        !options.requireTrajectory ||
-        postPromptTrajectories.length > 0 ||
-        trajectoryRunMarkerMatches.length > 0,
+        !options.requireTrajectory || trajectoryRunMarkerMatches.length > 0,
       observed: {
         total: trajectoryItems.length,
         postPrompt: postPromptTrajectories.length,
         runMarkerMatches: trajectoryRunMarkerMatches.length,
         browserActionMatches: browserActionMatches.length,
+      },
+    },
+    {
+      name: "browser-action",
+      required: options.requireBrowserAction,
+      passed:
+        !options.requireBrowserAction ||
+        browserActionWithProvenanceMatches.length > 0,
+      observed: {
+        postPromptBrowserActionMatches: browserActionMatches.length,
+        browserActionWithProvenanceMatches:
+          browserActionWithProvenanceMatches.length,
       },
     },
   ];
@@ -971,6 +1103,8 @@ function analyzeRunArtifacts({
       targetEventMatches: targetEventMatches.length,
       trajectoryRunMarkerMatches: trajectoryRunMarkerMatches.length,
       browserActionMatches: browserActionMatches.length,
+      browserActionWithProvenanceMatches:
+        browserActionWithProvenanceMatches.length,
     },
     assertions,
     failedAssertions,
@@ -1546,7 +1680,20 @@ function resolveUiUrlFromStack(options, stackBody) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const runDir = resolve(ROOT, "tmp", "eliza-browser-harness", options.runId);
+  const runParentDir = resolve(ROOT, "tmp", "eliza-browser-harness");
+  const runDir = resolve(runParentDir, options.runId);
+  await mkdir(runParentDir, { recursive: true });
+  if (existsSync(runDir)) {
+    const existing = await readdir(runDir).catch(() => []);
+    if (existing.length > 0 && !options.overwrite) {
+      throw new Error(
+        `Run directory already exists and is not empty: ${runDir}. Use a fresh --run-id or pass --overwrite.`,
+      );
+    }
+    if (existing.length > 0 && options.overwrite) {
+      await rm(runDir, { recursive: true, force: true });
+    }
+  }
   await mkdir(runDir, { recursive: true });
 
   const plannedPrompt = composeAgentPrompt(options);
@@ -1721,6 +1868,19 @@ async function main() {
       "final-trajectories",
       "/api/trajectories?limit=50&offset=0",
     );
+    const finalLocalTrajectories = await captureLocalTrajectories(
+      runDir,
+      "final-local-trajectories",
+    );
+    const mergedFinalTrajectories = mergeTrajectoryResults(
+      finalTrajectories,
+      finalLocalTrajectories,
+    );
+    await saveHttpArtifact(
+      runDir,
+      "final-trajectories-merged",
+      mergedFinalTrajectories,
+    );
     const finalDevConsoleLog = await probeEndpoint(
       options.apiBase,
       runDir,
@@ -1732,7 +1892,7 @@ async function main() {
       browserWorkspace: finalBrowserWorkspace,
       browserWorkspaceEvents: finalBrowserWorkspaceEvents,
       devConsoleLog: finalDevConsoleLog,
-      trajectories: finalTrajectories,
+      trajectories: mergedFinalTrajectories,
       options,
       promptDelivery: options.promptVia,
       promptSubmittedAt,

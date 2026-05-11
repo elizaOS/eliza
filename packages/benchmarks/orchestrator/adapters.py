@@ -1080,8 +1080,11 @@ def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
             "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor",
         )
     )
+    compactbench_root = Path(adapter.cwd)
+    venv_python = compactbench_root / ".venv" / "bin" / "python"
+    python_executable = str(venv_python) if venv_python.exists() else sys.executable
     args = [
-        sys.executable,
+        python_executable,
         "run_cerebras.py",
         "--method",
         method,

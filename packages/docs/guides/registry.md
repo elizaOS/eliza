@@ -54,3 +54,7 @@ The CLI opens a pull request adding one JSON metadata file to
 
 Third-party packages must not use the reserved `@elizaos/*` scope. Registration
 does not make a package first-party supported.
+
+For a manual submission, fork `elizaos-plugins/registry`, add one schema-valid
+JSON file under `entries/third-party/`, run `npm run validate`, and open a pull
+request.

@@ -1,7 +1,7 @@
 {
   "agent": "hermes",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131730Z_dcfe719d/compactbench__compactbench/run_compactbench_20260511T131730Z_1_34f9205a/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T135326Z_2ade52f0/compactbench__compactbench/run_compactbench_20260511T135326Z_2_235b5925/output"
   ],
   "benchmark_directory": "compactbench",
   "benchmark_id": "compactbench",
@@ -11,8 +11,8 @@
     "cache_read_input_tokens": 0,
     "turns_with_cached_field": 0
   },
-  "error": "Command exited with return code 1 and no result JSON found",
-  "higher_is_better": null,
+  "error": null,
+  "higher_is_better": true,
   "metrics": {
     "cache_metrics": {
       "cache_creation_input_tokens": 0,
@@ -20,15 +20,18 @@
       "cache_read_input_tokens": 0,
       "turns_with_cached_field": 0
     },
+    "compression_ratio": 4.279591195762988,
+    "constraint_retention": 0.8,
+    "contradiction_rate": 0.0,
+    "drift_resistance": 1.0,
+    "overall_score": 0.775,
     "performance_metrics": {
-      "duration_seconds": 0.130748041003244,
+      "duration_seconds": 9.644054292002693,
       "mean_latency_ms": null,
       "p95_latency_ms": null,
       "throughput_per_second": 0.0
     },
-    "result_locator": "not_found",
-    "return_code": 1,
-    "stale_result_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/compactbench/results-cerebras-naive.jsonl",
+    "return_code": 0,
     "token_metrics": {
       "avg_completion_tokens": 0.0,
       "avg_prompt_tokens": 0.0,
@@ -46,17 +49,17 @@
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 0.130748041003244,
+    "duration_seconds": 9.644054292002693,
     "mean_latency_ms": null,
     "p95_latency_ms": null,
     "throughput_per_second": 0.0
   },
   "provider": "cerebras",
-  "result_json_path": null,
-  "run_group_id": "rg_20260511T131730Z_dcfe719d",
-  "run_id": "run_compactbench_20260511T131730Z_1_34f9205a",
-  "score": null,
-  "status": "failed",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T135326Z_2ade52f0/compactbench__compactbench/run_compactbench_20260511T135326Z_2_235b5925/output/compactbench-results.jsonl",
+  "run_group_id": "rg_20260511T135326Z_2ade52f0",
+  "run_id": "run_compactbench_20260511T135326Z_2_235b5925",
+  "score": 0.775,
+  "status": "succeeded",
   "token_metrics": {
     "avg_completion_tokens": 0.0,
     "avg_prompt_tokens": 0.0,
@@ -71,6 +74,6 @@
     "repeated_prefixes": [],
     "turns": 0
   },
-  "unit": null,
-  "updated_at": "2026-05-11T13:17:30.877889+00:00"
+  "unit": "ratio",
+  "updated_at": "2026-05-11T13:53:36.267928+00:00"
 }

@@ -264,7 +264,7 @@ export function PluginCard({
         )}
         {provenanceLabels.originLabel && (
           <span
-            className="text-2xs px-1.5 py-px border border-border bg-card text-muted lowercase tracking-wide whitespace-nowrap"
+            className="text-2xs px-1.5 py-px border border-border bg-card text-muted lowercase whitespace-nowrap"
             title={provenanceLabels.title}
           >
             {provenanceLabels.originLabel}
@@ -272,7 +272,7 @@ export function PluginCard({
         )}
         {provenanceLabels.supportLabel && (
           <span
-            className={`text-2xs px-1.5 py-px border lowercase tracking-wide whitespace-nowrap ${
+            className={`text-2xs px-1.5 py-px border lowercase whitespace-nowrap ${
               provenanceLabels.supportLabel === "community"
                 ? "border-warn/50 bg-[rgba(234,179,8,0.06)] text-warn"
                 : "border-accent/40 bg-accent-subtle text-txt"

@@ -1,7 +1,7 @@
 """Phase 0: scenario pool generator.
 
-For every catalog action we ask gpt-oss-120b once (per action) for 25
-distinct user messages spanning persona/register/language/argument
+For every catalog action we ask a configured teacher model once (per action)
+for 25 distinct user messages spanning persona/register/language/argument
 completeness, then persist them as JSONL under
 `scripts/harness/scenario_pool/<action>.jsonl`.
 
@@ -30,8 +30,17 @@ CATALOG_PATH = ROOT / "data" / "prompts" / "actions-catalog.json"
 POOL_DIR = ROOT / "scripts" / "harness" / "scenario_pool"
 LOG_DIR = ROOT / "data" / "synthesized" / "harness" / "logs"
 
-API_URL = "https://api.groq.com/openai/v1/chat/completions"
-MODEL = "openai/gpt-oss-120b"
+DEFAULT_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+DEFAULT_API_KEY_ENV = "GROQ_API_KEY"
+DEFAULT_DEV_MODEL = "openai/gpt-oss-120b"
+
+
+def default_teacher_model() -> str:
+    return (
+        os.environ.get("MILADY_HARNESS_MODEL")
+        or os.environ.get("MILADY_COLLECTION_MODEL")
+        or DEFAULT_DEV_MODEL
+    )
 
 # Variation budget per action (~25 scenarios).
 SCENARIO_BUDGET = (
@@ -155,19 +164,26 @@ async def generate_for_action(
     action: dict[str, Any],
     catalog: list[dict[str, Any]],
     sem: asyncio.Semaphore,
+    *,
+    api_url: str,
+    model: str,
+    reasoning_effort: str,
+    use_response_format: bool,
 ) -> list[dict[str, Any]]:
     user_prompt = build_user_prompt(action, catalog)
     payload = {
-        "model": MODEL,
+        "model": model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
         "temperature": 0.8,
         "max_tokens": 5000,
-        "reasoning_effort": "low",
-        "response_format": {"type": "json_object"},
     }
+    if reasoning_effort:
+        payload["reasoning_effort"] = reasoning_effort
+    if use_response_format:
+        payload["response_format"] = {"type": "json_object"}
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -177,7 +193,7 @@ async def generate_for_action(
     for attempt in range(6):
         async with sem:
             try:
-                r = await client.post(API_URL, json=payload, headers=headers, timeout=120.0)
+                r = await client.post(api_url, json=payload, headers=headers, timeout=120.0)
             except (httpx.HTTPError, asyncio.TimeoutError):
                 if attempt == 5:
                     return []
@@ -246,9 +262,9 @@ def existing_pool_size(action_name: str) -> int:
 
 
 async def main_async(args: argparse.Namespace) -> None:
-    api_key = os.environ.get("GROQ_API_KEY")
+    api_key = os.environ.get(args.api_key_env)
     if not api_key:
-        print("error: GROQ_API_KEY not set", file=sys.stderr)
+        print(f"error: {args.api_key_env} not set", file=sys.stderr)
         sys.exit(2)
 
     catalog_doc = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
@@ -270,7 +286,11 @@ async def main_async(args: argparse.Namespace) -> None:
             continue
         todo.append(action)
 
-    print(f"[scenarios] catalog={len(catalog)} todo={len(todo)} skipped={skipped}", file=sys.stderr)
+    print(
+        f"[scenarios] catalog={len(catalog)} todo={len(todo)} skipped={skipped} "
+        f"provider={args.provider_label} model={args.model}",
+        file=sys.stderr,
+    )
     if not todo:
         return
 
@@ -284,7 +304,17 @@ async def main_async(args: argparse.Namespace) -> None:
     )) as client:
 
         async def runner(action: dict[str, Any]) -> None:
-            scenarios = await generate_for_action(client, api_key, action, catalog_doc["actions"], sem)
+            scenarios = await generate_for_action(
+                client,
+                api_key,
+                action,
+                catalog_doc["actions"],
+                sem,
+                api_url=args.api_url,
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
+                use_response_format=not args.no_response_format,
+            )
             if not scenarios:
                 stats["fail"] += 1
                 print(f"[fail] {action['name']}", file=sys.stderr)
@@ -312,6 +342,16 @@ def main() -> None:
     ap.add_argument("--concurrency", type=int, default=8)
     ap.add_argument("--only", type=str, default="", help="comma-separated action names")
     ap.add_argument("--force", action="store_true", help="regenerate even if pool exists")
+    ap.add_argument("--model", default=default_teacher_model())
+    ap.add_argument("--api-url", default=os.environ.get("MILADY_HARNESS_API_URL", DEFAULT_API_URL))
+    ap.add_argument("--api-key-env", default=os.environ.get("MILADY_HARNESS_API_KEY_ENV", DEFAULT_API_KEY_ENV))
+    ap.add_argument("--provider-label", default=os.environ.get("MILADY_HARNESS_PROVIDER", "groq-dev"))
+    ap.add_argument("--reasoning-effort", default=os.environ.get("MILADY_HARNESS_REASONING_EFFORT", "low"))
+    ap.add_argument(
+        "--no-response-format",
+        action="store_true",
+        help="omit OpenAI JSON response_format for compatible endpoints that do not support it",
+    )
     args = ap.parse_args()
     asyncio.run(main_async(args))
 

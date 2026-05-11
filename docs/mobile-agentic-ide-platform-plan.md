@@ -70,6 +70,16 @@ This branch now has the following foundation:
 - Store desktop builds remove local execution plugins from the load set even
   when config or environment asks for shell, coding tools, or agent
   orchestrator.
+- iOS local dev/sideload builds have an `ios-local` build target that bakes
+  `runtimeMode=local`, starts the native Agent plugin in local mode, routes
+  foreground local-agent requests through the WebView ITTP kernel, persists the
+  kernel's local state through the native storage bridge, and reports
+  `GET /api/local-agent/capabilities`.
+- The iOS ITTP kernel intentionally reports `task_service_unavailable` for
+  `/api/background/run-due-tasks` and `/api/internal/wake`; Capacitor
+  BackgroundRunner runs in a separate JSContext and cannot call the WebView
+  kernel while suspended. This preserves the single `ScheduledTask` primitive
+  instead of adding a parallel mobile task store.
 
 ## Policy Baseline
 
@@ -298,11 +308,12 @@ architecture is otherwise easy to overstate in product or API docs.
 4. TODO-STORE-MOBILE-BRIDGES / TODO-STORE-MOBILE-NATIVE-BRIDGES: Store-mobile provider attachment: real JSCore/QuickJS/WASM bridge wiring to
    `MobileSafeRuntimeProvider`. Provider detection no longer advertises JSCore,
    QuickJS, or in-process safe-js unless an actual boundary/dev flag is attached.
-5. TODO-IOS-SIDELOAD-LOCAL-BACKEND: iOS dev/sideload local backend: replace the WebView-only
-   compatibility kernel with a shared fetch-shaped route kernel, attach durable
-   iOS storage, make the native Agent plugin start/status path local-aware, and
-   validate foreground chat plus background scheduled-task dispatch on a signed
-   physical device.
+5. TODO-IOS-SIDELOAD-LOCAL-BACKEND: iOS dev/sideload local backend: the build target,
+   native local start/status path, ITTP foreground routing, native-synced local
+   state, and capability reporting exist. Remaining work is to replace the
+   WebView-only compatibility kernel with the real shared route kernel, mount
+   durable iOS database/storage for the AgentRuntime, and validate foreground
+   chat plus background `ScheduledTask` dispatch on a signed physical device.
 6. TODO-VFS-UI: VFS UI: snapshot, diff, rollback, quota display, and "promote to cloud
    container" flow.
 7. TODO-CLOUD-BACKEND: Cloud workspace backend/control plane: accept VFS bundle uploads,

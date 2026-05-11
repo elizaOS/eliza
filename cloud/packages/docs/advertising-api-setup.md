@@ -18,6 +18,9 @@ The Cloud API already has the core advertising resources:
 - `DELETE /api/v1/advertising/campaigns/{id}`
 - `GET /api/v1/advertising/campaigns/{id}/creatives`
 - `POST /api/v1/advertising/campaigns/{id}/creatives`
+- `GET /api/v1/advertising/creatives/{id}`
+- `PATCH /api/v1/advertising/creatives/{id}`
+- `DELETE /api/v1/advertising/creatives/{id}`
 - `POST /api/v1/advertising/campaigns/{id}/start`
 - `POST /api/v1/advertising/campaigns/{id}/pause`
 - `GET /api/v1/advertising/campaigns/{id}/analytics`
@@ -178,10 +181,12 @@ Configure:
    advance, or let `advertising.creatives.create` auto-upload missing provider
    ids for synced campaigns.
 7. Create creative records from generated or uploaded media.
-8. Keep the campaign paused/draft until the owner confirms the exact platform,
+8. Inspect, update, or delete drafts with
+   `/api/v1/advertising/creatives/{id}` before starting paid delivery.
+9. Keep the campaign paused/draft until the owner confirms the exact platform,
    account, destination, creative, audience, and budget.
-9. Start delivery with `/api/v1/advertising/campaigns/{id}/start`.
-10. Poll analytics and pause when the budget or quality guardrail is hit.
+10. Start delivery with `/api/v1/advertising/campaigns/{id}/start`.
+11. Poll analytics and pause when the budget or quality guardrail is hit.
 
 Spawned workers should use the parent-agent bridge:
 
@@ -190,6 +195,8 @@ USE_SKILL parent-agent {"mode":"list-cloud-commands","query":"advertising"}
 USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.accounts.discover","params":{"body":{"platform":"meta","accessToken":"<temporary-provider-token>"}}}
 USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.accounts.media.upload","confirmed":true,"params":{"id":"<adAccountId>","body":{"type":"image","name":"launch-card","url":"https://cdn.example/asset.png"}}}
 USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.campaigns.create","params":{"body":{"adAccountId":"<uuid>","name":"Launch","objective":"traffic","budgetType":"daily","budgetAmount":50,"budgetCurrency":"USD","appId":"<appId>"}}}
+USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.creatives.list","params":{"id":"<campaignId>"}}
+USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.creatives.update","confirmed":true,"params":{"id":"<creativeId>","body":{"headline":"Updated launch headline"}}}
 ```
 
 The unconfirmed call should return `confirmation_required`. Re-run paid actions

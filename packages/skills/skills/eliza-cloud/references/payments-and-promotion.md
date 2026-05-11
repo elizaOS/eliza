@@ -460,6 +460,19 @@ Provider caveats:
 - Campaigns and creatives should be created paused/draft first. Starting
   delivery is a separate confirmed action.
 
+Creative CRUD:
+
+- `GET /api/v1/advertising/campaigns/{id}/creatives`
+- `POST /api/v1/advertising/campaigns/{id}/creatives`
+- `GET /api/v1/advertising/creatives/{id}`
+- `PATCH /api/v1/advertising/creatives/{id}`
+- `DELETE /api/v1/advertising/creatives/{id}`
+
+Use `advertising.creatives.list`, `advertising.creatives.get`,
+`advertising.creatives.update`, and `advertising.creatives.delete` through the
+parent-agent bridge so the parent can keep spend and publication state
+auditable.
+
 ### Start, pause, and measure
 
 - `POST /api/v1/advertising/campaigns/{id}/start` starts paid delivery.

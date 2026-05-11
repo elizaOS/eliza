@@ -47,6 +47,32 @@ function resolveCardsPerRow(width: number): number {
   return clampCardsPerRow(fit);
 }
 
+function appProvenanceLabels(app: RegistryAppInfo): {
+  originLabel: string | null;
+  supportLabel: string | null;
+  title: string | undefined;
+} {
+  const isThirdParty = app.thirdParty === true || app.origin === "third-party";
+  const isBuiltIn = app.builtIn === true || app.origin === "builtin";
+  const isFirstParty = app.firstParty === true || app.support === "first-party";
+  const isCommunity =
+    app.support === "community" || (isThirdParty && !isFirstParty);
+
+  return {
+    originLabel: isThirdParty ? "Third party" : isBuiltIn ? "Built in" : null,
+    supportLabel: isCommunity
+      ? "Community"
+      : isFirstParty
+        ? "First party"
+        : null,
+    title: isThirdParty
+      ? "Community app registered through the plugin registry"
+      : isBuiltIn || isFirstParty
+        ? "First-party app generated from the elizaOS plugin registry"
+        : undefined,
+  };
+}
+
 function buildBalancedRows<T>(
   items: readonly T[],
   maxCardsPerRow: number,
@@ -399,6 +425,8 @@ export function AppsCatalogGrid({
                                 );
                                 const displayName =
                                   app.displayName ?? getAppShortName(app);
+                                const provenanceLabels =
+                                  appProvenanceLabels(app);
 
                                 return (
                                   <div
@@ -421,6 +449,31 @@ export function AppsCatalogGrid({
                                         app={app}
                                         className="aspect-[4/3] transition-transform duration-300 group-hover:scale-[1.02]"
                                       />
+                                      {provenanceLabels.originLabel ||
+                                      provenanceLabels.supportLabel ? (
+                                        <div
+                                          className="pointer-events-none absolute left-3 top-3 flex max-w-[calc(100%-4rem)] flex-wrap gap-1.5"
+                                          title={provenanceLabels.title}
+                                        >
+                                          {provenanceLabels.originLabel ? (
+                                            <span className="rounded-sm border border-white/20 bg-black/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white backdrop-blur-sm">
+                                              {provenanceLabels.originLabel}
+                                            </span>
+                                          ) : null}
+                                          {provenanceLabels.supportLabel ? (
+                                            <span
+                                              className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold uppercase backdrop-blur-sm ${
+                                                provenanceLabels.supportLabel ===
+                                                "Community"
+                                                  ? "border-warn/45 bg-black/40 text-warn"
+                                                  : "border-accent/45 bg-black/40 text-white"
+                                              }`}
+                                            >
+                                              {provenanceLabels.supportLabel}
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                      ) : null}
                                       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-2 pe-10">
                                         <div className="min-w-0 flex-1">
                                           <div className="truncate text-xs font-semibold text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">

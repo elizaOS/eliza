@@ -330,6 +330,70 @@ describe("LocalInferenceEngine voice surface", () => {
     await engine.stopVoice();
   });
 
+  it("prewarms phrase audio so repeated local TTS avoids a backend pass", async () => {
+    writePresetBundle(bundleRoot);
+    const backend = new CountingBackend();
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: backend,
+      lifecycleLoaders: lifecycleLoadersOk(),
+    });
+    await engine.armVoice();
+
+    const warmed = await engine.prewarmVoicePhrases(["hello there."], {
+      concurrency: 1,
+    });
+    expect(warmed).toEqual({ warmed: 1, cached: 0 });
+    expect(backend.calls).toBe(1);
+
+    await engine.synthesizeSpeech("Hello there.");
+    expect(backend.calls).toBe(1);
+    await engine.stopVoice();
+  });
+
+  it("pipes streamed local text chunks into the voice scheduler while generating", async () => {
+    writePresetBundle(bundleRoot);
+    const backend = new CountingBackend();
+    const audio: AudioChunk[] = [];
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: backend,
+      lifecycleLoaders: lifecycleLoadersOk(),
+      events: {
+        onAudio: (chunk) => audio.push(chunk),
+      },
+    });
+    await engine.armVoice();
+
+    (
+      engine as unknown as {
+        dispatcher: {
+          generate(args: {
+            onTextChunk?: (chunk: string) => Promise<void> | void;
+          }): Promise<string>;
+        };
+      }
+    ).dispatcher = {
+      async generate(args) {
+        await args.onTextChunk?.("Sure");
+        await args.onTextChunk?.(".");
+        return "Sure.";
+      },
+    };
+
+    const result = await engine.generate({ prompt: "answer briefly" });
+
+    expect(result).toBe("Sure.");
+    expect(backend.calls).toBe(1);
+    expect(backend.texts).toEqual(["Sure."]);
+    expect(audio).toHaveLength(1);
+    await engine.stopVoice();
+  });
+
   it("direct TRANSCRIPTION requires voice and surfaces missing ASR backend clearly", async () => {
     const engine = new LocalInferenceEngine();
     const audio = { pcm: new Float32Array([0]), sampleRate: 24000 };

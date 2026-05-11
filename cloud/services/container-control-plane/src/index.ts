@@ -8,6 +8,8 @@ import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { WarmPoolManager } from "@/lib/services/containers/agent-warm-pool";
 import { getHetznerPoolContainerCreator } from "@/lib/services/containers/agent-warm-pool-creator";
 import {
+  type ContainerBootstrapFile,
+  type ContainerBootstrapSource,
   type CreateContainerInput,
   getHetznerContainersClient,
   HetznerClientError,
@@ -139,6 +141,114 @@ function readBoolean(body: Record<string, unknown>, key: string): boolean | unde
   throw new HetznerClientError("invalid_input", `${key} must be a boolean`);
 }
 
+function readVolumeMountPath(body: Record<string, unknown>): string | undefined {
+  const value = body.volume_mount_path;
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string" || !value.trim()) {
+    throw new HetznerClientError("invalid_input", "volume_mount_path must be a string");
+  }
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/") || trimmed.includes("\0")) {
+    throw new HetznerClientError(
+      "invalid_input",
+      "volume_mount_path must be an absolute Unix path",
+    );
+  }
+  if (trimmed === "/" || trimmed.includes("/../") || trimmed.endsWith("/..")) {
+    throw new HetznerClientError("invalid_input", "volume_mount_path cannot escape its root");
+  }
+  return trimmed.replace(/\/+/g, "/").replace(/\/$/, "");
+}
+
+function readBootstrapSource(body: Record<string, unknown>): ContainerBootstrapSource | undefined {
+  const value = body.bootstrap_source;
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new HetznerClientError("invalid_input", "bootstrap_source must be an object");
+  }
+  const source = value as Record<string, unknown>;
+  if (
+    source.sourceKind !== undefined &&
+    source.sourceKind !== "project" &&
+    source.sourceKind !== "workspace"
+  ) {
+    throw new HetznerClientError(
+      "invalid_input",
+      "bootstrap_source.sourceKind must be project or workspace",
+    );
+  }
+  const rawFiles = source.files;
+  if (rawFiles !== undefined && !Array.isArray(rawFiles)) {
+    throw new HetznerClientError("invalid_input", "bootstrap_source.files must be an array");
+  }
+
+  const files =
+    rawFiles?.map<ContainerBootstrapFile>((rawFile, index) => {
+      if (!rawFile || typeof rawFile !== "object" || Array.isArray(rawFile)) {
+        throw new HetznerClientError(
+          "invalid_input",
+          `bootstrap_source.files.${index} must be an object`,
+        );
+      }
+      const file = rawFile as Record<string, unknown>;
+      const path = file.path;
+      const contents = file.contents;
+      if (typeof path !== "string" || !path.trim()) {
+        throw new HetznerClientError(
+          "invalid_input",
+          `bootstrap_source.files.${index}.path is required`,
+        );
+      }
+      if (typeof contents !== "string") {
+        throw new HetznerClientError(
+          "invalid_input",
+          `bootstrap_source.files.${index}.contents is required`,
+        );
+      }
+      if (
+        file.encoding !== undefined &&
+        file.encoding !== "base64" &&
+        file.encoding !== "utf-8"
+      ) {
+        throw new HetznerClientError(
+          "invalid_input",
+          `bootstrap_source.files.${index}.encoding must be utf-8 or base64`,
+        );
+      }
+      const encoding = file.encoding === "base64" ? "base64" : "utf-8";
+      const size =
+        typeof file.size === "number" && Number.isFinite(file.size) ? file.size : undefined;
+      const sha256 = typeof file.sha256 === "string" ? file.sha256 : undefined;
+      const mode = typeof file.mode === "string" ? file.mode : undefined;
+      const mtimeMs = typeof file.mtimeMs === "number" ? file.mtimeMs : undefined;
+      return {
+        path: path.trim(),
+        contents,
+        encoding,
+        ...(size !== undefined ? { size } : {}),
+        ...(sha256 ? { sha256 } : {}),
+        ...(mode ? { mode } : {}),
+        ...(mtimeMs !== undefined ? { mtimeMs } : {}),
+      };
+    }) ?? [];
+
+  return {
+    sourceKind: source.sourceKind === "workspace" ? "workspace" : "project",
+    ...(typeof source.projectId === "string" ? { projectId: source.projectId } : {}),
+    ...(typeof source.workspaceId === "string" ? { workspaceId: source.workspaceId } : {}),
+    ...(typeof source.rootPath === "string" ? { rootPath: source.rootPath } : {}),
+    ...(typeof source.snapshotId === "string" ? { snapshotId: source.snapshotId } : {}),
+    ...(typeof source.revision === "string" ? { revision: source.revision } : {}),
+    ...(files.length ? { files } : {}),
+    ...(source.manifest && typeof source.manifest === "object" && !Array.isArray(source.manifest)
+      ? { manifest: source.manifest as ContainerBootstrapSource["manifest"] }
+      : {}),
+    ...(source.metadata && typeof source.metadata === "object" && !Array.isArray(source.metadata)
+      ? { metadata: source.metadata as Record<string, unknown> }
+      : {}),
+  };
+}
+
 function buildBridgeStreamFallbackText(body: BridgeRequest): string | null {
   const params =
     body.params && typeof body.params === "object" ? (body.params as Record<string, unknown>) : {};
@@ -181,6 +291,8 @@ function toCreateInput(body: Record<string, unknown>, auth: ForwardedAuth): Crea
     persistVolume: readBoolean(body, "persist_volume") ?? false,
     useHetznerVolume: readBoolean(body, "use_hetzner_volume") ?? false,
     volumeSizeGb: readNumber(body, "volume_size_gb", 10),
+    volumeMountPath: readVolumeMountPath(body),
+    bootstrapSource: readBootstrapSource(body),
   };
 }
 

@@ -65,7 +65,7 @@ import type {
 
 const SAMPLE_RATE_DEFAULT = 24_000;
 const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s
-const PHRASE_MAX_TOKENS_DEFAULT = 12;
+const PHRASE_MAX_TOKENS_DEFAULT = 8;
 const STUB_PCM_MS_PER_PHRASE = 100;
 
 /**
@@ -223,8 +223,10 @@ export interface EngineVoiceBridgeOptions {
   sampleRate?: number;
   /** Override ring buffer capacity (samples). Defaults to 4 s @ 24 kHz. */
   ringBufferCapacity?: number;
-  /** Phrase chunker `maxTokensPerPhrase`. Defaults to 12. */
+  /** Phrase chunker `maxTokensPerPhrase`. Defaults to env or 8. */
   maxTokensPerPhrase?: number;
+  /** Max concurrent TTS phrase dispatches. Defaults to env or scheduler default. */
+  maxInFlightPhrases?: number;
   /**
    * Pre-warmed phrase cache entries. Per AGENTS.md §4, a precomputed
    * phrase cache for common assistant utterances is mandatory for the
@@ -416,12 +418,17 @@ export class EngineVoiceBridge {
     const config: SchedulerConfig = {
       chunkerConfig: {
         maxTokensPerPhrase:
-          opts.maxTokensPerPhrase ?? PHRASE_MAX_TOKENS_DEFAULT,
+          opts.maxTokensPerPhrase ??
+          readPositiveIntEnv("ELIZA_VOICE_MAX_TOKENS_PER_PHRASE") ??
+          PHRASE_MAX_TOKENS_DEFAULT,
       },
       preset,
       ringBufferCapacity:
         opts.ringBufferCapacity ?? RING_BUFFER_CAPACITY_DEFAULT,
       sampleRate,
+      maxInFlightPhrases:
+        opts.maxInFlightPhrases ??
+        readPositiveIntEnv("ELIZA_VOICE_MAX_IN_FLIGHT_PHRASES"),
     };
 
     const sinkOverride = opts.sink;
@@ -529,6 +536,14 @@ export class EngineVoiceBridge {
     this.assertVoiceOn("synthesize speech");
     const chunk = await this.scheduler.synthesizeText(text);
     return encodeMonoPcm16Wav(chunk.pcm, chunk.sampleRate);
+  }
+
+  async prewarmPhrases(
+    texts: ReadonlyArray<string>,
+    opts: { concurrency?: number } = {},
+  ): Promise<{ warmed: number; cached: number }> {
+    this.assertVoiceOn("prewarm voice phrases");
+    return this.scheduler.prewarmPhrases(texts, opts);
   }
 
   async transcribePcm(args: TranscriptionAudio): Promise<string> {
@@ -664,6 +679,13 @@ function readAscii(bytes: Uint8Array, offset: number, length: number): string {
     out += String.fromCharCode(bytes[offset + i]);
   }
   return out;
+}
+
+function readPositiveIntEnv(name: string): number | undefined {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 /**

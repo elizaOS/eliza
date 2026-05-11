@@ -159,6 +159,10 @@ metal-verify: metal_verify reference-test
 	./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json
 	@echo "[kernels/verify] metal polar + QJL residual..."
 	./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar_qjl.json
+	@echo "[kernels/verify] metal polar pre-Hadamard query..."
+	./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar.json
+	@echo "[kernels/verify] metal polar pre-Hadamard query + QJL residual..."
+	./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar_qjl.json
 
 # Additive check for the long-context multi-block Metal entrypoints. These
 # are separate symbols from the compatibility entrypoints and need direct

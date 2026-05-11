@@ -99,8 +99,7 @@ class ElizaServerManager:
         self._stderr_log: Path | None = None
         self._stdout_handle = None
         self._stderr_handle = None
-        existing_token = os.environ.get("ELIZA_BENCH_TOKEN", "").strip()
-        self._token = existing_token or secrets.token_hex(32)
+        self._token = secrets.token_hex(32)
         self._client = ElizaClient(f"http://{client_host}:{port}", token=self._token)
         atexit.register(self.stop)
 

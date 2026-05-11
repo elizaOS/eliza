@@ -868,6 +868,9 @@ async function configureMobileBackgroundRunner(retry = 0): Promise<void> {
   if (isAndroid && runtimeConfig.mode === "local") {
     details.localApiBase = MOBILE_LOCAL_AGENT_API_BASE;
   }
+  if (isIOS && runtimeConfig.mode === "local") {
+    details.localRouteKernel = "ittp";
+  }
 
   try {
     await BackgroundRunner.dispatchEvent({

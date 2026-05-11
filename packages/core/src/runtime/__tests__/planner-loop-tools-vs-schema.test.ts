@@ -144,4 +144,62 @@ describe("planner-loop responseSchema/tools collision regression", () => {
 		const plannerCall = capturedParams[0] as Record<string, unknown>;
 		expect(plannerCall.toolChoice).toBe("required");
 	});
+
+	it("forces required tool choice when Stage 1 requires a tool", async () => {
+		const capturedParams: unknown[] = [];
+		const runtime = {
+			useModel: vi.fn(async (_modelType: unknown, params: unknown) => {
+				capturedParams.push(params);
+				return {
+					text: "",
+					toolCalls: [
+						{ id: "tc-1", name: "LOOKUP", arguments: { query: "x" } },
+					],
+				};
+			}),
+		};
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Done.",
+		}));
+
+		await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [MOCK_TOOL],
+			toolChoice: "auto",
+			requireNonTerminalToolCall: true,
+			executeToolCall: vi.fn(async () => ({ success: true })),
+			evaluate,
+		});
+
+		const plannerCall = capturedParams[0] as Record<string, unknown>;
+		expect(plannerCall.toolChoice).toBe("required");
+	});
+
+	it("caps required-tool planner misses", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "I should answer later.",
+				toolCalls: [],
+			})),
+		};
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				tools: [MOCK_TOOL],
+				requireNonTerminalToolCall: true,
+				config: { maxRequiredToolMisses: 1 },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			}),
+		).rejects.toMatchObject({
+			name: "TrajectoryLimitExceeded",
+			kind: "required_tool_misses",
+		});
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
 });

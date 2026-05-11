@@ -108,6 +108,7 @@ export async function runPlannerLoop(
 	};
 	const failures: FailureLike[] = [];
 	let terminalOnlyContinuations = 0;
+	let requiredToolMisses = 0;
 	const requireNonTerminalToolCall =
 		params.requireNonTerminalToolCall === true &&
 		hasExposedNonTerminalTool(params.tools);
@@ -130,7 +131,7 @@ export async function runPlannerLoop(
 				modelType: params.modelType,
 				provider: params.provider,
 				tools: params.tools,
-				toolChoice: params.toolChoice,
+				toolChoice: requireNonTerminalToolCall ? "required" : params.toolChoice,
 				recorder: params.recorder,
 				trajectoryId: params.trajectoryId,
 				parentStageId: params.parentStageId,
@@ -154,6 +155,12 @@ export async function runPlannerLoop(
 					requireNonTerminalToolCall &&
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
+					requiredToolMisses++;
+					assertTrajectoryLimit({
+						kind: "required_tool_misses",
+						max: config.maxRequiredToolMisses,
+						observed: requiredToolMisses,
+					});
 					handleRequiredToolPlannerMiss({
 						trajectory,
 						iteration,
@@ -249,6 +256,12 @@ export async function runPlannerLoop(
 					requireNonTerminalToolCall &&
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
+					requiredToolMisses++;
+					assertTrajectoryLimit({
+						kind: "required_tool_misses",
+						max: config.maxRequiredToolMisses,
+						observed: requiredToolMisses,
+					});
 					handleRequiredToolPlannerMiss({
 						trajectory,
 						iteration,

@@ -128,21 +128,21 @@
     },
     "compactbench::eliza": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/compactbench__eliza.json",
-      "run_id": "run_compactbench_20260511T131730Z_1_adef5fc1",
-      "status": "failed",
-      "updated_at": "2026-05-11T13:17:30.611457+00:00"
+      "run_id": "run_compactbench_20260511T135316Z_2_e9edc60f",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T13:53:26.512687+00:00"
     },
     "compactbench::hermes": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/compactbench__hermes.json",
-      "run_id": "run_compactbench_20260511T131730Z_1_34f9205a",
-      "status": "failed",
-      "updated_at": "2026-05-11T13:17:30.877889+00:00"
+      "run_id": "run_compactbench_20260511T135326Z_2_235b5925",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T13:53:36.267928+00:00"
     },
     "compactbench::openclaw": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/compactbench__openclaw.json",
-      "run_id": "run_compactbench_20260511T131731Z_1_c4bbb45d",
-      "status": "failed",
-      "updated_at": "2026-05-11T13:17:31.178161+00:00"
+      "run_id": "run_compactbench_20260511T135336Z_2_4bf96c0f",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T13:53:46.966936+00:00"
     },
     "configbench::eliza": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/configbench__eliza.json",
@@ -470,9 +470,9 @@
     },
     "mmlu::eliza": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/mmlu__eliza.json",
-      "run_id": "run_mmlu_20260511T132329Z_2_09e8c528",
-      "status": "failed",
-      "updated_at": "2026-05-11T13:23:38.491654+00:00"
+      "run_id": "run_mmlu_20260511T135353Z_1_c042504a",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T13:54:13.403896+00:00"
     },
     "mmlu::hermes": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/mmlu__hermes.json",
@@ -829,5 +829,5 @@
       "updated_at": "2026-05-11T13:21:19.104897+00:00"
     }
   },
-  "updated_at": "2026-05-11T13:43:11.880415+00:00"
+  "updated_at": "2026-05-11T13:54:13.405780+00:00"
 }

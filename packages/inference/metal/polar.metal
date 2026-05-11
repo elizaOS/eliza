@@ -46,6 +46,28 @@ constant float POLAR_Q4_CENTROIDS[POLAR_Q4_N_LEVELS] = {
      1.279739752f,  1.643041510f,  2.093562707f,  2.754354807f,
 };
 
+// xorshift32(seed=42) sign vector used by the optional Polar QJL residual.
+// Keeping this as a literal table removes the old tid==0 recurrent fill from
+// the hot path. It is bit-identical to polar_qjl_signs().
+constant float POLAR_QJL_SIGNS[QK_POLAR] = {
+    -1.0f, -1.0f,  1.0f, -1.0f, -1.0f, -1.0f, -1.0f, -1.0f,
+     1.0f,  1.0f, -1.0f,  1.0f, -1.0f, -1.0f,  1.0f,  1.0f,
+    -1.0f, -1.0f,  1.0f, -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f, -1.0f, -1.0f,
+    -1.0f, -1.0f,  1.0f, -1.0f,  1.0f, -1.0f,  1.0f, -1.0f,
+    -1.0f, -1.0f, -1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,
+     1.0f,  1.0f, -1.0f,  1.0f, -1.0f, -1.0f,  1.0f,  1.0f,
+     1.0f,  1.0f, -1.0f, -1.0f, -1.0f,  1.0f, -1.0f,  1.0f,
+     1.0f, -1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+    -1.0f, -1.0f, -1.0f, -1.0f,  1.0f, -1.0f, -1.0f, -1.0f,
+     1.0f, -1.0f, -1.0f,  1.0f,  1.0f,  1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f,  1.0f,
+     1.0f, -1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f,
+    -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,  1.0f, -1.0f, -1.0f,
+     1.0f, -1.0f,  1.0f, -1.0f, -1.0f,  1.0f, -1.0f, -1.0f,
+     1.0f,  1.0f,  1.0f, -1.0f,  1.0f, -1.0f, -1.0f,  1.0f,
+};
+
 struct block_q4_polar {
     half     d;
     uint8_t  qs[QK_POLAR / 2];
@@ -56,18 +78,6 @@ struct polar_dequant_args {
     uint head_dim;          // must equal QK_POLAR (128)
     uint use_qjl;           // 0 / 1
 };
-
-// Helper: deterministic per-block ±1 sign vector for the QJL residual.
-// Bit-identical to polar_qjl_signs() in
-// packages/native-plugins/polarquant-cpu/src/polar_qjl.c (xorshift32 seeded
-// with POLAR_QJL_SEED = 42, one bit per step). Static so the compiler can
-// constant-fold each thread's slice if the loop is fully unrolled.
-static inline float polar_qjl_sign(uint i, thread uint & state) {
-    state ^= state << 13;
-    state ^= state >> 17;
-    state ^= state << 5;
-    return (state & 1u) ? 1.0f : -1.0f;
-}
 
 // Threadgroup-cooperative 128-element Walsh-Hadamard butterfly. Each of
 // 32 threads owns 2 of the 64 (a+b, a-b) butterfly pairs per stage. Pair
@@ -131,21 +141,13 @@ kernel void kernel_get_rows_q4_polar(
     // Step 3: optional QJL residual. Sign-vector generation is sequential
     // (xorshift32 chain) so tid==0 fills a threadgroup-shared buffer; the
     // per-element add is then parallel across all 32 threads.
-    threadgroup float qjl_signs_tg[QK_POLAR];
     if (args.use_qjl != 0u) {
-        if (tid == 0) {
-            float mag = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
-            uint  bit  = (uint)(blk->qjl[0] & 1u);
-            float sign = bit ? 1.0f : -1.0f;
-            float scaled = sign * mag;
-            uint  state = 42u;
-            for (uint i = 0; i < QK_POLAR; ++i) {
-                qjl_signs_tg[i] = scaled * polar_qjl_sign(i, state);
-            }
-        }
-        threadgroup_barrier(mem_flags::mem_threadgroup);
+        float mag = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
+        uint  bit  = (uint)(blk->qjl[0] & 1u);
+        float sign = bit ? 1.0f : -1.0f;
+        float scaled = sign * mag;
         for (uint i = tid; i < QK_POLAR; i += tg_size) {
-            buf[i] += qjl_signs_tg[i];
+            buf[i] += scaled * POLAR_QJL_SIGNS[i];
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
     }
@@ -206,21 +208,13 @@ kernel void kernel_mul_mv_q4_polar_f32(
     // Step 3: optional QJL residual. Same parallelization as get_rows: the
     // sequential xorshift32 sign chain runs on tid==0 into shared scratch,
     // then all 32 threads do the per-element add in parallel.
-    threadgroup float qjl_signs_tg[QK_POLAR];
     if (args.use_qjl != 0u) {
-        if (tid == 0) {
-            float mag = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
-            uint  bit  = (uint)(blk->qjl[0] & 1u);
-            float sign = bit ? 1.0f : -1.0f;
-            float scaled = sign * mag;
-            uint  state = 42u;
-            for (uint i = 0; i < QK_POLAR; ++i) {
-                qjl_signs_tg[i] = scaled * polar_qjl_sign(i, state);
-            }
-        }
-        threadgroup_barrier(mem_flags::mem_threadgroup);
+        float mag = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
+        uint  bit  = (uint)(blk->qjl[0] & 1u);
+        float sign = bit ? 1.0f : -1.0f;
+        float scaled = sign * mag;
         for (uint i = tid; i < QK_POLAR; i += tg_size) {
-            buf[i] += qjl_signs_tg[i];
+            buf[i] += scaled * POLAR_QJL_SIGNS[i];
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
     }
@@ -241,5 +235,51 @@ kernel void kernel_mul_mv_q4_polar_f32(
     if (tid == 0) {
         float l2 = float(blk->d);
         y[row] = sum * l2 * POLAR_INV_QK;
+    }
+}
+
+// ---------- mul_mv: hot path with pre-Hadamard query ----------
+//
+// Uses the identity dot(H*x, q) == dot(x, H*q). The caller passes q_preht =
+// H*q using the same unnormalised 128-point Walsh-Hadamard convention as the
+// decoder. This avoids the per-row threadgroup scratch buffer and 7-stage
+// butterfly in the attention-score hot path. The final scale is still
+// per-block_l2 / QK_POLAR.
+kernel void kernel_mul_mv_q4_polar_preht_f32(
+        device const block_q4_polar    * k_blocks   [[buffer(0)]],
+        device const float             * q_preht    [[buffer(1)]],
+        device       float             * y          [[buffer(2)]],
+        constant     polar_mv_args     & args       [[buffer(3)]],
+        uint                              tid       [[thread_position_in_threadgroup]],
+        uint                              row       [[threadgroup_position_in_grid]],
+        uint                              tg_size   [[threads_per_threadgroup]]) {
+    if (row >= args.n_rows || args.head_dim != QK_POLAR) return;
+
+    device const block_q4_polar * blk = k_blocks + row;
+
+    float acc = 0.0f;
+    for (uint b = tid; b < QK_POLAR / 2; b += tg_size) {
+        uint8_t byte = blk->qs[b];
+        uint i0 = 2u * b;
+        uint i1 = i0 + 1u;
+        float x0 = POLAR_Q4_CENTROIDS[byte & 0x0Fu];
+        float x1 = POLAR_Q4_CENTROIDS[(byte >> 4) & 0x0Fu];
+
+        if (args.use_qjl != 0u) {
+            float mag = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
+            uint  bit  = (uint)(blk->qjl[0] & 1u);
+            float sign = bit ? 1.0f : -1.0f;
+            float scaled = sign * mag;
+            x0 += scaled * POLAR_QJL_SIGNS[i0];
+            x1 += scaled * POLAR_QJL_SIGNS[i1];
+        }
+
+        acc = fma(x0, q_preht[i0], acc);
+        acc = fma(x1, q_preht[i1], acc);
+    }
+
+    float sum = simd_sum(acc);
+    if (tid == 0) {
+        y[row] = sum * float(blk->d) * POLAR_INV_QK;
     }
 }
