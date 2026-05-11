@@ -208,12 +208,25 @@ function isModelMessage(value: unknown): value is ModelMessage {
     case "system":
       return typeof value.content === "string";
     case "user":
-    case "assistant":
     case "tool":
-      // Accept string or array content. Eliza runtime synthesizes tool / assistant
-      // messages with string content (see buildStageChatMessages); the AI SDK
-      // accepts these and the underlying provider normalizes them.
+      // Eliza runtime synthesizes tool / user messages with string or array
+      // content (see buildStageChatMessages); the AI SDK accepts these and
+      // the underlying provider normalizes them.
       return typeof value.content === "string" || Array.isArray(value.content);
+    case "assistant":
+      // Most callers emit string-or-array content. Defensively also accept
+      // assistant messages with `content: null` when a tool call is attached
+      // — the OpenAI v0.x / legacy shape that some callers still produce.
+      // Without this, `readModelMessages` returns `undefined` and the AI SDK
+      // silently drops the entire conversation, blinding any downstream model
+      // call to the tool history.
+      if (typeof value.content === "string" || Array.isArray(value.content)) {
+        return true;
+      }
+      if (value.content === null || value.content === undefined) {
+        return Array.isArray(value.toolCalls) && value.toolCalls.length > 0;
+      }
+      return false;
     default:
       return false;
   }
