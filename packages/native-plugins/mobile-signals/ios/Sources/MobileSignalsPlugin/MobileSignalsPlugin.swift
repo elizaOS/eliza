@@ -362,10 +362,71 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    private struct NotificationPermissionCapture {
+        let status: String
+        let canRequest: Bool
+        let reason: String?
+    }
+
+    private func readNotificationPermission(
+        completion: @escaping (NotificationPermissionCapture) -> Void
+    ) {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let capture: NotificationPermissionCapture
+            switch settings.authorizationStatus {
+            case .authorized, .provisional:
+                capture = NotificationPermissionCapture(
+                    status: "granted",
+                    canRequest: false,
+                    reason: nil
+                )
+            case .denied:
+                capture = NotificationPermissionCapture(
+                    status: "denied",
+                    canRequest: false,
+                    reason: "Notifications are disabled for Eliza. Open Settings to enable reminders and prompts."
+                )
+            case .notDetermined:
+                capture = NotificationPermissionCapture(
+                    status: "not-determined",
+                    canRequest: true,
+                    reason: "Allow notifications when LifeOps needs to remind or prompt you."
+                )
+            @unknown default:
+                capture = NotificationPermissionCapture(
+                    status: "restricted",
+                    canRequest: false,
+                    reason: "iOS notification authorization is restricted by this device."
+                )
+            }
+            DispatchQueue.main.async {
+                completion(capture)
+            }
+        }
+    }
+
     private func buildPermissionResult(
         status overrideStatus: String? = nil,
         canRequest overrideCanRequest: Bool? = nil,
-        reason overrideReason: String? = nil
+        reason overrideReason: String? = nil,
+        completion: @escaping ([String: Any]) -> Void
+    ) {
+        readNotificationPermission { [weak self] notification in
+            guard let self = self else { return }
+            completion(self.buildPermissionResultPayload(
+                status: overrideStatus,
+                canRequest: overrideCanRequest,
+                reason: overrideReason,
+                notification: notification
+            ))
+        }
+    }
+
+    private func buildPermissionResultPayload(
+        status overrideStatus: String? = nil,
+        canRequest overrideCanRequest: Bool? = nil,
+        reason overrideReason: String? = nil,
+        notification: NotificationPermissionCapture
     ) -> [String: Any] {
         let screenTimeStatus = ScreenTimeSupport.buildStatus()
         guard HKHealthStore.isHealthDataAvailable() else {
@@ -381,7 +442,8 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                 "setupActions": buildSetupActions(
                     healthStatus: overrideStatus ?? "not-applicable",
                     healthCanRequest: overrideCanRequest ?? false,
-                    screenTimeStatus: screenTimeStatus
+                    screenTimeStatus: screenTimeStatus,
+                    notification: notification
                 ),
             ]
         }
@@ -421,7 +483,8 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             "setupActions": buildSetupActions(
                 healthStatus: status,
                 healthCanRequest: overrideCanRequest ?? (status != "granted" && hasRequestedTypes),
-                screenTimeStatus: screenTimeStatus
+                screenTimeStatus: screenTimeStatus,
+                notification: notification
             ),
             "permissions": [
                 "sleep": sleepGranted,
@@ -438,19 +501,21 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     ) {
         ScreenTimeSupport.requestAuthorizationIfAvailable { [weak self] screenTimeReason in
             guard let self = self else { return }
-            var result = self.buildPermissionResult(
+            self.buildPermissionResult(
                 status: status,
                 canRequest: canRequest,
                 reason: reason
-            )
-            if let screenTimeReason {
-                if let existingReason = result["reason"] as? String, !existingReason.isEmpty {
-                    result["reason"] = "\(existingReason) \(screenTimeReason)"
-                } else {
-                    result["reason"] = screenTimeReason
+            ) { result in
+                var next = result
+                if let screenTimeReason {
+                    if let existingReason = next["reason"] as? String, !existingReason.isEmpty {
+                        next["reason"] = "\(existingReason) \(screenTimeReason)"
+                    } else {
+                        next["reason"] = screenTimeReason
+                    }
                 }
+                call.resolve(next)
             }
-            call.resolve(result)
         }
     }
 
@@ -471,17 +536,20 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
-        call.resolve(buildPermissionResult(
+        buildPermissionResult(
             status: status,
             canRequest: canRequest,
             reason: reason
-        ))
+        ) { result in
+            call.resolve(result)
+        }
     }
 
     private func buildSetupActions(
         healthStatus: String,
         healthCanRequest: Bool,
-        screenTimeStatus: [String: Any]
+        screenTimeStatus: [String: Any],
+        notification: NotificationPermissionCapture
     ) -> [[String: Any]] {
         let healthReady = healthStatus == "granted"
         let authorization = screenTimeStatus["authorization"] as? [String: Any] ?? [:]
@@ -490,6 +558,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         let screenTimeSupported = screenTimeStatus["supported"] as? Bool ?? false
         let screenTimeReady = screenTimeAuthStatus == "approved"
         let screenTimeReason = screenTimeStatus["reason"] ?? NSNull()
+        let notificationsReady = notification.status == "granted"
 
         return [
             [
@@ -528,11 +597,11 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             [
                 "id": "notification_settings",
                 "label": "Notifications",
-                "status": "needs-action",
-                "canRequest": false,
+                "status": notificationsReady ? "ready" : "needs-action",
+                "canRequest": notification.canRequest,
                 "canOpenSettings": true,
                 "settingsTarget": "notification",
-                "reason": "Open notification settings if reminders or telemetry prompts are muted.",
+                "reason": notificationsReady ? NSNull() : (notification.reason ?? "Open notification settings if reminders or telemetry prompts are muted."),
             ],
         ]
     }
