@@ -105,18 +105,30 @@ describe("planner-loop message stacking regression", () => {
 			expect(JSON.stringify(msgs2[i])).toBe(JSON.stringify(msgs1[i]));
 		}
 
-		// The new messages added in call 2 must be assistant + tool pair
+		// The new messages added in call 2 must be assistant + tool pair (AI SDK v6 shape:
+		// tool calls live inside `content` as `ToolCallPart`, tool results inside `content`
+		// as `ToolResultPart`).
 		const added = msgs2.slice(msgs1.length);
 		expect(added.length).toBe(2);
 		expect(added[0].role).toBe("assistant");
-		expect(added[0].toolCalls).toBeDefined();
-		expect(added[0].toolCalls).toHaveLength(1);
-		expect(added[1].role).toBe("tool");
-		expect(added[1].toolCallId).toBeDefined();
+		const assistantContent = added[0].content;
+		expect(Array.isArray(assistantContent)).toBe(true);
+		const toolCallPart = (assistantContent as Array<{ type: string }> | undefined)?.find(
+			(part) => part.type === "tool-call",
+		) as { type: "tool-call"; toolCallId: string } | undefined;
+		expect(toolCallPart).toBeDefined();
+		expect(toolCallPart?.toolCallId).toBeDefined();
 
-		// The assistant message's tool call id must match the tool message's toolCallId
-		const assistantToolCallId = added[0].toolCalls?.[0]?.id;
-		expect(added[1].toolCallId).toBe(assistantToolCallId);
+		expect(added[1].role).toBe("tool");
+		const toolContent = added[1].content;
+		expect(Array.isArray(toolContent)).toBe(true);
+		const toolResultPart = (toolContent as Array<{ type: string }> | undefined)?.find(
+			(part) => part.type === "tool-result",
+		) as { type: "tool-result"; toolCallId: string } | undefined;
+		expect(toolResultPart).toBeDefined();
+
+		// The assistant message's tool-call id must match the tool message's tool-result id
+		expect(toolResultPart?.toolCallId).toBe(toolCallPart?.toolCallId);
 	});
 
 	it("planner never appends a standalone trajectory JSON dump as the LAST message", async () => {
@@ -329,9 +341,14 @@ describe("planner-loop message stacking regression", () => {
 		if (added.length >= 2) {
 			const assistantMsg = added[0];
 			const toolMsg = added[1];
-			const tcId = assistantMsg?.toolCalls?.[0]?.id;
+			const tcId = (assistantMsg?.content as Array<{ type: string }> | undefined)
+				?.find((part) => part.type === "tool-call")
+				?.toolCallId;
+			const trId = (toolMsg?.content as Array<{ type: string }> | undefined)
+				?.find((part) => part.type === "tool-result")
+				?.toolCallId;
 			expect(tcId).toBeDefined();
-			expect(toolMsg?.toolCallId).toBe(tcId);
+			expect(trId).toBe(tcId);
 		}
 	});
 });
