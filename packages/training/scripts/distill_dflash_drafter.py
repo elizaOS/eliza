@@ -133,19 +133,21 @@ def _git_commit() -> str | None:
 
 
 def _find_convert_script() -> Path | None:
-    """Locate the fork's convert_hf_to_gguf.py. The dflash fork checkout
-    lives at ~/.cache/eliza-dflash/milady-llama-cpp by default; allow an
-    override via MILADY_LLAMACPP_DIR."""
-    candidates = []
-    env = os.environ.get("MILADY_LLAMACPP_DIR")
-    if env:
-        candidates.append(Path(env) / "convert_hf_to_gguf.py")
+    """Locate the fork's convert_hf_to_gguf.py. Order: $MILADY_LLAMACPP_DIR /
+    $LLAMA_CPP_DIR → the in-repo fork submodule (packages/inference/llama.cpp)
+    → ~/.cache/eliza-dflash/milady-llama-cpp."""
+    candidates: list[Path] = []
+    for var in ("MILADY_LLAMACPP_DIR", "LLAMA_CPP_DIR"):
+        env = os.environ.get(var)
+        if env:
+            candidates.append(Path(env) / "convert_hf_to_gguf.py")
+    for p in Path(__file__).resolve().parents:
+        cand = p / "packages" / "inference" / "llama.cpp"
+        if cand.is_dir():
+            candidates.append(cand / "convert_hf_to_gguf.py")
+            break
     candidates.append(
-        Path.home()
-        / ".cache"
-        / "eliza-dflash"
-        / "milady-llama-cpp"
-        / "convert_hf_to_gguf.py"
+        Path.home() / ".cache" / "eliza-dflash" / "milady-llama-cpp" / "convert_hf_to_gguf.py"
     )
     for c in candidates:
         if c.exists():

@@ -25,9 +25,20 @@ vi.mock("./manifest", () => ({
   }),
 }));
 
-vi.mock("node:fs/promises", () => ({
-  default: { readFile: vi.fn(async () => "{}") },
-}));
+// Override only `readFile` on the default export; keep the rest of
+// node:fs/promises real. Bun's `vi.mock` module mocks are process-global and
+// not auto-restored between test files, so a bare `{ default: { readFile } }`
+// here would strip mkdtemp/rm/mkdir from every later suite in the same run.
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  const actualDefault =
+    (actual as { default?: typeof import("node:fs/promises") }).default ??
+    actual;
+  return {
+    ...actual,
+    default: { ...actualDefault, readFile: vi.fn(async () => "{}") },
+  };
+});
 
 const ARGS = {
   modelId: "eliza-1-0_6b",
