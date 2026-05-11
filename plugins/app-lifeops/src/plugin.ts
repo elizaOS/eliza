@@ -17,6 +17,7 @@ import { blockAction } from "./actions/block.js";
 import { calendarAction } from "./actions/calendar.js";
 import { connectorAction } from "./actions/connector.js";
 import { credentialsAction } from "./actions/credentials.js";
+import { docAction } from "./actions/document.js";
 import { entityAction } from "./actions/entity.js";
 import {
   ownerAlarmsAction,
@@ -637,6 +638,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     ...promoteSubactionsToActions(ownerScreenTimeAction),
     ...promoteSubactionsToActions(personalAssistantAction),
     entityAction,
+    ...promoteSubactionsToActions(docAction),
     ...promoteSubactionsToActions(voiceCallAction),
     remoteDesktopAction,
     workThreadAction,

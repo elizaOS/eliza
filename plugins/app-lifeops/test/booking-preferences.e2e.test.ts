@@ -18,10 +18,7 @@ import { ChannelType, createMessageMemory, type UUID } from "@elizaos/core";
 import { withTimeout } from "../../../test/helpers/test-utils.ts";
 import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 import { selectLiveProvider } from "../../../test/helpers/live-provider.ts";
-import {
-  readLifeOpsOwnerProfile,
-  updateLifeOpsOwnerProfile,
-} from "../src/lifeops/owner-profile.js";
+import { readLifeOpsOwnerProfile } from "../src/lifeops/owner-profile.js";
 import type { MockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 
 const LIVE_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
@@ -89,24 +86,20 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
     it(
       "captures travel preferences in turn 1 and reuses them without re-asking in turn 2",
       async () => {
-        // Turn 1: capture preferences
+        // Turn 1: capture preferences. The agent must persist the preferences
+        // into the owner profile. The test does NOT write them itself — if the
+        // agent fails to capture, the test must fail.
         const prefReply = await sendTurn(
           "For all future travel bookings: I prefer aisle seat, no checked bag, " +
             "hotels under $300/night within 1 mile of the venue.",
         );
         expect(prefReply).not.toMatch(/something (?:went wrong|flaked)|try again/i);
 
-        let profile = await readLifeOpsOwnerProfile(mocked.runtime);
-        if (!/aisle|checked bag|300|venue/i.test(profile.travelBookingPreferences)) {
-          profile =
-            (await updateLifeOpsOwnerProfile(mocked.runtime, {
-              travelBookingPreferences:
-                "Prefer aisle seat, no checked bag, hotels under $300/night within 1 mile of the venue.",
-            })) ?? profile;
-        }
-        expect(profile.travelBookingPreferences).toMatch(
-          /aisle|checked bag|300|venue/i,
-        );
+        const profile = await readLifeOpsOwnerProfile(mocked.runtime);
+        expect(
+          profile.travelBookingPreferences,
+          `Agent must persist captured travel preferences into the owner profile; got: ${profile.travelBookingPreferences}`,
+        ).toMatch(/aisle|checked bag|300|venue/i);
 
         // Turn 2: request a booking — agent should not re-ask for preferences
         const bookReply = await sendTurn("Book my LA trip next month.");

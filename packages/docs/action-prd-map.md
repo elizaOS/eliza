@@ -174,6 +174,35 @@ For each ❌ entry, the recommended implementation route is:
 | `MESSAGE_CREATE_GROUP_HANDOFF` | `WORK_THREAD.*` | `plugins/app-lifeops/src/actions/work-thread.ts:291` confirms name + lifecycle ops |
 | `EVENT_SET_DECISION_DEADLINE` | `SCHEDULED_TASK.create` | `plugins/app-lifeops/src/actions/scheduled-task.ts:57-70` confirms subactions; subject kinds include `calendar_event` (`scheduled-task/types.ts:158`) |
 
+## PRD-name aliases (Wave-1 W1-7)
+
+PRD action names listed in `prd-lifeops-executive-assistant.md` resolve at runtime
+via `similes` on existing umbrella actions. A planner asking for, e.g.,
+`INBOX_LIST_UNREAD` lands on the `MESSAGE` umbrella, which then narrows by
+subaction args (`list_inbox` in this case).
+
+Similes are at the **action** level, not the subaction level — they steer the
+planner to the right umbrella, after which the umbrella's `subaction` parameter
+selects the verb. PRD names attached this way:
+
+| Target umbrella | PRD action name(s) added as similes |
+|---|---|
+| `MESSAGE` (`packages/core/src/features/advanced-capabilities/actions/message.ts`) | `INBOX_LIST_UNREAD`, `INBOX_TRIAGE_PRIORITY`, `INBOX_SUMMARIZE_CHANNEL`, `MESSAGE_DRAFT_REPLY`, `MESSAGE_SEND_APPROVAL_REQUEST`, `MESSAGE_SEND_CONFIRMED`, `MESSAGE_ARCHIVE_OR_DEFER`, `MESSAGE_REPAIR_AFTER_MISS`, `FOLLOWUP_CREATE_DRAFT`, `FOLLOWUP_SEND_CONFIRMED` |
+| `CALENDAR` (`plugins/app-lifeops/src/actions/calendar.ts`) | `CALENDAR_LIST_UPCOMING`, `CALENDAR_FIND_AVAILABILITY`, `CALENDAR_CREATE_EVENT`, `CALENDAR_CREATE_RECURRING_BLOCK`, `CALENDAR_RESCHEDULE_EVENT`, `CALENDAR_CANCEL_EVENT`, `CALENDAR_PROPOSE_TIMES`, `CALENDAR_PROTECT_WINDOW`, `CALENDAR_BUNDLE_MEETINGS`, `CALENDAR_ADD_PREP_BUFFER`, `CALENDAR_ADD_TRAVEL_BUFFER` |
+| `WORK_THREAD` (`plugins/app-lifeops/src/actions/work-thread.ts`) | `MESSAGE_CREATE_GROUP_HANDOFF` |
+| `SCHEDULED_TASKS` (`plugins/app-lifeops/src/actions/scheduled-task.ts`) | `EVENT_SET_DECISION_DEADLINE`, `EVENT_TRACK_ASSET_DEADLINES`, `NOTIFICATION_CREATE_INTENT`, `NOTIFICATION_ACKNOWLEDGE`, `NOTIFICATION_ESCALATE` |
+| `PERSONAL_ASSISTANT` (`plugins/app-lifeops/src/actions/owner-surfaces.ts`, owns `BOOK_TRAVEL`) | `TRAVEL_CAPTURE_PREFERENCES`, `TRAVEL_BOOK_FLIGHT`, `TRAVEL_BOOK_HOTEL`, `TRAVEL_SYNC_ITINERARY_TO_CALENDAR`, `TRAVEL_REBOOK_AFTER_CONFLICT` |
+| `CONNECTOR` (`plugins/app-lifeops/src/actions/connector.ts`) | `NOTIFICATION_RESOLVE_ENDPOINTS` |
+| `SET_FOLLOWUP_THRESHOLD` (`plugins/app-lifeops/src/followup/actions/setFollowupThreshold.ts`) | `FOLLOWUP_CREATE_RULE` |
+| `LIST_OVERDUE_FOLLOWUPS` (`plugins/app-lifeops/src/followup/actions/listOverdueFollowups.ts`) | `FOLLOWUP_LIST_OVERDUE` |
+
+**PRD names deliberately NOT aliased (Wave-2 territory):**
+
+- `CALENDAR_BUILD_DOSSIER`, `THREAD_LINK_CONTACT`, `FOLLOWUP_ESCALATE`, `EVENT_BUILD_ITINERARY_BRIEF`, all `DOC_*` actions, and `REMOTE_REQUEST_HELP` — these are ❌ rows above. There is no umbrella to alias onto; they require real implementation (the `DOC` umbrella is being scaffolded separately).
+- `FOLLOWUP_GENERATE_DIGEST` (🟡) — currently produced by the morning-brief pack, not by a callable action; no single umbrella to alias.
+- `EVENT_CREATE_OPPORTUNITY` (🟡) — composition of `CALENDAR.create_event` + `ENTITY.add`; no single umbrella owns the verb.
+- `NOTIFICATION_DISPATCH` (✅ in map, but the `DEVICE_INTENT` action it points to is retired from the planner). Flagged for Wave-2 re-mapping; the map currently references a dead action.
+
 ## Renaming proposals (surprises)
 
 A handful of PRD names disguise actions that already exist under wildly different names. These are worth either renaming or adding as `similes` so planner extraction matches both:

@@ -295,6 +295,10 @@ export const workThreadAction: Action & {
     "STOP_THREAD",
     "CREATE_THREAD",
     "SCHEDULE_THREAD_FOLLOWUP",
+    // PRD action-catalog alias. The PRD's "group handoff" maps to thread
+    // lifecycle ops (create + attach_source) on WORK_THREAD.
+    // See packages/docs/action-prd-map.md.
+    "MESSAGE_CREATE_GROUP_HANDOFF",
   ],
   description:
     "Create, steer, stop, wait, complete, merge, attach source refs to, or schedule follow-up work for owner work threads. Use only for thread lifecycle/routing; domain work stays on existing task/messaging/workflow actions.",

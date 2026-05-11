@@ -176,18 +176,18 @@ export * from "./runtime/context-registry";
 export * from "./runtime/cost-table";
 export * from "./runtime/execute-planned-tool-call";
 export {
+	detectLocaleFromText,
+	type ResolveOwnerLocaleOptions,
+	resolveOwnerLocale,
+	type SupportedLocale,
+} from "./runtime/locale-detection";
+export {
 	__resetLocalizedExamplesProviderForTests,
 	getLocalizedExamplesProvider,
 	type LocalizedExamplesProvider,
 	type LocalizedExamplesProviderInput,
 	registerLocalizedExamplesProvider,
 } from "./runtime/localized-examples-provider";
-export {
-	detectLocaleFromText,
-	resolveOwnerLocale,
-	type ResolveOwnerLocaleOptions,
-	type SupportedLocale,
-} from "./runtime/locale-detection";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";

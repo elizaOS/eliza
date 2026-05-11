@@ -90,10 +90,9 @@ const FRENCH_DIACRITICS = /[àâäæçéèêëîïôœùûüÿÀÂÄÆÇÉÈÊË
  * Returns the best-guess locale for `text`, or `null` when the heuristic has
  * no signal. Empty / whitespace input → `null`.
  */
-export function detectLocaleFromText(text: string | null | undefined):
-	| SupportedLocale
-	| string
-	| null {
+export function detectLocaleFromText(
+	text: string | null | undefined,
+): SupportedLocale | string | null {
 	if (typeof text !== "string") {
 		return null;
 	}
