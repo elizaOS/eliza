@@ -343,9 +343,6 @@ export function stageSeccompShimForAbi({
   cacheDir = SECCOMP_SHIM_CACHE_DIR,
   log,
 }) {
-  // ARM64 short-circuits: compile-shim never builds for that ABI.
-  if (androidAbi !== "x86_64") return 0;
-
   const abiCacheDir = path.join(cacheDir, androidAbi);
   const cachedWrap = path.join(abiCacheDir, ldName);
   const cachedShim = path.join(abiCacheDir, "libsigsys-handler.so");
@@ -518,10 +515,10 @@ export async function stageAndroidAgentRuntime({
       );
     }
 
-    // Per-ABI seccomp shim install. Only x86_64 has compiled shim
-    // artifacts (arm64's kernel ABI omits the legacy syscalls Android's
-    // x86_64 seccomp filter traps on, so the shim is irrelevant). When
-    // the artifacts exist:
+    // Per-ABI seccomp shim install. Both x86_64 (legacy non-AT syscalls)
+    // and arm64-v8a (the new-syscall case — bun's `epoll_pwait2` blocked
+    // by Android's `untrusted_app` filter) have compiled shim artifacts.
+    // When the artifacts exist:
     //   1. Stage `libsigsys-handler.so` next to bun.
     //   2. Rename the Alpine-extracted ld-musl-*.so.1 → .so.1.real.
     //   3. Stage our `loader-wrap` ELF as ld-musl-*.so.1.

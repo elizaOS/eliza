@@ -20,15 +20,18 @@
 //   See seccomp-shim/sigsys-handler.c for the full coverage matrix
 //   (24 syscalls, all x86_64) and the production-landing checklist.
 //
-// What this script produces (per ABI, x86_64 only):
+// What this script produces (per ABI):
 //   <abiCacheDir>/libsigsys-handler.so   — LD_PRELOAD'd by loader-wrap
-//   <abiCacheDir>/loader-wrap            — drop-in for ld-musl-x86_64.so.1
+//   <abiCacheDir>/<ld-musl-...so.1>      — drop-in for the real musl loader
 //
-// ARM64 is intentionally skipped — its kernel ABI provides only the
-// AT-suffixed syscalls, so musl's wrappers never invoke a legacy form
-// the seccomp filter could trap on. The shim's x86_64 inline asm and
-// `REG_RAX` greg index would not even compile for arm64. See
-// `seccomp-shim/sigsys-handler.c` header for the full rationale.
+// ARM64 has a separate, narrower shim source (`sigsys-handler-arm64.c`)
+// covering the *new*-syscall case rather than the legacy non-AT case:
+// bun's event loop calls `epoll_pwait2` (#441, Linux 5.11+) on every
+// tick, and Android's arm64 `untrusted_app` seccomp filter traps it
+// with SIGSYS. The arm64 shim translates that trap back to the older
+// `epoll_pwait` (#22). The x86_64 shim's full 24-syscall legacy table
+// does NOT apply to arm64 — that kernel ABI omits those numbers
+// entirely, so musl's aarch64 wrappers never invoke them.
 //
 // Staging:
 //   `stage-android-agent.mjs` reads from <cacheDir>/seccomp-shim/x86_64/
@@ -56,19 +59,29 @@ import { ensureZigDrivers, probeZig } from "./compile-libllama.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Only x86_64 needs the SIGSYS shim. ARM64's kernel ABI omits every
- * legacy non-AT syscall the filter could trap on; the shim source
- * actually `#error`s on non-x86_64 to prevent silent miscompiles.
+ * Each target has its own SIGSYS-handler source file because the shim
+ * decodes trapped registers from arch-specific `ucontext_t.uc_mcontext`
+ * layouts (x86_64's `gregs[REG_RAX]` vs arm64's `regs[0]`) and re-issues
+ * the replacement syscall via arch-specific inline `svc 0` / `syscall`
+ * asm. The shim sources `#error` on the wrong arch to prevent silent
+ * miscompiles. The loader-wrap binary is portable across ABIs (only
+ * AT-form syscalls).
  */
 export const SHIM_ABI_TARGETS = [
   {
     androidAbi: "x86_64",
     zigTarget: "x86_64-linux-musl",
     realLoaderName: "ld-musl-x86_64.so.1",
+    shimSource: "sigsys-handler.c",
+  },
+  {
+    androidAbi: "arm64-v8a",
+    zigTarget: "aarch64-linux-musl",
+    realLoaderName: "ld-musl-aarch64.so.1",
+    shimSource: "sigsys-handler-arm64.c",
   },
 ];
 
-const SHIM_SOURCE_PATH = path.join(here, "seccomp-shim", "sigsys-handler.c");
 const LOADER_WRAP_SOURCE_PATH = path.join(
   here,
   "seccomp-shim",
@@ -104,8 +117,7 @@ export function parseArgs(argv) {
       const valid = SHIM_ABI_TARGETS.map((t) => t.androidAbi);
       if (!valid.includes(value)) {
         throw new Error(
-          `--abi must be one of ${valid.join(", ")} (got: ${value}). ` +
-            `arm64-v8a doesn't need a SIGSYS shim — see compile-shim.mjs header.`,
+          `--abi must be one of ${valid.join(", ")} (got: ${value}).`,
         );
       }
       args.abis = [value];
@@ -115,7 +127,7 @@ export function parseArgs(argv) {
     } else if (arg === "-h" || arg === "--help") {
       console.log(
         "Usage: node eliza/packages/app-core/scripts/aosp/compile-shim.mjs " +
-          "[--cache-dir <PATH>] [--abi <x86_64>] [--skip-if-present]",
+          "[--cache-dir <PATH>] [--abi <x86_64|arm64-v8a>] [--skip-if-present]",
       );
       process.exit(0);
     } else {
@@ -154,7 +166,7 @@ function run(command, args, { cwd, env = process.env } = {}) {
 export function buildSigsysShimForAbi({
   cacheDir,
   abi,
-  shimSourcePath = SHIM_SOURCE_PATH,
+  shimSourcePath,
   zigBin = "zig",
   log = console.log,
   spawn = run,
@@ -165,9 +177,11 @@ export function buildSigsysShimForAbi({
       `[compile-shim] Unknown ABI: ${abi}. Only ${SHIM_ABI_TARGETS.map((t) => t.androidAbi).join(", ")} need a shim.`,
     );
   }
-  if (!fs.existsSync(shimSourcePath)) {
+  const resolvedShimSource = shimSourcePath
+    ?? path.join(here, "seccomp-shim", target.shimSource);
+  if (!fs.existsSync(resolvedShimSource)) {
     throw new Error(
-      `[compile-shim] sigsys-handler.c not found at ${shimSourcePath}.`,
+      `[compile-shim] ${target.shimSource} not found at ${resolvedShimSource}.`,
     );
   }
   const abiCacheDir = path.join(cacheDir, abi);
@@ -193,7 +207,7 @@ export function buildSigsysShimForAbi({
       "-Wl,--disable-new-dtags",
       "-o",
       out,
-      shimSourcePath,
+      resolvedShimSource,
     ],
     {},
   );
