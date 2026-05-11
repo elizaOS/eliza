@@ -5,9 +5,9 @@ import { useApp, useContentPack } from "../../state";
 import { LANGUAGES } from "../shared/LanguageDropdown";
 
 export function AppearanceSettingsSection() {
-  const { activePackId, setUiLanguage, uiTheme, uiLanguage, setUiTheme, t } =
-    useApp();
+  const { setUiLanguage, uiTheme, uiLanguage, setUiTheme, t } = useApp();
   const {
+    activePack,
     loadedPacks,
     error: packLoadError,
     canPickDirectory,
@@ -102,7 +102,7 @@ export function AppearanceSettingsSection() {
           </h3>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {loadedPacks.map((pack) => {
-              const isActive = activePackId === pack.manifest.id;
+              const isActive = activePack?.manifest.id === pack.manifest.id;
               return (
                 <button
                   key={pack.manifest.id}
@@ -208,7 +208,7 @@ export function AppearanceSettingsSection() {
         {packLoadError && (
           <p className="text-xs-tight text-destructive">{packLoadError}</p>
         )}
-        {activePackId && (
+        {activePack && (
           <Button
             variant="link"
             size="sm"
