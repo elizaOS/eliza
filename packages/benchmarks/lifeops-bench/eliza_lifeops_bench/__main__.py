@@ -16,6 +16,7 @@ import logging
 import os
 import sys
 
+from .model_tiers import DEFAULT_TIERS, resolve_tier
 from .runner import LifeOpsBenchRunner
 from .scenarios import (
     ALL_SCENARIOS,
@@ -34,6 +35,7 @@ _AGENT_CHOICES = (
 )
 _DOMAIN_CHOICES = tuple(d.value for d in Domain)
 _MODE_CHOICES = tuple(m.value for m in ScenarioMode)
+_MODEL_TIER_CHOICES = tuple(DEFAULT_TIERS.keys())
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -60,14 +62,34 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--evaluator-model",
-        default="gpt-oss-120b",
-        help="LLM model used to simulate the user (default: gpt-oss-120b on Cerebras)",
+        default=None,
+        help=(
+            "LLM model used to simulate the user. Default is derived from "
+            "--model-tier (large → gpt-oss-120b on Cerebras)."
+        ),
     )
     parser.add_argument(
         "--judge-model",
         default="claude-opus-4-7",
         help="LLM model used as live-mode satisfaction judge (default: claude-opus-4-7). "
         "Intentionally different from --evaluator-model to avoid self-agreement bias.",
+    )
+    parser.add_argument(
+        "--model-tier",
+        choices=_MODEL_TIER_CHOICES,
+        default=None,
+        help=(
+            "Provider tier (small/mid/large/frontier). Sets MODEL_TIER for the "
+            "harness chain. Default reads MODEL_TIER from env, else 'large'."
+        ),
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Resolve config + selected scenarios and print a summary, but "
+            "skip actual scenario execution."
+        ),
     )
     parser.add_argument(
         "--concurrency",
@@ -163,7 +185,7 @@ def _build_agent_factory(name: str):
     return None
 
 
-def _build_agent_fn(name: str):
+def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_override: str | None = None):
     if name in {"perfect", "wrong"}:
         # Caller should use _build_agent_factory for these. Returning a
         # placeholder keeps the CLI surface uniform; the runner prefers
@@ -194,7 +216,7 @@ def _build_agent_fn(name: str):
             globals()["_ELIZA_SERVER_MANAGER"] = manager
             os.environ["ELIZA_BENCH_URL"] = manager.client.base_url
             os.environ["ELIZA_BENCH_TOKEN"] = manager.token
-        return build_eliza_agent()
+        return build_eliza_agent(model_name=model_override)
     if name == "openclaw":
         try:
             from .agents import build_openclaw_agent  # type: ignore[attr-defined]
@@ -202,7 +224,7 @@ def _build_agent_fn(name: str):
             raise SystemExit(
                 f"OpenClaw adapter not yet wired (Wave 2D): {exc}"
             ) from exc
-        return build_openclaw_agent()
+        return build_openclaw_agent(model=model_override, base_url=base_url_override)
     if name == "hermes":
         try:
             from .agents import build_hermes_agent  # type: ignore[attr-defined]
@@ -210,7 +232,7 @@ def _build_agent_fn(name: str):
             raise SystemExit(
                 f"Hermes adapter not yet wired (Wave 2E): {exc}"
             ) from exc
-        return build_hermes_agent()
+        return build_hermes_agent(model=model_override, base_url=base_url_override)
     if name == "cerebras-direct":
         try:
             from .agents import build_cerebras_direct_agent  # type: ignore[attr-defined]
@@ -218,7 +240,7 @@ def _build_agent_fn(name: str):
             raise SystemExit(
                 f"cerebras-direct agent not yet wired (Wave 1E/2F): {exc}"
             ) from exc
-        return build_cerebras_direct_agent()
+        return build_cerebras_direct_agent(model=model_override, base_url=base_url_override)
     raise SystemExit(f"Unknown agent: {name}")
 
 
@@ -258,6 +280,9 @@ async def _run(args: argparse.Namespace) -> None:
     else:
         scenarios = list(ALL_SCENARIOS)
 
+    tier_spec = resolve_tier()
+    evaluator_model = args.evaluator_model or tier_spec.model_name
+
     domain = Domain(args.domain) if args.domain else None
     mode = ScenarioMode(args.mode) if args.mode else None
 
@@ -273,13 +298,33 @@ async def _run(args: argparse.Namespace) -> None:
         )
 
     agent_factory = _build_agent_factory(args.agent)
-    agent_fn = _build_agent_fn(args.agent) if agent_factory is None else None
+    agent_fn = (
+        _build_agent_fn(
+            args.agent,
+            model_override=tier_spec.model_name,
+            base_url_override=tier_spec.base_url,
+        )
+        if agent_factory is None
+        else None
+    )
+
+    print(f"\nStarting LifeOpsBench with {len(scenarios)} scenarios x {args.seeds} seeds...")
+    print(f"Agent:           {args.agent}")
+    print(f"Model tier:      {tier_spec.tier} ({tier_spec.provider} → {tier_spec.model_name})")
+    print(f"Evaluator model: {evaluator_model}")
+    print(f"Judge model:     {args.judge_model}")
+    print(f"Concurrency:     {args.concurrency}")
+    print(f"Cost cap:        ${args.max_cost_usd:.2f}\n")
+
+    if args.dry_run:
+        print(f"[dry-run] resolved {len(scenarios)} scenarios; skipping execution.")
+        return
 
     runner = LifeOpsBenchRunner(
         agent_fn=agent_fn,
         agent_factory=agent_factory,
         world_factory=_build_world_factory(),
-        evaluator_model=args.evaluator_model,
+        evaluator_model=evaluator_model,
         judge_model=args.judge_model,
         scenarios=scenarios,
         concurrency=args.concurrency,
@@ -288,13 +333,6 @@ async def _run(args: argparse.Namespace) -> None:
         per_scenario_timeout_s=args.per_scenario_timeout_s,
         abort_on_budget_exceeded=args.abort_on_budget_exceeded,
     )
-
-    print(f"\nStarting LifeOpsBench with {len(scenarios)} scenarios x {args.seeds} seeds...")
-    print(f"Agent:           {args.agent}")
-    print(f"Evaluator model: {args.evaluator_model}")
-    print(f"Judge model:     {args.judge_model}")
-    print(f"Concurrency:     {args.concurrency}")
-    print(f"Cost cap:        ${args.max_cost_usd:.2f}\n")
 
     result = await runner.run_filtered(domain=domain, mode=mode)
     path = LifeOpsBenchRunner.save_results(result, output_dir=args.output_dir)
@@ -305,6 +343,12 @@ async def _run(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
+
+    # Propagate MODEL_TIER before any agent/client factories read env so the
+    # whole harness chain sees the same tier. CLI flag wins over inherited
+    # env; if neither is set the resolver defaults to 'large'.
+    if args.model_tier is not None:
+        os.environ["MODEL_TIER"] = args.model_tier
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
