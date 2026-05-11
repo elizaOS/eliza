@@ -113,18 +113,28 @@ def _humaneval_worker(
     code: str,
     timeout_s: float,
 ) -> None:
+    """Worker target — module-level so ``spawn`` can pickle it.
+
+    On macOS Python 3.14+ multiprocessing defaults to ``spawn``, which
+    requires the target callable to be importable. A nested closure
+    would not be picklable.
+    """
+
     try:
         # Suppress stdout from the candidate.
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-            # Defensive: limit per-process CPU time too when the platform
+            # Defensive: cap per-process CPU time when the platform
             # supports it.
             with contextlib.suppress(Exception):
                 import resource
 
-                resource.setrlimit(resource.RLIMIT_CPU, (int(timeout_s) + 1, int(timeout_s) + 2))
-            # The candidate prompt may import things; restrict by giving it a
-            # fresh globals dict.
+                resource.setrlimit(
+                    resource.RLIMIT_CPU,
+                    (int(timeout_s) + 1, int(timeout_s) + 2),
+                )
+            # The candidate prompt may import things; restrict by giving
+            # it a fresh globals dict.
             exec(compile(code, "<humaneval>", "exec"), {"__name__": "__main__"})
         connection.send((True, ""))
     except SystemExit as exc:
@@ -136,14 +146,24 @@ def _humaneval_worker(
 
 
 def _execute_program(program: str, timeout_s: float) -> tuple[bool, str]:
-    """Run a candidate program in a subprocess with a hard timeout.
-
-    Returns (passed, error_message).
+    """Run a candidate program in a forked subprocess with a hard
+    timeout. Returns (passed, error_message).
     """
 
-    parent_conn, child_conn = mp.Pipe(duplex=False)
-    proc = mp.Process(target=_humaneval_worker, args=(child_conn, program, timeout_s))
-    proc.daemon = True
+    # Prefer "fork" when available (cheap; preserves loaded state). Fall
+    # back to "spawn" on platforms where fork is unsafe (recent macOS
+    # builds disable it by default).
+    try:
+        ctx = mp.get_context("fork")
+    except ValueError:
+        ctx = mp.get_context("spawn")
+
+    parent_conn, child_conn = ctx.Pipe(duplex=False)
+    proc = ctx.Process(
+        target=_humaneval_worker,
+        args=(child_conn, program, timeout_s),
+        daemon=True,
+    )
     proc.start()
     proc.join(timeout=timeout_s)
     if proc.is_alive():
