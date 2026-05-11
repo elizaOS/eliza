@@ -306,11 +306,24 @@ if (metalProbeIndex === -1) {
     const evidence = metalEvidenceKernels[kernel.id];
     const metalStatus = kernel.runtimeStatus?.metal;
     for (const key of kernel.runtimeCapabilityKeys || []) {
+      const evidenceDriven = metalProbeBody.includes(
+        `kernels.${key} = metalCapabilityRuntimeReady(`,
+      );
+      const hardForcedFalse = metalProbeBody.includes(`kernels.${key} = false`);
       if (evidence?.runtimeReady === true || metalStatus === "runtime-ready") {
+        if (!evidenceDriven) {
+          fail(`${kernel.id}: build script must derive Metal kernels.${key} from runtime dispatch evidence`);
+        }
+        if (hardForcedFalse) {
+          fail(`${kernel.id}: build script must not force runtime-ready Metal kernels.${key}=false`);
+        }
         continue;
       }
-      if (!metalProbeBody.includes(`kernels.${key} = false`)) {
-        fail(`${kernel.id}: build script must force Metal kernels.${key}=false until runtime dispatch evidence is ready`);
+      if (evidenceDriven) {
+        continue;
+      }
+      if (!hardForcedFalse) {
+        fail(`${kernel.id}: build script must force or evidence-gate Metal kernels.${key}=false until runtime dispatch evidence is ready`);
       }
     }
   }

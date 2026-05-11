@@ -105,21 +105,21 @@ static int gen_turbo4(const char * outdir) {
     float q[128];
     for (int i = 0; i < 128; i++) q[i] = rand_normal();
 
-    eliza_block_turbo4_0 blocks[N_KV];
+    eliza_block_turbo4_0 blocks[N_KV * 4];
     float scores[N_KV];
     for (int kv = 0; kv < N_KV; kv++) {
         float k_full[128];
         for (int i = 0; i < 128; i++) k_full[i] = rand_normal();
-        eliza_quantize_turbo4_block(k_full, &blocks[kv]);
-        scores[kv] = eliza_dot_q_turbo4(q, &blocks[kv]);
+        eliza_quantize_turbo4_block(k_full, &blocks[kv * 4]);
+        scores[kv] = eliza_dot_q_turbo4(q, &blocks[kv * 4]);
     }
 
     fprintf(f, "{\n");
     fprintf(f, "  \"kernel\": \"turbo4\",\n");
     fprintf(f, "  \"head_dim\": 128,\n");
     fprintf(f, "  \"n_kv\": %d,\n", N_KV);
-    fprintf(f, "  \"block_bytes\": 66,\n");
-    fprintf(f, "  \"blocks_per_kv\": 1,\n");
+    fprintf(f, "  \"block_bytes\": 18,\n");
+    fprintf(f, "  \"blocks_per_kv\": 4,\n");
     fprintf(f, "  \"q\": "); write_floats_json(f, q, 128); fprintf(f, ",\n");
     fprintf(f, "  \"k_blocks\": "); write_bytes_json(f, (uint8_t *)blocks, sizeof(blocks)); fprintf(f, ",\n");
     fprintf(f, "  \"expected_scores\": "); write_floats_json(f, scores, N_KV); fprintf(f, "\n");
@@ -300,9 +300,9 @@ static int self_test(void) {
     float s3 = eliza_dot_q_turbo3(q, g3);
     if (!isfinite(s3)) { fprintf(stderr, "turbo3 self-test: non-finite score %g\n", (double)s3); return 1; }
 
-    eliza_block_turbo4_0 g4;
-    eliza_quantize_turbo4_block(x, &g4);
-    float s4 = eliza_dot_q_turbo4(q, &g4);
+    eliza_block_turbo4_0 g4[4];
+    eliza_quantize_turbo4_block(x, g4);
+    float s4 = eliza_dot_q_turbo4(q, g4);
     if (!isfinite(s4)) { fprintf(stderr, "turbo4 self-test: non-finite score %g\n", (double)s4); return 1; }
 
     eliza_block_turbo3_tcq gtcq;

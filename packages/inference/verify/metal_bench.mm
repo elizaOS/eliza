@@ -91,13 +91,13 @@ constexpr int kTurboNkv    = kKvHeads * kSeq;     // 131072 blocks of 128 elemen
 
 // Block byte sizes (must match the metal shaders' struct layouts).
 constexpr int kTurbo3BlockBytes    = 14;   // norm(2) + 8 qs + 4 signs (for head_dim=128 -> 4 sub-blocks)
-constexpr int kTurbo4BlockBytes    = 66;   // norm(2) + qs[64]
+constexpr int kTurbo4BlockBytes    = 18;   // norm(2) + qs[16] (32 elements per block)
 constexpr int kTurbo3TcqBlockBytes = 52;   // see ggml-common.h
 constexpr int kQjlBlockBytes       = 34;   // qs[32] + bf16 norm
 constexpr int kPolarBlockBytes     = 82;   // fp16 norm + 64 qs + 16 qjl signs
 
 constexpr int kTurbo3BlocksPerKv    = 4;   // head_dim=128 / 32 elements per sub-block
-constexpr int kTurbo4BlocksPerKv    = 1;   // head_dim=128 packed in one block_turbo4_0
+constexpr int kTurbo4BlocksPerKv    = 4;   // head_dim=128 / 32 elements per sub-block
 constexpr int kTurbo3TcqBlocksPerKv = 1;
 
 constexpr int kIters       = 1000;        // target iteration count

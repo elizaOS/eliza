@@ -1531,41 +1531,12 @@ export async function handleWalletRoutes(
     return true;
   }
 
-  // GET /api/wallet/approvals/stream — SSE stub until Steward approval wiring lands.
   if (method === "GET" && pathname === "/api/wallet/approvals/stream") {
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
-
-    const writeSse = (event: string, data: Record<string, unknown>) => {
-      res.write(`event: ${event}\n`);
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
-    };
-
-    writeSse("wallet_approvals", {
-      ok: true,
-      approvals: [],
-      note: "Approval stream placeholder — connect Steward decision bridge when available.",
-    });
-
-    const ping = setInterval(() => {
-      try {
-        writeSse("ping", { t: Date.now() });
-      } catch {
-        clearInterval(ping);
-      }
-    }, 15_000);
-
-    req.on("close", () => {
-      clearInterval(ping);
-      try {
-        res.end();
-      } catch {
-        /* ignore */
-      }
-    });
+    error(
+      res,
+      "Wallet approval streaming requires the Steward wallet route bridge.",
+      503,
+    );
     return true;
   }
 
@@ -1575,8 +1546,8 @@ export async function handleWalletRoutes(
   if (method === "POST" && approvalDecision) {
     error(
       res,
-      "Wallet approval decisions are not wired to Steward in this build.",
-      501,
+      "Wallet approval decisions require the Steward wallet route bridge.",
+      503,
     );
     return true;
   }

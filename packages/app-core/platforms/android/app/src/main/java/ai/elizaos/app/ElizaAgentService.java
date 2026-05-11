@@ -590,10 +590,8 @@ public class ElizaAgentService extends Service {
 
     /**
      * Like copyAssetIfMissing, but silently no-ops when the source asset is
-     * absent. Used for PGlite + plugin-manifest payload that Phase D
-     * generates only when the real agent bundle is built; with the spike
-     * placeholder bundle the assets are simply not present and the agent
-     * runs without them.
+     * absent. Used for optional PGlite + plugin-manifest payloads; minimal
+     * mobile bundles can run without those embedded database extensions.
      */
     private void copyAssetIfPresent(AssetManager assets, String assetPath, File target) throws IOException {
         try (InputStream probe = assets.open(assetPath)) {
