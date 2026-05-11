@@ -162,8 +162,7 @@ export function installIosLocalAgentFetchBridge(): void {
       : new Request(bridgedUrl, init);
     return handleIosLocalAgentRequest(bridgedRequest);
   }) as typeof fetch;
-  const nativeFetchWithPreconnect =
-    nativeFetch as FetchWithOptionalPreconnect;
+  const nativeFetchWithPreconnect = nativeFetch as FetchWithOptionalPreconnect;
   if (typeof nativeFetchWithPreconnect.preconnect === "function") {
     (bridgedFetch as FetchWithOptionalPreconnect).preconnect =
       nativeFetchWithPreconnect.preconnect.bind(nativeFetch);

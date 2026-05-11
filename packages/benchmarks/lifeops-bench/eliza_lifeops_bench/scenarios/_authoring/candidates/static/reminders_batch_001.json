@@ -1,0 +1,875 @@
+[
+  {
+    "id": "reminders.create_dentist_appointment_may15_10am",
+    "name": "Create reminder for dentist appointment on May 15 at 10\u202fam UTC",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Please set a reminder for my dentist appointment on 2026\u201105\u201115 at 10:00\u202fUTC.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Dentist appointment",
+          "details": {
+            "kind": "reminder",
+            "due": "2026-05-15T10:00:00Z",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "dentist",
+      "May 15"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Simple one\u2011time reminder creation with explicit due time."
+  },
+  {
+    "id": "reminders.snooze_team_meeting_followup_1day",
+    "name": "Snooze the 'Team meeting follow\u2011up' reminder by one day",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Snooze the 'Team meeting follow\u2011up' reminder (reminder_00001) for one day.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_SNOOZE",
+        "kwargs": {
+          "subaction": "snooze",
+          "target": "reminder_00001",
+          "title": "Team meeting follow\u2011up",
+          "minutes": 1440
+        }
+      }
+    ],
+    "required_outputs": [
+      "snooze",
+      "team"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Test snoozing a reminder by a fixed number of minutes."
+  },
+  {
+    "id": "reminders.complete_credit_card_bill",
+    "name": "Mark credit\u2011card bill reminder as complete",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Mark the 'Pay credit\u2011card bill' reminder (reminder_00002) as complete \u2014 I already paid it.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_COMPLETE",
+        "kwargs": {
+          "subaction": "complete",
+          "target": "reminder_00002",
+          "title": "Pay credit\u2011card bill"
+        }
+      }
+    ],
+    "required_outputs": [
+      "complete"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Complete an existing reminder."
+  },
+  {
+    "id": "reminders.review_overdue_all",
+    "name": "List all overdue reminders",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Show me every overdue reminder across all my lists.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_REVIEW",
+        "kwargs": {
+          "subaction": "review",
+          "intent": "list overdue reminders across all lists"
+        }
+      }
+    ],
+    "required_outputs": [
+      "overdue"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Read\u2011only review of overdue items without specifying a list."
+  },
+  {
+    "id": "reminders.create_weekly_gym_monday_18h",
+    "name": "Create weekly gym reminder on Monday evenings",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Add a weekly reminder for the gym on Mondays at 18:00 UTC, please.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Gym session",
+          "details": {
+            "kind": "reminder",
+            "cadence": "weekly",
+            "dayOfWeek": "Monday",
+            "timeOfDay": "18:00",
+            "listId": "list_work"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "gym",
+      "Monday"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Weekly on Mondays at 18:00 works.",
+      "applies_when": "agent asks about recurrence pattern"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Recurring reminder with weekly cadence and specific day/time."
+  },
+  {
+    "id": "reminders.create_project_deadline_may20_1700",
+    "name": "Create reminder for project deadline on May\u202f20\u202fat\u202f17:00",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Please set a reminder for the project deadline on 2026\u201105\u201120 at 17:00\u202fUTC and place it in my inbox list.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Project deadline",
+          "details": {
+            "kind": "reminder",
+            "due": "2026-05-20T17:00:00Z",
+            "listId": "list_inbox"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "project",
+      "deadline"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "One\u2011off reminder with explicit due date placed in a non\u2011default list."
+  },
+  {
+    "id": "reminders.snooze_call_mom_3days",
+    "name": "Snooze 'Call Mom' reminder for three days",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Snooze the 'Call Mom' reminder (reminder_00003) for three days; I\u2019ll be traveling.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_SNOOZE",
+        "kwargs": {
+          "subaction": "snooze",
+          "target": "reminder_00003",
+          "title": "Call Mom",
+          "minutes": 4320
+        }
+      }
+    ],
+    "required_outputs": [
+      "snooze",
+      "Mom"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Snooze a personal reminder by a multi\u2011day interval."
+  },
+  {
+    "id": "reminders.create_daily_water_intake_0900",
+    "name": "Create daily water\u2011intake reminder at 09:00",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Set a daily reminder to drink water at 09:00 UTC.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Drink water",
+          "details": {
+            "kind": "reminder",
+            "cadence": "daily",
+            "timeOfDay": "09:00",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "water",
+      "daily"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Every day at 09:00 works for me.",
+      "applies_when": "agent asks about cadence or time of day"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Recurring daily reminder with time of day only."
+  },
+  {
+    "id": "reminders.complete_buy_groceries",
+    "name": "Mark 'Buy groceries' reminder as complete",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Mark the 'Buy groceries' reminder (reminder_00004) complete.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_COMPLETE",
+        "kwargs": {
+          "subaction": "complete",
+          "target": "reminder_00004",
+          "title": "Buy groceries"
+        }
+      }
+    ],
+    "required_outputs": [
+      "complete"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Simple completion of a known reminder."
+  },
+  {
+    "id": "reminders.review_work_list",
+    "name": "List reminders in the work list",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Show me all reminders that are in my work list.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_REVIEW",
+        "kwargs": {
+          "subaction": "review",
+          "intent": "list reminders in list_work"
+        }
+      }
+    ],
+    "required_outputs": [
+      "work"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Read\u2011only review filtered by a specific reminder list."
+  },
+  {
+    "id": "reminders.create_monthly_report_deadline",
+    "name": "Create monthly report deadline reminder",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Add a reminder for the monthly report due on the last day of each month at 16:00 UTC, placed in the inbox list.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Monthly report deadline",
+          "details": {
+            "kind": "reminder",
+            "cadence": "monthly",
+            "dayOfMonth": "last",
+            "timeOfDay": "16:00",
+            "listId": "list_inbox"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "monthly",
+      "report"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Last day of each month at 16:00 is fine.",
+      "applies_when": "agent asks about day of month or time"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Recurring monthly reminder with special day specifier."
+  },
+  {
+    "id": "reminders.snooze_medication_refill_5days",
+    "name": "Snooze medication refill reminder for five days",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Snooze the 'Medication refill' reminder (reminder_00005) for five days.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_SNOOZE",
+        "kwargs": {
+          "subaction": "snooze",
+          "target": "reminder_00005",
+          "title": "Medication refill",
+          "minutes": 7200
+        }
+      }
+    ],
+    "required_outputs": [
+      "snooze",
+      "medication"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Snoozing a reminder by a multi\u2011day interval expressed in minutes."
+  },
+  {
+    "id": "reminders.create_annual_tax_due",
+    "name": "Create annual tax\u2011due reminder",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Set a reminder for filing taxes on 2026\u201104\u201115 at 09:00\u202fUTC and put it in the personal list.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "File taxes",
+          "details": {
+            "kind": "reminder",
+            "due": "2026-04-15T09:00:00Z",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "tax",
+      "April"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "One\u2011off reminder with past\u2011year date to test handling of past dates."
+  },
+  {
+    "id": "reminders.complete_annual_tax_due",
+    "name": "Mark tax\u2011due reminder as complete",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Mark the 'File taxes' reminder (reminder_00006) as complete \u2014 I already filed it.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_COMPLETE",
+        "kwargs": {
+          "subaction": "complete",
+          "target": "reminder_00006",
+          "title": "File taxes"
+        }
+      }
+    ],
+    "required_outputs": [
+      "complete"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Complete a reminder that was scheduled in the past."
+  },
+  {
+    "id": "reminders.create_birthday_reminder_june10",
+    "name": "Create birthday reminder for June\u202f10",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Add a reminder for my sister's birthday on 2026\u201106\u201110 at 00:00\u202fUTC, put it in the personal list.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Sister's birthday",
+          "details": {
+            "kind": "reminder",
+            "due": "2026-06-10T00:00:00Z",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "birthday",
+      "June"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "One\u2011off reminder for a birthday event."
+  },
+  {
+    "id": "reminders.snooze_birthday_reminder_2days",
+    "name": "Snooze birthday reminder by two days",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Snooze the 'Sister's birthday' reminder (reminder_00007) for two days.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_SNOOZE",
+        "kwargs": {
+          "subaction": "snooze",
+          "target": "reminder_00007",
+          "title": "Sister's birthday",
+          "minutes": 2880
+        }
+      }
+    ],
+    "required_outputs": [
+      "snooze",
+      "birthday"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Snoozing a future birthday reminder."
+  },
+  {
+    "id": "reminders.create_quarterly_review",
+    "name": "Create quarterly review reminder",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Add a reminder to do a quarterly business review on the first day of each quarter at 10:00\u202fUTC, put it in the work list.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Quarterly business review",
+          "details": {
+            "kind": "reminder",
+            "cadence": "quarterly",
+            "dayOfMonth": "1",
+            "timeOfDay": "10:00",
+            "listId": "list_work"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "quarterly",
+      "review"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "First day of each quarter at 10:00 is perfect.",
+      "applies_when": "agent asks about recurrence pattern"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Recurring quarterly reminder with date and time."
+  },
+  {
+    "id": "reminders.complete_quarterly_review",
+    "name": "Mark quarterly review reminder as complete",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Mark the 'Quarterly business review' reminder (reminder_00008) as complete \u2014 we just finished it.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_COMPLETE",
+        "kwargs": {
+          "subaction": "complete",
+          "target": "reminder_00008",
+          "title": "Quarterly business review"
+        }
+      }
+    ],
+    "required_outputs": [
+      "complete"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Complete a recurring reminder after its occurrence."
+  },
+  {
+    "id": "reminders.review_overdue_personal",
+    "name": "List overdue reminders in personal list",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Show me any overdue reminders in my personal list.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_REVIEW",
+        "kwargs": {
+          "subaction": "review",
+          "intent": "list overdue reminders in list_personal"
+        }
+      }
+    ],
+    "required_outputs": [
+      "overdue",
+      "personal"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Filtered overdue\u2011reminder review."
+  },
+  {
+    "id": "reminders.create_appointment_followup_30min",
+    "name": "Create follow\u2011up reminder 30\u202fminutes after appointment",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "After my doctor appointment on 2026\u201105\u201112 at 14:00\u202fUTC, set a reminder for me to call the clinic 30 minutes later.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Call clinic after appointment",
+          "details": {
+            "kind": "reminder",
+            "due": "2026-05-12T14:30:00Z",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "clinic",
+      "30"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Derived due time based on a prior event."
+  },
+  {
+    "id": "reminders.snooze_call_mom_1day",
+    "name": "Snooze 'Call Mom' reminder by one day",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Snooze the 'Call Mom' reminder (reminder_00009) for one day, lmk when it's done.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_SNOOZE",
+        "kwargs": {
+          "subaction": "snooze",
+          "target": "reminder_00009",
+          "title": "Call Mom",
+          "minutes": 1440
+        }
+      }
+    ],
+    "required_outputs": [
+      "snooze",
+      "Mom"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Simple snooze with a short confirmation request."
+  },
+  {
+    "id": "reminders.create_daily_stretch_0700",
+    "name": "Create daily stretch reminder at 07:00",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Add a daily reminder to stretch at 07:00 UTC because I want to start the day with movement.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Morning stretch",
+          "details": {
+            "kind": "reminder",
+            "cadence": "daily",
+            "timeOfDay": "07:00",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "stretch",
+      "daily"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Every day at 07:00 is great.",
+      "applies_when": "agent asks about cadence or time of day"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Recurring daily reminder for a health\u2011related habit."
+  },
+  {
+    "id": "reminders.complete_call_mom",
+    "name": "Mark 'Call Mom' reminder as complete",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Mark the 'Call Mom' reminder (reminder_00010) complete \u2014 I called her already.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_COMPLETE",
+        "kwargs": {
+          "subaction": "complete",
+          "target": "reminder_00010",
+          "title": "Call Mom"
+        }
+      }
+    ],
+    "required_outputs": [
+      "complete"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Simple completion of a personal reminder."
+  },
+  {
+    "id": "reminders.create_annual_vacation_plan",
+    "name": "Create annual vacation planning reminder",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Set a reminder to plan my vacation for the next year on 2026\u201112\u201101 at 10:00\u202fUTC, put it in the work list.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Plan next year's vacation",
+          "details": {
+            "kind": "reminder",
+            "due": "2026-12-01T10:00:00Z",
+            "listId": "list_work"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "vacation",
+      "December"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Future one\u2011off reminder placed in a non\u2011default list."
+  },
+  {
+    "id": "reminders.snooze_vacation_plan_2weeks",
+    "name": "Snooze vacation planning reminder by two weeks",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Snooze the 'Plan next year's vacation' reminder (reminder_00011) for two weeks.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_SNOOZE",
+        "kwargs": {
+          "subaction": "snooze",
+          "target": "reminder_00011",
+          "title": "Plan next year's vacation",
+          "minutes": 20160
+        }
+      }
+    ],
+    "required_outputs": [
+      "snooze",
+      "vacation"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Snoozing a future reminder by a multi\u2011week interval."
+  },
+  {
+    "id": "reminders.create_weekly_report_meeting",
+    "name": "Create weekly report\u2011meeting reminder",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Add a weekly reminder for the report meeting on Fridays at 15:00\u202fUTC in the work list.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Weekly report meeting",
+          "details": {
+            "kind": "reminder",
+            "cadence": "weekly",
+            "dayOfWeek": "Friday",
+            "timeOfDay": "15:00",
+            "listId": "list_work"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "weekly",
+      "report"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Friday at 15:00 each week works.",
+      "applies_when": "agent asks about recurrence pattern"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Recurring weekly reminder with specific weekday and time."
+  },
+  {
+    "id": "reminders.complete_weekly_report_meeting",
+    "name": "Mark weekly report\u2011meeting reminder as complete",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Mark the 'Weekly report meeting' reminder (reminder_00012) as complete \u2014 we just finished the call.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_COMPLETE",
+        "kwargs": {
+          "subaction": "complete",
+          "target": "reminder_00012",
+          "title": "Weekly report meeting"
+        }
+      }
+    ],
+    "required_outputs": [
+      "complete"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Completion of a recurring reminder after its occurrence."
+  },
+  {
+    "id": "reminders.review_all_lists",
+    "name": "List all reminders across all lists",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Give me a full list of every reminder I have, regardless of list.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_REVIEW",
+        "kwargs": {
+          "subaction": "review",
+          "intent": "list all reminders across all lists"
+        }
+      }
+    ],
+    "required_outputs": [
+      "reminders"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Comprehensive reminder enumeration."
+  },
+  {
+    "id": "reminders.create_annual_health_check",
+    "name": "Create annual health\u2011check reminder",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Set a yearly reminder for my health check on 2026\u201110\u201101 at 08:00\u202fUTC, placed in the personal list.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Annual health check",
+          "details": {
+            "kind": "reminder",
+            "cadence": "yearly",
+            "dayOfMonth": "1",
+            "month": "10",
+            "timeOfDay": "08:00",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "health",
+      "annual"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Yearly on October\u202f1st at 08:00 works.",
+      "applies_when": "agent asks about recurrence pattern"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Recurring yearly reminder with month and day."
+  },
+  {
+    "id": "reminders.snooze_annual_health_check_6months",
+    "name": "Snooze annual health\u2011check reminder by six months",
+    "domain": "reminders",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Snooze the 'Annual health check' reminder (reminder_00013) for six months.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_SNOOZE",
+        "kwargs": {
+          "subaction": "snooze",
+          "target": "reminder_00013",
+          "title": "Annual health check",
+          "minutes": 262800
+        }
+      }
+    ],
+    "required_outputs": [
+      "snooze",
+      "health"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Long\u2011duration snooze expressed in minutes."
+  }
+]

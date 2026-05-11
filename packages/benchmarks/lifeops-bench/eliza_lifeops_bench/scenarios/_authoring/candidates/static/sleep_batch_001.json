@@ -1,0 +1,958 @@
+[
+  {
+    "id": "sleep.set_daily_bedtime_1030pm",
+    "name": "Set daily bedtime reminder at 10:30pm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Please set a daily bedtime reminder for 10:30\u202fpm local time.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "intent": "set daily bedtime",
+          "title": "Bedtime",
+          "details": {
+            "kind": "alarm",
+            "cadence": "daily",
+            "timeOfDay": "22:30",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "bedtime",
+      "10:30"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Yes, every day. America/New_York time zone.",
+      "applies_when": "agent asks about cadence or time zone"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a recurring bedtime alarm via LIFE_CREATE."
+  },
+  {
+    "id": "sleep.set_oneoff_winddown_10pm",
+    "name": "Schedule a one\u2011off 30\u2011minute wind\u2011down at 10\u202fpm tonight",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Set a one\u2011off 30\u2011minute wind\u2011down session starting tonight at 10\u202fpm \u2014 no screens, lights low.",
+    "ground_truth_actions": [
+      {
+        "name": "SCHEDULED_TASK_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "reminder",
+          "promptInstructions": "Wind\u2011down: no screens, lights low, 30 minutes.",
+          "trigger": {
+            "kind": "once",
+            "atIso": "2026-05-10T22:00:00Z"
+          },
+          "priority": "medium",
+          "ownerVisible": true,
+          "source": "user_chat"
+        }
+      }
+    ],
+    "required_outputs": [
+      "wind\u2011down",
+      "30"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Just tonight, not recurring.",
+      "applies_when": "agent asks if it should recur"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "One\u2011off scheduled reminder for a wind\u2011down routine."
+  },
+  {
+    "id": "sleep.update_bedtime_to_11pm",
+    "name": "Change nightly bedtime to 11\u202fpm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Please move my bedtime alarm to 11\u202fpm every night.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_UPDATE",
+        "kwargs": {
+          "subaction": "update",
+          "kind": "definition",
+          "intent": "change bedtime time",
+          "title": "Bedtime",
+          "details": {
+            "timeOfDay": "23:00"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "bedtime",
+      "11\u202fpm"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Updates an existing bedtime alarm to a later hour."
+  },
+  {
+    "id": "sleep.skip_bedtime_tonight",
+    "name": "Skip tonight's bedtime alarm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Skip the bedtime alarm for tonight only.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_SKIP",
+        "kwargs": {
+          "subaction": "skip",
+          "kind": "definition",
+          "intent": "skip tonight",
+          "title": "Bedtime",
+          "details": {
+            "date": "2026-05-10"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "skip",
+      "tonight"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Temporarily disables the bedtime alarm for the current night."
+  },
+  {
+    "id": "sleep.create_morning_wakeup_0730",
+    "name": "Create a daily wake\u2011up alarm at 7:30\u202fam",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Set a recurring wake\u2011up alarm for 7:30\u202fam every weekday.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "intent": "set weekday wake\u2011up",
+          "title": "Wake\u2011up",
+          "details": {
+            "kind": "alarm",
+            "cadence": "weekly",
+            "daysOfWeek": [
+              "MO",
+              "TU",
+              "WE",
+              "TH",
+              "FR"
+            ],
+            "timeOfDay": "07:30",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "wake\u2011up",
+      "7:30"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Yes, only Monday through Friday.",
+      "applies_when": "agent asks which days"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Creates a weekday\u2011only recurring wake\u2011up alarm."
+  },
+  {
+    "id": "sleep.set_sleep_tracker_reminder",
+    "name": "Add a nightly sleep\u2011tracker reminder",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Remind me to log my sleep in the tracker every night at 11\u202fpm.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "intent": "nightly sleep\u2011tracker reminder",
+          "title": "Log Sleep",
+          "details": {
+            "kind": "reminder",
+            "cadence": "daily",
+            "timeOfDay": "23:00",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "log",
+      "sleep",
+      "11\u202fpm"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a daily reminder to record sleep data."
+  },
+  {
+    "id": "sleep.find_conflicts_with_winddown",
+    "name": "Find calendar events that conflict with wind\u2011down",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Search my primary calendar for any events that overlap my wind\u2011down window from 10\u202fpm to 10:30\u202fpm tonight.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "search_events",
+          "intent": "find conflicts with wind\u2011down",
+          "details": {
+            "windowStart": "2026-05-10T22:00:00Z",
+            "windowEnd": "2026-05-10T22:30:00Z",
+            "calendarId": "cal_primary"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "conflict",
+      "10\u202fpm"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Uses CALENDAR search to detect overlapping events."
+  },
+  {
+    "id": "sleep.set_weekend_relax_alarm",
+    "name": "Create a weekend relaxation alarm at 9\u202fpm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Create a relaxation alarm for Saturdays and Sundays at 9\u202fpm.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "intent": "weekend relaxation",
+          "title": "Relax",
+          "details": {
+            "kind": "alarm",
+            "cadence": "weekly",
+            "daysOfWeek": [
+              "SA",
+              "SU"
+            ],
+            "timeOfDay": "21:00",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "relax",
+      "9\u202fpm"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Only Saturday and Sunday.",
+      "applies_when": "agent asks which days"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Sets a weekend\u2011only recurring alarm."
+  },
+  {
+    "id": "sleep.create_morning_meditation_6am",
+    "name": "Schedule a daily morning meditation at 6\u202fam",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Please add a daily 15\u2011minute meditation reminder at 6\u202fam to start my day peacefully.",
+    "ground_truth_actions": [
+      {
+        "name": "SCHEDULED_TASK_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "reminder",
+          "promptInstructions": "Morning meditation \u2013 15 minutes.",
+          "trigger": {
+            "kind": "recurring",
+            "timeOfDay": "06:00",
+            "timezone": "UTC"
+          },
+          "priority": "low",
+          "ownerVisible": true,
+          "source": "user_chat"
+        }
+      }
+    ],
+    "required_outputs": [
+      "meditation",
+      "6\u202fam"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Creates a recurring morning meditation reminder."
+  },
+  {
+    "id": "sleep.adjust_winddown_duration",
+    "name": "Change wind\u2011down routine to 45 minutes",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Extend my wind\u2011down routine to 45 minutes instead of 30.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_UPDATE",
+        "kwargs": {
+          "subaction": "update",
+          "kind": "definition",
+          "intent": "extend wind\u2011down",
+          "title": "Wind\u2011down",
+          "details": {
+            "durationMinutes": 45
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "45",
+      "wind\u2011down"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Updates the duration of an existing wind\u2011down task."
+  },
+  {
+    "id": "sleep.delete_old_wake_up_alarm",
+    "name": "Delete an obsolete wake\u2011up alarm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Remove the old 6:30\u202fam wake\u2011up alarm that I no longer use.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_DELETE",
+        "kwargs": {
+          "subaction": "delete",
+          "kind": "definition",
+          "intent": "remove obsolete alarm",
+          "title": "Wake\u2011up",
+          "details": {
+            "timeOfDay": "06:30"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "6:30",
+      "deleted"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Deletes a specific alarm definition."
+  },
+  {
+    "id": "sleep.set_weekly_sleep_review",
+    "name": "Schedule a weekly sleep review reminder",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Create a reminder every Sunday at 4\u202fpm to review my sleep statistics for the past week.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "intent": "weekly sleep review",
+          "title": "Sleep Review",
+          "details": {
+            "kind": "reminder",
+            "cadence": "weekly",
+            "dayOfWeek": "SU",
+            "timeOfDay": "16:00",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "review",
+      "Sunday",
+      "4\u202fpm"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Sets a weekly reminder to look at sleep metrics."
+  },
+  {
+    "id": "sleep.find_upcoming_winddown",
+    "name": "List upcoming wind\u2011down sessions for the next 3 days",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Show me any wind\u2011down sessions scheduled for the next three days.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "search_events",
+          "intent": "list wind\u2011down sessions",
+          "details": {
+            "windowStart": "2026-05-10T12:00:00Z",
+            "windowEnd": "2026-05-13T12:00:00Z",
+            "titleContains": "Wind\u2011down"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "wind\u2011down"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Searches calendar for wind\u2011down events within a 3\u2011day window."
+  },
+  {
+    "id": "sleep.set_nap_reminder_2pm",
+    "name": "Add a daily nap reminder at 2\u202fpm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Remind me to take a short nap at 2\u202fpm each day.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "intent": "daily nap reminder",
+          "title": "Nap",
+          "details": {
+            "kind": "reminder",
+            "cadence": "daily",
+            "timeOfDay": "14:00",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "nap",
+      "2\u202fpm"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a daily nap reminder."
+  },
+  {
+    "id": "sleep.toggle_sleep_mode_off",
+    "name": "Disable sleep mode for tonight",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Turn off sleep mode for tonight only.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_SKIP",
+        "kwargs": {
+          "subaction": "skip",
+          "kind": "definition",
+          "intent": "disable sleep mode",
+          "title": "Sleep Mode",
+          "details": {
+            "date": "2026-05-10"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "sleep mode",
+      "off"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Temporarily disables the system sleep mode for a single night."
+  },
+  {
+    "id": "sleep.create_morning_stretch_7am",
+    "name": "Schedule a daily morning stretch at 7\u202fam",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Add a recurring reminder for a 10\u2011minute morning stretch at 7\u202fam.",
+    "ground_truth_actions": [
+      {
+        "name": "SCHEDULED_TASK_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "reminder",
+          "promptInstructions": "Morning stretch \u2013 10 minutes.",
+          "trigger": {
+            "kind": "recurring",
+            "timeOfDay": "07:00",
+            "timezone": "UTC"
+          },
+          "priority": "low",
+          "ownerVisible": true,
+          "source": "user_chat"
+        }
+      }
+    ],
+    "required_outputs": [
+      "stretch",
+      "7\u202fam"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Creates a recurring morning stretch reminder."
+  },
+  {
+    "id": "sleep.find_sleep_conflicts_today",
+    "name": "Find any calendar conflicts with bedtime tonight",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Search my work calendar for events that conflict with my bedtime at 10:30\u202fpm tonight.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "search_events",
+          "intent": "conflict with bedtime",
+          "details": {
+            "calendarId": "cal_work",
+            "windowStart": "2026-05-10T22:30:00Z",
+            "windowEnd": "2026-05-10T23:30:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "conflict",
+      "10:30"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Detects overlapping events on the work calendar."
+  },
+  {
+    "id": "sleep.set_weekly_sleep_goal",
+    "name": "Create a weekly sleep\u2011goal reminder",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Remind me every Monday at 9\u202fam to set my sleep goal for the week.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "intent": "weekly sleep\u2011goal reminder",
+          "title": "Sleep Goal",
+          "details": {
+            "kind": "reminder",
+            "cadence": "weekly",
+            "dayOfWeek": "MO",
+            "timeOfDay": "09:00",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "sleep goal",
+      "Monday",
+      "9\u202fam"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Sets a weekly reminder to define a sleep target."
+  },
+  {
+    "id": "sleep.create_evening_relaxation_30min",
+    "name": "Add a 30\u2011minute evening relaxation routine at 9:30\u202fpm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Schedule a 30\u2011minute relaxation session for every night starting at 9:30\u202fpm.",
+    "ground_truth_actions": [
+      {
+        "name": "SCHEDULED_TASK_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "reminder",
+          "promptInstructions": "Evening relaxation \u2013 30 minutes.",
+          "trigger": {
+            "kind": "recurring",
+            "timeOfDay": "21:30",
+            "timezone": "UTC"
+          },
+          "priority": "medium",
+          "ownerVisible": true,
+          "source": "user_chat"
+        }
+      }
+    ],
+    "required_outputs": [
+      "relaxation",
+      "9:30"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Creates a nightly relaxation reminder."
+  },
+  {
+    "id": "sleep.disable_night_light",
+    "name": "Turn off night\u2011light alarm for tomorrow",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Disable the night\u2011light alarm for tomorrow only.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_SKIP",
+        "kwargs": {
+          "subaction": "skip",
+          "kind": "definition",
+          "intent": "disable night\u2011light",
+          "title": "Night Light",
+          "details": {
+            "date": "2026-05-11"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "night\u2011light",
+      "disabled"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Temporarily disables a night\u2011light alarm."
+  },
+  {
+    "id": "sleep.update_winddown_start_time",
+    "name": "Shift wind\u2011down start to 9:45\u202fpm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Change my wind\u2011down routine to start at 9:45\u202fpm instead of 10\u202fpm.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_UPDATE",
+        "kwargs": {
+          "subaction": "update",
+          "kind": "definition",
+          "intent": "adjust wind\u2011down start",
+          "title": "Wind\u2011down",
+          "details": {
+            "preferredStartLocal": "21:45"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "9:45",
+      "wind\u2011down"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Updates the start time of the wind\u2011down routine."
+  },
+  {
+    "id": "sleep.create_weekend_sleep_review",
+    "name": "Add a Saturday sleep review reminder at 10\u202fam",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Schedule a reminder every Saturday at 10\u202fam to review my weekend sleep stats.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "intent": "weekend sleep review",
+          "title": "Sleep Review",
+          "details": {
+            "kind": "reminder",
+            "cadence": "weekly",
+            "dayOfWeek": "SA",
+            "timeOfDay": "10:00",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "Saturday",
+      "10\u202fam",
+      "review"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Sets a weekly Saturday reminder for sleep review."
+  },
+  {
+    "id": "sleep.find_upcoming_sleep_sessions",
+    "name": "List upcoming sleep\u2011related tasks for next 48 hours",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Show me any sleep\u2011related scheduled tasks I have in the next two days.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "search_events",
+          "intent": "list sleep tasks",
+          "details": {
+            "windowStart": "2026-05-10T12:00:00Z",
+            "windowEnd": "2026-05-12T12:00:00Z",
+            "titleContains": "Sleep"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "sleep"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Searches calendar for any events containing 'Sleep' in the next 48 hours."
+  },
+  {
+    "id": "sleep.set_evening_screen_off",
+    "name": "Add a reminder to turn off screens at 9\u202fpm",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Please remind me to turn off all screens at 9\u202fpm each night.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "intent": "screen off reminder",
+          "title": "Screen Off",
+          "details": {
+            "kind": "reminder",
+            "cadence": "daily",
+            "timeOfDay": "21:00",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "screen",
+      "9\u202fpm"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a nightly reminder to power down screens."
+  },
+  {
+    "id": "sleep.update_nap_duration",
+    "name": "Change daily nap length to 20 minutes",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Adjust my daily nap reminder to be 20 minutes instead of 30.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_UPDATE",
+        "kwargs": {
+          "subaction": "update",
+          "kind": "definition",
+          "intent": "modify nap duration",
+          "title": "Nap",
+          "details": {
+            "durationMinutes": 20
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "20",
+      "nap"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Updates the duration field of an existing nap reminder."
+  },
+  {
+    "id": "sleep.schedule_morning_journal_6am",
+    "name": "Create a daily morning journal reminder at 6\u202fam",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Add a reminder each morning at 6\u202fam to write a quick sleep journal.",
+    "ground_truth_actions": [
+      {
+        "name": "SCHEDULED_TASK_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "reminder",
+          "promptInstructions": "Morning sleep journal \u2013 brief notes.",
+          "trigger": {
+            "kind": "recurring",
+            "timeOfDay": "06:00",
+            "timezone": "UTC"
+          },
+          "priority": "low",
+          "ownerVisible": true,
+          "source": "user_chat"
+        }
+      }
+    ],
+    "required_outputs": [
+      "journal",
+      "6\u202fam"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Schedules a recurring reminder to record sleep notes."
+  },
+  {
+    "id": "sleep.find_conflict_with_nap",
+    "name": "Detect calendar conflicts with my 2\u202fpm nap",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Search my primary calendar for any events that clash with my daily nap at 2\u202fpm.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "search_events",
+          "intent": "nap conflict check",
+          "details": {
+            "calendarId": "cal_primary",
+            "windowStart": "2026-05-10T14:00:00Z",
+            "windowEnd": "2026-05-10T14:30:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "conflict",
+      "2\u202fpm"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Uses calendar search to verify nap time availability."
+  },
+  {
+    "id": "sleep.create_weekly_sleep_summary_email",
+    "name": "Schedule a weekly email with sleep summary",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Every Friday at 5\u202fpm, send me an email summarizing my sleep data for the week.",
+    "ground_truth_actions": [
+      {
+        "name": "SCHEDULED_TASK_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "email",
+          "promptInstructions": "Weekly sleep summary email.",
+          "trigger": {
+            "kind": "recurring",
+            "dayOfWeek": "FR",
+            "timeOfDay": "17:00",
+            "timezone": "UTC"
+          },
+          "priority": "high",
+          "ownerVisible": true,
+          "source": "user_chat"
+        }
+      }
+    ],
+    "required_outputs": [
+      "email",
+      "Friday",
+      "5\u202fpm"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 7,
+    "description": "Creates a recurring email task to deliver weekly sleep metrics."
+  },
+  {
+    "id": "sleep.set_sleep_coaching_session",
+    "name": "Add a one\u2011off sleep coaching session at 3\u202fpm tomorrow",
+    "domain": "sleep",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Schedule a 45\u2011minute sleep coaching call for tomorrow at 3\u202fpm.",
+    "ground_truth_actions": [
+      {
+        "name": "SCHEDULED_TASK_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "call",
+          "promptInstructions": "Sleep coaching call \u2013 45 minutes.",
+          "trigger": {
+            "kind": "once",
+            "atIso": "2026-05-11T15:00:00Z"
+          },
+          "priority": "high",
+          "ownerVisible": true,
+          "source": "user_chat"
+        }
+      }
+    ],
+    "required_outputs": [
+      "coaching",
+      "3\u202fpm"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Yes, 45 minutes is fine.",
+      "applies_when": "agent asks about duration"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Creates a one\u2011off call task for sleep coaching."
+  }
+]

@@ -1,13 +1,11 @@
 /**
- * Native training CLI for Eliza-native trajectory data.
+ * Training CLI for Eliza-native trajectory data.
  *
  * Usage:
  *   bun run train -- --backend native --dataset <path> \
  *       [--task {should_respond|context_routing|action_planner|response|media_description}]
  *
- * The native backend consumes `eliza_native_v1` model-boundary JSONL rows and
- * runs the prompt optimizer (instruction-search / prompt-evolution /
- * bootstrap-fewshot), persisting an optimized-prompt artifact.
+ * Consumes `eliza_native_v1` model-boundary JSONL rows.
  */
 
 import { parseArgs } from "node:util";
@@ -110,116 +108,100 @@ export async function runTrainCli(argv: string[]): Promise<number> {
     return 0;
   }
 
-  const optimizer = parsed.optimizer ?? "instruction-search";
-  const task: TrajectoryTrainingTask = parsed.task ?? "should_respond";
-  const baselinePrompt = await loadBaselinePrompt(parsed);
-  // Pick the adapter:
-  //   - When TRAIN_MODEL_PROVIDER=cerebras (or TRAINING_PROVIDER), route
-  //     scoring + variant generation through the real Cerebras gpt-oss-120b
-  //     client (cerebras-eval-model.ts).
-  //   - Otherwise fall back to the deterministic stub that echoes the user
-  //     prompt — useful as a smoke test of the optimizer plumbing without an
-  //     LLM provider.
-  const trainProvider =
-    process.env.TRAIN_MODEL_PROVIDER?.trim() ??
-    process.env.TRAINING_PROVIDER?.trim();
-  let adapter: {
-    complete: (input: {
-      system?: string;
-      user: string;
-      temperature?: number;
-      maxTokens?: number;
-    }) => Promise<string>;
-  };
-  let useModel: (input: {
-    prompt: string;
-    temperature?: number;
-    maxTokens?: number;
-  }) => Promise<string>;
-  if (trainProvider === "cerebras") {
-    const { getTrainingUseModelAdapter } = await import(
-      "../core/cerebras-eval-model.js"
-    );
-    useModel = getTrainingUseModelAdapter();
-    adapter = {
-      async complete(input) {
-        const prompt = input.system
-          ? `${input.system}\n\n${input.user}`
-          : input.user;
-        return await useModel({
-          prompt,
-          temperature: input.temperature,
-          maxTokens: input.maxTokens,
-        });
-      },
-    };
-    console.log(
-      "[train] adapter: cerebras gpt-oss-120b (TRAIN_MODEL_PROVIDER=cerebras)",
-    );
-  } else {
-    adapter = {
-      async complete(input) {
-        return input.user;
-      },
-    };
-    useModel = async () => "";
-    console.log(
-      "[train] adapter: stub (echoes user prompt). Set TRAIN_MODEL_PROVIDER=cerebras for real scoring.",
-    );
-  }
-  const result = await runNativeBackend({
-    datasetPath: parsed.dataset,
-    task,
-    optimizer,
-    baselinePrompt,
-    datasetId: parsed.dataset,
-    runtime: { useModel },
-    adapter,
-  });
-  for (const note of result.notes) console.log(`[train] ${note}`);
-  if (!result.invoked) return 1;
-  console.log(
-    `[train] native ${optimizer} task=${task} dataset=${result.datasetSize} ` +
-      `baseline=${result.baselineScore.toFixed(3)} optimized=${result.score.toFixed(3)}`,
-  );
+  switch (parsed.backend) {
+    case "native": {
+      const optimizer = parsed.optimizer ?? "instruction-search";
+      const task: TrajectoryTrainingTask = parsed.task ?? "should_respond";
+      const baselinePrompt = await loadBaselinePrompt(parsed);
+      // Pick the adapter:
+      //   - When TRAIN_MODEL_PROVIDER=cerebras (or TRAINING_PROVIDER), route
+      //     scoring + variant generation through the real Cerebras
+      //     gpt-oss-120b client (lifeops-eval-model.ts). This is the path
+      //     `bun run lifeops:optimize` exercises against captured
+      //     trajectories.
+      //   - Otherwise fall back to the deterministic stub that echoes the
+      //     user prompt — useful as a smoke test of the optimizer
+      //     plumbing without an LLM provider.
+      const trainProvider =
+        process.env.TRAIN_MODEL_PROVIDER?.trim() ??
+        process.env.TRAINING_PROVIDER?.trim();
+      let adapter: {
+        complete: (input: {
+          system?: string;
+          user: string;
+          temperature?: number;
+          maxTokens?: number;
+        }) => Promise<string>;
+      };
+      let useModel: (input: {
+        prompt: string;
+        temperature?: number;
+        maxTokens?: number;
+      }) => Promise<string>;
+      if (trainProvider === "cerebras") {
+        const helperPath =
+          "../../../app-lifeops/test/helpers/lifeops-eval-model.ts";
+        const { getTrainingUseModelAdapter } = (await import(
+          helperPath
+        )) as typeof import("../../../app-lifeops/test/helpers/lifeops-eval-model.ts");
+        useModel = getTrainingUseModelAdapter();
+        adapter = {
+          async complete(input) {
+            const prompt = input.system
+              ? `${input.system}\n\n${input.user}`
+              : input.user;
+            return await useModel({
+              prompt,
+              temperature: input.temperature,
+              maxTokens: input.maxTokens,
+            });
+          },
+        };
+        console.log(
+          "[train] adapter: cerebras gpt-oss-120b (TRAIN_MODEL_PROVIDER=cerebras)",
+        );
+      } else {
+        adapter = {
+          async complete(input) {
+            return input.user;
+          },
+        };
+        useModel = async () => "";
+        console.log(
+          "[train] adapter: stub (echoes user prompt). Set TRAIN_MODEL_PROVIDER=cerebras for real scoring.",
+        );
+      }
+      const result = await runNativeBackend({
+        datasetPath: parsed.dataset,
+        task,
+        optimizer,
+        baselinePrompt,
+        datasetId: parsed.dataset,
+        runtime: { useModel },
+        adapter,
+      });
+      for (const note of result.notes) console.log(`[train] ${note}`);
+      if (!result.invoked) return 1;
+      console.log(
+        `[train] native ${optimizer} task=${task} dataset=${result.datasetSize} ` +
+          `baseline=${result.baselineScore.toFixed(3)} optimized=${result.score.toFixed(3)}`,
+      );
 
-  // Persist the optimized prompt + lineage so the operator can inspect and
-  // deploy it. Mirrors the live trigger path that lands artifacts in
-  // ~/.milady/optimized-prompts/<task>/.
-  const path = await import("node:path");
-  const fs = await import("node:fs/promises");
-  const os = await import("node:os");
-  // Match the runtime OptimizedPromptService precedence
-  // (`ELIZA_STATE_DIR` → `~/.eliza`). Honour `MILADY_STATE_DIR` first for
-  // operators that point both at the same dir; else default to `~/.eliza` so
-  // the artifact is automatically picked up by the production runtime without
-  // an extra copy step.
-  const stateDir =
-    process.env.MILADY_STATE_DIR?.trim() ||
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    path.join(os.homedir(), ".eliza");
-  const artifactDir = path.join(stateDir, "optimized-prompts", task);
-  await fs.mkdir(artifactDir, { recursive: true });
-  // generatedAt must be a valid ISO timestamp (`Date.parse`-able). Don't
-  // hyphen-quote the colons — the OptimizedPromptService at
-  // `core/src/services/optimized-prompt.ts:345` uses `Date.parse` to pick the
-  // most recent artifact and silently drops files whose generatedAt doesn't
-  // parse. The filename uses a sanitized variant.
-  const stamp = new Date().toISOString();
-  const stampForFilename = stamp.replace(/[:.]/g, "-");
-  const artifactPath = path.join(
-    artifactDir,
-    `${optimizer}-${stampForFilename}.json`,
-  );
-  // Schema must match `OptimizedPromptArtifact` in
-  // `packages/core/src/services/optimized-prompt.ts:82`. Fields the service
-  // reads strictly: { task, optimizer, baseline, prompt, score, baselineScore,
-  // datasetId, datasetSize, generatedAt, lineage[] }. Don't rename them or the
-  // service drops the artifact with a "failed strict parse" warning.
-  await fs.writeFile(
-    artifactPath,
-    JSON.stringify(
-      {
+      // Persist the optimized prompt + lineage so the operator can inspect
+      // and deploy it. Routed through `OptimizedPromptService.setPrompt` so
+      // the on-disk versioning (`vN.json` + `current`/`previous` symlinks)
+      // matches what the runtime trigger service writes. Keeps `rollback`
+      // working regardless of which write path produced the artifact.
+      const path = await import("node:path");
+      const os = await import("node:os");
+      const { OptimizedPromptService } = await import("@elizaos/core");
+      const stateDir =
+        process.env.MILADY_STATE_DIR?.trim() ||
+        process.env.ELIZA_STATE_DIR?.trim() ||
+        path.join(os.homedir(), ".eliza");
+      const service = new OptimizedPromptService();
+      service.setStoreRoot(path.join(stateDir, "optimized-prompts"));
+      const artifactPath = await service.setPrompt(task, {
         task,
         optimizer,
         baseline: baselinePrompt,
@@ -228,24 +210,22 @@ export async function runTrainCli(argv: string[]): Promise<number> {
         score: result.score,
         datasetSize: result.datasetSize,
         datasetId: parsed.dataset,
-        generatedAt: stamp,
+        generatedAt: new Date().toISOString(),
         lineage: result.result.lineage,
         // Carry few-shot demonstrations through to the runtime so
         // OptimizedPromptService.parseOptimizedPromptArtifact picks them up.
-        // bootstrap-fewshot returns these; instruction-search /
-        // prompt-evolution may carry them through if they consume a
-        // fewshot-bootstrapped seed. Always persist when present.
         ...(result.result.fewShotExamples
           ? { fewShotExamples: result.result.fewShotExamples }
           : {}),
-      },
-      null,
-      2,
-    ) + "\n",
-    "utf-8",
-  );
-  console.log(`[train] artifact: ${artifactPath}`);
-  return 0;
+      });
+      console.log(`[train] artifact: ${artifactPath}`);
+      return 0;
+    }
+    default: {
+      // Unreachable thanks to the ALLOWED_BACKENDS guard above.
+      throw new Error(`Unknown backend: ${parsed.backend}`);
+    }
+  }
 }
 
 async function loadBaselinePrompt(args: ParsedTrainArgs): Promise<string> {

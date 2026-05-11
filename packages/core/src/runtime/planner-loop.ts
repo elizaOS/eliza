@@ -2130,6 +2130,29 @@ let cachedDiskOptimizedPlannerLoaded = false;
 function loadOptimizedPlannerFromDisk(): string | null {
 	const dir = join(resolveStateDir(), "optimized-prompts", "action_planner");
 	if (!existsSync(dir)) return null;
+
+	// Preferred path: read via the `current` symlink that
+	// `OptimizedPromptService.setPrompt` / `rollback` maintain. This is the
+	// authoritative live artifact.
+	const currentPath = join(dir, "current");
+	if (existsSync(currentPath)) {
+		try {
+			const raw = readFileSync(currentPath, "utf-8");
+			const parsed = JSON.parse(raw) as {
+				task?: string;
+				prompt?: string;
+			};
+			if (
+				parsed.task === "action_planner" &&
+				typeof parsed.prompt === "string"
+			) {
+				return parsed.prompt;
+			}
+		} catch {}
+	}
+
+	// Fallback: legacy / pre-symlink stores. Pick the newest artifact by
+	// mtime so we still find something when `current` is missing.
 	const entries = readdirSync(dir)
 		.filter((f) => f.endsWith(".json"))
 		.map((f) => ({

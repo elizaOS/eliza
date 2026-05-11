@@ -1,27 +1,31 @@
-"""Render Eliza-1 ChatML training examples for Qwen chat-template training.
+"""Render Eliza-1 training rows for Qwen chat-template training.
 
-Two-layer model (see `packages/training/docs/dataset/CANONICAL_RECORD.md`):
+The primary input is `eliza_native_v1`: one row per Vercel AI SDK model
+boundary with the exact request sent to the provider and the exact normalized
+response received from the provider. The renderer appends the response as the
+supervised assistant turn and passes native tools through to the tokenizer chat
+template when the tokenizer supports tool rendering.
 
-1. Canonical corpus record = `eliza_native_v1` — one row per Vercel AI SDK
-   model boundary, carrying the exact request sent to the provider and the
-   exact normalized response received. This is the durable, versioned,
-   privacy-filtered artifact.
-2. Rendered training example = ChatML `{messages, tools}` row — an *ephemeral*
-   derivation produced here at train time and fed straight into
-   `tokenizer.apply_chat_template`. Never persisted as a primary artifact.
+Compatibility inputs are accepted so local and Vast runs can consume the
+existing root `train.jsonl` / `val.jsonl` / `test.jsonl` handoff:
 
-`format_record` turns layer-1 into layer-2: it appends the recorded response as
-the supervised assistant turn and passes native tool specs through to the
-tokenizer's tool-rendering template.
+* trainable `eliza.eliza1_trajectory_record.v1` message rows,
+* already-rendered chat-message rows with a final assistant turn,
+* legacy flat `ElizaRecord` rows emitted by `pack_dataset.py`.
 
-Legacy/compat inputs are still accepted so existing handoff files keep loading,
-but no new dataset should target them:
+Auxiliary repair/eval rows are intentionally rejected.
 
-* trainable `eliza.eliza1_trajectory_record.v1` / pre-rendered ChatML message
-  rows with a final assistant turn (the derived layer-2 shape, persisted),
-* the DEPRECATED flat `ElizaRecord` rows emitted by `pack_dataset.py`.
-
-Auxiliary repair/eval rows are intentionally rejected by every path.
+Privacy contract
+----------------
+Every record emitted from `format_record` is passed through the canonical
+Python port of the app-training privacy filter
+(`privacy_filter_trajectories.redact_value`) before it leaves this module.
+The filter is loaded at import time; if the import or pattern compile fails,
+the script errors out rather than silently writing unfiltered data. See
+`packages/training/AGENTS.md` and the repo-wide CLAUDE.md privacy clause —
+the database stores raw user data intentionally; redaction lives on the
+outbound (export / training / HF publish) path, and this module is one of
+the load-bearing barriers.
 """
 
 from __future__ import annotations
@@ -36,6 +40,29 @@ ROOT = Path(__file__).resolve().parent.parent
 PROMPT_REGISTRY = ROOT / "data" / "prompts" / "registry.json"
 
 NATIVE_FORMAT = "eliza_native_v1"
+
+# Mandatory privacy filter — every record must pass through this before
+# JSONL write. Importing eagerly means a broken filter aborts the script;
+# there is no bypass path.
+from privacy_filter_trajectories import (  # noqa: E402
+    PrivacyFilterError,
+    redact_value as _redact_value,
+)
+
+# Force pattern compile at import time so any failure surfaces here, not
+# at first record. `_inline_patterns()` raises `PrivacyFilterError` on
+# empty/failed compile; let it propagate.
+from privacy_filter_trajectories import _inline_patterns as _compile_inline_patterns  # noqa: E402
+
+try:
+    _compile_inline_patterns()
+except PrivacyFilterError:
+    raise
+except Exception as exc:  # pragma: no cover - safety net for unexpected errors
+    raise PrivacyFilterError(
+        f"format_for_training: failed to compile privacy filter patterns: {exc}"
+    ) from exc
+
 NATIVE_BOUNDARIES = {"vercel_ai_sdk.generateText", "vercel_ai_sdk.streamText"}
 ELIZA1_TRAJECTORY_RECORD_SCHEMA = "eliza.eliza1_trajectory_record.v1"
 TRAINABLE_SPLITS = {"train", "val", "validation", "test"}
@@ -413,18 +440,24 @@ def _format_legacy_flat_record(record: dict[str, Any]) -> dict[str, Any] | None:
 def format_record(record: dict[str, Any]) -> dict[str, Any] | None:
     """Return a row ready for tokenizer.apply_chat_template, or None.
 
-    Dispatch order is significant: only the first shape is canonical, the rest
-    are legacy/derived fallbacks kept so existing handoff files keep loading.
+    The returned row is run through the privacy filter before it leaves this
+    function. Callers must NOT bypass `format_record` to write training
+    rows; this is the single chokepoint that guarantees redaction.
     """
 
     if _is_auxiliary_record(record):
         return None
 
-    return (
-        # CANONICAL: eliza_native_v1 corpus record (the model-boundary row).
+    formatted = (
         _format_native_record(record)
-        # DERIVED: pre-rendered ChatML / eliza1_trajectory_record.v1 SFT rows.
         or _format_messages_record(record)
-        # DEPRECATED: flat ElizaRecord intermediate from normalize.py/pack_dataset.py.
         or _format_legacy_flat_record(record)
     )
+    if formatted is None:
+        return None
+    redacted = _redact_value(formatted)
+    if not isinstance(redacted, dict):
+        raise PrivacyFilterError(
+            "privacy filter returned non-dict for formatted record"
+        )
+    return redacted

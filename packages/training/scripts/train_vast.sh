@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 # Provision a Vast.ai GPU instance, sync the training tree, and run a
-# full-parameter SFT with APOLLO on a Qwen3.5/3.6 model.
+# full-parameter SFT (APOLLO), DPO warmup, or GRPO RL pipeline on a
+# Qwen3.5/3.6 model.
+#
+# Pipeline selection (--pipeline sft|dpo|grpo, default sft):
+#   sft   — run train_local.py with APOLLO + Liger + FSDP (the historical
+#           default; ALL GPU/cost projections below are for SFT).
+#   dpo   — run train_dpo.py against an existing SFT checkpoint. Needs
+#           DPO_SFT_CHECKPOINT pointing at the local final/ dir to seed.
+#   grpo  — run train_grpo_verl.sh against an existing SFT+DPO checkpoint.
+#           Needs DPO_CHECKPOINT pointing at the local SFT+DPO final/.
+#           Allocates 2/4/8× H200 (or B200 fallback) per RL_STRATEGY.md.
 #
 # Same UX as scripts/train_nebius.sh — same subcommand set, same result —
 # but on Vast.ai because 1×/2× RTX PRO 6000 Blackwell on Vast is meaningfully
@@ -97,20 +107,26 @@
 #   bash scripts/train_vast.sh search                           # list matching offers (read-only)
 #   bash scripts/train_vast.sh provision                        # spin up the instance
 #   bash scripts/train_vast.sh sync                             # rsync training/ to instance
-#   bash scripts/train_vast.sh run                              # remote: launch training
-#   bash scripts/train_vast.sh quantize                         # remote: run QUANTIZE_AFTER list
+#   bash scripts/train_vast.sh run                              # remote: launch training (pipeline-aware)
+#   bash scripts/train_vast.sh quantize                         # remote: run QUANTIZE_AFTER list (SFT only)
 #   bash scripts/train_vast.sh bench                            # remote: base + fine-tuned bench
 #   bash scripts/train_vast.sh fetch                            # rsync checkpoints + benchmarks back
-#   bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-9b --epochs 1 [--bootstrap rsync|hf]
+#   bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-9b --epochs 1 [--bootstrap rsync|hf] [--pipeline sft|dpo|grpo] [--dry-run]
 #                                                               # provision + sync (or HF download) + run in one shot
 #   bash scripts/train_vast.sh bootstrap-from-hf [--data-repo elizaos/eliza-1-training] \
 #                                                [--pipeline-repo elizaos/eliza-1-pipeline]
 #                                                               # remote: pull pipeline + dataset from HF (no local rsync)
-#   bash scripts/train_vast.sh status                           # instance id, GPU, uptime, current step, ETA
+#   bash scripts/train_vast.sh status                           # instance id, pipeline type, GPU, uptime, current step, ETA
 #   bash scripts/train_vast.sh pull-checkpoints [--latest-only] # rsync checkpoint-* dirs back
 #   bash scripts/train_vast.sh tail-logs                        # stream remote training stdout/stderr
 #   bash scripts/train_vast.sh kill-and-teardown --yes          # graceful SIGTERM then destroy
 #   bash scripts/train_vast.sh teardown --yes                   # destroy the instance immediately
+#
+# Pipeline-specific examples (--pipeline / PIPELINE env defaults to sft):
+#   bash scripts/train_vast.sh --pipeline grpo provision-and-train \
+#       --registry-key qwen3.5-2b --dry-run
+#   PIPELINE=grpo DPO_CHECKPOINT=checkpoints/qwen3-5-9b-dpo/final \
+#       bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-9b
 #
 # Or `bash scripts/train_vast.sh full` for the whole flow.
 #
@@ -122,6 +138,10 @@
 #   MILADY_VAST_DISK_GB           # default 200; aliases VAST_DISK_GB.
 #   MILADY_VAST_INSTANCE_ID       # set after provision; aliases VAST_INSTANCE_ID.
 #                                   Persisted to .vast_instance_id in repo root.
+#   MILADY_VAST_MAX_USD           # per-job soft budget cap in USD. Crossing it
+#                                   triggers a warn event from the watcher.
+#                                   The hard cap (auto-teardown) is 1.5× this
+#                                   value. Unset => no enforcement.
 
 set -euo pipefail
 
@@ -174,35 +194,116 @@ if [ -n "${MILADY_VAST_GPU_PREFERENCE:-}" ] && [ -z "${VAST_GPU_TARGET:-}" ]; th
   fi
 fi
 
-REGISTRY_KEY="${REGISTRY_KEY:-qwen3.6-27b}"
-RUN_NAME="${RUN_NAME:-${REGISTRY_KEY//./-}-apollo}"
+# Pre-scan $@ for --pipeline and --registry-key BEFORE the defaults block
+# below resolves DEFAULT_GPU_TARGET / DEFAULT_FSDP_WORLD_SIZE. We don't
+# consume the args here — the per-subcommand parsers still see them — so
+# both CLI flags and the env-var equivalents (PIPELINE / REGISTRY_KEY)
+# stay in sync. DRY_RUN is also picked up here for the same reason.
+DRY_RUN=0
+_seen_pipeline=""
+_seen_registry_key=""
+_prev=""
+for _arg in "$@"; do
+  case "$_prev" in
+    --pipeline)     _seen_pipeline="$_arg" ;;
+    --registry-key) _seen_registry_key="$_arg" ;;
+  esac
+  case "$_arg" in
+    --pipeline=*)     _seen_pipeline="${_arg#*=}" ;;
+    --registry-key=*) _seen_registry_key="${_arg#*=}" ;;
+    --dry-run)        DRY_RUN=1 ;;
+  esac
+  _prev="$_arg"
+done
+unset _prev _arg
+if [ -n "$_seen_pipeline" ]; then
+  PIPELINE="$_seen_pipeline"
+fi
+if [ -n "$_seen_registry_key" ]; then
+  REGISTRY_KEY="$_seen_registry_key"
+fi
+unset _seen_pipeline _seen_registry_key
 
-# Auto-pick the GPU target and FSDP world size from REGISTRY_KEY. The 2B
-# and 9B sizes only need a single 96 GB Blackwell; 27B needs a 2× B200
-# instance because the registry's 190 GB train budget leaves only 1%
-# headroom on a 192 GB Blackwell-2x cluster (one activation spike OOMs
-# the run). Override either by setting VAST_GPU_TARGET / FSDP_WORLD_SIZE.
-case "$REGISTRY_KEY" in
-  qwen3.5-2b|qwen3.5-9b)
-    DEFAULT_GPU_TARGET="blackwell6000-1x"
-    DEFAULT_FSDP_WORLD_SIZE=1
+REGISTRY_KEY="${REGISTRY_KEY:-qwen3.6-27b}"
+# PIPELINE selects which training stage the launcher drives end-to-end on the
+# remote box. Default = SFT (the historical behaviour); --pipeline dpo|grpo
+# overrides via the CLI pre-scan above or via the PIPELINE env var.
+PIPELINE="${PIPELINE:-sft}"
+
+# Auto-pick the GPU target and FSDP world size from (PIPELINE, REGISTRY_KEY).
+# SFT defaults (cheapest fit for full-parameter Liger+APOLLO):
+#   2B/9B → blackwell6000-1x (96 GB)
+#   27B   → b200-2x          (366 GB — 192 GB blackwell-2x is too tight)
+# GRPO defaults (verl splits actor train + rollout across the device pool;
+# per RL_STRATEGY.md hardware budgets):
+#   2B  → h200-2x  (1 train + 1 rollout)
+#   9B  → h200-4x  (1 train + 3 rollout shards)
+#   27B → h200-8x  (4 train + 4 rollout)
+# DPO defaults use the same SFT targets — DPO is forward+backward over the
+# preference pairs, no rollout, so it fits in the SFT memory budget.
+case "$PIPELINE" in
+  sft|dpo)
+    case "$REGISTRY_KEY" in
+      qwen3.5-2b|qwen3.5-9b)
+        DEFAULT_GPU_TARGET="blackwell6000-1x"
+        DEFAULT_FSDP_WORLD_SIZE=1
+        ;;
+      qwen3.6-27b)
+        DEFAULT_GPU_TARGET="b200-2x"
+        DEFAULT_FSDP_WORLD_SIZE=2
+        ;;
+      *)
+        DEFAULT_GPU_TARGET="blackwell6000-2x"
+        DEFAULT_FSDP_WORLD_SIZE=2
+        ;;
+    esac
     ;;
-  qwen3.6-27b)
-    DEFAULT_GPU_TARGET="b200-2x"
-    DEFAULT_FSDP_WORLD_SIZE=2
+  grpo)
+    case "$REGISTRY_KEY" in
+      qwen3.5-2b)
+        DEFAULT_GPU_TARGET="h200-2x"
+        DEFAULT_FSDP_WORLD_SIZE=2
+        ;;
+      qwen3.5-9b)
+        DEFAULT_GPU_TARGET="h200-4x"
+        DEFAULT_FSDP_WORLD_SIZE=4
+        ;;
+      qwen3.6-27b)
+        DEFAULT_GPU_TARGET="h200-8x"
+        DEFAULT_FSDP_WORLD_SIZE=8
+        ;;
+      *)
+        DEFAULT_GPU_TARGET="h200-4x"
+        DEFAULT_FSDP_WORLD_SIZE=4
+        ;;
+    esac
     ;;
   *)
-    DEFAULT_GPU_TARGET="blackwell6000-2x"
-    DEFAULT_FSDP_WORLD_SIZE=2
+    log_err "unknown PIPELINE=$PIPELINE (must be sft|dpo|grpo)"
+    exit 2
     ;;
 esac
 
 VAST_GPU_TARGET="${VAST_GPU_TARGET:-$DEFAULT_GPU_TARGET}"
-# If VAST_GPU_TARGET ends in -1x, force a single-process launch even if
-# the user forgot to update FSDP_WORLD_SIZE.
+# Parse FSDP world size from the resolved GPU target's -Nx suffix so an
+# operator override of VAST_GPU_TARGET stays consistent with FSDP_WORLD_SIZE
+# without a second env var.
 case "$VAST_GPU_TARGET" in
   *-1x) FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-1}" ;;
+  *-2x) FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-2}" ;;
+  *-4x) FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-4}" ;;
+  *-8x) FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-8}" ;;
   *)    FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-$DEFAULT_FSDP_WORLD_SIZE}" ;;
+esac
+
+case "$PIPELINE" in
+  # Preserve the legacy SFT run-name suffix so existing checkpoint dirs
+  # and HF publish targets that hardcode `${REGISTRY_KEY//./-}-apollo`
+  # keep resolving. DPO and GRPO get the pipeline-named suffix since
+  # they're new surfaces.
+  sft)  RUN_NAME="${RUN_NAME:-${REGISTRY_KEY//./-}-apollo}" ;;
+  dpo)  RUN_NAME="${RUN_NAME:-${REGISTRY_KEY//./-}-dpo}" ;;
+  grpo) RUN_NAME="${RUN_NAME:-${REGISTRY_KEY//./-}-grpo}" ;;
 esac
 
 VAST_INSTANCE_LABEL="${VAST_INSTANCE_LABEL:-milady-train-vast-${REGISTRY_KEY//./-}}"
@@ -233,6 +334,10 @@ fi
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519.pub}"
 REMOTE_TRAIN_DIR="/workspace/training"
 INSTANCE_ID_FILE="$ROOT/.vast_instance_id"
+# Sidecar to .vast_instance_id storing the pipeline type so `status` and
+# every subsequent subcommand can recover which pipeline was provisioned
+# (sft|dpo|grpo) without having to re-pass --pipeline on each invocation.
+PIPELINE_TYPE_FILE="$ROOT/.vast_pipeline_type"
 
 # `vastai` reads VAST_API_KEY from the env automatically; we don't echo or
 # persist it from this script. If the user already ran `vastai set api-key`
@@ -242,11 +347,44 @@ if [ -z "${VAST_API_KEY:-}" ] && [ ! -f "$HOME/.config/vastai/vast_api_key" ]; t
   exit 2
 fi
 
-cmd="${1:-help}"
-shift || true
-# Remaining args (after the subcommand) are forwarded to the handler.
-# Used by `teardown --yes` to opt into actual destruction.
-SUBCMD_ARGS=("$@")
+# Pick out the first non-flag positional as the subcommand so callers can
+# put the global --pipeline / --registry-key / --dry-run flags either
+# before or after the subcommand (e.g.
+#   train_vast.sh --pipeline grpo provision-and-train --registry-key K
+#   train_vast.sh provision-and-train --pipeline grpo --registry-key K
+# both work). Subcommand handlers re-parse their own flags from
+# SUBCMD_ARGS, so we forward everything except the matched subcommand.
+cmd="help"
+SUBCMD_ARGS=()
+_seen_cmd=0
+_skip_next=0
+for _arg in "$@"; do
+  if [ "$_skip_next" -eq 1 ]; then
+    SUBCMD_ARGS+=("$_arg")
+    _skip_next=0
+    continue
+  fi
+  case "$_arg" in
+    --pipeline|--registry-key)
+      # Two-token flag — keep both tokens in SUBCMD_ARGS for the handler.
+      SUBCMD_ARGS+=("$_arg")
+      _skip_next=1
+      ;;
+    --pipeline=*|--registry-key=*|--dry-run|--*)
+      # Single-token flag — pass through.
+      SUBCMD_ARGS+=("$_arg")
+      ;;
+    *)
+      if [ "$_seen_cmd" -eq 0 ]; then
+        cmd="$_arg"
+        _seen_cmd=1
+      else
+        SUBCMD_ARGS+=("$_arg")
+      fi
+      ;;
+  esac
+done
+unset _arg _seen_cmd _skip_next
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -344,6 +482,29 @@ preflight_gate() {
 }
 
 provision() {
+  # GRPO is materially more expensive than SFT — verl needs separate
+  # train + rollout GPUs and the recommended budget jumps from 1× to 8×.
+  # Log a one-liner so the operator sees the $/hr delta before billing.
+  if [ "$PIPELINE" = "grpo" ]; then
+    log_warn "GRPO pipeline allocates $VAST_GPU_TARGET — meaningfully pricier than SFT."
+    log_warn "Per RL_STRATEGY.md: 2B ~24h, 9B ~24-48h, 27B ~48h on H200. Plan budget accordingly."
+  fi
+
+  # Dry-run support: print the planned action and exit. Used by smoke
+  # tests + operators previewing cost before paying for hardware.
+  if [ "${DRY_RUN:-0}" = "1" ]; then
+    log "[provision] DRY_RUN=1 — planned provision:"
+    log "  pipeline=$PIPELINE"
+    log "  registry_key=$REGISTRY_KEY"
+    log "  vast_gpu_target=$VAST_GPU_TARGET"
+    log "  fsdp_world_size=$FSDP_WORLD_SIZE"
+    log "  instance_label=$VAST_INSTANCE_LABEL"
+    log "  docker_image=$VAST_DOCKER_IMAGE"
+    log "  disk_gb=$VAST_DISK_GB"
+    log "[provision] dry-run complete — no instance created."
+    return 0
+  fi
+
   preflight_gate
 
   # Idempotence guard: refuse to spin up a new instance when one already
@@ -401,8 +562,9 @@ provision() {
     exit 1
   fi
   echo "$new_id" > "$INSTANCE_ID_FILE"
+  echo "$PIPELINE" > "$PIPELINE_TYPE_FILE"
   export VAST_INSTANCE_ID="$new_id"
-  echo "[train_vast] [provision] instance id $new_id (saved to $INSTANCE_ID_FILE)"
+  echo "[train_vast] [provision] instance id $new_id (saved to $INSTANCE_ID_FILE, pipeline=$PIPELINE → $PIPELINE_TYPE_FILE)"
 
   echo "[train_vast] [provision] attaching ssh key $SSH_KEY"
   vastai attach ssh "$new_id" "$(cat "$SSH_KEY")"
@@ -525,6 +687,79 @@ run_remote() {
   '"
 }
 
+run_grpo_remote() {
+  # GRPO entry point. Invokes scripts/train_grpo_verl.sh on the remote
+  # box. verl handles the FSDP train + vLLM rollout split internally —
+  # we just allocate the GPUs (via VAST_GPU_TARGET → h200-{2,4,8}x) and
+  # forward the registry key + DPO checkpoint path. Per-stage hardware
+  # budget comes from RL_STRATEGY.md.
+  require_instance_id
+
+  # GRPO needs the SFT+DPO checkpoint as its seed. Default to the
+  # checkpoint dir produced by the DPO pipeline; operators override
+  # with DPO_CHECKPOINT when running against a custom name.
+  local dpo_ckpt_default="checkpoints/${REGISTRY_KEY//./-}-dpo/final"
+  local dpo_checkpoint="${DPO_CHECKPOINT:-$dpo_ckpt_default}"
+  local output_dir="checkpoints/${RUN_NAME}"
+
+  # Smoke-mode override: cap rollouts + response length so a GRPO smoke
+  # finishes in ~15 min instead of ~24h.
+  local rollouts="${GRPO_ROLLOUTS:-8}"
+  local rollout_batch="${GRPO_ROLLOUT_BATCH:-8}"
+  local epochs="${GRPO_EPOCHS:-1}"
+  local max_response_len="${GRPO_MAX_RESPONSE_LEN:-1024}"
+  if [ "${SMOKE_MODE:-0}" = "1" ]; then
+    rollouts="${SMOKE_GRPO_ROLLOUTS:-2}"
+    rollout_batch="${SMOKE_GRPO_ROLLOUT_BATCH:-2}"
+    max_response_len="${SMOKE_GRPO_MAX_RESPONSE_LEN:-256}"
+    log "[run-grpo] SMOKE_MODE=1 — rollouts=$rollouts batch=$rollout_batch max_resp=$max_response_len"
+  fi
+
+  log "[run-grpo] verl GRPO (registry=$REGISTRY_KEY dpo_ckpt=$dpo_checkpoint world=$FSDP_WORLD_SIZE)"
+  log "[run-grpo] rollouts=$rollouts rollout_batch=$rollout_batch epochs=$epochs max_response_len=$max_response_len"
+
+  # verl pulls in a different torch ABI than the SFT/train extra (vllm
+  # pins torch.cuda differently), so we sync the `rl` extra rather than
+  # `train`. train_grpo_verl.sh tolerates a missing verl install — it
+  # writes the config + exits with a clear message — so the launcher
+  # still functions when the remote venv hasn't been bootstrapped yet.
+  ssh_run "bash -lc '
+    set -euo pipefail
+    cd $REMOTE_TRAIN_DIR
+    export PATH=\$HOME/.local/bin:\$PATH
+    export HF_HOME=/workspace/hf-cache
+    mkdir -p \$HF_HOME
+    uv sync --extra rl
+    if [ -n \"\${HUGGING_FACE_HUB_TOKEN:-}\" ]; then
+      uv run hf auth login --token \"\$HUGGING_FACE_HUB_TOKEN\" --add-to-git-credential
+    fi
+    uv run --extra rl bash scripts/train_grpo_verl.sh \\
+      --registry-key $REGISTRY_KEY \\
+      --dpo-checkpoint $dpo_checkpoint \\
+      --output-dir $output_dir \\
+      --rollouts $rollouts \\
+      --rollout-batch $rollout_batch \\
+      --epochs $epochs \\
+      --max-response-len $max_response_len \\
+      --gpus $FSDP_WORLD_SIZE
+  '"
+}
+
+# Pipeline-aware dispatcher for the `run` subcommand. SFT and DPO both
+# go through run_remote() (DPO uses train_dpo.py which honours the same
+# accelerate config; the DPO command line is left to the existing
+# operator-facing wrapper). GRPO goes through run_grpo_remote().
+run_for_pipeline() {
+  case "$PIPELINE" in
+    sft|dpo) run_remote ;;
+    grpo)    run_grpo_remote ;;
+    *)
+      log_err "run_for_pipeline: unknown PIPELINE=$PIPELINE"
+      exit 2
+      ;;
+  esac
+}
+
 quantize_remote() {
   require_instance_id
   echo "[train_vast] [quantize] running $QUANTIZE_AFTER on instance $VAST_INSTANCE_ID"
@@ -617,7 +852,7 @@ teardown() {
   fi
   log "destroying instance $VAST_INSTANCE_ID"
   vastai destroy instance "$VAST_INSTANCE_ID"
-  rm -f "$INSTANCE_ID_FILE"
+  rm -f "$INSTANCE_ID_FILE" "$PIPELINE_TYPE_FILE"
 }
 
 # ---------------------------------------------------------------------------
@@ -626,7 +861,11 @@ teardown() {
 # ---------------------------------------------------------------------------
 
 provision_and_train() {
-  # Parse --registry-key / --epochs / --bootstrap from $@. Other args fall through as env.
+  # Parse --registry-key / --epochs / --bootstrap / --pipeline / --dry-run.
+  # --pipeline and --dry-run are also captured by the top-level pre-scan so
+  # GPU defaults resolve correctly; we re-accept them here for parser
+  # clarity and to fail loudly on unknown args (instead of silently
+  # dropping them).
   local epochs=""
   local rk=""
   local bootstrap_mode="rsync"
@@ -644,17 +883,64 @@ provision_and_train() {
       --data-repo=*) data_repo="${1#*=}"; shift ;;
       --pipeline-repo) pipeline_repo="$2"; shift 2 ;;
       --pipeline-repo=*) pipeline_repo="${1#*=}"; shift ;;
+      # Already consumed by the top-level pre-scan; accept + drop here so
+      # the parser doesn't trip on them.
+      --pipeline) shift 2 ;;
+      --pipeline=*) shift ;;
+      --dry-run) shift ;;
       *) shift ;;
     esac
   done
   if [ -n "$rk" ]; then
     export REGISTRY_KEY="$rk"
-    log "provision-and-train: REGISTRY_KEY=$rk"
+    log "provision-and-train: REGISTRY_KEY=$rk PIPELINE=$PIPELINE"
+  else
+    log "provision-and-train: PIPELINE=$PIPELINE REGISTRY_KEY=$REGISTRY_KEY (env/default)"
   fi
   if [ -n "$epochs" ]; then
     export MILADY_TRAIN_EPOCHS="$epochs"
     log "provision-and-train: epochs=$epochs (consumed by run_remote via MILADY_TRAIN_EPOCHS)"
   fi
+
+  # Dry-run short-circuit: print the planned action set and remote
+  # command without provisioning. The smoke test and operator preview
+  # both rely on this.
+  if [ "${DRY_RUN:-0}" = "1" ]; then
+    log "[provision-and-train] DRY_RUN=1 — planned actions:"
+    log "  1. provision (gpu_target=$VAST_GPU_TARGET, world_size=$FSDP_WORLD_SIZE, image=$VAST_DOCKER_IMAGE, disk=${VAST_DISK_GB}GB)"
+    if [ "$bootstrap_mode" = "rsync" ]; then
+      log "  2. sync_tree (rsync local training/ → remote $REMOTE_TRAIN_DIR)"
+    else
+      log "  2. bootstrap_from_hf (pipeline=$pipeline_repo data=$data_repo on remote)"
+    fi
+    case "$PIPELINE" in
+      sft|dpo)
+        log "  3. run_remote (accelerate launch train_local.py --registry-key $REGISTRY_KEY --run-name $RUN_NAME)"
+        ;;
+      grpo)
+        local _dpo_default="checkpoints/${REGISTRY_KEY//./-}-dpo/final"
+        local _dpo_ckpt="${DPO_CHECKPOINT:-$_dpo_default}"
+        # SFT comparison point for the cost-warning string — looked up
+        # against the same auto-pick table as the runtime default block.
+        local _sft_default
+        case "$REGISTRY_KEY" in
+          qwen3.5-2b|qwen3.5-9b) _sft_default="blackwell6000-1x" ;;
+          qwen3.6-27b)           _sft_default="b200-2x" ;;
+          *)                     _sft_default="blackwell6000-2x" ;;
+        esac
+        log "  3. run_grpo_remote (bash scripts/train_grpo_verl.sh \\"
+        log "       --registry-key $REGISTRY_KEY \\"
+        log "       --dpo-checkpoint $_dpo_ckpt \\"
+        log "       --output-dir checkpoints/$RUN_NAME \\"
+        log "       --gpus $FSDP_WORLD_SIZE)"
+        log_warn "[provision-and-train] GRPO cost note: $VAST_GPU_TARGET on Vast is meaningfully pricier than the SFT default ($_sft_default)."
+        log_warn "[provision-and-train] Per RL_STRATEGY.md: 2B ~24h, 9B ~24-48h, 27B ~48h on H200."
+        ;;
+    esac
+    log "[provision-and-train] dry-run complete — no instance created."
+    return 0
+  fi
+
   case "$bootstrap_mode" in
     rsync)
       log "provision-and-train: bootstrap=rsync (default; pushes local training/ tree)"
@@ -671,7 +957,7 @@ provision_and_train() {
       exit 2
       ;;
   esac
-  run_remote
+  run_for_pipeline
 }
 
 bootstrap_from_hf() {
@@ -743,9 +1029,10 @@ EOF
 }
 
 status() {
-  # Print: instance id, GPU type, uptime, training step, ETA. Returns
-  # exit 0 with a "no instance" message if nothing is provisioned yet —
-  # this is what the watcher polls.
+  # Print: instance id, pipeline type, GPU type, uptime, training step,
+  # ETA, plus the M9 cost surface (GPU SKU, run-duration, $/hr,
+  # total-so-far). Returns exit 0 with a "no instance" message if
+  # nothing is provisioned yet — this is what the watcher polls.
   if [ -z "${VAST_INSTANCE_ID:-}" ] && [ -f "$INSTANCE_ID_FILE" ]; then
     VAST_INSTANCE_ID="$(cat "$INSTANCE_ID_FILE")"
     export VAST_INSTANCE_ID
@@ -754,7 +1041,15 @@ status() {
     log "status: no instance provisioned (no $INSTANCE_ID_FILE, no VAST_INSTANCE_ID)"
     return 0
   fi
-  log "status: instance_id=$VAST_INSTANCE_ID"
+
+  # Pipeline type was persisted at provision time; fall back to the
+  # current PIPELINE env if the sidecar is missing (older provisions
+  # predated the file).
+  local pipeline_type="$PIPELINE"
+  if [ -f "$PIPELINE_TYPE_FILE" ]; then
+    pipeline_type="$(cat "$PIPELINE_TYPE_FILE")"
+  fi
+  log "status: instance_id=$VAST_INSTANCE_ID pipeline=$pipeline_type"
 
   # alive? If the instance has been destroyed, vastai returns nothing useful.
   if ! ( cd "$ROOT" && python3 -m scripts.lib.vast alive "$VAST_INSTANCE_ID" ) >/dev/null 2>&1; then
@@ -762,10 +1057,22 @@ status() {
     return 1
   fi
 
-  # Pull a one-line summary from `vastai show instance`.
-  local summary
-  summary="$(vastai show instance "$VAST_INSTANCE_ID" --raw 2>/dev/null \
-    | python3 -c "
+  # Cost surface (M9): pipeline + GPU SKU + run-duration + $/hr + total.
+  # vast_budget pulls dph_total via `vastai show instance` and computes
+  # total-so-far = dph_total * uptime_hours. The same module is what the
+  # watcher invokes for soft/hard-cap enforcement.
+  local cost_summary
+  cost_summary="$( cd "$ROOT" && \
+    REGISTRY_KEY="$REGISTRY_KEY" RUN_NAME="$RUN_NAME" \
+    python3 -m scripts.lib.vast_budget snapshot "$VAST_INSTANCE_ID" 2>/dev/null )"
+  if [ -n "$cost_summary" ]; then
+    log "status: $cost_summary"
+  else
+    # Fall back to the original GPU+uptime summary if the cost path
+    # fails (e.g. vastai returns a partial payload during boot).
+    local summary
+    summary="$(vastai show instance "$VAST_INSTANCE_ID" --raw 2>/dev/null \
+      | python3 -c "
 import json, sys, datetime
 d=json.load(sys.stdin)
 gpu=d.get('gpu_name','?')
@@ -780,7 +1087,8 @@ except Exception:
     pass
 print(f'gpu={gpu}x{ngpu} status={status} uptime={uptime}')
 " 2>/dev/null || echo "unavailable")"
-  log "status: $summary"
+    log "status: $summary"
+  fi
 
   # Pull current training step + ETA from instrumentation.jsonl on remote.
   # The training loop appends one JSON object per step. Last line wins.
@@ -874,17 +1182,25 @@ kill_and_teardown() {
     exit 2
   fi
   log "kill-and-teardown: SIGTERM training process on $VAST_INSTANCE_ID"
-  # accelerate / torchrun spawn the actual workers — pkill on the launcher
-  # cleans up the children. Best-effort; we don't fail the teardown if the
-  # ssh attempt errors (instance may already be unreachable).
-  ssh_run "pkill -TERM -f 'accelerate launch' || true; pkill -TERM -f train_local.py || true" || true
+  # accelerate / torchrun spawn the actual workers for SFT/DPO; verl's
+  # main_ppo spawns Ray workers + vLLM rollout pods for GRPO. pkill -f
+  # on the launcher cleans up the children. Best-effort; we don't fail
+  # the teardown if the ssh attempt errors (instance may already be
+  # unreachable).
+  ssh_run "pkill -TERM -f 'accelerate launch' || true
+           pkill -TERM -f train_local.py || true
+           pkill -TERM -f train_grpo_verl || true
+           pkill -TERM -f 'verl.trainer.main_ppo' || true" || true
   log "kill-and-teardown: waiting 60s for graceful shutdown"
   sleep 60
   log "kill-and-teardown: hard-kill any remaining workers"
-  ssh_run "pkill -KILL -f 'accelerate launch' || true; pkill -KILL -f train_local.py || true" || true
+  ssh_run "pkill -KILL -f 'accelerate launch' || true
+           pkill -KILL -f train_local.py || true
+           pkill -KILL -f train_grpo_verl || true
+           pkill -KILL -f 'verl.trainer.main_ppo' || true" || true
   log "kill-and-teardown: destroying instance"
   vastai destroy instance "$VAST_INSTANCE_ID"
-  rm -f "$INSTANCE_ID_FILE"
+  rm -f "$INSTANCE_ID_FILE" "$PIPELINE_TYPE_FILE"
 }
 
 print_help() {
@@ -892,28 +1208,48 @@ print_help() {
 [train_vast] Vast.ai is the canonical (and only active) cloud for eliza-1
 [train_vast] training and inference. Nebius is deprecated.
 
+Global flags (recognized at any position, also captured into PIPELINE env):
+  --pipeline sft|dpo|grpo                      Default: sft. Selects training stage.
+                                               grpo allocates h200-{2,4,8}x (or b200
+                                               fallback) and runs train_grpo_verl.sh.
+  --registry-key K                             Override REGISTRY_KEY (e.g. qwen3.5-9b)
+  --dry-run                                    Print the planned GPU SKU + remote
+                                               command and exit (no Vast spend).
+
 Subcommands:
   search                                       List matching offers (read-only)
   provision                                    Spin up a Vast.ai instance
   sync                                         rsync training/ to instance
-  run                                          Launch APOLLO full-finetune (remote)
-  quantize                                     Apply QUANTIZE_AFTER list (remote)
+  run                                          Launch the configured pipeline (remote):
+                                                 sft|dpo → accelerate launch + APOLLO
+                                                 grpo    → bash train_grpo_verl.sh
+  quantize                                     Apply QUANTIZE_AFTER list (remote, SFT only)
   bench                                        Run eliza_bench on base + finetuned
   fetch                                        rsync checkpoints + benchmarks back
-  full                                         provision -> sync -> run -> quantize -> bench -> fetch
+  full                                         provision -> sync -> run [-> quantize -> bench
+                                               only for SFT] -> fetch
 
-  provision-and-train --registry-key K --epochs N [--bootstrap rsync|hf]
+  provision-and-train --registry-key K --epochs N [--bootstrap rsync|hf] [--pipeline P] [--dry-run]
                                                Provision + sync (or HF download) + run in one shot
   bootstrap-from-hf [--pipeline-repo R] [--data-repo R]
                                                Remote: pull pipeline + dataset from HF (no local rsync)
-  status                                       Print instance id, GPU, uptime, step, ETA
+  status                                       Print instance id, pipeline type, GPU, uptime, step, ETA
   pull-checkpoints [--latest-only]             rsync checkpoint-* dirs back. With
                                                --latest-only, only the highest step.
   tail-logs                                    Stream remote training stdout/stderr
-  kill-and-teardown --yes                      Graceful SIGTERM, wait 60s, then destroy
+  kill-and-teardown --yes                      Graceful SIGTERM (accelerate + verl), wait 60s, then destroy
 
   teardown --yes                               Destroy the instance immediately
   help                                         Show this message
+
+GRPO-specific env vars (apply when --pipeline grpo):
+  DPO_CHECKPOINT                Path to the SFT+DPO checkpoint's final/ dir on
+                                the remote box. Default:
+                                checkpoints/<reg-key>-dpo/final
+  GRPO_ROLLOUTS                 verl `actor_rollout_ref.rollout.n` (default 8).
+  GRPO_ROLLOUT_BATCH            Prompts per rollout step (default 8).
+  GRPO_EPOCHS                   PPO/GRPO epochs over the rollout buffer (default 1).
+  GRPO_MAX_RESPONSE_LEN         Max generated tokens per rollout (default 1024).
 
 Standardized env vars:
   VAST_API_KEY                  vastai API key
@@ -929,7 +1265,7 @@ case "$cmd" in
   search) search_offers ;;
   provision) provision ;;
   sync) sync_tree ;;
-  run) run_remote ;;
+  run) run_for_pipeline ;;
   quantize) quantize_remote ;;
   bench) bench_remote ;;
   fetch) fetch ;;
@@ -943,9 +1279,17 @@ case "$cmd" in
   full)
     provision
     sync_tree
-    run_remote
-    quantize_remote
-    bench_remote
+    run_for_pipeline
+    # Quantization + benchmarking still only make sense for the SFT
+    # pipeline (the GRPO output is RL-tuned but the same arch; we
+    # quantize the SFT base, not the GRPO actor). Skip them when the
+    # operator drove a non-SFT pipeline through `full`.
+    if [ "$PIPELINE" = "sft" ]; then
+      quantize_remote
+      bench_remote
+    else
+      log "[full] PIPELINE=$PIPELINE — skipping quantize + bench (SFT-only)"
+    fi
     fetch
     ;;
   help|--help|-h) print_help ;;

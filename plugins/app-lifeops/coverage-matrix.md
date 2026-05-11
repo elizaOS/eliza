@@ -37,16 +37,16 @@ Source references:
 | 11 | Follow-up repair (relationships) | Follow-up repair (relationships) | ScheduledTask | `test/assistant-user-journeys.followup-repair.e2e.test.ts` | Suite C (`ea.followup.bump-unanswered-decision`) | covered |
 | 12 | Documents, signatures, portals | Documents, signatures, portals | ScheduledTask | `test/signature-deadline.e2e.test.ts` | Suite E (`ea.docs.signature-before-appointment`) | covered |
 | 13 | Self-control / app & website blockers | Self-control / app & website blockers | enforcer-registry | `test/selfcontrol-chat.live.e2e.test.ts` | `UX §13`, `GAP §3.16 BlockerRegistry` | covered |
-| 14 | Group chat handoff | Group chat handoff | HandoffStore | `test/group-chat-handoff.e2e.test.ts` | `GAP §3.14`, `JOURNEY_GAME_THROUGH §J13` | covered |
+| 14 | Group chat handoff | Group chat handoff | HandoffStore | — | `GAP §3.14`, `JOURNEY_GAME_THROUGH §J13` | uncovered (LARP purged 2026-05-11 — see `docs/audits/lifeops-2026-05-11/larp-purge.md`) |
 | 15 | Multi-channel & cross-channel search | Multi-channel & cross-channel search | ChannelRegistry | `test/cross-channel-search.integration.test.ts` | `GAP §3.5 ChannelRegistry`, `UX §15` | covered |
 | 16 | Activity signals & screen context | Activity signals & screen context | ActivitySignalBus | `test/plugin-health-anchor.integration.test.ts` | `GAP §3.2 ActivitySignalBus`, `UX §16` | covered |
 | 17 | Approval queues & action gating | Approval queues & action gating | ApprovalQueue | `test/approval-queue.integration.test.ts` | `UX §17`, `GAP §3.10 ApprovalQueue` | covered |
-| 18 | Identity merge (canonical person) | Identity merge (canonical person) | EntityStore | `test/assistant-user-journeys.identity-merge.live.e2e.test.ts` | `GAP §3.4 IdentityGraph`, `UX §18` | covered |
+| 18 | Identity merge (canonical person) | Identity merge (canonical person) | EntityStore | — | `GAP §3.4 IdentityGraph`, `UX §18` | uncovered (LARP purged 2026-05-11 — see `docs/audits/lifeops-2026-05-11/larp-purge.md`) |
 | 19 | Memory recall | Memory recall | MemoryStore | `test/lifeops-memory.live.e2e.test.ts` | `UX §19` | covered |
 | 20 | Connectors & permissions | Connectors & permissions | ConnectorRegistry | `test/google-drive.integration.test.ts` | `GAP §3.5 ConnectorRegistry`, `UX §20` | covered |
 | 21 | Health, money, screen time | Health, money, screen time | plugin-health | `test/screen-time.real.test.ts` | `IMPL §3.2`, `UX §21` | covered |
-| 22 | Push notifications | Push notifications | EscalationLadder | `test/cancellation-fee.e2e.test.ts` | Suite F (`ea.push.cancellation-fee-warning`) | covered |
-| 23 | Remote sessions | Remote sessions | RemoteSession | `test/stuck-agent-call.e2e.test.ts` | Suite F (`ea.push.stuck-agent-calls-user`) | covered |
+| 22 | Push notifications | Push notifications | EscalationLadder | — | Suite F (`ea.push.cancellation-fee-warning`) | uncovered (LARP purged 2026-05-11 — see `docs/audits/lifeops-2026-05-11/larp-purge.md`) |
+| 23 | Remote sessions | Remote sessions | RemoteSession | — | Suite F (`ea.push.stuck-agent-calls-user`) | uncovered (LARP purged 2026-05-11 — see `docs/audits/lifeops-2026-05-11/larp-purge.md`) |
 | 24 | Settings & UX | Settings & UX | OwnerFactStore | `test/first-run-customize.e2e.test.ts` | `GAP §3.3 OwnerFactStore`, `UX §24` | covered |
 | 25 | REST API access flows | REST API access flows | api | `test/lifeops-feature-flags.integration.test.ts` | `UX §25` | covered |
 | 26 | Workflows (event-triggered) | Workflows (event-triggered) | ScheduledTask | `test/lifeops-signal-inbound.integration.test.ts` | `UX §26` | covered |
