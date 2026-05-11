@@ -485,7 +485,27 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
     evidence["defaultEligible"] = default_eligible
     evidence["publishBlockingReasons"] = blocking
     evidence["checksumManifest"] = "checksums/SHA256SUMS"
-    evidence["licenseFiles"] = _collect_files_under(bundle_dir, "licenses")
+    # licenseFiles must equal what the orchestrator's _license_files_for_layout
+    # expects: the always-required four + a component license only when that
+    # component's weights subdir is present in the bundle layout (vision/,
+    # embedding/, wakeword/). asr/ and vad/ are always present in a §2 bundle.
+    license_files = [
+        "licenses/LICENSE.text",
+        "licenses/LICENSE.voice",
+        "licenses/LICENSE.dflash",
+        "licenses/LICENSE.eliza-1",
+    ]
+    if (bundle_dir / "asr").is_dir() and any((bundle_dir / "asr").iterdir()):
+        license_files.append("licenses/LICENSE.asr")
+    if (bundle_dir / "vision").is_dir() and any((bundle_dir / "vision").iterdir()):
+        license_files.append("licenses/LICENSE.vision")
+    if (bundle_dir / "vad").is_dir() and any((bundle_dir / "vad").iterdir()):
+        license_files.append("licenses/LICENSE.vad")
+    if (bundle_dir / "embedding").is_dir() and any((bundle_dir / "embedding").iterdir()):
+        license_files.append("licenses/LICENSE.embedding")
+    if (bundle_dir / "wakeword").is_dir() and any((bundle_dir / "wakeword").iterdir()):
+        license_files.append("licenses/LICENSE.wakeword")
+    evidence["licenseFiles"] = license_files
     evidence["evalReports"] = _collect_files_under(bundle_dir, "evals")
     evidence["kernelDispatchReports"] = {
         b: f"evals/{b}_dispatch.json" for b in supported_backends

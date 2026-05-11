@@ -16,7 +16,9 @@
  * describes *where* embeddings come from (the text GGUF with a pooling
  * flag, or a separate region file) without doing any I/O beyond an
  * `existsSync`. The engine consumes the descriptor to mount the region
- * and the local-embedding route.
+ * and the local-embedding route. It also owns the Matryoshka-truncation
+ * helper that callers / the vector store use to trade dimensionality for
+ * storage (see `EMBEDDING_MATRYOSHKA_DIMS` + `truncateMatryoshka`).
  */
 
 import { existsSync, readdirSync } from "node:fs";
@@ -27,13 +29,70 @@ import { VoiceStartupError } from "./errors";
 /** Bundle-relative directory holding a dedicated embedding GGUF (non-0_6b tiers). */
 export const EMBEDDING_DIR_REL_PATH = "embedding";
 
+/** Full output dimensionality of the Eliza-1 embedding model. */
+export const EMBEDDING_FULL_DIM = 1024 as const;
+
 /**
- * Tiers whose embedding model is the text backbone with `--pooling last`
- * (no separate GGUF). Only `0_6b` per AGENTS.md §1.
+ * Valid Matryoshka truncation points for Qwen3-Embedding-0.6B. The model
+ * is trained so that the leading N components of the 1024-dim vector are
+ * themselves a usable embedding at these widths; quality degrades
+ * gracefully as N shrinks (see the tradeoff table in
+ * `reports/porting/2026-05-11/embedding-model-review.md`).
+ *
+ * 1024 (full) → 768 → 512 → 256 → 128 → 64. Smaller widths than 64 are
+ * not part of the published contract.
  */
-export const POOLED_TEXT_EMBEDDING_TIERS: ReadonlySet<Eliza1TierId> = new Set([
-  "eliza-1-0_6b",
-]);
+export const EMBEDDING_MATRYOSHKA_DIMS: readonly number[] = [
+  64, 128, 256, 512, 768, 1024,
+];
+
+/** Type-narrow guard for `EMBEDDING_MATRYOSHKA_DIMS`. */
+export function isValidEmbeddingDim(dim: number): boolean {
+  return EMBEDDING_MATRYOSHKA_DIMS.includes(dim);
+}
+
+/**
+ * Truncate a full 1024-dim embedding to one of the Matryoshka widths and
+ * L2-renormalize. Renormalization matters: Qwen3-Embedding outputs are
+ * unit-norm at 1024 dims, but the leading slice is *not* unit-norm, and
+ * downstream cosine-similarity / dot-product retrieval assumes unit
+ * vectors.
+ *
+ * Throws on an invalid `dim` (must be one of `EMBEDDING_MATRYOSHKA_DIMS`)
+ * or when `vec` is shorter than `dim` — no silent truncation-to-whatever
+ * or zero-padding (Commandment 8: don't hide a broken pipeline).
+ */
+export function truncateMatryoshka(
+  vec: readonly number[],
+  dim: number,
+): number[] {
+  if (!isValidEmbeddingDim(dim)) {
+    throw new Error(
+      `[embedding] dim ${dim} is not a valid Matryoshka width; expected one of ${EMBEDDING_MATRYOSHKA_DIMS.join(", ")}`,
+    );
+  }
+  if (vec.length < dim) {
+    throw new Error(
+      `[embedding] cannot truncate a ${vec.length}-dim vector to ${dim} dims`,
+    );
+  }
+  if (vec.length === dim) {
+    // Already the requested width; still renormalize so a caller passing a
+    // raw last-token state (which may not be unit-norm) gets a clean vec.
+    return l2Normalize(vec.slice());
+  }
+  return l2Normalize(vec.slice(0, dim));
+}
+
+/** L2-normalize in place; returns the same array. Zero vectors pass through. */
+function l2Normalize(vec: number[]): number[] {
+  let sumSq = 0;
+  for (const x of vec) sumSq += x * x;
+  if (sumSq === 0) return vec;
+  const inv = 1 / Math.sqrt(sumSq);
+  for (let i = 0; i < vec.length; i += 1) vec[i] *= inv;
+  return vec;
+}
 
 export type LocalEmbeddingSource =
   | {
@@ -47,7 +106,15 @@ export type LocalEmbeddingSource =
       readonly kind: "dedicated-region";
       readonly embeddingModelPath: string;
       /** 1024-dim Matryoshka (the published Qwen3-Embedding-0.6B contract). */
-      readonly dimensions: 1024;
+      readonly dimensions: typeof EMBEDDING_FULL_DIM;
+      /**
+       * The dedicated model already ships a contrastive `last`-token
+       * pooling head — `--pooling last` is still passed so llama-server
+       * doesn't fall back to the GGUF's metadata default (which for a raw
+       * Qwen3 base is `mean`). The model's own pooling layer dominates;
+       * this just pins the read.
+       */
+      readonly poolingType: "last";
     };
 
 /** First regular `.gguf` file under `dir`, or null. */
@@ -60,6 +127,14 @@ function firstGguf(dir: string): string | null {
   }
   return null;
 }
+
+/**
+ * Tiers whose embedding model is the text backbone with `--pooling last`
+ * (no separate GGUF). Only `0_6b` per AGENTS.md §1.
+ */
+export const POOLED_TEXT_EMBEDDING_TIERS: ReadonlySet<Eliza1TierId> = new Set([
+  "eliza-1-0_6b",
+]);
 
 /**
  * Resolve the embedding source for an activated Eliza-1 bundle.
@@ -102,13 +177,14 @@ export function resolveLocalEmbeddingSource(args: {
   return {
     kind: "dedicated-region",
     embeddingModelPath: gguf,
-    dimensions: 1024,
+    dimensions: EMBEDDING_FULL_DIM,
+    poolingType: "last",
   };
 }
 
 /**
  * Descriptor for the local-embedding route the engine exposes. The
- * route's job is `text[] → number[1024][]`; the runtime mounts the source
+ * route's job is `text[] → number[dim][]`; the runtime mounts the source
  * (pooled text or dedicated region) and forwards. Kept as a plain data
  * shape so both the API layer and tests can assert it without standing up
  * a server.
@@ -116,12 +192,23 @@ export function resolveLocalEmbeddingSource(args: {
 export interface LocalEmbeddingRoute {
   readonly tierId: Eliza1TierId;
   readonly source: LocalEmbeddingSource;
-  /** Output dimensionality the route guarantees. 1024 on every tier. */
-  readonly dimensions: 1024;
+  /** Full output dimensionality the route produces before truncation. 1024 on every tier. */
+  readonly dimensions: typeof EMBEDDING_FULL_DIM;
   /**
-   * llama-server flags this route needs when the source is `pooled-text`
-   * (the same process serves chat + embeddings on `0_6b`). Empty for the
-   * dedicated-region case (a separate server / region handles it).
+   * Default Matryoshka width the route returns when a caller does not ask
+   * for a smaller `dim`. Always 1024 (= `dimensions`) — callers/the vector
+   * store opt into a smaller width for storage savings.
+   */
+  readonly defaultDim: number;
+  /** The Matryoshka widths a caller may request. */
+  readonly matryoshkaDims: readonly number[];
+  /**
+   * `llama-server` flags for the embedding server process — always
+   * `--embeddings --pooling last`. The embedding server is a lazily-started
+   * sidecar over the route's GGUF (the text backbone on `0_6b`, the
+   * `embedding/` GGUF on larger tiers); see `embedding-server.ts`. The
+   * chat `llama-server` is left untouched (completions-only) — these flags
+   * do NOT go on it.
    */
   readonly serverFlags: ReadonlyArray<string>;
 }
@@ -130,16 +217,26 @@ export function buildLocalEmbeddingRoute(args: {
   bundleRoot: string;
   tierId: Eliza1TierId;
   textModelPath: string;
+  /** Default output width; must be one of `EMBEDDING_MATRYOSHKA_DIMS`. Defaults to 1024. */
+  defaultDim?: number;
 }): LocalEmbeddingRoute {
   const source = resolveLocalEmbeddingSource(args);
-  const serverFlags =
-    source.kind === "pooled-text"
-      ? (["--embeddings", "--pooling", source.poolingType] as const)
-      : ([] as const);
+  const defaultDim = args.defaultDim ?? EMBEDDING_FULL_DIM;
+  if (!isValidEmbeddingDim(defaultDim)) {
+    throw new Error(
+      `[embedding] defaultDim ${defaultDim} is not a valid Matryoshka width; expected one of ${EMBEDDING_MATRYOSHKA_DIMS.join(", ")}`,
+    );
+  }
+  // Both modes serve through a sidecar `llama-server --embeddings --pooling
+  // last` (over the text GGUF on 0_6b, over the embedding/ GGUF on larger
+  // tiers). The chat server is never given these flags.
+  const serverFlags = ["--embeddings", "--pooling", source.poolingType];
   return {
     tierId: args.tierId,
     source,
-    dimensions: 1024,
-    serverFlags: [...serverFlags],
+    dimensions: EMBEDDING_FULL_DIM,
+    defaultDim,
+    matryoshkaDims: EMBEDDING_MATRYOSHKA_DIMS,
+    serverFlags,
   };
 }

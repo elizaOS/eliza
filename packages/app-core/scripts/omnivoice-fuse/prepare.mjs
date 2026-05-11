@@ -250,6 +250,25 @@ static int eliza_thread_count(bool batch) {
     return (int) std::max(1u, std::min(hw, cap));
 }
 
+/* ASR thread budget. The voice-realtime caps in eliza_thread_count() exist
+ * so TTS + the DFlash drafter keep cores free during a streaming turn; the
+ * ASR Whisper-style audio encoder (the mmproj prefill via
+ * mtmd_helper_eval_chunks) and the short greedy text decode are *not*
+ * barge-in-sensitive — they run once per utterance, before TTS competes —
+ * so they can use more cores. Scale the encoder up to half the box (it is
+ * the dominant cost on a ~30 s window) and keep the decode moderate. The
+ * ELIZA_ASR_THREADS env var overrides both when set. */
+static int eliza_asr_thread_count(bool encoder) {
+    if (const char * env = std::getenv("ELIZA_ASR_THREADS")) {
+        int n = std::atoi(env);
+        if (n > 0) return n;
+    }
+    unsigned int hw = std::thread::hardware_concurrency();
+    if (hw == 0) hw = 4;
+    const unsigned int cap = encoder ? std::max(8u, hw / 2u) : std::max(4u, hw / 4u);
+    return (int) std::max(1u, std::min(hw, cap));
+}
+
 static std::vector<float> eliza_resample_linear(
     const float * pcm,
     size_t n_samples,
@@ -410,8 +429,8 @@ static int eliza_load_asr(EliInferenceContext * ctx, char ** out_error) {
     cparams.n_ctx = 8192;
     cparams.n_batch = (uint32_t) ctx->asr_n_batch;
     cparams.n_ubatch = (uint32_t) ctx->asr_n_batch;
-    cparams.n_threads = eliza_thread_count(false);
-    cparams.n_threads_batch = eliza_thread_count(true);
+    cparams.n_threads = eliza_asr_thread_count(false);
+    cparams.n_threads_batch = eliza_asr_thread_count(true);
     cparams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_AUTO;
     ctx->asr_lctx = llama_init_from_model(ctx->asr_model, cparams);
     if (!ctx->asr_lctx) {
@@ -423,7 +442,7 @@ static int eliza_load_asr(EliInferenceContext * ctx, char ** out_error) {
     mtmd_context_params aparams = mtmd_context_params_default();
     aparams.use_gpu = true;
     aparams.print_timings = false;
-    aparams.n_threads = eliza_thread_count(true);
+    aparams.n_threads = eliza_asr_thread_count(true);
     aparams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_AUTO;
     aparams.warmup = true;
     ctx->asr_mtmd = mtmd_init_from_file(ctx->asr_mmproj_path.c_str(), ctx->asr_model, aparams);

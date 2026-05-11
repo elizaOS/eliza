@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "tool": "asr_bench.ts",
+  "generatedAt": "2026-05-11T17:18:43.559Z",
+  "dylib": "/home/shaw/.eliza/local-inference/bin/dflash/linux-x64-cpu-fused/libelizainference.so",
+  "bundle": "/home/shaw/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+  "abiVersion": "2",
+  "backend": "cpu",
+  "labelledSet": {
+    "source": "tts",
+    "wavDir": null,
+    "count": 8,
+    "normalization": "lowercase + strip-punctuation + collapse-ws (Whisper-style)"
+  },
+  "aggregate": {
+    "wer": 1.024390243902439,
+    "rtf": 0.5476568548602284,
+    "utterances": 8,
+    "refWords": 41,
+    "errors": 42,
+    "audioSeconds": 16.009999999999998,
+    "wallSeconds": 29.23363390400003
+  },
+  "gate": {
+    "metric": "asr_wer",
+    "op": "<=",
+    "threshold": 0.1,
+    "passed": false
+  },
+  "rows": [
+    {
+      "id": "tts-00",
+      "reference": "hello world",
+      "hypothesis": "y.",
+      "normalizedRef": "hello world",
+      "normalizedHyp": "y",
+      "refWords": 2,
+      "errors": 2,
+      "wer": 1,
+      "audioSeconds": 1.6,
+      "transcribeMs": 3267.0617210000055,
+      "rtf": 0.4897366920604918
+    },
+    {
+      "id": "tts-01",
+      "reference": "the quick brown fox jumps over the lazy dog",
+      "hypothesis": "",
+      "normalizedRef": "the quick brown fox jumps over the lazy dog",
+      "normalizedHyp": "",
+      "refWords": 9,
+      "errors": 9,
+      "wer": 1,
+      "audioSeconds": 2.76,
+      "transcribeMs": 3056.2072520000074,
+      "rtf": 0.9030801161124896
+    },
+    {
+      "id": "tts-02",
+      "reference": "turn on the kitchen lights",
+      "hypothesis": "–+ + + + + + + + +– x + + + + + +– +–– –+ – + + +  +– +.",
+      "normalizedRef": "turn on the kitchen lights",
+      "normalizedHyp": "x",
+      "refWords": 5,
+      "errors": 5,
+      "wer": 1,
+      "audioSeconds": 2.04,
+      "transcribeMs": 4011.1051799999987,
+      "rtf": 0.5085880096517441
+    },
+    {
+      "id": "tts-03",
+      "reference": "what time is it in tokyo",
+      "hypothesis": "我记得",
+      "normalizedRef": "what time is it in tokyo",
+      "normalizedHyp": "",
+      "refWords": 6,
+      "errors": 6,
+      "wer": 1,
+      "audioSeconds": 1.96,
+      "transcribeMs": 2713.181712000005,
+      "rtf": 0.7223990900908727
+    },
+    {
+      "id": "tts-04",
+      "reference": "play some music",
+      "hypothesis": "t, no, no, t.",
+      "normalizedRef": "play some music",
+      "normalizedHyp": "t no no t",
+      "refWords": 3,
+      "errors": 4,
+      "wer": 1.3333333333333333,
+      "audioSeconds": 1.42,
+      "transcribeMs": 2998.406573,
+      "rtf": 0.4735848743085049
+    },
+    {
+      "id": "tts-05",
+      "reference": "set a reminder for tomorrow morning",
+      "hypothesis": "个",
+      "normalizedRef": "set a reminder for tomorrow morning",
+      "normalizedHyp": "",
+      "refWords": 6,
+      "errors": 6,
+      "wer": 1,
+      "audioSeconds": 2.36,
+      "transcribeMs": 2798.426673000009,
+      "rtf": 0.843331012661482
+    },
+    {
+      "id": "tts-06",
+      "reference": "open the front door",
+      "hypothesis": "——,——,——,——,——,——,————, �,——,——,——, �——,——, �——,——,——,。,——,。,。,。,。,。,。,。,。,。,。,。,。,。,。,。, �, �, �, �, [ �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �, �。",
+      "normalizedRef": "open the front door",
+      "normalizedHyp": "",
+      "refWords": 4,
+      "errors": 4,
+      "wer": 1,
+      "audioSeconds": 1.83,
+      "transcribeMs": 6763.207735000004,
+      "rtf": 0.27058166356914354
+    },
+    {
+      "id": "tts-07",
+      "reference": "thanks that is all for now",
+      "hypothesis": "and",
+      "normalizedRef": "thanks that is all for now",
+      "normalizedHyp": "and",
+      "refWords": 6,
+      "errors": 6,
+      "wer": 1,
+      "audioSeconds": 2.04,
+      "transcribeMs": 3626.0370580000017,
+      "rtf": 0.5625976699546459
+    }
+  ]
+}

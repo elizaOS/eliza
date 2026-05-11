@@ -118,7 +118,7 @@ void qjl_score_qk_i8_avxvnni(const qjl_i8_sketch_256 *q_sketch_i8,
         const int32_t sum_q = _mm_cvtsi128_si32(s128);
 
         const qjl_block_qjl1_256 *blk = packed_k + (size_t)hk * n_tokens;
-        const float kscl = scl_base * qs->scale;
+        const float qscale = qs->scale;
         float *out = scores + (size_t)hq * n_tokens;
 
         for (int t = 0; t < n_tokens; ++t, ++blk) {
@@ -143,7 +143,7 @@ void qjl_score_qk_i8_avxvnni(const qjl_i8_sketch_256 *q_sketch_i8,
             const int32_t dot_pos = _mm_cvtsi128_si32(a128);
             const int32_t raw = 2 * dot_pos - sum_q;
             const float norm_k = bf16_to_fp32_inline(blk->norm_bf16);
-            out[t] = kscl * norm_k * (float)raw;
+            out[t] = scl_base * norm_k * qscale * (float)raw;
         }
     }
 }
