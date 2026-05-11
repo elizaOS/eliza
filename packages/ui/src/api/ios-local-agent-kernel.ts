@@ -621,7 +621,8 @@ function localAgentCapabilities(): Record<string, unknown> {
     },
     plugins: {
       state: "loader-unavailable",
-      reason: "The runtime plugin loader is not mounted in the iOS ITTP kernel.",
+      reason:
+        "The runtime plugin loader is not mounted in the iOS ITTP kernel.",
     },
   };
 }
@@ -2672,8 +2673,7 @@ export async function handleIosLocalAgentRequest(
 
   if (
     method === "GET" &&
-    (pathname === "/api/workbench/tasks" ||
-      pathname === "/api/workbench/todos")
+    (pathname === "/api/workbench/tasks" || pathname === "/api/workbench/todos")
   ) {
     return json(pathname.endsWith("/todos") ? { todos: [] } : { tasks: [] });
   }
@@ -2697,7 +2697,8 @@ export async function handleIosLocalAgentRequest(
       ok: true,
       triggersEnabled: false,
       workflowAvailable: false,
-      reason: "The AgentRuntime trigger service is not mounted in iOS local mode.",
+      reason:
+        "The AgentRuntime trigger service is not mounted in iOS local mode.",
     });
   }
 
