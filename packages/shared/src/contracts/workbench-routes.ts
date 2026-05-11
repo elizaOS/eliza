@@ -1,0 +1,56 @@
+/**
+ * Zod schemas for the workbench todos HTTP write surface.
+ *
+ * Routes covered:
+ *   POST /api/workbench/todos              (create)
+ *   POST /api/workbench/todos/:id/complete
+ *   PUT  /api/workbench/todos/:id          (update)
+ *
+ * GET and DELETE variants take no body.
+ */
+
+import z from "zod";
+
+const WorkbenchTodoPrioritySchema = z.union([z.number(), z.string(), z.null()]);
+
+const WorkbenchTodoBaseShape = {
+  name: z.string().optional(),
+  description: z.string().optional(),
+  priority: WorkbenchTodoPrioritySchema.optional(),
+  isUrgent: z.boolean().optional(),
+  type: z.string().optional(),
+  isCompleted: z.boolean().optional(),
+  tags: z.array(z.string()).optional(),
+};
+
+export const PostWorkbenchTodoRequestSchema = z
+  .object({
+    ...WorkbenchTodoBaseShape,
+    name: z.string().regex(/\S/, "name is required"),
+  })
+  .strict()
+  .transform((value) => ({
+    ...value,
+    name: value.name.trim(),
+  }));
+
+export const PostWorkbenchTodoCompleteRequestSchema = z
+  .object({
+    isCompleted: z.boolean().optional(),
+  })
+  .strict();
+
+export const PutWorkbenchTodoRequestSchema = z
+  .object(WorkbenchTodoBaseShape)
+  .strict();
+
+export type PostWorkbenchTodoRequest = z.infer<
+  typeof PostWorkbenchTodoRequestSchema
+>;
+export type PostWorkbenchTodoCompleteRequest = z.infer<
+  typeof PostWorkbenchTodoCompleteRequestSchema
+>;
+export type PutWorkbenchTodoRequest = z.infer<
+  typeof PutWorkbenchTodoRequestSchema
+>;
+export type WorkbenchTodoPriority = z.infer<typeof WorkbenchTodoPrioritySchema>;
