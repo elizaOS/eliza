@@ -38,7 +38,9 @@
   },
   "exports": {
     ".": "./dist/index.js",
+    "./package.json": "./package.json",
     "./styles": "./dist/styles.js",
+    "./styles/*.css": "./dist/styles/*.css",
     "./api/client-types-cloud": "./dist/api/client-types-cloud.js",
     "./config/app-config": "./dist/config/app-config.js",
     "./onboarding-config": "./dist/onboarding-config.js"
