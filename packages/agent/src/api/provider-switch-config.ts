@@ -659,6 +659,7 @@ export function clearPersistedOnboardingConfig(
     "grok",
     "groq",
     "mistral",
+    "mlx",
     "moonshot",
     "ollama",
     "openai",

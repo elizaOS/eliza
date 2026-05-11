@@ -9,6 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from .adapters import discover_adapters
+from .compare_vs_random import add_compare_vs_random_parser
 from .db import (
     connect_database,
     initialize_database,
@@ -103,8 +104,14 @@ def _cmd_run(args: argparse.Namespace) -> int:
     failed = 0
     skipped = 0
     incompatible = 0
+    # Default-on: suppress per-outcome printing for incompatible (harness/benchmark
+    # mismatch) rows in the summary. They are always recorded in SQLite either way.
+    skip_incompatible = bool(getattr(args, "skip_incompatible", True))
 
     for outcome in all_outcomes:
+        if outcome.status == "incompatible" and skip_incompatible:
+            incompatible += 1
+            continue
         print(
             f"- {outcome.benchmark_id:16s} "
             f"run_id={outcome.run_id} "
@@ -132,17 +139,24 @@ def _selected_harnesses(args: argparse.Namespace) -> tuple[str, ...]:
     if getattr(args, "all_harnesses", False):
         return ("eliza", "hermes", "openclaw")
     raw = getattr(args, "harnesses", None)
+    include_random = bool(getattr(args, "include_random_baseline", False))
     if raw:
         values: list[str] = []
         for item in raw:
             values.extend(part.strip().lower() for part in str(item).split(",") if part.strip())
         deduped: list[str] = []
         for value in values:
-            if value not in {"eliza", "hermes", "openclaw"}:
-                raise SystemExit(f"Unknown harness '{value}'. Expected eliza, hermes, or openclaw.")
+            if value not in {"eliza", "hermes", "openclaw", "random_v1"}:
+                raise SystemExit(
+                    f"Unknown harness '{value}'. Expected eliza, hermes, openclaw, or random_v1."
+                )
             if value not in deduped:
                 deduped.append(value)
+        if include_random and "random_v1" not in deduped:
+            deduped.append("random_v1")
         return tuple(deduped) if deduped else (args.agent,)
+    if include_random:
+        return (args.agent, "random_v1")
     return (args.agent,)
 
 
@@ -580,12 +594,30 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Run each selected benchmark with eliza, hermes, and openclaw",
     )
+    p_run.add_argument(
+        "--include-random-baseline",
+        action="store_true",
+        help="Additionally run a phantom random_v1 baseline against each selected benchmark",
+    )
     p_run.add_argument("--provider", default="cerebras", help="Model provider")
     p_run.add_argument("--model", default="gpt-oss-120b", help="Model name")
     p_run.add_argument("--extra", default=None, help="JSON object with benchmark-specific options")
     p_run.add_argument("--resume", action="store_true", help="Alias for idempotent run behavior")
     p_run.add_argument("--rerun-failed", action="store_true", help="Only re-run failed signatures")
     p_run.add_argument("--force", action="store_true", help="Force a new run regardless of existing success")
+    p_run.add_argument(
+        "--skip-incompatible",
+        dest="skip_incompatible",
+        action="store_true",
+        default=True,
+        help="Suppress incompatible-status outcomes from the printed summary (default: True; still recorded in SQLite)",
+    )
+    p_run.add_argument(
+        "--show-incompatible",
+        dest="skip_incompatible",
+        action="store_false",
+        help="Include incompatible (harness/benchmark mismatch) outcomes in the printed summary",
+    )
     p_run.set_defaults(func=_cmd_run)
 
     p_export = sub.add_parser("export-viewer-data", help="Rebuild benchmark_results/viewer_data.json from SQLite")
@@ -657,6 +689,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_view.add_argument("comparison_id", help="Comparison UUID returned by `compare`")
     p_view.set_defaults(func=_cmd_view_comparison)
+
+    add_compare_vs_random_parser(sub)
 
     return parser
 

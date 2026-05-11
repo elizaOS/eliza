@@ -1095,6 +1095,23 @@ export default defineConfig({
               "platform/empty-node-module.ts",
             ),
           },
+          // @elizaos/plugin-elizacloud — the plugin ships a deliberately
+          // minimal browser facade (`dist/browser/index.browser.js`) that
+          // only exports the plugin descriptor + a couple of error classes.
+          // `app-core/dist/api/server.js` re-exports several server-only
+          // helpers (`__resetCloudBaseUrlCache`, `ensureCloudTtsApiKeyAlias`,
+          // `clearCloudSecrets`, `resolveCloudTtsBaseUrl`, etc.) from the
+          // plugin; without an alias Rolldown errors with MISSING_EXPORT
+          // when bundling that re-export chain for the renderer. Route the
+          // import to the local browser stub, which already provides all of
+          // those names as no-ops (see `platform/empty-node-module.ts`).
+          {
+            find: /^@elizaos\/plugin-elizacloud$/,
+            replacement: path.join(
+              appCoreSrcRoot,
+              "platform/empty-node-module.ts",
+            ),
+          },
           // @elizaos/core — force ALL copies (including nested ones in plugins
           // that bundle their own older core) to the
           // main workspace copy's browser entry.  The browser entry has all

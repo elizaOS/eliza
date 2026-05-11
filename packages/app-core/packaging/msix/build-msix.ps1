@@ -135,6 +135,36 @@ $winVersion = "$major.$minor.$patch.$build"
 
 $manifestContent = Get-Content $manifestSource -Raw
 $manifestContent = $manifestContent -replace 'Version="0\.0\.0\.0"', "Version=`"$winVersion`""
+
+# Identity parameterization for Partner Center submissions.
+#
+# When uploading to the Microsoft Store, the Identity.Name and Identity.Publisher
+# attributes MUST match the values issued by Partner Center for the registered app.
+# Until those IDs are provisioned the manifest ships with placeholders, which would
+# be rejected on upload. Allow env-var override so CI can substitute real values
+# without forking the manifest.
+if ($buildVariant -eq "store") {
+  $identityName = $env:MILADY_MSIX_IDENTITY_NAME
+  $publisherId = $env:MILADY_MSIX_PUBLISHER_ID
+  $publisherDisplayName = $env:MILADY_MSIX_PUBLISHER_DISPLAY_NAME
+  if ($identityName) {
+    $manifestContent = $manifestContent -replace 'Name="ElizaOS\.App"', "Name=`"$identityName`""
+    Write-Host "Identity.Name set to: $identityName"
+  } else {
+    Write-Host "::warning::MILADY_MSIX_IDENTITY_NAME not set — store MSIX will use placeholder 'ElizaOS.App' (Partner Center upload will reject)."
+  }
+  if ($publisherId) {
+    $manifestContent = $manifestContent -replace 'Publisher="CN=elizaOS"', "Publisher=`"$publisherId`""
+    Write-Host "Identity.Publisher set to: $publisherId"
+  } else {
+    Write-Host "::warning::MILADY_MSIX_PUBLISHER_ID not set — store MSIX will use placeholder 'CN=elizaOS' (Partner Center upload will reject)."
+  }
+  if ($publisherDisplayName) {
+    $manifestContent = $manifestContent -replace '<PublisherDisplayName>elizaOS</PublisherDisplayName>', "<PublisherDisplayName>$publisherDisplayName</PublisherDisplayName>"
+    Write-Host "PublisherDisplayName set to: $publisherDisplayName"
+  }
+}
+
 Set-Content -Path $manifestDest -Value $manifestContent
 Write-Host "Manifest version set to: $winVersion"
 

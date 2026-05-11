@@ -1651,6 +1651,13 @@ export const lifeScheduledTasks = appLifeopsPgSchema.table(
     // Used by withTransaction-wrapped operations to detect concurrent updates
     // and surface OptimisticLockError instead of silently overwriting.
     version: integer("version").notNull().default(1),
+    // Indexed earliest-next-fire timestamp. Computed by the runner on each
+    // mutation that changes the firing window (schedule, fire, snooze, edit)
+    // for `cron` / `interval` / `relative_to_anchor` / `during_window` /
+    // `once` triggers. NULL for `event`, `manual`, and `after_task` triggers
+    // (those wake on signal, not on a wall-clock time). The scheduler tick
+    // filters by this column instead of loading every row.
+    nextFireAt: timestamp("next_fire_at", { withTimezone: true }),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -1662,6 +1669,11 @@ export const lifeScheduledTasks = appLifeopsPgSchema.table(
       t.subjectKind,
       t.subjectId,
     ),
+    // Partial index supporting the per-tick due-task scan: live tasks only
+    // (`scheduled` or `fired`), ordered by their next fire-at time.
+    index("idx_life_scheduled_tasks_due")
+      .on(t.agentId, t.nextFireAt)
+      .where(sql`(state_json::jsonb ->> 'status') IN ('scheduled', 'fired')`),
   ],
 );
 

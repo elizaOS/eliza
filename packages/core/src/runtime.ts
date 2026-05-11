@@ -32,6 +32,7 @@ import {
 	runWithActionRoutingContext,
 	runWithoutActionRoutingContext,
 } from "./runtime/action-routing-context";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators";
 import { ContextRegistry } from "./runtime/context-registry";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
@@ -1843,6 +1844,15 @@ export class AgentRuntime implements IAgentRuntime {
 				{ src: "agent", agentId: this.agentId, context: id },
 				"First-party context already registered, skipping",
 			);
+		}
+
+		// Register the canonical core response-handler field evaluators. These
+		// own the top-level properties of the Stage-1 LLM's structured output
+		// (shouldRespond, contexts, intents, candidateActionNames, replyText,
+		// facts, relationships, addressedTo). Plugins may register additional
+		// fields (e.g. app-lifeops contributes `threadOps`).
+		for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+			this.registerResponseHandlerFieldEvaluator(evaluator);
 		}
 
 		const pluginRegistrationPromises: Promise<void>[] = [];

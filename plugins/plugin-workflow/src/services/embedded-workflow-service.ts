@@ -1,5 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { type IAgentRuntime, logger, Service, type Task, type UUID } from '@elizaos/core';
+import {
+  type IAgentRuntime,
+  logger,
+  Service,
+  stringToUuid,
+  type Task,
+  TRIGGER_SCHEMA_VERSION,
+  type TriggerConfig,
+  type UUID,
+} from '@elizaos/core';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import {
@@ -21,21 +30,29 @@ import { detectHostCapabilities } from '../utils/host-capabilities';
 
 export const EMBEDDED_WORKFLOW_SERVICE_TYPE = 'embedded_workflow_service';
 
-/** TaskWorker name for scheduled workflow runs. Tasks created with this name
- *  carry metadata.workflowId + metadata.kind = 'workflow' and get fired by
- *  the core TaskService on the configured updateInterval. */
-export const WORKFLOW_RUN_TASK_WORKER_NAME = 'workflow.run';
-
-/** TaskWorker name for one-shot webhook-triggered workflow runs. A future
- *  webhook trigger provider creates a one-shot Task pointing at this worker;
- *  payload travels in metadata.payload. */
-export const WORKFLOW_WEBHOOK_TASK_WORKER_NAME = 'workflow.webhook';
+/**
+ * Task name + tag contract for scheduled workflow runs. Mirrored from
+ * `packages/agent/src/triggers/runtime.ts` because plugin-workflow can't
+ * import @elizaos/agent (would create a dep cycle). The agent's
+ * `registerTriggerTaskWorker` consumes tasks with this name.
+ */
+const TRIGGER_TASK_NAME = 'TRIGGER_DISPATCH';
+const TRIGGER_TASK_TAGS: readonly string[] = ['queue', 'repeat', 'trigger'];
 
 /** Discriminator on TaskMetadata so the UI can route workflow tasks. */
 export const WORKFLOW_TASK_KIND = 'workflow';
 
 /** Stable tag used on every workflow-backed Task so we can list+delete them. */
 const WORKFLOW_TASK_TAG = 'workflow';
+
+/**
+ * Legacy task names retained only for rehydration cleanup. `workflow.run`
+ * was the prior scheduled-dispatch path; it bypassed `executeTriggerTask`
+ * and accumulated no run history. `workflow.webhook` had no producer and
+ * was dead from the start. Both are migrated/removed on service start.
+ */
+const LEGACY_WORKFLOW_RUN_TASK_NAME = 'workflow.run';
+const LEGACY_WORKFLOW_WEBHOOK_TASK_NAME = 'workflow.webhook';
 
 type WorkflowExecuteMode = WorkflowExecution['mode'];
 
@@ -111,6 +128,12 @@ interface ExecuteOptions {
    * other nodes can read upstream context. Ignored when empty.
    */
   triggerData?: Record<string, unknown>;
+  /**
+   * Optional idempotency key. Persisted alongside the resulting
+   * execution row so the dispatch layer can detect duplicates and
+   * short-circuit re-runs (e.g. minute-bucketed schedule fires).
+   */
+  idempotencyKey?: string;
 }
 
 interface IncomingConnection {
@@ -1341,7 +1364,6 @@ export class EmbeddedWorkflowService extends Service {
       { src: 'plugin:workflow:embedded' },
       'Embedded workflow service registered (lazy runtime load)'
     );
-    service.registerTaskWorkers();
     if (runtime.db) {
       await service.ensureSchema();
       await service.rehydrateSchedules();
@@ -1352,48 +1374,6 @@ export class EmbeddedWorkflowService extends Service {
   override async stop(): Promise<void> {
     // Scheduling lives in core's TaskService. Tasks persist across restart;
     // there is nothing in-process to tear down here.
-  }
-
-  /** Register the workflow.run + workflow.webhook task workers with the
-   *  runtime's TaskService. Idempotent — safe to call once per service start. */
-  private registerTaskWorkers(): void {
-    if (typeof this.runtime.registerTaskWorker !== 'function') return;
-
-    if (!this.runtime.getTaskWorker?.(WORKFLOW_RUN_TASK_WORKER_NAME)) {
-      this.runtime.registerTaskWorker({
-        name: WORKFLOW_RUN_TASK_WORKER_NAME,
-        execute: async (_rt, _opts, task: Task) => {
-          const workflowId =
-            typeof task.metadata?.workflowId === 'string' ? task.metadata.workflowId : null;
-          if (!workflowId) {
-            throw new Error(
-              `${WORKFLOW_RUN_TASK_WORKER_NAME} task ${task.id ?? '?'} missing metadata.workflowId`
-            );
-          }
-          await this.executeWorkflow(workflowId, { mode: 'trigger' });
-          return undefined;
-        },
-      });
-    }
-
-    if (!this.runtime.getTaskWorker?.(WORKFLOW_WEBHOOK_TASK_WORKER_NAME)) {
-      this.runtime.registerTaskWorker({
-        name: WORKFLOW_WEBHOOK_TASK_WORKER_NAME,
-        execute: async (_rt, _opts, task: Task) => {
-          const meta = task.metadata as Record<string, unknown> | undefined;
-          const path = typeof meta?.path === 'string' ? meta.path : null;
-          const method = typeof meta?.method === 'string' ? meta.method : 'POST';
-          const payload = isRecord(meta?.payload) ? meta.payload : {};
-          if (!path) {
-            throw new Error(
-              `${WORKFLOW_WEBHOOK_TASK_WORKER_NAME} task ${task.id ?? '?'} missing metadata.path`
-            );
-          }
-          await this.executeWebhook(path, payload, method);
-          return undefined;
-        },
-      });
-    }
   }
 
   get host(): string {
@@ -1472,8 +1452,14 @@ export class EmbeddedWorkflowService extends Service {
             "finished" boolean DEFAULT false NOT NULL,
             "started_at" text NOT NULL,
             "stopped_at" text,
-            "execution" jsonb NOT NULL
+            "execution" jsonb NOT NULL,
+            "idempotency_key" text
           )
+        `);
+        // Online migration: add idempotency_key to pre-existing tables.
+        await db.execute(sql`
+          ALTER TABLE "workflow"."embedded_executions"
+          ADD COLUMN IF NOT EXISTS "idempotency_key" text
         `);
         await db.execute(sql`
           CREATE INDEX IF NOT EXISTS "idx_embedded_executions_workflow_id"
@@ -1486,6 +1472,10 @@ export class EmbeddedWorkflowService extends Service {
         await db.execute(sql`
           CREATE INDEX IF NOT EXISTS "idx_embedded_executions_started_at"
           ON "workflow"."embedded_executions" ("started_at")
+        `);
+        await db.execute(sql`
+          CREATE INDEX IF NOT EXISTS "idx_embedded_executions_idempotency_key"
+          ON "workflow"."embedded_executions" ("idempotency_key")
         `);
         await db.execute(sql`
           CREATE TABLE IF NOT EXISTS "workflow"."embedded_credentials" (
@@ -1785,7 +1775,38 @@ export class EmbeddedWorkflowService extends Service {
 
   async executeWorkflow(id: string, options: ExecuteOptions = {}): Promise<WorkflowExecution> {
     const entry = await this.getStoredWorkflow(id);
-    return this.runWorkflow(entry.workflow, options.mode ?? 'manual', options.triggerData);
+    return this.runWorkflow(
+      entry.workflow,
+      options.mode ?? 'manual',
+      options.triggerData,
+      options.idempotencyKey
+    );
+  }
+
+  /**
+   * Look up the most recent execution row tagged with this idempotency
+   * key for the given workflow. Returns null when none exists. The
+   * dispatch layer uses this to dedup back-to-back schedule fires that
+   * share a minute bucket — see WorkflowDispatchService.execute.
+   */
+  async findExecutionByIdempotencyKey(
+    workflowId: string,
+    idempotencyKey: string
+  ): Promise<WorkflowExecution | null> {
+    await this.ensureSchema();
+    const rows = await this.getDb()
+      .select()
+      .from(embeddedExecutions)
+      .where(
+        and(
+          eq(embeddedExecutions.workflowId, workflowId),
+          eq(embeddedExecutions.idempotencyKey, idempotencyKey)
+        )
+      )
+      .orderBy(desc(embeddedExecutions.startedAt))
+      .limit(1);
+    const row = rows[0];
+    return row ? cloneJson(row.execution) : null;
   }
 
   async executeWebhook(
@@ -1988,8 +2009,12 @@ export class EmbeddedWorkflowService extends Service {
     }
   }
 
-  private async saveExecution(execution: WorkflowExecution): Promise<void> {
+  private async saveExecution(
+    execution: WorkflowExecution,
+    idempotencyKey?: string
+  ): Promise<void> {
     await this.ensureSchema();
+    const key = idempotencyKey ?? null;
     await this.getDb()
       .insert(embeddedExecutions)
       .values({
@@ -2001,6 +2026,7 @@ export class EmbeddedWorkflowService extends Service {
         startedAt: execution.startedAt,
         stoppedAt: execution.stoppedAt ?? null,
         execution: cloneJson(execution),
+        idempotencyKey: key,
       })
       .onConflictDoUpdate({
         target: embeddedExecutions.id,
@@ -2012,6 +2038,7 @@ export class EmbeddedWorkflowService extends Service {
           startedAt: execution.startedAt,
           stoppedAt: execution.stoppedAt ?? null,
           execution: cloneJson(execution),
+          idempotencyKey: key,
         },
       });
   }
@@ -2115,7 +2142,8 @@ export class EmbeddedWorkflowService extends Service {
   private async runWorkflow(
     workflowData: WorkflowDefinition,
     mode: WorkflowExecuteMode,
-    triggerData?: Record<string, unknown>
+    triggerData?: Record<string, unknown>,
+    idempotencyKey?: string
   ): Promise<WorkflowExecution> {
     const executionId = randomUUID();
     const startedAt = new Date();
@@ -2127,7 +2155,7 @@ export class EmbeddedWorkflowService extends Service {
       workflowId: workflowData.id ?? '',
       status: 'running',
     };
-    await this.saveExecution(pending);
+    await this.saveExecution(pending, idempotencyKey);
 
     try {
       const enabledNodes = workflowData.nodes.filter((node) => !node.disabled);
@@ -2209,7 +2237,7 @@ export class EmbeddedWorkflowService extends Service {
           },
         },
       };
-      await this.saveExecution(execution);
+      await this.saveExecution(execution, idempotencyKey);
       return cloneJson(execution);
     } catch (error) {
       const stoppedAt = new Date();
@@ -2227,7 +2255,7 @@ export class EmbeddedWorkflowService extends Service {
           },
         },
       };
-      await this.saveExecution(execution);
+      await this.saveExecution(execution, idempotencyKey);
       throw error;
     }
   }

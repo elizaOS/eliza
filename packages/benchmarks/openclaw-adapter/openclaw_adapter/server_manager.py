@@ -57,7 +57,10 @@ class OpenClawCLIManager:
 
         Raises :class:`FileNotFoundError` with the full path in the message
         when the binary is missing — operators rely on the path being visible
-        in the error to diagnose install location issues.
+        in the error to diagnose install location issues. Raises
+        :class:`RuntimeError` when ``<binary> --version`` exits non-zero or
+        the subprocess cannot start, so a broken install fails fast here
+        instead of producing a cryptic error on the first benchmark turn.
         """
         if self._started:
             return
