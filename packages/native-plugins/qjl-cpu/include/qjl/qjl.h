@@ -176,6 +176,25 @@ void qjl_score_qk_i8_ref(const qjl_i8_sketch_256 *q_sketch_i8,
                          int n_heads, int n_kv_heads, int n_tokens,
                          float *scores);
 
+/* AVX-VNNI (256-bit VPDPBUSD) and ARMv8.4 dot-product variants of the
+ * int8-sketch score path. Each is gated on the matching feature macro
+ * at compile time and on runtime CPU detection in the dispatcher; the
+ * scalar `qjl_score_qk_i8_ref` is the exact baseline they reproduce. */
+void qjl_score_qk_i8_avxvnni(const qjl_i8_sketch_256 *q_sketch_i8,
+                             const qjl_block_qjl1_256 *packed_k,
+                             int n_heads, int n_kv_heads, int n_tokens,
+                             float *scores);
+void qjl_score_qk_i8_dotprod(const qjl_i8_sketch_256 *q_sketch_i8,
+                             const qjl_block_qjl1_256 *packed_k,
+                             int n_heads, int n_kv_heads, int n_tokens,
+                             float *scores);
+
+/* Best-available int8-sketch score path on the running CPU. */
+void qjl_score_qk_i8(const qjl_i8_sketch_256 *q_sketch_i8,
+                     const qjl_block_qjl1_256 *packed_k,
+                     int n_heads, int n_kv_heads, int n_tokens,
+                     float *scores);
+
 /* ---------------- helpers ---------------- */
 
 /* IEEE float32 -> bfloat16 with round-to-nearest-even. */
@@ -183,7 +202,8 @@ uint16_t qjl_fp32_to_bf16(float x);
 /* bfloat16 -> float32 zero-extension. */
 float    qjl_bf16_to_fp32(uint16_t b);
 
-/* Capability strings ("avx2" / "neon" / "ref") of the active SIMD path. */
+/* Capability string of the active SIMD path, e.g. "avxvnni", "avx2",
+ * "neon-dotprod", "neon", "ref". Reflects the *runtime*-selected path. */
 const char *qjl_active_simd(void);
 
 #ifdef __cplusplus

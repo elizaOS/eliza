@@ -105,9 +105,8 @@ export async function runEvaluator(
 		params.provider,
 	);
 	const endedAt = Date.now();
-	const output = repairMissingEvaluatorSuccess(
-		parseEvaluatorOutput(raw),
-		params.trajectory,
+	const output = sanitizeOutputMessage(
+		repairMissingEvaluatorSuccess(parseEvaluatorOutput(raw), params.trajectory),
 	);
 	const streamingContext = getStreamingContext();
 	await emitStreamingHook(streamingContext, "onEvaluation", {
@@ -317,6 +316,88 @@ export function parseEvaluatorOutput(
 				: undefined,
 		raw: parsed as Record<string, unknown>,
 	};
+}
+
+/**
+ * Patterns that match internal orchestration mechanics the LLM
+ * sometimes echoes into `messageToUser` after a TASKS / sub-agent
+ * spawn. They expose implementation details (auto-generated agent
+ * labels, raw PTY session IDs, multi-agent enumeration verbiage) and
+ * read as robotic to the human on the other end of the chat.
+ *
+ * Each pattern is conservative: it targets a parenthetical / inline
+ * annotation that the LLM appends as metadata, not the surrounding
+ * natural language. The replacement either drops the parenthetical
+ * entirely or substitutes a neutral phrase, then collapses any
+ * doubled whitespace.
+ */
+// Orchestrator auto-generated task labels always have at least two
+// hyphen-separated word segments before the trailing index (e.g.
+// "count-py-files-projects-1", "write-arxiv-grab-py-1"). Requiring
+// `{2,}` segments here is what keeps the sanitizer from eating
+// legitimate parentheticals the LLM might write — "(bug-42)",
+// "(phase-1)", "(rfc-2616)", "(attempt-3)" — none of which match.
+const AUTO_LABEL = /(?:[a-z][a-z0-9]*-){2,}\d+/.source;
+
+const INTERNAL_MECHANIC_PATTERNS: ReadonlyArray<{
+	pattern: RegExp;
+	replacement: string;
+}> = [
+	// "(session: pty-1778500471501-4cf0e3a6)", "(session pty-...)"
+	{
+		pattern: /\s*\((?:session(?:[- _]?id)?\s*[:=]?\s*)?pty-\d+-[A-Za-z0-9]+\)/g,
+		replacement: "",
+	},
+	// Bare session IDs "pty-1778500471501-4cf0e3a6" anywhere in the
+	// message — `\s*` so the strip still fires at position 0.
+	{ pattern: /\s*pty-\d+-[A-Za-z0-9]+/g, replacement: "" },
+	// "(session write-arxiv-grab-py-1)" / "(write-arxiv-grab-py-1)" /
+	// "(count-py-files-projects-1 and count-ts-files-iqlabs-1)" —
+	// auto-generated labels in parens.
+	{
+		pattern: new RegExp(
+			`\\s*\\((?:session\\s*[:=]?\\s*|sessions?\\s+)?${AUTO_LABEL}(?:\\s+and\\s+${AUTO_LABEL})*\\)`,
+			"g",
+		),
+		replacement: "",
+	},
+	// "session write-arxiv-grab-py-1" inline (no parens).
+	{
+		pattern: new RegExp(`\\s+session\\s+${AUTO_LABEL}`, "g"),
+		replacement: "",
+	},
+	// "task-agent / task_agent / subagent" mechanic phrases that
+	// surface as "task-agent count-py-files-projects-1" right before
+	// a label. Drop the prefix; keep "agent" in the natural-language
+	// sense by mapping to "agent" only when the label follows.
+	{
+		pattern: new RegExp(`\\b(?:task[-_]agent|subagent)\\s+${AUTO_LABEL}`, "g"),
+		replacement: "agent",
+	},
+];
+
+function sanitizeMessageToUser(text: string): string {
+	let cleaned = text;
+	for (const { pattern, replacement } of INTERNAL_MECHANIC_PATTERNS) {
+		cleaned = cleaned.replace(pattern, replacement);
+	}
+	// Collapse multiple spaces introduced by the substitutions and
+	// trim trailing space before punctuation (", ." -> ".").
+	cleaned = cleaned.replace(/[ \t]{2,}/g, " ");
+	cleaned = cleaned.replace(/\s+([.,!?:;])/g, "$1");
+	return cleaned.trim();
+}
+
+function sanitizeOutputMessage(output: EvaluatorOutput): EvaluatorOutput {
+	if (typeof output.messageToUser !== "string") return output;
+	const sanitized = sanitizeMessageToUser(output.messageToUser);
+	if (sanitized === output.messageToUser) return output;
+	if (sanitized.length === 0) {
+		// If sanitization removed everything, drop messageToUser so the
+		// runtime doesn't post an empty Discord message.
+		return { ...output, messageToUser: undefined };
+	}
+	return { ...output, messageToUser: sanitized };
 }
 
 function repairMissingEvaluatorSuccess(
