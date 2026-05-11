@@ -31,6 +31,42 @@ export type RetrieveActionsInput = {
 	 * while still preferring on-context candidates when scores are close.
 	 */
 	selectedContexts?: readonly string[];
+	/**
+	 * When `true`, capture each stage's full pre-fusion output and emit it
+	 * in `response.measurement`. Default `false` — no allocation cost in
+	 * production. Toggle via the `MILADY_RETRIEVAL_MEASUREMENT=1` env var
+	 * on the caller side.
+	 */
+	measurementMode?: boolean;
+	/**
+	 * Optional per-tier overrides for retrieval. When provided, the call
+	 * uses these instead of the in-file constants. Wired by the benchmark
+	 * harness from `RETRIEVAL_DEFAULTS_BY_TIER`.
+	 */
+	tierOverrides?: {
+		topK?: number;
+		stageWeights?: Partial<Record<RetrievalStageName, number>>;
+	};
+};
+
+export type RetrievalStageEntry = {
+	actionName: string;
+	score: number;
+	rank: number;
+};
+
+export type RetrievalPerStageScores = {
+	exact: RetrievalStageEntry[];
+	regex: RetrievalStageEntry[];
+	keyword: RetrievalStageEntry[];
+	bm25: RetrievalStageEntry[];
+	embedding: RetrievalStageEntry[];
+	contextMatch: RetrievalStageEntry[];
+};
+
+export type RetrievalMeasurement = {
+	perStageScores: RetrievalPerStageScores;
+	fusedTopK: Array<{ actionName: string; rrfScore: number; rank: number }>;
 };
 
 export type ActionRetrievalResult = {
@@ -53,6 +89,12 @@ export type ActionRetrievalResponse = {
 		candidateActions: string[];
 		parentActionHints: string[];
 	};
+	/**
+	 * Per-stage retrieval funnel. Populated only when
+	 * `input.measurementMode === true`. The benchmark harness consumes
+	 * this to compute stage-by-stage recall.
+	 */
+	measurement?: RetrievalMeasurement;
 };
 
 const BM25_K1 = 0.9;
@@ -99,7 +141,8 @@ export function retrieveActions(
 		bm25: rankScores(bm25Scores),
 		embedding: rankScores(embeddingScores),
 	};
-	const rrfScores = reciprocalRankFusion(stageRankings);
+	const stageWeights = input.tierOverrides?.stageWeights;
+	const rrfScores = reciprocalRankFusion(stageRankings, stageWeights);
 	const maxRrf = Math.max(0, ...rrfScores.values());
 	const maxKeyword = Math.max(0, ...keywordScores.values());
 	const maxBm25 = Math.max(0, ...bm25Scores.values());
@@ -195,13 +238,61 @@ export function retrieveActions(
 		);
 	});
 
-	const limit = Number.isFinite(input.limit)
-		? Math.max(0, input.limit ?? 0)
+	const effectiveLimit =
+		input.tierOverrides?.topK ??
+		(Number.isFinite(input.limit) ? input.limit : undefined);
+	const limit = Number.isFinite(effectiveLimit)
+		? Math.max(0, effectiveLimit ?? 0)
 		: 0;
 	const limited = limit > 0 ? results.slice(0, limit) : results;
 
 	for (let index = 0; index < limited.length; index += 1) {
 		limited[index].rank = index + 1;
+	}
+
+	let measurement: RetrievalMeasurement | undefined;
+	if (input.measurementMode === true) {
+		// Capture each stage's pre-fusion ranking so the analyzer can compute
+		// stage-by-stage recall. Context-match scores are recomputed from the
+		// per-parent boost so they're available alongside the other five
+		// stages even though they're applied as an additive bump in the main
+		// loop, not as a ranking source.
+		const selectedContextSetForMeasurement = selectedContextSet;
+		const contextMatchScores = new Map<string, number>();
+		for (const parent of input.catalog.parents) {
+			const parentContexts = Array.isArray(parent.contexts)
+				? (parent.contexts as readonly unknown[])
+				: [];
+			if (
+				selectedContextSetForMeasurement.size > 0 &&
+				parentContexts.length > 0 &&
+				parentContexts.some((c) =>
+					selectedContextSetForMeasurement.has(String(c).toLowerCase()),
+				)
+			) {
+				contextMatchScores.set(parent.normalizedName, 1);
+			}
+		}
+
+		measurement = {
+			perStageScores: {
+				exact: mapToStageEntries(exactScores),
+				regex: mapToStageEntries(regexScores),
+				keyword: mapToStageEntries(keywordScores),
+				bm25: mapToStageEntries(bm25Scores),
+				embedding: mapToStageEntries(embeddingScores),
+				contextMatch: mapToStageEntries(contextMatchScores),
+			},
+			fusedTopK: Array.from(rrfScores.entries())
+				.sort(([leftName, leftScore], [rightName, rightScore]) => {
+					return rightScore - leftScore || leftName.localeCompare(rightName);
+				})
+				.map(([name, rrfScore], index) => ({
+					actionName: name,
+					rrfScore: roundScore(rrfScore),
+					rank: index + 1,
+				})),
+		};
 	}
 
 	return {
@@ -213,7 +304,21 @@ export function retrieveActions(
 			candidateActions,
 			parentActionHints,
 		},
+		...(measurement ? { measurement } : {}),
 	};
+}
+
+function mapToStageEntries(scores: Map<string, number>): RetrievalStageEntry[] {
+	return Array.from(scores.entries())
+		.filter(([, score]) => score > 0)
+		.sort(([leftName, leftScore], [rightName, rightScore]) => {
+			return rightScore - leftScore || leftName.localeCompare(rightName);
+		})
+		.map(([actionName, score], index) => ({
+			actionName,
+			score: roundScore(score),
+			rank: index + 1,
+		}));
 }
 
 export function tokenizeActionSearchText(text: string): string[] {
@@ -445,16 +550,20 @@ function rankScores(scores: Map<string, number>): Map<string, number> {
 
 function reciprocalRankFusion(
 	stageRankings: Partial<Record<RetrievalStageName, Map<string, number>>>,
+	stageWeights?: Partial<Record<RetrievalStageName, number>>,
 ): Map<string, number> {
 	const scores = new Map<string, number>();
 
-	for (const ranking of Object.values(stageRankings)) {
+	for (const [stageName, ranking] of Object.entries(stageRankings) as Array<
+		[RetrievalStageName, Map<string, number> | undefined]
+	>) {
 		if (!ranking) {
 			continue;
 		}
+		const weight = stageWeights?.[stageName] ?? 1;
 
 		for (const [name, rank] of ranking.entries()) {
-			scores.set(name, (scores.get(name) ?? 0) + 1 / (RRF_K + rank));
+			scores.set(name, (scores.get(name) ?? 0) + weight / (RRF_K + rank));
 		}
 	}
 
