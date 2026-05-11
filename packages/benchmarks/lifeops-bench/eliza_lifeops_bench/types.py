@@ -129,6 +129,69 @@ class Scenario:
     disruptions: list[Disruption] = field(default_factory=list)
 
 
+def attach_usage_cache_fields(turn: Any, usage: dict[str, Any]) -> None:
+    """Parse OpenAI / Cerebras / Anthropic-shaped ``usage`` onto a turn.
+
+    Sets ``input_tokens`` / ``output_tokens`` / ``cache_read_input_tokens`` /
+    ``cache_creation_input_tokens`` / ``cache_supported`` as attributes on
+    ``turn`` (via ``setattr``) so :class:`LifeOpsBenchRunner` can pick them
+    up with ``getattr``. Cache fields stay ``None`` when the provider does
+    not report them — per AGENTS.md Cmd #8, no silent ``0`` fallback.
+
+    Used by the hermes-adapter and openclaw-adapter LifeOpsBench glue. The
+    eliza-adapter receives camelCase rollups from the TS bench server and
+    handles them inline (different wire shape, different boundary).
+
+    Supported usage shapes:
+
+    * OpenAI / Cerebras OpenAI-compat::
+
+          {"prompt_tokens": 1234, "completion_tokens": 56,
+           "prompt_tokens_details": {"cached_tokens": 800}}
+
+    * Anthropic native usage::
+
+          {"input_tokens": 1234, "output_tokens": 56,
+           "cache_read_input_tokens": 800,
+           "cache_creation_input_tokens": 200}
+    """
+    prompt = usage.get("prompt_tokens")
+    completion = usage.get("completion_tokens")
+    if not isinstance(prompt, (int, float)):
+        prompt = usage.get("input_tokens")
+    if not isinstance(completion, (int, float)):
+        completion = usage.get("output_tokens")
+    if isinstance(prompt, (int, float)):
+        setattr(turn, "input_tokens", int(prompt))
+    if isinstance(completion, (int, float)):
+        setattr(turn, "output_tokens", int(completion))
+
+    prompt_details = usage.get("prompt_tokens_details") or {}
+    cache_read_raw = (
+        prompt_details.get("cached_tokens")
+        if isinstance(prompt_details, dict)
+        else None
+    )
+    if cache_read_raw is None:
+        cache_read_raw = usage.get("cache_read_input_tokens")
+    cache_creation_raw = usage.get("cache_creation_input_tokens")
+
+    cache_read_value: Optional[int] = (
+        int(cache_read_raw) if isinstance(cache_read_raw, (int, float)) else None
+    )
+    cache_creation_value: Optional[int] = (
+        int(cache_creation_raw)
+        if isinstance(cache_creation_raw, (int, float))
+        else None
+    )
+    setattr(turn, "cache_read_input_tokens", cache_read_value)
+    setattr(turn, "cache_creation_input_tokens", cache_creation_value)
+    # Adapters that call this helper front Cerebras / OpenAI / Anthropic —
+    # all support prompt caching, so cache_supported is a hard-true. Local
+    # backends bypass this helper entirely.
+    setattr(turn, "cache_supported", True)
+
+
 def compute_cache_hit_pct(
     input_tokens: int | None,
     cache_read_input_tokens: int | None,
