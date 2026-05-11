@@ -25,6 +25,7 @@ import {
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
+import { PutCuratedSkillSourceRequestSchema } from "@elizaos/shared";
 import { resolveStateDir } from "../config/paths.ts";
 
 const CURATED_SKILL_NAME_RE = /^[a-z0-9-]+$/;
@@ -337,10 +338,15 @@ export async function handleCuratedSkillsRoutes(
       error(res, "Invalid skill name", 400);
       return true;
     }
-    const body = await readJsonBody<{ content?: string }>(req, res);
-    if (!body) return true;
-    if (typeof body.content !== "string") {
-      error(res, "Missing 'content' field", 400);
+    const rawSrc = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawSrc === null) return true;
+    const parsedSrc = PutCuratedSkillSourceRequestSchema.safeParse(rawSrc);
+    if (!parsedSrc.success) {
+      error(
+        res,
+        parsedSrc.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
     const candidates = [
@@ -352,7 +358,7 @@ export async function handleCuratedSkillsRoutes(
       error(res, `Curated skill "${name}" not found`, 404);
       return true;
     }
-    writeFileSync(target, body.content, "utf-8");
+    writeFileSync(target, parsedSrc.data.content, "utf-8");
     json(res, { ok: true, name, path: target });
     return true;
   }

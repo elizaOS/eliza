@@ -2,6 +2,7 @@ import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { readRequestBodyBuffer } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
+import { PostAgentExportRequestSchema } from "@elizaos/shared";
 
 const MAX_IMPORT_BYTES = 512 * 1_048_576;
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
@@ -67,29 +68,19 @@ export async function handleAgentTransferRoutes(
       return true;
     }
 
-    const body = await readJsonBody<{
-      password?: string;
-      includeLogs?: boolean;
-    }>(req, res);
-    if (!body) return true;
-
-    if (!body.password || typeof body.password !== "string") {
+    const rawExport = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawExport === null) return true;
+    const parsedExport = PostAgentExportRequestSchema.safeParse(rawExport);
+    if (!parsedExport.success) {
       error(
         res,
-        `A password of at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters is required.`,
+        parsedExport.error.issues[0]?.message ??
+          `A password of at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters is required.`,
         400,
       );
       return true;
     }
-
-    if (body.password.length < AGENT_TRANSFER_MIN_PASSWORD_LENGTH) {
-      error(
-        res,
-        `A password of at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters is required.`,
-        400,
-      );
-      return true;
-    }
+    const body = parsedExport.data;
 
     try {
       const fileBuffer = await exportAgent(state.runtime, body.password, {

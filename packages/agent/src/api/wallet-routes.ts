@@ -19,6 +19,9 @@ import type {
 } from "@elizaos/shared";
 import {
   normalizeWalletRpcSelections,
+  PostWalletGenerateRequestSchema,
+  PostWalletImportRequestSchema,
+  PostWalletPrimaryRequestSchema,
   type WalletConfigUpdateRequest,
   type WalletRpcSelections,
 } from "@elizaos/shared";
@@ -799,37 +802,29 @@ export async function handleWalletRoutes(
 
   // POST /api/wallet/import
   if (method === "POST" && pathname === "/api/wallet/import") {
-    const body = await readJsonBody<{ chain?: string; privateKey?: string }>(
-      req,
-      res,
-    );
-    if (!body) return true;
-
-    if (!body.privateKey?.trim()) {
-      error(res, "privateKey is required");
-      return true;
-    }
-
-    let chain: WalletChain;
-    if (body.chain === "evm" || body.chain === "solana") {
-      chain = body.chain;
-    } else if (body.chain) {
+    const rawImport = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawImport === null) return true;
+    const parsedImport = PostWalletImportRequestSchema.safeParse(rawImport);
+    if (!parsedImport.success) {
       error(
         res,
-        `Unsupported chain: ${body.chain}. Must be "evm" or "solana".`,
+        parsedImport.error.issues[0]?.message ?? "Invalid request body",
+        400,
       );
       return true;
-    } else {
-      const detection = deps.validatePrivateKey(body.privateKey.trim());
-      chain = detection.chain;
     }
+    const body = parsedImport.data;
+
+    const chain: WalletChain = body.chain
+      ? body.chain
+      : deps.validatePrivateKey(body.privateKey).chain;
 
     // When steward is configured, warn that keys should be imported via vault
     const stewardWarning = process.env.STEWARD_API_URL?.trim()
       ? "Steward vault is configured. Consider importing keys directly into the vault instead of storing plaintext keys locally."
       : undefined;
 
-    const result = deps.importWallet(chain, body.privateKey.trim());
+    const result = deps.importWallet(chain, body.privateKey);
 
     if (!result.success) {
       error(res, result.error ?? "Import failed", 422);
@@ -884,39 +879,20 @@ export async function handleWalletRoutes(
 
   // POST /api/wallet/generate
   if (method === "POST" && pathname === "/api/wallet/generate") {
-    const body = await readJsonBody<{ chain?: string; source?: string }>(
-      req,
-      res,
-    );
-    if (!body) return true;
-
-    const chain = body.chain as string | undefined;
-    const validChains: Array<WalletChain | "both"> = ["evm", "solana", "both"];
-    const requestedSource =
-      body.source === "local" || body.source === "steward"
-        ? body.source
-        : undefined;
-
-    if (chain && !validChains.includes(chain as WalletChain | "both")) {
+    const rawGen = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawGen === null) return true;
+    const parsedGen = PostWalletGenerateRequestSchema.safeParse(rawGen);
+    if (!parsedGen.success) {
       error(
         res,
-        `Unsupported chain: ${chain}. Must be "evm", "solana", or "both".`,
+        parsedGen.error.issues[0]?.message ?? "Invalid request body",
+        400,
       );
       return true;
     }
-    if (
-      typeof body.source === "string" &&
-      requestedSource !== "local" &&
-      requestedSource !== "steward"
-    ) {
-      error(
-        res,
-        `Unsupported source: ${body.source}. Must be "local" or "steward".`,
-      );
-      return true;
-    }
-
-    const targetChain = (chain ?? "both") as WalletChain | "both";
+    const body = parsedGen.data;
+    const requestedSource = body.source;
+    const targetChain = body.chain ?? "both";
 
     // ── Steward-first: delegate wallet generation to steward ──────────
     const stewardApiUrl = process.env.STEWARD_API_URL?.trim();
@@ -1289,22 +1265,19 @@ export async function handleWalletRoutes(
       error(res, "Not found", 404);
       return true;
     }
-    const body = await readJsonBody<Record<string, unknown>>(req, res);
-    if (!body) return true;
-
-    const chainRaw = typeof body.chain === "string" ? body.chain : "";
-    const sourceRaw = typeof body.source === "string" ? body.source : "";
-    if (chainRaw !== "evm" && chainRaw !== "solana") {
-      error(res, "chain must be 'evm' or 'solana'");
+    const rawPrimary = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawPrimary === null) return true;
+    const parsedPrimary = PostWalletPrimaryRequestSchema.safeParse(rawPrimary);
+    if (!parsedPrimary.success) {
+      error(
+        res,
+        parsedPrimary.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
-    if (sourceRaw !== "local" && sourceRaw !== "cloud") {
-      error(res, "source must be 'local' or 'cloud'");
-      return true;
-    }
-
-    const chain = chainRaw as WalletChainKind;
-    const source = sourceRaw as WalletSource;
+    const chain = parsedPrimary.data.chain as WalletChainKind;
+    const source = parsedPrimary.data.source as WalletSource;
     const previousPrimary = readPrimaryMap(config)[chain];
 
     persistPrimarySelection(config, chain, source);
