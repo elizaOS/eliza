@@ -265,6 +265,18 @@ export async function startBenchmarkServer() {
     `[bench] Initializing eliza benchmark runtime on port ${port}...`,
   );
 
+  // Force the v5 planner to require a structured tool call on every benchmark
+  // turn (unless explicitly disabled). Without this, the planner often picks
+  // `REPLY` and emits the answer as prose, which scores 0 against harnesses
+  // like LifeOpsBench that judge on tool calls (`MESSAGE.triage`,
+  // `CALENDAR.create_event`, etc.). The core gate in `services/message.ts`
+  // (see `isBenchmarkForcingToolCall`) honors this env var ONLY for messages
+  // whose `content.source === "benchmark"` or whose `content.metadata.benchmark`
+  // is set, so a co-resident chat process is unaffected.
+  if (process.env.MILADY_BENCH_FORCE_TOOL_CALL === undefined) {
+    process.env.MILADY_BENCH_FORCE_TOOL_CALL = "1";
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // PLUGIN LOADING — Use full CORE_PLUGINS to test with realistic context
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1014,6 +1026,7 @@ export async function startBenchmarkServer() {
           : callbackTexts.join("\n\n");
       const actions = coerceActions(result.responseContent?.actions);
       const params = coerceParams(result.responseContent?.params);
+      const capturedAction = getCapturedAction();
 
       // Map captured Eliza actions into lifeops_bench tool calls.
       // Strategy: each action name in `actions` is treated as a tool name;
@@ -1021,7 +1034,39 @@ export async function startBenchmarkServer() {
       // an empty object. This matches how OpenClaw/Hermes adapters expose
       // their tool-call traces. The fake-backend rejects unsupported names
       // with a clear error so scenario authors learn about gaps quickly.
-      const toolCalls = actions.map((name, index) => {
+      const toolCalls: Array<{
+        id: string;
+        name: string;
+        arguments: Record<string, unknown>;
+      }> = [];
+
+      // BENCHMARK_ACTION unwrap: when the planner picks BENCHMARK_ACTION, the
+      // bench plugin captures the underlying tool name + arguments (tau-bench
+      // shape: `{tool_name, arguments}`). Unwrap that capture into a real tool
+      // call against the LifeOps fake backend instead of forwarding the
+      // generic BENCHMARK_ACTION sentinel (which the fake backend rejects).
+      if (
+        capturedAction &&
+        typeof capturedAction.toolName === "string" &&
+        capturedAction.toolName.trim().length > 0
+      ) {
+        toolCalls.push({
+          id: "call_0",
+          name: capturedAction.toolName,
+          arguments:
+            capturedAction.arguments &&
+            typeof capturedAction.arguments === "object"
+              ? capturedAction.arguments
+              : {},
+        });
+      }
+
+      // Also pass through any directly-named actions (e.g. when the planner
+      // emits MESSAGE/CALENDAR directly without the BENCHMARK_ACTION wrapper),
+      // skipping the BENCHMARK_ACTION sentinel itself which has already been
+      // unwrapped above.
+      for (const name of actions) {
+        if (name === "BENCHMARK_ACTION") continue;
         const paramsForAction = params[name];
         const argumentsObj: Record<string, unknown> =
           paramsForAction &&
@@ -1029,12 +1074,12 @@ export async function startBenchmarkServer() {
           !Array.isArray(paramsForAction)
             ? (paramsForAction as Record<string, unknown>)
             : {};
-        return {
-          id: `call_${index}`,
+        toolCalls.push({
+          id: `call_${toolCalls.length}`,
           name,
           arguments: argumentsObj,
-        };
-      });
+        });
+      }
 
       // Sum the per-call cache-read tokens across every LLM call that fired
       // during this turn. A call with `cachedTokens === undefined` means the
