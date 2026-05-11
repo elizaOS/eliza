@@ -3,7 +3,7 @@
  * Build the DFlash-capable llama-server fork used by local inference.
  *
  * As of v0.2.0-milady, DFlash speculative decoding lives in the unified
- * milady-ai/llama.cpp fork (the same repo as the AOSP cross-compile).
+ * elizaOS/llama.cpp fork (the same repo as the AOSP cross-compile).
  * Pre-2026-05-09 this script consumed spiritbuun/buun-llama-cpp directly
  * (which itself was 8,988 commits ahead of upstream b8198 with quant
  * type IDs that conflicted with apothic's TBQ slots). Wave-3 agent A
@@ -19,9 +19,13 @@
  *
  * Multi-target build matrix (see SUPPORTED_TARGETS below):
  *   linux-x64-cpu, linux-x64-cuda, linux-x64-rocm, linux-x64-vulkan
+ *   linux-aarch64-cpu, linux-aarch64-cuda   (GH200 / Ampere Altra / Graviton; arm64 Linux host only)
  *   android-arm64-cpu, android-arm64-vulkan
- *   darwin-arm64-metal, darwin-x64-metal
- *   windows-x64-cpu, windows-x64-cuda
+ *   darwin-arm64-metal, darwin-x64-metal    (darwin-x64-metal: COMPILE-ONLY; Intel-Mac GPUs aren't Apple7+)
+ *   ios-arm64-metal, ios-arm64-simulator-metal  (macOS + Xcode host)
+ *   windows-x64-cpu, windows-x64-cuda, windows-x64-vulkan
+ *   windows-arm64-cpu, windows-arm64-vulkan  (Snapdragon X / Copilot+ PC; native MSVC arm64 or LLVM aarch64 mingw)
+ *   ...plus the *-fused variants (omnivoice text+TTS source fusion).
  *
  * Backend selection (legacy single-target mode, when --target is omitted):
  *   macOS           -> Metal
@@ -63,14 +67,14 @@ import {
 } from "./omnivoice-fuse/prepare.mjs";
 import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 
-// milady-ai/llama.cpp @ v0.4.0-milady (commit 08032d57) — the unified fork
+// elizaOS/llama.cpp @ v0.4.0-milady (commit 08032d57) — the unified fork
 // that composes TBQ + QJL + Q4_POLAR + Metal kernels + DFlash spec-decode
 // + W4-B CUDA QJL/Polar/TBQ3_TCQ kernels onto upstream b8198. Same repo +
 // commit lineage as compile-libllama.mjs (AOSP cross-compile path) so both
 // build paths land on identical kernels.
 const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
-  "https://github.com/milady-ai/llama.cpp.git";
+  "https://github.com/elizaOS/llama.cpp.git";
 const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v0.4.0-milady";
 const LEGACY_DFLASH_DRAFTER_REMOTE =
   process.env.ELIZA_DFLASH_LEGACY_DRAFTER_REMOTE ||
@@ -229,6 +233,61 @@ function detectBackend() {
     return "cuda";
   }
   return "cpu";
+}
+
+// Parse the major.minor CUDA toolkit version reported by `nvcc --version`,
+// e.g. "Cuda compilation tools, release 12.6, V12.6.20" -> { major: 12, minor: 6 }.
+// Returns null when nvcc is absent or the banner can't be parsed — callers
+// must treat that as "assume the conservative arch list".
+function nvccVersion() {
+  if (!has("nvcc")) return null;
+  const r = tryRun("nvcc", ["--version"], { capture: true });
+  const m = (r.stdout || "").match(/release\s+(\d+)\.(\d+)/i);
+  if (!m) return null;
+  return { major: Number(m[1]), minor: Number(m[2]) };
+}
+
+// Build the CUDA fat-binary arch list for cuda/cuda-fused targets. The base
+// list (sm_80..sm_90a) is unconditional; the Blackwell datacenter (sm_100)
+// and consumer (sm_120) virtual architectures are only appended when the
+// installed nvcc actually knows about them — sm_100/sm_120 first compile in
+// CUDA 12.8, and older nvcc rejects them with "Unsupported gpu architecture".
+//   90a -> H200 / GH200 (the only arch with the TMA / WGMMA fast paths)
+//   90  -> H100
+//   89  -> Ada / RTX 4090 / L4
+//   86  -> Ampere consumer / RTX 30xx
+//   80  -> A100 / datacenter Ampere
+//   100 -> Blackwell datacenter (B100/B200/GB200) — CUDA >= 12.8
+//   120 -> Blackwell consumer (RTX 50xx) — CUDA >= 12.8
+// Operators that target an older card (sm_75 Turing, sm_70 Volta) can
+// override via ELIZA_DFLASH_CMAKE_FLAGS=-DCMAKE_CUDA_ARCHITECTURES=... which
+// appends after this list and wins on a CMake conflict.
+function cudaArchListFlag() {
+  const archs = ["90a", "90", "89", "86", "80"];
+  const v = nvccVersion();
+  if (v && (v.major > 12 || (v.major === 12 && v.minor >= 8))) {
+    archs.push("100", "120");
+  }
+  return `-DCMAKE_CUDA_ARCHITECTURES=${archs.join(";")}`;
+}
+
+// Build the ROCm/HIP fat-binary arch list for rocm targets. gfx1200/gfx1201
+// (RDNA4 / RX 9070) only compile under ROCm >= 6.3; older hipcc rejects
+// them, so they are gated the same way Blackwell is gated for CUDA.
+//   gfx90a  -> MI250 / CDNA2
+//   gfx942  -> MI300 / CDNA3
+//   gfx110* -> RDNA3 desktop/laptop smoke hosts
+//   gfx120* -> RDNA4 (RX 9070 / 9070 XT) — ROCm >= 6.3
+function hipArchListFlag() {
+  const archs = ["gfx90a", "gfx942", "gfx1100", "gfx1101", "gfx1102"];
+  if (has("hipcc")) {
+    const r = tryRun("hipcc", ["--version"], { capture: true });
+    const m = (r.stdout || "").match(/HIP version:\s*(\d+)\.(\d+)/i);
+    if (m && (Number(m[1]) > 6 || (Number(m[1]) === 6 && Number(m[2]) >= 3))) {
+      archs.push("gfx1200", "gfx1201");
+    }
+  }
+  return `-DCMAKE_HIP_ARCHITECTURES=${archs.join(";")}`;
 }
 
 // Resolve the Android NDK root.
@@ -465,7 +524,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 // Patch the cached llama.cpp checkout's `ggml/src/CMakeLists.txt` so that
 // `ggml-base` also compiles the QJL kernel sources from `ggml-cpu/qjl/`.
 //
-// Why: the milady-ai/llama.cpp fork places QJL function definitions in
+// Why: the elizaOS/llama.cpp fork places QJL function definitions in
 // `ggml/src/ggml-cpu/qjl/quants-qjl.c` (i.e. the ggml-cpu compilation
 // unit), but `ggml/src/ggml.c` (in ggml-base) references those symbols
 // from the type-traits table. ELF allows unresolved DSO symbols at link
@@ -477,7 +536,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 // Windows shared-lib builds. Linux/macOS keep the original placement.
 // Idempotent: checks for a sentinel marker in the file before patching.
 //
-// TODO(milady-ai/llama.cpp): land an upstream fix that either (a) moves
+// TODO(elizaOS/llama.cpp): land an upstream fix that either (a) moves
 // the QJL function definitions into ggml-base, or (b) wires the
 // type-traits table through a registration callback that ggml-cpu fills
 // in at backend-load time. When that lands, this patch becomes a no-op
@@ -498,7 +557,7 @@ function patchGgmlBaseForWindowsQjl(cacheDir) {
   if (!original.includes(anchor)) {
     throw new Error(
       `[dflash-build] patchGgmlBaseForWindowsQjl: anchor not found in ${cmakeListsPath}; ` +
-        `the milady-ai/llama.cpp fork layout has changed. Without this patch ` +
+        `the elizaOS/llama.cpp fork layout has changed. Without this patch ` +
         `Windows shared-lib builds will fail to link QJL symbols into ggml-base.dll.`,
     );
   }
@@ -667,6 +726,25 @@ function parseTarget(target) {
 }
 
 function cmakeFlagsForTarget(target, ctx) {
+  // ──────────────────────────────────────────────────────────────────
+  // TODO ANCHORS for the Vulkan / CUDA / CPU kernel agents.
+  // This function is the single owner of cmake flags. If you need a new
+  // backend cmake flag (e.g. a Vulkan shader-int8 toggle, a CUDA
+  // -DGGML_CUDA_F16=ON, a CPU -DGGML_LLAMAFILE knob), send a request via
+  // your report and the build-script owner adds it here — do NOT inject
+  // it via ELIZA_DFLASH_CMAKE_FLAGS in production paths.
+  //   * VULKAN-AGENT TODO: extra flags for `linux-x64-vulkan` /
+  //     `android-arm64-vulkan` / `windows-*-vulkan` graph-dispatch builds
+  //     go in the `backend === "vulkan"` branch below.
+  //   * CUDA-AGENT TODO: extra flags for `linux-x64-cuda` /
+  //     `windows-x64-cuda` / `linux-aarch64-cuda` go in the
+  //     `backend === "cuda"` branch (arch list is `cudaArchListFlag`).
+  //   * CPU-AGENT TODO: SIMD / threading flags for `linux-x64-cpu`,
+  //     `linux-aarch64-cpu`, `windows-arm64-cpu` go alongside the
+  //     existing `backend === "cpu" && arch === "x64"` / `arm64` blocks
+  //     in the `platform === "windows"` section (and a new linux-cpu
+  //     block here if a non-native pin is ever needed).
+  // ──────────────────────────────────────────────────────────────────
   const { platform, arch, backend, isSimulator } = parseTarget(target);
   const flags = ["-DLLAMA_BUILD_TESTS=OFF", "-DLLAMA_BUILD_EXAMPLES=ON"];
   const isCross =
@@ -700,28 +778,17 @@ function cmakeFlagsForTarget(target, ctx) {
   } else if (backend === "cuda") {
     flags[flags.indexOf("-DGGML_CUDA=OFF")] = "-DGGML_CUDA=ON";
     flags.push("-DGGML_CUDA_FA=ON", "-DGGML_CUDA_FA_ALL_QUANTS=ON");
-    // Pin a multi-arch fat-binary so a build host without a GPU does not
-    // emit a `sm_52`-only artifact (CMake's default = native probe).
-    //   90a → H200 / GH200 (sm_90a, the only arch with the new TMA / WGMMA paths)
-    //   90  → H100
-    //   89  → Ada / RTX 4090 / L4
-    //   86  → Ampere consumer / RTX 30xx
-    //   80  → A100 / data-center Ampere
-    // Operators that target an older card (sm_75 Turing, sm_70 Volta) can
-    // override via ELIZA_DFLASH_CMAKE_FLAGS=-DCMAKE_CUDA_ARCHITECTURES=...
-    // which appends after this list and wins.
-    flags.push("-DCMAKE_CUDA_ARCHITECTURES=90a;90;89;86;80");
+    // Multi-arch fat-binary pin (see cudaArchListFlag). Without this the
+    // build host's GPU (or sm_52 default on a GPU-less host) decides the
+    // emitted PTX/SASS — wrong for a redistributable artifact, and the
+    // canonical GH200 deployment needs sm_90a.
+    flags.push(cudaArchListFlag());
   } else if (backend === "rocm") {
     flags[flags.indexOf("-DGGML_HIP=OFF")] = "-DGGML_HIP=ON";
-    // Pin the ROCm fat binary to the device families we intend to support.
-    // Operators can narrow/extend this with ELIZA_DFLASH_CMAKE_FLAGS; those
-    // flags append after this list and win on CMake conflict.
-    //   gfx90a  -> MI250 / CDNA2
-    //   gfx942  -> MI300 / CDNA3
-    //   gfx110* -> RDNA3 desktop/laptop smoke hosts
-    flags.push(
-      "-DCMAKE_HIP_ARCHITECTURES=gfx90a;gfx942;gfx1100;gfx1101;gfx1102",
-    );
+    // Multi-arch fat-binary pin (see hipArchListFlag). Operators can
+    // narrow/extend with ELIZA_DFLASH_CMAKE_FLAGS; those flags append
+    // after this list and win on a CMake conflict.
+    flags.push(hipArchListFlag());
   } else if (backend === "vulkan") {
     flags[flags.indexOf("-DGGML_VULKAN=OFF")] = "-DGGML_VULKAN=ON";
     if (ctx.glslc) flags.push(`-DVulkan_GLSLC_EXECUTABLE=${ctx.glslc}`);
@@ -749,6 +816,38 @@ function cmakeFlagsForTarget(target, ctx) {
         }
       }
     }
+  }
+
+  if (platform === "linux" && arch === "aarch64") {
+    // Native arm64-Linux build (GH200 host, Ampere Altra, AWS Graviton).
+    // targetCompatibility() already refuses this triple on x64 hosts —
+    // there is no aarch64 cross-toolchain wired here — so this is always
+    // a native build. CMAKE_SYSTEM_PROCESSOR is informational on a native
+    // build but documents intent and keeps GGML_NATIVE's -mcpu probe and
+    // any third-party CMake `if (... aarch64 ...)` checks honest. The CUDA
+    // arch list (cudaArchListFlag) already leads with 90a for GH200/Hopper.
+    flags.push("-DCMAKE_SYSTEM_PROCESSOR=aarch64");
+  } else if (platform === "darwin" && arch === "x64") {
+    // Intel-Mac build (`darwin-x64-metal`). Pin the slice explicitly so a
+    // build that runs on an Apple-Silicon host (via the x86_64 toolchain)
+    // still emits an x86_64 binary, and an Intel host stays x86_64.
+    //
+    // RISK — Intel-Mac GPUs (AMD Radeon Pro / Intel Iris) are NOT in the
+    // Apple7+ family the standalone kernels were verified against on Apple
+    // Silicon. The kernels assume threadgroup-of-32 == one SIMD-group and
+    // `simd_sum` over those 32 lanes; AMD/Intel Mac drivers report
+    // different SIMD-group widths and different `simd_sum` semantics, so a
+    // clean build here is COMPILE-ONLY — not a verified path. Do not flip
+    // `darwin-x64-metal` past TARGET-ONLY without an Intel-Mac
+    // `metal_verify` run that diffs the numbers against the M4 Max
+    // reference. See packages/inference/DEVICE_SUPPORT_GAP_2026-05-10.md row 3.
+    flags.push("-DCMAKE_OSX_ARCHITECTURES=x86_64");
+    console.log(
+      "[dflash-build] darwin-x64-metal: building the Intel-Mac slice. " +
+        "Intel/AMD Mac GPUs are not in the verified Apple7+ Metal family — " +
+        "treat the artifact as COMPILE-ONLY until metal_verify runs on real " +
+        "Intel-Mac hardware.",
+    );
   }
 
   if (platform === "android") {
@@ -1037,7 +1136,7 @@ function parseArgs(argv) {
           ),
           "",
           "Fused targets perform source-level fusion of",
-          "github.com/ServeurpersoCom/omnivoice.cpp into the milady-ai/llama.cpp",
+          "github.com/ServeurpersoCom/omnivoice.cpp into the elizaOS/llama.cpp",
           "build, sharing one ggml pin and one kernel set.",
           `Pinned omnivoice commit: ${OMNIVOICE_REF}`,
           `Reconciled-out omnivoice ggml submodule: ${OMNIVOICE_GGML_REF}`,
@@ -1156,22 +1255,29 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   if (backend === "vulkan") {
     patchVulkanKernelsImpl(cacheDir, { dryRun, target });
   }
-  if (target && target.startsWith("windows-")) {
-    patchGgmlBaseForWindowsQjl(cacheDir);
-  }
-  // The same broken cross-library reference that bites Windows shared-lib
-  // builds also bites darwin shared-lib builds: ggml.c (in ggml-base) calls
-  // quantize_qjl1_256 / dequantize_row_qjl1_256 / quantize_row_qjl1_256_ref,
-  // which live in ggml-cpu/qjl/. On darwin the BUILD_SHARED_LIBS_DEFAULT is
-  // ON and ggml-base is linked with `-undefined error`, so the link fails
-  // before a single Metal kernel can run. Folding the QJL TUs into ggml-base
-  // resolves the symbols at link time without breaking the ggml-cpu build
-  // (the duplicate object files in two libraries link cleanly because they
-  // are part of the same .dylib at runtime). The same fix is independently
-  // safe to apply to iOS static-archive builds. Idempotent via the
-  // existing `# MILADY-WINDOWS-QJL-IN-GGML-BASE` sentinel inside
-  // patchGgmlBaseForWindowsQjl().
-  if (target && (target.startsWith("darwin-") || target.startsWith("ios-"))) {
+  // ggml.c (in ggml-base) calls quantize_qjl1_256 /
+  // dequantize_row_qjl1_256 / quantize_row_qjl1_256_ref, which live in
+  // ggml-cpu/qjl/. Any build where ggml-base is its own shared object
+  // linked with "undefined symbol = error" — Windows DLLs (PE/COFF
+  // disallows unresolved DSO symbols at link time), darwin .dylib
+  // (BUILD_SHARED_LIBS_DEFAULT=ON, `-undefined error`), Android .so
+  // (lld defaults to erroring on undefined), and iOS static archives —
+  // fails to link before a single kernel can run. Folding the QJL TUs
+  // into ggml-base resolves the symbols at link time without breaking
+  // the ggml-cpu build (the duplicate object files link cleanly because
+  // they are part of the same shared object / archive at runtime).
+  // Idempotent via the `# MILADY-WINDOWS-QJL-IN-GGML-BASE` sentinel
+  // inside patchGgmlBaseForWindowsQjl(). Skipped only for the desktop
+  // Linux x64/aarch64 targets, which keep llama.cpp's default static
+  // ggml-base where the cross-library reference resolves at the final
+  // executable link.
+  if (
+    target &&
+    (target.startsWith("windows-") ||
+      target.startsWith("darwin-") ||
+      target.startsWith("ios-") ||
+      target.startsWith("android-"))
+  ) {
     patchGgmlBaseForWindowsQjl(cacheDir);
   }
 }
@@ -2047,9 +2153,20 @@ function probeVulkanShippedKernelSymbols(buildDir, outDir, cacheDir) {
     ...collectFilesUnder(buildDir, /\.(hpp|h|cpp|o|obj|spv|a|so|dylib|dll)$/),
     ...collectFilesUnder(outDir, /\.(hpp|h|cpp|o|obj|spv|a|so|dylib|dll)$/),
   ];
+  // Build the haystack from the small text-ish artifacts (generated C
+  // arrays land in .cpp/.h, SPIR-V blobs are .spv) plus any object/library
+  // that is small enough to slurp. Joining every .a/.so/.dylib/.dll into
+  // one string blows past Node's max string length on a full Vulkan build
+  // (libggml-vulkan.so + the static libs are hundreds of MB combined), so
+  // skip anything over a per-file cap — the `milady_<shader>` C array and
+  // `pipeline_milady_<shader>` source references are always present in the
+  // generated .cpp/.h regardless, and .spv presence is covered by the
+  // basename check below.
+  const ARTIFACT_SLURP_CAP_BYTES = 16 * 1024 * 1024;
   const artifactText = artifactFiles
     .map((file) => {
       try {
+        if (fs.statSync(file).size > ARTIFACT_SLURP_CAP_BYTES) return "";
         return fs.readFileSync(file).toString("latin1");
       } catch {
         return "";
@@ -2144,7 +2261,7 @@ function writeCapabilities({
     backend,
     fused: Boolean(fused),
     builtAt: new Date().toISOString(),
-    fork: "milady-ai/llama.cpp",
+    fork: "elizaOS/llama.cpp",
     forkCommit,
     kernels,
     publishable: missing.length === 0,
