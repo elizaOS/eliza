@@ -255,6 +255,18 @@ export async function maybeAugmentChatMessageWithDocuments(
   const userPrompt = extractCompatTextContent(message.content)?.trim();
   if (!userPrompt || !runtime.agentId) return message;
 
+  // Hosts that run with a no-op embedding handler — e.g. Capacitor mobile
+  // where loading the bge GGUF on top of the chat GGUF would OOM the
+  // process — get only zero-vector embeddings back. The retrieval branch
+  // therefore never lands a match above `CHAT_DOCUMENTS_THRESHOLD`, and
+  // the LLM-driven query-recovery fallback wastes one full generate-text
+  // round-trip per turn (~60–90 s on a Snapdragon 4 Gen 1 CPU) producing
+  // queries that will themselves match nothing. Skip the entire path
+  // when the host has explicitly opted out.
+  if (process.env.ELIZA_DOCUMENT_AUGMENTATION_DISABLED?.trim() === "1") {
+    return message;
+  }
+
   const documents = await getDocumentsService(runtime);
   if (!documents.service) return message;
 
