@@ -86,6 +86,10 @@ DEFAULT_STUDENT_BASE: dict[str, str] = {
     "9b": "Qwen/Qwen3-1.7B",
     "27b": "Qwen/Qwen3-1.7B",
     "27b-256k": "Qwen/Qwen3-1.7B",
+    # 1M-context variant of the 27B tier: same student base as 27b/27b-256k.
+    # The long-context K-cache rides the trellis path (turbo3_tcq); the
+    # drafter itself is the same KD recipe.
+    "27b-1m": "Qwen/Qwen3-1.7B",
 }
 
 # Acceptance-rate gate per tier — the drafter is publish-blocking below this.
@@ -98,6 +102,7 @@ ACCEPTANCE_GATE: dict[str, float] = {
     "9b": 0.55,
     "27b": 0.55,
     "27b-256k": 0.55,
+    "27b-1m": 0.55,
 }
 
 

@@ -94,7 +94,6 @@ unified across both build scripts. Output paths fixed at
 | `linux-x64-vulkan` | `GGML_VULKAN=ON` + Khronos headers | host clang + glslc | GH `ubuntu-24.04` | + SPIR-V `.spv` |
 | `linux-x64-rocm` | `GGML_HIP=ON` | hipcc | self-hosted (gfx1100) | + `libggml-hip.so` |
 | `darwin-arm64-metal` | `GGML_METAL=ON GGML_METAL_EMBED_LIBRARY=ON` | xcrun | self-hosted (M-series) | + `default.metallib` |
-| `darwin-x64-metal` | as above | xcrun | self-hosted (Intel Mac) | as above |
 | `ios-arm64-metal` | `BUILD_SHARED_LIBS=OFF CMAKE_SYSTEM_NAME=iOS CMAKE_OSX_SYSROOT=iphoneos` | xcrun | self-hosted (M-series) | static `lib*.a` + headers + `.metallib` (consumed by `LlamaCpp.xcframework` patch at `packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch`) |
 | `ios-arm64-simulator-metal` | `CMAKE_OSX_SYSROOT=iphonesimulator` | xcrun | self-hosted (M-series) | as above |
 | `android-arm64-cpu` (musl) | `GGML_NATIVE=OFF -DCMAKE_SYSTEM_PROCESSOR=aarch64` via zig 0.13+ | `zig cc --target=aarch64-linux-musl` | GH `ubuntu-24.04` | `libllama.so`, `libggml*.so`, `libeliza-llama-shim.so`, `llama-server` (musl-linked, see `compile-libllama.mjs:14-30`) |
@@ -182,11 +181,11 @@ kernel landed correctly. Status legend: `✓` shipped on the unified fork,
 
 ## F. node-llama-cpp gap — RESOLVED (path (a) landed)
 
-**Status: shipped.** `milady-ai/node-llama-cpp` exists and is consumable
+**Status: shipped.** `elizaOS/node-llama-cpp` exists and is consumable
 as a bun-installable github URL drop-in. Milady's three pins
 (`/package.json`, `eliza/packages/app-core/package.json`,
 `eliza/plugins/plugin-local-embedding/package.json`) all reference
-`github:milady-ai/node-llama-cpp#v3.18.1-milady.3`. The fork's
+`github:elizaOS/node-llama-cpp#v3.18.1-milady.3`. The fork's
 `src/gguf/types/GgufTensorInfoTypes.ts` extends `GgmlType` with
 TBQ3_0 (43), TBQ4_0 (44), QJL1_256 (46), Q4_POLAR (47) and
 `resolveGgmlTypeOption()` accepts the lowercase aliases (`tbq3_0`,
@@ -327,7 +326,7 @@ unified fork. Each step is a single agent session unless noted.
    + x86_64 musl cross-builds clean via `compile-libllama.mjs --src-dir`,
    local llama-server smoke test passes (chat completion + metrics
    counters confirmed).
-9. **Fork `node-llama-cpp` to `milady-ai/node-llama-cpp`**, embed our
+9. **Fork `node-llama-cpp` to `elizaOS/node-llama-cpp`**, embed our
    unified fork as the bundled C++ source, extend `GgmlType` /
    `resolveGgmlTypeOption` to accept `tbq3_0`, `tbq4_0`, `qjl1_256`,
    `q4_polar`. Pin desktop builds at the milady-binding version. (~1

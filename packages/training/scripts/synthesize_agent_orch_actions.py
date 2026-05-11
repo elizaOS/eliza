@@ -183,9 +183,9 @@ Case = tuple[str, str, dict[str, Any]]
 
 TASKS_OPS: dict[str, list[Case]] = {
     "create": [
-        ("spawn a codex agent on milady-ai/eliza to: fix the failing auth tests",
+        ("spawn a codex agent on elizaos/eliza to: fix the failing auth tests",
          "User wants a coding task done — spawn a task agent for it.",
-         {"task": "fix the failing auth tests", "repo": "milady-ai/eliza", "agentType": "codex"}),
+         {"task": "fix the failing auth tests", "repo": "elizaos/eliza", "agentType": "codex"}),
         ("start a coding task in /Users/me/code/weather-app: add a 7-day forecast view",
          "User wants a coding task started in a local workspace.",
          {"task": "add a 7-day forecast view", "workdir": "/Users/me/code/weather-app", "agentType": "claude"}),
@@ -264,8 +264,8 @@ TASKS_OPS: dict[str, list[Case]] = {
         ("share the result of sess-bd-7e3f", "User wants a specific session's output.", {"sessionId": "sess-bd-7e3f"}),
     ],
     "provision_workspace": [
-        ("set up a workspace for milady-ai/eliza", "User wants a coding workspace provisioned.",
-         {"repo": "milady-ai/eliza"}),
+        ("set up a workspace for elizaos/eliza", "User wants a coding workspace provisioned.",
+         {"repo": "elizaos/eliza"}),
         ("provision a clean workspace on elizaOS-plugins/plugin-telegram", "Provision a workspace for a repo.",
          {"repo": "elizaOS-plugins/plugin-telegram"}),
         ("clone anthropics/claude-cookbooks into a workspace", "User wants a workspace for a repo.",
@@ -284,17 +284,17 @@ TASKS_OPS: dict[str, list[Case]] = {
     "manage_issues": [
         ("list open issues on anthropics/claude-cookbooks", "User wants a GitHub issue listing.",
          {"issueAction": "list", "repo": "anthropics/claude-cookbooks", "state": "open"}),
-        ("open an issue on milady-ai/eliza titled 'flaky auth tests' with labels bug, ci",
+        ("open an issue on elizaos/eliza titled 'flaky auth tests' with labels bug, ci",
          "User wants a new GitHub issue created.",
-         {"issueAction": "create", "repo": "milady-ai/eliza", "title": "flaky auth tests", "labels": ["bug", "ci"]}),
+         {"issueAction": "create", "repo": "elizaos/eliza", "title": "flaky auth tests", "labels": ["bug", "ci"]}),
         ("close issue #142 on elizaOS-plugins/plugin-discord", "User wants a GitHub issue closed.",
          {"issueAction": "close", "repo": "elizaOS-plugins/plugin-discord", "issueNumber": 142}),
-        ("add a comment to issue #88 on milady-ai/eliza: fixed in the latest push",
+        ("add a comment to issue #88 on elizaos/eliza: fixed in the latest push",
          "User wants to comment on a GitHub issue.",
-         {"issueAction": "comment", "repo": "milady-ai/eliza", "issueNumber": 88, "body": "fixed in the latest push"}),
-        ("add labels needs-review, priority-high to issue #57 on milady-ai/eliza",
+         {"issueAction": "comment", "repo": "elizaos/eliza", "issueNumber": 88, "body": "fixed in the latest push"}),
+        ("add labels needs-review, priority-high to issue #57 on elizaos/eliza",
          "User wants labels added to a GitHub issue.",
-         {"issueAction": "add_labels", "repo": "milady-ai/eliza", "issueNumber": 57,
+         {"issueAction": "add_labels", "repo": "elizaos/eliza", "issueNumber": 57,
           "labels": ["needs-review", "priority-high"]}),
     ],
     "archive": [
