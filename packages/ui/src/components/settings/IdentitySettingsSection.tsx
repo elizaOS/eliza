@@ -32,6 +32,7 @@ import {
 import {
   SettingsField,
   SettingsFieldLabel,
+  useSettingsSave,
 } from "./settings-control-primitives";
 
 function resolveEditableVoiceSelectionKey(config: VoiceConfig | null): string {
@@ -130,9 +131,6 @@ export function IdentitySettingsSection() {
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>({});
   const [savedVoiceConfig, setSavedVoiceConfig] = useState<VoiceConfig>({});
   const [voiceLoading, setVoiceLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [voiceTesting, setVoiceTesting] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const attemptedInitialCharacterLoadRef = useRef(false);
@@ -322,58 +320,42 @@ export function IdentitySettingsSection() {
     });
   }, [activeVoicePreset, stopVoicePreview]);
 
-  const handleSave = useCallback(async () => {
+  const performSave = useCallback(async () => {
     if (!dirty) return;
-
-    setSaving(true);
-    setSaveError(null);
-    setSaveSuccess(false);
-
-    try {
-      if (characterDirty) {
-        await handleSaveCharacter();
-      }
-
-      if (voiceDirty) {
-        const config = await client.getConfig();
-        const messages = (config.messages ?? {}) as Record<string, unknown>;
-        const normalizedVoiceConfig = normalizeVoiceConfigForSave({
-          voiceConfig,
-          useElevenLabs,
-        });
-        await client.updateConfig({
-          messages: {
-            ...messages,
-            tts: normalizedVoiceConfig,
-          },
-        });
-        dispatchWindowEvent(VOICE_CONFIG_UPDATED_EVENT, normalizedVoiceConfig);
-        setSavedVoiceConfig(normalizedVoiceConfig);
-      }
-
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2500);
-    } catch (error) {
-      setSaveError(
-        error instanceof Error
-          ? error.message
-          : t("settings.identity.saveFailed", {
-              defaultValue: "Failed to save identity settings.",
-            }),
-      );
-    } finally {
-      setSaving(false);
+    if (characterDirty) {
+      await handleSaveCharacter();
+    }
+    if (voiceDirty) {
+      const config = await client.getConfig();
+      const messages = (config.messages ?? {}) as Record<string, unknown>;
+      const normalizedVoiceConfig = normalizeVoiceConfigForSave({
+        voiceConfig,
+        useElevenLabs,
+      });
+      await client.updateConfig({
+        messages: {
+          ...messages,
+          tts: normalizedVoiceConfig,
+        },
+      });
+      dispatchWindowEvent(VOICE_CONFIG_UPDATED_EVENT, normalizedVoiceConfig);
+      setSavedVoiceConfig(normalizedVoiceConfig);
     }
   }, [
     characterDirty,
     dirty,
     handleSaveCharacter,
-    setTimeout,
-    t,
     useElevenLabs,
     voiceConfig,
     voiceDirty,
   ]);
+
+  const { saving, saveError, saveSuccess, handleSave } = useSettingsSave({
+    onSave: performSave,
+    errorFallback: t("settings.identity.saveFailed", {
+      defaultValue: "Failed to save identity settings.",
+    }),
+  });
 
   return (
     <div className="flex flex-col gap-5">
