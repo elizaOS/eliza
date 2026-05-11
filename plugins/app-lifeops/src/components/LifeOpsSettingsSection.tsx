@@ -862,8 +862,7 @@ function GoogleConnectorSideCard({
             ) : (
               <div className="text-xs text-muted">
                 {t("lifeopssettings.noCalendars", {
-                  defaultValue:
-                    "No readable calendars found for this connector.",
+                  defaultValue: "No readable calendars found.",
                 })}
               </div>
             )}

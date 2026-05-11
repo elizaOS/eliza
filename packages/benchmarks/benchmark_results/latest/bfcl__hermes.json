@@ -1,7 +1,7 @@
 {
   "agent": "hermes",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T103327Z_f1e6f665/bfcl__bfcl/run_bfcl_20260511T103327Z_2_a2ceef2b/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133321Z_fd838049/bfcl__bfcl/run_bfcl_20260511T133321Z_2_196a8c21/output"
   ],
   "benchmark_directory": "bfcl",
   "benchmark_id": "bfcl",
@@ -25,10 +25,10 @@
     "nonzero_return_code_with_result": 1,
     "overall_score": 0.0,
     "performance_metrics": {
-      "duration_seconds": 2.1470962500025053,
-      "mean_latency_ms": 1088.3197784423828,
-      "p95_latency_ms": 1088.3197784423828,
-      "throughput_per_second": 0.465745306014499
+      "duration_seconds": 2.0925151249975897,
+      "mean_latency_ms": 1229.569673538208,
+      "p95_latency_ms": 1229.569673538208,
+      "throughput_per_second": 0.4778937977813431
     },
     "relevance_accuracy": 1.0,
     "return_code": 1,
@@ -50,15 +50,15 @@
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 2.1470962500025053,
-    "mean_latency_ms": 1088.3197784423828,
-    "p95_latency_ms": 1088.3197784423828,
-    "throughput_per_second": 0.465745306014499
+    "duration_seconds": 2.0925151249975897,
+    "mean_latency_ms": 1229.569673538208,
+    "p95_latency_ms": 1229.569673538208,
+    "throughput_per_second": 0.4778937977813431
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T103327Z_f1e6f665/bfcl__bfcl/run_bfcl_20260511T103327Z_2_a2ceef2b/output/bfcl_results_gpt-oss-120b_20260511_033329.json",
-  "run_group_id": "rg_20260511T103327Z_f1e6f665",
-  "run_id": "run_bfcl_20260511T103327Z_2_a2ceef2b",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133321Z_fd838049/bfcl__bfcl/run_bfcl_20260511T133321Z_2_196a8c21/output/bfcl_results_gpt-oss-120b_20260511_063323.json",
+  "run_group_id": "rg_20260511T133321Z_fd838049",
+  "run_id": "run_bfcl_20260511T133321Z_2_196a8c21",
   "score": 0.0,
   "status": "succeeded",
   "token_metrics": {
@@ -76,5 +76,5 @@
     "turns": 1
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T10:33:29.212482+00:00"
+  "updated_at": "2026-05-11T13:33:23.422884+00:00"
 }

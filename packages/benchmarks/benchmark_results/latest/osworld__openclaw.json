@@ -1,0 +1,81 @@
+{
+  "agent": "openclaw",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132513Z_dd3c7c9c/osworld__osworld/run_osworld_20260511T132521Z_2_9bca20b1/output"
+  ],
+  "benchmark_directory": "OSWorld",
+  "benchmark_id": "osworld",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "action_space": "pyautogui",
+    "agent": "eliza",
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "model": "gpt-oss-120b",
+    "observation_type": "screenshot_a11y_tree",
+    "overall_success_rate": 1.0,
+    "passed_tasks": 1,
+    "performance_metrics": {
+      "duration_seconds": 2.182568124990212,
+      "mean_latency_ms": null,
+      "p95_latency_ms": null,
+      "throughput_per_second": 0.9163516946390708
+    },
+    "return_code": 0,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 2,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "total_tasks": 1,
+    "trajectory_summary": {
+      "files": 2,
+      "prompt_chars": 185,
+      "repeated_prefixes": [],
+      "turns": 2
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 2.182568124990212,
+    "mean_latency_ms": null,
+    "p95_latency_ms": null,
+    "throughput_per_second": 0.9163516946390708
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132513Z_dd3c7c9c/osworld__osworld/run_osworld_20260511T132521Z_2_9bca20b1/output/osworld-eliza-results-20260511_062523.json",
+  "run_group_id": "rg_20260511T132513Z_dd3c7c9c",
+  "run_id": "run_osworld_20260511T132521Z_2_9bca20b1",
+  "score": 1.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 2,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 2,
+    "prompt_chars": 185,
+    "repeated_prefixes": [],
+    "turns": 2
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-11T13:25:23.566407+00:00"
+}

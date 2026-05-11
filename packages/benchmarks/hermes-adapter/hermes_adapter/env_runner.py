@@ -63,6 +63,7 @@ def build_evaluate_command(
     repo_path: Path,
     output_dir: Path,
     model: str,
+    base_url: str | None = None,
     extra_args: list[str] | None = None,
 ) -> list[str]:
     """Construct the exact argv used to invoke a hermes-agent eval.
@@ -85,6 +86,8 @@ def build_evaluate_command(
         f"--env.data_dir_to_save_evals={save_dir}",
         "--env.use_wandb=false",
     ]
+    if base_url:
+        cmd.append(f"--openai.base_url={base_url}")
     if extra_args:
         cmd.extend(extra_args)
     return cmd
@@ -100,8 +103,10 @@ def run_hermes_env(
     base_url: str | None = None,
     repo_path: Path | None = None,
     max_tasks: int | None = None,
+    task_filter: str | None = None,
     extra_args: list[str] | None = None,
     timeout_s: float = 7200.0,
+    force: bool = False,
 ) -> HermesEnvResult:
     """Run one of the four native hermes-agent envs and return a normalized result.
 
@@ -133,6 +138,26 @@ def run_hermes_env(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Idempotency: if a prior run already wrote a summary under output_dir/evals/<env_id>/...,
+    # skip the subprocess and return the cached result. Pass force=True to override.
+    evals_root = output_dir / "evals" / env_id
+    if not force:
+        cached_summary = _find_first(evals_root, "eval-summary.json") or _find_first(
+            evals_root, "summary.json"
+        )
+        cached_samples = _find_first(evals_root, "samples.jsonl")
+        if cached_summary is not None and cached_samples is not None:
+            logger.info(
+                "Reusing cached hermes env result for %s at %s (force=False)",
+                env_id,
+                evals_root,
+            )
+            return parse_hermes_env_result(
+                env_id=env_id,
+                evals_root=evals_root,
+                duration_s=0.0,
+            )
+
     resolved_api_key = api_key if api_key is not None else os.environ.get("CEREBRAS_API_KEY", "")
     resolved_base_url = (
         base_url
@@ -147,6 +172,8 @@ def run_hermes_env(
         # safest, env-wide knob is the generic group/eval size cap. Callers
         # who want tighter control can pass --env.task_filter via extra_args.
         forwarded_args.append(f"--env.max_eval_samples={int(max_tasks)}")
+    if task_filter is not None:
+        forwarded_args.append(f"--env.task_filter={task_filter}")
 
     cmd = build_evaluate_command(
         env_id,
@@ -154,6 +181,7 @@ def run_hermes_env(
         repo_path=repo,
         output_dir=output_dir,
         model=model,
+        base_url=resolved_base_url,
         extra_args=forwarded_args,
     )
 
@@ -161,7 +189,10 @@ def run_hermes_env(
     env["OPENAI_API_KEY"] = resolved_api_key
     env["OPENAI_BASE_URL"] = resolved_base_url
     env["OPENAI_MODEL"] = model
-    env.setdefault("TERMINAL_ENV", "local")
+    # Always force local backend — we never want a casual evaluate() to spawn
+    # Modal or Docker workloads silently. Callers who want a different backend
+    # must pass --env.terminal_backend=... in extra_args.
+    env["TERMINAL_ENV"] = "local"
     env.setdefault("PYTHONUNBUFFERED", "1")
 
     stdout_path = output_dir / f"{env_id}.stdout.log"

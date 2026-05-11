@@ -16,6 +16,16 @@ Android isolated-process, and AVF providers are advertised only when an actual
 native boundary is attached; otherwise the app falls back to VFS/WASM-safe
 surfaces and Cloud containers.
 
+iOS local development and sideload builds are a separate target, not an
+enterprise distribution path. Use `bun run build:ios:local` from
+`packages/app` to bake `runtimeMode=local` and include the native llama bridge.
+The target defaults to a generic iOS device build; set
+`ELIZA_IOS_CODE_SIGNING_ALLOWED=YES` plus the normal Xcode signing settings when
+you want to install it on a device.
+That target still does not imply a host shell or downloaded native code; the
+local-agent URL is routed through the in-process ITTP kernel until the shared
+iOS route kernel/backend port lands.
+
 The AOSP / ElizaOS Android build is a separate privileged system target. It can
 stage the on-device Bun agent, `/system/bin/sh`, shell plugin, coding-tools
 plugin, agent orchestrator, and optional AVF/Microdroid boundary when the
@@ -31,8 +41,10 @@ iteration. Use `bun run build:android:system` for the privileged AOSP APK. The
 legacy `packages/app` `build:android` script is sideload-only and embeds the
 on-device agent runtime. The cloud target strips the local agent, privileged
 default-role surfaces, staged runtime assets, native runtime plugin references,
-`MANAGE_APP_OPS_MODES`, `MANAGE_VIRTUAL_MACHINE`, and other system-only
-permissions, then audits the source tree and artifact.
+`ElizaAgentService`, `assets/agent`, disguised `libeliza_` native runtime
+libraries, `MANAGE_APP_OPS_MODES`, `PACKAGE_USAGE_STATS`,
+`MANAGE_VIRTUAL_MACHINE`, and other system-only permissions, then audits the
+source tree and artifact.
 
 ## Platform Support
 
@@ -258,7 +270,10 @@ Canvas rendering and web view management. Available on all platforms (HTML Canva
 
 Agent lifecycle management.
 
-- **Cross-platform:** Uses IPC to the main-process AgentManager on Electrobun, and HTTP calls to the API server on iOS/Android/Web.
+- **Cross-platform:** Uses IPC to the main-process AgentManager on Electrobun.
+  Android/Web use HTTP calls to the API server or bundled loopback agent. iOS
+  uses HTTP for remote/cloud endpoints; local dev/sideload mode reports local
+  lifecycle status while app requests route through the in-process ITTP kernel.
 - **Lifecycle:** Start, stop, and query agent status (`not_started`, `starting`, `running`, `stopped`, `error`).
 - **Chat:** Send text messages and receive agent responses.
 

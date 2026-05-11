@@ -225,6 +225,9 @@ def _build_app_harness_invocation(
     else:
         command.append("--prompt-via-api")
     command.extend([
+        "--require-browser-tab",
+        "--require-browser-events",
+        "--require-trajectory",
         "--prompt",
         prompt,
         "--target-url",

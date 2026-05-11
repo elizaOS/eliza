@@ -1,0 +1,79 @@
+{
+  "agent": "openclaw",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131544Z_fb67665e/framework__framework/run_framework_20260511T131544Z_1_e8db3b31/output"
+  ],
+  "benchmark_directory": "framework",
+  "benchmark_id": "framework",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "mean_latency_ms": 10.05412922,
+    "performance_metrics": {
+      "duration_seconds": 1.247526499995729,
+      "mean_latency_ms": null,
+      "p95_latency_ms": null,
+      "throughput_per_second": 0.0
+    },
+    "return_code": 0,
+    "runtime": "typescript",
+    "scenario_count": 1,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 0,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "total_messages": 50.0,
+    "total_time_ms": 502.706461,
+    "trajectory_summary": {
+      "files": 0,
+      "prompt_chars": 0,
+      "repeated_prefixes": [],
+      "turns": 0
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 1.247526499995729,
+    "mean_latency_ms": null,
+    "p95_latency_ms": null,
+    "throughput_per_second": 0.0
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131544Z_fb67665e/framework__framework/run_framework_20260511T131544Z_1_e8db3b31/output/framework-results.json",
+  "run_group_id": "rg_20260511T131544Z_fb67665e",
+  "run_id": "run_framework_20260511T131544Z_1_e8db3b31",
+  "score": 99.46162199813064,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 0,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 0,
+    "prompt_chars": 0,
+    "repeated_prefixes": [],
+    "turns": 0
+  },
+  "unit": "messages_per_second",
+  "updated_at": "2026-05-11T13:15:46.066918+00:00"
+}

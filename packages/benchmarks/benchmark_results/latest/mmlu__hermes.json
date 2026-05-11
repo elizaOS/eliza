@@ -1,0 +1,78 @@
+{
+  "agent": "hermes",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132338Z_70f31065/standard__mmlu/run_mmlu_20260511T132338Z_2_462d325b/output"
+  ],
+  "benchmark_directory": "standard",
+  "benchmark_id": "mmlu",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 1
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "accuracy": 1.0,
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 1
+    },
+    "correct": 1.0,
+    "n": 1.0,
+    "performance_metrics": {
+      "duration_seconds": 7.888125583005603,
+      "mean_latency_ms": 1856.646540982183,
+      "p95_latency_ms": 1856.646540982183,
+      "throughput_per_second": 0.12677282954957356
+    },
+    "return_code": 0,
+    "score": 1.0,
+    "token_metrics": {
+      "avg_completion_tokens": 254.0,
+      "avg_prompt_tokens": 164.0,
+      "completion_tokens": 254,
+      "llm_call_count": 1,
+      "prompt_tokens": 164,
+      "total_tokens": 418
+    },
+    "trajectory_summary": {
+      "files": 1,
+      "prompt_chars": 318,
+      "repeated_prefixes": [],
+      "turns": 1
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 7.888125583005603,
+    "mean_latency_ms": 1856.646540982183,
+    "p95_latency_ms": 1856.646540982183,
+    "throughput_per_second": 0.12677282954957356
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132338Z_70f31065/standard__mmlu/run_mmlu_20260511T132338Z_2_462d325b/output/mmlu-results.json",
+  "run_group_id": "rg_20260511T132338Z_70f31065",
+  "run_id": "run_mmlu_20260511T132338Z_2_462d325b",
+  "score": 1.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 254.0,
+    "avg_prompt_tokens": 164.0,
+    "completion_tokens": 254,
+    "llm_call_count": 1,
+    "prompt_tokens": 164,
+    "total_tokens": 418
+  },
+  "trajectory_summary": {
+    "files": 1,
+    "prompt_chars": 318,
+    "repeated_prefixes": [],
+    "turns": 1
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-11T13:23:46.532257+00:00"
+}

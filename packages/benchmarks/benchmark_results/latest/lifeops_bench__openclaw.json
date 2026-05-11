@@ -1,7 +1,7 @@
 {
   "agent": "openclaw",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T103406Z_946ea82d/lifeops-bench__lifeops_bench/run_lifeops_bench_20260511T103406Z_3_e595cfbd/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133743Z_b7c1c030/lifeops-bench__lifeops_bench/run_lifeops_bench_20260511T133743Z_3_65ea05b6/output"
   ],
   "benchmark_directory": "lifeops-bench",
   "benchmark_id": "lifeops_bench",
@@ -27,10 +27,10 @@
     "pass_at_1": 0.0,
     "pass_at_k": 0,
     "performance_metrics": {
-      "duration_seconds": 0.7617041250050534,
-      "mean_latency_ms": 309.0,
-      "p95_latency_ms": 309.0,
-      "throughput_per_second": 1.3128457194496166
+      "duration_seconds": 0.7675568340055179,
+      "mean_latency_ms": 381.0,
+      "p95_latency_ms": 381.0,
+      "throughput_per_second": 1.302835120080256
     },
     "return_code": 0,
     "seeds": 1,
@@ -43,7 +43,7 @@
       "total_tokens": 483
     },
     "total_cost_usd": 0.00021904999999999998,
-    "total_latency_ms": 309,
+    "total_latency_ms": 381,
     "trajectory_summary": {
       "files": 1,
       "prompt_chars": 215,
@@ -53,15 +53,15 @@
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 0.7617041250050534,
-    "mean_latency_ms": 309.0,
-    "p95_latency_ms": 309.0,
-    "throughput_per_second": 1.3128457194496166
+    "duration_seconds": 0.7675568340055179,
+    "mean_latency_ms": 381.0,
+    "p95_latency_ms": 381.0,
+    "throughput_per_second": 1.302835120080256
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T103406Z_946ea82d/lifeops-bench__lifeops_bench/run_lifeops_bench_20260511T103406Z_3_e595cfbd/output/lifeops_gpt-oss-120b_20260511_033406.json",
-  "run_group_id": "rg_20260511T103406Z_946ea82d",
-  "run_id": "run_lifeops_bench_20260511T103406Z_3_e595cfbd",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133743Z_b7c1c030/lifeops-bench__lifeops_bench/run_lifeops_bench_20260511T133743Z_3_65ea05b6/output/lifeops_gpt-oss-120b_20260511_063744.json",
+  "run_group_id": "rg_20260511T133743Z_b7c1c030",
+  "run_id": "run_lifeops_bench_20260511T133743Z_3_65ea05b6",
   "score": 0.0,
   "status": "succeeded",
   "token_metrics": {
@@ -79,5 +79,5 @@
     "turns": 1
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T10:34:06.988141+00:00"
+  "updated_at": "2026-05-11T13:37:44.601669+00:00"
 }

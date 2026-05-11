@@ -11,6 +11,11 @@ honestly support:
   dynamic TypeScript / JavaScript app creation, and coding-agent orchestration.
 - iOS App Store and Google Play: store-friendly local applets over a virtual
   file system, plus cloud containers for full shell / Claude / Codex / OpenCode.
+- iOS local development / sideload builds: on-device local mode for developers
+  and sideload users, without assuming enterprise distribution. This target may
+  bundle signed native inference/runtime components, but the backend still has
+  to run inside iOS-safe app boundaries instead of pretending Bun or a host
+  shell exists.
 - Desktop direct builds: full local execution.
 - Desktop store builds: OS-sandboxed app behavior, with cloud containers for
   unrestricted coding-agent work.
@@ -91,6 +96,32 @@ Allowed shape:
   is dev-only and is not advertised as a hard sandbox.
 - Full shell and coding agents through Cloud hosting containers.
 
+### iOS / iPadOS Local Development And Sideload
+
+This is a separate target from the App Store build. It covers local Xcode
+developer installs, Homebrew-assisted local development flows, and normal
+sideloading with the user's development signing identity. It does **not** rely
+on enterprise distribution.
+
+Allowed shape:
+
+- Bundle signed native frameworks at build time, including the on-device
+  llama.cpp bridge used by local inference.
+- Bake `runtimeMode=local` into the Capacitor app and route the stable
+  `http://127.0.0.1:31337` local-agent URL through an in-process route kernel
+  or a native app-owned IPC surface such as `WKURLSchemeHandler`.
+- Run the backend as signed/bundled app code, JSCore/QuickJS/WASM code shipped
+  with the app, or user-authored IDE content inside the mobile-safe runtime.
+
+Still not allowed / not assumed:
+
+- No enterprise entitlement assumptions.
+- No hidden Bun runtime unless it is proven to run as signed, bundled app code
+  inside iOS sandbox constraints.
+- No downloaded native plugins, toolchains, or unsigned executable code.
+- No host-like shell/PTY assumption; any "backend local" path must use iOS
+  storage, background, networking, and sandbox APIs explicitly.
+
 ### Google Play Android
 
 Hard constraints:
@@ -146,6 +177,7 @@ Allowed shape:
 | Platform/build | Local VFS applets | Local shell | Coding agents | AVF / VM | Cloud containers |
 | --- | --- | --- | --- | --- | --- |
 | iOS App Store | Yes: JSCore/QuickJS/WASM | No | Cloud only | No | Yes |
+| iOS local dev / sideload | Yes: JSCore/QuickJS/WASM + bundled native inference | No host shell; iOS-safe route/runtime only | Planned on-device backend subset; cloud for shell agents | No | Yes |
 | Android Play | Yes: isolatedProcess/WASM/QuickJS | No for store build | Cloud only | Not for third-party APKs today | Yes |
 | AOSP / ElizaOS Android | Yes | Yes | Yes, after bundled adapters are validated | Yes if build/device exposes AVF | Yes |
 | macOS direct | Yes | Yes | Yes | Optional local VM, usually not needed | Yes |
@@ -263,15 +295,20 @@ architecture is otherwise easy to overstate in product or API docs.
    Android-compatible coding-agent adapters.
 3. TODO-AVF-PAYLOAD: Microdroid payload work: VM lifecycle, payload build, Binder/vsock RPC,
    file sync, telemetry, and fallback to VFS.
-4. TODO-STORE-MOBILE-BRIDGES: Store-mobile provider attachment: real JSCore/QuickJS/WASM bridge wiring to
+4. TODO-STORE-MOBILE-BRIDGES / TODO-STORE-MOBILE-NATIVE-BRIDGES: Store-mobile provider attachment: real JSCore/QuickJS/WASM bridge wiring to
    `MobileSafeRuntimeProvider`. Provider detection no longer advertises JSCore,
    QuickJS, or in-process safe-js unless an actual boundary/dev flag is attached.
-5. TODO-VFS-UI: VFS UI: snapshot, diff, rollback, quota display, and "promote to cloud
+5. TODO-IOS-SIDELOAD-LOCAL-BACKEND: iOS dev/sideload local backend: replace the WebView-only
+   compatibility kernel with a shared fetch-shaped route kernel, attach durable
+   iOS storage, make the native Agent plugin start/status path local-aware, and
+   validate foreground chat plus background scheduled-task dispatch on a signed
+   physical device.
+6. TODO-VFS-UI: VFS UI: snapshot, diff, rollback, quota display, and "promote to cloud
    container" flow.
-6. TODO-CLOUD-BACKEND: Cloud workspace backend/control plane: accept VFS bundle uploads,
+7. TODO-CLOUD-BACKEND: Cloud workspace backend/control plane: accept VFS bundle uploads,
    start Claude/Codex/OpenCode containers, stream terminal/task state, and pull
    back patches. The local plugin/API contract exists.
-7. TODO-REVIEW-NOTES: Review posture: app descriptions and review notes must describe local
+8. TODO-REVIEW-NOTES: Review posture: app descriptions and review notes must describe local
    applets as IDE/user-content execution, and full shell as Cloud/AOSP/direct
    only.
 

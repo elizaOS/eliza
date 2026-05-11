@@ -11,6 +11,7 @@ import {
   type TrajectoryListResult as CoreTrajectoryListResult,
   type TrajectoryLlmCallRecord as CoreTrajectoryLlmCallRecord,
   type TrajectoryProviderAccessRecord as CoreTrajectoryProviderAccessRecord,
+  type TrajectorySkillInvocationRecord as CoreTrajectorySkillInvocationRecord,
   type TrajectoryStatus as CoreTrajectoryStatus,
   type TrajectoryStepId as CoreTrajectoryStepId,
   type TrajectoryStepKind as CoreTrajectoryStepKind,
@@ -37,5 +38,6 @@ export type TrajectoryListItem = CoreTrajectorySummaryRecord;
 export type TrajectoryListResult = CoreTrajectoryListResult<TrajectoryListItem>;
 export type TrajectoryLlmCall = CoreTrajectoryLlmCallRecord;
 export type TrajectoryProviderAccess = CoreTrajectoryProviderAccessRecord;
+export type TrajectorySkillInvocation = CoreTrajectorySkillInvocationRecord;
 export type TrajectoryStep = CoreTrajectoryStepRecord;
 export type Trajectory = CoreTrajectoryDetailRecord;

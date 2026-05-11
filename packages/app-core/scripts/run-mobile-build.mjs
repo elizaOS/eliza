@@ -6,7 +6,7 @@
  * Reads app identity from the host's app.config.ts so web, desktop, and
  * native builds share one canonical app contract.
  *
- * Usage: node scripts/run-mobile-build.mjs <android|android-cloud|android-cloud-debug|android-system|ios|ios-overlay>
+ * Usage: node scripts/run-mobile-build.mjs <android|android-cloud|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
  *
  * Android targets:
  *   - android         Sideload-only debug APK with the on-device agent runtime
@@ -31,6 +31,12 @@
  *                             scripts/lib/stage-android-agent.mjs and
  *                             docs/agent-on-mobile.md).
  *   6. Native build         — gradlew / xcodebuild
+ *
+ * iOS targets:
+ *   - ios         Cloud/client-oriented iOS build. Local inference is omitted
+ *                 unless ELIZA_IOS_INCLUDE_LLAMA / MILADY_IOS_INCLUDE_LLAMA is set.
+ *   - ios-local   Dev/sideload iOS build. Bakes runtimeMode=local and includes
+ *                 the native llama bridge so the WebView ITTP local kernel can run.
  */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -564,7 +570,7 @@ async function buildWeb(platform) {
     platform === "android-cloud" ||
     platform === "android-cloud-debug"
       ? "android"
-      : platform === "ios-overlay"
+      : platform === "ios-overlay" || platform === "ios-local"
         ? "ios"
         : platform;
   // Android runtime mode mirrors the iOS runtime mode pattern: `cloud`
@@ -578,6 +584,12 @@ async function buildWeb(platform) {
       : platform === "android" || platform === "android-system"
         ? "local"
         : null;
+  const iosRuntimeMode =
+    platform === "ios-local"
+      ? "local"
+      : platform === "ios" || platform === "ios-overlay"
+        ? "cloud"
+        : null;
   const env = {
     ...process.env,
     ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
@@ -586,6 +598,14 @@ async function buildWeb(platform) {
       ? {
           VITE_ELIZA_ANDROID_RUNTIME_MODE: androidRuntimeMode,
           VITE_MILADY_ANDROID_RUNTIME_MODE: androidRuntimeMode,
+        }
+      : {}),
+    ...(iosRuntimeMode
+      ? {
+          ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
+          MILADY_IOS_RUNTIME_MODE: iosRuntimeMode,
+          VITE_ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
+          VITE_MILADY_IOS_RUNTIME_MODE: iosRuntimeMode,
         }
       : {}),
   };
@@ -1279,6 +1299,18 @@ function overlayAndroid() {
       code = code.replaceAll(
         "ai.elizaos.app.action.",
         `${androidPackage}.action.`,
+      );
+      // Source Java declares `import app.eliza.{BuildConfig,R};` because the
+      // upstream gradle namespace is `app.eliza` and that is where the
+      // generated symbols live. For overlay apps the namespace becomes
+      // `${APP.appId}` (see gradle namespace patch at ~L2226), so BuildConfig
+      // and R are emitted under `${androidPackage}` instead. Rewrite the
+      // imports here so compilation finds them. Without this rewrite gradle
+      // fails with `error: package app.eliza does not exist` on every Java
+      // source that touches BuildConfig or R.
+      code = code.replaceAll(
+        /\bimport\s+app\.eliza\.(BuildConfig|R)\s*;/g,
+        `import ${androidPackage}.$1;`,
       );
       code = code.replaceAll("ai.elizaos.app://", `${APP.urlScheme}://`);
       code = code.replaceAll(
@@ -2994,7 +3026,7 @@ import android.webkit.WebView;
 
 import com.getcapacitor.BridgeActivity;
 
-import app.eliza.BuildConfig;
+import ${androidPackage}.BuildConfig;
 
 import java.lang.reflect.Method;
 
@@ -3820,9 +3852,30 @@ async function buildAndroidSystem() {
   stageAndroidSystemApk();
 }
 
-async function buildIos() {
+function setDefaultProcessEnv(key, value) {
+  if (process.env[key] == null || process.env[key] === "") {
+    process.env[key] = value;
+  }
+}
+
+function configureIosLocalBuildDefaults() {
+  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "local");
+  setDefaultProcessEnv("MILADY_IOS_RUNTIME_MODE", "local");
+  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "local");
+  setDefaultProcessEnv("VITE_MILADY_IOS_RUNTIME_MODE", "local");
+  setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
+  setDefaultProcessEnv("MILADY_IOS_INCLUDE_LLAMA", "1");
+  setDefaultProcessEnv("ELIZA_IOS_BUILD_DESTINATION", "generic/platform=iOS");
+  setDefaultProcessEnv("ELIZA_IOS_BUILD_SDK", "iphoneos");
+}
+
+async function buildIos({ local = false } = {}) {
   if (process.platform !== "darwin")
     throw new Error("iOS builds require macOS and Xcode.");
+
+  if (local) {
+    configureIosLocalBuildDefaults();
+  }
 
   const cocoapodsScript = path.join(
     appCoreRoot,
@@ -3830,7 +3883,7 @@ async function buildIos() {
     "prepare-ios-cocoapods.sh",
   );
 
-  await buildWeb("ios");
+  await buildWeb(local ? "ios-local" : "ios");
   await ensurePlatform("ios");
   if (fs.existsSync(cocoapodsScript)) {
     await run("bash", [cocoapodsScript], { cwd: repoRoot });
@@ -3885,7 +3938,7 @@ async function buildIos() {
       buildTarget.destination,
       "-sdk",
       buildTarget.sdk,
-      "CODE_SIGNING_ALLOWED=NO",
+      `CODE_SIGNING_ALLOWED=${process.env.ELIZA_IOS_CODE_SIGNING_ALLOWED ?? "NO"}`,
       ...(isIosSimulatorBuildTarget(buildTarget)
         ? ["ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "EXCLUDED_ARCHS=x86_64"]
         : []),
@@ -3905,10 +3958,11 @@ export async function main(argv = process.argv.slice(2)) {
     target !== "android-cloud-debug" &&
     target !== "android-system" &&
     target !== "ios" &&
+    target !== "ios-local" &&
     target !== "ios-overlay"
   ) {
     console.error(
-      "Usage: node scripts/run-mobile-build.mjs <android|android-cloud|android-cloud-debug|android-system|ios|ios-overlay>",
+      "Usage: node scripts/run-mobile-build.mjs <android|android-cloud|android-cloud-debug|android-system|ios|ios-local|ios-overlay>",
     );
     process.exit(1);
   }
@@ -3922,6 +3976,8 @@ export async function main(argv = process.argv.slice(2)) {
     await buildAndroidSystem();
   } else if (target === "ios") {
     await buildIos();
+  } else if (target === "ios-local") {
+    await buildIos({ local: true });
   } else {
     prepareIosOverlay();
     await generateIosBrandAssets();

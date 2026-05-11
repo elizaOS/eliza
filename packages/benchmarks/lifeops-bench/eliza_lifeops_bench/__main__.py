@@ -192,8 +192,8 @@ def _build_agent_fn(name: str):
             manager.start()
             # Stash on module-state so the process keeps the reference alive.
             globals()["_ELIZA_SERVER_MANAGER"] = manager
-            os.environ.setdefault("ELIZA_BENCH_URL", manager.client.base_url)
-            os.environ.setdefault("ELIZA_BENCH_TOKEN", manager.token)
+            os.environ["ELIZA_BENCH_URL"] = manager.client.base_url
+            os.environ["ELIZA_BENCH_TOKEN"] = manager.token
         return build_eliza_agent()
     if name == "openclaw":
         try:

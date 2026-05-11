@@ -269,7 +269,13 @@ def _read_sidecar(path: Path) -> dict[str, Any]:
 
 def _find_sidecar(bundle: Path, names: Sequence[str]) -> Path | None:
     for name in names:
-        for base in (bundle, bundle / "text", bundle / "dflash", bundle / "evals"):
+        for base in (
+            bundle,
+            bundle / "text",
+            bundle / "dflash",
+            bundle / "evals",
+            bundle / "quantization",
+        ):
             candidate = base / name
             if candidate.is_file():
                 return candidate

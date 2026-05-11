@@ -22,8 +22,22 @@ Supported suites:
 
 Every invocation writes `<output-dir>/<run-id>/collection-manifest.json`,
 including dry-runs. The manifest records commands, env requirements, env
-overrides, expected output paths, provider labels, and cost-cap handling.
-Run it with the training package Python environment (`>=3.11`).
+overrides, expected output paths, provider labels, cost-cap handling, git
+metadata, and the downstream prepare command. Run it with the training package
+Python environment (`>=3.11`).
+
+The stable top-level manifest contract is:
+
+- `schema`, `version`, `run_id`, `generated_at`, and `completed_at`
+- `provider_label` and nullable `provider_model`
+- `suites`, `commands`, `expected_outputs`, and `cost_caps`
+- `git` and `worktree`
+- `downstream_inputs.prepare_eliza1_trajectory_dataset`, including
+  `input_paths`, `output_dir`, and a ready-to-run prepare command
+
+The collector is manifest-only unless `--execute` is present. Use `--dry-run`
+when you want that intent to be visible in command history; otherwise omitting
+`--execute` has the same no-run behavior.
 
 ## Provider Labels
 
@@ -40,8 +54,10 @@ collector refuses non-dry runs whose active model or judge model contains
 executed by this script.
 
 For `--provider anthropic`, pass an explicit non-Opus `--model`; the collector
-blocks non-dry Anthropic runs without one to avoid falling through to an Opus
-default configured elsewhere.
+blocks `--execute` Anthropic runs without one to avoid falling through to an
+Opus default configured elsewhere. Opus labels can be prepared in a dry-run
+manifest, but `--execute` runs with an active or judge model containing `opus`
+are blocked before any suite starts.
 
 ## Dry-Run
 
@@ -67,6 +83,7 @@ jq . artifacts/trajectory-collection/dev-trajectories-001/collection-manifest.js
 ```bash
 ELIZA_LIVE_TEST=1 CEREBRAS_API_KEY=... \
 python3 packages/training/scripts/collect_trajectories.py \
+  --execute \
   --provider cerebras-dev \
   --model <dev-model-id> \
   --suites live-scenarios \
@@ -87,6 +104,7 @@ Expected outputs include:
 ```bash
 ELIZA_LIVE_TEST=1 OPENAI_API_KEY=... \
 python3 packages/training/scripts/collect_trajectories.py \
+  --execute \
   --provider openai \
   --model <model-label> \
   --suites scenario-benchmark \
@@ -103,6 +121,7 @@ the cap in the manifest for accounting, but only LifeOpsBench enforces
 ```bash
 ELIZA_LIVE_TEST=1 OPENROUTER_API_KEY=... \
 python3 packages/training/scripts/collect_trajectories.py \
+  --execute \
   --provider env \
   --model <model-label> \
   --suites scenario-runner \
@@ -122,6 +141,7 @@ JSONL under the same run directory.
 ```bash
 CEREBRAS_API_KEY=... \
 python3 packages/training/scripts/collect_trajectories.py \
+  --execute \
   --provider cerebras-dev \
   --model <dev-model-id> \
   --suites lifeops-bench \
@@ -136,6 +156,25 @@ python3 packages/training/scripts/collect_trajectories.py \
 `--lifeops-mode` defaults to `static` to avoid accidental live judge calls. For
 live mode, pass an explicit non-Opus `--judge-model`; the collector will not
 fall through to the LifeOpsBench Opus default.
+
+## Prepare Handoff
+
+After collection, use the command embedded in
+`downstream_inputs.prepare_eliza1_trajectory_dataset.command` as the Worker C
+handoff. It points at the collection outputs that can become prepare inputs and
+writes the prepared splits under
+`packages/training/data/trajectory-runs/<run-id>/`.
+
+Example:
+
+```bash
+jq -r '.downstream_inputs.prepare_eliza1_trajectory_dataset.command | @sh' \
+  artifacts/trajectory-collection/<run-id>/collection-manifest.json
+```
+
+Review the listed `input_paths` and run privacy review before staging a dataset
+candidate. The prepare command includes `--strict-privacy`; keep it unless a
+reviewed synthetic-only bundle needs a documented exception.
 
 ## Privacy And Training
 

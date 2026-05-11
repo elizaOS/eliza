@@ -7,6 +7,9 @@ name = "openclaw-adapter"
 version = "0.1.0"
 description = "Benchmark adapter for the OpenClaw CLI agent"
 requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

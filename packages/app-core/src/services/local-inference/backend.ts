@@ -100,6 +100,17 @@ export interface GenerateArgs {
    * Empty / absent keys fall through to the historical stateless path.
    */
   cacheKey?: string;
+  /**
+   * Per-request abort signal. Backends honour it cooperatively:
+   *   - `node-llama-cpp` passes it to `LlamaChatSession.prompt()` as
+   *     `stopOnAbortSignal`, so the binding bails out of the generation
+   *     loop on the next sampler tick.
+   *   - `llama-server`   wires it into the HTTP request so the outgoing
+   *     fetch is cancelled and the server-side slot releases the KV.
+   * Callers that want hard cancel for things like app pause / kill-switch
+   * pass the same signal here that they pass into `runtime.useModel`.
+   */
+  signal?: AbortSignal;
 }
 
 export type GenerateResult = string;

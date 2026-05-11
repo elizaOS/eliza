@@ -412,12 +412,27 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
       if (cacheKey === DEFAULT_SESSION_KEY) {
         await session.resetChatHistory?.();
       }
-      return session.prompt(args.prompt, {
+      const promptOpts: {
+        maxTokens?: number;
+        temperature?: number;
+        topP?: number;
+        stopOnAbortSignal?: AbortSignal;
+        customStopTriggers?: string[];
+      } = {
         maxTokens: args.maxTokens ?? 2048,
         temperature: args.temperature ?? 0.7,
         topP: args.topP ?? 0.9,
-        customStopTriggers: args.stopSequences,
-      });
+      };
+      if (args.stopSequences) {
+        promptOpts.customStopTriggers = args.stopSequences;
+      }
+      if (args.signal) {
+        // node-llama-cpp's `stopOnAbortSignal` aborts the generation loop
+        // on the next sampler tick when the signal is aborted. Wiring this
+        // is the canonical way to make local inference cancellable.
+        promptOpts.stopOnAbortSignal = args.signal;
+      }
+      return session.prompt(args.prompt, promptOpts);
     };
     const job = this.generationQueue.then(run, run);
     this.generationQueue = job.catch(() => {

@@ -19,6 +19,15 @@ export {
   findCatalogModel,
   MODEL_CATALOG,
 } from "./catalog";
+export {
+  classifyLocalError,
+  type CloudCandidate,
+  type CloudFallbackOptions,
+  type FallbackReason,
+  findCloudCandidate,
+  type LocalGenerateOutcome,
+  makeCloudFallbackHandler,
+} from "./cloud-fallback";
 export { getDflashRuntimeStatus } from "./dflash-server";
 export { assessFit, probeHardware } from "./hardware";
 export { buildTextGenerationReadiness } from "./readiness";

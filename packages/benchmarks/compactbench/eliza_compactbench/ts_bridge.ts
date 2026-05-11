@@ -243,7 +243,7 @@ function toCompactBenchArtifact(
   // artifact larger without adding signal. Prose-only strategies keep their
   // summary text because they have no structured state to score from.
   const summaryText = stateHasContent
-    ? buildStructuredSummaryHeader(structuredState)
+    ? ""
     : artifact.replacementMessages
         .map((m) => `[${m.role}] ${m.content}`)
         .join("\n\n")
@@ -306,7 +306,9 @@ function normalizeStructuredState(
     deferredItems: asStringArray(state.pending_actions),
     forbiddenBehaviors: asStringArray(state.forbidden_behaviors),
     entityMap: asStringRecord(state.entities),
-    unresolvedItems: asStringArray(state.pending_actions),
+    unresolvedItems: asStringArray(
+      (state as { unresolved_items?: unknown }).unresolved_items,
+    ),
   };
 }
 
@@ -319,30 +321,6 @@ function hasStructuredStateContent(state: Record<string, unknown>): boolean {
     asStringArray(state.unresolvedItems).length > 0 ||
     Object.keys(asStringRecord(state.entityMap)).length > 0
   );
-}
-
-function buildStructuredSummaryHeader(state: Record<string, unknown>): string {
-  const lines: string[] = [];
-  const forbidden = asStringArray(state.forbiddenBehaviors);
-  if (forbidden.length > 0) {
-    lines.push(`Required exact phrase: ${forbidden.join("; ")}`);
-  }
-  const decisions = asStringArray(state.lockedDecisions);
-  const currentDecision = decisions.find(
-    (decision) => !/^verbatim forbidden behavior:/i.test(decision),
-  );
-  if (currentDecision) {
-    lines.push(
-      `Exact current decision: ${currentDecision.replace(/^latest decision:\s*/i, "")}`,
-    );
-  }
-  const ownershipFacts = asStringArray(state.immutableFacts)
-    .filter((fact) => /\bowns:\s*/i.test(fact))
-    .slice(0, 4);
-  if (ownershipFacts.length > 0) {
-    lines.push(`Exact responsibility phrases: ${ownershipFacts.join("; ")}`);
-  }
-  return lines.join("\n").slice(0, 1000);
 }
 
 function asStringArray(v: unknown): string[] {

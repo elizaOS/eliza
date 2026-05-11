@@ -6,15 +6,19 @@ Inputs:
   * LifeOpsBench result JSON emitted by `LifeOpsBenchRunner.save_results`.
 
 Outputs:
-  * `train.jsonl`, `val.jsonl`, `test.jsonl` for successful trajectories.
+  * `train.jsonl`, `val.jsonl`, `test.jsonl` as train-local-compatible
+    `eliza_native_v1` rows by default.
   * `repair_eval.jsonl` for failed or low-scoring trajectories.
+  * `trajectory_records/*.jsonl` with auditable candidate trajectory records
+    when `--output-format both` is used.
   * `manifest.json` with split counts, source counts, action counts, and
     privacy redaction totals.
 
-The SFT record is provider-agnostic: a Qwen/ChatML-oriented `messages` array,
-OpenAI-style function `tools`, canonicalized `actions`, and source/quality
-metadata. Native provider details are intentionally not used as behavioral
-fields.
+The internal trajectory record is provider-agnostic: a Qwen/ChatML-oriented
+`messages` array, OpenAI-style function `tools`, canonicalized `actions`, and
+source/quality metadata. The default disk splits are converted back to the
+existing `eliza_native_v1` training row shape because `train_local.py` loads
+JSONL rows through `scripts/format_for_training.py`.
 """
 
 from __future__ import annotations
@@ -39,7 +43,13 @@ SCHEMA_VERSION = "eliza.eliza1_trajectory_record.v1"
 MANIFEST_SCHEMA = "eliza.eliza1_trajectory_dataset_manifest.v1"
 NATIVE_FORMAT = "eliza_native_v1"
 NATIVE_BOUNDARIES = {"vercel_ai_sdk.generateText", "vercel_ai_sdk.streamText"}
+TRAINING_BOUNDARY = "vercel_ai_sdk.generateText"
 INPUT_SUFFIXES = {".json", ".jsonl", ".ndjson"}
+OUTPUT_FORMAT_NATIVE = "eliza-native"
+OUTPUT_FORMAT_NATIVE_ALIAS = "eliza-record"
+OUTPUT_FORMAT_TRAJECTORY = "trajectory-record"
+OUTPUT_FORMAT_BOTH = "both"
+TRAINABLE_OUTPUT_FORMATS = {OUTPUT_FORMAT_NATIVE, OUTPUT_FORMAT_NATIVE_ALIAS, OUTPUT_FORMAT_BOTH}
 
 LOG = logging.getLogger("prepare-eliza1-trajectories")
 
@@ -968,6 +978,165 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
             f.write("\n")
 
 
+def normalize_output_format(value: str) -> str:
+    if value == OUTPUT_FORMAT_NATIVE_ALIAS:
+        return OUTPUT_FORMAT_NATIVE
+    return value
+
+
+def _stringify_tool_arguments(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return "{}"
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _request_message_for_native(message: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "role": message.get("role"),
+        "content": content_to_text(message.get("content")),
+    }
+    for key in ("name", "tool_call_id"):
+        if isinstance(message.get(key), str):
+            out[key] = message[key]
+
+    raw_calls = message.get("tool_calls")
+    if isinstance(raw_calls, list):
+        calls: list[dict[str, Any]] = []
+        for idx, raw in enumerate(raw_calls):
+            if not isinstance(raw, dict):
+                continue
+            fn = raw.get("function") if isinstance(raw.get("function"), dict) else {}
+            name = fn.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            calls.append(
+                {
+                    "id": str(raw.get("id") or f"call_{idx}"),
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": _stringify_tool_arguments(fn.get("arguments")),
+                    },
+                }
+            )
+        if calls:
+            out["tool_calls"] = calls
+    return out
+
+
+def _response_tool_call_for_native(call: dict[str, Any], fallback_index: int) -> dict[str, Any] | None:
+    fn = call.get("function") if isinstance(call.get("function"), dict) else {}
+    name = fn.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return None
+    return {
+        "toolCallId": str(call.get("id") or f"call_{fallback_index}"),
+        "toolName": name,
+        "input": coerce_arguments(fn.get("arguments")),
+    }
+
+
+def trajectory_record_to_eliza_native(record: dict[str, Any]) -> dict[str, Any] | None:
+    """Convert an auditable trajectory record into train_local.py input.
+
+    `train_local.py` delegates to `format_for_training.format_record`, whose
+    accepted runtime trajectory input is `eliza_native_v1`. This conversion
+    keeps the train/val/test files on that existing path while preserving the
+    richer candidate record under `trajectory_records/` when requested.
+    """
+
+    messages = record.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return None
+    last = messages[-1]
+    if not isinstance(last, dict) or last.get("role") != "assistant":
+        return None
+
+    request_messages = [
+        _request_message_for_native(message)
+        for message in messages[:-1]
+        if isinstance(message, dict)
+    ]
+    if not any(message.get("role") == "user" for message in request_messages):
+        return None
+
+    response: dict[str, Any] = {"text": content_to_text(last.get("content"))}
+    raw_calls = last.get("tool_calls")
+    if isinstance(raw_calls, list):
+        tool_calls = [
+            call
+            for idx, raw in enumerate(raw_calls)
+            if isinstance(raw, dict)
+            if (call := _response_tool_call_for_native(raw, idx)) is not None
+        ]
+        if tool_calls:
+            response["toolCalls"] = tool_calls
+    if not response["text"].strip() and not response.get("toolCalls"):
+        return None
+
+    request: dict[str, Any] = {"messages": request_messages}
+    tools = record.get("tools")
+    if isinstance(tools, list) and tools:
+        request["tools"] = tools
+
+    source = _as_record(record.get("source")) or {}
+    metadata = _as_record(record.get("metadata")) or {}
+    native_metadata = {
+        "task_type": record.get("task") or "response",
+        "source_dataset": source.get("dataset") or "trajectory_dataset",
+        "split": record.get("split"),
+        "trajectory_record_id": record.get("id"),
+        "trajectory_schema": record.get("schema"),
+        "quality": record.get("quality"),
+        "source": source,
+        "target": record.get("target"),
+        "trajectory_metadata": metadata,
+    }
+    native_row: dict[str, Any] = {
+        "format": NATIVE_FORMAT,
+        "boundary": metadata.get("boundary") or TRAINING_BOUNDARY,
+        "request": request,
+        "response": response,
+        "metadata": native_metadata,
+    }
+    if isinstance(source.get("trajectoryId"), str) and source["trajectoryId"]:
+        native_row["trajectoryId"] = source["trajectoryId"]
+    if isinstance(source.get("scenarioId"), str) and source["scenarioId"]:
+        native_row["scenarioId"] = source["scenarioId"]
+    if isinstance(source.get("turnIndex"), int):
+        native_row["stepIndex"] = source["turnIndex"]
+    return native_row
+
+
+def materialize_output_splits(
+    splits: dict[str, list[dict[str, Any]]],
+    *,
+    output_format: str,
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]] | None]:
+    normalized = normalize_output_format(output_format)
+    if normalized == OUTPUT_FORMAT_TRAJECTORY:
+        return splits, None
+
+    trainable: dict[str, list[dict[str, Any]]] = {split: [] for split in splits}
+    failed: list[str] = []
+    for split, rows in splits.items():
+        for row in rows:
+            native = trajectory_record_to_eliza_native(row)
+            if native is None:
+                failed.append(str(row.get("id") or f"{split}:{len(failed)}"))
+                continue
+            trainable[split].append(native)
+    if failed:
+        shown = ", ".join(failed[:5])
+        extra = "" if len(failed) <= 5 else f" (+{len(failed) - 5} more)"
+        raise SystemExit(f"{len(failed)} record(s) cannot be converted to {NATIVE_FORMAT}: {shown}{extra}")
+
+    trajectory = splits if normalized == OUTPUT_FORMAT_BOTH else None
+    return trainable, trajectory
+
+
 def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
     if args.val_ratio < 0 or args.test_ratio < 0 or args.val_ratio + args.test_ratio >= 1:
         raise SystemExit("--val-ratio and --test-ratio must be non-negative and sum to < 1")
@@ -1058,7 +1227,14 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
 
     manifest = {
         "schema": MANIFEST_SCHEMA,
-        "recordSchema": SCHEMA_VERSION,
+        "recordSchema": NATIVE_FORMAT
+        if normalize_output_format(args.output_format) in TRAINABLE_OUTPUT_FORMATS
+        else SCHEMA_VERSION,
+        "trajectoryRecordSchema": SCHEMA_VERSION,
+        "trainingReadySchema": NATIVE_FORMAT
+        if normalize_output_format(args.output_format) in TRAINABLE_OUTPUT_FORMATS
+        else None,
+        "outputFormat": args.output_format,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "target": target_block(args.base_model),
         "inputs": list(args.input),
@@ -1069,6 +1245,30 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
             "test": "test.jsonl",
             "repair_eval": "repair_eval.jsonl",
         },
+        "trainingFiles": {
+            "train": "train.jsonl",
+            "val": "val.jsonl",
+            "test": "test.jsonl",
+        }
+        if normalize_output_format(args.output_format) in TRAINABLE_OUTPUT_FORMATS
+        else {},
+        "trajectoryFiles": {
+            "train": "trajectory_records/train.jsonl",
+            "val": "trajectory_records/val.jsonl",
+            "test": "trajectory_records/test.jsonl",
+            "repair_eval": "trajectory_records/repair_eval.jsonl",
+        }
+        if normalize_output_format(args.output_format) == OUTPUT_FORMAT_BOTH
+        else (
+            {
+                "train": "train.jsonl",
+                "val": "val.jsonl",
+                "test": "test.jsonl",
+                "repair_eval": "repair_eval.jsonl",
+            }
+            if normalize_output_format(args.output_format) == OUTPUT_FORMAT_TRAJECTORY
+            else {}
+        ),
         "counts": {split: len(rows) for split, rows in splits.items()},
         "successRecords": sum(len(splits[name]) for name in ("train", "val", "test")),
         "repairEvalRecords": len(splits["repair_eval"]),
@@ -1112,6 +1312,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--test-ratio", type=float, default=0.05)
     parser.add_argument("--seed", default="eliza1-trajectory-sft-v1")
     parser.add_argument("--max-records", type=int, default=0)
+    parser.add_argument(
+        "--output-format",
+        choices=[
+            OUTPUT_FORMAT_BOTH,
+            OUTPUT_FORMAT_NATIVE,
+            OUTPUT_FORMAT_NATIVE_ALIAS,
+            OUTPUT_FORMAT_TRAJECTORY,
+        ],
+        default=OUTPUT_FORMAT_BOTH,
+        help=(
+            "Root split format. Default 'both' writes train/val/test as "
+            "train_local.py-compatible eliza_native_v1 rows and writes the "
+            "candidate trajectory schema under trajectory_records/. "
+            "'eliza-record' is a compatibility alias for eliza-native."
+        ),
+    )
     parser.add_argument("--action-aliases", default=str(DEFAULT_ALIAS_PATH))
     parser.add_argument("--action-manifest", default="")
     parser.add_argument(
@@ -1134,8 +1350,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     splits, manifest = prepare(args)
     output_dir = Path(args.output_dir)
-    for split, rows in splits.items():
+    root_splits, trajectory_splits = materialize_output_splits(
+        splits,
+        output_format=args.output_format,
+    )
+    for split, rows in root_splits.items():
         write_jsonl(output_dir / manifest["files"][split], rows)
+    if trajectory_splits is not None:
+        for split, rows in trajectory_splits.items():
+            write_jsonl(output_dir / "trajectory_records" / manifest["files"][split], rows)
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True) + "\n",

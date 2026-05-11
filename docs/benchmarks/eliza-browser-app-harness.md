@@ -19,12 +19,10 @@ bun run harness:browser-app -- --dry-run --target-url https://example.com/
 Attach to an already-running desktop/API stack:
 
 ```sh
-bun run harness:browser-app -- \
+bun run harness:browser-app:strict -- \
   --no-launch \
   --target-url https://example.com/ \
   --prompt "Open the page and report its headline." \
-  --require-browser-tab \
-  --require-browser-events \
   --timeout 90s
 ```
 
@@ -64,11 +62,11 @@ tmp/eliza-browser-harness/<run-id>/
 - `--prompt-via-api`: send the prompt through `POST
   /api/conversations/:id/messages` instead of typing it into the UI.
 - `--require-browser-tab`: fail unless a browser workspace tab is observed by
-  the end of the run.
+  the end of the run and is new after the prompt or matches the target URL.
 - `--require-browser-events`: fail unless browser workspace events are observed
-  by the end of the run.
+  by the end of the run and are new after the prompt or match the target URL.
 - `--require-trajectory`: fail unless a trajectory record is observed by the
-  end of the run.
+  end of the run and is new after the prompt or contains the harness run marker.
 - `--target-url <url>`: target URL for the agent's browser task.
 - `--timeout <ms|s|m>`: total polling time after the prompt is sent.
 - `--api-base <url>`: Eliza API base URL, default
@@ -90,6 +88,9 @@ Before prompting, the harness captures:
 - `GET /api/health`
 - `GET /api/status`
 - `GET /api/dev/stack`
+- baseline `GET /api/browser-workspace`
+- baseline `GET /api/browser-workspace/events`
+- baseline `GET /api/trajectories?limit=50&offset=0`
 
 After sending the task prompt, it polls:
 
@@ -124,6 +125,8 @@ not click, type, navigate, or evaluate inside target websites.
 Common files:
 
 - `run-plan.json`: parsed options, guardrails, and final prompt text.
+- `baseline-*.json`, `baseline-observations.json`: pre-prompt browser and
+  trajectory snapshots used to prove post-prompt deltas.
 - `probe-health.json`, `probe-status.json`, `probe-dev-stack.json`: initial
   probe responses.
 - `discovery.json`: resolved API/UI URLs and probe status summary.

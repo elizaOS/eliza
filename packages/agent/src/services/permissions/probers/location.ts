@@ -3,15 +3,7 @@
  *
  * Native APIs (macOS):
  *   - check:   CLLocationManager.authorizationStatus()
- *   - request: CLLocationManager.requestAlwaysAuthorization()
- *
- * No FFI binding yet for CoreLocation. On dev (unsigned), CoreLocation
- * works but the prompt only fires from a foreground GUI session. We probe
- * via TCC.db (kTCCServiceLocation*) for check; for request we fall through
- * to an open of the privacy pane since there's no headless API path.
- *
- * INTEGRATION TODO: ship a CoreLocation FFI for proper
- * authorizationStatus() / requestWhenInUseAuthorization() support.
+ *   - request: CLLocationManager.requestWhenInUseAuthorization()
  *
  * On win32/linux, concrete browser geolocation state is supplied by the
  * renderer fallback through navigator.permissions/geolocation.
@@ -20,13 +12,24 @@
 import type { PermissionState, Prober } from "../contracts.js";
 import {
   buildState,
+  getNativeDylib,
   IS_DARWIN,
+  mapNativePrivacyAuthStatus,
   openPrivacyPane,
   queryTccStatus,
   resolveBundleId,
 } from "./_bridge.js";
 
 const ID = "location" as const;
+
+function stateFromNative(value: number, lastRequested?: number): PermissionState {
+  const status = mapNativePrivacyAuthStatus(value);
+  return buildState(ID, status, {
+    canRequest: status === "not-determined",
+    lastRequested,
+    restrictedReason: status === "restricted" ? "os_policy" : undefined,
+  });
+}
 
 export const locationProber: Prober = {
   id: ID,
@@ -35,6 +38,10 @@ export const locationProber: Prober = {
     if (!IS_DARWIN) {
       // Renderer fallback handles navigator.permissions/geolocation.
       return buildState(ID, "not-determined", { canRequest: true });
+    }
+    const native = await getNativeDylib();
+    if (native) {
+      return stateFromNative(native.checkLocationPermission());
     }
     // CoreLocation on macOS uses a system-level daemon; the per-user
     // TCC.db won't always have a row. Treat null as not-determined.
@@ -50,10 +57,13 @@ export const locationProber: Prober = {
     if (!IS_DARWIN) {
       return buildState(ID, "not-determined", { canRequest: true });
     }
-    // No headless way to trigger CoreLocation prompt in unsigned dev.
-    // Best we can do: open the privacy pane.
+    const lastRequested = Date.now();
+    const native = await getNativeDylib();
+    if (native) {
+      return stateFromNative(native.requestLocationPermission(), lastRequested);
+    }
     await openPrivacyPane("LocationServices");
     const state = await locationProber.check();
-    return { ...state, lastRequested: Date.now() };
+    return { ...state, lastRequested };
   },
 };

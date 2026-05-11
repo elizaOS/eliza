@@ -244,7 +244,9 @@ function patchPackagedCoreSandboxPolicyExports() {
 
   const before = fs.readFileSync(coreIndexPath, "utf8");
   const hasBuildVariantExports = before.includes("export const BUILD_VARIANTS");
-  const hasSandboxPolicyExports = before.includes("isLocalCodeExecutionAllowed");
+  const hasSandboxPolicyExports = before.includes(
+    "isLocalCodeExecutionAllowed",
+  );
   if (hasBuildVariantExports && hasSandboxPolicyExports) return false;
 
   let jsPatch = "";
@@ -352,10 +354,7 @@ export declare function buildStoreVariantBlockedMessage(featureLabel: string): s
 `;
     }
     if (!dtsPatch) continue;
-    fs.appendFileSync(
-      dtsPath,
-      dtsPatch,
-    );
+    fs.appendFileSync(dtsPath, dtsPatch);
   }
 
   return true;

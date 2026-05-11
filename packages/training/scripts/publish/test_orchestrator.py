@@ -117,15 +117,15 @@ def _build_fixture_bundle(
         "per_block_tolerance": {"stub": 0.01},
     }
     _write(
-        bundle / "turboquant.json",
+        bundle / "quantization" / "turboquant.json",
         json.dumps({"method": "turboquant", "kernel_manifest": kernel_manifest}),
     )
     _write(
-        bundle / "qjl_config.json",
+        bundle / "quantization" / "qjl_config.json",
         json.dumps({"method": "qjl", "kernel_manifest": kernel_manifest}),
     )
     _write(
-        bundle / "polarquant_config.json",
+        bundle / "quantization" / "polarquant_config.json",
         json.dumps({"method": "polarquant", "kernel_manifest": kernel_manifest}),
     )
 
@@ -470,7 +470,7 @@ def test_wrong_hf_org_fails_before_publish(tmp_path: Path) -> None:
 
 def test_missing_quantization_sidecar_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
-    (bundle / "qjl_config.json").unlink()
+    (bundle / "quantization" / "qjl_config.json").unlink()
     metal = _metal_report(tmp_path)
     rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE

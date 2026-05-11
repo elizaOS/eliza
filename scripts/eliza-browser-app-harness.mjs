@@ -25,6 +25,7 @@ const READ_ONLY_BROWSER_WORKSPACE_PATHS = new Set([
   "/api/browser-workspace",
   "/api/browser-workspace/events",
 ]);
+const LOCAL_UI_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 function usage() {
   return `Usage: bun scripts/eliza-browser-app-harness.mjs [options]
@@ -181,6 +182,14 @@ function stripTrailingSlash(value) {
   return value.replace(/\/+$/, "");
 }
 
+function normalizeApiPath(path, apiBase = DEFAULT_API_BASE) {
+  try {
+    return new URL(path, apiBase).pathname;
+  } catch {
+    return path.split("?")[0] ?? path;
+  }
+}
+
 function artifactPath(runDir, name) {
   return join(runDir, name);
 }
@@ -218,15 +227,16 @@ function apiHeaders() {
 
 function assertAllowedHarnessRequest(method, path) {
   const upper = method.toUpperCase();
-  if (path === "/api/browser-workspace/command") {
+  const normalizedPath = normalizeApiPath(path);
+  if (normalizedPath === "/api/browser-workspace/command") {
     throw new Error("Guardrail: browser workspace command endpoint is blocked");
   }
-  if (path === "/api/browser-workspace/tabs" && upper !== "GET") {
+  if (normalizedPath === "/api/browser-workspace/tabs" && upper !== "GET") {
     throw new Error("Guardrail: browser workspace tab mutation is blocked");
   }
   if (
     /^\/api\/browser-workspace\/tabs\/[^/]+\/(?:navigate|eval|show|hide)$/.test(
-      path,
+      normalizedPath,
     )
   ) {
     throw new Error(
@@ -348,43 +358,65 @@ function isRuntimeReady(result) {
   );
 }
 
-async function waitForRuntimeReady(apiBase, runDir, timeoutMs) {
+function getChildExitStatus(stackProcess) {
+  const child = stackProcess?.child;
+  if (!child) return null;
+  if (child.exitCode == null && child.signalCode == null) return null;
+  return {
+    exitCode: child.exitCode,
+    signalCode: child.signalCode,
+  };
+}
+
+async function waitForRuntimeReady(apiBase, runDir, timeoutMs, stackProcess) {
   const deadline = Date.now() + timeoutMs;
   const attempts = [];
+  const attemptLog = makeJsonlWriter(
+    artifactPath(runDir, "runtime-ready.jsonl"),
+  );
   let last = null;
+  let devProcessExit = null;
 
-  while (Date.now() < deadline) {
-    last = await fetchWithCapture(apiBase, "/api/health", {
-      timeoutMs: 5_000,
-    });
-    const record = {
-      ts: nowIso(),
-      status: last.status,
-      ok: last.ok,
-      elapsedMs: last.elapsedMs,
-      ready: last.body?.ready ?? null,
-      runtime: last.body?.runtime ?? null,
-      agentState: last.body?.agentState ?? null,
-      startupPhase: last.body?.startup?.phase ?? null,
-      bodyText:
-        last.body === null && last.bodyText
-          ? last.bodyText.slice(0, 1000)
-          : undefined,
-    };
-    attempts.push(record);
-    if (isRuntimeReady(last)) {
-      await writeJson(artifactPath(runDir, "runtime-ready.json"), {
-        ...record,
-        attempts: attempts.length,
+  try {
+    while (Date.now() < deadline) {
+      last = await fetchWithCapture(apiBase, "/api/health", {
+        timeoutMs: 5_000,
       });
-      return last;
+      const record = {
+        ts: nowIso(),
+        status: last.status,
+        ok: last.ok,
+        elapsedMs: last.elapsedMs,
+        ready: last.body?.ready ?? null,
+        runtime: last.body?.runtime ?? null,
+        agentState: last.body?.agentState ?? null,
+        startupPhase: last.body?.startup?.phase ?? null,
+        bodyText:
+          last.body === null && last.bodyText
+            ? last.bodyText.slice(0, 1000)
+            : undefined,
+      };
+      attempts.push(record);
+      attemptLog.write(record);
+      if (isRuntimeReady(last)) {
+        await writeJson(artifactPath(runDir, "runtime-ready.json"), {
+          ...record,
+          attempts: attempts.length,
+        });
+        return last;
+      }
+      devProcessExit = getChildExitStatus(stackProcess);
+      if (devProcessExit) break;
+      await sleep(1_000);
     }
-    await sleep(1_000);
+  } finally {
+    await attemptLog.close();
   }
 
   await writeJson(artifactPath(runDir, "runtime-ready.json"), {
     ok: false,
     attempts,
+    ...(devProcessExit ? { devProcessExit } : {}),
     last: last ? summarizePollResult(last) : null,
   });
   return last;
@@ -529,12 +561,17 @@ function spawnDevDesktop(runDir) {
   const devScript =
     process.env.ELIZA_BROWSER_APP_HARNESS_DEV_SCRIPT?.trim() ||
     "dev:desktop:watch";
-  stdout.write({ ts: nowIso(), event: "spawn", script: devScript });
+  const logLevel =
+    process.env.ELIZA_BROWSER_APP_HARNESS_LOG_LEVEL?.trim() ||
+    process.env.LOG_LEVEL ||
+    "info";
+  stdout.write({ ts: nowIso(), event: "spawn", script: devScript, logLevel });
   const child = spawn("bun", ["run", devScript], {
     cwd: ROOT,
     detached: true,
     env: {
       ...process.env,
+      LOG_LEVEL: logLevel,
       ELIZA_BROWSER_APP_HARNESS_RUN_ID:
         process.env.ELIZA_BROWSER_APP_HARNESS_RUN_ID ?? "",
       MILADY_TRAJECTORY_DIR:
@@ -624,6 +661,47 @@ async function sendConversationPrompt(apiBase, runDir, conversationId, prompt) {
   return result;
 }
 
+async function captureObservationBaseline(apiBase, runDir) {
+  const browserWorkspace = await probeEndpoint(
+    apiBase,
+    runDir,
+    "baseline-browser-workspace",
+    "/api/browser-workspace",
+  );
+  const browserWorkspaceEvents = await probeEndpoint(
+    apiBase,
+    runDir,
+    "baseline-browser-workspace-events",
+    "/api/browser-workspace/events",
+  );
+  const trajectories = await probeEndpoint(
+    apiBase,
+    runDir,
+    "baseline-trajectories",
+    "/api/trajectories?limit=50&offset=0",
+  );
+  const baseline = {
+    ts: nowIso(),
+    browserWorkspace,
+    browserWorkspaceEvents,
+    trajectories,
+  };
+  await writeJson(artifactPath(runDir, "baseline-observations.json"), {
+    ts: baseline.ts,
+    counts: {
+      browserTabs: arrayLengthAtKey(browserWorkspace.body, ["tabs"]),
+      browserEvents: arrayLengthAtKey(browserWorkspaceEvents.body, ["events"]),
+      trajectories: arrayLengthAtKey(trajectories.body, [
+        "trajectories",
+        "items",
+        "results",
+        "data",
+      ]),
+    },
+  });
+  return baseline;
+}
+
 function summarizePollResult(result) {
   return {
     ts: nowIso(),
@@ -642,17 +720,103 @@ function summarizePollResult(result) {
 }
 
 function arrayLengthAtKey(value, keys) {
-  if (Array.isArray(value)) return value.length;
-  if (!value || typeof value !== "object") return 0;
+  return arrayAtKey(value, keys).length;
+}
+
+function arrayAtKey(value, keys) {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== "object") return [];
   for (const key of keys) {
     const entry = value[key];
-    if (Array.isArray(entry)) return entry.length;
+    if (Array.isArray(entry)) return entry;
   }
   for (const entry of Object.values(value)) {
-    const count = arrayLengthAtKey(entry, keys);
-    if (count > 0) return count;
+    const found = arrayAtKey(entry, keys);
+    if (found.length > 0) return found;
   }
-  return 0;
+  return [];
+}
+
+function itemIdentity(item, index) {
+  if (item && typeof item === "object") {
+    for (const key of [
+      "id",
+      "tabId",
+      "eventId",
+      "trajectoryId",
+      "traceId",
+      "uuid",
+    ]) {
+      const value = item[key];
+      if (typeof value === "string" && value.trim()) return `${key}:${value}`;
+      if (typeof value === "number") return `${key}:${value}`;
+    }
+  }
+  try {
+    return `json:${JSON.stringify(item).slice(0, 4000)}`;
+  } catch {
+    return `index:${index}`;
+  }
+}
+
+function identitySet(items) {
+  return new Set(items.map((item, index) => itemIdentity(item, index)));
+}
+
+function timestampMs(item) {
+  if (!item || typeof item !== "object") return null;
+  for (const key of [
+    "ts",
+    "time",
+    "timestamp",
+    "createdAt",
+    "updatedAt",
+    "startedAt",
+    "finishedAt",
+  ]) {
+    const value = item[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value > 10_000_000_000 ? value : value * 1000;
+    }
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return null;
+}
+
+function postBaselineItems(finalItems, baselineItems, promptSubmittedAt) {
+  const baselineIds = identitySet(baselineItems);
+  const promptMs = promptSubmittedAt ? Date.parse(promptSubmittedAt) : NaN;
+  return finalItems.filter((item, index) => {
+    const id = itemIdentity(item, index);
+    if (!baselineIds.has(id)) return true;
+    const ts = timestampMs(item);
+    return Number.isFinite(promptMs) && ts != null && ts >= promptMs - 2_000;
+  });
+}
+
+function targetUrlNeedles(targetUrl) {
+  const needles = new Set([targetUrl]);
+  try {
+    const parsed = new URL(targetUrl);
+    needles.add(parsed.toString());
+    needles.add(`${parsed.origin}${parsed.pathname}`);
+    if (parsed.pathname.endsWith("/")) {
+      needles.add(`${parsed.origin}${parsed.pathname.slice(0, -1)}`);
+    }
+  } catch {
+    // Keep the raw target above.
+  }
+  return [...needles].filter(Boolean);
+}
+
+function containsAny(value, needles) {
+  const haystack = JSON.stringify(value ?? "").toLowerCase();
+  return needles.some((needle) =>
+    haystack.includes(String(needle).toLowerCase()),
+  );
 }
 
 function textContains(value, needles) {
@@ -661,23 +825,69 @@ function textContains(value, needles) {
 }
 
 function analyzeRunArtifacts({
+  baseline,
   browserWorkspace,
   browserWorkspaceEvents,
   devConsoleLog,
   trajectories,
   options,
   promptDelivery,
+  promptSubmittedAt,
 }) {
-  const browserTabCount = arrayLengthAtKey(browserWorkspace.body, ["tabs"]);
-  const browserEventCount = arrayLengthAtKey(browserWorkspaceEvents.body, [
-    "events",
-  ]);
-  const trajectoryCount = arrayLengthAtKey(trajectories.body, [
+  const browserTabs = arrayAtKey(browserWorkspace.body, ["tabs"]);
+  const browserEvents = arrayAtKey(browserWorkspaceEvents.body, ["events"]);
+  const trajectoryItems = arrayAtKey(trajectories.body, [
     "trajectories",
     "items",
     "results",
     "data",
   ]);
+  const baselineBrowserTabs = arrayAtKey(baseline?.browserWorkspace?.body, [
+    "tabs",
+  ]);
+  const baselineBrowserEvents = arrayAtKey(
+    baseline?.browserWorkspaceEvents?.body,
+    ["events"],
+  );
+  const baselineTrajectoryItems = arrayAtKey(baseline?.trajectories?.body, [
+    "trajectories",
+    "items",
+    "results",
+    "data",
+  ]);
+  const postPromptBrowserTabs = postBaselineItems(
+    browserTabs,
+    baselineBrowserTabs,
+    promptSubmittedAt,
+  );
+  const postPromptBrowserEvents = postBaselineItems(
+    browserEvents,
+    baselineBrowserEvents,
+    promptSubmittedAt,
+  );
+  const postPromptTrajectories = postBaselineItems(
+    trajectoryItems,
+    baselineTrajectoryItems,
+    promptSubmittedAt,
+  );
+  const targetNeedles = targetUrlNeedles(options.targetUrl);
+  const targetTabMatches = browserTabs.filter((item) =>
+    containsAny(item, targetNeedles),
+  );
+  const targetEventMatches = browserEvents.filter((item) =>
+    containsAny(item, targetNeedles),
+  );
+  const trajectoryRunMarkerMatches = trajectoryItems.filter((item) =>
+    containsAny(item, [options.runId, ...targetNeedles]),
+  );
+  const browserActionMatches = trajectoryItems.filter((item) =>
+    containsAny(item, [
+      '"BROWSER"',
+      "BROWSER action",
+      "browser-workspace",
+      "plugin-browser",
+    ]),
+  );
   const endpointErrors = [
     browserWorkspace,
     browserWorkspaceEvents,
@@ -698,20 +908,42 @@ function analyzeRunArtifacts({
     {
       name: "browser-tab",
       required: options.requireBrowserTab,
-      passed: !options.requireBrowserTab || browserTabCount > 0,
-      observed: browserTabCount,
+      passed:
+        !options.requireBrowserTab ||
+        postPromptBrowserTabs.length > 0 ||
+        targetTabMatches.length > 0,
+      observed: {
+        total: browserTabs.length,
+        postPrompt: postPromptBrowserTabs.length,
+        targetMatches: targetTabMatches.length,
+      },
     },
     {
       name: "browser-events",
       required: options.requireBrowserEvents,
-      passed: !options.requireBrowserEvents || browserEventCount > 0,
-      observed: browserEventCount,
+      passed:
+        !options.requireBrowserEvents ||
+        postPromptBrowserEvents.length > 0 ||
+        targetEventMatches.length > 0,
+      observed: {
+        total: browserEvents.length,
+        postPrompt: postPromptBrowserEvents.length,
+        targetMatches: targetEventMatches.length,
+      },
     },
     {
       name: "trajectory",
       required: options.requireTrajectory,
-      passed: !options.requireTrajectory || trajectoryCount > 0,
-      observed: trajectoryCount,
+      passed:
+        !options.requireTrajectory ||
+        postPromptTrajectories.length > 0 ||
+        trajectoryRunMarkerMatches.length > 0,
+      observed: {
+        total: trajectoryItems.length,
+        postPrompt: postPromptTrajectories.length,
+        runMarkerMatches: trajectoryRunMarkerMatches.length,
+        browserActionMatches: browserActionMatches.length,
+      },
     },
   ];
   const failedAssertions = assertions.filter((assertion) => !assertion.passed);
@@ -720,15 +952,25 @@ function analyzeRunArtifacts({
     ts: nowIso(),
     ok: failedAssertions.length === 0,
     promptDelivery,
+    promptSubmittedAt,
     targetUrl: options.targetUrl,
     counts: {
-      browserTabs: browserTabCount,
-      browserEvents: browserEventCount,
-      trajectories: trajectoryCount,
+      browserTabs: browserTabs.length,
+      browserEvents: browserEvents.length,
+      trajectories: trajectoryItems.length,
       endpointErrors: endpointErrors.length,
+    },
+    postPromptCounts: {
+      browserTabs: postPromptBrowserTabs.length,
+      browserEvents: postPromptBrowserEvents.length,
+      trajectories: postPromptTrajectories.length,
     },
     signals: {
       consoleHasErrors,
+      targetTabMatches: targetTabMatches.length,
+      targetEventMatches: targetEventMatches.length,
+      trajectoryRunMarkerMatches: trajectoryRunMarkerMatches.length,
+      browserActionMatches: browserActionMatches.length,
     },
     assertions,
     failedAssertions,
@@ -756,7 +998,7 @@ async function pollReadOnlyEndpoints(apiBase, runDir, options, conversationId) {
   try {
     while (Date.now() < deadline) {
       for (const path of paths) {
-        const normalizedPath = path.split("?")[0];
+        const normalizedPath = normalizeApiPath(path, apiBase);
         if (
           normalizedPath.startsWith("/api/browser-workspace") &&
           !READ_ONLY_BROWSER_WORKSPACE_PATHS.has(normalizedPath)
@@ -815,7 +1057,7 @@ async function resolveChromeExecutable(puppeteer) {
   return null;
 }
 
-async function captureAppScreenshots(uiUrl, runDir) {
+async function captureAppScreenshots(uiUrl, runDir, originGuard) {
   if (!uiUrl) {
     await writeJson(artifactPath(runDir, "puppeteer-screenshot-skipped.json"), {
       ts: nowIso(),
@@ -858,6 +1100,7 @@ async function captureAppScreenshots(uiUrl, runDir) {
   });
   try {
     const page = await browser.newPage();
+    const pageOriginGuard = installPuppeteerOriginGuard(page, originGuard);
     const consoleLog = makeJsonlWriter(
       artifactPath(runDir, "puppeteer-console.jsonl"),
     );
@@ -882,6 +1125,7 @@ async function captureAppScreenshots(uiUrl, runDir) {
       waitUntil: "networkidle2",
       timeout: 60_000,
     });
+    pageOriginGuard.assert("initial app load");
     await page.screenshot({
       path: artifactPath(runDir, "eliza-app-initial.png"),
       fullPage: true,
@@ -891,9 +1135,10 @@ async function captureAppScreenshots(uiUrl, runDir) {
       uiUrl,
       chatUrl: resolveChatUrl(uiUrl),
       executablePath,
+      allowedOrigins: originGuard.allowedOrigins,
       screenshots: ["eliza-app-initial.png"],
     });
-    return { browser, page, consoleLog };
+    return { browser, page, consoleLog, pageOriginGuard };
   } catch (error) {
     await browser.close();
     throw error;
@@ -923,6 +1168,99 @@ function resolveChatUrl(uiUrl) {
   }
 }
 
+function urlOrigin(value) {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return "";
+  }
+}
+
+function isLocalUiUrl(value) {
+  try {
+    const parsed = new URL(value);
+    return (
+      ["http:", "https:"].includes(parsed.protocol) &&
+      LOCAL_UI_HOSTS.has(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function addStackUiOrigins(allowedOrigins, stackBody) {
+  const rendererUrl = stackBody?.desktop?.rendererUrl;
+  if (typeof rendererUrl === "string" && rendererUrl.trim()) {
+    const origin = urlOrigin(rendererUrl.trim());
+    if (origin) allowedOrigins.add(origin);
+  }
+  const uiPort = stackBody?.desktop?.uiPort;
+  const parsedPort =
+    typeof uiPort === "number"
+      ? uiPort
+      : typeof uiPort === "string" && uiPort.trim()
+        ? Number(uiPort)
+        : null;
+  if (Number.isInteger(parsedPort) && parsedPort > 0) {
+    allowedOrigins.add(`http://127.0.0.1:${parsedPort}`);
+    allowedOrigins.add(`http://localhost:${parsedPort}`);
+  }
+}
+
+function validateElizaUiUrl(uiUrl, stackBody) {
+  if (!uiUrl) {
+    throw new Error(
+      "No Eliza UI URL discovered. Pass --ui-url or run with /api/dev/stack available.",
+    );
+  }
+  const allowedOrigins = new Set();
+  addStackUiOrigins(allowedOrigins, stackBody);
+  const origin = urlOrigin(uiUrl);
+  if (!origin) throw new Error(`Invalid Eliza UI URL: ${uiUrl}`);
+  if (isLocalUiUrl(uiUrl)) allowedOrigins.add(origin);
+  if (!allowedOrigins.has(origin)) {
+    throw new Error(
+      `Refusing to drive non-Eliza UI origin ${origin}. Allowed origins: ${[
+        ...allowedOrigins,
+      ].join(", ")}`,
+    );
+  }
+  return {
+    origin,
+    allowedOrigins: [...allowedOrigins],
+  };
+}
+
+function assertElizaAppPageUrl(url, originGuard, context) {
+  if (!url || url === "about:blank") return;
+  const origin = urlOrigin(url);
+  if (!origin || !originGuard.allowedOrigins.includes(origin)) {
+    throw new Error(
+      `Puppeteer navigation guard blocked ${context}: ${url}. Puppeteer may only drive the Eliza app UI origins: ${originGuard.allowedOrigins.join(", ")}`,
+    );
+  }
+}
+
+function installPuppeteerOriginGuard(page, originGuard) {
+  const errors = [];
+  page.on("framenavigated", (frame) => {
+    if (frame !== page.mainFrame()) return;
+    try {
+      assertElizaAppPageUrl(frame.url(), originGuard, "main frame navigation");
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  });
+  return {
+    assert(context) {
+      assertElizaAppPageUrl(page.url(), originGuard, context);
+      if (errors.length > 0) {
+        throw new Error(errors.join("\n"));
+      }
+    },
+  };
+}
+
 async function seedElizaAppStorage(page) {
   await page.evaluateOnNewDocument(() => {
     try {
@@ -947,12 +1285,30 @@ async function seedElizaAppStorage(page) {
 }
 
 async function setComposerValue(page, selector, prompt) {
-  await page.click(selector, { clickCount: 3 });
-  await page.keyboard.press(
-    process.platform === "darwin" ? "Meta+A" : "Control+A",
+  await page.$eval(
+    selector,
+    (node, value) => {
+      node.focus();
+      const descriptor = Object.getOwnPropertyDescriptor(
+        Object.getPrototypeOf(node),
+        "value",
+      );
+      if (descriptor?.set) {
+        descriptor.set.call(node, value);
+      } else {
+        node.value = value;
+      }
+      node.dispatchEvent(
+        new InputEvent("input", {
+          bubbles: true,
+          inputType: "insertText",
+          data: value,
+        }),
+      );
+      node.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+    prompt,
   );
-  await page.keyboard.press("Backspace");
-  await page.type(selector, prompt, { delay: 0 });
 
   const valueLength = await page.$eval(
     selector,
@@ -960,14 +1316,8 @@ async function setComposerValue(page, selector, prompt) {
   );
   if (valueLength === prompt.length) return;
 
-  await page.$eval(
-    selector,
-    (node, value) => {
-      node.value = value;
-      node.dispatchEvent(new Event("input", { bubbles: true }));
-      node.dispatchEvent(new Event("change", { bubbles: true }));
-    },
-    prompt,
+  throw new Error(
+    `Composer value mismatch after DOM input: expected ${prompt.length}, got ${valueLength}`,
   );
 }
 
@@ -1119,6 +1469,7 @@ async function sendPromptViaElizaUi(session, runDir, uiUrl, prompt) {
   const chatUrl = resolveChatUrl(uiUrl);
   if (!page.url().startsWith(chatUrl)) {
     await page.goto(chatUrl, { waitUntil: "networkidle2", timeout: 60_000 });
+    session.pageOriginGuard?.assert("chat navigation");
   }
 
   const composerSelector = '[data-testid="chat-composer-textarea"]';
@@ -1136,6 +1487,7 @@ async function sendPromptViaElizaUi(session, runDir, uiUrl, prompt) {
     actionSelector,
   );
   await page.click(actionSelector);
+  session.pageOriginGuard?.assert("after chat composer submit");
   const afterPrompt = await waitForPromptAccepted(
     page,
     runDir,
@@ -1179,6 +1531,16 @@ function resolveUiUrlFromStack(options, stackBody) {
   if (typeof rendererUrl === "string" && rendererUrl.trim()) {
     return stripTrailingSlash(rendererUrl.trim());
   }
+  const uiPort = stackBody?.desktop?.uiPort;
+  const parsedPort =
+    typeof uiPort === "number"
+      ? uiPort
+      : typeof uiPort === "string" && uiPort.trim()
+        ? Number(uiPort)
+        : null;
+  if (Number.isInteger(parsedPort) && parsedPort > 0) {
+    return `http://127.0.0.1:${parsedPort}`;
+  }
   return "";
 }
 
@@ -1220,6 +1582,9 @@ async function main() {
   let runtimeReady = null;
   let uiReady = null;
   let uiUrl = "";
+  let uiOriginGuard = null;
+  let baseline = null;
+  let promptSubmittedAt = null;
   const startedAt = Date.now();
 
   try {
@@ -1239,8 +1604,19 @@ async function main() {
       );
     }
 
-    runtimeReady = await waitForRuntimeReady(options.apiBase, runDir, 300_000);
+    runtimeReady = await waitForRuntimeReady(
+      options.apiBase,
+      runDir,
+      300_000,
+      stackProcess,
+    );
     if (!isRuntimeReady(runtimeReady)) {
+      const devProcessExit = getChildExitStatus(stackProcess);
+      if (devProcessExit) {
+        throw new Error(
+          `Eliza dev stack exited before runtime became ready (exitCode=${devProcessExit.exitCode ?? "null"}, signal=${devProcessExit.signalCode ?? "null"})`,
+        );
+      }
       throw new Error(
         `Eliza runtime did not become ready on ${options.apiBase}/api/health`,
       );
@@ -1265,10 +1641,12 @@ async function main() {
       "/api/dev/stack",
     );
     uiUrl = resolveUiUrlFromStack(options, stack.body);
+    uiOriginGuard = validateElizaUiUrl(uiUrl, stack.body);
     await writeJson(artifactPath(runDir, "discovery.json"), {
       ts: nowIso(),
       apiBase: options.apiBase,
       uiUrl,
+      uiOriginGuard,
       health: { ok: health.ok, status: health.status },
       status: { ok: status.ok, status: status.status },
       devStack: { ok: stack.ok, status: stack.status },
@@ -1280,10 +1658,15 @@ async function main() {
       );
     }
 
-    puppeteerSession = await captureAppScreenshots(uiUrl, runDir);
+    puppeteerSession = await captureAppScreenshots(
+      uiUrl,
+      runDir,
+      uiOriginGuard,
+    );
     if (options.promptVia === "api") {
       conversation = await createConversation(options.apiBase, runDir);
     }
+    baseline = await captureObservationBaseline(options.apiBase, runDir);
     await writeJson(artifactPath(runDir, "agent-prompt.json"), {
       ts: nowIso(),
       delivery: options.promptVia,
@@ -1304,6 +1687,7 @@ async function main() {
             conversation.id,
             plannedPrompt,
           );
+    promptSubmittedAt = nowIso();
     if (!promptResult.ok) {
       throw new Error(
         `Prompt request failed: HTTP ${promptResult.status} ${promptResult.bodyText}`,
@@ -1344,12 +1728,14 @@ async function main() {
       "/api/dev/console-log?maxLines=800&maxBytes=512000",
     );
     const analysis = analyzeRunArtifacts({
+      baseline,
       browserWorkspace: finalBrowserWorkspace,
       browserWorkspaceEvents: finalBrowserWorkspaceEvents,
       devConsoleLog: finalDevConsoleLog,
       trajectories: finalTrajectories,
       options,
       promptDelivery: options.promptVia,
+      promptSubmittedAt,
     });
     await writeJson(artifactPath(runDir, "analysis.json"), analysis);
     if (!analysis.ok) {
@@ -1372,6 +1758,11 @@ async function main() {
       promptDelivery: options.promptVia,
       promptStatus: promptResult.status,
       promptOk: promptResult.ok,
+      runtimeReady: runtimeReady ? summarizePollResult(runtimeReady) : null,
+      uiReady,
+      uiUrl,
+      uiOriginGuard,
+      promptSubmittedAt,
       analysis,
     });
     console.log(`[harness] complete: ${runDir}`);
@@ -1390,6 +1781,8 @@ async function main() {
       runtimeReady: runtimeReady ? summarizePollResult(runtimeReady) : null,
       uiReady,
       uiUrl,
+      uiOriginGuard,
+      promptSubmittedAt,
       diagnostics: {
         runtimeReady: "runtime-ready.json",
         uiReady: "ui-ready.json",

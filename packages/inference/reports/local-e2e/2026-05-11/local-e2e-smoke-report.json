@@ -1,0 +1,233 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-11T06:10:11Z",
+  "workspace": "/Users/shawwalters/eliza-workspace/milady/eliza",
+  "host": "darwin-arm64 Apple Silicon local smoke",
+  "bundle": {
+    "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle",
+    "tier": "1_7b",
+    "manifestExists": false,
+    "publishEligible": false,
+    "missingRequiredReleasePaths": [
+      "text",
+      "dflash",
+      "vision",
+      "evals",
+      "checksums",
+      "licenses/LICENSE.text",
+      "licenses/LICENSE.dflash",
+      "licenses/LICENSE.eliza-1",
+      "eliza-1.manifest.json"
+    ],
+    "notes": [
+      "Local bundle currently stages voice/ASR/VAD/cache/evidence only; text and DFlash are outside the bundle.",
+      "Staged ASR is onnx-community/whisper-tiny.en, while packages/inference/AGENTS.md requires Qwen3-ASR for Eliza-1 release bundles.",
+      "No public elizalabs/eliza-1-* Hugging Face model repos were found during this run."
+    ]
+  },
+  "artifacts": {
+    "textModel": {
+      "path": "/Users/shawwalters/.eliza/local-inference/models/qwen3.5-4b-dflash.gguf",
+      "exists": true,
+      "sizeBytes": 2871743520,
+      "sha256": "68c9c6bfeecee13dd3b3c1de7f73b2d86e5feadc100f0f50e5e11fd2388ca66d"
+    },
+    "dflashDrafter": {
+      "path": "/Users/shawwalters/.eliza/local-inference/models/qwen3.5-4b-dflash-drafter-q4.gguf",
+      "exists": true,
+      "sizeBytes": 322210816,
+      "sha256": "7323255ed1bb669da4f576c2e402d15abe7bd3e429209b1ef408edab46c13004"
+    },
+    "embeddingModel": {
+      "path": "/Users/shawwalters/.eliza/models/bge-small-en-v1.5.Q4_K_M.gguf",
+      "exists": true,
+      "sizeBytes": 29203744,
+      "sha256": "d8c2e0e38bce043562bbc6f437c638c2538bfe02cadfe6476a01f906bfde6d40"
+    },
+    "voiceBaseQ4": {
+      "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/tts/omnivoice-base-Q4_K_M.gguf",
+      "exists": true,
+      "sizeBytes": 407485216,
+      "sha256": "4836ba5affcb83c04d08b3e96b6e48ac839947ee3864188739807b68e0e159c6"
+    },
+    "voiceTokenizerQ4": {
+      "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/tts/omnivoice-tokenizer-Q4_K_M.gguf",
+      "exists": true,
+      "sizeBytes": 252474112,
+      "sha256": "988fc32bc699bce361c44e9af8383be9811960441f293eb5ab4ec6bf6386378d"
+    },
+    "voiceTokenizerQ8DownloadedForDiagnosis": {
+      "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/tts/omnivoice-tokenizer-Q8_0.gguf",
+      "exists": true,
+      "sizeBytes": 288889600,
+      "sha256": "75204fa566a8e30984e7a1066da6557184c9fd099c8f1bc0cb5b9415edfec255"
+    },
+    "voicePreset": {
+      "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/cache/voice-preset-default.bin",
+      "exists": true,
+      "sizeBytes": 1052,
+      "sha256": "f59ebfd5b188e350eaa4a2cb9d2cb234f052124a49247a6d20360c4f7c63bdc9"
+    },
+    "asrEncoder": {
+      "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/asr/whisper-tiny-en-encoder-int8.onnx",
+      "exists": true,
+      "sizeBytes": 10124977,
+      "sha256": "21712ecbe2d1078eaa206b41218a6dff945eb9ac0854b55fd584e8bc88b20368"
+    },
+    "asrDecoder": {
+      "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/asr/whisper-tiny-en-decoder-merged-int8.onnx",
+      "exists": true,
+      "sizeBytes": 30718858,
+      "sha256": "c0592d0749413c960569e1c7fb806b060d5d18f3ebad4a95cbf9a77dc6e9be52"
+    },
+    "vad": {
+      "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/vad/silero-vad-int8.onnx",
+      "exists": true,
+      "sizeBytes": 639383,
+      "sha256": "90b026c95f054d59d7bf79387b0ed93c8950f35a4d8b741cd78d4bb23a7d2776"
+    },
+    "runtimeOmniVoiceServer": {
+      "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-omnivoice-server",
+      "exists": true,
+      "sizeBytes": 394264,
+      "sha256": "dfef97a4ce29a06fa1be47ee7f6d0791a4784038df66f213d59e378a7cc98f94"
+    },
+    "runtimeLlamaCli": {
+      "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-cli",
+      "exists": true,
+      "sizeBytes": 5409384,
+      "sha256": "1855d906aa9ae29a1a171ddad1cab476792ea1c55cc37e3c078174f74d32ef93"
+    },
+    "runtimeLlamaServer": {
+      "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-server",
+      "exists": true,
+      "sizeBytes": 7117968,
+      "sha256": "5c38803b3199e2111534ae0b82e10fc952489836471024422ca89b2693683153"
+    },
+    "runtimeLibElizaInference": {
+      "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/libelizainference.dylib",
+      "exists": true,
+      "sizeBytes": 359912,
+      "sha256": "ccf0ebb7eeebca583462f05e6944fe14d36339a73e5fb5f816016352322693e8"
+    },
+    "outputVoiceTokens": {
+      "path": "/tmp/eliza-e2e-smoke/audio_tokens_q4.bin",
+      "exists": true,
+      "sizeBytes": 800,
+      "sha256": "a09c0a4c35bd90e844e15cd9c8940d449ed48c14fe819c92bd825cb233686677"
+    },
+    "outputVoiceRvq": {
+      "path": "/tmp/eliza-e2e-smoke/audio_tokens_q4.rvq",
+      "exists": true,
+      "sizeBytes": 275,
+      "sha256": "894b235e0a96223cb77b388a9564852dac5ce6bc97961d631fcd73eac41e5675"
+    },
+    "outputVoiceWav": {
+      "path": "/tmp/eliza-e2e-smoke/audio_tokens_q4.wav",
+      "exists": true,
+      "sizeBytes": 48044,
+      "sha256": "bff222337a8c41bd54c272e59901f79c5df243d62d6f16bf95c3b1b96b14eb75"
+    },
+    "outputAsrJson": {
+      "path": "/tmp/eliza-e2e-smoke/audio_tokens_q4.json",
+      "exists": true,
+      "sizeBytes": 362,
+      "sha256": "dc6f6af547a83a6ad53b21f49f446697eb3947dcdeb0eb1aebe3a13c901de7d7"
+    },
+    "outputTextGeneration": {
+      "path": "/tmp/eliza-e2e-smoke/text-generation.txt",
+      "exists": true,
+      "sizeBytes": 957,
+      "sha256": "db7d2cd92f662205988b7dc931d77794ccef4aa2c482a40252c32844b2b4d255"
+    },
+    "outputEmbeddingResponse": {
+      "path": "/tmp/eliza-e2e-smoke/embedding-response.json",
+      "exists": true,
+      "sizeBytes": 8208,
+      "sha256": "af41baf6d5fedf3c9a34ba05bc386132736ca86f32ff2c1022a594035ac3a0bd"
+    },
+    "outputImageAnalysis": {
+      "path": "/tmp/eliza-e2e-smoke/image-analysis.json",
+      "exists": true,
+      "sizeBytes": 416,
+      "sha256": "3cd02ca87970c61a5de51f34184fb98115b14087adfe85c47f8234c22757a504"
+    }
+  },
+  "checks": {
+    "voice": {
+      "fusedMetalOneStepWav": "FAIL_TIMEOUT_OR_STALL",
+      "fusedMetalOneStepNotes": "Q4 base+Q4 tokenizer loaded and completed MaskGIT but stalled after [TTS] Decode on Metal with no WAV; Q4 base+Q8 tokenizer also did not produce a WAV before timeout.",
+      "maskgitTokens": "PASS",
+      "cpuCodecDecodeFromMaskgitTokens": "PASS",
+      "wavPath": "/tmp/eliza-e2e-smoke/audio_tokens_q4.wav",
+      "asrTranscription": "PASS_TOOL_RAN",
+      "asrText": "at least a local voice mode.",
+      "wordErrorRate": {
+        "referenceWords": [
+          "eliza",
+          "local",
+          "voice",
+          "smoke"
+        ],
+        "hypothesisWords": [
+          "at",
+          "least",
+          "a",
+          "local",
+          "voice",
+          "mode"
+        ],
+        "edits": 4,
+        "wer": 1.0
+      },
+      "voiceLoopPassQuality": false
+    },
+    "textGeneration": {
+      "targetOnly": "PASS",
+      "dflashDraftLoad": "FAIL_UNKNOWN_ARCH_DFLASH_DRAFT",
+      "expectedSnippetFound": true,
+      "snippet": "Local Eliza text generation works."
+    },
+    "embeddings": {
+      "server": "PASS",
+      "dimensions": 384,
+      "first3": [
+        -0.043113455176353455,
+        0.031378649175167084,
+        0.04533129185438156
+      ],
+      "usage": {
+        "prompt_tokens": 10,
+        "total_tokens": 10
+      }
+    },
+    "imageAnalysis": {
+      "localHeuristic": "PASS",
+      "caption": "Outdoor scene, well-lit environment",
+      "width": 256,
+      "height": 256,
+      "tags": [
+        "outdoor"
+      ],
+      "pluginVisionDirectImport": "BLOCKED_BY_LOCAL_NODE_NATIVE_BINDINGS_AND_PACKAGE_EXPORTS"
+    },
+    "artifactAndEvalSetup": {
+      "bundleAssetsEvidence": "PASS",
+      "voicePresetHeader": "PASS_ELZ1_V1",
+      "pythonManifestAndPublishTests": "PASS_66_TESTS",
+      "appCoreManifestVitest": "BLOCKED_ROLLDOWN_NATIVE_BINDING_CODESIGN_IN_CODEX_NODE",
+      "kernelContract": "PASS",
+      "metalVerify": "PASS",
+      "vulkanVerify": "PASS",
+      "metalRuntimeDispatchSmoke": "PASS_6_GRAPH_ROUTES"
+    }
+  },
+  "blockers": [
+    "No complete eliza-1-0_6b or eliza-1-1_7b release bundle exists locally or on public elizalabs HF: manifest/text/dflash/evals/checksums/license files are missing from the local bundle.",
+    "Fused OmniVoice one-step WAV generation stalls in Metal codec decode; workaround is fused Metal MaskGIT token generation plus CPU-only standalone codec decode.",
+    "DFlash drafter GGUF cannot be loaded by llama-cli as a draft model because architecture dflash-draft is unknown to the runtime entrypoint used here.",
+    "Voice loop ASR is functional but not quality-pass: generated audio transcribed differently from reference.",
+    "ASR artifact staged in the local bundle is Whisper ONNX, not the Qwen3-ASR artifact mandated by the inference contract.",
+    "App-core manifest Vitest could not start under Codex Node due native rolldown binding code-signing; Python manifest/publish tests passed."
+  ]
+}

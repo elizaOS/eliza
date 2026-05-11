@@ -4,6 +4,7 @@
 #import <Availability.h>
 #import <Contacts/Contacts.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <CoreLocation/CoreLocation.h>
 #import <EventKit/EventKit.h>
 #import <UserNotifications/UserNotifications.h>
 #include <math.h>
@@ -784,6 +785,99 @@ static BOOL elizaContactsHasAccess(void) {
 		[CNContactStore authorizationStatusForEntityType:CNEntityTypeContacts];
 	NSInteger raw = (NSInteger)status;
 	return raw == 3 || raw == 4;
+}
+
+static int elizaLocationAuthorizationStatusToInt(CLAuthorizationStatus status) {
+	switch (status) {
+	case kCLAuthorizationStatusNotDetermined:
+		return 0;
+	case kCLAuthorizationStatusDenied:
+		return 1;
+	case kCLAuthorizationStatusAuthorizedAlways:
+		return 2;
+	case kCLAuthorizationStatusRestricted:
+	default:
+		return 3;
+	}
+}
+
+static CLAuthorizationStatus elizaLocationAuthorizationStatus(
+	CLLocationManager *manager) {
+	if (@available(macOS 11.0, *)) {
+		return [manager authorizationStatus];
+	}
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+	return [CLLocationManager authorizationStatus];
+#pragma clang diagnostic pop
+}
+
+@interface ElizaLocationAuthorizationDelegate
+	: NSObject <CLLocationManagerDelegate>
+@property(nonatomic) dispatch_semaphore_t semaphore;
+@property(nonatomic) BOOL completed;
+@end
+
+@implementation ElizaLocationAuthorizationDelegate
+- (void)finish {
+	if (self.completed) {
+		return;
+	}
+	self.completed = YES;
+	dispatch_semaphore_signal(self.semaphore);
+}
+
+- (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager {
+	(void)manager;
+	[self finish];
+}
+
+- (void)locationManager:(CLLocationManager *)manager
+	didChangeAuthorizationStatus:(CLAuthorizationStatus)status {
+	(void)manager;
+	(void)status;
+	[self finish];
+}
+
+- (void)locationManager:(CLLocationManager *)manager
+	   didFailWithError:(NSError *)error {
+	(void)manager;
+	(void)error;
+	[self finish];
+}
+@end
+
+extern "C" int checkLocationPermission(void) {
+	if (![CLLocationManager locationServicesEnabled]) {
+		return 3;
+	}
+	CLLocationManager *manager = [[CLLocationManager alloc] init];
+	CLAuthorizationStatus status = elizaLocationAuthorizationStatus(manager);
+	return elizaLocationAuthorizationStatusToInt(status);
+}
+
+extern "C" int requestLocationPermission(void) {
+	@autoreleasepool {
+		if (![CLLocationManager locationServicesEnabled]) {
+			return 3;
+		}
+		CLLocationManager *manager = [[CLLocationManager alloc] init];
+		CLAuthorizationStatus status = elizaLocationAuthorizationStatus(manager);
+		if (status != kCLAuthorizationStatusNotDetermined) {
+			return elizaLocationAuthorizationStatusToInt(status);
+		}
+
+		ElizaLocationAuthorizationDelegate *delegate =
+			[[ElizaLocationAuthorizationDelegate alloc] init];
+		delegate.semaphore = dispatch_semaphore_create(0);
+		manager.delegate = delegate;
+		[manager requestWhenInUseAuthorization];
+		dispatch_semaphore_wait(
+			delegate.semaphore,
+			dispatch_time(DISPATCH_TIME_NOW, (int64_t)(120 * NSEC_PER_SEC)));
+		manager.delegate = nil;
+		return checkLocationPermission();
+	}
 }
 
 extern "C" int checkRemindersPermission(void) {

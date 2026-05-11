@@ -1,0 +1,78 @@
+{
+  "agent": "openclaw",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131814Z_7a3871b4/clawbench__clawbench/run_clawbench_20260511T131814Z_2_0a2143ec/output"
+  ],
+  "benchmark_directory": "clawbench",
+  "benchmark_id": "clawbench",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "nonzero_return_code_with_result": 2,
+    "passed": 1,
+    "performance_metrics": {
+      "duration_seconds": 1.0316682919801679,
+      "mean_latency_ms": 816.6899681091309,
+      "p95_latency_ms": 816.6899681091309,
+      "throughput_per_second": 0.9693038041138357
+    },
+    "return_code": 2,
+    "score": 0.0714,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 1,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "total": 13,
+    "trajectory_summary": {
+      "files": 1,
+      "prompt_chars": 692,
+      "repeated_prefixes": [],
+      "turns": 1
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 1.0316682919801679,
+    "mean_latency_ms": 816.6899681091309,
+    "p95_latency_ms": 816.6899681091309,
+    "throughput_per_second": 0.9693038041138357
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131814Z_7a3871b4/clawbench__clawbench/run_clawbench_20260511T131814Z_2_0a2143ec/output/trajectory_inbox_triage_1778505495.json",
+  "run_group_id": "rg_20260511T131814Z_7a3871b4",
+  "run_id": "run_clawbench_20260511T131814Z_2_0a2143ec",
+  "score": 0.0714,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 1,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 1,
+    "prompt_chars": 692,
+    "repeated_prefixes": [],
+    "turns": 1
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-11T13:18:15.560880+00:00"
+}

@@ -81,7 +81,7 @@ class ElizaServerManager:
                     port = parsed_port
             except ValueError:
                 logger.warning("Ignoring invalid ELIZA_BENCH_PORT=%r", env_port)
-        if not os.environ.get("ELIZA_BENCH_URL") and not _is_port_available(port):
+        if not _is_port_available(port):
             replacement = _find_free_port()
             logger.warning(
                 "Eliza benchmark port %d is already in use; using %d for this subprocess",
@@ -117,6 +117,9 @@ class ElizaServerManager:
 
     def start(self) -> None:
         """Spawn the benchmark server and block until it reports ready."""
+        if getattr(self._client, "_delegate", None) is not None:
+            logger.info("Skipping eliza benchmark server start; client is delegated to selected harness")
+            return
         if self._proc is not None and self._proc.poll() is None:
             logger.info("Eliza benchmark server already running (pid=%d)", self._proc.pid)
             return
@@ -170,9 +173,9 @@ class ElizaServerManager:
                 "TWITTER_OAUTH_RERESH_TOKEN",
             ):
                 env[key] = ""
-        os.environ.setdefault("ELIZA_BENCH_HOST", self.host)
-        os.environ.setdefault("ELIZA_BENCH_URL", self._client.base_url)
-        os.environ.setdefault("ELIZA_BENCH_TOKEN", self._token)
+        os.environ["ELIZA_BENCH_HOST"] = self.host
+        os.environ["ELIZA_BENCH_URL"] = self._client.base_url
+        os.environ["ELIZA_BENCH_TOKEN"] = self._token
 
         logger.info(
             "Starting eliza benchmark server on %s:%d from %s ...",

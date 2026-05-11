@@ -3,6 +3,7 @@ import Capacitor
 
 private let maxRequestBodyBytes = 10 * 1024 * 1024
 private let maxResponseBodyBytes = 10 * 1024 * 1024
+private let localAgentPort = 31337
 
 private struct AgentEndpoint {
     let baseURL: URL
@@ -16,12 +17,13 @@ private struct AgentHTTPResponse {
     let body: String
 }
 
-/// Eliza Agent Plugin — iOS HTTP bridge.
+/// Eliza Agent Plugin — iOS bridge.
 ///
-/// iOS does not bundle a Bun runtime. This plugin bridges the Capacitor
-/// Agent API to an explicitly configured HTTP agent endpoint, such as a
-/// local Mac dev server or a remote Eliza agent. Without that endpoint it
-/// fails with an actionable error instead of pretending a local agent exists.
+/// Remote/cloud modes bridge the Capacitor Agent API to an explicitly
+/// configured HTTP agent endpoint, such as a local Mac dev server or a remote
+/// Eliza agent. Local dev/sideload mode is represented by the stable loopback
+/// URL shape but requests are handled by the WebView ITTP route kernel, not by
+/// a native TCP listener.
 @objc(AgentPlugin)
 public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "AgentPlugin"
@@ -36,8 +38,15 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     ]
 
     private static var conversationIdByBaseURL: [String: String] = [:]
+    private static var localStartedAt: Date?
 
     @objc func start(_ call: CAPPluginCall) {
+        if isLocalAgentMode(call: call) {
+            Self.localStartedAt = Self.localStartedAt ?? Date()
+            call.resolve(localAgentStatus(state: "running", error: nil))
+            return
+        }
+
         guard let endpoint = resolveEndpoint(call: call) else {
             call.reject(missingEndpointMessage())
             return
@@ -60,6 +69,12 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func stop(_ call: CAPPluginCall) {
+        if isLocalAgentMode(call: call) {
+            Self.localStartedAt = nil
+            call.resolve(["ok": true])
+            return
+        }
+
         guard let endpoint = resolveEndpoint(call: call) else {
             call.reject(missingEndpointMessage())
             return
@@ -82,6 +97,12 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func getStatus(_ call: CAPPluginCall) {
+        if isLocalAgentMode(call: call) {
+            Self.localStartedAt = Self.localStartedAt ?? Date()
+            call.resolve(localAgentStatus(state: "running", error: nil))
+            return
+        }
+
         guard let endpoint = resolveEndpoint(call: call) else {
             call.resolve(status(state: "error", agentName: nil, port: nil, startedAt: nil, error: missingEndpointMessage()))
             return
@@ -119,6 +140,10 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("Agent.chat requires non-empty text")
             return
         }
+        if isLocalAgentMode(call: call) {
+            call.reject(localIttpOnlyMessage())
+            return
+        }
         guard let endpoint = resolveEndpoint(call: call) else {
             call.reject(missingEndpointMessage())
             return
@@ -142,6 +167,14 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func getLocalAgentToken(_ call: CAPPluginCall) {
+        if isLocalAgentMode(call: call) {
+            call.resolve([
+                "available": false,
+                "token": NSNull(),
+            ])
+            return
+        }
+
         let token = resolveEndpoint(call: call)?.token
         call.resolve([
             "available": token != nil,
@@ -150,6 +183,11 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func request(_ call: CAPPluginCall) {
+        if isLocalAgentMode(call: call) {
+            call.reject(localIttpOnlyMessage())
+            return
+        }
+
         guard let endpoint = resolveEndpoint(call: call) else {
             call.reject(missingEndpointMessage())
             return
@@ -462,6 +500,58 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
         return nil
     }
 
+    private func isLocalAgentMode(call: CAPPluginCall? = nil) -> Bool {
+        if let endpoint = resolveEndpoint(call: call),
+           isLocalAgentEndpoint(endpoint.baseURL) {
+            return true
+        }
+
+        guard let rawMode = readConfiguredString(
+            call: call,
+            keys: [
+                "mode",
+                "runtimeMode",
+                "agentRuntimeMode",
+                "ELIZA_IOS_RUNTIME_MODE",
+                "ELIZA_MOBILE_RUNTIME_MODE",
+                "MILADY_IOS_RUNTIME_MODE",
+                "MILADY_MOBILE_RUNTIME_MODE",
+                "VITE_ELIZA_IOS_RUNTIME_MODE",
+                "VITE_ELIZA_MOBILE_RUNTIME_MODE",
+                "VITE_MILADY_IOS_RUNTIME_MODE",
+                "VITE_MILADY_MOBILE_RUNTIME_MODE",
+            ]
+        ) else {
+            return false
+        }
+
+        switch rawMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "local", "ios-local", "sideload-local", "dev-local":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func isLocalAgentEndpoint(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "http",
+              let host = url.host?.lowercased() else {
+            return false
+        }
+        return (host == "127.0.0.1" || host == "localhost") && (url.port ?? 80) == localAgentPort
+    }
+
+    private func localAgentStatus(state: String, error: String?) -> JSObject {
+        let startedAt = Self.localStartedAt.map { $0.timeIntervalSince1970 * 1000 }
+        return status(
+            state: state,
+            agentName: "Eliza",
+            port: nil,
+            startedAt: startedAt,
+            error: error
+        )
+    }
+
     private func normalizedStatus(
         _ payload: JSObject,
         fallbackState: String,
@@ -552,7 +642,11 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func missingEndpointMessage() -> String {
-        return "iOS Agent requires a configured HTTP endpoint. Set Agent.apiBase in capacitor.config, an Info.plist/UserDefaults key such as MILADY_IOS_API_BASE or ELIZA_AGENT_API_BASE, or a simulator environment variable. iOS does not bundle a Bun local runtime."
+        return "iOS Agent requires a configured HTTP endpoint for remote/cloud mode, or runtimeMode=local for dev/sideload local mode. Set Agent.apiBase in capacitor.config, an Info.plist/UserDefaults key such as MILADY_IOS_API_BASE or ELIZA_AGENT_API_BASE, or a simulator environment variable."
+    }
+
+    private func localIttpOnlyMessage() -> String {
+        return "iOS local agent requests are handled by the WebView ITTP route kernel. Native Agent.request/Agent.chat does not proxy the local loopback URL yet."
     }
 
     private func urlEncode(_ value: String) -> String {

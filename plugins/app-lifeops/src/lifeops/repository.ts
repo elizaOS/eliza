@@ -4719,17 +4719,21 @@ export class LifeOpsRepository {
   async deleteCalendarEventByExternalId(
     agentId: string,
     provider: LifeOpsConnectorGrant["provider"],
-    calendarId: string,
+    calendarId: string | null | undefined,
     externalEventId: string,
     side?: LifeOpsConnectorSide,
   ): Promise<void> {
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
+    const calendarClause =
+      calendarId && calendarId !== "all"
+        ? `AND calendar_id = ${sqlQuote(calendarId)}`
+        : "";
     await executeRawSql(
       this.runtime,
       `DELETE FROM app_lifeops.life_calendar_events
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
-          AND calendar_id = ${sqlQuote(calendarId)}
+          ${calendarClause}
           AND external_event_id = ${sqlQuote(externalEventId)}
           ${sideClause}`,
     );
@@ -4744,6 +4748,10 @@ export class LifeOpsRepository {
     keepExternalIds: readonly string[],
     side: LifeOpsConnectorSide = "owner",
   ): Promise<void> {
+    const calendarClause =
+      calendarId && calendarId !== "all"
+        ? `AND calendar_id = ${sqlQuote(calendarId)}`
+        : "";
     const keepClause =
       keepExternalIds.length > 0
         ? `AND external_event_id NOT IN (${keepExternalIds
@@ -4756,7 +4764,7 @@ export class LifeOpsRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           AND side = ${sqlQuote(side)}
-          AND calendar_id = ${sqlQuote(calendarId)}
+          ${calendarClause}
           AND end_at > ${sqlQuote(timeMin)}
           AND start_at < ${sqlQuote(timeMax)}
           ${keepClause}`,

@@ -17,6 +17,7 @@ import type {
   TrajectoryListItem,
   TrajectoryListOptions,
   TrajectoryListResult,
+  TrajectorySkillInvocation,
   TrajectoryStatus,
   TrajectoryStepKind,
 } from "../types/trajectory.ts";
@@ -386,6 +387,19 @@ function buildTrajectoryWhereClauses(options: TrajectoryListOptions): string[] {
   if (options.status) {
     whereClauses.push(`status = ${sqlQuote(options.status)}`);
   }
+  if (options.runId) {
+    const escaped = options.runId
+      .toLowerCase()
+      .replace(/\\/g, "\\\\")
+      .replace(/[%_]/g, "\\$&");
+    const quotedPattern = sqlQuote(`%${escaped}%`);
+    whereClauses.push(
+      `(
+        LOWER(COALESCE(CAST(metadata AS TEXT), '')) LIKE ${quotedPattern}
+        OR LOWER(COALESCE(CAST(steps_json AS TEXT), '')) LIKE ${quotedPattern}
+      )`,
+    );
+  }
   if (options.scenarioId) {
     whereClauses.push(`scenario_id = ${sqlQuote(options.scenarioId)}`);
   }
@@ -444,6 +458,7 @@ async function loadPersistedTrajectoriesForExport(
   const whereClauses = buildTrajectoryWhereClauses({
     source: options.source,
     status: options.status,
+    runId: options.runId,
     startDate: options.startDate,
     endDate: options.endDate,
     search: options.search,
@@ -942,6 +957,7 @@ export async function annotateTrajectoryStep({
   childSteps,
   appendChildSteps,
   usedSkills,
+  appendSkillInvocations,
 }: {
   runtime: IAgentRuntime;
   stepId: string;
@@ -952,6 +968,12 @@ export async function annotateTrajectoryStep({
   /** Append the given child step IDs (deduped, order preserved). */
   appendChildSteps?: string[];
   usedSkills?: string[];
+  /**
+   * Append per-skill invocation records (W1-T5 / M13). Multiple invocations
+   * inside the same step accumulate; callers do not need to know prior
+   * state.
+   */
+  appendSkillInvocations?: TrajectorySkillInvocation[];
 }): Promise<boolean> {
   if (!hasRuntimeDb(runtime)) return false;
   const normalizedStepId = normalizeStepId(stepId);
@@ -995,6 +1017,13 @@ export async function annotateTrajectoryStep({
     }
     if (usedSkills !== undefined) {
       step.usedSkills = [...usedSkills];
+    }
+    if (appendSkillInvocations && appendSkillInvocations.length > 0) {
+      const merged = step.skillInvocations ? [...step.skillInvocations] : [];
+      for (const invocation of appendSkillInvocations) {
+        merged.push(invocation);
+      }
+      step.skillInvocations = merged;
     }
 
     trajectory.endTime = Math.max(trajectory.endTime ?? now, now);
@@ -1046,6 +1075,20 @@ export async function deletePersistedTrajectoryRows(
   if (normalized.length === 0) return 0;
 
   const values = normalized.map((id) => sqlQuote(id)).join(", ");
+
+  // Remove step rows first to avoid orphans when the parent row is
+  // already gone. Best-effort — failures here don't block the parent
+  // delete since the parent FK relationship is enforced at the
+  // application level only.
+  try {
+    await executeRawSql(
+      runtime,
+      `DELETE FROM trajectory_steps WHERE trajectory_id IN (${values})`,
+    );
+  } catch {
+    // ignore — orphans are tolerable.
+  }
+
   try {
     const result = await executeRawSql(
       runtime,
@@ -1079,6 +1122,12 @@ export async function clearPersistedTrajectoryRows(
     );
     const countRow = asRecord(extractRows(countResult)[0]);
     const total = toNumber(countRow?.total, 0);
+    // Clear step rows first; both tables will be empty when this returns.
+    try {
+      await executeRawSql(runtime, "DELETE FROM trajectory_steps");
+    } catch {
+      // ignore — orphans are tolerable.
+    }
     await executeRawSql(runtime, "DELETE FROM trajectories");
     return total;
   } catch {
@@ -1207,6 +1256,7 @@ export class DatabaseTrajectoryLogger extends Service {
     childSteps?: string[];
     appendChildSteps?: string[];
     usedSkills?: string[];
+    appendSkillInvocations?: TrajectorySkillInvocation[];
   }): Promise<void> {
     if (!this.enabled) return;
     await annotateTrajectoryStep({

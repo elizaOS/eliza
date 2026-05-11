@@ -25,7 +25,7 @@
     "cap:sync:android": "capacitor sync android",
     "cap:open:ios": "capacitor open ios",
     "cap:open:android": "capacitor open android",
-    "build:web": "vite build"
+    "build:web": "bun --bun vite build"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.2",

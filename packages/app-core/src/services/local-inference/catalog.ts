@@ -248,7 +248,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     id: "eliza-1-27b",
     displayName: "eliza-1-27b",
     ggufFile: "dflash/drafter-27b.gguf",
-    params: "9B",
+    params: "27B",
     sizeGb: 1.2,
     minRamGb: 32,
     bucket: "large",

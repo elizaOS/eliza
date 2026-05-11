@@ -1,5 +1,5 @@
 {
-  "generatedAtIso": "2026-05-11T10:42:33.617Z",
+  "generatedAtIso": "2026-05-11T13:07:48.518Z",
   "provider": "cerebras",
   "model": "gpt-oss-120b",
   "domainsGraded": 28,
@@ -46,7 +46,7 @@
         "promptTokens": 1881,
         "completionTokens": 67,
         "totalTokens": 1948,
-        "cachedTokens": 1792
+        "cachedTokens": 1024
       },
       "tasksObserved": 2,
       "logEntriesObserved": 5
@@ -60,7 +60,7 @@
         "promptTokens": 2064,
         "completionTokens": 210,
         "totalTokens": 2274,
-        "cachedTokens": 2048
+        "cachedTokens": 1024
       },
       "tasksObserved": 3,
       "logEntriesObserved": 6
@@ -74,7 +74,7 @@
         "promptTokens": 1460,
         "completionTokens": 127,
         "totalTokens": 1587,
-        "cachedTokens": 1408
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 2
@@ -88,7 +88,7 @@
         "promptTokens": 1431,
         "completionTokens": 64,
         "totalTokens": 1495,
-        "cachedTokens": 1408
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -102,7 +102,7 @@
         "promptTokens": 1386,
         "completionTokens": 104,
         "totalTokens": 1490,
-        "cachedTokens": 1280
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -116,7 +116,7 @@
         "promptTokens": 1836,
         "completionTokens": 70,
         "totalTokens": 1906,
-        "cachedTokens": 1792
+        "cachedTokens": 1024
       },
       "tasksObserved": 2,
       "logEntriesObserved": 3
@@ -130,7 +130,7 @@
         "promptTokens": 1470,
         "completionTokens": 68,
         "totalTokens": 1538,
-        "cachedTokens": 1408
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 2
@@ -144,7 +144,7 @@
         "promptTokens": 1748,
         "completionTokens": 78,
         "totalTokens": 1826,
-        "cachedTokens": 1664
+        "cachedTokens": 1024
       },
       "tasksObserved": 2,
       "logEntriesObserved": 3
@@ -172,7 +172,7 @@
         "promptTokens": 1752,
         "completionTokens": 70,
         "totalTokens": 1822,
-        "cachedTokens": 0
+        "cachedTokens": 1664
       },
       "tasksObserved": 2,
       "logEntriesObserved": 3
@@ -200,7 +200,7 @@
         "promptTokens": 1388,
         "completionTokens": 71,
         "totalTokens": 1459,
-        "cachedTokens": 1024
+        "cachedTokens": 1280
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -214,7 +214,7 @@
         "promptTokens": 1451,
         "completionTokens": 101,
         "totalTokens": 1552,
-        "cachedTokens": 1024
+        "cachedTokens": 1408
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -256,7 +256,7 @@
         "promptTokens": 1471,
         "completionTokens": 64,
         "totalTokens": 1535,
-        "cachedTokens": 1024
+        "cachedTokens": 1408
       },
       "tasksObserved": 1,
       "logEntriesObserved": 2
@@ -270,7 +270,7 @@
         "promptTokens": 1369,
         "completionTokens": 85,
         "totalTokens": 1454,
-        "cachedTokens": 1024
+        "cachedTokens": 1280
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -298,7 +298,7 @@
         "promptTokens": 1427,
         "completionTokens": 78,
         "totalTokens": 1505,
-        "cachedTokens": 1024
+        "cachedTokens": 1408
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -354,7 +354,7 @@
         "promptTokens": 1347,
         "completionTokens": 88,
         "totalTokens": 1435,
-        "cachedTokens": 1024
+        "cachedTokens": 1280
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -368,7 +368,7 @@
         "promptTokens": 1724,
         "completionTokens": 81,
         "totalTokens": 1805,
-        "cachedTokens": 1024
+        "cachedTokens": 1664
       },
       "tasksObserved": 2,
       "logEntriesObserved": 3
@@ -382,7 +382,7 @@
         "promptTokens": 1380,
         "completionTokens": 76,
         "totalTokens": 1456,
-        "cachedTokens": 1024
+        "cachedTokens": 0
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1

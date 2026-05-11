@@ -219,6 +219,29 @@ interface CachedEntry {
 }
 
 /**
+ * Parse the `OPTIMIZED_PROMPT_DISABLE` env var into a strongly-typed set of
+ * disabled tasks. Unknown task names are silently dropped — an operator
+ * disabling a misspelled task should not crash the runtime, but the
+ * misspelling should also not accidentally disable some other task.
+ *
+ * Format: comma-separated list of task names. Whitespace is trimmed.
+ * Example: `OPTIMIZED_PROMPT_DISABLE=should_respond,response`.
+ */
+export function parseDisabledTasksEnv(
+	raw: string | undefined,
+): ReadonlySet<OptimizedPromptTask> {
+	if (!raw) return new Set();
+	const tasks = new Set<OptimizedPromptTask>();
+	for (const part of raw.split(",")) {
+		const trimmed = part.trim();
+		if (isTask(trimmed)) {
+			tasks.add(trimmed);
+		}
+	}
+	return tasks;
+}
+
+/**
  * Stateful service. Subclassing `Service` keeps it discoverable via
  * `runtime.getService(OPTIMIZED_PROMPT_SERVICE)` and lets us register through
  * the standard plugin lifecycle.
@@ -230,6 +253,8 @@ export class OptimizedPromptService extends Service {
 
 	private storeRoot: string = defaultStoreRoot();
 	private cache: Partial<Record<OptimizedPromptTask, CachedEntry>> = {};
+	private disabledTasks: ReadonlySet<OptimizedPromptTask> =
+		parseDisabledTasksEnv(process.env.OPTIMIZED_PROMPT_DISABLE);
 
 	static override async start(
 		runtime: IAgentRuntime,
@@ -253,10 +278,31 @@ export class OptimizedPromptService extends Service {
 	}
 
 	/**
+	 * Test-only hook to refresh the disabled-tasks set after the env var has
+	 * changed. The default constructor snapshot is read once on instantiation,
+	 * which is the right behavior in production (env vars set at boot).
+	 */
+	setDisabledTasksFromEnv(raw: string | undefined): void {
+		this.disabledTasks = parseDisabledTasksEnv(raw);
+	}
+
+	/**
+	 * Returns true when the operator has emergency-disabled this task via
+	 * `OPTIMIZED_PROMPT_DISABLE`. The runtime should fall back to the baseline
+	 * prompt instead of substituting the artifact.
+	 */
+	isTaskDisabled(task: OptimizedPromptTask): boolean {
+		return this.disabledTasks.has(task);
+	}
+
+	/**
 	 * Synchronous accessor. Returns the cached artifact for the task or null.
-	 * Hot path — called per-prompt in the runtime loop.
+	 * Hot path — called per-prompt in the runtime loop. Honours
+	 * `OPTIMIZED_PROMPT_DISABLE` — a disabled task returns null even when an
+	 * artifact is cached.
 	 */
 	getPrompt(task: OptimizedPromptTask): OptimizedPromptResolved | null {
+		if (this.disabledTasks.has(task)) return null;
 		const entry = this.cache[task];
 		if (!entry) return null;
 		return {
@@ -278,8 +324,12 @@ export class OptimizedPromptService extends Service {
 		};
 	}
 
-	/** True iff the task has any optimized artifact loaded. */
+	/**
+	 * True iff the task has an optimized artifact loaded and is not disabled
+	 * by `OPTIMIZED_PROMPT_DISABLE`. Mirrors the gate used by `getPrompt`.
+	 */
 	hasOptimized(task: OptimizedPromptTask): boolean {
+		if (this.disabledTasks.has(task)) return false;
 		return Boolean(this.cache[task]);
 	}
 

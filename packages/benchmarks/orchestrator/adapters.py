@@ -1176,6 +1176,8 @@ def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
         args.append("--context-summary")
     if ctx.request.extra_config.get("context_awareness") is True:
         args.append("--context-awareness")
+    if ctx.request.extra_config.get("dry_run") is True:
+        args.append("--dry-run")
     return args
 
 

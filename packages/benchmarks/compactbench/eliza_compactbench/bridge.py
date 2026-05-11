@@ -33,13 +33,27 @@ class BridgeError(RuntimeError):
 
 
 def _resolve_bun() -> str:
+    explicit = os.environ.get("BUN_BINARY")
+    if explicit:
+        path = Path(explicit).expanduser()
+        if path.is_file():
+            return str(path)
+        raise BridgeError(f"BUN_BINARY points to a missing file: {explicit}")
+
     bun = shutil.which("bun")
-    if not bun:
-        raise BridgeError(
-            "bun is not on PATH. Install bun (https://bun.sh) or set PATH "
-            "so that 'bun' resolves before running CompactBench."
-        )
-    return bun
+    if bun:
+        return bun
+
+    home = Path(os.environ.get("HOME", str(Path.home()))).expanduser()
+    for candidate in (home / ".bun" / "bin" / "bun",):
+        if candidate.is_file():
+            return str(candidate)
+
+    raise BridgeError(
+        "bun is not on PATH and no fallback binary was found. Install bun "
+        "(https://bun.sh), set BUN_BINARY, or add ~/.bun/bin to PATH before "
+        "running CompactBench."
+    )
 
 
 def run_ts_compactor(

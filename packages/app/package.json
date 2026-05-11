@@ -26,17 +26,19 @@
     "plugin:build": "bun scripts/plugin-build.mjs",
     "build": "bun scripts/build.mjs",
     "build:ios": "node ../../packages/app-core/scripts/run-mobile-build.mjs ios",
+    "build:ios:local": "node ../../packages/app-core/scripts/run-mobile-build.mjs ios-local",
     "build:android": "node ../../packages/app-core/scripts/run-mobile-build.mjs android",
     "build:android:cloud": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud",
     "build:android:system": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-system",
     "ios": "bun run build:ios && capacitor open ios",
+    "ios:local": "bun run build:ios:local && capacitor open ios",
     "android": "bun run build:android && capacitor open android",
     "cap:sync": "node scripts/ensure-capacitor-platform.mjs ios && node scripts/ensure-capacitor-platform.mjs android && capacitor sync",
     "cap:sync:ios": "node scripts/ensure-capacitor-platform.mjs ios && capacitor sync ios",
     "cap:sync:android": "node scripts/ensure-capacitor-platform.mjs android && capacitor sync android",
     "cap:open:ios": "node scripts/ensure-capacitor-platform.mjs ios && capacitor open ios",
     "cap:open:android": "node scripts/ensure-capacitor-platform.mjs android && capacitor open android",
-    "build:web": "vite build"
+    "build:web": "bun --bun vite build"
   },
   "dependencies": {
     "@capacitor/android": "8.3.1",

@@ -9,6 +9,24 @@ async function waitForFirstVisible(locators: Locator[], timeout = 10_000): Promi
   );
 }
 
+function json(data: unknown) {
+  return {
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(data),
+  };
+}
+
+async function installAgentDashboardFixtures(page: Page): Promise<void> {
+  await page.route("**/api/v1/eliza/agents", async (route) => {
+    await route.fulfill(json({ success: true, data: [] }));
+  });
+
+  await page.route("**/api/credits/balance**", async (route) => {
+    await route.fulfill(json({ balance: 100 }));
+  });
+}
+
 async function expectInstancesPageContent(page: Page): Promise<void> {
   await expect(page.getByRole("main").getByRole("heading", { name: "Instances" })).toBeVisible({
     timeout: 15_000,
@@ -31,6 +49,7 @@ async function expectInstancesPageContent(page: Page): Promise<void> {
 test.describe("Eliza agent lifecycle", () => {
   test.beforeEach(async ({ page, request, baseURL }) => {
     await authenticateBrowserContext(request, page.context(), baseURL);
+    await installAgentDashboardFixtures(page);
   });
 
   test("instances dashboard renders an authenticated Agent session", async ({ page, baseURL }) => {

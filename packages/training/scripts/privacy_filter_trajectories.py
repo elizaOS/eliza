@@ -25,12 +25,49 @@ import subprocess
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, TextIO
 
 INPUT_SUFFIXES = {".json", ".jsonl", ".ndjson"}
 CONTAINER_KEYS = ("rows", "records", "examples", "data")
 GEO_REPLACEMENT = "[REDACTED_GEO]"
+STATS_SCHEMA = "eliza.privacy_filter_stats.v1"
+STATS_VERSION = 1
+ATTESTATION_SCHEMA = "eliza.privacy_filter_attestation.v1"
+ATTESTATION_VERSION = 1
+KNOWN_CATEGORIES = ("secret", "geo", "contact", "backend")
+SAFE_LEDGER_TOKEN_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,96}$")
+SAFE_BACKEND_LABEL_RE = re.compile(r"^[a-z][a-z0-9_.:-]{0,63}$")
+SAFE_REPLACEMENT_RE = re.compile(
+    r"^(?:<REDACTED:[A-Za-z0-9_.:-]+>|\[REDACTED_[A-Z0-9_]+\]|<BACKEND_TEXT_REWRITE>)$"
+)
+SAFE_BACKEND_LABEL_TERMS = (
+    "account",
+    "address",
+    "card",
+    "contact",
+    "cookie",
+    "credential",
+    "date",
+    "dob",
+    "email",
+    "geo",
+    "handle",
+    "health",
+    "ip",
+    "key",
+    "location",
+    "medical",
+    "name",
+    "person",
+    "phone",
+    "secret",
+    "session",
+    "ssn",
+    "token",
+    "user",
+)
 
 
 class PrivacyFilterError(RuntimeError):
@@ -86,22 +123,38 @@ class FilterStats:
             self.residual_samples.append(sample)
 
     def to_jsonable(self, *, input_paths: list[str], strict: bool) -> dict[str, Any]:
+        categories = _counter_json(self.redactions_by_category, include=KNOWN_CATEGORIES)
+        residual_findings = {
+            "count": self.residual_total,
+            "by_label": dict(sorted(self.residual_by_label.items())),
+            "samples": self.residual_samples,
+        }
         return {
+            "schema": STATS_SCHEMA,
+            "version": STATS_VERSION,
             "input_paths": input_paths,
             "strict": strict,
+            "input_count": self.records_read,
+            "output_count": self.records_written,
+            "redaction_count": self.redactions_total,
+            "categories": categories,
+            "backend_name": self.backend_name,
+            "backend_model": self.backend_model,
+            "residual_findings": residual_findings,
+            "residual_findings_count": self.residual_total,
             "records_read": self.records_read,
             "records_written": self.records_written,
             "invalid_json": self.invalid_json,
             "redactions": {
                 "total": self.redactions_total,
-                "by_category": dict(sorted(self.redactions_by_category.items())),
+                "by_category": categories,
                 "by_label": dict(sorted(self.redactions_by_label.items())),
                 "by_source": dict(sorted(self.redactions_by_source.items())),
             },
             "residual_high_risk": {
-                "total": self.residual_total,
-                "by_label": dict(sorted(self.residual_by_label.items())),
-                "samples": self.residual_samples,
+                "total": residual_findings["count"],
+                "by_label": residual_findings["by_label"],
+                "samples": residual_findings["samples"],
             },
             "backend": {
                 "enabled": self.backend_enabled,
@@ -273,10 +326,58 @@ def _hash_value(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(chunk_size), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def _safe_ref(value: str | None) -> str | None:
     if value is None:
         return None
     return f"sha256:{_hash_value(value)[:16]}"
+
+
+def _counter_json(counter: Counter[str], *, include: Iterable[str] = ()) -> dict[str, int]:
+    result = {key: int(counter.get(key, 0)) for key in include}
+    for key, value in sorted(counter.items()):
+        if key not in result:
+            result[key] = int(value)
+    return result
+
+
+def _utc_now() -> str:
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def _safe_ledger_token(value: str, *, default: str) -> str:
+    if SAFE_LEDGER_TOKEN_RE.fullmatch(value):
+        return value
+    return f"{default}:sha256:{_hash_value(value)[:12]}"
+
+
+def _safe_backend_label(value: Any, *, default: str = "backend") -> str:
+    if not isinstance(value, str) or not value.strip():
+        return default
+    cleaned = value.strip().lower()
+    if SAFE_BACKEND_LABEL_RE.fullmatch(cleaned) and any(
+        term in cleaned for term in SAFE_BACKEND_LABEL_TERMS
+    ):
+        return cleaned
+    return f"{default}:sha256:{_hash_value(value)[:12]}"
+
+
+def _safe_replacement_marker(replacement: str, *, label: str) -> str:
+    if SAFE_REPLACEMENT_RE.fullmatch(replacement):
+        return replacement
+    return f"<REDACTED:{label}>"
 
 
 def _json_dumps_line(value: Any) -> str:
@@ -301,11 +402,14 @@ def _write_ledger(
     path: str,
     location: SourceLocation,
 ) -> None:
+    safe_replacement = _safe_replacement_marker(replacement, label=spec.label)
     entry = {
-        "source": source,
-        "category": spec.category,
-        "label": spec.label,
-        "replacement": replacement,
+        "source": _safe_ledger_token(source, default="source"),
+        "category": _safe_ledger_token(spec.category, default="category"),
+        "label": _safe_ledger_token(spec.label, default="label"),
+        "replacement": safe_replacement,
+        "replacement_sha256": _hash_value(replacement),
+        "replacement_length": len(replacement),
         "path": path,
         "start": start,
         "end": end,
@@ -366,12 +470,11 @@ def _apply_backend_spans(text: str, response: dict[str, Any]) -> tuple[str, list
             continue
         if start < 0 or end < start or end > len(text):
             continue
-        label = raw.get("label")
-        if not isinstance(label, str) or not label:
-            label = "backend"
+        label = _safe_backend_label(raw.get("label"))
         replacement = raw.get("replacement")
         if not isinstance(replacement, str):
             replacement = f"<REDACTED:{label}>"
+        replacement = _safe_replacement_marker(replacement, label=label)
         spans.append(
             {
                 "start": start,
@@ -452,9 +555,10 @@ def _apply_backend_redaction(
         new_text = response["text"]
         if new_text == text:
             return text
+        label = _safe_backend_label(response.get("label"), default="text-rewrite")
         spec = PatternSpec(
             "backend",
-            response.get("label") or "text-rewrite",
+            label,
             re.compile("$^"),
             "<REDACTED:backend>",
         )
@@ -474,7 +578,9 @@ def _apply_backend_redaction(
 
     new_text, spans = _apply_backend_spans(text, response)
     for span in spans:
-        label = f"backend:{span['label']}"
+        label = span["label"]
+        if not label.startswith("backend:"):
+            label = f"backend:{label}"
         spec = PatternSpec("backend", label, re.compile("$^"), span["replacement"])
         stats.note_redaction(spec, "backend")
         _write_ledger(
@@ -763,12 +869,92 @@ def read_json_records(
             yield record, line_no
 
 
+def build_privacy_attestation(
+    *,
+    input_paths: list[str],
+    output_jsonl: Path,
+    ledger_jsonl: Path,
+    stats_json: Path,
+    stats: FilterStats,
+    strict: bool,
+) -> dict[str, Any]:
+    categories = _counter_json(stats.redactions_by_category, include=KNOWN_CATEGORIES)
+    residual_findings = {
+        "count": stats.residual_total,
+        "by_label": dict(sorted(stats.residual_by_label.items())),
+    }
+    passed = (
+        strict
+        and stats.invalid_json == 0
+        and stats.backend_failures == 0
+        and stats.residual_total == 0
+        and stats.records_read == stats.records_written
+    )
+    artifacts = {
+        "redacted_jsonl": {
+            "path": str(output_jsonl),
+            "sha256": _sha256_file(output_jsonl),
+            "rows": stats.records_written,
+        },
+        "ledger_jsonl": {
+            "path": str(ledger_jsonl),
+            "sha256": _sha256_file(ledger_jsonl),
+            "entries": stats.redactions_total,
+            "raw_sensitive_values": False,
+            "value_fields": ["value_sha256", "value_length"],
+            "replacement_fields": ["replacement", "replacement_sha256", "replacement_length"],
+        },
+        "stats_json": {
+            "path": str(stats_json),
+            "sha256": _sha256_file(stats_json),
+        },
+    }
+    gate = {
+        "passed": passed,
+        "strict": strict,
+        "input_count": stats.records_read,
+        "output_count": stats.records_written,
+        "redaction_count": stats.redactions_total,
+        "categories": categories,
+        "backend_name": stats.backend_name,
+        "backend_model": stats.backend_model,
+        "invalid_json": stats.invalid_json,
+        "backend_failures": stats.backend_failures,
+        "residual_findings": residual_findings,
+        "residual_findings_count": stats.residual_total,
+    }
+    return {
+        "schema": ATTESTATION_SCHEMA,
+        "version": ATTESTATION_VERSION,
+        "generated_at": _utc_now(),
+        "passed": passed,
+        "strict": strict,
+        "input_count": stats.records_read,
+        "output_count": stats.records_written,
+        "redaction_count": stats.redactions_total,
+        "categories": categories,
+        "backend_name": stats.backend_name,
+        "backend_model": stats.backend_model,
+        "residual_findings": residual_findings,
+        "residual_findings_count": stats.residual_total,
+        "input_path_refs": [_safe_ref(path) for path in input_paths],
+        "artifacts": artifacts,
+        "gate": gate,
+        "ledger_policy": {
+            "raw_sensitive_values": False,
+            "matched_values": "sha256_and_length_only",
+            "object_key_paths": "hashed",
+        },
+    }
+
+
 def filter_paths(
     input_paths: list[str],
     *,
     output_jsonl: Path,
     ledger_jsonl: Path,
     stats_json: Path,
+    attestation_json: Path | None = None,
     strict: bool = False,
     on_invalid_json: str = "error",
     max_records: int = 0,
@@ -788,6 +974,8 @@ def filter_paths(
     output_jsonl.parent.mkdir(parents=True, exist_ok=True)
     ledger_jsonl.parent.mkdir(parents=True, exist_ok=True)
     stats_json.parent.mkdir(parents=True, exist_ok=True)
+    if attestation_json is not None:
+        attestation_json.parent.mkdir(parents=True, exist_ok=True)
 
     with output_jsonl.open("w", encoding="utf-8") as out_f, ledger_jsonl.open(
         "w", encoding="utf-8"
@@ -837,6 +1025,20 @@ def filter_paths(
         json.dumps(stats_payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    if attestation_json is not None:
+        attestation_payload = build_privacy_attestation(
+            input_paths=input_paths,
+            output_jsonl=output_jsonl,
+            ledger_jsonl=ledger_jsonl,
+            stats_json=stats_json,
+            stats=stats,
+            strict=strict,
+        )
+        attestation_json.write_text(
+            json.dumps(attestation_payload, ensure_ascii=False, indent=2, sort_keys=True)
+            + "\n",
+            encoding="utf-8",
+        )
     if strict and stats.residual_total:
         raise PrivacyFilterError(
             f"strict privacy check failed: {stats.residual_total} residual high-risk pattern(s)"
@@ -869,6 +1071,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--stats-json",
         default="",
         help="Aggregate stats JSON path. Defaults to <output-jsonl>.stats.json.",
+    )
+    ap.add_argument(
+        "--attestation-json",
+        "--privacy-attestation-json",
+        dest="attestation_json",
+        default="",
+        help=(
+            "Optional machine-readable privacy attestation JSON path for downstream "
+            "dataset publishing gates."
+        ),
     )
     ap.add_argument(
         "--strict",
@@ -950,6 +1162,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.stats_json
         else _default_sidecar(args.output_jsonl, ".stats.json")
     )
+    attestation_json = Path(args.attestation_json) if args.attestation_json else None
     suffixes = {
         suffix.strip().lower()
         for suffix in args.suffixes.split(",")
@@ -973,6 +1186,7 @@ def main(argv: list[str] | None = None) -> int:
             output_jsonl=output_jsonl,
             ledger_jsonl=ledger_jsonl,
             stats_json=stats_json,
+            attestation_json=attestation_json,
             strict=args.strict,
             on_invalid_json=args.on_invalid_json,
             max_records=args.max_records,
