@@ -65,9 +65,12 @@ const CONVERSATION_LINE_RE =
 
 const INTERNAL_THOUGHT_RE = /\([^)]*'s internal thought:[^)]*\)/i;
 const ACTIONS_LINE_RE = /\([^)]*'s actions:[^)]*\)/i;
-const USER_SPEAKER_RE = /^(?:user|operator|human|client|customer)$/i;
+const USER_SPEAKER_RE = /^(?:user|operator|human|client|customer|system)$/i;
 const ASSISTANT_SPEAKER_RE =
-  /^(?:eliza|milady|agent|assistant|system|bot|ai)(?:\s*\([^)]*\))?$/i;
+  /^(?:eliza|milady|agent|assistant|bot|ai)(?:\s*\([^)]*\))?$/i;
+const SYNTHETIC_MARKER_LINE_RE =
+  /^\[(system summary|Agent|Tool(?::([^\]\s]+))?)(?:\s+\[([^\]]*)\])?\]\s*(.*)$/i;
+const REPLACEMENT_OVERHEAD_TOKENS = 32;
 
 // ---------------------------------------------------------------------------
 // Env config
@@ -132,7 +135,7 @@ function locateConversationRegion(prompt: string): ConversationRegion | null {
 type ParsedMessageLine = {
   /** Inferred role: "assistant" if the message has an attached internal
    *  thought / actions list (those only appear on agent turns), else "user". */
-  role: "user" | "assistant";
+  role: CompactorMessage["role"];
   /** The full multi-line block for this message, verbatim minus trailing newline. */
   raw: string;
   /** The speaker name extracted from the header line ("Eliza", "User", etc.). */
@@ -141,7 +144,54 @@ type ParsedMessageLine = {
   text: string;
   /** The original timestamp string ("12:53"). */
   time?: string;
+  /** Tags from a runtime-emitted synthetic marker. */
+  tags?: string[];
+  /** Tool name from a runtime-emitted synthetic tool marker. */
+  toolName?: string;
 };
+
+function parseSyntheticMarkerLine(line: string): {
+  role: CompactorMessage["role"];
+  text: string;
+  name: string;
+  tags?: string[];
+  toolName?: string;
+} | null {
+  const match = line.trim().match(SYNTHETIC_MARKER_LINE_RE);
+  if (!match) return null;
+  const marker = match[1]?.toLowerCase() ?? "";
+  const tagText = match[3]?.trim() ?? "";
+  const tags = tagText
+    ? tagText
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0)
+    : undefined;
+  if (marker.startsWith("system summary")) {
+    return {
+      role: "system",
+      name: "system summary",
+      text: match[4]?.trim() ?? "",
+      ...(tags ? { tags } : {}),
+    };
+  }
+  if (marker.startsWith("tool")) {
+    const toolName = match[2]?.trim();
+    return {
+      role: "tool",
+      name: toolName ? `Tool:${toolName}` : "Tool",
+      text: match[4]?.trim() ?? "",
+      ...(tags ? { tags } : {}),
+      ...(toolName ? { toolName } : {}),
+    };
+  }
+  return {
+    role: "assistant",
+    name: "Agent",
+    text: match[4]?.trim() ?? "",
+    ...(tags ? { tags } : {}),
+  };
+}
 
 function parseConversationBody(body: string): ParsedMessageLine[] {
   const lines = body.split("\n");
@@ -150,11 +200,15 @@ function parseConversationBody(body: string): ParsedMessageLine[] {
 
   for (const line of lines) {
     const match = line.trim().match(CONVERSATION_LINE_RE);
+    const synthetic = parseSyntheticMarkerLine(line);
     const speaker = match?.[4]?.trim() ?? "";
     const canonicalTurn = Boolean(match?.[2] || match?.[3]);
     const knownSpeaker =
       USER_SPEAKER_RE.test(speaker) || ASSISTANT_SPEAKER_RE.test(speaker);
-    if (match && (current === null || canonicalTurn || knownSpeaker)) {
+    if (
+      synthetic ||
+      (match && (current === null || canonicalTurn || knownSpeaker))
+    ) {
       if (current) blocks.push(current);
       current = [line];
     } else if (current) {
@@ -168,6 +222,22 @@ function parseConversationBody(body: string): ParsedMessageLine[] {
   const messages: ParsedMessageLine[] = [];
   for (const block of blocks) {
     const headerLine = block[0].trim();
+    const synthetic = parseSyntheticMarkerLine(headerLine);
+    if (synthetic) {
+      const contentLines = [synthetic.text, ...block.slice(1)].filter(
+        (line, index) => index > 0 || line.length > 0,
+      );
+      const raw = contentLines.join("\n");
+      messages.push({
+        role: synthetic.role,
+        raw,
+        name: synthetic.name,
+        text: synthetic.text,
+        ...(synthetic.tags ? { tags: synthetic.tags } : {}),
+        ...(synthetic.toolName ? { toolName: synthetic.toolName } : {}),
+      });
+      continue;
+    }
     const match = headerLine.match(CONVERSATION_LINE_RE);
     if (!match) continue;
     const [, time, , , name, text] = match;
@@ -239,6 +309,8 @@ export function parsePromptToTranscript(prompt: string): CompactorTranscript {
     messages.push({
       role: m.role,
       content: m.raw,
+      ...(m.tags ? { tags: m.tags } : {}),
+      ...(m.toolName ? { toolName: m.toolName } : {}),
     });
   }
   if (region.suffix.trim().length > 0) {
@@ -370,6 +442,7 @@ export type ApplyConversationCompactionResult = {
     replacementMessageCount: number;
     stats: CompactionArtifactStats;
   };
+  skipReason?: string;
 };
 
 export type ApplyConversationMessageCompactionArgs = {
@@ -426,6 +499,7 @@ export async function applyConversationCompaction(
       strategy: args.strategy,
       targetTokens: args.targetTokens,
       replacementTargetTokens: args.targetTokens,
+      skipReason: "not-over-budget",
     };
   }
 
@@ -444,6 +518,7 @@ export async function applyConversationCompaction(
       strategy: args.strategy,
       targetTokens: args.targetTokens,
       replacementTargetTokens: args.targetTokens,
+      skipReason: "parse-fallback",
     };
   }
 
@@ -464,10 +539,25 @@ export async function applyConversationCompaction(
   const nonCompactableTokens = approxCountTokens(
     [...systemPrefix, ...preservedTail].map((m) => m.content).join("\n"),
   );
+  const viableReplacementTokens =
+    args.targetTokens - nonCompactableTokens - REPLACEMENT_OVERHEAD_TOKENS;
   const minimumReplacementBudget = Math.min(64, args.targetTokens);
+  if (viableReplacementTokens < minimumReplacementBudget) {
+    return {
+      prompt: args.prompt,
+      didCompact: false,
+      originalTokens,
+      compactedTokens: originalTokens,
+      latencyMs: Date.now() - startedAt,
+      strategy: args.strategy,
+      targetTokens: args.targetTokens,
+      replacementTargetTokens: Math.max(0, viableReplacementTokens),
+      skipReason: "noncompactable-over-budget",
+    };
+  }
   const replacementTargetTokens = Math.max(
     minimumReplacementBudget,
-    Math.min(args.targetTokens, args.targetTokens - nonCompactableTokens - 32),
+    Math.min(args.targetTokens, viableReplacementTokens),
   );
 
   const artifact = await strategyImpl.compact(transcript, {
@@ -510,6 +600,7 @@ export async function applyConversationCompaction(
         replacementMessageCount: artifact.replacementMessages.length,
         stats: artifact.stats,
       },
+      skipReason: "expanded",
     };
   }
 
@@ -552,6 +643,7 @@ export async function applyConversationMessageCompaction(
       strategy: args.strategy,
       targetTokens: args.targetTokens,
       replacementTargetTokens: args.targetTokens,
+      skipReason: "not-over-budget",
     };
   }
 
@@ -565,10 +657,25 @@ export async function applyConversationMessageCompaction(
   const nonCompactableTokens = approxCountTokens(
     [...systemPrefix, ...preservedTail].map((m) => m.content).join("\n"),
   );
+  const viableReplacementTokens =
+    args.targetTokens - nonCompactableTokens - REPLACEMENT_OVERHEAD_TOKENS;
   const minimumReplacementBudget = Math.min(64, args.targetTokens);
+  if (viableReplacementTokens < minimumReplacementBudget) {
+    return {
+      messages: args.messages,
+      didCompact: false,
+      originalTokens,
+      compactedTokens: originalTokens,
+      latencyMs: Date.now() - startedAt,
+      strategy: args.strategy,
+      targetTokens: args.targetTokens,
+      replacementTargetTokens: Math.max(0, viableReplacementTokens),
+      skipReason: "noncompactable-over-budget",
+    };
+  }
   const replacementTargetTokens = Math.max(
     minimumReplacementBudget,
-    Math.min(args.targetTokens, args.targetTokens - nonCompactableTokens - 32),
+    Math.min(args.targetTokens, viableReplacementTokens),
   );
 
   const artifact = await strategyImpl.compact(transcript, {
@@ -592,6 +699,7 @@ export async function applyConversationMessageCompaction(
         replacementMessageCount: 0,
         stats: artifact.stats,
       },
+      skipReason: "empty-replacement",
     };
   }
 
@@ -619,6 +727,7 @@ export async function applyConversationMessageCompaction(
         replacementMessageCount: artifact.replacementMessages.length,
         stats: artifact.stats,
       },
+      skipReason: "expanded",
     };
   }
 

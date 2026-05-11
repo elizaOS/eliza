@@ -64,7 +64,7 @@ import {
 // Direct leaf imports — see comment in
 // ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
 // requires bypassing barrels here too.
-import { sendToAdminAction } from "../autonomy/action.ts";
+import { escalateAction } from "../autonomy/action.ts";
 import {
 	adminChatProvider,
 	autonomyStatusProvider,
@@ -1369,7 +1369,7 @@ export interface CapabilityConfig {
 // Provides autonomous operation with continuous agent thinking loop
 const autonomyCapabilities = {
 	providers: [adminChatProvider, autonomyStatusProvider],
-	actions: [withCanonicalActionDocs(sendToAdminAction)],
+	actions: [withCanonicalActionDocs(escalateAction)],
 	services: [AutonomyService] as ServiceClass[],
 	routes: autonomyRoutes,
 };

@@ -13,8 +13,12 @@ import type {
 	Media,
 	Memory,
 } from "../../../types/index.ts";
-import { asUUID } from "../../../types/index.ts";
-import { ContentType, MemoryType, ModelType } from "../../../types/index.ts";
+import {
+	asUUID,
+	ContentType,
+	MemoryType,
+	ModelType,
+} from "../../../types/index.ts";
 import { parseJSONObjectFromText } from "../../../utils.ts";
 
 const EVALUATOR_NAME = "attachmentImageAnalysis";

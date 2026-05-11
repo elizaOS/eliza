@@ -50,19 +50,49 @@ The audit fails non-zero if trajectories are missing, aggregate counts do not
 match per-task files, token usage is missing, or tool call/result pairs are
 unbalanced.
 
-## Synthetic 1M-Token Long-Context Fixture
+## Synthetic Long-Context Fixture
 
 Use this when changing compaction logic. It creates a LOCA-shaped trajectory
-with deterministic needles buried across a million-token history, compacts it
-into a summary plus recent tail, and fails if any exact needle is lost.
+with deterministic needles buried across a long history, realistic distractors,
+conflicting updates, rescinded decisions, and tool-like observations. It then
+compacts the trajectory into a summary plus recent tail and fails if any
+audited exact value is lost.
+
+The `perfect` summary mode is a fixture sanity check: it writes every audited
+value into the synthetic summary so the audit can prove the generated fixture is
+well-formed. It is not a real summarizer benchmark. Use `lossy` or `corrupt`
+mode when you need a deterministic negative case that proves the audit catches
+dropped or mutated facts.
 
 ```bash
 python -m eliza_loca.long_context \
   --output-dir outputs/long_context_1m \
-  --target-tokens 1000000 \
+  --tier 1m \
   --turns 400 \
   --needle-count 32 \
-  --tail-messages 16
+  --tail-messages 16 \
+  --summary-mode perfect
+```
+
+Supported tiers are `128k`, `256k`, `512k`, and `1m`. You can override the
+preset with `--target-tokens` for an exact synthetic size. The audit also
+enforces compacted-current-context thresholds with `--max-current-token-ratio`
+and `--max-current-tokens`; defaults are tuned so the tiered perfect fixtures
+pass while unreasonably large current tails fail.
+
+Examples:
+
+```bash
+python -m eliza_loca.long_context \
+  --output-dir outputs/long_context_128k \
+  --tier 128k \
+  --turns 400 \
+  --needle-count 16
+
+python -m eliza_loca.long_context \
+  --output-dir outputs/long_context_lossy \
+  --tier 256k \
+  --summary-mode lossy
 ```
 
 Artifacts:

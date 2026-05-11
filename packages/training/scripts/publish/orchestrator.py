@@ -75,12 +75,17 @@ from scripts.manifest.eliza1_manifest import (  # noqa: E402
     REQUIRED_KERNELS_BY_TIER,
     SUPPORTED_BACKENDS_BY_TIER,
     VOICE_PRESET_CACHE_PATH,
+    VOICE_QUANT_BY_TIER,
     Eliza1ManifestError,
     FileEntry,
     KernelVerification,
     LineageEntry,
     build_manifest,
     parse_text_ctx_from_filename,
+    required_voice_artifacts_for_tier,
+)
+from scripts.manifest.eliza1_platform_plan import (  # noqa: E402
+    REQUIRED_PLATFORM_EVIDENCE_BY_TIER,
 )
 
 # ---------------------------------------------------------------------------
@@ -124,6 +129,13 @@ REQUIRED_LICENSE_FILES: tuple[str, ...] = (
     "LICENSE.dflash",
     "LICENSE.eliza-1",
 )
+COMPONENT_LICENSE_FILES: Mapping[str, str] = {
+    "asr": "LICENSE.asr",
+    "vision": "LICENSE.vision",
+    "vad": "LICENSE.vad",
+    "embedding": "LICENSE.embedding",
+    "wakeword": "LICENSE.wakeword",
+}
 
 # Quantization recipe sidecars required by training/AGENTS.md §3. The
 # publish manifest builder consumes these as proof that the bundle flowed
@@ -158,53 +170,6 @@ REQUIRED_GRAPH_CACHE_FAMILIES: tuple[str, ...] = (
     "qjl",
     "polar",
 )
-REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Mapping[str, tuple[str, ...]] = {
-    "0_6b": (
-        "darwin-arm64-metal",
-        "ios-arm64-metal",
-        "linux-x64-vulkan",
-        "android-adreno-vulkan",
-        "android-mali-vulkan",
-        "linux-x64-cpu",
-        "windows-x64-cpu",
-        "windows-arm64-cpu",
-    ),
-    "1_7b": (
-        "darwin-arm64-metal",
-        "ios-arm64-metal",
-        "linux-x64-vulkan",
-        "android-adreno-vulkan",
-        "android-mali-vulkan",
-        "linux-x64-cpu",
-        "windows-x64-cpu",
-        "windows-arm64-cpu",
-    ),
-    "9b": (
-        "darwin-arm64-metal",
-        "ios-arm64-metal",
-        "linux-x64-vulkan",
-        "android-adreno-vulkan",
-        "android-mali-vulkan",
-        "linux-x64-cuda",
-        "windows-x64-cuda",
-        "linux-x64-cpu",
-        "windows-x64-cpu",
-    ),
-    "27b": (
-        "darwin-arm64-metal",
-        "linux-x64-vulkan",
-        "linux-x64-cuda",
-        "windows-x64-cuda",
-        "linux-x64-cpu",
-    ),
-    "27b-256k": (
-        "linux-aarch64-cuda",
-        "linux-x64-cuda",
-        "linux-x64-vulkan",
-        "linux-x64-cpu",
-    ),
-}
-
 # Tier matrix — tagline + lineage taken from inference/AGENTS.md §2.
 TIER_TAGLINES: Mapping[str, str] = {
     "0_6b": "low-RAM phones, CPU fallback",
@@ -214,31 +179,12 @@ TIER_TAGLINES: Mapping[str, str] = {
     "27b-256k": "server / workstation",
 }
 
-VOICE_QUANT_BY_TIER: Mapping[str, str] = {
-    # Phones get the smallest GGUF pair that omnivoice.cpp can load.
-    "0_6b": "Q4_K_M",
-    "1_7b": "Q4_K_M",
-    # Desktop/server tiers keep the voice path higher fidelity while still
-    # avoiding BF16/F32 residency costs. The voice stage is latency-sensitive
-    # and repeatedly paged on/off, so Q8 is the practical default.
-    "9b": "Q8_0",
-    "27b": "Q8_0",
-    "27b-256k": "Q8_0",
-}
 DEFAULT_VOICE_CAPABILITIES: tuple[str, ...] = ("tts", "emotion-tags", "singing")
 EXPRESSIVE_GATE_NAMES: tuple[str, ...] = (
     "expressive_tag_faithfulness",
     "expressive_mos",
     "expressive_tag_leakage",
 )
-
-
-def required_voice_artifacts_for_tier(tier: str) -> tuple[str, str]:
-    quant = VOICE_QUANT_BY_TIER[tier]
-    return (
-        f"omnivoice-base-{quant}.gguf",
-        f"omnivoice-tokenizer-{quant}.gguf",
-    )
 
 # Default RAM budgets (MB). Tightened pre-publish from real measurements
 # on reference hardware; the bundle's sidecar can override.
@@ -370,6 +316,14 @@ def _validate_quantization_sidecars(bundle: Path) -> list[Path]:
     return found
 
 
+def _license_files_for_layout(layout: Mapping[str, Sequence[Path]]) -> tuple[str, ...]:
+    names = list(REQUIRED_LICENSE_FILES)
+    for kind, name in COMPONENT_LICENSE_FILES.items():
+        if layout.get(kind):
+            names.append(name)
+    return tuple(names)
+
+
 def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
     """Enforce the §2 layout. Populates ``ctx.layout_files`` and returns it.
 
@@ -457,7 +411,7 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
 
     # Licenses — every required blob must be present and non-empty.
     licenses_dir = bundle / "licenses"
-    for name in REQUIRED_LICENSE_FILES:
+    for name in _license_files_for_layout(out):
         p = licenses_dir / name
         if not p.is_file():
             raise OrchestratorError(
@@ -528,7 +482,7 @@ def _expected_payload_paths(
         expected.extend(_relative_file_paths(layout.get(kind_src, []), ctx.bundle_dir))
 
     licenses_dir = ctx.bundle_dir / "licenses"
-    expected.extend(f"licenses/{name}" for name in REQUIRED_LICENSE_FILES)
+    expected.extend(f"licenses/{name}" for name in _license_files_for_layout(layout))
 
     evals_dir = ctx.bundle_dir / "evals"
     expected.extend(
@@ -829,7 +783,9 @@ def validate_release_evidence(
         errors.append("evalReports contains missing file(s)")
 
     license_files = evidence.get("licenseFiles")
-    expected_licenses = [f"licenses/{name}" for name in REQUIRED_LICENSE_FILES]
+    expected_licenses = [
+        f"licenses/{name}" for name in _license_files_for_layout(layout)
+    ]
     if license_files != expected_licenses:
         errors.append(f"licenseFiles must equal {expected_licenses!r}")
 
@@ -1033,6 +989,8 @@ def run_kernel_verification(
       consumes that report directly. There is no inline metal run.
     - CUDA: same shape — recorded report at
       ``bundle/evals/cuda_verify.json`` if the tier supports it.
+    - ROCm: same shape — recorded report at
+      ``bundle/evals/rocm_verify.json`` if the tier supports it.
     """
 
     supported = set(SUPPORTED_BACKENDS_BY_TIER[ctx.tier])
@@ -1068,6 +1026,11 @@ def run_kernel_verification(
     if "cuda" in supported:
         recorded = ctx.bundle_dir / "evals" / "cuda_verify.json"
         out["cuda"] = _read_recorded_report(recorded, "cuda")
+
+    # ROCm — recorded report.
+    if "rocm" in supported:
+        recorded = ctx.bundle_dir / "evals" / "rocm_verify.json"
+        out["rocm"] = _read_recorded_report(recorded, "rocm")
 
     # Backends not supported by this tier are recorded as skipped, with
     # a stable report name. The manifest validator only enforces "pass"
@@ -1570,7 +1533,7 @@ def _build_upload_list(
             pairs.append((p, str(p.relative_to(ctx.bundle_dir))))
 
     licenses_dir = ctx.bundle_dir / "licenses"
-    for name in REQUIRED_LICENSE_FILES:
+    for name in _license_files_for_layout(layout):
         p = licenses_dir / name
         pairs.append((p, f"licenses/{name}"))
 

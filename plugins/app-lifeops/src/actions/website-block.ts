@@ -1,6 +1,4 @@
 import type {
-  Action,
-  ActionExample,
   ActionResult,
   HandlerOptions,
   IAgentRuntime,
@@ -100,8 +98,6 @@ const SUBACTIONS: SubactionsMap<WebsiteBlockSubaction> = {
     optional: ["includeLiveStatus", "includeManagedRules"],
   },
 };
-
-// ── Block-subaction helpers (moved from website-blocker.ts) ──
 
 type WebsiteBlockPlan = {
   shouldAct?: boolean | null;
@@ -495,8 +491,6 @@ async function recoverWebsiteContextWithLlm(args: {
   }
 }
 
-// ── Status / Permission formatting ──
-
 function formatStatusText(
   status: Awaited<ReturnType<typeof getSelfControlStatus>>,
 ): string {
@@ -543,8 +537,6 @@ function formatPermissionText(
     "Eliza cannot raise an administrator/root prompt for website blocking on this machine."
   );
 }
-
-// ── Subaction handlers ──
 
 async function handleBlock(
   runtime: IAgentRuntime,
@@ -776,14 +768,6 @@ async function handleRequestPermission(): Promise<ActionResult> {
   };
 }
 
-// ── release / list_active subactions (W2-F) ──
-//
-// Folded in from the deleted standalone `RELEASE_BLOCK` and
-// `LIST_ACTIVE_BLOCKS` actions, resolving the umbrella collision flagged in
-// `HARDCODING_AUDIT.md` §6 high-confidence #6. The block-rule reader/writer
-// remain in `website-blocker/chat-integration` — only the `Action` envelopes
-// were collapsed.
-
 function coerceString(value: unknown): string | null {
   if (typeof value === "string" && value.trim().length > 0) {
     return value.trim();
@@ -921,225 +905,72 @@ async function handleListActive(
   };
 }
 
-// ── Action ──
+/**
+ * Owner-only validate gate for the BLOCK umbrella's website-target leg.
+ * Returns true when the owner has SelfControl/hosts-file access on this
+ * machine.
+ */
+export async function websiteBlockValidate(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<boolean> {
+  const access = await getSelfControlAccess(runtime, message);
+  return access.allowed;
+}
 
 /**
- * Internal implementation of the legacy `WEBSITE_BLOCK` action surface.
+ * Handler function backing the BLOCK umbrella when `target=website`.
  *
- * Audit B Defer #1 folded `WEBSITE_BLOCK` and `APP_BLOCK` into the single
- * `BLOCK` umbrella (`./block.ts`). The umbrella delegates to this impl when
- * `target=website`, so the runtime logic + handlers + parameter shape stay
- * unchanged. The legacy export name (`websiteBlockAction`) is re-exported
- * below as an alias for `blockAction` so cached planner outputs and downstream
- * importers keep resolving — but no `WEBSITE_BLOCK`-named action is registered
- * in the plugin anymore; the umbrella simile carries the legacy name forward.
+ * Folded out of the legacy `WEBSITE_BLOCK` action surface — Audit B Defer #1.
+ * The umbrella in `./block.ts` is the only caller; no Action object is
+ * registered for this handler anymore.
  */
-export const websiteBlockActionImpl: Action & {
-  suppressPostActionContinuation?: boolean;
-} = {
-  name: ACTION_NAME,
-  similes: [
-    "SELFCONTROL",
-    "SITE_BLOCKER",
-    "HOSTS_BLOCK",
-    "FOCUS_BLOCK",
-    "AUTOMATION_FOCUS_BLOCK",
-    "BLOCK_WEBSITE",
-    "WEBSITE_BLOCKER",
-  ],
-  description:
-    "Owner-only. Manage local hosts-file website blocking on this Mac. Subactions: block (start a fixed-duration or indefinite block on a set of public hostnames; always drafts first, requires confirmed:true to actually edit the hosts file), unblock (remove the active block), status (check whether a block is active and when it ends), request_permission (request administrator/root approval for hosts-file edits), release (release a managed block rule by id; requires confirmed:true; harsh_no_bypass rules cannot be released this way), list_active (list live OS-level + managed website block rules).",
-  descriptionCompressed:
-    "site block hosts-file: block(hosts,duration,confirm) unblock status request-permission release(ruleId,confirmed) list_active; macOS draft-then-confirm",
-  // Drop "tasks" — WEBSITE_BLOCK is a focus/screen-time tool, not a personal-
-  // task tool. With "tasks" included, it competed with LIFE on every habit
-  // prompt for tier-A slots. Belongs to screen_time / browser / automation /
-  // settings only.
-  contexts: ["screen_time", "browser", "automation", "settings"],
-  roleGate: { minRole: "OWNER" },
-  suppressPostActionContinuation: true,
+export async function runWebsiteBlockHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: HandlerOptions | undefined,
+): Promise<ActionResult> {
+  const access = await getSelfControlAccess(runtime, message);
+  if (!access.allowed) {
+    return {
+      success: false,
+      text: access.reason ?? SELFCONTROL_ACCESS_ERROR,
+    };
+  }
 
-  validate: async (runtime, message) => {
-    const access = await getSelfControlAccess(runtime, message);
-    return access.allowed;
-  },
-
-  parameters: [
-    {
-      name: "subaction",
-      description:
-        "One of: block, unblock, status, request_permission, release, list_active. When omitted the resolver extracts it from intent + recent conversation.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "intent",
-      description:
-        "Free-form description of what the owner wants. Required by the block subaction so heuristic + LLM extractors can pull hostnames and duration out.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "hostnames",
-      description:
-        "Public hostnames or URLs to block for the block subaction, e.g. ['x.com','twitter.com'].",
-      required: false,
-      schema: { type: "array" as const, items: { type: "string" as const } },
-    },
-    {
-      name: "durationMinutes",
-      description:
-        "How long to block, in minutes. Omit for a manual block that stays active until unblocked. Null for indefinite.",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
-      name: "confirmed",
-      description:
-        "Set true only when the owner has explicitly confirmed the block. Without it, block returns a draft confirmation request. Also required by the release subaction.",
-      required: false,
-      schema: { type: "boolean" as const },
-    },
-    {
-      name: "ruleId",
-      description:
-        "ID of the managed block rule to release. Required by the release subaction.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "reason",
-      description:
-        "Optional reason recorded on the rule when released. Used by the release subaction.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "includeLiveStatus",
-      description:
-        "Whether to include the current hosts-file/SelfControl live block state in the list_active response. Default true.",
-      required: false,
-      schema: { type: "boolean" as const },
-    },
-    {
-      name: "includeManagedRules",
-      description:
-        "Whether to include managed LifeOps block rules in the list_active response. Default true.",
-      required: false,
-      schema: { type: "boolean" as const },
-    },
-  ],
-
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Block x.com and twitter.com for 2 hours." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'Ready to block x.com, twitter.com for 120 minutes. Reply "confirm" or re-issue with confirmed: true to start the block.',
-          action: "WEBSITE_BLOCK",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Is there a website block running right now?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "A website block is active for x.com, twitter.com until 2026-04-04T13:44:54.000Z.",
-          action: "WEBSITE_BLOCK",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Unblock x.com right now." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Removed the website block for x.com before its scheduled end time.",
-          action: "WEBSITE_BLOCK",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Give yourself permission to block websites on this machine.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "The approval prompt completed successfully. Eliza can now ask the OS for administrator approval whenever it needs to edit the hosts file.",
-          action: "WEBSITE_BLOCK",
-        },
-      },
-    ],
-  ] as ActionExample[][],
-
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
+  const resolved = await resolveActionArgs<
+    WebsiteBlockSubaction,
+    WebsiteBlockParams
+  >({
+    runtime,
+    message,
     state,
     options,
-    _callback,
-  ): Promise<ActionResult> => {
-    const access = await getSelfControlAccess(runtime, message);
-    if (!access.allowed) {
-      return {
-        success: false,
-        text: access.reason ?? SELFCONTROL_ACCESS_ERROR,
-      };
-    }
+    actionName: ACTION_NAME,
+    subactions: SUBACTIONS,
+  });
+  if (!resolved.ok) {
+    return {
+      success: false,
+      text: resolved.clarification,
+      data: { actionName: ACTION_NAME, missing: resolved.missing },
+    };
+  }
 
-    const resolved = await resolveActionArgs<
-      WebsiteBlockSubaction,
-      WebsiteBlockParams
-    >({
-      runtime,
-      message,
-      state,
-      options: options as HandlerOptions | undefined,
-      actionName: ACTION_NAME,
-      subactions: SUBACTIONS,
-    });
-    if (!resolved.ok) {
-      return {
-        success: false,
-        text: resolved.clarification,
-        data: { actionName: ACTION_NAME, missing: resolved.missing },
-      };
-    }
-
-    const { subaction, params } = resolved;
-    switch (subaction) {
-      case "block":
-        return handleBlock(runtime, message, state, params);
-      case "unblock":
-        return handleUnblock(runtime);
-      case "status":
-        return handleStatus();
-      case "request_permission":
-        return handleRequestPermission();
-      case "release":
-        return handleRelease(runtime, params);
-      case "list_active":
-        return handleListActive(runtime, params);
-    }
-  },
-};
-
-// Legacy export — the `WEBSITE_BLOCK` name lives on as a simile of the new
-// BLOCK umbrella. Importers that destructured `websiteBlockAction` get the
-// umbrella back so they continue to dispatch through the unified entry.
-export { blockAction as websiteBlockAction } from "./block.js";
+  const { subaction, params } = resolved;
+  switch (subaction) {
+    case "block":
+      return handleBlock(runtime, message, state, params);
+    case "unblock":
+      return handleUnblock(runtime);
+    case "status":
+      return handleStatus();
+    case "request_permission":
+      return handleRequestPermission();
+    case "release":
+      return handleRelease(runtime, params);
+    case "list_active":
+      return handleListActive(runtime, params);
+  }
+}

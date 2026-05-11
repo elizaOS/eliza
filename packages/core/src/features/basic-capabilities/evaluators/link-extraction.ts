@@ -6,8 +6,7 @@ import type {
 	JSONSchema,
 	Memory,
 } from "../../../types/index.ts";
-import { asUUID } from "../../../types/index.ts";
-import { MemoryType, ModelType } from "../../../types/index.ts";
+import { asUUID, MemoryType, ModelType } from "../../../types/index.ts";
 
 const EVALUATOR_NAME = "linkExtraction";
 const EVALUATOR_SOURCE = "link_extraction_evaluator";

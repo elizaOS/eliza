@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
-import { mirrorSecretToVaultAction } from "./mirror-secret-to-vault";
+import { mirrorSecretToVaultHandler } from "./mirror-secret-to-vault";
 
 interface VaultStub {
 	calls: Array<{ key: string; value: string }>;
@@ -38,7 +38,7 @@ function createMessage() {
 	};
 }
 
-describe("MIRROR_SECRET_TO_VAULT", () => {
+describe("SECRETS action=mirror", () => {
 	test("mirrors the secret into the named vault", async () => {
 		const calls: Array<{ key: string; value: string }> = [];
 		const vault: VaultStub = {
@@ -48,7 +48,7 @@ describe("MIRROR_SECRET_TO_VAULT", () => {
 				return true;
 			},
 		};
-		const result = await mirrorSecretToVaultAction.handler(
+		const result = await mirrorSecretToVaultHandler(
 			createRuntime({ secretValue: "sk-real", vault }) as never,
 			createMessage() as never,
 			undefined,
@@ -65,7 +65,7 @@ describe("MIRROR_SECRET_TO_VAULT", () => {
 	});
 
 	test("returns mirrored=false when the vault service is not registered", async () => {
-		const result = await mirrorSecretToVaultAction.handler(
+		const result = await mirrorSecretToVaultHandler(
 			createRuntime({ secretValue: "sk-real", vault: null }) as never,
 			createMessage() as never,
 			undefined,

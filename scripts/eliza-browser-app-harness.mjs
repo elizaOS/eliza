@@ -31,6 +31,11 @@ Options:
   --dry-run                 Print and write the planned run; do not launch, prompt, or poll.
   --no-launch               Attach to an already-running Eliza stack.
   --prompt <text>           User task for the Eliza agent. The harness wraps it with BROWSER-action instructions.
+  --prompt-via-ui           Type the prompt into the Eliza app chat UI with Puppeteer. Default.
+  --prompt-via-api          Send the prompt through the conversation API instead of the UI.
+  --require-browser-tab     Fail unless a browser workspace tab is observed by the end of the run.
+  --require-browser-events  Fail unless browser workspace events are observed by the end of the run.
+  --require-trajectory      Fail unless a trajectory record is observed by the end of the run.
   --target-url <url>        Target URL for the agent's BROWSER action task. Default: ${DEFAULT_TARGET_URL}
   --timeout <ms|30s|2m>     Total poll timeout after sending the prompt. Default: ${DEFAULT_TIMEOUT_MS}
   --api-base <url>          Eliza API base URL. Default: ${DEFAULT_API_BASE}
@@ -65,6 +70,10 @@ function parseArgs(argv) {
     dryRun: false,
     noLaunch: false,
     prompt: "",
+    promptVia: "ui",
+    requireBrowserTab: false,
+    requireBrowserEvents: false,
+    requireTrajectory: false,
     targetUrl: DEFAULT_TARGET_URL,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
@@ -85,6 +94,26 @@ function parseArgs(argv) {
     }
     if (arg === "--no-launch") {
       options.noLaunch = true;
+      continue;
+    }
+    if (arg === "--prompt-via-ui") {
+      options.promptVia = "ui";
+      continue;
+    }
+    if (arg === "--prompt-via-api") {
+      options.promptVia = "api";
+      continue;
+    }
+    if (arg === "--require-browser-tab") {
+      options.requireBrowserTab = true;
+      continue;
+    }
+    if (arg === "--require-browser-events") {
+      options.requireBrowserEvents = true;
+      continue;
+    }
+    if (arg === "--require-trajectory") {
+      options.requireTrajectory = true;
       continue;
     }
     const readValue = (name) => {
@@ -439,6 +468,101 @@ function summarizePollResult(result) {
   };
 }
 
+function arrayLengthAtKey(value, keys) {
+  if (Array.isArray(value)) return value.length;
+  if (!value || typeof value !== "object") return 0;
+  for (const key of keys) {
+    const entry = value[key];
+    if (Array.isArray(entry)) return entry.length;
+  }
+  for (const entry of Object.values(value)) {
+    const count = arrayLengthAtKey(entry, keys);
+    if (count > 0) return count;
+  }
+  return 0;
+}
+
+function textContains(value, needles) {
+  const haystack = JSON.stringify(value ?? "").toLowerCase();
+  return needles.some((needle) => haystack.includes(needle));
+}
+
+function analyzeRunArtifacts({
+  browserWorkspace,
+  browserWorkspaceEvents,
+  devConsoleLog,
+  trajectories,
+  options,
+  promptDelivery,
+}) {
+  const browserTabCount = arrayLengthAtKey(browserWorkspace.body, ["tabs"]);
+  const browserEventCount = arrayLengthAtKey(browserWorkspaceEvents.body, [
+    "events",
+  ]);
+  const trajectoryCount = arrayLengthAtKey(trajectories.body, [
+    "trajectories",
+    "items",
+    "results",
+    "data",
+  ]);
+  const endpointErrors = [
+    browserWorkspace,
+    browserWorkspaceEvents,
+    trajectories,
+    devConsoleLog,
+  ]
+    .filter((result) => result.status >= 400 || result.status === 0)
+    .map((result) => ({
+      path: result.path,
+      status: result.status,
+      bodyText: result.bodyText?.slice(0, 1000) || undefined,
+    }));
+  const consoleHasErrors = textContains(
+    devConsoleLog.body ?? devConsoleLog.bodyText,
+    ["error", "exception", "uncaught", "failed"],
+  );
+  const assertions = [
+    {
+      name: "browser-tab",
+      required: options.requireBrowserTab,
+      passed: !options.requireBrowserTab || browserTabCount > 0,
+      observed: browserTabCount,
+    },
+    {
+      name: "browser-events",
+      required: options.requireBrowserEvents,
+      passed: !options.requireBrowserEvents || browserEventCount > 0,
+      observed: browserEventCount,
+    },
+    {
+      name: "trajectory",
+      required: options.requireTrajectory,
+      passed: !options.requireTrajectory || trajectoryCount > 0,
+      observed: trajectoryCount,
+    },
+  ];
+  const failedAssertions = assertions.filter((assertion) => !assertion.passed);
+  return {
+    schema: "elizaos.browser-app-harness.analysis/v1",
+    ts: nowIso(),
+    ok: failedAssertions.length === 0,
+    promptDelivery,
+    targetUrl: options.targetUrl,
+    counts: {
+      browserTabs: browserTabCount,
+      browserEvents: browserEventCount,
+      trajectories: trajectoryCount,
+      endpointErrors: endpointErrors.length,
+    },
+    signals: {
+      consoleHasErrors,
+    },
+    assertions,
+    failedAssertions,
+    endpointErrors,
+  };
+}
+
 async function pollReadOnlyEndpoints(apiBase, runDir, options, conversationId) {
   const pollLog = makeJsonlWriter(artifactPath(runDir, "polls.jsonl"));
   const endpointLog = makeJsonlWriter(
@@ -561,8 +685,30 @@ async function captureAppScreenshots(uiUrl, runDir) {
   });
   try {
     const page = await browser.newPage();
+    const consoleLog = makeJsonlWriter(
+      artifactPath(runDir, "puppeteer-console.jsonl"),
+    );
+    page.on("console", (message) => {
+      consoleLog.write({
+        ts: nowIso(),
+        type: message.type(),
+        text: message.text(),
+      });
+    });
+    page.on("pageerror", (error) => {
+      consoleLog.write({
+        ts: nowIso(),
+        type: "pageerror",
+        text:
+          error instanceof Error ? error.stack || error.message : String(error),
+      });
+    });
+    await seedElizaAppStorage(page);
     await page.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
-    await page.goto(uiUrl, { waitUntil: "networkidle2", timeout: 60_000 });
+    await page.goto(resolveChatUrl(uiUrl), {
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
     await page.screenshot({
       path: artifactPath(runDir, "eliza-app-initial.png"),
       fullPage: true,
@@ -570,10 +716,11 @@ async function captureAppScreenshots(uiUrl, runDir) {
     await writeJson(artifactPath(runDir, "puppeteer-screenshot.json"), {
       ts: nowIso(),
       uiUrl,
+      chatUrl: resolveChatUrl(uiUrl),
       executablePath,
       screenshots: ["eliza-app-initial.png"],
     });
-    return { browser, page };
+    return { browser, page, consoleLog };
   } catch (error) {
     await browser.close();
     throw error;
@@ -590,7 +737,113 @@ async function closePuppeteer(session, runDir) {
   } catch {
     // Best-effort final screenshot.
   }
+  await session.consoleLog?.close();
   await session.browser.close();
+}
+
+function resolveChatUrl(uiUrl) {
+  try {
+    const parsed = new URL(uiUrl);
+    return new URL("/chat", parsed.origin).toString();
+  } catch {
+    return `${stripTrailingSlash(uiUrl)}/chat`;
+  }
+}
+
+async function seedElizaAppStorage(page) {
+  await page.evaluateOnNewDocument(() => {
+    const seededKey = "eliza:browser-app-harness-storage-seeded";
+    if (sessionStorage.getItem(seededKey) === "1") return;
+    localStorage.setItem("eliza:onboarding-complete", "1");
+    localStorage.setItem("eliza:onboarding:step", "activate");
+    localStorage.setItem("eliza:ui-shell-mode", "native");
+    localStorage.setItem(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "local:embedded",
+        kind: "local",
+        label: "This device",
+      }),
+    );
+    sessionStorage.setItem(seededKey, "1");
+  });
+}
+
+async function setComposerValue(page, selector, prompt) {
+  await page.click(selector, { clickCount: 3 });
+  await page.keyboard.press(
+    process.platform === "darwin" ? "Meta+A" : "Control+A",
+  );
+  await page.keyboard.press("Backspace");
+  await page.type(selector, prompt, { delay: 0 });
+
+  const valueLength = await page.$eval(
+    selector,
+    (node) => node.value?.length ?? 0,
+  );
+  if (valueLength === prompt.length) return;
+
+  await page.$eval(
+    selector,
+    (node, value) => {
+      node.value = value;
+      node.dispatchEvent(new Event("input", { bubbles: true }));
+      node.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+    prompt,
+  );
+}
+
+async function sendPromptViaElizaUi(session, runDir, uiUrl, prompt) {
+  const page = session?.page;
+  if (!page) {
+    throw new Error(
+      "UI prompt delivery requires Puppeteer. Set PUPPETEER_EXECUTABLE_PATH/CHROME_PATH or pass --prompt-via-api.",
+    );
+  }
+
+  const chatUrl = resolveChatUrl(uiUrl);
+  if (!page.url().startsWith(chatUrl)) {
+    await page.goto(chatUrl, { waitUntil: "networkidle2", timeout: 60_000 });
+  }
+
+  const composerSelector = '[data-testid="chat-composer-textarea"]';
+  const actionSelector = '[data-testid="chat-composer-action"]';
+  await page.waitForSelector(composerSelector, {
+    visible: true,
+    timeout: 60_000,
+  });
+  await setComposerValue(page, composerSelector, prompt);
+  await page.waitForFunction(
+    (selector) => {
+      const button = document.querySelector(selector);
+      return Boolean(button && !button.disabled);
+    },
+    { timeout: 20_000 },
+    actionSelector,
+  );
+  await page.click(actionSelector);
+  await sleep(1_000);
+  await page.screenshot({
+    path: artifactPath(runDir, "eliza-app-after-ui-prompt.png"),
+    fullPage: true,
+  });
+  await writeJson(artifactPath(runDir, "ui-prompt.json"), {
+    ts: nowIso(),
+    uiUrl,
+    chatUrl,
+    promptLength: prompt.length,
+    composerSelector,
+    actionSelector,
+    screenshot: "eliza-app-after-ui-prompt.png",
+  });
+  return {
+    ok: true,
+    status: 0,
+    path: "puppeteer://eliza-app/chat",
+    method: "UI",
+    bodyText: "",
+  };
 }
 
 function resolveUiUrlFromStack(options, stackBody) {
@@ -623,6 +876,7 @@ async function main() {
     },
     guardrails: [
       "Puppeteer opens only the Eliza app UI URL.",
+      "When promptVia=ui, Puppeteer may type/click only the Eliza chat composer.",
       "The harness never calls /api/browser-workspace/command.",
       "The harness never calls browser workspace tab navigate/eval/show/hide mutation endpoints.",
       "Target website operation is delegated to the Eliza agent via its built-in BROWSER action.",
@@ -697,18 +951,29 @@ async function main() {
     });
 
     puppeteerSession = await captureAppScreenshots(uiUrl, runDir);
-    conversation = await createConversation(options.apiBase, runDir);
+    if (options.promptVia === "api") {
+      conversation = await createConversation(options.apiBase, runDir);
+    }
     await writeJson(artifactPath(runDir, "agent-prompt.json"), {
       ts: nowIso(),
-      conversationId: conversation.id,
+      delivery: options.promptVia,
+      conversationId: conversation?.id ?? null,
       prompt: plannedPrompt,
     });
-    promptResult = await sendConversationPrompt(
-      options.apiBase,
-      runDir,
-      conversation.id,
-      plannedPrompt,
-    );
+    promptResult =
+      options.promptVia === "ui"
+        ? await sendPromptViaElizaUi(
+            puppeteerSession,
+            runDir,
+            uiUrl,
+            plannedPrompt,
+          )
+        : await sendConversationPrompt(
+            options.apiBase,
+            runDir,
+            conversation.id,
+            plannedPrompt,
+          );
     if (!promptResult.ok) {
       throw new Error(
         `Prompt request failed: HTTP ${promptResult.status} ${promptResult.bodyText}`,
@@ -719,33 +984,49 @@ async function main() {
       options.apiBase,
       runDir,
       options,
-      conversation.id,
+      conversation?.id ?? null,
     );
 
-    await probeEndpoint(
+    const finalBrowserWorkspace = await probeEndpoint(
       options.apiBase,
       runDir,
       "final-browser-workspace",
       "/api/browser-workspace",
     );
-    await probeEndpoint(
+    const finalBrowserWorkspaceEvents = await probeEndpoint(
       options.apiBase,
       runDir,
       "final-browser-workspace-events",
       "/api/browser-workspace/events",
     );
-    await probeEndpoint(
+    const finalTrajectories = await probeEndpoint(
       options.apiBase,
       runDir,
       "final-trajectories",
       "/api/trajectories?limit=50&offset=0",
     );
-    await probeEndpoint(
+    const finalDevConsoleLog = await probeEndpoint(
       options.apiBase,
       runDir,
       "final-dev-console-log",
       "/api/dev/console-log?maxLines=800&maxBytes=512000",
     );
+    const analysis = analyzeRunArtifacts({
+      browserWorkspace: finalBrowserWorkspace,
+      browserWorkspaceEvents: finalBrowserWorkspaceEvents,
+      devConsoleLog: finalDevConsoleLog,
+      trajectories: finalTrajectories,
+      options,
+      promptDelivery: options.promptVia,
+    });
+    await writeJson(artifactPath(runDir, "analysis.json"), analysis);
+    if (!analysis.ok) {
+      throw new Error(
+        `Harness assertions failed: ${analysis.failedAssertions
+          .map((assertion) => assertion.name)
+          .join(", ")}`,
+      );
+    }
 
     await writeJson(artifactPath(runDir, "summary.json"), {
       schema: "elizaos.browser-app-harness.summary/v1",
@@ -755,9 +1036,11 @@ async function main() {
       elapsedMs: Date.now() - startedAt,
       runDir,
       apiBase: options.apiBase,
-      conversationId: conversation.id,
+      conversationId: conversation?.id ?? null,
+      promptDelivery: options.promptVia,
       promptStatus: promptResult.status,
       promptOk: promptResult.ok,
+      analysis,
     });
     console.log(`[harness] complete: ${runDir}`);
   } catch (error) {

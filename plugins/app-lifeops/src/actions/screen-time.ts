@@ -11,12 +11,12 @@
  */
 
 import type {
-  Action,
-  ActionExample,
+  ActionParameter,
   ActionResult,
+  HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
-  State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
@@ -238,188 +238,133 @@ function makeRespond(
   };
 }
 
-export const screenTimeAction: Action = {
-  name: ACTION_NAME,
-  similes: [
-    "SCREENTIME",
-    "ACTIVITY_REPORT",
-    "TIME_TRACKING",
-    "WHAT_DID_I_WORK_ON",
-    "TIME_ON_APP",
-    "TIME_ON_SITE",
-    "DWELL_TIME",
-  ],
-  description:
-    "Read screen-time and activity analytics across screen-time samples, the macOS native activity tracker, and browser-extension reports. Subactions: summary, today, weekly, weekly_average_by_app, by_app, by_website, activity_report, time_on_app, time_on_site, browser_activity. Read-only — never writes.",
-  descriptionCompressed:
-    "screen-time+activity reads: summary|today|weekly|weekly_average_by_app|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity; read-only",
-  tags: [
-    "domain:focus",
-    "capability:read",
-    "surface:device",
-    "cost:cheap",
-  ],
-  contexts: ["screen_time", "browser", "health", "tasks"],
-  roleGate: { minRole: "OWNER" },
+/**
+ * Public similes preserved on the OWNER_SCREENTIME umbrella so cached planner
+ * output and the lifeops provider's routing hints keep resolving.
+ */
+export const SCREEN_TIME_SIMILES: readonly string[] = [
+  "SCREENTIME",
+  "ACTIVITY_REPORT",
+  "TIME_TRACKING",
+  "WHAT_DID_I_WORK_ON",
+  "TIME_ON_APP",
+  "TIME_ON_SITE",
+  "DWELL_TIME",
+];
 
-  validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
+/**
+ * Parameter schema for the SCREEN_TIME backend — the OWNER_SCREENTIME
+ * umbrella surfaces this as its public param list (after replacing
+ * `subaction` with a canonical `action` discriminator).
+ */
+export const SCREEN_TIME_PARAMETERS: readonly ActionParameter[] = [
+  {
+    name: "subaction",
+    description:
+      "One of: summary, today, weekly, weekly_average_by_app, by_app, by_website, activity_report, time_on_app, time_on_site, browser_activity.",
+    descriptionCompressed:
+      "screen-time op: summary|today|weekly|weekly_average_by_app|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
+    required: false,
+    schema: {
+      type: "string" as const,
+      enum: [
+        "summary",
+        "today",
+        "weekly",
+        "weekly_average_by_app",
+        "by_app",
+        "by_website",
+        "activity_report",
+        "time_on_app",
+        "time_on_site",
+        "browser_activity",
+      ],
+    },
+    examples: ["today", "weekly", "time_on_app"],
+  },
+  {
+    name: "source",
+    description: "Restrict screen-time subactions to 'app' or 'website'.",
+    descriptionCompressed: "source filter: app|website",
+    required: false,
+    schema: { type: "string" as const, enum: ["app", "website"] },
+  },
+  {
+    name: "identifier",
+    description:
+      "Specific app bundle id or website domain when filtering screen-time to one source.",
+    required: false,
+    schema: { type: "string" as const },
+  },
+  {
+    name: "date",
+    description: "YYYY-MM-DD for the today subaction.",
+    required: false,
+    schema: { type: "string" as const },
+  },
+  {
+    name: "days",
+    description:
+      "Number of days back from now for weekly / weekly_average_by_app windows.",
+    required: false,
+    schema: { type: "number" as const },
+  },
+  {
+    name: "limit",
+    description:
+      "Top-N for by_app / by_website / browser_activity (default 10).",
+    required: false,
+    schema: { type: "number" as const },
+  },
+  {
+    name: "windowDays",
+    description: "Window in days for by_app / by_website summary queries.",
+    required: false,
+    schema: { type: "number" as const },
+  },
+  {
+    name: "windowHours",
+    description:
+      "Window in hours for activity_report / time_on_app / time_on_site (default 24, max 720).",
+    required: false,
+    schema: { type: "number" as const },
+  },
+  {
+    name: "appNameOrBundleId",
+    description:
+      "App name (e.g. 'Safari') or bundle id (e.g. 'com.apple.Safari') for time_on_app.",
+    required: false,
+    schema: { type: "string" as const },
+  },
+  {
+    name: "domain",
+    description: "Hostname (e.g. 'github.com') for time_on_site.",
+    required: false,
+    schema: { type: "string" as const },
+  },
+  {
+    name: "deviceId",
+    description:
+      "Filter browser_activity to one registered device id; omit for default.",
+    required: false,
+    schema: { type: "string" as const },
+  },
+];
 
-  parameters: [
-    {
-      name: "subaction",
-      description:
-        "One of: summary, today, weekly, weekly_average_by_app, by_app, by_website, activity_report, time_on_app, time_on_site, browser_activity.",
-      descriptionCompressed:
-        "screen-time op: summary|today|weekly|weekly_average_by_app|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
-      required: false,
-      schema: {
-        type: "string" as const,
-        enum: [
-          "summary",
-          "today",
-          "weekly",
-          "weekly_average_by_app",
-          "by_app",
-          "by_website",
-          "activity_report",
-          "time_on_app",
-          "time_on_site",
-          "browser_activity",
-        ],
-      },
-      examples: ["today", "weekly", "time_on_app"],
-    },
-    {
-      name: "source",
-      description: "Restrict screen-time subactions to 'app' or 'website'.",
-      descriptionCompressed: "source filter: app|website",
-      required: false,
-      schema: { type: "string" as const, enum: ["app", "website"] },
-    },
-    {
-      name: "identifier",
-      description:
-        "Specific app bundle id or website domain when filtering screen-time to one source.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "date",
-      description: "YYYY-MM-DD for the today subaction.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "days",
-      description:
-        "Number of days back from now for weekly / weekly_average_by_app windows.",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
-      name: "limit",
-      description:
-        "Top-N for by_app / by_website / browser_activity (default 10).",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
-      name: "windowDays",
-      description: "Window in days for by_app / by_website summary queries.",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
-      name: "windowHours",
-      description:
-        "Window in hours for activity_report / time_on_app / time_on_site (default 24, max 720).",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
-      name: "appNameOrBundleId",
-      description:
-        "App name (e.g. 'Safari') or bundle id (e.g. 'com.apple.Safari') for time_on_app.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "domain",
-      description: "Hostname (e.g. 'github.com') for time_on_site.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "deviceId",
-      description:
-        "Filter browser_activity to one registered device id; omit for default.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-  ],
-
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "How much screen time did I use today?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Screen time for 2026-04-19 (total 3h 42m): ...",
-          action: ACTION_NAME,
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "What did I work on in the last 8 hours?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Activity report (312m total): ...",
-          action: ACTION_NAME,
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "How long was I on github.com today?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "github.com: 42m.",
-          action: ACTION_NAME,
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "What's my weekly average per app?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Weekly average per app over the last 7 days (total 28h 10m): ...",
-          action: ACTION_NAME,
-        },
-      },
-    ],
-  ] as ActionExample[][],
-
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state,
-    options,
-    callback,
-  ): Promise<ActionResult> => {
+/**
+ * Handler function backing the OWNER_SCREENTIME umbrella.
+ *
+ * Folded out of the legacy `SCREEN_TIME` action surface — Audit F. The
+ * umbrella in `./owner-surfaces.ts` is the only caller; no `SCREEN_TIME`-named
+ * action is registered.
+ */
+export async function runScreenTimeHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: unknown,
+  options: HandlerOptions | undefined,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
     if (!(await hasLifeOpsAccess(runtime, message))) {
       const text = "Screen time data is restricted to the owner.";
       await callback?.({ text });
@@ -805,5 +750,4 @@ export const screenTimeAction: Action = {
         });
       }
     }
-  },
-};
+}

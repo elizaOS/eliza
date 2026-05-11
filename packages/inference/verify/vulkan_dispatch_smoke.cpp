@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include "ggml.h"
@@ -33,6 +34,27 @@ constexpr int N_HEADS = 4;
 constexpr int N_KV_HEADS = 2;
 constexpr int N_TOKENS = 8;
 constexpr float TOL = 1e-3f;
+
+static std::string lower_ascii(const char * s) {
+    std::string out = s ? s : "";
+    for (char & c : out) {
+        if (c >= 'A' && c <= 'Z') c = (char) (c - 'A' + 'a');
+    }
+    return out;
+}
+
+static bool software_vulkan_allowed() {
+    const char * value = std::getenv("ELIZA_ALLOW_SOFTWARE_VULKAN");
+    return value && std::strcmp(value, "1") == 0;
+}
+
+static bool looks_like_software_vulkan_device(const char * name) {
+    const std::string device = lower_ascii(name);
+    return device.find("llvmpipe") != std::string::npos ||
+           device.find("lavapipe") != std::string::npos ||
+           device.find("swiftshader") != std::string::npos ||
+           device.find("software rasterizer") != std::string::npos;
+}
 
 struct block_qjl1_256_smoke {
     uint8_t qs[ELIZA_QJL_PACKED_BYTES];
@@ -368,6 +390,13 @@ int main() {
     char desc[256] = {};
     ggml_backend_vk_get_device_description(0, desc, sizeof(desc));
     std::printf("[vulkan_dispatch_smoke] device=%s\n", desc);
+    if (!software_vulkan_allowed() && looks_like_software_vulkan_device(desc)) {
+        std::fprintf(stderr,
+            "[vulkan_dispatch_smoke] refusing software Vulkan device '%s'. "
+            "Set ELIZA_ALLOW_SOFTWARE_VULKAN=1 for diagnostics only.\n",
+            desc);
+        return 2;
+    }
 
     struct Case {
         const char * label;

@@ -38,7 +38,13 @@ export const ELIZA_1_KERNELS = [
 ] as const;
 export type Eliza1Kernel = (typeof ELIZA_1_KERNELS)[number];
 
-export const ELIZA_1_BACKENDS = ["metal", "vulkan", "cuda", "cpu"] as const;
+export const ELIZA_1_BACKENDS = [
+  "metal",
+  "vulkan",
+  "cuda",
+  "rocm",
+  "cpu",
+] as const;
 export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
 // Required-kernel set per tier. Mirrors AGENTS.md §3:
@@ -60,15 +66,15 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
 };
 
 // Backends each tier is expected to support on shipped hardware. The 0.6B and
-// 1.7B tiers do not need cuda.
+// 1.7B tiers do not need cuda/rocm.
 export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Backend>>
 > = {
   "0_6b": ["metal", "vulkan", "cpu"],
   "1_7b": ["metal", "vulkan", "cpu"],
-  "9b": ["metal", "vulkan", "cuda", "cpu"],
-  "27b": ["metal", "vulkan", "cuda", "cpu"],
-  "27b-256k": ["metal", "vulkan", "cuda", "cpu"],
+  "9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
+  "27b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
+  "27b-256k": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 };
 
 // ---------------------------------------------------------------------------
@@ -148,6 +154,7 @@ export const Eliza1KernelsSchema = z.object({
     metal: Eliza1VerifiedBackendStatusSchema,
     vulkan: Eliza1VerifiedBackendStatusSchema,
     cuda: Eliza1VerifiedBackendStatusSchema,
+    rocm: Eliza1VerifiedBackendStatusSchema,
     cpu: Eliza1VerifiedBackendStatusSchema,
   }),
 });

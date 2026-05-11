@@ -928,6 +928,32 @@ def _score_from_mt_bench_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_trajectory_replay_json(data: JSONValue) -> ScoreExtraction:
+    root = expect_dict(data, ctx="trajectory_replay:root")
+    metrics = expect_dict(
+        get_required(root, "metrics", ctx="trajectory_replay:root"),
+        ctx="trajectory_replay:metrics",
+    )
+    score = expect_float(
+        get_required(metrics, "score", ctx="trajectory_replay:metrics"),
+        ctx="trajectory_replay:score",
+    )
+    return ScoreExtraction(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics=_standard_benchmark_metrics(
+            metrics,
+            extra_keys=(
+                "action_sequence_match_rate",
+                "final_state_pass_rate",
+                "reward_threshold",
+                "n_stages",
+            ),
+        ),
+    )
+
+
 def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     python = sys.executable
 

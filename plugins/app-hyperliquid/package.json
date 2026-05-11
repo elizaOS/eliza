@@ -29,6 +29,7 @@
   "scripts": {
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",
+    "test": "vitest run --config vitest.config.ts",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
