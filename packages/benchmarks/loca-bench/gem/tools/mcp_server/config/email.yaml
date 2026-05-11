@@ -1,0 +1,36 @@
+# Email MCP Server Configuration
+name: email
+display_name: Email MCP Server
+description: Mock email IMAP/SMTP server for benchmarking
+
+execution:
+  command_type: python
+  script:
+    primary: "mcp_convert/mcps/email/server.py"
+    fallbacks: []
+
+parameters:
+  data_dir:
+    required: true
+    default: "./email_data"
+    env_var: "EMAIL_DATA_DIR"
+    description: "Path to email data directory"
+
+  email:
+    required: false
+    cli_arg: "--email"
+    description: "Auto-login email address"
+
+  password:
+    required: false
+    cli_arg: "--password"
+    description: "Auto-login password"
+
+  server_script:
+    required: false
+    description: "Override server script path (for testing)"
+
+workspace:
+  set_cwd: false
+  supports_placeholders: true
+  mkdir_if_needed: true

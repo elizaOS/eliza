@@ -301,9 +301,9 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
   function takeError(outErrPtrBuf: BigUint64Array): string | null {
     const ptrValue = outErrPtrBuf[0];
     if (ptrValue === undefined || ptrValue === 0n) return null;
-    const cstr = new ffi.CString(Number(ptrValue));
+    const cstr = new ffi.CString(ptrValue);
     const message = cstr.toString();
-    lib.symbols.eliza_inference_free_string(Number(ptrValue));
+    lib.symbols.eliza_inference_free_string(ptrValue);
     return message;
   }
 
@@ -318,12 +318,16 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
    * Returns null when the input is null — the C ABI accepts NULL for
    * optional arguments like `speaker_preset_id`.
    */
-  function cstr(value: string | null): { ptr: unknown; bytes: number } {
-    if (value === null) return { ptr: null, bytes: 0 };
+  function cstr(value: string | null): {
+    ptr: unknown;
+    bytes: number;
+    buffer: Buffer | null;
+  } {
+    if (value === null) return { ptr: null, bytes: 0, buffer: null };
     const bytes = Buffer.from(value, "utf8");
     const buf = Buffer.alloc(bytes.byteLength + 1);
     bytes.copy(buf);
-    return { ptr: ffi.ptr(buf), bytes: bytes.byteLength };
+    return { ptr: ffi.ptr(buf), bytes: bytes.byteLength, buffer: buf };
   }
 
   function failureCode(rc: number): VoiceLifecycleError["code"] {
@@ -341,8 +345,9 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
     create(bundleDir: string): ElizaInferenceContextHandle {
       const err = makeOutErr();
+      const bundleArg = cstr(bundleDir);
       const handle = lib.symbols.eliza_inference_create(
-        cstr(bundleDir).ptr,
+        bundleArg.ptr,
         err.ptr,
       );
       if (handle === 0n) {
@@ -360,9 +365,10 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
     mmapAcquire(ctx, region) {
       const err = makeOutErr();
+      const regionArg = cstr(region);
       const rc = lib.symbols.eliza_inference_mmap_acquire(
         ctx,
-        cstr(region).ptr,
+        regionArg.ptr,
         err.ptr,
       );
       if (rc !== ELIZA_OK) {
@@ -375,9 +381,10 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
     mmapEvict(ctx, region) {
       const err = makeOutErr();
+      const regionArg = cstr(region);
       const rc = lib.symbols.eliza_inference_mmap_evict(
         ctx,
-        cstr(region).ptr,
+        regionArg.ptr,
         err.ptr,
       );
       if (rc !== ELIZA_OK) {

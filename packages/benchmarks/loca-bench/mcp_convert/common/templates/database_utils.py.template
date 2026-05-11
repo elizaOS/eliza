@@ -1,0 +1,107 @@
+"""
+Database utilities for {MCP_NAME} MCP Server
+
+Handles data operations for the simplified {MCP_NAME} implementation.
+"""
+
+import os
+import sys
+from typing import Dict, List, Any, Optional
+
+# Add project root to path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, project_root)
+
+from common.database import JsonDatabase, CsvDatabase
+
+
+class {DATABASE_CLASS_NAME}:
+    """Database handler for {MCP_NAME} data"""
+    
+    def __init__(self, data_dir: str = None):
+        """Initialize database with data directory"""
+        if data_dir is None:
+            # Default to data directory in the same folder as this file
+            data_dir = os.path.join(os.path.dirname(__file__), "data")
+        
+        self.json_db = JsonDatabase(data_dir)
+        self.csv_db = CsvDatabase(data_dir)
+        
+        # File mappings - customize these for your data
+        self.main_data_file = "{MAIN_DATA_FILE}"
+        self.secondary_data_file = "{SECONDARY_DATA_FILE}"
+        # Add more file mappings as needed
+    
+    def get_{DATA_TYPE}(self, item_id: str) -> Optional[Dict[str, Any]]:
+        """Get {DATA_TYPE} information for an ID"""
+        data = self.json_db.load_data(self.main_data_file)
+        return data.get(item_id.upper()) if isinstance(data, dict) else None
+    
+    def list_{DATA_TYPE}(self) -> List[Dict[str, Any]]:
+        """List all {DATA_TYPE} items"""
+        data = self.json_db.load_data(self.main_data_file)
+        if isinstance(data, dict):
+            return list(data.values())
+        elif isinstance(data, list):
+            return data
+        return []
+    
+    def search_{DATA_TYPE}(self, field: str, value: Any) -> List[Dict[str, Any]]:
+        """Search {DATA_TYPE} by field value"""
+        return self.json_db.query_by_field(self.main_data_file, field, value)
+    
+    # Add more data access methods here
+    
+    # Data modification methods
+    def add_{DATA_TYPE}(self, item_id: str, data: Dict[str, Any]) -> bool:
+        """Add or update {DATA_TYPE} information"""
+        all_data = self.json_db.load_data(self.main_data_file)
+        if not isinstance(all_data, dict):
+            all_data = {}
+        
+        all_data[item_id.upper()] = data
+        return self.json_db.save_data(self.main_data_file, all_data)
+    
+    # Utility methods
+    def get_available_ids(self) -> List[str]:
+        """Get list of available item IDs"""
+        data = self.json_db.load_data(self.main_data_file)
+        if isinstance(data, dict):
+            return list(data.keys())
+        return []
+    
+    def validate_id(self, item_id: str) -> bool:
+        """Check if ID exists in database"""
+        return item_id.upper() in self.get_available_ids()
+    
+    def get_database_stats(self) -> Dict[str, Any]:
+        """Get database statistics"""
+        stats = {
+            "total_items": len(self.get_available_ids()),
+            "files": {}
+        }
+        
+        # File sizes and counts
+        files_to_check = [
+            self.main_data_file,
+            self.secondary_data_file,
+            # Add more files to check
+        ]
+        
+        for filename in files_to_check:
+            if filename and (self.json_db.file_exists(filename) or self.csv_db.file_exists(filename)):
+                size = max(
+                    self.json_db.get_file_size(filename),
+                    self.csv_db.get_file_size(filename)
+                )
+                stats["files"][filename] = {
+                    "size_bytes": size,
+                    "exists": True
+                }
+            elif filename:
+                stats["files"][filename] = {
+                    "size_bytes": 0,
+                    "exists": False
+                }
+        
+        return stats
