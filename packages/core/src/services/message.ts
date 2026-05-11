@@ -8376,7 +8376,7 @@ export class DefaultMessageService implements IMessageService {
 				messageText: message.content?.text,
 				explicitlyAddressesAgent,
 			});
-			if (!gateDecision.allow) {
+			if (gateDecision.allow === false) {
 				runtime.logger.debug(
 					{
 						src: "service:message",
