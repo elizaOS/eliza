@@ -1,0 +1,23 @@
+{
+  "name": "@elizaos/plugin-aegis",
+  "version": "1.0.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Aegis-12 TEE Gateway compliance plugin for ElizaOS autonomous agents.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza",
+    "directory": "packages/plugin-aegis"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
