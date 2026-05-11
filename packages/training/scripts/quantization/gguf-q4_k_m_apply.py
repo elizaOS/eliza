@@ -178,6 +178,15 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Keep the intermediate f16 GGUF in --output (default: delete it).",
     )
+    ap.add_argument(
+        "--no-smoke-load",
+        dest="smoke_load",
+        action="store_false",
+        help="Skip the post-quantize llama-cli load-smoke (default: run it — "
+             "load the produced GGUF and generate a few tokens to confirm the "
+             "quantized weights are valid).",
+    )
+    ap.set_defaults(smoke_load=True)
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
@@ -217,6 +226,14 @@ def main(argv: list[str] | None = None) -> int:
         log.info("removing intermediate %s", f16_path)
         f16_path.unlink(missing_ok=True)
 
+    smoke: dict[str, object] | None = None
+    if args.smoke_load:
+        smoke = _smoke_load_gguf(quant_path, quantize)
+        if smoke.get("ok"):
+            log.info("load-smoke OK: %r", smoke.get("output", "")[:80])
+        else:
+            log.warning("load-smoke FAILED: %s", smoke.get("error"))
+
     sidecar = {
         "method": f"gguf_{QUANT_LEVEL.lower()}",
         "scheme": QUANT_LEVEL,
@@ -228,6 +245,7 @@ def main(argv: list[str] | None = None) -> int:
         "imatrix": str(args.calibration)
         if args.calibration and args.calibration.suffix == ".imatrix"
         else None,
+        "smoke_load": smoke,
         "notes": (
             "Q4_K_M is the standard sweet-spot K-quant for llama.cpp / Ollama "
             "/ LM Studio. ~4.5 bits per weight on average (mixed precision) "
@@ -237,6 +255,30 @@ def main(argv: list[str] | None = None) -> int:
     sidecar_path = write_sidecar(args.output, "gguf_q4_k_m.json", sidecar)
     log.info("wrote %s", sidecar_path)
     return 0
+
+
+def _smoke_load_gguf(gguf_path: Path, quantize_bin: Path) -> dict[str, object]:
+    """Load the produced GGUF in llama-cli and generate a few tokens. Returns
+    {ok, output, error}. Best-effort — a missing llama-cli is reported, not
+    fatal (the quantize step already validated the GGUF structure)."""
+    cli = quantize_bin.parent / "llama-cli"
+    if not cli.exists():
+        found = shutil.which("llama-cli")
+        if not found:
+            return {"ok": False, "error": f"llama-cli not found next to {quantize_bin} or on PATH"}
+        cli = Path(found)
+    cmd = [str(cli), "-m", str(gguf_path), "-p", "The capital of France is",
+           "-n", "8", "-no-cnv", "--temp", "0", "-t", "4"]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "llama-cli timed out (180s)"}
+    except OSError as e:
+        return {"ok": False, "error": f"llama-cli spawn failed: {e}"}
+    out = (proc.stdout or "").strip()
+    if proc.returncode != 0 or not out:
+        return {"ok": False, "error": f"llama-cli rc={proc.returncode}; stderr tail: {(proc.stderr or '')[-300:]}"}
+    return {"ok": True, "output": out[-200:], "cmd": " ".join(cmd)}
 
 
 if __name__ == "__main__":
